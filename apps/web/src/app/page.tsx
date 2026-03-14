@@ -13,19 +13,19 @@ import {
 const productPillars = [
   {
     label: "Your data, understood",
-    title: "It reads the data, not just the headers.",
+    title: "It reads the data. Not just the headers.",
     copy:
-      "Basquio profiles every measure, ranks what matters, and finds the insights worth presenting before building a single slide.",
+      "Basquio profiles every measure, ranks what matters, and finds the insights worth presenting — before building a single slide.",
   },
   {
     label: "Your story, built",
     title: "From insight to narrative, automatically.",
     copy:
-      "Every presentation follows a clear story arc from context to findings to recommendations. Not random charts, a real narrative.",
+      "Every presentation follows a clear story arc — context, findings, implications, recommendations. Not random charts. A real narrative.",
   },
   {
     label: "Your deck, delivered",
-    title: "Editable PowerPoint. Polished PDF. Same story.",
+    title: "Editable PowerPoint. Polished PDF. Same analysis.",
     copy:
       "Both outputs come from the same analysis. Edit the deck for your team, share the PDF with leadership. They always match.",
   },
@@ -78,7 +78,7 @@ export default async function HomePage() {
             <div className="stack">
               <h1>Two weeks of analysis. Delivered in hours.</h1>
               <p className="hero-copy">
-                Upload your data. Get back a finished analysis: actionable insights, compelling narrative, and a
+                Upload your data. Get back a finished analysis — actionable insights, compelling narrative, and a
                 presentation you&apos;d put your name on.
               </p>
             </div>
@@ -117,19 +117,40 @@ export default async function HomePage() {
             <Image src="/brand/svg/icon/basquio-icon-amber.svg" alt="" width={30} height={24} aria-hidden />
           </div>
 
-          <div className="signal-grid">
-            <article className="signal-card stack">
-              <p className="artifact-kind">Upload</p>
-              <p>Your spreadsheet, your data files, your template.</p>
-            </article>
-            <article className="signal-card stack">
-              <p className="artifact-kind">Analyze</p>
-              <p>Basquio reads the data, finds the insights, builds the narrative.</p>
-            </article>
-            <article className="signal-card stack">
-              <p className="artifact-kind">Deliver</p>
-              <p>Editable PowerPoint and polished PDF, ready to present.</p>
-            </article>
+          <div className="stack">
+            <div className="terminal-row">
+              <span>01</span>
+              <div className="stack">
+                <p className="artifact-kind">Upload</p>
+                <p>Your data, your context, your template</p>
+                <p className="muted">
+                  Spreadsheets, business context, and optional brand template — everything Basquio needs to start the
+                  analysis.
+                </p>
+              </div>
+            </div>
+            <div className="terminal-row">
+              <span>02</span>
+              <div className="stack">
+                <p className="artifact-kind">Analyze</p>
+                <p>Basquio reads and analyzes</p>
+                <p className="muted">
+                  Advanced frameworks applied. Measures profiled and ranked. Key insights surfaced. Narrative built
+                  from the findings.
+                </p>
+              </div>
+            </div>
+            <div className="terminal-row">
+              <span>03</span>
+              <div className="stack">
+                <p className="artifact-kind">Deliver</p>
+                <p>Your presentation, ready</p>
+                <p className="muted">
+                  Editable PowerPoint and polished PDF — with real insights, clear story, and actionable
+                  recommendations.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="stack">
@@ -166,21 +187,30 @@ export default async function HomePage() {
               <p className="artifact-kind">01</p>
               <div className="stack">
                 <p>Analysis first, slides second.</p>
-                <p className="muted">Basquio computes real analytics from your data before writing a single word of narrative.</p>
+                <p className="muted">
+                  Basquio computes real analytics from your data before writing a single word of narrative. Other tools
+                  start from prompts. We start from your data.
+                </p>
               </div>
             </div>
             <div className="evidence-row">
               <p className="artifact-kind">02</p>
               <div className="stack">
                 <p>Your brief shapes the story.</p>
-                <p className="muted">Tell it who the audience is, what the objective is, and what&apos;s at stake. The narrative adapts.</p>
+                <p className="muted">
+                  Tell Basquio who the audience is, what the objective is, and what&apos;s at stake. The narrative adapts
+                  to your specific business context.
+                </p>
               </div>
             </div>
             <div className="evidence-row">
               <p className="artifact-kind">03</p>
               <div className="stack">
                 <p>One plan, two outputs.</p>
-                <p className="muted">The PowerPoint and the PDF are generated from the same structured plan. No drift, no inconsistency.</p>
+                <p className="muted">
+                  The PowerPoint and the PDF are generated from the same analysis. No copy-paste drift. No
+                  inconsistency between what you edit and what you share.
+                </p>
               </div>
             </div>
           </div>
@@ -193,7 +223,7 @@ export default async function HomePage() {
             <p className="muted">
               {latestRun
                 ? `${summarizeRunBrief(latestRun)}. Created ${formatDate(latestRun.createdAt)}.`
-                : "Generate the first run to see the output contract, artifact pair, and analytical highlights here."}
+                : "Generate the first run to see the latest outputs and analytical highlights here."}
             </p>
           </div>
 
@@ -206,8 +236,8 @@ export default async function HomePage() {
                     <h3>{artifact.fileName}</h3>
                     <p className="muted">
                       {artifact.kind === "pptx"
-                        ? "Editable working deck generated from the current slide plan."
-                        : "Presentation-ready PDF rendered from the same report contract."}
+                        ? "Editable PowerPoint generated from the latest analysis."
+                        : "Polished PDF built from the same analysis."}
                     </p>
                     <a className="button secondary inverted" href={buildArtifactDownloadUrl(latestRun.jobId, artifact.kind)}>
                       Download {artifact.kind.toUpperCase()}

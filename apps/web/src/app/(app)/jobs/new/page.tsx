@@ -3,19 +3,19 @@ import { listGenerationRuns, summarizeRunBrief, summarizeRunSources } from "@/li
 
 const briefGuidance = [
   {
-    label: "Your data",
-    title: "Upload the files that matter to the analysis.",
-    copy: "Add your spreadsheets, source files, and any supporting material that gives the numbers context.",
+    label: "Data",
+    title: "Upload your business data.",
+    copy: "CSV, Excel workbooks, and supporting files. Basquio reads all of it before starting the analysis.",
   },
   {
-    label: "Your brief",
-    title: "Explain what the audience needs to understand.",
-    copy: "A clear objective, thesis, and stakes lead to a sharper story and better recommendations.",
+    label: "Brief",
+    title: "Describe what you need.",
+    copy: "The stronger your brief — audience, objective, thesis — the better the narrative and insights.",
   },
   {
-    label: "Your output",
-    title: "Get a presentation you can use right away.",
-    copy: "Basquio gives you an editable deck and a polished PDF built from the same analysis.",
+    label: "Output",
+    title: "Get two matched deliverables.",
+    copy: "An editable PowerPoint for your team and a polished PDF for distribution. Same analysis, same story.",
   },
 ] as const;
 
@@ -31,16 +31,16 @@ export default async function NewJobPage() {
               <p className="section-label">New analysis</p>
               <h1>Create your analysis.</h1>
               <p className="page-copy">
-                Upload your data, describe what you need, and let Basquio build the analysis and presentation.
+                Upload your data, describe what you need, and Basquio builds the analysis and presentation.
               </p>
             </div>
           </div>
 
           <aside className="page-hero-aside stack">
-            <p className="artifact-kind">How Basquio works</p>
-            <p>Basquio analyzes your data before building anything.</p>
+            <p className="artifact-kind">How it works</p>
             <p className="muted">
-              The brief you write shapes the entire output.
+              Basquio analyzes your data before building anything. The brief you write shapes the entire output —
+              audience, objective, and stakes all influence the narrative.
             </p>
           </aside>
         </div>

@@ -22,18 +22,18 @@ type GenerationResponse = {
 const formSignals = [
   {
     label: "Data",
-    title: "Bring the files behind the story.",
-    copy: "Upload the spreadsheets and support files Basquio should use to understand the analysis.",
+    title: "Upload your business data",
+    copy: "Spreadsheets, supporting notes, and context files — Basquio reads everything before starting the analysis.",
   },
   {
     label: "Brief",
-    title: "Set the audience and the ask.",
-    copy: "Audience, objective, thesis, and stakes tell Basquio what this presentation needs to do.",
+    title: "Describe the business context",
+    copy: "Audience, objective, thesis, and stakes shape the narrative. The stronger the brief, the better the output.",
   },
   {
     label: "Output",
-    title: "Get one analysis in two formats.",
-    copy: "The editable deck and the polished PDF come from the same analysis, so they stay aligned.",
+    title: "Two deliverables, one analysis",
+    copy: "Editable PowerPoint and polished PDF, both from the same structured analysis plan.",
   },
 ] as const;
 
@@ -79,8 +79,8 @@ export function GenerationForm() {
             <p className="section-label">Create analysis</p>
             <h2>Upload your data, set the brief, and add your template.</h2>
             <p className="muted">
-              Give Basquio the files, context, and presentation goal. It reads the data, builds the story, and
-              returns a presentation you can use.
+              Basquio analyzes your data, finds the insights, builds the narrative, and delivers an editable
+              presentation and PDF.
             </p>
           </div>
 
@@ -104,13 +104,13 @@ export function GenerationForm() {
                 multiple
                 required
               />
-              <small>Upload one or more spreadsheets plus any notes or reference files that help explain the data.</small>
+              <small>Upload spreadsheets (CSV, Excel) and any supporting documents — methodology notes, context files, etc.</small>
             </label>
 
             <label className="field field-span-2">
               <span>Template (optional)</span>
               <input name="brandFile" type="file" accept=".json,.css,.pptx,.pdf" />
-              <small>Add a PPTX template, brand file, or PDF style reference if you want the output to follow it.</small>
+              <small>Upload a PPTX template for branded output, or a PDF/JSON file for style reference.</small>
             </label>
 
             <label className="field field-span-2">
@@ -118,7 +118,7 @@ export function GenerationForm() {
               <textarea
                 name="businessContext"
                 rows={5}
-                placeholder="Describe the situation, the data, and what the audience needs to understand."
+                placeholder="What is this data about? What does your audience need to understand? What decision depends on this analysis?"
                 required
               />
             </label>
@@ -152,7 +152,7 @@ export function GenerationForm() {
               <textarea
                 name="stakes"
                 rows={3}
-                placeholder="Why does this matter now? Example: the team is setting next quarter's investment plan."
+                placeholder="Why does this matter now? What happens if the analysis doesn't reach the right people?"
               />
             </label>
           </div>
@@ -167,7 +167,10 @@ export function GenerationForm() {
               </Link>
             </div>
 
-            <p className="fine-print">Basquio uses your data and brief to build the analysis before it creates the final files.</p>
+            <p className="fine-print">
+              Basquio analyzes your data and builds the narrative before rendering anything. Both outputs stay in
+              sync.
+            </p>
           </div>
         </div>
       </form>
