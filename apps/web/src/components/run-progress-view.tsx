@@ -59,6 +59,7 @@ export function RunProgressView(input: {
 }) {
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
   const [error, setError] = useState<string | null>(null);
+  const [missingPollCount, setMissingPollCount] = useState(0);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
   useEffect(() => {
@@ -79,10 +80,16 @@ export function RunProgressView(input: {
         }
 
         if (!response.ok) {
+          if (response.status === 404 && !snapshot) {
+            setMissingPollCount((current) => current + 1);
+            setError(null);
+            return;
+          }
           throw new Error(payload.error ?? "Unable to load run progress.");
         }
 
         setSnapshot(payload);
+        setMissingPollCount(0);
         setError(null);
       } catch (pollError) {
         if (!active) {
@@ -99,7 +106,7 @@ export function RunProgressView(input: {
       active = false;
       window.clearInterval(interval);
     };
-  }, [input.jobId, isTerminal]);
+  }, [input.jobId, isTerminal, snapshot]);
 
   const stageSet = useMemo(() => new Map(snapshot?.steps.map((step) => [step.baseStage, step]) ?? []), [snapshot?.steps]);
 
@@ -107,7 +114,11 @@ export function RunProgressView(input: {
     return (
       <section className="page-shell">
         <article className="panel empty-state">
-          <p>Basquio is waiting for this run to register. Refresh in a moment.</p>
+          <p>
+            {missingPollCount > 6
+              ? "Basquio is still waiting for this run to register. If this takes much longer, the run key may be invalid or the hosted state may still be recovering."
+              : "Basquio is waiting for this run to register. Refresh in a moment."}
+          </p>
         </article>
       </section>
     );

@@ -1,5 +1,3 @@
-import { notFound } from "next/navigation";
-
 import { RunProgressView } from "@/components/run-progress-view";
 import { getGenerationStatus } from "@/lib/run-status";
 
@@ -12,10 +10,6 @@ export default async function JobProgressPage({
 }) {
   const { jobId } = await params;
   const snapshot = await getGenerationStatus(jobId);
-
-  if (!snapshot) {
-    notFound();
-  }
 
   return <RunProgressView jobId={jobId} initialSnapshot={snapshot} />;
 }

@@ -2,8 +2,15 @@ import {
   BASQUIO_PIPELINE_STAGES,
   BASQUIO_PIPELINE_STAGE_WEIGHTS,
 } from "@basquio/core";
-import { generationRunSummarySchema, type GenerationJobStatus, type GenerationRunSummary } from "@basquio/types";
+import {
+  generationRunSummarySchema,
+  type GenerationJobStatus,
+  type GenerationRequest,
+  type GenerationRunSummary,
+} from "@basquio/types";
 
+import { loadPersistedGenerationRequest } from "@/lib/generation-requests";
+import { getGenerationRun } from "@/lib/job-runs";
 import { fetchRestRows } from "@/lib/supabase/admin";
 
 type JobRow = {
@@ -51,8 +58,10 @@ export type GenerationStatusSnapshot = {
 
 export async function getGenerationStatus(jobId: string): Promise<GenerationStatusSnapshot | null> {
   const credentials = getSupabaseCredentials();
+  const fallbackContext = await loadFallbackContext(jobId);
+
   if (!credentials) {
-    return null;
+    return buildFallbackSnapshot(jobId, fallbackContext);
   }
 
   const jobs = await fetchRestRows<JobRow>({
@@ -67,7 +76,7 @@ export async function getGenerationStatus(jobId: string): Promise<GenerationStat
 
   const job = jobs[0];
   if (!job) {
-    return null;
+    return buildFallbackSnapshot(jobId, fallbackContext);
   }
 
   const stepRows = await fetchRestRows<StepRow>({
@@ -140,6 +149,77 @@ export async function getGenerationStatus(jobId: string): Promise<GenerationStat
   };
 }
 
+async function loadFallbackContext(jobId: string) {
+  const [request, summary] = await Promise.all([
+    loadPersistedGenerationRequest(jobId),
+    getGenerationRun(jobId),
+  ]);
+
+  return { request, summary };
+}
+
+function buildFallbackSnapshot(
+  jobId: string,
+  fallback: {
+    request: GenerationRequest | null;
+    summary: GenerationRunSummary | null;
+  },
+): GenerationStatusSnapshot | null {
+  if (fallback.summary) {
+    return buildSummarySnapshot(jobId, fallback.summary);
+  }
+
+  if (fallback.request) {
+    return buildQueuedSnapshot(jobId, fallback.request);
+  }
+
+  return null;
+}
+
+function buildSummarySnapshot(jobId: string, summary: GenerationRunSummary): GenerationStatusSnapshot {
+  const createdAt = summary.createdAt || deriveCreatedAt(jobId);
+  const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
+
+  return {
+    jobId,
+    status: summary.status,
+    createdAt,
+    updatedAt: createdAt,
+    currentStage: summary.status === "completed" ? "completed" : lastStageFromSummary(summary),
+    currentDetail:
+      summary.status === "completed"
+        ? "Artifacts are ready."
+        : summary.failureMessage || "Basquio recorded the run summary and is recovering the live state.",
+    progressPercent: summary.status === "completed" ? 100 : 96,
+    elapsedSeconds,
+    estimatedRemainingSeconds: summary.status === "completed" ? 0 : null,
+    steps: [],
+    summary,
+    failureMessage: summary.failureMessage || undefined,
+  };
+}
+
+function buildQueuedSnapshot(jobId: string, request: GenerationRequest): GenerationStatusSnapshot {
+  const createdAt = deriveCreatedAt(jobId);
+  const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
+
+  return {
+    jobId,
+    status: "queued",
+    createdAt,
+    updatedAt: createdAt,
+    currentStage: BASQUIO_PIPELINE_STAGES[0],
+    currentDetail:
+      "Basquio accepted the run, persisted the request, and is recovering the live pipeline state before the first durable checkpoint appears.",
+    progressPercent: 2,
+    elapsedSeconds,
+    estimatedRemainingSeconds: null,
+    steps: [],
+    summary: null,
+    failureMessage: undefined,
+  };
+}
+
 function computeProgressPercent(
   steps: GenerationStepSnapshot[],
   summary: GenerationRunSummary | null,
@@ -201,6 +281,23 @@ function parseSummary(summary: unknown) {
   } catch {
     return null;
   }
+}
+
+function lastStageFromSummary(summary: GenerationRunSummary) {
+  return summary.stageTraces.at(-1)?.stage || BASQUIO_PIPELINE_STAGES[BASQUIO_PIPELINE_STAGES.length - 1];
+}
+
+function deriveCreatedAt(jobId: string) {
+  const match = jobId.match(/^job-([0-9T-]+Z)-/);
+  if (!match?.[1]) {
+    return new Date().toISOString();
+  }
+
+  const normalized = match[1]
+    .replace(/^(\d{4})-(\d{2})-(\d{2})T/, "$1-$2-$3T")
+    .replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, "T$1:$2:$3.$4Z");
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
 function getSupabaseCredentials() {
