@@ -2,7 +2,7 @@
   "name": "basquio",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "pnpm@9.0.6",
+  "packageManager": "pnpm@10.12.1",
   "engines": {
     "node": "22.x"
   },
@@ -19,6 +19,9 @@
     "supabase:status": "supabase status",
     "supabase:reset": "supabase db reset --local",
     "supabase:lint": "supabase db lint --local"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.16.3",
