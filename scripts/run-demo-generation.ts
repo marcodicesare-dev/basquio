@@ -14,6 +14,7 @@ import {
 import { renderPdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { createSystemTemplateProfile } from "@basquio/template-engine";
+import type { BinaryArtifact } from "@basquio/types";
 
 async function main() {
   const outputDir = path.resolve(process.cwd(), "output", "demo-local");
@@ -79,8 +80,8 @@ async function main() {
     templateProfile,
   });
 
-  await writeFile(path.join(outputDir, "demo-deck.pptx"), Buffer.from(pptxArtifact.buffer));
-  await writeFile(path.join(outputDir, "demo-deck.pdf"), Buffer.from(pdfArtifact.buffer));
+  await writeFile(path.join(outputDir, "demo-deck.pptx"), toBuffer(pptxArtifact));
+  await writeFile(path.join(outputDir, "demo-deck.pdf"), toBuffer(pdfArtifact));
   await writeFile(
     path.join(outputDir, "demo-summary.json"),
     JSON.stringify(
@@ -104,3 +105,7 @@ main().catch((error: unknown) => {
   console.error(`Demo generation failed: ${message}`);
   process.exit(1);
 });
+
+function toBuffer(artifact: BinaryArtifact) {
+  return Buffer.isBuffer(artifact.buffer) ? artifact.buffer : Buffer.from(artifact.buffer.data);
+}

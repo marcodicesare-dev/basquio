@@ -20,6 +20,8 @@ BASQUIO_ALLOW_LOCAL_ARTIFACT_FALLBACK=false
 ```env
 INNGEST_EVENT_KEY=your-inngest-event-key
 INNGEST_SIGNING_KEY=your-inngest-signing-key
+INNGEST_SERVE_HOST=https://basquio.com
+INNGEST_SERVE_PATH=/api/inngest
 BROWSERLESS_TOKEN=your-browserless-token
 ```
 
@@ -40,6 +42,8 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 - `BASQUIO_ALLOW_LOCAL_ARTIFACT_FALLBACK=false`: prevents silent local-disk fallback in production
 - `INNGEST_EVENT_KEY`: required when Basquio starts emitting workflow events
 - `INNGEST_SIGNING_KEY`: required when Inngest calls the Vercel route
+- `INNGEST_SERVE_HOST`: recommended on Vercel when you want Inngest to sync against the production custom domain instead of the generated `vercel.app` URL
+- `INNGEST_SERVE_PATH`: keeps the sync target explicit at `/api/inngest`
 - `BROWSERLESS_TOKEN`: required for real PDF rendering instead of placeholder behavior
 - `BROWSERLESS_URL`: optional because the code already defaults to Browserless production SFO
 - `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`: not used by the current scaffold yet, but they belong in the production environment once LLM-backed insight and narrative steps are wired in
@@ -59,3 +63,20 @@ BASQUIO_ALLOW_LOCAL_ARTIFACT_FALLBACK=true
 ```
 
 for Preview only, but Production should stay `false`.
+
+## Inngest Vercel Notes
+
+Official Inngest guidance for Vercel is:
+
+- use `serve()` on `/api/inngest`
+- set `INNGEST_SIGNING_KEY` and `INNGEST_EVENT_KEY`
+- prefer the official Vercel integration for automatic sync
+- if you want production to sync against `basquio.com`, set `INNGEST_SERVE_HOST=https://basquio.com`
+
+You can verify the live endpoint with:
+
+```bash
+pnpm inngest:check https://basquio.com/api/inngest
+```
+
+If the endpoint is reachable but reports missing keys, the deploy is live but not fully connected to Inngest Cloud yet.

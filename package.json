@@ -14,6 +14,7 @@
     "qa": "pnpm qa:basquio",
     "qa:basquio": "tsx scripts/qa-context.ts",
     "demo:generate": "tsx scripts/run-demo-generation.ts",
+    "inngest:check": "tsx scripts/check-inngest.ts",
     "workflow:dev": "pnpm --filter @basquio/workflows workflow:dev",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",

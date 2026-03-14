@@ -45,3 +45,24 @@ supabase db push
 ```
 
 This first pass keeps RLS enabled but intentionally expects server-side service-role access until tenant-aware membership policies are implemented.
+
+## Inngest On Vercel
+
+Basquio uses Inngest's `serve()` model on Vercel, not `connect()`. The official docs reserve `connect()` for long-running container workers, while Vercel should expose `/api/inngest`.
+
+Minimum production variables:
+
+```bash
+INNGEST_SIGNING_KEY=...
+INNGEST_EVENT_KEY=...
+INNGEST_SERVE_HOST=https://basquio.com
+INNGEST_SERVE_PATH=/api/inngest
+```
+
+Verification:
+
+```bash
+pnpm inngest:check https://basquio.com/api/inngest
+```
+
+That command fails unless the live endpoint has at least one registered function plus both required keys.

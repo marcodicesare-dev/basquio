@@ -56,6 +56,7 @@ const requiredFiles = [
   "supabase/README.md",
   "supabase/migrations/20260314160000_initial_basquio_schema.sql",
   "scripts/run-demo-generation.ts",
+  "scripts/check-inngest.ts",
 ];
 
 const contentChecks: Array<{ file: string; needles: string[] }> = [
@@ -66,6 +67,10 @@ const contentChecks: Array<{ file: string; needles: string[] }> = [
   {
     file: "docs/stack-practices.md",
     needles: ["Supabase", "Inngest", "Browserless", "ECharts", "SheetJS", "PptxGenJS", "pptx-automizer"],
+  },
+  {
+    file: "docs/vercel-env.md",
+    needles: ["INNGEST_SIGNING_KEY", "INNGEST_EVENT_KEY", "INNGEST_SERVE_HOST", "basquio.com", "pnpm inngest:check"],
   },
   {
     file: "docs/brand-system.md",
@@ -154,8 +159,15 @@ async function assertWorkspaceScripts() {
     scripts?: Record<string, string>;
   };
   const requiredScripts = ["dev", "typecheck", "lint", "qa:basquio", "workflow:dev", "demo:generate"];
+  const requiredOperationalScripts = ["inngest:check"];
 
   for (const scriptName of requiredScripts) {
+    if (!packageJson.scripts?.[scriptName]) {
+      throw new Error(`Missing root script: ${scriptName}`);
+    }
+  }
+
+  for (const scriptName of requiredOperationalScripts) {
     if (!packageJson.scripts?.[scriptName]) {
       throw new Error(`Missing root script: ${scriptName}`);
     }
