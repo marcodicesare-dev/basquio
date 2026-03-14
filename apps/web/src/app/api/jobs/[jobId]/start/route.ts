@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { runGenerationRequest } from "@basquio/workflows";
 
@@ -32,7 +32,7 @@ export async function POST(
 
   activeJobs.add(jobId);
 
-  setTimeout(() => {
+  after(() => {
     void runGenerationRequest(request)
       .catch((error) => {
         console.error(`Basquio generation failed for ${jobId}`, error);
@@ -40,7 +40,7 @@ export async function POST(
       .finally(() => {
         activeJobs.delete(jobId);
       });
-  }, 0);
+  });
 
   return NextResponse.json({ status: current?.status === "running" ? "resumed" : "started" }, { status: 202 });
 }

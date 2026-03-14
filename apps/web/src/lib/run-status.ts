@@ -202,6 +202,7 @@ function buildSummarySnapshot(jobId: string, summary: GenerationRunSummary): Gen
 function buildQueuedSnapshot(jobId: string): GenerationStatusSnapshot {
   const createdAt = deriveCreatedAt(jobId);
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
+  const isStalled = elapsedSeconds >= 45;
 
   return {
     jobId,
@@ -210,7 +211,9 @@ function buildQueuedSnapshot(jobId: string): GenerationStatusSnapshot {
     updatedAt: createdAt,
     currentStage: BASQUIO_PIPELINE_STAGES[0],
     currentDetail:
-      "Basquio accepted the run, persisted the request, and is recovering the live pipeline state before the first durable checkpoint appears.",
+      isStalled
+        ? "The run is still queued and no durable workflow checkpoints have appeared yet. Basquio is attempting to recover the background execution path."
+        : "Basquio accepted the run, persisted the request, and is recovering the live pipeline state before the first durable checkpoint appears.",
     progressPercent: 2,
     elapsedSeconds,
     estimatedRemainingSeconds: null,

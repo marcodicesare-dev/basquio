@@ -184,6 +184,15 @@ async function persistQueuedJob(generationRequest: GenerationRequest) {
     return;
   }
 
+  const { organizationRowId, projectRowId } = await resolveQueuedRunContext({
+    supabaseUrl,
+    serviceKey,
+    organizationId: generationRequest.organizationId,
+    projectId: generationRequest.projectId,
+    objective: generationRequest.brief.objective,
+    audience: generationRequest.brief.audience,
+  });
+
   await upsertRestRows({
     supabaseUrl,
     serviceKey,
@@ -192,8 +201,8 @@ async function persistQueuedJob(generationRequest: GenerationRequest) {
     rows: [
       {
         job_key: generationRequest.jobId,
-        organization_id: generationRequest.organizationId,
-        project_id: generationRequest.projectId,
+        organization_id: organizationRowId,
+        project_id: projectRowId,
         status: "queued",
         business_context: generationRequest.brief.businessContext,
         audience: generationRequest.brief.audience,
@@ -202,5 +211,73 @@ async function persistQueuedJob(generationRequest: GenerationRequest) {
         failure_message: null,
       },
     ],
-  }).catch(() => undefined);
+  });
+}
+
+async function resolveQueuedRunContext(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  organizationId: string;
+  projectId: string;
+  objective: string;
+  audience: string;
+}) {
+  const organizationSlug = sanitizeQueueSlug(input.organizationId || "local-org");
+  const projectSlug = sanitizeQueueSlug(input.projectId || "local-project");
+
+  const organizations = await upsertRestRows<{ id: string }>({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "organizations",
+    onConflict: "slug",
+    select: "id",
+    rows: [
+      {
+        slug: organizationSlug,
+        name: humanizeQueueLabel(input.organizationId || "Local org"),
+      },
+    ],
+  });
+
+  if (!organizations[0]?.id) {
+    throw new Error(`Unable to resolve organization row for ${input.organizationId}.`);
+  }
+
+  const projects = await upsertRestRows<{ id: string }>({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "projects",
+    onConflict: "organization_id,slug",
+    select: "id",
+    rows: [
+      {
+        organization_id: organizations[0].id,
+        slug: projectSlug,
+        name: humanizeQueueLabel(input.projectId || "Local project"),
+        objective: input.objective,
+        audience: input.audience,
+      },
+    ],
+  });
+
+  if (!projects[0]?.id) {
+    throw new Error(`Unable to resolve project row for ${input.projectId}.`);
+  }
+
+  return {
+    organizationRowId: organizations[0].id,
+    projectRowId: projects[0].id,
+  };
+}
+
+function sanitizeQueueSlug(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+}
+
+function humanizeQueueLabel(value: string) {
+  return value
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
 }

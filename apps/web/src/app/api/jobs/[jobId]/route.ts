@@ -6,6 +6,8 @@ import { getGenerationStatus } from "@/lib/run-status";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const stalledKickoffs = new Map<string, number>();
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ jobId: string }> },
@@ -17,11 +19,35 @@ export async function GET(
     return NextResponse.json({ error: "Run not found." }, { status: 404 });
   }
 
-  if (!process.env.INNGEST_EVENT_KEY && status.status === "queued") {
+  if ((!process.env.INNGEST_EVENT_KEY && status.status === "queued") || shouldKickoffStalledRun(status)) {
     await dispatchPersistedGenerationJob(jobId, _request);
   }
 
   return NextResponse.json(status, {
     status: status.status === "completed" ? 200 : 202,
   });
+}
+
+function shouldKickoffStalledRun(status: Awaited<ReturnType<typeof getGenerationStatus>>) {
+  if (!status) {
+    return false;
+  }
+
+  if (status.status !== "queued" || status.steps.length > 0 || status.summary) {
+    return false;
+  }
+
+  if (status.elapsedSeconds < 30) {
+    return false;
+  }
+
+  const lastKickoff = stalledKickoffs.get(status.jobId) ?? 0;
+  const now = Date.now();
+
+  if (now - lastKickoff < 60_000) {
+    return false;
+  }
+
+  stalledKickoffs.set(status.jobId, now);
+  return true;
 }
