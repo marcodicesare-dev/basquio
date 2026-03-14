@@ -1,6 +1,7 @@
 node_modules
 .next
 .turbo
+.firecrawl
 dist
 coverage
 .env.local
