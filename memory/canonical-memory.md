@@ -44,6 +44,17 @@ Initial domain bias:
 - Template and brand interpretation must flow through `TemplateProfile`, not renderer-only style hacks.
 - structured brand token JSON or CSS files are the current file-backed v1 path into `TemplateProfile`.
 
+## Design Memory
+
+- Basquio UI should feel like an executive reporting product, not a generic SaaS admin shell.
+- The canonical shell direction is a pale editorial canvas with darker technical-stage surfaces used intentionally for workflow, pipeline, and proof moments.
+- CostFigure is the reference for editorial rhythm, spacing discipline, and token governance, not for color direction.
+- Inngest is the reference for technical confidence, dark-stage framing, and pipeline-proof presentation, not for brand cloning.
+- Landing-page copy must describe the real product: evidence package plus report brief plus brand direction in, PPTX plus PDF artifacts out.
+- `/jobs/new` is the primary action path and should read like a report-composer surface, not a generic upload form.
+- `/templates` and `/artifacts` should read as report-generation tools and deliverable surfaces, not generic cards or file lists.
+- Shared visual rules should live in the web token layer first, then page structure, instead of ad hoc one-off component styling.
+
 ## Process Memory
 
 Before implementation:

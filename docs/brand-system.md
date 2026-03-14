@@ -43,3 +43,12 @@ Canonical web-ready assets now live in:
 - SVG wordmarks rely on `Satoshi` font loading for browser-perfect rendering
 - PNG wordmarks were pre-rendered in the original asset pipeline and are safer for contexts that cannot load the web font
 - if Basquio later needs Open Graph or app-icon setup, prefer the delivered PNGs instead of re-exporting from scratch
+
+## Product UI Application Rules
+
+- Basquio should default to a light product canvas with editorial spacing and calm surfaces.
+- dark surfaces are allowed for technical-stage moments such as pipeline explanation, generation state, and proof framing, but Basquio must not become a dark-mode-only brand.
+- ultramarine is the primary UI accent for action and navigation emphasis.
+- amber should stay sparse and directional: logo moments, proof labels, stage emphasis, and selective calls to attention.
+- on light surfaces, prefer the onyx or ultramarine lockups; on dark surfaces, use the dark-background lockup.
+- do not replace the crown or wordmark with text-only branding in the app shell or landing page when canonical assets are available.
