@@ -1,6 +1,6 @@
 import { after, NextResponse } from "next/server";
 
-import { runGenerationRequest } from "@basquio/workflows";
+import { inngest, runGenerationRequest } from "@basquio/workflows";
 
 import { getGenerationJobState, loadPersistedGenerationRequest } from "@/lib/generation-requests";
 
@@ -28,6 +28,22 @@ export async function POST(
 
   if (activeJobs.has(jobId)) {
     return NextResponse.json({ status: "running" }, { status: 202 });
+  }
+
+  if (process.env.INNGEST_EVENT_KEY) {
+    try {
+      await inngest.send({
+        name: "basquio/generation.requested",
+        data: request,
+      });
+
+      return NextResponse.json(
+        { status: current?.status === "running" ? "resumed" : "requeued" },
+        { status: 202 },
+      );
+    } catch (error) {
+      console.error(`Unable to requeue Basquio generation ${jobId} through Inngest`, error);
+    }
   }
 
   activeJobs.add(jobId);
