@@ -1,5 +1,7 @@
 # Stack Practices
 
+Last revalidated against official documentation: March 14, 2026.
+
 ## Purpose
 
 This document captures the highest-signal implementation guidance for the Basquio stack so future agents do not need to re-derive it from scratch.
@@ -10,7 +12,8 @@ The goal is not to replace canonical architecture. The goal is to make day-two e
 - more reliable Inngest workflows
 - honest PDF and PPTX rendering boundaries
 - export-safe charting
-- predictable workbook ingestion
+- predictable evidence-package ingestion
+- file-backed brand-token handling
 
 ## Supabase
 
@@ -133,6 +136,23 @@ Basquio implication:
 
 - continue to use `pdf-lib` after Browserless generation for title/author/metadata and small post-processing
 
+## Brand Tokens
+
+### File contract
+
+When Basquio ingests a brand file instead of a full PPTX template, prefer a structured token format over ad hoc prose.
+
+Best-fit direction:
+
+- DTCG-style JSON token files when available
+- CSS custom property exports as a pragmatic fallback
+
+Basquio implication:
+
+- normalize uploaded brand files into `TemplateProfile`
+- preserve colors, typography, spacing, and logo hints through a contract instead of renderer-only overrides
+- do not hide brand decisions in disconnected CSS modules
+
 ## ECharts
 
 ### Renderer choice
@@ -192,6 +212,26 @@ Basquio implication:
 - then infer roles
 - then run deterministic summaries
 
+### CSV-first product path
+
+CSV should remain the default v1 tabular input.
+
+Basquio implication:
+
+- make `.csv` the fastest and best-tested product path
+- keep `.xlsx` / `.xls` support for workflows where multi-sheet structure matters
+- do not design the product around spreadsheet-only assumptions when the broader requirement is evidence-package ingestion
+
+### Evidence-package discipline
+
+Real report-generation jobs may include multiple CSVs, validation files, methodology notes, and brand files.
+
+Basquio implication:
+
+- infer or capture file roles at the package level
+- keep file-role understanding inside the intelligence layer
+- avoid flattening the whole package into one anonymous table before reasoning
+
 ## PptxGenJS
 
 Use PptxGenJS when Basquio needs greenfield slide creation with editable native charts.
@@ -232,6 +272,8 @@ When future agents touch the Basquio stack:
 
 ## Sources
 
+- [Design Tokens Community Group](https://www.designtokens.org/)
+- [Design Tokens Format Module](https://www.designtokens.org/tr/drafts/format/)
 - [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)
 - [Supabase hardening data API](https://supabase.com/docs/guides/api/hardening-data-api)
 - [Supabase service_role server-side guidance](https://supabase.com/docs/guides/troubleshooting/performing-administration-tasks-on-the-server-side-with-the-servicerole-secret-BYM4Fa)

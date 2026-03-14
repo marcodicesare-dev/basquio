@@ -4,7 +4,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const cwd = process.cwd();
-const root = path.basename(cwd) === "Basquio" ? cwd : path.resolve(cwd, "Basquio");
+let root = "";
 
 const requiredFiles = [
   "README.md",
@@ -174,7 +174,29 @@ async function assertWorkspaceScripts() {
   }
 }
 
+async function resolveWorkspaceRoot() {
+  let current = cwd;
+
+  for (;;) {
+    try {
+      await access(path.join(current, "docs", "vision.md"));
+      await access(path.join(current, "package.json"));
+      return current;
+    } catch {
+      const parent = path.dirname(current);
+
+      if (parent === current) {
+        throw new Error("Unable to resolve the Basquio workspace root for QA.");
+      }
+
+      current = parent;
+    }
+  }
+}
+
 async function main() {
+  root = await resolveWorkspaceRoot();
+
   for (const file of requiredFiles) {
     await assertExists(file);
   }

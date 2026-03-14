@@ -15,6 +15,23 @@ When working inside `Basquio/`:
 6. Run `pnpm qa:basquio` after context changes.
 7. Prefer changes that strengthen the intelligence layer over UI polish.
 
+## Product Reminder
+
+Basquio is a report-generation system for structured evidence packages.
+
+The expected input is:
+
+- one or more structured data files
+- a report brief with context, audience, objective, and thesis
+- a brand input such as a PPTX template or brand-token file
+
+The expected output is:
+
+- an executive-grade PPTX
+- an executive-grade PDF
+
+Do not reduce the product goal to "upload CSV, get random deck."
+
 ## Basquio Skills
 
 - `Basquio/skills/basquio-foundation/SKILL.md`

@@ -15,6 +15,17 @@ pnpm supabase:start
 pnpm supabase:reset
 ```
 
+## First Usable Test Flow
+
+The app now exposes a real internal generation path:
+
+1. Run `pnpm dev`
+2. Open `/jobs/new`
+3. Upload a `.csv` dataset
+4. Add business context, audience, and objective
+5. Generate the coupled `.pptx` and `.pdf`
+6. Download them from `/artifacts`
+
 ## Environment
 
 Copy `.env.example` to `.env.local` and fill in the secrets. The scaffold is designed to boot without live secrets, but auth, durable job delivery, Browserless PDF rendering, and Supabase storage all stay in placeholder mode until the environment is configured.

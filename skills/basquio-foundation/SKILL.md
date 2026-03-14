@@ -2,7 +2,8 @@
 name: basquio-foundation
 description: >
   Use when scaffolding Basquio, changing architecture, setting repo standards,
-  designing workflow/database boundaries, or updating canonical contracts.
+  designing workflow/database boundaries, defining evidence-package and brand-input contracts,
+  or updating canonical contracts.
 ---
 
 # Basquio Foundation
@@ -10,6 +11,8 @@ description: >
 ## Goal
 
 Keep the product context coherent before code branches into implementation details.
+
+Basquio is not a generic deck generator. It is a report-generation system for structured evidence packages plus a briefing input and a brand input.
 
 ## Required Reads
 
@@ -22,10 +25,11 @@ Keep the product context coherent before code branches into implementation detai
 ## Workflow
 
 1. Confirm the change matches the intelligence-first product thesis.
-2. Update architecture before implementation if the decision is structural.
-3. Update decision log and memory in the same change.
-4. Update `Basquio/code/contracts.ts` if any planning contract changes.
-5. Run `pnpm qa:basquio`.
+2. Confirm the change strengthens evidence-package understanding, report quality, or brand-controlled rendering.
+3. Update architecture before implementation if the decision is structural.
+4. Update decision log and memory in the same change.
+5. Update `Basquio/code/contracts.ts` if any planning or brand-input contract changes.
+6. Run `pnpm qa:basquio`.
 
 ## Refuse To Do
 

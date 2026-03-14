@@ -2,7 +2,7 @@
 name: basquio-stack-context
 description: >
   Use when changing Supabase, Inngest, Browserless, ECharts, SheetJS,
-  PptxGenJS, or pptx-automizer behavior, or when future agents need official
+  PptxGenJS, pptx-automizer, or brand-token intake behavior, or when future agents need official
   stack guidance before implementation.
 ---
 
@@ -25,6 +25,7 @@ Prevent stack-level mistakes that do not violate TypeScript but do violate opera
 - Browserless PDF rendering changes
 - ECharts export decisions
 - SheetJS ingest behavior
+- design-token file intake and normalization
 - PptxGenJS or `pptx-automizer` integration work
 
 ## Execution Rules

@@ -1,5 +1,7 @@
 # Research Synthesis
 
+Revalidated against current official stack documentation and the clarified product target on March 14, 2026.
+
 ## Inputs Merged
 
 This synthesis merges:
@@ -58,8 +60,17 @@ Merged outcome:
 
 Basquio should be built as:
 
-- an intelligence engine that produces structured plans
-- a template system that understands PPTX honestly and PDF conservatively
+- an intelligence engine that produces structured plans from multi-file evidence packages
+- a report-generation system that takes a report brief seriously, not as optional decoration
+- a template and brand system that understands PPTX honestly, accepts structured brand token files, and treats PDF conservatively
 - a rendering layer that uses the right tool for each artifact instead of one universal library
 
 That is the cleanest synthesis of both research tracks.
+
+## Product Calibration
+
+The March 14, 2026 product calibration is explicit:
+
+- Basquio should be able to take a delivery-style evidence pack similar to the SGS AI visibility report package
+- Basquio should synthesize a narrative with executive stakes, not just summarize rows
+- Basquio should ingest brand guidance from a file, not only from a manually hardcoded web theme
