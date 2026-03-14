@@ -43,17 +43,17 @@ const formSignals = [
   {
     label: "Data",
     title: "Upload your business data",
-    copy: "Spreadsheets, supporting notes, and context files — Basquio reads everything before starting the analysis.",
+    copy: "Spreadsheets and supporting files. Basquio reads everything before starting.",
   },
   {
     label: "Brief",
     title: "Describe the business context",
-    copy: "Audience, objective, thesis, and stakes shape the narrative. The stronger the brief, the better the output.",
+    copy: "Audience, objective, and stakes shape the narrative.",
   },
   {
     label: "Output",
     title: "Two deliverables, one analysis",
-    copy: "Editable PowerPoint and polished PDF, both from the same structured analysis plan.",
+    copy: "Editable PowerPoint and polished PDF from the same analysis.",
   },
 ] as const;
 
@@ -151,7 +151,7 @@ export function GenerationForm() {
       <form className="stack-lg" onSubmit={handleSubmit}>
         <div className="panel form-panel stack-xl">
           <div className="stack">
-            <p className="section-label">Create analysis</p>
+            <p className="section-label">New analysis</p>
             <h2>Upload your data, set the brief, and add your template.</h2>
             <p className="muted">
               Basquio analyzes your data, finds the insights, builds the narrative, and delivers an editable
@@ -179,13 +179,13 @@ export function GenerationForm() {
                 multiple
                 required
               />
-              <small>Upload spreadsheets (CSV, Excel) and any supporting documents — methodology notes, context files, etc.</small>
+              <small>Upload spreadsheets (CSV, Excel) and any supporting documents.</small>
             </label>
 
             <label className="field field-span-2">
               <span>Template (optional)</span>
               <input name="brandFile" type="file" accept=".json,.css,.pptx,.pdf" />
-              <small>Upload a PPTX template for branded output, or a PDF/JSON file for style reference.</small>
+              <small>PPTX template for branded output, or PDF/JSON for style reference.</small>
             </label>
 
             <label className="field field-span-2">
@@ -193,7 +193,7 @@ export function GenerationForm() {
               <textarea
                 name="businessContext"
                 rows={5}
-                placeholder="What is this data about? What does your audience need to understand? What decision depends on this analysis?"
+                placeholder="What is this data about? What does your audience need to understand?"
                 required
               />
             </label>
@@ -227,7 +227,7 @@ export function GenerationForm() {
               <textarea
                 name="stakes"
                 rows={3}
-                placeholder="Why does this matter now? What happens if the analysis doesn't reach the right people?"
+                placeholder="Why does this matter now? What decision depends on this?"
               />
             </label>
           </div>
@@ -235,7 +235,7 @@ export function GenerationForm() {
           <div className="row form-actions">
             <div className="row">
               <button className="button" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Generating presentation..." : "Generate presentation"}
+                {isSubmitting ? "Generating..." : "Generate presentation"}
               </button>
               <Link className="button secondary" href="/artifacts">
                 View recent outputs
@@ -243,8 +243,7 @@ export function GenerationForm() {
             </div>
 
             <p className="fine-print">
-              Basquio analyzes your data and builds the narrative before rendering anything. Both outputs stay in
-              sync.
+              Basquio analyzes your data and builds the narrative before rendering. Both outputs stay in sync.
             </p>
           </div>
         </div>
@@ -271,8 +270,8 @@ export function GenerationForm() {
                 <h4>{artifact.fileName}</h4>
                 <p className="muted">
                   {artifact.kind === "pptx"
-                    ? "Editable PowerPoint file, ready for your team to refine."
-                    : "Polished PDF built from the same analysis."}
+                    ? "Editable PowerPoint for your revisions."
+                    : "Polished PDF ready to share."}
                 </p>
                 <a className="button" href={artifact.downloadUrl}>
                   Download {artifact.kind.toUpperCase()}
@@ -294,7 +293,7 @@ export function GenerationForm() {
 
           <div className="row">
             <Link className="button secondary" href={`/artifacts?jobId=${result.jobId}`}>
-              Open run in artifacts
+              View in recent outputs
             </Link>
           </div>
         </section>
