@@ -26,18 +26,19 @@ alter table public.source_files
   add column if not exists external_id text,
   add column if not exists media_type text default 'application/octet-stream';
 
-create unique index if not exists source_files_external_id_key on public.source_files (external_id) where external_id is not null;
+create unique index if not exists source_files_external_id_key on public.source_files (external_id);
 
 alter table public.datasets
   alter column source_file_id drop not null;
 
-drop index if exists public.datasets_source_file_id_key;
+alter table public.datasets
+  drop constraint if exists datasets_source_file_id_key;
 
 alter table public.datasets
   add column if not exists external_id text,
   add column if not exists manifest jsonb not null default '{}'::jsonb;
 
-create unique index if not exists datasets_external_id_key on public.datasets (external_id) where external_id is not null;
+create unique index if not exists datasets_external_id_key on public.datasets (external_id);
 
 create table if not exists public.dataset_source_files (
   id uuid primary key default gen_random_uuid(),
@@ -64,7 +65,7 @@ alter table public.generation_jobs
   add column if not exists artifact_manifest jsonb not null default '{}'::jsonb,
   add column if not exists summary jsonb;
 
-create unique index if not exists generation_jobs_job_key_key on public.generation_jobs (job_key) where job_key is not null;
+create unique index if not exists generation_jobs_job_key_key on public.generation_jobs (job_key);
 
 create unique index if not exists generation_job_steps_job_id_stage_key
   on public.generation_job_steps (job_id, stage);
