@@ -697,7 +697,13 @@ async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: Bi
 }
 
 async function writeRunSummary(summary: GenerationRunSummary) {
-  const outputDir = path.join(await resolveOutputRoot(), summary.jobId);
+  const outputRoot = await resolveOutputRoot();
+
+  if (!outputRoot) {
+    return;
+  }
+
+  const outputDir = path.join(outputRoot, summary.jobId);
   await mkdir(outputDir, { recursive: true });
   await writeFile(path.join(outputDir, "job-summary.json"), JSON.stringify(summary, null, 2));
 }
@@ -833,10 +839,21 @@ function toBuffer(buffer: BinaryArtifact["buffer"]) {
 }
 
 async function resolveOutputRoot() {
-  return path.join(await resolveWorkspaceRoot(), "output");
+  const workspaceRoot = await tryResolveWorkspaceRoot();
+  return workspaceRoot ? path.join(workspaceRoot, "output") : null;
 }
 
 async function resolveWorkspaceRoot() {
+  const workspaceRoot = await tryResolveWorkspaceRoot();
+
+  if (!workspaceRoot) {
+    throw new Error("Unable to resolve the Basquio workspace root.");
+  }
+
+  return workspaceRoot;
+}
+
+async function tryResolveWorkspaceRoot() {
   let current = process.cwd();
 
   for (;;) {
@@ -848,7 +865,7 @@ async function resolveWorkspaceRoot() {
       const parent = path.dirname(current);
 
       if (parent === current) {
-        throw new Error("Unable to resolve the Basquio workspace root.");
+        return null;
       }
 
       current = parent;
