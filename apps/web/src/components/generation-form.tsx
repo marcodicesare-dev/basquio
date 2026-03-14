@@ -19,6 +19,8 @@ type GenerationResponse = {
   }>;
 };
 
+const MAX_HOSTED_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 const formSignals = [
   {
     label: "Data",
@@ -49,20 +51,27 @@ export function GenerationForm() {
     setResult(null);
 
     const formData = new FormData(event.currentTarget);
+    const totalUploadBytes = sumUploadBytes(formData);
 
     try {
+      if (totalUploadBytes > MAX_HOSTED_UPLOAD_BYTES) {
+        throw new Error(
+          `This upload is too large for the current hosted form. Keep the total upload under ${formatUploadLimit(MAX_HOSTED_UPLOAD_BYTES)} or split the package into smaller files.`,
+        );
+      }
+
       const response = await fetch("/api/generate", {
         method: "POST",
         body: formData,
       });
 
-      const payload = (await response.json()) as GenerationResponse & { error?: string };
+      const payload = await readGenerationPayload(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Generation failed.");
       }
 
-      setResult(payload);
+      setResult(payload as GenerationResponse);
     } catch (submissionError) {
       setResult(null);
       setError(submissionError instanceof Error ? submissionError.message : "Generation failed.");
@@ -226,4 +235,38 @@ export function GenerationForm() {
       ) : null}
     </div>
   );
+}
+
+async function readGenerationPayload(response: Response): Promise<GenerationResponse & { error?: string }> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as GenerationResponse & { error?: string };
+  }
+
+  const text = (await response.text()).trim();
+
+  if (response.status === 413) {
+    return {
+      error: `This upload is too large for the current hosted form. Keep the total upload under ${formatUploadLimit(MAX_HOSTED_UPLOAD_BYTES)} or split the package into smaller files.`,
+    } as GenerationResponse & { error?: string };
+  }
+
+  return {
+    error: text || "Generation failed.",
+  } as GenerationResponse & { error?: string };
+}
+
+function sumUploadBytes(formData: FormData) {
+  return [...formData.values()].reduce((total, value) => {
+    if (value instanceof File) {
+      return total + value.size;
+    }
+
+    return total;
+  }, 0);
+}
+
+function formatUploadLimit(bytes: number) {
+  return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 }
