@@ -110,6 +110,27 @@ export async function dispatchPersistedGenerationJob(jobId: string, request?: Re
   }
 }
 
+export async function dispatchPersistedGenerationExecution(jobId: string, request?: Request) {
+  const baseUrl = resolveBaseUrl(request);
+  if (!baseUrl) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(new URL(`/api/jobs/${jobId}/execute`, baseUrl), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ jobId }),
+      cache: "no-store",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 function buildStoredRequestPath(jobId: string) {
   return `run-requests/${jobId}.json`;
 }

@@ -1,23 +1,28 @@
 import { after, NextResponse } from "next/server";
 
-import { inngest, runGenerationRequest } from "@basquio/workflows";
+import { inngest } from "@basquio/workflows";
 
-import { getGenerationJobState, loadPersistedGenerationRequest } from "@/lib/generation-requests";
+import {
+  dispatchPersistedGenerationExecution,
+  getGenerationJobState,
+  loadPersistedGenerationRequest,
+} from "@/lib/generation-requests";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const activeJobs = new Set<string>();
+const scheduledFallbacks = new Set<string>();
+const INNGEST_RECOVERY_GRACE_MS = 15_000;
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
   const { jobId } = await params;
-  const request = await loadPersistedGenerationRequest(jobId);
+  const persistedRequest = await loadPersistedGenerationRequest(jobId);
 
-  if (!request) {
+  if (!persistedRequest) {
     return NextResponse.json({ error: "Persisted generation request not found." }, { status: 404 });
   }
 
@@ -26,37 +31,47 @@ export async function POST(
     return NextResponse.json({ status: "completed" });
   }
 
-  if (activeJobs.has(jobId)) {
-    return NextResponse.json({ status: "running" }, { status: 202 });
-  }
-
+  let responseStatus = current?.status === "running" ? "resumed" : "started";
   if (process.env.INNGEST_EVENT_KEY) {
     try {
       await inngest.send({
         name: "basquio/generation.requested",
-        data: request,
+        data: persistedRequest,
       });
 
-      return NextResponse.json(
-        { status: current?.status === "running" ? "resumed" : "requeued" },
-        { status: 202 },
-      );
+      responseStatus = current?.status === "running" ? "resumed" : "requeued";
     } catch (error) {
       console.error(`Unable to requeue Basquio generation ${jobId} through Inngest`, error);
     }
   }
 
-  activeJobs.add(jobId);
-
   after(() => {
-    void runGenerationRequest(request)
+    if (scheduledFallbacks.has(jobId)) {
+      return;
+    }
+
+    scheduledFallbacks.add(jobId);
+
+    void scheduleExecuteFallback(jobId, request)
       .catch((error) => {
-        console.error(`Basquio generation failed for ${jobId}`, error);
+        console.error(`Basquio execute fallback failed for ${jobId}`, error);
       })
       .finally(() => {
-        activeJobs.delete(jobId);
+        scheduledFallbacks.delete(jobId);
       });
   });
 
-  return NextResponse.json({ status: current?.status === "running" ? "resumed" : "started" }, { status: 202 });
+  return NextResponse.json({ status: responseStatus }, { status: 202 });
+}
+
+async function scheduleExecuteFallback(jobId: string, request: Request) {
+  if (process.env.INNGEST_EVENT_KEY) {
+    await wait(INNGEST_RECOVERY_GRACE_MS);
+  }
+
+  await dispatchPersistedGenerationExecution(jobId, request);
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
