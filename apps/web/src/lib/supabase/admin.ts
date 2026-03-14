@@ -65,6 +65,21 @@ export async function createSignedUploadUrl(input: {
   storagePath: string;
   upsert?: boolean;
 }) {
+  try {
+    const supabase = createServiceSupabaseClient(input.supabaseUrl, input.serviceKey);
+    const { data, error } = await supabase.storage.from(input.bucket).createSignedUploadUrl(input.storagePath, {
+      upsert: input.upsert ?? false,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.signedUrl && data.token) {
+      return data;
+    }
+  } catch {}
+
   const response = await fetch(buildStorageSignedUploadUrl(input.supabaseUrl, input.bucket, input.storagePath), {
     method: "POST",
     headers: buildServiceHeaders(input.serviceKey, {
