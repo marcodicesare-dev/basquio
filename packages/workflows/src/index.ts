@@ -36,7 +36,13 @@ import {
 } from "@basquio/types";
 
 import { createRunPersistence } from "./persistence";
-import { createServiceSupabaseClient, downloadFromStorage, uploadToStorage } from "./supabase";
+import {
+  createServiceSupabaseClient,
+  downloadFromStorage,
+  fetchRestRows,
+  upsertRestRows,
+  uploadToStorage,
+} from "./supabase";
 
 export const inngest = new Inngest({
   id: "basquio",
@@ -714,24 +720,34 @@ async function persistArtifactMetadata(
   extraMetadata: Record<string, unknown> = {},
 ) {
   try {
-    const { data: job } = await supabase
-      .from("generation_jobs")
-      .select("id")
-      .eq("job_key", artifact.jobId)
-      .single();
+    const jobs = await fetchRestRows<{ id: string }>({
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      table: "generation_jobs",
+      query: {
+        select: "id",
+        job_key: `eq.${artifact.jobId}`,
+        limit: "1",
+      },
+    });
 
-    if (!job?.id) {
+    if (!jobs[0]?.id) {
       return;
     }
 
-    await supabase.from("artifacts").upsert(
-      {
-        job_id: job.id,
-        kind: artifact.kind,
-        storage_bucket: artifact.provider === "supabase" ? "artifacts" : artifact.provider === "database" ? "database" : "local",
-        storage_path: artifact.storagePath,
-        mime_type: artifact.mimeType,
-        file_bytes: artifact.byteSize,
+    await upsertRestRows({
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      table: "artifacts",
+      onConflict: "job_id,kind",
+      rows: [
+        {
+          job_id: jobs[0].id,
+          kind: artifact.kind,
+          storage_bucket: artifact.provider === "supabase" ? "artifacts" : artifact.provider === "database" ? "database" : "local",
+          storage_path: artifact.storagePath,
+          mime_type: artifact.mimeType,
+          file_bytes: artifact.byteSize,
         metadata: {
           fileName: artifact.fileName,
           provider: artifact.provider,
@@ -742,9 +758,9 @@ async function persistArtifactMetadata(
           sectionCount: artifact.sectionCount,
           ...extraMetadata,
         },
-      },
-      { onConflict: "job_id,kind" },
-    );
+        },
+      ],
+    });
   } catch {
     // Durable metadata is best-effort so the working generation path keeps moving.
   }

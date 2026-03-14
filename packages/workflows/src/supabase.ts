@@ -81,6 +81,98 @@ export async function downloadFromStorage(input: {
   return Buffer.from(await response.arrayBuffer());
 }
 
+export async function fetchRestRows<T>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  table: string;
+  query: Record<string, string>;
+}) {
+  const url = new URL(`/rest/v1/${input.table}`, input.supabaseUrl);
+
+  for (const [key, value] of Object.entries(input.query)) {
+    url.searchParams.set(key, value);
+  }
+
+  const response = await fetch(url, {
+    headers: buildServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to query ${input.table}.`));
+  }
+
+  return (await response.json()) as T[];
+}
+
+export async function upsertRestRows<T>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  table: string;
+  rows: Record<string, unknown>[];
+  onConflict: string;
+  select?: string;
+}) {
+  const url = new URL(`/rest/v1/${input.table}`, input.supabaseUrl);
+  url.searchParams.set("on_conflict", input.onConflict);
+
+  if (input.select) {
+    url.searchParams.set("select", input.select);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=representation",
+    }),
+    body: JSON.stringify(input.rows),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to upsert ${input.table}.`));
+  }
+
+  return (await response.json()) as T[];
+}
+
+export async function patchRestRows<T>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  table: string;
+  query: Record<string, string>;
+  payload: Record<string, unknown>;
+  select?: string;
+}) {
+  const url = new URL(`/rest/v1/${input.table}`, input.supabaseUrl);
+
+  for (const [key, value] of Object.entries(input.query)) {
+    url.searchParams.set(key, value);
+  }
+
+  if (input.select) {
+    url.searchParams.set("select", input.select);
+  }
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: buildServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    }),
+    body: JSON.stringify(input.payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to update ${input.table}.`));
+  }
+
+  return (await response.json()) as T[];
+}
+
 function buildServiceHeaders(serviceKey: string, extraHeaders: Record<string, string> = {}) {
   const headers = new Headers(extraHeaders);
   headers.set("apikey", serviceKey);

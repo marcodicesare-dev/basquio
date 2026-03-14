@@ -10,7 +10,12 @@ import type {
 } from "@basquio/types";
 import { generationRunSummarySchema } from "@basquio/types";
 
-import { createServiceSupabaseClient, uploadToStorage } from "./supabase";
+import {
+  createServiceSupabaseClient,
+  patchRestRows,
+  upsertRestRows,
+  uploadToStorage,
+} from "./supabase";
 
 type RunPersistenceContext = {
   supabase: SupabaseClient;
@@ -63,19 +68,24 @@ class SupabaseRunPersistence {
   ) {}
 
   async initialize() {
-    await this.context.supabase.from("generation_jobs").upsert(
-      {
-        job_key: this.request.jobId,
-        organization_id: this.context.organizationId,
-        project_id: this.context.projectId,
+    await upsertRestRows({
+      supabaseUrl: this.context.supabaseUrl,
+      serviceKey: this.context.serviceRoleKey,
+      table: "generation_jobs",
+      onConflict: "job_key",
+      rows: [
+        {
+          job_key: this.request.jobId,
+          organization_id: this.context.organizationId,
+          project_id: this.context.projectId,
         status: "running",
-        business_context: this.brief.businessContext,
-        audience: this.brief.audience,
-        objective: this.brief.objective,
-        brief: this.brief,
-      },
-      { onConflict: "job_key" },
-    );
+          business_context: this.brief.businessContext,
+          audience: this.brief.audience,
+          objective: this.brief.objective,
+          brief: this.brief,
+        },
+      ],
+    });
   }
 
   async persistSourceInputs() {
@@ -235,25 +245,44 @@ class SupabaseRunPersistence {
   }
 
   async updateValidationReport(report: ValidationReport) {
-    await this.context.supabase
-      .from("generation_jobs")
-      .update({ validation_report: report })
-      .eq("job_key", this.request.jobId);
+    await patchRestRows({
+      supabaseUrl: this.context.supabaseUrl,
+      serviceKey: this.context.serviceRoleKey,
+      table: "generation_jobs",
+      query: {
+        job_key: `eq.${this.request.jobId}`,
+      },
+      payload: {
+        validation_report: report,
+      },
+    });
   }
 
   async updateQualityReport(report: QualityReport) {
-    await this.context.supabase
-      .from("generation_jobs")
-      .update({ quality_report: report })
-      .eq("job_key", this.request.jobId);
+    await patchRestRows({
+      supabaseUrl: this.context.supabaseUrl,
+      serviceKey: this.context.serviceRoleKey,
+      table: "generation_jobs",
+      query: {
+        job_key: `eq.${this.request.jobId}`,
+      },
+      payload: {
+        quality_report: report,
+      },
+    });
   }
 
   async finalize(summary: GenerationRunSummary) {
     const parsedSummary = generationRunSummarySchema.parse(summary);
 
-    await this.context.supabase
-      .from("generation_jobs")
-      .update({
+    await patchRestRows({
+      supabaseUrl: this.context.supabaseUrl,
+      serviceKey: this.context.serviceRoleKey,
+      table: "generation_jobs",
+      query: {
+        job_key: `eq.${this.request.jobId}`,
+      },
+      payload: {
         status: parsedSummary.status,
         story_spec: parsedSummary.story,
         report_outline: parsedSummary.reportOutline ?? {},
@@ -264,20 +293,25 @@ class SupabaseRunPersistence {
         summary: parsedSummary,
         failure_message: parsedSummary.failureMessage || null,
         completed_at: parsedSummary.status === "completed" ? new Date().toISOString() : null,
-      })
-      .eq("job_key", this.request.jobId);
+      },
+    });
   }
 
   async finalizeFailure(status: Extract<GenerationJobStatus, "failed" | "needs_input">, message: string, summary?: GenerationRunSummary) {
-    await this.context.supabase
-      .from("generation_jobs")
-      .update({
+    await patchRestRows({
+      supabaseUrl: this.context.supabaseUrl,
+      serviceKey: this.context.serviceRoleKey,
+      table: "generation_jobs",
+      query: {
+        job_key: `eq.${this.request.jobId}`,
+      },
+      payload: {
         status,
         failure_message: message,
         summary: summary ? generationRunSummarySchema.parse(summary) : null,
         completed_at: new Date().toISOString(),
-      })
-      .eq("job_key", this.request.jobId);
+      },
+    });
   }
 
   private async persistSourceFile(
@@ -350,51 +384,56 @@ async function resolveRunPersistenceContext(
   }
 
   try {
-    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
     const organizationSlug = sanitizeStorageSegment(request.organizationId || "local-org");
     const projectSlug = sanitizeStorageSegment(request.projectId || "local-project");
 
-    const { data: organization } = await supabase
-      .from("organizations")
-      .upsert(
+    const organizations = await upsertRestRows<{ id: string }>({
+      supabaseUrl,
+      serviceKey: serviceRoleKey,
+      table: "organizations",
+      onConflict: "slug",
+      select: "id",
+      rows: [
         {
           slug: organizationSlug,
           name: humanizeLabel(request.organizationId || "Local org"),
         },
-        { onConflict: "slug" },
-      )
-      .select("id")
-      .single();
+      ],
+    });
 
-    if (!organization?.id) {
+    if (!organizations[0]?.id) {
       return null;
     }
 
-    const { data: project } = await supabase
-      .from("projects")
-      .upsert(
+    const projects = await upsertRestRows<{ id: string }>({
+      supabaseUrl,
+      serviceKey: serviceRoleKey,
+      table: "projects",
+      onConflict: "organization_id,slug",
+      select: "id",
+      rows: [
         {
-          organization_id: organization.id,
+          organization_id: organizations[0].id,
           slug: projectSlug,
           name: humanizeLabel(request.projectId || "Local project"),
           objective: brief.objective,
           audience: brief.audience,
         },
-        { onConflict: "organization_id,slug" },
-      )
-      .select("id")
-      .single();
+      ],
+    });
 
-    if (!project?.id) {
+    if (!projects[0]?.id) {
       return null;
     }
+
+    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
 
     return {
       supabase,
       supabaseUrl,
       serviceRoleKey,
-      organizationId: organization.id,
-      projectId: project.id,
+      organizationId: organizations[0].id,
+      projectId: projects[0].id,
     };
   } catch {
     return null;
