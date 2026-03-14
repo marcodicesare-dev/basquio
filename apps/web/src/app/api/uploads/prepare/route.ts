@@ -120,13 +120,21 @@ async function createPreparedUpload(input: {
   prefix?: string;
 }) {
   const storagePath = `jobs/${input.jobId}/inputs/${formatUploadLabel(input.order, input.prefix, input.file.fileName)}`;
-  const signedUpload = await createSignedUploadUrl({
-    supabaseUrl: input.supabaseUrl,
-    serviceKey: input.serviceKey,
-    bucket: input.bucket,
-    storagePath,
-    upsert: true,
-  });
+  let signedUpload;
+
+  try {
+    signedUpload = await createSignedUploadUrl({
+      supabaseUrl: input.supabaseUrl,
+      serviceKey: input.serviceKey,
+      bucket: input.bucket,
+      storagePath,
+      upsert: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to prepare ${input.bucket}/${storagePath} for ${input.file.fileName}: ${message}`);
+  }
+
   const kind = inferSourceFileKind(input.file.fileName);
 
   return {

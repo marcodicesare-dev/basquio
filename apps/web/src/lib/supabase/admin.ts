@@ -65,6 +65,8 @@ export async function createSignedUploadUrl(input: {
   storagePath: string;
   upsert?: boolean;
 }) {
+  let clientErrorMessage = "";
+
   try {
     const supabase = createServiceSupabaseClient(input.supabaseUrl, input.serviceKey);
     const { data, error } = await supabase.storage.from(input.bucket).createSignedUploadUrl(input.storagePath, {
@@ -78,7 +80,9 @@ export async function createSignedUploadUrl(input: {
     if (data?.signedUrl && data.token) {
       return data;
     }
-  } catch {}
+  } catch (error) {
+    clientErrorMessage = error instanceof Error ? error.message : String(error);
+  }
 
   const response = await fetch(buildStorageSignedUploadUrl(input.supabaseUrl, input.bucket, input.storagePath), {
     method: "POST",
@@ -91,7 +95,9 @@ export async function createSignedUploadUrl(input: {
   });
 
   if (!response.ok) {
-    throw new Error(await readStorageError(response, `Unable to create a signed upload URL for ${input.storagePath}.`));
+    const apiErrorMessage = await readStorageError(response, `Unable to create a signed upload URL for ${input.storagePath}.`);
+    const combinedMessage = [clientErrorMessage, apiErrorMessage].filter(Boolean).join(" | ");
+    throw new Error(combinedMessage || `Unable to create a signed upload URL for ${input.storagePath}.`);
   }
 
   const payload = (await response.json()) as { url?: string };
@@ -99,7 +105,10 @@ export async function createSignedUploadUrl(input: {
   const token = signedUrl?.searchParams.get("token");
 
   if (!signedUrl || !token) {
-    throw new Error(`Supabase did not return a usable signed upload URL for ${input.storagePath}.`);
+    const combinedMessage = [clientErrorMessage, `Supabase did not return a usable signed upload URL for ${input.storagePath}.`]
+      .filter(Boolean)
+      .join(" | ");
+    throw new Error(combinedMessage);
   }
 
   return {
