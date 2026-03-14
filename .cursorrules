@@ -1,0 +1,13 @@
+Use the Basquio context pack before implementation.
+
+Required reads:
+- Basquio/docs/vision.md
+- Basquio/docs/architecture.md
+- Basquio/memory/canonical-memory.md
+- Basquio/rules/canonical-rules.md
+
+Hard rules:
+- intelligence-first
+- update decision-log and memory with architecture changes
+- keep contracts in Basquio/code/contracts.ts in sync
+- run pnpm qa:basquio after context edits

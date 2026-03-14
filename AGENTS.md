@@ -1,0 +1,20 @@
+# AGENTS.md
+
+## Basquio Local Rules
+
+When working inside `Basquio/`:
+
+1. Read `docs/vision.md`, `docs/architecture.md`, and `memory/canonical-memory.md` first.
+2. Treat `rules/canonical-rules.md` as the execution contract.
+3. Do not change architecture without updating:
+   - `docs/decision-log.md`
+   - `memory/canonical-memory.md`
+   - `code/contracts.ts`
+4. Run `pnpm qa:basquio` after context changes.
+5. Prefer changes that strengthen the intelligence layer over UI polish.
+
+## Basquio Skills
+
+- `Basquio/skills/basquio-foundation/SKILL.md`
+- `Basquio/skills/basquio-intelligence/SKILL.md`
+- `Basquio/skills/basquio-rendering/SKILL.md`

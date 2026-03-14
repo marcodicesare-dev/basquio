@@ -1,0 +1,23 @@
+{
+  "name": "@basquio/web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@basquio/core": "workspace:*",
+    "@basquio/intelligence": "workspace:*",
+    "@basquio/template-engine": "workspace:*",
+    "@basquio/types": "workspace:*",
+    "@basquio/workflows": "workspace:*",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.49.4",
+    "inngest": "^3.31.0",
+    "next": "^15.5.9",
+    "react": "^19.1.2",
+    "react-dom": "^19.1.2"
+  }
+}

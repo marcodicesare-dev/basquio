@@ -1,0 +1,109 @@
+version: "1.0"
+project: basquio
+description: >
+  Agent scaffold for an intelligence-first presentation generation product.
+  The system separates dataset understanding, insight generation, story planning,
+  template interpretation, rendering, and QA.
+
+agents:
+  coordinator:
+    name: Basquio Coordinator
+    role: orchestrator
+    responsibilities:
+      - load canonical docs and memory
+      - dispatch specialized agents in order
+      - validate schema outputs between phases
+      - require QA before implementation milestones
+    execution_order:
+      - dataset-profiler
+      - analytics-engineer
+      - insight-ranker
+      - narrative-planner
+      - template-interpreter
+      - render-architect
+      - qa-guardian
+
+  dataset-profiler:
+    name: Dataset Profiler
+    role: analyst
+    output: DatasetProfile
+    responsibilities:
+      - infer schema
+      - identify time fields
+      - detect measures and dimensions
+      - emit data-quality warnings
+
+  analytics-engineer:
+    name: Analytics Engineer
+    role: analyst
+    input: DatasetProfile
+    output: Deterministic metrics and anomaly summaries
+    responsibilities:
+      - compute deltas
+      - detect outliers
+      - detect rankings and segment shifts
+
+  insight-ranker:
+    name: Insight Ranker
+    role: reasoning
+    input:
+      - DatasetProfile
+      - deterministic summaries
+    output: InsightSpec[]
+    responsibilities:
+      - propose insights
+      - attach evidence
+      - score confidence and business relevance
+
+  narrative-planner:
+    name: Narrative Planner
+    role: reasoning
+    input:
+      - InsightSpec[]
+      - business context
+      - audience
+    output: StorySpec and SlideSpec[]
+    responsibilities:
+      - build general-to-specific story arc
+      - select slide sequence
+      - map claims to slide purposes
+
+  template-interpreter:
+    name: Template Interpreter
+    role: systems
+    input:
+      - uploaded template files
+    output: TemplateProfile
+    responsibilities:
+      - parse PPTX theme and placeholders
+      - map style cues
+      - downgrade PDF input to style-reference mode
+
+  render-architect:
+    name: Render Architect
+    role: systems
+    input:
+      - SlideSpec[]
+      - TemplateProfile
+    output:
+      - pptx artifact
+      - pdf artifact
+    responsibilities:
+      - route standard charts to editable PPT charts when possible
+      - route advanced charts to ECharts SSR
+      - generate Browserless PDF from HTML
+
+  qa-guardian:
+    name: QA Guardian
+    role: validator
+    input:
+      - DatasetProfile
+      - InsightSpec[]
+      - StorySpec
+      - SlideSpec[]
+      - rendered artifacts
+    responsibilities:
+      - schema validation
+      - evidence coverage checks
+      - overflow and missing-asset checks
+      - artifact-open validation

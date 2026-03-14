@@ -1,0 +1,22 @@
+{
+  "name": "@basquio/workflows",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "workflow:dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
+  },
+  "dependencies": {
+    "@basquio/core": "workspace:*",
+    "@basquio/data-ingest": "workspace:*",
+    "@basquio/intelligence": "workspace:*",
+    "@basquio/render-pdf": "workspace:*",
+    "@basquio/render-pptx": "workspace:*",
+    "@basquio/template-engine": "workspace:*",
+    "@basquio/types": "workspace:*",
+    "@supabase/supabase-js": "^2.49.4",
+    "inngest": "^3.31.0"
+  }
+}

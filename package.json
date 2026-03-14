@@ -1,0 +1,32 @@
+{
+  "name": "basquio",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.0.6",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @basquio/web dev",
+    "build": "pnpm --filter @basquio/web build",
+    "lint": "pnpm --filter @basquio/web lint",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "qa": "pnpm qa:basquio",
+    "qa:basquio": "tsx scripts/qa-context.ts",
+    "workflow:dev": "pnpm --filter @basquio/workflows workflow:dev",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:reset": "supabase db reset --local",
+    "supabase:lint": "supabase db lint --local"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.3",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.6",
+    "eslint": "^9.25.1",
+    "eslint-config-next": "^15.5.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

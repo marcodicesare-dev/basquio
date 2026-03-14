@@ -1,0 +1,13 @@
+{
+  "name": "@basquio/render-pptx",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@basquio/types": "workspace:*",
+    "pptx-automizer": "^0.8.1",
+    "pptxgenjs": "^3.12.0"
+  }
+}

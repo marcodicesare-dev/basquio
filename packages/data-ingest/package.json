@@ -1,0 +1,12 @@
+{
+  "name": "@basquio/data-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@basquio/types": "workspace:*",
+    "xlsx": "^0.18.5"
+  }
+}
