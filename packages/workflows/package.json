@@ -17,6 +17,8 @@
     "@basquio/template-engine": "workspace:*",
     "@basquio/types": "workspace:*",
     "@supabase/supabase-js": "^2.49.4",
-    "inngest": "^3.31.0"
+    "inngest": "^3.31.0",
+    "jszip": "^3.10.1",
+    "pdf-lib": "^1.17.1"
   }
 }

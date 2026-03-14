@@ -30,6 +30,20 @@ Accepted because:
 - a report spine should be explicit before slide layouts are chosen
 - framing, methodology, findings, implications, and recommendations are structural planning objects, not renderer-side presentation details
 
+### Hard validation gate before rendering
+
+Accepted because:
+
+- rendering should not start until claims, evidence refs, chart bindings, and numeric assertions resolve deterministically
+- failed validation should stop PPTX/PDF generation instead of producing polished but weakly-backed artifacts
+
+### Post-render QA with artifact manifests
+
+Accepted because:
+
+- Basquio ships paired artifacts, so the system needs a durable `ArtifactManifest` plus a `QualityReport`
+- storage success alone is not enough; the system should check artifact existence, metadata consistency, and cross-output slide/page alignment
+
 ### Brand-token intake as first-class styling input
 
 Accepted because:

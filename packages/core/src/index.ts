@@ -12,9 +12,11 @@ export const BASQUIO_PIPELINE_STAGES = [
   "plan story",
   "plan outline",
   "plan slides",
+  "validate plan",
   "render pptx",
   "render pdf",
   "store artifacts",
+  "post-render qa",
 ] as const;
 
 export const BASQUIO_RENDER_POLICY = {

@@ -254,13 +254,21 @@ Rationale:
 - bind layouts, blocks, charts, notes, and validation rules
 - bind brand tokens and template constraints through `TemplateProfile`
 
-### Phase G: Render
+### Phase G: Validation
+
+- validate `ClaimSpec` coverage before any renderer runs
+- require every substantive claim to resolve to `EvidenceRef[]`
+- require every chart binding to resolve to deterministic analysis fields
+- reject slide `evidenceIds` that are not backed by the resolved claims
+- reject numeric assertions when they do not match deterministic analysis
+
+### Phase H: Render
 
 - PPTX via PptxGenJS or pptx-automizer
 - PDF via HTML plus Browserless
 - charts via native PPT charts or ECharts SVG
 
-### Phase H: QA
+### Phase I: QA
 
 - schema validation
 - missing-asset checks
@@ -268,7 +276,7 @@ Rationale:
 - overflow heuristics
 - artifact-open checks
 
-### Phase H: Delivery
+### Phase J: Delivery
 
 - store in private storage
 - create signed URLs
@@ -284,6 +292,10 @@ Basquio must revolve around these objects:
 - `SlideSpec`
 - `ChartSpec`
 - `TemplateProfile`
+- `EvidenceRef`
+- `ClaimSpec`
+- `ArtifactManifest`
+- `QualityReport`
 
 The product should never let LLM-generated prose bypass these contracts.
 

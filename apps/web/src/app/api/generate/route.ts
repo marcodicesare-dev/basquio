@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
-import { runGenerationRequest } from "@basquio/workflows";
+import { GenerationValidationError, runGenerationRequest } from "@basquio/workflows";
 
 import { buildArtifactDownloadUrl } from "@/lib/job-runs";
 
@@ -107,6 +107,17 @@ export async function POST(request: Request) {
       })),
     });
   } catch (error) {
+    if (error instanceof GenerationValidationError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          status: "needs_input",
+          issues: error.validationReport.issues,
+        },
+        { status: 422 },
+      );
+    }
+
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }

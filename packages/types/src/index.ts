@@ -1,15 +1,19 @@
 import { z } from "zod";
 
 import {
+  artifactManifestSchema,
+  artifactRecordSchema,
   chartSpecSchema,
   datasetProfileSchema,
   datasetFileRoleSchema,
   insightSpecSchema,
+  qualityReportSchema,
   reportBriefSchema,
   reportOutlineSchema,
   slideSpecSchema,
   sourceAssetKindSchema,
   storySpecSchema,
+  validationReportSchema,
 } from "../../../code/contracts";
 
 export * from "../../../code/contracts";
@@ -103,16 +107,22 @@ export const sourceFileSchema = z.object({
   id: z.string(),
   organizationId: z.string(),
   projectId: z.string(),
+  externalId: z.string().optional(),
   fileName: z.string(),
-  kind: z.enum(["workbook", "pptx", "pdf", "unknown"]),
+  mediaType: z.string().default("application/octet-stream"),
+  kind: sourceAssetKindSchema,
+  storageBucket: z.string().default("source-files"),
   storagePath: z.string(),
+  fileBytes: z.number().int().nonnegative().default(0),
 });
 
 export const datasetRecordSchema = z.object({
   id: z.string(),
   projectId: z.string(),
-  sourceFileId: z.string(),
+  externalId: z.string().optional(),
+  sourceFileId: z.string().optional(),
   profileVersion: z.number().int().positive().default(1),
+  manifest: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const generationJobStatusSchema = z.enum([
@@ -129,19 +139,7 @@ export const generationJobStepSchema = z.object({
   stage: z.string(),
   status: generationJobStatusSchema,
   detail: z.string().default(""),
-});
-
-export const artifactKindSchema = z.enum(["pptx", "pdf"]);
-
-export const artifactRecordSchema = z.object({
-  id: z.string(),
-  jobId: z.string(),
-  kind: artifactKindSchema,
-  fileName: z.string(),
-  mimeType: z.string(),
-  storagePath: z.string(),
-  byteSize: z.number().int().nonnegative(),
-  provider: z.enum(["supabase", "local"]).default("local"),
+  payload: z.record(z.string(), z.unknown()).default({}),
 });
 
 export const slidePlanBundleSchema = z.object({
@@ -158,6 +156,8 @@ export const generationJobResultSchema = z.object({
 export const generationRunSummarySchema = z.object({
   jobId: z.string(),
   createdAt: z.string(),
+  status: generationJobStatusSchema.default("completed"),
+  failureMessage: z.string().default(""),
   sourceFileName: z.string(),
   brief: reportBriefSchema.default({}),
   businessContext: z.string(),
@@ -175,6 +175,9 @@ export const generationRunSummarySchema = z.object({
     slides: z.array(slideSpecSchema),
     charts: z.array(chartSpecSchema),
   }),
+  validationReport: validationReportSchema.optional(),
+  artifactManifest: artifactManifestSchema.optional(),
+  qualityReport: qualityReportSchema.optional(),
   artifacts: z.array(artifactRecordSchema),
 });
 

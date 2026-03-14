@@ -17,6 +17,7 @@
 - `ReportOutline` must exist before `SlideSpec[]` planning.
 - `ChartSpec` must not depend on React component props.
 - PPTX and PDF must render from the same `SlideSpec[]`.
+- Rendering must stop when `ClaimSpec`, chart bindings, or numeric assertions fail deterministic validation.
 - Template and brand interpretation must flow through `TemplateProfile`.
 - Preview libraries are not allowed to become export architecture by accident.
 
@@ -36,6 +37,7 @@
 ## Data Rules
 
 - Every insight must reference evidence.
+- Every substantive claim must resolve to `EvidenceRef[]`.
 - Every generated narrative object must be schema-validated.
 - Confidence and uncertainty must be represented explicitly.
 - Brand colors, typography, spacing, and logo constraints must come from a file-backed contract, not only hardcoded theme values.

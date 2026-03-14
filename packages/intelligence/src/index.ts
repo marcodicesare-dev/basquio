@@ -1,7 +1,9 @@
 import type {
+  ClaimSpec,
   ChartSpec,
   DatasetProfile,
   DeterministicAnalysis,
+  EvidenceRef,
   InsightSpec,
   NormalizedWorkbook,
   ReportBrief,
@@ -9,6 +11,7 @@ import type {
   SlideSpec,
   StorySpec,
   TemplateProfile,
+  ValidationReport,
 } from "@basquio/types";
 
 import {
@@ -18,6 +21,7 @@ import {
   reportOutlineSchema,
   slideSpecSchema,
   storySpecSchema,
+  validationReportSchema,
 } from "@basquio/types";
 
 type StoryPlanningInput = {
@@ -135,6 +139,13 @@ export function generateInsights(input: {
     .slice(0, 3);
 
   if (manifest && manifest.files.length > 1) {
+    const evidenceId = buildEvidenceId({
+      sourceFileId: manifest.primaryFileId,
+      fileName: input.datasetProfile.sourceFileName,
+      sheet: "package manifest",
+      metric: "file roles",
+    });
+
     insights.push(
       insightSpecSchema.parse({
         id: `${input.datasetProfile.datasetId}-insight-package`,
@@ -144,6 +155,8 @@ export function generateInsights(input: {
         confidence: 0.84,
         evidence: [
           {
+            id: evidenceId,
+            sourceFileId: manifest.primaryFileId ?? "",
             fileName: input.datasetProfile.sourceFileName,
             fileRole: "main-fact-table",
             sheet: "package manifest",
@@ -152,11 +165,30 @@ export function generateInsights(input: {
             confidence: 0.84,
           },
         ],
+        claims: [
+          {
+            id: `${input.datasetProfile.datasetId}-claim-package`,
+            text: `${manifest.files.length} source files shape the report, not one anonymous table.`,
+            kind: "methodology",
+            evidenceIds: [evidenceId],
+            lineage: {
+              insightId: `${input.datasetProfile.datasetId}-insight-package`,
+              sectionId: "outline-methodology",
+            },
+          },
+        ],
       }),
     );
   }
 
   for (const [index, summary] of topSignals.entries()) {
+    const evidenceId = buildEvidenceId({
+      sourceFileId: summary.sourceFileId,
+      fileName: summary.fileName,
+      sheet: summary.sheet,
+      metric: summary.column,
+    });
+
     insights.push(
       insightSpecSchema.parse({
         id: `${input.datasetProfile.datasetId}-insight-${index + 1}`,
@@ -168,12 +200,48 @@ export function generateInsights(input: {
         confidence: summary.numericCount >= 10 ? 0.81 : 0.63,
         evidence: [
           {
+            id: evidenceId,
+            sourceFileId: summary.sourceFileId,
             fileName: summary.fileName,
             fileRole: summary.fileRole,
             sheet: summary.sheet,
             metric: summary.column,
             summary: `Average ${round(summary.average)}, range ${round(summary.min)} to ${round(summary.max)}, ${summary.numericCount} numeric rows, ${summary.distinctCount} distinct values.`,
             confidence: summary.numericCount >= 10 ? 0.85 : 0.65,
+          },
+        ],
+        claims: [
+          {
+            id: `${input.datasetProfile.datasetId}-claim-${index + 1}`,
+            text: `${summary.column} is the strongest numeric signal for ${input.brief.objective.toLowerCase()}.`,
+            kind: "finding",
+            evidenceIds: [evidenceId],
+            numericAssertions: [
+              {
+                evidenceId,
+                sourceFileId: summary.sourceFileId,
+                fileName: summary.fileName,
+                sheet: summary.sheet,
+                metric: summary.column,
+                statistic: "average",
+                expectedValue: summary.average ?? 0,
+                tolerance: 0.001,
+              },
+              {
+                evidenceId,
+                sourceFileId: summary.sourceFileId,
+                fileName: summary.fileName,
+                sheet: summary.sheet,
+                metric: summary.column,
+                statistic: "numericCount",
+                expectedValue: summary.numericCount,
+                tolerance: 0,
+              },
+            ],
+            lineage: {
+              insightId: `${input.datasetProfile.datasetId}-insight-${index + 1}`,
+              sectionId: "outline-findings",
+            },
           },
         ],
       }),
@@ -193,12 +261,36 @@ export function generateInsights(input: {
       confidence: 0.42,
       evidence: [
         {
+          id: buildEvidenceId({
+            fileName: input.datasetProfile.sourceFileName,
+            sheet: input.datasetProfile.sheets[0]?.name ?? "unknown",
+            metric: "dataset",
+          }),
+          sourceFileId: input.datasetProfile.sheets[0]?.sourceFileId ?? "",
           fileName: input.datasetProfile.sourceFileName,
           fileRole: "unknown-support",
           sheet: input.datasetProfile.sheets[0]?.name ?? "unknown",
           metric: "dataset",
           summary: "Parsed workbook structure is valid but measure detection is still sparse.",
           confidence: 0.42,
+        },
+      ],
+      claims: [
+        {
+          id: `${input.datasetProfile.datasetId}-claim-fallback`,
+          text: "The evidence package parsed successfully but the numeric signal set is still weak.",
+          kind: "finding",
+          evidenceIds: [
+            buildEvidenceId({
+              fileName: input.datasetProfile.sourceFileName,
+              sheet: input.datasetProfile.sheets[0]?.name ?? "unknown",
+              metric: "dataset",
+            }),
+          ],
+          lineage: {
+            insightId: `${input.datasetProfile.datasetId}-insight-fallback`,
+            sectionId: "outline-findings",
+          },
         },
       ],
     }),
@@ -301,7 +393,7 @@ export function planReportOutline(input: OutlinePlanningInput): ReportOutline {
 }
 
 export function planSlides(input: SlidePlanningInput): { slides: SlideSpec[]; charts: ChartSpec[] } {
-  const charts = buildCharts(input.analysis, input.brief);
+  const charts = buildCharts(input.analysis, input.brief, input.insights);
   const manifestFiles = input.datasetProfile.manifest?.files ?? [];
   const fileRoleLines = manifestFiles.map((file) => `${humanizeRole(file.role)}: ${file.fileName}`);
   const businessInsights = getBusinessInsights(input.insights);
@@ -341,6 +433,7 @@ export function planSlides(input: SlidePlanningInput): { slides: SlideSpec[]; ch
           ]),
         },
       ],
+      claimIds: leadInsight?.claims.map((claim) => claim.id) ?? [],
       evidenceIds: leadInsight ? collectInsightEvidenceIds([leadInsight]) : [],
       speakerNotes: "Open with the objective, then state the thesis and stakes before showing methodology or evidence detail.",
     }),
@@ -382,7 +475,10 @@ export function planSlides(input: SlidePlanningInput): { slides: SlideSpec[]; ch
           items: fileRoleLines.slice(0, 6),
         },
       ],
-      evidenceIds: collectInsightEvidenceIds((businessInsights.length > 0 ? businessInsights : input.insights).slice(0, 2)),
+      claimIds: input.insights
+        .filter((insight) => insight.id.includes("package"))
+        .flatMap((insight) => insight.claims.map((claim) => claim.id)),
+      evidenceIds: collectInsightEvidenceIds(input.insights.filter((insight) => insight.id.includes("package"))),
       speakerNotes: "Use this slide to establish trust in the package structure and analysis order.",
     }),
     slideSpecSchema.parse({
@@ -418,7 +514,8 @@ export function planSlides(input: SlidePlanningInput): { slides: SlideSpec[]; ch
           items: input.story.keyMessages.slice(0, 3),
         },
       ],
-      evidenceIds: collectInsightEvidenceIds(input.insights.slice(0, 2)),
+      claimIds: leadInsight?.claims.map((claim) => claim.id) ?? [],
+      evidenceIds: leadInsight ? collectInsightEvidenceIds([leadInsight]) : [],
       speakerNotes: "Anchor the report on the strongest finding and show the chart as evidence, not decoration.",
     }),
     slideSpecSchema.parse({
@@ -451,6 +548,7 @@ export function planSlides(input: SlidePlanningInput): { slides: SlideSpec[]; ch
           ),
         },
       ],
+      claimIds: supportingInsights.flatMap((insight) => insight.claims.map((claim) => claim.id)),
       evidenceIds: collectInsightEvidenceIds(supportingInsights),
       speakerNotes: "Show the supporting measures that keep the narrative honest and defensible.",
     }),
@@ -474,6 +572,7 @@ export function planSlides(input: SlidePlanningInput): { slides: SlideSpec[]; ch
           items: implications,
         },
       ],
+      claimIds: input.insights.slice(0, 2).flatMap((insight) => insight.claims.map((claim) => claim.id)),
       evidenceIds: collectInsightEvidenceIds(input.insights.slice(0, 2)),
       speakerNotes: "Translate the findings into concrete business consequences for the intended audience.",
     }),
@@ -510,13 +609,219 @@ export function planSlides(input: SlidePlanningInput): { slides: SlideSpec[]; ch
   };
 }
 
-function buildCharts(analysis: DeterministicAnalysis, brief: ReportBrief): ChartSpec[] {
-  const averageRanked = analysis.metricSummaries
+export function validateExecutionPlan(input: {
+  jobId: string;
+  analysis: DeterministicAnalysis;
+  insights: InsightSpec[];
+  slides: SlideSpec[];
+  charts: ChartSpec[];
+}): ValidationReport {
+  const evidenceMap = new Map<string, EvidenceRef>();
+  const claimMap = new Map<string, ClaimSpec>();
+  const metricMap = new Map(
+    input.analysis.metricSummaries.map((summary) => [buildMetricSummaryKey(summary.sourceFileId, summary.fileName, summary.sheet, summary.column), summary]),
+  );
+  const issues: ValidationReport["issues"] = [];
+
+  for (const insight of input.insights) {
+    for (const evidence of insight.evidence) {
+      evidenceMap.set(evidence.id, evidence);
+    }
+
+    for (const claim of insight.claims) {
+      claimMap.set(claim.id, claim);
+
+      if (claim.evidenceIds.length === 0) {
+        issues.push({
+          code: "claim.missing_evidence",
+          severity: "error",
+          message: `Claim ${claim.id} does not resolve to any evidence references.`,
+          claimId: claim.id,
+        });
+      }
+
+      for (const evidenceId of claim.evidenceIds) {
+        if (!evidenceMap.has(evidenceId)) {
+          issues.push({
+            code: "claim.unresolved_evidence",
+            severity: "error",
+            message: `Claim ${claim.id} references missing evidence ${evidenceId}.`,
+            claimId: claim.id,
+            evidenceId,
+          });
+        }
+      }
+
+      for (const assertion of claim.numericAssertions) {
+        const summary = metricMap.get(
+          buildMetricSummaryKey(assertion.sourceFileId, assertion.fileName, assertion.sheet, assertion.metric),
+        );
+
+        if (!summary) {
+          issues.push({
+            code: "claim.missing_metric_summary",
+            severity: "error",
+            message: `Claim ${claim.id} references ${assertion.sheet}.${assertion.metric}, but deterministic analysis does not expose that metric.`,
+            claimId: claim.id,
+            evidenceId: assertion.evidenceId,
+          });
+          continue;
+        }
+
+        const actualValue = summary[assertion.statistic];
+
+        if (typeof actualValue !== "number" || Number.isNaN(actualValue)) {
+          issues.push({
+            code: "claim.non_numeric_assertion",
+            severity: "error",
+            message: `Claim ${claim.id} expected numeric statistic ${assertion.statistic} for ${assertion.metric}, but no numeric value was available.`,
+            claimId: claim.id,
+            evidenceId: assertion.evidenceId,
+          });
+          continue;
+        }
+
+        if (Math.abs(actualValue - assertion.expectedValue) > assertion.tolerance) {
+          issues.push({
+            code: "claim.numeric_mismatch",
+            severity: "error",
+            message: `Claim ${claim.id} expected ${assertion.statistic}=${assertion.expectedValue} for ${assertion.metric}, but deterministic analysis resolved ${actualValue}.`,
+            claimId: claim.id,
+            evidenceId: assertion.evidenceId,
+          });
+        }
+      }
+    }
+  }
+
+  for (const slide of input.slides) {
+    const allowedEvidenceIds = new Set<string>();
+
+    for (const claimId of slide.claimIds) {
+      const claim = claimMap.get(claimId);
+
+      if (!claim) {
+        issues.push({
+          code: "slide.unresolved_claim",
+          severity: "error",
+          message: `Slide ${slide.id} references claim ${claimId}, but no matching ClaimSpec exists.`,
+          slideId: slide.id,
+          claimId,
+        });
+        continue;
+      }
+
+      claim.evidenceIds.forEach((evidenceId) => allowedEvidenceIds.add(evidenceId));
+    }
+
+    for (const evidenceId of slide.evidenceIds) {
+      if (!evidenceMap.has(evidenceId)) {
+        issues.push({
+          code: "slide.unresolved_evidence",
+          severity: "error",
+          message: `Slide ${slide.id} references missing evidence ${evidenceId}.`,
+          slideId: slide.id,
+          evidenceId,
+        });
+        continue;
+      }
+
+      if (allowedEvidenceIds.size > 0 && !allowedEvidenceIds.has(evidenceId)) {
+        issues.push({
+          code: "slide.evidence_claim_mismatch",
+          severity: "error",
+          message: `Slide ${slide.id} includes evidence ${evidenceId} that is not attached to the slide's resolved claims.`,
+          slideId: slide.id,
+          evidenceId,
+        });
+      }
+    }
+  }
+
+  for (const chart of input.charts) {
+    for (const evidenceId of chart.evidenceIds) {
+      if (!evidenceMap.has(evidenceId)) {
+        issues.push({
+          code: "chart.unresolved_evidence",
+          severity: "error",
+          message: `Chart ${chart.id} references missing evidence ${evidenceId}.`,
+          chartId: chart.id,
+          evidenceId,
+        });
+      }
+    }
+
+    for (const binding of chart.bindings) {
+      if (!chart.evidenceIds.includes(binding.evidenceId)) {
+        issues.push({
+          code: "chart.binding_evidence_mismatch",
+          severity: "error",
+          message: `Chart ${chart.id} binding ${binding.id} references evidence ${binding.evidenceId} that is not declared on the chart.`,
+          chartId: chart.id,
+          evidenceId: binding.evidenceId,
+        });
+      }
+
+      const summary = metricMap.get(
+        buildMetricSummaryKey(binding.sourceFileId, binding.fileName, binding.sheet, binding.metric),
+      );
+
+      if (!summary) {
+        issues.push({
+          code: "chart.binding_missing_metric",
+          severity: "error",
+          message: `Chart ${chart.id} binding ${binding.id} points to ${binding.sheet}.${binding.metric}, but deterministic analysis does not expose that field.`,
+          chartId: chart.id,
+          evidenceId: binding.evidenceId,
+        });
+        continue;
+      }
+
+      const actualValue = summary[binding.statistic];
+
+      if (binding.statistic !== "distinctCount" && binding.statistic !== "numericCount" && typeof actualValue !== "number") {
+        issues.push({
+          code: "chart.binding_empty_statistic",
+          severity: "error",
+          message: `Chart ${chart.id} binding ${binding.id} expected numeric statistic ${binding.statistic}, but the analysis returned no value.`,
+          chartId: chart.id,
+          evidenceId: binding.evidenceId,
+        });
+      }
+    }
+  }
+
+  const hasErrors = issues.some((issue) => issue.severity === "error");
+
+  return validationReportSchema.parse({
+    jobId: input.jobId,
+    generatedAt: new Date().toISOString(),
+    status: hasErrors ? "needs_input" : "passed",
+    claimCount: [...claimMap.keys()].length,
+    chartCount: input.charts.length,
+    slideCount: input.slides.length,
+    issues,
+  });
+}
+
+function buildCharts(analysis: DeterministicAnalysis, brief: ReportBrief, insights: InsightSpec[]): ChartSpec[] {
+  const allowedEvidenceIds = new Set(collectInsightEvidenceIds(insights));
+  const eligibleSummaries = analysis.metricSummaries.filter((summary) =>
+    allowedEvidenceIds.has(
+      buildEvidenceId({
+        sourceFileId: summary.sourceFileId,
+        fileName: summary.fileName,
+        sheet: summary.sheet,
+        metric: summary.column,
+      }),
+    ),
+  );
+  const averageRanked = eligibleSummaries
     .filter((summary) => summary.numericCount > 0 && isNarrativeSignalRole(summary.fileRole))
     .slice()
     .sort((left, right) => Math.abs(right.average ?? 0) - Math.abs(left.average ?? 0))
     .slice(0, 4);
-  const coverageRanked = analysis.metricSummaries
+  const coverageRanked = eligibleSummaries
     .filter((summary) => summary.numericCount > 0 && isNarrativeSignalRole(summary.fileRole))
     .slice()
     .sort((left, right) => right.numericCount - left.numericCount)
@@ -542,7 +847,28 @@ function buildCharts(analysis: DeterministicAnalysis, brief: ReportBrief): Chart
         xKey: "metric",
         yKeys: ["average"],
         summary: `Average-value comparison built for ${brief.objective.toLowerCase()}.`,
-        evidenceIds: averageRanked.map((summary) => buildEvidenceId(summary.fileName, summary.sheet, summary.column)),
+        evidenceIds: averageRanked.map((summary) =>
+          buildEvidenceId({
+            sourceFileId: summary.sourceFileId,
+            fileName: summary.fileName,
+            sheet: summary.sheet,
+            metric: summary.column,
+          }),
+        ),
+        bindings: averageRanked.map((summary, index) => ({
+          id: `chart-average-signal-binding-${index + 1}`,
+          evidenceId: buildEvidenceId({
+            sourceFileId: summary.sourceFileId,
+            fileName: summary.fileName,
+            sheet: summary.sheet,
+            metric: summary.column,
+          }),
+          sourceFileId: summary.sourceFileId,
+          fileName: summary.fileName,
+          sheet: summary.sheet,
+          metric: summary.column,
+          statistic: "average",
+        })),
       }),
     );
   }
@@ -565,7 +891,28 @@ function buildCharts(analysis: DeterministicAnalysis, brief: ReportBrief): Chart
         xKey: "metric",
         yKeys: ["numericCount"],
         summary: "Coverage comparison for measures that can support repeated report updates.",
-        evidenceIds: coverageRanked.map((summary) => buildEvidenceId(summary.fileName, summary.sheet, summary.column)),
+        evidenceIds: coverageRanked.map((summary) =>
+          buildEvidenceId({
+            sourceFileId: summary.sourceFileId,
+            fileName: summary.fileName,
+            sheet: summary.sheet,
+            metric: summary.column,
+          }),
+        ),
+        bindings: coverageRanked.map((summary, index) => ({
+          id: `chart-coverage-signal-binding-${index + 1}`,
+          evidenceId: buildEvidenceId({
+            sourceFileId: summary.sourceFileId,
+            fileName: summary.fileName,
+            sheet: summary.sheet,
+            metric: summary.column,
+          }),
+          sourceFileId: summary.sourceFileId,
+          fileName: summary.fileName,
+          sheet: summary.sheet,
+          metric: summary.column,
+          statistic: "numericCount",
+        })),
       }),
     );
   }
@@ -574,15 +921,20 @@ function buildCharts(analysis: DeterministicAnalysis, brief: ReportBrief): Chart
 }
 
 function collectInsightEvidenceIds(insights: InsightSpec[]) {
-  return compactUnique(
-    insights.flatMap((insight) =>
-      insight.evidence.map((evidence) => buildEvidenceId(evidence.fileName, evidence.sheet, evidence.metric)),
-    ),
-  );
+  return compactUnique(insights.flatMap((insight) => insight.evidence.map((evidence) => evidence.id)));
 }
 
-function buildEvidenceId(fileName: string, sheet: string, metric: string) {
-  return [fileName || "dataset", sheet, metric].filter(Boolean).join(":");
+function buildEvidenceId(input: {
+  sourceFileId?: string;
+  fileName?: string;
+  sheet: string;
+  metric: string;
+}) {
+  return [input.sourceFileId || input.fileName || "dataset", input.sheet, input.metric].filter(Boolean).join(":");
+}
+
+function buildMetricSummaryKey(sourceFileId: string | undefined, fileName: string | undefined, sheet: string, metric: string) {
+  return [sourceFileId || fileName || "dataset", sheet, metric].join(":");
 }
 
 function compactMetricLabel(fileName: string, column: string) {

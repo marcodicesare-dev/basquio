@@ -41,6 +41,9 @@ Initial domain bias:
 - Raster output is a fallback, not the canonical chart format.
 - Deterministic analytics run before LLM narrative planning.
 - Every insight must have evidence and confidence.
+- Every substantive claim must resolve to `EvidenceRef[]` before render.
+- Rendering is gated by deterministic validation, not only schema success.
+- Every completed run should emit an `ArtifactManifest` and a `QualityReport`.
 - Template and brand interpretation must flow through `TemplateProfile`, not renderer-only style hacks.
 - structured brand token JSON or CSS files are the current file-backed v1 path into `TemplateProfile`.
 
