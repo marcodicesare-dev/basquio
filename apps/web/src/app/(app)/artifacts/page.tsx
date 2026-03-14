@@ -7,6 +7,8 @@ import {
   summarizeRunSources,
 } from "@/lib/job-runs";
 
+export const dynamic = "force-dynamic";
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     month: "short",

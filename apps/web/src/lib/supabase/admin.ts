@@ -48,6 +48,7 @@ export async function downloadFromStorage(input: {
 }) {
   const response = await fetch(buildStorageObjectUrl(input.supabaseUrl, input.bucket, input.storagePath), {
     headers: buildServiceHeaders(input.serviceKey),
+    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -71,6 +72,7 @@ export async function createSignedUploadUrl(input: {
       ...(input.upsert ? { "x-upsert": "true" } : {}),
     }),
     body: "{}",
+    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -108,6 +110,7 @@ export async function fetchRestRows<T>(input: {
     headers: buildServiceHeaders(input.serviceKey, {
       Accept: "application/json",
     }),
+    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -115,6 +118,43 @@ export async function fetchRestRows<T>(input: {
   }
 
   return (await response.json()) as T[];
+}
+
+export async function listStorageObjects(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  bucket: string;
+  prefix?: string;
+  limit?: number;
+}) {
+  const url = new URL(`/storage/v1/object/list/${encodeURIComponent(input.bucket)}`, input.supabaseUrl);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildServiceHeaders(input.serviceKey, {
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({
+      prefix: input.prefix ?? "",
+      limit: input.limit ?? 100,
+      sortBy: {
+        column: "name",
+        order: "desc",
+      },
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to list objects in ${input.bucket}.`));
+  }
+
+  return (await response.json()) as Array<{
+    id?: string;
+    name: string;
+    updated_at?: string;
+    created_at?: string;
+    metadata?: Record<string, unknown>;
+  }>;
 }
 
 function buildServiceHeaders(serviceKey: string, extraHeaders: Record<string, string> = {}) {

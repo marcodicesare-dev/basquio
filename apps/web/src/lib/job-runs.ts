@@ -3,13 +3,19 @@ import path from "node:path";
 
 import { generationRunSummarySchema, type ArtifactRecord, type GenerationRunSummary } from "@basquio/types";
 
-import { fetchRestRows } from "@/lib/supabase/admin";
+import { downloadFromStorage, fetchRestRows, listStorageObjects } from "@/lib/supabase/admin";
 
 export async function listGenerationRuns(limit = 12): Promise<GenerationRunSummary[]> {
   const supabaseRuns = await listGenerationRunsFromSupabase(limit);
 
   if (supabaseRuns.length > 0) {
     return supabaseRuns;
+  }
+
+  const storageRuns = await listGenerationRunsFromStorage(limit);
+
+  if (storageRuns.length > 0) {
+    return storageRuns;
   }
 
   const outputRoot = await resolveOutputRoot();
@@ -43,6 +49,12 @@ export async function getGenerationRun(jobId: string): Promise<GenerationRunSumm
 
   if (supabaseRun) {
     return supabaseRun;
+  }
+
+  const storageRun = await getGenerationRunFromStorage(jobId);
+
+  if (storageRun) {
+    return storageRun;
   }
 
   const outputRoot = await resolveOutputRoot();
@@ -165,6 +177,67 @@ async function getGenerationRunFromSupabase(jobId: string) {
   }
 }
 
+async function listGenerationRunsFromStorage(limit: number) {
+  const credentials = getSupabaseCredentials();
+
+  if (!credentials) {
+    return [];
+  }
+
+  try {
+    const entries = await listStorageObjects({
+      ...credentials,
+      bucket: "artifacts",
+      prefix: "run-summaries",
+      limit: Math.max(limit, 24),
+    });
+
+    const summaryFiles = entries
+      .filter((entry) => entry.name.endsWith(".json"))
+      .sort((left, right) => right.name.localeCompare(left.name))
+      .slice(0, limit);
+
+    const runs = await Promise.all(
+      summaryFiles.map(async (entry) => {
+        try {
+          const buffer = await downloadFromStorage({
+            ...credentials,
+            bucket: "artifacts",
+            storagePath: `run-summaries/${entry.name}`,
+          });
+          return generationRunSummarySchema.parse(JSON.parse(buffer.toString("utf8")));
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    return runs.filter((run): run is GenerationRunSummary => Boolean(run));
+  } catch {
+    return [];
+  }
+}
+
+async function getGenerationRunFromStorage(jobId: string) {
+  const credentials = getSupabaseCredentials();
+
+  if (!credentials) {
+    return null;
+  }
+
+  try {
+    const buffer = await downloadFromStorage({
+      ...credentials,
+      bucket: "artifacts",
+      storagePath: buildStoredSummaryPath(jobId),
+    });
+
+    return generationRunSummarySchema.parse(JSON.parse(buffer.toString("utf8")));
+  } catch {
+    return null;
+  }
+}
+
 async function resolveOutputRoot() {
   const workspaceRoot = await tryResolveWorkspaceRoot();
   return workspaceRoot ? path.join(workspaceRoot, "output") : null;
@@ -210,4 +283,8 @@ function getSupabaseCredentials() {
     supabaseUrl,
     serviceKey: serviceRoleKey,
   };
+}
+
+function buildStoredSummaryPath(jobId: string) {
+  return `run-summaries/${jobId}.json`;
 }

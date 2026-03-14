@@ -754,6 +754,26 @@ async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: Bi
 }
 
 async function writeRunSummary(summary: GenerationRunSummary) {
+  const summaryPayload = Buffer.from(JSON.stringify(summary, null, 2), "utf8");
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (supabaseUrl && serviceRoleKey) {
+    try {
+      await uploadToStorage({
+        supabaseUrl,
+        serviceKey: serviceRoleKey,
+        bucket: "artifacts",
+        storagePath: `run-summaries/${summary.jobId}.json`,
+        body: summaryPayload,
+        contentType: "application/json",
+        upsert: true,
+      });
+    } catch {
+      // Summary persistence to storage is best-effort so artifact delivery can still succeed.
+    }
+  }
+
   const outputRoot = await resolveOutputRoot();
 
   if (!outputRoot) {
@@ -762,7 +782,7 @@ async function writeRunSummary(summary: GenerationRunSummary) {
 
   const outputDir = path.join(outputRoot, summary.jobId);
   await mkdir(outputDir, { recursive: true });
-  await writeFile(path.join(outputDir, "job-summary.json"), JSON.stringify(summary, null, 2));
+  await writeFile(path.join(outputDir, "job-summary.json"), summaryPayload);
 }
 
 async function persistArtifactMetadata(
