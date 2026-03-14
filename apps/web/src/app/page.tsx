@@ -15,19 +15,19 @@ const productPillars = [
     label: "Package understanding",
     title: "Structured evidence packages, not one-shot prompts.",
     copy:
-      "Basquio reads tabular files, supporting notes, and optional brand assets as one report job before any narrative planning begins.",
+      "Basquio reads data files, support notes, and optional brand inputs as one report job before narrative planning begins.",
   },
   {
     label: "Narrative discipline",
     title: "Deterministic analytics anchor the story.",
     copy:
-      "Measures are profiled and ranked first, then translated into key messages, slide plans, and report sections leadership can act on.",
+      "Measures are ranked first, then translated into a report spine, slide plan, and actions leadership can use.",
   },
   {
     label: "Artifact contract",
     title: "One slide plan drives both outputs.",
     copy:
-      "Editable PPTX and polished PDF stay coupled to the same structured report contract instead of drifting into separate render paths.",
+      "Editable PPTX and polished PDF stay coupled to the same report contract instead of drifting into separate render paths.",
   },
 ] as const;
 
@@ -71,9 +71,8 @@ export default async function HomePage() {
               <p className="section-label light">Intelligence-first presentation system</p>
               <h1>Turn evidence packages into executive-grade PPTX and PDF artifacts.</h1>
               <p className="hero-copy">
-                Basquio is built for structured evidence-backed reporting. It ingests data files, a report brief, and
-                optional brand direction, computes deterministic analysis before narrative planning, and renders both
-                outputs from one canonical slide plan.
+                Upload the evidence package, define the reporting ask, add optional brand direction, and generate one
+                evidence-backed deck pair from a single slide plan.
               </p>
             </div>
 
@@ -116,22 +115,22 @@ export default async function HomePage() {
             <article className="signal-card stack">
               <p className="artifact-kind">Input</p>
               <p>Evidence package</p>
-              <p className="muted">CSV or workbook data plus support files, methodology notes, and validation context.</p>
+              <p className="muted">CSV or workbook data plus support files and validation context.</p>
             </article>
             <article className="signal-card stack">
               <p className="artifact-kind">Brief</p>
               <p>Audience, objective, thesis</p>
-              <p className="muted">The reporting ask stays explicit so Basquio builds a persuasive narrative spine.</p>
+              <p className="muted">The reporting ask stays explicit so the narrative spine stays usable.</p>
             </article>
             <article className="signal-card stack">
               <p className="artifact-kind">Style</p>
               <p>Template or brand contract</p>
-              <p className="muted">PPTX remains the editable template input. Brand tokens map through `TemplateProfile`.</p>
+              <p className="muted">PPTX stays editable. Brand tokens map through `TemplateProfile`.</p>
             </article>
             <article className="signal-card stack">
               <p className="artifact-kind">Output</p>
               <p>Deck pair</p>
-              <p className="muted">PPTX for iteration, PDF for distribution, both tied to the same slide specification.</p>
+              <p className="muted">PPTX for iteration, PDF for distribution, both tied to the same slide spec.</p>
             </article>
           </div>
 
@@ -161,7 +160,7 @@ export default async function HomePage() {
         <article className="panel stack-xl">
           <div className="stack">
             <p className="section-label">Why Basquio reads as product, not polish</p>
-            <h2>The workflow is opinionated around executive reporting constraints.</h2>
+            <h2>The workflow is built around executive reporting constraints.</h2>
           </div>
 
           <div className="evidence-list">
@@ -170,7 +169,7 @@ export default async function HomePage() {
               <div className="stack">
                 <p>Evidence comes before copy.</p>
                 <p className="muted">
-                  Deterministic summaries and high-signal measures are computed before the system writes any story.
+                  Deterministic summaries and high-signal measures are computed before any story is written.
                 </p>
               </div>
             </div>
@@ -179,7 +178,7 @@ export default async function HomePage() {
               <div className="stack">
                 <p>The report brief is part of the contract.</p>
                 <p className="muted">
-                  Audience, objective, stakes, and thesis influence the outline instead of being treated as loose prompt text.
+                  Audience, objective, stakes, and thesis shape the outline instead of living as loose prompt text.
                 </p>
               </div>
             </div>

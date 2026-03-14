@@ -277,9 +277,9 @@ textarea {
 }
 
 .hero-copy {
-  max-width: 54rem;
-  font-size: 1.08rem;
-  line-height: 1.85;
+  max-width: 42rem;
+  font-size: 1rem;
+  line-height: 1.68;
   color: var(--text-inverse-soft);
 }
 
@@ -321,7 +321,7 @@ textarea {
 .summary-card {
   display: grid;
   gap: 8px;
-  padding: 18px;
+  padding: 16px;
 }
 
 .metric-card {
@@ -335,7 +335,7 @@ textarea {
 
 .metric-value,
 .summary-value {
-  font-size: clamp(1.9rem, 4vw, 3.4rem);
+  font-size: clamp(1.55rem, 3.2vw, 2.7rem);
   font-weight: 700;
   line-height: 0.94;
   letter-spacing: -0.06em;
@@ -357,7 +357,7 @@ textarea {
 
 .signal-card,
 .deliverable-tile {
-  padding: 18px;
+  padding: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.05);
 }
@@ -477,13 +477,14 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 46px;
-  padding: 0 18px;
+  min-height: 40px;
+  padding: 0 14px;
   border: 1px solid var(--blue);
   border-radius: var(--radius-pill);
   background: var(--blue);
   color: #ffffff;
-  font-weight: 700;
+  font-weight: 650;
+  font-size: 0.95rem;
   transition: 160ms ease;
 }
 
@@ -674,10 +675,10 @@ textarea {
 }
 
 .page-copy {
-  max-width: 52rem;
+  max-width: 40rem;
   color: var(--text-soft);
-  font-size: 1.04rem;
-  line-height: 1.82;
+  font-size: 0.98rem;
+  line-height: 1.66;
 }
 
 .page-hero-aside {
@@ -721,7 +722,7 @@ textarea {
 .meta-card,
 .layout-card,
 .swatch-card {
-  padding: 18px;
+  padding: 16px;
 }
 
 .form-grid {

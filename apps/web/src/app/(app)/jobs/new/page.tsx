@@ -4,18 +4,18 @@ import { listGenerationRuns, summarizeRunBrief, summarizeRunSources } from "@/li
 const briefGuidance = [
   {
     label: "Evidence package",
-    title: "Upload the report materials leadership would actually hand over.",
-    copy: "CSV and workbook data can be combined with methodology notes, validation files, and supporting context.",
+    title: "Upload the materials the report actually depends on.",
+    copy: "CSV and workbook data can be combined with methodology notes, validation files, and support context.",
   },
   {
     label: "Report brief",
     title: "Give the system a real audience, objective, and stakes.",
-    copy: "The stronger the brief, the more usable the narrative spine and slide ordering become.",
+    copy: "A better brief produces a tighter narrative spine and cleaner slide ordering.",
   },
   {
     label: "Output pair",
     title: "The editable deck and the PDF remain coupled.",
-    copy: "Both deliverables are rendered from the same slide contract so the system does not split into two stories.",
+    copy: "Both deliverables render from one slide contract so the system does not split into two stories.",
   },
 ] as const;
 
@@ -31,17 +31,17 @@ export default async function NewJobPage() {
               <p className="section-label">New run</p>
               <h1>Compose a real report generation run.</h1>
               <p className="page-copy">
-                This remains the primary action path. Upload the evidence package, define the business ask, attach
-                optional brand input, and let Basquio plan one report structure before it renders the PPTX and PDF.
+                Upload the evidence package, define the business ask, add optional brand input, and let Basquio plan
+                one report structure before it renders the PPTX and PDF.
               </p>
             </div>
           </div>
 
           <aside className="page-hero-aside stack">
             <p className="artifact-kind">What the path protects</p>
-            <p>Basquio still refuses the generic “upload CSV, get random deck” posture.</p>
+            <p>Basquio refuses the generic “upload CSV, get random deck” posture.</p>
             <p className="muted">
-              The form is intentionally opinionated around evidence packages, report briefs, and artifact discipline.
+              The form stays opinionated around evidence packages, report briefs, and artifact discipline.
             </p>
           </aside>
         </div>
@@ -65,8 +65,7 @@ export default async function NewJobPage() {
             <p className="section-label">Brief should answer</p>
             <h2>What leadership needs to understand, why it matters now, and what decision sits behind the report.</h2>
             <p className="muted">
-              Use the business context and stakes fields to explain timing, the operating question, and the intended
-              consequence of the report.
+              Use the business context and stakes fields to explain timing, the operating question, and the intended decision.
             </p>
           </article>
 

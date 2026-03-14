@@ -13,6 +13,11 @@ export async function listGenerationRuns(limit = 12): Promise<GenerationRunSumma
   }
 
   const outputRoot = await resolveOutputRoot();
+
+  if (!outputRoot) {
+    return [];
+  }
+
   const entries = await safeReadDir(outputRoot);
   const runs: GenerationRunSummary[] = [];
 
@@ -41,6 +46,11 @@ export async function getGenerationRun(jobId: string): Promise<GenerationRunSumm
   }
 
   const outputRoot = await resolveOutputRoot();
+
+  if (!outputRoot) {
+    return null;
+  }
+
   const jobDir = path.join(outputRoot, jobId);
   const summaryPath = path.join(jobDir, "job-summary.json");
   const demoSummaryPath = path.join(jobDir, "demo-summary.json");
@@ -85,7 +95,12 @@ export function summarizeRunBrief(run: GenerationRunSummary) {
 }
 
 export async function readLocalArtifactBuffer(artifact: ArtifactRecord) {
-  const workspaceRoot = await resolveWorkspaceRoot();
+  const workspaceRoot = await tryResolveWorkspaceRoot();
+
+  if (!workspaceRoot) {
+    throw new Error("Local artifact fallback is not available in this runtime.");
+  }
+
   return readFile(path.join(workspaceRoot, artifact.storagePath));
 }
 
@@ -143,10 +158,11 @@ async function getGenerationRunFromSupabase(jobId: string) {
 }
 
 async function resolveOutputRoot() {
-  return path.join(await resolveWorkspaceRoot(), "output");
+  const workspaceRoot = await tryResolveWorkspaceRoot();
+  return workspaceRoot ? path.join(workspaceRoot, "output") : null;
 }
 
-async function resolveWorkspaceRoot() {
+async function tryResolveWorkspaceRoot() {
   let current = process.cwd();
 
   for (;;) {
@@ -158,7 +174,7 @@ async function resolveWorkspaceRoot() {
       const parent = path.dirname(current);
 
       if (parent === current) {
-        throw new Error("Unable to resolve the Basquio workspace root.");
+        return null;
       }
 
       current = parent;
