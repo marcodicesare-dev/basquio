@@ -340,7 +340,7 @@ export const templateProfileSchema = z.object({
   ),
 });
 
-export const artifactProviderSchema = z.enum(["supabase", "local"]);
+export const artifactProviderSchema = z.enum(["supabase", "database", "local"]);
 
 export const artifactKindSchema = z.enum(["pptx", "pdf"]);
 

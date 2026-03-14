@@ -636,6 +636,27 @@ async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: Bi
       await persistArtifactMetadata(supabase, record);
       return record;
     } catch (error) {
+      const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
+      const inlineRecord = artifactRecordSchema.parse({
+        id: `${jobId}-${kind}`,
+        jobId,
+        kind,
+        fileName: artifact.fileName,
+        mimeType: artifact.mimeType,
+        storagePath,
+        byteSize: buffer.byteLength,
+        provider: "database",
+        checksumSha256,
+        exists: true,
+      });
+
+      try {
+        await persistArtifactMetadata(supabase, inlineRecord, {
+          inlineBase64: buffer.toString("base64"),
+        });
+        return inlineRecord;
+      } catch {}
+
       if (!allowLocalFallback) {
         const message = error instanceof Error ? error.message : `Unable to upload ${storagePath}.`;
         throw new Error(`Supabase artifact upload failed for ${storagePath}: ${message}`);
@@ -681,7 +702,11 @@ async function writeRunSummary(summary: GenerationRunSummary) {
   await writeFile(path.join(outputDir, "job-summary.json"), JSON.stringify(summary, null, 2));
 }
 
-async function persistArtifactMetadata(supabase: any, artifact: ArtifactRecord) {
+async function persistArtifactMetadata(
+  supabase: any,
+  artifact: ArtifactRecord,
+  extraMetadata: Record<string, unknown> = {},
+) {
   try {
     const { data: job } = await supabase
       .from("generation_jobs")
@@ -697,7 +722,7 @@ async function persistArtifactMetadata(supabase: any, artifact: ArtifactRecord) 
       {
         job_id: job.id,
         kind: artifact.kind,
-        storage_bucket: artifact.provider === "supabase" ? "artifacts" : "local",
+        storage_bucket: artifact.provider === "supabase" ? "artifacts" : artifact.provider === "database" ? "database" : "local",
         storage_path: artifact.storagePath,
         mime_type: artifact.mimeType,
         file_bytes: artifact.byteSize,
@@ -709,6 +734,7 @@ async function persistArtifactMetadata(supabase: any, artifact: ArtifactRecord) 
           slideCount: artifact.slideCount,
           pageCount: artifact.pageCount,
           sectionCount: artifact.sectionCount,
+          ...extraMetadata,
         },
       },
       { onConflict: "job_id,kind" },
@@ -735,12 +761,61 @@ async function readPersistedArtifactBuffer(artifact: ArtifactRecord) {
     });
   }
 
+  if (artifact.provider === "database") {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error("Supabase database access is configured for this artifact, but service-role credentials are missing.");
+    }
+
+    return readInlineArtifactBuffer({
+      supabase: createServiceSupabaseClient(supabaseUrl, serviceRoleKey),
+      jobId: artifact.jobId,
+      kind: artifact.kind,
+    });
+  }
+
   const workspaceRoot = await resolveWorkspaceRoot();
   const absolutePath = path.isAbsolute(artifact.storagePath)
     ? artifact.storagePath
     : path.join(workspaceRoot, artifact.storagePath);
 
   return readFile(absolutePath);
+}
+
+async function readInlineArtifactBuffer(input: {
+  supabase: any;
+  jobId: string;
+  kind: "pptx" | "pdf";
+}) {
+  const { data: job } = await input.supabase
+    .from("generation_jobs")
+    .select("id")
+    .eq("job_key", input.jobId)
+    .single();
+
+  if (!job?.id) {
+    throw new Error(`Unable to locate generation job ${input.jobId}.`);
+  }
+
+  const { data: artifact } = await input.supabase
+    .from("artifacts")
+    .select("metadata")
+    .eq("job_id", job.id)
+    .eq("kind", input.kind)
+    .maybeSingle();
+
+  const inlineBase64 =
+    artifact?.metadata && typeof artifact.metadata === "object" && typeof artifact.metadata.inlineBase64 === "string"
+      ? artifact.metadata.inlineBase64
+      : null;
+
+  if (!inlineBase64) {
+    throw new Error(`Inline artifact payload is missing for ${input.jobId}/${input.kind}.`);
+  }
+
+  return Buffer.from(inlineBase64, "base64");
 }
 
 async function countPdfPages(buffer: Buffer) {

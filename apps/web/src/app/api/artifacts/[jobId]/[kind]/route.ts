@@ -1,5 +1,5 @@
 import { getGenerationRun, readLocalArtifactBuffer } from "@/lib/job-runs";
-import { downloadFromStorage } from "@/lib/supabase/admin";
+import { createServiceSupabaseClient, downloadFromStorage } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -27,7 +27,11 @@ export async function GET(
 
   try {
     const buffer =
-      artifact.provider === "supabase" ? await readSupabaseArtifact(artifact.storagePath) : await readLocalArtifactBuffer(artifact);
+      artifact.provider === "supabase"
+        ? await readSupabaseArtifact(artifact.storagePath)
+        : artifact.provider === "database"
+          ? await readInlineArtifact(jobId, artifact.kind)
+          : await readLocalArtifactBuffer(artifact);
 
     return new Response(buffer, {
       status: 200,
@@ -57,4 +61,38 @@ async function readSupabaseArtifact(storagePath: string) {
     bucket: "artifacts",
     storagePath,
   });
+}
+
+async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf") {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Supabase database access is configured for this artifact, but service-role credentials are missing.");
+  }
+
+  const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
+  const { data: job } = await supabase.from("generation_jobs").select("id").eq("job_key", jobId).single();
+
+  if (!job?.id) {
+    throw new Error(`Run ${jobId} not found in durable state.`);
+  }
+
+  const { data: artifact } = await supabase
+    .from("artifacts")
+    .select("metadata")
+    .eq("job_id", job.id)
+    .eq("kind", kind)
+    .maybeSingle();
+
+  const inlineBase64 =
+    artifact?.metadata && typeof artifact.metadata === "object" && typeof artifact.metadata.inlineBase64 === "string"
+      ? artifact.metadata.inlineBase64
+      : null;
+
+  if (!inlineBase64) {
+    throw new Error(`Inline artifact payload is missing for ${jobId}/${kind}.`);
+  }
+
+  return Buffer.from(inlineBase64, "base64");
 }
