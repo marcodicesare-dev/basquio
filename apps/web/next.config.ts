@@ -4,6 +4,19 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../.."),
+  outputFileTracingExcludes: {
+    "/*": [
+      ".next/cache/**/*",
+      "../../output/**/*",
+      "../../.basquio/**/*",
+      "../../docs/**/*",
+      "../../memory/**/*",
+      "../../rules/**/*",
+      "../../scripts/**/*",
+      "../../README.md",
+      "../../AGENTS.md",
+    ],
+  },
   transpilePackages: [
     "@basquio/core",
     "@basquio/data-ingest",

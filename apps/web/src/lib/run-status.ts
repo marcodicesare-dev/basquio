@@ -170,7 +170,7 @@ function buildFallbackSnapshot(
   }
 
   if (fallback.request) {
-    return buildQueuedSnapshot(jobId, fallback.request);
+    return buildQueuedSnapshot(jobId);
   }
 
   return null;
@@ -199,7 +199,7 @@ function buildSummarySnapshot(jobId: string, summary: GenerationRunSummary): Gen
   };
 }
 
-function buildQueuedSnapshot(jobId: string, request: GenerationRequest): GenerationStatusSnapshot {
+function buildQueuedSnapshot(jobId: string): GenerationStatusSnapshot {
   const createdAt = deriveCreatedAt(jobId);
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
 
