@@ -1,5 +1,5 @@
 import { getGenerationRun, readLocalArtifactBuffer } from "@/lib/job-runs";
-import { createServiceSupabaseClient, downloadFromStorage } from "@/lib/supabase/admin";
+import { downloadFromStorage, fetchRestRows } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -71,23 +71,38 @@ async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf") {
     throw new Error("Supabase database access is configured for this artifact, but service-role credentials are missing.");
   }
 
-  const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
-  const { data: job } = await supabase.from("generation_jobs").select("id").eq("job_key", jobId).single();
+  const jobs = await fetchRestRows<{ id: string }>({
+    supabaseUrl,
+    serviceKey: serviceRoleKey,
+    table: "generation_jobs",
+    query: {
+      select: "id",
+      job_key: `eq.${jobId}`,
+      limit: "1",
+    },
+  });
 
-  if (!job?.id) {
+  if (!jobs[0]?.id) {
     throw new Error(`Run ${jobId} not found in durable state.`);
   }
 
-  const { data: artifact } = await supabase
-    .from("artifacts")
-    .select("metadata")
-    .eq("job_id", job.id)
-    .eq("kind", kind)
-    .maybeSingle();
+  const artifacts = await fetchRestRows<{ metadata?: Record<string, unknown> }>({
+    supabaseUrl,
+    serviceKey: serviceRoleKey,
+    table: "artifacts",
+    query: {
+      select: "metadata",
+      job_id: `eq.${jobs[0].id}`,
+      kind: `eq.${kind}`,
+      limit: "1",
+    },
+  });
 
   const inlineBase64 =
-    artifact?.metadata && typeof artifact.metadata === "object" && typeof artifact.metadata.inlineBase64 === "string"
-      ? artifact.metadata.inlineBase64
+    artifacts[0]?.metadata &&
+    typeof artifacts[0].metadata === "object" &&
+    typeof artifacts[0].metadata.inlineBase64 === "string"
+      ? artifacts[0].metadata.inlineBase64
       : null;
 
   if (!inlineBase64) {

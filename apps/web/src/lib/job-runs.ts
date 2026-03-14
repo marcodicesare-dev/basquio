@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { generationRunSummarySchema, type ArtifactRecord, type GenerationRunSummary } from "@basquio/types";
 
-import { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import { fetchRestRows } from "@/lib/supabase/admin";
 
 export async function listGenerationRuns(limit = 12): Promise<GenerationRunSummary[]> {
   const supabaseRuns = await listGenerationRunsFromSupabase(limit);
@@ -105,19 +105,23 @@ export async function readLocalArtifactBuffer(artifact: ArtifactRecord) {
 }
 
 async function listGenerationRunsFromSupabase(limit: number) {
-  const supabase = createSupabaseServiceClient();
+  const credentials = getSupabaseCredentials();
 
-  if (!supabase) {
+  if (!credentials) {
     return [];
   }
 
   try {
-    const { data } = await supabase
-      .from("generation_jobs")
-      .select("summary")
-      .not("summary", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    const data = await fetchRestRows<{ summary: unknown }>({
+      ...credentials,
+      table: "generation_jobs",
+      query: {
+        select: "summary",
+        summary: "not.is.null",
+        order: "created_at.desc",
+        limit: String(limit),
+      },
+    });
 
     return (data ?? [])
       .flatMap((row) => {
@@ -134,24 +138,28 @@ async function listGenerationRunsFromSupabase(limit: number) {
 }
 
 async function getGenerationRunFromSupabase(jobId: string) {
-  const supabase = createSupabaseServiceClient();
+  const credentials = getSupabaseCredentials();
 
-  if (!supabase) {
+  if (!credentials) {
     return null;
   }
 
   try {
-    const { data } = await supabase
-      .from("generation_jobs")
-      .select("summary")
-      .eq("job_key", jobId)
-      .maybeSingle();
+    const data = await fetchRestRows<{ summary: unknown }>({
+      ...credentials,
+      table: "generation_jobs",
+      query: {
+        select: "summary",
+        job_key: `eq.${jobId}`,
+        limit: "1",
+      },
+    });
 
-    if (!data?.summary) {
+    if (!data[0]?.summary) {
       return null;
     }
 
-    return generationRunSummarySchema.parse(data.summary);
+    return generationRunSummarySchema.parse(data[0].summary);
   } catch {
     return null;
   }
@@ -190,7 +198,7 @@ async function safeReadDir(targetPath: string) {
   }
 }
 
-function createSupabaseServiceClient() {
+function getSupabaseCredentials() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -198,5 +206,8 @@ function createSupabaseServiceClient() {
     return null;
   }
 
-  return createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
+  return {
+    supabaseUrl,
+    serviceKey: serviceRoleKey,
+  };
 }
