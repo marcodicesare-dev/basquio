@@ -20,7 +20,8 @@ This folder is the canonical build context for the product.
 5. `memory/canonical-memory.md`
 6. `rules/canonical-rules.md`
 7. `agents/agents.yaml`
-8. `skills/graph.md`
+8. `docs/stack-practices.md`
+9. `skills/graph.md`
 
 ## Required QA
 
@@ -40,6 +41,7 @@ pnpm lint:fast
 ## Pack Structure
 
 - `docs/`: vision, architecture, roadmap, and merged decision record
+- `docs/stack-practices.md`: official-source stack guidance for Supabase, Inngest, Browserless, charts, PPTX, and ingest
 - `memory/`: canonical memory that must stay in sync with reality
 - `rules/`: build rules, QA rules, and prompt contracts
 - `agents/`: orchestration graph and specialized agents

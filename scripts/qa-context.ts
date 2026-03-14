@@ -18,6 +18,7 @@ const requiredFiles = [
   "docs/architecture.md",
   "docs/research-synthesis.md",
   "docs/implementation-roadmap.md",
+  "docs/stack-practices.md",
   "docs/decision-log.md",
   "memory/canonical-memory.md",
   "rules/canonical-rules.md",
@@ -29,6 +30,7 @@ const requiredFiles = [
   "skills/basquio-foundation/SKILL.md",
   "skills/basquio-intelligence/SKILL.md",
   "skills/basquio-rendering/SKILL.md",
+  "skills/basquio-stack-context/SKILL.md",
   "code/contracts.ts",
   "AGENTS.md",
   "CODEX_RULES.md",
@@ -56,6 +58,10 @@ const contentChecks: Array<{ file: string; needles: string[] }> = [
   {
     file: "docs/architecture.md",
     needles: ["Inngest", "QStash", "Browserless", "ECharts", "SlideSpec"],
+  },
+  {
+    file: "docs/stack-practices.md",
+    needles: ["Supabase", "Inngest", "Browserless", "ECharts", "SheetJS", "PptxGenJS", "pptx-automizer"],
   },
   {
     file: "memory/canonical-memory.md",

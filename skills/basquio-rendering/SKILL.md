@@ -18,6 +18,7 @@ Render high-quality artifacts without turning renderer constraints into product 
 - prefer ECharts SSR for advanced export visuals
 - use Browserless for PDF by default
 - treat PDF templates as style references in v1
+- read `Basquio/docs/stack-practices.md` before changing rendering-library behavior
 
 ## Implementation Checklist
 
@@ -26,3 +27,4 @@ Render high-quality artifacts without turning renderer constraints into product 
 3. Preserve theme and layout constraints from `TemplateProfile`.
 4. Validate output opens and assets resolve.
 5. Run `pnpm qa:basquio`.
+6. Keep preview-layer charting choices out of export contracts.

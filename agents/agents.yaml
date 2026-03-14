@@ -11,10 +11,12 @@ agents:
     role: orchestrator
     responsibilities:
       - load canonical docs and memory
+      - load stack practices before touching infrastructure or rendering libraries
       - dispatch specialized agents in order
       - validate schema outputs between phases
       - require QA before implementation milestones
     execution_order:
+      - stack-governor
       - dataset-profiler
       - analytics-engineer
       - insight-ranker
@@ -22,6 +24,15 @@ agents:
       - template-interpreter
       - render-architect
       - qa-guardian
+
+  stack-governor:
+    name: Stack Governor
+    role: systems
+    responsibilities:
+      - enforce official-library best practices for Supabase, Inngest, Browserless, ECharts, SheetJS, PptxGenJS, and pptx-automizer
+      - keep service-role usage server-only
+      - protect private artifact delivery and workflow idempotency
+      - stop preview-layer choices from becoming export architecture
 
   dataset-profiler:
     name: Dataset Profiler
@@ -92,6 +103,7 @@ agents:
       - route standard charts to editable PPT charts when possible
       - route advanced charts to ECharts SSR
       - generate Browserless PDF from HTML
+      - preserve static export fidelity without coupling to interactive preview behavior
 
   qa-guardian:
     name: QA Guardian

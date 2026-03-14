@@ -17,6 +17,7 @@ Keep the product context coherent before code branches into implementation detai
 2. `Basquio/docs/architecture.md`
 3. `Basquio/memory/canonical-memory.md`
 4. `Basquio/rules/canonical-rules.md`
+5. `Basquio/docs/stack-practices.md` when stack behavior may influence the implementation
 
 ## Workflow
 

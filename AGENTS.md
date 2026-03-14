@@ -6,6 +6,7 @@ When working inside `Basquio/`:
 
 1. Read `docs/vision.md`, `docs/architecture.md`, and `memory/canonical-memory.md` first.
 2. Treat `rules/canonical-rules.md` as the execution contract.
+3. Read `docs/stack-practices.md` before changing Supabase, Inngest, Browserless, charting, PPTX, or workbook parsing behavior.
 3. Do not change architecture without updating:
    - `docs/decision-log.md`
    - `memory/canonical-memory.md`
@@ -18,3 +19,4 @@ When working inside `Basquio/`:
 - `Basquio/skills/basquio-foundation/SKILL.md`
 - `Basquio/skills/basquio-intelligence/SKILL.md`
 - `Basquio/skills/basquio-rendering/SKILL.md`
+- `Basquio/skills/basquio-stack-context/SKILL.md`
