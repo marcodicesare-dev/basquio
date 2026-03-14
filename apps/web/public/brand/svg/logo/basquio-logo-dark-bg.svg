@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 56" width="340" height="56">
+  <!--
+    Basquio — Locked Logo (Dark Background)
+    Amber filled crown + white Satoshi 700
+    Crown height = "b" ascender = 0.744 * fontSize
+    At font-size 44: ascent = 32.74px
+    Crown 90 units (y5→y95) scaled to 32.74px: scale = 0.3638
+    Baseline at y=42, crown bottom at baseline, top at y=9.26
+  -->
+  <defs><style>@import url('https://api.fontshare.com/v2/css?f[]=satoshi@700&amp;display=swap');</style></defs>
+
+  <g transform="translate(6, 7.44) scale(0.3638)">
+    <path d="M 10,95 L 10,5 L 40,65 L 75,5 L 110,65 L 140,5 L 140,95 Z" fill="#F0CC27"/>
+  </g>
+
+  <text x="70" y="42" font-family="'Satoshi','Space Grotesk','Inter',sans-serif" font-weight="700" font-size="44px" fill="#FFFFFF" letter-spacing="-0.5px">basquio</text>
+</svg>

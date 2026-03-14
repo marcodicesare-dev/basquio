@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { BASQUIO_PIPELINE_STAGES, BASQUIO_RENDER_POLICY, BASQUIO_SUPABASE } from "@basquio/core";
@@ -11,6 +12,13 @@ export default async function HomePage() {
   return (
     <div className="grid">
       <section className="panel hero stack">
+        <Image
+          src="/brand/svg/logo/basquio-logo-light-bg-blue.svg"
+          alt="Basquio"
+          width={220}
+          height={36}
+          priority
+        />
         <p className="eyebrow">Basquio Foundation</p>
         <h1>Dataset understanding, evidence-backed insights, and one canonical slide plan.</h1>
         <p className="muted">

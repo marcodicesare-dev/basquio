@@ -21,7 +21,9 @@ This folder is the canonical build context for the product.
 6. `rules/canonical-rules.md`
 7. `agents/agents.yaml`
 8. `docs/stack-practices.md`
-9. `skills/graph.md`
+9. `docs/brand-system.md`
+10. `docs/design-synthesis.md`
+11. `skills/graph.md`
 
 ## Required QA
 
@@ -42,6 +44,9 @@ pnpm lint:fast
 
 - `docs/`: vision, architecture, roadmap, and merged decision record
 - `docs/stack-practices.md`: official-source stack guidance for Supabase, Inngest, Browserless, charts, PPTX, and ingest
+- `docs/brand-system.md`: imported Basquio logo and palette rules
+- `docs/design-synthesis.md`: useful design patterns extracted from CostFigure and Inngest
+- `docs/first-generation-test.md`: first local path to generate PPTX and PDF outputs
 - `memory/`: canonical memory that must stay in sync with reality
 - `rules/`: build rules, QA rules, and prompt contracts
 - `agents/`: orchestration graph and specialized agents

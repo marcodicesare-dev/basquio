@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "qa": "pnpm qa:basquio",
     "qa:basquio": "tsx scripts/qa-context.ts",
+    "demo:generate": "tsx scripts/run-demo-generation.ts",
     "workflow:dev": "pnpm --filter @basquio/workflows workflow:dev",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
@@ -21,6 +22,7 @@
     "supabase:lint": "supabase db lint --local"
   },
   "dependencies": {
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

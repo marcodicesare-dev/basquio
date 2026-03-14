@@ -7,12 +7,13 @@ When working inside `Basquio/`:
 1. Read `docs/vision.md`, `docs/architecture.md`, and `memory/canonical-memory.md` first.
 2. Treat `rules/canonical-rules.md` as the execution contract.
 3. Read `docs/stack-practices.md` before changing Supabase, Inngest, Browserless, charting, PPTX, or workbook parsing behavior.
-3. Do not change architecture without updating:
+4. Read `docs/brand-system.md` and `docs/design-synthesis.md` before changing Basquio branding or overall shell design.
+5. Do not change architecture without updating:
    - `docs/decision-log.md`
    - `memory/canonical-memory.md`
    - `code/contracts.ts`
-4. Run `pnpm qa:basquio` after context changes.
-5. Prefer changes that strengthen the intelligence layer over UI polish.
+6. Run `pnpm qa:basquio` after context changes.
+7. Prefer changes that strengthen the intelligence layer over UI polish.
 
 ## Basquio Skills
 

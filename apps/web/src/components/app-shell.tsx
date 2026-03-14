@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -15,6 +16,13 @@ export function AppShell({ viewer, children }: { viewer: ViewerState; children: 
     <div className="app-shell">
       <aside className="sidebar">
         <div className="stack">
+          <Image
+            src="/brand/svg/logo/basquio-logo-light-bg-blue.svg"
+            alt="Basquio"
+            width={170}
+            height={28}
+            priority
+          />
           <p className="eyebrow">Basquio</p>
           <h2>Internal scaffold</h2>
           <p className="muted">Intelligence first. Renderers hang off the slide plan.</p>

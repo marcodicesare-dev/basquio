@@ -19,6 +19,9 @@ const requiredFiles = [
   "docs/research-synthesis.md",
   "docs/implementation-roadmap.md",
   "docs/stack-practices.md",
+  "docs/brand-system.md",
+  "docs/design-synthesis.md",
+  "docs/first-generation-test.md",
   "docs/decision-log.md",
   "memory/canonical-memory.md",
   "rules/canonical-rules.md",
@@ -52,6 +55,7 @@ const requiredFiles = [
   "supabase/config.toml",
   "supabase/README.md",
   "supabase/migrations/20260314160000_initial_basquio_schema.sql",
+  "scripts/run-demo-generation.ts",
 ];
 
 const contentChecks: Array<{ file: string; needles: string[] }> = [
@@ -62,6 +66,14 @@ const contentChecks: Array<{ file: string; needles: string[] }> = [
   {
     file: "docs/stack-practices.md",
     needles: ["Supabase", "Inngest", "Browserless", "ECharts", "SheetJS", "PptxGenJS", "pptx-automizer"],
+  },
+  {
+    file: "docs/brand-system.md",
+    needles: ["basquio.com", "Satoshi", "Amber", "Ultramarine", "apps/web/public/brand"],
+  },
+  {
+    file: "docs/design-synthesis.md",
+    needles: ["CostFigure", "Inngest", "editorial", "technical", "Basquio"],
   },
   {
     file: "memory/canonical-memory.md",
@@ -141,7 +153,7 @@ async function assertWorkspaceScripts() {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as {
     scripts?: Record<string, string>;
   };
-  const requiredScripts = ["dev", "typecheck", "lint", "qa:basquio", "workflow:dev"];
+  const requiredScripts = ["dev", "typecheck", "lint", "qa:basquio", "workflow:dev", "demo:generate"];
 
   for (const scriptName of requiredScripts) {
     if (!packageJson.scripts?.[scriptName]) {
