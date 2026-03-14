@@ -57,6 +57,41 @@ export async function downloadFromStorage(input: {
   return Buffer.from(await response.arrayBuffer());
 }
 
+export async function createSignedUploadUrl(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  bucket: string;
+  storagePath: string;
+  upsert?: boolean;
+}) {
+  const response = await fetch(buildStorageSignedUploadUrl(input.supabaseUrl, input.bucket, input.storagePath), {
+    method: "POST",
+    headers: buildServiceHeaders(input.serviceKey, {
+      "Content-Type": "application/json",
+      ...(input.upsert ? { "x-upsert": "true" } : {}),
+    }),
+    body: "{}",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to create a signed upload URL for ${input.storagePath}.`));
+  }
+
+  const payload = (await response.json()) as { url?: string };
+  const signedUrl = payload.url ? new URL(payload.url, input.supabaseUrl) : null;
+  const token = signedUrl?.searchParams.get("token");
+
+  if (!signedUrl || !token) {
+    throw new Error(`Supabase did not return a usable signed upload URL for ${input.storagePath}.`);
+  }
+
+  return {
+    signedUrl: signedUrl.toString(),
+    token,
+    path: input.storagePath,
+  };
+}
+
 export async function fetchRestRows<T>(input: {
   supabaseUrl: string;
   serviceKey: string;
@@ -94,8 +129,16 @@ function buildServiceHeaders(serviceKey: string, extraHeaders: Record<string, st
 }
 
 function buildStorageObjectUrl(supabaseUrl: string, bucket: string, storagePath: string) {
+  return buildStoragePathUrl(supabaseUrl, "object", bucket, storagePath);
+}
+
+function buildStorageSignedUploadUrl(supabaseUrl: string, bucket: string, storagePath: string) {
+  return buildStoragePathUrl(supabaseUrl, "object/upload/sign", bucket, storagePath);
+}
+
+function buildStoragePathUrl(supabaseUrl: string, prefix: string, bucket: string, storagePath: string) {
   const encodedPath = [bucket, ...storagePath.split("/").filter(Boolean)].map(encodeURIComponent).join("/");
-  return new URL(`/storage/v1/object/${encodedPath}`, supabaseUrl).toString();
+  return new URL(`/storage/v1/${prefix}/${encodedPath}`, supabaseUrl).toString();
 }
 
 async function readStorageError(response: Response, fallback: string) {

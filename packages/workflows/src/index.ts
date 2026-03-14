@@ -70,6 +70,7 @@ export const basquioGenerationRequested = inngest.createFunction(
 export const functions = [basquioGenerationRequested];
 
 type GenerationStepRunner = <T>(stage: string, fn: () => Promise<T> | T) => Promise<T>;
+type ResolvedUploadedFile = GenerationRequest["sourceFiles"][number] & { base64: string };
 
 export class GenerationValidationError extends Error {
   constructor(
@@ -90,7 +91,10 @@ export async function runGenerationRequest(
 ): Promise<GenerationRunSummary> {
   const request = generationRequestSchema.parse(requestInput);
   const brief = resolveReportBrief(request);
-  const sourceFiles = resolveSourceFiles(request);
+  const [sourceFiles, styleFile] = await Promise.all([
+    resolveSourceFiles(request),
+    resolveUploadedFile(request.styleFile),
+  ]);
   const createdAt = new Date().toISOString();
   const persistence = await createRunPersistence({
     request,
@@ -235,8 +239,8 @@ export async function runGenerationRequest(
       async () => {
         const templateProfile = interpretTemplateSource({
           id: `${request.jobId}-template`,
-          fileName: request.styleFile?.fileName ?? request.templateFileName,
-          sourceFile: request.styleFile,
+          fileName: styleFile?.fileName ?? request.templateFileName,
+          sourceFile: styleFile,
         });
         const planned = planSlides({
           datasetProfile: analyzed.datasetProfile,
@@ -441,9 +445,9 @@ export async function runGenerationRequest(
   }
 }
 
-function resolveSourceFiles(request: GenerationRequest) {
+async function resolveSourceFiles(request: GenerationRequest) {
   if (request.sourceFiles.length > 0) {
-    return request.sourceFiles;
+    return Promise.all(request.sourceFiles.map((file) => resolveRequiredUploadedFile(file)));
   }
 
   if (request.sourceFileName && request.workbookBase64) {
@@ -457,6 +461,53 @@ function resolveSourceFiles(request: GenerationRequest) {
   }
 
   throw new Error("Generation request did not include any source files.");
+}
+
+async function resolveUploadedFile(file?: GenerationRequest["sourceFiles"][number]): Promise<ResolvedUploadedFile | undefined> {
+  if (!file) {
+    return undefined;
+  }
+
+  if (file.base64) {
+    return {
+      ...file,
+      base64: file.base64,
+    };
+  }
+
+  if (!file.storageBucket || !file.storagePath) {
+    throw new Error(`Uploaded file ${file.fileName} is missing its storage reference.`);
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error(`Unable to resolve ${file.fileName} from storage because Supabase server credentials are missing.`);
+  }
+
+  const buffer = await downloadFromStorage({
+    supabaseUrl,
+    serviceKey,
+    bucket: file.storageBucket,
+    storagePath: file.storagePath,
+  });
+
+  return {
+    ...file,
+    base64: buffer.toString("base64"),
+    fileBytes: file.fileBytes ?? buffer.byteLength,
+  };
+}
+
+async function resolveRequiredUploadedFile(file: GenerationRequest["sourceFiles"][number]): Promise<ResolvedUploadedFile> {
+  const resolved = await resolveUploadedFile(file);
+
+  if (!resolved) {
+    throw new Error("Generation request included an empty source file entry.");
+  }
+
+  return resolved;
 }
 
 function resolveReportBrief(request: GenerationRequest) {

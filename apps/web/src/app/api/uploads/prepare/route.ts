@@ -1,0 +1,155 @@
+import { randomUUID } from "node:crypto";
+
+import { NextResponse } from "next/server";
+import { z } from "zod";
+
+import { inferSourceFileKind } from "@basquio/core";
+
+import { createSignedUploadUrl } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+const uploadDescriptorSchema = z.object({
+  fileName: z.string().min(1),
+  mediaType: z.string().default("application/octet-stream"),
+  sizeBytes: z.number().int().nonnegative().default(0),
+});
+
+const prepareUploadsRequestSchema = z.object({
+  organizationId: z.string().default("local-org"),
+  projectId: z.string().default("local-project"),
+  evidenceFiles: z.array(uploadDescriptorSchema).min(1),
+  brandFile: uploadDescriptorSchema.optional(),
+});
+
+type UploadDescriptor = z.infer<typeof uploadDescriptorSchema>;
+
+export async function POST(request: Request) {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceKey) {
+      return NextResponse.json(
+        { error: "Supabase storage is not configured for hosted uploads." },
+        { status: 500 },
+      );
+    }
+
+    const payload = prepareUploadsRequestSchema.parse(await request.json());
+
+    const unsupportedEvidenceFile = payload.evidenceFiles.find((file) => inferSourceFileKind(file.fileName) === "unknown");
+
+    if (unsupportedEvidenceFile) {
+      return NextResponse.json(
+        {
+          error: `Unsupported file type for ${unsupportedEvidenceFile.fileName}. Basquio accepts CSV/XLSX/XLS plus text, doc, PDF, PPTX, JSON, or CSS support files.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!payload.evidenceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook")) {
+      return NextResponse.json(
+        { error: "At least one CSV, XLSX, or XLS file is required so Basquio has a tabular source for deterministic analytics." },
+        { status: 400 },
+      );
+    }
+
+    if (payload.brandFile) {
+      const brandKind = inferSourceFileKind(payload.brandFile.fileName);
+
+      if (!["brand-tokens", "pptx", "pdf"].includes(brandKind)) {
+        return NextResponse.json(
+          { error: "Brand input must be a JSON/CSS token file, a PPTX template, or a PDF style reference." },
+          { status: 400 },
+        );
+      }
+    }
+
+    const jobId = createJobId();
+    const evidenceUploads = await Promise.all(
+      payload.evidenceFiles.map((file, index) =>
+        createPreparedUpload({
+          supabaseUrl,
+          serviceKey,
+          bucket: "source-files",
+          externalId: `${jobId}-upload-${index + 1}`,
+          file,
+          jobId,
+          order: index + 1,
+        }),
+      ),
+    );
+
+    const brandUpload = payload.brandFile
+      ? await createPreparedUpload({
+          supabaseUrl,
+          serviceKey,
+          bucket: "templates",
+          externalId: `${jobId}-style`,
+          file: payload.brandFile,
+          jobId,
+          order: payload.evidenceFiles.length + 1,
+          prefix: "style",
+        })
+      : null;
+
+    return NextResponse.json({
+      jobId,
+      organizationId: payload.organizationId,
+      projectId: payload.projectId,
+      evidenceUploads,
+      brandUpload,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to prepare uploads.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function createPreparedUpload(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  bucket: string;
+  externalId: string;
+  file: UploadDescriptor;
+  jobId: string;
+  order: number;
+  prefix?: string;
+}) {
+  const storagePath = `jobs/${input.jobId}/inputs/${formatUploadLabel(input.order, input.prefix, input.file.fileName)}`;
+  const signedUpload = await createSignedUploadUrl({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    bucket: input.bucket,
+    storagePath,
+    upsert: true,
+  });
+  const kind = inferSourceFileKind(input.file.fileName);
+
+  return {
+    id: input.externalId,
+    fileName: input.file.fileName,
+    mediaType: input.file.mediaType || "application/octet-stream",
+    kind,
+    storageBucket: input.bucket,
+    storagePath,
+    fileBytes: input.file.sizeBytes,
+    signedUrl: signedUpload.signedUrl,
+    token: signedUpload.token,
+  };
+}
+
+function createJobId() {
+  return `job-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
+}
+
+function formatUploadLabel(order: number, prefix = "evidence", fileName: string) {
+  return `${prefix}-${String(order).padStart(2, "0")}-${sanitizeStorageSegment(fileName)}`;
+}
+
+function sanitizeStorageSegment(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+}

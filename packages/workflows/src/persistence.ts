@@ -318,21 +318,31 @@ class SupabaseRunPersistence {
     file: GenerationRequest["sourceFiles"][number],
     input: { bucket: string; externalId: string },
   ): Promise<UploadedInputRecord | null> {
-    const buffer = Buffer.from(file.base64, "base64");
-    const storagePath = `jobs/${this.request.jobId}/inputs/${sanitizeStorageSegment(file.fileName)}`;
+    const storageBucket = file.storageBucket ?? input.bucket;
+    const storagePath = file.storagePath ?? `jobs/${this.request.jobId}/inputs/${sanitizeStorageSegment(file.fileName)}`;
+    let fileBytes = file.fileBytes ?? 0;
 
-    try {
-      await uploadToStorage({
-        supabaseUrl: this.context.supabaseUrl,
-        serviceKey: this.context.serviceRoleKey,
-        bucket: input.bucket,
-        storagePath,
-        body: buffer,
-        contentType: file.mediaType,
-        upsert: true,
-      });
-    } catch {
-      return null;
+    if (!file.storageBucket || !file.storagePath) {
+      if (!file.base64) {
+        return null;
+      }
+
+      const buffer = Buffer.from(file.base64, "base64");
+      fileBytes = file.fileBytes ?? buffer.byteLength;
+
+      try {
+        await uploadToStorage({
+          supabaseUrl: this.context.supabaseUrl,
+          serviceKey: this.context.serviceRoleKey,
+          bucket: storageBucket,
+          storagePath,
+          body: buffer,
+          contentType: file.mediaType,
+          upsert: true,
+        });
+      } catch {
+        return null;
+      }
     }
 
     const { data } = await this.context.supabase
@@ -345,9 +355,9 @@ class SupabaseRunPersistence {
           kind: file.kind ?? "unknown",
           file_name: file.fileName,
           media_type: file.mediaType,
-          storage_bucket: input.bucket,
+          storage_bucket: storageBucket,
           storage_path: storagePath,
-          file_bytes: buffer.byteLength,
+          file_bytes: fileBytes,
         },
         { onConflict: "external_id" },
       )

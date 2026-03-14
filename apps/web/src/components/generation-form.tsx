@@ -19,7 +19,25 @@ type GenerationResponse = {
   }>;
 };
 
-const MAX_HOSTED_UPLOAD_BYTES = 4 * 1024 * 1024;
+type PreparedUpload = {
+  id: string;
+  fileName: string;
+  mediaType: string;
+  kind: string;
+  storageBucket: string;
+  storagePath: string;
+  fileBytes: number;
+  signedUrl: string;
+  token: string;
+};
+
+type PrepareUploadsResponse = {
+  jobId: string;
+  organizationId: string;
+  projectId: string;
+  evidenceUploads: PreparedUpload[];
+  brandUpload: PreparedUpload | null;
+};
 
 const formSignals = [
   {
@@ -51,18 +69,66 @@ export function GenerationForm() {
     setResult(null);
 
     const formData = new FormData(event.currentTarget);
-    const totalUploadBytes = sumUploadBytes(formData);
+    const evidenceFiles = formData.getAll("evidenceFiles").filter((value): value is File => value instanceof File && value.size > 0);
+    const brandFile = formData.get("brandFile");
+    const brief = readBrief(formData);
 
     try {
-      if (totalUploadBytes > MAX_HOSTED_UPLOAD_BYTES) {
-        throw new Error(
-          `This upload is too large for the current hosted form. Keep the total upload under ${formatUploadLimit(MAX_HOSTED_UPLOAD_BYTES)} or split the package into smaller files.`,
-        );
+      const prepareResponse = await fetch("/api/uploads/prepare", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "local-org",
+          projectId: "local-project",
+          evidenceFiles: evidenceFiles.map((file) => ({
+            fileName: file.name,
+            mediaType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+          })),
+          brandFile:
+            brandFile instanceof File && brandFile.size > 0
+              ? {
+                  fileName: brandFile.name,
+                  mediaType: brandFile.type || "application/octet-stream",
+                  sizeBytes: brandFile.size,
+                }
+              : undefined,
+        }),
+      });
+
+      const preparePayload = (await readApiPayload(prepareResponse)) as PrepareUploadsResponse & { error?: string };
+
+      if (!prepareResponse.ok) {
+        throw new Error(preparePayload.error ?? "Unable to prepare uploads.");
+      }
+
+      await uploadPreparedFiles(evidenceFiles, preparePayload.evidenceUploads);
+
+      if (brandFile instanceof File && brandFile.size > 0 && preparePayload.brandUpload) {
+        await uploadPreparedFile(brandFile, preparePayload.brandUpload);
       }
 
       const response = await fetch("/api/generate", {
         method: "POST",
-        body: formData,
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          jobId: preparePayload.jobId,
+          organizationId: preparePayload.organizationId,
+          projectId: preparePayload.projectId,
+          sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
+          styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
+          brief,
+          businessContext: brief.businessContext,
+          client: brief.client,
+          audience: brief.audience,
+          objective: brief.objective,
+          thesis: brief.thesis,
+          stakes: brief.stakes,
+        }),
       });
 
       const payload = await readGenerationPayload(response);
@@ -238,35 +304,78 @@ export function GenerationForm() {
 }
 
 async function readGenerationPayload(response: Response): Promise<GenerationResponse & { error?: string }> {
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (contentType.includes("application/json")) {
-    return (await response.json()) as GenerationResponse & { error?: string };
-  }
-
-  const text = (await response.text()).trim();
+  const payload = (await readApiPayload(response)) as GenerationResponse & { error?: string };
 
   if (response.status === 413) {
     return {
-      error: `This upload is too large for the current hosted form. Keep the total upload under ${formatUploadLimit(MAX_HOSTED_UPLOAD_BYTES)} or split the package into smaller files.`,
+      error: "This upload was rejected upstream before direct upload completed. Retry the run; if it keeps happening, the hosted deployment is still not using the signed-upload path.",
     } as GenerationResponse & { error?: string };
   }
 
+  return payload;
+}
+
+async function readApiPayload(response: Response) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = (await response.text()).trim();
   return {
-    error: text || "Generation failed.",
-  } as GenerationResponse & { error?: string };
+    error: text || "Request failed.",
+  };
 }
 
-function sumUploadBytes(formData: FormData) {
-  return [...formData.values()].reduce((total, value) => {
-    if (value instanceof File) {
-      return total + value.size;
-    }
+async function uploadPreparedFiles(files: File[], uploads: PreparedUpload[]) {
+  if (files.length !== uploads.length) {
+    throw new Error("Basquio prepared the wrong number of upload targets.");
+  }
 
-    return total;
-  }, 0);
+  await Promise.all(files.map((file, index) => uploadPreparedFile(file, uploads[index])));
 }
 
-function formatUploadLimit(bytes: number) {
-  return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+async function uploadPreparedFile(file: File, upload: PreparedUpload) {
+  const body = new FormData();
+  body.append("cacheControl", "3600");
+  body.append("", file);
+
+  const response = await fetch(upload.signedUrl, {
+    method: "PUT",
+    headers: {
+      "x-upsert": "true",
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    const payload = (await readApiPayload(response)) as { error?: string };
+    throw new Error(payload.error ?? `Unable to upload ${file.name}.`);
+  }
+}
+
+function stripUploadTransportFields(upload: PreparedUpload) {
+  return {
+    id: upload.id,
+    fileName: upload.fileName,
+    mediaType: upload.mediaType,
+    kind: upload.kind,
+    storageBucket: upload.storageBucket,
+    storagePath: upload.storagePath,
+    fileBytes: upload.fileBytes,
+  };
+}
+
+function readBrief(formData: FormData) {
+  return {
+    businessContext: String(formData.get("businessContext") ?? "").trim(),
+    client: String(formData.get("client") ?? "").trim(),
+    audience: String(formData.get("audience") ?? "Executive stakeholder").trim() || "Executive stakeholder",
+    objective:
+      String(formData.get("objective") ?? "Explain the business performance signal").trim() ||
+      "Explain the business performance signal",
+    thesis: String(formData.get("thesis") ?? "").trim(),
+    stakes: String(formData.get("stakes") ?? "").trim(),
+  };
 }

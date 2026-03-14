@@ -77,13 +77,32 @@ export const deterministicAnalysisSchema = z.object({
   warnings: z.array(z.string()).default([]),
 });
 
-export const uploadedSourceFileSchema = z.object({
-  id: z.string().optional(),
-  fileName: z.string(),
-  mediaType: z.string().default("application/octet-stream"),
-  base64: z.string().min(1),
-  kind: sourceAssetKindSchema.optional(),
-});
+export const uploadedSourceFileSchema = z
+  .object({
+    id: z.string().optional(),
+    fileName: z.string(),
+    mediaType: z.string().default("application/octet-stream"),
+    base64: z.string().min(1).optional(),
+    storageBucket: z.string().min(1).optional(),
+    storagePath: z.string().min(1).optional(),
+    fileBytes: z.number().int().nonnegative().optional(),
+    kind: sourceAssetKindSchema.optional(),
+  })
+  .superRefine((value, context) => {
+    const hasInlineBody = typeof value.base64 === "string" && value.base64.length > 0;
+    const hasStorageRef =
+      typeof value.storageBucket === "string" &&
+      value.storageBucket.length > 0 &&
+      typeof value.storagePath === "string" &&
+      value.storagePath.length > 0;
+
+    if (!hasInlineBody && !hasStorageRef) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Uploaded files must include either base64 content or a storage bucket/path reference.",
+      });
+    }
+  });
 
 export const generationRequestSchema = z.object({
   jobId: z.string(),
