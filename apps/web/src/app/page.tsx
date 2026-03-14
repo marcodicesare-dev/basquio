@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { BASQUIO_PIPELINE_STAGES, BASQUIO_RENDER_POLICY } from "@basquio/core";
+import { BASQUIO_PIPELINE_STAGES } from "@basquio/core";
 
 import {
   buildArtifactDownloadUrl,
@@ -12,22 +12,22 @@ import {
 
 const productPillars = [
   {
-    label: "Package understanding",
-    title: "Structured evidence packages, not one-shot prompts.",
+    label: "Your data, understood",
+    title: "It reads the data, not just the headers.",
     copy:
-      "Basquio reads data files, support notes, and optional brand inputs as one report job before narrative planning begins.",
+      "Basquio profiles every measure, ranks what matters, and finds the insights worth presenting before building a single slide.",
   },
   {
-    label: "Narrative discipline",
-    title: "Deterministic analytics anchor the story.",
+    label: "Your story, built",
+    title: "From insight to narrative, automatically.",
     copy:
-      "Measures are ranked first, then translated into a report spine, slide plan, and actions leadership can use.",
+      "Every presentation follows a clear story arc from context to findings to recommendations. Not random charts, a real narrative.",
   },
   {
-    label: "Artifact contract",
-    title: "One slide plan drives both outputs.",
+    label: "Your deck, delivered",
+    title: "Editable PowerPoint. Polished PDF. Same story.",
     copy:
-      "Editable PPTX and polished PDF stay coupled to the same report contract instead of drifting into separate render paths.",
+      "Both outputs come from the same analysis. Edit the deck for your team, share the PDF with leadership. They always match.",
   },
 ] as const;
 
@@ -51,15 +51,23 @@ export default async function HomePage() {
   return (
     <div className="landing-shell">
       <section className="landing-nav-panel">
-        <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={188} height={30} priority />
+        <div className="row landing-nav-copy">
+          <Image
+            src="/brand/svg/logo/basquio-logo-light-bg-mono.svg"
+            alt="Basquio"
+            width={188}
+            height={30}
+            priority
+          />
+          <span className="artifact-kind muted">Beautiful Intelligence.</span>
+        </div>
 
         <div className="row landing-nav-copy">
-          <span className="nav-pill">Executive report generation</span>
           <Link className="button secondary" href="/dashboard">
-            Open workspace
+            Dashboard
           </Link>
           <Link className="button" href="/jobs/new">
-            Generate first deck
+            Try it with your data
           </Link>
         </div>
       </section>
@@ -68,20 +76,19 @@ export default async function HomePage() {
         <div className="hero-main">
           <div className="stack-xl">
             <div className="stack">
-              <p className="section-label light">Intelligence-first presentation system</p>
-              <h1>Turn evidence packages into executive-grade PPTX and PDF artifacts.</h1>
+              <h1>Two weeks of analysis. Delivered in hours.</h1>
               <p className="hero-copy">
-                Upload the evidence package, define the reporting ask, add optional brand direction, and generate one
-                evidence-backed deck pair from a single slide plan.
+                Upload your data. Get back a finished analysis: actionable insights, compelling narrative, and a
+                presentation you&apos;d put your name on.
               </p>
             </div>
 
             <div className="row">
               <Link className="button" href="/jobs/new">
-                Start a generation run
+                Try it with your data
               </Link>
               <Link className="button secondary inverted" href="/artifacts">
-                Review recent artifacts
+                See recent outputs
               </Link>
             </div>
           </div>
@@ -89,15 +96,15 @@ export default async function HomePage() {
           <div className="hero-metrics">
             <article className="metric-card">
               <span className="metric-value">{runs.length}</span>
-              <span className="metric-label">Recent report runs visible in this workspace</span>
+              <span className="metric-label">Reports generated</span>
             </article>
             <article className="metric-card">
               <span className="metric-value">{artifactCount}</span>
-              <span className="metric-label">PPTX and PDF artifacts currently downloadable</span>
+              <span className="metric-label">Presentations delivered</span>
             </article>
             <article className="metric-card">
               <span className="metric-value">{sourceFileCount}</span>
-              <span className="metric-label">Evidence files understood across the latest visible runs</span>
+              <span className="metric-label">Data files analyzed</span>
             </article>
           </div>
         </div>
@@ -105,37 +112,28 @@ export default async function HomePage() {
         <aside className="hero-terminal">
           <div className="row split">
             <div className="stack">
-              <p className="section-label light">Operating model</p>
-              <h2 className="stage-title">One pipeline for evidence understanding, story planning, and deliverables.</h2>
+              <h2 className="stage-title">How it works</h2>
             </div>
             <Image src="/brand/svg/icon/basquio-icon-amber.svg" alt="" width={30} height={24} aria-hidden />
           </div>
 
           <div className="signal-grid">
             <article className="signal-card stack">
-              <p className="artifact-kind">Input</p>
-              <p>Evidence package</p>
-              <p className="muted">CSV or workbook data plus support files and validation context.</p>
+              <p className="artifact-kind">Upload</p>
+              <p>Your spreadsheet, your data files, your template.</p>
             </article>
             <article className="signal-card stack">
-              <p className="artifact-kind">Brief</p>
-              <p>Audience, objective, thesis</p>
-              <p className="muted">The reporting ask stays explicit so the narrative spine stays usable.</p>
+              <p className="artifact-kind">Analyze</p>
+              <p>Basquio reads the data, finds the insights, builds the narrative.</p>
             </article>
             <article className="signal-card stack">
-              <p className="artifact-kind">Style</p>
-              <p>Template or brand contract</p>
-              <p className="muted">PPTX stays editable. Brand tokens map through `TemplateProfile`.</p>
-            </article>
-            <article className="signal-card stack">
-              <p className="artifact-kind">Output</p>
-              <p>Deck pair</p>
-              <p className="muted">PPTX for iteration, PDF for distribution, both tied to the same slide spec.</p>
+              <p className="artifact-kind">Deliver</p>
+              <p>Editable PowerPoint and polished PDF, ready to present.</p>
             </article>
           </div>
 
           <div className="stack">
-            <p className="artifact-kind">Canonical pipeline</p>
+            <p className="artifact-kind">Under the hood</p>
             {BASQUIO_PIPELINE_STAGES.map((stage, index) => (
               <div key={stage} className="terminal-row">
                 <span>{String(index + 1).padStart(2, "0")}</span>
@@ -159,36 +157,30 @@ export default async function HomePage() {
       <section className="landing-duo">
         <article className="panel stack-xl">
           <div className="stack">
-            <p className="section-label">Why Basquio reads as product, not polish</p>
-            <h2>The workflow is built around executive reporting constraints.</h2>
+            <p className="section-label">Why it&apos;s different</p>
+            <h2>Built for analysis, not just slides.</h2>
           </div>
 
           <div className="evidence-list">
             <div className="evidence-row">
               <p className="artifact-kind">01</p>
               <div className="stack">
-                <p>Evidence comes before copy.</p>
-                <p className="muted">
-                  Deterministic summaries and high-signal measures are computed before any story is written.
-                </p>
+                <p>Analysis first, slides second.</p>
+                <p className="muted">Basquio computes real analytics from your data before writing a single word of narrative.</p>
               </div>
             </div>
             <div className="evidence-row">
               <p className="artifact-kind">02</p>
               <div className="stack">
-                <p>The report brief is part of the contract.</p>
-                <p className="muted">
-                  Audience, objective, stakes, and thesis shape the outline instead of living as loose prompt text.
-                </p>
+                <p>Your brief shapes the story.</p>
+                <p className="muted">Tell it who the audience is, what the objective is, and what&apos;s at stake. The narrative adapts.</p>
               </div>
             </div>
             <div className="evidence-row">
               <p className="artifact-kind">03</p>
               <div className="stack">
-                <p>Rendering stays subordinate to planning.</p>
-                <p className="muted">
-                  {BASQUIO_RENDER_POLICY.pptx}. {BASQUIO_RENDER_POLICY.pdf}. {BASQUIO_RENDER_POLICY.charts}.
-                </p>
+                <p>One plan, two outputs.</p>
+                <p className="muted">The PowerPoint and the PDF are generated from the same structured plan. No drift, no inconsistency.</p>
               </div>
             </div>
           </div>
@@ -239,8 +231,8 @@ export default async function HomePage() {
 
       <section className="panel stack-xl">
         <div className="stack">
-          <p className="section-label">Recent outputs</p>
-          <h2>Runs in this workspace already read like deliverables, not placeholder files.</h2>
+          <p className="section-label">Recent results</p>
+          <h2>Real analyses, generated from real data.</h2>
         </div>
 
         {runs.length === 0 ? (
