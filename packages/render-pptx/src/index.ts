@@ -1,5 +1,6 @@
 import PptxGenJS from "pptxgenjs";
 
+import { renderChartSvg, selectChartRenderMode } from "@basquio/render-charts";
 import type { BinaryArtifact, ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
 
 type RenderPptxInput = {
@@ -9,11 +10,19 @@ type RenderPptxInput = {
   templateProfile: TemplateProfile;
 };
 
+type Frame = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export async function renderPptxArtifact(input: RenderPptxInput): Promise<BinaryArtifact> {
   const pptx = new PptxGenJS();
   const theme = resolveTheme(input.templateProfile);
+  const layoutName = definePresentationLayout(pptx, input.templateProfile);
 
-  pptx.layout = input.templateProfile.slideSize === "LAYOUT_STANDARD" ? "LAYOUT_STANDARD" : "LAYOUT_WIDE";
+  pptx.layout = layoutName;
   pptx.author = "Basquio";
   pptx.company = "Basquio";
   pptx.subject = "Basquio report output";
@@ -24,7 +33,7 @@ export async function renderPptxArtifact(input: RenderPptxInput): Promise<Binary
   };
 
   for (const slideSpec of input.slidePlan) {
-    renderSlide(pptx, slideSpec, input.charts, theme);
+    renderSlide(pptx, slideSpec, input.charts, theme, input.templateProfile);
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
@@ -36,12 +45,51 @@ export async function renderPptxArtifact(input: RenderPptxInput): Promise<Binary
   };
 }
 
-function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[], theme: ReturnType<typeof resolveTheme>) {
+function renderSlide(
+  pptx: PptxGenJS,
+  slideSpec: SlideSpec,
+  charts: ChartSpec[],
+  theme: ReturnType<typeof resolveTheme>,
+  templateProfile: TemplateProfile,
+) {
   const slide = pptx.addSlide();
   const isCover = slideSpec.emphasis === "cover";
-  const pageX = theme.pageX;
-  const pageY = theme.pageY;
-  const contentWidth = 13.333 - pageX * 2;
+  const pageWidth = templateProfile.slideWidthInches || 13.333;
+  const pageHeight = templateProfile.slideHeightInches || 7.5;
+  const templateLayout = resolveTemplateLayout(templateProfile, slideSpec.layoutId);
+  const titleFallback = {
+    x: theme.pageX,
+    y: theme.pageY + 0.38,
+    w: pageWidth - theme.pageX * 2,
+    h: isCover ? 0.9 : 0.62,
+  };
+  const titleFrame = resolveRegionFrame(templateLayout, ["title"], titleFallback) ?? titleFallback;
+  const subtitleFrame = slideSpec.subtitle
+    ? resolveRegionFrame(templateLayout, ["subtitle"], {
+        x: theme.pageX,
+        y: theme.pageY + (isCover ? 1.4 : 1.08),
+        w: pageWidth - theme.pageX * 2,
+        h: 0.55,
+      }) ?? {
+        x: theme.pageX,
+        y: theme.pageY + (isCover ? 1.4 : 1.08),
+        w: pageWidth - theme.pageX * 2,
+        h: 0.55,
+      }
+    : null;
+  const eyebrowFrame = slideSpec.eyebrow
+    ? resolveRegionFrame(templateLayout, ["eyebrow"], {
+        x: theme.pageX,
+        y: theme.pageY,
+        w: pageWidth - theme.pageX * 2,
+        h: 0.22,
+      }) ?? {
+        x: theme.pageX,
+        y: theme.pageY,
+        w: pageWidth - theme.pageX * 2,
+        h: 0.22,
+      }
+    : null;
 
   slide.background = {
     color: normalizeColor(isCover ? theme.text : theme.background),
@@ -51,7 +99,7 @@ function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[],
     slide.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
-      w: 13.333,
+      w: pageWidth,
       h: 0.16,
       fill: { color: normalizeColor(theme.accent) },
       line: { color: normalizeColor(theme.accent) },
@@ -60,19 +108,19 @@ function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[],
     slide.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
-      w: 13.333,
+      w: pageWidth,
       h: 1.15,
       fill: { color: normalizeColor(theme.accent) },
       line: { color: normalizeColor(theme.accent) },
     });
   }
 
-  if (slideSpec.eyebrow) {
+  if (slideSpec.eyebrow && eyebrowFrame) {
     slide.addText(slideSpec.eyebrow.toUpperCase(), {
-      x: pageX,
-      y: pageY,
-      w: contentWidth,
-      h: 0.22,
+      x: eyebrowFrame.x,
+      y: eyebrowFrame.y,
+      w: eyebrowFrame.w,
+      h: eyebrowFrame.h,
       fontFace: theme.bodyFont,
       fontSize: 9,
       bold: true,
@@ -81,10 +129,10 @@ function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[],
   }
 
   slide.addText(slideSpec.title, {
-    x: pageX,
-    y: pageY + 0.38,
-    w: contentWidth,
-    h: isCover ? 0.9 : 0.62,
+    x: titleFrame.x,
+    y: titleFrame.y,
+    w: titleFrame.w,
+    h: titleFrame.h,
     fontFace: theme.headingFont,
     fontSize: isCover ? theme.titleSize + 8 : theme.titleSize + 2,
     bold: true,
@@ -94,12 +142,12 @@ function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[],
     fit: "shrink",
   });
 
-  if (slideSpec.subtitle) {
+  if (slideSpec.subtitle && subtitleFrame) {
     slide.addText(slideSpec.subtitle, {
-      x: pageX,
-      y: pageY + (isCover ? 1.4 : 1.08),
-      w: contentWidth,
-      h: 0.55,
+      x: subtitleFrame.x,
+      y: subtitleFrame.y,
+      w: subtitleFrame.w,
+      h: subtitleFrame.h,
       fontFace: theme.bodyFont,
       fontSize: theme.bodySize + 1,
       color: normalizeColor(isCover ? theme.surface : theme.mutedText),
@@ -110,35 +158,75 @@ function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[],
   }
 
   if (!isCover) {
+    const dividerY = Math.min(pageHeight - 0.18, titleFrame.y + titleFrame.h + 0.35);
     slide.addShape(pptx.ShapeType.line, {
-      x: pageX,
-      y: pageY + 1.55,
-      w: contentWidth,
+      x: theme.pageX,
+      y: dividerY,
+      w: pageWidth - theme.pageX * 2,
       h: 0,
       line: { color: normalizeColor(theme.border), width: 1 },
     });
   }
 
-  let cursorY = isCover ? 2.15 : 1.9;
   const metricBlocks = slideSpec.blocks.filter((block) => block.kind === "metric");
   const otherBlocks = slideSpec.blocks.filter((block) => block.kind !== "metric");
+  const metricStripFrame = resolveRegionFrame(templateLayout, ["metric-strip"], null);
 
-  if (metricBlocks.length > 0) {
-    const cardWidth = Math.min(2.45, (contentWidth - theme.blockGap * (metricBlocks.length - 1)) / metricBlocks.length);
+  if (metricBlocks.length > 0 && metricStripFrame) {
+    const metricFrames = splitFrameHorizontally(metricStripFrame, Math.min(metricBlocks.length, 4), theme.blockGap);
     metricBlocks.slice(0, 4).forEach((block, index) => {
-      const x = pageX + index * (cardWidth + theme.blockGap);
+      const frame = insetFrame(metricFrames[index], 0.05);
       slide.addShape(pptx.ShapeType.roundRect, {
-        x,
-        y: cursorY,
-        w: cardWidth,
-        h: 0.88,
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+        fill: { color: normalizeColor(theme.surface), transparency: isCover ? 8 : 0 },
+        line: { color: normalizeColor(theme.border), transparency: 18 },
+      });
+      slide.addText(block.label ?? "", {
+        x: frame.x + 0.14,
+        y: frame.y + 0.14,
+        w: frame.w - 0.28,
+        h: Math.min(0.22, frame.h * 0.28),
+        fontFace: theme.bodyFont,
+        fontSize: 8,
+        bold: true,
+        color: normalizeColor(theme.mutedText),
+      });
+      slide.addText(block.value ?? "", {
+        x: frame.x + 0.14,
+        y: frame.y + Math.min(0.36, frame.h * 0.36),
+        w: frame.w - 0.28,
+        h: Math.max(0.28, frame.h * 0.4),
+        fontFace: theme.headingFont,
+        fontSize: 20,
+        bold: true,
+        color: normalizeColor(theme.text),
+      });
+    });
+  } else if (metricBlocks.length > 0) {
+    const fallbackMetricFrame = {
+      x: theme.pageX,
+      y: isCover ? 2.15 : 1.9,
+      w: pageWidth - theme.pageX * 2,
+      h: 0.95,
+    };
+    const metricFrames = splitFrameHorizontally(fallbackMetricFrame, Math.min(metricBlocks.length, 4), theme.blockGap);
+    metricBlocks.slice(0, 4).forEach((block, index) => {
+      const frame = insetFrame(metricFrames[index], 0.05);
+      slide.addShape(pptx.ShapeType.roundRect, {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
         fill: { color: normalizeColor(isCover ? theme.surface : theme.surface), transparency: isCover ? 8 : 0 },
         line: { color: normalizeColor(theme.border), transparency: 18 },
       });
       slide.addText(block.label ?? "", {
-        x: x + 0.14,
-        y: cursorY + 0.14,
-        w: cardWidth - 0.28,
+        x: frame.x + 0.14,
+        y: frame.y + 0.14,
+        w: frame.w - 0.28,
         h: 0.18,
         fontFace: theme.bodyFont,
         fontSize: 8,
@@ -146,9 +234,9 @@ function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[],
         color: normalizeColor(theme.mutedText),
       });
       slide.addText(block.value ?? "", {
-        x: x + 0.14,
-        y: cursorY + 0.33,
-        w: cardWidth - 0.28,
+        x: frame.x + 0.14,
+        y: frame.y + 0.33,
+        w: frame.w - 0.28,
         h: 0.3,
         fontFace: theme.headingFont,
         fontSize: 20,
@@ -156,40 +244,50 @@ function renderSlide(pptx: PptxGenJS, slideSpec: SlideSpec, charts: ChartSpec[],
         color: normalizeColor(theme.text),
       });
     });
-    cursorY += 1.12;
   }
 
   const chartBlock = otherBlocks.find((block) => block.kind === "chart" && block.chartId);
   const supportingBlocks = otherBlocks.filter((block) => block !== chartBlock);
+  const layoutMode = inferLayoutMode(templateLayout, slideSpec, Boolean(chartBlock));
+  const fallbackBodyFallback = {
+    x: theme.pageX,
+    y: metricStripFrame ? metricStripFrame.y + metricStripFrame.h + 0.24 : isCover ? 2.15 : 1.9,
+    w: pageWidth - theme.pageX * 2,
+    h: pageHeight - (metricStripFrame ? metricStripFrame.y + metricStripFrame.h + 0.6 : 2.4),
+  };
+  const fallbackBodyFrame = resolveRegionFrame(templateLayout, ["body", "body-left"], fallbackBodyFallback) ?? fallbackBodyFallback;
 
-  if (chartBlock?.chartId) {
+  if (chartBlock?.chartId && layoutMode === "chart-split") {
     const chart = charts.find((candidate) => candidate.id === chartBlock.chartId);
+    const chartFallback = {
+      x: fallbackBodyFrame.x,
+      y: fallbackBodyFrame.y,
+      w: Math.min(6.4, fallbackBodyFrame.w * 0.58),
+      h: Math.min(3.55, fallbackBodyFrame.h),
+    };
+    const chartFrame = resolveRegionFrame(templateLayout, ["chart"], chartFallback) ?? chartFallback;
+    const textFallback = {
+      x: chartFrame.x + chartFrame.w + theme.blockGap,
+      y: chartFrame.y,
+      w: Math.max(2.6, pageWidth - (chartFrame.x + chartFrame.w + theme.blockGap + theme.pageX)),
+      h: chartFrame.h,
+    };
+    const textFrame = resolveRegionFrame(templateLayout, ["body-right", "evidence-list", "body"], textFallback) ?? textFallback;
 
     if (chart) {
-      renderChart(slide, chart, {
-        x: pageX,
-        y: cursorY,
-        w: 6.4,
-        h: 3.55,
-      }, theme, pptx);
+      renderChart(slide, chart, chartFrame, theme, pptx);
     } else {
-      renderFallbackPanel(slide, {
-        x: pageX,
-        y: cursorY,
-        w: 6.4,
-        h: 3.55,
-      }, "Chart data was not available for this block.", theme);
+      renderFallbackPanel(slide, chartFrame, "Chart data was not available for this block.", theme);
     }
 
-    renderTextPanel(slide, supportingBlocks, {
-      x: pageX + 6.7,
-      y: cursorY,
-      w: 5.3,
-      h: 3.55,
-    }, theme, isCover);
-    cursorY += 3.82;
+    renderTextPanel(slide, supportingBlocks, textFrame, theme, isCover);
+  } else if (layoutMode === "two-column") {
+    const [leftFrame, rightFrame] = resolveBodyFrames(templateLayout, fallbackBodyFrame, theme.blockGap);
+    const midpoint = Math.ceil(supportingBlocks.length / 2);
+    renderTextPanel(slide, supportingBlocks.slice(0, midpoint), leftFrame, theme, isCover);
+    renderTextPanel(slide, supportingBlocks.slice(midpoint), rightFrame, theme, isCover);
   } else {
-    cursorY = renderSequentialBlocks(slide, supportingBlocks, cursorY, pageX, contentWidth, theme, isCover);
+    renderSequentialBlocks(slide, supportingBlocks, fallbackBodyFrame.y, fallbackBodyFrame.x, fallbackBodyFrame.w, theme, isCover);
   }
 
   if (slideSpec.speakerNotes) {
@@ -315,6 +413,39 @@ function renderChart(
   theme: ReturnType<typeof resolveTheme>,
   pptx: PptxGenJS,
 ) {
+  const renderMode = selectChartRenderMode(chart);
+  if (renderMode === "echarts-svg") {
+    slide.addShape("roundRect", {
+      x: frame.x,
+      y: frame.y,
+      w: frame.w,
+      h: frame.h,
+      fill: { color: normalizeColor(theme.surface) },
+      line: { color: normalizeColor(theme.border), transparency: 24 },
+    });
+    slide.addImage({
+      x: frame.x + 0.08,
+      y: frame.y + 0.08,
+      w: frame.w - 0.16,
+      h: frame.h - 0.16,
+      data: svgToDataUri(
+        renderChartSvg(chart, [], Math.round(frame.w * 96), Math.round(frame.h * 96), {
+          background: theme.surface,
+          surface: theme.surface,
+          text: theme.text,
+          mutedText: theme.mutedText,
+          accent: theme.accent,
+          accentMuted: theme.accentMuted,
+          highlight: theme.highlight,
+          border: theme.border,
+          headingFont: theme.headingFont,
+          bodyFont: theme.bodyFont,
+        }),
+      ),
+    });
+    return;
+  }
+
   const type =
     chart.family === "line"
       ? pptx.ChartType.line
@@ -400,6 +531,120 @@ function renderFallbackPanel(
   });
 }
 
+function definePresentationLayout(pptx: PptxGenJS, templateProfile: TemplateProfile) {
+  const width = templateProfile.slideWidthInches || (templateProfile.slideSize === "LAYOUT_STANDARD" ? 10 : 13.333);
+  const height = templateProfile.slideHeightInches || 7.5;
+  const layoutName = `BASQUIO_${Math.round(width * 100)}x${Math.round(height * 100)}`;
+
+  pptx.defineLayout({
+    name: layoutName,
+    width,
+    height,
+  });
+
+  return layoutName;
+}
+
+function resolveTemplateLayout(templateProfile: TemplateProfile, layoutId: string) {
+  return (
+    templateProfile.layouts.find((layout) => layout.id === layoutId) ??
+    templateProfile.layouts[0] ?? {
+      id: layoutId,
+      name: layoutId,
+      sourceName: layoutId,
+      sourceMaster: "default",
+      placeholders: ["title", "body"],
+      regions: [],
+      notes: [],
+    }
+  );
+}
+
+function resolveRegionFrame(
+  layout: TemplateProfile["layouts"][number],
+  placeholders: string[],
+  fallback: Frame | null,
+) {
+  const region =
+    placeholders
+      .flatMap((placeholder) =>
+        layout.regions.filter((candidate) => candidate.placeholder === placeholder || candidate.key.startsWith(`${placeholder}:`)),
+      )
+      .sort((left, right) => (right.w * right.h) - (left.w * left.h))[0] ??
+    null;
+
+  return region ? { x: region.x, y: region.y, w: region.w, h: region.h } : fallback;
+}
+
+function resolveBodyFrames(
+  layout: TemplateProfile["layouts"][number],
+  fallback: Frame,
+  gap: number,
+): [Frame, Frame] {
+  const explicit = layout.regions
+    .filter((region) => region.placeholder === "body-left" || region.placeholder === "body-right")
+    .sort((left, right) => left.x - right.x);
+
+  if (explicit.length >= 2) {
+    return [
+      { x: explicit[0].x, y: explicit[0].y, w: explicit[0].w, h: explicit[0].h },
+      { x: explicit[1].x, y: explicit[1].y, w: explicit[1].w, h: explicit[1].h },
+    ];
+  }
+
+  const split = splitFrameHorizontally(fallback, 2, gap);
+  return [split[0], split[1]];
+}
+
+function splitFrameHorizontally(frame: Frame, count: number, gap: number) {
+  const safeCount = Math.max(1, count);
+  const width = (frame.w - gap * (safeCount - 1)) / safeCount;
+  return Array.from({ length: safeCount }, (_, index) => ({
+    x: frame.x + index * (width + gap),
+    y: frame.y,
+    w: width,
+    h: frame.h,
+  }));
+}
+
+function insetFrame(frame: Frame, inset: number): Frame {
+  return {
+    x: frame.x + inset,
+    y: frame.y + inset,
+    w: Math.max(0.2, frame.w - inset * 2),
+    h: Math.max(0.2, frame.h - inset * 2),
+  };
+}
+
+function inferLayoutMode(
+  layout: TemplateProfile["layouts"][number],
+  slideSpec: SlideSpec,
+  hasChart: boolean,
+) {
+  if (slideSpec.emphasis === "cover") {
+    return "cover" as const;
+  }
+
+  if (
+    hasChart ||
+    layout.placeholders.includes("chart") ||
+    layout.placeholders.includes("evidence-list") ||
+    layout.id.includes("evidence")
+  ) {
+    return "chart-split" as const;
+  }
+
+  if (
+    layout.placeholders.includes("body-left") ||
+    layout.placeholders.includes("body-right") ||
+    layout.id.includes("two-column")
+  ) {
+    return "two-column" as const;
+  }
+
+  return "sequential" as const;
+}
+
 function resolveTheme(templateProfile: TemplateProfile) {
   const brandTokens = templateProfile.brandTokens;
 
@@ -449,6 +694,10 @@ function formatItems(items: string[], dense: boolean) {
 
 function normalizeColor(value: string) {
   return value.replace("#", "").toUpperCase();
+}
+
+function svgToDataUri(svg: string) {
+  return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
 }
 
 export async function renderTemplatePreservingDeck(templatePath: string, outputDir: string) {

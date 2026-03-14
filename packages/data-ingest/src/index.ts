@@ -1,12 +1,13 @@
+import mammoth from "mammoth";
 import { inferSourceFileKind } from "@basquio/core";
 import { read, utils } from "xlsx";
 
 import {
+  analyticsResultSchema,
   datasetProfileSchema,
-  deterministicAnalysisSchema,
   normalizedWorkbookSchema,
+  type AnalyticsResult,
   type DatasetProfile,
-  type DeterministicAnalysis,
   type NormalizedEvidenceFile,
   type NormalizedWorkbook,
 } from "@basquio/types";
@@ -30,10 +31,10 @@ type ParseEvidencePackageInput = {
   files: ParseEvidenceFileInput[];
 };
 
-export function parseWorkbookBuffer(input: ParseWorkbookInput): {
+export async function parseWorkbookBuffer(input: ParseWorkbookInput): Promise<{
   datasetProfile: DatasetProfile;
   normalizedWorkbook: NormalizedWorkbook;
-} {
+}> {
   return parseEvidencePackage({
     datasetId: input.datasetId,
     files: [
@@ -45,22 +46,26 @@ export function parseWorkbookBuffer(input: ParseWorkbookInput): {
   });
 }
 
-export function parseEvidencePackage(input: ParseEvidencePackageInput): {
+export async function parseEvidencePackage(input: ParseEvidencePackageInput): Promise<{
   datasetProfile: DatasetProfile;
   normalizedWorkbook: NormalizedWorkbook;
-} {
-  const normalizedFiles = input.files.map((file, index) =>
-    parseEvidenceFile({
-      ...file,
-      id: file.id ?? `${input.datasetId}-file-${index + 1}`,
-      kind: file.kind ?? inferSourceFileKind(file.fileName),
-    }),
+}> {
+  const normalizedFiles = await Promise.all(
+    input.files.map((file, index) =>
+      parseEvidenceFile({
+        ...file,
+        id: file.id ?? `${input.datasetId}-file-${index + 1}`,
+        kind: file.kind ?? inferSourceFileKind(file.fileName),
+      }),
+    ),
   );
 
   const workbookFiles = normalizedFiles.filter((file) => file.kind === "workbook");
   const sheets = workbookFiles.flatMap((file) => file.sheets);
   const primaryFile =
     normalizedFiles.find((file) => file.role === "main-fact-table") ??
+    normalizedFiles.find((file) => file.role === "response-log") ??
+    normalizedFiles.find((file) => file.role === "query-log") ??
     workbookFiles[0] ??
     normalizedFiles[0];
   const manifestWarnings = buildManifestWarnings(normalizedFiles, sheets.length);
@@ -119,51 +124,38 @@ export function parseEvidencePackage(input: ParseEvidencePackageInput): {
   };
 }
 
-export function runIngestDeterministicChecks(workbook: NormalizedWorkbook): DeterministicAnalysis {
-  const metricSummaries = workbook.sheets.flatMap((sheet) =>
-    sheet.columns.map((column) => {
-      const numericValues = sheet.rows
-        .map((row) => coerceNumber(row[column.name]))
-        .filter((value): value is number => value !== null);
-
-      return {
+export function runIngestDeterministicChecks(workbook: NormalizedWorkbook): AnalyticsResult {
+  const evidenceRefs = workbook.sheets.flatMap((sheet) =>
+    sheet.columns
+      .filter((column) => column.role === "measure")
+      .map((column, index) => ({
+        id: `${sheet.sourceFileId || sheet.sourceFileName}-${sheet.name}-${column.name}-${index}`.replace(/[^a-zA-Z0-9-_]/g, "-"),
         sourceFileId: sheet.sourceFileId,
         fileName: sheet.sourceFileName,
         fileRole: sheet.sourceRole,
         sheet: sheet.name,
-        column: column.name,
-        rowCount: sheet.rowCount,
-        numericCount: numericValues.length,
-        distinctCount: new Set(sheet.rows.map((row) => String(row[column.name] ?? ""))).size,
-        sum: numericValues.length > 0 ? numericValues.reduce((total, value) => total + value, 0) : null,
-        average:
-          numericValues.length > 0
-            ? numericValues.reduce((total, value) => total + value, 0) / numericValues.length
-            : null,
-        min: numericValues.length > 0 ? Math.min(...numericValues) : null,
-        max: numericValues.length > 0 ? Math.max(...numericValues) : null,
-      };
-    }),
+        metric: column.name,
+        summary: `${column.name} has ${column.sampleValues.length} representative sample values across ${sheet.rowCount} rows.`,
+        confidence: 0.5,
+        sourceLocation: `${sheet.name}.${column.name}`,
+        rawValue: column.sampleValues[0] ?? null,
+      })),
   );
 
-  return deterministicAnalysisSchema.parse({
-    datasetId: workbook.datasetId,
-    metricSummaries,
-    highlights: metricSummaries
-      .filter((summary) => summary.numericCount > 0)
-      .slice(0, 3)
-      .map(
-        (summary) =>
-          `${summary.fileName || "Workbook"} · ${summary.sheet}.${summary.column} has ${summary.numericCount} numeric rows ready for deterministic analytics.`,
-      ),
-    warnings:
-      metricSummaries.filter((summary) => summary.numericCount > 0).length === 0
-        ? ["No numeric columns were detected during ingest checks."]
-        : [],
+  return analyticsResultSchema.parse({
+    metrics: [],
+    correlations: [],
+    rankings: [],
+    deltas: [],
+    distributions: [],
+    outliers: [],
+    segmentBreakdowns: [],
+    derivedTables: [],
+    evidenceRefs,
   });
 }
 
-function parseEvidenceFile(
+async function parseEvidenceFile(
   input: {
     id: string;
     fileName: string;
@@ -171,7 +163,7 @@ function parseEvidenceFile(
     buffer: Buffer;
     kind: ReturnType<typeof inferSourceFileKind>;
   },
-): NormalizedEvidenceFile {
+): Promise<NormalizedEvidenceFile> {
   const role = inferFileRole(input.fileName, input.kind);
 
   if (input.kind === "workbook") {
@@ -196,7 +188,8 @@ function parseEvidenceFile(
 
       const rows = bodyRows
         .filter((row) => row.some((value) => value !== null && value !== ""))
-        .map((row) => Object.fromEntries(headers.map((header, index) => [header, normalizeCell(row[index])])));
+        .map((row) => Object.fromEntries(headers.map((header, index) => [header, normalizeCell(row[index])])))
+        .filter((row) => Object.values(row).some((value) => value !== null && value !== ""));
 
       const columns = headers.map((header) => inferColumn(rows, header));
 
@@ -207,6 +200,7 @@ function parseEvidenceFile(
         sourceFileName: input.fileName,
         sourceRole: role,
         columns,
+        sampleRows: sampleRows(rows, 20),
         rows,
       };
     }).filter((sheet) => sheet.rowCount > 0 || sheet.columns.length > 0);
@@ -224,7 +218,8 @@ function parseEvidenceFile(
     };
   }
 
-  const warnings = buildSupportFileWarnings(input.fileName, input.kind, role);
+  const textContent = await extractSupportText(input.fileName, input.kind, input.buffer);
+  const warnings = buildSupportFileWarnings(input.fileName, input.kind, role, textContent);
 
   return {
     id: input.id,
@@ -233,9 +228,36 @@ function parseEvidenceFile(
     kind: input.kind,
     role,
     sheets: [],
-    textContent: canDecodeAsText(input.fileName, input.kind) ? input.buffer.toString("utf8") : undefined,
+    textContent,
     warnings,
   };
+}
+
+async function extractSupportText(
+  fileName: string,
+  kind: ReturnType<typeof inferSourceFileKind>,
+  buffer: Buffer,
+) {
+  if (kind !== "document" && kind !== "brand-tokens") {
+    return undefined;
+  }
+
+  const normalized = fileName.toLowerCase();
+
+  if (normalized.endsWith(".docx")) {
+    try {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value.trim();
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (canDecodeAsText(fileName, kind)) {
+    return buffer.toString("utf8");
+  }
+
+  return undefined;
 }
 
 function buildManifestWarnings(files: NormalizedEvidenceFile[], sheetCount: number) {
@@ -245,8 +267,8 @@ function buildManifestWarnings(files: NormalizedEvidenceFile[], sheetCount: numb
     warnings.push("The evidence package did not produce any readable tabular sheets.");
   }
 
-  if (!files.some((file) => file.role === "main-fact-table")) {
-    warnings.push("No file was confidently classified as the main fact table; Basquio is using the first workbook as the primary source.");
+  if (!files.some((file) => file.role === "main-fact-table" || file.role === "response-log")) {
+    warnings.push("No file was confidently classified as the main analytical table; Basquio is using the first workbook as the primary source.");
   }
 
   if (!files.some((file) => file.role === "methodology-guide" || file.role === "definitions-guide")) {
@@ -260,11 +282,12 @@ function buildSupportFileWarnings(
   fileName: string,
   kind: ReturnType<typeof inferSourceFileKind>,
   role: ReturnType<typeof inferFileRole>,
+  textContent?: string,
 ) {
   const warnings: string[] = [];
 
-  if (kind === "document" && !canDecodeAsText(fileName, kind)) {
-    warnings.push(`${fileName} was retained in the package manifest but is not yet parsed into structured support text.`);
+  if (kind === "document" && !textContent) {
+    warnings.push(`${fileName} was retained in the package manifest but could not be parsed into support text.`);
   }
 
   if (role === "style-reference-pdf") {
@@ -372,14 +395,18 @@ function normalizeCell(value: unknown) {
 }
 
 function inferColumn(rows: Array<Record<string, unknown>>, name: string) {
-  const values = rows.map((row) => row[name]).filter((value) => value !== null && value !== "");
-  const inferredType = inferType(values);
+  const values = rows.map((row) => row[name]);
+  const nonNullValues = values.filter((value) => value !== null && value !== "");
+  const inferredType = inferType(nonNullValues);
 
   return {
     name,
     inferredType,
     role: inferRole(name, inferredType),
-    nullable: values.length !== rows.length,
+    nullable: nonNullValues.length !== rows.length,
+    sampleValues: sampleValues(nonNullValues, 10).map((value) => String(value)),
+    uniqueCount: new Set(nonNullValues.map((value) => String(value))).size,
+    nullRate: rows.length === 0 ? 0 : (rows.length - nonNullValues.length) / rows.length,
   } as const;
 }
 
@@ -429,7 +456,9 @@ function inferRole(columnName: string, inferredType: string) {
   if (
     normalizedName.includes("segment") ||
     normalizedName.includes("region") ||
-    normalizedName.includes("channel")
+    normalizedName.includes("channel") ||
+    normalizedName.includes("platform") ||
+    normalizedName.includes("category")
   ) {
     return "segment" as const;
   }
@@ -445,15 +474,28 @@ function inferRole(columnName: string, inferredType: string) {
   return "unknown" as const;
 }
 
-function coerceNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
+function sampleRows(rows: Array<Record<string, unknown>>, limit: number) {
+  if (rows.length <= limit) {
+    return rows;
   }
 
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value.replaceAll(",", ""));
-    return Number.isFinite(parsed) ? parsed : null;
+  const lastIndex = rows.length - 1;
+  const indexes = new Set<number>([0, lastIndex]);
+
+  while (indexes.size < limit) {
+    const ratio = indexes.size / (limit - 1);
+    indexes.add(Math.min(lastIndex, Math.round(ratio * lastIndex)));
   }
 
-  return null;
+  return [...indexes]
+    .sort((left, right) => left - right)
+    .map((index) => rows[index]);
+}
+
+function sampleValues(values: unknown[], limit: number) {
+  if (values.length <= limit) {
+    return values;
+  }
+
+  return values.slice(0, limit);
 }

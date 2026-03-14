@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@basquio/render-charts": "workspace:*",
     "@basquio/types": "workspace:*",
     "pptx-automizer": "^0.8.1",
     "pptxgenjs": "^3.12.0"

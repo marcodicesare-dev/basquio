@@ -1,263 +1,290 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
 import {
-  buildArtifactDownloadUrl,
-  listGenerationRuns,
-  summarizeRunBrief,
-  summarizeRunSources,
-} from "@/lib/job-runs";
+  heroSignals,
+  landingComparisonRows,
+  personas,
+  pipelineSteps,
+  proofPoints,
+  trustSignals,
+} from "@/app/site-content";
+import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
+import { PublicSiteNav } from "@/components/public-site-nav";
 
-const productPillars = [
-  {
-    label: "Data understanding",
-    title: "Reads your data before writing a single slide.",
-    copy:
-      "Basquio profiles every measure, ranks what matters, and identifies patterns before any narrative or design begins.",
-  },
-  {
-    label: "Narrative intelligence",
-    title: "Builds the story your audience needs.",
-    copy:
-      "Findings become key messages, structured into sections that move from context to insight to recommendation.",
-  },
-  {
-    label: "Dual output",
-    title: "One analysis, two deliverables.",
-    copy:
-      "Editable PowerPoint for your revisions. Polished PDF for distribution. Both from the same analysis.",
-  },
-] as const;
+export const metadata: Metadata = {
+  title: "Basquio | Evidence In. Executive Deck Out.",
+  description:
+    "Upload data, a report brief, and a design target. Basquio turns evidence packages into executive-ready PPTX and PDF deliverables.",
+};
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
-export default async function HomePage() {
-  const runs = await listGenerationRuns(3);
-  const latestRun = runs[0] ?? null;
-  const artifactCount = runs.reduce((total, run) => total + run.artifacts.length, 0);
-  const sourceFileCount = runs.reduce((total, run) => {
-    const files = run.datasetProfile.manifest?.files ?? run.datasetProfile.sourceFiles ?? [];
-    return total + (files.length > 0 ? files.length : 1);
-  }, 0);
-
+export default function HomePage() {
   return (
     <div className="landing-shell">
-      <section className="landing-nav-panel">
-        <div className="row landing-nav-copy">
-          <Image
-            src="/brand/svg/logo/basquio-logo-light-bg-mono.svg"
-            alt="Basquio"
-            width={188}
-            height={30}
-            priority
-          />
-          <span className="nav-pill">Beautiful Intelligence.</span>
-        </div>
+      <PublicSiteNav />
 
-        <div className="row landing-nav-copy">
-          <Link className="button secondary" href="/dashboard">
-            Open workspace
-          </Link>
-          <Link className="button" href="/jobs/new">
-            Try it with your data
-          </Link>
-        </div>
-      </section>
-
-      <section className="hero-stage">
+      <section className="hero-stage marketing-hero">
         <div className="hero-main">
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label light">Beautiful Intelligence.</p>
               <h1>Two weeks of analysis. Delivered in hours.</h1>
-              <p className="hero-copy">
-                Upload your data. Get back a finished analysis — actionable insights, compelling narrative, and a
-                presentation you&apos;d put your name on.
-              </p>
+              <p className="hero-subtitle">Upload data. Get an executive-ready presentation.</p>
             </div>
 
             <div className="row">
               <Link className="button" href="/jobs/new">
-                Try it with your data
+                Try with your data
               </Link>
-              <Link className="button secondary inverted" href="/artifacts">
-                See recent outputs
+              <Link className="button secondary inverted" href="#output">
+                See examples
               </Link>
             </div>
-          </div>
 
-          <div className="hero-metrics">
-            <article className="metric-card">
-              <span className="metric-value">{runs.length}</span>
-              <span className="metric-label">Analyses completed</span>
-            </article>
-            <article className="metric-card">
-              <span className="metric-value">{artifactCount}</span>
-              <span className="metric-label">Presentations delivered</span>
-            </article>
-            <article className="metric-card">
-              <span className="metric-value">{sourceFileCount}</span>
-              <span className="metric-label">Data files processed</span>
-            </article>
+            <div className="hero-proof-strip" aria-label="Product strengths">
+              {heroSignals.map((signal) => (
+                <span key={signal} className="hero-proof-pill">
+                  {signal}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
 
-        <aside className="hero-terminal">
-          <div className="row split">
-            <div className="stack">
-              <p className="section-label light">How it works</p>
-              <h2 className="stage-title">From raw data to finished presentation in three steps.</h2>
+        <div className="hero-artifact-stack">
+          <article className="artifact-window hero-artifact-window">
+            <div className="artifact-window-top">
+              <span className="artifact-window-pill">Sample report</span>
+              <span className="artifact-window-meta">Executive category growth review</span>
             </div>
-            <Image src="/brand/svg/icon/basquio-icon-amber.svg" alt="" width={30} height={24} aria-hidden />
-          </div>
 
-          <div className="signal-grid">
-            <article className="signal-card stack">
-              <p className="artifact-kind">1. Upload</p>
-              <p>Add your data and context</p>
-              <p className="muted">Spreadsheets, supporting files, audience, objective, and what matters most.</p>
-            </article>
-            <article className="signal-card stack">
-              <p className="artifact-kind">2. Analyze</p>
-              <p>Basquio finds the insights</p>
-              <p className="muted">Measures are profiled, patterns identified, and key findings ranked by importance.</p>
-            </article>
-            <article className="signal-card stack">
-              <p className="artifact-kind">3. Deliver</p>
-              <p>Get your presentation</p>
-              <p className="muted">Editable PowerPoint and polished PDF, both built from the same analysis.</p>
-            </article>
-          </div>
-        </aside>
-      </section>
+            <div className="hero-slide-preview">
+              <div className="slide-header">
+                <p className="artifact-kind">Slide 04</p>
+                <Image src="/brand/svg/icon/basquio-icon-amber.svg" alt="" width={24} height={18} aria-hidden />
+              </div>
 
-      <section className="landing-pillars">
-        {productPillars.map((pillar) => (
-          <article key={pillar.label} className="editorial-card">
-            <p className="section-label">{pillar.label}</p>
-            <h2>{pillar.title}</h2>
-            <p className="muted">{pillar.copy}</p>
+              <div className="stack">
+                <h2>Brand X is growing 3.2x faster than category.</h2>
+                <p className="slide-note">Share gains accelerate in premium retail while the category softens overall.</p>
+              </div>
+
+              <div className="hero-chart" aria-hidden>
+                <div className="hero-chart-bars">
+                  <span style={{ height: "42%" }} />
+                  <span style={{ height: "58%" }} />
+                  <span style={{ height: "64%" }} />
+                  <span className="accent" style={{ height: "88%" }} />
+                </div>
+                <div className="hero-chart-callout">
+                  <strong>+18 pts</strong>
+                  <span>vs. category trend</span>
+                </div>
+              </div>
+
+              <div className="artifact-evidence-row">
+                <span className="artifact-chip">PPTX</span>
+                <span className="artifact-chip">PDF</span>
+                <span className="artifact-chip subtle">Evidence linked</span>
+              </div>
+            </div>
           </article>
-        ))}
+
+          <div className="hero-output-caption">
+            <p className="artifact-kind">Deliverables</p>
+            <p>One analysis. Two deliverables.</p>
+          </div>
+        </div>
       </section>
 
-      <section className="landing-duo">
-        <article className="panel stack-xl">
-          <div className="stack">
-            <p className="section-label">Why it&apos;s different</p>
-            <h2>Analysis first. Slides second.</h2>
-          </div>
-
-          <div className="evidence-list">
-            <div className="evidence-row">
-              <p className="artifact-kind">01</p>
-              <div className="stack">
-                <p>Data drives the narrative.</p>
-                <p className="muted">Basquio reads and ranks your data before writing any story. No guessing, no hallucination.</p>
-              </div>
-            </div>
-            <div className="evidence-row">
-              <p className="artifact-kind">02</p>
-              <div className="stack">
-                <p>Your brief shapes the output.</p>
-                <p className="muted">Audience, objective, and stakes guide the narrative — not buried as an afterthought.</p>
-              </div>
-            </div>
-            <div className="evidence-row">
-              <p className="artifact-kind">03</p>
-              <div className="stack">
-                <p>Both outputs stay in sync.</p>
-                <p className="muted">The PowerPoint and PDF come from the same analysis. Change one brief, both update.</p>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article className="dark-panel stack-xl">
-          <div className="stack">
-            <p className="section-label light">Latest result</p>
-            <h2>{latestRun ? latestRun.story.keyMessages[0] ?? latestRun.objective : "No analyses yet"}</h2>
-            <p className="muted">
-              {latestRun
-                ? `${summarizeRunBrief(latestRun)}. Created ${formatDate(latestRun.createdAt)}.`
-                : "Run your first analysis to see results here."}
-            </p>
-          </div>
-
-          {latestRun ? (
-            <>
-              <div className="deliverable-grid">
-                {latestRun.artifacts.map((artifact) => (
-                  <article key={artifact.kind} className="signal-card stack">
-                    <p className="artifact-kind">{artifact.kind.toUpperCase()}</p>
-                    <h3>{artifact.fileName}</h3>
-                    <p className="muted">
-                      {artifact.kind === "pptx"
-                        ? "Editable PowerPoint for your revisions."
-                        : "Polished PDF ready to share."}
-                    </p>
-                    <a className="button secondary inverted" href={buildArtifactDownloadUrl(latestRun.jobId, artifact.kind)}>
-                      Download {artifact.kind.toUpperCase()}
-                    </a>
-                  </article>
-                ))}
-              </div>
-
-              {latestRun.story.recommendedActions.length > 0 ? (
-                <div className="action-list">
-                  <p className="artifact-kind">Recommended actions</p>
-                  {latestRun.story.recommendedActions.map((action) => (
-                    <p key={action}>{action}</p>
-                  ))}
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </article>
-      </section>
-
-      <section className="panel stack-xl">
+      <section className="panel trust-panel">
         <div className="stack">
-          <p className="section-label">Recent outputs</p>
-          <h2>Your latest analyses and presentations.</h2>
+          <p className="section-label">Workflow fit</p>
+          <h2>Built for teams that already have to defend the story.</h2>
         </div>
 
-        {runs.length === 0 ? (
-          <div className="empty-state">
-            <p>No analyses yet.</p>
-          </div>
-        ) : (
-          <div className="cards">
-            {runs.map((run) => (
-              <article key={run.jobId} className="artifact-card">
-                <div className="stack">
-                  <p className="artifact-kind">{summarizeRunSources(run)}</p>
-                  <h3>{run.story.keyMessages[0] ?? run.objective}</h3>
-                  <p className="muted">{summarizeRunBrief(run)}</p>
-                </div>
-
-                <div className="deliverable-grid">
-                  {run.artifacts.map((artifact) => (
-                    <article key={artifact.kind} className="deliverable-tile stack">
-                      <p className="artifact-kind">{artifact.kind.toUpperCase()}</p>
-                      <p className="deliverable-label">{artifact.fileName}</p>
-                      <a className="button secondary" href={buildArtifactDownloadUrl(run.jobId, artifact.kind)}>
-                        Open {artifact.kind.toUpperCase()}
-                      </a>
-                    </article>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+        <div className="logo-strip" aria-label="Trusted workflow types">
+          {trustSignals.map((signal) => (
+            <span key={signal} className="logo-chip">
+              {signal}
+            </span>
+          ))}
+        </div>
       </section>
+
+      <section className="technical-panel stack-xl" id="pipeline">
+        <div className="row split">
+          <div className="stack">
+            <p className="section-label light">The pipeline</p>
+            <h2>From evidence package to executive deck in one visible flow.</h2>
+          </div>
+          <Link className="button secondary inverted" href="/how-it-works">
+            See the full pipeline
+          </Link>
+        </div>
+
+        <div className="pipeline-strip" role="list">
+          {pipelineSteps.map((step) => (
+            <article key={step.stage} className="pipeline-step-card" role="listitem">
+              <p className="artifact-kind">{step.stage}</p>
+              <h3>{step.title}</h3>
+              <p>{step.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel output-showcase" id="output">
+        <div className="stack">
+          <p className="section-label">The output</p>
+          <h2>One analysis. Two deliverables.</h2>
+        </div>
+
+        <div className="output-preview-grid">
+          <article className="showcase-card">
+            <div className="showcase-card-top">
+              <span className="artifact-chip strong">PPTX</span>
+              <span className="artifact-window-meta">Editable charts and notes</span>
+            </div>
+
+            <div className="deck-slide deck-slide-editable" aria-hidden>
+              <div className="deck-kicker">Executive summary</div>
+              <div className="deck-line long" />
+              <div className="deck-line medium" />
+              <div className="deck-chart deck-chart-bars">
+                <span style={{ height: "36%" }} />
+                <span style={{ height: "48%" }} />
+                <span style={{ height: "70%" }} />
+                <span className="accent" style={{ height: "88%" }} />
+              </div>
+            </div>
+          </article>
+
+          <article className="showcase-card showcase-card-pdf">
+            <div className="showcase-card-top">
+              <span className="artifact-chip strong">PDF</span>
+              <span className="artifact-window-meta">Polished shareable output</span>
+            </div>
+
+            <div className="deck-slide deck-slide-pdf" aria-hidden>
+              <div className="deck-kicker">Share-ready page</div>
+              <div className="pdf-summary-card">
+                <div className="deck-line long" />
+                <div className="deck-line short" />
+              </div>
+              <div className="deck-chart deck-chart-area" />
+              <div className="deck-line medium" />
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section className="proof-section">
+        <div className="stack">
+          <p className="section-label">Proof points</p>
+          <h2>Why the output feels review-ready.</h2>
+        </div>
+
+        <div className="proof-grid">
+          {proofPoints.map((point) => (
+            <article key={point.title} className={`panel proof-card proof-card-${point.kind}`}>
+              <div className="proof-visual" aria-hidden>
+                {point.kind === "evidence" ? (
+                  <div className="proof-evidence-visual">
+                    <div className="proof-bars">
+                      <span style={{ height: "32%" }} />
+                      <span style={{ height: "54%" }} />
+                      <span className="accent" style={{ height: "76%" }} />
+                    </div>
+                    <div className="proof-tag">Source trail</div>
+                  </div>
+                ) : null}
+
+                {point.kind === "brand" ? (
+                  <div className="proof-brand-visual">
+                    <span className="brand-swatch neutral" />
+                    <span className="brand-arrow">to</span>
+                    <span className="brand-swatch accent" />
+                  </div>
+                ) : null}
+
+                {point.kind === "system" ? (
+                  <div className="proof-system-visual">
+                    <span>Story</span>
+                    <span>Math</span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="stack">
+                <p className="artifact-kind">{point.label}</p>
+                <h3>{point.title}</h3>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel comparison-panel">
+        <div className="stack">
+          <p className="section-label">Comparison</p>
+          <h2>Analysis first. Slides second.</h2>
+        </div>
+
+        <div className="comparison-table-wrap">
+          <table className="comparison-table">
+            <thead>
+              <tr>
+                <th scope="col">Capability</th>
+                <th scope="col">Generic AI</th>
+                <th scope="col">Slide generators</th>
+                <th scope="col">Basquio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {landingComparisonRows.map((row) => (
+                <tr key={row.label}>
+                  <th scope="row">{row.label}</th>
+                  <td>{row.genericAi}</td>
+                  <td>{row.slideGenerators}</td>
+                  <td className="comparison-positive">{row.basquio}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel persona-panel">
+        <div className="stack">
+          <p className="section-label">Who it&apos;s for</p>
+          <h2>Choose the reporting workflow that matches your team.</h2>
+        </div>
+
+        <div className="persona-grid">
+          {personas.map((persona) => (
+            <Link key={persona.slug} className="persona-card" href={`/for/${persona.slug}`}>
+              <span className="artifact-kind">{persona.title}</span>
+              <span>{persona.summary}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel social-proof-panel">
+        <div className="stack">
+          <p className="section-label">Proof layer</p>
+          <h2>The workflow is built around teams that have to defend the story.</h2>
+        </div>
+
+        <div className="proof-quote">
+          <p>Traceable numbers. Brand-safe output. A presentation the team can actually revise and send.</p>
+          <footer>Current on-site proof is workflow-based. Named customer logos and attributed testimonials should ship only when they are real.</footer>
+        </div>
+      </section>
+
+      <PublicSiteFooterCta />
     </div>
   );
 }

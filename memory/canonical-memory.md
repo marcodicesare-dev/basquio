@@ -3,15 +3,22 @@
 ## Always True Until Explicitly Changed
 
 - Basquio is intelligence-first, renderer-second.
-- The moat is dataset understanding, insight ranking, and narrative planning.
+- The moat is package understanding, metric planning, deterministic analytics, insight ranking, narrative planning, slide architecture, and critique.
 - Basquio should understand multi-file evidence packages, not only single spreadsheets.
 - dataset manifests are the canonical file-role layer for evidence-package understanding.
+- `PackageSemantics` is required before trustworthy analytics planning.
 - The report brief is part of the product input, not an optional prompt garnish.
 - the report brief must explicitly represent client, audience, objective, thesis, and stakes.
-- `ReportOutline` is a required planning step before `SlideSpec[]`.
+- the design target is a core input, not a renderer-side theme override.
+- `TemplateProfile` is the canonical output of template and brand interpretation.
+- `TemplateProfile` must preserve slide dimensions and placeholder-region geometry when a PPTX template is provided.
 - `.pptx` is the only first-class editable template input in v1.
 - structured brand token files are a first-class style-system input.
 - `.pdf` is a style reference in v1.
+- `ExecutableMetricSpec[]` is a required planning contract before deterministic analytics execution.
+- explicit left-key and right-key join contracts are required when metrics span related files.
+- `ReportOutline` is a required planning step before `SlideSpec[]`.
+- slide count and section structure must be plan-driven, not fixed-spine hard-coding.
 - The AI must output structured contracts, not freestyle final slides.
 - `ChartSpec` is canonical and must stay independent from preview UI libraries.
 - PPTX and PDF must come from the same `SlideSpec[]`.
@@ -25,7 +32,7 @@
 Initial user promise:
 
 - upload a structured evidence package
-- provide context, audience, objective, and thesis
+- provide context, audience, objective, thesis, and stakes
 - choose template or style direction
 - optionally provide a brand file with design tokens
 - receive editable PPTX and polished PDF
@@ -39,13 +46,23 @@ Initial domain bias:
 - Standard charts should prefer native editable PPT charts when possible.
 - Advanced charts should prefer ECharts SVG SSR.
 - Raster output is a fallback, not the canonical chart format.
-- Deterministic analytics run before LLM narrative planning.
+- Package semantics interpretation runs before deterministic analytics execution for multi-file evidence packages.
+- Deterministic analytics run from explicit executable metric plans.
+- multi-file relationships must support semantically matched keys even when column names differ.
+- The AI should decide what to compute; code should compute the numbers.
 - Every insight must have evidence and confidence.
 - Every substantive claim must resolve to `EvidenceRef[]` before render.
-- Rendering is gated by deterministic validation, not only schema success.
-- Every completed run should emit an `ArtifactManifest` and a `QualityReport`.
+- `AnalyticsResult` plus derived tables are the canonical deterministic output, replacing highlight-only metric summaries.
+- Rendering is gated by deterministic and semantic validation, not only schema success.
+- The semantic critic must be able to send the run back to metrics, insights, story, or slides before render.
+- Every completed run should emit an `ArtifactManifest`, a `QualityReport`, a `ValidationReport`, and stage traces.
+- Every LLM-assisted stage should emit a `StageTrace` with prompt version, requested model, resolved model, provider, status, fallback reason, and timestamp.
 - Template and brand interpretation must flow through `TemplateProfile`, not renderer-only style hacks.
+- `.pptx` interpretation must materially preserve layout, placeholder, placeholder-frame, theme, and source-origin information.
 - structured brand token JSON or CSS files are the current file-backed v1 path into `TemplateProfile`.
+- generation is an async workflow with durable stage records, not a synchronous page request.
+- users should see stage-level progress, elapsed time, and estimated remaining time while generation is running.
+- queued runs should persist a reconstructable generation request envelope keyed by `jobId`.
 
 ## Design Memory
 
@@ -53,7 +70,7 @@ Initial domain bias:
 - The canonical shell direction is a pale editorial canvas with darker technical-stage surfaces used intentionally for workflow, pipeline, and proof moments.
 - CostFigure is the reference for editorial rhythm, spacing discipline, and token governance, not for color direction.
 - Inngest is the reference for technical confidence, dark-stage framing, and pipeline-proof presentation, not for brand cloning.
-- Landing-page copy must describe the real product: evidence package plus report brief plus brand direction in, PPTX plus PDF artifacts out.
+- Landing-page copy must describe the real product: evidence package plus report brief plus design target in, PPTX plus PDF artifacts out.
 - `/jobs/new` is the primary action path and should read like a report-composer surface, not a generic upload form.
 - `/templates` and `/artifacts` should read as report-generation tools and deliverable surfaces, not generic cards or file lists.
 - Shared visual rules should live in the web token layer first, then page structure, instead of ad hoc one-off component styling.

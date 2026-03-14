@@ -8,12 +8,14 @@ import { Inngest } from "inngest";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import {
-  generateInsights,
+  computeAnalytics,
+  interpretPackageSemantics,
+  planMetrics,
   planSlides,
   planReportOutline,
   planStory,
   profileDataset,
-  runDeterministicAnalytics,
+  rankInsights,
   validateExecutionPlan,
 } from "@basquio/intelligence";
 import { renderPdfArtifact } from "@basquio/render-pdf";
@@ -24,6 +26,7 @@ import {
   artifactRecordSchema,
   type ArtifactRecord,
   type BinaryArtifact,
+  type ExecutableMetricSpec,
   type GenerationJobStatus,
   type QualityCheck,
   qualityReportSchema,
@@ -32,6 +35,12 @@ import {
   generationRequestSchema,
   type GenerationRequest,
   type GenerationRunSummary,
+  type ReportOutline,
+  type SlideSpec,
+  type StageTrace,
+  type StorySpec,
+  type TemplateProfile,
+  type ChartSpec,
   type ValidationReport,
 } from "@basquio/types";
 
@@ -71,6 +80,11 @@ export const functions = [basquioGenerationRequested];
 
 type GenerationStepRunner = <T>(stage: string, fn: () => Promise<T> | T) => Promise<T>;
 type ResolvedUploadedFile = GenerationRequest["sourceFiles"][number] & { base64: string };
+type PlannedSlideBundle = {
+  slides: SlideSpec[];
+  charts: ChartSpec[];
+  templateProfile: TemplateProfile;
+};
 
 export class GenerationValidationError extends Error {
   constructor(
@@ -168,14 +182,76 @@ export async function runGenerationRequest(
       "analyze",
       async () => ({
         datasetProfile: profileDataset(parsed.datasetProfile),
-        deterministicAnalysis: runDeterministicAnalytics(parsed.normalizedWorkbook),
       }),
       {
         detail: (result) =>
-          `Computed deterministic analytics across ${result.deterministicAnalysis.metricSummaries.length} metric summaries.`,
+          `Profiled ${result.datasetProfile.sheets.length} sheet views for package interpretation.`,
         payload: (result) => ({
-          metricSummaryCount: result.deterministicAnalysis.metricSummaries.length,
-          highlightCount: result.deterministicAnalysis.highlights.length,
+          sheetCount: result.datasetProfile.sheets.length,
+          warningCount: result.datasetProfile.warnings.length,
+        }),
+      },
+    );
+
+    const stageTraces: StageTrace[] = [];
+    const recordTrace = (trace: StageTrace) => {
+      stageTraces.push(trace);
+    };
+
+    const packageSemantics = await runStage(
+      "interpret package",
+      async () =>
+        interpretPackageSemantics({
+          datasetProfile: analyzed.datasetProfile,
+          workbook: parsed.normalizedWorkbook,
+          brief,
+        }, { onTrace: recordTrace }),
+      {
+        detail: (result) =>
+          `Interpreted the package as ${result.packageType} in the ${result.domain} domain.`,
+        payload: (result) => ({
+          entityCount: result.entities.length,
+          relationshipCount: result.relationships.length,
+          candidateMetricCount: result.candidateMetrics.length,
+        }),
+      },
+    );
+
+    let metricPlan = await runStage(
+      "plan metrics",
+      async () =>
+        planMetrics(
+          {
+            datasetProfile: analyzed.datasetProfile,
+            packageSemantics,
+            brief,
+          },
+          { onTrace: recordTrace },
+        ),
+      {
+        detail: (result) => `Planned ${result.length} executable metrics.`,
+        payload: (result) => ({
+          metricCount: result.length,
+        }),
+      },
+    );
+
+    let analyticsResult = await runStage(
+      "compute analytics",
+      async () =>
+        computeAnalytics({
+          datasetProfile: analyzed.datasetProfile,
+          workbook: parsed.normalizedWorkbook,
+          packageSemantics,
+          metricPlan,
+        }),
+      {
+        detail: (result) =>
+          `Computed ${result.metrics.length} metrics, ${result.derivedTables.length} derived tables, and ${result.evidenceRefs.length} evidence refs.`,
+        payload: (result) => ({
+          metricCount: result.metrics.length,
+          derivedTableCount: result.derivedTables.length,
+          evidenceRefCount: result.evidenceRefs.length,
         }),
       },
     );
@@ -183,121 +259,246 @@ export async function runGenerationRequest(
     await persistence.updateDataset({
       datasetId: request.jobId,
       datasetProfile: analyzed.datasetProfile,
-      deterministicAnalysis: analyzed.deterministicAnalysis,
+      deterministicAnalysis: analyticsResult,
     });
 
-    const insights = await runStage(
+    let insights = await runStage(
       "generate insights",
       async () =>
-        generateInsights({
-          datasetProfile: analyzed.datasetProfile,
-          analysis: analyzed.deterministicAnalysis,
-          brief,
-        }),
+        rankInsights(
+          {
+            analyticsResult,
+            packageSemantics,
+            brief,
+          },
+          { onTrace: recordTrace },
+        ),
       {
         detail: (result) => `Ranked ${result.length} evidence-backed insights.`,
         payload: (result) => ({ insightCount: result.length }),
       },
     );
 
-    const story = await runStage(
-      "plan story",
+    let story: StorySpec | undefined;
+    let reportOutline: ReportOutline | undefined;
+    let slidePlan: PlannedSlideBundle | undefined;
+    let validationReport: ValidationReport | undefined;
+    let reviewerFeedback: string[] = [];
+    const templateProfile = await runStage(
+      "interpret template",
       async () =>
-        planStory({
-          datasetProfile: analyzed.datasetProfile,
-          analysis: analyzed.deterministicAnalysis,
-          insights,
-          brief,
-        }),
-      {
-        detail: (result) => `Planned story "${result.title || "Basquio evidence package report"}".`,
-        payload: (result) => ({
-          narrativeArcCount: result.narrativeArc.length,
-          keyMessageCount: result.keyMessages.length,
-        }),
-      },
-    );
-
-    const reportOutline = await runStage(
-      "plan outline",
-      async () =>
-        planReportOutline({
-          datasetProfile: analyzed.datasetProfile,
-          analysis: analyzed.deterministicAnalysis,
-          insights,
-          story,
-          brief,
-        }),
-      {
-        detail: (result) => `Locked a ${result.sections.length}-section report outline before slide planning.`,
-        payload: (result) => ({ sectionCount: result.sections.length }),
-      },
-    );
-
-    const slidePlan = await runStage(
-      "plan slides",
-      async () => {
-        const templateProfile = interpretTemplateSource({
+        interpretTemplateSource({
           id: `${request.jobId}-template`,
           fileName: styleFile?.fileName ?? request.templateFileName,
           sourceFile: styleFile,
-        });
-        const planned = planSlides({
+        }),
+      {
+        detail: (result) =>
+          `Interpreted ${result.sourceType} template input with ${result.layouts.length} layout${result.layouts.length === 1 ? "" : "s"}.`,
+        payload: (result) => ({
+          sourceType: result.sourceType,
+          layoutCount: result.layouts.length,
+          placeholderCount: result.placeholderCatalog.length,
+        }),
+      },
+    );
+    await persistence.updateTemplateProfile(templateProfile);
+    const maxPlanAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxPlanAttempts; attempt += 1) {
+      const stageSuffix = maxPlanAttempts > 1 ? ` (attempt ${attempt})` : "";
+
+      if (attempt > 1 && validationReport?.issues.some((issue) => issue.backtrackStage === "metrics")) {
+        metricPlan = await runStage(
+          `plan metrics${stageSuffix}`,
+          async () =>
+            planMetrics(
+              {
+                datasetProfile: analyzed.datasetProfile,
+                packageSemantics,
+                brief,
+                reviewFeedback: reviewerFeedback,
+              },
+              { onTrace: recordTrace },
+            ),
+          {
+            detail: (result) => `Replanned ${result.length} executable metrics from reviewer feedback.`,
+            payload: (result) => ({ metricCount: result.length }),
+          },
+        );
+
+        analyticsResult = await runStage(
+          `compute analytics${stageSuffix}`,
+          async () =>
+            computeAnalytics({
+              datasetProfile: analyzed.datasetProfile,
+              workbook: parsed.normalizedWorkbook,
+              packageSemantics,
+              metricPlan,
+            }),
+          {
+            detail: (result) =>
+              `Recomputed ${result.metrics.length} metrics, ${result.derivedTables.length} derived tables, and ${result.evidenceRefs.length} evidence refs.`,
+            payload: (result) => ({
+              metricCount: result.metrics.length,
+              derivedTableCount: result.derivedTables.length,
+              evidenceRefCount: result.evidenceRefs.length,
+            }),
+          },
+        );
+
+        await persistence.updateDataset({
+          datasetId: request.jobId,
           datasetProfile: analyzed.datasetProfile,
-          analysis: analyzed.deterministicAnalysis,
-          story,
-          outline: reportOutline,
-          insights,
-          templateProfile,
-          brief,
+          deterministicAnalysis: analyticsResult,
         });
+      }
 
-        return {
-          slides: planned.slides,
-          charts: planned.charts,
-          templateProfile,
-        };
-      },
-      {
-        detail: (result) => `Planned ${result.slides.length} slides and ${result.charts.length} charts.`,
-        payload: (result) => ({
-          slideCount: result.slides.length,
-          chartCount: result.charts.length,
-        }),
-      },
-    );
+      if (
+        attempt === 1 ||
+        validationReport?.issues.some((issue) => issue.backtrackStage === "metrics" || issue.backtrackStage === "insights")
+      ) {
+        insights = await runStage(
+          `generate insights${stageSuffix}`,
+          async () =>
+            rankInsights(
+              {
+                analyticsResult,
+                packageSemantics,
+                brief,
+                reviewFeedback: reviewerFeedback,
+              },
+              { onTrace: recordTrace },
+            ),
+          {
+            detail: (result) => `Ranked ${result.length} evidence-backed insights.`,
+            payload: (result) => ({ insightCount: result.length }),
+          },
+        );
+      }
 
-    await persistence.updateTemplateProfile(slidePlan.templateProfile);
+      const plannedStory = await runStage(
+        `plan story${stageSuffix}`,
+        async () =>
+          planStory(
+            {
+              analyticsResult,
+              insights,
+              packageSemantics,
+              brief,
+              reviewFeedback: reviewerFeedback,
+            },
+            { onTrace: recordTrace },
+          ),
+        {
+          detail: (result) => `Planned story "${result.title || "Basquio evidence package report"}".`,
+          payload: (result) => ({
+            narrativeArcCount: result.narrativeArc.length,
+            keyMessageCount: result.keyMessages.length,
+          }),
+        },
+      );
+      story = plannedStory;
 
-    const validationReport = await runStage(
-      "validate plan",
-      async () =>
-        validateExecutionPlan({
-          jobId: request.jobId,
-          analysis: analyzed.deterministicAnalysis,
-          insights,
-          slides: slidePlan.slides,
-          charts: slidePlan.charts,
-        }),
-      {
-        detail: (result) => `Validation completed with ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}.`,
-        payload: (result) => ({
-          status: result.status,
-          issueCount: result.issues.length,
-        }),
-      },
-    );
+      const plannedOutline = await runStage(
+        `plan outline${stageSuffix}`,
+        async () =>
+          planReportOutline({
+            story: plannedStory,
+            insights,
+            brief,
+          }),
+        {
+          detail: (result) => `Locked a ${result.sections.length}-section report outline before slide planning.`,
+          payload: (result) => ({ sectionCount: result.sections.length }),
+        },
+      );
+      reportOutline = plannedOutline;
 
-    await persistence.updateValidationReport(validationReport);
+      const plannedSlidePlan = await runStage(
+        `plan slides${stageSuffix}`,
+        async () => {
+          const planned = await planSlides(
+            {
+              analyticsResult,
+              story: plannedStory,
+              outline: plannedOutline,
+              insights,
+              templateProfile,
+              brief,
+              reviewFeedback: reviewerFeedback,
+            },
+            { onTrace: recordTrace },
+          );
 
-    if (validationReport.status !== "passed") {
+          return {
+            slides: planned.slides,
+            charts: planned.charts,
+            templateProfile,
+          };
+        },
+        {
+          detail: (result) => `Planned ${result.slides.length} slides and ${result.charts.length} charts.`,
+          payload: (result) => ({
+            slideCount: result.slides.length,
+            chartCount: result.charts.length,
+          }),
+        },
+      );
+      slidePlan = plannedSlidePlan;
+
+      const plannedValidation = await runStage(
+        `validate plan${stageSuffix}`,
+        async () =>
+          validateExecutionPlan({
+            jobId: request.jobId,
+            analyticsResult,
+            insights,
+            slides: plannedSlidePlan.slides,
+            charts: plannedSlidePlan.charts,
+            story: plannedStory,
+            stageTraces,
+            attemptCount: attempt,
+          }),
+        {
+          detail: (result) => `Validation completed with ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}.`,
+          payload: (result) => ({
+            status: result.status,
+            issueCount: result.issues.length,
+            attemptCount: result.attemptCount,
+          }),
+        },
+      );
+      validationReport = plannedValidation;
+
+      if (plannedValidation.status === "passed") {
+        break;
+      }
+
+      reviewerFeedback = plannedValidation.issues
+        .slice(0, 10)
+        .map((issue) => `${issue.validator}: ${issue.message}`);
+    }
+
+    if (!story || !reportOutline || !slidePlan || !validationReport) {
+      throw new Error("Planning loop did not produce a complete execution plan.");
+    }
+
+    const finalStory = story;
+    const finalOutline = reportOutline;
+    const finalSlidePlan = slidePlan;
+    const finalValidationReport = validationReport;
+
+    await persistence.updateValidationReport(finalValidationReport);
+
+    if (finalValidationReport.status !== "passed") {
       await persistence.updateJobStage(
         "validate plan",
         "needs_input",
-        `Validation blocked rendering with ${validationReport.issues.length} issue${validationReport.issues.length === 1 ? "" : "s"}.`,
+        `Validation blocked rendering with ${finalValidationReport.issues.length} issue${finalValidationReport.issues.length === 1 ? "" : "s"}.`,
         {
-          status: validationReport.status,
-          issueCount: validationReport.issues.length,
+          status: finalValidationReport.status,
+          issueCount: finalValidationReport.issues.length,
         },
       );
 
@@ -315,31 +516,34 @@ export async function runGenerationRequest(
         thesis: brief.thesis,
         stakes: brief.stakes,
         datasetProfile: analyzed.datasetProfile,
-        deterministicAnalysis: analyzed.deterministicAnalysis,
+        packageSemantics,
+        metricPlan,
+        analyticsResult,
         insights,
-        story,
-        reportOutline,
+        story: finalStory,
+        reportOutline: finalOutline,
         slidePlan: {
-          slides: slidePlan.slides,
-          charts: slidePlan.charts,
+          slides: finalSlidePlan.slides,
+          charts: finalSlidePlan.charts,
         },
-        validationReport,
+        validationReport: finalValidationReport,
+        stageTraces,
         artifacts: [],
       });
 
-      throw new GenerationValidationError("Pre-render validation failed.", validationReport, partialSummary);
+      throw new GenerationValidationError("Pre-render validation failed.", finalValidationReport, partialSummary);
     }
 
-    const deckTitle = story.title || story.keyMessages[0] || brief.objective || "Basquio output";
+    const deckTitle = finalStory.title || finalStory.keyMessages[0] || brief.objective || "Basquio output";
 
     const pptxArtifact = await runStage(
       "render pptx",
       async () =>
         renderPptxArtifact({
           deckTitle,
-          slidePlan: slidePlan.slides,
-          charts: slidePlan.charts,
-          templateProfile: slidePlan.templateProfile,
+          slidePlan: finalSlidePlan.slides,
+          charts: finalSlidePlan.charts,
+          templateProfile: finalSlidePlan.templateProfile,
         }),
       {
         detail: (result) => `Rendered PPTX artifact ${result.fileName}.`,
@@ -352,9 +556,9 @@ export async function runGenerationRequest(
       async () =>
         renderPdfArtifact({
           deckTitle,
-          slidePlan: slidePlan.slides,
-          charts: slidePlan.charts,
-          templateProfile: slidePlan.templateProfile,
+          slidePlan: finalSlidePlan.slides,
+          charts: finalSlidePlan.charts,
+          templateProfile: finalSlidePlan.templateProfile,
         }),
       {
         detail: (result) => `Rendered PDF artifact ${result.fileName}.`,
@@ -409,7 +613,9 @@ export async function runGenerationRequest(
       thesis: brief.thesis,
       stakes: brief.stakes,
       datasetProfile: analyzed.datasetProfile,
-      deterministicAnalysis: analyzed.deterministicAnalysis,
+      packageSemantics,
+      metricPlan,
+      analyticsResult,
       insights,
       story,
       reportOutline,
@@ -420,6 +626,7 @@ export async function runGenerationRequest(
       validationReport,
       artifactManifest: postRenderQa.artifactManifest,
       qualityReport: postRenderQa.qualityReport,
+      stageTraces,
       artifacts: postRenderQa.artifactManifest.artifacts,
     });
 

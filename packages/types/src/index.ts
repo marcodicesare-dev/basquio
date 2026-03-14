@@ -1,17 +1,21 @@
 import { z } from "zod";
 
 import {
+  analyticsResultSchema,
   artifactManifestSchema,
   artifactRecordSchema,
   chartSpecSchema,
   datasetProfileSchema,
   datasetFileRoleSchema,
+  executableMetricSpecSchema,
   insightSpecSchema,
+  packageSemanticsSchema,
   qualityReportSchema,
   reportBriefSchema,
   reportOutlineSchema,
   slideSpecSchema,
   sourceAssetKindSchema,
+  stageTraceSchema,
   storySpecSchema,
   validationReportSchema,
 } from "../../../code/contracts";
@@ -32,8 +36,12 @@ export const normalizedSheetSchema = z.object({
       inferredType: z.enum(["string", "number", "date", "boolean", "unknown"]),
       role: z.enum(["dimension", "measure", "time", "segment", "identifier", "unknown"]),
       nullable: z.boolean().default(true),
+      sampleValues: z.array(z.string()).default([]),
+      uniqueCount: z.number().int().nonnegative().default(0),
+      nullRate: z.number().min(0).max(1).default(0),
     }),
   ),
+  sampleRows: z.array(normalizedRowSchema).default([]),
   rows: z.array(normalizedRowSchema),
 });
 
@@ -70,12 +78,7 @@ export const deterministicMetricSummarySchema = z.object({
   max: z.number().nullable().default(null),
 });
 
-export const deterministicAnalysisSchema = z.object({
-  datasetId: z.string(),
-  metricSummaries: z.array(deterministicMetricSummarySchema),
-  highlights: z.array(z.string()).default([]),
-  warnings: z.array(z.string()).default([]),
-});
+export const deterministicAnalysisSchema = analyticsResultSchema;
 
 export const uploadedSourceFileSchema = z
   .object({
@@ -186,7 +189,9 @@ export const generationRunSummarySchema = z.object({
   thesis: z.string().default(""),
   stakes: z.string().default(""),
   datasetProfile: datasetProfileSchema,
-  deterministicAnalysis: deterministicAnalysisSchema,
+  packageSemantics: packageSemanticsSchema,
+  metricPlan: z.array(executableMetricSpecSchema).default([]),
+  analyticsResult: analyticsResultSchema,
   insights: z.array(insightSpecSchema),
   story: storySpecSchema,
   reportOutline: reportOutlineSchema.optional(),
@@ -197,6 +202,7 @@ export const generationRunSummarySchema = z.object({
   validationReport: validationReportSchema.optional(),
   artifactManifest: artifactManifestSchema.optional(),
   qualityReport: qualityReportSchema.optional(),
+  stageTraces: z.array(stageTraceSchema).default([]),
   artifacts: z.array(artifactRecordSchema),
 });
 
@@ -204,7 +210,11 @@ export type NormalizedWorkbook = z.infer<typeof normalizedWorkbookSchema>;
 export type NormalizedSheet = z.infer<typeof normalizedSheetSchema>;
 export type NormalizedEvidenceFile = z.infer<typeof normalizedEvidenceFileSchema>;
 export type DeterministicMetricSummary = z.infer<typeof deterministicMetricSummarySchema>;
-export type DeterministicAnalysis = z.infer<typeof deterministicAnalysisSchema>;
+export type ExecutableMetricSpec = z.infer<typeof executableMetricSpecSchema>;
+export type StageTrace = z.infer<typeof stageTraceSchema>;
+export type PackageSemantics = z.infer<typeof packageSemanticsSchema>;
+export type AnalyticsResult = z.infer<typeof analyticsResultSchema>;
+export type DeterministicAnalysis = AnalyticsResult;
 export type GenerationRequest = z.infer<typeof generationRequestSchema>;
 export type SourceFileRecord = z.infer<typeof sourceFileSchema>;
 export type DatasetRecord = z.infer<typeof datasetRecordSchema>;

@@ -1,22 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type GenerationResponse = {
+type GenerationStartResponse = {
   jobId: string;
-  storyTitle: string;
-  fileCount: number;
-  sheetCount: number;
-  outlineSectionCount: number;
-  slideCount: number;
-  highlights: string[];
-  artifacts: Array<{
-    kind: "pptx" | "pdf";
-    fileName: string;
-    mimeType: string;
-    downloadUrl: string;
-  }>;
+  status: "queued";
+  statusUrl: string;
+  progressUrl: string;
+  message: string;
 };
 
 type PreparedUpload = {
@@ -58,15 +51,14 @@ const formSignals = [
 ] as const;
 
 export function GenerationForm() {
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<GenerationResponse | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
-    setResult(null);
 
     const formData = new FormData(event.currentTarget);
     const evidenceFiles = formData.getAll("evidenceFiles").filter((value): value is File => value instanceof File && value.size > 0);
@@ -137,9 +129,8 @@ export function GenerationForm() {
         throw new Error(payload.error ?? "Generation failed.");
       }
 
-      setResult(payload as GenerationResponse);
+      router.push(payload.progressUrl);
     } catch (submissionError) {
-      setResult(null);
       setError(submissionError instanceof Error ? submissionError.message : "Generation failed.");
     } finally {
       setIsSubmitting(false);
@@ -250,65 +241,17 @@ export function GenerationForm() {
       </form>
 
       {error ? <div className="panel danger-panel">{error}</div> : null}
-
-      {result ? (
-        <section className="panel stack-lg success-panel">
-          <div className="stack">
-            <p className="section-label">Analysis ready</p>
-            <h3>{result.storyTitle}</h3>
-            <p className="muted">
-              {result.fileCount} file{result.fileCount === 1 ? "" : "s"} understood. {result.sheetCount} sheet
-              {result.sheetCount === 1 ? "" : "s"} analyzed. {result.outlineSectionCount} outline sections planned.{" "}
-              {result.slideCount} slides rendered.
-            </p>
-          </div>
-
-          <div className="deliverable-grid">
-            {result.artifacts.map((artifact) => (
-              <article key={artifact.kind} className="deliverable-tile stack">
-                <p className="artifact-kind">{artifact.kind === "pptx" ? "Editable PowerPoint" : "Polished PDF"}</p>
-                <h4>{artifact.fileName}</h4>
-                <p className="muted">
-                  {artifact.kind === "pptx"
-                    ? "Editable PowerPoint for your revisions."
-                    : "Polished PDF ready to share."}
-                </p>
-                <a className="button" href={artifact.downloadUrl}>
-                  Download {artifact.kind.toUpperCase()}
-                </a>
-              </article>
-            ))}
-          </div>
-
-          {result.highlights.length > 0 ? (
-            <div className="stack">
-              <p className="section-label">Detected highlights</p>
-              <ul className="clean-list">
-                {result.highlights.map((highlight) => (
-                  <li key={highlight}>{highlight}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="row">
-            <Link className="button secondary" href={`/artifacts?jobId=${result.jobId}`}>
-              View in recent outputs
-            </Link>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }
 
-async function readGenerationPayload(response: Response): Promise<GenerationResponse & { error?: string }> {
-  const payload = (await readApiPayload(response)) as GenerationResponse & { error?: string };
+async function readGenerationPayload(response: Response): Promise<GenerationStartResponse & { error?: string }> {
+  const payload = (await readApiPayload(response)) as GenerationStartResponse & { error?: string };
 
   if (response.status === 413) {
     return {
       error: "This upload was rejected upstream before direct upload completed. Retry the run; if it keeps happening, the hosted deployment is still not using the signed-upload path.",
-    } as GenerationResponse & { error?: string };
+    } as GenerationStartResponse & { error?: string };
   }
 
   return payload;

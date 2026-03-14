@@ -34,11 +34,16 @@ export const columnRoleSchema = z.enum([
   "unknown",
 ]);
 
+export const confidenceLevelSchema = z.enum(["HIGH", "MEDIUM", "LOW"]);
+
 export const datasetColumnSchema = z.object({
   name: z.string(),
   inferredType: z.enum(["string", "number", "date", "boolean", "unknown"]),
   role: columnRoleSchema,
   nullable: z.boolean().default(true),
+  sampleValues: z.array(z.string()).default([]),
+  uniqueCount: z.number().int().nonnegative().default(0),
+  nullRate: z.number().min(0).max(1).default(0),
 });
 
 export const datasetProfileSchema = z.object({
@@ -88,9 +93,107 @@ export const datasetProfileSchema = z.object({
       sourceFileName: z.string().default(""),
       sourceRole: datasetFileRoleSchema.default("unknown-support"),
       columns: z.array(datasetColumnSchema),
+      sampleRows: z.array(z.record(z.string(), z.unknown())).default([]),
     }),
   ),
   warnings: z.array(z.string()).default([]),
+});
+
+export const packageEntitySchema = z.object({
+  name: z.string(),
+  idColumn: z.string(),
+  sourceFile: z.string(),
+  description: z.string(),
+});
+
+export const packageRelationshipSchema = z.object({
+  fromFile: z.string(),
+  toFile: z.string(),
+  leftKey: z.string(),
+  rightKey: z.string(),
+  relationship: z.enum(["one-to-many", "many-to-many", "one-to-one"]),
+  confidence: z.number().min(0).max(1).default(0.6),
+  rationale: z.string().default(""),
+});
+
+export const metricJoinSchema = z.object({
+  file: z.string(),
+  leftKey: z.string(),
+  rightKey: z.string(),
+});
+
+export const filterConditionSchema = z.object({
+  column: z.string(),
+  operator: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"]),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number(), z.boolean()]))]),
+});
+
+export const executableMetricSpecSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum(["ratio", "count", "count_distinct", "sum", "average", "delta", "rank", "share"]),
+  sourceFile: z.string(),
+  joinFiles: z.array(z.string()).default([]),
+  joins: z.array(metricJoinSchema).default([]),
+  valueColumn: z.string().optional(),
+  groupBy: z.array(z.string()).default([]),
+  filter: z.array(filterConditionSchema).default([]),
+  numerator: z
+    .object({
+      aggregation: z.enum(["count", "count_distinct", "sum"]),
+      column: z.string().optional(),
+      filter: z.array(filterConditionSchema).default([]),
+    })
+    .optional(),
+  denominator: z
+    .object({
+      aggregation: z.enum(["count", "count_distinct", "sum"]),
+      column: z.string().optional(),
+      filter: z.array(filterConditionSchema).default([]),
+    })
+    .optional(),
+  timeColumn: z.string().optional(),
+  sortBy: z
+    .object({
+      column: z.string(),
+      direction: z.enum(["asc", "desc"]),
+  })
+    .optional(),
+  limit: z.number().int().positive().optional(),
+});
+
+export const stageTraceSchema = z.object({
+  stage: z.string(),
+  promptVersion: z.string().default("v1"),
+  requestedModelId: z.string(),
+  resolvedModelId: z.string().default(""),
+  provider: z.enum(["anthropic", "openai", "none"]),
+  status: z.enum(["succeeded", "fallback", "failed", "skipped"]),
+  fallbackReason: z.string().default(""),
+  errorMessage: z.string().default(""),
+  generatedAt: z.string(),
+});
+
+export const candidateMetricSchema = z.object({
+  name: z.string(),
+  formula: z.string(),
+  executableSpec: z.lazy(() => executableMetricSpecSchema).optional(),
+  sourceFiles: z.array(z.string()).min(1),
+  dimensions: z.array(z.string()).default([]),
+  description: z.string(),
+});
+
+export const packageSemanticsSchema = z.object({
+  domain: z.string(),
+  packageType: z.string(),
+  entities: z.array(packageEntitySchema).default([]),
+  relationships: z.array(packageRelationshipSchema).default([]),
+  candidateMetrics: z.array(candidateMetricSchema).default([]),
+  candidateDimensions: z.array(z.string()).default([]),
+  candidateTimeAxes: z.array(z.string()).default([]),
+  reportableQuestions: z.array(z.string()).default([]),
+  methodologyContext: z.string().optional(),
+  definitionsContext: z.string().optional(),
 });
 
 export const evidenceRefSchema = z.object({
@@ -102,6 +205,10 @@ export const evidenceRefSchema = z.object({
   metric: z.string(),
   summary: z.string(),
   confidence: z.number().min(0).max(1),
+  sourceLocation: z.string().default(""),
+  rawValue: z.union([z.string(), z.number(), z.boolean(), z.null()]).optional(),
+  derivedTable: z.string().optional(),
+  dimensions: z.record(z.string(), z.string()).default({}),
 });
 
 export const evidenceSchema = evidenceRefSchema;
@@ -152,11 +259,13 @@ export const reportBriefSchema = z.object({
 
 export const reportSectionSchema = z.object({
   id: z.string(),
-  kind: z.enum(["framing", "methodology", "findings", "implications", "recommendations"]),
+  kind: z.enum(["framing", "methodology", "findings", "implications", "recommendations", "analysis", "appendix"]),
   title: z.string(),
   summary: z.string(),
   objective: z.string(),
   supportingInsightIds: z.array(z.string()).default([]),
+  emphasis: z.enum(["heavy", "standard", "light"]).default("standard"),
+  suggestedSlideCount: z.number().int().positive().default(1),
 });
 
 export const reportOutlineSchema = z.object({
@@ -166,11 +275,18 @@ export const reportOutlineSchema = z.object({
 
 export const insightSpecSchema = z.object({
   id: z.string(),
+  rank: z.number().int().positive().default(1),
   title: z.string(),
   claim: z.string(),
   businessMeaning: z.string(),
   confidence: z.number().min(0).max(1),
+  confidenceLabel: confidenceLevelSchema.default("MEDIUM"),
+  finding: z.string().default(""),
+  implication: z.string().default(""),
   evidence: z.array(evidenceRefSchema).min(1),
+  evidenceRefIds: z.array(z.string()).default([]),
+  chartSuggestion: z.string().optional(),
+  slideEmphasis: z.enum(["lead", "support", "detail"]).default("support"),
   claims: z.array(claimSpecSchema).min(1),
 });
 
@@ -181,9 +297,118 @@ export const storySpecSchema = z.object({
   thesis: z.string().default(""),
   stakes: z.string().default(""),
   title: z.string().default(""),
+  executiveSummary: z.string().default(""),
+  narrativeArcType: z.enum(["opportunity", "threat", "transformation", "validation", "discovery"]).default("discovery"),
   narrativeArc: z.array(z.string()).min(1),
   keyMessages: z.array(z.string()).min(1),
+  sections: z.array(reportSectionSchema).default([]),
+  recommendedSlideCount: z.number().int().positive().default(6),
   recommendedActions: z.array(z.string()).default([]),
+});
+
+export const computedMetricSchema = z.object({
+  name: z.string(),
+  metricType: executableMetricSpecSchema.shape.type.optional(),
+  overallValue: z.union([z.number(), z.string()]),
+  stddev: z.number().default(0),
+  sampleSize: z.number().int().nonnegative().default(0),
+  byDimension: z.record(
+    z.string(),
+    z.array(
+      z.object({
+        key: z.string(),
+        value: z.number(),
+      }),
+    ),
+  ),
+  evidenceRefIds: z.array(z.string()).default([]),
+});
+
+export const derivedTableSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  columns: z.array(z.string()).default([]),
+  rows: z.array(z.record(z.string(), z.unknown())).default([]),
+});
+
+export const analyticsResultSchema = z.object({
+  metrics: z.array(computedMetricSchema).default([]),
+  correlations: z
+    .array(
+      z.object({
+        metric1: z.string(),
+        metric2: z.string(),
+        r: z.number(),
+        significance: z.enum(["high", "medium", "low"]),
+      }),
+    )
+    .default([]),
+  rankings: z
+    .array(
+      z.object({
+        dimension: z.string(),
+        metric: z.string(),
+        order: z.array(
+          z.object({
+            key: z.string(),
+            value: z.number(),
+          }),
+        ),
+      }),
+    )
+    .default([]),
+  deltas: z
+    .array(
+      z.object({
+        metric: z.string(),
+        period1: z.string(),
+        period2: z.string(),
+        absoluteChange: z.number(),
+        pctChange: z.number(),
+      }),
+    )
+    .default([]),
+  distributions: z
+    .array(
+      z.object({
+        metric: z.string(),
+        histogram: z.array(
+          z.object({
+            bucket: z.string(),
+            count: z.number().int().nonnegative(),
+          }),
+        ),
+        skew: z.number().default(0),
+        kurtosis: z.number().default(0),
+      }),
+    )
+    .default([]),
+  outliers: z
+    .array(
+      z.object({
+        entity: z.string(),
+        metric: z.string(),
+        value: z.number(),
+        zscore: z.number(),
+        direction: z.enum(["high", "low"]),
+      }),
+    )
+    .default([]),
+  segmentBreakdowns: z
+    .array(
+      z.object({
+        dimension: z.string(),
+        segments: z.array(
+          z.object({
+            name: z.string(),
+            metrics: z.record(z.string(), z.number()),
+          }),
+        ),
+      }),
+    )
+    .default([]),
+  derivedTables: z.array(derivedTableSchema).default([]),
+  evidenceRefs: z.array(evidenceRefSchema).default([]),
 });
 
 export const chartSpecSchema = z.object({
@@ -212,7 +437,15 @@ export const chartSpecSchema = z.object({
   xKey: z.string().optional(),
   yKeys: z.array(z.string()).default([]),
   summary: z.string().default(""),
+  annotation: z.string().default(""),
   evidenceIds: z.array(z.string()).default([]),
+  dataBinding: z
+    .object({
+      derivedTable: z.string(),
+      categoryColumn: z.string(),
+      valueColumns: z.array(z.string()).default([]),
+    })
+    .optional(),
   bindings: z.array(
     z.object({
       id: z.string(),
@@ -245,6 +478,7 @@ export const slideBlockSchema = z.object({
   label: z.string().optional(),
   value: z.string().optional(),
   tone: z.enum(["default", "positive", "caution", "neutral"]).default("default"),
+  evidenceIds: z.array(z.string()).default([]),
 });
 
 export const slideSpecSchema = z.object({
@@ -260,12 +494,15 @@ export const slideSpecSchema = z.object({
   claimIds: z.array(z.string()).default([]),
   evidenceIds: z.array(z.string()).default([]),
   speakerNotes: z.string().default(""),
+  transition: z.string().default(""),
 });
 
 export const validationIssueSchema = z.object({
   code: z.string(),
+  validator: z.enum(["deterministic", "semantic"]).default("deterministic"),
   severity: z.enum(["error", "warning"]).default("error"),
   message: z.string(),
+  backtrackStage: z.enum(["metrics", "insights", "story", "slides"]).optional(),
   claimId: z.string().optional(),
   slideId: z.string().optional(),
   chartId: z.string().optional(),
@@ -279,7 +516,9 @@ export const validationReportSchema = z.object({
   claimCount: z.number().int().nonnegative().default(0),
   chartCount: z.number().int().nonnegative().default(0),
   slideCount: z.number().int().nonnegative().default(0),
+  attemptCount: z.number().int().positive().default(1),
   issues: z.array(validationIssueSchema).default([]),
+  traces: z.array(stageTraceSchema).default([]),
 });
 
 export const templateBrandTokensSchema = z.object({
@@ -324,18 +563,42 @@ export const templateBrandTokensSchema = z.object({
 export const templateProfileSchema = z.object({
   id: z.string(),
   sourceType: z.enum(["system", "pptx", "brand-tokens", "pdf-style-reference"]),
+  templateName: z.string().default(""),
+  themeName: z.string().default(""),
+  sourceFingerprint: z.string().default(""),
   slideSize: z.string(),
+  slideWidthInches: z.number().positive().default(13.333),
+  slideHeightInches: z.number().positive().default(7.5),
   fonts: z.array(z.string()).default([]),
   colors: z.array(z.string()).default([]),
   spacingTokens: z.array(z.string()).default([]),
   logoAssetHints: z.array(z.string()).default([]),
+  placeholderCatalog: z.array(z.string()).default([]),
   brandTokens: templateBrandTokensSchema.optional(),
   warnings: z.array(z.string()).default([]),
   layouts: z.array(
     z.object({
       id: z.string(),
       name: z.string(),
+      sourceName: z.string().default(""),
+      sourceMaster: z.string().default(""),
       placeholders: z.array(z.string()).default([]),
+      regions: z
+        .array(
+          z.object({
+            key: z.string(),
+            placeholder: z.string(),
+            placeholderIndex: z.number().int().nonnegative().default(0),
+            name: z.string().default(""),
+            x: z.number().nonnegative(),
+            y: z.number().nonnegative(),
+            w: z.number().positive(),
+            h: z.number().positive(),
+            source: z.enum(["system", "layout", "master"]).default("system"),
+          }),
+        )
+        .default([]),
+      notes: z.array(z.string()).default([]),
     }),
   ),
 });
@@ -384,6 +647,12 @@ export const qualityReportSchema = z.object({
 });
 
 export type DatasetProfile = z.infer<typeof datasetProfileSchema>;
+export type PackageSemantics = z.infer<typeof packageSemanticsSchema>;
+export type PackageEntity = z.infer<typeof packageEntitySchema>;
+export type PackageRelationship = z.infer<typeof packageRelationshipSchema>;
+export type CandidateMetric = z.infer<typeof candidateMetricSchema>;
+export type ExecutableMetricSpec = z.infer<typeof executableMetricSpecSchema>;
+export type StageTrace = z.infer<typeof stageTraceSchema>;
 export type EvidenceRef = z.infer<typeof evidenceRefSchema>;
 export type NumericAssertion = z.infer<typeof numericAssertionSchema>;
 export type ClaimSpec = z.infer<typeof claimSpecSchema>;
@@ -391,6 +660,9 @@ export type ReportBrief = z.infer<typeof reportBriefSchema>;
 export type ReportOutline = z.infer<typeof reportOutlineSchema>;
 export type InsightSpec = z.infer<typeof insightSpecSchema>;
 export type StorySpec = z.infer<typeof storySpecSchema>;
+export type ComputedMetric = z.infer<typeof computedMetricSchema>;
+export type DerivedTable = z.infer<typeof derivedTableSchema>;
+export type AnalyticsResult = z.infer<typeof analyticsResultSchema>;
 export type ChartSpec = z.infer<typeof chartSpecSchema>;
 export type SlideSpec = z.infer<typeof slideSpecSchema>;
 export type TemplateProfile = z.infer<typeof templateProfileSchema>;

@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@basquio/render-charts": "workspace:*",
     "@basquio/types": "workspace:*",
     "pdf-lib": "^1.17.1"
   }

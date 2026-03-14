@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@basquio/types": "workspace:*"
+    "@basquio/types": "workspace:*",
+    "jszip": "^3.10.1"
   }
 }

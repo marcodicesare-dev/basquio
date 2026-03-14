@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Basquio",
   description:
-    "Two weeks of analysis, delivered in hours. Upload your data — Basquio finds the insights, builds the narrative, and delivers a beautiful, editable presentation.",
+    "Two weeks of analysis, delivered in hours. Upload data. Get an executive-ready presentation with traceable numbers, a paired PPTX and PDF, and a narrative built for review.",
   icons: {
     icon: "/brand/svg/favicon/basquio-favicon.svg",
     shortcut: "/brand/png/favicon/basquio-favicon-32.png",

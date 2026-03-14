@@ -108,12 +108,12 @@ export default async function DashboardPage() {
                 </article>
               </div>
 
-              {latestRun.deterministicAnalysis.highlights.length > 0 ? (
+              {latestRun.insights.length > 0 ? (
                 <div className="stack">
                   <p className="artifact-kind">Analytical highlights</p>
                   <ul className="clean-list">
-                    {latestRun.deterministicAnalysis.highlights.slice(0, 3).map((highlight) => (
-                      <li key={highlight}>{highlight}</li>
+                    {latestRun.insights.slice(0, 3).map((insight) => (
+                      <li key={insight.id}>{insight.title}</li>
                     ))}
                   </ul>
                 </div>

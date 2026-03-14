@@ -58,6 +58,31 @@ export async function downloadFromStorage(input: {
   return Buffer.from(await response.arrayBuffer());
 }
 
+export async function uploadToStorage(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  bucket: string;
+  storagePath: string;
+  body: Buffer;
+  contentType: string;
+  upsert?: boolean;
+}) {
+  const response = await fetch(buildStorageObjectUrl(input.supabaseUrl, input.bucket, input.storagePath), {
+    method: "POST",
+    headers: buildServiceHeaders(input.serviceKey, {
+      "cache-control": "max-age=3600",
+      "content-type": input.contentType,
+      "x-upsert": String(input.upsert ?? false),
+    }),
+    body: new Uint8Array(input.body),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to upload ${input.storagePath}.`));
+  }
+}
+
 export async function createSignedUploadUrl(input: {
   supabaseUrl: string;
   serviceKey: string;
@@ -139,6 +164,39 @@ export async function fetchRestRows<T>(input: {
 
   if (!response.ok) {
     throw new Error(await readStorageError(response, `Unable to query ${input.table}.`));
+  }
+
+  return (await response.json()) as T[];
+}
+
+export async function upsertRestRows<T>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  table: string;
+  rows: Record<string, unknown>[];
+  onConflict: string;
+  select?: string;
+}) {
+  const url = new URL(`/rest/v1/${input.table}`, input.supabaseUrl);
+  url.searchParams.set("on_conflict", input.onConflict);
+
+  if (input.select) {
+    url.searchParams.set("select", input.select);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=representation",
+    }),
+    body: JSON.stringify(input.rows),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to upsert ${input.table}.`));
   }
 
   return (await response.json()) as T[];

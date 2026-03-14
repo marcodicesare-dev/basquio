@@ -8,9 +8,13 @@ export const BASQUIO_SUPABASE = {
 export const BASQUIO_PIPELINE_STAGES = [
   "parse input",
   "analyze",
+  "interpret package",
+  "plan metrics",
+  "compute analytics",
   "generate insights",
   "plan story",
   "plan outline",
+  "interpret template",
   "plan slides",
   "validate plan",
   "render pptx",
@@ -18,6 +22,24 @@ export const BASQUIO_PIPELINE_STAGES = [
   "store artifacts",
   "post-render qa",
 ] as const;
+
+export const BASQUIO_PIPELINE_STAGE_WEIGHTS: Record<(typeof BASQUIO_PIPELINE_STAGES)[number], number> = {
+  "parse input": 0.8,
+  analyze: 0.6,
+  "interpret package": 1.6,
+  "plan metrics": 1.3,
+  "compute analytics": 1.4,
+  "generate insights": 1.2,
+  "plan story": 1.1,
+  "plan outline": 0.8,
+  "interpret template": 0.9,
+  "plan slides": 1.7,
+  "validate plan": 1.3,
+  "render pptx": 0.9,
+  "render pdf": 0.9,
+  "store artifacts": 0.6,
+  "post-render qa": 0.8,
+};
 
 export const BASQUIO_RENDER_POLICY = {
   pdf: "Browserless primary, pdf-lib fallback placeholder",

@@ -144,12 +144,12 @@ export default async function ArtifactsPage({
                   ))}
                 </div>
 
-                {run.deterministicAnalysis.highlights.length > 0 ? (
+                {run.insights.length > 0 ? (
                   <div className="stack">
                     <p className="section-label">Analytical highlights</p>
                     <ul className="clean-list">
-                      {run.deterministicAnalysis.highlights.map((highlight) => (
-                        <li key={highlight}>{highlight}</li>
+                      {run.insights.slice(0, 5).map((insight) => (
+                        <li key={insight.id}>{insight.title}</li>
                       ))}
                     </ul>
                   </div>

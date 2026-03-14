@@ -7,42 +7,92 @@
 Accepted because:
 
 - generic AI slide generation is commoditized
-- product defensibility comes from dataset understanding and narrative quality
+- product defensibility comes from package understanding, deterministic analytics, narrative quality, and critique
 
-### Evidence-package plus brief input model
+### Evidence-package plus brief plus design-target input model
 
 Accepted because:
 
 - real analytical deliverables often depend on multiple related files, not one flat sheet
-- the report brief changes what matters, how it should be framed, and what the artifact should optimize for
+- the brief changes what matters and how it should be framed
+- the design target materially changes the artifact, not just its paint
 
-### Dataset manifest layer
-
-Accepted because:
-
-- Basquio needs a canonical contract for file roles instead of flattening multi-file uploads into one anonymous dataset
-- report-grade deliverables depend on preserving which file is the main fact table, which file is methodology, which file is citations, and which file defines brand
-
-### Report-outline step before slide planning
+### Dataset manifest and package-semantics layer
 
 Accepted because:
 
-- a report spine should be explicit before slide layouts are chosen
-- framing, methodology, findings, implications, and recommendations are structural planning objects, not renderer-side presentation details
+- Basquio needs a canonical contract for file roles without hard-coded filename mapping
+- file-role preservation and semantic inference are both required before trustworthy analytics planning
+
+### First-class PPTX template interpretation
+
+Accepted because:
+
+- one of the core user inputs is the design target
+- PPTX layout, placeholder, placeholder-frame, theme, and slide-size data must materially affect slide planning and rendering
+- shallow theme fallback is not sufficient for report-grade template fidelity
+
+### Executable metric-planning stage before analytics execution
+
+Accepted because:
+
+- the AI should decide what to compute
+- the code should compute the numbers deterministically
+- downstream insight ranking, validation, and chart binding need explicit metric specs and derived-table requests
+
+### Explicit asymmetric join contracts for multi-file analytics
+
+Accepted because:
+
+- real evidence packages often join on semantically equivalent keys with different names
+- package understanding should infer join direction and key pairing instead of assuming exact column-name matches
+- deterministic analytics need explicit left-key and right-key contracts to stay auditable
+
+### Dynamic report-outline and slide-architecture planning
+
+Accepted because:
+
+- slide count, sectioning, transitions, and layout selection must come from the brief and evidence package
+- a fixed hard-coded deck spine does not satisfy report-grade planning requirements
 
 ### Hard validation gate before rendering
 
 Accepted because:
 
-- rendering should not start until claims, evidence refs, chart bindings, and numeric assertions resolve deterministically
-- failed validation should stop PPTX/PDF generation instead of producing polished but weakly-backed artifacts
+- rendering should not start until claims, evidence refs, chart bindings, and numeric assertions resolve
+- polished output is dangerous when the reasoning chain is weak
+
+### Independent semantic critic plus revision loop
+
+Accepted because:
+
+- deterministic validation alone does not catch unsupported leaps, weak recommendations, or incoherent story logic
+- Basquio needs an evaluator stage that can force upstream revision before rendering
+- critique must backtrack to the right stage instead of only failing at the end
+
+### Stage-level traceability for all LLM-assisted steps
+
+Accepted because:
+
+- AI-native systems need auditable prompt, model, fallback, and error traces
+- silent null fallbacks make debugging and trust materially worse
+- run history should explain not just the output, but how the output was produced
 
 ### Post-render QA with artifact manifests
 
 Accepted because:
 
 - Basquio ships paired artifacts, so the system needs a durable `ArtifactManifest` plus a `QualityReport`
-- storage success alone is not enough; the system should check artifact existence, metadata consistency, and cross-output slide/page alignment
+- storage success alone is not enough; the system should check artifact existence, metadata consistency, and cross-output alignment
+
+### Async generation with durable visible progress
+
+Accepted because:
+
+- report generation is a long-running workflow, not a request-response toy
+- large decks should visibly spend more time on planning, critique, and revision than small ones
+- users need stage-level progress, elapsed time, and estimated remaining time while the run is in flight
+- queued jobs should be reconstructable from persisted request envelopes instead of depending on in-memory request state
 
 ### Brand-token intake as first-class styling input
 
@@ -56,7 +106,7 @@ Accepted because:
 Accepted because:
 
 - it prevents renderer divergence
-- it keeps the AI focused on planning instead of final document syntax
+- it keeps the AI focused on planning instead of document syntax
 
 ### PptxGenJS plus pptx-automizer
 
@@ -84,7 +134,7 @@ Accepted because:
 Accepted because:
 
 - team familiarity reduces integration risk
-- Basquio needs durable multi-step execution
+- Basquio needs durable multi-step execution with retriable stages
 
 ### QStash checkpoint-resume as inherited fallback
 
@@ -107,7 +157,7 @@ Accepted because:
 Rejected because:
 
 - it is not defensible
-- the category has already shown churn and failure
+- it hides the actual value of evidence understanding and report planning
 
 ### PDF as editable template source in v1
 
@@ -121,6 +171,41 @@ Rejected because:
 
 - executive reporting often relies on evidence packages with separate fact tables, methodology files, and validation files
 - package-level reasoning is part of the intelligence moat
+
+### Fixed-spine slide planning
+
+Rejected because:
+
+- it prevents the system from deciding slide count and section emphasis dynamically
+- it treats the report as a prewritten script instead of an inferred plan
+
+### Symmetric same-name-only join assumptions
+
+Rejected because:
+
+- they break when related files use different but semantically equivalent identifiers
+- they force case-by-case mapping pressure back into the codebase
+
+### Synchronous generation UX for full report runs
+
+Rejected because:
+
+- it hides long-running orchestration behind a frozen form submission
+- it gives users no trustworthy sense of progress, revision depth, or expected wait time
+
+### Deterministic-only validation
+
+Rejected because:
+
+- it misses semantic errors, unsupported recommendations, and narrative incoherence
+- it cannot independently challenge the generator's reasoning chain
+
+### Silent model fallbacks
+
+Rejected because:
+
+- they hide reliability problems
+- they make AI-native debugging and trust much harder
 
 ### Recharts or Tremor as canonical export engine
 

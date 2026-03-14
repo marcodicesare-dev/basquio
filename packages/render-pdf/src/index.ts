@@ -1,5 +1,6 @@
 import { PDFDocument, PDFPage, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 
+import { renderChartSvg } from "@basquio/render-charts";
 import type { BinaryArtifact, ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
 
 type RenderPdfInput = {
@@ -7,6 +8,13 @@ type RenderPdfInput = {
   slidePlan: SlideSpec[];
   charts: ChartSpec[];
   templateProfile: TemplateProfile;
+};
+
+type Frame = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 };
 
 export async function renderPdfArtifact(input: RenderPdfInput): Promise<BinaryArtifact> {
@@ -31,6 +39,8 @@ export function buildDeckHtml(
   deckTitle: string,
 ) {
   const theme = resolveTheme(templateProfile);
+  const pageWidth = templateProfile.slideWidthInches || 13.333;
+  const pageHeight = templateProfile.slideHeightInches || 7.5;
 
   return `<!doctype html>
 <html lang="en">
@@ -50,13 +60,14 @@ export function buildDeckHtml(
       }
       * { box-sizing: border-box; }
       body { font-family: ${escapeHtml(theme.bodyFont)}, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
-      main { display: grid; gap: 18px; padding: 22px; }
+      main { display: grid; gap: 18px; padding: 0.24in; }
       section {
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 22px;
-        padding: 24px;
-        min-height: 500px;
+        padding: ${theme.pageY}in ${theme.pageX}in;
+        width: ${pageWidth}in;
+        min-height: ${pageHeight}in;
         page-break-after: always;
         display: grid;
         grid-template-rows: auto auto 1fr;
@@ -92,7 +103,7 @@ export function buildDeckHtml(
       .cover .callout, .cover .panel { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); }
       .callout { background: var(--accent-muted); }
       .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px; font-weight: 700; }
-      .split { display: grid; grid-template-columns: 1.18fr 0.82fr; gap: 16px; align-items: stretch; }
+      .split { display: grid; gap: 16px; align-items: stretch; }
       ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; line-height: 1.45; }
       .chart-card { display: grid; gap: 10px; }
       .chart-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
@@ -102,17 +113,52 @@ export function buildDeckHtml(
       .bar-fill { background: linear-gradient(90deg, var(--accent), var(--highlight)); height: 100%; border-radius: 999px; }
       .chart-value { text-align: right; font-size: 12px; color: var(--muted); }
       .body-copy { line-height: 1.55; }
-      @page { size: 960px 540px; margin: 0; }
+      .two-column-layout { display: grid; gap: 16px; }
+      @page { size: ${pageWidth}in ${pageHeight}in; margin: 0; }
     </style>
   </head>
   <body>
     <main>
       ${slides
         .map((slide) => {
+          const layout = resolveTemplateLayout(templateProfile, slide.layoutId);
+          const layoutMode = inferLayoutMode(layout, slide, Boolean(slide.blocks.find((block) => block.chartId)));
           const chart = charts.find((candidate) => candidate.id === slide.blocks.find((block) => block.chartId)?.chartId);
           const metrics = slide.blocks.filter((block) => block.kind === "metric");
           const lists = slide.blocks.filter((block) => block.kind === "bullet-list" || block.kind === "evidence-list");
           const bodies = slide.blocks.filter((block) => block.kind === "body" || block.kind === "callout");
+          const midpoint = Math.ceil((lists.length + bodies.length) / 2);
+          const fallbackBodyFallback = {
+            x: theme.pageX,
+            y: 2.1,
+            w: pageWidth - theme.pageX * 2,
+            h: Math.max(3, pageHeight - 2.9),
+          };
+          const fallbackBodyFrame = resolveRegionFrame(layout, ["body", "body-left"], fallbackBodyFallback) ?? fallbackBodyFallback;
+          const chartFallback = {
+            x: fallbackBodyFrame.x,
+            y: fallbackBodyFrame.y,
+            w: Math.min(6.4, fallbackBodyFrame.w * 0.58),
+            h: fallbackBodyFrame.h,
+          };
+          const chartFrame = resolveRegionFrame(layout, ["chart"], chartFallback) ?? chartFallback;
+          const textFallback = {
+            x: chartFrame.x + chartFrame.w + theme.blockGap,
+            y: chartFrame.y,
+            w: Math.max(2.4, pageWidth - (chartFrame.x + chartFrame.w + theme.blockGap + theme.pageX)),
+            h: chartFrame.h,
+          };
+          const textFrame = resolveRegionFrame(layout, ["body-right", "evidence-list", "body"], textFallback) ?? textFallback;
+          const [leftColumnFrame, rightColumnFrame] = resolveBodyFrames(layout, fallbackBodyFrame, theme.blockGap);
+          const textBlocks = [
+            ...bodies.map((block) => ({ type: block.kind, html: `<div class="${block.kind === "callout" ? "callout" : "panel"}">
+                            <div class="body-copy">${escapeHtml(block.content ?? "")}</div>
+                          </div>` })),
+            ...lists.map((block) => ({ type: block.kind, html: `<div class="panel">
+                          <div class="panel-title">${block.kind === "evidence-list" ? "Evidence" : "Key Points"}</div>
+                          <ul>${block.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+                        </div>` })),
+          ];
 
           return `<section class="${slide.emphasis === "cover" ? "cover" : ""}">
             <div>
@@ -134,30 +180,21 @@ export function buildDeckHtml(
 
             <div class="grid">
               ${
-                chart
-                  ? `<div class="split">
+                chart && layoutMode === "chart-split"
+                  ? `<div class="split" style="grid-template-columns:${chartFrame.w}fr ${textFrame.w}fr;">
                     <div class="panel chart-card">
                       <div class="panel-title">${escapeHtml(chart.title || "Chart")}</div>
-                      ${renderHtmlChart(chart)}
+                      ${renderHtmlChart(chart, theme)}
                     </div>
                     <div class="grid">
-                      ${bodies
-                        .map(
-                          (block) => `<div class="${block.kind === "callout" ? "callout" : "panel"}">
-                            <div class="body-copy">${escapeHtml(block.content ?? "")}</div>
-                          </div>`,
-                        )
-                        .join("")}
-                      ${lists
-                        .map(
-                          (block) => `<div class="panel">
-                            <div class="panel-title">${block.kind === "evidence-list" ? "Evidence" : "Key Points"}</div>
-                            <ul>${block.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-                          </div>`,
-                        )
-                        .join("")}
+                      ${textBlocks.map((block) => block.html).join("")}
                     </div>
                   </div>`
+                  : layoutMode === "two-column"
+                    ? `<div class="two-column-layout" style="grid-template-columns:${leftColumnFrame.w}fr ${rightColumnFrame.w}fr;">
+                        <div class="grid">${textBlocks.slice(0, midpoint).map((block) => block.html).join("")}</div>
+                        <div class="grid">${textBlocks.slice(midpoint).map((block) => block.html).join("")}</div>
+                      </div>`
                   : `${bodies
                       .map(
                         (block) => `<div class="${block.kind === "callout" ? "callout" : "panel"}">
@@ -242,115 +279,202 @@ async function createFallbackPdf(
   const titleFont = await pdf.embedFont(StandardFonts.HelveticaBold);
   const bodyFont = await pdf.embedFont(StandardFonts.Helvetica);
   const theme = resolveTheme(templateProfile);
+  const pageWidth = inchesToPoints(templateProfile.slideWidthInches || 13.333);
+  const pageHeight = inchesToPoints(templateProfile.slideHeightInches || 7.5);
 
   for (const slide of slides) {
-    const page = pdf.addPage([960, 540]);
+    const page = pdf.addPage([pageWidth, pageHeight]);
     const isCover = slide.emphasis === "cover";
+    const layout = resolveTemplateLayout(templateProfile, slide.layoutId);
+    const layoutMode = inferLayoutMode(layout, slide, Boolean(slide.blocks.find((block) => block.chartId)));
     const chart = charts.find((candidate) => candidate.id === slide.blocks.find((block) => block.chartId)?.chartId);
     const textColor = hexToRgb(isCover ? "#FFFFFF" : theme.text);
     const mutedColor = hexToRgb(isCover ? "DDE7FF" : theme.mutedText);
+    const titleFrame = toPdfFrame(resolveRegionFrame(layout, ["title"], {
+      x: theme.pageX,
+      y: 0.72,
+      w: (templateProfile.slideWidthInches || 13.333) - theme.pageX * 2,
+      h: 0.8,
+    }) ?? {
+      x: theme.pageX,
+      y: 0.72,
+      w: (templateProfile.slideWidthInches || 13.333) - theme.pageX * 2,
+      h: 0.8,
+    }, templateProfile);
+    const subtitleFrame = slide.subtitle
+      ? toPdfFrame(resolveRegionFrame(layout, ["subtitle"], {
+          x: theme.pageX,
+          y: 1.36,
+          w: (templateProfile.slideWidthInches || 13.333) - theme.pageX * 2,
+          h: 0.5,
+        }) ?? {
+          x: theme.pageX,
+          y: 1.36,
+          w: (templateProfile.slideWidthInches || 13.333) - theme.pageX * 2,
+          h: 0.5,
+        }, templateProfile)
+      : null;
+    const eyebrowFrame = slide.eyebrow
+      ? toPdfFrame(resolveRegionFrame(layout, ["eyebrow"], {
+          x: theme.pageX,
+          y: 0.42,
+          w: (templateProfile.slideWidthInches || 13.333) - theme.pageX * 2,
+          h: 0.2,
+        }) ?? {
+          x: theme.pageX,
+          y: 0.42,
+          w: (templateProfile.slideWidthInches || 13.333) - theme.pageX * 2,
+          h: 0.2,
+        }, templateProfile)
+      : null;
 
     page.drawRectangle({
       x: 0,
       y: 0,
-      width: 960,
-      height: 540,
+      width: pageWidth,
+      height: pageHeight,
       color: hexToRgb(isCover ? theme.text : theme.background),
     });
 
     page.drawText(slide.eyebrow ?? deckTitle, {
-      x: 48,
-      y: 488,
+      x: eyebrowFrame?.x ?? inchesToPoints(theme.pageX),
+      y: eyebrowFrame?.y ?? pageHeight - 42,
       size: 11,
       font: titleFont,
       color: hexToRgb(isCover ? theme.highlight : theme.accent),
     });
 
     page.drawText(slide.title, {
-      x: 48,
-      y: 446,
+      x: titleFrame.x,
+      y: titleFrame.y,
       size: isCover ? 28 : 24,
       font: titleFont,
       color: textColor,
+      maxWidth: titleFrame.w,
     });
 
-    if (slide.subtitle) {
+    if (slide.subtitle && subtitleFrame) {
       page.drawText(truncate(slide.subtitle, 120), {
-        x: 48,
-        y: 418,
+        x: subtitleFrame.x,
+        y: subtitleFrame.y,
         size: 13,
         font: bodyFont,
         color: mutedColor,
+        maxWidth: subtitleFrame.w,
       });
     }
 
-    let cursorY = 360;
-    for (const block of slide.blocks) {
+    const metricStripFrame = resolveRegionFrame(layout, ["metric-strip"], null);
+    let cursorY = pageHeight - inchesToPoints(metricStripFrame ? metricStripFrame.y + metricStripFrame.h : 2.45);
+    const bodyBlocks = slide.blocks.filter((block) => block.kind !== "metric");
+    const leftColumn = layoutMode === "two-column" ? bodyBlocks.slice(0, Math.ceil(bodyBlocks.length / 2)) : bodyBlocks;
+    const rightColumn = layoutMode === "two-column" ? bodyBlocks.slice(Math.ceil(bodyBlocks.length / 2)) : [];
+
+    for (const [index, block] of slide.blocks.filter((candidate) => candidate.kind === "metric").entries()) {
       if (block.kind === "metric") {
+        const metricFrame = metricStripFrame
+          ? toPdfFrame(splitFrameHorizontally(metricStripFrame, Math.min(slide.blocks.filter((candidate) => candidate.kind === "metric").length, 4), theme.blockGap)[index]!, templateProfile)
+          : { x: 48, y: cursorY - 10, w: 180, h: 54 };
         page.drawRectangle({
-          x: 48,
-          y: cursorY - 10,
-          width: 180,
-          height: 54,
+          x: metricFrame.x,
+          y: metricFrame.y,
+          width: metricFrame.w,
+          height: metricFrame.h,
           color: hexToRgb(theme.surface),
           borderColor: hexToRgb(theme.border),
           borderWidth: 1,
           borderOpacity: 0.3,
         });
         page.drawText(block.label ?? "", {
-          x: 60,
-          y: cursorY + 22,
+          x: metricFrame.x + 12,
+          y: metricFrame.y + metricFrame.h - 16,
           size: 10,
           font: bodyFont,
           color: hexToRgb(theme.mutedText),
+          maxWidth: metricFrame.w - 20,
         });
         page.drawText(block.value ?? "", {
-          x: 60,
-          y: cursorY,
+          x: metricFrame.x + 12,
+          y: metricFrame.y + 14,
           size: 22,
           font: titleFont,
           color: hexToRgb(theme.text),
+          maxWidth: metricFrame.w - 20,
         });
-        cursorY -= 66;
         continue;
       }
+    }
 
-      if (block.kind === "chart" && chart) {
-        page.drawText(chart.title, {
-          x: 48,
-          y: cursorY + 28,
-          size: 11,
-          font: titleFont,
-          color: hexToRgb(theme.mutedText),
-        });
-        drawPdfChart(page, chart, { x: 48, y: cursorY - 90, w: 420, h: 110 }, theme, bodyFont);
-        cursorY -= 142;
-        continue;
-      }
+    const fallbackBodyFallback = {
+      x: theme.pageX,
+      y: metricStripFrame ? metricStripFrame.y + metricStripFrame.h + 0.2 : 2.1,
+      w: (templateProfile.slideWidthInches || 13.333) - theme.pageX * 2,
+      h: Math.max(3.1, (templateProfile.slideHeightInches || 7.5) - (metricStripFrame ? metricStripFrame.y + metricStripFrame.h + 0.55 : 2.8)),
+    };
+    const fallbackBodyFrame = resolveRegionFrame(layout, ["body", "body-left"], fallbackBodyFallback) ?? fallbackBodyFallback;
 
-      if (block.kind === "bullet-list" || block.kind === "evidence-list") {
-        const lines = block.items.slice(0, 5).map((item) => `• ${item}`);
-        page.drawText(lines.join("\n"), {
-          x: 48,
-          y: cursorY,
-          size: block.kind === "evidence-list" ? 10 : 11,
-          lineHeight: 15,
-          font: bodyFont,
-          color: textColor,
-        });
-        cursorY -= Math.max(54, lines.length * 18);
-        continue;
-      }
-
-      page.drawText(truncate(block.content ?? "", 180), {
-        x: 48,
-        y: cursorY,
-        size: block.kind === "callout" ? 13 : 12,
-        font: block.kind === "callout" ? titleFont : bodyFont,
-        color: textColor,
-        lineHeight: 16,
+    if (chart && layoutMode === "chart-split") {
+      const chartFrame = toPdfFrame(resolveRegionFrame(layout, ["chart"], {
+        x: fallbackBodyFrame.x,
+        y: fallbackBodyFrame.y,
+        w: Math.min(6.2, fallbackBodyFrame.w * 0.58),
+        h: fallbackBodyFrame.h,
+      }) ?? {
+        x: fallbackBodyFrame.x,
+        y: fallbackBodyFrame.y,
+        w: Math.min(6.2, fallbackBodyFrame.w * 0.58),
+        h: fallbackBodyFrame.h,
+      }, templateProfile);
+      const textFrame = toPdfFrame(resolveRegionFrame(layout, ["body-right", "evidence-list", "body"], {
+        x: fallbackBodyFrame.x + Math.min(6.2, fallbackBodyFrame.w * 0.58) + theme.blockGap,
+        y: fallbackBodyFrame.y,
+        w: Math.max(2.4, fallbackBodyFrame.w - Math.min(6.2, fallbackBodyFrame.w * 0.58) - theme.blockGap),
+        h: fallbackBodyFrame.h,
+      }) ?? {
+        x: fallbackBodyFrame.x + Math.min(6.2, fallbackBodyFrame.w * 0.58) + theme.blockGap,
+        y: fallbackBodyFrame.y,
+        w: Math.max(2.4, fallbackBodyFrame.w - Math.min(6.2, fallbackBodyFrame.w * 0.58) - theme.blockGap),
+        h: fallbackBodyFrame.h,
+      }, templateProfile);
+      page.drawText(chart.title, {
+        x: chartFrame.x,
+        y: chartFrame.y + chartFrame.h + 14,
+        size: 11,
+        font: titleFont,
+        color: hexToRgb(theme.mutedText),
       });
-      cursorY -= block.kind === "callout" ? 30 : 22;
+      drawPdfChart(page, chart, {
+        x: chartFrame.x,
+        y: chartFrame.y,
+        w: chartFrame.w,
+        h: chartFrame.h - 22,
+      }, theme, bodyFont);
+      renderPdfTextColumn(page, leftColumn.filter((block) => block.kind !== "chart"), {
+        x: textFrame.x,
+        y: textFrame.y + textFrame.h - 8,
+        bottom: textFrame.y,
+        width: textFrame.w,
+      }, { titleFont, bodyFont, textColor, theme });
+      continue;
+    }
+
+    const [leftBodyFrame, rightBodyFrame] = resolveBodyFrames(layout, fallbackBodyFrame, theme.blockGap);
+    const leftPdfFrame = toPdfFrame(leftBodyFrame, templateProfile);
+    renderPdfTextColumn(page, leftColumn, {
+      x: leftPdfFrame.x,
+      y: leftPdfFrame.y + leftPdfFrame.h - 8,
+      bottom: leftPdfFrame.y,
+      width: leftPdfFrame.w,
+    }, { titleFont, bodyFont, textColor, theme });
+
+    if (rightColumn.length > 0) {
+      const rightPdfFrame = toPdfFrame(rightBodyFrame, templateProfile);
+      renderPdfTextColumn(page, rightColumn, {
+        x: rightPdfFrame.x,
+        y: rightPdfFrame.y + rightPdfFrame.h - 8,
+        bottom: rightPdfFrame.y,
+        width: rightPdfFrame.w,
+      }, { titleFont, bodyFont, textColor, theme });
     }
   }
 
@@ -358,27 +482,19 @@ async function createFallbackPdf(
   return Buffer.from(bytes);
 }
 
-function renderHtmlChart(chart: ChartSpec) {
-  const maxValue = Math.max(...chart.series.flatMap((series) => series.values), 1);
-  const series = chart.series[0];
-
-  if (!series) {
-    return `<div class="body-copy">Chart data unavailable.</div>`;
-  }
-
-  return chart.categories
-    .map((label, index) => {
-      const value = series.values[index] ?? 0;
-      const width = Math.max(6, (value / maxValue) * 100);
-      return `<div class="chart-row">
-        <div>
-          <div class="chart-label">${escapeHtml(label)}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>
-        </div>
-        <div class="chart-value">${escapeHtml(value.toFixed(1))}</div>
-      </div>`;
-    })
-    .join("");
+function renderHtmlChart(chart: ChartSpec, theme: ReturnType<typeof resolveTheme>) {
+  return renderChartSvg(chart, [], 960, 540, {
+    background: theme.surface,
+    surface: theme.surface,
+    text: theme.text,
+    mutedText: theme.mutedText,
+    accent: theme.accent,
+    accentMuted: theme.accentMuted,
+    highlight: theme.highlight,
+    border: theme.border,
+    headingFont: theme.headingFont,
+    bodyFont: theme.bodyFont,
+  });
 }
 
 function drawPdfChart(
@@ -436,6 +552,140 @@ function drawPdfChart(
   });
 }
 
+function renderPdfTextColumn(
+  page: PDFPage,
+  blocks: SlideSpec["blocks"],
+  frame: { x: number; y: number; bottom: number; width: number },
+  input: {
+    titleFont: PDFFont;
+    bodyFont: PDFFont;
+    textColor: ReturnType<typeof hexToRgb>;
+    theme: ReturnType<typeof resolveTheme>;
+  },
+) {
+  let cursorY = frame.y;
+  for (const block of blocks) {
+    if (block.kind === "chart") {
+      continue;
+    }
+
+    if (block.kind === "bullet-list" || block.kind === "evidence-list") {
+      const lines = block.items.slice(0, 5).map((item) => `• ${item}`);
+      page.drawText(lines.join("\n"), {
+        x: frame.x,
+        y: cursorY,
+        size: block.kind === "evidence-list" ? 10 : 11,
+        lineHeight: 15,
+        font: input.bodyFont,
+        color: input.textColor,
+        maxWidth: frame.width,
+      });
+      cursorY -= Math.max(54, lines.length * 18);
+      if (cursorY < frame.bottom) return;
+      continue;
+    }
+
+    page.drawText(truncate(block.content ?? "", 180), {
+      x: frame.x,
+      y: cursorY,
+      size: block.kind === "callout" ? 13 : 12,
+      font: block.kind === "callout" ? input.titleFont : input.bodyFont,
+      color: input.textColor,
+      lineHeight: 16,
+      maxWidth: frame.width,
+    });
+    cursorY -= block.kind === "callout" ? 34 : 24;
+    if (cursorY < frame.bottom) return;
+  }
+}
+
+function resolveTemplateLayout(templateProfile: TemplateProfile, layoutId: string) {
+  return (
+    templateProfile.layouts.find((layout) => layout.id === layoutId) ??
+    templateProfile.layouts[0] ?? {
+      id: layoutId,
+      name: layoutId,
+      sourceName: layoutId,
+      sourceMaster: "default",
+      placeholders: ["title", "body"],
+      regions: [],
+      notes: [],
+    }
+  );
+}
+
+function resolveRegionFrame(
+  layout: TemplateProfile["layouts"][number],
+  placeholders: string[],
+  fallback: Frame | null,
+) {
+  const region =
+    placeholders
+      .flatMap((placeholder) =>
+        layout.regions.filter((candidate) => candidate.placeholder === placeholder || candidate.key.startsWith(`${placeholder}:`)),
+      )
+      .sort((left, right) => (right.w * right.h) - (left.w * left.h))[0] ??
+    null;
+
+  return region ? { x: region.x, y: region.y, w: region.w, h: region.h } : fallback;
+}
+
+function resolveBodyFrames(layout: TemplateProfile["layouts"][number], fallback: Frame, gap: number): [Frame, Frame] {
+  const explicit = layout.regions
+    .filter((region) => region.placeholder === "body-left" || region.placeholder === "body-right")
+    .sort((left, right) => left.x - right.x);
+
+  if (explicit.length >= 2) {
+    return [
+      { x: explicit[0].x, y: explicit[0].y, w: explicit[0].w, h: explicit[0].h },
+      { x: explicit[1].x, y: explicit[1].y, w: explicit[1].w, h: explicit[1].h },
+    ];
+  }
+
+  const split = splitFrameHorizontally(fallback, 2, gap);
+  return [split[0], split[1]];
+}
+
+function splitFrameHorizontally(frame: Frame, count: number, gap: number) {
+  const safeCount = Math.max(1, count);
+  const width = (frame.w - gap * (safeCount - 1)) / safeCount;
+  return Array.from({ length: safeCount }, (_, index) => ({
+    x: frame.x + index * (width + gap),
+    y: frame.y,
+    w: width,
+    h: frame.h,
+  }));
+}
+
+function inferLayoutMode(
+  layout: TemplateProfile["layouts"][number],
+  slide: SlideSpec,
+  hasChart: boolean,
+) {
+  if (slide.emphasis === "cover") {
+    return "cover" as const;
+  }
+
+  if (
+    hasChart ||
+    layout.placeholders.includes("chart") ||
+    layout.placeholders.includes("evidence-list") ||
+    layout.id.includes("evidence")
+  ) {
+    return "chart-split" as const;
+  }
+
+  if (
+    layout.placeholders.includes("body-left") ||
+    layout.placeholders.includes("body-right") ||
+    layout.id.includes("two-column")
+  ) {
+    return "two-column" as const;
+  }
+
+  return "sequential" as const;
+}
+
 function resolveTheme(templateProfile: TemplateProfile) {
   const brandTokens = templateProfile.brandTokens;
 
@@ -450,6 +700,9 @@ function resolveTheme(templateProfile: TemplateProfile) {
     mutedText: "#475569",
     headingFont: brandTokens?.typography.headingFont ?? templateProfile.fonts[0] ?? "Arial",
     bodyFont: brandTokens?.typography.bodyFont ?? templateProfile.fonts[1] ?? templateProfile.fonts[0] ?? "Arial",
+    pageX: brandTokens?.spacing.pageX ?? 0.6,
+    pageY: brandTokens?.spacing.pageY ?? 0.5,
+    blockGap: brandTokens?.spacing.blockGap ?? 0.2,
   };
 }
 
@@ -470,4 +723,18 @@ function hexToRgb(value: string) {
   const normalized = value.replace("#", "");
   const bigint = Number.parseInt(normalized, 16);
   return rgb(((bigint >> 16) & 255) / 255, ((bigint >> 8) & 255) / 255, (bigint & 255) / 255);
+}
+
+function inchesToPoints(value: number) {
+  return value * 72;
+}
+
+function toPdfFrame(frame: Frame, templateProfile: TemplateProfile): Frame {
+  const slideHeight = templateProfile.slideHeightInches || 7.5;
+  return {
+    x: inchesToPoints(frame.x),
+    y: inchesToPoints(slideHeight - frame.y - frame.h),
+    w: inchesToPoints(frame.w),
+    h: inchesToPoints(frame.h),
+  };
 }

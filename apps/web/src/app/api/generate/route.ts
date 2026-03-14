@@ -3,10 +3,11 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
-import { GenerationValidationError, runGenerationRequest } from "@basquio/workflows";
+import { GenerationValidationError, inngest } from "@basquio/workflows";
 import type { GenerationRequest } from "@basquio/types";
 
-import { buildArtifactDownloadUrl } from "@/lib/job-runs";
+import { dispatchPersistedGenerationJob, persistGenerationRequest } from "@/lib/generation-requests";
+import { upsertRestRows } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,23 +21,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    const summary = await runGenerationRequest(generationRequest);
-
     return NextResponse.json({
-      jobId: summary.jobId,
-      storyTitle: summary.story.title || summary.story.keyMessages[0] || "Basquio output",
-      fileCount: summary.datasetProfile.manifest?.files.length ?? summary.datasetProfile.sourceFiles.length ?? 1,
-      sheetCount: summary.datasetProfile.sheets.length,
-      outlineSectionCount: summary.reportOutline?.sections.length ?? 0,
-      slideCount: summary.slidePlan.slides.length,
-      highlights: summary.deterministicAnalysis.highlights,
-      artifacts: summary.artifacts.map((artifact) => ({
-        kind: artifact.kind,
-        fileName: artifact.fileName,
-        mimeType: artifact.mimeType,
-        downloadUrl: buildArtifactDownloadUrl(summary.jobId, artifact.kind),
-      })),
-    });
+      ...(await queueGeneration(generationRequest, request)),
+    }, { status: 202 });
   } catch (error) {
     if (error instanceof GenerationValidationError) {
       return NextResponse.json(
@@ -52,6 +39,28 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+async function queueGeneration(generationRequest: GenerationRequest, request: Request) {
+  await persistQueuedJob(generationRequest);
+  await persistGenerationRequest(generationRequest);
+
+  if (process.env.INNGEST_EVENT_KEY) {
+    await inngest.send({
+      name: "basquio/generation.requested",
+      data: generationRequest,
+    });
+  } else {
+    await dispatchPersistedGenerationJob(generationRequest.jobId, request);
+  }
+
+  return {
+    jobId: generationRequest.jobId,
+    status: "queued",
+    statusUrl: `/api/jobs/${generationRequest.jobId}`,
+    progressUrl: `/jobs/${generationRequest.jobId}`,
+    message: "Basquio accepted the run and started the generation workflow.",
+  };
 }
 
 async function parseGenerationRequest(request: Request): Promise<GenerationRequest> {
@@ -165,4 +174,33 @@ function buildBrief(input: Partial<Record<"businessContext" | "client" | "audien
 
 function createJobId() {
   return `job-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
+}
+
+async function persistQueuedJob(generationRequest: GenerationRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceKey) {
+    return;
+  }
+
+  await upsertRestRows({
+    supabaseUrl,
+    serviceKey,
+    table: "generation_jobs",
+    onConflict: "job_key",
+    rows: [
+      {
+        job_key: generationRequest.jobId,
+        organization_id: generationRequest.organizationId,
+        project_id: generationRequest.projectId,
+        status: "queued",
+        business_context: generationRequest.brief.businessContext,
+        audience: generationRequest.brief.audience,
+        objective: generationRequest.brief.objective,
+        brief: generationRequest.brief,
+        failure_message: null,
+      },
+    ],
+  }).catch(() => undefined);
 }
