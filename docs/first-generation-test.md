@@ -1,6 +1,29 @@
 # First Generation Test
 
-Basquio does not yet have the full upload UI, but the current scaffold can already generate a first PPTX and PDF locally.
+Basquio now has a real evidence-package generation path in the web app, plus the deterministic local demo flow.
+
+## App Path
+
+Run the app:
+
+```bash
+pnpm dev
+```
+
+Then open:
+
+```bash
+/jobs/new
+```
+
+Current intended test path:
+
+- upload a multi-file evidence package with at least one `.csv` / `.xlsx` / `.xls`
+- provide business context plus client, audience, objective, thesis, and stakes
+- optionally attach a JSON/CSS brand token file, PPTX template, or PDF style reference
+- verify the outline is planned before the slide plan
+- generate both `.pptx` and `.pdf`
+- download them from `/artifacts`
 
 ## Command
 
@@ -19,18 +42,20 @@ Basquio/output/demo-local/
 Files produced:
 
 - `demo-input.xlsx`
-- `demo-deck.pptx`
-- `demo-deck.pdf`
+- `basquio-deck.pptx`
+- `basquio-deck.pdf`
+- `job-summary.json`
 - `demo-summary.json`
 
 ## What The Demo Covers
 
 - workbook creation
-- SheetJS parsing
+- evidence-package parsing and manifest inference
 - dataset profiling
 - deterministic analysis
 - evidence-backed insight generation
 - story planning
+- report outline planning
 - slide planning
 - PPTX render
 - PDF render
@@ -38,5 +63,4 @@ Files produced:
 ## Notes
 
 - if `BROWSERLESS_TOKEN` is missing, the PDF renderer falls back to a placeholder PDF so the pipeline still completes
-- the PPTX output is a real file, but chart blocks are still placeholder shapes until native chart binding is implemented
-- this is the fastest way to validate the Basquio foundation before the next agent builds the upload/auth workflow
+- the app path is now the main internal test flow for multi-file evidence-package upload; the demo command remains the fastest deterministic regression check

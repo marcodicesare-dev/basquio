@@ -14,15 +14,17 @@
 
 Input:
 
-- normalized workbook data
+- normalized workbook or evidence-package data
 - optional business context
 
 Output:
 
 - `DatasetProfile`
+- dataset manifest
 
 Must decide:
 
+- file roles when multiple sources exist
 - column roles
 - measure vs dimension
 - time fields
@@ -35,6 +37,7 @@ Input:
 
 - `DatasetProfile`
 - deterministic analytical summaries
+- report brief with client, audience, objective, thesis, and stakes
 
 Output:
 
@@ -55,15 +58,19 @@ Input:
 - `InsightSpec[]`
 - business context
 - audience and objective
+- thesis and report intent
 
 Output:
 
 - `StorySpec`
+- `ReportOutline`
 
 Must decide:
 
+- report thesis
 - story arc
 - ordering from general to specific
+- section spine across framing, methodology, findings, implications, and recommendations
 - top messages
 - recommendation framing
 
@@ -92,6 +99,7 @@ Must decide:
 Input:
 
 - parsed `.pptx` theme and layout data
+- structured brand token files or CSS-token exports where available
 - optional PDF style cues
 
 Output:

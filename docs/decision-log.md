@@ -9,6 +9,34 @@ Accepted because:
 - generic AI slide generation is commoditized
 - product defensibility comes from dataset understanding and narrative quality
 
+### Evidence-package plus brief input model
+
+Accepted because:
+
+- real analytical deliverables often depend on multiple related files, not one flat sheet
+- the report brief changes what matters, how it should be framed, and what the artifact should optimize for
+
+### Dataset manifest layer
+
+Accepted because:
+
+- Basquio needs a canonical contract for file roles instead of flattening multi-file uploads into one anonymous dataset
+- report-grade deliverables depend on preserving which file is the main fact table, which file is methodology, which file is citations, and which file defines brand
+
+### Report-outline step before slide planning
+
+Accepted because:
+
+- a report spine should be explicit before slide layouts are chosen
+- framing, methodology, findings, implications, and recommendations are structural planning objects, not renderer-side presentation details
+
+### Brand-token intake as first-class styling input
+
+Accepted because:
+
+- many report-generation workflows need brand fidelity without requiring a full editable PPTX template up front
+- design tokens, colors, typography, spacing, and logo rules should enter through a contract, not renderer-only overrides
+
 ### PPTX plus PDF from one canonical `SlideSpec[]`
 
 Accepted because:
@@ -72,6 +100,13 @@ Rejected because:
 Rejected because:
 
 - layout semantics are too unreliable for an honest product promise
+
+### Single-file-only dataset assumption
+
+Rejected because:
+
+- executive reporting often relies on evidence packages with separate fact tables, methodology files, and validation files
+- package-level reasoning is part of the intelligence moat
 
 ### Recharts or Tremor as canonical export engine
 

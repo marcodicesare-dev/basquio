@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+import {
+  chartSpecSchema,
+  datasetProfileSchema,
+  datasetFileRoleSchema,
+  insightSpecSchema,
+  reportBriefSchema,
+  reportOutlineSchema,
+  slideSpecSchema,
+  sourceAssetKindSchema,
+  storySpecSchema,
+} from "../../../code/contracts";
+
 export * from "../../../code/contracts";
 
 export const normalizedRowSchema = z.record(z.string(), z.unknown());
@@ -7,6 +19,9 @@ export const normalizedRowSchema = z.record(z.string(), z.unknown());
 export const normalizedSheetSchema = z.object({
   name: z.string(),
   rowCount: z.number().int().nonnegative(),
+  sourceFileId: z.string().default(""),
+  sourceFileName: z.string().default(""),
+  sourceRole: datasetFileRoleSchema.default("unknown-support"),
   columns: z.array(
     z.object({
       name: z.string(),
@@ -18,13 +33,28 @@ export const normalizedSheetSchema = z.object({
   rows: z.array(normalizedRowSchema),
 });
 
+export const normalizedEvidenceFileSchema = z.object({
+  id: z.string(),
+  fileName: z.string(),
+  mediaType: z.string().default("application/octet-stream"),
+  kind: sourceAssetKindSchema.default("unknown"),
+  role: datasetFileRoleSchema.default("unknown-support"),
+  sheets: z.array(normalizedSheetSchema).default([]),
+  textContent: z.string().optional(),
+  warnings: z.array(z.string()).default([]),
+});
+
 export const normalizedWorkbookSchema = z.object({
   datasetId: z.string(),
   sourceFileName: z.string(),
+  files: z.array(normalizedEvidenceFileSchema).min(1),
   sheets: z.array(normalizedSheetSchema).min(1),
 });
 
 export const deterministicMetricSummarySchema = z.object({
+  sourceFileId: z.string().default(""),
+  fileName: z.string().default(""),
+  fileRole: datasetFileRoleSchema.default("unknown-support"),
   sheet: z.string(),
   column: z.string(),
   rowCount: z.number().int().nonnegative(),
@@ -43,16 +73,30 @@ export const deterministicAnalysisSchema = z.object({
   warnings: z.array(z.string()).default([]),
 });
 
+export const uploadedSourceFileSchema = z.object({
+  id: z.string().optional(),
+  fileName: z.string(),
+  mediaType: z.string().default("application/octet-stream"),
+  base64: z.string().min(1),
+  kind: sourceAssetKindSchema.optional(),
+});
+
 export const generationRequestSchema = z.object({
   jobId: z.string(),
   organizationId: z.string(),
   projectId: z.string(),
-  sourceFileName: z.string(),
-  workbookBase64: z.string().min(1),
+  sourceFiles: z.array(uploadedSourceFileSchema).default([]),
+  styleFile: uploadedSourceFileSchema.optional(),
+  brief: reportBriefSchema.default({}),
+  sourceFileName: z.string().optional(),
+  workbookBase64: z.string().optional(),
   templateFileName: z.string().optional(),
   businessContext: z.string().default(""),
+  client: z.string().default(""),
   audience: z.string().default("Executive stakeholder"),
   objective: z.string().default("Explain the business performance signal"),
+  thesis: z.string().default(""),
+  stakes: z.string().default(""),
 });
 
 export const sourceFileSchema = z.object({
@@ -101,8 +145,8 @@ export const artifactRecordSchema = z.object({
 });
 
 export const slidePlanBundleSchema = z.object({
-  slides: z.array(z.any()),
-  charts: z.array(z.any()).default([]),
+  slides: z.array(slideSpecSchema),
+  charts: z.array(chartSpecSchema).default([]),
 });
 
 export const generationJobResultSchema = z.object({
@@ -111,8 +155,32 @@ export const generationJobResultSchema = z.object({
   artifacts: z.array(artifactRecordSchema),
 });
 
+export const generationRunSummarySchema = z.object({
+  jobId: z.string(),
+  createdAt: z.string(),
+  sourceFileName: z.string(),
+  brief: reportBriefSchema.default({}),
+  businessContext: z.string(),
+  client: z.string().default(""),
+  audience: z.string(),
+  objective: z.string(),
+  thesis: z.string().default(""),
+  stakes: z.string().default(""),
+  datasetProfile: datasetProfileSchema,
+  deterministicAnalysis: deterministicAnalysisSchema,
+  insights: z.array(insightSpecSchema),
+  story: storySpecSchema,
+  reportOutline: reportOutlineSchema.optional(),
+  slidePlan: z.object({
+    slides: z.array(slideSpecSchema),
+    charts: z.array(chartSpecSchema),
+  }),
+  artifacts: z.array(artifactRecordSchema),
+});
+
 export type NormalizedWorkbook = z.infer<typeof normalizedWorkbookSchema>;
 export type NormalizedSheet = z.infer<typeof normalizedSheetSchema>;
+export type NormalizedEvidenceFile = z.infer<typeof normalizedEvidenceFileSchema>;
 export type DeterministicMetricSummary = z.infer<typeof deterministicMetricSummarySchema>;
 export type DeterministicAnalysis = z.infer<typeof deterministicAnalysisSchema>;
 export type GenerationRequest = z.infer<typeof generationRequestSchema>;
@@ -122,6 +190,7 @@ export type GenerationJobStatus = z.infer<typeof generationJobStatusSchema>;
 export type GenerationJobStep = z.infer<typeof generationJobStepSchema>;
 export type ArtifactRecord = z.infer<typeof artifactRecordSchema>;
 export type GenerationJobResult = z.infer<typeof generationJobResultSchema>;
+export type GenerationRunSummary = z.infer<typeof generationRunSummarySchema>;
 
 export interface BinaryArtifact {
   fileName: string;

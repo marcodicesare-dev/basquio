@@ -4,14 +4,20 @@
 
 - Build the intelligence layer before polishing the renderer.
 - Do not market generic slide generation as the product.
+- Do not assume one spreadsheet is the whole truth when the job is a report-grade evidence package.
+- Treat the report brief and brand input as first-class inputs.
 - Do not promise exact editable output from PDF inputs in v1.
 
 ## Architecture Rules
 
 - LLMs produce contracts, not final document syntax.
 - Deterministic analytics must run before narrative generation.
+- Package-level file understanding must happen before final narrative planning when multiple files are uploaded.
+- A dataset manifest must preserve file roles before Basquio compresses anything into report outputs.
+- `ReportOutline` must exist before `SlideSpec[]` planning.
 - `ChartSpec` must not depend on React component props.
 - PPTX and PDF must render from the same `SlideSpec[]`.
+- Template and brand interpretation must flow through `TemplateProfile`.
 - Preview libraries are not allowed to become export architecture by accident.
 
 ## Rendering Rules
@@ -32,6 +38,7 @@
 - Every insight must reference evidence.
 - Every generated narrative object must be schema-validated.
 - Confidence and uncertainty must be represented explicitly.
+- Brand colors, typography, spacing, and logo constraints must come from a file-backed contract, not only hardcoded theme values.
 
 ## Change Management Rules
 

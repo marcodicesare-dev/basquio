@@ -7,6 +7,7 @@ This architecture merges:
 - repo-grounded Loamly patterns that already work in production
 - the strongest findings from the second research pass on charting, templates, workflows, and database
 - the corrected insight that Basquio must be intelligence-first, not renderer-first
+- the product requirement, clarified on March 14, 2026, that Basquio should ingest evidence packages plus a report brief and output executive-grade PPTX/PDF artifacts
 
 ## What To Inherit From Loamly
 
@@ -31,34 +32,44 @@ This is the product.
 
 Responsibilities:
 
-- parse files into normalized analytical structures
+- parse single files or multi-file evidence packages into normalized analytical structures
+- understand file roles across a package, not only columns inside one table
 - infer measures, dimensions, hierarchies, and time semantics
 - compute deterministic metrics before any LLM step
 - detect candidate insights and attach evidence
 - rank insights by business relevance, confidence, and narrative usefulness
 - build a story from general to specific
+- map analytical findings into a persuasive report structure with explicit thesis and section logic
 
 Canonical flow:
 
-1. `DatasetProfile`
+1. dataset manifest plus `DatasetProfile`
 2. `InsightSpec[]`
 3. `StorySpec`
-4. `SlideSpec[]`
+4. `ReportOutline`
+5. `SlideSpec[]`
 
 ### 2. Template Layer
 
 Responsibilities:
 
 - ingest `.pptx` as a first-class template source
+- ingest structured brand token files as a first-class styling source
 - extract colors, fonts, slide size, layouts, placeholders, and named shapes
 - ingest `.pdf` as a style reference only in v1
 
 Decision:
 
 - `.pptx` is editable-template input
+- brand token files are first-class style-system input
 - `.pdf` is style-reference input
 
 Do not promise exact editable reconstruction from PDF in v1.
+
+Brand token implication:
+
+- Basquio should accept a structured brand file when the user wants colors, type, spacing, logo rules, and tone preserved without requiring full PPTX template authoring
+- Basquio should map that brand file into `TemplateProfile`, not bypass the contract with ad hoc renderer styles
 
 ### 3. Rendering Layer
 
@@ -140,6 +151,16 @@ Use:
 - `xlsx` / SheetJS as default parser
 - `exceljs` only when richer workbook structure inspection is needed
 
+CSV policy:
+
+- `.csv` is the default v1 tabular input because it is the fastest path to a usable internal product
+- Basquio should still preserve the ability to ingest `.xlsx` / `.xls` where workbook structure matters
+
+Evidence-package policy:
+
+- Basquio should support a package of related files, not assume one workbook contains the whole analytical truth
+- package-level manifests or file-role inference are part of the intelligence layer, not a UI-only concern
+
 ### Workflow Orchestration
 
 Default for greenfield Basquio:
@@ -194,7 +215,10 @@ Rationale:
 
 - upload files
 - detect file types
-- parse workbook with SheetJS
+- infer file roles across the package
+- build a manifest that preserves file identity, role, and support-function metadata
+- parse tabular sources with SheetJS
+- parse report-guide and brand-token inputs where applicable
 - extract PPT theme data where applicable
 
 ### Phase B: Analyze
@@ -213,21 +237,30 @@ Rationale:
 ### Phase D: Narrative
 
 - generate `StorySpec`
+- represent client, thesis, audience, objective, and stakes explicitly
 - plan sequence from general to specific
 - map claims to evidence blocks
+- map sections to a report spine instead of only loose slide ordering
 
-### Phase E: Slide Planning
+### Phase E: Outline
+
+- generate `ReportOutline`
+- lock the report spine before choosing slide layouts
+- keep sections explicit: framing, methodology, findings, implications, recommendations
+
+### Phase F: Slide Planning
 
 - generate deterministic `SlideSpec[]`
 - bind layouts, blocks, charts, notes, and validation rules
+- bind brand tokens and template constraints through `TemplateProfile`
 
-### Phase F: Render
+### Phase G: Render
 
 - PPTX via PptxGenJS or pptx-automizer
 - PDF via HTML plus Browserless
 - charts via native PPT charts or ECharts SVG
 
-### Phase G: QA
+### Phase H: QA
 
 - schema validation
 - missing-asset checks
@@ -254,6 +287,12 @@ Basquio must revolve around these objects:
 
 The product should never let LLM-generated prose bypass these contracts.
 
+The input side should be treated as three coordinated assets:
+
+- evidence package
+- report brief
+- brand system
+
 ## Performance Target
 
 Initial operational target:
@@ -269,6 +308,7 @@ This is a product target, not a hard SLA.
 Do not build:
 
 - an unconstrained "make me any deck" AI
+- a single-file-only pipeline that cannot reason across evidence packages
 - a renderer that depends on React preview components for export
 - a PDF template-editing promise that the system cannot keep
 - a workflow that assumes one request can do all work reliably

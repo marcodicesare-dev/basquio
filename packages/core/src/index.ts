@@ -10,6 +10,7 @@ export const BASQUIO_PIPELINE_STAGES = [
   "analyze",
   "generate insights",
   "plan story",
+  "plan outline",
   "plan slides",
   "render pptx",
   "render pdf",
@@ -26,8 +27,21 @@ export const BASQUIO_RENDER_POLICY = {
 export function inferSourceFileKind(fileName: string) {
   const normalized = fileName.toLowerCase();
 
-  if (normalized.endsWith(".xlsx") || normalized.endsWith(".xls")) {
+  if (normalized.endsWith(".xlsx") || normalized.endsWith(".xls") || normalized.endsWith(".csv")) {
     return "workbook" as const;
+  }
+
+  if (normalized.endsWith(".json") || normalized.endsWith(".css")) {
+    return "brand-tokens" as const;
+  }
+
+  if (
+    normalized.endsWith(".docx") ||
+    normalized.endsWith(".doc") ||
+    normalized.endsWith(".txt") ||
+    normalized.endsWith(".md")
+  ) {
+    return "document" as const;
   }
 
   if (normalized.endsWith(".pptx")) {

@@ -2,8 +2,8 @@ version: "1.0"
 project: basquio
 description: >
   Agent scaffold for an intelligence-first presentation generation product.
-  The system separates dataset understanding, insight generation, story planning,
-  template interpretation, rendering, and QA.
+  The system separates evidence-package understanding, insight generation,
+  report planning, template and brand interpretation, rendering, and QA.
 
 agents:
   coordinator:
@@ -21,6 +21,7 @@ agents:
       - analytics-engineer
       - insight-ranker
       - narrative-planner
+      - brand-interpreter
       - template-interpreter
       - render-architect
       - qa-guardian
@@ -37,8 +38,10 @@ agents:
   dataset-profiler:
     name: Dataset Profiler
     role: analyst
-    output: DatasetProfile
+    output: Dataset manifest and DatasetProfile
     responsibilities:
+      - infer file roles across multi-file evidence packages
+      - preserve the evidence-package manifest instead of flattening file identity away
       - infer schema
       - identify time fields
       - detect measures and dimensions
@@ -73,11 +76,26 @@ agents:
       - InsightSpec[]
       - business context
       - audience
-    output: StorySpec and SlideSpec[]
+      - thesis
+    output: StorySpec and ReportOutline
     responsibilities:
+      - establish the report thesis and executive angle
       - build general-to-specific story arc
-      - select slide sequence
-      - map claims to slide purposes
+      - select the report spine before slide layout planning
+      - map framing, methodology, findings, implications, and recommendations into an explicit outline
+
+  brand-interpreter:
+    name: Brand Interpreter
+    role: systems
+    input:
+      - brand token files
+      - logo assets
+      - optional brand guide documents
+    output: TemplateProfile
+    responsibilities:
+      - extract colors, typography, spacing, and logo constraints from file-backed brand inputs
+      - normalize brand tokens into renderer-safe template semantics
+      - keep brand rules inside `TemplateProfile` rather than ad hoc CSS-only overrides
 
   template-interpreter:
     name: Template Interpreter
@@ -87,7 +105,7 @@ agents:
     output: TemplateProfile
     responsibilities:
       - parse PPTX theme and placeholders
-      - map style cues
+      - merge template layout cues with brand-token guidance
       - downgrade PDF input to style-reference mode
 
   render-architect:
