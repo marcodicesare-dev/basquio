@@ -29,12 +29,19 @@ export async function POST(request: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !serviceKey) {
       return NextResponse.json(
         { error: "Supabase storage is not configured for hosted uploads." },
         { status: 500 },
       );
+    }
+
+    const serviceKeyError = describeServiceKeyError(serviceKey, publishableKey);
+
+    if (serviceKeyError) {
+      return NextResponse.json({ error: serviceKeyError }, { status: 500 });
     }
 
     const payload = prepareUploadsRequestSchema.parse(await request.json());
@@ -160,4 +167,16 @@ function formatUploadLabel(order: number, prefix = "evidence", fileName: string)
 
 function sanitizeStorageSegment(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+}
+
+function describeServiceKeyError(serviceKey: string, publishableKey?: string) {
+  if (serviceKey === publishableKey || serviceKey.startsWith("sb_publishable_")) {
+    return "SUPABASE_SERVICE_ROLE_KEY is set to a publishable/anon key. Basquio signed uploads require the server-side service-role JWT or sb_secret key, not the public API key.";
+  }
+
+  if (!serviceKey.startsWith("sb_secret_") && serviceKey.split(".").length !== 3) {
+    return "SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase service key. Use the service-role JWT or the sb_secret server key.";
+  }
+
+  return null;
 }
