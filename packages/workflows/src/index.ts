@@ -36,7 +36,7 @@ import {
 } from "@basquio/types";
 
 import { createRunPersistence } from "./persistence";
-import { createServiceSupabaseClient } from "./supabase";
+import { createServiceSupabaseClient, downloadFromStorage, uploadToStorage } from "./supabase";
 
 export const inngest = new Inngest({
   id: "basquio",
@@ -608,13 +608,18 @@ async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: Bi
     process.env.BASQUIO_ALLOW_LOCAL_ARTIFACT_FALLBACK === "true" || process.env.NODE_ENV !== "production";
 
   if (supabaseUrl && serviceRoleKey) {
-    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
-    const { error } = await supabase.storage.from("artifacts").upload(storagePath, buffer, {
-      contentType: artifact.mimeType,
-      upsert: true,
-    });
+    try {
+      await uploadToStorage({
+        supabaseUrl,
+        serviceKey: serviceRoleKey,
+        bucket: "artifacts",
+        storagePath,
+        body: buffer,
+        contentType: artifact.mimeType,
+        upsert: true,
+      });
 
-    if (!error) {
+      const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
       const record = artifactRecordSchema.parse({
         id: `${jobId}-${kind}`,
         jobId,
@@ -630,10 +635,11 @@ async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: Bi
 
       await persistArtifactMetadata(supabase, record);
       return record;
-    }
-
-    if (!allowLocalFallback) {
-      throw new Error(`Supabase artifact upload failed for ${storagePath}: ${error.message}`);
+    } catch (error) {
+      if (!allowLocalFallback) {
+        const message = error instanceof Error ? error.message : `Unable to upload ${storagePath}.`;
+        throw new Error(`Supabase artifact upload failed for ${storagePath}: ${message}`);
+      }
     }
   }
 
@@ -721,14 +727,12 @@ async function readPersistedArtifactBuffer(artifact: ArtifactRecord) {
       throw new Error("Supabase storage is configured for this artifact, but service-role credentials are missing.");
     }
 
-    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
-    const { data, error } = await supabase.storage.from("artifacts").download(artifact.storagePath);
-
-    if (error || !data) {
-      throw new Error(error?.message ?? `Unable to download ${artifact.storagePath} from Supabase Storage.`);
-    }
-
-    return Buffer.from(await data.arrayBuffer());
+    return downloadFromStorage({
+      supabaseUrl,
+      serviceKey: serviceRoleKey,
+      bucket: "artifacts",
+      storagePath: artifact.storagePath,
+    });
   }
 
   const workspaceRoot = await resolveWorkspaceRoot();

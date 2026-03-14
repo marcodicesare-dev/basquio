@@ -10,10 +10,12 @@ import type {
 } from "@basquio/types";
 import { generationRunSummarySchema } from "@basquio/types";
 
-import { createServiceSupabaseClient } from "./supabase";
+import { createServiceSupabaseClient, uploadToStorage } from "./supabase";
 
 type RunPersistenceContext = {
   supabase: SupabaseClient;
+  supabaseUrl: string;
+  serviceRoleKey: string;
   organizationId: string;
   projectId: string;
 };
@@ -284,12 +286,18 @@ class SupabaseRunPersistence {
   ): Promise<UploadedInputRecord | null> {
     const buffer = Buffer.from(file.base64, "base64");
     const storagePath = `jobs/${this.request.jobId}/inputs/${sanitizeStorageSegment(file.fileName)}`;
-    const upload = await this.context.supabase.storage.from(input.bucket).upload(storagePath, buffer, {
-      contentType: file.mediaType,
-      upsert: true,
-    });
 
-    if (upload.error) {
+    try {
+      await uploadToStorage({
+        supabaseUrl: this.context.supabaseUrl,
+        serviceKey: this.context.serviceRoleKey,
+        bucket: input.bucket,
+        storagePath,
+        body: buffer,
+        contentType: file.mediaType,
+        upsert: true,
+      });
+    } catch {
       return null;
     }
 
@@ -383,6 +391,8 @@ async function resolveRunPersistenceContext(
 
     return {
       supabase,
+      supabaseUrl,
+      serviceRoleKey,
       organizationId: organization.id,
       projectId: project.id,
     };

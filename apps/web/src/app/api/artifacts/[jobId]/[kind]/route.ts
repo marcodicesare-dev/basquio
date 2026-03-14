@@ -1,5 +1,5 @@
 import { getGenerationRun, readLocalArtifactBuffer } from "@/lib/job-runs";
-import { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import { downloadFromStorage } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -51,12 +51,10 @@ async function readSupabaseArtifact(storagePath: string) {
     throw new Error("Supabase storage is configured for this artifact, but service-role credentials are missing.");
   }
 
-  const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
-  const { data, error } = await supabase.storage.from("artifacts").download(storagePath);
-
-  if (error || !data) {
-    throw new Error(error?.message ?? `Unable to download ${storagePath} from Supabase Storage.`);
-  }
-
-  return Buffer.from(await data.arrayBuffer());
+  return downloadFromStorage({
+    supabaseUrl,
+    serviceKey: serviceRoleKey,
+    bucket: "artifacts",
+    storagePath,
+  });
 }
