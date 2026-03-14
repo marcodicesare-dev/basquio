@@ -1,9 +1,9 @@
 import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createClient } from "@supabase/supabase-js";
-
 import { generationRunSummarySchema, type ArtifactRecord, type GenerationRunSummary } from "@basquio/types";
+
+import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 
 export async function listGenerationRuns(limit = 12): Promise<GenerationRunSummary[]> {
   const supabaseRuns = await listGenerationRunsFromSupabase(limit);
@@ -198,5 +198,5 @@ function createSupabaseServiceClient() {
     return null;
   }
 
-  return createClient(supabaseUrl, serviceRoleKey);
+  return createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
 }

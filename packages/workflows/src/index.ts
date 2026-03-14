@@ -4,7 +4,6 @@ import path from "node:path";
 
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
-import { createClient } from "@supabase/supabase-js";
 import { Inngest } from "inngest";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
@@ -37,6 +36,7 @@ import {
 } from "@basquio/types";
 
 import { createRunPersistence } from "./persistence";
+import { createServiceSupabaseClient } from "./supabase";
 
 export const inngest = new Inngest({
   id: "basquio",
@@ -608,7 +608,7 @@ async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: Bi
     process.env.BASQUIO_ALLOW_LOCAL_ARTIFACT_FALLBACK === "true" || process.env.NODE_ENV !== "production";
 
   if (supabaseUrl && serviceRoleKey) {
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
     const { error } = await supabase.storage.from("artifacts").upload(storagePath, buffer, {
       contentType: artifact.mimeType,
       upsert: true,
@@ -662,7 +662,7 @@ async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: Bi
   });
 
   if (supabaseUrl && serviceRoleKey) {
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
     await persistArtifactMetadata(supabase, record);
   }
 
@@ -721,7 +721,7 @@ async function readPersistedArtifactBuffer(artifact: ArtifactRecord) {
       throw new Error("Supabase storage is configured for this artifact, but service-role credentials are missing.");
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
     const { data, error } = await supabase.storage.from("artifacts").download(artifact.storagePath);
 
     if (error || !data) {

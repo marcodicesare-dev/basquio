@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type {
   GenerationJobStatus,
@@ -9,6 +9,8 @@ import type {
   ValidationReport,
 } from "@basquio/types";
 import { generationRunSummarySchema } from "@basquio/types";
+
+import { createServiceSupabaseClient } from "./supabase";
 
 type RunPersistenceContext = {
   supabase: SupabaseClient;
@@ -340,7 +342,7 @@ async function resolveRunPersistenceContext(
   }
 
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
     const organizationSlug = sanitizeStorageSegment(request.organizationId || "local-org");
     const projectSlug = sanitizeStorageSegment(request.projectId || "local-project");
 

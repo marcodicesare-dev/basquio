@@ -1,6 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-
 import { getGenerationRun, readLocalArtifactBuffer } from "@/lib/job-runs";
+import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -52,7 +51,7 @@ async function readSupabaseArtifact(storagePath: string) {
     throw new Error("Supabase storage is configured for this artifact, but service-role credentials are missing.");
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
   const { data, error } = await supabase.storage.from("artifacts").download(storagePath);
 
   if (error || !data) {
