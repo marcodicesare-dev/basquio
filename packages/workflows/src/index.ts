@@ -8,7 +8,10 @@ import { Inngest } from "inngest";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import {
+  combineValidationReports,
   computeAnalytics,
+  critiqueExecutionPlanSemantically,
+  decideRevision,
   interpretPackageSemantics,
   planMetrics,
   planSlides,
@@ -16,7 +19,7 @@ import {
   planStory,
   profileDataset,
   rankInsights,
-  validateExecutionPlan,
+  runDeterministicValidation,
 } from "@basquio/intelligence";
 import { renderPdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
@@ -36,6 +39,7 @@ import {
   type GenerationRequest,
   type GenerationRunSummary,
   type ReportOutline,
+  type RevisionDecision,
   type SlideSpec,
   type StageTrace,
   type StorySpec,
@@ -155,10 +159,10 @@ export async function runGenerationRequest(
   };
 
   try {
-    const parsed = await runStage(
-      "parse input",
-      async () =>
-        parseEvidencePackage({
+    const intake = await runStage(
+      "intake and profiling",
+      async () => {
+        const parsed = await parseEvidencePackage({
           datasetId: request.jobId,
           files: sourceFiles.map((file, index) => ({
             id: file.id ?? `${request.jobId}-file-${index + 1}`,
@@ -167,31 +171,27 @@ export async function runGenerationRequest(
             kind: file.kind,
             buffer: Buffer.from(file.base64, "base64"),
           })),
-        }),
+        });
+
+        return {
+          parsed,
+          datasetProfile: profileDataset(parsed.datasetProfile),
+        };
+      },
       {
         detail: (result) =>
-          `Parsed ${result.datasetProfile.manifest?.files.length ?? sourceFiles.length} source files into ${result.datasetProfile.sheets.length} sheet views.`,
+          `Parsed ${result.datasetProfile.manifest?.files.length ?? sourceFiles.length} source files into ${result.datasetProfile.sheets.length} profiled sheet views.`,
         payload: (result) => ({
           fileCount: result.datasetProfile.manifest?.files.length ?? sourceFiles.length,
-          sheetCount: result.datasetProfile.sheets.length,
-        }),
-      },
-    );
-
-    const analyzed = await runStage(
-      "analyze",
-      async () => ({
-        datasetProfile: profileDataset(parsed.datasetProfile),
-      }),
-      {
-        detail: (result) =>
-          `Profiled ${result.datasetProfile.sheets.length} sheet views for package interpretation.`,
-        payload: (result) => ({
           sheetCount: result.datasetProfile.sheets.length,
           warningCount: result.datasetProfile.warnings.length,
         }),
       },
     );
+    const parsed = intake.parsed;
+    const analyzed = {
+      datasetProfile: intake.datasetProfile,
+    };
 
     const stageTraces: StageTrace[] = [];
     const recordTrace = (trace: StageTrace) => {
@@ -199,13 +199,16 @@ export async function runGenerationRequest(
     };
 
     const packageSemantics = await runStage(
-      "interpret package",
+      "package semantics inference",
       async () =>
-        interpretPackageSemantics({
-          datasetProfile: analyzed.datasetProfile,
-          workbook: parsed.normalizedWorkbook,
-          brief,
-        }, { onTrace: recordTrace }),
+        interpretPackageSemantics(
+          {
+            datasetProfile: analyzed.datasetProfile,
+            workbook: parsed.normalizedWorkbook,
+            brief,
+          },
+          { onTrace: recordTrace },
+        ),
       {
         detail: (result) =>
           `Interpreted the package as ${result.packageType} in the ${result.domain} domain.`,
@@ -218,7 +221,7 @@ export async function runGenerationRequest(
     );
 
     let metricPlan = await runStage(
-      "plan metrics",
+      "metric planning",
       async () =>
         planMetrics(
           {
@@ -237,7 +240,7 @@ export async function runGenerationRequest(
     );
 
     let analyticsResult = await runStage(
-      "compute analytics",
+      "deterministic analytics execution",
       async () =>
         computeAnalytics({
           datasetProfile: analyzed.datasetProfile,
@@ -263,7 +266,7 @@ export async function runGenerationRequest(
     });
 
     let insights = await runStage(
-      "generate insights",
+      "insight ranking",
       async () =>
         rankInsights(
           {
@@ -282,35 +285,19 @@ export async function runGenerationRequest(
     let story: StorySpec | undefined;
     let reportOutline: ReportOutline | undefined;
     let slidePlan: PlannedSlideBundle | undefined;
+    let templateProfile: TemplateProfile | undefined;
     let validationReport: ValidationReport | undefined;
+    const revisionHistory: RevisionDecision[] = [];
     let reviewerFeedback: string[] = [];
-    const templateProfile = await runStage(
-      "interpret template",
-      async () =>
-        interpretTemplateSource({
-          id: `${request.jobId}-template`,
-          fileName: styleFile?.fileName ?? request.templateFileName,
-          sourceFile: styleFile,
-        }),
-      {
-        detail: (result) =>
-          `Interpreted ${result.sourceType} template input with ${result.layouts.length} layout${result.layouts.length === 1 ? "" : "s"}.`,
-        payload: (result) => ({
-          sourceType: result.sourceType,
-          layoutCount: result.layouts.length,
-          placeholderCount: result.placeholderCatalog.length,
-        }),
-      },
-    );
-    await persistence.updateTemplateProfile(templateProfile);
+    let nextRevisionTarget: RevisionDecision["targetStage"] | null = null;
     const maxPlanAttempts = 3;
 
     for (let attempt = 1; attempt <= maxPlanAttempts; attempt += 1) {
       const stageSuffix = maxPlanAttempts > 1 ? ` (attempt ${attempt})` : "";
 
-      if (attempt > 1 && validationReport?.issues.some((issue) => issue.backtrackStage === "metrics")) {
+      if (attempt > 1 && nextRevisionTarget === "metrics") {
         metricPlan = await runStage(
-          `plan metrics${stageSuffix}`,
+          `metric planning${stageSuffix}`,
           async () =>
             planMetrics(
               {
@@ -328,7 +315,7 @@ export async function runGenerationRequest(
         );
 
         analyticsResult = await runStage(
-          `compute analytics${stageSuffix}`,
+          `deterministic analytics execution${stageSuffix}`,
           async () =>
             computeAnalytics({
               datasetProfile: analyzed.datasetProfile,
@@ -356,10 +343,11 @@ export async function runGenerationRequest(
 
       if (
         attempt === 1 ||
-        validationReport?.issues.some((issue) => issue.backtrackStage === "metrics" || issue.backtrackStage === "insights")
+        nextRevisionTarget === "metrics" ||
+        nextRevisionTarget === "insights"
       ) {
         insights = await runStage(
-          `generate insights${stageSuffix}`,
+          `insight ranking${stageSuffix}`,
           async () =>
             rankInsights(
               {
@@ -377,54 +365,94 @@ export async function runGenerationRequest(
         );
       }
 
-      const plannedStory = await runStage(
-        `plan story${stageSuffix}`,
-        async () =>
-          planStory(
-            {
-              analyticsResult,
-              insights,
-              packageSemantics,
-              brief,
-              reviewFeedback: reviewerFeedback,
-            },
-            { onTrace: recordTrace },
-          ),
-        {
-          detail: (result) => `Planned story "${result.title || "Basquio evidence package report"}".`,
-          payload: (result) => ({
-            narrativeArcCount: result.narrativeArc.length,
-            keyMessageCount: result.keyMessages.length,
-          }),
-        },
-      );
-      story = plannedStory;
+      if (
+        attempt === 1 ||
+        nextRevisionTarget === "metrics" ||
+        nextRevisionTarget === "insights" ||
+        nextRevisionTarget === "story"
+      ) {
+        const plannedStory = await runStage(
+          `story architecture${stageSuffix}`,
+          async () =>
+            planStory(
+              {
+                analyticsResult,
+                insights,
+                packageSemantics,
+                brief,
+                reviewFeedback: reviewerFeedback,
+              },
+              { onTrace: recordTrace },
+            ),
+          {
+            detail: (result) => `Planned story "${result.title || "Basquio evidence package report"}".`,
+            payload: (result) => ({
+              narrativeArcCount: result.narrativeArc.length,
+              keyMessageCount: result.keyMessages.length,
+            }),
+          },
+        );
+        story = plannedStory;
 
-      const plannedOutline = await runStage(
-        `plan outline${stageSuffix}`,
-        async () =>
-          planReportOutline({
-            story: plannedStory,
-            insights,
-            brief,
-          }),
-        {
-          detail: (result) => `Locked a ${result.sections.length}-section report outline before slide planning.`,
-          payload: (result) => ({ sectionCount: result.sections.length }),
-        },
-      );
-      reportOutline = plannedOutline;
+        reportOutline = await runStage(
+          `outline architecture${stageSuffix}`,
+          async () =>
+            planReportOutline({
+              story: plannedStory,
+              insights,
+              brief,
+            }),
+          {
+            detail: (result) => `Locked a ${result.sections.length}-section report outline before slide planning.`,
+            payload: (result) => ({ sectionCount: result.sections.length }),
+          },
+        );
+      }
+
+      if (!story || !reportOutline) {
+        throw new Error("Story architecture and outline architecture must exist before slide planning.");
+      }
+
+      if (!templateProfile) {
+        templateProfile = await runStage(
+          "design translation",
+          async () =>
+            interpretTemplateSource({
+              id: `${request.jobId}-template`,
+              fileName: styleFile?.fileName ?? request.templateFileName,
+              sourceFile: styleFile,
+            }),
+          {
+            detail: (result) =>
+              `Translated ${result.sourceType} template input into ${result.layouts.length} layout-aware rendering constraints.`,
+            payload: (result) => ({
+              sourceType: result.sourceType,
+              layoutCount: result.layouts.length,
+              placeholderCount: result.placeholderCatalog.length,
+            }),
+          },
+        );
+        await persistence.updateTemplateProfile(templateProfile);
+      }
+
+      if (!templateProfile) {
+        throw new Error("Design translation must produce a template profile before slide architecture.");
+      }
+
+      const currentStory = story;
+      const currentOutline = reportOutline;
+      const currentTemplateProfile = templateProfile;
 
       const plannedSlidePlan = await runStage(
-        `plan slides${stageSuffix}`,
+        `slide architecture${stageSuffix}`,
         async () => {
           const planned = await planSlides(
             {
               analyticsResult,
-              story: plannedStory,
-              outline: plannedOutline,
+              story: currentStory,
+              outline: currentOutline,
               insights,
-              templateProfile,
+              templateProfile: currentTemplateProfile,
               brief,
               reviewFeedback: reviewerFeedback,
             },
@@ -434,7 +462,7 @@ export async function runGenerationRequest(
           return {
             slides: planned.slides,
             charts: planned.charts,
-            templateProfile,
+            templateProfile: currentTemplateProfile,
           };
         },
         {
@@ -447,21 +475,22 @@ export async function runGenerationRequest(
       );
       slidePlan = plannedSlidePlan;
 
-      const plannedValidation = await runStage(
-        `validate plan${stageSuffix}`,
+      const deterministicValidation = await runStage(
+        `deterministic validation${stageSuffix}`,
         async () =>
-          validateExecutionPlan({
+          runDeterministicValidation({
             jobId: request.jobId,
             analyticsResult,
             insights,
             slides: plannedSlidePlan.slides,
             charts: plannedSlidePlan.charts,
-            story: plannedStory,
+            story: currentStory,
             stageTraces,
             attemptCount: attempt,
           }),
         {
-          detail: (result) => `Validation completed with ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}.`,
+          detail: (result) =>
+            `Deterministic validation finished with ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}.`,
           payload: (result) => ({
             status: result.status,
             issueCount: result.issues.length,
@@ -469,31 +498,90 @@ export async function runGenerationRequest(
           }),
         },
       );
-      validationReport = plannedValidation;
 
-      if (plannedValidation.status === "passed") {
+      const semanticCritique = await runStage(
+        `semantic critique${stageSuffix}`,
+        async () =>
+          critiqueExecutionPlanSemantically({
+            jobId: request.jobId,
+            analyticsResult,
+            insights,
+            slides: plannedSlidePlan.slides,
+            charts: plannedSlidePlan.charts,
+            story: currentStory,
+            stageTraces,
+            attemptCount: attempt,
+          }),
+        {
+          detail: (result) =>
+            `Semantic critique finished with ${result.report.issues.length} issue${result.report.issues.length === 1 ? "" : "s"}.`,
+          payload: (result) => ({
+            status: result.report.status,
+            issueCount: result.report.issues.length,
+            targetStage: result.report.targetStage,
+          }),
+        },
+      );
+
+      const revisionOutcome = await runStage(
+        `targeted revision loop${stageSuffix}`,
+        async () => {
+          const report = combineValidationReports({
+            jobId: request.jobId,
+            insights,
+            charts: plannedSlidePlan.charts,
+            slides: plannedSlidePlan.slides,
+            deterministicReport: deterministicValidation,
+            semanticReport: semanticCritique.report,
+            stageTraces,
+            attemptCount: attempt,
+          });
+
+          return {
+            report,
+            revision: decideRevision({ report }),
+          };
+        },
+        {
+          detail: (result) =>
+            result.report.status === "passed"
+              ? "Validation and critique passed; rendering can start."
+              : `Revision loop is sending the run back to ${result.revision?.targetStage ?? "slides"}.`,
+          payload: (result) => ({
+            status: result.report.status,
+            issueCount: result.report.issues.length,
+            targetStage: result.revision?.targetStage ?? result.report.targetStage,
+          }),
+        },
+      );
+      validationReport = revisionOutcome.report;
+
+      if (revisionOutcome.report.status === "passed") {
         break;
       }
 
-      reviewerFeedback = plannedValidation.issues
-        .slice(0, 10)
-        .map((issue) => `${issue.validator}: ${issue.message}`);
+      if (revisionOutcome.revision) {
+        revisionHistory.push(revisionOutcome.revision);
+        reviewerFeedback = revisionOutcome.revision.reviewerFeedback;
+        nextRevisionTarget = revisionOutcome.revision.targetStage;
+      }
     }
 
-    if (!story || !reportOutline || !slidePlan || !validationReport) {
+    if (!story || !reportOutline || !slidePlan || !templateProfile || !validationReport) {
       throw new Error("Planning loop did not produce a complete execution plan.");
     }
 
     const finalStory = story;
     const finalOutline = reportOutline;
     const finalSlidePlan = slidePlan;
+    const finalTemplateProfile = templateProfile;
     const finalValidationReport = validationReport;
 
     await persistence.updateValidationReport(finalValidationReport);
 
     if (finalValidationReport.status !== "passed") {
       await persistence.updateJobStage(
-        "validate plan",
+        "targeted revision loop",
         "needs_input",
         `Validation blocked rendering with ${finalValidationReport.issues.length} issue${finalValidationReport.issues.length === 1 ? "" : "s"}.`,
         {
@@ -522,11 +610,13 @@ export async function runGenerationRequest(
         insights,
         story: finalStory,
         reportOutline: finalOutline,
+        templateProfile: finalTemplateProfile,
         slidePlan: {
           slides: finalSlidePlan.slides,
           charts: finalSlidePlan.charts,
         },
         validationReport: finalValidationReport,
+        revisionHistory,
         stageTraces,
         artifacts: [],
       });
@@ -543,7 +633,7 @@ export async function runGenerationRequest(
           deckTitle,
           slidePlan: finalSlidePlan.slides,
           charts: finalSlidePlan.charts,
-          templateProfile: finalSlidePlan.templateProfile,
+          templateProfile: finalTemplateProfile,
         }),
       {
         detail: (result) => `Rendered PPTX artifact ${result.fileName}.`,
@@ -558,7 +648,7 @@ export async function runGenerationRequest(
           deckTitle,
           slidePlan: finalSlidePlan.slides,
           charts: finalSlidePlan.charts,
-          templateProfile: finalSlidePlan.templateProfile,
+          templateProfile: finalTemplateProfile,
         }),
       {
         detail: (result) => `Rendered PDF artifact ${result.fileName}.`,
@@ -566,38 +656,38 @@ export async function runGenerationRequest(
       },
     );
 
-    const artifacts = await runStage(
-      "store artifacts",
+    const artifactDelivery = await runStage(
+      "artifact qa and delivery",
       async () =>
-        Promise.all([
-          persistArtifact(request.jobId, "pptx", pptxArtifact),
-          persistArtifact(request.jobId, "pdf", pdfArtifact),
-        ]),
-      {
-        detail: (result) => `Stored ${result.length} output artifacts.`,
-        payload: (result) => ({ artifactCount: result.length }),
-      },
-    );
+        {
+          const artifacts = await Promise.all([
+            persistArtifact(request.jobId, "pptx", pptxArtifact),
+            persistArtifact(request.jobId, "pdf", pdfArtifact),
+          ]);
 
-    const postRenderQa = await runStage(
-      "post-render qa",
-      async () =>
-        runPostRenderQa({
-          jobId: request.jobId,
-          artifacts,
-          slideCount: slidePlan.slides.length,
-          sectionCount: reportOutline.sections.length,
-        }),
+          const qa = await runPostRenderQa({
+            jobId: request.jobId,
+            artifacts,
+            slideCount: slidePlan.slides.length,
+            sectionCount: reportOutline.sections.length,
+          });
+
+          return {
+            artifacts,
+            ...qa,
+          };
+        },
       {
-        detail: (result) => `Post-render QA finished with status ${result.qualityReport.status}.`,
+        detail: (result) => `Artifact delivery finished with QA status ${result.qualityReport.status}.`,
         payload: (result) => ({
           status: result.qualityReport.status,
+          artifactCount: result.artifacts.length,
           checkCount: result.qualityReport.checks.length,
         }),
       },
     );
 
-    await persistence.updateQualityReport(postRenderQa.qualityReport);
+    await persistence.updateQualityReport(artifactDelivery.qualityReport);
 
     const summary = generationRunSummarySchema.parse({
       jobId: request.jobId,
@@ -619,15 +709,17 @@ export async function runGenerationRequest(
       insights,
       story,
       reportOutline,
+      templateProfile: finalTemplateProfile,
       slidePlan: {
         slides: slidePlan.slides,
         charts: slidePlan.charts,
       },
       validationReport,
-      artifactManifest: postRenderQa.artifactManifest,
-      qualityReport: postRenderQa.qualityReport,
+      artifactManifest: artifactDelivery.artifactManifest,
+      qualityReport: artifactDelivery.qualityReport,
+      revisionHistory,
       stageTraces,
-      artifacts: postRenderQa.artifactManifest.artifacts,
+      artifacts: artifactDelivery.artifactManifest.artifacts,
     });
 
     await persistence.finalize(summary);

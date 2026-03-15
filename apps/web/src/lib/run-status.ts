@@ -179,6 +179,7 @@ function buildFallbackSnapshot(
 function buildSummarySnapshot(jobId: string, summary: GenerationRunSummary): GenerationStatusSnapshot {
   const createdAt = summary.createdAt || deriveCreatedAt(jobId);
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
+  const steps = buildSyntheticStepsFromSummary(summary, createdAt);
 
   return {
     jobId,
@@ -193,7 +194,7 @@ function buildSummarySnapshot(jobId: string, summary: GenerationRunSummary): Gen
     progressPercent: summary.status === "completed" ? 100 : 96,
     elapsedSeconds,
     estimatedRemainingSeconds: summary.status === "completed" ? 0 : null,
-    steps: [],
+    steps,
     summary,
     failureMessage: summary.failureMessage || undefined,
   };
@@ -287,7 +288,64 @@ function parseSummary(summary: unknown) {
 }
 
 function lastStageFromSummary(summary: GenerationRunSummary) {
-  return summary.stageTraces.at(-1)?.stage || BASQUIO_PIPELINE_STAGES[BASQUIO_PIPELINE_STAGES.length - 1];
+  if (summary.status === "needs_input") {
+    return "targeted revision loop";
+  }
+
+  if (summary.qualityReport) {
+    return "artifact qa and delivery";
+  }
+
+  if (summary.validationReport) {
+    return summary.validationReport.status === "passed" ? "render pdf" : "targeted revision loop";
+  }
+
+  return BASQUIO_PIPELINE_STAGES[BASQUIO_PIPELINE_STAGES.length - 1];
+}
+
+function buildSyntheticStepsFromSummary(summary: GenerationRunSummary, createdAt: string): GenerationStepSnapshot[] {
+  const terminalStage = lastStageFromSummary(summary);
+  const terminalIndex = pipelineIndex(terminalStage);
+
+  return BASQUIO_PIPELINE_STAGES.map((stage, index) => {
+    const status =
+      index < terminalIndex
+        ? ("completed" as const)
+        : index === terminalIndex
+          ? (summary.status === "completed" ? "completed" : summary.status)
+          : ("queued" as const);
+
+    return {
+      stage,
+      baseStage: stage,
+      attempt: 1,
+      status,
+      detail: summarizeSyntheticStageDetail(stage, status, summary),
+      completedAt: status === "completed" ? createdAt : undefined,
+    } satisfies GenerationStepSnapshot;
+  });
+}
+
+function summarizeSyntheticStageDetail(
+  stage: string,
+  status: GenerationStepSnapshot["status"],
+  summary: GenerationRunSummary,
+) {
+  if (status === "queued") {
+    return "Recovered from the stored run summary.";
+  }
+
+  if (stage === "artifact qa and delivery" && summary.qualityReport) {
+    return `Artifact QA finished with status ${summary.qualityReport.status}.`;
+  }
+
+  if (stage === "targeted revision loop" && summary.validationReport) {
+    return summary.validationReport.status === "passed"
+      ? "Validation and critique passed before rendering."
+      : `Validation stopped the run at ${summary.validationReport.targetStage ?? "slides"}.`;
+  }
+
+  return "Recovered from the stored run summary.";
 }
 
 function deriveCreatedAt(jobId: string) {

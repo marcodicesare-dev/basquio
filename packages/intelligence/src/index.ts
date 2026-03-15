@@ -5,4 +5,9 @@ export { interpretPackageSemantics } from "./semantics";
 export { planSlides } from "./slides";
 export { planReportOutline, planStory } from "./story";
 export { profileDataset } from "./utils";
-export { validateExecutionPlan } from "./validate";
+export {
+  combineValidationReports,
+  critiqueExecutionPlanSemantically,
+  decideRevision,
+  runDeterministicValidation,
+} from "./validate";

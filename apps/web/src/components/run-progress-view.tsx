@@ -25,7 +25,8 @@ type Summary = {
   objective: string;
   insights: Array<{ id: string; title: string }>;
   slidePlan: { slides: Array<{ id: string }> };
-  validationReport?: { issues: ValidationIssue[] };
+  validationReport?: { issues: ValidationIssue[]; targetStage?: string };
+  revisionHistory?: Array<{ attempt: number; targetStage: string }>;
   artifacts: ArtifactRecord[];
 };
 
@@ -278,6 +279,19 @@ export function RunProgressView(input: {
             </div>
           ) : null}
 
+          {snapshot.summary?.revisionHistory?.length ? (
+            <div className="stack">
+              <p className="artifact-kind">Revision history</p>
+              <ul className="clean-list">
+                {snapshot.summary.revisionHistory.slice(0, 4).map((revision) => (
+                  <li key={`${revision.attempt}-${revision.targetStage}`}>
+                    Attempt {revision.attempt} routed back to {revision.targetStage}.
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {snapshot.failureMessage ? <div className="danger-panel">{snapshot.failureMessage}</div> : null}
         </article>
       </section>
@@ -316,17 +330,26 @@ function formatDuration(value: number) {
 }
 
 function defaultStageCopy(stage: string) {
-  if (stage === "interpret package") {
+  if (stage === "intake and profiling") {
+    return "Basquio is normalizing the uploaded package and building compact profiles before reasoning starts.";
+  }
+  if (stage === "package semantics inference") {
     return "Basquio is inferring entities, joins, and answerable questions across the uploaded package.";
   }
-  if (stage === "plan metrics") {
+  if (stage === "metric planning") {
     return "The planner is deciding what to compute before deterministic execution starts.";
   }
-  if (stage === "plan slides") {
+  if (stage === "slide architecture") {
     return "The slide architect is choosing slide count, layouts, transitions, and chart bindings.";
   }
-  if (stage === "validate plan") {
-    return "A reviewer is checking whether the claims, numbers, and story actually hold up.";
+  if (stage === "deterministic validation") {
+    return "Basquio is verifying refs, chart bindings, and numeric support before critique.";
+  }
+  if (stage === "semantic critique") {
+    return "An independent critic is checking whether the argument actually holds up.";
+  }
+  if (stage === "targeted revision loop") {
+    return "The workflow is deciding the smallest responsible stage to revisit before rendering.";
   }
 
   return "This stage is queued for the current run.";

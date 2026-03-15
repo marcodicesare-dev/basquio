@@ -102,7 +102,7 @@ const contentChecks: Array<{ file: string; needles: string[] }> = [
   },
   {
     file: "packages/workflows/src/index.ts",
-    needles: ["parse input", "render pptx", "store artifacts"],
+    needles: ["intake and profiling", "render pptx", "artifact qa and delivery"],
   },
   {
     file: "supabase/migrations/20260314160000_initial_basquio_schema.sql",

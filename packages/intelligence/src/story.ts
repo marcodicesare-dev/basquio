@@ -184,9 +184,10 @@ function buildDynamicSections(
     sections.push({
       id: "section-implications",
       kind: "implications",
-      title: story.keyMessages[1] || "Implications",
+      title: brief.stakes ? "Business implications" : "Implications",
       summary:
         supportInsights[0]?.businessMeaning ||
+        supportInsights[0]?.implication ||
         story.keyMessages[1] ||
         "Translate the strongest evidence into business consequence.",
       objective: "Explain why the evidence matters now.",

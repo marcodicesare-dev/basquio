@@ -10,6 +10,7 @@ import {
   executableMetricSpecSchema,
   insightSpecSchema,
   packageSemanticsSchema,
+  revisionDecisionSchema,
   qualityReportSchema,
   reportBriefSchema,
   reportOutlineSchema,
@@ -17,6 +18,7 @@ import {
   sourceAssetKindSchema,
   stageTraceSchema,
   storySpecSchema,
+  templateProfileSchema,
   validationReportSchema,
 } from "../../../code/contracts";
 
@@ -195,6 +197,7 @@ export const generationRunSummarySchema = z.object({
   insights: z.array(insightSpecSchema),
   story: storySpecSchema,
   reportOutline: reportOutlineSchema.optional(),
+  templateProfile: templateProfileSchema.optional(),
   slidePlan: z.object({
     slides: z.array(slideSpecSchema),
     charts: z.array(chartSpecSchema),
@@ -202,6 +205,7 @@ export const generationRunSummarySchema = z.object({
   validationReport: validationReportSchema.optional(),
   artifactManifest: artifactManifestSchema.optional(),
   qualityReport: qualityReportSchema.optional(),
+  revisionHistory: z.array(revisionDecisionSchema).default([]),
   stageTraces: z.array(stageTraceSchema).default([]),
   artifacts: z.array(artifactRecordSchema),
 });

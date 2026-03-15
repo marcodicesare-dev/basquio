@@ -170,7 +170,9 @@ function renderSlide(
 
   const metricBlocks = slideSpec.blocks.filter((block) => block.kind === "metric");
   const otherBlocks = slideSpec.blocks.filter((block) => block.kind !== "metric");
-  const metricStripFrame = resolveRegionFrame(templateLayout, ["metric-strip"], null);
+  const metricStripFrame =
+    resolveBlockFrame(metricBlocks[0], null) ??
+    resolveRegionFrame(templateLayout, ["metric-strip"], null);
 
   if (metricBlocks.length > 0 && metricStripFrame) {
     const metricFrames = splitFrameHorizontally(metricStripFrame, Math.min(metricBlocks.length, 4), theme.blockGap);
@@ -265,7 +267,10 @@ function renderSlide(
       w: Math.min(6.4, fallbackBodyFrame.w * 0.58),
       h: Math.min(3.55, fallbackBodyFrame.h),
     };
-    const chartFrame = resolveRegionFrame(templateLayout, ["chart"], chartFallback) ?? chartFallback;
+    const chartFrame =
+      resolveBlockFrame(chartBlock, chartFallback) ??
+      resolveRegionFrame(templateLayout, ["chart"], chartFallback) ??
+      chartFallback;
     const textFallback = {
       x: chartFrame.x + chartFrame.w + theme.blockGap,
       y: chartFrame.y,
@@ -280,14 +285,14 @@ function renderSlide(
       renderFallbackPanel(slide, chartFrame, "Chart data was not available for this block.", theme);
     }
 
-    renderTextPanel(slide, supportingBlocks, textFrame, theme, isCover);
+    renderBoundTextBlocks(slide, supportingBlocks, textFrame, theme, isCover);
   } else if (layoutMode === "two-column") {
     const [leftFrame, rightFrame] = resolveBodyFrames(templateLayout, fallbackBodyFrame, theme.blockGap);
     const midpoint = Math.ceil(supportingBlocks.length / 2);
-    renderTextPanel(slide, supportingBlocks.slice(0, midpoint), leftFrame, theme, isCover);
-    renderTextPanel(slide, supportingBlocks.slice(midpoint), rightFrame, theme, isCover);
+    renderBoundTextBlocks(slide, supportingBlocks.slice(0, midpoint), leftFrame, theme, isCover);
+    renderBoundTextBlocks(slide, supportingBlocks.slice(midpoint), rightFrame, theme, isCover);
   } else {
-    renderSequentialBlocks(slide, supportingBlocks, fallbackBodyFrame.y, fallbackBodyFrame.x, fallbackBodyFrame.w, theme, isCover);
+    renderBoundTextBlocks(slide, supportingBlocks, fallbackBodyFrame, theme, isCover);
   }
 
   if (slideSpec.speakerNotes) {
@@ -404,6 +409,52 @@ function renderTextPanel(
   });
 
   renderSequentialBlocks(slide, blocks, frame.y + 0.18, frame.x + 0.18, frame.w - 0.36, theme, false);
+}
+
+function renderBoundTextBlocks(
+  slide: PptxGenJS.Slide,
+  blocks: SlideSpec["blocks"],
+  fallbackFrame: Frame,
+  theme: ReturnType<typeof resolveTheme>,
+  isCover: boolean,
+) {
+  const grouped = new Map<string, { frame: Frame; blocks: SlideSpec["blocks"] }>();
+  const unbound: SlideSpec["blocks"] = [];
+
+  for (const block of blocks) {
+    const boundFrame = resolveBlockFrame(block, null);
+
+    if (!boundFrame || block.kind === "chart" || block.kind === "metric") {
+      unbound.push(block);
+      continue;
+    }
+
+    const key = block.templateBinding?.regionKey ?? `${boundFrame.x}:${boundFrame.y}:${boundFrame.w}:${boundFrame.h}`;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.blocks.push(block);
+      continue;
+    }
+
+    grouped.set(key, {
+      frame: boundFrame,
+      blocks: [block],
+    });
+  }
+
+  if (grouped.size === 0) {
+    renderTextPanel(slide, blocks, fallbackFrame, theme, isCover);
+    return;
+  }
+
+  for (const group of grouped.values()) {
+    renderTextPanel(slide, group.blocks, group.frame, theme, isCover);
+  }
+
+  if (unbound.length > 0) {
+    renderTextPanel(slide, unbound, fallbackFrame, theme, isCover);
+  }
 }
 
 function renderChart(
@@ -558,6 +609,19 @@ function resolveTemplateLayout(templateProfile: TemplateProfile, layoutId: strin
       notes: [],
     }
   );
+}
+
+function resolveBlockFrame(block: SlideSpec["blocks"][number] | undefined, fallback: Frame | null) {
+  if (!block?.templateBinding) {
+    return fallback;
+  }
+
+  return {
+    x: block.templateBinding.x,
+    y: block.templateBinding.y,
+    w: block.templateBinding.w,
+    h: block.templateBinding.h,
+  };
 }
 
 function resolveRegionFrame(

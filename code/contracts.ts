@@ -174,6 +174,35 @@ export const stageTraceSchema = z.object({
   generatedAt: z.string(),
 });
 
+export const pipelineStageSchema = z.enum([
+  "intake and profiling",
+  "package semantics inference",
+  "metric planning",
+  "deterministic analytics execution",
+  "insight ranking",
+  "story architecture",
+  "outline architecture",
+  "design translation",
+  "slide architecture",
+  "deterministic validation",
+  "semantic critique",
+  "targeted revision loop",
+  "render pptx",
+  "render pdf",
+  "artifact qa and delivery",
+]);
+
+export const revisionTargetStageSchema = z.enum(["metrics", "insights", "story", "slides"]);
+
+export const revisionDecisionSchema = z.object({
+  attempt: z.number().int().positive(),
+  trigger: z.enum(["deterministic-validation", "semantic-critique", "combined-review"]),
+  targetStage: revisionTargetStageSchema,
+  rationale: z.string(),
+  reviewerFeedback: z.array(z.string()).default([]),
+  issueCodes: z.array(z.string()).default([]),
+});
+
 export const candidateMetricSchema = z.object({
   name: z.string(),
   formula: z.string(),
@@ -459,6 +488,19 @@ export const chartSpecSchema = z.object({
   ).default([]),
 });
 
+export const templateRegionBindingSchema = z.object({
+  layoutId: z.string(),
+  regionKey: z.string(),
+  placeholder: z.string(),
+  placeholderIndex: z.number().int().nonnegative().default(0),
+  name: z.string().default(""),
+  x: z.number().nonnegative(),
+  y: z.number().nonnegative(),
+  w: z.number().positive(),
+  h: z.number().positive(),
+  source: z.enum(["system", "layout", "master"]).default("system"),
+});
+
 export const slideBlockSchema = z.object({
   kind: z.enum([
     "title",
@@ -479,6 +521,7 @@ export const slideBlockSchema = z.object({
   value: z.string().optional(),
   tone: z.enum(["default", "positive", "caution", "neutral"]).default("default"),
   evidenceIds: z.array(z.string()).default([]),
+  templateBinding: templateRegionBindingSchema.optional(),
 });
 
 export const slideSpecSchema = z.object({
@@ -517,6 +560,10 @@ export const validationReportSchema = z.object({
   chartCount: z.number().int().nonnegative().default(0),
   slideCount: z.number().int().nonnegative().default(0),
   attemptCount: z.number().int().positive().default(1),
+  targetStage: revisionTargetStageSchema.optional(),
+  reviewerFeedback: z.array(z.string()).default([]),
+  deterministicIssueCount: z.number().int().nonnegative().default(0),
+  semanticIssueCount: z.number().int().nonnegative().default(0),
   issues: z.array(validationIssueSchema).default([]),
   traces: z.array(stageTraceSchema).default([]),
 });
@@ -653,6 +700,9 @@ export type PackageRelationship = z.infer<typeof packageRelationshipSchema>;
 export type CandidateMetric = z.infer<typeof candidateMetricSchema>;
 export type ExecutableMetricSpec = z.infer<typeof executableMetricSpecSchema>;
 export type StageTrace = z.infer<typeof stageTraceSchema>;
+export type PipelineStage = z.infer<typeof pipelineStageSchema>;
+export type RevisionTargetStage = z.infer<typeof revisionTargetStageSchema>;
+export type RevisionDecision = z.infer<typeof revisionDecisionSchema>;
 export type EvidenceRef = z.infer<typeof evidenceRefSchema>;
 export type NumericAssertion = z.infer<typeof numericAssertionSchema>;
 export type ClaimSpec = z.infer<typeof claimSpecSchema>;
@@ -664,6 +714,7 @@ export type ComputedMetric = z.infer<typeof computedMetricSchema>;
 export type DerivedTable = z.infer<typeof derivedTableSchema>;
 export type AnalyticsResult = z.infer<typeof analyticsResultSchema>;
 export type ChartSpec = z.infer<typeof chartSpecSchema>;
+export type TemplateRegionBinding = z.infer<typeof templateRegionBindingSchema>;
 export type SlideSpec = z.infer<typeof slideSpecSchema>;
 export type TemplateProfile = z.infer<typeof templateProfileSchema>;
 export type ValidationIssue = z.infer<typeof validationIssueSchema>;

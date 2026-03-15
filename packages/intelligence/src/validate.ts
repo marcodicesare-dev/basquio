@@ -1,10 +1,13 @@
 import { z } from "zod";
 
 import {
+  revisionDecisionSchema,
   validationReportSchema,
   type AnalyticsResult,
   type ChartSpec,
   type InsightSpec,
+  type RevisionDecision,
+  type RevisionTargetStage,
   type SlideSpec,
   type StageTrace,
   type StorySpec,
@@ -14,8 +17,11 @@ import {
 
 import { generateStructuredStage } from "./model";
 
-const semanticReviewSchema = z.object({
+const semanticCritiqueSchema = z.object({
   status: z.enum(["passed", "needs_input"]),
+  summary: z.string().default(""),
+  targetStage: z.enum(["metrics", "insights", "story", "slides"]).optional(),
+  reviewerFeedback: z.array(z.string()).default([]),
   issues: z.array(
     z.object({
       code: z.string(),
@@ -30,7 +36,7 @@ const semanticReviewSchema = z.object({
   ).default([]),
 });
 
-export async function validateExecutionPlan(input: {
+type ValidationInput = {
   jobId: string;
   analyticsResult: AnalyticsResult;
   insights: InsightSpec[];
@@ -39,8 +45,15 @@ export async function validateExecutionPlan(input: {
   story: StorySpec;
   stageTraces?: StageTrace[];
   attemptCount?: number;
-}): Promise<ValidationReport> {
-  const deterministicIssues = [
+};
+
+type CritiqueResult = {
+  report: ValidationReport;
+  trace: StageTrace | null;
+};
+
+export function runDeterministicValidation(input: ValidationInput): ValidationReport {
+  const issues = [
     ...validateReferentialIntegrity(input.analyticsResult, input.insights, input.slides, input.charts),
     ...validateNumericAssertions(input.slides, input.analyticsResult),
     ...validateEvidenceExists(input.insights, input.analyticsResult),
@@ -50,53 +63,37 @@ export async function validateExecutionPlan(input: {
     validator: "deterministic" as const,
     backtrackStage: issue.backtrackStage ?? inferBacktrackStage(issue.code),
   }));
-
-  const semanticReview = await reviewSemantically(input);
-  const semanticIssues = (semanticReview.result?.issues ?? []).map((issue) => ({
-    ...issue,
-    validator: "semantic" as const,
-  }));
-
-  const issues = [...deterministicIssues, ...semanticIssues];
+  const hasBlockingIssue = issues.some((issue) => issue.severity === "error");
 
   return validationReportSchema.parse({
     jobId: input.jobId,
     generatedAt: new Date().toISOString(),
-    status:
-      issues.some((issue) => issue.severity === "error") || semanticReview.result?.status === "needs_input"
-        ? "needs_input"
-        : "passed",
+    status: hasBlockingIssue ? "needs_input" : "passed",
     claimCount: input.insights.flatMap((insight) => insight.claims).length,
     chartCount: input.charts.length,
     slideCount: input.slides.length,
     attemptCount: input.attemptCount || 1,
+    targetStage: hasBlockingIssue ? pickTargetStage(issues) : undefined,
+    reviewerFeedback: hasBlockingIssue ? buildReviewerFeedback(issues) : [],
+    deterministicIssueCount: issues.length,
+    semanticIssueCount: 0,
     issues,
-    traces: [
-      ...(input.stageTraces ?? []),
-      ...(semanticReview.trace ? [semanticReview.trace] : []),
-    ],
+    traces: [...(input.stageTraces ?? [])],
   });
 }
 
-async function reviewSemantically(input: {
-  jobId: string;
-  analyticsResult: AnalyticsResult;
-  insights: InsightSpec[];
-  slides: SlideSpec[];
-  charts: ChartSpec[];
-  story: StorySpec;
-  stageTraces?: StageTrace[];
-}) {
+export async function critiqueExecutionPlanSemantically(input: ValidationInput): Promise<CritiqueResult> {
   const reviewer = selectReviewerModel(input.stageTraces ?? []);
   const review = await generateStructuredStage({
-    stage: "semantic-review",
-    schema: semanticReviewSchema,
+    stage: "semantic-critique",
+    schema: semanticCritiqueSchema,
     modelId: reviewer.modelId,
     providerPreference: reviewer.providerPreference,
     prompt: [
       "You are an independent report critic reviewing an evidence-backed executive deck plan.",
       "Do not recompute numbers. Judge whether the story overreaches, whether recommendations are unsupported, whether transitions are incoherent, and whether the slide plan actually matches the analytics and evidence.",
-      "If the right fix is upstream, set backtrackStage accordingly: metrics, insights, story, or slides.",
+      "If the right fix is upstream, set targetStage and per-issue backtrackStage accordingly: metrics, insights, story, or slides.",
+      "Return specific reviewerFeedback that the next revision attempt should address.",
       "",
       "## Analytics result",
       JSON.stringify(input.analyticsResult, null, 2),
@@ -115,10 +112,114 @@ async function reviewSemantically(input: {
     ].join("\n"),
   });
 
+  const critiqueTrace = review.trace.provider === "none" ? null : review.trace;
+  const critiqueIssues = (review.object?.issues ?? []).map((issue) => ({
+    ...issue,
+    validator: "semantic" as const,
+    backtrackStage: issue.backtrackStage ?? review.object?.targetStage ?? "slides",
+  }));
+  const skippedCritiqueIssue =
+    review.trace.provider !== "none" && review.trace.status === "failed"
+      ? [
+          {
+            code: "semantic-critic-failed",
+            validator: "semantic" as const,
+            severity: "warning" as const,
+            message: review.trace.errorMessage || "The semantic critic could not complete its review.",
+            backtrackStage: undefined,
+          },
+        ]
+      : [];
+  const issues = [...critiqueIssues, ...skippedCritiqueIssue];
+  const needsRevision =
+    review.object?.status === "needs_input" || critiqueIssues.some((issue) => issue.severity === "error");
+
   return {
-    result: review.object,
-    trace: review.trace.provider === "none" ? null : review.trace,
+    report: validationReportSchema.parse({
+      jobId: input.jobId,
+      generatedAt: new Date().toISOString(),
+      status: needsRevision ? "needs_input" : "passed",
+      claimCount: input.insights.flatMap((insight) => insight.claims).length,
+      chartCount: input.charts.length,
+      slideCount: input.slides.length,
+      attemptCount: input.attemptCount || 1,
+      targetStage: needsRevision ? review.object?.targetStage ?? pickTargetStage(critiqueIssues) : undefined,
+      reviewerFeedback: needsRevision ? buildReviewerFeedback(issues, review.object?.reviewerFeedback ?? []) : [],
+      deterministicIssueCount: 0,
+      semanticIssueCount: issues.length,
+      issues,
+      traces: critiqueTrace ? [critiqueTrace] : [],
+    }),
+    trace: critiqueTrace,
   };
+}
+
+export function combineValidationReports(input: {
+  jobId: string;
+  insights: InsightSpec[];
+  charts: ChartSpec[];
+  slides: SlideSpec[];
+  deterministicReport: ValidationReport;
+  semanticReport: ValidationReport;
+  stageTraces?: StageTrace[];
+  attemptCount?: number;
+}): ValidationReport {
+  const issues = [...input.deterministicReport.issues, ...input.semanticReport.issues];
+  const needsRevision =
+    input.deterministicReport.status === "needs_input" || input.semanticReport.status === "needs_input";
+
+  return validationReportSchema.parse({
+    jobId: input.jobId,
+    generatedAt: new Date().toISOString(),
+    status: needsRevision ? "needs_input" : "passed",
+    claimCount: input.insights.flatMap((insight) => insight.claims).length,
+    chartCount: input.charts.length,
+    slideCount: input.slides.length,
+    attemptCount: input.attemptCount || input.semanticReport.attemptCount || input.deterministicReport.attemptCount || 1,
+    targetStage: needsRevision ? pickTargetStage(issues) : undefined,
+    reviewerFeedback: needsRevision
+      ? buildReviewerFeedback(issues, [
+          ...input.deterministicReport.reviewerFeedback,
+          ...input.semanticReport.reviewerFeedback,
+        ])
+      : [],
+    deterministicIssueCount: input.deterministicReport.issues.length,
+    semanticIssueCount: input.semanticReport.issues.length,
+    issues,
+    traces: [
+      ...(input.stageTraces ?? []),
+      ...input.deterministicReport.traces,
+      ...input.semanticReport.traces,
+    ],
+  });
+}
+
+export function decideRevision(input: { report: ValidationReport }): RevisionDecision | null {
+  if (input.report.status === "passed") {
+    return null;
+  }
+
+  const targetStage = input.report.targetStage ?? pickTargetStage(input.report.issues) ?? "slides";
+  const leadingIssues = input.report.issues
+    .filter((issue) => issue.severity === "error")
+    .slice(0, 3)
+    .map((issue) => issue.message);
+
+  return revisionDecisionSchema.parse({
+    attempt: input.report.attemptCount,
+    trigger:
+      input.report.semanticIssueCount > 0 && input.report.deterministicIssueCount > 0
+        ? "combined-review"
+        : input.report.semanticIssueCount > 0
+          ? "semantic-critique"
+          : "deterministic-validation",
+    targetStage,
+    rationale:
+      leadingIssues[0] ||
+      `Validation failed and the smallest responsible backtrack stage is ${targetStage}.`,
+    reviewerFeedback: input.report.reviewerFeedback,
+    issueCodes: input.report.issues.map((issue) => issue.code),
+  });
 }
 
 function selectReviewerModel(stageTraces: StageTrace[]) {
@@ -138,7 +239,10 @@ function selectReviewerModel(stageTraces: StageTrace[]) {
 
   if (hasAnthropic && hasOpenAi) {
     if (lastPrimaryProvider === "anthropic") {
-      return { modelId: process.env.BASQUIO_VALIDATION_OPENAI_MODEL || "gpt-5-mini", providerPreference: "openai" as const };
+      return {
+        modelId: process.env.BASQUIO_VALIDATION_OPENAI_MODEL || "gpt-5-mini",
+        providerPreference: "openai" as const,
+      };
     }
     if (lastPrimaryProvider === "openai") {
       return {
@@ -248,7 +352,9 @@ function validateNumericAssertions(
 
   for (const slide of slides) {
     const textContent = extractAllText(slide);
-    const numbersInText = [...textContent.matchAll(/(\d+\.?\d*)\s*%/g)].map((match) => parseFloat(match[1]));
+    const numbersInText = [...new Set(
+      [...textContent.matchAll(/(\d+\.?\d*)\s*%/g)].map((match) => parseFloat(match[1])),
+    )];
 
     for (const numberInText of numbersInText) {
       const cited = slide.evidenceIds.some((refId) => {
@@ -262,7 +368,11 @@ function validateNumericAssertions(
           ...[...(ref.summary || "").matchAll(/(\d+\.?\d*)/g)].map((match) => parseFloat(match[1])),
         ];
 
-        return refNumbers.some((refNumber) => Math.abs(refNumber - numberInText) < Math.max(numberInText * 0.02, 0.1));
+        return refNumbers.some((refNumber) => {
+          const percentComparable = Math.abs((refNumber * 100) - numberInText) < Math.max(numberInText * 0.02, 0.1);
+          const directComparable = Math.abs(refNumber - numberInText) < Math.max(numberInText * 0.02, 0.1);
+          return directComparable || percentComparable;
+        });
       });
 
       if (!cited) {
@@ -338,6 +448,24 @@ function validateStructuralConsistency(
     });
   }
 
+  for (const slide of slides) {
+    const missingBindings = slide.blocks.filter((block) =>
+      block.kind !== "divider" &&
+      block.kind !== "title" &&
+      block.kind !== "subtitle" &&
+      !block.templateBinding,
+    );
+
+    if (missingBindings.length > 0) {
+      issues.push({
+        code: "missing-template-binding",
+        severity: "warning",
+        message: `Slide ${slide.id} still has ${missingBindings.length} block${missingBindings.length === 1 ? "" : "s"} without a template-region binding.`,
+        slideId: slide.id,
+      });
+    }
+  }
+
   for (const chart of charts) {
     if (!chart.dataBinding?.derivedTable) {
       issues.push({
@@ -375,15 +503,52 @@ function extractAllText(slide: SlideSpec) {
   ].join(" ");
 }
 
-function inferBacktrackStage(code: string): ValidationIssue["backtrackStage"] {
+function inferBacktrackStage(code: string): RevisionTargetStage {
   if (code.includes("derived-table") || code.includes("unbound-chart")) {
     return "metrics";
   }
   if (code.includes("claim") || code.includes("evidence-ref")) {
     return "insights";
   }
-  if (code.includes("section") || code.includes("slide") || code.includes("number")) {
+  if (code.includes("template-binding") || code.includes("section") || code.includes("slide") || code.includes("number")) {
     return "slides";
   }
   return "story";
+}
+
+function pickTargetStage(issues: Array<Pick<ValidationIssue, "severity" | "backtrackStage">>) {
+  const candidates = issues
+    .filter((issue) => issue.severity === "error" || issue.backtrackStage)
+    .map((issue) => issue.backtrackStage)
+    .filter((stage): stage is RevisionTargetStage => Boolean(stage));
+
+  if (candidates.includes("metrics")) {
+    return "metrics";
+  }
+  if (candidates.includes("insights")) {
+    return "insights";
+  }
+  if (candidates.includes("story")) {
+    return "story";
+  }
+  if (candidates.includes("slides")) {
+    return "slides";
+  }
+  return undefined;
+}
+
+function buildReviewerFeedback(
+  issues: Array<Pick<ValidationIssue, "severity" | "message">>,
+  explicitFeedback: string[] = [],
+) {
+  return compactUnique([
+    ...explicitFeedback,
+    ...issues
+      .filter((issue) => issue.severity === "error")
+      .map((issue) => issue.message),
+  ]).slice(0, 10);
+}
+
+function compactUnique(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }

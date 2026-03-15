@@ -31,6 +31,7 @@ Accepted because:
 - one of the core user inputs is the design target
 - PPTX layout, placeholder, placeholder-frame, theme, and slide-size data must materially affect slide planning and rendering
 - shallow theme fallback is not sufficient for report-grade template fidelity
+- slide plans should preserve region-level bindings so PPTX and PDF renderers honor the same template geometry contract
 
 ### Executable metric-planning stage before analytics execution
 
@@ -69,6 +70,8 @@ Accepted because:
 - deterministic validation alone does not catch unsupported leaps, weak recommendations, or incoherent story logic
 - Basquio needs an evaluator stage that can force upstream revision before rendering
 - critique must backtrack to the right stage instead of only failing at the end
+- deterministic validation and semantic critique should remain separate durable checkpoints before the workflow decides where to backtrack
+- revision decisions should be stored so progress UX can explain which stage was revisited
 
 ### Stage-level traceability for all LLM-assisted steps
 

@@ -12,6 +12,7 @@
 - the design target is a core input, not a renderer-side theme override.
 - `TemplateProfile` is the canonical output of template and brand interpretation.
 - `TemplateProfile` must preserve slide dimensions and placeholder-region geometry when a PPTX template is provided.
+- `SlideSpec[]` should carry template-region bindings when a template layout exposes usable placeholder geometry.
 - `.pptx` is the only first-class editable template input in v1.
 - structured brand token files are a first-class style-system input.
 - `.pdf` is a style reference in v1.
@@ -54,7 +55,9 @@ Initial domain bias:
 - Every substantive claim must resolve to `EvidenceRef[]` before render.
 - `AnalyticsResult` plus derived tables are the canonical deterministic output, replacing highlight-only metric summaries.
 - Rendering is gated by deterministic and semantic validation, not only schema success.
+- deterministic validation and semantic critique should be persisted as separate stages before the combined revision decision.
 - The semantic critic must be able to send the run back to metrics, insights, story, or slides before render.
+- revision decisions should be durable so progress UX can explain where the workflow backtracked.
 - Every completed run should emit an `ArtifactManifest`, a `QualityReport`, a `ValidationReport`, and stage traces.
 - Every LLM-assisted stage should emit a `StageTrace` with prompt version, requested model, resolved model, provider, status, fallback reason, and timestamp.
 - Template and brand interpretation must flow through `TemplateProfile`, not renderer-only style hacks.

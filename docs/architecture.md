@@ -248,11 +248,13 @@ Use:
 - choose slide count dynamically from the brief, evidence density, and outline
 - bind layouts, blocks, charts, notes, and transitions
 - bind template constraints through `TemplateProfile`
+- bind slide blocks to concrete template-region geometry so downstream renderers do not infer placement independently
 
 ### Phase J: Critique And Validation
 
 - run deterministic validation on refs, chart bindings, structural consistency, and numeric assertions
 - run semantic validation with an independent reviewer model
+- persist deterministic validation and semantic critique as separate durable checkpoints before combining the result
 - classify issues by likely backtrack stage such as metrics, insights, story, or slides
 - reject plans that fail either deterministic or semantic review
 
@@ -262,6 +264,7 @@ Use:
 - pass reviewer feedback into replanning stages
 - allow large or ambiguous decks to spend more attempts than trivial decks
 - persist stage traces and validation history across attempts
+- persist revision decisions so users can see which stage the workflow revisited and why
 
 ### Phase L: Render
 

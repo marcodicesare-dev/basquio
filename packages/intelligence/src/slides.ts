@@ -314,7 +314,8 @@ function materializeSlides(
     const chart = chooseChart(selectedInsights, charts);
     const evidenceIds = collectInsightEvidenceIds(selectedInsights);
     const claimIds = selectedInsights.flatMap((insight) => insight.claims.map((claim) => claim.id));
-    const blocks = buildBlocks({
+    const requestedLayoutId = findLayout(input.templateProfile, blueprint.layoutId);
+    const draftBlocks = buildBlocks({
       blueprint,
       section,
       selectedInsights,
@@ -322,6 +323,8 @@ function materializeSlides(
       input,
       slideIndex: index,
     });
+    const layoutId = chooseLayoutForBlocks(input.templateProfile, requestedLayoutId, draftBlocks);
+    const blocks = bindBlocksToTemplateRegions(draftBlocks, input.templateProfile, layoutId);
 
     return slideSpecSchema.parse({
       id: blueprint.id || `slide-${index + 1}`,
@@ -329,7 +332,7 @@ function materializeSlides(
       section: section?.title || input.outline.title,
       eyebrow: buildEyebrow(blueprint, section, index),
       emphasis: blueprint.emphasis,
-      layoutId: findLayout(input.templateProfile, blueprint.layoutId),
+      layoutId,
       title: blueprint.title,
       subtitle: blueprint.subtitle || section?.summary,
       blocks,
@@ -339,6 +342,227 @@ function materializeSlides(
       transition: blueprint.transition || buildTransition(section, selectedInsights, input.story),
     });
   });
+}
+
+function bindBlocksToTemplateRegions(
+  blocks: SlideSpec["blocks"],
+  templateProfile: TemplateProfile,
+  layoutId: string,
+) {
+  const layout = templateProfile.layouts.find((candidate) => candidate.id === layoutId);
+
+  if (!layout) {
+    return blocks;
+  }
+
+  const reservedKeys = new Set<string>();
+  const reusablePlaceholders = new Set(["metric-strip"]);
+
+  return blocks.map((block) => {
+    const region = resolveRegionForBlock(layout, block, reservedKeys);
+
+    if (!region) {
+      return block;
+    }
+
+    if (!reusablePlaceholders.has(region.placeholder)) {
+      reservedKeys.add(region.key);
+    }
+
+    return {
+      ...block,
+      templateBinding: {
+        layoutId,
+        regionKey: region.key,
+        placeholder: region.placeholder,
+        placeholderIndex: region.placeholderIndex,
+        name: region.name,
+        x: region.x,
+        y: region.y,
+        w: region.w,
+        h: region.h,
+        source: region.source,
+      },
+    };
+  });
+}
+
+function chooseLayoutForBlocks(
+  templateProfile: TemplateProfile,
+  requestedLayoutId: string,
+  blocks: SlideSpec["blocks"],
+) {
+  const requestedLayout = templateProfile.layouts.find((layout) => layout.id === requestedLayoutId);
+  const chartCount = blocks.filter((block) => block.kind === "chart").length;
+
+  if (chartCount === 0 && requestedLayout) {
+    return requestedLayout.id;
+  }
+
+  const textBlockCount = blocks.filter((block) =>
+    block.kind !== "chart" &&
+    block.kind !== "metric" &&
+    block.kind !== "divider" &&
+    block.kind !== "title" &&
+    block.kind !== "subtitle",
+  ).length;
+
+  const scoredLayouts = templateProfile.layouts
+    .map((layout) => ({
+      layout,
+      score: scoreLayoutForBlocks(layout, blocks, textBlockCount),
+    }))
+    .filter(({ score }) => score > Number.NEGATIVE_INFINITY)
+    .sort((left, right) => right.score - left.score);
+
+  const bestLayout = scoredLayouts[0]?.layout;
+
+  if (!bestLayout) {
+    return requestedLayoutId;
+  }
+
+  if (requestedLayout && scoreLayoutForBlocks(requestedLayout, blocks, textBlockCount) >= scoredLayouts[0]!.score) {
+    return requestedLayout.id;
+  }
+
+  return bestLayout.id;
+}
+
+function scoreLayoutForBlocks(
+  layout: TemplateProfile["layouts"][number],
+  blocks: SlideSpec["blocks"],
+  textBlockCount: number,
+) {
+  const placeholders = new Set(layout.placeholders);
+  const chartCount = blocks.filter((block) => block.kind === "chart").length;
+  const hasChartRegion = placeholders.has("chart");
+  const textCapacity = countTextCapacity(layout);
+
+  if (chartCount > 0 && !hasChartRegion) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  let score = 0;
+
+  if (chartCount > 0) {
+    score += 40;
+  }
+
+  if (hasChartRegion) {
+    score += 12;
+  }
+
+  score += Math.min(textCapacity, textBlockCount) * 6;
+  score -= Math.max(0, textBlockCount - textCapacity) * 9;
+
+  for (const block of blocks) {
+    const candidates = candidatePlaceholdersForBlock(block);
+    if (candidates.some((placeholder) => placeholders.has(placeholder))) {
+      score += 3;
+      continue;
+    }
+
+    if (
+      (block.kind === "bullet-list" || block.kind === "body" || block.kind === "callout" || block.kind === "evidence-list") &&
+      hasTextPlaceholder(layout)
+    ) {
+      score += 1;
+      continue;
+    }
+
+    score -= 8;
+  }
+
+  if (layout.id === "two-column") {
+    score += 4;
+  }
+
+  if (layout.id === "evidence-grid" && textBlockCount <= 2) {
+    score += 2;
+  }
+
+  return score;
+}
+
+function hasTextPlaceholder(layout: TemplateProfile["layouts"][number]) {
+  return layout.placeholders.some((placeholder) =>
+    placeholder === "body" ||
+    placeholder === "body-left" ||
+    placeholder === "body-right" ||
+    placeholder === "callout" ||
+    placeholder === "evidence-list",
+  );
+}
+
+function countTextCapacity(layout: TemplateProfile["layouts"][number]) {
+  return layout.placeholders.filter((placeholder) =>
+    placeholder === "body" ||
+    placeholder === "body-left" ||
+    placeholder === "body-right" ||
+    placeholder === "callout" ||
+    placeholder === "evidence-list",
+  ).length;
+}
+
+function resolveRegionForBlock(
+  layout: TemplateProfile["layouts"][number],
+  block: SlideSpec["blocks"][number],
+  reservedKeys: Set<string>,
+) {
+  const candidates = candidatePlaceholdersForBlock(block);
+
+  for (const placeholder of candidates) {
+    const match = layout.regions.find((region) => region.placeholder === placeholder && !reservedKeys.has(region.key));
+    if (match) {
+      return match;
+    }
+  }
+
+  for (const placeholder of candidates) {
+    const fallbackMatch = layout.regions.find((region) => region.placeholder === placeholder);
+    if (fallbackMatch) {
+      return fallbackMatch;
+    }
+  }
+
+  if (isTextualContentBlock(block)) {
+    return layout.regions.find((region) =>
+      (region.placeholder.startsWith("body") || region.placeholder === "evidence-list" || region.placeholder === "callout") &&
+      !reservedKeys.has(region.key),
+    );
+  }
+
+  if (isTextualContentBlock(block)) {
+    return layout.regions.find((region) =>
+      region.placeholder.startsWith("body") || region.placeholder === "evidence-list" || region.placeholder === "callout",
+    );
+  }
+
+  return undefined;
+}
+
+function candidatePlaceholdersForBlock(block: SlideSpec["blocks"][number]) {
+  switch (block.kind) {
+    case "chart":
+      return ["chart"];
+    case "metric":
+      return ["metric-strip", "callout"];
+    case "evidence-list":
+      return ["evidence-list", "body-right", "body", "body-left"];
+    case "callout":
+      return ["callout", "body", "body-left", "body-right"];
+    case "table":
+      return ["table", "body", "body-left", "body-right"];
+    case "body":
+    case "bullet-list":
+      return ["body", "body-left", "body-right", "callout", "evidence-list"];
+    default:
+      return ["body", "body-left", "body-right"];
+  }
+}
+
+function isTextualContentBlock(block: SlideSpec["blocks"][number]) {
+  return block.kind === "bullet-list" || block.kind === "body" || block.kind === "callout" || block.kind === "evidence-list";
 }
 
 function buildBlocks(input: {
@@ -427,7 +651,7 @@ function buildBlocks(input: {
     }));
   }
 
-  if (chart) {
+  if (chart && (blueprint.emphasis === "content" || section?.kind === "implications")) {
     blocks.push(block({
       kind: "chart",
       chartId: chart.id,
@@ -610,7 +834,7 @@ function buildSpeakerNotes(
     section?.objective,
     ...selectedInsights.map((insight) => insight.finding || insight.claim),
     ...selectedInsights.map((insight) => insight.implication || insight.businessMeaning),
-    story.executiveSummary,
+    selectedInsights.length === 0 || blueprint.emphasis === "cover" ? story.executiveSummary : undefined,
   ]).join(" ");
 }
 
