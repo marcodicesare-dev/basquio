@@ -10,7 +10,7 @@ import {
 } from "@basquio/types";
 
 import { generateStructuredStage } from "./model";
-import { buildEvidenceId, compactUnique, scoreEvidence } from "./utils";
+import { buildEvidenceId, cleanFragment, compactUnique, sanitizeAudienceCopy, scoreEvidence } from "./utils";
 
 type RankInsightsInput = {
   analyticsResult: AnalyticsResult;
@@ -152,10 +152,6 @@ export async function rankInsights(input: RankInsightsInput, options: TraceOptio
       .filter((insight): insight is InsightSpec => Boolean(insight));
   }
 
-  if (input.analyticsResult.metrics.some((metric) => metric.name.startsWith("retail_"))) {
-    return buildRetailFallbackInsights(input.analyticsResult, input.brief);
-  }
-
   return buildFallbackInsights(input.analyticsResult, input.brief);
 }
 
@@ -172,16 +168,16 @@ function buildFallbackInsights(analyticsResult: AnalyticsResult, brief: ReportBr
     const evidence = metric.evidenceRefIds
       .map((id) => analyticsResult.evidenceRefs.find((candidate) => candidate.id === id))
       .filter((value): value is NonNullable<typeof value> => Boolean(value));
-    const leadBreakout = Object.values(metric.byDimension)[0]?.[0];
-    const title = leadBreakout
-      ? `${humanizeMetric(metric.name)} shifts most in ${leadBreakout.key}`
-      : `${humanizeMetric(metric.name)} is a lead analytical signal`;
-    const claim = leadBreakout
-      ? `${humanizeMetric(metric.name)} peaks at ${leadBreakout.key} with ${formatValue(leadBreakout.value)}.`
-      : `${humanizeMetric(metric.name)} is materially shaping the report objective.`;
-    const implication = brief.stakes
-      ? `This matters because ${brief.stakes.replace(/\.$/, "").toLowerCase()}, making ${humanizeMetric(metric.name).toLowerCase()} an operating signal rather than appendix detail.`
-      : `Use ${humanizeMetric(metric.name).toLowerCase()} to anchor the executive narrative and recommendations.`;
+    const metricLabel = humanizeMetric(metric.name);
+    const breakoutSummary = summarizeMetricBreakout(metric);
+    const title = breakoutSummary?.title || `${metricLabel} is a lead analytical signal`;
+    const claim = breakoutSummary?.claim || `${metricLabel} is materially shaping the report objective.`;
+    const safeStakes = sanitizeAudienceCopy(brief.stakes);
+    const implicationBase =
+      breakoutSummary?.implication || `Use ${metricLabel.toLowerCase()} to anchor the executive narrative and next decisions.`;
+    const implication = safeStakes
+      ? `${implicationBase} This matters because ${cleanFragment(safeStakes).toLowerCase()}.`
+      : implicationBase;
 
     return insightSpecSchema.parse({
       id: `insight-${metric.name}`,
@@ -578,7 +574,58 @@ function formatWhole(value: number) {
   return Math.round(value).toLocaleString("it-IT");
 }
 
+function summarizeMetricBreakout(metric: AnalyticsResult["metrics"][number]) {
+  const [dimensionKey, dimensionRows] = Object.entries(metric.byDimension)[0] ?? [];
+  if (!dimensionKey || !dimensionRows || dimensionRows.length === 0) {
+    return null;
+  }
+
+  const rows = [...dimensionRows]
+    .filter((row) => typeof row.value === "number" && Number.isFinite(row.value))
+    .sort((left, right) => right.value - left.value);
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const metricLabel = humanizeMetric(metric.name);
+  const dimensionLabel = humanizeDimension(dimensionKey);
+  const topValue = rows[0]!.value;
+  const tolerance = Math.max(Math.abs(topValue) * 0.0001, 1e-9);
+  const leaders = rows.filter((row) => Math.abs(row.value - topValue) <= tolerance).slice(0, 3);
+  const leaderNames = leaders.map((row) => row.key);
+  const formattedValue = formatValue(topValue);
+  const joinedLeaders = joinLabels(leaderNames);
+
+  if (leaders.length === rows.length && rows.length > 1) {
+    return {
+      title: `${metricLabel} stays balanced across ${dimensionLabel}`,
+      claim: `${metricLabel} is evenly distributed across ${dimensionLabel}, with each leading segment at ${formattedValue}.`,
+      implication: `Treat ${metricLabel.toLowerCase()} as broad-based rather than concentrated in one ${dimensionLabel}.`,
+    };
+  }
+
+  if (leaders.length > 1) {
+    return {
+      title: `${metricLabel} is jointly led by ${joinedLeaders}`,
+      claim: `${metricLabel} is tied at the top between ${joinedLeaders} at ${formattedValue}.`,
+      implication: `Frame ${metricLabel.toLowerCase()} as shared across ${joinedLeaders} instead of over-attributing performance to a single ${dimensionLabel}.`,
+    };
+  }
+
+  const leader = leaders[0]!;
+  return {
+    title: `${metricLabel} peaks ${prepositionForDimension(dimensionKey)} ${leader.key}`,
+    claim: `${metricLabel} peaks ${prepositionForDimension(dimensionKey)} ${leader.key} at ${formattedValue}.`,
+    implication: `Use ${leader.key} as the anchor ${dimensionLabel} when translating ${metricLabel.toLowerCase()} into actions and narrative.`,
+  };
+}
+
 function humanizeMetric(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+function humanizeDimension(value: string) {
   return value.replaceAll("_", " ");
 }
 
@@ -597,6 +644,22 @@ function inferChartSuggestion(metricName: string, byDimension: InsightSpec["evid
   }
 
   return "comparison bar chart of the leading grouped values";
+}
+
+function joinLabels(values: string[]) {
+  if (values.length <= 1) {
+    return values[0] || "the leading segments";
+  }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+function prepositionForDimension(dimensionKey: string) {
+  return /(date|month|week|year|period|time)/i.test(dimensionKey) ? "during" : "in";
 }
 
 function scoreInsight(metric: AnalyticsResult["metrics"][number], brief: ReportBrief) {
