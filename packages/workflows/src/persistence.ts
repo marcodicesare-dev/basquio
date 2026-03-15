@@ -162,7 +162,7 @@ class SupabaseRunPersistence {
   async touchExecutionLease() {
     const now = new Date().toISOString();
 
-    await this.context.supabase
+    const { error } = await this.context.supabase
       .from("generation_jobs")
       .update({
         execution_heartbeat_at: now,
@@ -170,6 +170,10 @@ class SupabaseRunPersistence {
       })
       .eq("job_key", this.request.jobId)
       .eq("execution_owner", this.executionLeaseOwner);
+
+    if (error) {
+      throw error;
+    }
   }
 
   async persistSourceInputs() {
@@ -202,7 +206,7 @@ class SupabaseRunPersistence {
     deterministicAnalysis: Record<string, unknown>;
   }) {
     const primarySourceRowId = this.resolveSourceFileRowId(input.datasetProfile);
-    const { data } = await this.context.supabase
+    const { data, error } = await this.context.supabase
       .from("datasets")
       .upsert(
         {
@@ -218,6 +222,10 @@ class SupabaseRunPersistence {
       )
       .select("id")
       .single();
+
+    if (error) {
+      throw error;
+    }
 
     this.datasetRowId = data?.id ?? this.datasetRowId;
 
@@ -255,15 +263,23 @@ class SupabaseRunPersistence {
       .filter(Boolean);
 
     if (datasetSourceRows.length > 0) {
-      await this.context.supabase.from("dataset_source_files").upsert(datasetSourceRows, {
+      const { error: datasetSourceError } = await this.context.supabase.from("dataset_source_files").upsert(datasetSourceRows, {
         onConflict: "dataset_id,source_file_id",
       });
+
+      if (datasetSourceError) {
+        throw datasetSourceError;
+      }
     }
 
-    await this.context.supabase
+    const { error: jobUpdateError } = await this.context.supabase
       .from("generation_jobs")
       .update({ dataset_id: this.datasetRowId })
       .eq("job_key", this.request.jobId);
+
+    if (jobUpdateError) {
+      throw jobUpdateError;
+    }
   }
 
   async updateTemplateProfile(templateProfile: TemplateProfile) {
@@ -271,11 +287,15 @@ class SupabaseRunPersistence {
       return;
     }
 
-    const { data: existingJob } = await this.context.supabase
+    const { data: existingJob, error: existingJobError } = await this.context.supabase
       .from("generation_jobs")
       .select("template_profile_id")
       .eq("job_key", this.request.jobId)
       .maybeSingle();
+
+    if (existingJobError) {
+      throw existingJobError;
+    }
 
     if (existingJob?.template_profile_id) {
       this.templateProfileRowId = existingJob.template_profile_id;
@@ -283,7 +303,7 @@ class SupabaseRunPersistence {
     }
 
     const styleSourceRowId = this.sourceFiles.get(`${this.request.jobId}-style`)?.rowId ?? null;
-    const { data } = await this.context.supabase
+    const { data, error } = await this.context.supabase
       .from("template_profiles")
       .insert({
         organization_id: this.context.organizationId,
@@ -294,24 +314,36 @@ class SupabaseRunPersistence {
       .select("id")
       .single();
 
+    if (error) {
+      throw error;
+    }
+
     this.templateProfileRowId = data?.id ?? this.templateProfileRowId;
 
     if (this.templateProfileRowId) {
-      await this.context.supabase
+      const { error: templateJobUpdateError } = await this.context.supabase
         .from("generation_jobs")
         .update({ template_profile_id: this.templateProfileRowId })
         .eq("job_key", this.request.jobId);
+
+      if (templateJobUpdateError) {
+        throw templateJobUpdateError;
+      }
     }
   }
 
   async updateJobStage(stage: string, status: GenerationJobStatus, detail: string, payload: Record<string, unknown> = {}) {
     const now = new Date().toISOString();
     const isTerminal = status === "completed" || status === "failed" || status === "needs_input";
-    const { data: job } = await this.context.supabase
+    const { data: job, error: jobLookupError } = await this.context.supabase
       .from("generation_jobs")
       .select("id")
       .eq("job_key", this.request.jobId)
       .single();
+
+    if (jobLookupError) {
+      throw jobLookupError;
+    }
 
     if (!job?.id) {
       return;
@@ -337,7 +369,11 @@ class SupabaseRunPersistence {
             completed_at: isTerminal ? now : null,
           };
 
-    await this.context.supabase.from("generation_job_steps").upsert(stepRow, { onConflict: "job_id,stage" });
+    const { error: stepUpsertError } = await this.context.supabase.from("generation_job_steps").upsert(stepRow, { onConflict: "job_id,stage" });
+
+    if (stepUpsertError) {
+      throw stepUpsertError;
+    }
 
     const jobPatch: Record<string, string | null> = {
       updated_at: now,
@@ -353,10 +389,14 @@ class SupabaseRunPersistence {
       jobPatch.completed_at = now;
     }
 
-    await this.context.supabase
+    const { error: jobStatusUpdateError } = await this.context.supabase
       .from("generation_jobs")
       .update(jobPatch)
       .eq("id", job.id);
+
+    if (jobStatusUpdateError) {
+      throw jobStatusUpdateError;
+    }
   }
 
   async updateValidationReport(report: ValidationReport) {
@@ -471,7 +511,7 @@ class SupabaseRunPersistence {
       }
     }
 
-    const { data } = await this.context.supabase
+    const { data, error } = await this.context.supabase
       .from("source_files")
       .upsert(
         {
@@ -490,6 +530,10 @@ class SupabaseRunPersistence {
       )
       .select("id")
       .single();
+
+    if (error) {
+      throw error;
+    }
 
     if (!data?.id) {
       return null;
