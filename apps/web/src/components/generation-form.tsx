@@ -32,6 +32,15 @@ type PrepareUploadsResponse = {
   brandUpload: PreparedUpload | null;
 };
 
+type BriefFields = {
+  businessContext: string;
+  client: string;
+  audience: string;
+  objective: string;
+  thesis: string;
+  stakes: string;
+};
+
 const steps = [
   {
     id: "upload",
@@ -49,7 +58,6 @@ const steps = [
 
 export function GenerationForm() {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const brandInputRef = useRef<HTMLInputElement>(null);
   const [currentStep, setCurrentStep] = useState(0);
@@ -59,21 +67,22 @@ export function GenerationForm() {
   const [isDraggingBrand, setIsDraggingBrand] = useState(false);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [brandFile, setBrandFile] = useState<File | null>(null);
+  const [brief, setBrief] = useState<BriefFields>({
+    businessContext: "",
+    client: "",
+    audience: "",
+    objective: "",
+    thesis: "",
+    stakes: "",
+  });
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
 
-    const formData = new FormData(event.currentTarget);
-    const evidenceFilesFromForm = formData
-      .getAll("evidenceFiles")
-      .filter((value): value is File => value instanceof File && value.size > 0);
-    const brandFileFromForm = formData.get("brandFile");
-    const brief = readBrief(formData);
-
     try {
-      validateSubmission(evidenceFilesFromForm, brief);
+      validateSubmission(evidenceFiles, brief);
 
       const prepareResponse = await fetch("/api/uploads/prepare", {
         method: "POST",
@@ -83,17 +92,17 @@ export function GenerationForm() {
         body: JSON.stringify({
           organizationId: "local-org",
           projectId: "local-project",
-          evidenceFiles: evidenceFilesFromForm.map((file) => ({
+          evidenceFiles: evidenceFiles.map((file) => ({
             fileName: file.name,
             mediaType: file.type || "application/octet-stream",
             sizeBytes: file.size,
           })),
           brandFile:
-            brandFileFromForm instanceof File && brandFileFromForm.size > 0
+            brandFile instanceof File && brandFile.size > 0
               ? {
-                  fileName: brandFileFromForm.name,
-                  mediaType: brandFileFromForm.type || "application/octet-stream",
-                  sizeBytes: brandFileFromForm.size,
+                  fileName: brandFile.name,
+                  mediaType: brandFile.type || "application/octet-stream",
+                  sizeBytes: brandFile.size,
                 }
               : undefined,
         }),
@@ -105,10 +114,10 @@ export function GenerationForm() {
         throw new Error(preparePayload.error ?? "Unable to prepare uploads.");
       }
 
-      await uploadPreparedFiles(evidenceFilesFromForm, preparePayload.evidenceUploads);
+      await uploadPreparedFiles(evidenceFiles, preparePayload.evidenceUploads);
 
-      if (brandFileFromForm instanceof File && brandFileFromForm.size > 0 && preparePayload.brandUpload) {
-        await uploadPreparedFile(brandFileFromForm, preparePayload.brandUpload);
+      if (brandFile instanceof File && brandFile.size > 0 && preparePayload.brandUpload) {
+        await uploadPreparedFile(brandFile, preparePayload.brandUpload);
       }
 
       const response = await fetch("/api/generate", {
@@ -152,10 +161,7 @@ export function GenerationForm() {
       return;
     }
 
-    if (currentStep === 1 && formRef.current) {
-      const formData = new FormData(formRef.current);
-      const brief = readBrief(formData);
-
+    if (currentStep === 1) {
       if (!brief.businessContext || !brief.audience || !brief.objective) {
         setError("Add the business context, audience, and objective before continuing.");
         return;
@@ -180,14 +186,18 @@ export function GenerationForm() {
   }
 
   function updateEvidenceFiles(files: File[]) {
-    setEvidenceFiles(files);
-    syncInputFiles(evidenceInputRef.current, files);
+    setEvidenceFiles((current) => {
+      const merged = mergeFiles(current, files);
+      syncInputFiles(evidenceInputRef.current, merged);
+      return merged;
+    });
     setError(null);
   }
 
   function updateBrandFile(file: File | null) {
     setBrandFile(file);
     syncInputFiles(brandInputRef.current, file ? [file] : []);
+    setError(null);
   }
 
   function handleEvidenceInputChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -196,6 +206,14 @@ export function GenerationForm() {
 
   function handleBrandInputChange(event: React.ChangeEvent<HTMLInputElement>) {
     updateBrandFile(event.target.files?.[0] ?? null);
+  }
+
+  function updateBriefField(field: keyof BriefFields, value: string) {
+    setBrief((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setError(null);
   }
 
   function handleDrop(
@@ -217,7 +235,7 @@ export function GenerationForm() {
 
   return (
     <div className="stack-lg">
-      <form ref={formRef} className="panel form-shell stack-xl" onSubmit={handleSubmit}>
+      <form className="panel form-shell stack-xl" onSubmit={handleSubmit}>
         <div className="stepper-track" aria-label="Analysis setup steps">
           {steps.map((step, index) => {
             const state =
@@ -333,34 +351,62 @@ export function GenerationForm() {
                 <span>Business context</span>
                 <textarea
                   name="businessContext"
+                  value={brief.businessContext}
                   rows={6}
                   placeholder="What is happening in the business, and what does your audience need to understand?"
+                  onChange={(event) => updateBriefField("businessContext", event.target.value)}
                 />
               </label>
 
               <label className="field">
                 <span>Audience</span>
-                <input name="audience" placeholder="Leadership team, client, or review audience" />
+                <input
+                  name="audience"
+                  value={brief.audience}
+                  placeholder="Leadership team, client, or review audience"
+                  onChange={(event) => updateBriefField("audience", event.target.value)}
+                />
               </label>
 
               <label className="field">
                 <span>Objective</span>
-                <input name="objective" placeholder="What decision or takeaway should this analysis support?" />
+                <input
+                  name="objective"
+                  value={brief.objective}
+                  placeholder="What decision or takeaway should this analysis support?"
+                  onChange={(event) => updateBriefField("objective", event.target.value)}
+                />
               </label>
 
               <label className="field">
                 <span>Client</span>
-                <input name="client" placeholder="Optional" />
+                <input
+                  name="client"
+                  value={brief.client}
+                  placeholder="Optional"
+                  onChange={(event) => updateBriefField("client", event.target.value)}
+                />
               </label>
 
               <label className="field">
                 <span>Thesis</span>
-                <input name="thesis" placeholder="Optional working point of view" />
+                <input
+                  name="thesis"
+                  value={brief.thesis}
+                  placeholder="Optional working point of view"
+                  onChange={(event) => updateBriefField("thesis", event.target.value)}
+                />
               </label>
 
               <label className="field field-span-2">
                 <span>Stakes</span>
-                <textarea name="stakes" rows={4} placeholder="Optional: why this matters now and what depends on it" />
+                <textarea
+                  name="stakes"
+                  value={brief.stakes}
+                  rows={4}
+                  placeholder="Optional: why this matters now and what depends on it"
+                  onChange={(event) => updateBriefField("stakes", event.target.value)}
+                />
               </label>
             </div>
           </section>
@@ -377,6 +423,16 @@ export function GenerationForm() {
               <article className="review-card stack">
                 <p className="artifact-kind">Data</p>
                 <p>{evidenceFiles.length > 0 ? `${evidenceFiles.length} file${evidenceFiles.length === 1 ? "" : "s"}` : "No files added yet"}</p>
+                {evidenceFiles.length > 0 ? (
+                  <div className="file-list">
+                    {evidenceFiles.map((file) => (
+                      <div key={`${file.name}-${file.size}-${file.lastModified}`} className="file-chip">
+                        <span>{file.name}</span>
+                        <small>{formatFileSize(file.size)}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {brandFile ? <p className="muted">Template: {brandFile.name}</p> : <p className="muted">Default brand system</p>}
               </article>
 
@@ -435,9 +491,30 @@ function syncInputFiles(input: HTMLInputElement | null, files: File[]) {
   input.files = dataTransfer.files;
 }
 
+function mergeFiles(existingFiles: File[], nextFiles: File[]) {
+  const merged = [...existingFiles];
+  const seen = new Set(existingFiles.map(makeFileKey));
+
+  for (const file of nextFiles) {
+    const key = makeFileKey(file);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(file);
+  }
+
+  return merged;
+}
+
+function makeFileKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
 function validateSubmission(
   evidenceFiles: File[],
-  brief: ReturnType<typeof readBrief>,
+  brief: BriefFields,
 ) {
   if (evidenceFiles.length === 0) {
     throw new Error("Add at least one data file before generating.");
@@ -521,16 +598,5 @@ function stripUploadTransportFields(upload: PreparedUpload) {
     storageBucket: upload.storageBucket,
     storagePath: upload.storagePath,
     fileBytes: upload.fileBytes,
-  };
-}
-
-function readBrief(formData: FormData) {
-  return {
-    businessContext: String(formData.get("businessContext") ?? "").trim(),
-    client: String(formData.get("client") ?? "").trim(),
-    audience: String(formData.get("audience") ?? "").trim(),
-    objective: String(formData.get("objective") ?? "").trim(),
-    thesis: String(formData.get("thesis") ?? "").trim(),
-    stakes: String(formData.get("stakes") ?? "").trim(),
   };
 }
