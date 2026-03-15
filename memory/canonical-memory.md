@@ -12,6 +12,7 @@
 - the design target is a core input, not a renderer-side theme override.
 - `TemplateProfile` is the canonical output of template and brand interpretation.
 - `TemplateProfile` must preserve slide dimensions and placeholder-region geometry when a PPTX template is provided.
+- `TemplateProfile` must preserve source-slide exemplars for each usable PPTX layout when a customer template is provided.
 - `SlideSpec[]` should carry template-region bindings when a template layout exposes usable placeholder geometry.
 - `.pptx` is the only first-class editable template input in v1.
 - structured brand token files are a first-class style-system input.
@@ -56,16 +57,20 @@ Initial domain bias:
 - `AnalyticsResult` plus derived tables are the canonical deterministic output, replacing highlight-only metric summaries.
 - Rendering is gated by deterministic and semantic validation, not only schema success.
 - deterministic validation and semantic critique should be persisted as separate stages before the combined revision decision.
-- The semantic critic must be able to send the run back to metrics, insights, story, or slides before render.
+- The semantic critic must be able to send the run back to metrics, insights, story, design, or slides before render.
 - revision decisions should be durable so progress UX can explain where the workflow backtracked.
 - Every completed run should emit an `ArtifactManifest`, a `QualityReport`, a `ValidationReport`, and stage traces.
 - Every LLM-assisted stage should emit a `StageTrace` with prompt version, requested model, resolved model, provider, status, fallback reason, and timestamp.
 - Template and brand interpretation must flow through `TemplateProfile`, not renderer-only style hacks.
 - `.pptx` interpretation must materially preserve layout, placeholder, placeholder-frame, theme, and source-origin information.
+- uploaded PPTX runs should instantiate the output deck against imported template slides when usable source-slide exemplars exist.
 - structured brand token JSON or CSS files are the current file-backed v1 path into `TemplateProfile`.
 - generation is an async workflow with durable stage records, not a synchronous page request.
 - users should see stage-level progress, elapsed time, and estimated remaining time while generation is running.
 - queued runs should persist a reconstructable generation request envelope keyed by `jobId`.
+- large browser uploads should use signed resumable transport, while smaller uploads can continue to use signed single-shot transport.
+- Inngest execution IDs should stay distinct from the user-facing canonical stage names shown in progress UI.
+- cross-provider model fallback must be explicit and opt-in; strict structured outputs are the default contract for planning stages.
 
 ## Design Memory
 

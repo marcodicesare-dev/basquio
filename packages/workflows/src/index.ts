@@ -68,8 +68,8 @@ export const basquioGenerationRequested = inngest.createFunction(
   async ({ event, step }) => {
     const request = generationRequestSchema.parse(event.data);
     const summary = await runGenerationRequest(request, {
-      stepRunner: async <T>(stage: string, fn: () => Promise<T> | T) =>
-        (await step.run(stage, async () => await fn())) as T,
+      stepRunner: async <T>(executionId: string, fn: () => Promise<T> | T) =>
+        (await step.run(executionId, async () => await fn())) as T,
     });
 
     return generationJobResultSchema.parse({
@@ -82,7 +82,7 @@ export const basquioGenerationRequested = inngest.createFunction(
 
 export const functions = [basquioGenerationRequested];
 
-type GenerationStepRunner = <T>(stage: string, fn: () => Promise<T> | T) => Promise<T>;
+type GenerationStepRunner = <T>(executionId: string, fn: () => Promise<T> | T) => Promise<T>;
 type ResolvedUploadedFile = GenerationRequest["sourceFiles"][number] & { base64: string };
 type PlannedSlideBundle = {
   slides: SlideSpec[];
@@ -134,6 +134,7 @@ export async function runGenerationRequest(
     stage: string,
     fn: () => Promise<T> | T,
     options?: {
+      executionId?: string;
       detail?: (result: T) => string;
       payload?: (result: T) => Record<string, unknown>;
     },
@@ -141,7 +142,7 @@ export async function runGenerationRequest(
     await persistence.updateJobStage(stage, "running", `Running ${stage}.`);
 
     try {
-      const result = await runStep(stage, fn);
+      const result = await runStep(options?.executionId ?? toStageExecutionId(stage), fn);
       await persistence.updateJobStage(
         stage,
         "completed",
@@ -293,11 +294,9 @@ export async function runGenerationRequest(
     const maxPlanAttempts = 3;
 
     for (let attempt = 1; attempt <= maxPlanAttempts; attempt += 1) {
-      const stageSuffix = maxPlanAttempts > 1 ? ` (attempt ${attempt})` : "";
-
       if (attempt > 1 && nextRevisionTarget === "metrics") {
         metricPlan = await runStage(
-          `metric planning${stageSuffix}`,
+          "metric planning",
           async () =>
             planMetrics(
               {
@@ -309,13 +308,14 @@ export async function runGenerationRequest(
               { onTrace: recordTrace },
             ),
           {
-            detail: (result) => `Replanned ${result.length} executable metrics from reviewer feedback.`,
-            payload: (result) => ({ metricCount: result.length }),
+            executionId: toStageExecutionId("metric planning", attempt),
+            detail: (result) => `Attempt ${attempt}: replanned ${result.length} executable metrics from reviewer feedback.`,
+            payload: (result) => ({ metricCount: result.length, attempt }),
           },
         );
 
         analyticsResult = await runStage(
-          `deterministic analytics execution${stageSuffix}`,
+          "deterministic analytics execution",
           async () =>
             computeAnalytics({
               datasetProfile: analyzed.datasetProfile,
@@ -324,12 +324,14 @@ export async function runGenerationRequest(
               metricPlan,
             }),
           {
+            executionId: toStageExecutionId("deterministic analytics execution", attempt),
             detail: (result) =>
-              `Recomputed ${result.metrics.length} metrics, ${result.derivedTables.length} derived tables, and ${result.evidenceRefs.length} evidence refs.`,
+              `Attempt ${attempt}: recomputed ${result.metrics.length} metrics, ${result.derivedTables.length} derived tables, and ${result.evidenceRefs.length} evidence refs.`,
             payload: (result) => ({
               metricCount: result.metrics.length,
               derivedTableCount: result.derivedTables.length,
               evidenceRefCount: result.evidenceRefs.length,
+              attempt,
             }),
           },
         );
@@ -347,7 +349,7 @@ export async function runGenerationRequest(
         nextRevisionTarget === "insights"
       ) {
         insights = await runStage(
-          `insight ranking${stageSuffix}`,
+          "insight ranking",
           async () =>
             rankInsights(
               {
@@ -359,8 +361,9 @@ export async function runGenerationRequest(
               { onTrace: recordTrace },
             ),
           {
-            detail: (result) => `Ranked ${result.length} evidence-backed insights.`,
-            payload: (result) => ({ insightCount: result.length }),
+            executionId: toStageExecutionId("insight ranking", attempt),
+            detail: (result) => `Attempt ${attempt}: ranked ${result.length} evidence-backed insights.`,
+            payload: (result) => ({ insightCount: result.length, attempt }),
           },
         );
       }
@@ -372,7 +375,7 @@ export async function runGenerationRequest(
         nextRevisionTarget === "story"
       ) {
         const plannedStory = await runStage(
-          `story architecture${stageSuffix}`,
+          "story architecture",
           async () =>
             planStory(
               {
@@ -385,17 +388,19 @@ export async function runGenerationRequest(
               { onTrace: recordTrace },
             ),
           {
-            detail: (result) => `Planned story "${result.title || "Basquio evidence package report"}".`,
+            executionId: toStageExecutionId("story architecture", attempt),
+            detail: (result) => `Attempt ${attempt}: planned story "${result.title || "Basquio evidence package report"}".`,
             payload: (result) => ({
               narrativeArcCount: result.narrativeArc.length,
               keyMessageCount: result.keyMessages.length,
+              attempt,
             }),
           },
         );
         story = plannedStory;
 
         reportOutline = await runStage(
-          `outline architecture${stageSuffix}`,
+          "outline architecture",
           async () =>
             planReportOutline({
               story: plannedStory,
@@ -403,8 +408,9 @@ export async function runGenerationRequest(
               brief,
             }),
           {
-            detail: (result) => `Locked a ${result.sections.length}-section report outline before slide planning.`,
-            payload: (result) => ({ sectionCount: result.sections.length }),
+            executionId: toStageExecutionId("outline architecture", attempt),
+            detail: (result) => `Attempt ${attempt}: locked a ${result.sections.length}-section report outline before slide planning.`,
+            payload: (result) => ({ sectionCount: result.sections.length, attempt }),
           },
         );
       }
@@ -413,23 +419,26 @@ export async function runGenerationRequest(
         throw new Error("Story architecture and outline architecture must exist before slide planning.");
       }
 
-      if (!templateProfile) {
+      if (attempt === 1 || nextRevisionTarget === "design") {
         templateProfile = await runStage(
           "design translation",
           async () =>
             interpretTemplateSource({
               id: `${request.jobId}-template`,
               fileName: styleFile?.fileName ?? request.templateFileName,
+              reviewFeedback: reviewerFeedback,
               sourceFile: styleFile,
             }),
           {
             detail: (result) =>
-              `Translated ${result.sourceType} template input into ${result.layouts.length} layout-aware rendering constraints.`,
+              `Attempt ${attempt}: translated ${result.sourceType} template input into ${result.layouts.length} layout-aware rendering constraints.`,
             payload: (result) => ({
               sourceType: result.sourceType,
               layoutCount: result.layouts.length,
               placeholderCount: result.placeholderCatalog.length,
+              attempt,
             }),
+            executionId: toStageExecutionId("design translation", attempt),
           },
         );
         await persistence.updateTemplateProfile(templateProfile);
@@ -444,7 +453,7 @@ export async function runGenerationRequest(
       const currentTemplateProfile = templateProfile;
 
       const plannedSlidePlan = await runStage(
-        `slide architecture${stageSuffix}`,
+        "slide architecture",
         async () => {
           const planned = await planSlides(
             {
@@ -466,17 +475,19 @@ export async function runGenerationRequest(
           };
         },
         {
-          detail: (result) => `Planned ${result.slides.length} slides and ${result.charts.length} charts.`,
+          executionId: toStageExecutionId("slide architecture", attempt),
+          detail: (result) => `Attempt ${attempt}: planned ${result.slides.length} slides and ${result.charts.length} charts.`,
           payload: (result) => ({
             slideCount: result.slides.length,
             chartCount: result.charts.length,
+            attempt,
           }),
         },
       );
       slidePlan = plannedSlidePlan;
 
       const deterministicValidation = await runStage(
-        `deterministic validation${stageSuffix}`,
+        "deterministic validation",
         async () =>
           runDeterministicValidation({
             jobId: request.jobId,
@@ -489,8 +500,9 @@ export async function runGenerationRequest(
             attemptCount: attempt,
           }),
         {
+          executionId: toStageExecutionId("deterministic validation", attempt),
           detail: (result) =>
-            `Deterministic validation finished with ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}.`,
+            `Attempt ${attempt}: deterministic validation finished with ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}.`,
           payload: (result) => ({
             status: result.status,
             issueCount: result.issues.length,
@@ -500,7 +512,7 @@ export async function runGenerationRequest(
       );
 
       const semanticCritique = await runStage(
-        `semantic critique${stageSuffix}`,
+        "semantic critique",
         async () =>
           critiqueExecutionPlanSemantically({
             jobId: request.jobId,
@@ -513,18 +525,20 @@ export async function runGenerationRequest(
             attemptCount: attempt,
           }),
         {
+          executionId: toStageExecutionId("semantic critique", attempt),
           detail: (result) =>
-            `Semantic critique finished with ${result.report.issues.length} issue${result.report.issues.length === 1 ? "" : "s"}.`,
+            `Attempt ${attempt}: semantic critique finished with ${result.report.issues.length} issue${result.report.issues.length === 1 ? "" : "s"}.`,
           payload: (result) => ({
             status: result.report.status,
             issueCount: result.report.issues.length,
             targetStage: result.report.targetStage,
+            attempt,
           }),
         },
       );
 
       const revisionOutcome = await runStage(
-        `targeted revision loop${stageSuffix}`,
+        "targeted revision loop",
         async () => {
           const report = combineValidationReports({
             jobId: request.jobId,
@@ -543,14 +557,16 @@ export async function runGenerationRequest(
           };
         },
         {
+          executionId: toStageExecutionId("targeted revision loop", attempt),
           detail: (result) =>
             result.report.status === "passed"
-              ? "Validation and critique passed; rendering can start."
-              : `Revision loop is sending the run back to ${result.revision?.targetStage ?? "slides"}.`,
+              ? `Attempt ${attempt}: validation and critique passed; rendering can start.`
+              : `Attempt ${attempt}: revision loop is sending the run back to ${result.revision?.targetStage ?? "slides"}.`,
           payload: (result) => ({
             status: result.report.status,
             issueCount: result.report.issues.length,
             targetStage: result.revision?.targetStage ?? result.report.targetStage,
+            attempt,
           }),
         },
       );
@@ -634,6 +650,13 @@ export async function runGenerationRequest(
           slidePlan: finalSlidePlan.slides,
           charts: finalSlidePlan.charts,
           templateProfile: finalTemplateProfile,
+          templateFile:
+            styleFile && finalTemplateProfile.sourceType === "pptx"
+              ? {
+                  fileName: styleFile.fileName,
+                  base64: styleFile.base64,
+                }
+              : undefined,
         }),
       {
         detail: (result) => `Rendered PPTX artifact ${result.fileName}.`,
@@ -742,6 +765,16 @@ export async function runGenerationRequest(
 
     throw error;
   }
+}
+
+function toStageExecutionId(stage: string, attempt = 1) {
+  const normalizedStage = stage
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return attempt > 1 ? `${normalizedStage}-attempt-${attempt}` : normalizedStage;
 }
 
 async function resolveSourceFiles(request: GenerationRequest) {
@@ -1217,6 +1250,15 @@ async function countPdfPages(buffer: Buffer) {
 
 async function countPptxSlides(buffer: Buffer) {
   const archive = await JSZip.loadAsync(buffer);
+  const presentationXml = await archive.file("ppt/presentation.xml")?.async("text");
+
+  if (presentationXml) {
+    const referencedSlides = [...presentationXml.matchAll(/<p:sldId\b[^>]*r:id="([^"]+)"/gim)];
+    if (referencedSlides.length > 0) {
+      return referencedSlides.length;
+    }
+  }
+
   return Object.keys(archive.files).filter((entry) => /^ppt\/slides\/slide\d+\.xml$/i.test(entry)).length;
 }
 

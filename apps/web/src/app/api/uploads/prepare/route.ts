@@ -5,10 +5,13 @@ import { z } from "zod";
 
 import { inferSourceFileKind } from "@basquio/core";
 
-import { createSignedUploadUrl } from "@/lib/supabase/admin";
+import { buildResumableUploadUrl, createSignedUploadUrl } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 6 * 1024 * 1024;
+const RESUMABLE_CHUNK_BYTES = 6 * 1024 * 1024;
 
 const uploadDescriptorSchema = z.object({
   fileName: z.string().min(1),
@@ -143,6 +146,8 @@ async function createPreparedUpload(input: {
   }
 
   const kind = inferSourceFileKind(input.file.fileName);
+  const uploadMode =
+    input.file.sizeBytes >= RESUMABLE_UPLOAD_THRESHOLD_BYTES ? "resumable" : "standard";
 
   return {
     id: input.externalId,
@@ -152,7 +157,10 @@ async function createPreparedUpload(input: {
     storageBucket: input.bucket,
     storagePath,
     fileBytes: input.file.sizeBytes,
-    signedUrl: signedUpload.signedUrl,
+    uploadMode,
+    signedUrl: uploadMode === "standard" ? signedUpload.signedUrl : undefined,
+    resumableUrl: uploadMode === "resumable" ? buildResumableUploadUrl(input.supabaseUrl) : undefined,
+    chunkSizeBytes: uploadMode === "resumable" ? RESUMABLE_CHUNK_BYTES : undefined,
     token: signedUpload.token,
   };
 }

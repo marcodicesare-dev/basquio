@@ -20,14 +20,14 @@ import { generateStructuredStage } from "./model";
 const semanticCritiqueSchema = z.object({
   status: z.enum(["passed", "needs_input"]),
   summary: z.string().default(""),
-  targetStage: z.enum(["metrics", "insights", "story", "slides"]).optional(),
+  targetStage: z.enum(["metrics", "insights", "story", "design", "slides"]).optional(),
   reviewerFeedback: z.array(z.string()).default([]),
   issues: z.array(
     z.object({
       code: z.string(),
       severity: z.enum(["error", "warning"]).default("warning"),
       message: z.string(),
-      backtrackStage: z.enum(["metrics", "insights", "story", "slides"]).default("slides"),
+      backtrackStage: z.enum(["metrics", "insights", "story", "design", "slides"]).default("slides"),
       claimId: z.string().optional(),
       slideId: z.string().optional(),
       chartId: z.string().optional(),
@@ -92,7 +92,7 @@ export async function critiqueExecutionPlanSemantically(input: ValidationInput):
     prompt: [
       "You are an independent report critic reviewing an evidence-backed executive deck plan.",
       "Do not recompute numbers. Judge whether the story overreaches, whether recommendations are unsupported, whether transitions are incoherent, and whether the slide plan actually matches the analytics and evidence.",
-      "If the right fix is upstream, set targetStage and per-issue backtrackStage accordingly: metrics, insights, story, or slides.",
+      "If the right fix is upstream, set targetStage and per-issue backtrackStage accordingly: metrics, insights, story, design, or slides.",
       "Return specific reviewerFeedback that the next revision attempt should address.",
       "",
       "## Analytics result",
@@ -510,7 +510,10 @@ function inferBacktrackStage(code: string): RevisionTargetStage {
   if (code.includes("claim") || code.includes("evidence-ref")) {
     return "insights";
   }
-  if (code.includes("template-binding") || code.includes("section") || code.includes("slide") || code.includes("number")) {
+  if (code.includes("template-binding")) {
+    return "design";
+  }
+  if (code.includes("section") || code.includes("slide") || code.includes("number")) {
     return "slides";
   }
   return "story";
@@ -530,6 +533,9 @@ function pickTargetStage(issues: Array<Pick<ValidationIssue, "severity" | "backt
   }
   if (candidates.includes("story")) {
     return "story";
+  }
+  if (candidates.includes("design")) {
+    return "design";
   }
   if (candidates.includes("slides")) {
     return "slides";

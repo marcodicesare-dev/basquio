@@ -10,11 +10,18 @@ import { templateProfileSchema, type TemplateProfile } from "@basquio/types";
 type TemplateInput = {
   id: string;
   fileName?: string;
+  reviewFeedback?: string[];
   sourceFile?: {
     fileName: string;
     mediaType?: string;
     base64: string;
   };
+};
+
+type SourceSlideReference = {
+  sourceSlideNumber: number;
+  sourceSlideName: string;
+  regions: TemplateProfile["layouts"][number]["regions"];
 };
 
 type ExtractedBrandTokens = {
@@ -162,6 +169,7 @@ export async function interpretTemplateSource(input: TemplateInput): Promise<Tem
         fileName,
         base64: input.sourceFile.base64,
         base: createSystemTemplateProfile(),
+        reviewFeedback: input.reviewFeedback,
       });
       return templateProfileSchema.parse(profile);
     } catch (error) {
@@ -202,21 +210,31 @@ async function parsePptxTemplate(input: {
   fileName: string;
   base64: string;
   base: TemplateProfile;
+  reviewFeedback?: string[];
 }) {
   const buffer = Buffer.from(input.base64, "base64");
   const zip = await JSZip.loadAsync(buffer);
   const themeXml = await readZipText(zip, "ppt/theme/theme1.xml");
   const presentationXml = await readZipText(zip, "ppt/presentation.xml");
+  const presentationRelsXml = await readZipText(zip, "ppt/_rels/presentation.xml.rels");
   const masters = await readMasterRegionMap(zip);
   const layoutEntries = Object.keys(zip.files).filter((entry) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/i.test(entry));
   const warnings: string[] = [];
+  const sourceSlidesByLayout = await readSourceSlidesByLayout(zip, presentationXml, presentationRelsXml);
 
   const slideMetrics = inferSlideMetrics(presentationXml);
   const slideSize = slideMetrics.slideSize ?? input.base.slideSize;
   const theme = extractTheme(themeXml);
   const layouts = await Promise.all(
     layoutEntries.map(async (entry) =>
-      extractLayout(zip, entry, path.basename(entry), input.base, masters),
+      extractLayout(
+        zip,
+        entry,
+        path.basename(entry),
+        input.base,
+        masters,
+        sourceSlidesByLayout.get(entry),
+      ),
     ),
   );
   const parsedLayouts = layouts.filter((value): value is NonNullable<typeof value> => Boolean(value));
@@ -226,6 +244,9 @@ async function parsePptxTemplate(input: {
   }
   if (parsedLayouts.length === 0) {
     warnings.push("No PPTX slide layouts were extracted; Basquio reused system layout defaults.");
+  }
+  if (input.reviewFeedback?.length) {
+    warnings.push(`Design translation reviewed ${input.reviewFeedback.length} revision cue${input.reviewFeedback.length === 1 ? "" : "s"} while re-reading the template.`);
   }
 
   const templateProfile = applyBrandTokens(
@@ -263,6 +284,7 @@ async function extractLayout(
   fallbackName: string,
   base: TemplateProfile,
   masterRegionMap: Map<string, ReturnType<typeof parsePlaceholderRegions>>,
+  sourceSlide?: SourceSlideReference,
 ) {
   const xml = await readZipText(zip, entry);
   if (!xml) {
@@ -275,7 +297,12 @@ async function extractLayout(
   const masterTarget = resolveLayoutMasterTarget(relsXml, entry);
   const layoutRegions = parsePlaceholderRegions(xml, "layout");
   const masterRegions = masterTarget ? masterRegionMap.get(masterTarget) ?? [] : [];
-  const regions = mergePlaceholderRegions(layoutRegions, masterRegions, base.layouts.find((layout) => layout.id === normalizePptxLayoutId(rawName, layoutRegions.map((region) => region.placeholder), base))?.regions ?? []);
+  const regions = mergePlaceholderRegions(
+    layoutRegions,
+    masterRegions,
+    sourceSlide?.regions ?? [],
+    base.layouts.find((layout) => layout.id === normalizePptxLayoutId(rawName, layoutRegions.map((region) => region.placeholder), base))?.regions ?? [],
+  );
   const placeholders = compactUnique([
     ...regions.map((region) => region.placeholder),
     ...regions.map((region) => (region.placeholderIndex > 0 ? `placeholder-${region.placeholderIndex}` : undefined)),
@@ -292,6 +319,8 @@ async function extractLayout(
     name: humanizeLayoutName(normalizedId, rawName),
     sourceName: rawName,
     sourceMaster: matchFirst(xml, /<p:clrMapOvr/i) ? "custom-master" : "default-master",
+    sourceSlideNumber: sourceSlide?.sourceSlideNumber,
+    sourceSlideName: sourceSlide?.sourceSlideName ?? "",
     placeholders: placeholders.length > 0 ? placeholders : base.layouts.find((layout) => layout.id === normalizedId)?.placeholders ?? ["title", "body"],
     regions: regions.length > 0 ? regions : base.layouts.find((layout) => layout.id === normalizedId)?.regions ?? [],
     notes,
@@ -618,6 +647,47 @@ async function readMasterRegionMap(zip: JSZip) {
   return new Map(pairs);
 }
 
+async function readSourceSlidesByLayout(
+  zip: JSZip,
+  presentationXml: string,
+  presentationRelsXml: string,
+) {
+  const presentationRelations = readRelationshipTargets(
+    presentationRelsXml,
+    "ppt/presentation.xml",
+  );
+  const sourceSlidesByLayout = new Map<string, SourceSlideReference>();
+  const slideIdEntries = [...presentationXml.matchAll(/<p:sldId\b[^>]*r:id="([^"]+)"/gim)];
+
+  for (const [index, match] of slideIdEntries.entries()) {
+    const relationId = match[1];
+    const slideEntry = presentationRelations.get(relationId);
+
+    if (!slideEntry) {
+      continue;
+    }
+
+    const slideXml = await readZipText(zip, slideEntry);
+    const slideRelsXml = await readZipText(
+      zip,
+      slideEntry.replace("slides/", "slides/_rels/") + ".rels",
+    );
+    const layoutEntry = resolveSlideLayoutTarget(slideRelsXml, slideEntry);
+
+    if (!layoutEntry || sourceSlidesByLayout.has(layoutEntry)) {
+      continue;
+    }
+
+    sourceSlidesByLayout.set(layoutEntry, {
+      sourceSlideNumber: index + 1,
+      sourceSlideName: matchFirst(slideXml, /<p:cSld\b[^>]*name="([^"]+)"/i) || path.basename(slideEntry),
+      regions: parseSlideFallbackRegions(slideXml),
+    });
+  }
+
+  return sourceSlidesByLayout;
+}
+
 function parsePlaceholderRegions(
   xml: string,
   source: "layout" | "master",
@@ -670,9 +740,98 @@ function extractPlaceholderRegions(
   });
 }
 
+function parseSlideFallbackRegions(xml: string): TemplateProfile["layouts"][number]["regions"] {
+  const records = [
+    ...extractVisualRegions(xml, "sp"),
+    ...extractVisualRegions(xml, "graphicFrame"),
+    ...extractVisualRegions(xml, "pic"),
+  ].sort((left, right) => left.y - right.y || left.x - right.x);
+
+  if (records.length === 0) {
+    return [];
+  }
+
+  const textRecords = records.filter((record) => record.kind === "text");
+  const titleRecord = [...textRecords]
+    .filter((record) => record.y < 2)
+    .sort((left, right) => (right.w * right.h) - (left.w * left.h))[0];
+  const subtitleRecord = textRecords.find((record) => record !== titleRecord && record.y < 2.6);
+  const counts = new Map<string, number>();
+
+  return records.map((record) => {
+    const placeholder =
+      record.kind === "chart"
+        ? "chart"
+        : record.kind === "media"
+          ? "media"
+          : record === titleRecord
+            ? "title"
+            : record === subtitleRecord
+              ? "subtitle"
+              : "body";
+    const placeholderIndex = counts.get(placeholder) ?? 0;
+    counts.set(placeholder, placeholderIndex + 1);
+
+    return {
+      key: `${placeholder}:${placeholderIndex}`,
+      placeholder,
+      placeholderIndex,
+      name: record.name,
+      x: record.x,
+      y: record.y,
+      w: record.w,
+      h: record.h,
+      source: "layout" as const,
+    };
+  });
+}
+
+function extractVisualRegions(
+  xml: string,
+  tag: "sp" | "graphicFrame" | "pic",
+) {
+  const pattern = new RegExp(`<p:${tag}\\b[\\s\\S]*?<\\/p:${tag}>`, "gim");
+  const blocks = xml.match(pattern) ?? [];
+
+  return blocks.flatMap((block) => {
+    const name = matchFirst(block, /<p:cNvPr\b[^>]*name="([^"]+)"/i) || "";
+    const x = Number(matchFirst(block, /<a:off\b[^>]*x="(\d+)"/i));
+    const y = Number(matchFirst(block, /<a:off\b[^>]*y="(\d+)"/i));
+    const cx = Number(matchFirst(block, /<a:ext\b[^>]*cx="(\d+)"/i));
+    const cy = Number(matchFirst(block, /<a:ext\b[^>]*cy="(\d+)"/i));
+
+    if (![x, y, cx, cy].every((value) => Number.isFinite(value) && value > 0)) {
+      return [];
+    }
+
+    const kind =
+      tag === "graphicFrame"
+        ? "chart"
+        : tag === "pic"
+          ? "media"
+          : block.includes("<p:txBody")
+            ? "text"
+            : "shape";
+
+    if (kind === "shape") {
+      return [];
+    }
+
+    return [{
+      name,
+      x: emuToInches(x),
+      y: emuToInches(y),
+      w: emuToInches(cx),
+      h: emuToInches(cy),
+      kind,
+    }];
+  });
+}
+
 function mergePlaceholderRegions(
   layoutRegions: ReturnType<typeof parsePlaceholderRegions>,
   masterRegions: ReturnType<typeof parsePlaceholderRegions>,
+  slideRegions: TemplateProfile["layouts"][number]["regions"],
   fallbackRegions: TemplateProfile["layouts"][number]["regions"],
 ) {
   const merged = new Map<string, TemplateProfile["layouts"][number]["regions"][number]>();
@@ -686,6 +845,10 @@ function mergePlaceholderRegions(
 
   if (canonicalized.length > 0) {
     return canonicalized;
+  }
+
+  if (slideRegions.length > 0) {
+    return canonicalizeBodyRegions(slideRegions);
   }
 
   return fallbackRegions;
@@ -729,6 +892,30 @@ function resolveLayoutMasterTarget(relsXml: string, entry: string) {
   }
 
   return normalizeZipPath(path.posix.join(path.posix.dirname(entry), target));
+}
+
+function resolveSlideLayoutTarget(relsXml: string, entry: string) {
+  const target = matchFirst(
+    relsXml,
+    /<Relationship\b[^>]*Type="[^"]*\/slideLayout"[^>]*Target="([^"]+)"/i,
+  );
+
+  if (!target) {
+    return undefined;
+  }
+
+  return normalizeZipPath(path.posix.join(path.posix.dirname(entry), target));
+}
+
+function readRelationshipTargets(relsXml: string, relativeTo: string) {
+  const targets = new Map<string, string>();
+
+  for (const match of relsXml.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/gim)) {
+    const [, id, target] = match;
+    targets.set(id, normalizeZipPath(path.posix.join(path.posix.dirname(relativeTo), target)));
+  }
+
+  return targets;
 }
 
 function normalizeZipPath(value: string) {

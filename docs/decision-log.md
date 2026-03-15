@@ -32,6 +32,7 @@ Accepted because:
 - PPTX layout, placeholder, placeholder-frame, theme, and slide-size data must materially affect slide planning and rendering
 - shallow theme fallback is not sufficient for report-grade template fidelity
 - slide plans should preserve region-level bindings so PPTX and PDF renderers honor the same template geometry contract
+- template interpretation must preserve layout-to-source-slide exemplars so the final PPTX can instantiate against the uploaded customer template
 
 ### Executable metric-planning stage before analytics execution
 
@@ -72,6 +73,7 @@ Accepted because:
 - critique must backtrack to the right stage instead of only failing at the end
 - deterministic validation and semantic critique should remain separate durable checkpoints before the workflow decides where to backtrack
 - revision decisions should be stored so progress UX can explain which stage was revisited
+- template-binding failures should be allowed to backtrack into design translation, not only slide planning
 
 ### Stage-level traceability for all LLM-assisted steps
 
@@ -80,6 +82,30 @@ Accepted because:
 - AI-native systems need auditable prompt, model, fallback, and error traces
 - silent null fallbacks make debugging and trust materially worse
 - run history should explain not just the output, but how the output was produced
+
+### Signed resumable uploads for large source packages
+
+Accepted because:
+
+- evidence packages and customer templates can exceed the safe size for one-shot browser uploads
+- the hosted client should use signed resumable uploads for large files while preserving direct signed uploads for smaller ones
+- storage transport should not be the hidden failure mode that breaks generation before the workflow starts
+
+### Stable durable step IDs separate from user-facing stage labels
+
+Accepted because:
+
+- Inngest memoizes by step ID, not by the friendly stage label shown in the UI
+- revision attempts need unique execution identities without mutating the canonical pipeline-stage names users see
+- stable displayed stage names and unique internal attempt IDs keep orchestration honest and progress UX clean
+
+### Strict structured-output model policy
+
+Accepted because:
+
+- structured planning stages should use strict schema enforcement instead of ad hoc JSON mode
+- cross-provider fallback should be explicit and opt-in, not silent
+- model traces should reveal when Basquio honored the requested provider versus when it had to use an allowed fallback
 
 ### Post-render QA with artifact manifests
 
@@ -209,6 +235,13 @@ Rejected because:
 
 - they hide reliability problems
 - they make AI-native debugging and trust much harder
+
+### Template repaint as the only PPTX render path
+
+Rejected because:
+
+- it discards the uploaded customer template as a first-class artifact source
+- it breaks master-slide fidelity and weakens the whole promise of editable template-preserving output
 
 ### Recharts or Tremor as canonical export engine
 

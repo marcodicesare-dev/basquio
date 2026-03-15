@@ -1,3 +1,8 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import Automizer from "pptx-automizer";
 import PptxGenJS from "pptxgenjs";
 
 import { renderChartSvg, selectChartRenderMode } from "@basquio/render-charts";
@@ -8,6 +13,10 @@ type RenderPptxInput = {
   slidePlan: SlideSpec[];
   charts: ChartSpec[];
   templateProfile: TemplateProfile;
+  templateFile?: {
+    fileName: string;
+    base64: string;
+  };
 };
 
 type Frame = {
@@ -17,7 +26,25 @@ type Frame = {
   h: number;
 };
 
+type WritableSlide = {
+  addChart: PptxGenJS.Slide["addChart"];
+  addImage: PptxGenJS.Slide["addImage"];
+  addShape: PptxGenJS.Slide["addShape"];
+  addTable?: PptxGenJS.Slide["addTable"];
+  addText: PptxGenJS.Slide["addText"];
+  addNotes?: PptxGenJS.Slide["addNotes"];
+  background?: PptxGenJS.BackgroundProps;
+};
+
 export async function renderPptxArtifact(input: RenderPptxInput): Promise<BinaryArtifact> {
+  if (input.templateFile && canPreserveTemplate(input.templateProfile)) {
+    return renderTemplatePreservingArtifact(input);
+  }
+
+  return renderFreshDeckArtifact(input);
+}
+
+async function renderFreshDeckArtifact(input: RenderPptxInput): Promise<BinaryArtifact> {
   const pptx = new PptxGenJS();
   const theme = resolveTheme(input.templateProfile);
   const layoutName = definePresentationLayout(pptx, input.templateProfile);
@@ -33,7 +60,7 @@ export async function renderPptxArtifact(input: RenderPptxInput): Promise<Binary
   };
 
   for (const slideSpec of input.slidePlan) {
-    renderSlide(pptx, slideSpec, input.charts, theme, input.templateProfile);
+    renderSlide(pptx.addSlide(), pptx, slideSpec, input.charts, theme, input.templateProfile);
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
@@ -46,13 +73,16 @@ export async function renderPptxArtifact(input: RenderPptxInput): Promise<Binary
 }
 
 function renderSlide(
+  slide: WritableSlide,
   pptx: PptxGenJS,
   slideSpec: SlideSpec,
   charts: ChartSpec[],
   theme: ReturnType<typeof resolveTheme>,
   templateProfile: TemplateProfile,
+  options: {
+    preserveTemplate: boolean;
+  } = { preserveTemplate: false },
 ) {
-  const slide = pptx.addSlide();
   const isCover = slideSpec.emphasis === "cover";
   const pageWidth = templateProfile.slideWidthInches || 13.333;
   const pageHeight = templateProfile.slideHeightInches || 7.5;
@@ -91,11 +121,13 @@ function renderSlide(
       }
     : null;
 
-  slide.background = {
-    color: normalizeColor(isCover ? theme.text : theme.background),
-  };
+  if (!options.preserveTemplate && "background" in slide) {
+    slide.background = {
+      color: normalizeColor(isCover ? theme.text : theme.background),
+    };
+  }
 
-  if (!isCover) {
+  if (!options.preserveTemplate && !isCover) {
     slide.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
@@ -104,7 +136,7 @@ function renderSlide(
       fill: { color: normalizeColor(theme.accent) },
       line: { color: normalizeColor(theme.accent) },
     });
-  } else {
+  } else if (!options.preserveTemplate) {
     slide.addShape(pptx.ShapeType.rect, {
       x: 0,
       y: 0,
@@ -124,7 +156,7 @@ function renderSlide(
       fontFace: theme.bodyFont,
       fontSize: 9,
       bold: true,
-      color: normalizeColor(isCover ? theme.highlight : theme.accent),
+      color: normalizeColor(options.preserveTemplate ? theme.accent : isCover ? theme.highlight : theme.accent),
     });
   }
 
@@ -136,7 +168,7 @@ function renderSlide(
     fontFace: theme.headingFont,
     fontSize: isCover ? theme.titleSize + 8 : theme.titleSize + 2,
     bold: true,
-    color: normalizeColor(isCover ? theme.surface : theme.text),
+    color: normalizeColor(options.preserveTemplate ? theme.text : isCover ? theme.surface : theme.text),
     margin: 0,
     breakLine: false,
     fit: "shrink",
@@ -150,14 +182,14 @@ function renderSlide(
       h: subtitleFrame.h,
       fontFace: theme.bodyFont,
       fontSize: theme.bodySize + 1,
-      color: normalizeColor(isCover ? theme.surface : theme.mutedText),
+      color: normalizeColor(options.preserveTemplate ? theme.mutedText : isCover ? theme.surface : theme.mutedText),
       margin: 0,
       breakLine: true,
       fit: "shrink",
     });
   }
 
-  if (!isCover) {
+  if (!options.preserveTemplate && !isCover) {
     const dividerY = Math.min(pageHeight - 0.18, titleFrame.y + titleFrame.h + 0.35);
     slide.addShape(pptx.ShapeType.line, {
       x: theme.pageX,
@@ -178,14 +210,16 @@ function renderSlide(
     const metricFrames = splitFrameHorizontally(metricStripFrame, Math.min(metricBlocks.length, 4), theme.blockGap);
     metricBlocks.slice(0, 4).forEach((block, index) => {
       const frame = insetFrame(metricFrames[index], 0.05);
-      slide.addShape(pptx.ShapeType.roundRect, {
-        x: frame.x,
-        y: frame.y,
-        w: frame.w,
-        h: frame.h,
-        fill: { color: normalizeColor(theme.surface), transparency: isCover ? 8 : 0 },
-        line: { color: normalizeColor(theme.border), transparency: 18 },
-      });
+      if (!options.preserveTemplate) {
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+          fill: { color: normalizeColor(theme.surface), transparency: isCover ? 8 : 0 },
+          line: { color: normalizeColor(theme.border), transparency: 18 },
+        });
+      }
       slide.addText(block.label ?? "", {
         x: frame.x + 0.14,
         y: frame.y + 0.14,
@@ -217,14 +251,16 @@ function renderSlide(
     const metricFrames = splitFrameHorizontally(fallbackMetricFrame, Math.min(metricBlocks.length, 4), theme.blockGap);
     metricBlocks.slice(0, 4).forEach((block, index) => {
       const frame = insetFrame(metricFrames[index], 0.05);
-      slide.addShape(pptx.ShapeType.roundRect, {
-        x: frame.x,
-        y: frame.y,
-        w: frame.w,
-        h: frame.h,
-        fill: { color: normalizeColor(isCover ? theme.surface : theme.surface), transparency: isCover ? 8 : 0 },
-        line: { color: normalizeColor(theme.border), transparency: 18 },
-      });
+      if (!options.preserveTemplate) {
+        slide.addShape(pptx.ShapeType.roundRect, {
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+          fill: { color: normalizeColor(isCover ? theme.surface : theme.surface), transparency: isCover ? 8 : 0 },
+          line: { color: normalizeColor(theme.border), transparency: 18 },
+        });
+      }
       slide.addText(block.label ?? "", {
         x: frame.x + 0.14,
         y: frame.y + 0.14,
@@ -280,22 +316,22 @@ function renderSlide(
     const textFrame = resolveRegionFrame(templateLayout, ["body-right", "evidence-list", "body"], textFallback) ?? textFallback;
 
     if (chart) {
-      renderChart(slide, chart, chartFrame, theme, pptx);
+      renderChart(slide, chart, chartFrame, theme, pptx, options.preserveTemplate);
     } else {
-      renderFallbackPanel(slide, chartFrame, "Chart data was not available for this block.", theme);
+      renderFallbackPanel(slide, chartFrame, "Chart data was not available for this block.", theme, options.preserveTemplate);
     }
 
-    renderBoundTextBlocks(slide, supportingBlocks, textFrame, theme, isCover);
+    renderBoundTextBlocks(slide, supportingBlocks, textFrame, theme, isCover, options.preserveTemplate);
   } else if (layoutMode === "two-column") {
     const [leftFrame, rightFrame] = resolveBodyFrames(templateLayout, fallbackBodyFrame, theme.blockGap);
     const midpoint = Math.ceil(supportingBlocks.length / 2);
-    renderBoundTextBlocks(slide, supportingBlocks.slice(0, midpoint), leftFrame, theme, isCover);
-    renderBoundTextBlocks(slide, supportingBlocks.slice(midpoint), rightFrame, theme, isCover);
+    renderBoundTextBlocks(slide, supportingBlocks.slice(0, midpoint), leftFrame, theme, isCover, options.preserveTemplate);
+    renderBoundTextBlocks(slide, supportingBlocks.slice(midpoint), rightFrame, theme, isCover, options.preserveTemplate);
   } else {
-    renderBoundTextBlocks(slide, supportingBlocks, fallbackBodyFrame, theme, isCover);
+    renderBoundTextBlocks(slide, supportingBlocks, fallbackBodyFrame, theme, isCover, options.preserveTemplate);
   }
 
-  if (slideSpec.speakerNotes) {
+  if (slideSpec.speakerNotes && slide.addNotes) {
     slide.addNotes(slideSpec.speakerNotes);
   }
 }
@@ -393,30 +429,42 @@ function renderSequentialBlocks(
 }
 
 function renderTextPanel(
-  slide: PptxGenJS.Slide,
+  slide: WritableSlide,
   blocks: SlideSpec["blocks"],
   frame: { x: number; y: number; w: number; h: number },
   theme: ReturnType<typeof resolveTheme>,
   isCover: boolean,
+  preserveTemplate: boolean,
 ) {
-  slide.addShape("roundRect", {
-    x: frame.x,
-    y: frame.y,
-    w: frame.w,
-    h: frame.h,
-    fill: { color: normalizeColor(theme.surface), transparency: isCover ? 4 : 0 },
-    line: { color: normalizeColor(theme.border), transparency: 24 },
-  });
+  if (!preserveTemplate) {
+    slide.addShape("roundRect", {
+      x: frame.x,
+      y: frame.y,
+      w: frame.w,
+      h: frame.h,
+      fill: { color: normalizeColor(theme.surface), transparency: isCover ? 4 : 0 },
+      line: { color: normalizeColor(theme.border), transparency: 24 },
+    });
+  }
 
-  renderSequentialBlocks(slide, blocks, frame.y + 0.18, frame.x + 0.18, frame.w - 0.36, theme, false);
+  renderSequentialBlocks(
+    slide as PptxGenJS.Slide,
+    blocks,
+    frame.y + (preserveTemplate ? 0.02 : 0.18),
+    frame.x + (preserveTemplate ? 0.02 : 0.18),
+    frame.w - (preserveTemplate ? 0.04 : 0.36),
+    theme,
+    false,
+  );
 }
 
 function renderBoundTextBlocks(
-  slide: PptxGenJS.Slide,
+  slide: WritableSlide,
   blocks: SlideSpec["blocks"],
   fallbackFrame: Frame,
   theme: ReturnType<typeof resolveTheme>,
   isCover: boolean,
+  preserveTemplate: boolean,
 ) {
   const grouped = new Map<string, { frame: Frame; blocks: SlideSpec["blocks"] }>();
   const unbound: SlideSpec["blocks"] = [];
@@ -444,36 +492,39 @@ function renderBoundTextBlocks(
   }
 
   if (grouped.size === 0) {
-    renderTextPanel(slide, blocks, fallbackFrame, theme, isCover);
+    renderTextPanel(slide, blocks, fallbackFrame, theme, isCover, preserveTemplate);
     return;
   }
 
   for (const group of grouped.values()) {
-    renderTextPanel(slide, group.blocks, group.frame, theme, isCover);
+    renderTextPanel(slide, group.blocks, group.frame, theme, isCover, preserveTemplate);
   }
 
   if (unbound.length > 0) {
-    renderTextPanel(slide, unbound, fallbackFrame, theme, isCover);
+    renderTextPanel(slide, unbound, fallbackFrame, theme, isCover, preserveTemplate);
   }
 }
 
 function renderChart(
-  slide: PptxGenJS.Slide,
+  slide: WritableSlide,
   chart: ChartSpec,
   frame: { x: number; y: number; w: number; h: number },
   theme: ReturnType<typeof resolveTheme>,
   pptx: PptxGenJS,
+  preserveTemplate: boolean,
 ) {
   const renderMode = selectChartRenderMode(chart);
   if (renderMode === "echarts-svg") {
-    slide.addShape("roundRect", {
-      x: frame.x,
-      y: frame.y,
-      w: frame.w,
-      h: frame.h,
-      fill: { color: normalizeColor(theme.surface) },
-      line: { color: normalizeColor(theme.border), transparency: 24 },
-    });
+    if (!preserveTemplate) {
+      slide.addShape("roundRect", {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+        fill: { color: normalizeColor(theme.surface) },
+        line: { color: normalizeColor(theme.border), transparency: 24 },
+      });
+    }
     slide.addImage({
       x: frame.x + 0.08,
       y: frame.y + 0.08,
@@ -511,31 +562,33 @@ function renderChart(
     values: series.values,
   }));
 
-  slide.addShape("roundRect", {
-    x: frame.x,
-    y: frame.y,
-    w: frame.w,
-    h: frame.h,
-    fill: { color: normalizeColor(theme.surface) },
-    line: { color: normalizeColor(theme.border), transparency: 24 },
-  });
+  if (!preserveTemplate) {
+    slide.addShape("roundRect", {
+      x: frame.x,
+      y: frame.y,
+      w: frame.w,
+      h: frame.h,
+      fill: { color: normalizeColor(theme.surface) },
+      line: { color: normalizeColor(theme.border), transparency: 24 },
+    });
 
-  slide.addText(chart.title, {
-    x: frame.x + 0.18,
-    y: frame.y + 0.14,
-    w: frame.w - 0.36,
-    h: 0.24,
-    fontFace: theme.bodyFont,
-    fontSize: 9,
-    bold: true,
-    color: normalizeColor(theme.mutedText),
-  });
+    slide.addText(chart.title, {
+      x: frame.x + 0.18,
+      y: frame.y + 0.14,
+      w: frame.w - 0.36,
+      h: 0.24,
+      fontFace: theme.bodyFont,
+      fontSize: 9,
+      bold: true,
+      color: normalizeColor(theme.mutedText),
+    });
+  }
 
   slide.addChart(type, data as any, {
-    x: frame.x + 0.12,
-    y: frame.y + 0.42,
-    w: frame.w - 0.24,
-    h: frame.h - 0.82,
+    x: frame.x + (preserveTemplate ? 0 : 0.12),
+    y: frame.y + (preserveTemplate ? 0 : 0.42),
+    w: frame.w - (preserveTemplate ? 0 : 0.24),
+    h: frame.h - (preserveTemplate ? 0 : 0.82),
     catAxisLabelFontFace: theme.bodyFont,
     catAxisLabelFontSize: 9,
     valAxisLabelFontFace: theme.bodyFont,
@@ -558,24 +611,27 @@ function renderChart(
 }
 
 function renderFallbackPanel(
-  slide: PptxGenJS.Slide,
+  slide: WritableSlide,
   frame: { x: number; y: number; w: number; h: number },
   message: string,
   theme: ReturnType<typeof resolveTheme>,
+  preserveTemplate: boolean,
 ) {
-  slide.addShape("roundRect", {
-    x: frame.x,
-    y: frame.y,
-    w: frame.w,
-    h: frame.h,
-    fill: { color: normalizeColor(theme.surface) },
-    line: { color: normalizeColor(theme.border), transparency: 24 },
-  });
+  if (!preserveTemplate) {
+    slide.addShape("roundRect", {
+      x: frame.x,
+      y: frame.y,
+      w: frame.w,
+      h: frame.h,
+      fill: { color: normalizeColor(theme.surface) },
+      line: { color: normalizeColor(theme.border), transparency: 24 },
+    });
+  }
   slide.addText(message, {
-    x: frame.x + 0.2,
-    y: frame.y + 0.4,
-    w: frame.w - 0.4,
-    h: 0.8,
+    x: frame.x + (preserveTemplate ? 0.02 : 0.2),
+    y: frame.y + (preserveTemplate ? 0.02 : 0.4),
+    w: frame.w - (preserveTemplate ? 0.04 : 0.4),
+    h: preserveTemplate ? frame.h - 0.04 : 0.8,
     fontFace: theme.bodyFont,
     fontSize: theme.bodySize,
     color: normalizeColor(theme.text),
@@ -764,23 +820,140 @@ function svgToDataUri(svg: string) {
   return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
 }
 
-export async function renderTemplatePreservingDeck(templatePath: string, outputDir: string) {
-  const automizerModule = await import("pptx-automizer");
-  const AutomizerCtor = (
-    automizerModule as {
-      default?: new (...args: unknown[]) => unknown;
-      Automizer?: new (...args: unknown[]) => unknown;
+function canPreserveTemplate(templateProfile: TemplateProfile) {
+  return templateProfile.sourceType === "pptx" && templateProfile.layouts.some((layout) => layout.sourceSlideNumber);
+}
+
+async function renderTemplatePreservingArtifact(input: RenderPptxInput): Promise<BinaryArtifact> {
+  const theme = resolveTheme(input.templateProfile);
+  const templateBuffer = Buffer.from(input.templateFile!.base64, "base64");
+  const rootTemplateBuffer = await createBlankRootTemplate(input.templateProfile, input.deckTitle);
+  const workspace = await mkdtemp(path.join(tmpdir(), "basquio-pptx-"));
+  const outputFileName = "basquio-deck.pptx";
+  const outputPath = path.join(workspace, outputFileName);
+
+  try {
+    const automizer = new Automizer({
+      outputDir: workspace,
+      removeExistingSlides: true,
+      autoImportSlideMasters: true,
+      cleanup: false,
+      cleanupPlaceholders: false,
+      verbosity: 0,
+    });
+
+    automizer.loadRoot(rootTemplateBuffer);
+    automizer.load(templateBuffer, "template");
+
+    for (const slideSpec of input.slidePlan) {
+      const templateSlideNumber = resolveTemplateSourceSlideNumber(input.templateProfile, slideSpec.layoutId);
+
+      if (!templateSlideNumber) {
+        return renderFreshDeckArtifact(input);
+      }
+
+      automizer.addSlide("template", templateSlideNumber, (slide) => {
+        slide.modify((document) => {
+          scrubImportedSlideContent(document);
+        });
+
+        slide.generate((generatedSlide, pptx) => {
+          renderSlide(
+            generatedSlide as unknown as WritableSlide,
+            pptx,
+            slideSpec,
+            input.charts,
+            theme,
+            input.templateProfile,
+            { preserveTemplate: true },
+          );
+        });
+      });
     }
-  ).Automizer ?? (automizerModule as { default?: new (...args: unknown[]) => unknown }).default;
 
-  if (!AutomizerCtor) {
-    throw new Error("pptx-automizer is installed but did not expose an Automizer constructor.");
+    await automizer.write(outputFileName);
+    const buffer = await readFile(outputPath);
+
+    return {
+      fileName: "basquio-deck.pptx",
+      mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      buffer,
+    };
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
   }
+}
 
+async function createBlankRootTemplate(templateProfile: TemplateProfile, deckTitle: string) {
+  const pptx = new PptxGenJS();
+  const layoutName = definePresentationLayout(pptx, templateProfile);
+
+  pptx.layout = layoutName;
+  pptx.author = "Basquio";
+  pptx.company = "Basquio";
+  pptx.title = deckTitle;
+  pptx.addSlide();
+
+  return (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+}
+
+export async function renderTemplatePreservingDeck(templatePath: string, outputDir: string) {
   return {
     supported: true,
     templatePath,
     outputDir,
-    engine: AutomizerCtor.name || "Automizer",
+    engine: "Automizer",
   };
+}
+
+function resolveTemplateSourceSlideNumber(templateProfile: TemplateProfile, layoutId: string) {
+  const exactMatch = templateProfile.layouts.find((layout) => layout.id === layoutId && layout.sourceSlideNumber);
+
+  if (exactMatch?.sourceSlideNumber) {
+    return exactMatch.sourceSlideNumber;
+  }
+
+  const chartFriendlyMatch = templateProfile.layouts.find(
+    (layout) => layout.sourceSlideNumber && (layout.placeholders.includes("chart") || layout.placeholders.includes("evidence-list")),
+  );
+
+  return chartFriendlyMatch?.sourceSlideNumber ?? templateProfile.layouts.find((layout) => layout.sourceSlideNumber)?.sourceSlideNumber;
+}
+
+function scrubImportedSlideContent(document: Document) {
+  clearTextNodes(document);
+  removeNodes(document, "p:graphicFrame");
+  removePictureNodes(document);
+}
+
+function clearTextNodes(document: Document) {
+  const textNodes = Array.from(document.getElementsByTagName("a:t"));
+
+  for (const node of textNodes) {
+    while (node.firstChild) {
+      node.removeChild(node.firstChild);
+    }
+  }
+}
+
+function removeNodes(document: Document, tagName: string) {
+  const nodes = Array.from(document.getElementsByTagName(tagName));
+
+  for (const node of nodes) {
+    node.parentNode?.removeChild(node);
+  }
+}
+
+function removePictureNodes(document: Document) {
+  const pictures = Array.from(document.getElementsByTagName("p:pic"));
+
+  for (const picture of pictures) {
+    const name = picture.getElementsByTagName("p:cNvPr")[0]?.getAttribute("name")?.toLowerCase() ?? "";
+
+    if (name.includes("logo") || name.includes("brand") || name.includes("icon")) {
+      continue;
+    }
+
+    picture.parentNode?.removeChild(picture);
+  }
 }

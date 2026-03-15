@@ -78,8 +78,9 @@ Responsibilities:
 - ingest `.pptx` as a first-class template source
 - ingest structured brand-token files as a first-class styling source
 - ingest `.pdf` as a style reference only in v1
-- extract theme colors, fonts, slide size, layouts, placeholder frames, and source fingerprints
+- extract theme colors, fonts, slide size, layouts, placeholder frames, source fingerprints, and source-slide exemplars
 - preserve template-origin metadata so slide planning can target real layout constraints
+- preserve layout-to-source-slide mappings so the PPTX renderer can instantiate against the uploaded customer deck instead of repainting from scratch
 
 Decision:
 
@@ -96,6 +97,7 @@ Responsibilities:
 - produce editable `.pptx`
 - produce branded `.pdf`
 - keep both outputs consistent with the same `SlideSpec[]`
+- preserve customer PPTX masters and layouts when the run includes a PPTX template input
 
 This layer is implementation, not moat.
 
@@ -189,6 +191,7 @@ Use:
 ### Phase A: Intake And Parse
 
 - upload the evidence package, brief, and design target
+- use signed standard uploads for small files and signed resumable uploads for larger evidence packages or templates
 - detect file types
 - preserve file identity and role hints in a manifest
 - parse tabular sources with SheetJS
@@ -198,9 +201,10 @@ Use:
 ### Phase B: Template Interpretation
 
 - parse `.pptx` template structure when provided
-- extract theme colors, fonts, slide size, layouts, placeholder frames, and source fingerprint
+- extract theme colors, fonts, slide size, layouts, placeholder frames, source fingerprint, and source-slide exemplars
 - map brand-token inputs into the same `TemplateProfile` contract
 - preserve template-origin metadata for downstream slide planning
+- allow design translation to be rerun when the critic determines that template interpretation, not narrative planning, is the broken stage
 
 ### Phase C: Package Semantics
 
@@ -255,7 +259,7 @@ Use:
 - run deterministic validation on refs, chart bindings, structural consistency, and numeric assertions
 - run semantic validation with an independent reviewer model
 - persist deterministic validation and semantic critique as separate durable checkpoints before combining the result
-- classify issues by likely backtrack stage such as metrics, insights, story, or slides
+- classify issues by likely backtrack stage such as metrics, insights, story, design, or slides
 - reject plans that fail either deterministic or semantic review
 
 ### Phase K: Revision Loop
@@ -271,6 +275,7 @@ Use:
 - PPTX via PptxGenJS or pptx-automizer
 - PDF via HTML plus Browserless
 - charts via native PPT charts or ECharts SVG
+- when a PPTX template is present, instantiate the output deck against imported template slides so customer masters and layouts survive into the final artifact
 
 ### Phase M: Artifact QA And Delivery
 

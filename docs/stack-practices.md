@@ -1,6 +1,6 @@
 # Stack Practices
 
-Last revalidated against official documentation: March 14, 2026.
+Last revalidated against official documentation: March 15, 2026.
 
 ## Purpose
 
@@ -59,7 +59,7 @@ Keep source files, templates, and artifacts in private buckets.
 
 Use signed URLs for delivery, not public buckets, for generated decks and uploaded customer files.
 
-For large uploads, resumable uploads with signed upload URLs are the right direction once Basquio supports substantial customer workbooks and template files.
+For larger uploads, use signed resumable uploads against Supabase Storage and keep one-shot signed uploads for smaller files.
 
 ## Inngest
 
@@ -75,7 +75,8 @@ Inngest documents that:
 
 Basquio implication:
 
-- keep step IDs stable
+- keep user-facing stage names stable
+- keep internal execution IDs unique per attempt so Inngest can memoize correctly without collapsing revision attempts together
 - do not rename step IDs casually
 - keep parse, analyze, insight, story, slide, render, and storage as separate steps
 

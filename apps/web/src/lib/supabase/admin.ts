@@ -239,6 +239,16 @@ export async function listStorageObjects(input: {
   }>;
 }
 
+export function buildResumableUploadUrl(supabaseUrl: string) {
+  const url = new URL(supabaseUrl);
+
+  if (url.hostname.endsWith(".supabase.co")) {
+    url.hostname = url.hostname.replace(/\.supabase\.co$/i, ".storage.supabase.co");
+  }
+
+  return new URL("/storage/v1/upload/resumable", url).toString();
+}
+
 function buildServiceHeaders(serviceKey: string, extraHeaders: Record<string, string> = {}) {
   const headers = new Headers(extraHeaders);
   headers.set("apikey", serviceKey);

@@ -46,9 +46,17 @@ export async function generateStructuredStage<TSchema extends z.ZodTypeAny>({
     const { object } = await generateObject({
       model: resolved.model,
       schema,
+      schemaName: buildSchemaName(stage),
       prompt,
-      mode: "json",
       temperature: 0.2,
+      providerOptions:
+        resolved.provider === "openai"
+          ? {
+              openai: {
+                strictJsonSchema: true,
+              },
+            }
+          : undefined,
     });
 
     return {
@@ -88,6 +96,7 @@ function resolveModel(modelId: string, providerPreference: ProviderPreference) {
   const normalizedModelId = normalizeModelId(modelId, providerPreference);
   const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
   const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY);
+  const allowFallback = process.env.BASQUIO_ALLOW_MODEL_FALLBACK === "true";
 
   if (providerPreference === "anthropic" && hasAnthropicKey) {
     return {
@@ -107,41 +116,32 @@ function resolveModel(modelId: string, providerPreference: ProviderPreference) {
     };
   }
 
-  if (hasAnthropicKey && normalizedModelId.startsWith("claude")) {
+  if (!allowFallback) {
     return {
-      model: anthropic(normalizedModelId),
-      provider: "anthropic" as const,
-      resolvedModelId: normalizedModelId,
-      fallbackReason: `Preferred ${providerPreference} was unavailable; used configured Anthropic access instead.`,
+      model: null,
+      provider: "none" as const,
+      resolvedModelId: "",
+      fallbackReason: `Preferred ${providerPreference} access was unavailable and BASQUIO_ALLOW_MODEL_FALLBACK is disabled.`,
     };
   }
 
-  if (hasOpenAiKey && normalizedModelId.startsWith("gpt")) {
-    return {
-      model: openai(normalizedModelId),
-      provider: "openai" as const,
-      resolvedModelId: normalizedModelId,
-      fallbackReason: `Preferred ${providerPreference} was unavailable; used configured OpenAI access instead.`,
-    };
-  }
-
-  if (hasAnthropicKey) {
+  if (providerPreference !== "anthropic" && hasAnthropicKey) {
     const fallbackModel = process.env.BASQUIO_FALLBACK_ANTHROPIC_MODEL || "claude-sonnet-4-6";
     return {
       model: anthropic(fallbackModel),
       provider: "anthropic" as const,
       resolvedModelId: fallbackModel,
-      fallbackReason: `Requested model ${normalizedModelId} was unavailable; used Anthropic fallback.`,
+      fallbackReason: `Preferred ${providerPreference} access was unavailable; used the configured Anthropic fallback model ${fallbackModel}.`,
     };
   }
 
-  if (hasOpenAiKey) {
+  if (providerPreference !== "openai" && hasOpenAiKey) {
     const fallbackModel = process.env.BASQUIO_FALLBACK_OPENAI_MODEL || "gpt-5-mini";
     return {
       model: openai(fallbackModel),
       provider: "openai" as const,
       resolvedModelId: fallbackModel,
-      fallbackReason: `Requested model ${normalizedModelId} was unavailable; used OpenAI fallback.`,
+      fallbackReason: `Preferred ${providerPreference} access was unavailable; used the configured OpenAI fallback model ${fallbackModel}.`,
     };
   }
 
@@ -161,6 +161,14 @@ function normalizeModelId(modelId: string, providerPreference: ProviderPreferenc
   }
 
   return modelId;
+}
+
+function buildSchemaName(stage: string) {
+  return stage
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "basquio_structured_stage";
 }
 
 function createTrace(input: Omit<StageTrace, "generatedAt">) {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import * as tus from "tus-js-client";
 
 type GenerationStartResponse = {
   jobId: string;
@@ -20,7 +21,10 @@ type PreparedUpload = {
   storageBucket: string;
   storagePath: string;
   fileBytes: number;
-  signedUrl: string;
+  uploadMode: "standard" | "resumable";
+  signedUrl?: string;
+  resumableUrl?: string;
+  chunkSizeBytes?: number;
   token: string;
 };
 
@@ -571,22 +575,80 @@ async function uploadPreparedFiles(files: File[], uploads: PreparedUpload[]) {
 }
 
 async function uploadPreparedFile(file: File, upload: PreparedUpload) {
-  const body = new FormData();
-  body.append("cacheControl", "3600");
-  body.append("", file);
+  if (upload.uploadMode === "resumable") {
+    await uploadPreparedFileResumable(file, upload);
+    return;
+  }
+
+  if (!upload.signedUrl) {
+    throw new Error(`Basquio did not return a signed upload URL for ${file.name}.`);
+  }
 
   const response = await fetch(upload.signedUrl, {
     method: "PUT",
     headers: {
+      "cache-control": "3600",
+      "content-type": file.type || upload.mediaType || "application/octet-stream",
       "x-upsert": "true",
     },
-    body,
+    body: file,
   });
 
   if (!response.ok) {
     const payload = (await readApiPayload(response)) as { error?: string };
     throw new Error(payload.error ?? `Unable to upload ${file.name}.`);
   }
+}
+
+async function uploadPreparedFileResumable(file: File, upload: PreparedUpload) {
+  if (!upload.resumableUrl) {
+    throw new Error(`Basquio did not return a resumable upload target for ${file.name}.`);
+  }
+
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!anonKey) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is required for resumable uploads.");
+  }
+
+  const endpoint = upload.resumableUrl;
+  const metadata = {
+    bucketName: upload.storageBucket,
+    objectName: upload.storagePath,
+    contentType: file.type || upload.mediaType || "application/octet-stream",
+    cacheControl: "3600",
+  };
+
+  const uploadTask = new tus.Upload(file, {
+    endpoint,
+    chunkSize: upload.chunkSizeBytes,
+    retryDelays: [0, 1000, 3000, 5000],
+    removeFingerprintOnSuccess: true,
+    uploadDataDuringCreation: true,
+    metadata,
+    headers: {
+      apikey: anonKey,
+      authorization: `Bearer ${anonKey}`,
+      "x-signature": upload.token,
+      "x-upsert": "true",
+    },
+    onError(error) {
+      throw error;
+    },
+  });
+
+  const previousUploads = await uploadTask.findPreviousUploads();
+  if (previousUploads[0]) {
+    uploadTask.resumeFromPreviousUpload(previousUploads[0]);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    uploadTask.options.onError = (error) => {
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    uploadTask.options.onSuccess = () => resolve();
+    uploadTask.start();
+  });
 }
 
 function stripUploadTransportFields(upload: PreparedUpload) {

@@ -192,7 +192,7 @@ export const pipelineStageSchema = z.enum([
   "artifact qa and delivery",
 ]);
 
-export const revisionTargetStageSchema = z.enum(["metrics", "insights", "story", "slides"]);
+export const revisionTargetStageSchema = z.enum(["metrics", "insights", "story", "design", "slides"]);
 
 export const revisionDecisionSchema = z.object({
   attempt: z.number().int().positive(),
@@ -545,7 +545,7 @@ export const validationIssueSchema = z.object({
   validator: z.enum(["deterministic", "semantic"]).default("deterministic"),
   severity: z.enum(["error", "warning"]).default("error"),
   message: z.string(),
-  backtrackStage: z.enum(["metrics", "insights", "story", "slides"]).optional(),
+  backtrackStage: revisionTargetStageSchema.optional(),
   claimId: z.string().optional(),
   slideId: z.string().optional(),
   chartId: z.string().optional(),
@@ -629,6 +629,8 @@ export const templateProfileSchema = z.object({
       name: z.string(),
       sourceName: z.string().default(""),
       sourceMaster: z.string().default(""),
+      sourceSlideNumber: z.number().int().positive().optional(),
+      sourceSlideName: z.string().default(""),
       placeholders: z.array(z.string()).default([]),
       regions: z
         .array(
