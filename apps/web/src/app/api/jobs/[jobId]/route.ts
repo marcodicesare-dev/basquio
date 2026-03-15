@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { dispatchPersistedGenerationJob } from "@/lib/generation-requests";
+import {
+  dispatchPersistedGenerationExecution,
+  dispatchPersistedGenerationJob,
+} from "@/lib/generation-requests";
 import { getViewerState } from "@/lib/supabase/auth";
 import { getGenerationStatus } from "@/lib/run-status";
 
@@ -8,6 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const stalledKickoffs = new Map<string, number>();
+const stalledExecutions = new Map<string, number>();
 
 export async function GET(
   _request: Request,
@@ -26,7 +30,9 @@ export async function GET(
     return NextResponse.json({ error: "Run not found." }, { status: 404 });
   }
 
-  if ((!process.env.INNGEST_EVENT_KEY && status.status === "queued") || shouldKickoffStalledRun(status)) {
+  if (shouldRecoverStalledExecution(status)) {
+    await dispatchPersistedGenerationExecution(jobId, _request);
+  } else if ((!process.env.INNGEST_EVENT_KEY && status.status === "queued") || shouldKickoffStalledRun(status)) {
     await dispatchPersistedGenerationJob(jobId, _request);
   }
 
@@ -56,5 +62,29 @@ function shouldKickoffStalledRun(status: Awaited<ReturnType<typeof getGeneration
   }
 
   stalledKickoffs.set(status.jobId, now);
+  return true;
+}
+
+function shouldRecoverStalledExecution(status: Awaited<ReturnType<typeof getGenerationStatus>>) {
+  if (!status) {
+    return false;
+  }
+
+  if (status.status !== "running" || status.steps.length > 0 || status.summary) {
+    return false;
+  }
+
+  if (status.elapsedSeconds < 45) {
+    return false;
+  }
+
+  const lastRecovery = stalledExecutions.get(status.jobId) ?? 0;
+  const now = Date.now();
+
+  if (now - lastRecovery < 60_000) {
+    return false;
+  }
+
+  stalledExecutions.set(status.jobId, now);
   return true;
 }

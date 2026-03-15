@@ -120,6 +120,9 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
   const updatedAt = job.updated_at ?? summary?.createdAt;
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
   const progressPercent = computeProgressPercent(steps, summary, job.status);
+  const hasNoCheckpoints = steps.length === 0 && !summary;
+  const isStaleQueuedKickoff = job.status === "queued" && hasNoCheckpoints && elapsedSeconds >= 45;
+  const isStaleRunningExecution = job.status === "running" && hasNoCheckpoints && elapsedSeconds >= 45;
   const estimatedRemainingSeconds =
     job.status === "completed" || progressPercent >= 99
       ? 0
@@ -140,7 +143,11 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
       job.failure_message ||
       (summary?.status === "completed"
         ? "Artifacts are ready."
-        : "Basquio is preparing the evidence package and orchestration state."),
+        : isStaleRunningExecution
+          ? "The run was marked in flight, but no durable stage checkpoints appeared. Basquio is attempting to reattach execution for this job."
+          : isStaleQueuedKickoff
+            ? "The run is still queued and no durable workflow checkpoints have appeared yet. Basquio is attempting a recovery dispatch."
+            : "Basquio is preparing the evidence package and orchestration state."),
     progressPercent,
     elapsedSeconds,
     estimatedRemainingSeconds,
