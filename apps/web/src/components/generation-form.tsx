@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type GenerationStartResponse = {
   jobId: string;
@@ -32,28 +32,33 @@ type PrepareUploadsResponse = {
   brandUpload: PreparedUpload | null;
 };
 
-const formSignals = [
+const steps = [
   {
-    label: "Data",
-    title: "Upload your business data",
-    copy: "Spreadsheets and supporting files. Basquio reads everything before starting.",
+    id: "upload",
+    title: "Upload data",
   },
   {
-    label: "Brief",
-    title: "Describe the business context",
-    copy: "Audience, objective, and stakes shape the narrative.",
+    id: "brief",
+    title: "Write brief",
   },
   {
-    label: "Output",
-    title: "Two deliverables, one analysis",
-    copy: "Editable PowerPoint and polished PDF from the same analysis.",
+    id: "review",
+    title: "Generate",
   },
 ] as const;
 
 export function GenerationForm() {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const evidenceInputRef = useRef<HTMLInputElement>(null);
+  const brandInputRef = useRef<HTMLInputElement>(null);
+  const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
+  const [isDraggingBrand, setIsDraggingBrand] = useState(false);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [brandFile, setBrandFile] = useState<File | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,11 +66,15 @@ export function GenerationForm() {
     setError(null);
 
     const formData = new FormData(event.currentTarget);
-    const evidenceFiles = formData.getAll("evidenceFiles").filter((value): value is File => value instanceof File && value.size > 0);
-    const brandFile = formData.get("brandFile");
+    const evidenceFilesFromForm = formData
+      .getAll("evidenceFiles")
+      .filter((value): value is File => value instanceof File && value.size > 0);
+    const brandFileFromForm = formData.get("brandFile");
     const brief = readBrief(formData);
 
     try {
+      validateSubmission(evidenceFilesFromForm, brief);
+
       const prepareResponse = await fetch("/api/uploads/prepare", {
         method: "POST",
         headers: {
@@ -74,17 +83,17 @@ export function GenerationForm() {
         body: JSON.stringify({
           organizationId: "local-org",
           projectId: "local-project",
-          evidenceFiles: evidenceFiles.map((file) => ({
+          evidenceFiles: evidenceFilesFromForm.map((file) => ({
             fileName: file.name,
             mediaType: file.type || "application/octet-stream",
             sizeBytes: file.size,
           })),
           brandFile:
-            brandFile instanceof File && brandFile.size > 0
+            brandFileFromForm instanceof File && brandFileFromForm.size > 0
               ? {
-                  fileName: brandFile.name,
-                  mediaType: brandFile.type || "application/octet-stream",
-                  sizeBytes: brandFile.size,
+                  fileName: brandFileFromForm.name,
+                  mediaType: brandFileFromForm.type || "application/octet-stream",
+                  sizeBytes: brandFileFromForm.size,
                 }
               : undefined,
         }),
@@ -96,10 +105,10 @@ export function GenerationForm() {
         throw new Error(preparePayload.error ?? "Unable to prepare uploads.");
       }
 
-      await uploadPreparedFiles(evidenceFiles, preparePayload.evidenceUploads);
+      await uploadPreparedFiles(evidenceFilesFromForm, preparePayload.evidenceUploads);
 
-      if (brandFile instanceof File && brandFile.size > 0 && preparePayload.brandUpload) {
-        await uploadPreparedFile(brandFile, preparePayload.brandUpload);
+      if (brandFileFromForm instanceof File && brandFileFromForm.size > 0 && preparePayload.brandUpload) {
+        await uploadPreparedFile(brandFileFromForm, preparePayload.brandUpload);
       }
 
       const response = await fetch("/api/generate", {
@@ -137,112 +146,318 @@ export function GenerationForm() {
     }
   }
 
+  function goToNextStep() {
+    if (currentStep === 0 && evidenceFiles.length === 0) {
+      setError("Add at least one data file before continuing.");
+      return;
+    }
+
+    if (currentStep === 1 && formRef.current) {
+      const formData = new FormData(formRef.current);
+      const brief = readBrief(formData);
+
+      if (!brief.businessContext || !brief.audience || !brief.objective) {
+        setError("Add the business context, audience, and objective before continuing.");
+        return;
+      }
+    }
+
+    setError(null);
+    setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
+  }
+
+  function goToPreviousStep() {
+    setError(null);
+    setCurrentStep((step) => Math.max(step - 1, 0));
+  }
+
+  function openEvidencePicker() {
+    evidenceInputRef.current?.click();
+  }
+
+  function openBrandPicker() {
+    brandInputRef.current?.click();
+  }
+
+  function updateEvidenceFiles(files: File[]) {
+    setEvidenceFiles(files);
+    syncInputFiles(evidenceInputRef.current, files);
+    setError(null);
+  }
+
+  function updateBrandFile(file: File | null) {
+    setBrandFile(file);
+    syncInputFiles(brandInputRef.current, file ? [file] : []);
+  }
+
+  function handleEvidenceInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    updateEvidenceFiles(Array.from(event.target.files ?? []));
+  }
+
+  function handleBrandInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    updateBrandFile(event.target.files?.[0] ?? null);
+  }
+
+  function handleDrop(
+    event: React.DragEvent<HTMLElement>,
+    kind: "evidence" | "brand",
+  ) {
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer.files ?? []);
+
+    if (kind === "evidence") {
+      setIsDraggingEvidence(false);
+      updateEvidenceFiles(files);
+      return;
+    }
+
+    setIsDraggingBrand(false);
+    updateBrandFile(files[0] ?? null);
+  }
+
   return (
-    <div className="stack-xl">
-      <form className="stack-lg" onSubmit={handleSubmit}>
-        <div className="panel form-panel stack-xl">
-          <div className="stack">
-            <p className="section-label">New analysis</p>
-            <h2>Upload your data, set the brief, and add your template.</h2>
-            <p className="muted">
-              Basquio analyzes your data, finds the insights, builds the narrative, and delivers an editable
-              presentation and PDF.
-            </p>
-          </div>
+    <div className="stack-lg">
+      <form ref={formRef} className="panel form-shell stack-xl" onSubmit={handleSubmit}>
+        <div className="stepper-track" aria-label="Analysis setup steps">
+          {steps.map((step, index) => {
+            const state =
+              index === currentStep ? "active" : index < currentStep ? "done" : "upcoming";
 
-          <div className="brief-rule-grid">
-            {formSignals.map((signal) => (
-              <article key={signal.label} className="brief-rule stack">
-                <p className="section-label">{signal.label}</p>
-                <h3>{signal.title}</h3>
-                <p className="muted">{signal.copy}</p>
+            return (
+              <button
+                key={step.id}
+                className={`step-chip step-chip-${state}`}
+                type="button"
+                onClick={() => setCurrentStep(index)}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{step.title}</strong>
+              </button>
+            );
+          })}
+        </div>
+
+        {currentStep === 0 ? (
+          <section className="step-panel stack-lg">
+            <div className="stack-xs">
+              <p className="section-label">Step 1</p>
+              <h2>Upload your data</h2>
+            </div>
+
+            <div className="step-grid">
+              <div className="stack">
+                <button
+                  className={isDraggingEvidence ? "dropzone dropzone-active" : "dropzone"}
+                  type="button"
+                  onClick={openEvidencePicker}
+                  onDragEnter={() => setIsDraggingEvidence(true)}
+                  onDragLeave={() => setIsDraggingEvidence(false)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => handleDrop(event, "evidence")}
+                >
+                  <span className="dropzone-icon" aria-hidden>
+                    +
+                  </span>
+                  <span className="dropzone-title">Drop data files here</span>
+                  <span className="dropzone-copy">CSV, Excel, and supporting documents</span>
+                </button>
+
+                <input
+                  ref={evidenceInputRef}
+                  className="sr-only-input"
+                  name="evidenceFiles"
+                  type="file"
+                  accept=".csv,.xlsx,.xls,.doc,.docx,.txt,.md,.pdf,.pptx,.json,.css"
+                  multiple
+                  onChange={handleEvidenceInputChange}
+                />
+
+                {evidenceFiles.length > 0 ? (
+                  <div className="file-list">
+                    {evidenceFiles.map((file) => (
+                      <div key={`${file.name}-${file.size}`} className="file-chip">
+                        <span>{file.name}</span>
+                        <small>{formatFileSize(file.size)}</small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="stack">
+                <button
+                  className={isDraggingBrand ? "dropzone dropzone-active" : "dropzone dropzone-secondary"}
+                  type="button"
+                  onClick={openBrandPicker}
+                  onDragEnter={() => setIsDraggingBrand(true)}
+                  onDragLeave={() => setIsDraggingBrand(false)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => handleDrop(event, "brand")}
+                >
+                  <span className="dropzone-icon" aria-hidden>
+                    +
+                  </span>
+                  <span className="dropzone-title">Add a template</span>
+                  <span className="dropzone-copy">Optional PPTX, JSON, CSS, or PDF reference</span>
+                </button>
+
+                <input
+                  ref={brandInputRef}
+                  className="sr-only-input"
+                  name="brandFile"
+                  type="file"
+                  accept=".json,.css,.pptx,.pdf"
+                  onChange={handleBrandInputChange}
+                />
+
+                {brandFile ? (
+                  <div className="file-chip">
+                    <span>{brandFile.name}</span>
+                    <small>{formatFileSize(brandFile.size)}</small>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {currentStep === 1 ? (
+          <section className="step-panel stack-lg">
+            <div className="stack-xs">
+              <p className="section-label">Step 2</p>
+              <h2>Write the brief</h2>
+            </div>
+
+            <div className="form-grid">
+              <label className="field field-span-2">
+                <span>Business context</span>
+                <textarea
+                  name="businessContext"
+                  rows={6}
+                  placeholder="What is happening in the business, and what does your audience need to understand?"
+                />
+              </label>
+
+              <label className="field">
+                <span>Audience</span>
+                <input name="audience" placeholder="Leadership team, client, or review audience" />
+              </label>
+
+              <label className="field">
+                <span>Objective</span>
+                <input name="objective" placeholder="What decision or takeaway should this analysis support?" />
+              </label>
+
+              <label className="field">
+                <span>Client</span>
+                <input name="client" placeholder="Optional" />
+              </label>
+
+              <label className="field">
+                <span>Thesis</span>
+                <input name="thesis" placeholder="Optional working point of view" />
+              </label>
+
+              <label className="field field-span-2">
+                <span>Stakes</span>
+                <textarea name="stakes" rows={4} placeholder="Optional: why this matters now and what depends on it" />
+              </label>
+            </div>
+          </section>
+        ) : null}
+
+        {currentStep === 2 ? (
+          <section className="step-panel stack-lg">
+            <div className="stack-xs">
+              <p className="section-label">Step 3</p>
+              <h2>Review and generate</h2>
+            </div>
+
+            <div className="review-grid">
+              <article className="review-card stack">
+                <p className="artifact-kind">Data</p>
+                <p>{evidenceFiles.length > 0 ? `${evidenceFiles.length} file${evidenceFiles.length === 1 ? "" : "s"}` : "No files added yet"}</p>
+                {brandFile ? <p className="muted">Template: {brandFile.name}</p> : <p className="muted">Default brand system</p>}
               </article>
-            ))}
-          </div>
 
-          <div className="form-grid">
-            <label className="field field-span-2">
-              <span>Data files</span>
-              <input
-                name="evidenceFiles"
-                type="file"
-                accept=".csv,.xlsx,.xls,.doc,.docx,.txt,.md,.pdf,.pptx,.json,.css"
-                multiple
-                required
-              />
-              <small>Upload spreadsheets (CSV, Excel) and any supporting documents.</small>
-            </label>
+              <article className="review-card stack">
+                <p className="artifact-kind">Output</p>
+                <p>PPTX and PDF</p>
+                <p className="muted">One analysis, two synced deliverables</p>
+              </article>
+            </div>
+          </section>
+        ) : null}
 
-            <label className="field field-span-2">
-              <span>Template (optional)</span>
-              <input name="brandFile" type="file" accept=".json,.css,.pptx,.pdf" />
-              <small>PPTX template for branded output, or PDF/JSON for style reference.</small>
-            </label>
+        <div className="row form-actions">
+          <div className="row">
+            {currentStep > 0 ? (
+              <button className="button secondary" type="button" onClick={goToPreviousStep}>
+                Back
+              </button>
+            ) : null}
 
-            <label className="field field-span-2">
-              <span>Business context</span>
-              <textarea
-                name="businessContext"
-                rows={5}
-                placeholder="What is this data about? What does your audience need to understand?"
-                required
-              />
-            </label>
-
-            <label className="field">
-              <span>Client</span>
-              <input name="client" defaultValue="Internal Basquio test client" placeholder="Unilever" />
-            </label>
-
-            <label className="field">
-              <span>Audience</span>
-              <input name="audience" defaultValue="Category leadership" placeholder="Regional category leadership" />
-            </label>
-
-            <label className="field">
-              <span>Objective</span>
-              <input
-                name="objective"
-                defaultValue="Explain what changed, why it matters, and what to do next"
-                placeholder="Help the team decide what to do next"
-              />
-            </label>
-
-            <label className="field">
-              <span>Thesis</span>
-              <input name="thesis" placeholder="Example: Growth is slowing in premium channels, not across the full category." />
-            </label>
-
-            <label className="field field-span-2">
-              <span>Stakes</span>
-              <textarea
-                name="stakes"
-                rows={3}
-                placeholder="Why does this matter now? What decision depends on this?"
-              />
-            </label>
-          </div>
-
-          <div className="row form-actions">
-            <div className="row">
+            {currentStep < steps.length - 1 ? (
+              <button className="button" type="button" onClick={goToNextStep}>
+                Continue
+              </button>
+            ) : (
               <button className="button" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Generating..." : "Generate presentation"}
               </button>
-              <Link className="button secondary" href="/artifacts">
-                View recent outputs
-              </Link>
-            </div>
+            )}
 
-            <p className="fine-print">
-              Basquio analyzes your data and builds the narrative before rendering. Both outputs stay in sync.
-            </p>
+            <Link className="button secondary" href="/artifacts">
+              View presentations
+            </Link>
           </div>
+
+          <p className="fine-print">Basquio computes the numbers before it writes the story.</p>
         </div>
       </form>
 
       {error ? <div className="panel danger-panel">{error}</div> : null}
     </div>
   );
+}
+
+function syncInputFiles(input: HTMLInputElement | null, files: File[]) {
+  if (!input) {
+    return;
+  }
+
+  const dataTransfer = new DataTransfer();
+
+  for (const file of files) {
+    dataTransfer.items.add(file);
+  }
+
+  input.files = dataTransfer.files;
+}
+
+function validateSubmission(
+  evidenceFiles: File[],
+  brief: ReturnType<typeof readBrief>,
+) {
+  if (evidenceFiles.length === 0) {
+    throw new Error("Add at least one data file before generating.");
+  }
+
+  if (!brief.businessContext || !brief.audience || !brief.objective) {
+    throw new Error("Add the business context, audience, and objective before generating.");
+  }
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${bytes} B`;
 }
 
 async function readGenerationPayload(response: Response): Promise<GenerationStartResponse & { error?: string }> {
@@ -313,10 +528,8 @@ function readBrief(formData: FormData) {
   return {
     businessContext: String(formData.get("businessContext") ?? "").trim(),
     client: String(formData.get("client") ?? "").trim(),
-    audience: String(formData.get("audience") ?? "Executive stakeholder").trim() || "Executive stakeholder",
-    objective:
-      String(formData.get("objective") ?? "Explain the business performance signal").trim() ||
-      "Explain the business performance signal",
+    audience: String(formData.get("audience") ?? "").trim(),
+    objective: String(formData.get("objective") ?? "").trim(),
     thesis: String(formData.get("thesis") ?? "").trim(),
     stakes: String(formData.get("stakes") ?? "").trim(),
   };

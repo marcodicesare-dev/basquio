@@ -11,22 +11,22 @@ export const pipelineSteps = [
   {
     stage: "02",
     title: "Parse and profile",
-    detail: "Schema, coverage, roles",
+    detail: "Structure and relationships",
   },
   {
     stage: "03",
     title: "Compute analytics",
-    detail: "Deterministic metrics",
+    detail: "Computed from your data",
   },
   {
     stage: "04",
     title: "Rank insights",
-    detail: "Evidence-backed findings",
+    detail: "Insights with proof",
   },
   {
     stage: "05",
     title: "Plan narrative",
-    detail: "Audience, stakes, arc",
+    detail: "Tailored to your audience",
   },
   {
     stage: "06",

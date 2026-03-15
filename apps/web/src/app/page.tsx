@@ -11,6 +11,7 @@ import {
   trustSignals,
 } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
+import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
@@ -301,6 +302,7 @@ export default function HomePage() {
         <div className="stack">
           <p className="section-label">Workflow fit</p>
           <h2>Built for teams that already have to defend the story.</h2>
+          <p className="muted">Category reviews, client updates, executive readouts, and recurring reporting loops where the numbers have to hold up.</p>
         </div>
 
         <div className="logo-strip" aria-label="Trusted workflow types">
@@ -447,19 +449,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="panel social-proof-panel">
-        <div className="stack">
-          <p className="section-label">Proof layer</p>
-          <h2>The workflow is built around teams that have to defend the story.</h2>
-        </div>
-
-        <div className="proof-quote">
-          <p>Traceable numbers. Brand-safe output. A presentation the team can actually revise and send.</p>
-          <footer>Current on-site proof is workflow-based. Named customer logos and attributed testimonials should ship only when they are real.</footer>
-        </div>
-      </section>
-
       <PublicSiteFooterCta />
+      <PublicSiteFooter />
     </div>
   );
 }
