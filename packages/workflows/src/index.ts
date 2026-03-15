@@ -109,10 +109,6 @@ export async function runGenerationRequest(
 ): Promise<GenerationRunSummary> {
   const request = generationRequestSchema.parse(requestInput);
   const brief = resolveReportBrief(request);
-  const [sourceFiles, styleFile] = await Promise.all([
-    resolveSourceFiles(request),
-    resolveUploadedFile(request.styleFile),
-  ]);
   const createdAt = new Date().toISOString();
   const persistence = await createRunPersistence({
     request,
@@ -163,6 +159,10 @@ export async function runGenerationRequest(
     const intake = await runStage(
       "intake and profiling",
       async () => {
+        const [sourceFiles, styleFile] = await Promise.all([
+          resolveSourceFiles(request),
+          resolveUploadedFile(request.styleFile),
+        ]);
         const parsed = await parseEvidencePackage({
           datasetId: request.jobId,
           files: sourceFiles.map((file, index) => ({
@@ -175,20 +175,23 @@ export async function runGenerationRequest(
         });
 
         return {
+          sourceFiles,
+          styleFile,
           parsed,
           datasetProfile: profileDataset(parsed.datasetProfile),
         };
       },
       {
         detail: (result) =>
-          `Parsed ${result.datasetProfile.manifest?.files.length ?? sourceFiles.length} source files into ${result.datasetProfile.sheets.length} profiled sheet views.`,
+          `Parsed ${result.datasetProfile.manifest?.files.length ?? result.sourceFiles.length} source files into ${result.datasetProfile.sheets.length} profiled sheet views.`,
         payload: (result) => ({
-          fileCount: result.datasetProfile.manifest?.files.length ?? sourceFiles.length,
+          fileCount: result.datasetProfile.manifest?.files.length ?? result.sourceFiles.length,
           sheetCount: result.datasetProfile.sheets.length,
           warningCount: result.datasetProfile.warnings.length,
         }),
       },
     );
+    const styleFile = intake.styleFile;
     const parsed = intake.parsed;
     const analyzed = {
       datasetProfile: intake.datasetProfile,

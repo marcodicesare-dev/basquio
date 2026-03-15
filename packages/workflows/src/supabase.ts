@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+const SUPABASE_FETCH_TIMEOUT_MS = 30_000;
+
 function isSupabaseSecretKey(value: string) {
   return value.startsWith("sb_secret_");
 }
@@ -57,6 +59,7 @@ export async function uploadToStorage(input: {
       "x-upsert": String(input.upsert ?? false),
     }),
     body: new Uint8Array(input.body),
+    signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -72,6 +75,7 @@ export async function downloadFromStorage(input: {
 }) {
   const response = await fetch(buildStorageObjectUrl(input.supabaseUrl, input.bucket, input.storagePath), {
     headers: buildServiceHeaders(input.serviceKey),
+    signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -97,6 +101,7 @@ export async function fetchRestRows<T>(input: {
     headers: buildServiceHeaders(input.serviceKey, {
       Accept: "application/json",
     }),
+    signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -129,6 +134,7 @@ export async function upsertRestRows<T>(input: {
       Prefer: "resolution=merge-duplicates,return=representation",
     }),
     body: JSON.stringify(input.rows),
+    signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -164,6 +170,7 @@ export async function patchRestRows<T>(input: {
       Prefer: "return=representation",
     }),
     body: JSON.stringify(input.payload),
+    signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
