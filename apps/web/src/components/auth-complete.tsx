@@ -71,19 +71,26 @@ export function AuthComplete({
       }
 
       if (accessToken && refreshToken) {
-        const { error: setSessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
+        const sessionResponse = await fetch("/auth/session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accessToken,
+            refreshToken,
+          }),
         });
 
         if (!isMounted) {
           return;
         }
 
-        if (setSessionError) {
+        if (!sessionResponse.ok) {
+          const payload = (await sessionResponse.json().catch(() => null)) as { error?: string } | null;
           window.clearTimeout(fallbackTimer);
           setStatus("invalid");
-          setError(setSessionError.message);
+          setError(payload?.error ?? "We couldn't complete that session handoff.");
           return;
         }
       }

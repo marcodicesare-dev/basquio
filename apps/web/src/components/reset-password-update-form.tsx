@@ -61,6 +61,10 @@ export function ResetPasswordUpdateForm({
       window.location.hash.includes("access_token") ||
       window.location.hash.includes("type=recovery") ||
       window.location.search.includes("type=recovery");
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+    const authErrorDescription = hashParams.get("error_description");
 
     const fallbackTimer = window.setTimeout(() => {
       if (isMounted) {
@@ -72,6 +76,42 @@ export function ResetPasswordUpdateForm({
     }, recoveryHint ? 5000 : 1500);
 
     const resolveSession = async () => {
+      if (authErrorDescription) {
+        if (!isMounted) {
+          return;
+        }
+
+        window.clearTimeout(fallbackTimer);
+        setStatus("invalid");
+        setError(authErrorDescription);
+        return;
+      }
+
+      if (accessToken && refreshToken) {
+        const sessionResponse = await fetch("/auth/session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accessToken,
+            refreshToken,
+          }),
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (!sessionResponse.ok) {
+          const payload = (await sessionResponse.json().catch(() => null)) as { error?: string } | null;
+          window.clearTimeout(fallbackTimer);
+          setStatus("invalid");
+          setError(payload?.error ?? "We couldn't verify the recovery link. Request a new reset email and try again.");
+          return;
+        }
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
