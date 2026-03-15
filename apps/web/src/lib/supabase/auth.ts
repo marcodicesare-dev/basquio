@@ -1,4 +1,9 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+export {
+  buildResetPasswordPath,
+  buildSignInPath,
+  sanitizeNextPath,
+} from "@/lib/supabase/paths";
 
 export type ViewerState = {
   configured: boolean;

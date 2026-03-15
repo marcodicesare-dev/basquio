@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { dispatchPersistedGenerationJob } from "@/lib/generation-requests";
+import { getViewerState } from "@/lib/supabase/auth";
 import { getGenerationStatus } from "@/lib/run-status";
 
 export const runtime = "nodejs";
@@ -13,7 +14,13 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> },
 ) {
   const { jobId } = await params;
-  const status = await getGenerationStatus(jobId);
+  const viewer = await getViewerState();
+
+  if (!viewer.user) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
+
+  const status = await getGenerationStatus(jobId, viewer.user.id);
 
   if (!status) {
     return NextResponse.json({ error: "Run not found." }, { status: 404 });

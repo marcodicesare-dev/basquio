@@ -1,11 +1,9 @@
-import { redirect } from "next/navigation";
-
-import { AuthForm } from "@/components/auth-form";
+import { ResetPasswordUpdateForm } from "@/components/reset-password-update-form";
 import { getViewerState, sanitizeNextPath } from "@/lib/supabase/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function SignInPage({
+export default async function ResetPasswordPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -16,31 +14,22 @@ export default async function SignInPage({
     typeof params.next === "string" ? params.next : undefined,
     "/dashboard",
   );
-  const initialMode =
-    params.mode === "sign-up" ? "sign-up" : params.mode === "reset" ? "reset" : "sign-in";
-  const initialError = typeof params.error === "string" ? params.error : undefined;
   const initialMessage = typeof params.message === "string" ? params.message : undefined;
-
-  if (viewer.user) {
-    redirect(nextPath);
-  }
 
   return (
     <div className="page-shell public-page auth-page-shell">
       <section className="technical-panel auth-intro-panel stack-lg">
-        <p className="section-label light">Private workspace</p>
-        <h1>Try the workflow, then cross the auth threshold only when it matters.</h1>
+        <p className="section-label light">Password recovery</p>
+        <h1>Open the email link, set a new password, and step back into your workspace.</h1>
         <p className="muted">
-          The landing experience stays open. Uploads, run history, progress tracking, and artifacts now sit behind
-          Supabase email and password auth so each Basquio workspace is private by default.
+          Supabase creates a short-lived recovery session from the email link. Once it lands here, Basquio lets you
+          set a new password without reopening the public flow.
         </p>
       </section>
 
-      <AuthForm
+      <ResetPasswordUpdateForm
         configured={viewer.configured}
         nextPath={nextPath}
-        initialMode={initialMode}
-        initialError={initialError}
         initialMessage={initialMessage}
       />
     </div>

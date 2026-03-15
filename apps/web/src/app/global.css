@@ -1271,6 +1271,13 @@ textarea {
   background: rgba(255, 255, 255, 0.7);
 }
 
+.sidebar-user-email {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
 .brand-lockup {
   display: inline-flex;
   align-items: center;
@@ -1289,6 +1296,11 @@ textarea {
 
 .sidebar-cta {
   width: 100%;
+}
+
+.sidebar-signout {
+  width: 100%;
+  justify-content: center;
 }
 
 .nav {
@@ -1664,6 +1676,75 @@ textarea {
 
 .form-shell {
   padding: 28px;
+}
+
+.auth-page-shell {
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  align-items: start;
+}
+
+.auth-intro-panel {
+  min-height: 100%;
+}
+
+.auth-card {
+  padding: 32px;
+}
+
+.auth-toggle {
+  display: inline-flex;
+  gap: 10px;
+  width: fit-content;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.auth-toggle-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-weight: 700;
+  transition: 160ms ease;
+}
+
+.auth-toggle-button.active {
+  background: var(--surface-dark);
+  color: var(--text-inverse);
+  box-shadow: 0 12px 26px rgba(11, 12, 12, 0.16);
+}
+
+.auth-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auth-actions {
+  align-items: center;
+}
+
+.auth-utility-row {
+  align-items: center;
+  gap: 14px;
+}
+
+.auth-text-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.auth-status-panel {
+  padding: 18px 20px;
 }
 
 .stepper-track {
@@ -2142,7 +2223,8 @@ textarea {
   .loading-board,
   .output-preview-grid,
   .proof-grid,
-  .pipeline-strip {
+  .pipeline-strip,
+  .auth-page-shell {
     grid-template-columns: 1fr;
   }
 
@@ -2158,6 +2240,7 @@ textarea {
 
 @media (max-width: 1080px) {
   .form-grid,
+  .auth-form-grid,
   .step-grid,
   .review-grid,
   .signal-grid,
@@ -2257,7 +2340,8 @@ textarea {
   .meta-grid,
   .persona-grid,
   .step-grid,
-  .review-grid {
+  .review-grid,
+  .auth-form-grid {
     grid-template-columns: 1fr;
   }
 

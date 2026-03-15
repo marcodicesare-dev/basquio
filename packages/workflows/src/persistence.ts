@@ -12,6 +12,7 @@ import { generationRunSummarySchema } from "@basquio/types";
 
 import {
   createServiceSupabaseClient,
+  fetchRestRows,
   patchRestRows,
   upsertRestRows,
   uploadToStorage,
@@ -23,6 +24,7 @@ type RunPersistenceContext = {
   serviceRoleKey: string;
   organizationId: string;
   projectId: string;
+  requestedBy: string | null;
 };
 
 type UploadedInputRecord = {
@@ -78,7 +80,8 @@ class SupabaseRunPersistence {
           job_key: this.request.jobId,
           organization_id: this.context.organizationId,
           project_id: this.context.projectId,
-        status: "running",
+          requested_by: this.context.requestedBy,
+          status: "running",
           business_context: this.brief.businessContext,
           audience: this.brief.audience,
           objective: this.brief.objective,
@@ -352,6 +355,7 @@ class SupabaseRunPersistence {
           external_id: input.externalId,
           organization_id: this.context.organizationId,
           project_id: this.context.projectId,
+          uploaded_by: this.context.requestedBy,
           kind: file.kind ?? "unknown",
           file_name: file.fileName,
           media_type: file.mediaType,
@@ -394,6 +398,33 @@ async function resolveRunPersistenceContext(
   }
 
   try {
+    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
+    const existingJobs = await fetchRestRows<{
+      organization_id: string;
+      project_id: string;
+      requested_by: string | null;
+    }>({
+      supabaseUrl,
+      serviceKey: serviceRoleKey,
+      table: "generation_jobs",
+      query: {
+        select: "organization_id,project_id,requested_by",
+        job_key: `eq.${request.jobId}`,
+        limit: "1",
+      },
+    });
+
+    if (existingJobs[0]?.organization_id && existingJobs[0]?.project_id) {
+      return {
+        supabase,
+        supabaseUrl,
+        serviceRoleKey,
+        organizationId: existingJobs[0].organization_id,
+        projectId: existingJobs[0].project_id,
+        requestedBy: existingJobs[0].requested_by ?? null,
+      };
+    }
+
     const organizationSlug = sanitizeStorageSegment(request.organizationId || "local-org");
     const projectSlug = sanitizeStorageSegment(request.projectId || "local-project");
 
@@ -436,14 +467,13 @@ async function resolveRunPersistenceContext(
       return null;
     }
 
-    const supabase = createServiceSupabaseClient(supabaseUrl, serviceRoleKey);
-
     return {
       supabase,
       supabaseUrl,
       serviceRoleKey,
       organizationId: organizations[0].id,
       projectId: projects[0].id,
+      requestedBy: null,
     };
   } catch {
     return null;

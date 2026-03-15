@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { getViewerState } from "@/lib/supabase/auth";
 import {
   buildArtifactDownloadUrl,
   listGenerationRuns,
@@ -18,7 +19,8 @@ function formatDate(value: string) {
 }
 
 export default async function DashboardPage() {
-  const runs = await listGenerationRuns(8);
+  const viewer = await getViewerState();
+  const runs = await listGenerationRuns(8, viewer.user?.id);
   const latestRun = runs[0] ?? null;
   const recentRuns = latestRun ? runs.slice(1, 5) : [];
 

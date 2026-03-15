@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { runGenerationRequest } from "@basquio/workflows";
 
-import { loadPersistedGenerationRequest } from "@/lib/generation-requests";
+import { getInternalDispatchToken, loadPersistedGenerationRequest } from "@/lib/generation-requests";
 import { getGenerationStatus } from "@/lib/run-status";
 
 export const runtime = "nodejs";
@@ -13,9 +13,15 @@ const activeExecutions = new Set<string>();
 const STALE_RUNNING_RECOVERY_MS = 45_000;
 
 export async function POST(
-  _request: Request,
+  requestForAuth: Request,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
+  const dispatchToken = getInternalDispatchToken();
+
+  if (!dispatchToken || requestForAuth.headers.get("x-basquio-internal-token") !== dispatchToken) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   const { jobId } = await params;
   const request = await loadPersistedGenerationRequest(jobId);
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { SignOutButton } from "@/components/sign-out-button";
 import type { ViewerState } from "@/lib/supabase/auth";
 
 const navigation = [
@@ -28,6 +29,7 @@ const navigation = [
 
 export function AppShell({ viewer, children }: { viewer: ViewerState; children: ReactNode }) {
   const pathname = usePathname();
+  const userEmail = viewer.user?.email ?? "";
 
   return (
     <div className="app-frame">
@@ -55,9 +57,11 @@ export function AppShell({ viewer, children }: { viewer: ViewerState; children: 
           })}
         </nav>
 
-        {viewer.user?.email ? (
+        {userEmail ? (
           <div className="stack sidebar-meta">
-            <p className="muted">{viewer.user.email}</p>
+            <p className="muted">Signed in as</p>
+            <p className="sidebar-user-email">{userEmail}</p>
+            <SignOutButton />
           </div>
         ) : null}
       </aside>

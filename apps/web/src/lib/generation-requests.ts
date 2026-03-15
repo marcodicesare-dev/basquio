@@ -91,6 +91,7 @@ export async function getGenerationJobState(jobId: string): Promise<JobRow | nul
 
 export async function dispatchPersistedGenerationJob(jobId: string, request?: Request) {
   const baseUrl = resolveBaseUrl(request);
+  const internalDispatchToken = getInternalDispatchToken();
   if (!baseUrl) {
     return false;
   }
@@ -100,6 +101,7 @@ export async function dispatchPersistedGenerationJob(jobId: string, request?: Re
       method: "POST",
       headers: {
         "content-type": "application/json",
+        ...(internalDispatchToken ? { "x-basquio-internal-token": internalDispatchToken } : {}),
       },
       body: JSON.stringify({ jobId }),
       cache: "no-store",
@@ -112,6 +114,7 @@ export async function dispatchPersistedGenerationJob(jobId: string, request?: Re
 
 export async function dispatchPersistedGenerationExecution(jobId: string, request?: Request) {
   const baseUrl = resolveBaseUrl(request);
+  const internalDispatchToken = getInternalDispatchToken();
   if (!baseUrl) {
     return false;
   }
@@ -121,6 +124,7 @@ export async function dispatchPersistedGenerationExecution(jobId: string, reques
       method: "POST",
       headers: {
         "content-type": "application/json",
+        ...(internalDispatchToken ? { "x-basquio-internal-token": internalDispatchToken } : {}),
       },
       body: JSON.stringify({ jobId }),
       cache: "no-store",
@@ -172,6 +176,10 @@ function getSupabaseCredentials() {
     supabaseUrl,
     serviceKey,
   };
+}
+
+export function getInternalDispatchToken() {
+  return process.env.BASQUIO_INTERNAL_JOB_TOKEN || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 }
 
 async function resolveWorkspaceRoot() {

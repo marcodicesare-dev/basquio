@@ -5,11 +5,15 @@ import { generationRunSummarySchema, type ArtifactRecord, type GenerationRunSumm
 
 import { downloadFromStorage, fetchRestRows, listStorageObjects } from "@/lib/supabase/admin";
 
-export async function listGenerationRuns(limit = 12): Promise<GenerationRunSummary[]> {
-  const supabaseRuns = await listGenerationRunsFromSupabase(limit);
+export async function listGenerationRuns(limit = 12, viewerId?: string): Promise<GenerationRunSummary[]> {
+  const supabaseRuns = await listGenerationRunsFromSupabase(limit, viewerId);
 
   if (supabaseRuns.length > 0) {
     return supabaseRuns;
+  }
+
+  if (viewerId) {
+    return [];
   }
 
   const storageRuns = await listGenerationRunsFromStorage(limit);
@@ -44,11 +48,15 @@ export async function listGenerationRuns(limit = 12): Promise<GenerationRunSumma
     .slice(0, limit);
 }
 
-export async function getGenerationRun(jobId: string): Promise<GenerationRunSummary | null> {
-  const supabaseRun = await getGenerationRunFromSupabase(jobId);
+export async function getGenerationRun(jobId: string, viewerId?: string): Promise<GenerationRunSummary | null> {
+  const supabaseRun = await getGenerationRunFromSupabase(jobId, viewerId);
 
   if (supabaseRun) {
     return supabaseRun;
+  }
+
+  if (viewerId) {
+    return null;
   }
 
   const storageRun = await getGenerationRunFromStorage(jobId);
@@ -116,10 +124,10 @@ export async function readLocalArtifactBuffer(artifact: ArtifactRecord) {
   return readFile(path.join(workspaceRoot, artifact.storagePath));
 }
 
-async function listGenerationRunsFromSupabase(limit: number) {
+async function listGenerationRunsFromSupabase(limit: number, viewerId?: string) {
   const credentials = getSupabaseCredentials();
 
-  if (!credentials) {
+  if (!credentials || !viewerId) {
     return [];
   }
 
@@ -129,6 +137,7 @@ async function listGenerationRunsFromSupabase(limit: number) {
       table: "generation_jobs",
       query: {
         select: "summary",
+        requested_by: `eq.${viewerId}`,
         summary: "not.is.null",
         order: "created_at.desc",
         limit: String(limit),
@@ -149,10 +158,10 @@ async function listGenerationRunsFromSupabase(limit: number) {
   }
 }
 
-async function getGenerationRunFromSupabase(jobId: string) {
+async function getGenerationRunFromSupabase(jobId: string, viewerId?: string) {
   const credentials = getSupabaseCredentials();
 
-  if (!credentials) {
+  if (!credentials || !viewerId) {
     return null;
   }
 
@@ -163,6 +172,7 @@ async function getGenerationRunFromSupabase(jobId: string) {
       query: {
         select: "summary",
         job_key: `eq.${jobId}`,
+        requested_by: `eq.${viewerId}`,
         limit: "1",
       },
     });

@@ -1,3 +1,4 @@
+import { getViewerState } from "@/lib/supabase/auth";
 import { getGenerationRun, readLocalArtifactBuffer } from "@/lib/job-runs";
 import { downloadFromStorage, fetchRestRows } from "@/lib/supabase/admin";
 
@@ -9,28 +10,20 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string; kind: string }> },
 ) {
   const { jobId, kind } = await params;
+  const viewer = await getViewerState();
+
+  if (!viewer.user) {
+    return new Response("Authentication required.", { status: 401 });
+  }
 
   if (kind !== "pptx" && kind !== "pdf") {
     return new Response("Unsupported artifact kind.", { status: 400 });
   }
 
-  const run = await getGenerationRun(jobId);
+  const run = await getGenerationRun(jobId, viewer.user.id);
 
   if (!run) {
-    try {
-      const directBuffer = await readDirectArtifact(jobId, kind);
-
-      return new Response(directBuffer, {
-        status: 200,
-        headers: {
-          "Content-Type": kind === "pptx" ? "application/vnd.openxmlformats-officedocument.presentationml.presentation" : "application/pdf",
-          "Content-Disposition": `attachment; filename="basquio-deck.${kind}"`,
-          "Cache-Control": "no-store",
-        },
-      });
-    } catch {
-      return new Response("Run not found.", { status: 404 });
-    }
+    return new Response("Run not found.", { status: 404 });
   }
 
   const artifact = run.artifacts.find((candidate) => candidate.kind === kind);
@@ -44,7 +37,7 @@ export async function GET(
       artifact.provider === "supabase"
         ? await readSupabaseArtifact(artifact.storagePath)
         : artifact.provider === "database"
-          ? await readInlineArtifact(jobId, artifact.kind)
+          ? await readInlineArtifact(jobId, artifact.kind, viewer.user.id)
           : await readLocalArtifactBuffer(artifact);
 
     return new Response(buffer, {
@@ -77,7 +70,7 @@ async function readSupabaseArtifact(storagePath: string) {
   });
 }
 
-async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf") {
+async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf", viewerId: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -92,6 +85,7 @@ async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf") {
     query: {
       select: "id",
       job_key: `eq.${jobId}`,
+      requested_by: `eq.${viewerId}`,
       limit: "1",
     },
   });
@@ -124,20 +118,4 @@ async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf") {
   }
 
   return Buffer.from(inlineBase64, "base64");
-}
-
-async function readDirectArtifact(jobId: string, kind: "pptx" | "pdf") {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Supabase storage credentials are missing.");
-  }
-
-  return downloadFromStorage({
-    supabaseUrl,
-    serviceKey: serviceRoleKey,
-    bucket: "artifacts",
-    storagePath: `jobs/${jobId}/basquio-deck.${kind}`,
-  });
 }

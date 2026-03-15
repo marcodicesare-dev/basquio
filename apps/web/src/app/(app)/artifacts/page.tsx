@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { getViewerState } from "@/lib/supabase/auth";
 import {
   buildArtifactDownloadUrl,
   listGenerationRuns,
@@ -18,7 +19,8 @@ function formatDate(value: string) {
 }
 
 export default async function ArtifactsPage() {
-  const runs = await listGenerationRuns(24);
+  const viewer = await getViewerState();
+  const runs = await listGenerationRuns(24, viewer.user?.id);
 
   return (
     <div className="page-shell workspace-page">

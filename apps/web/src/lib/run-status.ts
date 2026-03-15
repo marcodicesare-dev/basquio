@@ -56,9 +56,9 @@ export type GenerationStatusSnapshot = {
   failureMessage?: string;
 };
 
-export async function getGenerationStatus(jobId: string): Promise<GenerationStatusSnapshot | null> {
+export async function getGenerationStatus(jobId: string, viewerId?: string): Promise<GenerationStatusSnapshot | null> {
   const credentials = getSupabaseCredentials();
-  const fallbackContext = await loadFallbackContext(jobId);
+  const fallbackContext = viewerId ? null : await loadFallbackContext(jobId);
 
   if (!credentials) {
     return buildFallbackSnapshot(jobId, fallbackContext);
@@ -70,6 +70,7 @@ export async function getGenerationStatus(jobId: string): Promise<GenerationStat
     query: {
       select: "id,job_key,status,created_at,updated_at,failure_message,summary",
       job_key: `eq.${jobId}`,
+      ...(viewerId ? { requested_by: `eq.${viewerId}` } : {}),
       limit: "1",
     },
   }).catch(() => []);
@@ -160,11 +161,17 @@ async function loadFallbackContext(jobId: string) {
 
 function buildFallbackSnapshot(
   jobId: string,
-  fallback: {
+  fallback:
+    | {
     request: GenerationRequest | null;
     summary: GenerationRunSummary | null;
-  },
+      }
+    | null,
 ): GenerationStatusSnapshot | null {
+  if (!fallback) {
+    return null;
+  }
+
   if (fallback.summary) {
     return buildSummarySnapshot(jobId, fallback.summary);
   }

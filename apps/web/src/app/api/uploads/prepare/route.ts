@@ -5,7 +5,9 @@ import { z } from "zod";
 
 import { inferSourceFileKind } from "@basquio/core";
 
+import { getViewerState } from "@/lib/supabase/auth";
 import { buildResumableUploadUrl, createSignedUploadUrl } from "@/lib/supabase/admin";
+import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -20,8 +22,8 @@ const uploadDescriptorSchema = z.object({
 });
 
 const prepareUploadsRequestSchema = z.object({
-  organizationId: z.string().default("local-org"),
-  projectId: z.string().default("local-project"),
+  organizationId: z.string().optional(),
+  projectId: z.string().optional(),
   evidenceFiles: z.array(uploadDescriptorSchema).min(1),
   brandFile: uploadDescriptorSchema.optional(),
 });
@@ -30,6 +32,12 @@ type UploadDescriptor = z.infer<typeof uploadDescriptorSchema>;
 
 export async function POST(request: Request) {
   try {
+    const viewer = await getViewerState();
+
+    if (!viewer.user) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -48,6 +56,11 @@ export async function POST(request: Request) {
     }
 
     const payload = prepareUploadsRequestSchema.parse(await request.json());
+    const workspace = await ensureViewerWorkspace(viewer.user);
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Unable to resolve a personal Basquio workspace for this user." }, { status: 500 });
+    }
 
     const unsupportedEvidenceFile = payload.evidenceFiles.find((file) => inferSourceFileKind(file.fileName) === "unknown");
 
@@ -108,8 +121,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       jobId,
-      organizationId: payload.organizationId,
-      projectId: payload.projectId,
+      organizationId: workspace.organizationId,
+      projectId: workspace.projectId,
       evidenceUploads,
       brandUpload,
     });

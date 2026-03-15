@@ -4,6 +4,7 @@ import { inngest } from "@basquio/workflows";
 
 import {
   dispatchPersistedGenerationExecution,
+  getInternalDispatchToken,
   getGenerationJobState,
   loadPersistedGenerationRequest,
 } from "@/lib/generation-requests";
@@ -19,6 +20,12 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
+  const dispatchToken = getInternalDispatchToken();
+
+  if (!dispatchToken || request.headers.get("x-basquio-internal-token") !== dispatchToken) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   const { jobId } = await params;
   const persistedRequest = await loadPersistedGenerationRequest(jobId);
 

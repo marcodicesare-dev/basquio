@@ -7,14 +7,28 @@ import { GenerationValidationError, inngest } from "@basquio/workflows";
 import type { GenerationRequest } from "@basquio/types";
 
 import { dispatchPersistedGenerationJob, persistGenerationRequest } from "@/lib/generation-requests";
+import { getViewerState } from "@/lib/supabase/auth";
 import { upsertRestRows } from "@/lib/supabase/admin";
+import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
-    const generationRequest = await parseGenerationRequest(request);
+    const viewer = await getViewerState();
+
+    if (!viewer.user) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+
+    const workspace = await ensureViewerWorkspace(viewer.user);
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Unable to resolve a personal Basquio workspace for this user." }, { status: 500 });
+    }
+
+    const generationRequest = await parseGenerationRequest(request, workspace);
     const validationError = validateGenerationFiles(generationRequest.sourceFiles, generationRequest.styleFile);
 
     if (validationError) {
@@ -22,7 +36,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      ...(await queueGeneration(generationRequest, request)),
+      ...(await queueGeneration(generationRequest, request, viewer.user)),
     }, { status: 202 });
   } catch (error) {
     if (error instanceof GenerationValidationError) {
@@ -41,8 +55,12 @@ export async function POST(request: Request) {
   }
 }
 
-async function queueGeneration(generationRequest: GenerationRequest, request: Request) {
-  await persistQueuedJob(generationRequest);
+async function queueGeneration(
+  generationRequest: GenerationRequest,
+  request: Request,
+  viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
+) {
+  await persistQueuedJob(generationRequest, viewer);
   await persistGenerationRequest(generationRequest);
 
   if (process.env.INNGEST_EVENT_KEY) {
@@ -63,7 +81,10 @@ async function queueGeneration(generationRequest: GenerationRequest, request: Re
   };
 }
 
-async function parseGenerationRequest(request: Request): Promise<GenerationRequest> {
+async function parseGenerationRequest(
+  request: Request,
+  workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
+): Promise<GenerationRequest> {
   const contentType = request.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
@@ -72,8 +93,8 @@ async function parseGenerationRequest(request: Request): Promise<GenerationReque
 
     return {
       jobId: payload.jobId || createJobId(),
-      organizationId: payload.organizationId || "local-org",
-      projectId: payload.projectId || "local-project",
+      organizationId: workspace.organizationId,
+      projectId: workspace.projectId,
       sourceFiles: payload.sourceFiles ?? [],
       styleFile: payload.styleFile,
       brief,
@@ -101,8 +122,8 @@ async function parseGenerationRequest(request: Request): Promise<GenerationReque
 
   return {
     jobId,
-    organizationId: "local-org",
-    projectId: "local-project",
+    organizationId: workspace.organizationId,
+    projectId: workspace.projectId,
     sourceFiles: await Promise.all(
       evidenceFiles.map(async (file, index) => ({
         id: `${jobId}-upload-${index + 1}`,
@@ -176,7 +197,10 @@ function createJobId() {
   return `job-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
 }
 
-async function persistQueuedJob(generationRequest: GenerationRequest) {
+async function persistQueuedJob(
+  generationRequest: GenerationRequest,
+  viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
+) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -191,6 +215,7 @@ async function persistQueuedJob(generationRequest: GenerationRequest) {
     projectId: generationRequest.projectId,
     objective: generationRequest.brief.objective,
     audience: generationRequest.brief.audience,
+    requestedBy: viewer.id,
   });
 
   await upsertRestRows({
@@ -203,6 +228,7 @@ async function persistQueuedJob(generationRequest: GenerationRequest) {
         job_key: generationRequest.jobId,
         organization_id: organizationRowId,
         project_id: projectRowId,
+        requested_by: viewer.id,
         status: "queued",
         business_context: generationRequest.brief.businessContext,
         audience: generationRequest.brief.audience,
@@ -221,6 +247,7 @@ async function resolveQueuedRunContext(input: {
   projectId: string;
   objective: string;
   audience: string;
+  requestedBy: string;
 }) {
   const organizationSlug = sanitizeQueueSlug(input.organizationId || "local-org");
   const projectSlug = sanitizeQueueSlug(input.projectId || "local-project");
@@ -263,6 +290,20 @@ async function resolveQueuedRunContext(input: {
   if (!projects[0]?.id) {
     throw new Error(`Unable to resolve project row for ${input.projectId}.`);
   }
+
+  await upsertRestRows({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "organization_memberships",
+    onConflict: "organization_id,user_id",
+    rows: [
+      {
+        organization_id: organizations[0].id,
+        user_id: input.requestedBy,
+        role: "owner",
+      },
+    ],
+  });
 
   return {
     organizationRowId: organizations[0].id,

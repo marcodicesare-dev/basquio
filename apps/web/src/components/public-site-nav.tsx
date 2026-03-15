@@ -31,6 +31,9 @@ export function PublicSiteNav() {
         <Link className="button secondary" href="/#output">
           See examples
         </Link>
+        <Link className="button secondary" href="/sign-in?next=%2Fdashboard">
+          Sign in
+        </Link>
         <Link className="button" href="/jobs/new">
           Try with your data
         </Link>
