@@ -47,10 +47,11 @@ export function AuthComplete({
     }
 
     let isMounted = true;
-    const hasAuthHash =
-      window.location.hash.includes("access_token") ||
-      window.location.hash.includes("refresh_token") ||
-      window.location.hash.includes("type=");
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+    const authErrorDescription = hashParams.get("error_description");
+    const hasAuthHash = Boolean(accessToken || refreshToken || hashParams.get("type"));
 
     const fallbackTimer = window.setTimeout(() => {
       if (!isMounted) {
@@ -62,6 +63,31 @@ export function AuthComplete({
     }, hasAuthHash ? 5000 : 1500);
 
     const complete = async () => {
+      if (authErrorDescription) {
+        window.clearTimeout(fallbackTimer);
+        setStatus("invalid");
+        setError(authErrorDescription);
+        return;
+      }
+
+      if (accessToken && refreshToken) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (setSessionError) {
+          window.clearTimeout(fallbackTimer);
+          setStatus("invalid");
+          setError(setSessionError.message);
+          return;
+        }
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
