@@ -24,7 +24,7 @@ const INNGEST_RECOVERY_GRACE_MS = 15_000;
 // v1 = legacy 15-stage pipeline (default)
 // v2 = AI-native agent architecture
 // During shadow mode, both pipelines run; only the active version's output is shown.
-const PIPELINE_VERSION = process.env.BASQUIO_PIPELINE_VERSION ?? "v1";
+export const PIPELINE_VERSION = process.env.BASQUIO_PIPELINE_VERSION ?? "v1";
 
 export async function POST(request: Request) {
   try {
