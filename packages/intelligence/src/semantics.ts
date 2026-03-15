@@ -224,7 +224,14 @@ async function inferEntities(
   const result = await generateStructuredStage({
     stage: "package-entities",
     schema: z.object({
-      entities: packageSemanticsSchema.shape.entities,
+      entities: z.array(
+        z.object({
+          name: z.string(),
+          idColumn: z.string(),
+          sourceFile: z.string(),
+          description: z.string(),
+        }),
+      ),
     }),
     modelId: "nano",
     providerPreference: "openai",
@@ -263,7 +270,17 @@ async function inferRelationships(
   const result = await generateStructuredStage({
     stage: "package-relationships",
     schema: z.object({
-      relationships: packageSemanticsSchema.shape.relationships,
+      relationships: z.array(
+        z.object({
+          fromFile: z.string(),
+          toFile: z.string(),
+          leftKey: z.string(),
+          rightKey: z.string(),
+          relationship: z.enum(["one-to-many", "many-to-many", "one-to-one"]),
+          confidence: z.number().min(0).max(1),
+          rationale: z.string(),
+        }),
+      ),
     }),
     modelId: "nano",
     providerPreference: "openai",

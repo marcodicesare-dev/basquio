@@ -46,6 +46,21 @@ const slideBlueprintSchema = z.object({
   transition: z.string().default(""),
 });
 
+const llmSlideBlueprintSchema = z.object({
+  id: z.string(),
+  sectionId: z.string(),
+  purpose: z.string(),
+  emphasis: z.enum(["cover", "section", "content"]),
+  layoutId: z.string(),
+  title: z.string(),
+  subtitle: z.string(),
+  focusInsightIds: z.array(z.string()),
+  includeSectionSummary: z.boolean(),
+  includeMethodology: z.boolean(),
+  includeRecommendations: z.boolean(),
+  transition: z.string(),
+});
+
 type SlideBlueprint = z.infer<typeof slideBlueprintSchema>;
 
 export async function planSlides(
@@ -73,14 +88,15 @@ async function planSlideBlueprints(
   const result = await generateStructuredStage({
     stage: "slide-architect",
     schema: z.object({
-      slides: z.array(slideBlueprintSchema).min(1).max(40),
+      slides: z.array(llmSlideBlueprintSchema).min(1).max(40),
     }),
     modelId,
     providerPreference: modelId.startsWith("claude") ? "anthropic" : "openai",
     prompt: [
       "You are a slide architect planning an executive deck from an evidence package.",
       "Decide slide count, sectioning, transitions, and layout usage from the outline, insights, and template profile.",
-      "Do not write generic filler slides. Every slide should have a narrative job.",
+      `Target exactly ${input.story.recommendedSlideCount} slides unless the evidence package makes that impossible.`,
+      "Do not write divider, transition, section-break, or filler slides. Every slide must carry substantive analytical content.",
       "Use only section ids, insight ids, and layout ids provided below.",
       "",
       "## Brief",
@@ -188,6 +204,10 @@ function buildFallbackBlueprints(input: PlanSlidesInput) {
         transition: "Move from the report headline into how the package evidence is organized.",
       });
       coverCreated = true;
+
+      if (section.id === "section-cover") {
+        continue;
+      }
     }
 
     if (section.kind === "methodology") {
@@ -208,10 +228,26 @@ function buildFallbackBlueprints(input: PlanSlidesInput) {
       continue;
     }
 
+    if (section.id === "section-executive-summary") {
+      blueprints.push({
+        id: `slide-${section.id}`,
+        sectionId: section.id,
+        purpose: section.objective,
+        emphasis: "content",
+        layoutId: findLayout(input.templateProfile, "two-column"),
+        title: section.title,
+        subtitle: section.summary,
+        focusInsightIds: focusInsightIds.slice(0, 4),
+        includeSectionSummary: true,
+        includeMethodology: false,
+        includeRecommendations: false,
+        transition: "Move from the top-line summary into the evidence behind each growth and risk signal.",
+      });
+      continue;
+    }
+
     const needsSectionOpener =
-      section.emphasis !== "light" &&
-      section.kind !== "recommendations" &&
-      section.suggestedSlideCount > 1;
+      false;
 
     if (needsSectionOpener && !(section.kind === "framing" && coverCreated)) {
       blueprints.push({
@@ -323,7 +359,7 @@ function materializeSlides(
       input,
       slideIndex: index,
     });
-    const layoutId = chooseLayoutForBlocks(input.templateProfile, requestedLayoutId, draftBlocks);
+    const layoutId = chooseLayoutForBlocks(input.templateProfile, requestedLayoutId, draftBlocks, blueprint.emphasis === "cover");
     const blocks = bindBlocksToTemplateRegions(draftBlocks, input.templateProfile, layoutId);
 
     return slideSpecSchema.parse({
@@ -349,7 +385,7 @@ function bindBlocksToTemplateRegions(
   templateProfile: TemplateProfile,
   layoutId: string,
 ) {
-  const layout = templateProfile.layouts.find((candidate) => candidate.id === layoutId);
+  const layout = resolveTemplateLayoutVariant(templateProfile, layoutId);
 
   if (!layout) {
     return blocks;
@@ -391,13 +427,9 @@ function chooseLayoutForBlocks(
   templateProfile: TemplateProfile,
   requestedLayoutId: string,
   blocks: SlideSpec["blocks"],
+  allowCoverLayouts = false,
 ) {
-  const requestedLayout = templateProfile.layouts.find((layout) => layout.id === requestedLayoutId);
-  const chartCount = blocks.filter((block) => block.kind === "chart").length;
-
-  if (chartCount === 0 && requestedLayout) {
-    return requestedLayout.id;
-  }
+  const requestedLayout = resolveTemplateLayoutVariant(templateProfile, requestedLayoutId);
 
   const textBlockCount = blocks.filter((block) =>
     block.kind !== "chart" &&
@@ -410,7 +442,7 @@ function chooseLayoutForBlocks(
   const scoredLayouts = templateProfile.layouts
     .map((layout) => ({
       layout,
-      score: scoreLayoutForBlocks(layout, blocks, textBlockCount),
+      score: scoreLayoutForBlocks(layout, blocks, textBlockCount, allowCoverLayouts),
     }))
     .filter(({ score }) => score > Number.NEGATIVE_INFINITY)
     .sort((left, right) => right.score - left.score);
@@ -418,24 +450,29 @@ function chooseLayoutForBlocks(
   const bestLayout = scoredLayouts[0]?.layout;
 
   if (!bestLayout) {
-    return requestedLayoutId;
+    return requestedLayout ? getTemplateLayoutKey(requestedLayout) : requestedLayoutId;
   }
 
-  if (requestedLayout && scoreLayoutForBlocks(requestedLayout, blocks, textBlockCount) >= scoredLayouts[0]!.score) {
-    return requestedLayout.id;
+  if (requestedLayout && scoreLayoutForBlocks(requestedLayout, blocks, textBlockCount, allowCoverLayouts) >= scoredLayouts[0]!.score) {
+    return getTemplateLayoutKey(requestedLayout);
   }
 
-  return bestLayout.id;
+  return getTemplateLayoutKey(bestLayout);
 }
 
 function scoreLayoutForBlocks(
   layout: TemplateProfile["layouts"][number],
   blocks: SlideSpec["blocks"],
   textBlockCount: number,
+  allowCoverLayouts: boolean,
 ) {
+  if (!allowCoverLayouts && layout.id === "cover") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
   const placeholders = new Set(layout.placeholders);
   const chartCount = blocks.filter((block) => block.kind === "chart").length;
-  const hasChartRegion = placeholders.has("chart");
+  const hasChartRegion = layoutHasChartRegion(layout);
   const textCapacity = countTextCapacity(layout);
 
   if (chartCount > 0 && !hasChartRegion) {
@@ -484,23 +521,52 @@ function scoreLayoutForBlocks(
   return score;
 }
 
+function getTemplateLayoutKey(layout: TemplateProfile["layouts"][number]) {
+  const variant = (layout.sourceName || layout.name || layout.id)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${layout.id}::${variant || "default"}`;
+}
+
+function resolveTemplateLayoutVariant(templateProfile: TemplateProfile, layoutId: string) {
+  const [baseId, variant] = layoutId.split("::");
+  const byVariant = variant
+    ? templateProfile.layouts.find((layout) => layout.id === baseId && getTemplateLayoutKey(layout) === layoutId)
+    : undefined;
+
+  if (byVariant) {
+    return byVariant;
+  }
+
+  return templateProfile.layouts.find((layout) => layout.id === baseId || getTemplateLayoutKey(layout) === layoutId);
+}
+
+function layoutHasChartRegion(layout: TemplateProfile["layouts"][number]) {
+  return layout.regions.some((region) => region.placeholder === "chart" || (region.w >= 3 && region.h >= 2 && (region.w * region.h) >= 8));
+}
+
 function hasTextPlaceholder(layout: TemplateProfile["layouts"][number]) {
-  return layout.placeholders.some((placeholder) =>
-    placeholder === "body" ||
-    placeholder === "body-left" ||
-    placeholder === "body-right" ||
-    placeholder === "callout" ||
-    placeholder === "evidence-list",
+  return layout.regions.some((region) =>
+    (region.placeholder === "body" ||
+      region.placeholder === "body-left" ||
+      region.placeholder === "body-right" ||
+      region.placeholder === "callout" ||
+      region.placeholder === "evidence-list") &&
+    region.h >= 0.7 &&
+    region.w >= 2.2,
   );
 }
 
 function countTextCapacity(layout: TemplateProfile["layouts"][number]) {
-  return layout.placeholders.filter((placeholder) =>
-    placeholder === "body" ||
-    placeholder === "body-left" ||
-    placeholder === "body-right" ||
-    placeholder === "callout" ||
-    placeholder === "evidence-list",
+  return layout.regions.filter((region) =>
+    (region.placeholder === "body" ||
+      region.placeholder === "body-left" ||
+      region.placeholder === "body-right" ||
+      region.placeholder === "callout" ||
+      region.placeholder === "evidence-list") &&
+    region.h >= 0.7 &&
+    region.w >= 2.2,
   ).length;
 }
 
@@ -512,29 +578,52 @@ function resolveRegionForBlock(
   const candidates = candidatePlaceholdersForBlock(block);
 
   for (const placeholder of candidates) {
-    const match = layout.regions.find((region) => region.placeholder === placeholder && !reservedKeys.has(region.key));
+    const match = pickBestRegion(
+      layout.regions.filter(
+        (region) =>
+          region.placeholder === placeholder &&
+          !reservedKeys.has(region.key) &&
+          isViableRegionForBlock(region, block),
+      ),
+      block,
+    );
     if (match) {
       return match;
     }
   }
 
   for (const placeholder of candidates) {
-    const fallbackMatch = layout.regions.find((region) => region.placeholder === placeholder);
+    const fallbackMatch = pickBestRegion(
+      layout.regions.filter((region) => region.placeholder === placeholder && isViableRegionForBlock(region, block)),
+      block,
+    );
     if (fallbackMatch) {
       return fallbackMatch;
     }
   }
 
   if (isTextualContentBlock(block)) {
-    return layout.regions.find((region) =>
-      (region.placeholder.startsWith("body") || region.placeholder === "evidence-list" || region.placeholder === "callout") &&
-      !reservedKeys.has(region.key),
+    return pickBestRegion(
+      layout.regions.filter(
+        (region) =>
+          (region.placeholder.startsWith("body") ||
+            region.placeholder === "evidence-list" ||
+            region.placeholder === "callout") &&
+          !reservedKeys.has(region.key) &&
+          isViableRegionForBlock(region, block),
+      ),
+      block,
     );
   }
 
   if (isTextualContentBlock(block)) {
-    return layout.regions.find((region) =>
-      region.placeholder.startsWith("body") || region.placeholder === "evidence-list" || region.placeholder === "callout",
+    return pickBestRegion(
+      layout.regions.filter(
+        (region) =>
+          (region.placeholder.startsWith("body") || region.placeholder === "evidence-list" || region.placeholder === "callout") &&
+          isViableRegionForBlock(region, block),
+      ),
+      block,
     );
   }
 
@@ -544,25 +633,95 @@ function resolveRegionForBlock(
 function candidatePlaceholdersForBlock(block: SlideSpec["blocks"][number]) {
   switch (block.kind) {
     case "chart":
-      return ["chart"];
+      return ["chart", "body-left", "body-right", "body"];
     case "metric":
-      return ["metric-strip", "callout"];
+      return ["metric-strip", "callout", "body"];
     case "evidence-list":
-      return ["evidence-list", "body-right", "body", "body-left"];
+      return ["evidence-list", "body-right", "body-left", "callout", "body"];
     case "callout":
-      return ["callout", "body", "body-left", "body-right"];
+      return ["callout", "body-left", "body-right", "body"];
     case "table":
-      return ["table", "body", "body-left", "body-right"];
+      return ["table", "body-left", "body-right", "body"];
     case "body":
     case "bullet-list":
-      return ["body", "body-left", "body-right", "callout", "evidence-list"];
+      return ["body-left", "body-right", "body", "callout", "evidence-list"];
     default:
-      return ["body", "body-left", "body-right"];
+      return ["body-left", "body-right", "body"];
   }
 }
 
 function isTextualContentBlock(block: SlideSpec["blocks"][number]) {
   return block.kind === "bullet-list" || block.kind === "body" || block.kind === "callout" || block.kind === "evidence-list";
+}
+
+function isViableRegionForBlock(
+  region: TemplateProfile["layouts"][number]["regions"][number],
+  block: SlideSpec["blocks"][number],
+) {
+  const area = region.w * region.h;
+
+  switch (block.kind) {
+    case "chart":
+      return region.w >= 3 && region.h >= 2 && area >= 8;
+    case "metric":
+      return region.w >= 1.6 && region.h >= 0.5 && area >= 1;
+    case "bullet-list":
+    case "body":
+    case "callout":
+    case "evidence-list":
+    case "table":
+      return region.w >= 2.2 && region.h >= 0.7 && area >= 2;
+    default:
+      return area >= 1;
+  }
+}
+
+function pickBestRegion(
+  regions: TemplateProfile["layouts"][number]["regions"],
+  block: SlideSpec["blocks"][number],
+) {
+  return [...regions].sort((left, right) => scoreRegionForBlock(right, block) - scoreRegionForBlock(left, block))[0];
+}
+
+function scoreRegionForBlock(
+  region: TemplateProfile["layouts"][number]["regions"][number],
+  block: SlideSpec["blocks"][number],
+) {
+  let score = region.w * region.h;
+
+  if (region.source === "layout") {
+    score += 4;
+  }
+
+  if (region.source === "master") {
+    score += 2;
+  }
+
+  if (block.kind === "chart" && region.placeholder === "chart") {
+    score += 20;
+  }
+
+  if ((block.kind === "bullet-list" || block.kind === "body" || block.kind === "callout") && region.placeholder === "callout") {
+    score += 10;
+  }
+
+  if (block.kind === "evidence-list" && region.placeholder === "evidence-list") {
+    score += 10;
+  }
+
+  if ((block.kind === "bullet-list" || block.kind === "body") && region.placeholder === "body-left") {
+    score += 8;
+  }
+
+  if (block.kind === "evidence-list" && region.placeholder === "body-right") {
+    score += 8;
+  }
+
+  if (region.y > 4.75) {
+    score -= 25;
+  }
+
+  return score;
 }
 
 function buildBlocks(input: {
@@ -576,28 +735,40 @@ function buildBlocks(input: {
   const { blueprint, section, selectedInsights, chart } = input;
   const blocks: SlideSpec["blocks"] = [];
   const evidenceIds = collectInsightEvidenceIds(selectedInsights);
+  const retailMode = isRetailSlideContext(selectedInsights, input.input.brief);
 
   if (blueprint.emphasis === "cover") {
     blocks.push(block({
       kind: "callout",
       content:
-        input.input.story.thesis ||
-        input.input.story.keyMessages[0] ||
-        selectedInsights[0]?.claim ||
-        input.input.brief.objective,
+        retailMode
+          ? selectedInsights[0]?.businessMeaning || selectedInsights[0]?.claim || input.input.story.executiveSummary
+          : input.input.story.thesis || input.input.story.keyMessages[0] || selectedInsights[0]?.claim || input.input.brief.objective,
       tone: "positive",
       evidenceIds,
     }));
     blocks.push(block({
       kind: "bullet-list",
       items: compactUnique([
-        `Audience: ${input.input.brief.audience}`,
-        input.input.brief.stakes ? `Stakes: ${input.input.brief.stakes}` : undefined,
-        `Planned depth: ${input.input.story.recommendedSlideCount} slides`,
+        retailMode ? `Audience: ${input.input.brief.audience}`.replace("Audience", "Destinatari") : `Audience: ${input.input.brief.audience}`,
+        retailMode
+          ? input.input.brief.stakes
+            ? `Mandato: ${input.input.brief.stakes}`
+            : undefined
+          : input.input.brief.stakes
+            ? `Stakes: ${input.input.brief.stakes}`
+            : undefined,
+        retailMode
+          ? `Ampiezza prevista: ${input.input.story.recommendedSlideCount} slide`
+          : `Planned depth: ${input.input.story.recommendedSlideCount} slides`,
       ]),
       evidenceIds,
     }));
     return blocks;
+  }
+
+  if (section?.id === "section-executive-summary" && retailMode) {
+    return buildRetailExecutiveSummaryBlocks(input, evidenceIds);
   }
 
   if (blueprint.includeMethodology) {
@@ -662,14 +833,20 @@ function buildBlocks(input: {
   if (selectedInsights.length > 0 && (section?.kind === "findings" || section?.kind === "analysis" || chart)) {
     blocks.push(block({
       kind: "evidence-list",
-      items: selectedInsights.flatMap((insight) =>
-        insight.evidence.slice(0, 2).map((evidence) => `${evidence.fileName || evidence.sheet}: ${evidence.summary}`),
-      ).slice(0, 5),
+      items: retailMode
+        ? buildCompactEvidenceLines(selectedInsights, 4)
+        : selectedInsights.flatMap((insight) =>
+            insight.evidence.slice(0, 2).map((evidence) => `${evidence.fileName || evidence.sheet}: ${evidence.summary}`),
+          ).slice(0, 5),
       evidenceIds,
     }));
   }
 
   if (blueprint.includeRecommendations || section?.kind === "recommendations") {
+    if (retailMode) {
+      return buildRetailRecommendationBlocks(input, evidenceIds);
+    }
+
     blocks.push(block({
       kind: "bullet-list",
       items: input.input.story.recommendedActions.slice(0, Math.max(3, selectedInsights.length)),
@@ -684,6 +861,10 @@ function buildBlocks(input: {
   }
 
   if (section?.kind === "implications") {
+    if (retailMode) {
+      return buildRetailSynthesisBlocks(input, evidenceIds);
+    }
+
     blocks.push(block({
       kind: "bullet-list",
       items: compactUnique([
@@ -775,10 +956,194 @@ function buildCharts(analyticsResult: AnalyticsResult, insights: InsightSpec[]) 
 }
 
 function chooseChart(insights: InsightSpec[], charts: ChartSpec[]) {
+  const exactMatch = insights[0] ? charts.find((chart) => chart.id === `chart-${insights[0]!.id}`) : undefined;
+  if (exactMatch) {
+    return exactMatch;
+  }
+
   const evidenceIds = new Set(collectInsightEvidenceIds(insights));
   return charts.find((chart) => chart.evidenceIds.some((id) => evidenceIds.has(id))) ?? charts.find((chart) =>
     insights.some((insight) => chart.id === `chart-${insight.id}`),
   );
+}
+
+function isRetailSlideContext(selectedInsights: InsightSpec[], brief: ReportBrief) {
+  return (
+    selectedInsights.some((insight) => insight.id.startsWith("retail-")) ||
+    /(retail|market|fmcg|nielseniq|pet care)/i.test([brief.businessContext, brief.objective, brief.thesis].join(" "))
+  );
+}
+
+function buildRetailExecutiveSummaryBlocks(
+  input: {
+    section?: ReportOutline["sections"][number];
+    selectedInsights: InsightSpec[];
+    input: PlanSlidesInput;
+  },
+  evidenceIds: string[],
+) {
+  const metrics = input.selectedInsights
+    .map((insight) => buildRetailHeadlineMetric(insight))
+    .filter((value): value is { label: string; value: string } => Boolean(value))
+    .slice(0, 4)
+    .map((metric) =>
+      block({
+        kind: "metric",
+        label: metric.label,
+        value: metric.value,
+        evidenceIds,
+      }),
+    );
+
+  return compactUniqueBlocks([
+    ...metrics,
+    block({
+      kind: "callout",
+      content: input.input.story.executiveSummary || input.section?.summary || input.input.brief.objective,
+      tone: "positive",
+      evidenceIds,
+    }),
+    block({
+      kind: "bullet-list",
+      items: compactUnique([
+        ...input.selectedInsights.slice(0, 4).map((insight) => insight.businessMeaning),
+        "La lettura deve tenere insieme scala di mercato, posizione competitiva e gap di portafoglio.",
+      ]).slice(0, 5),
+      evidenceIds,
+    }),
+    block({
+      kind: "evidence-list",
+      items: buildCompactEvidenceLines(input.selectedInsights, 5),
+      evidenceIds,
+    }),
+  ]);
+}
+
+function buildRetailSynthesisBlocks(
+  input: {
+    section?: ReportOutline["sections"][number];
+    selectedInsights: InsightSpec[];
+    input: PlanSlidesInput;
+  },
+  evidenceIds: string[],
+) {
+  return compactUniqueBlocks([
+    block({
+      kind: "callout",
+      content: "La priorita non e aggiungere altre slide ma scegliere dove difendere, dove accelerare e dove ristrutturare il portafoglio.",
+      tone: "positive",
+      evidenceIds,
+    }),
+    block({
+      kind: "bullet-list",
+      items: buildRetailActionItems(input.selectedInsights, input.input.story, true),
+      evidenceIds,
+    }),
+    block({
+      kind: "evidence-list",
+      items: buildCompactEvidenceLines(input.selectedInsights, 4),
+      evidenceIds,
+    }),
+  ]);
+}
+
+function buildRetailRecommendationBlocks(
+  input: {
+    section?: ReportOutline["sections"][number];
+    selectedInsights: InsightSpec[];
+    input: PlanSlidesInput;
+  },
+  evidenceIds: string[],
+) {
+  return compactUniqueBlocks([
+    block({
+      kind: "callout",
+      content: "Le azioni finali devono essere poche, esplicite e direttamente collegate ai vuoti di categoria e alle sacche di inefficienza del portafoglio.",
+      tone: "positive",
+      evidenceIds,
+    }),
+    block({
+      kind: "bullet-list",
+      items: buildRetailActionItems(input.selectedInsights, input.input.story, false),
+      evidenceIds,
+    }),
+    block({
+      kind: "evidence-list",
+      items: input.selectedInsights.slice(0, 4).map((insight) => `${insight.title}: ${insight.businessMeaning}`),
+      evidenceIds,
+    }),
+  ]);
+}
+
+function buildRetailHeadlineMetric(insight: InsightSpec) {
+  const value =
+    insight.claim.match(/\b\d+(?:[.,]\d+)?\s*mld\b/i)?.[0] ||
+    insight.claim.match(/\b\d+(?:[.,]\d+)?\s*mln\b/i)?.[0] ||
+    insight.claim.match(/#\d+\b/i)?.[0] ||
+    insight.claim.match(/[+-]?\d+(?:[.,]\d+)?%/)?.[0];
+
+  if (!value) {
+    return null;
+  }
+
+  return {
+    label: insight.title.replace(/^Nel\s+/i, "").slice(0, 30),
+    value,
+  };
+}
+
+function buildRetailActionItems(insights: InsightSpec[], story: StorySpec, shortMode: boolean) {
+  const insightIds = new Set(insights.map((insight) => insight.id));
+  const deterministicActions = compactUnique([
+    insightIds.has("retail-affinity-stronghold")
+      ? "Difendere Ultima nel Gatto Secco con pressione commerciale e innovazione mirata contro ONE."
+      : undefined,
+    insightIds.has("retail-dog-dry-issue")
+      ? "Rimettere a posto il Cane Secco con una revisione di assortimento, pricing e attivazione cliente."
+      : undefined,
+    insightIds.has("retail-trainer-efficiency")
+      ? "Ristrutturare Trainer riducendo le SKU improduttive e riallocando supporto sulle linee ad alta resa."
+      : undefined,
+    insightIds.has("retail-whitespace")
+      ? "Decidere entro il prossimo ciclo commerciale se entrare in Nutrizione Cane Snacks/Bevande o rinunciare esplicitamente al presidio."
+      : undefined,
+    insightIds.has("retail-wet-opportunity")
+      ? "Accelerare Gatto Umido come piattaforma di crescita, ma solo con investimenti abbastanza forti da superare la scala minima."
+      : undefined,
+  ]);
+
+  const fallbackActions = shortMode ? [] : story.recommendedActions;
+  return compactUnique([...deterministicActions, ...fallbackActions]).slice(0, shortMode ? 4 : 5);
+}
+
+function buildCompactEvidenceLines(insights: InsightSpec[], limit: number) {
+  return compactUnique(
+    insights.flatMap((insight) =>
+      insight.evidence.slice(0, 3).map((evidence) => {
+        const dimension = Object.values(evidence.dimensions ?? {}).find((value) => value && value !== "unknown");
+        const value = formatCompactEvidenceValue(evidence.rawValue);
+        const metric = evidence.metric.replace(/^retail_/, "").replaceAll("_", " ");
+        return `${dimension || metric}: ${value}`;
+      }),
+    ),
+  ).slice(0, limit);
+}
+
+function formatCompactEvidenceValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (Math.abs(value) >= 1_000_000_000) {
+      return `${(value / 1_000_000_000).toFixed(2)} mld`;
+    }
+    if (Math.abs(value) >= 1_000_000) {
+      return `${(value / 1_000_000).toFixed(1)} mln`;
+    }
+    if (Math.abs(value) >= 1_000) {
+      return `${(value / 1_000).toFixed(1)}k`;
+    }
+    return value.toFixed(value >= 100 ? 0 : 1);
+  }
+
+  return String(value ?? "n/a");
 }
 
 function inferChartFamily(insight: InsightSpec, dimensionKey: string, rowCount: number) {
@@ -857,11 +1222,27 @@ function findLayout(templateProfile: TemplateProfile, requestedLayoutId: string)
     return requestedLayoutId;
   }
 
+  const normalizedRequest = requestedLayoutId.trim().toLowerCase();
+  const aliasTargets: Record<string, string[]> = {
+    summary: ["two-column", "1_titel_und_inhalt", "section_header"],
+    "evidence-grid": ["two-column", "1_titel_und_inhalt"],
+    recommendations: ["two-column", "1_titel_und_inhalt"],
+    analysis: ["two-column", "1_titel_und_inhalt"],
+    cover: ["cover"],
+  };
+
+  for (const candidate of aliasTargets[normalizedRequest] ?? []) {
+    if (available.has(candidate)) {
+      return candidate;
+    }
+  }
+
   const byPlaceholder = templateProfile.layouts.find((layout) =>
     layout.placeholders.some((placeholder) => requestedLayoutId.includes(placeholder) || placeholder.includes(requestedLayoutId)),
   );
 
-  return byPlaceholder?.id ?? templateProfile.layouts[0]?.id ?? requestedLayoutId;
+  const nonCoverFallback = templateProfile.layouts.find((layout) => layout.id !== "cover");
+  return byPlaceholder?.id ?? nonCoverFallback?.id ?? templateProfile.layouts[0]?.id ?? requestedLayoutId;
 }
 
 function compactInsightList(insights: Array<InsightSpec | undefined>) {

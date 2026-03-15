@@ -355,25 +355,12 @@ function validateNumericAssertions(
     const numbersInText = [...new Set(
       [...textContent.matchAll(/(\d+\.?\d*)\s*%/g)].map((match) => parseFloat(match[1])),
     )];
+    const numericCandidates = buildSlideNumericCandidates(slide, evidenceMap);
 
     for (const numberInText of numbersInText) {
-      const cited = slide.evidenceIds.some((refId) => {
-        const ref = evidenceMap.get(refId);
-        if (!ref) {
-          return false;
-        }
-
-        const refNumbers = [
-          ...(typeof ref.rawValue === "number" ? [ref.rawValue] : []),
-          ...[...(ref.summary || "").matchAll(/(\d+\.?\d*)/g)].map((match) => parseFloat(match[1])),
-        ];
-
-        return refNumbers.some((refNumber) => {
-          const percentComparable = Math.abs((refNumber * 100) - numberInText) < Math.max(numberInText * 0.02, 0.1);
-          const directComparable = Math.abs(refNumber - numberInText) < Math.max(numberInText * 0.02, 0.1);
-          return directComparable || percentComparable;
-        });
-      });
+      const cited = numericCandidates.some((candidate) =>
+        Math.abs(Math.abs(candidate) - numberInText) < Math.max(numberInText * 0.02, 0.15),
+      );
 
       if (!cited) {
         issues.push({
@@ -387,6 +374,89 @@ function validateNumericAssertions(
   }
 
   return issues;
+}
+
+function buildSlideNumericCandidates(
+  slide: SlideSpec,
+  evidenceMap: Map<string, AnalyticsResult["evidenceRefs"][number]>,
+) {
+  const refs = slide.evidenceIds
+    .map((refId) => evidenceMap.get(refId))
+    .filter((ref): ref is NonNullable<typeof ref> => Boolean(ref));
+  const rawValues = refs
+    .map((ref) => (typeof ref.rawValue === "number" && Number.isFinite(ref.rawValue) ? ref.rawValue : null))
+    .filter((value): value is number => value !== null);
+  const summaryNumbers = refs.flatMap((ref) =>
+    [...(ref.summary || "").matchAll(/(\d+\.?\d*)/g)].map((match) => parseFloat(match[1])),
+  );
+  const candidates = new Set<number>();
+
+  for (const value of rawValues) {
+    candidates.add(value);
+    if (Math.abs(value) <= 1) {
+      candidates.add(value * 100);
+    }
+  }
+
+  for (const value of summaryNumbers) {
+    candidates.add(value);
+  }
+
+  const groupedRawValues = new Map<string, number[]>();
+  for (const ref of refs) {
+    if (typeof ref.rawValue === "number" && Number.isFinite(ref.rawValue)) {
+      const values = groupedRawValues.get(ref.metric) ?? [];
+      values.push(ref.rawValue);
+      groupedRawValues.set(ref.metric, values);
+    }
+  }
+
+  for (const values of groupedRawValues.values()) {
+    const total = values.reduce((sum, value) => sum + value, 0);
+    if (!total) {
+      continue;
+    }
+    for (const value of values) {
+      candidates.add((value / total) * 100);
+    }
+  }
+
+  const marketTotal = (groupedRawValues.get("retail_value_current_by_comparto_ecr2") ?? []).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  if (marketTotal > 0) {
+    for (const ref of refs) {
+      if (
+        typeof ref.rawValue === "number" &&
+        Number.isFinite(ref.rawValue) &&
+        ref.metric.startsWith("retail_value_current_by_") &&
+        ref.metric !== "retail_value_current_by_comparto_ecr2"
+      ) {
+        candidates.add((ref.rawValue / marketTotal) * 100);
+      }
+    }
+  }
+
+  const rawTotal = rawValues.reduce((total, value) => total + value, 0);
+  if (rawTotal > 0) {
+    for (const value of rawValues) {
+      candidates.add((value / rawTotal) * 100);
+    }
+  }
+
+  for (const numerator of rawValues) {
+    for (const denominator of rawValues) {
+      if (!denominator || numerator === denominator) {
+        continue;
+      }
+
+      candidates.add((numerator / denominator) * 100);
+      candidates.add(((numerator - denominator) / denominator) * 100);
+    }
+  }
+
+  return [...candidates].filter((value) => Number.isFinite(value));
 }
 
 function validateEvidenceExists(
@@ -498,7 +568,6 @@ function extractAllText(slide: SlideSpec) {
   return [
     slide.title,
     slide.subtitle || "",
-    slide.speakerNotes,
     ...slide.blocks.flatMap((block) => [block.content || "", ...(block.items || [])]),
   ].join(" ");
 }

@@ -10,7 +10,7 @@ import {
 } from "@basquio/types";
 
 import { generateStructuredStage } from "./model";
-import { compactUnique } from "./utils";
+import { compactUnique, isRetailMarketDataset, matchColumnName } from "./utils";
 
 type PlanMetricsInput = {
   datasetProfile: DatasetProfile;
@@ -23,6 +23,46 @@ type TraceOptions = {
   onTrace?: (trace: StageTrace) => void;
 };
 
+const llmFilterConditionSchema = z.object({
+  column: z.string(),
+  operator: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"]),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number(), z.boolean()]))]),
+});
+
+const llmMetricAggregateSchema = z.object({
+  aggregation: z.enum(["count", "count_distinct", "sum"]),
+  column: z.string().nullable(),
+  filter: z.array(llmFilterConditionSchema),
+});
+
+const llmMetricSpecSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum(["ratio", "count", "count_distinct", "sum", "average", "delta", "rank", "share"]),
+  sourceFile: z.string(),
+  joinFiles: z.array(z.string()),
+  joins: z.array(
+    z.object({
+      file: z.string(),
+      leftKey: z.string(),
+      rightKey: z.string(),
+    }),
+  ),
+  valueColumn: z.string().nullable(),
+  groupBy: z.array(z.string()),
+  filter: z.array(llmFilterConditionSchema),
+  numerator: llmMetricAggregateSchema.nullable(),
+  denominator: llmMetricAggregateSchema.nullable(),
+  timeColumn: z.string().nullable(),
+  sortBy: z
+    .object({
+      column: z.string(),
+      direction: z.enum(["asc", "desc"]),
+    })
+    .nullable(),
+  limit: z.number().int().min(1).nullable(),
+});
+
 export async function planMetrics(
   input: PlanMetricsInput,
   options: TraceOptions = {},
@@ -32,7 +72,7 @@ export async function planMetrics(
   const llmResult = await generateStructuredStage({
     stage: "metric-planner",
     schema: z.object({
-      metrics: z.array(executableMetricSpecSchema).min(1).max(24),
+      metrics: z.array(llmMetricSpecSchema).min(1).max(24),
     }),
     modelId,
     providerPreference: modelId.startsWith("claude") ? "anthropic" : "openai",
@@ -64,7 +104,29 @@ export async function planMetrics(
   });
   options.onTrace?.(llmResult.trace);
 
-  const validSpecs = sanitizeMetricPlan(llmResult.object?.metrics ?? [], input.datasetProfile, input.packageSemantics);
+  const validSpecs = sanitizeMetricPlan(
+    (llmResult.object?.metrics ?? []).map((metric) => ({
+      ...metric,
+      valueColumn: metric.valueColumn ?? undefined,
+      numerator: metric.numerator
+        ? {
+            ...metric.numerator,
+            column: metric.numerator.column ?? undefined,
+          }
+        : undefined,
+      denominator: metric.denominator
+        ? {
+            ...metric.denominator,
+            column: metric.denominator.column ?? undefined,
+          }
+        : undefined,
+      timeColumn: metric.timeColumn ?? undefined,
+      sortBy: metric.sortBy ?? undefined,
+      limit: metric.limit ?? undefined,
+    })),
+    input.datasetProfile,
+    input.packageSemantics,
+  );
   if (validSpecs.length > 0) {
     return validSpecs;
   }
@@ -147,6 +209,10 @@ function buildFallbackMetricPlan(
   datasetProfile: DatasetProfile,
   packageSemantics: PackageSemantics,
 ) {
+  if (isRetailMarketDataset(datasetProfile)) {
+    return buildRetailMetricPlan(datasetProfile);
+  }
+
   const metrics: ExecutableMetricSpec[] = [];
   const seen = new Set<string>();
 
@@ -312,7 +378,249 @@ function buildFallbackMetricPlan(
     });
   }
 
-  return metrics.slice(0, 24).map((metric) => executableMetricSpecSchema.parse(metric));
+  return metrics.map((metric) => executableMetricSpecSchema.parse(metric));
+}
+
+function buildRetailMetricPlan(datasetProfile: DatasetProfile) {
+  const metrics: ExecutableMetricSpec[] = [];
+  const seen = new Set<string>();
+  const sheet = datasetProfile.sheets[0];
+
+  if (!sheet) {
+    return [];
+  }
+
+  const sourceFile = sheet.sourceFileName;
+  const marketColumn = findColumn(sheet, [/^MERCATO_ECR4$/i, /^MERCATO/i]);
+  const familyColumn = findColumn(sheet, [/^FAMIGLIA_ECR3$/i, /^FAMIGLIA/i]);
+  const compartmentColumn = findColumn(sheet, [/^COMPARTO_ECR2$/i, /^COMPARTO/i]);
+  const supplierColumn = findColumn(sheet, [/^FORNITORE$/i]);
+  const brandColumn = findColumn(sheet, [/^MARCA$/i]);
+  const itemCodeColumn = findColumn(sheet, [/^ITEM CODE$/i, /^ITEM_CODE$/i, /^SKU$/i]);
+  const currentValueColumn = findColumn(sheet, [/^V\.\s*Valore$/i]);
+  const priorValueColumn = findColumn(sheet, [/^V\.\s*Valore Anno prec\.$/i, /^V\.\s*Valore Anno Prec/i]);
+  const currentVolumeColumn = findColumn(sheet, [/^V\.\s*\(ALL\)$/i]);
+  const priorVolumeColumn = findColumn(sheet, [/^V\.\s*\(ALL\)\s*Anno prec\.$/i, /^V\.\s*\(ALL\)\s*Anno Prec/i]);
+
+  if (!currentValueColumn || !priorValueColumn || !supplierColumn || !brandColumn || !marketColumn) {
+    return [];
+  }
+
+  const primaryDimensions = compactUnique([
+    compartmentColumn,
+    familyColumn,
+    marketColumn,
+    supplierColumn,
+    brandColumn,
+  ]);
+
+  for (const dimension of primaryDimensions) {
+    pushMetric(metrics, seen, retailMetric({
+      id: `${slugify(dimension)}-value-current`,
+      name: `retail_value_current_by_${slugify(dimension)}`,
+      type: "sum",
+      sourceFile,
+      valueColumn: currentValueColumn,
+      groupBy: [dimension],
+    }));
+    pushMetric(metrics, seen, retailMetric({
+      id: `${slugify(dimension)}-value-prior`,
+      name: `retail_value_prior_by_${slugify(dimension)}`,
+      type: "sum",
+      sourceFile,
+      valueColumn: priorValueColumn,
+      groupBy: [dimension],
+    }));
+
+    if (currentVolumeColumn) {
+      pushMetric(metrics, seen, retailMetric({
+        id: `${slugify(dimension)}-volume-current`,
+        name: `retail_volume_current_by_${slugify(dimension)}`,
+        type: "sum",
+        sourceFile,
+        valueColumn: currentVolumeColumn,
+        groupBy: [dimension],
+      }));
+    }
+
+    if (priorVolumeColumn) {
+      pushMetric(metrics, seen, retailMetric({
+        id: `${slugify(dimension)}-volume-prior`,
+        name: `retail_volume_prior_by_${slugify(dimension)}`,
+        type: "sum",
+        sourceFile,
+        valueColumn: priorVolumeColumn,
+        groupBy: [dimension],
+      }));
+    }
+  }
+
+  pushMetric(metrics, seen, retailMetric({
+    id: "retail-value-current-by-supplier-rank",
+    name: "retail_value_current_rank_by_supplier",
+    type: "rank",
+    sourceFile,
+    valueColumn: currentValueColumn,
+    groupBy: [supplierColumn],
+    sortBy: {
+      column: currentValueColumn,
+      direction: "desc",
+    },
+    limit: 12,
+  }));
+
+  pushMetric(metrics, seen, retailMetric({
+    id: "retail-value-current-by-brand-rank",
+    name: "retail_value_current_rank_by_brand",
+    type: "rank",
+    sourceFile,
+    valueColumn: currentValueColumn,
+    groupBy: [brandColumn],
+    sortBy: {
+      column: currentValueColumn,
+      direction: "desc",
+    },
+    limit: 16,
+  }));
+
+  pushMetric(metrics, seen, retailMetric({
+    id: "retail-value-current-by-market-brand",
+    name: "retail_value_current_by_market_brand",
+    type: "rank",
+    sourceFile,
+    valueColumn: currentValueColumn,
+    groupBy: [marketColumn, brandColumn],
+    sortBy: {
+      column: currentValueColumn,
+      direction: "desc",
+    },
+    limit: 96,
+  }));
+
+  pushMetric(metrics, seen, retailMetric({
+    id: "retail-value-prior-by-market-brand",
+    name: "retail_value_prior_by_market_brand",
+    type: "sum",
+    sourceFile,
+    valueColumn: priorValueColumn,
+    groupBy: [marketColumn, brandColumn],
+  }));
+
+  if (currentVolumeColumn) {
+    pushMetric(metrics, seen, retailMetric({
+      id: "retail-volume-current-by-market-brand",
+      name: "retail_volume_current_by_market_brand",
+      type: "sum",
+      sourceFile,
+      valueColumn: currentVolumeColumn,
+      groupBy: [marketColumn, brandColumn],
+    }));
+  }
+
+  if (priorVolumeColumn) {
+    pushMetric(metrics, seen, retailMetric({
+      id: "retail-volume-prior-by-market-brand",
+      name: "retail_volume_prior_by_market_brand",
+      type: "sum",
+      sourceFile,
+      valueColumn: priorVolumeColumn,
+      groupBy: [marketColumn, brandColumn],
+    }));
+  }
+
+  for (const affinityFilter of [
+    { label: "affinity", column: supplierColumn, value: "AFFINITY" },
+    { label: "mdd", column: brandColumn, value: "MDD" },
+  ]) {
+    pushMetric(metrics, seen, retailMetric({
+      id: `${affinityFilter.label}-value-current-by-market`,
+      name: `retail_${affinityFilter.label}_value_current_by_market`,
+      type: "sum",
+      sourceFile,
+      valueColumn: currentValueColumn,
+      groupBy: [marketColumn],
+      filter: [
+        {
+          column: affinityFilter.column,
+          operator: affinityFilter.value === "MDD" ? "contains" : "eq",
+          value: affinityFilter.value,
+        },
+      ],
+    }));
+    pushMetric(metrics, seen, retailMetric({
+      id: `${affinityFilter.label}-value-prior-by-market`,
+      name: `retail_${affinityFilter.label}_value_prior_by_market`,
+      type: "sum",
+      sourceFile,
+      valueColumn: priorValueColumn,
+      groupBy: [marketColumn],
+      filter: [
+        {
+          column: affinityFilter.column,
+          operator: affinityFilter.value === "MDD" ? "contains" : "eq",
+          value: affinityFilter.value,
+        },
+      ],
+    }));
+  }
+
+  pushMetric(metrics, seen, retailMetric({
+    id: "retail-affinity-value-current-by-brand",
+    name: "retail_affinity_value_current_by_brand",
+    type: "sum",
+    sourceFile,
+    valueColumn: currentValueColumn,
+    groupBy: [brandColumn],
+    filter: [{ column: supplierColumn, operator: "eq", value: "AFFINITY" }],
+  }));
+  pushMetric(metrics, seen, retailMetric({
+    id: "retail-affinity-value-prior-by-brand",
+    name: "retail_affinity_value_prior_by_brand",
+    type: "sum",
+    sourceFile,
+    valueColumn: priorValueColumn,
+    groupBy: [brandColumn],
+    filter: [{ column: supplierColumn, operator: "eq", value: "AFFINITY" }],
+  }));
+  if (itemCodeColumn) {
+    pushMetric(metrics, seen, retailMetric({
+      id: "retail-affinity-sku-count-by-brand",
+      name: "retail_affinity_sku_count_by_brand",
+      type: "count_distinct",
+      sourceFile,
+      valueColumn: itemCodeColumn,
+      groupBy: [brandColumn],
+      filter: [{ column: supplierColumn, operator: "eq", value: "AFFINITY" }],
+    }));
+  }
+
+  return metrics.map((metric) => executableMetricSpecSchema.parse(metric));
+}
+
+function retailMetric(metric: {
+  id: string;
+  name: string;
+  type: ExecutableMetricSpec["type"];
+  sourceFile: string;
+  valueColumn?: string;
+  groupBy: string[];
+  filter?: ExecutableMetricSpec["filter"];
+  sortBy?: ExecutableMetricSpec["sortBy"];
+  limit?: number;
+}) {
+  return {
+    id: metric.id,
+    name: metric.name,
+    type: metric.type,
+    sourceFile: metric.sourceFile,
+    joinFiles: [],
+    joins: [],
+    valueColumn: metric.valueColumn,
+    groupBy: metric.groupBy,
+    filter: metric.filter ?? [],
+    sortBy: metric.sortBy,
+    limit: metric.limit,
+  } satisfies ExecutableMetricSpec;
 }
 
 function pushMetric(target: ExecutableMetricSpec[], seen: Set<string>, metric: ExecutableMetricSpec) {
@@ -342,6 +650,10 @@ function hasValidFilterColumns(
   filters: ExecutableMetricSpec["filter"],
 ) {
   return filters.every((filter) => hasValidColumn(sheetColumns, sourceFile, filter.column));
+}
+
+function findColumn(sheet: DatasetProfile["sheets"][number], patterns: RegExp[]) {
+  return sheet.columns.find((column) => matchColumnName(column.name, patterns))?.name;
 }
 
 function slugify(value: string) {

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   reportOutlineSchema,
   storySpecSchema,
@@ -14,6 +16,7 @@ import { generateStructuredStage } from "./model";
 import {
   cleanFragment,
   compactUnique,
+  extractRequestedSlideCount,
   getBusinessInsights,
   makeNarrativeTitle,
 } from "./utils";
@@ -30,11 +33,38 @@ type TraceOptions = {
   onTrace?: (trace: StageTrace) => void;
 };
 
+const llmReportSectionSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["framing", "methodology", "findings", "implications", "recommendations", "analysis", "appendix"]),
+  title: z.string(),
+  summary: z.string(),
+  objective: z.string(),
+  supportingInsightIds: z.array(z.string()),
+  emphasis: z.enum(["heavy", "standard", "light"]),
+  suggestedSlideCount: z.number().int().min(1),
+});
+
+const llmStorySpecSchema = z.object({
+  client: z.string(),
+  audience: z.string(),
+  objective: z.string(),
+  thesis: z.string(),
+  stakes: z.string(),
+  title: z.string(),
+  executiveSummary: z.string(),
+  narrativeArcType: z.enum(["opportunity", "threat", "transformation", "validation", "discovery"]),
+  narrativeArc: z.array(z.string()).min(1),
+  keyMessages: z.array(z.string()).min(1),
+  sections: z.array(llmReportSectionSchema),
+  recommendedSlideCount: z.number().int().min(1),
+  recommendedActions: z.array(z.string()),
+});
+
 export async function planStory(input: PlanStoryInput, options: TraceOptions = {}): Promise<StorySpec> {
   const modelId = process.env.BASQUIO_STORY_MODEL || "claude-sonnet-4-6";
   const llmResult = await generateStructuredStage({
     stage: "story-architect",
-    schema: storySpecSchema,
+    schema: llmStorySpecSchema,
     modelId,
     providerPreference: modelId.startsWith("claude") ? "anthropic" : "openai",
     prompt: [
@@ -89,18 +119,32 @@ export function planReportOutline(input: {
 }
 
 function buildFallbackStory(input: PlanStoryInput) {
-  const businessInsights = getBusinessInsights(input.insights);
+  const retailStoryMode = isRetailStoryMode(input);
+  const businessInsights = retailStoryMode ? input.insights : getBusinessInsights(input.insights);
   const leadInsight = businessInsights[0] ?? input.insights[0];
   const narrativeArcType = inferNarrativeArcType(input.brief, leadInsight);
-  const title = makeNarrativeTitle(input.brief, "Basquio executive report");
-  const executiveSummary = compactUnique([
-    leadInsight?.finding || leadInsight?.claim,
-    leadInsight?.implication || leadInsight?.businessMeaning,
-    input.brief.stakes ? `Act now because ${cleanFragment(input.brief.stakes).toLowerCase()}.` : undefined,
-  ])
-    .slice(0, 3)
-    .join(" ");
-  const sections = buildDynamicSections(businessInsights, input.brief, {
+  const requestedSlideCount = extractRequestedSlideCount(input.brief, 12);
+  const title = retailStoryMode
+    ? `Analisi performance di mercato ${input.brief.client || "categoria"}`
+    : makeNarrativeTitle(input.brief, "Basquio executive report");
+  const executiveSummary = retailStoryMode
+    ? compactUnique([
+        "Il gatto resta il motore del mercato, mentre il cane concentra il gap di execution piu evidente.",
+        "Affinity e un challenger rilevante ma ancora distante dal primo gruppo competitivo.",
+        businessInsights[2]?.businessMeaning,
+      ])
+        .slice(0, 3)
+        .join(" ")
+    : compactUnique([
+        leadInsight?.finding || leadInsight?.claim,
+        leadInsight?.implication || leadInsight?.businessMeaning,
+        input.brief.stakes ? `Act now because ${cleanFragment(input.brief.stakes).toLowerCase()}.` : undefined,
+      ])
+        .slice(0, 3)
+        .join(" ");
+  const sections = retailStoryMode
+    ? buildRetailSections(businessInsights, input.brief, requestedSlideCount, title, executiveSummary)
+    : buildDynamicSections(businessInsights, input.brief, {
     title,
     executiveSummary,
     keyMessages: compactUnique([
@@ -117,11 +161,18 @@ function buildFallbackStory(input: PlanStoryInput) {
     leadInsight?.title,
     ...businessInsights.slice(0, 3).map((insight) => insight.businessMeaning),
   ]).slice(0, 4);
-  const recommendedActions = compactUnique([
-    businessInsights[0]?.businessMeaning,
-    businessInsights[1]?.businessMeaning,
-    input.brief.stakes ? `Prioritize actions that reduce risk against ${cleanFragment(input.brief.stakes).toLowerCase()}.` : undefined,
-  ]).slice(0, 4);
+  const recommendedActions = retailStoryMode
+    ? compactUnique([
+        "Difendere Ultima nel Gatto Secco con attivazione commerciale piu aggressiva.",
+        "Ristrutturare Trainer riducendo le SKU a bassa produttivita.",
+        "Recuperare il Cane Secco con assortimento e pricing piu disciplinati.",
+        "Valutare un ingresso selettivo in Snacks e accelerare l'Umido Gatto solo con sufficiente supporto.",
+      ]).slice(0, 4)
+    : compactUnique([
+        businessInsights[0]?.businessMeaning,
+        businessInsights[1]?.businessMeaning,
+        input.brief.stakes ? `Prioritize actions that reduce risk against ${cleanFragment(input.brief.stakes).toLowerCase()}.` : undefined,
+      ]).slice(0, 4);
 
   return storySpecSchema.parse({
     client: input.brief.client,
@@ -135,9 +186,91 @@ function buildFallbackStory(input: PlanStoryInput) {
     narrativeArc: buildNarrativeArc(businessInsights, input.brief, narrativeArcType),
     keyMessages,
     sections,
-    recommendedSlideCount: sections.reduce((total, section) => total + section.suggestedSlideCount, 0),
+    recommendedSlideCount: Math.max(requestedSlideCount, sections.reduce((total, section) => total + section.suggestedSlideCount, 0)),
     recommendedActions,
   });
+}
+
+function isRetailStoryMode(input: PlanStoryInput) {
+  return (
+    input.insights.some((insight) => insight.id.startsWith("retail-")) ||
+    /(retail|market|fmcg|nielseniq|pet care)/i.test(
+      [input.packageSemantics.domain, input.brief.businessContext, input.brief.objective].filter(Boolean).join(" "),
+    )
+  );
+}
+
+function buildRetailSections(
+  insights: InsightSpec[],
+  brief: ReportBrief,
+  targetSlideCount: number,
+  title: string,
+  executiveSummary: string,
+) {
+  const sections: ReportSection[] = [
+    {
+      id: "section-cover",
+      kind: "framing",
+      title,
+      summary: executiveSummary || brief.objective,
+      objective: `Orient ${brief.audience.toLowerCase()} to the headline market signal.`,
+      supportingInsightIds: insights.slice(0, 1).map((insight) => insight.id),
+      emphasis: "heavy",
+      suggestedSlideCount: 1,
+    },
+    {
+      id: "section-executive-summary",
+      kind: "findings",
+      title: "Sintesi esecutiva",
+      summary: executiveSummary || brief.objective,
+      objective: "Summarize where the business wins, where it suffers, and why it matters now.",
+      supportingInsightIds: insights.slice(0, 3).map((insight) => insight.id),
+      emphasis: "heavy",
+      suggestedSlideCount: 1,
+    },
+  ];
+
+  const remainingInsightSlots = Math.max(0, targetSlideCount - 3);
+  const chosenInsights = insights.slice(0, remainingInsightSlots);
+
+  for (const [index, insight] of chosenInsights.entries()) {
+    sections.push({
+      id: `section-retail-${index + 1}`,
+      kind: index < 4 ? "findings" : "analysis",
+      title: insight.title,
+      summary: insight.finding || insight.claim,
+      objective: insight.businessMeaning || "Convert evidence into a reportable business point of view.",
+      supportingInsightIds: [insight.id],
+      emphasis: index < 3 ? "heavy" : "standard",
+      suggestedSlideCount: 1,
+    });
+  }
+
+  sections.push({
+    id: "section-recommendations",
+    kind: "recommendations",
+    title: "Azioni chiave",
+    summary: insights[0]?.businessMeaning || brief.stakes || "Convert the analysis into action.",
+    objective: "Close with practical priorities grounded in the evidence.",
+    supportingInsightIds: insights.slice(0, 4).map((insight) => insight.id),
+    emphasis: "standard",
+    suggestedSlideCount: 1,
+  });
+
+  while (sections.reduce((total, section) => total + section.suggestedSlideCount, 0) < targetSlideCount) {
+    sections.splice(sections.length - 1, 0, {
+      id: `section-synthesis-${sections.length}`,
+      kind: "implications",
+      title: "Sintesi strategica",
+      summary: brief.thesis || brief.objective,
+      objective: "Bridge the findings into a concise decision frame before the final actions.",
+      supportingInsightIds: insights.slice(0, 3).map((insight) => insight.id),
+      emphasis: "light",
+      suggestedSlideCount: 1,
+    });
+  }
+
+  return sections;
 }
 
 function buildDynamicSections(

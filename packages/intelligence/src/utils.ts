@@ -112,3 +112,38 @@ export function scoreEvidence(evidenceRefs: EvidenceRef[]) {
     ),
   );
 }
+
+export function matchColumnName(name: string, patterns: RegExp[]) {
+  return patterns.some((pattern) => pattern.test(name));
+}
+
+export function isRetailMarketDataset(datasetProfile: DatasetProfile, brief?: ReportBrief) {
+  const haystack = [
+    brief?.businessContext,
+    brief?.objective,
+    brief?.thesis,
+    ...datasetProfile.sheets.flatMap((sheet) => sheet.columns.map((column) => column.name)),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    /(fornitore|marca|mercato_ecr4|famiglia_ecr3|comparto_ecr2)/.test(haystack) &&
+    /(v\.?\s*valore|nielseniq|retail measurement|pet care|fmcg|market)/.test(haystack)
+  );
+}
+
+export function extractRequestedSlideCount(brief: ReportBrief, fallback = 12) {
+  const haystack = [brief.objective, brief.businessContext, brief.thesis, brief.stakes]
+    .filter(Boolean)
+    .join(" ");
+  const match = haystack.match(/\b(\d{1,2})\s*[- ]?(?:slide|slides)\b/i);
+  const requested = match ? Number(match[1]) : fallback;
+
+  if (!Number.isFinite(requested)) {
+    return fallback;
+  }
+
+  return Math.max(6, Math.min(20, requested));
+}

@@ -8,6 +8,7 @@
   "dependencies": {
     "@basquio/render-charts": "workspace:*",
     "@basquio/types": "workspace:*",
+    "jszip": "^3.10.1",
     "pptx-automizer": "^0.8.1",
     "pptxgenjs": "^3.12.0"
   }

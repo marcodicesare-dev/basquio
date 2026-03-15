@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import JSZip from "jszip";
 import Automizer from "pptx-automizer";
 import PptxGenJS from "pptxgenjs";
 
@@ -653,8 +654,14 @@ function definePresentationLayout(pptx: PptxGenJS, templateProfile: TemplateProf
 }
 
 function resolveTemplateLayout(templateProfile: TemplateProfile, layoutId: string) {
+  const [baseId, variant] = layoutId.split("::");
+  const matchingLayout = variant
+    ? templateProfile.layouts.find((layout) => getTemplateLayoutKey(layout) === layoutId)
+    : undefined;
+
   return (
-    templateProfile.layouts.find((layout) => layout.id === layoutId) ??
+    matchingLayout ??
+    templateProfile.layouts.find((layout) => layout.id === baseId || getTemplateLayoutKey(layout) === layoutId) ??
     templateProfile.layouts[0] ?? {
       id: layoutId,
       name: layoutId,
@@ -665,6 +672,14 @@ function resolveTemplateLayout(templateProfile: TemplateProfile, layoutId: strin
       notes: [],
     }
   );
+}
+
+function getTemplateLayoutKey(layout: TemplateProfile["layouts"][number]) {
+  const variant = (layout.sourceName || layout.name || layout.id)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${layout.id}::${variant || "default"}`;
 }
 
 function resolveBlockFrame(block: SlideSpec["blocks"][number] | undefined, fallback: Frame | null) {
@@ -826,7 +841,7 @@ function canPreserveTemplate(templateProfile: TemplateProfile) {
 
 async function renderTemplatePreservingArtifact(input: RenderPptxInput): Promise<BinaryArtifact> {
   const theme = resolveTheme(input.templateProfile);
-  const templateBuffer = Buffer.from(input.templateFile!.base64, "base64");
+  const templateBuffer = await sanitizeTemplateForAutomizer(Buffer.from(input.templateFile!.base64, "base64"));
   const rootTemplateBuffer = await createBlankRootTemplate(input.templateProfile, input.deckTitle);
   const workspace = await mkdtemp(path.join(tmpdir(), "basquio-pptx-"));
   const outputFileName = "basquio-deck.pptx";
@@ -843,16 +858,17 @@ async function renderTemplatePreservingArtifact(input: RenderPptxInput): Promise
     });
 
     automizer.loadRoot(rootTemplateBuffer);
-    automizer.load(templateBuffer, "template");
 
-    for (const slideSpec of input.slidePlan) {
+    for (const [index, slideSpec] of input.slidePlan.entries()) {
       const templateSlideNumber = resolveTemplateSourceSlideNumber(input.templateProfile, slideSpec.layoutId);
 
       if (!templateSlideNumber) {
         return renderFreshDeckArtifact(input);
       }
 
-      automizer.addSlide("template", templateSlideNumber, (slide) => {
+      const templateAlias = `template-${index + 1}`;
+      automizer.load(templateBuffer, templateAlias);
+      automizer.addSlide(templateAlias, templateSlideNumber, (slide) => {
         slide.prepare((document) => {
           scrubImportedSlideContent(document);
         });
@@ -871,7 +887,12 @@ async function renderTemplatePreservingArtifact(input: RenderPptxInput): Promise
       });
     }
 
-    await automizer.write(outputFileName);
+    try {
+      await automizer.write(outputFileName);
+    } catch {
+      return renderFreshDeckArtifact(input);
+    }
+
     const buffer = await readFile(outputPath);
 
     return {
@@ -904,6 +925,34 @@ export async function renderTemplatePreservingDeck(templatePath: string, outputD
     outputDir,
     engine: "Automizer",
   };
+}
+
+async function sanitizeTemplateForAutomizer(buffer: Buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const slideRelationshipEntries = Object.keys(zip.files).filter((entry) => /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/i.test(entry));
+
+  for (const entry of slideRelationshipEntries) {
+    const file = zip.file(entry);
+
+    if (!file) {
+      continue;
+    }
+
+    const xml = await file.async("text");
+    const sanitized = xml.replace(
+      /<Relationship\b[^>]*Type="[^"]*\/notesSlide"[^>]*\/>/gim,
+      "",
+    );
+
+    if (sanitized !== xml) {
+      zip.file(entry, sanitized);
+    }
+  }
+
+  return zip.generateAsync({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+  }) as Promise<Buffer>;
 }
 
 function resolveTemplateSourceSlideNumber(templateProfile: TemplateProfile, layoutId: string) {
