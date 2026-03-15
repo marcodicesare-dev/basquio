@@ -39,6 +39,7 @@
 - Queued jobs must be reconstructable from persisted request state keyed by `jobId`.
 - Large or ambiguous decks are allowed to take more revision attempts than simple ones.
 - Every LLM-assisted stage must emit auditable trace metadata.
+- Status recovery must handle stale queued runs and stale running runs that still have zero durable checkpoints.
 
 ## Rendering Rules
 
@@ -61,3 +62,4 @@
 - Architecture changes require a matching decision-log update.
 - Contract changes require a matching memory update.
 - Run `pnpm qa:basquio` after every context change.
+- Supabase-backed runtime queries must be validated against the migration-defined schema before release.

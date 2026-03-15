@@ -36,6 +36,8 @@ Prevent stack-level mistakes that do not violate TypeScript but do violate opera
 - keep Inngest step IDs stable once runs may exist in production
 - use signed URLs for private artifact delivery
 - fail early on unsupported workbook/template inputs instead of retrying forever
+- verify Supabase REST `select` fields against the migration-defined schema before shipping
+- when prod and local disagree, inspect exported app logs and database logs before trusting the progress UI
 
 ## Refuse To Do
 

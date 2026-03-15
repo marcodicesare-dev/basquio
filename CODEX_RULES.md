@@ -39,9 +39,13 @@ Run:
 pnpm qa:basquio
 ```
 
+`pnpm qa:basquio` is not only a docs-presence check. It must be kept schema-aware for Supabase-backed runtime reads and writes so code cannot select columns that the migrations do not create.
+
 Recommended before code merge:
 
 ```bash
 pnpm typecheck:fast
 pnpm lint:fast
 ```
+
+When production incidents appear, exported web logs and database logs are first-class debugging inputs and should be checked before assuming the UI accurately reflects runtime state.

@@ -30,6 +30,7 @@ Basquio is not a generic deck generator. It is a report-generation system for st
 4. Update decision log and memory in the same change.
 5. Update `Basquio/code/contracts.ts` if any planning or brand-input contract changes.
 6. Run `pnpm qa:basquio`.
+7. If the change touches runtime persistence or job status, confirm QA covers schema compatibility and stale-run recovery rather than only docs presence.
 
 ## Refuse To Do
 

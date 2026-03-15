@@ -6,6 +6,8 @@
 - architecture, memory, and decision log agree
 - required files exist
 - contracts compile and export expected schemas
+- Supabase REST selects in runtime code match the migrated table columns
+- production-facing orchestration changes have an explicit stale-run recovery path
 
 ## Product QA
 
@@ -33,6 +35,6 @@ Before shipping a meaningful architectural change:
 
 ```bash
 pnpm qa:basquio
-pnpm typecheck:fast
-pnpm lint:fast
+pnpm typecheck
+pnpm build
 ```

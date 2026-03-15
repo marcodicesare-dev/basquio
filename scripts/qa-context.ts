@@ -209,19 +209,23 @@ function parseAlterTableAddedColumns(sql: string, tableName: string) {
   return columns;
 }
 
-function parseRestSelect(contents: string, tableName: string) {
-  const escapedTableName = tableName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`table:\\s*"${escapedTableName}"[\\s\\S]*?select:\\s*"([^"]+)"`, "m");
-  const match = contents.match(pattern);
+function parseRestSelectCalls(contents: string) {
+  const calls: Array<{ table: string; fields: string[] }> = [];
+  const pattern = /table:\s*"([^"]+)"[\s\S]*?select:\s*"([^"]+)"/g;
 
-  if (!match?.[1]) {
-    throw new Error(`Unable to locate REST select for ${tableName}.`);
+  for (const match of contents.matchAll(pattern)) {
+    const table = match[1]?.trim();
+    const fields = match[2]
+      ?.split(",")
+      .map((field) => field.trim())
+      .filter(Boolean);
+
+    if (table && fields?.length) {
+      calls.push({ table, fields });
+    }
   }
 
-  return match[1]
-    .split(",")
-    .map((field) => field.trim())
-    .filter(Boolean);
+  return calls;
 }
 
 async function assertRuntimeSchemaCompatibility() {
@@ -232,29 +236,52 @@ async function assertRuntimeSchemaCompatibility() {
   const schemaSql = (
     await Promise.all(migrationEntries.map((entry) => readFile(path.join(migrationsDir, entry), "utf8")))
   ).join("\n\n");
-  const runStatusPath = path.join(root, "apps", "web", "src", "lib", "run-status.ts");
-  const runStatusContents = await readFile(runStatusPath, "utf8");
+  const tableSchemas = new Map<string, Set<string>>();
+  const publicTables = [
+    "organizations",
+    "organization_memberships",
+    "projects",
+    "source_files",
+    "datasets",
+    "dataset_source_files",
+    "template_profiles",
+    "generation_jobs",
+    "generation_job_steps",
+    "artifacts",
+  ];
 
-  const generationJobColumns = new Set([
-    ...parseCreateTableColumns(schemaSql, "public.generation_jobs"),
-    ...parseAlterTableAddedColumns(schemaSql, "public.generation_jobs"),
-  ]);
-  const generationStepColumns = new Set([
-    ...parseCreateTableColumns(schemaSql, "public.generation_job_steps"),
-    ...parseAlterTableAddedColumns(schemaSql, "public.generation_job_steps"),
-  ]);
-  const selectedJobFields = parseRestSelect(runStatusContents, "generation_jobs");
-  const selectedStepFields = parseRestSelect(runStatusContents, "generation_job_steps");
-
-  for (const field of selectedJobFields) {
-    if (!generationJobColumns.has(field)) {
-      throw new Error(`run-status.ts selects missing generation_jobs column: ${field}`);
-    }
+  for (const table of publicTables) {
+    tableSchemas.set(table, new Set([
+      ...parseCreateTableColumns(schemaSql, `public.${table}`),
+      ...parseAlterTableAddedColumns(schemaSql, `public.${table}`),
+    ]));
   }
 
-  for (const field of selectedStepFields) {
-    if (!generationStepColumns.has(field)) {
-      throw new Error(`run-status.ts selects missing generation_job_steps column: ${field}`);
+  const filesToScan = [
+    "apps/web/src/lib/generation-requests.ts",
+    "apps/web/src/lib/run-status.ts",
+    "apps/web/src/lib/job-runs.ts",
+    "apps/web/src/lib/viewer-workspace.ts",
+    "apps/web/src/app/api/generate/route.ts",
+    "apps/web/src/app/api/artifacts/[jobId]/[kind]/route.ts",
+    "packages/workflows/src/persistence.ts",
+    "packages/workflows/src/index.ts",
+  ];
+
+  for (const relativePath of filesToScan) {
+    const contents = await readFile(path.join(root, relativePath), "utf8");
+
+    for (const call of parseRestSelectCalls(contents)) {
+      const columns = tableSchemas.get(call.table);
+      if (!columns) {
+        throw new Error(`${relativePath} selects from unsupported QA table: ${call.table}`);
+      }
+
+      for (const field of call.fields) {
+        if (!columns.has(field)) {
+          throw new Error(`${relativePath} selects missing ${call.table} column: ${field}`);
+        }
+      }
     }
   }
 }

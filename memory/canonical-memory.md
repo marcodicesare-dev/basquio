@@ -71,6 +71,8 @@ Initial domain bias:
 - large browser uploads should use signed resumable transport, while smaller uploads can continue to use signed single-shot transport.
 - Inngest execution IDs should stay distinct from the user-facing canonical stage names shown in progress UI.
 - cross-provider model fallback must be explicit and opt-in; strict structured outputs are the default contract for planning stages.
+- Supabase REST queries in runtime code must stay compatible with the migrated schema; production log review is the source of truth when local assumptions drift.
+- status polling and recovery logic must handle both stale queued runs and stale running-with-zero-checkpoint runs.
 
 ## Design Memory
 
@@ -91,6 +93,13 @@ Before implementation:
 2. read `docs/architecture.md`
 3. read this file
 4. run `pnpm qa:basquio`
+
+When production incidents happen:
+
+1. inspect exported web logs
+2. inspect exported database logs
+3. compare runtime queries against migrations
+4. only then trust or revise the progress UI explanation
 
 When architecture changes:
 

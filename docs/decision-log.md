@@ -123,6 +123,16 @@ Accepted because:
 - users need stage-level progress, elapsed time, and estimated remaining time while the run is in flight
 - queued jobs should be reconstructable from persisted request envelopes instead of depending on in-memory request state
 
+### Schema-aware runtime QA for Supabase-backed status and orchestration code
+
+Accepted because:
+
+- production incidents on March 15, 2026 showed that repo-context QA alone is not enough
+- a runtime query selected `generation_job_steps.created_at` even though the migrated table only exposed `started_at`
+- the result was a production-only status failure that typecheck and build did not catch
+- `pnpm qa:basquio` should fail when runtime REST selects drift from the migration-defined schema
+- stale-run recovery must be treated as part of the orchestration contract, not as UI copy
+
 ### Brand-token intake as first-class styling input
 
 Accepted because:

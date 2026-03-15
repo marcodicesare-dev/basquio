@@ -53,6 +53,16 @@ Basquio implication:
 - use a dedicated server-side client for artifact storage, workflow writes, and admin mutations
 - never expose `SUPABASE_SERVICE_ROLE_KEY` to the browser
 
+### Schema compatibility discipline
+
+TypeScript success does not prove Supabase runtime compatibility.
+
+Basquio implication:
+
+- every runtime REST `select` should be compatible with the migration-defined schema
+- `pnpm qa:basquio` should fail when runtime selects drift from actual table columns
+- production web logs plus Postgres logs are the source of truth when local behavior and hosted behavior disagree
+
 ### Storage model
 
 Keep source files, templates, and artifacts in private buckets.

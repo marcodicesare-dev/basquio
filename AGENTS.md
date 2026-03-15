@@ -14,6 +14,8 @@ When working inside `Basquio/`:
    - `code/contracts.ts`
 6. Run `pnpm qa:basquio` after context changes.
 7. Prefer changes that strengthen the intelligence layer over UI polish.
+8. When changing Supabase-backed runtime code, verify REST-selected columns against the migration-defined schema before shipping.
+9. When production behavior and local behavior diverge, trust exported logs and runtime evidence over code assumptions.
 
 ## Product Reminder
 
