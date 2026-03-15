@@ -28,7 +28,6 @@ type StepRow = {
   status: GenerationJobStatus;
   detail?: string;
   completed_at?: string | null;
-  created_at?: string | null;
   payload?: Record<string, unknown>;
 };
 
@@ -84,7 +83,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     ...credentials,
     table: "generation_job_steps",
     query: {
-      select: "stage,status,detail,completed_at,created_at,payload",
+      select: "stage,status,detail,completed_at,payload",
       job_id: `eq.${job.id}`,
       limit: "100",
     },

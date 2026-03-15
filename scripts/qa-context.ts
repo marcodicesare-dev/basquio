@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -174,6 +174,91 @@ async function assertWorkspaceScripts() {
   }
 }
 
+function parseCreateTableColumns(sql: string, tableName: string) {
+  const escapedTableName = tableName.replace(".", "\\.");
+  const pattern = new RegExp(`create table if not exists ${escapedTableName} \\(([^;]+?)\\n\\);`, "is");
+  const match = sql.match(pattern);
+
+  if (!match?.[1]) {
+    return [];
+  }
+
+  return match[1]
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("constraint"))
+    .map((line) => line.replace(/,$/, "").split(/\s+/)[0] ?? "")
+    .filter(Boolean);
+}
+
+function parseAlterTableAddedColumns(sql: string, tableName: string) {
+  const escapedTableName = tableName.replace(".", "\\.");
+  const pattern = new RegExp(`alter table ${escapedTableName}([\\s\\S]*?);`, "ig");
+  const columns: string[] = [];
+
+  for (const match of sql.matchAll(pattern)) {
+    const statement = match[1] ?? "";
+
+    for (const addColumnMatch of statement.matchAll(/add column if not exists\s+([a-zA-Z0-9_]+)/gi)) {
+      if (addColumnMatch[1]) {
+        columns.push(addColumnMatch[1]);
+      }
+    }
+  }
+
+  return columns;
+}
+
+function parseRestSelect(contents: string, tableName: string) {
+  const escapedTableName = tableName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`table:\\s*"${escapedTableName}"[\\s\\S]*?select:\\s*"([^"]+)"`, "m");
+  const match = contents.match(pattern);
+
+  if (!match?.[1]) {
+    throw new Error(`Unable to locate REST select for ${tableName}.`);
+  }
+
+  return match[1]
+    .split(",")
+    .map((field) => field.trim())
+    .filter(Boolean);
+}
+
+async function assertRuntimeSchemaCompatibility() {
+  const migrationsDir = path.join(root, "supabase", "migrations");
+  const migrationEntries = (await readdir(migrationsDir))
+    .filter((entry) => entry.endsWith(".sql"))
+    .sort();
+  const schemaSql = (
+    await Promise.all(migrationEntries.map((entry) => readFile(path.join(migrationsDir, entry), "utf8")))
+  ).join("\n\n");
+  const runStatusPath = path.join(root, "apps", "web", "src", "lib", "run-status.ts");
+  const runStatusContents = await readFile(runStatusPath, "utf8");
+
+  const generationJobColumns = new Set([
+    ...parseCreateTableColumns(schemaSql, "public.generation_jobs"),
+    ...parseAlterTableAddedColumns(schemaSql, "public.generation_jobs"),
+  ]);
+  const generationStepColumns = new Set([
+    ...parseCreateTableColumns(schemaSql, "public.generation_job_steps"),
+    ...parseAlterTableAddedColumns(schemaSql, "public.generation_job_steps"),
+  ]);
+  const selectedJobFields = parseRestSelect(runStatusContents, "generation_jobs");
+  const selectedStepFields = parseRestSelect(runStatusContents, "generation_job_steps");
+
+  for (const field of selectedJobFields) {
+    if (!generationJobColumns.has(field)) {
+      throw new Error(`run-status.ts selects missing generation_jobs column: ${field}`);
+    }
+  }
+
+  for (const field of selectedStepFields) {
+    if (!generationStepColumns.has(field)) {
+      throw new Error(`run-status.ts selects missing generation_job_steps column: ${field}`);
+    }
+  }
+}
+
 async function resolveWorkspaceRoot() {
   let current = cwd;
 
@@ -207,6 +292,7 @@ async function main() {
 
   await assertContractsLoad();
   await assertWorkspaceScripts();
+  await assertRuntimeSchemaCompatibility();
 
   console.log("Basquio context QA passed.");
 }
