@@ -19,6 +19,7 @@ import {
   extractRequestedSlideCount,
   getBusinessInsights,
   makeNarrativeTitle,
+  sanitizeAudienceCopy,
 } from "./utils";
 
 type PlanStoryInput = {
@@ -119,32 +120,21 @@ export function planReportOutline(input: {
 }
 
 function buildFallbackStory(input: PlanStoryInput) {
-  const retailStoryMode = isRetailStoryMode(input);
-  const businessInsights = retailStoryMode ? input.insights : getBusinessInsights(input.insights);
+  const businessInsights = getBusinessInsights(input.insights);
   const leadInsight = businessInsights[0] ?? input.insights[0];
   const narrativeArcType = inferNarrativeArcType(input.brief, leadInsight);
   const requestedSlideCount = extractRequestedSlideCount(input.brief, 12);
-  const title = retailStoryMode
-    ? `Analisi performance di mercato ${input.brief.client || "categoria"}`
-    : makeNarrativeTitle(input.brief, "Basquio executive report");
-  const executiveSummary = retailStoryMode
-    ? compactUnique([
-        "Il gatto resta il motore del mercato, mentre il cane concentra il gap di execution piu evidente.",
-        "Affinity e un challenger rilevante ma ancora distante dal primo gruppo competitivo.",
-        businessInsights[2]?.businessMeaning,
-      ])
-        .slice(0, 3)
-        .join(" ")
-    : compactUnique([
-        leadInsight?.finding || leadInsight?.claim,
-        leadInsight?.implication || leadInsight?.businessMeaning,
-        input.brief.stakes ? `Act now because ${cleanFragment(input.brief.stakes).toLowerCase()}.` : undefined,
-      ])
-        .slice(0, 3)
-        .join(" ");
-  const sections = retailStoryMode
-    ? buildRetailSections(businessInsights, input.brief, requestedSlideCount, title, executiveSummary)
-    : buildDynamicSections(businessInsights, input.brief, {
+  const safeStakes = sanitizeAudienceCopy(input.brief.stakes);
+  const safeThesis = sanitizeAudienceCopy(input.brief.thesis);
+  const title = makeNarrativeTitle(input.brief, "Basquio executive report");
+  const executiveSummary = compactUnique([
+    leadInsight?.finding || leadInsight?.claim,
+    leadInsight?.implication || leadInsight?.businessMeaning,
+    safeStakes ? `Act now because ${cleanFragment(safeStakes).toLowerCase()}.` : undefined,
+  ])
+    .slice(0, 3)
+    .join(" ");
+  const sections = buildDynamicSections(businessInsights, input.brief, {
     title,
     executiveSummary,
     keyMessages: compactUnique([
@@ -154,31 +144,24 @@ function buildFallbackStory(input: PlanStoryInput) {
     recommendedActions: compactUnique([
       businessInsights[0]?.businessMeaning,
       businessInsights[1]?.businessMeaning,
-      input.brief.stakes ? `Prioritize actions that reduce risk against ${cleanFragment(input.brief.stakes).toLowerCase()}.` : undefined,
+      safeStakes ? `Prioritize actions that reduce risk against ${cleanFragment(safeStakes).toLowerCase()}.` : undefined,
     ]).slice(0, 4),
   });
   const keyMessages = compactUnique([
     leadInsight?.title,
     ...businessInsights.slice(0, 3).map((insight) => insight.businessMeaning),
   ]).slice(0, 4);
-  const recommendedActions = retailStoryMode
-    ? compactUnique([
-        "Difendere Ultima nel Gatto Secco con attivazione commerciale piu aggressiva.",
-        "Ristrutturare Trainer riducendo le SKU a bassa produttivita.",
-        "Recuperare il Cane Secco con assortimento e pricing piu disciplinati.",
-        "Valutare un ingresso selettivo in Snacks e accelerare l'Umido Gatto solo con sufficiente supporto.",
-      ]).slice(0, 4)
-    : compactUnique([
-        businessInsights[0]?.businessMeaning,
-        businessInsights[1]?.businessMeaning,
-        input.brief.stakes ? `Prioritize actions that reduce risk against ${cleanFragment(input.brief.stakes).toLowerCase()}.` : undefined,
-      ]).slice(0, 4);
+  const recommendedActions = compactUnique([
+    businessInsights[0]?.businessMeaning,
+    businessInsights[1]?.businessMeaning,
+    safeStakes ? `Prioritize actions that reduce risk against ${cleanFragment(safeStakes).toLowerCase()}.` : undefined,
+  ]).slice(0, 4);
 
   return storySpecSchema.parse({
     client: input.brief.client,
     audience: input.brief.audience,
     objective: input.brief.objective,
-    thesis: input.brief.thesis || leadInsight?.claim || executiveSummary,
+    thesis: safeThesis || leadInsight?.claim || executiveSummary,
     stakes: input.brief.stakes,
     title,
     executiveSummary,
@@ -189,15 +172,6 @@ function buildFallbackStory(input: PlanStoryInput) {
     recommendedSlideCount: Math.max(requestedSlideCount, sections.reduce((total, section) => total + section.suggestedSlideCount, 0)),
     recommendedActions,
   });
-}
-
-function isRetailStoryMode(input: PlanStoryInput) {
-  return (
-    input.insights.some((insight) => insight.id.startsWith("retail-")) ||
-    /(retail|market|fmcg|nielseniq|pet care)/i.test(
-      [input.packageSemantics.domain, input.brief.businessContext, input.brief.objective].filter(Boolean).join(" "),
-    )
-  );
 }
 
 function buildRetailSections(
@@ -397,46 +371,49 @@ function buildNarrativeArc(
   const lead = insights[0];
   const support = insights.slice(1, 4);
   const totalFindings = insights.length;
+  const safeObjective = sanitizeAudienceCopy(brief.objective) || brief.objective;
+  const safeThesis = sanitizeAudienceCopy(brief.thesis) || lead?.title || safeObjective;
+  const safeStakes = sanitizeAudienceCopy(brief.stakes) || "competitive position";
 
   switch (arcType) {
     case "threat":
       return [
-        `${brief.client || "The client"} faces ${articleize(lead?.title.toLowerCase() || "a material risk")} that directly impacts ${brief.stakes || "competitive position"}.`,
+        `${brief.client || "The client"} faces ${articleize(lead?.title.toLowerCase() || "a material risk")} that directly impacts ${safeStakes}.`,
         `Across ${totalFindings} findings, the data shows ${joinClauses(support.map((insight) => insight.title.toLowerCase()))}.`,
         `The evidence points to ${firstSentence(lead?.implication || lead?.businessMeaning).toLowerCase()}.`,
-        `Without action on ${firstClause(lead?.title || brief.objective).toLowerCase()}, the gap will widen.`,
+        `Without action on ${firstClause(lead?.title || safeObjective).toLowerCase()}, the gap will widen.`,
       ];
     case "opportunity":
       return [
-        `${brief.client || "The client"} has an untapped opportunity: ${(lead?.title || brief.objective).toLowerCase()}.`,
+        `${brief.client || "The client"} has an untapped opportunity: ${(lead?.title || safeObjective).toLowerCase()}.`,
         `The data reveals ${totalFindings} reinforcing signals, led by ${support[0]?.title.toLowerCase() || "strong performance indicators"}.`,
         `${firstSentence(lead?.implication || lead?.businessMeaning)}.`,
         `Capturing this requires focused action on ${joinClauses(insights.slice(0, 3).map((insight) => firstClause(insight.title).toLowerCase()))}.`,
       ];
     case "discovery":
       return [
-        `An unexpected pattern emerged: ${(lead?.title || brief.objective).toLowerCase()}.`,
-        `This challenges the assumption that ${(brief.thesis || brief.objective).toLowerCase()}, revealing ${support[0]?.title.toLowerCase() || "a different picture"}.`,
+        `An unexpected pattern emerged: ${(lead?.title || safeObjective).toLowerCase()}.`,
+        `This challenges the assumption that ${safeThesis.toLowerCase()}, revealing ${support[0]?.title.toLowerCase() || "a different picture"}.`,
         `${totalFindings} findings confirm this is not noise: ${firstSentence(lead?.finding || lead?.claim).toLowerCase()}.`,
         `The strategic implication is ${firstSentence(lead?.implication || lead?.businessMeaning).toLowerCase()}.`,
       ];
     case "validation":
       return [
-        `${brief.client || "The client"} now has evidence validating ${(brief.thesis || lead?.title || brief.objective).toLowerCase()}.`,
+        `${brief.client || "The client"} now has evidence validating ${(safeThesis || lead?.title || safeObjective).toLowerCase()}.`,
         `${totalFindings} findings reinforce the thesis, including ${joinClauses(support.map((insight) => insight.title.toLowerCase()))}.`,
         `${firstSentence(lead?.finding || lead?.claim)}.`,
         `The recommended next step is to act on ${joinClauses(insights.slice(0, 2).map((insight) => firstClause(insight.title).toLowerCase()))}.`,
       ];
     case "transformation":
       return [
-        `${brief.client || "The client"} is in the middle of a measurable shift: ${(lead?.title || brief.objective).toLowerCase()}.`,
+        `${brief.client || "The client"} is in the middle of a measurable shift: ${(lead?.title || safeObjective).toLowerCase()}.`,
         `The data traces this change through ${joinClauses(support.map((insight) => insight.title.toLowerCase()))}.`,
         `${firstSentence(lead?.finding || lead?.claim)}.`,
         `The transformation only compounds if leadership acts on ${joinClauses(insights.slice(0, 3).map((insight) => firstClause(insight.title).toLowerCase()))}.`,
       ];
     default:
       return [
-        `${lead?.title || brief.objective}.`,
+        `${lead?.title || safeObjective}.`,
         `${totalFindings} findings support this conclusion, with ${support.length} reinforcing signals.`,
         `${firstSentence(lead?.implication || lead?.businessMeaning)}.`,
         "Action items follow from the strongest evidence-backed findings.",

@@ -15,7 +15,7 @@ import {
 } from "@basquio/types";
 
 import { generateStructuredStage } from "./model";
-import { collectInsightEvidenceIds, compactUnique, getBusinessInsights } from "./utils";
+import { collectInsightEvidenceIds, compactUnique, getBusinessInsights, sanitizeAudienceCopy } from "./utils";
 
 type PlanSlidesInput = {
   analyticsResult: AnalyticsResult;
@@ -735,15 +735,22 @@ function buildBlocks(input: {
   const { blueprint, section, selectedInsights, chart } = input;
   const blocks: SlideSpec["blocks"] = [];
   const evidenceIds = collectInsightEvidenceIds(selectedInsights);
-  const retailMode = isRetailSlideContext(selectedInsights, input.input.brief);
+  const retailMode = isRetailSlideContext(selectedInsights, input.input.analyticsResult, input.input.brief);
+  const safeStoryThesis = sanitizeAudienceCopy(input.input.story.thesis);
+  const safeExecutiveSummary = sanitizeAudienceCopy(input.input.story.executiveSummary);
+  const safeStakes = sanitizeAudienceCopy(input.input.brief.stakes);
 
   if (blueprint.emphasis === "cover") {
     blocks.push(block({
       kind: "callout",
       content:
         retailMode
-          ? selectedInsights[0]?.businessMeaning || selectedInsights[0]?.claim || input.input.story.executiveSummary
-          : input.input.story.thesis || input.input.story.keyMessages[0] || selectedInsights[0]?.claim || input.input.brief.objective,
+          ? selectedInsights[0]?.businessMeaning || selectedInsights[0]?.claim || safeExecutiveSummary || input.input.brief.objective
+          : safeStoryThesis ||
+            input.input.story.keyMessages[0] ||
+            selectedInsights[0]?.claim ||
+            safeExecutiveSummary ||
+            input.input.brief.objective,
       tone: "positive",
       evidenceIds,
     }));
@@ -752,11 +759,11 @@ function buildBlocks(input: {
       items: compactUnique([
         retailMode ? `Audience: ${input.input.brief.audience}`.replace("Audience", "Destinatari") : `Audience: ${input.input.brief.audience}`,
         retailMode
-          ? input.input.brief.stakes
-            ? `Mandato: ${input.input.brief.stakes}`
+          ? safeStakes
+            ? `Mandato: ${safeStakes}`
             : undefined
-          : input.input.brief.stakes
-            ? `Stakes: ${input.input.brief.stakes}`
+          : safeStakes
+            ? `Stakes: ${safeStakes}`
             : undefined,
         retailMode
           ? `Ampiezza prevista: ${input.input.story.recommendedSlideCount} slide`
@@ -799,10 +806,10 @@ function buildBlocks(input: {
     blocks.push(block({
       kind: "bullet-list",
       items: compactUnique([
-        "Interpret package semantics before choosing metrics.",
-        "Compute the metric plan deterministically and preserve evidence refs.",
-        "Use reviewer feedback to re-plan instead of rendering weak claims.",
-        input.input.story.narrativeArc[0],
+        `Analysis covers ${sourceFileCount || 1} source file${sourceFileCount === 1 ? "" : "s"} across ${evidenceGroupCount || input.input.outline.sections.length} evidence views.`,
+        `The deck is grounded in ${input.input.analyticsResult.metrics.length} verified metrics linked back to source evidence.`,
+        "Recommendations are prioritized by business impact, evidence strength, and execution risk.",
+        sanitizeAudienceCopy(input.input.story.narrativeArc[0]) || input.input.story.keyMessages[0],
       ]),
       evidenceIds: [],
     }));
@@ -869,7 +876,7 @@ function buildBlocks(input: {
       kind: "bullet-list",
       items: compactUnique([
         ...selectedInsights.map((insight) => insight.implication || insight.businessMeaning),
-        input.input.brief.stakes,
+        safeStakes,
       ]).slice(0, 5),
       evidenceIds,
     }));
@@ -967,11 +974,12 @@ function chooseChart(insights: InsightSpec[], charts: ChartSpec[]) {
   );
 }
 
-function isRetailSlideContext(selectedInsights: InsightSpec[], brief: ReportBrief) {
-  return (
-    selectedInsights.some((insight) => insight.id.startsWith("retail-")) ||
-    /(retail|market|fmcg|nielseniq|pet care)/i.test([brief.businessContext, brief.objective, brief.thesis].join(" "))
-  );
+function isRetailSlideContext(
+  _selectedInsights: InsightSpec[],
+  _analyticsResult: AnalyticsResult,
+  _brief: ReportBrief,
+) {
+  return false;
 }
 
 function buildRetailExecutiveSummaryBlocks(
@@ -1199,7 +1207,9 @@ function buildSpeakerNotes(
     section?.objective,
     ...selectedInsights.map((insight) => insight.finding || insight.claim),
     ...selectedInsights.map((insight) => insight.implication || insight.businessMeaning),
-    selectedInsights.length === 0 || blueprint.emphasis === "cover" ? story.executiveSummary : undefined,
+    selectedInsights.length === 0 || blueprint.emphasis === "cover"
+      ? sanitizeAudienceCopy(story.executiveSummary) || undefined
+      : undefined,
   ]).join(" ");
 }
 

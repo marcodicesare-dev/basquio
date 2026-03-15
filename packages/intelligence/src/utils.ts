@@ -48,6 +48,27 @@ export function cleanFragment(value: string) {
   return value.replace(/\.$/, "").trim();
 }
 
+export function sanitizeAudienceCopy(value?: string) {
+  if (!value) {
+    return "";
+  }
+
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (
+    /(reviewer feedback|review feedback|semantic critique|qa\/|qa |quality assurance|pipeline|stage trace|deterministic|evidence ref|re-plan|rendering weak claims|system thesis)/i.test(
+      normalized,
+    )
+  ) {
+    return "";
+  }
+
+  return normalized;
+}
+
 export function getBusinessInsights(insights: InsightSpec[]) {
   return insights
     .filter((insight) => insight.slideEmphasis !== "detail")
