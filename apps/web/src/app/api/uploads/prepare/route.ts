@@ -158,7 +158,7 @@ async function createPreparedUpload(input: {
     storagePath,
     fileBytes: input.file.sizeBytes,
     uploadMode,
-    signedUrl: uploadMode === "standard" ? signedUpload.signedUrl : undefined,
+    signedUrl: signedUpload.signedUrl,
     resumableUrl: uploadMode === "resumable" ? buildResumableUploadUrl(input.supabaseUrl) : undefined,
     chunkSizeBytes: uploadMode === "resumable" ? RESUMABLE_CHUNK_BYTES : undefined,
     token: signedUpload.token,

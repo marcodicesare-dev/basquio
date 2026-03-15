@@ -853,7 +853,7 @@ async function renderTemplatePreservingArtifact(input: RenderPptxInput): Promise
       }
 
       automizer.addSlide("template", templateSlideNumber, (slide) => {
-        slide.modify((document) => {
+        slide.prepare((document) => {
           scrubImportedSlideContent(document);
         });
 

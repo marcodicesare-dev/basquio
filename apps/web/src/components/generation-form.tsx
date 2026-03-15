@@ -576,12 +576,34 @@ async function uploadPreparedFiles(files: File[], uploads: PreparedUpload[]) {
 
 async function uploadPreparedFile(file: File, upload: PreparedUpload) {
   if (upload.uploadMode === "resumable") {
-    await uploadPreparedFileResumable(file, upload);
-    return;
+    try {
+      await uploadPreparedFileResumable(file, upload);
+      return;
+    } catch (error) {
+      if (!upload.signedUrl) {
+        throw error;
+      }
+
+      await uploadPreparedFileStandard(file, upload, {
+        fallbackFromResumable: true,
+      });
+      return;
+    }
   }
 
+  await uploadPreparedFileStandard(file, upload);
+}
+
+async function uploadPreparedFileStandard(
+  file: File,
+  upload: PreparedUpload,
+  options: {
+    fallbackFromResumable?: boolean;
+  } = {},
+) {
   if (!upload.signedUrl) {
-    throw new Error(`Basquio did not return a signed upload URL for ${file.name}.`);
+    const suffix = options.fallbackFromResumable ? " after resumable upload failed" : "";
+    throw new Error(`Basquio did not return a signed upload URL for ${file.name}${suffix}.`);
   }
 
   const response = await fetch(upload.signedUrl, {

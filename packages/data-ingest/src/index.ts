@@ -4,11 +4,10 @@ import { read, utils } from "xlsx";
 
 import {
   analyticsResultSchema,
-  datasetProfileSchema,
-  normalizedWorkbookSchema,
   type AnalyticsResult,
   type DatasetProfile,
   type NormalizedEvidenceFile,
+  type NormalizedSheet,
   type NormalizedWorkbook,
 } from "@basquio/types";
 
@@ -50,7 +49,7 @@ export async function parseEvidencePackage(input: ParseEvidencePackageInput): Pr
   datasetProfile: DatasetProfile;
   normalizedWorkbook: NormalizedWorkbook;
 }> {
-  const normalizedFiles = await Promise.all(
+  const parsedFiles = await Promise.all(
     input.files.map((file, index) =>
       parseEvidenceFile({
         ...file,
@@ -60,8 +59,9 @@ export async function parseEvidencePackage(input: ParseEvidencePackageInput): Pr
     ),
   );
 
-  const workbookFiles = normalizedFiles.filter((file) => file.kind === "workbook");
-  const sheets = workbookFiles.flatMap((file) => file.sheets);
+  const normalizedFiles = parsedFiles.map(({ workbookSheets, ...file }) => file);
+  const workbookFiles = parsedFiles.filter((file) => file.kind === "workbook");
+  const sheets = workbookFiles.flatMap((file) => file.workbookSheets ?? []);
   const primaryFile =
     normalizedFiles.find((file) => file.role === "main-fact-table") ??
     normalizedFiles.find((file) => file.role === "response-log") ??
@@ -74,7 +74,7 @@ export async function parseEvidencePackage(input: ParseEvidencePackageInput): Pr
       ? `${primaryFile?.fileName ?? "Evidence package"} + ${normalizedFiles.length - 1} supporting file${normalizedFiles.length === 2 ? "" : "s"}`
       : primaryFile?.fileName ?? "Evidence package";
 
-  const datasetProfile = datasetProfileSchema.parse({
+  const datasetProfile: DatasetProfile = {
     datasetId: input.datasetId,
     sourceFileName: primaryFile?.fileName ?? "evidence-package",
     sourceFiles: normalizedFiles.map((file) => ({
@@ -109,14 +109,14 @@ export async function parseEvidencePackage(input: ParseEvidencePackageInput): Pr
     },
     sheets: sheets.map(({ rows, ...sheet }) => sheet),
     warnings: manifestWarnings,
-  });
+  };
 
-  const normalizedWorkbook = normalizedWorkbookSchema.parse({
+  const normalizedWorkbook: NormalizedWorkbook = {
     datasetId: input.datasetId,
     sourceFileName: primaryFile?.fileName ?? "evidence-package",
     files: normalizedFiles,
     sheets,
-  });
+  };
 
   return {
     datasetProfile,
@@ -163,7 +163,7 @@ async function parseEvidenceFile(
     buffer: Buffer;
     kind: ReturnType<typeof inferSourceFileKind>;
   },
-): Promise<NormalizedEvidenceFile> {
+): Promise<NormalizedEvidenceFile & { workbookSheets?: NormalizedSheet[] }> {
   const role = inferFileRole(input.fileName, input.kind);
 
   if (input.kind === "workbook") {
@@ -181,7 +181,9 @@ async function parseEvidenceFile(
         raw: true,
       }) as unknown[][];
 
-      const [headerRow = [], ...bodyRows] = matrix;
+      const headerIndex = detectHeaderRowIndex(matrix);
+      const headerRow = matrix[headerIndex] ?? [];
+      const bodyRows = matrix.slice(headerIndex + 1);
       const headers = (headerRow.length > 0 ? headerRow : ["column_1"]).map((value, index) =>
         normalizeHeader(value, index),
       );
@@ -213,7 +215,8 @@ async function parseEvidenceFile(
       mediaType: input.mediaType ?? "application/octet-stream",
       kind: input.kind,
       role,
-      sheets,
+      sheets: sheets.map(({ rows, ...sheet }) => sheet),
+      workbookSheets: sheets,
       warnings,
     };
   }
@@ -388,7 +391,12 @@ function normalizeCell(value: unknown) {
 
   if (typeof value === "string") {
     const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
+    if (trimmed.length === 0) {
+      return null;
+    }
+
+    const parsedNumber = parseNumericString(trimmed);
+    return parsedNumber ?? trimmed;
   }
 
   return value ?? null;
@@ -448,7 +456,11 @@ function inferRole(columnName: string, inferredType: string) {
     normalizedName === "id" ||
     normalizedName.endsWith("_id") ||
     normalizedName.includes("identifier") ||
-    normalizedName.endsWith("_key")
+    normalizedName.endsWith("_key") ||
+    normalizedName.includes("upc") ||
+    normalizedName.includes("item code") ||
+    normalizedName.includes("sku") ||
+    normalizedName.includes("ean")
   ) {
     return "identifier" as const;
   }
@@ -480,16 +492,14 @@ function sampleRows(rows: Array<Record<string, unknown>>, limit: number) {
   }
 
   const lastIndex = rows.length - 1;
-  const indexes = new Set<number>([0, lastIndex]);
+  return Array.from({ length: limit }, (_, index) => {
+    if (index === limit - 1) {
+      return rows[lastIndex];
+    }
 
-  while (indexes.size < limit) {
-    const ratio = indexes.size / (limit - 1);
-    indexes.add(Math.min(lastIndex, Math.round(ratio * lastIndex)));
-  }
-
-  return [...indexes]
-    .sort((left, right) => left - right)
-    .map((index) => rows[index]);
+    const sampledIndex = Math.floor((index * rows.length) / limit);
+    return rows[Math.min(lastIndex, sampledIndex)];
+  });
 }
 
 function sampleValues(values: unknown[], limit: number) {
@@ -498,4 +508,83 @@ function sampleValues(values: unknown[], limit: number) {
   }
 
   return values.slice(0, limit);
+}
+
+function detectHeaderRowIndex(matrix: unknown[][]) {
+  const lookahead = matrix.slice(0, 25);
+  let bestIndex = 0;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const [index, row] of lookahead.entries()) {
+    const score = scoreHeaderCandidate(row, lookahead[index + 1]);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  }
+
+  return bestIndex;
+}
+
+function scoreHeaderCandidate(row: unknown[], nextRow?: unknown[]) {
+  const cells = row.map((value) => String(value ?? "").trim()).filter(Boolean);
+  const nonEmptyCount = cells.length;
+
+  if (nonEmptyCount === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const textLikeCount = cells.filter((cell) => parseNumericString(cell) === null).length;
+  const nextRowNonEmptyCount = (nextRow ?? []).filter((value) => String(value ?? "").trim().length > 0).length;
+
+  return (
+    nonEmptyCount * 10 +
+    textLikeCount * 2 +
+    (nonEmptyCount >= 2 ? 5 : -20) +
+    (nextRowNonEmptyCount >= Math.max(2, Math.floor(nonEmptyCount * 0.6)) ? 8 : 0)
+  );
+}
+
+function parseNumericString(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const normalizedNa = trimmed.toLowerCase();
+  if (normalizedNa === "na" || normalizedNa === "n/a" || normalizedNa === "null") {
+    return null;
+  }
+
+  let candidate = trimmed
+    .replace(/[€$£¥%]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[’']/g, "");
+
+  if (!/[0-9]/.test(candidate)) {
+    return null;
+  }
+
+  const lastComma = candidate.lastIndexOf(",");
+  const lastDot = candidate.lastIndexOf(".");
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      candidate = candidate.replaceAll(".", "").replace(",", ".");
+    } else {
+      candidate = candidate.replaceAll(",", "");
+    }
+  } else if (lastComma >= 0) {
+    const decimalDigits = candidate.length - lastComma - 1;
+    candidate = decimalDigits > 0 && decimalDigits <= 2
+      ? candidate.replace(",", ".")
+      : candidate.replaceAll(",", "");
+  }
+
+  if (!/^-?\d+(\.\d+)?$/.test(candidate)) {
+    return null;
+  }
+
+  const parsed = Number(candidate);
+  return Number.isFinite(parsed) ? parsed : null;
 }

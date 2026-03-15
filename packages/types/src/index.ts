@@ -25,8 +25,12 @@ import {
 export * from "../../../code/contracts";
 
 export const normalizedRowSchema = z.record(z.string(), z.unknown());
+export const normalizedRowsCollectionSchema = z.custom<Array<Record<string, unknown>>>(
+  (value) => Array.isArray(value),
+  "Expected sheet rows to be an array of row objects",
+);
 
-export const normalizedSheetSchema = z.object({
+export const normalizedSheetPreviewSchema = z.object({
   name: z.string(),
   rowCount: z.number().int().nonnegative(),
   sourceFileId: z.string().default(""),
@@ -44,7 +48,10 @@ export const normalizedSheetSchema = z.object({
     }),
   ),
   sampleRows: z.array(normalizedRowSchema).default([]),
-  rows: z.array(normalizedRowSchema),
+});
+
+export const normalizedSheetSchema = normalizedSheetPreviewSchema.extend({
+  rows: normalizedRowsCollectionSchema,
 });
 
 export const normalizedEvidenceFileSchema = z.object({
@@ -53,7 +60,7 @@ export const normalizedEvidenceFileSchema = z.object({
   mediaType: z.string().default("application/octet-stream"),
   kind: sourceAssetKindSchema.default("unknown"),
   role: datasetFileRoleSchema.default("unknown-support"),
-  sheets: z.array(normalizedSheetSchema).default([]),
+  sheets: z.array(normalizedSheetPreviewSchema).default([]),
   textContent: z.string().optional(),
   warnings: z.array(z.string()).default([]),
 });

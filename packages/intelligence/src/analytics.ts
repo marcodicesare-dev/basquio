@@ -424,7 +424,12 @@ function groupRows(rows: JoinedRow[], groupBy: string[]) {
 
   for (const row of rows) {
     const key = groupBy.map((column) => String(resolveValue(row, column) ?? "unknown")).join(" | ");
-    groups.set(key, [...(groups.get(key) || []), row]);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.push(row);
+    } else {
+      groups.set(key, [row]);
+    }
   }
 
   return [...groups.entries()].map(([key, groupRowsValue]) => ({
@@ -453,7 +458,13 @@ function innerJoinRows(
   const rightMap = new Map<string, JoinedRow[]>();
   for (const row of rightRows) {
     const key = String(row[rightKey] ?? "");
-    rightMap.set(key, [...(rightMap.get(key) || []), prefixKeys(row, rightFileName)]);
+    const existing = rightMap.get(key);
+    const prefixed = prefixKeys(row, rightFileName);
+    if (existing) {
+      existing.push(prefixed);
+    } else {
+      rightMap.set(key, [prefixed]);
+    }
   }
 
   return leftRows.flatMap((leftRow) => {
@@ -535,11 +546,50 @@ function coerceNumber(value: unknown) {
   }
 
   if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value.replaceAll(",", ""));
+    const parsed = parseNumericString(value);
     return Number.isFinite(parsed) ? parsed : null;
   }
 
   return null;
+}
+
+function parseNumericString(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  let candidate = trimmed
+    .replace(/[€$£¥%]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[’']/g, "");
+
+  if (!/[0-9]/.test(candidate)) {
+    return null;
+  }
+
+  const lastComma = candidate.lastIndexOf(",");
+  const lastDot = candidate.lastIndexOf(".");
+
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      candidate = candidate.replaceAll(".", "").replace(",", ".");
+    } else {
+      candidate = candidate.replaceAll(",", "");
+    }
+  } else if (lastComma >= 0) {
+    const decimalDigits = candidate.length - lastComma - 1;
+    candidate = decimalDigits > 0 && decimalDigits <= 2
+      ? candidate.replace(",", ".")
+      : candidate.replaceAll(",", "");
+  }
+
+  if (!/^-?\d+(\.\d+)?$/.test(candidate)) {
+    return null;
+  }
+
+  const parsed = Number(candidate);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function computeStddev(values: number[]) {

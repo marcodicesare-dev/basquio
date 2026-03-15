@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const activeExecutions = new Set<string>();
+const STALE_RUNNING_RECOVERY_MS = 45_000;
 
 export async function POST(
   _request: Request,
@@ -27,7 +28,14 @@ export async function POST(
     return NextResponse.json({ status: "completed" });
   }
 
-  if (status && (status.steps.length > 0 || status.status === "running")) {
+  const lastStatusUpdate = status?.updatedAt ?? status?.createdAt;
+  const isStaleRunningExecution =
+    status?.status === "running" &&
+    status.steps.length === 0 &&
+    Boolean(lastStatusUpdate) &&
+    Date.now() - new Date(lastStatusUpdate ?? "").getTime() >= STALE_RUNNING_RECOVERY_MS;
+
+  if (status && !isStaleRunningExecution && (status.steps.length > 0 || status.status === "running")) {
     return NextResponse.json({ status: "running" }, { status: 202 });
   }
 
