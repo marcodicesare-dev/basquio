@@ -4,7 +4,7 @@ import path from "node:path";
 
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
-import { Inngest } from "inngest";
+import { inngest } from "./inngest-client";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import {
@@ -57,10 +57,7 @@ import {
   uploadToStorage,
 } from "./supabase";
 
-export const inngest = new Inngest({
-  id: "basquio",
-  name: "Basquio",
-});
+export { inngest } from "./inngest-client";
 
 export const basquioGenerationRequested = inngest.createFunction(
   { id: "basquio-generation-requested" },
@@ -87,6 +84,9 @@ export const basquioGenerationRequested = inngest.createFunction(
     });
   },
 );
+
+// V2 orchestration (AI-native agents)
+export { basquioV2Generation } from "./v2-orchestration";
 
 export const functions = [basquioGenerationRequested];
 

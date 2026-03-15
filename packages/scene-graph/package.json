@@ -1,0 +1,12 @@
+{
+  "name": "@basquio/scene-graph",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@basquio/types": "workspace:*",
+    "zod": "^3.25.76"
+  }
+}

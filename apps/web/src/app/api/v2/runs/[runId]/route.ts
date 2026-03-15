@@ -1,0 +1,64 @@
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ runId: string }> },
+) {
+  const { runId } = await params;
+
+  // Fetch run status
+  const runResponse = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&select=*`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+      },
+    },
+  );
+
+  if (!runResponse.ok) {
+    return NextResponse.json({ error: "Failed to fetch run." }, { status: 500 });
+  }
+
+  const runs = await runResponse.json();
+  if (runs.length === 0) {
+    return NextResponse.json({ error: "Run not found." }, { status: 404 });
+  }
+
+  const run = runs[0];
+
+  // If completed, include artifact manifest
+  let artifacts = null;
+  if (run.status === "completed") {
+    const manifestResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/artifact_manifests_v2?run_id=eq.${runId}&limit=1`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        },
+      },
+    );
+
+    if (manifestResponse.ok) {
+      const manifests = await manifestResponse.json();
+      if (manifests.length > 0) {
+        artifacts = manifests[0];
+      }
+    }
+  }
+
+  return NextResponse.json({
+    runId: run.id,
+    status: run.status,
+    currentPhase: run.current_phase,
+    failureMessage: run.failure_message,
+    createdAt: run.created_at,
+    updatedAt: run.updated_at,
+    completedAt: run.completed_at,
+    artifacts,
+  });
+}
