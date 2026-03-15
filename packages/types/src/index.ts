@@ -23,6 +23,7 @@ import {
 } from "../../../code/contracts";
 
 export * from "../../../code/contracts";
+export * from "../../../code/v2-contracts";
 
 export const normalizedRowSchema = z.record(z.string(), z.unknown());
 export const normalizedRowsCollectionSchema = z.custom<Array<Record<string, unknown>>>(
