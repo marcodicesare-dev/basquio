@@ -150,6 +150,15 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0
 
+  packages/scene-graph:
+    dependencies:
+      '@basquio/types':
+        specifier: workspace:*
+        version: link:../types
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   packages/template-engine:
     dependencies:
       '@basquio/types':
