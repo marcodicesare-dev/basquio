@@ -113,6 +113,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     });
 
   const summary = parseSummary(job.summary);
+  const derivedStatus = deriveJobStatus(job.status, steps, summary);
   const currentStep =
     [...steps].reverse().find((step) => step.status === "running") ??
     [...steps].reverse().find((step) => step.status === "needs_input" || step.status === "failed") ??
@@ -121,12 +122,12 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
   const createdAt = job.created_at ?? summary?.createdAt ?? new Date().toISOString();
   const updatedAt = latestObservedStepAt(steps) ?? job.updated_at ?? summary?.createdAt;
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
-  const progressPercent = computeProgressPercent(steps, summary, job.status);
+  const progressPercent = computeProgressPercent(steps, summary, derivedStatus);
   const hasNoCheckpoints = steps.length === 0 && !summary;
-  const isStaleQueuedKickoff = job.status === "queued" && hasNoCheckpoints && elapsedSeconds >= 45;
-  const isStaleRunningExecution = job.status === "running" && hasNoCheckpoints && elapsedSeconds >= 45;
+  const isStaleQueuedKickoff = derivedStatus === "queued" && hasNoCheckpoints && elapsedSeconds >= 45;
+  const isStaleRunningExecution = derivedStatus === "running" && hasNoCheckpoints && elapsedSeconds >= 45;
   const estimatedRemainingSeconds =
-    job.status === "completed" || progressPercent >= 99
+    derivedStatus === "completed" || progressPercent >= 99
       ? 0
       : progressPercent > 8
         ? Math.max(5, Math.round((elapsedSeconds / progressPercent) * (100 - progressPercent)))
@@ -134,7 +135,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
 
   return {
     jobId,
-    status: summary?.status ?? job.status ?? "queued",
+    status: derivedStatus,
     createdAt,
     updatedAt,
     currentStage:
@@ -157,6 +158,37 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     summary,
     failureMessage: job.failure_message ?? (summary?.failureMessage || undefined),
   };
+}
+
+function deriveJobStatus(
+  jobStatus: GenerationJobStatus,
+  steps: GenerationStepSnapshot[],
+  summary: GenerationRunSummary | null,
+): GenerationJobStatus {
+  if (summary?.status) {
+    return summary.status;
+  }
+
+  const latestRunning = [...steps].reverse().find((step) => step.status === "running");
+  if (latestRunning) {
+    return "running";
+  }
+
+  const latestNeedsInput = [...steps].reverse().find((step) => step.status === "needs_input");
+  if (latestNeedsInput) {
+    return "needs_input";
+  }
+
+  const latestFailed = [...steps].reverse().find((step) => step.status === "failed");
+  if (latestFailed) {
+    return "failed";
+  }
+
+  if (steps.length > 0 && steps.every((step) => step.status === "completed")) {
+    return "completed";
+  }
+
+  return jobStatus ?? "queued";
 }
 
 function latestObservedStepAt(steps: GenerationStepSnapshot[]) {
