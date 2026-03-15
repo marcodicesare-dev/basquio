@@ -1,18 +1,24 @@
 import { randomUUID } from "node:crypto";
 
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
 import { GenerationValidationError, inngest } from "@basquio/workflows";
 import type { GenerationRequest } from "@basquio/types";
 
-import { dispatchPersistedGenerationJob, persistGenerationRequest } from "@/lib/generation-requests";
+import {
+  dispatchPersistedGenerationExecution,
+  dispatchPersistedGenerationJob,
+  persistGenerationRequest,
+} from "@/lib/generation-requests";
 import { getViewerState } from "@/lib/supabase/auth";
 import { upsertRestRows } from "@/lib/supabase/admin";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+const INNGEST_RECOVERY_GRACE_MS = 15_000;
 
 export async function POST(request: Request) {
   try {
@@ -68,6 +74,14 @@ async function queueGeneration(
       name: "basquio/generation.requested",
       data: generationRequest,
     });
+
+    after(() => {
+      void wait(INNGEST_RECOVERY_GRACE_MS)
+        .then(() => dispatchPersistedGenerationExecution(generationRequest.jobId, request))
+        .catch((error) => {
+          console.error(`Basquio initial execute fallback failed for ${generationRequest.jobId}`, error);
+        });
+    });
   } else {
     await dispatchPersistedGenerationJob(generationRequest.jobId, request);
   }
@@ -79,6 +93,10 @@ async function queueGeneration(
     progressUrl: `/jobs/${generationRequest.jobId}`,
     message: "Basquio accepted the run and started the generation workflow.",
   };
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function parseGenerationRequest(

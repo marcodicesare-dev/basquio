@@ -220,8 +220,8 @@ function buildQueuedSnapshot(jobId: string): GenerationStatusSnapshot {
     currentStage: BASQUIO_PIPELINE_STAGES[0],
     currentDetail:
       isStalled
-        ? "The run is still queued and no durable workflow checkpoints have appeared yet. Basquio is attempting to recover the background execution path."
-        : "Basquio accepted the run, persisted the request, and is recovering the live pipeline state before the first durable checkpoint appears.",
+        ? "The run is still queued and no durable workflow checkpoints have appeared yet. This usually means the background kickoff path has not attached successfully, so Basquio is attempting a recovery dispatch."
+        : "Basquio accepted the run and is waiting for the first durable workflow checkpoint.",
     progressPercent: 2,
     elapsedSeconds,
     estimatedRemainingSeconds: null,
