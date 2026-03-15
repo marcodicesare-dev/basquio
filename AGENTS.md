@@ -2,7 +2,7 @@
 
 ## Basquio Local Rules
 
-When working inside `Basquio/`:
+When working inside this repo:
 
 1. Read `docs/vision.md`, `docs/architecture.md`, and `memory/canonical-memory.md` first.
 2. Treat `rules/canonical-rules.md` as the execution contract.
@@ -36,7 +36,7 @@ Do not reduce the product goal to "upload CSV, get random deck."
 
 ## Basquio Skills
 
-- `Basquio/skills/basquio-foundation/SKILL.md`
-- `Basquio/skills/basquio-intelligence/SKILL.md`
-- `Basquio/skills/basquio-rendering/SKILL.md`
-- `Basquio/skills/basquio-stack-context/SKILL.md`
+- `skills/basquio-foundation/SKILL.md`
+- `skills/basquio-intelligence/SKILL.md`
+- `skills/basquio-rendering/SKILL.md`
+- `skills/basquio-stack-context/SKILL.md`

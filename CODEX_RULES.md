@@ -6,22 +6,22 @@ These rules keep Basquio build work aligned with the canonical product context.
 
 ## Mandatory Read Order
 
-1. `Basquio/docs/vision.md`
-2. `Basquio/docs/architecture.md`
-3. `Basquio/memory/canonical-memory.md`
-4. `Basquio/rules/canonical-rules.md`
-5. `Basquio/docs/stack-practices.md` before changing workflow, ingest, rendering, or brand-token handling
-6. `Basquio/docs/brand-system.md` before changing design-system or styling inputs
+1. `docs/vision.md`
+2. `docs/architecture.md`
+3. `memory/canonical-memory.md`
+4. `rules/canonical-rules.md`
+5. `docs/stack-practices.md` before changing workflow, ingest, rendering, or brand-token handling
+6. `docs/brand-system.md` before changing design-system or styling inputs
 
 ## Mandatory Update Set
 
 If a structural decision changes, update all relevant files in the same change:
 
-- `Basquio/docs/architecture.md`
-- `Basquio/docs/decision-log.md`
-- `Basquio/memory/canonical-memory.md`
-- `Basquio/rules/canonical-rules.md`
-- `Basquio/code/contracts.ts`
+- `docs/architecture.md`
+- `docs/decision-log.md`
+- `memory/canonical-memory.md`
+- `rules/canonical-rules.md`
+- `code/contracts.ts`
 
 ## Implementation Priorities
 

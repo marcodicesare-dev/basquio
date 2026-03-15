@@ -19,8 +19,8 @@ Render high-quality artifacts without turning renderer constraints into product 
 - use Browserless for PDF by default
 - treat brand token files as first-class styling input
 - treat PDF templates as style references in v1
-- read `Basquio/docs/stack-practices.md` before changing rendering-library behavior
-- read `Basquio/docs/brand-system.md` and `Basquio/docs/design-synthesis.md` before changing Basquio shell, landing page, or product-surface design direction
+- read `docs/stack-practices.md` before changing rendering-library behavior
+- read `docs/brand-system.md` and `docs/design-synthesis.md` before changing Basquio shell, landing page, or product-surface design direction
 - keep Basquio in the editorial-light plus technical-dark merged direction instead of drifting into a generic SaaS dashboard or a dark-only brand
 
 ## Implementation Checklist

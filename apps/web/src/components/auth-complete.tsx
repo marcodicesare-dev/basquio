@@ -21,20 +21,20 @@ export function AuthComplete({
 
   const helperCopy = useMemo(() => {
     if (status === "done") {
-      return "Your session is ready. Redirecting you into Basquio.";
+      return "Your sign-in is confirmed. Redirecting you into Basquio.";
     }
 
     if (status === "invalid") {
       return "This sign-in or confirmation link is missing, expired, or already used.";
     }
 
-    return "We’re finishing your authentication and opening your workspace.";
+    return "We’re checking your link and opening your workspace.";
   }, [status]);
 
   useEffect(() => {
     if (!configured) {
       setStatus("invalid");
-      setError("Supabase auth is not configured yet.");
+      setError("Sign-in is not available yet.");
       return;
     }
 
@@ -42,7 +42,7 @@ export function AuthComplete({
 
     if (!supabase) {
       setStatus("invalid");
-      setError("Supabase auth is not configured yet.");
+      setError("Sign-in is not available yet.");
       return;
     }
 
@@ -90,7 +90,7 @@ export function AuthComplete({
           const payload = (await sessionResponse.json().catch(() => null)) as { error?: string } | null;
           window.clearTimeout(fallbackTimer);
           setStatus("invalid");
-          setError(payload?.error ?? "We couldn't complete that session handoff.");
+          setError(payload?.error ?? "We couldn't finish that sign-in link.");
           return;
         }
       }
@@ -137,11 +137,11 @@ export function AuthComplete({
     <section className="panel auth-card stack-xl">
       <div className="stack">
         <p className="section-label">Workspace access</p>
-        <h1>Finishing authentication</h1>
+        <h1>Checking your link</h1>
         <p className="muted">{helperCopy}</p>
       </div>
 
-      {status === "checking" ? <div className="panel auth-status-panel">Verifying your session...</div> : null}
+      {status === "checking" ? <div className="panel auth-status-panel">Verifying your sign-in link...</div> : null}
       {error ? <div className="panel danger-panel auth-status-panel">{error}</div> : null}
 
       {status === "invalid" ? (

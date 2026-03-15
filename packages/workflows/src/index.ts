@@ -67,15 +67,23 @@ export const basquioGenerationRequested = inngest.createFunction(
   { event: "basquio/generation.requested" },
   async ({ event, step }) => {
     const request = generationRequestSchema.parse(event.data);
-    const summary = await runGenerationRequest(request, {
-      stepRunner: async <T>(executionId: string, fn: () => Promise<T> | T) =>
-        (await step.run(executionId, async () => await fn())) as T,
-    });
+    let summary: GenerationRunSummary | null = null;
+
+    try {
+      summary = await runGenerationRequest(request, {
+        stepRunner: async <T>(executionId: string, fn: () => Promise<T> | T) =>
+          (await step.run(executionId, async () => await fn())) as T,
+      });
+    } catch (error) {
+      if (!(error instanceof GenerationExecutionLeaseError)) {
+        throw error;
+      }
+    }
 
     return generationJobResultSchema.parse({
-      datasetId: summary.datasetProfile.datasetId,
-      storyTitle: summary.story.title || summary.story.keyMessages[0] || "Basquio output",
-      artifacts: summary.artifacts,
+      datasetId: summary?.datasetProfile.datasetId ?? request.jobId,
+      storyTitle: summary?.story.title || summary?.story.keyMessages[0] || "Basquio output",
+      artifacts: summary?.artifacts ?? [],
     });
   },
 );
@@ -101,6 +109,13 @@ export class GenerationValidationError extends Error {
   }
 }
 
+export class GenerationExecutionLeaseError extends Error {
+  constructor(readonly jobId: string) {
+    super(`Another Basquio execution already owns ${jobId}.`);
+    this.name = "GenerationExecutionLeaseError";
+  }
+}
+
 export async function runGenerationRequest(
   requestInput: GenerationRequest,
   options?: {
@@ -114,6 +129,12 @@ export async function runGenerationRequest(
     request,
     brief,
   });
+
+  const leaseAcquired = await persistence.tryAcquireExecutionLease();
+
+  if (!leaseAcquired) {
+    throw new GenerationExecutionLeaseError(request.jobId);
+  }
 
   await persistence.initialize();
   await persistence.persistSourceInputs();
@@ -136,9 +157,15 @@ export async function runGenerationRequest(
     },
   ) => {
     await persistence.updateJobStage(stage, "running", `Running ${stage}.`);
+    await persistence.touchExecutionLease();
+    const heartbeat = setInterval(() => {
+      void persistence.touchExecutionLease().catch(() => {});
+    }, 15_000);
 
     try {
       const result = await runStep(options?.executionId ?? toStageExecutionId(stage), fn);
+      clearInterval(heartbeat);
+      await persistence.touchExecutionLease();
       await persistence.updateJobStage(
         stage,
         "completed",
@@ -147,6 +174,8 @@ export async function runGenerationRequest(
       );
       return result;
     } catch (error) {
+      clearInterval(heartbeat);
+      await persistence.touchExecutionLease();
       const status: Extract<GenerationJobStatus, "failed" | "needs_input"> =
         error instanceof GenerationValidationError ? "needs_input" : "failed";
       const message = error instanceof Error ? error.message : "Stage execution failed.";
@@ -159,10 +188,7 @@ export async function runGenerationRequest(
     const intake = await runStage(
       "intake and profiling",
       async () => {
-        const [sourceFiles, styleFile] = await Promise.all([
-          resolveSourceFiles(request),
-          resolveUploadedFile(request.styleFile),
-        ]);
+        const sourceFiles = await resolveSourceFiles(request);
         const parsed = await parseEvidencePackage({
           datasetId: request.jobId,
           files: sourceFiles.map((file, index) => ({
@@ -176,7 +202,6 @@ export async function runGenerationRequest(
 
         return {
           sourceFiles,
-          styleFile,
           parsed,
           datasetProfile: profileDataset(parsed.datasetProfile),
         };
@@ -191,11 +216,11 @@ export async function runGenerationRequest(
         }),
       },
     );
-    const styleFile = intake.styleFile;
     const parsed = intake.parsed;
     const analyzed = {
       datasetProfile: intake.datasetProfile,
     };
+    let styleFile: ResolvedUploadedFile | undefined;
 
     const stageTraces: StageTrace[] = [];
     const recordTrace = (trace: StageTrace) => {
@@ -425,13 +450,16 @@ export async function runGenerationRequest(
       if (attempt === 1 || nextRevisionTarget === "design") {
         templateProfile = await runStage(
           "design translation",
-          async () =>
-            interpretTemplateSource({
+          async () => {
+            styleFile = styleFile ?? (await resolveUploadedFile(request.styleFile));
+
+            return interpretTemplateSource({
               id: `${request.jobId}-template`,
               fileName: styleFile?.fileName ?? request.templateFileName,
               reviewFeedback: reviewerFeedback,
               sourceFile: styleFile,
-            }),
+            });
+          },
           {
             detail: (result) =>
               `Attempt ${attempt}: translated ${result.sourceType} template input into ${result.layouts.length} layout-aware rendering constraints.`,
@@ -753,6 +781,10 @@ export async function runGenerationRequest(
 
     return summary;
   } catch (error) {
+    if (error instanceof GenerationExecutionLeaseError) {
+      throw error;
+    }
+
     const message = error instanceof Error ? error.message : "Generation failed.";
 
     if (error instanceof GenerationValidationError) {

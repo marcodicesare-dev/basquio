@@ -34,7 +34,7 @@ export async function POST(
   }
 
   const current = await getGenerationJobState(jobId);
-  if (current?.summary || current?.status === "completed") {
+  if (current?.status === "completed") {
     return NextResponse.json({ status: "completed" });
   }
 

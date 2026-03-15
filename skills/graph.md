@@ -18,4 +18,4 @@
 ## Design Canon Routing
 
 - when changing Basquio visual direction, shell structure, landing page framing, or report-generation product surfaces, route through `basquio-rendering`
-- for those tasks, future agents should read `Basquio/docs/brand-system.md` and `Basquio/docs/design-synthesis.md` in addition to the normal canonical product context
+- for those tasks, future agents should read `docs/brand-system.md` and `docs/design-synthesis.md` in addition to the normal canonical product context

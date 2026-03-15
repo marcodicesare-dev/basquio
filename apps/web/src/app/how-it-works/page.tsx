@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { howItWorksStages } from "@/app/site-content";
+import { evidencePackageInputs, howItWorksChecks, howItWorksPhases } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
+import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
   title: "How It Works | Basquio",
   description:
-    "See the Basquio pipeline from intake and package semantics through deterministic analytics, narrative planning, validation, and paired PPTX/PDF delivery.",
+    "See how Basquio moves from one evidence package to a review-ready PowerPoint and PDF in four clear steps.",
 };
 
 export default function HowItWorksPage() {
@@ -21,68 +22,73 @@ export default function HowItWorksPage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">How it works</p>
-              <h1>Basquio turns evidence packages into executive deliverables.</h1>
+              <h1>From upload to review-ready deck in four clear steps.</h1>
               <p className="page-copy">
-                The workflow is not one prompt that writes slides. Basquio moves through explicit analytical and narrative
-                contracts before it renders a paired PPTX and PDF.
+                An evidence package is simply the set of CSVs, spreadsheets, PDFs, briefs, and brand files behind one
+                reporting cycle. Basquio reads that package, computes the numbers, shapes the story, and delivers both
+                the PowerPoint and the PDF.
               </p>
             </div>
           </div>
 
           <aside className="page-hero-aside stack">
-            <p className="artifact-kind">Canonical contracts</p>
-            <p>DatasetProfile</p>
-            <p>PackageSemantics</p>
-            <p>ExecutableMetricSpec[]</p>
-            <p>StorySpec</p>
-            <p>SlideSpec[]</p>
+            <p className="artifact-kind">What you upload</p>
+            <ul className="clean-list">
+              {evidencePackageInputs.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
           </aside>
         </div>
       </section>
 
-      <section className="technical-panel stack-xl">
-        <div className="row split">
-          <div className="stack">
-            <p className="section-label light">Nine stages</p>
-            <h2>Each phase owns a real contract before the next phase begins.</h2>
-          </div>
-          <Link className="button secondary inverted" href="/compare">
-            See the comparison
-          </Link>
-        </div>
-
-        <div className="cards">
-          {howItWorksStages.map((stage) => (
-            <article key={stage.stage} className="signal-card stack">
-              <p className="artifact-kind">{stage.stage}</p>
-              <h3>{stage.title}</h3>
-              <p>{stage.copy}</p>
-              <p className="stage-contract">{stage.contract}</p>
-            </article>
-          ))}
-        </div>
+      <section className="cards">
+        {howItWorksPhases.map((phase) => (
+          <article key={phase.stage} className="panel stack">
+            <p className="artifact-kind">{phase.stage}</p>
+            <h2>{phase.title}</h2>
+            <p className="muted">{phase.copy}</p>
+          </article>
+        ))}
       </section>
 
       <section className="cards">
         <article className="panel stack">
-          <p className="section-label">Validation</p>
-          <h2>Render happens only after deterministic and semantic review.</h2>
-          <p className="muted">
-            Numeric assertions, chart bindings, evidence references, and narrative coherence are all checked before output is
-            delivered.
-          </p>
+          <p className="section-label">Before delivery</p>
+          <h2>Every output is checked before it leaves the workflow.</h2>
+          <ul className="clean-list">
+            {howItWorksChecks.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </article>
 
         <article className="panel stack">
-          <p className="section-label">Delivery</p>
-          <h2>One planned story produces both deliverables.</h2>
+          <p className="section-label">What you receive</p>
+          <h2>One story in two formats.</h2>
           <p className="muted">
-            PPTX and PDF are paired artifacts from the same slide plan, stored privately and delivered through signed URLs.
+            Basquio gives teams an editable PowerPoint for working sessions and a polished PDF for sharing, both built
+            from the same analysis and the same narrative.
           </p>
+          <div className="row">
+            <Link className="button secondary" href="/compare">
+              See how it compares
+            </Link>
+            <Link className="button secondary" href="/about">
+              Read the product story
+            </Link>
+          </div>
         </article>
       </section>
 
-      <PublicSiteFooterCta />
+      <PublicSiteFooterCta
+        eyebrow="Ready to try one package"
+        title="Bring the files behind your next review."
+        copy="Start with one reporting cycle and let Basquio show you what the first draft can look like."
+        secondaryLabel="Compare the categories"
+        secondaryHref="/compare"
+      />
+      <PublicSiteFooter />
     </div>
   );
 }

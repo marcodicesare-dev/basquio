@@ -70,11 +70,16 @@ function shouldRecoverStalledExecution(status: Awaited<ReturnType<typeof getGene
     return false;
   }
 
-  if (status.status !== "running" || status.steps.length > 0 || status.summary) {
+  if (status.status !== "running" || status.summary) {
     return false;
   }
 
-  if (status.elapsedSeconds < 45) {
+  const runningStepStartedAt =
+    [...status.steps].reverse().find((step) => step.status === "running")?.startedAt ?? null;
+  const lastObservedAt = runningStepStartedAt ?? status.updatedAt ?? status.createdAt;
+  const staleThresholdMs = runningStepStartedAt ? 180_000 : 45_000;
+
+  if (!lastObservedAt || Date.now() - new Date(lastObservedAt).getTime() < staleThresholdMs) {
     return false;
   }
 

@@ -3,11 +3,14 @@ import Image from "next/image";
 import Link from "next/link";
 
 import {
+  evidencePackageInputs,
+  gettingStartedSteps,
   heroSignals,
   landingComparisonRows,
   personas,
   pipelineSteps,
   proofPoints,
+  rolloutSignals,
   trustSignals,
 } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
@@ -17,7 +20,7 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 export const metadata: Metadata = {
   title: "Basquio | Evidence In. Executive Deck Out.",
   description:
-    "Upload data, a report brief, and a design target. Basquio turns evidence packages into executive-ready PPTX and PDF deliverables.",
+    "Upload the files behind one reporting cycle. Basquio turns your CSVs, notes, briefs, and brand files into an executive-ready PPTX and PDF.",
 };
 
 function OutputPptxChart() {
@@ -229,8 +232,15 @@ export default function HomePage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label light">Beautiful Intelligence.</p>
-              <h1>Two weeks of analysis. Delivered in hours.</h1>
-              <p className="hero-subtitle">Upload data. Get an executive-ready presentation.</p>
+              <h1>Turn one reporting package into a review-ready deck.</h1>
+              <p className="hero-subtitle">
+                Upload the CSVs, PDFs, notes, and brand files behind one review. Basquio returns an editable PPTX and
+                a polished PDF.
+              </p>
+              <p className="hero-copy">
+                An evidence package is simply the set of files behind one reporting cycle. Basquio reads them as one
+                package so the numbers, narrative, and design stay aligned.
+              </p>
             </div>
 
             <div className="row">
@@ -238,7 +248,7 @@ export default function HomePage() {
                 Try with your data
               </Link>
               <Link className="button secondary inverted" href="#output">
-                See examples
+                See sample output
               </Link>
             </div>
 
@@ -312,6 +322,73 @@ export default function HomePage() {
             </span>
           ))}
         </div>
+      </section>
+
+      <section className="panel social-proof-panel">
+        <div className="stack">
+          <p className="section-label">Current rollout</p>
+          <h2>Basquio is being introduced through small, live reporting pilots.</h2>
+          <p className="muted">
+            There are no invented customer logos on this page. The product is currently founder-led, private by
+            default, and evaluated one real reporting cycle at a time.
+          </p>
+        </div>
+
+        <div className="logo-strip" aria-label="Current rollout signals">
+          {rolloutSignals.map((signal) => (
+            <span key={signal} className="logo-chip">
+              {signal}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="cards">
+        <article className="panel stack-lg">
+          <div className="stack">
+            <p className="section-label">What you upload</p>
+            <h2>One evidence package = the files behind one reporting cycle.</h2>
+            <p className="muted">
+              It is not a new format. It is simply the CSVs, spreadsheets, support docs, and brand input your team
+              already uses before the deck exists.
+            </p>
+          </div>
+
+          <ul className="clean-list">
+            {evidencePackageInputs.map((input) => (
+              <li key={input}>{input}</li>
+            ))}
+          </ul>
+        </article>
+
+        <article className="technical-panel stack-lg">
+          <div className="stack">
+            <p className="section-label light">Getting started</p>
+            <h2>Start with one live review, not a long setup project.</h2>
+            <p className="muted">
+              Basquio works best when you begin with a single package from a real reporting cycle, review the first
+              output, and then decide if it should become a recurring workflow.
+            </p>
+          </div>
+
+          <div className="stack">
+            {gettingStartedSteps.map((step, index) => (
+              <div key={step.title} className="stage-row">
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div className="stack-xs">
+                  <strong>{step.title}</strong>
+                  <p className="muted">{step.detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="row">
+            <Link className="button secondary inverted" href="/get-started">
+              Read the setup guide
+            </Link>
+          </div>
+        </article>
       </section>
 
       <section className="technical-panel stack-xl" id="pipeline">

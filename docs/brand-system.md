@@ -28,8 +28,8 @@ Source of truth imported from the existing Basquio brand work under the local `.
 
 Canonical web-ready assets now live in:
 
-- `Basquio/apps/web/public/brand/svg/`
-- `Basquio/apps/web/public/brand/png/`
+- `apps/web/public/brand/svg/`
+- `apps/web/public/brand/png/`
 
 ## Available Assets
 

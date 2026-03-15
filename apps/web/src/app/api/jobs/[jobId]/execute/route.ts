@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { runGenerationRequest } from "@basquio/workflows";
+import { GenerationExecutionLeaseError, runGenerationRequest } from "@basquio/workflows";
 
 import { getInternalDispatchToken, loadPersistedGenerationRequest } from "@/lib/generation-requests";
 import { getGenerationStatus } from "@/lib/run-status";
@@ -31,7 +31,7 @@ export async function POST(
   }
 
   const status = await getGenerationStatus(jobId);
-  if (status?.summary || status?.status === "completed") {
+  if (status?.summary?.status === "completed" || status?.status === "completed") {
     return NextResponse.json({ status: "completed" });
   }
 
@@ -68,6 +68,10 @@ export async function POST(
       artifactCount: summary.artifacts.length,
     });
   } catch (error) {
+    if (error instanceof GenerationExecutionLeaseError) {
+      return NextResponse.json({ status: "running" }, { status: 202 });
+    }
+
     const message = error instanceof Error ? error.message : "Generation failed.";
 
     console.error(`Basquio execute route failed for ${jobId}`, error);

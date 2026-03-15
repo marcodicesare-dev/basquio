@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type {
@@ -47,6 +49,10 @@ export async function createRunPersistence(input: {
 }
 
 class NoopRunPersistence {
+  async tryAcquireExecutionLease() {
+    return true;
+  }
+  async touchExecutionLease() {}
   async initialize() {}
   async persistSourceInputs() {}
   async updateDataset() {}
@@ -62,6 +68,7 @@ class SupabaseRunPersistence {
   private readonly sourceFiles = new Map<string, UploadedInputRecord>();
   private datasetRowId: string | null = null;
   private templateProfileRowId: string | null = null;
+  private readonly executionLeaseOwner = `basquio-${randomUUID()}`;
 
   constructor(
     private readonly context: RunPersistenceContext,
@@ -86,9 +93,83 @@ class SupabaseRunPersistence {
           audience: this.brief.audience,
           objective: this.brief.objective,
           brief: this.brief,
+          failure_message: null,
+          summary: null,
+          completed_at: null,
         },
       ],
     });
+  }
+
+  async tryAcquireExecutionLease(staleAfterMs = 90_000) {
+    const now = new Date().toISOString();
+    const staleBefore = new Date(Date.now() - staleAfterMs).toISOString();
+    const claimLease = async () =>
+      this.context.supabase
+        .from("generation_jobs")
+        .update({
+          execution_owner: this.executionLeaseOwner,
+          execution_started_at: now,
+          execution_heartbeat_at: now,
+          updated_at: now,
+        })
+        .eq("job_key", this.request.jobId)
+        .neq("status", "completed")
+        .or(
+          [
+            "execution_owner.is.null",
+            "execution_heartbeat_at.is.null",
+            `execution_heartbeat_at.lt.${staleBefore}`,
+            `execution_owner.eq.${this.executionLeaseOwner}`,
+          ].join(","),
+        )
+        .select("id")
+        .limit(1);
+
+    let { data, error } = await claimLease();
+
+    if (!error && Array.isArray(data) && data.length === 0) {
+      await upsertRestRows({
+        supabaseUrl: this.context.supabaseUrl,
+        serviceKey: this.context.serviceRoleKey,
+        table: "generation_jobs",
+        onConflict: "job_key",
+        rows: [
+          {
+            job_key: this.request.jobId,
+            organization_id: this.context.organizationId,
+            project_id: this.context.projectId,
+            requested_by: this.context.requestedBy,
+            status: "queued",
+            business_context: this.brief.businessContext,
+            audience: this.brief.audience,
+            objective: this.brief.objective,
+            brief: this.brief,
+          },
+        ],
+      });
+
+      ({ data, error } = await claimLease());
+    }
+
+    if (error) {
+      throw error;
+    }
+
+    return Array.isArray(data) && data.length > 0;
+  }
+
+  async touchExecutionLease() {
+    const now = new Date().toISOString();
+
+    await this.context.supabase
+      .from("generation_jobs")
+      .update({
+        execution_heartbeat_at: now,
+        updated_at: now,
+      })
+      .eq("job_key", this.request.jobId)
+      .eq("execution_owner", this.executionLeaseOwner);
   }
 
   async persistSourceInputs() {
@@ -224,6 +305,8 @@ class SupabaseRunPersistence {
   }
 
   async updateJobStage(stage: string, status: GenerationJobStatus, detail: string, payload: Record<string, unknown> = {}) {
+    const now = new Date().toISOString();
+    const isTerminal = status === "completed" || status === "failed" || status === "needs_input";
     const { data: job } = await this.context.supabase
       .from("generation_jobs")
       .select("id")
@@ -234,17 +317,46 @@ class SupabaseRunPersistence {
       return;
     }
 
-    await this.context.supabase.from("generation_job_steps").upsert(
-      {
-        job_id: job.id,
-        stage,
-        status,
-        detail,
-        payload,
-        completed_at: status === "completed" || status === "failed" || status === "needs_input" ? new Date().toISOString() : null,
-      },
-      { onConflict: "job_id,stage" },
-    );
+    const stepRow =
+      status === "running"
+        ? {
+            job_id: job.id,
+            stage,
+            status,
+            detail,
+            payload,
+            started_at: now,
+            completed_at: null,
+          }
+        : {
+            job_id: job.id,
+            stage,
+            status,
+            detail,
+            payload,
+            completed_at: isTerminal ? now : null,
+          };
+
+    await this.context.supabase.from("generation_job_steps").upsert(stepRow, { onConflict: "job_id,stage" });
+
+    const jobPatch: Record<string, string | null> = {
+      updated_at: now,
+    };
+
+    if (status === "running") {
+      jobPatch.status = "running";
+      jobPatch.failure_message = null;
+      jobPatch.completed_at = null;
+    } else if (status === "failed" || status === "needs_input") {
+      jobPatch.status = status;
+      jobPatch.failure_message = detail;
+      jobPatch.completed_at = now;
+    }
+
+    await this.context.supabase
+      .from("generation_jobs")
+      .update(jobPatch)
+      .eq("id", job.id);
   }
 
   async updateValidationReport(report: ValidationReport) {
@@ -277,6 +389,7 @@ class SupabaseRunPersistence {
 
   async finalize(summary: GenerationRunSummary) {
     const parsedSummary = generationRunSummarySchema.parse(summary);
+    const now = new Date().toISOString();
 
     await patchRestRows({
       supabaseUrl: this.context.supabaseUrl,
@@ -295,12 +408,18 @@ class SupabaseRunPersistence {
         artifact_manifest: parsedSummary.artifactManifest ?? {},
         summary: parsedSummary,
         failure_message: parsedSummary.failureMessage || null,
-        completed_at: parsedSummary.status === "completed" ? new Date().toISOString() : null,
+        completed_at: parsedSummary.status === "completed" ? now : null,
+        updated_at: now,
+        execution_owner: null,
+        execution_started_at: null,
+        execution_heartbeat_at: null,
       },
     });
   }
 
   async finalizeFailure(status: Extract<GenerationJobStatus, "failed" | "needs_input">, message: string, summary?: GenerationRunSummary) {
+    const now = new Date().toISOString();
+
     await patchRestRows({
       supabaseUrl: this.context.supabaseUrl,
       serviceKey: this.context.serviceRoleKey,
@@ -312,7 +431,11 @@ class SupabaseRunPersistence {
         status,
         failure_message: message,
         summary: summary ? generationRunSummarySchema.parse(summary) : null,
-        completed_at: new Date().toISOString(),
+        completed_at: now,
+        updated_at: now,
+        execution_owner: null,
+        execution_started_at: null,
+        execution_heartbeat_at: null,
       },
     });
   }
