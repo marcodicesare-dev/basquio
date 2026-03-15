@@ -42,6 +42,7 @@ type Step = {
 export type RunProgressSnapshot = {
   jobId: string;
   status: "queued" | "running" | "completed" | "failed" | "needs_input";
+  artifactsReady: boolean;
   createdAt: string;
   updatedAt?: string;
   currentStage: string;
@@ -180,7 +181,7 @@ export function RunProgressView(input: {
           </div>
 
           <aside className="loading-aside stack">
-            {snapshot.status === "completed" ? (
+            {snapshot.artifactsReady ? (
               <article className="panel stack">
                 <p className="artifact-kind">Artifacts ready</p>
                 <p className="muted">

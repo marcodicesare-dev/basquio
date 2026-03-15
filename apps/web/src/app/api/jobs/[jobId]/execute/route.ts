@@ -31,7 +31,7 @@ export async function POST(
   }
 
   const status = await getGenerationStatus(jobId);
-  if (status?.summary?.status === "completed" || status?.status === "completed") {
+  if (status?.status === "completed" && status.artifactsReady) {
     return NextResponse.json({ status: "completed" });
   }
 

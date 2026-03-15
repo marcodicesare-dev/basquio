@@ -58,6 +58,29 @@ export async function downloadFromStorage(input: {
   return Buffer.from(await response.arrayBuffer());
 }
 
+export async function getStorageObjectInfo(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  bucket: string;
+  storagePath: string;
+}) {
+  const response = await fetch(buildStorageInfoUrl(input.supabaseUrl, input.bucket, input.storagePath), {
+    headers: buildServiceHeaders(input.serviceKey),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to inspect ${input.storagePath}.`));
+  }
+
+  return (await response.json()) as {
+    id?: string;
+    name?: string;
+    bucket_id?: string;
+    metadata?: Record<string, unknown>;
+  };
+}
+
 export async function uploadToStorage(input: {
   supabaseUrl: string;
   serviceKey: string;
@@ -262,6 +285,10 @@ function buildServiceHeaders(serviceKey: string, extraHeaders: Record<string, st
 
 function buildStorageObjectUrl(supabaseUrl: string, bucket: string, storagePath: string) {
   return buildStoragePathUrl(supabaseUrl, "object", bucket, storagePath);
+}
+
+function buildStorageInfoUrl(supabaseUrl: string, bucket: string, storagePath: string) {
+  return buildStoragePathUrl(supabaseUrl, "object/info", bucket, storagePath);
 }
 
 function buildStorageSignedUploadUrl(supabaseUrl: string, bucket: string, storagePath: string) {

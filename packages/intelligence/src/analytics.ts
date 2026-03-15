@@ -19,12 +19,17 @@ type ComputeAnalyticsInput = {
   workbook: NormalizedWorkbook;
   packageSemantics: PackageSemantics;
   metricPlan?: ExecutableMetricSpec[];
+  onHeartbeat?: () => Promise<void> | void;
 };
 
 type JoinedRow = Record<string, unknown>;
+type AnalyticsHeartbeat = {
+  tick: () => Promise<void>;
+};
 
 export async function computeAnalytics(input: ComputeAnalyticsInput): Promise<AnalyticsResult> {
   const executableSpecs = buildExecutableMetricSpecs(input.packageSemantics, input.datasetProfile, input.metricPlan);
+  const heartbeat = createAnalyticsHeartbeat(input.onHeartbeat);
   const evidenceRefs: EvidenceRef[] = [];
   const derivedTables: AnalyticsResult["derivedTables"] = [];
   const metrics: ComputedMetric[] = [];
@@ -32,13 +37,14 @@ export async function computeAnalytics(input: ComputeAnalyticsInput): Promise<An
   const deltas: AnalyticsResult["deltas"] = [];
 
   for (const spec of executableSpecs) {
-    const rows = resolveMetricRows(spec, input.workbook, input.packageSemantics);
+    await heartbeat.tick();
+    const rows = await resolveMetricRows(spec, input.workbook, input.packageSemantics, heartbeat);
 
     if (rows.length === 0) {
       continue;
     }
 
-    const metricResult = executeMetric(spec, rows, input.workbook, evidenceRefs, derivedTables);
+    const metricResult = await executeMetric(spec, rows, input.workbook, evidenceRefs, derivedTables, heartbeat);
     metrics.push(metricResult.metric);
     if (metricResult.ranking) {
       rankings.push(metricResult.ranking);
@@ -216,10 +222,11 @@ function extractGroupBy(formula: string) {
     .filter(Boolean);
 }
 
-function resolveMetricRows(
+async function resolveMetricRows(
   spec: ExecutableMetricSpec,
   workbook: NormalizedWorkbook,
   packageSemantics: PackageSemantics,
+  heartbeat: AnalyticsHeartbeat,
 ) {
   const baseSheet = workbook.sheets.find((sheet) => sheet.sourceFileName === spec.sourceFile);
   if (!baseSheet) {
@@ -248,6 +255,7 @@ function resolveMetricRows(
       }));
 
   for (const joinTarget of explicitJoins) {
+    await heartbeat.tick();
     const otherFile = joinTarget.file;
     const otherSheet = workbook.sheets.find((sheet) => sheet.sourceFileName === otherFile);
 
@@ -255,20 +263,21 @@ function resolveMetricRows(
       continue;
     }
 
-    rows = innerJoinRows(rows, otherSheet.rows, joinTarget.leftKey, joinTarget.rightKey, otherFile);
+    rows = await innerJoinRows(rows, otherSheet.rows, joinTarget.leftKey, joinTarget.rightKey, otherFile, heartbeat);
   }
 
   return applyFilters(rows, spec.filter);
 }
 
-function executeMetric(
+async function executeMetric(
   spec: ExecutableMetricSpec,
   rows: JoinedRow[],
   workbook: NormalizedWorkbook,
   evidenceRefs: EvidenceRef[],
   derivedTables: AnalyticsResult["derivedTables"],
+  heartbeat: AnalyticsHeartbeat,
 ) {
-  const groupedRows = groupRows(rows, spec.groupBy);
+  const groupedRows = await groupRows(rows, spec.groupBy, heartbeat);
   const totalRowCount = rows.length;
   const tableRows = groupedRows.map((group) => {
     const value = computeGroupValue(spec, group.rows, totalRowCount);
@@ -415,14 +424,19 @@ function computeGroupValue(spec: ExecutableMetricSpec, rows: JoinedRow[], totalR
   return rows.length;
 }
 
-function groupRows(rows: JoinedRow[], groupBy: string[]) {
+async function groupRows(rows: JoinedRow[], groupBy: string[], heartbeat: AnalyticsHeartbeat) {
   if (groupBy.length === 0) {
     return [{ key: "overall", rows }];
   }
 
   const groups = new Map<string, JoinedRow[]>();
 
+  let index = 0;
   for (const row of rows) {
+    index += 1;
+    if (index % 2_000 === 0) {
+      await heartbeat.tick();
+    }
     const key = groupBy.map((column) => String(resolveValue(row, column) ?? "unknown")).join(" | ");
     const existing = groups.get(key);
     if (existing) {
@@ -448,15 +462,21 @@ function prefixKeys(row: Record<string, unknown>, fileName: string) {
   );
 }
 
-function innerJoinRows(
+async function innerJoinRows(
   leftRows: JoinedRow[],
   rightRows: Array<Record<string, unknown>>,
   leftKey: string,
   rightKey: string,
   rightFileName: string,
+  heartbeat: AnalyticsHeartbeat,
 ) {
   const rightMap = new Map<string, JoinedRow[]>();
+  let rightIndex = 0;
   for (const row of rightRows) {
+    rightIndex += 1;
+    if (rightIndex % 2_000 === 0) {
+      await heartbeat.tick();
+    }
     const key = String(row[rightKey] ?? "");
     const existing = rightMap.get(key);
     const prefixed = prefixKeys(row, rightFileName);
@@ -467,18 +487,29 @@ function innerJoinRows(
     }
   }
 
-  return leftRows.flatMap((leftRow) => {
+  const joinedRows: JoinedRow[] = [];
+  let leftIndex = 0;
+
+  for (const leftRow of leftRows) {
+    leftIndex += 1;
+    if (leftIndex % 2_000 === 0) {
+      await heartbeat.tick();
+    }
     const joinValue = String(resolveValue(leftRow, leftKey) ?? "");
     const matches = rightMap.get(joinValue);
     if (!matches || matches.length === 0) {
-      return [];
+      continue;
     }
 
-    return matches.map((match) => ({
-      ...leftRow,
-      ...match,
-    }));
-  });
+    joinedRows.push(
+      ...matches.map((match) => ({
+        ...leftRow,
+        ...match,
+      })),
+    );
+  }
+
+  return joinedRows;
 }
 
 function applyFilters(rows: JoinedRow[], filters: ExecutableMetricSpec["filter"]) {
@@ -775,4 +806,25 @@ function groupDimensions(groupBy: string[], key: string) {
 
 function slugify(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function createAnalyticsHeartbeat(onHeartbeat?: () => Promise<void> | void): AnalyticsHeartbeat {
+  let operationsSinceLastYield = 0;
+  let lastYieldAt = Date.now();
+
+  return {
+    async tick() {
+      operationsSinceLastYield += 1;
+      const shouldYield = operationsSinceLastYield >= 32 || Date.now() - lastYieldAt >= 750;
+
+      if (!shouldYield) {
+        return;
+      }
+
+      operationsSinceLastYield = 0;
+      lastYieldAt = Date.now();
+      await Promise.resolve(onHeartbeat?.());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
+  };
 }

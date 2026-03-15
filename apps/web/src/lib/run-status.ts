@@ -10,7 +10,7 @@ import {
 } from "@basquio/types";
 
 import { loadPersistedGenerationRequest } from "@/lib/generation-requests";
-import { getGenerationRun } from "@/lib/job-runs";
+import { getDurableArtifactAvailability, getGenerationRun } from "@/lib/job-runs";
 import { fetchRestRows } from "@/lib/supabase/admin";
 
 type JobRow = {
@@ -45,6 +45,7 @@ export type GenerationStepSnapshot = {
 export type GenerationStatusSnapshot = {
   jobId: string;
   status: GenerationJobStatus | "queued";
+  artifactsReady: boolean;
   createdAt: string;
   updatedAt?: string;
   currentStage: string;
@@ -113,7 +114,23 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     });
 
   const summary = parseSummary(job.summary);
-  const derivedStatus = deriveJobStatus(job.status, steps, summary);
+  const hasCompletedArtifactDeliveryStep = steps.some(
+    (step) => step.baseStage === "artifact qa and delivery" && step.status === "completed",
+  );
+  const completionWasClaimed =
+    job.status === "completed" ||
+    summary?.status === "completed" ||
+    hasCompletedArtifactDeliveryStep;
+  const artifactAvailability = completionWasClaimed
+    ? await getDurableArtifactAvailability(jobId, viewerId)
+    : {
+        ready: false,
+        artifacts: [],
+        expectedKinds: ["pptx", "pdf"] as const,
+        missingKinds: ["pptx", "pdf"] as const,
+      };
+  const derivedStatus = deriveJobStatus(job.status, steps, summary, artifactAvailability.ready);
+  const isArtifactFinalizing = completionWasClaimed && !artifactAvailability.ready;
   const currentStep =
     [...steps].reverse().find((step) => step.status === "running") ??
     [...steps].reverse().find((step) => step.status === "needs_input" || step.status === "failed") ??
@@ -136,24 +153,28 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
   return {
     jobId,
     status: derivedStatus,
+    artifactsReady: artifactAvailability.ready,
     createdAt,
     updatedAt,
-    currentStage:
-      currentStep?.baseStage ??
-      (summary?.status === "completed" ? "completed" : BASQUIO_PIPELINE_STAGES[0]),
+    currentStage: isArtifactFinalizing
+      ? "artifact qa and delivery"
+      : currentStep?.baseStage ??
+        (summary?.status === "completed" && artifactAvailability.ready ? "completed" : BASQUIO_PIPELINE_STAGES[0]),
     currentDetail:
-      currentStep?.detail ||
+      (isArtifactFinalizing
+        ? buildArtifactFinalizingDetail(artifactAvailability.missingKinds)
+        : currentStep?.detail) ||
       job.failure_message ||
-      (summary?.status === "completed"
+      (summary?.status === "completed" && artifactAvailability.ready
         ? "Artifacts are ready."
         : isStaleRunningExecution
           ? "The run was marked in flight, but no durable stage checkpoints appeared. Basquio is attempting to reattach execution for this job."
           : isStaleQueuedKickoff
             ? "The run is still queued and no durable workflow checkpoints have appeared yet. Basquio is attempting a recovery dispatch."
             : "Basquio is preparing the evidence package and orchestration state."),
-    progressPercent,
+    progressPercent: isArtifactFinalizing ? Math.min(progressPercent, 99) : progressPercent,
     elapsedSeconds,
-    estimatedRemainingSeconds,
+    estimatedRemainingSeconds: isArtifactFinalizing ? null : estimatedRemainingSeconds,
     steps,
     summary,
     failureMessage: job.failure_message ?? (summary?.failureMessage || undefined),
@@ -164,7 +185,12 @@ function deriveJobStatus(
   jobStatus: GenerationJobStatus,
   steps: GenerationStepSnapshot[],
   summary: GenerationRunSummary | null,
+  artifactsReady: boolean,
 ): GenerationJobStatus {
+  if (summary?.status === "completed") {
+    return artifactsReady ? "completed" : "running";
+  }
+
   if (summary?.status) {
     return summary.status;
   }
@@ -184,8 +210,8 @@ function deriveJobStatus(
     return "failed";
   }
 
-  if (steps.length > 0 && steps.every((step) => step.status === "completed")) {
-    return "completed";
+  if (jobStatus === "completed") {
+    return artifactsReady ? "completed" : "running";
   }
 
   return jobStatus ?? "queued";
@@ -233,23 +259,29 @@ function buildFallbackSnapshot(
 }
 
 function buildSummarySnapshot(jobId: string, summary: GenerationRunSummary): GenerationStatusSnapshot {
+  const artifactsReady = summary.status === "completed" ? summary.artifacts.every((artifact) => artifact.exists) : false;
+  const status = deriveSummaryStatus(summary, artifactsReady);
   const createdAt = summary.createdAt || deriveCreatedAt(jobId);
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
   const steps = buildSyntheticStepsFromSummary(summary, createdAt);
 
   return {
     jobId,
-    status: summary.status,
+    status,
+    artifactsReady,
     createdAt,
     updatedAt: createdAt,
-    currentStage: summary.status === "completed" ? "completed" : lastStageFromSummary(summary),
+    currentStage:
+      summary.status === "completed" && !artifactsReady ? "artifact qa and delivery" : summary.status === "completed" ? "completed" : lastStageFromSummary(summary),
     currentDetail:
-      summary.status === "completed"
+      summary.status === "completed" && artifactsReady
         ? "Artifacts are ready."
+        : summary.status === "completed"
+          ? buildArtifactFinalizingDetail(["pptx", "pdf"])
         : summary.failureMessage || "Basquio recorded the run summary and is recovering the live state.",
-    progressPercent: summary.status === "completed" ? 100 : 96,
+    progressPercent: summary.status === "completed" && artifactsReady ? 100 : 96,
     elapsedSeconds,
-    estimatedRemainingSeconds: summary.status === "completed" ? 0 : null,
+    estimatedRemainingSeconds: summary.status === "completed" && artifactsReady ? 0 : null,
     steps,
     summary,
     failureMessage: summary.failureMessage || undefined,
@@ -264,6 +296,7 @@ function buildQueuedSnapshot(jobId: string): GenerationStatusSnapshot {
   return {
     jobId,
     status: "queued",
+    artifactsReady: false,
     createdAt,
     updatedAt: createdAt,
     currentStage: BASQUIO_PIPELINE_STAGES[0],
@@ -402,6 +435,22 @@ function summarizeSyntheticStageDetail(
   }
 
   return "Recovered from the stored run summary.";
+}
+
+function deriveSummaryStatus(summary: GenerationRunSummary, artifactsReady: boolean): GenerationJobStatus {
+  if (summary.status === "completed") {
+    return artifactsReady ? "completed" : "running";
+  }
+
+  return summary.status;
+}
+
+function buildArtifactFinalizingDetail(missingKinds: readonly string[]) {
+  if (missingKinds.length === 0) {
+    return "Basquio is verifying the final artifact pair in durable storage.";
+  }
+
+  return `Basquio is finalizing durable artifact delivery. Waiting on ${missingKinds.join(" and ")} availability before marking the run complete.`;
 }
 
 function deriveCreatedAt(jobId: string) {

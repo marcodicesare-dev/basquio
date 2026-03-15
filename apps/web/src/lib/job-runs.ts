@@ -3,7 +3,30 @@ import path from "node:path";
 
 import { generationRunSummarySchema, type ArtifactRecord, type GenerationRunSummary } from "@basquio/types";
 
-import { downloadFromStorage, fetchRestRows, listStorageObjects } from "@/lib/supabase/admin";
+import {
+  downloadFromStorage,
+  fetchRestRows,
+  getStorageObjectInfo,
+  listStorageObjects,
+} from "@/lib/supabase/admin";
+
+type ArtifactKind = ArtifactRecord["kind"];
+
+type DurableArtifactAvailability = {
+  ready: boolean;
+  artifacts: ArtifactRecord[];
+  expectedKinds: ArtifactKind[];
+  missingKinds: ArtifactKind[];
+};
+
+type DurableArtifactRow = {
+  kind: ArtifactKind;
+  storage_bucket: string;
+  storage_path: string;
+  mime_type: string;
+  file_bytes: number;
+  metadata?: Record<string, unknown>;
+};
 
 export async function listGenerationRuns(limit = 12, viewerId?: string): Promise<GenerationRunSummary[]> {
   const supabaseRuns = await listGenerationRunsFromSupabase(limit, viewerId);
@@ -93,89 +116,36 @@ export async function getGenerationArtifactRecord(
   kind: ArtifactRecord["kind"],
   viewerId: string,
 ): Promise<ArtifactRecord | null> {
-  const run = await getGenerationRun(jobId, viewerId);
-  const summaryArtifact = run?.artifacts.find((candidate) => candidate.kind === kind);
-
-  if (summaryArtifact) {
-    return summaryArtifact;
-  }
-
   const credentials = getSupabaseCredentials();
 
-  if (!credentials) {
-    return null;
+  if (credentials) {
+    const durableArtifacts = await listDurableArtifactRecords(jobId, viewerId);
+    const durableArtifact = durableArtifacts.find((artifact) => artifact.kind === kind);
+
+    if (durableArtifact) {
+      return durableArtifact;
+    }
   }
 
-  try {
-    const jobs = await fetchRestRows<{ id: string }>({
-      ...credentials,
-      table: "generation_jobs",
-      query: {
-        select: "id",
-        job_key: `eq.${jobId}`,
-        requested_by: `eq.${viewerId}`,
-        limit: "1",
-      },
-    });
+  const run = await getGenerationRun(jobId, viewerId);
+  return run?.artifacts.find((candidate) => candidate.kind === kind) ?? null;
+}
 
-    if (!jobs[0]?.id) {
-      return null;
-    }
+export async function getDurableArtifactAvailability(
+  jobId: string,
+  viewerId?: string,
+  expectedKinds: ArtifactKind[] = ["pptx", "pdf"],
+): Promise<DurableArtifactAvailability> {
+  const durableArtifacts = await listDurableArtifactRecords(jobId, viewerId);
+  const durableKinds = new Set(durableArtifacts.map((artifact) => artifact.kind));
+  const missingKinds = expectedKinds.filter((kind) => !durableKinds.has(kind));
 
-    const artifacts = await fetchRestRows<{
-      storage_bucket: string;
-      storage_path: string;
-      mime_type: string;
-      file_bytes: number;
-      metadata?: Record<string, unknown>;
-    }>({
-      ...credentials,
-      table: "artifacts",
-      query: {
-        select: "storage_bucket,storage_path,mime_type,file_bytes,metadata",
-        job_id: `eq.${jobs[0].id}`,
-        kind: `eq.${kind}`,
-        limit: "1",
-      },
-    });
-
-    const artifact = artifacts[0];
-
-    if (!artifact) {
-      return null;
-    }
-
-    const metadata = artifact.metadata ?? {};
-    const metadataProvider =
-      metadata.provider === "supabase" || metadata.provider === "database" || metadata.provider === "local"
-        ? metadata.provider
-        : null;
-    const provider =
-      metadataProvider ??
-      (artifact.storage_bucket === "artifacts"
-        ? "supabase"
-        : artifact.storage_bucket === "database"
-          ? "database"
-          : "local");
-
-    return {
-      id: `${jobId}-${kind}`,
-      jobId,
-      kind,
-      fileName: typeof metadata.fileName === "string" ? metadata.fileName : `${jobId}.${kind}`,
-      mimeType: artifact.mime_type,
-      storagePath: artifact.storage_path,
-      byteSize: artifact.file_bytes,
-      provider,
-      checksumSha256: typeof metadata.checksumSha256 === "string" ? metadata.checksumSha256 : "",
-      exists: typeof metadata.exists === "boolean" ? metadata.exists : true,
-      slideCount: typeof metadata.slideCount === "number" ? metadata.slideCount : undefined,
-      sectionCount: typeof metadata.sectionCount === "number" ? metadata.sectionCount : undefined,
-      pageCount: typeof metadata.pageCount === "number" ? metadata.pageCount : undefined,
-    };
-  } catch {
-    return null;
-  }
+  return {
+    ready: missingKinds.length === 0,
+    artifacts: durableArtifacts,
+    expectedKinds,
+    missingKinds,
+  };
 }
 
 export function buildArtifactDownloadUrl(jobId: string, kind: ArtifactRecord["kind"]) {
@@ -212,6 +182,48 @@ export async function readLocalArtifactBuffer(artifact: ArtifactRecord) {
   }
 
   return readFile(path.join(workspaceRoot, artifact.storagePath));
+}
+
+async function listDurableArtifactRecords(jobId: string, viewerId?: string) {
+  const credentials = getSupabaseCredentials();
+
+  if (credentials) {
+    try {
+      const jobIdRow = await loadGenerationJobRowId(jobId, viewerId);
+
+      if (!jobIdRow) {
+        return [];
+      }
+
+      const artifactRows = await fetchRestRows<DurableArtifactRow>({
+        ...credentials,
+        table: "artifacts",
+        query: {
+          select: "kind,storage_bucket,storage_path,mime_type,file_bytes,metadata",
+          job_id: `eq.${jobIdRow}`,
+          limit: "10",
+        },
+      });
+
+      const artifacts = await Promise.all(
+        artifactRows.map(async (artifactRow) => {
+          const artifact = buildArtifactRecord(jobId, artifactRow);
+          return (await isArtifactDurablyAvailable(artifact, credentials)) ? artifact : null;
+        }),
+      );
+
+      return artifacts.filter((artifact): artifact is ArtifactRecord => Boolean(artifact));
+    } catch {
+      return [];
+    }
+  }
+
+  const run = await getGenerationRun(jobId, viewerId);
+  const artifacts = await Promise.all(
+    (run?.artifacts ?? []).map(async (artifact) => ((await isLocalArtifactReadable(artifact)) ? artifact : null)),
+  );
+
+  return artifacts.filter((artifact): artifact is ArtifactRecord => Boolean(artifact));
 }
 
 async function listGenerationRunsFromSupabase(limit: number, viewerId?: string) {
@@ -387,4 +399,120 @@ function getSupabaseCredentials() {
 
 function buildStoredSummaryPath(jobId: string) {
   return `run-summaries/${jobId}.json`;
+}
+
+async function loadGenerationJobRowId(jobId: string, viewerId?: string) {
+  const credentials = getSupabaseCredentials();
+
+  if (!credentials) {
+    return null;
+  }
+
+  const jobs = await fetchRestRows<{ id: string }>({
+    ...credentials,
+    table: "generation_jobs",
+    query: {
+      select: "id",
+      job_key: `eq.${jobId}`,
+      ...(viewerId ? { requested_by: `eq.${viewerId}` } : {}),
+      limit: "1",
+    },
+  });
+
+  return jobs[0]?.id ?? null;
+}
+
+function buildArtifactRecord(jobId: string, artifact: DurableArtifactRow): ArtifactRecord {
+  const metadata = artifact.metadata ?? {};
+  const metadataProvider =
+    metadata.provider === "supabase" || metadata.provider === "database" || metadata.provider === "local"
+      ? metadata.provider
+      : null;
+  const provider =
+    metadataProvider ??
+    (artifact.storage_bucket === "artifacts"
+      ? "supabase"
+      : artifact.storage_bucket === "database"
+        ? "database"
+        : "local");
+
+  return {
+    id: `${jobId}-${artifact.kind}`,
+    jobId,
+    kind: artifact.kind,
+    fileName: typeof metadata.fileName === "string" ? metadata.fileName : `${jobId}.${artifact.kind}`,
+    mimeType: artifact.mime_type,
+    storagePath: artifact.storage_path,
+    byteSize: artifact.file_bytes,
+    provider,
+    checksumSha256: typeof metadata.checksumSha256 === "string" ? metadata.checksumSha256 : "",
+    exists: typeof metadata.exists === "boolean" ? metadata.exists : true,
+    slideCount: typeof metadata.slideCount === "number" ? metadata.slideCount : undefined,
+    sectionCount: typeof metadata.sectionCount === "number" ? metadata.sectionCount : undefined,
+    pageCount: typeof metadata.pageCount === "number" ? metadata.pageCount : undefined,
+  };
+}
+
+async function isArtifactDurablyAvailable(
+  artifact: ArtifactRecord,
+  credentials: { supabaseUrl: string; serviceKey: string },
+) {
+  if (!artifact.exists) {
+    return false;
+  }
+
+  if (artifact.provider === "supabase") {
+    try {
+      await getStorageObjectInfo({
+        ...credentials,
+        bucket: "artifacts",
+        storagePath: artifact.storagePath,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (artifact.provider === "database") {
+    const jobIdRow = await loadGenerationJobRowId(artifact.jobId);
+
+    if (!jobIdRow) {
+      return false;
+    }
+
+    const artifacts = await fetchRestRows<{ metadata?: Record<string, unknown> }>({
+      ...credentials,
+      table: "artifacts",
+      query: {
+        select: "metadata",
+        job_id: `eq.${jobIdRow}`,
+        kind: `eq.${artifact.kind}`,
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    return typeof artifacts[0]?.metadata?.inlineBase64 === "string";
+  }
+
+  return isLocalArtifactReadable(artifact);
+}
+
+async function isLocalArtifactReadable(artifact: ArtifactRecord) {
+  try {
+    const workspaceRoot = await tryResolveWorkspaceRoot();
+
+    if (!workspaceRoot) {
+      return false;
+    }
+
+    const absolutePath = path.isAbsolute(artifact.storagePath)
+      ? artifact.storagePath
+      : path.join(workspaceRoot, artifact.storagePath);
+
+    await access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
 }

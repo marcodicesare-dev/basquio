@@ -1,5 +1,9 @@
 import { getViewerState } from "@/lib/supabase/auth";
-import { getGenerationArtifactRecord, readLocalArtifactBuffer } from "@/lib/job-runs";
+import {
+  getDurableArtifactAvailability,
+  getGenerationArtifactRecord,
+  readLocalArtifactBuffer,
+} from "@/lib/job-runs";
 import { downloadFromStorage, fetchRestRows } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -20,7 +24,10 @@ export async function GET(
     return new Response("Unsupported artifact kind.", { status: 400 });
   }
 
-  const artifact = await getGenerationArtifactRecord(jobId, kind, viewer.user.id);
+  const availability = await getDurableArtifactAvailability(jobId, viewer.user.id, [kind]);
+  const artifact =
+    availability.artifacts.find((candidate) => candidate.kind === kind) ??
+    (availability.ready ? await getGenerationArtifactRecord(jobId, kind, viewer.user.id) : null);
 
   if (!artifact) {
     return new Response("Artifact not found.", { status: 404 });
@@ -44,7 +51,7 @@ export async function GET(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to read artifact.";
-    return new Response(message, { status: 500 });
+    return new Response(message, { status: isMissingArtifactError(message) ? 404 : 500 });
   }
 }
 
@@ -112,4 +119,8 @@ async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf", viewerId:
   }
 
   return Buffer.from(inlineBase64, "base64");
+}
+
+function isMissingArtifactError(message: string) {
+  return /not found|not exist|missing/i.test(message);
 }

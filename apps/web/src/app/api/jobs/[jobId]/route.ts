@@ -70,7 +70,14 @@ function shouldRecoverStalledExecution(status: Awaited<ReturnType<typeof getGene
     return false;
   }
 
-  if (status.status !== "running" || status.summary) {
+  if (status.status !== "running") {
+    return false;
+  }
+
+  const artifactCompletionIsPending = status.summary?.status === "completed" && !status.artifactsReady;
+  const canRecoverLiveExecution = !status.summary || artifactCompletionIsPending;
+
+  if (!canRecoverLiveExecution) {
     return false;
   }
 
