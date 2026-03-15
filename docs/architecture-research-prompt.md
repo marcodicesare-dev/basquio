@@ -1,6 +1,6 @@
 # Canonical Research Prompt
 
-Use this prompt when asking another agent to research the right end-to-end Basquio architecture.
+Use this when asking another agent to research the right end-to-end Basquio architecture.
 
 ## Prompt
 
@@ -22,7 +22,7 @@ The real requirement is:
 - the design target must materially affect the output deck
 - large and ambiguous decks should be allowed to think longer and revise more than small simple decks
 
-Think about this like a team of specialist analysts and report strategists.
+Think about this like a team of specialist analysts, report strategists, critics, and presentation designers.
 
 If I handed you:
 
@@ -34,7 +34,7 @@ what exact steps would you take to produce the final report?
 
 Those are the steps you need to research and formalize into the best implementation architecture possible.
 
-Spend as long as needed. Ten minutes, thirty minutes, or an hour is fine. Optimize for correctness and implementation realism, not speed.
+Spend as long as needed. Ten minutes, thirty minutes, or an hour is fine. Bigger decks should be allowed to take longer and think harder than smaller ones. Optimize for correctness and implementation realism, not speed.
 
 Use primary sources only.
 
@@ -42,7 +42,7 @@ Repo context:
 
 - Workspace: `/Users/marcodicesare/Documents/Projects/basquio`
 - Existing stack: Inngest, Supabase, SheetJS, PptxGenJS, Browserless, Vercel AI SDK
-- Current weakness: the repo has some staged structure, but it is still too heuristic and not yet truly AI-native in package understanding, metric planning, slide architecture, template handling, and critic loops
+- Current weakness: the repo has some staged structure, but it is still too heuristic and not yet truly AI-native in package understanding, metric planning, story architecture, template handling, critic loops, and durable long-running execution
 
 Research and deliver:
 
@@ -54,11 +54,11 @@ Research and deliver:
    - insight ranking
    - narrative planning
    - slide planning
-   - template/design translation
-   - critic/reviewer validation
-3. The best way to make PPTX template input truly first-class, including layout and placeholder constraints
+   - template and design translation
+   - critic and reviewer validation
+3. The best way to make PPTX template input truly first-class, including layout identity, placeholder constraints, and master inheritance
 4. The best way for AI to understand multiple related files without hard-coded filename mapping
-5. The best orchestration model for long-running large-deck generation with retries, loops, checkpoints, and auditability
+5. The best orchestration model for long-running large-deck generation with retries, loops, checkpoints, auditability, and visible progress
 6. The best evaluation framework for a canonical case:
    - 10 SGS sustainability AI visibility source files in
    - branded SGS AI visibility deck out
@@ -68,8 +68,9 @@ Research and deliver:
    - typed schemas by stage
    - orchestration loop design
    - critic and cross-model validation design
-   - observability, tracing, and prompt/model versioning
+   - observability, tracing, and prompt/model/versioning
    - failure handling and retry strategy
+   - chart and rendering architecture
 8. What the current Basquio code is still getting wrong conceptually, even if it typechecks
 
 Required output:

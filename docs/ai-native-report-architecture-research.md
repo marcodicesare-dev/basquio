@@ -1,132 +1,303 @@
 # AI-Native Report Architecture Research
 
-Date: March 14, 2026
+Date: March 15, 2026
 
 ## Scope
 
-This note translates the research brief into a concrete target architecture for Basquio:
+This memo answers one question:
 
-- evidence package in
+What is the best end-to-end architecture for Basquio if the product goal is:
+
+- multiple evidence files in
 - business brief in
 - design target in
 - executive-grade PPTX and PDF out
 
-Only primary sources were used. Recommendations that go beyond what a source states directly are labeled as inference.
+This is not research for a generic slide generator.
+It is research for an evidence-to-report system that should behave like a small team of analysts, strategists, reviewers, and presentation designers.
 
-## Research Summary
+Only primary sources were used.
+Recommendations that go beyond the sources directly are labeled as inference.
 
-The best fit for Basquio is not a single general-purpose agent. It is a typed orchestrator that combines:
+## Executive Take
 
-- explicit workflow stages with retriable checkpoints
-- structured-output model calls at each semantic stage
+The state-of-the-art answer is not "one strong model plus a few helpers."
+
+The best fit for Basquio is:
+
+- a typed multi-stage orchestrator
+- durable checkpoints per stage
+- LLM stages that emit structured contracts
 - deterministic analytics execution between LLM stages
 - an evaluator-optimizer loop before rendering
-- first-class PPTX template interpretation through PresentationML structure
-- full stage tracing for auditability
+- first-class template translation from real PPTX structure
+- export-aware chart rendering, not preview-first charting
+- full run tracing, prompt versioning, and eval-driven iteration
 
-This matches the direction in Anthropic's agent guidance, which distinguishes workflow patterns from open-ended agents and explicitly calls out orchestrator-worker and evaluator-optimizer patterns as useful when subtasks and quality criteria are known ahead of time. It also matches OpenAI's guidance that GPT-5.4 is aimed at long-running, multi-step, production-grade tasks and performs best when prompts specify output contracts, tool-use expectations, and completion criteria.
+In other words:
 
-## Proposed Target Architecture
+- AI should decide what the package means
+- AI should decide what to compute
+- code should compute the numbers
+- AI should decide what matters
+- AI should decide how to tell the story
+- AI should decide how the deck should be structured
+- a separate critic should decide whether the deck is actually defensible
+- rendering should happen only after the plan survives both deterministic and semantic QA
 
-Basquio should be organized as a planner-executor-critic system with typed checkpoints:
+## What The Sources Actually Support
 
-1. Intake and normalize the evidence package, brief, and design target.
-2. Infer package semantics across files.
-3. Plan executable metrics.
-4. Compute analytics deterministically.
-5. Rank insights against the brief.
-6. Plan the report narrative.
-7. Plan the report outline.
-8. Translate the design target into concrete slide/layout constraints.
-9. Plan slides against both evidence and template constraints.
-10. Run deterministic validation.
-11. Run an independent semantic critic.
-12. If validation fails, backtrack to the right upstream stage and retry.
-13. Render PPTX and PDF only after the plan passes both checks.
-14. Persist artifacts, validation reports, and stage traces.
+### 1. Use workflows before autonomous free-form agents
 
-## Why This Architecture Fits The Sources
+Anthropic's guidance explicitly recommends starting with the simplest composable agentic pattern that fits the problem, and names prompt chaining, routing, orchestrator-workers, and evaluator-optimizer as useful patterns when subtasks are known ahead of time.
 
-### Durable multi-step orchestration
+Why that matters for Basquio:
 
-Inngest's retry model is stage-friendly: each `step.run()` has its own retry counter, retries default to additional attempts, and `NonRetriableError` can stop retries when a problem is not transient. That is a strong fit for stage-based report generation where parsing, planning, analytics, validation, and rendering have different failure modes.
+- the subtasks are known
+- the handoffs can be typed
+- the failure modes are different by stage
+- the quality bar is too high for a monolithic prompt
 
-### Evaluator-optimizer review loop
+Inference:
 
-Anthropic's agent guidance recommends simple composable workflows first, and specifically names evaluator-optimizer loops as a pattern when you can generate a candidate, evaluate it, and revise. Basquio maps cleanly onto that pattern because a draft report plan can be evaluated against evidence coverage, numerical correctness, and recommendation logic before rendering.
+Basquio should not be built as a single "research everything and make a deck" agent.
+It should be built as a workflow of specialist stages with typed outputs.
 
-### Long-running planning models with explicit contracts
+### 2. Long-running work should be asynchronous and durable
 
-OpenAI's GPT-5.4 prompt guidance states that the model is designed for long-running tasks, reliable execution, and strong performance on multi-step workflows, and that it works best when prompts define the output contract, tool-use expectations, and completion criteria. That supports stage-specific JSON-schema contracts rather than one giant freeform prompt.
+OpenAI's Background mode guide says long-running tasks should run asynchronously and be polled over time.
+OpenAI's Deep Research guide says agentic multi-step research can take tens of minutes, recommends Background mode, and recommends webhooks for completion notification.
+Inngest documents durable step boundaries, independent retries for steps, idempotency controls, and explicit non-retriable error handling.
 
-### First-class PPTX interpretation
+Why that matters for Basquio:
 
-Microsoft's Open XML documentation shows that slide layouts and slide masters are explicit PresentationML structures, with placeholders, style inheritance, and layout identifiers. That means PPTX templates can be parsed into real layout constraints instead of being treated as shallow theme hints.
+- large decks should be allowed to think longer than small decks
+- parsing, planning, critique, and render should not share one fragile request lifecycle
+- revision loops need durable checkpoints
 
-## Stage-By-Stage Orchestration Plan
+Inference:
 
-### Stage 1: Intake
+Basquio should use Inngest as the outer durable workflow runtime, and long model calls that may exceed ordinary HTTP expectations should use async/background execution patterns inside those stages where practical.
+
+### 3. Strong prompts are not enough; contracts and verification loops matter
+
+OpenAI's GPT-5.4 prompt guidance says the model performs best when prompts specify the output contract, tool-use expectations, and completion criteria.
+The same guide says reasoning effort is a last-mile knob, and many quality gains come first from stronger prompts, clear contracts, and lightweight verification loops.
+
+Why that matters for Basquio:
+
+- the answer is not "turn reasoning up"
+- the answer is "give each stage a narrow job, strict schema, and explicit definition of done"
+
+Inference:
+
+Basquio should prefer stage-specific JSON-schema contracts over giant prose prompts.
+
+### 4. Evaluation must be built in, not bolted on
+
+OpenAI's evaluation best-practices doc recommends eval-driven development, stage-specific evals, logging everything, and calibrating automated graders against human judgment.
+OpenAI's trace-grading guidance recommends grading traces, not just black-box outputs.
+
+Why that matters for Basquio:
+
+- a deck can look plausible while being analytically wrong
+- the real unit of quality is the full run: package understanding, metrics, story, slide plan, and validation history
+
+Inference:
+
+Basquio should store stage traces and grade them, not just score final decks.
+
+### 5. Template input must come from real PresentationML structure
+
+Microsoft's Open XML docs show that PowerPoint masters and layouts are explicit structures with layout identity, inheritance, and placeholders.
+PptxGenJS supports masters and placeholders for generated content, but it is fundamentally a generation library.
+pptx-automizer exists specifically to modify existing PPTX templates and import/customize existing slides, while also documenting the limits of layout-level manipulation.
+
+Why that matters for Basquio:
+
+- a customer PPTX template is not just a color palette
+- layout identity, placeholder catalog, slide size, text styles, and master inheritance all matter
+- if Basquio wants true enterprise template fidelity, it cannot stop at theme extraction
+
+Inference:
+
+Basquio should treat PPTX parsing as a first-class translation stage and should be willing to use a hybrid rendering strategy:
+
+- canonical planning contracts stay renderer-agnostic
+- standard slides can still be generated from `SlideSpec[]`
+- template-critical outputs should use OOXML-aware template instantiation, not only free-placement drawing
+
+### 6. Export-grade visuals require export-grade rendering choices
+
+Apache ECharts documents SVG SSR for export use cases.
+Browserless documents a robust HTML-to-PDF path with explicit wait controls.
+
+Why that matters for Basquio:
+
+- preview charts and export charts are not the same problem
+- PDF generation should be deterministic and server-side
+- advanced charts should render as export assets, not UI leftovers
+
+Inference:
+
+The best rendering split remains:
+
+- native editable PPT charts for standard bar/line/pie/scatter families when editability matters
+- ECharts SVG SSR for advanced or design-critical visuals
+- Browserless for PDF generation from a controlled export HTML layer
+
+### 7. Workbook parsing should stay honest about boundaries
+
+SheetJS documents full-workbook parsing, selective sheet parsing, and encryption limits.
+
+Why that matters for Basquio:
+
+- file parsing is not business understanding
+- the pipeline needs a clean boundary between raw workbook extraction and semantic interpretation
+
+Inference:
+
+Basquio should:
+
+- parse files into normalized data structures first
+- profile them second
+- infer package semantics third
+- never fuse parsing logic with story logic
+
+## The Right End-To-End Architecture
+
+### Inputs
+
+Basquio should treat these as mandatory first-class inputs:
+
+1. Evidence package
+   - multiple CSV, XLS, XLSX, and support files
+2. Knowledge brief
+   - audience
+   - objective
+   - thesis
+   - stakes
+   - business context
+3. Design target
+   - PPTX template, design token file, or style reference
+
+### Core principle
+
+Each stage should answer one kind of question:
+
+- what is this package
+- what should be computed
+- what did the computation show
+- what matters most
+- what is the argument
+- how many slides and sections should exist
+- how should each slide work
+- does the plan survive critique
+
+### Canonical stage graph
+
+1. Intake and profiling
+2. Package semantics inference
+3. Metric planning
+4. Deterministic analytics execution
+5. Insight ranking
+6. Story architecture
+7. Outline architecture
+8. Design translation
+9. Slide architecture
+10. Deterministic validation
+11. Independent semantic critique
+12. Targeted revision loop
+13. PPTX and PDF rendering
+14. Artifact QA and delivery
+
+## Stage-By-Stage Contracts
+
+### Stage 1: Intake and profiling
 
 Input:
 
 - uploaded files
 - brief
-- style input
+- design target
 
 Output:
 
-- normalized upload manifest
-- file fingerprints
-- source metadata
+- `UploadManifest`
+- `DatasetProfile[]`
+- `TemplateInputManifest`
+- `RunEnvelope`
 
 Purpose:
 
-- preserve package identity and prepare durable run state
+- durable identity
+- fingerprints
+- sheet and column previews
+- file role hints
+- initial size and complexity estimate
+
+Design note:
+
+This stage should not attempt business reasoning.
 
 ### Stage 2: Package semantics inference
 
 Input:
 
-- `DatasetProfile`
+- `DatasetProfile[]`
 - brief
-- file manifest
+- support-doc snippets when present
 
 Output:
 
 - `PackageSemantics`
 
-Responsibilities:
+This contract should include:
 
-- infer entities
-- infer relationships and join hypotheses
-- infer time grains
-- infer metric candidates
-- infer answerable business questions
-- infer methodology and support-file roles
+- entities
+- candidate relationships with explicit `leftFile`, `leftKey`, `rightFile`, `rightKey`
+- join confidence and rationale
+- time grains
+- definitions and methodology hints
+- likely fact tables vs support tables
+- unanswered questions
+- answerable business questions
+
+Why:
+
+This is the "understand the package" stage.
+It is where AI proves it can read the evidence package instead of following filename heuristics.
 
 ### Stage 3: Metric planning
 
 Input:
 
 - `PackageSemantics`
-- `DatasetProfile`
+- `DatasetProfile[]`
 - brief
 
 Output:
 
 - `ExecutableMetricSpec[]`
 
-Responsibilities:
+This contract should include:
 
-- choose what to compute
-- choose grouping dimensions
-- request derived tables
-- define filters, joins, and time windows
+- metric id
+- business question served
+- source files used
+- join path
+- filters
+- grouping dimensions
+- aggregation method
+- time windows
+- derived-table requirements
+- expected output shape
+- evidence lineage expectations
 
 Rule:
 
-- the model decides the computation plan
-- code executes it deterministically
+The model proposes the computation plan.
+Code executes it.
 
 ### Stage 4: Deterministic analytics execution
 
@@ -139,11 +310,17 @@ Output:
 
 - `AnalyticsResult`
 
-Responsibilities:
+This contract should include:
 
-- execute metrics
-- materialize derived tables
-- preserve evidence refs and provenance
+- materialized metric outputs
+- derived tables
+- evidence refs
+- provenance
+- warnings
+
+Rule:
+
+No model improvisation here.
 
 ### Stage 5: Insight ranking
 
@@ -151,19 +328,25 @@ Input:
 
 - `AnalyticsResult`
 - brief
-- reviewer feedback when present
 
 Output:
 
 - `InsightSpec[]`
 
-Responsibilities:
+This contract should include:
 
-- identify what matters
-- prioritize by strategic relevance
-- attach evidence and confidence
+- claim
+- why it matters to the brief
+- evidence refs
+- confidence
+- severity or opportunity score
+- caveats
 
-### Stage 6: Narrative planning
+Purpose:
+
+- separate "interesting statistic" from "important executive insight"
+
+### Stage 6: Story architecture
 
 Input:
 
@@ -174,43 +357,68 @@ Output:
 
 - `StorySpec`
 
-Responsibilities:
+This contract should include:
 
-- define thesis
-- decide argumentative arc
-- frame implications and recommendations
+- working thesis
+- counterpoints
+- section goals
+- implication ladder
+- recommendation themes
 
-### Stage 7: Outline planning
+Purpose:
+
+- decide the argument, not the slides
+
+### Stage 7: Outline architecture
 
 Input:
 
 - `StorySpec`
 - `InsightSpec[]`
+- complexity estimate
 
 Output:
 
 - `ReportOutline`
 
-Responsibilities:
+This contract should include:
 
-- define sections
-- allocate emphasis
-- decide total slide budget range
+- section order
+- slide budget range
+- emphasis allocation
+- transition intent between sections
+
+Purpose:
+
+- decide whether this deck is 7 slides or 27 slides
+- this is where larger decks earn more time and more revision budget
 
 ### Stage 8: Design translation
 
 Input:
 
-- template file or brand-token file
+- PPTX template or token file
 
 Output:
 
 - `TemplateProfile`
 
-Responsibilities:
+This contract should include:
 
-- extract fonts, colors, masters, layouts, placeholders, slide size, and source fingerprint
-- expose design constraints in a machine-usable contract
+- slide size
+- theme fonts
+- theme colors
+- master identities
+- layout identities
+- placeholder types
+- placeholder geometry
+- text-style inheritance hints
+- safe layout families by slide purpose
+- source fingerprint
+
+Purpose:
+
+- convert design input into machine-usable constraints before slide planning
 
 ### Stage 9: Slide architecture
 
@@ -226,11 +434,22 @@ Output:
 
 - `SlideSpec[]`
 
-Responsibilities:
+This contract should include, for each slide:
 
-- decide slide count
-- choose layout by slide purpose
-- bind each slide to claims, evidence, charts, notes, and transitions
+- slide objective
+- section id
+- slide claim
+- evidence refs
+- layout family
+- placeholder mapping
+- chart binding
+- transition intent
+- notes and caveats
+
+Purpose:
+
+- decide the actual deck
+- not just "put insight 1 on slide 1"
 
 ### Stage 10: Deterministic validation
 
@@ -238,20 +457,19 @@ Input:
 
 - `SlideSpec[]`
 - `AnalyticsResult`
-- claims and refs
 
 Output:
 
-- deterministic issues
+- deterministic validation issues
 
-Responsibilities:
+Checks:
 
-- verify evidence ids
-- verify chart bindings
-- verify numeric assertions
-- verify structural consistency
+- evidence ids resolve
+- chart bindings resolve
+- numbers on slides match computed outputs
+- slide structure is internally consistent
 
-### Stage 11: Semantic critic
+### Stage 11: Independent semantic critique
 
 Input:
 
@@ -260,32 +478,47 @@ Input:
 
 Output:
 
-- semantic issues with suggested backtrack stage
+- `SemanticReview`
 
-Responsibilities:
+Checks:
 
-- challenge unsupported claims
-- challenge weak recommendation logic
-- challenge story coherence
-- challenge misuse of evidence
+- unsupported claims
+- recommendations not justified by evidence
+- narrative incoherence
+- overstated certainty
+- misleading chart rhetoric
+- missing caveats or counter-evidence
+- likely backtrack stage
 
-### Stage 12: Revision loop
+Purpose:
+
+- one AI should not grade itself in disguise
+
+### Stage 12: Targeted revision loop
 
 Input:
 
-- merged validation issues
+- deterministic issues
+- semantic issues
 
 Output:
 
-- revised metrics, insights, story, outline, or slides
+- revised stage artifacts
 
-Responsibilities:
+Control rule:
 
-- rerun only the stage family implicated by the critic when possible
-- preserve trace history across attempts
-- stop when the plan passes or attempt budget is exhausted
+Backtrack to the smallest responsible stage family:
 
-### Stage 13: Rendering and artifact QA
+- semantics
+- metrics
+- insights
+- story
+- outline
+- slides
+
+Do not restart the whole run unless the package understanding itself is broken.
+
+### Stage 13: Rendering
 
 Input:
 
@@ -296,288 +529,355 @@ Output:
 
 - PPTX
 - PDF
-- artifact metadata
-- quality report
+
+Renderer policy:
+
+- PPTX path should prefer native editable charts for standard families
+- advanced visuals should use ECharts SVG SSR
+- PDF path should render from an export-controlled HTML layer via Browserless
+
+### Stage 14: Artifact QA and delivery
+
+Input:
+
+- artifacts
+- validation outputs
+- run trace
+
+Output:
+
+- `ArtifactManifest`
+- `QualityReport`
+- audit trail
 
 ## Agent Roles Map
 
-The roles should be distinct and non-overlapping:
+The roles should be distinct and non-overlapping.
 
-| Role | Owns | Must Not Do |
+| Role | Owns | Must not do |
 | --- | --- | --- |
-| Package interpreter | `PackageSemantics` | invent numbers or final story |
-| Metric planner | `ExecutableMetricSpec[]` | compute analytics in prose |
-| Analytics executor | `AnalyticsResult` | improvise unsupported metrics |
-| Insight ranker | `InsightSpec[]` | choose layouts or template details |
-| Story architect | `StorySpec` | bind chart fields directly |
-| Outline planner | `ReportOutline` | skip explicit section logic |
-| Design translator | `TemplateProfile` | render final slides |
+| Package interpreter | `PackageSemantics` | compute metrics in prose or decide final deck |
+| Metric planner | `ExecutableMetricSpec[]` | tell the story |
+| Analytics executor | `AnalyticsResult` | invent business meaning |
+| Insight ranker | `InsightSpec[]` | choose slide layouts |
+| Story architect | `StorySpec` | bind raw fields to charts |
+| Outline architect | `ReportOutline` | decide numeric truth |
+| Design translator | `TemplateProfile` | decide business claims |
 | Slide architect | `SlideSpec[]` | ignore template constraints |
-| Deterministic validator | `ValidationIssue[]` | judge executive quality alone |
-| Semantic critic | semantic issues and backtrack hints | recompute analytics directly |
+| Deterministic validator | validation issues | judge strategic quality alone |
+| Semantic critic | `SemanticReview` | recompute metrics directly |
 
-## Contract And Schema Map
+## Long-Running Orchestration Model
 
-| Stage | Contract |
-| --- | --- |
-| Intake | upload manifest, file fingerprints, source metadata |
-| Package semantics | `PackageSemantics` |
-| Metric planning | `ExecutableMetricSpec[]` |
-| Analytics execution | `AnalyticsResult` |
-| Insight ranking | `InsightSpec[]` |
-| Narrative planning | `StorySpec` |
-| Outline planning | `ReportOutline` |
-| Design translation | `TemplateProfile` |
-| Slide architecture | `SlideSpec[]` |
-| Validation | `ValidationReport` |
-| Auditability | `StageTrace[]` |
-| Delivery | `ArtifactManifest`, `QualityReport` |
-
-## Template And Design Recommendations
-
-The design target should become first-class by converting it into explicit constraints before slide planning.
-
-For PPTX inputs:
-
-- parse slide size from the presentation part
-- parse theme colors and fonts from the theme part
-- parse layout metadata and placeholders from slide layouts and slide masters
-- preserve layout names, master names, and placeholder catalogs
-- fingerprint the source file so traces and reruns know which template was used
-
-For brand-token inputs:
-
-- map colors, fonts, spacing, logo rules, and typography into the same `TemplateProfile`
+### Durable outer runtime
 
 Inference from sources:
 
-- Basquio should prefer slide planning against placeholder-bearing layouts instead of free-placement rendering, because PresentationML explicitly encodes layout intent through masters and layouts
+Use Inngest as the outer job runtime because the workload maps well to:
 
-## Multi-File Understanding Without Hard-Coded Mapping
+- step-level retries
+- durable checkpoints
+- idempotent event handling
+- resumable multi-stage work
 
-The package-understanding stage should reason from file content and structure, not from file names alone.
-
-Recommended approach:
-
-- generate compact file profiles first
-- keep row access available for deterministic execution
-- infer candidate joins from shared keys, repeated identifiers, time grains, and semantic labels
-- infer methodology and support-doc roles separately from fact-table roles
-- ask the package-interpreter stage for confidence on joins and unanswered questions
+### Async model execution for heavy stages
 
 Inference from sources:
 
-- this is better implemented as a planning stage plus deterministic execution stage than as direct tool-calling from one monolithic prompt, because the cited agent guidance favors composable workflows when subproblems and handoff contracts are known
+For very long model calls, especially large package interpretation or deep critique on big decks, use asynchronous/background model execution patterns instead of assuming each model call fits comfortably inside normal synchronous request expectations.
 
-## Model Assignment By Stage
+### Attempt budgeting
 
-These assignments are recommendations, not direct claims from any one source.
+Attempt budgets should scale by complexity:
 
-Inference from sources plus current stack:
+- small deck, clean package: fewer loops
+- large deck, ambiguous package: more loops
 
-| Stage family | Recommended model posture |
-| --- | --- |
-| Package semantics, story, outline, slide planning | strong long-running reasoning model such as GPT-5.4 with medium to high reasoning effort |
-| Metric planning | reasoning-capable structured-output model, usually one tier below the heaviest planning model when package complexity is modest |
-| Extraction and shallow classification | lighter model settings, including GPT-5.1 with none or low reasoning effort when the task is contract filling rather than long-horizon planning |
-| Semantic critic | different provider or at least different model family than the primary planner when available |
+Complexity inputs should include:
+
+- number of files
+- total rows
+- number of inferred relationships
+- number of unanswered package questions
+- requested slide budget
+- critic rejection severity
+
+### Failure classes
+
+1. Transient
+   - rate limit
+   - timeout
+   - temporary storage/network issue
+2. Contract failure
+   - unreadable input
+   - encrypted unsupported workbook
+   - irreconcilable join ambiguity
+   - invalid template
+3. Quality failure
+   - critic rejection
+   - unsupported claim
+   - recommendation logic failure
+
+Behavior:
+
+- transient: retry current step
+- contract failure: stop and request input correction
+- quality failure: backtrack to implicated stage and revise
+
+## Model Assignment
+
+These assignments are recommendations inferred from the official model guidance, not direct claims from a single source.
+
+### Package semantics
+
+- strongest reasoning model available
+- medium or high reasoning effort
+
+Reason:
+
+- long-context interpretation
+- ambiguity handling
+- multi-file reasoning
+
+### Metric planning
+
+- strong structured-output model
+- low to medium reasoning effort unless ambiguity is high
+
+Reason:
+
+- it is planning-heavy but bounded
+
+### Insight ranking, story, outline, slide architecture
+
+- strong reasoning model
+- medium reasoning effort by default
+- raise to high for large decks or heavy ambiguity
+
+Reason:
+
+- these are multi-step synthesis tasks
+
+### Light normalization and extraction
+
+- fast low-cost model
+- minimal or none reasoning
+
+Reason:
+
+- OpenAI explicitly recommends low/no reasoning for lightweight structured transforms and extraction
+
+### Semantic critic
+
+- different provider or at least different model family than the primary planner when practical
+
+Reason:
+
+- reduces same-model blind spots
+- better matches evaluator-optimizer intent
+
+## Template System Recommendation
+
+### What Basquio should do
+
+1. Parse the uploaded PPTX as PresentationML, not as a vague visual hint.
+2. Build a `TemplateProfile` that includes master/layout identity and placeholder geometry.
+3. Let the slide architect plan against those layout families.
+4. Render standard generated slides from the canonical `SlideSpec[]`.
+5. When enterprise template fidelity is critical, use a template-instantiation path that can modify existing PPTX structures instead of only drawing new objects onto blank slides.
+
+### Why
+
+Inference from sources:
+
+PptxGenJS is strong for generation.
+Open XML is the source of truth for template structure.
+pptx-automizer shows that real template modification is possible, while also documenting real limitations.
+
+So the state-of-the-art answer is not "replace everything with one library."
+It is a hybrid:
+
+- plan in a canonical format
+- parse templates structurally
+- instantiate with the right renderer for the fidelity target
+
+## Chart And Visual Recommendation
+
+### Standard business charts
+
+Use native editable PPT charts where possible:
+
+- bar
+- line
+- pie
+- scatter
 
 Why:
 
-- OpenAI documents GPT-5.4 as a production-grade model for long-running, multi-step workflows and explicit output contracts
-- OpenAI documents GPT-5.1 as supporting `none`, `low`, `medium`, and `high` reasoning effort, making it suitable for low-latency structured stages
-- Anthropic's evaluator-optimizer guidance supports having a real evaluator stage instead of a disguised repeat of the generator
+- editability matters to enterprise buyers
 
-Operational recommendation:
+### Advanced or design-critical visuals
 
-- persist requested model, resolved model, provider, reasoning effort, prompt version, and fallback reason in `StageTrace`
+Use ECharts SVG SSR.
 
-## Prompt Contract Guidance
+Why:
 
-Every stage prompt should define:
+- export quality
+- deterministic server-side rendering
+- stronger visual control
 
-- the role
-- allowed inputs
-- the exact output schema
-- what uncertainty must be surfaced
-- what the model must not do
-- completion criteria
+### PDF
 
-Best practice supported by OpenAI's GPT-5.4 guidance:
+Use Browserless from controlled export HTML.
 
-- define the output contract explicitly
-- define tool-use expectations explicitly
-- define what "done" means explicitly
+Why:
 
-## Orchestration Loop Design
-
-Recommended loop:
-
-1. Run semantics.
-2. Run metric planning.
-3. Execute analytics.
-4. Run insight ranking.
-5. Run story and outline planning.
-6. Run design translation.
-7. Run slide planning.
-8. Run deterministic validation.
-9. Run semantic critique.
-10. If issues exist, backtrack to the smallest responsible stage family and retry.
-11. If no issues exist, render.
-
-Recommended control rules:
-
-- use attempt budgets that scale with deck size and ambiguity
-- treat parse failures, missing files, and invalid joins as non-retriable when they cannot heal automatically
-- treat transient provider and network faults as retriable
-- persist intermediate artifacts for audit and resume
-
-## Critic And Cross-Model Validation Design
-
-The critic should not just repeat the generator prompt.
-
-Recommended critic checks:
-
-- unsupported or weakly supported claims
-- recommendations that do not follow from evidence
-- story sections that overstate confidence
-- charts whose visual claim does not match the computed metric
-- missing counter-evidence or omitted caveats when confidence is low
-
-Inference from sources:
-
-- when both OpenAI and Anthropic are available, use the opposite provider for the semantic critic when practical; this reduces same-model blind spots and better matches the intent of evaluator-optimizer separation
-
-## Observability And Tracing
-
-Basquio should persist:
-
-- run id
-- dataset and template fingerprints
-- prompt version per stage
-- requested model and resolved model
-- provider
-- reasoning effort when applicable
-- fallback reason
-- validation issues
-- retry count by stage
-- final artifact metadata
-
-This is required to make AI-native generation debuggable and trustworthy.
-
-## Failure Handling And Retry Strategy
-
-Use Inngest stage semantics to separate failure classes:
-
-- retriable transient failures: model provider timeouts, temporary network issues, rate limits
-- non-retriable contract failures: unparseable input, irreconcilable joins, missing required evidence
-- revision-triggering quality failures: critic rejects story, metrics, or slide plan
-
-Recommended behavior:
-
-- transient failure: retry the current step
-- contract failure: stop and surface a needs-input state
-- quality failure: backtrack to the implicated upstream stage and replan
+- deterministic output
+- explicit wait controls
+- consistent rendering path
 
 ## Evaluation Framework
 
-Canonical eval case:
+### Canonical case
 
-- input: 10 SGS sustainability AI visibility source files
-- brief: explicit audience, objective, stakes, thesis, and context
-- design target: branded SGS PPTX template
-- expected output: branded SGS AI visibility deck in PPTX and PDF
+Use the SGS-style benchmark the product keeps referring to:
 
-Required eval dimensions:
+- 10 source files in
+- business brief in
+- branded SGS-like template in
+- executive deck out
 
-- semantic correctness of joins and entities
-- numeric correctness of computed metrics
-- evidence coverage per substantive claim
-- template fidelity
-- section logic and narrative coherence
-- recommendation validity
-- artifact integrity
+### What to evaluate
 
-Suggested acceptance checks:
+1. Package understanding
+   - entity correctness
+   - join correctness
+   - methodology interpretation
+2. Metric planning
+   - right computations chosen
+   - right grouping choices
+3. Analytics execution
+   - numeric correctness
+   - lineage correctness
+4. Insight quality
+   - relevance to brief
+   - evidence coverage
+5. Narrative quality
+   - coherence
+   - recommendation validity
+6. Slide planning
+   - layout fit
+   - chart fit
+   - section logic
+7. Template fidelity
+   - colors
+   - typography
+   - layout family use
+   - placeholder adherence
+8. Output quality
+   - PPTX integrity
+   - PDF integrity
 
-- zero broken evidence ids
+### How to evaluate
+
+Use three layers:
+
+1. Deterministic checks
+2. LLM graders on stage artifacts and traces
+3. Human calibration set
+
+Inference from sources:
+
+The best Basquio eval program should grade traces, not only final decks.
+
+### Acceptance rules for the canonical eval
+
+- zero unresolved deterministic numeric mismatches
+- zero broken evidence refs
 - zero broken chart bindings
-- zero deterministic numeric mismatches
-- semantic critic passes without high-severity unsupported-claim issues
-- template-derived fonts, colors, and layout families appear in output plan
-- reviewer can trace each slide claim back to deterministic evidence
+- no high-severity semantic critic failures
+- every substantive slide claim maps to deterministic evidence
+- template-derived layout families appear in the plan
+- human reviewers agree the deck could credibly be sent to an executive audience
 
-## Phased Implementation Roadmap
+## What Basquio Should Stop Doing
 
-### Phase 1: Must fix before canonical SGS success
+These are the anti-patterns to kill completely.
 
-- make `ExecutableMetricSpec[]` a required contract before analytics
-- make PPTX parsing first-class in `TemplateProfile`
-- replace fixed-spine slide planning with outline-driven dynamic slide architecture
-- add semantic critic and backtrack loop before rendering
-- persist `StageTrace` for every LLM-assisted stage
-
-### Phase 2: Make the system auditable and scalable
-
-- add richer join-confidence and unanswered-question reporting in `PackageSemantics`
-- improve attempt budgeting by deck size and ambiguity
-- persist intermediate stage artifacts for deeper replay and inspection
-- add richer semantic eval sets around recommendation quality
-
-### Phase 3: Raise report quality ceiling
-
-- stronger package-understanding prompts and benchmarks
-- richer template-matching logic for placeholder families and master inheritance
-- better design translation from token files
-- canonical eval suites beyond SGS
-
-## Anti-Patterns To Avoid
-
-- one giant prompt that both interprets the package and invents the output
-- hard-coded filename mapping for report logic
+- one giant prompt that both understands the package and invents the deck
 - hard-coded slide spines
-- treating template input as a shallow theme fallback
-- letting the model compute numbers in prose instead of code
-- deterministic validation without semantic critique
-- semantic critique without backtracking
-- silent fallbacks with no trace
-- using preview-component props as the export contract
+- filename-based mapping pretending to be intelligence
+- model-written numbers that are not executed by code
+- using the same model twice and calling the second pass a critic
+- treating template input as a color palette only
+- treating preview chart code as export architecture
+- swallowing model failures or fallback reasons
+- running long jobs inside fragile synchronous request lifecycles
+- shipping before trace-based evals exist
 
-## Blunt Gap Analysis Of Current Systems
+## Blunt Gap Analysis
 
-What usually makes current systems fail at this problem:
+What makes systems like this fail in practice:
 
-- they confuse "LLM can summarize data" with "system understands an evidence package"
-- they never separate planning from execution, so metrics become hand-wavy prose
-- they treat templates as color palettes instead of structural constraints
-- they hard-code slide count and report sections
-- they validate syntax but not reasoning
-- they cannot explain which model, prompt, or fallback produced a weak output
-- they optimize for fast demos instead of auditable deliverables
+- they optimize for demo speed, not evidence integrity
+- they confuse "can summarize files" with "understands the package"
+- they never separate computation planning from computation execution
+- they generate recommendations before proving the evidence path
+- they do not let design constraints shape slide planning early enough
+- they validate syntax and formatting, not business defensibility
+- they do not preserve enough trace data to debug failures
 
-## Conceptual Gap In Current Basquio
+## Recommended Basquio Roadmap
 
-Before this refactor, the repo shape was moving in the right direction but still missed the core behavior:
+### Phase 1: Make the intelligence loop real
 
-- slide planning was too close to a scripted deck composer
-- template interpretation did not yet materially drive planning
-- metric discovery was too shallow and too heuristic
-- validation was deterministic-only
-- orchestration behaved like a single forward pass instead of a planner-critic loop
-- model fallbacks were not sufficiently auditable
+- harden `PackageSemantics`
+- require explicit `ExecutableMetricSpec[]`
+- route every claim through deterministic analytics lineage
+- make semantic critique mandatory before render
+
+### Phase 2: Make template input truly enterprise-grade
+
+- complete placeholder-geometry parsing
+- add template-instantiation path for high-fidelity PPTX outputs
+- benchmark layout adherence on a canonical branded template set
+
+### Phase 3: Make long runs robust
+
+- keep all stages durable in Inngest
+- add async/background model execution where stage duration warrants it
+- scale revision budgets by package complexity
+- improve queue, progress, and recovery observability
+
+### Phase 4: Make quality measurable
+
+- build canonical SGS-style eval set
+- add stage-level and trace-level graders
+- calibrate automated graders with human review
+- track prompt/model/version regressions over time
+
+## Updated Research Prompt
+
+Use the canonical prompt in [architecture-research-prompt.md](/Users/marcodicesare/Documents/Projects/basquio/docs/architecture-research-prompt.md).
 
 ## Sources
 
 - Anthropic, "Building effective agents": https://www.anthropic.com/research/building-effective-agents
 - Anthropic, "Effective harnesses for long-running agents": https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+- Anthropic, "Context engineering for agents": https://www.anthropic.com/engineering/context-engineering-for-agents
+- OpenAI docs, "Background mode": https://developers.openai.com/api/docs/guides/background/
+- OpenAI docs, "Deep research": https://developers.openai.com/api/docs/guides/deep-research/
+- OpenAI docs, "Prompt guidance for GPT-5.4": https://developers.openai.com/api/docs/guides/prompt-guidance/
+- OpenAI docs, "Evaluation best practices": https://developers.openai.com/api/docs/guides/evaluation-best-practices/
+- OpenAI docs, "Trace grading": https://developers.openai.com/api/docs/guides/trace-grading/
+- OpenAI cookbook, "Temporal Agents with Knowledge Graphs": https://developers.openai.com/cookbook/examples/partners/temporal_agents_with_knowledge_graphs/temporal_agents/
 - Microsoft Learn, "Working with slide layouts": https://learn.microsoft.com/en-us/office/open-xml/presentation/working-with-slide-layouts
 - Microsoft Learn, "Working with slide masters": https://learn.microsoft.com/en-us/office/open-xml/presentation/working-with-slide-masters
+- Inngest docs, "Handling idempotency": https://www.inngest.com/docs/guides/handling-idempotency
 - Inngest docs, "Retries": https://www.inngest.com/docs/features/inngest-functions/error-retries/retries
 - Inngest docs, "Errors": https://www.inngest.com/docs/features/inngest-functions/error-retries/inngest-errors
-- OpenAI docs, "Prompt guidance for GPT-5.4": https://developers.openai.com/api/docs/guides/prompt-guidance/
-- OpenAI docs, "Using GPT-5.4": https://developers.openai.com/api/docs/guides/latest-model/
-- OpenAI API reference search results for reasoning effort and structured outputs in GPT-5.1: https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create/
-- OpenAI cookbook, "GPT-5 New Params and Tools": https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_new_params_and_tools/
-- Self-Refine: Iterative Refinement with Self-Feedback: https://arxiv.org/abs/2303.17651
-- Reflexion: Language Agents with Verbal Reinforcement Learning: https://arxiv.org/abs/2303.11366
-- LLMCompiler: https://arxiv.org/abs/2312.04511
+- PptxGenJS docs, "Slide Masters and Placeholders": https://gitbrent.github.io/PptxGenJS/docs/masters/
+- pptx-automizer README: https://github.com/singerla/pptx-automizer
+- Apache ECharts, "Server-side Rendering": https://echarts.apache.org/en/tutorial.html#Server-side%20Rendering
+- Browserless docs, "PDF API": https://docs.browserless.io/rest-apis/pdf-api
+- SheetJS docs, "Parse Options": https://docs.sheetjs.com/docs/api/parse-options
