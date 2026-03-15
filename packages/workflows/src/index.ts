@@ -152,22 +152,24 @@ export async function runGenerationRequest(
     fn: () => Promise<T> | T,
     options?: {
       executionId?: string;
+      attempt?: number;
       detail?: (result: T) => string;
       payload?: (result: T) => Record<string, unknown>;
     },
   ) => {
-    await persistence.updateJobStage(stage, "running", `Running ${stage}.`);
+    const stageLabel = formatStageLabel(stage, options?.attempt);
+    await persistence.updateJobStage(stageLabel, "running", `Running ${stage}.`);
     await persistence.touchExecutionLease();
     const heartbeat = setInterval(() => {
       void persistence.touchExecutionLease().catch(() => {});
     }, 15_000);
 
     try {
-      const result = await runStep(options?.executionId ?? toStageExecutionId(stage), fn);
+      const result = await runStep(options?.executionId ?? toStageExecutionId(stage, options?.attempt ?? 1), fn);
       clearInterval(heartbeat);
       await persistence.touchExecutionLease();
       await persistence.updateJobStage(
-        stage,
+        stageLabel,
         "completed",
         options?.detail ? options.detail(result) : `${stage} completed.`,
         options?.payload ? options.payload(result) : {},
@@ -179,7 +181,7 @@ export async function runGenerationRequest(
       const status: Extract<GenerationJobStatus, "failed" | "needs_input"> =
         error instanceof GenerationValidationError ? "needs_input" : "failed";
       const message = error instanceof Error ? error.message : "Stage execution failed.";
-      await persistence.updateJobStage(stage, status, message, { error: message });
+      await persistence.updateJobStage(stageLabel, status, message, { error: message });
       throw error;
     }
   };
@@ -276,6 +278,7 @@ export async function runGenerationRequest(
           workbook: parsed.normalizedWorkbook,
           packageSemantics,
           metricPlan,
+          onHeartbeat: () => persistence.touchExecutionLease(),
         }),
       {
         detail: (result) =>
@@ -336,6 +339,7 @@ export async function runGenerationRequest(
               { onTrace: recordTrace },
             ),
           {
+            attempt,
             executionId: toStageExecutionId("metric planning", attempt),
             detail: (result) => `Attempt ${attempt}: replanned ${result.length} executable metrics from reviewer feedback.`,
             payload: (result) => ({ metricCount: result.length, attempt }),
@@ -350,8 +354,10 @@ export async function runGenerationRequest(
               workbook: parsed.normalizedWorkbook,
               packageSemantics,
               metricPlan,
+              onHeartbeat: () => persistence.touchExecutionLease(),
             }),
           {
+            attempt,
             executionId: toStageExecutionId("deterministic analytics execution", attempt),
             detail: (result) =>
               `Attempt ${attempt}: recomputed ${result.metrics.length} metrics, ${result.derivedTables.length} derived tables, and ${result.evidenceRefs.length} evidence refs.`,
@@ -389,6 +395,7 @@ export async function runGenerationRequest(
               { onTrace: recordTrace },
             ),
           {
+            attempt,
             executionId: toStageExecutionId("insight ranking", attempt),
             detail: (result) => `Attempt ${attempt}: ranked ${result.length} evidence-backed insights.`,
             payload: (result) => ({ insightCount: result.length, attempt }),
@@ -416,6 +423,7 @@ export async function runGenerationRequest(
               { onTrace: recordTrace },
             ),
           {
+            attempt,
             executionId: toStageExecutionId("story architecture", attempt),
             detail: (result) => `Attempt ${attempt}: planned story "${result.title || "Basquio evidence package report"}".`,
             payload: (result) => ({
@@ -436,6 +444,7 @@ export async function runGenerationRequest(
               brief,
             }),
           {
+            attempt,
             executionId: toStageExecutionId("outline architecture", attempt),
             detail: (result) => `Attempt ${attempt}: locked a ${result.sections.length}-section report outline before slide planning.`,
             payload: (result) => ({ sectionCount: result.sections.length, attempt }),
@@ -461,6 +470,7 @@ export async function runGenerationRequest(
             });
           },
           {
+            attempt,
             detail: (result) =>
               `Attempt ${attempt}: translated ${result.sourceType} template input into ${result.layouts.length} layout-aware rendering constraints.`,
             payload: (result) => ({
@@ -506,6 +516,7 @@ export async function runGenerationRequest(
           };
         },
         {
+          attempt,
           executionId: toStageExecutionId("slide architecture", attempt),
           detail: (result) => `Attempt ${attempt}: planned ${result.slides.length} slides and ${result.charts.length} charts.`,
           payload: (result) => ({
@@ -531,6 +542,7 @@ export async function runGenerationRequest(
             attemptCount: attempt,
           }),
         {
+          attempt,
           executionId: toStageExecutionId("deterministic validation", attempt),
           detail: (result) =>
             `Attempt ${attempt}: deterministic validation finished with ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}.`,
@@ -556,6 +568,7 @@ export async function runGenerationRequest(
             attemptCount: attempt,
           }),
         {
+          attempt,
           executionId: toStageExecutionId("semantic critique", attempt),
           detail: (result) =>
             `Attempt ${attempt}: semantic critique finished with ${result.report.issues.length} issue${result.report.issues.length === 1 ? "" : "s"}.`,
@@ -588,6 +601,7 @@ export async function runGenerationRequest(
           };
         },
         {
+          attempt,
           executionId: toStageExecutionId("targeted revision loop", attempt),
           detail: (result) =>
             result.report.status === "passed"
@@ -743,6 +757,8 @@ export async function runGenerationRequest(
 
     await persistence.updateQualityReport(artifactDelivery.qualityReport);
 
+    assertArtifactDeliveryIsDurable(artifactDelivery);
+
     const summary = generationRunSummarySchema.parse({
       jobId: request.jobId,
       createdAt,
@@ -810,6 +826,10 @@ function toStageExecutionId(stage: string, attempt = 1) {
     .replace(/^-+|-+$/g, "");
 
   return attempt > 1 ? `${normalizedStage}-attempt-${attempt}` : normalizedStage;
+}
+
+function formatStageLabel(stage: string, attempt = 1) {
+  return attempt > 1 ? `${stage} (attempt ${attempt})` : stage;
 }
 
 async function resolveSourceFiles(request: GenerationRequest) {
@@ -1020,6 +1040,25 @@ async function runPostRenderQa(input: {
     artifactManifest: manifest,
     qualityReport,
   };
+}
+
+function assertArtifactDeliveryIsDurable(input: {
+  artifacts: ArtifactRecord[];
+  qualityReport: { status: "passed" | "warning" | "failed"; checks: QualityCheck[] };
+}) {
+  const missingArtifacts = input.artifacts.filter((artifact) => !artifact.exists).map((artifact) => artifact.kind);
+
+  if (missingArtifacts.length > 0) {
+    throw new Error(`Artifact delivery did not durably persist ${missingArtifacts.join(" and ")}.`);
+  }
+
+  if (input.qualityReport.status === "failed") {
+    const failedChecks = input.qualityReport.checks
+      .filter((check) => check.status === "failed")
+      .map((check) => check.detail)
+      .filter(Boolean);
+    throw new Error(failedChecks[0] || "Artifact QA failed after render.");
+  }
 }
 
 async function persistArtifact(jobId: string, kind: "pptx" | "pdf", artifact: BinaryArtifact): Promise<ArtifactRecord> {

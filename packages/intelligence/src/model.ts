@@ -43,12 +43,15 @@ export async function generateStructuredStage<TSchema extends z.ZodTypeAny>({
   }
 
   try {
+    const shouldOmitTemperature =
+      resolved.provider === "openai" && isOpenAiReasoningModel(resolved.resolvedModelId);
+
     const { object } = await generateObject({
       model: resolved.model,
       schema,
       schemaName: buildSchemaName(stage),
       prompt,
-      temperature: 0.2,
+      ...(shouldOmitTemperature ? {} : { temperature: 0.2 }),
       providerOptions:
         resolved.provider === "openai"
           ? {
@@ -90,6 +93,10 @@ export async function generateStructuredStage<TSchema extends z.ZodTypeAny>({
       }),
     };
   }
+}
+
+function isOpenAiReasoningModel(modelId: string) {
+  return /^(gpt-5(?:$|[-.])|o[1-9](?:$|[-.]))/i.test(modelId);
 }
 
 function resolveModel(modelId: string, providerPreference: ProviderPreference) {
