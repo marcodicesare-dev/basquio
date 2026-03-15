@@ -56,3 +56,12 @@ secure_password_change = false
 max_frequency = "1m0s"
 otp_length = 8
 otp_expiry = 3600
+
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_CURSOR_API_KEY)"
+admin_email = "veronica@basquio.com"
+sender_name = "Veronica from Basquio"
