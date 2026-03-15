@@ -81,10 +81,11 @@ function shouldRecoverStalledExecution(status: Awaited<ReturnType<typeof getGene
     return false;
   }
 
-  const runningStepStartedAt =
-    [...status.steps].reverse().find((step) => step.status === "running")?.startedAt ?? null;
-  const lastObservedAt = runningStepStartedAt ?? status.updatedAt ?? status.createdAt;
-  const staleThresholdMs = runningStepStartedAt ? 180_000 : 45_000;
+  const hasRunningStep = Boolean(
+    [...status.steps].reverse().find((step) => step.status === "running"),
+  );
+  const lastObservedAt = status.updatedAt ?? status.createdAt;
+  const staleThresholdMs = hasRunningStep ? 180_000 : 45_000;
 
   if (!lastObservedAt || Date.now() - new Date(lastObservedAt).getTime() < staleThresholdMs) {
     return false;

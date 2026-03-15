@@ -19,6 +19,7 @@ type JobRow = {
   status: GenerationJobStatus;
   created_at?: string;
   updated_at?: string;
+  execution_heartbeat_at?: string;
   failure_message?: string | null;
   summary?: unknown;
 };
@@ -60,9 +61,9 @@ export type GenerationStatusSnapshot = {
 
 export async function getGenerationStatus(jobId: string, viewerId?: string): Promise<GenerationStatusSnapshot | null> {
   const credentials = getSupabaseCredentials();
-  const fallbackContext = viewerId ? null : await loadFallbackContext(jobId);
 
   if (!credentials) {
+    const fallbackContext = await loadFallbackContext(jobId);
     return buildFallbackSnapshot(jobId, fallbackContext);
   }
 
@@ -70,7 +71,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     ...credentials,
     table: "generation_jobs",
     query: {
-      select: "id,job_key,status,created_at,updated_at,failure_message,summary",
+      select: "id,job_key,status,created_at,updated_at,execution_heartbeat_at,failure_message,summary",
       job_key: `eq.${jobId}`,
       ...(viewerId ? { requested_by: `eq.${viewerId}` } : {}),
       limit: "1",
@@ -79,6 +80,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
 
   const job = jobs[0];
   if (!job) {
+    const fallbackContext = await loadFallbackContext(jobId);
     return buildFallbackSnapshot(jobId, fallbackContext);
   }
 
@@ -137,7 +139,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     [...steps].reverse().find((step) => step.status === "completed") ??
     null;
   const createdAt = job.created_at ?? summary?.createdAt ?? new Date().toISOString();
-  const updatedAt = latestObservedStepAt(steps) ?? job.updated_at ?? summary?.createdAt;
+  const updatedAt = latestObservedAt(steps, job);
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
   const progressPercent = computeProgressPercent(steps, summary, derivedStatus);
   const hasNoCheckpoints = steps.length === 0 && !summary;
@@ -217,9 +219,9 @@ function deriveJobStatus(
   return jobStatus ?? "queued";
 }
 
-function latestObservedStepAt(steps: GenerationStepSnapshot[]) {
-  return steps
-    .flatMap((step) => [step.startedAt, step.completedAt])
+function latestObservedAt(steps: GenerationStepSnapshot[], job: Pick<JobRow, "updated_at" | "execution_heartbeat_at" | "created_at">) {
+  return [job.execution_heartbeat_at, job.updated_at, job.created_at]
+    .concat(steps.flatMap((step) => [step.startedAt, step.completedAt]))
     .filter((value): value is string => Boolean(value))
     .sort()
     .at(-1);

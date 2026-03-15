@@ -263,7 +263,7 @@ async function listGenerationRunsFromSupabase(limit: number, viewerId?: string) 
 async function getGenerationRunFromSupabase(jobId: string, viewerId?: string) {
   const credentials = getSupabaseCredentials();
 
-  if (!credentials || !viewerId) {
+  if (!credentials) {
     return null;
   }
 
@@ -274,7 +274,7 @@ async function getGenerationRunFromSupabase(jobId: string, viewerId?: string) {
       query: {
         select: "summary",
         job_key: `eq.${jobId}`,
-        requested_by: `eq.${viewerId}`,
+        ...(viewerId ? { requested_by: `eq.${viewerId}` } : {}),
         limit: "1",
       },
     });
