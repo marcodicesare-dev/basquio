@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const activeExecutions = new Set<string>();
-const STALE_RUNNING_RECOVERY_MS = 45_000;
+const STALE_RUNNING_NO_CHECKPOINT_RECOVERY_MS = 45_000;
+const STALE_RUNNING_STEP_RECOVERY_MS = 180_000;
 
 export async function POST(
   requestForAuth: Request,
@@ -35,11 +36,18 @@ export async function POST(
   }
 
   const lastStatusUpdate = status?.updatedAt ?? status?.createdAt;
+  const runningStepStartedAt =
+    [...(status?.steps ?? [])]
+      .reverse()
+      .find((step) => step.status === "running")?.startedAt ??
+    null;
+  const staleRunningThresholdMs = runningStepStartedAt
+    ? STALE_RUNNING_STEP_RECOVERY_MS
+    : STALE_RUNNING_NO_CHECKPOINT_RECOVERY_MS;
   const isStaleRunningExecution =
     status?.status === "running" &&
-    status.steps.length === 0 &&
     Boolean(lastStatusUpdate) &&
-    Date.now() - new Date(lastStatusUpdate ?? "").getTime() >= STALE_RUNNING_RECOVERY_MS;
+    Date.now() - new Date((runningStepStartedAt ?? lastStatusUpdate) || "").getTime() >= staleRunningThresholdMs;
 
   if (status && !isStaleRunningExecution && (status.steps.length > 0 || status.status === "running")) {
     return NextResponse.json({ status: "running" }, { status: 202 });

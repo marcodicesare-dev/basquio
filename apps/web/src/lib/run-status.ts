@@ -27,6 +27,7 @@ type StepRow = {
   stage: string;
   status: GenerationJobStatus;
   detail?: string;
+  started_at?: string | null;
   completed_at?: string | null;
   payload?: Record<string, unknown>;
 };
@@ -37,6 +38,7 @@ export type GenerationStepSnapshot = {
   attempt: number;
   status: GenerationJobStatus;
   detail: string;
+  startedAt?: string;
   completedAt?: string;
 };
 
@@ -83,7 +85,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     ...credentials,
     table: "generation_job_steps",
     query: {
-      select: "stage,status,detail,completed_at,payload",
+      select: "stage,status,detail,started_at,completed_at,payload",
       job_id: `eq.${job.id}`,
       limit: "100",
     },
@@ -98,6 +100,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
         attempt,
         status: step.status,
         detail: step.detail ?? "",
+        startedAt: step.started_at ?? undefined,
         completedAt: step.completed_at ?? undefined,
       } satisfies GenerationStepSnapshot;
     })
@@ -116,7 +119,7 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     [...steps].reverse().find((step) => step.status === "completed") ??
     null;
   const createdAt = job.created_at ?? summary?.createdAt ?? new Date().toISOString();
-  const updatedAt = job.updated_at ?? summary?.createdAt;
+  const updatedAt = latestObservedStepAt(steps) ?? job.updated_at ?? summary?.createdAt;
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
   const progressPercent = computeProgressPercent(steps, summary, job.status);
   const hasNoCheckpoints = steps.length === 0 && !summary;
@@ -154,6 +157,14 @@ export async function getGenerationStatus(jobId: string, viewerId?: string): Pro
     summary,
     failureMessage: job.failure_message ?? (summary?.failureMessage || undefined),
   };
+}
+
+function latestObservedStepAt(steps: GenerationStepSnapshot[]) {
+  return steps
+    .flatMap((step) => [step.startedAt, step.completedAt])
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1);
 }
 
 async function loadFallbackContext(jobId: string) {
