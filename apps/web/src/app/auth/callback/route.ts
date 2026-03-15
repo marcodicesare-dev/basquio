@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   const redirectOrigin = resolveRedirectOrigin(request, url);
   const signInUrl = new URL("/sign-in", redirectOrigin);
   signInUrl.searchParams.set("next", nextPath);
+  const authCompleteUrl = new URL("/auth/complete", redirectOrigin);
+  authCompleteUrl.searchParams.set("next", nextPath);
   const resetPasswordUrl = new URL(buildResetPasswordPath(nextPath), redirectOrigin);
 
   const supabase = await getSupabaseServerClient();
@@ -55,8 +57,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(signInUrl);
   }
 
-  signInUrl.searchParams.set("error", "We couldn't verify that sign-in link.");
-  return NextResponse.redirect(signInUrl);
+  return NextResponse.redirect(authCompleteUrl);
 }
 
 function resolveRedirectOrigin(request: Request, url: URL) {
