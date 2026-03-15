@@ -6,7 +6,7 @@ import { publicNavLinks } from "@/app/site-content";
 export function PublicSiteNav() {
   return (
     <section className="landing-nav-panel public-nav">
-      <div className="row landing-nav-copy">
+      <div className="row landing-nav-copy landing-nav-brand-row">
         <Link href="/" className="brand-lockup" aria-label="Basquio home">
           <Image
             src="/brand/svg/logo/basquio-logo-light-bg-mono.svg"
@@ -27,7 +27,7 @@ export function PublicSiteNav() {
         ))}
       </nav>
 
-      <div className="row landing-nav-copy">
+      <div className="row landing-nav-copy landing-nav-actions">
         <Link className="button secondary" href="/#output">
           See examples
         </Link>

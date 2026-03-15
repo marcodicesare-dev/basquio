@@ -1242,6 +1242,27 @@ textarea {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.app-frame .button,
+.auth-card .button {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 16px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app-frame .button:hover,
+.auth-card .button:hover {
+  box-shadow: 0 10px 22px rgba(26, 106, 255, 0.16);
+}
+
+.app-frame .button.secondary,
+.auth-card .button.secondary {
+  border-color: rgba(26, 106, 255, 0.14);
+  background: rgba(255, 255, 255, 0.86);
+}
+
 .app-frame {
   display: grid;
   grid-template-columns: 318px minmax(0, 1fr);
@@ -1301,6 +1322,8 @@ textarea {
 .sidebar-signout {
   width: 100%;
   justify-content: center;
+  border-color: rgba(11, 12, 12, 0.08);
+  color: var(--text);
 }
 
 .nav {
@@ -2309,7 +2332,7 @@ textarea {
 
   .hero-main h1,
   .page-hero h1 {
-    font-size: clamp(2.5rem, 14vw, 4rem);
+    font-size: clamp(2.2rem, 12vw, 3.35rem);
   }
 
   .row,
@@ -2318,8 +2341,95 @@ textarea {
     align-items: stretch;
   }
 
+  .landing-nav-panel {
+    gap: 14px;
+    padding: 16px;
+    border-radius: 32px;
+  }
+
+  .public-nav {
+    position: static;
+    top: auto;
+  }
+
+  .landing-nav-brand-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .landing-nav-actions {
+    gap: 10px;
+  }
+
+  .landing-nav-actions .button {
+    width: 100%;
+  }
+
+  .nav-pill {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 0.64rem;
+    letter-spacing: 0.12em;
+  }
+
   .public-nav-links {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .public-nav-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.64);
+    color: var(--text);
+    text-align: center;
+  }
+
+  .hero-stage {
+    gap: 22px;
+  }
+
+  .hero-artifact-stack {
+    gap: 14px;
+  }
+
+  .sidebar {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .sidebar-brand {
+    gap: 8px;
+    padding: 14px 16px;
+  }
+
+  .sidebar-brand .muted,
+  .sidebar-meta {
+    display: none;
+  }
+
+  .sidebar-cta {
+    min-height: 44px;
+  }
+
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .nav-link {
+    min-height: 48px;
+    place-items: center;
+    padding: 12px;
+    text-align: center;
   }
 
   .site-footer,
