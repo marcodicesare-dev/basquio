@@ -14,9 +14,9 @@ Prevent stack-level mistakes that do not violate TypeScript but do violate opera
 
 ## Required Reads
 
-1. `Basquio/docs/architecture.md`
-2. `Basquio/docs/stack-practices.md`
-3. `Basquio/rules/canonical-rules.md`
+1. `docs/architecture.md`
+2. `docs/stack-practices.md`
+3. `rules/canonical-rules.md`
 
 ## Apply This Skill For
 

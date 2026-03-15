@@ -28,11 +28,10 @@ export default async function SignInPage({
   return (
     <div className="page-shell public-page auth-page-shell">
       <section className="technical-panel auth-intro-panel stack-lg">
-        <p className="section-label light">Private workspace</p>
-        <h1>Try the workflow, then cross the auth threshold only when it matters.</h1>
+        <p className="section-label light">Workspace access</p>
+        <h1>Welcome back. Sign in to your workspace.</h1>
         <p className="muted">
-          The landing experience stays open. Uploads, run history, progress tracking, and artifacts now sit behind
-          Supabase email and password auth so each Basquio workspace is private by default.
+          Your uploads, run history, progress tracking, and artifacts stay private to your Basquio account.
         </p>
       </section>
 

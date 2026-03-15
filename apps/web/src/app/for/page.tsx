@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { personas } from "@/app/site-content";
+import { personaSelectionPoints, personas } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
+import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
   title: "Who It's For | Basquio",
   description:
-    "See how Basquio fits brand managers, consultants, strategy teams, and agencies building recurring analytical deliverables.",
+    "See how Basquio fits brand managers, consultants, strategy teams, and agencies running recurring reporting workflows.",
 };
 
 export default function ForPage() {
@@ -21,20 +22,21 @@ export default function ForPage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">Who it&apos;s for</p>
-              <h1>Pick the reporting motion that matches your team.</h1>
+              <h1>Find the reporting pressure that looks most like your team.</h1>
               <p className="page-copy">
-                Each workflow starts with structured evidence and ends with an executive-ready deck. The difference is what
-                kind of pressure the team is under when the story has to land.
+                Basquio is strongest when teams are working from several inputs, answering to a real audience, and still
+                need the deck to feel polished before it leaves the room.
               </p>
             </div>
           </div>
 
           <aside className="page-hero-aside stack">
-            <p className="artifact-kind">Best fit</p>
-            <p>Recurring analytical reporting</p>
-            <p>Stakeholder review cycles</p>
-            <p>Brand-sensitive deliverables</p>
-            <p>Paired PPTX and PDF outputs</p>
+            <p className="artifact-kind">Best fit if</p>
+            <ul className="clean-list">
+              {personaSelectionPoints.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
           </aside>
         </div>
       </section>
@@ -49,7 +51,14 @@ export default function ForPage() {
         ))}
       </section>
 
-      <PublicSiteFooterCta />
+      <PublicSiteFooterCta
+        eyebrow="Not sure yet"
+        title="Compare Basquio with the other tools teams usually start with."
+        copy="If you are still deciding whether this is a better fit than generic AI or a slide tool, the comparison page lays it out plainly."
+        secondaryLabel="Read the comparison"
+        secondaryHref="/compare"
+      />
+      <PublicSiteFooter />
     </div>
   );
 }

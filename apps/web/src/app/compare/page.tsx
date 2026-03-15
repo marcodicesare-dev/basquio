@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 
-import { detailedComparisonRows } from "@/app/site-content";
+import { comparisonColumnNotes, detailedComparisonRows } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
+import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
   title: "Compare | Basquio",
   description:
-    "Compare Basquio with generic AI and slide generators across evidence handling, deterministic computation, brand control, and output quality.",
+    "Compare Basquio with generic AI and slide generators using plain-English criteria that matter in analytical reporting.",
 };
 
 export default function ComparePage() {
@@ -16,32 +17,31 @@ export default function ComparePage() {
       <PublicSiteNav />
 
       <section className="page-hero">
-        <div className="page-header-grid">
-          <div className="stack-xl">
-            <div className="stack">
-              <p className="section-label">Compare</p>
-              <h1>Basquio is built for analytical reporting, not generic slide generation.</h1>
-              <p className="page-copy">
-                Generic AI can draft language. Slide generators can format slides. Basquio is designed to compute the numbers,
-                rank the insight, plan the story, and deliver executive-grade artifacts.
-              </p>
-            </div>
+        <div className="stack-xl">
+          <div className="stack">
+            <p className="section-label">Compare</p>
+            <h1>Basquio is for teams that need the numbers and the story to survive review.</h1>
+            <p className="page-copy">
+              Generic AI is good at drafting language. Slide generators are good at helping with layout. Basquio is for
+              the teams that still have to connect the files, check the math, shape the story, and hand over a deck that
+              can actually be used.
+            </p>
           </div>
 
-          <aside className="page-hero-aside stack">
-            <p className="artifact-kind">The baseline</p>
-            <p>Evidence package input</p>
-            <p>Deterministic analytics</p>
-            <p>Brand-aware output</p>
-            <p>Editable PPTX and polished PDF</p>
-          </aside>
+          <div className="cards">
+            {comparisonColumnNotes.map((note) => (
+              <article key={note} className="panel stack">
+                <p className="muted">{note}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
       <section className="panel comparison-panel">
         <div className="stack">
           <p className="section-label">Capability map</p>
-          <h2>Where the product categories diverge.</h2>
+          <h2>One scale across the whole table: No, Partial, or Yes.</h2>
         </div>
 
         <div className="comparison-table-wrap">
@@ -68,7 +68,14 @@ export default function ComparePage() {
         </div>
       </section>
 
-      <PublicSiteFooterCta />
+      <PublicSiteFooterCta
+        eyebrow="Want to see the workflow"
+        title="See what happens between the upload and the finished deck."
+        copy="If you want the step-by-step version, the workflow page shows how Basquio moves from one package to one story."
+        secondaryLabel="Read how it works"
+        secondaryHref="/how-it-works"
+      />
+      <PublicSiteFooter />
     </div>
   );
 }

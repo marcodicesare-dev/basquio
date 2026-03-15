@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const supabase = await getSupabaseServerClient();
 
   if (!supabase) {
-    return NextResponse.json({ error: "Supabase auth is not configured yet." }, { status: 500 });
+    return NextResponse.json({ error: "Sign-in is not available yet." }, { status: 500 });
   }
 
   const { accessToken, refreshToken } = (await request.json()) as {

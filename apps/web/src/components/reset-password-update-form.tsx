@@ -38,13 +38,13 @@ export function ResetPasswordUpdateForm({
       return "This recovery link is missing, expired, or already used.";
     }
 
-    return "We’re verifying your recovery session.";
+    return "We’re checking your reset link.";
   }, [status, userEmail]);
 
   useEffect(() => {
     if (!configured) {
       setStatus("invalid");
-      setError("Supabase auth is not configured yet.");
+      setError("Password reset is not available yet.");
       return;
     }
 
@@ -52,7 +52,7 @@ export function ResetPasswordUpdateForm({
 
     if (!supabase) {
       setStatus("invalid");
-      setError("Supabase auth is not configured yet.");
+      setError("Password reset is not available yet.");
       return;
     }
 
@@ -173,7 +173,7 @@ export function ResetPasswordUpdateForm({
     const supabase = getSupabaseBrowserClient();
 
     if (!supabase) {
-      setError("Supabase auth is not configured yet.");
+      setError("Password reset is not available yet.");
       return;
     }
 
@@ -203,7 +203,7 @@ export function ResetPasswordUpdateForm({
   return (
     <section className="panel auth-card stack-xl">
       <div className="stack">
-        <p className="section-label">Password recovery</p>
+        <p className="section-label">Password reset</p>
         <h1>Set a new password</h1>
         <p className="muted">{helperCopy}</p>
       </div>
@@ -247,7 +247,7 @@ export function ResetPasswordUpdateForm({
         </div>
       </form>
 
-      {status === "checking" ? <div className="panel auth-status-panel">Verifying your recovery link...</div> : null}
+      {status === "checking" ? <div className="panel auth-status-panel">Verifying your reset link...</div> : null}
       {message ? <div className="panel success-panel auth-status-panel">{message}</div> : null}
       {error ? <div className="panel danger-panel auth-status-panel">{error}</div> : null}
     </section>

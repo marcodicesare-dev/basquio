@@ -19,11 +19,10 @@ export default async function ResetPasswordPage({
   return (
     <div className="page-shell public-page auth-page-shell">
       <section className="technical-panel auth-intro-panel stack-lg">
-        <p className="section-label light">Password recovery</p>
-        <h1>Open the email link, set a new password, and step back into your workspace.</h1>
+        <p className="section-label light">Password reset</p>
+        <h1>Reset your password.</h1>
         <p className="muted">
-          Supabase creates a short-lived recovery session from the email link. Once it lands here, Basquio lets you
-          set a new password without reopening the public flow.
+          Open the link from your email, choose a new password, and we will bring you back into your workspace.
         </p>
       </section>
 

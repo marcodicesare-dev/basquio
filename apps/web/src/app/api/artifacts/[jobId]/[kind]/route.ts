@@ -1,5 +1,5 @@
 import { getViewerState } from "@/lib/supabase/auth";
-import { getGenerationRun, readLocalArtifactBuffer } from "@/lib/job-runs";
+import { getGenerationArtifactRecord, readLocalArtifactBuffer } from "@/lib/job-runs";
 import { downloadFromStorage, fetchRestRows } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -20,13 +20,7 @@ export async function GET(
     return new Response("Unsupported artifact kind.", { status: 400 });
   }
 
-  const run = await getGenerationRun(jobId, viewer.user.id);
-
-  if (!run) {
-    return new Response("Run not found.", { status: 404 });
-  }
-
-  const artifact = run.artifacts.find((candidate) => candidate.kind === kind);
+  const artifact = await getGenerationArtifactRecord(jobId, kind, viewer.user.id);
 
   if (!artifact) {
     return new Response("Artifact not found.", { status: 404 });

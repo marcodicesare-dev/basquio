@@ -88,6 +88,96 @@ export async function getGenerationRun(jobId: string, viewerId?: string): Promis
   }
 }
 
+export async function getGenerationArtifactRecord(
+  jobId: string,
+  kind: ArtifactRecord["kind"],
+  viewerId: string,
+): Promise<ArtifactRecord | null> {
+  const run = await getGenerationRun(jobId, viewerId);
+  const summaryArtifact = run?.artifacts.find((candidate) => candidate.kind === kind);
+
+  if (summaryArtifact) {
+    return summaryArtifact;
+  }
+
+  const credentials = getSupabaseCredentials();
+
+  if (!credentials) {
+    return null;
+  }
+
+  try {
+    const jobs = await fetchRestRows<{ id: string }>({
+      ...credentials,
+      table: "generation_jobs",
+      query: {
+        select: "id",
+        job_key: `eq.${jobId}`,
+        requested_by: `eq.${viewerId}`,
+        limit: "1",
+      },
+    });
+
+    if (!jobs[0]?.id) {
+      return null;
+    }
+
+    const artifacts = await fetchRestRows<{
+      storage_bucket: string;
+      storage_path: string;
+      mime_type: string;
+      file_bytes: number;
+      metadata?: Record<string, unknown>;
+    }>({
+      ...credentials,
+      table: "artifacts",
+      query: {
+        select: "storage_bucket,storage_path,mime_type,file_bytes,metadata",
+        job_id: `eq.${jobs[0].id}`,
+        kind: `eq.${kind}`,
+        limit: "1",
+      },
+    });
+
+    const artifact = artifacts[0];
+
+    if (!artifact) {
+      return null;
+    }
+
+    const metadata = artifact.metadata ?? {};
+    const metadataProvider =
+      metadata.provider === "supabase" || metadata.provider === "database" || metadata.provider === "local"
+        ? metadata.provider
+        : null;
+    const provider =
+      metadataProvider ??
+      (artifact.storage_bucket === "artifacts"
+        ? "supabase"
+        : artifact.storage_bucket === "database"
+          ? "database"
+          : "local");
+
+    return {
+      id: `${jobId}-${kind}`,
+      jobId,
+      kind,
+      fileName: typeof metadata.fileName === "string" ? metadata.fileName : `${jobId}.${kind}`,
+      mimeType: artifact.mime_type,
+      storagePath: artifact.storage_path,
+      byteSize: artifact.file_bytes,
+      provider,
+      checksumSha256: typeof metadata.checksumSha256 === "string" ? metadata.checksumSha256 : "",
+      exists: typeof metadata.exists === "boolean" ? metadata.exists : true,
+      slideCount: typeof metadata.slideCount === "number" ? metadata.slideCount : undefined,
+      sectionCount: typeof metadata.sectionCount === "number" ? metadata.sectionCount : undefined,
+      pageCount: typeof metadata.pageCount === "number" ? metadata.pageCount : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function buildArtifactDownloadUrl(jobId: string, kind: ArtifactRecord["kind"]) {
   return `/api/artifacts/${jobId}/${kind}`;
 }

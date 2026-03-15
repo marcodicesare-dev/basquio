@@ -33,10 +33,10 @@ export function AuthForm({
   const helperCopy = useMemo(
     () =>
       mode === "sign-up"
-        ? "Create an account to open your private Basquio workspace. Google can come later."
+        ? "Create an account to open your private Basquio workspace."
         : mode === "reset"
           ? "Enter your email and we’ll send a secure reset link to create a new password."
-          : "Sign in to continue where your evidence package workflow left off.",
+          : "Sign in to continue your work.",
     [mode],
   );
 
@@ -44,14 +44,14 @@ export function AuthForm({
     event.preventDefault();
 
     if (!configured) {
-      setError("Supabase auth is not configured yet. Add the project URL and anon key to enable sign-in.");
+      setError("Sign-in is not available yet.");
       return;
     }
 
     const supabase = getSupabaseBrowserClient();
 
     if (!supabase) {
-      setError("Supabase auth is not configured yet. Add the project URL and anon key to enable sign-in.");
+      setError("Sign-in is not available yet.");
       return;
     }
 
@@ -235,8 +235,8 @@ export function AuthForm({
       {error ? <div className="panel danger-panel auth-status-panel">{error}</div> : null}
 
       <p className="fine-print">
-        Basquio keeps the landing site public. The report workspace, uploads, job history, and artifacts stay behind
-        your authenticated session.
+        Basquio keeps the landing site public. Your workspace, uploads, job history, and artifacts stay private to
+        your account.
       </p>
     </section>
   );

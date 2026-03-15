@@ -19,10 +19,9 @@ export default async function AuthCompletePage({
     <div className="page-shell public-page auth-page-shell">
       <section className="technical-panel auth-intro-panel stack-lg">
         <p className="section-label light">Workspace access</p>
-        <h1>Finish the email handoff and step into your private Basquio workspace.</h1>
+        <h1>Verifying your email...</h1>
         <p className="muted">
-          Some Supabase email links return a short-lived session in the browser URL. Basquio completes that handoff
-          here, stores the session, and forwards you into the protected workspace.
+          This usually takes a moment. Once the link checks out, we will send you straight into your workspace.
         </p>
       </section>
 

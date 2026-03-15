@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const supabase = await getSupabaseServerClient();
 
   if (!supabase) {
-    signInUrl.searchParams.set("error", "Supabase auth is not configured yet.");
+    signInUrl.searchParams.set("error", "Sign-in is not available yet.");
     return NextResponse.redirect(signInUrl);
   }
 

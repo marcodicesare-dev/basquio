@@ -29,7 +29,7 @@ export function PublicSiteNav() {
 
       <div className="row landing-nav-copy landing-nav-actions">
         <Link className="button secondary" href="/#output">
-          See examples
+          Sample output
         </Link>
         <Link className="button secondary" href="/sign-in?next=%2Fdashboard">
           Sign in
