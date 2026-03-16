@@ -411,6 +411,7 @@ export const basquioV2Generation = inngest.createFunction(
 
     const tracker = new UsageTracker();
 
+    try {
     // ─── STEP 1: NORMALIZE (deterministic) ──────────────────────
     const workspace = await step.run("normalize", async () => {
       await updateRunStatus(runId, "running", "normalize");
@@ -539,17 +540,41 @@ export const basquioV2Generation = inngest.createFunction(
         sheetCount: Object.keys(sheetData).length,
       });
 
+      // Return slim reference — sheetData (often >1MB) is persisted in
+      // evidence_workspaces and loaded on-demand by subsequent steps.
+      // Inngest serializes step return values; large payloads exceed its limit.
       return {
         id: workspaceId,
         runId,
         fileInventory,
         datasetProfile: parsed.datasetProfile,
         templateProfile,
-        sheetData,
+        sheetData: {} as Record<string, Array<Record<string, unknown>>>,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       } satisfies EvidenceWorkspace;
     }) as EvidenceWorkspace;
+
+    // Hydrate sheetData from DB (too large for Inngest step memoization).
+    // Inngest freezes step return values, so we build a mutable workspace copy.
+    const hydratedSheetData = await step.run("hydrate-workspace", async () => {
+      const wsResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces?run_id=eq.${runId}&select=sheet_data&limit=1`,
+        {
+          headers: {
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          },
+        },
+      );
+      const wsRows = (await wsResponse.json()) as Array<{ sheet_data: Record<string, Array<Record<string, unknown>>> }>;
+      return wsRows[0]?.sheet_data ?? {};
+    }) as Record<string, Array<Record<string, unknown>>>;
+
+    const hydratedWorkspace: EvidenceWorkspace = {
+      ...workspace,
+      sheetData: hydratedSheetData,
+    };
 
     // ─── STEP 2: UNDERSTAND (agentic) ───────────────────────────
     const analysis = await step.run("understand", async () => {
@@ -559,7 +584,7 @@ export const basquioV2Generation = inngest.createFunction(
       tracker.startPhase("understand", "gpt-5.4", "openai");
 
       const result = await runAnalystAgent({
-        workspace,
+        workspace: hydratedWorkspace,
         runId,
         brief,
         persistNotebookEntry: async (entry: NotebookEntry) => {
@@ -593,7 +618,7 @@ export const basquioV2Generation = inngest.createFunction(
       tracker.startPhase("author", "claude-opus-4-6", "anthropic");
 
       const result = await runAuthorAgent({
-        workspace,
+        workspace: hydratedWorkspace,
         runId,
         analysis,
         brief,
@@ -602,7 +627,7 @@ export const basquioV2Generation = inngest.createFunction(
         },
         persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
         persistChart: async (chart: ChartInput) => persistChart(runId, chart),
-        getTemplateProfile: () => workspace.templateProfile ?? null,
+        getTemplateProfile: () => hydratedWorkspace.templateProfile ?? null,
         onStepFinish: async (event: StepFinishEvent) => {
           tracker.recordStep(event.usage, event.toolCalls.length);
           await emitRunEvent(runId, "author", "tool_call", {
@@ -634,7 +659,7 @@ export const basquioV2Generation = inngest.createFunction(
       const slides = await getSlides(runId);
 
       const result = await runCriticAgent({
-        workspace,
+        workspace: hydratedWorkspace,
         runId,
         deckSummary,
         brief,
@@ -713,7 +738,7 @@ export const basquioV2Generation = inngest.createFunction(
           .join("\n");
 
         const result = await runAuthorAgent({
-          workspace,
+          workspace: hydratedWorkspace,
           runId,
           analysis,
           brief,
@@ -723,7 +748,7 @@ export const basquioV2Generation = inngest.createFunction(
           },
           persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
           persistChart: async (chart: ChartInput) => persistChart(runId, chart),
-          getTemplateProfile: () => workspace.templateProfile ?? null,
+          getTemplateProfile: () => hydratedWorkspace.templateProfile ?? null,
           onStepFinish: async (event: StepFinishEvent) => {
             tracker.recordStep(event.usage, event.toolCalls.length);
             await emitRunEvent(runId, "revise", "tool_call", {
@@ -751,7 +776,7 @@ export const basquioV2Generation = inngest.createFunction(
         const slides = await getSlides(runId);
 
         const reCritique = await runCriticAgent({
-          workspace,
+          workspace: hydratedWorkspace,
           runId,
           deckSummary,
           brief,
@@ -860,7 +885,7 @@ export const basquioV2Generation = inngest.createFunction(
         transition: s.transition ?? "",
       }));
 
-      const templateProfile = workspace.templateProfile!;
+      const templateProfile = hydratedWorkspace.templateProfile!;
 
       // Render PPTX
       const pptxArtifact = await renderPptxArtifact({
@@ -1055,6 +1080,16 @@ export const basquioV2Generation = inngest.createFunction(
     }
 
     return { runId, artifacts, costSummary };
+
+    } catch (error) {
+      // Mark run as failed so the UI reflects the real state
+      const message = error instanceof Error ? error.message : "Unknown orchestration error";
+      console.error(`[basquio-v2] Run ${runId} failed:`, message);
+      await updateRunStatus(runId, "failed", undefined, {
+        failure_message: message.slice(0, 1000),
+      }).catch(() => {}); // best-effort — don't mask the original error
+      throw error; // re-throw so Inngest knows the function failed
+    }
   },
 );
 
