@@ -721,8 +721,16 @@ export const basquioV2Generation = inngest.createFunction(
       );
 
       if (!blobResp.ok) {
-        // Fallback to sample_rows if blob download fails
-        return sheets[0].sample_rows ?? [];
+        // Fallback to sample_rows with warning — metrics may be inaccurate
+        const sampleRows = sheets[0].sample_rows ?? [];
+        console.warn(`[loadSheetRows] Blob download failed for ${sheetKey}, falling back to ${sampleRows.length} sample rows`);
+        // Inject a warning marker so tools can surface this to the model
+        if (sampleRows.length > 0) {
+          (sampleRows as unknown as Record<string, unknown>[]).push({
+            __basquio_warning: `PARTIAL DATA: Only ${sampleRows.length} sample rows available. Full dataset blob download failed. Metrics may be inaccurate.`,
+          });
+        }
+        return sampleRows;
       }
 
       const blobBuffer = Buffer.from(await blobResp.arrayBuffer());
@@ -811,6 +819,20 @@ export const basquioV2Generation = inngest.createFunction(
         persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
         persistChart: async (chart: ChartInput) => persistChart(runId, chart),
         getTemplateProfile: () => workspace.templateProfile ?? null,
+        getSlides: async () => {
+          const rows = await getSlides(runId);
+          return rows.map((r) => ({
+            id: r.id,
+            position: r.position,
+            layoutId: r.layoutId ?? "title-body",
+            title: r.title ?? "",
+            chartId: r.chartId,
+            body: r.body,
+            bullets: r.bullets,
+            metrics: r.metrics,
+            speakerNotes: r.speakerNotes,
+          }));
+        },
         onStepFinish: async (event: StepFinishEvent) => {
           tracker.recordStep(event.usage, event.toolCalls.length);
           await emitRunEvent(runId, "author", "tool_call", {
@@ -935,6 +957,20 @@ export const basquioV2Generation = inngest.createFunction(
           persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
           persistChart: async (chart: ChartInput) => persistChart(runId, chart),
           getTemplateProfile: () => workspace.templateProfile ?? null,
+          getSlides: async () => {
+            const rows = await getSlides(runId);
+            return rows.map((r) => ({
+              id: r.id,
+              position: r.position,
+              layoutId: r.layoutId ?? "title-body",
+              title: r.title ?? "",
+              chartId: r.chartId,
+              body: r.body,
+              bullets: r.bullets,
+              metrics: r.metrics,
+              speakerNotes: r.speakerNotes,
+            }));
+          },
           onStepFinish: async (event: StepFinishEvent) => {
             tracker.recordStep(event.usage, event.toolCalls.length);
             await emitRunEvent(runId, "revise", "tool_call", {
@@ -1062,18 +1098,36 @@ export const basquioV2Generation = inngest.createFunction(
       const deckTitle = analysis.summary?.slice(0, 100) ?? slides[0]?.title ?? "Basquio Report";
       // Map template brand tokens to renderer format if available
       const tp = workspace.templateProfile;
-      const brandTokenOverrides: Record<string, unknown> | undefined = tp?.brandTokens ? {
-        palette: {
-          ...(tp.brandTokens.palette?.accent ? { accent: tp.brandTokens.palette.accent.replace("#", "") } : {}),
-          ...(tp.brandTokens.palette?.text ? { ink: tp.brandTokens.palette.text.replace("#", "") } : {}),
-          ...(tp.brandTokens.palette?.background ? { bg: tp.brandTokens.palette.background.replace("#", "") } : {}),
-          ...(tp.brandTokens.palette?.surface ? { surface: tp.brandTokens.palette.surface.replace("#", "") } : {}),
-        },
-        typography: {
-          ...(tp.brandTokens.typography?.headingFont ? { headingFont: tp.brandTokens.typography.headingFont } : {}),
-          ...(tp.brandTokens.typography?.bodyFont ? { bodyFont: tp.brandTokens.typography.bodyFont } : {}),
-        },
-      } as Record<string, unknown> : undefined;
+      const strip = (c?: string) => c?.replace("#", "");
+      // Map template brand tokens to renderer palette — use generic record access
+      // since template palette may have extended keys beyond the typed interface
+      const brandTokenOverrides: Record<string, unknown> | undefined = (() => {
+        if (!tp?.brandTokens) return undefined;
+        const pal = (tp.brandTokens.palette ?? {}) as Record<string, string | undefined>;
+        const typo = tp.brandTokens.typography;
+        const rendererPalette: Record<string, string> = {};
+        const map: Record<string, string | string[]> = {
+          accent: "accent", ink: "text", bg: "background", surface: "surface",
+          muted: ["muted", "accentMuted"], border: "border",
+          accentLight: ["accentLight", "highlight"],
+          positive: "positive", negative: "negative",
+          coverBg: "coverBg", calloutGreen: "calloutGreen", calloutOrange: "calloutOrange",
+        };
+        for (const [rendererKey, sourceKeys] of Object.entries(map)) {
+          const keys = Array.isArray(sourceKeys) ? sourceKeys : [sourceKeys];
+          for (const k of keys) {
+            const v = strip(pal[k]);
+            if (v) { rendererPalette[rendererKey] = v; break; }
+          }
+        }
+        return {
+          palette: rendererPalette,
+          typography: {
+            ...(typo?.headingFont ? { headingFont: typo.headingFont } : {}),
+            ...(typo?.bodyFont ? { bodyFont: typo.bodyFont } : {}),
+          },
+        };
+      })();
 
       const pptxArtifact = await renderV2PptxArtifact({
         deckTitle,

@@ -155,6 +155,7 @@ function getLayoutRegions(layoutId: string): LayoutRegions {
         subtitle: { x: 0.55, y: 3.2, w: 8.9, h: 0.6 },
       };
     case "title-body":
+    case "title-bullets":
       return {
         title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
         body: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
@@ -729,7 +730,21 @@ function renderChartElement(
   }
 
   const built = buildChartData(chart, tokens);
-  if (!built) return;
+  if (!built) {
+    // Render a "no data" placeholder instead of blank space
+    slide.addText("Chart data unavailable", {
+      x: region.x,
+      y: region.y + 0.3,
+      w: region.w,
+      h: region.h - 0.3,
+      fontSize: 10,
+      color: tokens.palette.muted,
+      align: "center",
+      valign: "middle",
+      fontFace: tokens.typography.bodyFont,
+    });
+    return;
+  }
 
   const { chartData, opts } = built;
 
@@ -881,11 +896,17 @@ function renderContentSlide(
       break;
     }
 
-    case "title-body": {
-      if (s.body && regions.body) {
-        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
-      } else if (s.bullets && s.bullets.length > 0 && regions.body) {
+    case "title-body":
+    case "title-bullets": {
+      if (s.bullets && s.bullets.length > 0 && regions.body) {
         renderBullets(slide, s.bullets, regions.body, tokens);
+      }
+      if (s.body && regions.body) {
+        const bodyY = s.bullets?.length ? regions.body.y + Math.min(s.bullets.length * 0.3, 1.5) : regions.body.y;
+        const bodyH = s.bullets?.length ? regions.body.h - Math.min(s.bullets.length * 0.3, 1.5) : regions.body.h;
+        if (bodyH > 0.3) {
+          renderBody(slide, s.body, { ...regions.body, y: bodyY, h: bodyH }, tokens, notesOverflow);
+        }
       }
       break;
     }

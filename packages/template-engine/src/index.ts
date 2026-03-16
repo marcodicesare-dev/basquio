@@ -429,16 +429,48 @@ function inferSlideMetrics(raw: string) {
 function normalizePptxLayoutId(rawName: string, placeholders: string[], base: TemplateProfile) {
   const normalized = rawName.toLowerCase();
 
-  if (normalized.includes("title slide") || placeholders.includes("subtitle")) {
+  // Cover / title slide
+  if (normalized.includes("title slide") || normalized.includes("cover") || placeholders.includes("subtitle")) {
     return "cover";
   }
-  if (normalized.includes("two") || (placeholders.includes("body-left") && placeholders.includes("body-right"))) {
+  // Executive summary / section header
+  if (normalized.includes("exec") || normalized.includes("section header") || normalized.includes("overview")) {
+    return "exec-summary";
+  }
+  // Chart + split layout
+  if (normalized.includes("chart") && (normalized.includes("split") || normalized.includes("text"))) {
+    return "chart-split";
+  }
+  // Full-width chart
+  if (normalized.includes("chart") || (placeholders.includes("chart") && !placeholders.includes("body-left"))) {
+    return "title-chart";
+  }
+  // Two-column / comparison
+  if (normalized.includes("two") || normalized.includes("comparison") || (placeholders.includes("body-left") && placeholders.includes("body-right"))) {
     return "two-column";
   }
-  if (placeholders.includes("chart") || placeholders.includes("tbl")) {
+  // Evidence grid (chart + table)
+  if (placeholders.includes("tbl") && placeholders.includes("chart")) {
     return "evidence-grid";
   }
-  if (normalized.includes("summary") || normalized.includes("title and content")) {
+  // Metrics / KPI
+  if (normalized.includes("metric") || normalized.includes("kpi") || normalized.includes("dashboard")) {
+    return "metrics";
+  }
+  // Table-only
+  if (normalized.includes("table") || (placeholders.includes("tbl") && !placeholders.includes("chart"))) {
+    return "table";
+  }
+  // Bullets
+  if (normalized.includes("bullet") || normalized.includes("list")) {
+    return "title-bullets";
+  }
+  // Title + body
+  if (normalized.includes("title and content") || normalized.includes("title, content")) {
+    return "title-body";
+  }
+  // Summary / closing
+  if (normalized.includes("summary") || normalized.includes("closing") || normalized.includes("takeaway")) {
     return "summary";
   }
 

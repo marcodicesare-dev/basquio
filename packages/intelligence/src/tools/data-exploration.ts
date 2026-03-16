@@ -369,7 +369,7 @@ function applyFilter(rows: Record<string, unknown>[], filterExpr: string): Recor
   return rows.filter((row) =>
     conditions.every((condition) => {
       const match = condition.trim().match(/^"?(.+?)"?\s*(=|!=|<>|>|>=|<|<=|LIKE|IN)\s*(.+)$/i);
-      if (!match) return true; // unparseable → include
+      if (!match) return false; // unparseable → exclude (fail safe, not fail open)
 
       const [, col, op, rawVal] = match;
       const rowVal = row[col.trim()];
@@ -459,9 +459,12 @@ function computeAggregate(
       return total === 0 ? 0 : round(values[0] / total);
     }
     case "share": {
-      // Each value's share of total (returns average share)
+      // Each value's proportion of the total
       const shareTotal = values.reduce((a, b) => a + b, 0);
-      return shareTotal === 0 ? 0 : round(1 / values.length);
+      if (shareTotal === 0) return 0;
+      // Return each value's share — for grouped compute_metric, the caller
+      // passes only the group's values, so we return value[0] / total.
+      return round(values[0] / shareTotal);
     }
     default:
       return 0;

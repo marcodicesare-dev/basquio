@@ -255,11 +255,33 @@ async function extractSupportText(
 
   if (normalized.endsWith(".docx")) {
     try {
-      const result = await mammoth.extractRawText({ buffer });
-      return result.value.trim();
+      const result = await mammoth.convertToHtml({ buffer });
+      // Extract text from HTML, preserving table structure as markdown
+      const html = result.value;
+      // Strip tags but preserve table separators
+      const text = html
+        .replace(/<\/tr>/gi, "\n")
+        .replace(/<\/td>/gi, " | ")
+        .replace(/<\/th>/gi, " | ")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<\/li>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .trim();
+      return text || undefined;
     } catch {
       return undefined;
     }
+  }
+
+  if (normalized.endsWith(".doc")) {
+    // Legacy .doc format — mammoth does not support it.
+    // Return a warning instead of silently failing.
+    return `[Basquio warning: .doc format not supported. Please convert "${fileName}" to .docx for full text extraction.]`;
   }
 
   if (canDecodeAsText(fileName, kind)) {

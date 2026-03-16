@@ -31,6 +31,7 @@ export type AuthorAgentInput = {
   persistSlide: AuthoringToolContext["persistSlide"];
   persistChart: AuthoringToolContext["persistChart"];
   getTemplateProfile: AuthoringToolContext["getTemplateProfile"];
+  getSlides?: AuthoringToolContext["getSlides"];
   onStepFinish?: (event: {
     stepNumber: number;
     toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>;
@@ -56,6 +57,7 @@ export function createAuthorAgent(input: AuthorAgentInput) {
     persistSlide: input.persistSlide,
     persistChart: input.persistChart,
     getTemplateProfile: input.getTemplateProfile,
+    getSlides: input.getSlides,
   };
 
   const provider = input.providerOverride ?? "anthropic";

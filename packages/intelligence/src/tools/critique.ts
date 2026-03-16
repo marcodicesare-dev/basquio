@@ -12,10 +12,14 @@ export type CritiqueToolContext = {
     id: string;
     position: number;
     title: string;
+    layoutId: string;
+    chartId?: string;
+    subtitle?: string;
     body?: string;
     bullets?: string[];
     evidenceIds: string[];
     metrics?: { label: string; value: string; delta?: string }[];
+    speakerNotes?: string;
   }>>;
   getNotebookEntries: (evidenceRefId: string) => Promise<{
     toolName: string;
