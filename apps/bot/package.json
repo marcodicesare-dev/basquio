@@ -1,0 +1,31 @@
+{
+  "name": "@basquio/bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@basquio/types": "workspace:*",
+    "@deepgram/sdk": "^5.0.0",
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.19.0",
+    "@linear/sdk": "^77.0.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "discord.js": "^14.18.0",
+    "dotenv": "^17.3.1",
+    "libsodium-wrappers": "^0.7.15",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/libsodium-wrappers": "^0.7.14",
+    "@types/node": "^22.16.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

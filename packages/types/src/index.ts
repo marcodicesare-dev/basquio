@@ -237,6 +237,8 @@ export type ArtifactRecord = z.infer<typeof artifactRecordSchema>;
 export type GenerationJobResult = z.infer<typeof generationJobResultSchema>;
 export type GenerationRunSummary = z.infer<typeof generationRunSummarySchema>;
 
+export * from "./collaboration";
+
 export interface BinaryArtifact {
   fileName: string;
   mimeType: string;

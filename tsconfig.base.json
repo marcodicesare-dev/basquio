@@ -24,7 +24,8 @@
       "@basquio/render-pptx": ["packages/render-pptx/src/index.ts"],
       "@basquio/template-engine": ["packages/template-engine/src/index.ts"],
       "@basquio/types": ["packages/types/src/index.ts"],
-      "@basquio/workflows": ["packages/workflows/src/index.ts"]
+      "@basquio/workflows": ["packages/workflows/src/index.ts"],
+      "@basquio/bot": ["apps/bot/src/index.ts"]
     }
   }
 }
