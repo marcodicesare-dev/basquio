@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       }
 
       // Create source_file record
-      await fetch(
+      const sfResponse = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/source_files`,
         {
           method: "POST",
@@ -89,11 +89,15 @@ export async function POST(request: Request) {
         },
       );
 
+      if (!sfResponse.ok) {
+        return NextResponse.json({ error: `Failed to register source file: ${file.name}` }, { status: 500 });
+      }
+
       sourceFileIds.push(fileId);
     }
 
     // Create deck_run record
-    await fetch(
+    const deckRunResponse = await fetch(
       `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs`,
       {
         method: "POST",
@@ -121,6 +125,11 @@ export async function POST(request: Request) {
         }),
       },
     );
+
+    if (!deckRunResponse.ok) {
+      const errorText = await deckRunResponse.text().catch(() => "Unknown error");
+      return NextResponse.json({ error: `Failed to create run record: ${errorText}` }, { status: 500 });
+    }
 
     // Dispatch Inngest event
     await inngest.send({

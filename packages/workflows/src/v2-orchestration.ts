@@ -10,6 +10,7 @@ import type {
   DeckRunPhase,
   DeckSpecV2,
   EvidenceWorkspace,
+  SlideSpec,
   TemplateProfile,
 } from "@basquio/types";
 
@@ -287,7 +288,22 @@ async function persistChart(runId: string, chart: {
   return { chartId: id, thumbnailUrl: undefined, width: 800, height: 500 };
 }
 
-async function getSlides(runId: string) {
+type SlideRow = {
+  id: string;
+  position: number;
+  layoutId: string;
+  title: string;
+  subtitle: string | undefined;
+  body: string | undefined;
+  bullets: string[] | undefined;
+  chartId: string | undefined;
+  evidenceIds: string[];
+  metrics: { label: string; value: string; delta?: string }[] | undefined;
+  speakerNotes: string | undefined;
+  transition: string | undefined;
+};
+
+async function getSlides(runId: string): Promise<SlideRow[]> {
   const response = await fetch(
     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_slides?run_id=eq.${runId}&order=position`,
     {
@@ -304,11 +320,16 @@ async function getSlides(runId: string) {
   return rows.map((r: Record<string, unknown>) => ({
     id: r.id as string,
     position: r.position as number,
+    layoutId: (r.layout_id as string) ?? "summary",
     title: r.title as string,
+    subtitle: r.subtitle as string | undefined,
     body: r.body as string | undefined,
     bullets: r.bullets as string[] | undefined,
+    chartId: r.chart_id as string | undefined,
     evidenceIds: (r.evidence_ids ?? []) as string[],
     metrics: r.metrics as { label: string; value: string; delta?: string }[] | undefined,
+    speakerNotes: r.speaker_notes as string | undefined,
+    transition: r.transition as string | undefined,
   }));
 }
 
@@ -775,6 +796,9 @@ export const basquioV2Generation = inngest.createFunction(
           },
         );
 
+        const criticalIssuesRemain = reCritique.hasIssues &&
+          reCritique.issues.some((i: { severity: string }) => i.severity === "critical");
+
         if (reCritique.hasIssues && reCritique.issues.some((i: { severity: string }) => i.severity === "critical" || i.severity === "major")) {
           logPhaseEvent(runId, "re-critique", "issues_remain_after_max_revisions", {
             issueCount: reCritique.issues.length,
@@ -787,6 +811,17 @@ export const basquioV2Generation = inngest.createFunction(
           issueCount: reCritique.issues.length,
           iteration: 2,
         });
+
+        if (criticalIssuesRemain) {
+          const criticalMessages = reCritique.issues
+            .filter((i: { severity: string }) => i.severity === "critical")
+            .map((i: { suggestion: string }) => i.suggestion)
+            .join("; ");
+          await updateRunStatus(runId, "failed", "critique", {
+            failure_message: `Critical issues remain after max revisions: ${criticalMessages}`,
+          });
+          throw new Error(`Critical issues remain after max revisions: ${criticalMessages}`);
+        }
       });
     }
 
@@ -800,19 +835,19 @@ export const basquioV2Generation = inngest.createFunction(
 
       // Convert DeckSpecV2 slides to SlideSpec format for existing renderers
       // TODO: Replace with unified slide scene graph renderer
-      const slideSpecs = slides.map((s: Record<string, unknown>) => ({
-        id: s.id as string,
-        purpose: (s.title as string) ?? "",
+      const slideSpecs = slides.map((s) => ({
+        id: s.id,
+        purpose: s.title ?? "",
         section: "",
-        emphasis: (s.position as number) === 1 ? "cover" as const : "content" as const,
-        layoutId: (s.layout_id as string) ?? "summary",
-        title: s.title as string,
-        subtitle: s.subtitle as string | undefined,
+        emphasis: s.position === 1 ? "cover" as const : "content" as const,
+        layoutId: s.layoutId ?? "summary",
+        title: s.title,
+        subtitle: s.subtitle,
         blocks: buildSlideBlocks(s),
-        claimIds: [],
-        evidenceIds: ((s.evidence_ids ?? []) as string[]),
-        speakerNotes: (s.speaker_notes as string) ?? "",
-        transition: (s.transition as string) ?? "",
+        claimIds: [] as string[],
+        evidenceIds: s.evidenceIds ?? [],
+        speakerNotes: s.speakerNotes ?? "",
+        transition: s.transition ?? "",
       }));
 
       const templateProfile = workspace.templateProfile!;
@@ -862,20 +897,68 @@ export const basquioV2Generation = inngest.createFunction(
         contentType: pdfArtifact.mimeType,
       });
 
-      // Create artifact manifest (only after QA passes)
+      // ── QA: validate artifacts before publishing manifest ──
+      const { createHash } = await import("node:crypto");
+      const pptxSha256 = createHash("sha256").update(pptxBuffer).digest("hex");
+      const pdfSha256 = createHash("sha256").update(pdfBuffer).digest("hex");
+
+      const qaChecks: Array<{ name: string; passed: boolean; detail?: string }> = [];
+
+      // Check: both artifacts are non-empty
+      qaChecks.push({
+        name: "pptx_non_empty",
+        passed: pptxBuffer.length > 0,
+        detail: `${pptxBuffer.length} bytes`,
+      });
+      qaChecks.push({
+        name: "pdf_non_empty",
+        passed: pdfBuffer.length > 0,
+        detail: `${pdfBuffer.length} bytes`,
+      });
+
+      // Check: slide count > 0
+      qaChecks.push({
+        name: "slide_count_positive",
+        passed: slides.length > 0,
+        detail: `${slides.length} slides`,
+      });
+
+      // Check: PPTX has valid ZIP header (PK\x03\x04)
+      const hasValidPptxHeader = pptxBuffer.length >= 4 &&
+        pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
+        pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
+      qaChecks.push({
+        name: "pptx_valid_zip",
+        passed: hasValidPptxHeader,
+      });
+
+      // Check: PDF has valid header (%PDF)
+      const hasValidPdfHeader = pdfBuffer.length >= 4 &&
+        pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50 &&
+        pdfBuffer[2] === 0x44 && pdfBuffer[3] === 0x46;
+      qaChecks.push({
+        name: "pdf_valid_header",
+        passed: hasValidPdfHeader,
+      });
+
+      const qaPassed = qaChecks.every((c) => c.passed);
+
+      if (!qaPassed) {
+        const failedChecks = qaChecks.filter((c) => !c.passed).map((c) => c.name).join(", ");
+        await updateRunStatus(runId, "failed", "export", {
+          failure_message: `QA failed: ${failedChecks}`,
+        });
+        throw new Error(`Artifact QA failed: ${failedChecks}`);
+      }
+
       const manifestId = crypto.randomUUID();
       const manifest = {
         id: manifestId,
         run_id: runId,
         slide_count: slides.length,
-        page_count: slides.length, // Unified scene graph ensures 1:1
+        page_count: slides.length,
         qa_passed: true,
-        qa_report: {
-          checks: [
-            { name: "slide_count_match", passed: true },
-            { name: "artifact_generated", passed: true },
-          ],
-        },
+        qa_report: { checks: qaChecks },
         artifacts: [
           {
             id: crypto.randomUUID(),
@@ -885,7 +968,7 @@ export const basquioV2Generation = inngest.createFunction(
             storageBucket: "artifacts",
             storagePath: pptxPath,
             fileBytes: pptxBuffer.length,
-            checksumSha256: "",
+            checksumSha256: pptxSha256,
           },
           {
             id: crypto.randomUUID(),
@@ -895,7 +978,7 @@ export const basquioV2Generation = inngest.createFunction(
             storageBucket: "artifacts",
             storagePath: pdfPath,
             fileBytes: pdfBuffer.length,
-            checksumSha256: "",
+            checksumSha256: pdfSha256,
           },
         ],
         published_at: new Date().toISOString(),
@@ -949,67 +1032,52 @@ export const basquioV2Generation = inngest.createFunction(
 // ─── SLIDE BLOCK BUILDER ──────────────────────────────────────────
 // Converts DeckSpecV2 slide row data to SlideSpec blocks for existing renderers
 
-function buildSlideBlocks(slide: Record<string, unknown>) {
-  const blocks: Array<Record<string, unknown>> = [];
-
-  // Title block
-  blocks.push({
-    kind: "title",
-    content: slide.title as string,
+function buildSlideBlocks(slide: SlideRow): SlideSpec["blocks"] {
+  const block = (kind: string, overrides: Record<string, unknown> = {}): SlideSpec["blocks"][number] => ({
+    kind: kind as SlideSpec["blocks"][number]["kind"],
+    content: "",
+    chartId: "",
+    items: [],
+    label: "",
+    value: "",
+    tone: "default",
+    evidenceIds: [],
+    templateBinding: undefined,
+    ...overrides,
   });
 
-  // Subtitle
+  const blocks: SlideSpec["blocks"] = [];
+
+  blocks.push(block("title", { content: slide.title }));
+
   if (slide.subtitle) {
-    blocks.push({
-      kind: "subtitle",
-      content: slide.subtitle as string,
-    });
+    blocks.push(block("subtitle", { content: slide.subtitle }));
   }
 
-  // Body
   if (slide.body) {
-    blocks.push({
-      kind: "body",
-      content: slide.body as string,
-    });
+    blocks.push(block("body", { content: slide.body }));
   }
 
-  // Bullets
-  const bullets = slide.bullets as string[] | undefined;
-  if (bullets && bullets.length > 0) {
-    blocks.push({
-      kind: "bullet-list",
-      items: bullets,
-    });
+  if (slide.bullets && slide.bullets.length > 0) {
+    blocks.push(block("bullet-list", { items: slide.bullets }));
   }
 
-  // Metrics
-  const metrics = slide.metrics as Array<{ label: string; value: string; delta?: string }> | undefined;
-  if (metrics && metrics.length > 0) {
-    for (const m of metrics) {
-      blocks.push({
-        kind: "metric",
+  if (slide.metrics && slide.metrics.length > 0) {
+    for (const m of slide.metrics) {
+      blocks.push(block("metric", {
         label: m.label,
         value: m.value,
         content: m.delta ? `${m.value} (${m.delta})` : m.value,
-      });
+      }));
     }
   }
 
-  // Chart
-  if (slide.chart_id) {
-    blocks.push({
-      kind: "chart",
-      chartId: slide.chart_id as string,
-    });
+  if (slide.chartId) {
+    blocks.push(block("chart", { chartId: slide.chartId }));
   }
 
-  // Ensure at least one block
   if (blocks.length === 0) {
-    blocks.push({
-      kind: "body",
-      content: "",
-    });
+    blocks.push(block("body"));
   }
 
   return blocks;

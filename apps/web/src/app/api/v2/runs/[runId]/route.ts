@@ -1,16 +1,23 @@
 import { NextResponse } from "next/server";
 
+import { getViewerState } from "@/lib/supabase/auth";
+
 export const runtime = "nodejs";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ runId: string }> },
 ) {
+  const viewer = await getViewerState();
+  if (!viewer.user) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
+
   const { runId } = await params;
 
-  // Fetch run status
+  // Fetch run — filter by requested_by to enforce tenancy
   const runResponse = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&select=*`,
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&requested_by=eq.${viewer.user.id}&select=*`,
     {
       headers: {
         apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -30,7 +37,6 @@ export async function GET(
 
   const run = runs[0];
 
-  // If completed, include artifact manifest
   let artifacts = null;
   if (run.status === "completed") {
     const manifestResponse = await fetch(

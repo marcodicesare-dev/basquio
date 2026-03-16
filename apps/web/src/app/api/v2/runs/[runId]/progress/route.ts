@@ -1,23 +1,29 @@
 import { NextResponse } from "next/server";
 
+import { getViewerState } from "@/lib/supabase/auth";
+
 export const runtime = "nodejs";
 
 // Event-sourced progress endpoint.
 // Returns real tool-call events from deck_run_events, not synthetic stage weights.
-// Clients can poll this or use it with SSE.
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ runId: string }> },
 ) {
+  const viewer = await getViewerState();
+  if (!viewer.user) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
+
   const { runId } = await params;
   const url = new URL(request.url);
-  const after = url.searchParams.get("after"); // ISO timestamp for incremental polling
+  const after = url.searchParams.get("after");
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
 
-  // Fetch run status
+  // Fetch run — filter by requested_by to enforce tenancy
   const runResponse = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&select=id,status,current_phase`,
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&requested_by=eq.${viewer.user.id}&select=id,status,current_phase`,
     {
       headers: {
         apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -52,7 +58,6 @@ export async function GET(
 
   const events = eventsResponse.ok ? await eventsResponse.json() : [];
 
-  // Compute progress summary from events
   const phases = ["normalize", "understand", "author", "critique", "revise", "export"];
   const completedPhases = events
     .filter((e: { event_type: string }) => e.event_type === "phase_completed")
@@ -68,7 +73,6 @@ export async function GET(
       ? 0
       : Math.round(((completedPhases.length + (currentPhaseIndex >= 0 ? 0.5 : 0)) / phases.length) * 100);
 
-  // Latest tool call for live feedback
   const toolCalls = events.filter((e: { event_type: string }) => e.event_type === "tool_call");
   const lastToolCall = toolCalls.length > 0 ? toolCalls[toolCalls.length - 1] : null;
 
