@@ -1,29 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
 import { GenerationValidationError, inngest } from "@basquio/workflows";
 import type { GenerationRequest } from "@basquio/types";
 
-import {
-  dispatchPersistedGenerationExecution,
-  dispatchPersistedGenerationJob,
-  persistGenerationRequest,
-} from "@/lib/generation-requests";
 import { getViewerState } from "@/lib/supabase/auth";
-import { upsertRestRows } from "@/lib/supabase/admin";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-const INNGEST_RECOVERY_GRACE_MS = 15_000;
-
-// Feature flag: BASQUIO_PIPELINE_VERSION=v1|v2
-// v1 = legacy 15-stage pipeline (default)
-// v2 = AI-native agent architecture
-const PIPELINE_VERSION = process.env.BASQUIO_PIPELINE_VERSION ?? "v2";
 
 export async function POST(request: Request) {
   try {
@@ -47,7 +34,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      ...(await queueGeneration(generationRequest, request, viewer.user, workspace)),
+      ...(await queueGeneration(generationRequest, viewer.user, workspace)),
     }, { status: 202 });
   } catch (error) {
     if (error instanceof GenerationValidationError) {
@@ -68,45 +55,6 @@ export async function POST(request: Request) {
 
 async function queueGeneration(
   generationRequest: GenerationRequest,
-  request: Request,
-  viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
-  workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
-) {
-  if (PIPELINE_VERSION === "v2") {
-    return queueV2Generation(generationRequest, viewer, workspace);
-  }
-
-  await persistQueuedJob(generationRequest, viewer);
-  await persistGenerationRequest(generationRequest);
-
-  if (process.env.INNGEST_EVENT_KEY) {
-    await inngest.send({
-      name: "basquio/generation.requested",
-      data: generationRequest,
-    });
-
-    after(() => {
-      void wait(INNGEST_RECOVERY_GRACE_MS)
-        .then(() => dispatchPersistedGenerationExecution(generationRequest.jobId, request))
-        .catch((error) => {
-          console.error(`Basquio initial execute fallback failed for ${generationRequest.jobId}`, error);
-        });
-    });
-  } else {
-    await dispatchPersistedGenerationJob(generationRequest.jobId, request);
-  }
-
-  return {
-    jobId: generationRequest.jobId,
-    status: "queued",
-    statusUrl: `/api/jobs/${generationRequest.jobId}`,
-    progressUrl: `/jobs/${generationRequest.jobId}`,
-    message: "Basquio accepted the run and started the generation workflow.",
-  };
-}
-
-async function queueV2Generation(
-  generationRequest: GenerationRequest,
   viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
   workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
 ) {
@@ -114,15 +62,10 @@ async function queueV2Generation(
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceKey) {
-    throw new Error("Supabase credentials are required for v2 pipeline.");
+    throw new Error("Supabase credentials are required.");
   }
 
-  // deck_runs.id is UUID, but the v1 jobId is a human-readable string.
-  // Use a proper UUID for the deck_run, but keep the jobId for the frontend redirect.
   const runId = randomUUID();
-
-  // Create source_files records for each uploaded file.
-  // The v1 upload prep already placed files in storage at the given storagePath.
   const sourceFileIds: string[] = [];
 
   if (generationRequest.sourceFiles.length > 0) {
@@ -159,7 +102,6 @@ async function queueV2Generation(
     }
   }
 
-  // Create deck_runs record
   const deckRunResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs`, {
     method: "POST",
     headers: {
@@ -197,7 +139,6 @@ async function queueV2Generation(
     throw new Error(`Failed to create deck_runs record: ${errorText}`);
   }
 
-  // Dispatch v2 Inngest event
   await inngest.send({
     name: "basquio/v2.generation.requested",
     data: {
@@ -218,12 +159,8 @@ async function queueV2Generation(
     status: "queued",
     statusUrl: `/api/jobs/${runId}`,
     progressUrl: `/jobs/${runId}`,
-    message: "Basquio accepted the run and started the v2 generation workflow.",
+    message: "Basquio accepted the run and started generation.",
   };
-}
-
-function wait(milliseconds: number) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function parseGenerationRequest(
@@ -340,130 +277,4 @@ function buildBrief(input: Partial<Record<"businessContext" | "client" | "audien
 
 function createJobId() {
   return `job-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
-}
-
-async function persistQueuedJob(
-  generationRequest: GenerationRequest,
-  viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
-) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceKey) {
-    return;
-  }
-
-  const { organizationRowId, projectRowId } = await resolveQueuedRunContext({
-    supabaseUrl,
-    serviceKey,
-    organizationId: generationRequest.organizationId,
-    projectId: generationRequest.projectId,
-    objective: generationRequest.brief.objective,
-    audience: generationRequest.brief.audience,
-    requestedBy: viewer.id,
-  });
-
-  await upsertRestRows({
-    supabaseUrl,
-    serviceKey,
-    table: "generation_jobs",
-    onConflict: "job_key",
-    rows: [
-      {
-        job_key: generationRequest.jobId,
-        organization_id: organizationRowId,
-        project_id: projectRowId,
-        requested_by: viewer.id,
-        status: "queued",
-        business_context: generationRequest.brief.businessContext,
-        audience: generationRequest.brief.audience,
-        objective: generationRequest.brief.objective,
-        brief: generationRequest.brief,
-        failure_message: null,
-      },
-    ],
-  });
-}
-
-async function resolveQueuedRunContext(input: {
-  supabaseUrl: string;
-  serviceKey: string;
-  organizationId: string;
-  projectId: string;
-  objective: string;
-  audience: string;
-  requestedBy: string;
-}) {
-  const organizationSlug = sanitizeQueueSlug(input.organizationId || "local-org");
-  const projectSlug = sanitizeQueueSlug(input.projectId || "local-project");
-
-  const organizations = await upsertRestRows<{ id: string }>({
-    supabaseUrl: input.supabaseUrl,
-    serviceKey: input.serviceKey,
-    table: "organizations",
-    onConflict: "slug",
-    select: "id",
-    rows: [
-      {
-        slug: organizationSlug,
-        name: humanizeQueueLabel(input.organizationId || "Local org"),
-      },
-    ],
-  });
-
-  if (!organizations[0]?.id) {
-    throw new Error(`Unable to resolve organization row for ${input.organizationId}.`);
-  }
-
-  const projects = await upsertRestRows<{ id: string }>({
-    supabaseUrl: input.supabaseUrl,
-    serviceKey: input.serviceKey,
-    table: "projects",
-    onConflict: "organization_id,slug",
-    select: "id",
-    rows: [
-      {
-        organization_id: organizations[0].id,
-        slug: projectSlug,
-        name: humanizeQueueLabel(input.projectId || "Local project"),
-        objective: input.objective,
-        audience: input.audience,
-      },
-    ],
-  });
-
-  if (!projects[0]?.id) {
-    throw new Error(`Unable to resolve project row for ${input.projectId}.`);
-  }
-
-  await upsertRestRows({
-    supabaseUrl: input.supabaseUrl,
-    serviceKey: input.serviceKey,
-    table: "organization_memberships",
-    onConflict: "organization_id,user_id",
-    rows: [
-      {
-        organization_id: organizations[0].id,
-        user_id: input.requestedBy,
-        role: "owner",
-      },
-    ],
-  });
-
-  return {
-    organizationRowId: organizations[0].id,
-    projectRowId: projects[0].id,
-  };
-}
-
-function sanitizeQueueSlug(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
-}
-
-function humanizeQueueLabel(value: string) {
-  return value
-    .trim()
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
 }

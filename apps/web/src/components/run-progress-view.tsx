@@ -4,7 +4,6 @@ import Link from "next/link";
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 
-import { BASQUIO_PIPELINE_STAGES } from "@basquio/core";
 
 type ArtifactRecord = {
   kind: "pptx" | "pdf";
@@ -113,8 +112,7 @@ export function RunProgressView(input: {
     };
   }, [input.jobId, isTerminal, snapshot]);
 
-  const isV2 = snapshot?.pipelineVersion === "v2" || V2_PHASES.some((phase) => snapshot?.steps.some((step) => step.baseStage === phase));
-  const stageList = isV2 ? V2_PHASES : BASQUIO_PIPELINE_STAGES;
+  const stageList = V2_PHASES;
   const stageSet = useMemo(() => new Map(snapshot?.steps.map((step) => [step.baseStage, step]) ?? []), [snapshot?.steps]);
 
   if (!snapshot) {
@@ -241,7 +239,7 @@ export function RunProgressView(input: {
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <strong>{humanizeStage(stage)}</strong>
                   </div>
-                  <p>{step?.detail || (isV2 ? defaultV2PhaseCopy(stage) : defaultStageCopy(stage))}</p>
+                  <p>{step?.detail || defaultV2PhaseCopy(stage)}</p>
                   <span className="loading-stage-pill">{humanizeStatus(status)}</span>
                 </article>
               );
@@ -333,32 +331,6 @@ function formatDuration(value: number) {
   }
 
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-}
-
-function defaultStageCopy(stage: string) {
-  if (stage === "intake and profiling") {
-    return "Basquio is normalizing the uploaded package and building compact profiles before reasoning starts.";
-  }
-  if (stage === "package semantics inference") {
-    return "Basquio is inferring entities, joins, and answerable questions across the uploaded package.";
-  }
-  if (stage === "metric planning") {
-    return "The planner is deciding what to compute before deterministic execution starts.";
-  }
-  if (stage === "slide architecture") {
-    return "The slide architect is choosing slide count, layouts, transitions, and chart bindings.";
-  }
-  if (stage === "deterministic validation") {
-    return "Basquio is verifying refs, chart bindings, and numeric support before critique.";
-  }
-  if (stage === "semantic critique") {
-    return "An independent critic is checking whether the argument actually holds up.";
-  }
-  if (stage === "targeted revision loop") {
-    return "The workflow is deciding the smallest responsible stage to revisit before rendering.";
-  }
-
-  return "This stage is queued for the current run.";
 }
 
 function defaultV2PhaseCopy(phase: string) {

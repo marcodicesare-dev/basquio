@@ -1,20 +1,12 @@
 import { NextResponse } from "next/server";
 
-import {
-  dispatchPersistedGenerationExecution,
-  dispatchPersistedGenerationJob,
-} from "@/lib/generation-requests";
 import { getViewerState } from "@/lib/supabase/auth";
-import { getGenerationStatus } from "@/lib/run-status";
 import { fetchRestRows } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const V2_PHASES = ["normalize", "understand", "author", "critique", "revise", "export"] as const;
-
-const stalledKickoffs = new Map<string, number>();
-const stalledExecutions = new Map<string, number>();
 
 type DeckRunRow = {
   id: string;
@@ -46,33 +38,18 @@ export async function GET(
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  // Try v2 deck_runs first
-  const v2Snapshot = await getV2RunSnapshot(jobId);
-  if (v2Snapshot) {
-    return NextResponse.json(v2Snapshot, {
-      status: v2Snapshot.status === "completed" ? 200 : 202,
-    });
-  }
+  const snapshot = await getRunSnapshot(jobId);
 
-  // Fall back to v1 generation_jobs
-  const status = await getGenerationStatus(jobId, viewer.user.id);
-
-  if (!status) {
+  if (!snapshot) {
     return NextResponse.json({ error: "Run not found." }, { status: 404 });
   }
 
-  if (shouldRecoverStalledExecution(status)) {
-    await dispatchPersistedGenerationExecution(jobId, _request);
-  } else if ((!process.env.INNGEST_EVENT_KEY && status.status === "queued") || shouldKickoffStalledRun(status)) {
-    await dispatchPersistedGenerationJob(jobId, _request);
-  }
-
-  return NextResponse.json(status, {
-    status: status.status === "completed" ? 200 : 202,
+  return NextResponse.json(snapshot, {
+    status: snapshot.status === "completed" ? 200 : 202,
   });
 }
 
-async function getV2RunSnapshot(jobId: string) {
+async function getRunSnapshot(jobId: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -97,7 +74,6 @@ async function getV2RunSnapshot(jobId: string) {
 
   const run = runs[0];
 
-  // Fetch events for progress details
   const events = await fetchRestRows<DeckRunEventRow>({
     supabaseUrl,
     serviceKey,
@@ -138,12 +114,11 @@ async function getV2RunSnapshot(jobId: string) {
         ? Math.max(5, Math.round((elapsedSeconds / progressPercent) * (100 - progressPercent)))
         : null;
 
-  // Build v1-compatible steps from v2 phases
   const toolCalls = events.filter((e) => e.event_type === "tool_call");
   const lastToolCall = toolCalls.length > 0 ? toolCalls[toolCalls.length - 1] : null;
 
   const steps = V2_PHASES.map((phase, index) => {
-    let status: "queued" | "running" | "completed" | "failed" | "needs_input";
+    let status: "queued" | "running" | "completed" | "failed";
     if (completedPhases.has(phase)) {
       status = "completed";
     } else if (run.current_phase === phase) {
@@ -183,7 +158,7 @@ async function getV2RunSnapshot(jobId: string) {
   return {
     jobId,
     pipelineVersion: "v2" as const,
-    status: run.status as "queued" | "running" | "completed" | "failed" | "needs_input",
+    status: run.status as "queued" | "running" | "completed" | "failed",
     artifactsReady: run.status === "completed",
     createdAt,
     updatedAt: run.updated_at ?? undefined,
@@ -196,65 +171,4 @@ async function getV2RunSnapshot(jobId: string) {
     summary: null,
     failureMessage: run.failure_message ?? undefined,
   };
-}
-
-function shouldKickoffStalledRun(status: Awaited<ReturnType<typeof getGenerationStatus>>) {
-  if (!status) {
-    return false;
-  }
-
-  if (status.status !== "queued" || status.steps.length > 0 || status.summary) {
-    return false;
-  }
-
-  if (status.elapsedSeconds < 30) {
-    return false;
-  }
-
-  const lastKickoff = stalledKickoffs.get(status.jobId) ?? 0;
-  const now = Date.now();
-
-  if (now - lastKickoff < 60_000) {
-    return false;
-  }
-
-  stalledKickoffs.set(status.jobId, now);
-  return true;
-}
-
-function shouldRecoverStalledExecution(status: Awaited<ReturnType<typeof getGenerationStatus>>) {
-  if (!status) {
-    return false;
-  }
-
-  if (status.status !== "running") {
-    return false;
-  }
-
-  const artifactCompletionIsPending = status.summary?.status === "completed" && !status.artifactsReady;
-  const canRecoverLiveExecution = !status.summary || artifactCompletionIsPending;
-
-  if (!canRecoverLiveExecution) {
-    return false;
-  }
-
-  const hasRunningStep = Boolean(
-    [...status.steps].reverse().find((step) => step.status === "running"),
-  );
-  const lastObservedAt = status.updatedAt ?? status.createdAt;
-  const staleThresholdMs = hasRunningStep ? 180_000 : 45_000;
-
-  if (!lastObservedAt || Date.now() - new Date(lastObservedAt).getTime() < staleThresholdMs) {
-    return false;
-  }
-
-  const lastRecovery = stalledExecutions.get(status.jobId) ?? 0;
-  const now = Date.now();
-
-  if (now - lastRecovery < 60_000) {
-    return false;
-  }
-
-  stalledExecutions.set(status.jobId, now);
-  return true;
 }

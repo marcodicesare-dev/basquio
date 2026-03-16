@@ -59,36 +59,8 @@ import {
 
 export { inngest } from "./inngest-client";
 
-export const basquioGenerationRequested = inngest.createFunction(
-  { id: "basquio-generation-requested" },
-  { event: "basquio/generation.requested" },
-  async ({ event, step }) => {
-    const request = generationRequestSchema.parse(event.data);
-    let summary: GenerationRunSummary | null = null;
-
-    try {
-      summary = await runGenerationRequest(request, {
-        stepRunner: async <T>(executionId: string, fn: () => Promise<T> | T) =>
-          (await step.run(executionId, async () => await fn())) as T,
-      });
-    } catch (error) {
-      if (!(error instanceof GenerationExecutionLeaseError)) {
-        throw error;
-      }
-    }
-
-    return generationJobResultSchema.parse({
-      datasetId: summary?.datasetProfile.datasetId ?? request.jobId,
-      storyTitle: summary?.story.title || summary?.story.keyMessages[0] || "Basquio output",
-      artifacts: summary?.artifacts ?? [],
-    });
-  },
-);
-
-// V2 orchestration (AI-native agents)
+// V2 orchestration (AI-native agents) — the only pipeline
 export { basquioV2Generation } from "./v2-orchestration";
-
-export const functions = [basquioGenerationRequested];
 
 type GenerationStepRunner = <T>(executionId: string, fn: () => Promise<T> | T) => Promise<T>;
 type ResolvedUploadedFile = GenerationRequest["sourceFiles"][number] & { base64: string };
