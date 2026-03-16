@@ -2,6 +2,7 @@ import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob
 import { runAnalystAgent, runAuthorAgent, runCriticAgent } from "@basquio/intelligence";
 import { renderPdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
+import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
 import { interpretTemplateSource } from "@basquio/template-engine";
 import type {
   AnalysisReport,
@@ -363,6 +364,37 @@ async function getCharts(runId: string): Promise<ChartSpec[]> {
     data: (r.data as Record<string, unknown>[]) ?? [],
     style: r.style as Record<string, unknown> | undefined,
   })) as ChartSpec[];
+}
+
+async function getV2ChartRows(runId: string): Promise<V2ChartRow[]> {
+  assertUuid(runId, "runId");
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_charts?run_id=eq.${runId}`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+      },
+    },
+  );
+
+  if (!response.ok) return [];
+
+  const rows = await response.json();
+  return rows.map((r: Record<string, unknown>) => ({
+    id: r.id as string,
+    chartType: (r.chart_type as string) ?? "bar",
+    title: (r.title as string) ?? "",
+    data: (r.data as Record<string, unknown>[]) ?? [],
+    xAxis: (r.x_axis as string) ?? "",
+    yAxis: (r.y_axis as string) ?? "",
+    series: (r.series as string[]) ?? [],
+    style: {
+      colors: (r.style as Record<string, unknown> | null)?.colors as string[] | undefined,
+      showLegend: (r.style as Record<string, unknown> | null)?.showLegend as boolean | undefined,
+      showValues: (r.style as Record<string, unknown> | null)?.showValues as boolean | undefined,
+    },
+  }));
 }
 
 async function getNotebookEntry(evidenceRefId: string) {
@@ -1017,8 +1049,17 @@ export const basquioV2Generation = inngest.createFunction(
       const slides = await getSlides(runId);
       const charts = await getCharts(runId);
 
-      // Convert DeckSpecV2 slides to SlideSpec format for existing renderers
-      // TODO: Replace with unified slide scene graph renderer
+      // Build v2 chart rows for the native v2 renderer
+      const v2ChartRows = await getV2ChartRows(runId);
+
+      // Render PPTX via native v2 renderer (direct from DeckSpecV2 schema)
+      const pptxArtifact = await renderV2PptxArtifact({
+        deckTitle: analysis.summary.slice(0, 100),
+        slides,
+        charts: v2ChartRows,
+      });
+
+      // Convert to v1 SlideSpec format for PDF renderer (still uses v1 schema)
       const slideSpecs = slides.map((s) => ({
         id: s.id,
         purpose: s.title ?? "",
@@ -1033,18 +1074,9 @@ export const basquioV2Generation = inngest.createFunction(
         speakerNotes: s.speakerNotes ?? "",
         transition: s.transition ?? "",
       }));
-
       const templateProfile = workspace.templateProfile!;
 
-      // Render PPTX
-      const pptxArtifact = await renderPptxArtifact({
-        deckTitle: analysis.summary.slice(0, 100),
-        slidePlan: slideSpecs,
-        charts,
-        templateProfile,
-      });
-
-      // Render PDF
+      // Render PDF (still uses v1 adapter)
       const pdfArtifact = await renderPdfArtifact({
         deckTitle: analysis.summary.slice(0, 100),
         slidePlan: slideSpecs,
