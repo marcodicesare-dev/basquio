@@ -3,7 +3,7 @@ import { startRecording, stopRecording } from "./recorder.js";
 import { transcribeChunks } from "./transcriber.js";
 import { extractFromTranscript } from "./extractor.js";
 import { createIssues } from "./linear.js";
-import { saveTranscript, upsertLead, saveDecisions } from "./supabase.js";
+import { saveTranscript, upsertLead, saveDecisions, getSignedAudioUrl } from "./supabase.js";
 import { postSessionSummary, getBotChannel } from "./discord.js";
 import { env, VOICE_EMPTY_TIMEOUT_MS, LONG_SESSION_SEGMENT_MS } from "./config.js";
 import { embedAndStoreTranscript } from "./transcript-embedder.js";
@@ -141,7 +141,7 @@ async function endSession(): Promise<void> {
     const extraction = await extractFromTranscript(transcript.fullText, "voice");
 
     // 4. Route everything in parallel
-    const transcriptUrl = `${env.SUPABASE_URL}/storage/v1/object/voice-recordings/${audioPaths[0] ?? ""}`;
+    const transcriptUrl = await getSignedAudioUrl(audioPaths[0] ?? "") ?? "(audio unavailable)";
 
     // Save transcript first — this must succeed
     const transcriptId = await saveTranscript({
