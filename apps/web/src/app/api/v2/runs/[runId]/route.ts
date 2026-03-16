@@ -4,6 +4,8 @@ import { getViewerState } from "@/lib/supabase/auth";
 
 export const runtime = "nodejs";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ runId: string }> },
@@ -15,7 +17,10 @@ export async function GET(
 
   const { runId } = await params;
 
-  // Fetch run — filter by requested_by to enforce tenancy
+  if (!UUID_RE.test(runId)) {
+    return NextResponse.json({ error: "Invalid run ID." }, { status: 400 });
+  }
+
   const runResponse = await fetch(
     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&requested_by=eq.${viewer.user.id}&select=*`,
     {

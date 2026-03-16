@@ -657,8 +657,8 @@ export const basquioV2Generation = inngest.createFunction(
 
       tracker.endPhase();
 
-      // Persist critique report
-      await fetch(
+      // Persist critique report — durable checkpoint
+      const critiqueInsert = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`,
         {
           method: "POST",
@@ -683,6 +683,11 @@ export const basquioV2Generation = inngest.createFunction(
           }),
         },
       );
+
+      if (!critiqueInsert.ok) {
+        const errorText = await critiqueInsert.text().catch(() => "Unknown error");
+        throw new Error(`Failed to persist critique report (iteration ${result.iteration}): ${errorText}`);
+      }
 
       await emitRunEvent(runId, "critique", "phase_completed", {
         hasIssues: result.hasIssues,
@@ -769,8 +774,8 @@ export const basquioV2Generation = inngest.createFunction(
 
         tracker.endPhase();
 
-        // Persist second critique report
-        await fetch(
+        // Persist second critique report — durable checkpoint
+        const reCritiqueInsert = await fetch(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`,
           {
             method: "POST",
@@ -795,6 +800,11 @@ export const basquioV2Generation = inngest.createFunction(
             }),
           },
         );
+
+        if (!reCritiqueInsert.ok) {
+          const errorText = await reCritiqueInsert.text().catch(() => "Unknown error");
+          throw new Error(`Failed to persist re-critique report (iteration ${reCritique.iteration}): ${errorText}`);
+        }
 
         const blockingIssuesRemain = reCritique.hasIssues &&
           reCritique.issues.some((i: { severity: string }) => i.severity === "critical" || i.severity === "major");

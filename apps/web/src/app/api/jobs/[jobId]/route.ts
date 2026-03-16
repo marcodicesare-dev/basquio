@@ -6,6 +6,7 @@ import { fetchRestRows } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const V2_PHASES = ["normalize", "understand", "author", "critique", "revise", "export"] as const;
 
 type DeckRunRow = {
@@ -38,7 +39,11 @@ export async function GET(
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  const snapshot = await getRunSnapshot(jobId);
+  if (!UUID_RE.test(jobId)) {
+    return NextResponse.json({ error: "Invalid job ID." }, { status: 400 });
+  }
+
+  const snapshot = await getRunSnapshot(jobId, viewer.user.id);
 
   if (!snapshot) {
     return NextResponse.json({ error: "Run not found." }, { status: 404 });
@@ -49,7 +54,7 @@ export async function GET(
   });
 }
 
-async function getRunSnapshot(jobId: string) {
+async function getRunSnapshot(jobId: string, viewerId: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -64,6 +69,7 @@ async function getRunSnapshot(jobId: string) {
     query: {
       select: "id,status,current_phase,failure_message,created_at,updated_at,completed_at",
       id: `eq.${jobId}`,
+      requested_by: `eq.${viewerId}`,
       limit: "1",
     },
   }).catch(() => []);

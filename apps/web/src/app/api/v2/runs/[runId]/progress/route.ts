@@ -4,6 +4,9 @@ import { getViewerState } from "@/lib/supabase/auth";
 
 export const runtime = "nodejs";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
 // Event-sourced progress endpoint.
 // Returns real tool-call events from deck_run_events, not synthetic stage weights.
 
@@ -17,9 +20,19 @@ export async function GET(
   }
 
   const { runId } = await params;
+
+  if (!UUID_RE.test(runId)) {
+    return NextResponse.json({ error: "Invalid run ID." }, { status: 400 });
+  }
+
   const url = new URL(request.url);
   const after = url.searchParams.get("after");
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
+
+  // Validate `after` timestamp if provided — prevent operator injection
+  if (after && !ISO_TIMESTAMP_RE.test(after)) {
+    return NextResponse.json({ error: "Invalid 'after' timestamp." }, { status: 400 });
+  }
 
   // Fetch run — filter by requested_by to enforce tenancy
   const runResponse = await fetch(
@@ -43,7 +56,6 @@ export async function GET(
 
   const run = runs[0];
 
-  // Fetch events (incremental if `after` provided)
   let eventsUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_run_events?run_id=eq.${runId}&order=created_at.asc&limit=${limit}`;
   if (after) {
     eventsUrl += `&created_at=gt.${after}`;
