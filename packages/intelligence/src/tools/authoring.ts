@@ -287,6 +287,25 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
         .optional(),
     }),
     async execute(params) {
+      // Validate xAxis column exists in data
+      if (params.data.length > 0 && !(params.xAxis in params.data[0])) {
+        const availableKeys = Object.keys(params.data[0]).slice(0, 10).join(", ");
+        return {
+          error: `xAxis column "${params.xAxis}" not found in data. Available columns: ${availableKeys}`,
+          chartId: null,
+        };
+      }
+
+      // Validate series columns exist in data
+      const missingSeries = params.series.filter((s) => params.data.length > 0 && !(s in params.data[0]));
+      if (missingSeries.length > 0) {
+        const availableKeys = Object.keys(params.data[0]).slice(0, 10).join(", ");
+        return {
+          error: `Series column(s) [${missingSeries.join(", ")}] not found in data. Available columns: ${availableKeys}`,
+          chartId: null,
+        };
+      }
+
       // Validate data has numeric values in at least one series
       const hasNumeric = params.series.some((s) =>
         params.data.some((row) => {
@@ -297,7 +316,7 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
 
       if (!hasNumeric) {
         return {
-          error: `No numeric data found in series columns [${params.series.join(", ")}]. Check column names match your data.`,
+          error: `No numeric data found in series columns [${params.series.join(", ")}]. Values must be numbers. Check column names.`,
           chartId: null,
         };
       }

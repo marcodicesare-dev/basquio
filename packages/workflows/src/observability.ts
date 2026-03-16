@@ -96,6 +96,18 @@ export class UsageTracker {
     this.currentPhase = null;
   }
 
+  getCurrentModelId(): string | undefined {
+    return this.currentPhase?.modelId;
+  }
+
+  getCurrentProvider(): string | undefined {
+    return this.currentPhase?.provider;
+  }
+
+  getCurrentPhaseUsage(): { inputTokens: number; outputTokens: number; totalTokens: number } {
+    return this.currentPhase?.usage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  }
+
   getSummary(runId: string): JobCostSummary {
     const totalUsage: TokenUsage = {
       inputTokens: 0,

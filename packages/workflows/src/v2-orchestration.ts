@@ -571,7 +571,7 @@ export const basquioV2Generation = inngest.createFunction(
       const workspaceId = runId;
       const blobManifest: Record<string, { bytes: number; checksum: string; sheetKey: string }> = {};
 
-      await fetch(
+      const wsInsertResponse = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces`,
         {
           method: "POST",
@@ -593,6 +593,11 @@ export const basquioV2Generation = inngest.createFunction(
           }),
         },
       );
+
+      if (!wsInsertResponse.ok) {
+        const errorText = await wsInsertResponse.text().catch(() => "Unknown error");
+        throw new Error(`Failed to create evidence workspace: ${errorText}`);
+      }
 
       // Upload blobs to Storage + persist sheet manifests
       for (const manifest of allSheetManifests) {
@@ -888,6 +893,23 @@ export const basquioV2Generation = inngest.createFunction(
 
       tracker.endPhase();
 
+      // Assemble full critique report from model output + orchestration metadata
+      const critiqueId = crypto.randomUUID();
+      const fullCritique: CritiqueReport = {
+        id: critiqueId,
+        runId,
+        iteration: result.iteration,
+        hasIssues: result.hasIssues,
+        issues: result.issues,
+        coverageScore: result.coverageScore,
+        accuracyScore: result.accuracyScore,
+        narrativeScore: result.narrativeScore,
+        modelId: tracker.getCurrentModelId() ?? "gpt-5.4",
+        provider: tracker.getCurrentProvider() ?? "openai",
+        usage: tracker.getCurrentPhaseUsage(),
+        createdAt: new Date().toISOString(),
+      };
+
       // Persist critique report — durable checkpoint
       const critiqueInsert = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`,
@@ -900,32 +922,32 @@ export const basquioV2Generation = inngest.createFunction(
             Prefer: "return=minimal",
           },
           body: JSON.stringify({
-            id: result.id,
+            id: fullCritique.id,
             run_id: runId,
-            iteration: result.iteration,
-            has_issues: result.hasIssues,
-            issues: result.issues,
-            coverage_score: result.coverageScore,
-            accuracy_score: result.accuracyScore,
-            narrative_score: result.narrativeScore,
-            model_id: result.modelId,
-            provider: result.provider,
-            usage: result.usage,
+            iteration: fullCritique.iteration,
+            has_issues: fullCritique.hasIssues,
+            issues: fullCritique.issues,
+            coverage_score: fullCritique.coverageScore,
+            accuracy_score: fullCritique.accuracyScore,
+            narrative_score: fullCritique.narrativeScore,
+            model_id: fullCritique.modelId,
+            provider: fullCritique.provider,
+            usage: fullCritique.usage,
           }),
         },
       );
 
       if (!critiqueInsert.ok) {
         const errorText = await critiqueInsert.text().catch(() => "Unknown error");
-        throw new Error(`Failed to persist critique report (iteration ${result.iteration}): ${errorText}`);
+        throw new Error(`Failed to persist critique report (iteration ${fullCritique.iteration}): ${errorText}`);
       }
 
       await emitRunEvent(runId, "critique", "phase_completed", {
-        hasIssues: result.hasIssues,
-        issueCount: result.issues.length,
+        hasIssues: fullCritique.hasIssues,
+        issueCount: fullCritique.issues.length,
       });
 
-      return result;
+      return fullCritique;
     });
 
     // ─── STEP 5: REVISE (conditional, max 2 iterations) ────────
@@ -1022,6 +1044,23 @@ export const basquioV2Generation = inngest.createFunction(
 
         tracker.endPhase();
 
+        // Assemble full re-critique report
+        const reCritiqueId = crypto.randomUUID();
+        const fullReCritique: CritiqueReport = {
+          id: reCritiqueId,
+          runId,
+          iteration: reCritique.iteration,
+          hasIssues: reCritique.hasIssues,
+          issues: reCritique.issues,
+          coverageScore: reCritique.coverageScore,
+          accuracyScore: reCritique.accuracyScore,
+          narrativeScore: reCritique.narrativeScore,
+          modelId: tracker.getCurrentModelId() ?? "gpt-5.4",
+          provider: tracker.getCurrentProvider() ?? "openai",
+          usage: tracker.getCurrentPhaseUsage(),
+          createdAt: new Date().toISOString(),
+        };
+
         // Persist second critique report — durable checkpoint
         const reCritiqueInsert = await fetch(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`,
@@ -1034,39 +1073,39 @@ export const basquioV2Generation = inngest.createFunction(
               Prefer: "return=minimal",
             },
             body: JSON.stringify({
-              id: reCritique.id,
+              id: fullReCritique.id,
               run_id: runId,
-              iteration: reCritique.iteration,
-              has_issues: reCritique.hasIssues,
-              issues: reCritique.issues,
-              coverage_score: reCritique.coverageScore,
-              accuracy_score: reCritique.accuracyScore,
-              narrative_score: reCritique.narrativeScore,
-              model_id: reCritique.modelId,
-              provider: reCritique.provider,
-              usage: reCritique.usage,
+              iteration: fullReCritique.iteration,
+              has_issues: fullReCritique.hasIssues,
+              issues: fullReCritique.issues,
+              coverage_score: fullReCritique.coverageScore,
+              accuracy_score: fullReCritique.accuracyScore,
+              narrative_score: fullReCritique.narrativeScore,
+              model_id: fullReCritique.modelId,
+              provider: fullReCritique.provider,
+              usage: fullReCritique.usage,
             }),
           },
         );
 
         if (!reCritiqueInsert.ok) {
           const errorText = await reCritiqueInsert.text().catch(() => "Unknown error");
-          throw new Error(`Failed to persist re-critique report (iteration ${reCritique.iteration}): ${errorText}`);
+          throw new Error(`Failed to persist re-critique report (iteration ${fullReCritique.iteration}): ${errorText}`);
         }
 
-        const blockingIssuesRemain = reCritique.hasIssues &&
-          reCritique.issues.some((i: { severity: string }) => i.severity === "critical" || i.severity === "major");
+        const blockingIssuesRemain = fullReCritique.hasIssues &&
+          fullReCritique.issues.some((i) => i.severity === "critical" || i.severity === "major");
 
         if (blockingIssuesRemain) {
           logPhaseEvent(runId, "re-critique", "issues_remain_after_max_revisions", {
-            issueCount: reCritique.issues.length,
-            severities: reCritique.issues.map((i: { severity: string }) => i.severity),
+            issueCount: fullReCritique.issues.length,
+            severities: fullReCritique.issues.map((i) => i.severity),
           });
         }
 
         await emitRunEvent(runId, "critique", "phase_completed", {
-          hasIssues: reCritique.hasIssues,
-          issueCount: reCritique.issues.length,
+          hasIssues: fullReCritique.hasIssues,
+          issueCount: fullReCritique.issues.length,
           iteration: 2,
         });
 
@@ -1074,17 +1113,17 @@ export const basquioV2Generation = inngest.createFunction(
         // Major issues are allowed through after max revisions (degraded but usable).
         // Critical issues mean the deck has factually wrong numbers — never ship.
         if (blockingIssuesRemain) {
-          const criticalCount = reCritique.issues.filter((i: { severity: string }) => i.severity === "critical").length;
+          const criticalCount = fullReCritique.issues.filter((i) => i.severity === "critical").length;
           if (criticalCount > 0) {
             throw new Error(
               `Export blocked: ${criticalCount} critical issue(s) remain after 2 revision cycles. ` +
               `The deck contains factually wrong data that would embarrass the firm. ` +
-              `Issues: ${reCritique.issues.filter((i: { severity: string }) => i.severity === "critical").map((i: { claim: string }) => i.claim).join("; ")}`,
+              `Issues: ${fullReCritique.issues.filter((i) => i.severity === "critical").map((i) => i.claim).join("; ")}`,
             );
           }
           logPhaseEvent(runId, "re-critique", "proceeding_with_major_issues", {
-            issueCount: reCritique.issues.length,
-            severities: reCritique.issues.map((i: { severity: string }) => i.severity),
+            issueCount: fullReCritique.issues.length,
+            severities: fullReCritique.issues.map((i) => i.severity),
             note: "Major issues remain but no critical factual errors — proceeding to export",
           });
         }

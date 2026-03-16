@@ -203,9 +203,12 @@ async function queueGeneration(
       sourceFileIds,
       templateProfileId,
       brief: [
+        generationRequest.brief.client ? `Client: ${generationRequest.brief.client}` : "",
+        generationRequest.brief.audience ? `Audience: ${generationRequest.brief.audience}` : "",
         generationRequest.brief.businessContext,
-        generationRequest.brief.objective,
+        generationRequest.brief.objective ? `Objective: ${generationRequest.brief.objective}` : "",
         generationRequest.brief.thesis,
+        generationRequest.brief.stakes ? `Stakes: ${generationRequest.brief.stakes}` : "",
       ].filter(Boolean).join("\n\n"),
     },
   });

@@ -2,7 +2,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { Output, ToolLoopAgent, stepCountIs } from "ai";
 
-import { critiqueReportSchema, type CritiqueReport, type EvidenceWorkspace } from "@basquio/types";
+import { critiqueReportOutputSchema, type CritiqueReportOutput, type CritiqueReport, type EvidenceWorkspace } from "@basquio/types";
 import { costBudgetExceeded } from "../agent-utils";
 
 import {
@@ -89,14 +89,14 @@ Rate severity:
       compare_to_brief: createCompareToBriefTool(ctx),
     },
     stopWhen: [stepCountIs(20), costBudgetExceeded(0.50)],
-    output: Output.object({ schema: critiqueReportSchema }),
+    output: Output.object({ schema: critiqueReportOutputSchema }),
     onStepFinish: input.onStepFinish,
   });
 
   return agent;
 }
 
-export async function runCriticAgent(input: CriticAgentInput): Promise<CritiqueReport> {
+export async function runCriticAgent(input: CriticAgentInput): Promise<CritiqueReportOutput> {
   const agent = createCriticAgent(input);
 
   const slides = await input.getSlides();

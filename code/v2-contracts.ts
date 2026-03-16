@@ -250,6 +250,19 @@ export const critiqueIssueSchema = z.object({
   suggestion: z.string(),
 });
 
+// Model-facing schema: only fields the LLM can generate.
+// Used as Output.object() for the critic agent.
+export const critiqueReportOutputSchema = z.object({
+  iteration: z.number().int().positive(),
+  hasIssues: z.boolean(),
+  issues: z.array(critiqueIssueSchema),
+  coverageScore: z.number().min(0).max(1),
+  accuracyScore: z.number().min(0).max(1),
+  narrativeScore: z.number().min(0).max(1),
+});
+
+// Full schema including orchestration-assigned metadata.
+// NOT used as Output.object() — assembled by the orchestration layer.
 export const critiqueReportSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
@@ -309,5 +322,6 @@ export type DeckSpecV2 = z.infer<typeof deckSpecV2Schema>;
 export type ArtifactEntryV2 = z.infer<typeof artifactEntryV2Schema>;
 export type ArtifactManifestV2 = z.infer<typeof artifactManifestV2Schema>;
 export type CritiqueIssue = z.infer<typeof critiqueIssueSchema>;
+export type CritiqueReportOutput = z.infer<typeof critiqueReportOutputSchema>;
 export type CritiqueReport = z.infer<typeof critiqueReportSchema>;
 export type AnalysisReport = z.infer<typeof analysisReportSchema>;
