@@ -339,19 +339,26 @@ function resolveSheetKey(
 
   if (!targetSheet) return null;
 
-  // Try both key formats
-  const key1 = `${fileEntry.id}:${targetSheet.name}`;
-  const key2 = `${fileEntry.fileName}:${targetSheet.name}`;
+  // Construct the canonical key: "<fileId>:<sheetName>"
+  // This matches the key format used by streamParseFile in data-ingest.
+  // Don't rely on workspace.sheetData for key validation — in v2,
+  // sheetData is {} and rows live in Storage blobs loaded via loadRows().
+  const canonicalKey = `${fileEntry.id}:${targetSheet.name}`;
 
-  if (workspace.sheetData[key1]) return key1;
-  if (workspace.sheetData[key2]) return key2;
+  // If sheetData has entries (v1 compat), verify the key exists there
+  const sheetDataKeys = Object.keys(workspace.sheetData);
+  if (sheetDataKeys.length > 0) {
+    if (workspace.sheetData[canonicalKey]) return canonicalKey;
+    const key2 = `${fileEntry.fileName}:${targetSheet.name}`;
+    if (workspace.sheetData[key2]) return key2;
+    const matchingKey = sheetDataKeys.find(
+      (k) => k.endsWith(`:${targetSheet.name}`) && (k.startsWith(fileEntry.id) || k.startsWith(fileEntry.fileName)),
+    );
+    return matchingKey ?? null;
+  }
 
-  // Fallback: find any key containing the sheet name
-  const matchingKey = Object.keys(workspace.sheetData).find(
-    (k) => k.endsWith(`:${targetSheet.name}`) && (k.startsWith(fileEntry.id) || k.startsWith(fileEntry.fileName)),
-  );
-
-  return matchingKey ?? null;
+  // v2 path: sheetData is empty, return canonical key for loadRows()
+  return canonicalKey;
 }
 
 function applyFilter(rows: Record<string, unknown>[], filterExpr: string): Record<string, unknown>[] {

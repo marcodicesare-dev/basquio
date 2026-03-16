@@ -628,6 +628,7 @@ export type ColumnProfile = {
   mean?: number;
   nullCount: number;
   distinctCount: number;
+  distinctApproximate?: boolean; // true when distinct tracking was capped (>1000 unique values)
   topValues: Array<{ value: string; count: number }>;
 };
 
@@ -1044,7 +1045,9 @@ function buildColumnFromStats(
     role,
     nullable: stats.nullCount > 0,
     sampleValues: topEntries.slice(0, 10).map(([v]) => v),
-    uniqueCount: stats.valueCounts.size,
+    uniqueCount: stats.cappedDistinct
+      ? stats.valueCounts.size // lower bound — flagged in profile
+      : stats.valueCounts.size,
     nullRate: totalRows === 0 ? 0 : stats.nullCount / totalRows,
   };
 }
@@ -1064,6 +1067,7 @@ function buildProfileFromStats(
     const p: ColumnProfile = {
       nullCount: stats.nullCount,
       distinctCount: stats.valueCounts.size,
+      distinctApproximate: stats.cappedDistinct || undefined,
       topValues,
     };
 
