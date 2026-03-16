@@ -159,23 +159,23 @@ export const deckSpecV2SlideSchema = z.object({
   runId: z.string().uuid(),
   position: z.number().int().positive(),
   layoutId: z.string(),
-  title: z.string().default(""),
-  subtitle: z.string().optional(),
-  body: z.string().optional(),
-  bullets: z.array(z.string()).optional(),
-  chartId: z.string().optional(),
+  title: z.string(),
+  subtitle: z.string(),
+  body: z.string(),
+  bullets: z.array(z.string()),
+  chartId: z.string(),
   metrics: z.array(z.object({
     label: z.string(),
     value: z.string(),
-    delta: z.string().optional(),
-  })).optional(),
-  evidenceIds: z.array(z.string()).default([]),
-  speakerNotes: z.string().optional(),
-  transition: z.string().optional(),
-  sceneGraph: z.record(z.string(), z.unknown()).optional(),
-  previewUrl: z.string().optional(),
-  qaStatus: z.enum(["pending", "passed", "failed"]).optional(),
-  revision: z.number().int().positive().default(1),
+    delta: z.string(),
+  })),
+  evidenceIds: z.array(z.string()),
+  speakerNotes: z.string(),
+  transition: z.string(),
+  sceneGraph: z.record(z.string(), z.unknown()),
+  previewUrl: z.string(),
+  qaStatus: z.enum(["pending", "passed", "failed"]),
+  revision: z.number().int().positive(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -184,19 +184,19 @@ export const deckSpecV2ChartSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
   chartType: z.enum(["bar", "line", "pie", "scatter", "waterfall", "heatmap", "stacked_bar", "table"]),
-  title: z.string().default(""),
-  data: z.array(z.record(z.string(), z.unknown())).default([]),
-  xAxis: z.string().optional(),
-  yAxis: z.string().optional(),
-  series: z.array(z.string()).optional(),
+  title: z.string(),
+  data: z.array(z.record(z.string(), z.unknown())),
+  xAxis: z.string(),
+  yAxis: z.string(),
+  series: z.array(z.string()),
   style: z.object({
-    colors: z.array(z.string()).optional(),
-    showLegend: z.boolean().optional(),
-    showValues: z.boolean().optional(),
-  }).optional(),
-  thumbnailUrl: z.string().optional(),
-  width: z.number().int().optional(),
-  height: z.number().int().optional(),
+    colors: z.array(z.string()),
+    showLegend: z.boolean(),
+    showValues: z.boolean(),
+  }),
+  thumbnailUrl: z.string(),
+  width: z.number().int(),
+  height: z.number().int(),
   createdAt: z.string(),
 });
 
@@ -204,8 +204,8 @@ export const deckSpecV2ChartSchema = z.object({
 export const deckSpecV2Schema = z.object({
   runId: z.string().uuid(),
   slides: z.array(deckSpecV2SlideSchema),
-  charts: z.array(deckSpecV2ChartSchema).default([]),
-  summary: z.string().default(""),
+  charts: z.array(deckSpecV2ChartSchema),
+  summary: z.string(),
   slideCount: z.number().int().nonnegative(),
 });
 
@@ -241,32 +241,35 @@ export const artifactManifestV2Schema = z.object({
 export const critiqueIssueSchema = z.object({
   type: z.enum(["factual_error", "numeric_mismatch", "missing_evidence", "narrative_gap", "brief_misalignment", "layout_issue"]),
   severity: z.enum(["critical", "major", "minor"]),
-  slideId: z.string().optional(),
-  claim: z.string().optional(),
-  expectedValue: z.string().optional(),
-  actualValue: z.string().optional(),
-  evidence: z.string().optional(),
+  slideId: z.string(),
+  claim: z.string(),
+  expectedValue: z.string(),
+  actualValue: z.string(),
+  evidence: z.string(),
   suggestion: z.string(),
 });
 
 export const critiqueReportSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
-  iteration: z.number().int().positive().default(1),
-  hasIssues: z.boolean().default(false),
-  issues: z.array(critiqueIssueSchema).default([]),
-  coverageScore: z.number().min(0).max(1).optional(),
-  accuracyScore: z.number().min(0).max(1).optional(),
-  narrativeScore: z.number().min(0).max(1).optional(),
-  modelId: z.string().optional(),
-  provider: z.string().optional(),
-  usage: tokenUsageSchema.optional(),
+  iteration: z.number().int().positive(),
+  hasIssues: z.boolean(),
+  issues: z.array(critiqueIssueSchema),
+  coverageScore: z.number().min(0).max(1),
+  accuracyScore: z.number().min(0).max(1),
+  narrativeScore: z.number().min(0).max(1),
+  modelId: z.string(),
+  provider: z.string(),
+  usage: tokenUsageSchema,
   createdAt: z.string(),
 });
 
 // ─── ANALYSIS REPORT ──────────────────────────────────────────────
 // Structured output from the analyst agent (UNDERSTAND phase)
 
+// NOTE: Schemas used as Output.object() for OpenAI structured outputs MUST have
+// ALL properties required (no .optional() or .default()). OpenAI strict mode
+// rejects schemas where 'required' doesn't include every property key.
 export const analysisReportSchema = z.object({
   summary: z.string(),
   domain: z.string(),
@@ -280,12 +283,12 @@ export const analysisReportSchema = z.object({
   metricsComputed: z.number().int().nonnegative(),
   queriesExecuted: z.number().int().nonnegative(),
   filesAnalyzed: z.number().int().nonnegative(),
-  keyDimensions: z.array(z.string()).default([]),
+  keyDimensions: z.array(z.string()),
   recommendedChartTypes: z.array(z.object({
     findingIndex: z.number().int().nonnegative(),
     chartType: z.string(),
     rationale: z.string(),
-  })).default([]),
+  })),
 });
 
 // ─── TYPE EXPORTS ─────────────────────────────────────────────────
