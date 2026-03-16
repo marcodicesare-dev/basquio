@@ -118,10 +118,12 @@ Important:
     : "Could not generate an answer.";
 
   // 5. Confidence scoring
+  // RRF scores: max ~0.04 (rank 1 in both FTS + semantic with k=50)
+  // Single-signal rank 1 = ~0.0196, dual rank 1 = ~0.0392
   const topScore = chunks[0]?.score ?? 0;
   let confidence: "high" | "medium" | "low";
-  if (topScore > 0.035) confidence = "high";
-  else if (topScore > 0.020) confidence = "medium";
+  if (topScore > 0.025) confidence = "high";
+  else if (topScore > 0.015) confidence = "medium";
   else confidence = "low";
 
   return { answer, sources, confidence };
