@@ -14,6 +14,8 @@ import { initChannels, postRecordingWarning, postWeeklyDigest } from "./discord.
 import { handleVoiceJoin, handleVoiceLeave, hasActiveSession } from "./session.js";
 import { handleTextMessage, handleReaction } from "./text-handler.js";
 import { ensureLabels } from "./linear.js";
+import { handleDocsMessage } from "./ingestor.js";
+import { handleBotMention } from "./searcher.js";
 
 const client = new Client({
   intents: [
@@ -74,10 +76,35 @@ client.on(Events.VoiceStateUpdate, async (oldState: VoiceState, newState: VoiceS
 // ── Text Messages ──────────────────────────────────────────────────
 
 client.on(Events.MessageCreate, (message: Message) => {
-  // Only process messages in #general
-  if (message.channelId !== env.DISCORD_GENERAL_CHANNEL_ID) return;
   if (message.author.bot) return;
 
+  // #docs channel — file ingestion
+  if (message.channelId === env.DISCORD_DOCS_CHANNEL_ID) {
+    if (message.attachments.size > 0) {
+      for (const attachment of message.attachments.values()) {
+        handleDocsMessage(message, attachment).catch((err) => {
+          console.error(`Ingestion failed for ${attachment.name}:`, err);
+        });
+      }
+    }
+    return;
+  }
+
+  // @mention — knowledge base search (any channel)
+  if (message.mentions.has(client.user!.id)) {
+    const query = message.content
+      .replace(/<@!?\d+>/g, "") // strip mention
+      .trim();
+    if (query.length > 3) {
+      handleBotMention(message, query).catch((err) => {
+        console.error("Search failed:", err);
+      });
+    }
+    return;
+  }
+
+  // #general — text message buffering (existing)
+  if (message.channelId !== env.DISCORD_GENERAL_CHANNEL_ID) return;
   handleTextMessage(message);
 });
 
@@ -91,9 +118,14 @@ client.on(
   ) => {
     if (user.bot) return;
 
-    // Only process reactions in #general and #basquio-ai
     const channelId = reaction.message.channelId;
+    const emoji = reaction.emoji.name;
+
+    // 📚 and 🔍 work in ANY channel (knowledge base shortcuts)
+    // Other reactions (⚡🐛💡🏢) only in #general and #basquio-ai
+    const isKbEmoji = emoji === "📚" || emoji === "🔍";
     if (
+      !isKbEmoji &&
       channelId !== env.DISCORD_GENERAL_CHANNEL_ID &&
       channelId !== env.DISCORD_BOT_CHANNEL_ID
     ) {

@@ -4,6 +4,8 @@ import { createIssues } from "./linear.js";
 import { saveTranscript, upsertLead, saveDecisions } from "./supabase.js";
 import { postSessionSummary } from "./discord.js";
 import { env, TEXT_BUFFER_FLUSH_MS, TEXT_SILENCE_TIMEOUT_MS } from "./config.js";
+import { handleBotMention } from "./searcher.js";
+import { embedAndStoreTranscript } from "./transcript-embedder.js";
 
 interface BufferedMessage {
   author: string;
@@ -99,6 +101,20 @@ export async function handleReaction(
         await createQuickLead(content, author);
         break;
       }
+
+      case "📚": {
+        // Index this message as a knowledge snippet
+        await indexMessageAsSnippet(content, author, message as Message);
+        break;
+      }
+
+      case "🔍": {
+        // Search for this message's content
+        if (content.length > 3) {
+          await handleBotMention(message as Message, content);
+        }
+        break;
+      }
     }
   } catch (err) {
     console.error(`❌ Reaction handler failed for ${emoji}:`, err);
@@ -175,6 +191,32 @@ async function createQuickLead(content: string, author: string): Promise<void> {
 }
 
 /**
+ * Index a single message as a knowledge snippet via transcript embedding.
+ */
+async function indexMessageAsSnippet(content: string, author: string, message: Message): Promise<void> {
+  try {
+    const snippet = `[${author}]: ${content}`;
+    const endedAt = new Date();
+
+    // Save as a micro-transcript so it gets embedded
+    const transcriptId = await saveTranscript({
+      sessionType: "text",
+      startedAt: endedAt,
+      endedAt,
+      participants: [author],
+      rawTranscript: snippet,
+      extraction: { summary: content.slice(0, 200), decisions: [], action_items: [], sales_mentions: [], key_quotes: [] },
+    });
+
+    await embedAndStoreTranscript(transcriptId, snippet);
+    await message.react("✅");
+    console.log(`📚 Indexed message snippet from ${author}`);
+  } catch (err) {
+    console.error("Failed to index message snippet:", err);
+  }
+}
+
+/**
  * Flush the message buffer — run extraction pipeline on accumulated text messages.
  */
 async function flushBuffer(): Promise<void> {
@@ -219,6 +261,11 @@ async function flushBuffer(): Promise<void> {
       participants,
       rawTranscript: transcript,
       extraction,
+    });
+
+    // Embed transcript chunks for knowledge base (fire-and-forget)
+    embedAndStoreTranscript(transcriptId, transcript).catch((err) => {
+      console.error(`Failed to embed text transcript ${transcriptId}:`, err);
     });
 
     // Only create issues if extraction found genuinely actionable items
