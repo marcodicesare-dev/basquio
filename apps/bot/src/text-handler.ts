@@ -25,8 +25,9 @@ const TRIVIAL_PATTERNS = /^(ok|lol|lmao|haha|nice|👍|👎|❤️|😂|🤣|yes
  * Handle an incoming text message in #general.
  */
 export function handleTextMessage(message: Message): void {
-  // Skip bot messages and trivial content
+  // Skip bot messages, @mentions (handled by searcher), and trivial content
   if (message.author.bot) return;
+  if (message.mentions.users.size > 0) return;
   if (message.content.length < 20 && TRIVIAL_PATTERNS.test(message.content.trim())) return;
   if (message.content.trim().length < 5) return;
 
