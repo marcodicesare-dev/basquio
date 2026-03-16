@@ -72,34 +72,40 @@ export async function startRecording(channel: VoiceBasedChannel): Promise<void> 
     throw new Error("Bot missing required voice channel permissions");
   }
 
-  connection = joinVoiceChannel({
-    channelId: channel.id,
-    guildId: channel.guild.id,
-    adapterCreator: channel.guild.voiceAdapterCreator,
-    selfDeaf: false,
-    selfMute: true,
-    // DAVE E2EE is required since March 2, 2026. Using @discordjs/voice dev
-    // build (PR #11449) which fixes audio receive decryption with DAVE.
-  });
+  // Retry up to 3 times — UDP can fail transiently on containerized hosts
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    connection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
+      selfDeaf: false,
+      selfMute: true,
+    });
 
-  // Full debug logging
-  connection.on("stateChange", (oldState, newState) => {
-    console.log(`🔌 Voice connection: ${oldState.status} → ${newState.status}`);
-  });
+    connection.on("stateChange", (oldState, newState) => {
+      console.log(`🔌 Voice connection: ${oldState.status} → ${newState.status}`);
+    });
 
-  connection.on("error", (err) => {
-    console.error("🔌 Voice connection error:", err);
-  });
+    connection.on("error", (err) => {
+      console.error("🔌 Voice connection error:", err);
+    });
 
-  // Wait for connection to be ready
-  try {
-    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
-    console.log("✅ Voice connection ready");
-  } catch (err) {
-    console.error("❌ Voice connection failed:", err);
-    connection.destroy();
-    connection = null;
-    throw new Error("Voice connection timed out");
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+      console.log(`✅ Voice connection ready (attempt ${attempt}/${MAX_RETRIES})`);
+      break; // success
+    } catch (err) {
+      console.error(`❌ Voice connection attempt ${attempt}/${MAX_RETRIES} failed:`, err);
+      connection.destroy();
+      connection = null;
+      if (attempt === MAX_RETRIES) {
+        throw new Error(`Voice connection timed out after ${MAX_RETRIES} attempts`);
+      }
+      // Brief pause before retry
+      await new Promise((r) => setTimeout(r, 2_000));
+      console.log(`🔄 Retrying voice connection (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+    }
   }
 
   // Handle disconnects with reconnection
