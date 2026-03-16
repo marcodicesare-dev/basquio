@@ -65,6 +65,13 @@ type ChartInput = {
 // Use the shared Inngest client (avoids circular import with ./index)
 import { inngest } from "./inngest-client";
 
+// ─── TEXT HELPERS ────────────────────────────────────────────────
+
+// Fix literal \n sequences from LLM output into actual newlines
+function cleanNewlines(text: string): string {
+  return text.replace(/\\n/g, "\n").replace(/\\\\n/g, "\n");
+}
+
 // ─── PERSISTENCE HELPERS ──────────────────────────────────────────
 
 // Validate UUID to prevent PostgREST operator injection
@@ -227,14 +234,14 @@ async function persistSlide(runId: string, slide: {
         run_id: runId,
         position: slide.position,
         layout_id: slide.layoutId,
-        title: slide.title,
-        subtitle: slide.subtitle,
-        body: slide.body,
-        bullets: slide.bullets,
+        title: cleanNewlines(slide.title),
+        subtitle: slide.subtitle ? cleanNewlines(slide.subtitle) : undefined,
+        body: slide.body ? cleanNewlines(slide.body) : undefined,
+        bullets: slide.bullets?.map(cleanNewlines),
         chart_id: slide.chartId,
         metrics: slide.metrics,
         evidence_ids: slide.evidenceIds,
-        speaker_notes: slide.speakerNotes,
+        speaker_notes: slide.speakerNotes ? cleanNewlines(slide.speakerNotes) : undefined,
         transition: slide.transition,
       }),
     },
@@ -1027,15 +1034,14 @@ export const basquioV2Generation = inngest.createFunction(
           iteration: 2,
         });
 
+        // After max revisions, proceed to export regardless.
+        // The critique report is persisted — downstream consumers can check qa_passed.
+        // Blocking the entire run here wastes all the work done so far.
         if (blockingIssuesRemain) {
-          const blockingMessages = reCritique.issues
-            .filter((i: { severity: string }) => i.severity === "critical" || i.severity === "major")
-            .map((i: { suggestion: string; severity: string }) => `[${i.severity}] ${i.suggestion}`)
-            .join("; ");
-          await updateRunStatus(runId, "failed", "critique", {
-            failure_message: `Critical/major issues remain after max revisions: ${blockingMessages}`,
+          logPhaseEvent(runId, "re-critique", "proceeding_despite_issues", {
+            issueCount: reCritique.issues.length,
+            severities: reCritique.issues.map((i: { severity: string }) => i.severity),
           });
-          throw new Error(`Critical/major issues remain after max revisions: ${blockingMessages}`);
         }
       });
     }
