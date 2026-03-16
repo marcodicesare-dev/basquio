@@ -5,6 +5,7 @@ import type {
   ExtractedSalesMention,
 } from "@basquio/types";
 import { env } from "./config.js";
+import type { HybridSearchRow } from "./kb-types.js";
 
 let supabase: SupabaseClient;
 
@@ -226,4 +227,187 @@ export async function getWeeklyDigest(): Promise<WeeklyDigest> {
     leadCount: leads.data?.length ?? 0,
     topQuotes: allQuotes.slice(0, 5),
   };
+}
+
+// ── Knowledge Base ──────────────────────────────────────────────
+
+export async function uploadKbFile(buffer: Buffer, path: string, contentType: string): Promise<void> {
+  const db = getClient();
+  const { error } = await db.storage
+    .from("knowledge-base")
+    .upload(path, buffer, { contentType, upsert: true });
+  if (error) throw new Error(`Failed to upload KB file: ${error.message}`);
+}
+
+export async function createDocument(input: {
+  filename: string;
+  fileType: string;
+  fileSizeBytes: number;
+  storagePath: string;
+  uploadedBy: string;
+  uploadedByDiscordId: string;
+  uploadContext?: string;
+  contentHash: string;
+}): Promise<string> {
+  const db = getClient();
+  const { data, error } = await db
+    .from("knowledge_documents")
+    .insert({
+      filename: input.filename,
+      file_type: input.fileType,
+      file_size_bytes: input.fileSizeBytes,
+      storage_path: input.storagePath,
+      uploaded_by: input.uploadedBy,
+      uploaded_by_discord_id: input.uploadedByDiscordId,
+      upload_context: input.uploadContext ?? null,
+      content_hash: input.contentHash,
+      status: "processing",
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(`Failed to create document: ${error.message}`);
+  return data.id;
+}
+
+export async function insertChunks(
+  documentId: string,
+  chunks: Array<{ content: string; embedding: number[]; metadata: Record<string, unknown> }>,
+): Promise<void> {
+  const db = getClient();
+  const rows = chunks.map((c, i) => ({
+    document_id: documentId,
+    chunk_index: i,
+    content: c.content,
+    embedding: JSON.stringify(c.embedding),
+    token_count: Math.ceil(c.content.length / 4),
+    metadata: c.metadata,
+  }));
+  const { error } = await db.from("knowledge_chunks").insert(rows);
+  if (error) throw new Error(`Failed to insert chunks: ${error.message}`);
+}
+
+export async function updateDocumentStatus(
+  docId: string,
+  status: "indexed" | "failed",
+  opts?: { chunkCount?: number; pageCount?: number; errorMessage?: string },
+): Promise<void> {
+  const db = getClient();
+  const { error } = await db
+    .from("knowledge_documents")
+    .update({
+      status,
+      chunk_count: opts?.chunkCount ?? undefined,
+      page_count: opts?.pageCount ?? undefined,
+      error_message: opts?.errorMessage ?? undefined,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", docId);
+  if (error) console.error(`Failed to update document status: ${error.message}`);
+}
+
+export async function findDocumentByHash(hash: string): Promise<{ id: string; status: string } | null> {
+  const db = getClient();
+  const { data } = await db
+    .from("knowledge_documents")
+    .select("id, status")
+    .eq("content_hash", hash)
+    .limit(1)
+    .maybeSingle();
+  return data;
+}
+
+export async function hybridSearch(
+  queryText: string,
+  queryEmbedding: number[],
+  matchCount = 10,
+): Promise<HybridSearchRow[]> {
+  const db = getClient();
+  const { data, error } = await db.rpc("hybrid_search", {
+    query_text: queryText,
+    query_embedding: JSON.stringify(queryEmbedding),
+    match_count: matchCount,
+  });
+  if (error) throw new Error(`Hybrid search failed: ${error.message}`);
+  return data ?? [];
+}
+
+export async function getDocumentMeta(docId: string): Promise<{
+  filename: string;
+  storage_path: string;
+  file_type: string;
+} | null> {
+  const db = getClient();
+  const { data } = await db
+    .from("knowledge_documents")
+    .select("filename, storage_path, file_type")
+    .eq("id", docId)
+    .maybeSingle();
+  return data;
+}
+
+export async function getTranscriptMeta(transcriptId: string): Promise<{
+  started_at: string;
+  participants: string[];
+} | null> {
+  const db = getClient();
+  const { data } = await db
+    .from("transcripts")
+    .select("started_at, participants")
+    .eq("id", transcriptId)
+    .maybeSingle();
+  return data;
+}
+
+// ── Transcript Embedding ────────────────────────────────────────
+
+export async function insertTranscriptChunks(
+  transcriptId: string,
+  chunks: Array<{ content: string; embedding: number[]; speaker?: string; metadata: Record<string, unknown> }>,
+): Promise<void> {
+  const db = getClient();
+  const rows = chunks.map((c, i) => ({
+    transcript_id: transcriptId,
+    chunk_index: i,
+    content: c.content,
+    embedding: JSON.stringify(c.embedding),
+    speaker: c.speaker ?? null,
+    metadata: c.metadata,
+  }));
+  const { error } = await db.from("transcript_chunks").insert(rows);
+  if (error) throw new Error(`Failed to insert transcript chunks: ${error.message}`);
+}
+
+export async function hasTranscriptChunks(transcriptId: string): Promise<boolean> {
+  const db = getClient();
+  const { count } = await db
+    .from("transcript_chunks")
+    .select("id", { count: "exact", head: true })
+    .eq("transcript_id", transcriptId);
+  return (count ?? 0) > 0;
+}
+
+export async function getAllTranscripts(): Promise<Array<{
+  id: string;
+  raw_transcript: string;
+  participants: string[];
+}>> {
+  const db = getClient();
+  const all: Array<{ id: string; raw_transcript: string; participants: string[] }> = [];
+  let from = 0;
+  const PAGE = 50;
+
+  while (true) {
+    const { data, error } = await db
+      .from("transcripts")
+      .select("id, raw_transcript, participants")
+      .order("started_at", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`Failed to fetch transcripts: ${error.message}`);
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+
+  return all;
 }

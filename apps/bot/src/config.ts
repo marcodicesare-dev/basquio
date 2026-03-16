@@ -24,6 +24,12 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
 
+  // OpenAI (embeddings)
+  OPENAI_API_KEY: z.string().min(1),
+
+  // Knowledge Base
+  DISCORD_DOCS_CHANNEL_ID: z.string().min(1),
+
   // Optional
   WHISPER_API_KEY: z.string().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

@@ -4,8 +4,11 @@ import { transcribeChunks } from "./transcriber.js";
 import { extractFromTranscript } from "./extractor.js";
 import { createIssues } from "./linear.js";
 import { saveTranscript, upsertLead, saveDecisions } from "./supabase.js";
-import { postSessionSummary } from "./discord.js";
+import { postSessionSummary, getBotChannel } from "./discord.js";
 import { env, VOICE_EMPTY_TIMEOUT_MS, LONG_SESSION_SEGMENT_MS } from "./config.js";
+import { embedAndStoreTranscript } from "./transcript-embedder.js";
+import { detectQuestion } from "./voice-qa.js";
+import { postSearchToChannel } from "./searcher.js";
 
 interface VoiceSession {
   startedAt: Date;
@@ -122,6 +125,18 @@ async function endSession(): Promise<void> {
       return;
     }
 
+    // 2b. Check for voice Q&A questions in the transcript (non-blocking)
+    const question = detectQuestion(transcript.fullText);
+    if (question) {
+      const botCh = getBotChannel();
+      if (botCh) {
+        const speakerName = participants[0] ?? "Someone";
+        postSearchToChannel(botCh, question, speakerName).catch((err) => {
+          console.error(`Voice Q&A failed for "${question}":`, err);
+        });
+      }
+    }
+
     // 3. Extract structured data
     const extraction = await extractFromTranscript(transcript.fullText, "voice");
 
@@ -137,6 +152,11 @@ async function endSession(): Promise<void> {
       rawTranscript: transcript.fullText,
       extraction,
       audioStoragePath: audioPaths[0],
+    });
+
+    // Embed transcript chunks for knowledge base search (fire-and-forget)
+    embedAndStoreTranscript(transcriptId, transcript.fullText).catch((err) => {
+      console.error(`Failed to embed transcript ${transcriptId}:`, err);
     });
 
     // Create issues only if extraction found genuinely actionable items
