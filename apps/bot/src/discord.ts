@@ -7,6 +7,18 @@ import type { CreatedIssue } from "./linear.js";
 import { env } from "./config.js";
 import { getWeeklyDigest } from "./supabase.js";
 
+// Assignee → colored circle emoji for at-a-glance identification
+const ASSIGNEE_COLORS: Record<string, string> = {
+  marco: "🔵",
+  fra: "🟢",
+  francesco: "🟢",
+  ale: "🟠",
+  alessandro: "🟠",
+  rossella: "🟣",
+  veronica: "🔴",
+  giulia: "🟡",
+};
+
 let botChannel: TextChannel | null = null;
 let generalChannel: TextChannel | null = null;
 
@@ -84,8 +96,9 @@ export async function postSessionSummary(opts: {
     lines.push("**LINEAR ISSUES CREATED**");
     for (const issue of opts.issues) {
       const labels = issue.labels.map((l) => `\`${l}\``).join(" ");
+      const color = ASSIGNEE_COLORS[issue.assignee.toLowerCase()] ?? "⚪";
       lines.push(
-        `• **${issue.identifier}**: ${issue.title} ${labels} → assigned: ${issue.assignee}`,
+        `• **${issue.identifier}**: ${issue.title} ${labels} → ${color} ${issue.assignee}`,
       );
     }
     lines.push("");

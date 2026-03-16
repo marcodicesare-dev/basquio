@@ -111,6 +111,26 @@ Linear is our **issue tracker** — think of it as the single source of truth fo
 3. **Comment**: Add context, links, or decisions directly on the issue
 4. **Close junk**: If the bot created something wrong, mark it as **Canceled** or **Duplicate**
 
+### Assignee Color Code
+
+Every issue in the Discord summary has a colored dot next to the assignee so you can instantly see who owns what:
+
+| Color | Person | Role |
+|-------|--------|------|
+| 🔵 | **Marco** | CTO |
+| 🟢 | **Fra** | CFO |
+| 🟠 | **Ale** | CRO |
+| 🟣 | **Rossella** | CPO |
+| 🔴 | **Veronica** | Head of Product Intelligence |
+| 🟡 | **Giulia** | CMO |
+
+Example in Discord:
+```
+LINEAR ISSUES CREATED
+• BAS-14: Design per-deck pricing calculator  `finance` → 🟢 Fra
+• BAS-12: Improve PDF export styling  `from-voice` → 🔵 Marco
+```
+
 ### Issue Labels
 
 | Label | Meaning |
