@@ -23,9 +23,7 @@ const INNGEST_RECOVERY_GRACE_MS = 15_000;
 // Feature flag: BASQUIO_PIPELINE_VERSION=v1|v2
 // v1 = legacy 15-stage pipeline (default)
 // v2 = AI-native agent architecture
-// During shadow mode, both pipelines run; only the active version's output is shown.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const PIPELINE_VERSION = process.env.BASQUIO_PIPELINE_VERSION ?? "v1";
+const PIPELINE_VERSION = process.env.BASQUIO_PIPELINE_VERSION ?? "v2";
 
 export async function POST(request: Request) {
   try {
@@ -49,7 +47,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      ...(await queueGeneration(generationRequest, request, viewer.user)),
+      ...(await queueGeneration(generationRequest, request, viewer.user, workspace)),
     }, { status: 202 });
   } catch (error) {
     if (error instanceof GenerationValidationError) {
@@ -72,7 +70,12 @@ async function queueGeneration(
   generationRequest: GenerationRequest,
   request: Request,
   viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
+  workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
 ) {
+  if (PIPELINE_VERSION === "v2") {
+    return queueV2Generation(generationRequest, viewer, workspace);
+  }
+
   await persistQueuedJob(generationRequest, viewer);
   await persistGenerationRequest(generationRequest);
 
@@ -99,6 +102,123 @@ async function queueGeneration(
     statusUrl: `/api/jobs/${generationRequest.jobId}`,
     progressUrl: `/jobs/${generationRequest.jobId}`,
     message: "Basquio accepted the run and started the generation workflow.",
+  };
+}
+
+async function queueV2Generation(
+  generationRequest: GenerationRequest,
+  viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
+  workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
+) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("Supabase credentials are required for v2 pipeline.");
+  }
+
+  // deck_runs.id is UUID, but the v1 jobId is a human-readable string.
+  // Use a proper UUID for the deck_run, but keep the jobId for the frontend redirect.
+  const runId = randomUUID();
+
+  // Create source_files records for each uploaded file.
+  // The v1 upload prep already placed files in storage at the given storagePath.
+  const sourceFileIds: string[] = [];
+
+  if (generationRequest.sourceFiles.length > 0) {
+    const sourceFileRows = generationRequest.sourceFiles.map((f) => {
+      const fileId = randomUUID();
+      sourceFileIds.push(fileId);
+      return {
+        id: fileId,
+        organization_id: workspace.organizationRowId,
+        project_id: workspace.projectRowId,
+        uploaded_by: viewer.id,
+        kind: f.kind ?? inferSourceFileKind(f.fileName),
+        file_name: f.fileName,
+        storage_bucket: f.storageBucket ?? "source-files",
+        storage_path: f.storagePath ?? "",
+        file_bytes: f.fileBytes ?? 0,
+      };
+    });
+
+    const insertResponse = await fetch(`${supabaseUrl}/rest/v1/source_files`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(sourceFileRows),
+    });
+
+    if (!insertResponse.ok) {
+      const errorText = await insertResponse.text().catch(() => "Unknown error");
+      throw new Error(`Failed to create source_files records: ${errorText}`);
+    }
+  }
+
+  // Create deck_runs record
+  const deckRunResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      id: runId,
+      organization_id: workspace.organizationRowId,
+      project_id: workspace.projectRowId,
+      requested_by: viewer.id,
+      brief: {
+        businessContext: generationRequest.brief.businessContext,
+        client: generationRequest.brief.client,
+        audience: generationRequest.brief.audience,
+        objective: generationRequest.brief.objective,
+        thesis: generationRequest.brief.thesis,
+        stakes: generationRequest.brief.stakes,
+      },
+      business_context: generationRequest.brief.businessContext,
+      client: generationRequest.brief.client,
+      audience: generationRequest.brief.audience,
+      objective: generationRequest.brief.objective,
+      thesis: generationRequest.brief.thesis,
+      stakes: generationRequest.brief.stakes,
+      source_file_ids: sourceFileIds,
+      status: "queued",
+    }),
+  });
+
+  if (!deckRunResponse.ok) {
+    const errorText = await deckRunResponse.text().catch(() => "Unknown error");
+    throw new Error(`Failed to create deck_runs record: ${errorText}`);
+  }
+
+  // Dispatch v2 Inngest event
+  await inngest.send({
+    name: "basquio/v2.generation.requested",
+    data: {
+      runId,
+      organizationId: workspace.organizationId,
+      projectId: workspace.projectId,
+      sourceFileIds,
+      brief: [
+        generationRequest.brief.businessContext,
+        generationRequest.brief.objective,
+        generationRequest.brief.thesis,
+      ].filter(Boolean).join("\n\n"),
+    },
+  });
+
+  return {
+    jobId: runId,
+    status: "queued",
+    statusUrl: `/api/jobs/${runId}`,
+    progressUrl: `/jobs/${runId}`,
+    message: "Basquio accepted the run and started the v2 generation workflow.",
   };
 }
 

@@ -41,6 +41,7 @@ type Step = {
 
 export type RunProgressSnapshot = {
   jobId: string;
+  pipelineVersion?: "v2";
   status: "queued" | "running" | "completed" | "failed" | "needs_input";
   artifactsReady: boolean;
   createdAt: string;
@@ -54,6 +55,8 @@ export type RunProgressSnapshot = {
   summary: Summary | null;
   failureMessage?: string;
 };
+
+const V2_PHASES = ["normalize", "understand", "author", "critique", "revise", "export"] as const;
 
 export function RunProgressView(input: {
   jobId: string;
@@ -110,6 +113,8 @@ export function RunProgressView(input: {
     };
   }, [input.jobId, isTerminal, snapshot]);
 
+  const isV2 = snapshot?.pipelineVersion === "v2" || V2_PHASES.some((phase) => snapshot?.steps.some((step) => step.baseStage === phase));
+  const stageList = isV2 ? V2_PHASES : BASQUIO_PIPELINE_STAGES;
   const stageSet = useMemo(() => new Map(snapshot?.steps.map((step) => [step.baseStage, step]) ?? []), [snapshot?.steps]);
 
   if (!snapshot) {
@@ -227,7 +232,7 @@ export function RunProgressView(input: {
           </div>
 
           <div className="loading-stage-list">
-            {BASQUIO_PIPELINE_STAGES.map((stage, index) => {
+            {stageList.map((stage, index) => {
               const step = stageSet.get(stage);
               const status = step?.status ?? (snapshot.status === "queued" && index === 0 ? "queued" : "queued");
               return (
@@ -236,7 +241,7 @@ export function RunProgressView(input: {
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <strong>{humanizeStage(stage)}</strong>
                   </div>
-                  <p>{step?.detail || defaultStageCopy(stage)}</p>
+                  <p>{step?.detail || (isV2 ? defaultV2PhaseCopy(stage) : defaultStageCopy(stage))}</p>
                   <span className="loading-stage-pill">{humanizeStatus(status)}</span>
                 </article>
               );
@@ -354,4 +359,23 @@ function defaultStageCopy(stage: string) {
   }
 
   return "This stage is queued for the current run.";
+}
+
+function defaultV2PhaseCopy(phase: string) {
+  switch (phase) {
+    case "normalize":
+      return "Basquio is normalizing uploaded files into structured profiles and workbook schemas.";
+    case "understand":
+      return "The analyst agent is exploring the data, computing metrics, and identifying insights.";
+    case "author":
+      return "The author agent is building the narrative, slide plan, and chart bindings.";
+    case "critique":
+      return "An independent critic agent is reviewing the deck for accuracy and argument quality.";
+    case "revise":
+      return "The author is revising slides based on critic feedback.";
+    case "export":
+      return "Basquio is rendering the final PPTX and PDF artifacts.";
+    default:
+      return "This phase is queued for the current run.";
+  }
 }
