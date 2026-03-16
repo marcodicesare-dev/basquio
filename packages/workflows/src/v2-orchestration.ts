@@ -555,9 +555,10 @@ export const basquioV2Generation = inngest.createFunction(
       } satisfies EvidenceWorkspace;
     }) as EvidenceWorkspace;
 
-    // Hydrate sheetData from DB (too large for Inngest step memoization).
-    // Inngest freezes step return values, so we build a mutable workspace copy.
-    const hydratedSheetData = await step.run("hydrate-workspace", async () => {
+    // SheetData is too large for Inngest step serialization (can be 10MB+).
+    // Each step that needs it loads from DB inside its closure — never
+    // returned through Inngest's step memoization layer.
+    async function loadHydratedWorkspace(): Promise<EvidenceWorkspace> {
       const wsResponse = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces?run_id=eq.${runId}&select=sheet_data&limit=1`,
         {
@@ -568,19 +569,15 @@ export const basquioV2Generation = inngest.createFunction(
         },
       );
       const wsRows = (await wsResponse.json()) as Array<{ sheet_data: Record<string, Array<Record<string, unknown>>> }>;
-      return wsRows[0]?.sheet_data ?? {};
-    }) as Record<string, Array<Record<string, unknown>>>;
-
-    const hydratedWorkspace: EvidenceWorkspace = {
-      ...workspace,
-      sheetData: hydratedSheetData,
-    };
+      return { ...workspace, sheetData: wsRows[0]?.sheet_data ?? {} };
+    }
 
     // ─── STEP 2: UNDERSTAND (agentic) ───────────────────────────
     const analysis = await step.run("understand", async () => {
       await updateRunStatus(runId, "running", "understand");
       await emitRunEvent(runId, "understand", "phase_started");
 
+      const hydratedWorkspace = await loadHydratedWorkspace();
       tracker.startPhase("understand", "gpt-5.4", "openai");
 
       const result = await runAnalystAgent({
@@ -615,6 +612,7 @@ export const basquioV2Generation = inngest.createFunction(
       await updateRunStatus(runId, "running", "author");
       await emitRunEvent(runId, "author", "phase_started");
 
+      const hydratedWorkspace = await loadHydratedWorkspace();
       tracker.startPhase("author", "claude-opus-4-6", "anthropic");
 
       const result = await runAuthorAgent({
@@ -654,6 +652,7 @@ export const basquioV2Generation = inngest.createFunction(
       await updateRunStatus(runId, "running", "critique");
       await emitRunEvent(runId, "critique", "phase_started");
 
+      const hydratedWorkspace = await loadHydratedWorkspace();
       tracker.startPhase("critique", "gpt-5.4", "openai");
 
       const slides = await getSlides(runId);
@@ -731,6 +730,7 @@ export const basquioV2Generation = inngest.createFunction(
         // Delete existing slides to avoid position collisions
         await deleteRunSlides(runId);
 
+        const hydratedWorkspace = await loadHydratedWorkspace();
         tracker.startPhase("revise", "claude-opus-4-6", "anthropic");
 
         const issuesSummary = critique.issues
@@ -771,6 +771,7 @@ export const basquioV2Generation = inngest.createFunction(
         await updateRunStatus(runId, "running", "critique");
         await emitRunEvent(runId, "critique", "phase_started");
 
+        const hydratedWorkspace = await loadHydratedWorkspace();
         tracker.startPhase("re-critique", "gpt-5.4", "openai");
 
         const slides = await getSlides(runId);
@@ -865,6 +866,7 @@ export const basquioV2Generation = inngest.createFunction(
       await updateRunStatus(runId, "running", "export");
       await emitRunEvent(runId, "export", "phase_started");
 
+      const hydratedWorkspace = await loadHydratedWorkspace();
       const slides = await getSlides(runId);
       const charts = await getCharts(runId);
 
