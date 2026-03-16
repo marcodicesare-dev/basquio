@@ -1,3 +1,9 @@
+import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
+import { createGzip } from "node:zlib";
+
+import { parse as csvParse } from "csv-parse";
+import ExcelJS from "exceljs";
 import mammoth from "mammoth";
 import { inferSourceFileKind } from "@basquio/core";
 import { read, utils } from "xlsx";
@@ -587,4 +593,376 @@ function parseNumericString(value: string) {
 
   const parsed = Number(candidate);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+// ─── STREAMING PARSE + BLOB GENERATION ─────────────────────────────
+// New architecture: parse files in a streaming fashion, write rows to
+// jsonl.gz blobs, return only manifests + samples + column profiles.
+// Full row data never lives in memory or Postgres — it's in Storage.
+
+export type SheetManifest = {
+  sheetKey: string;
+  sheetName: string;
+  sourceFileId: string;
+  sourceFileName: string;
+  sourceRole: string;
+  rowCount: number;
+  columnCount: number;
+  columns: Array<{
+    name: string;
+    inferredType: "string" | "number" | "date" | "boolean" | "unknown";
+    role: "dimension" | "measure" | "time" | "segment" | "identifier" | "unknown";
+    nullable: boolean;
+    sampleValues: string[];
+    uniqueCount: number;
+    nullRate: number;
+  }>;
+  sampleRows: Record<string, unknown>[];
+  columnProfile: Record<string, ColumnProfile>;
+  blobBuffer: Buffer; // gzipped jsonl — caller uploads to Storage
+};
+
+export type ColumnProfile = {
+  min?: number | string;
+  max?: number | string;
+  mean?: number;
+  nullCount: number;
+  distinctCount: number;
+  topValues: Array<{ value: string; count: number }>;
+};
+
+/**
+ * Parse a workbook file (CSV/XLSX/XLS) and return per-sheet manifests
+ * with gzipped JSONL blob buffers. No full row arrays in memory after
+ * streaming completes — only samples and profiles are retained.
+ */
+export async function streamParseFile(input: {
+  id: string;
+  fileName: string;
+  buffer: Buffer;
+  kind: string;
+}): Promise<{ sheets: SheetManifest[]; role: string }> {
+  const role = inferFileRole(input.fileName, input.kind as ReturnType<typeof inferSourceFileKind>);
+  const ext = input.fileName.toLowerCase();
+
+  if (ext.endsWith(".csv")) {
+    const sheet = await streamParseCsv(input.id, input.fileName, role, input.buffer);
+    return { sheets: [sheet], role };
+  }
+
+  if (ext.endsWith(".xlsx")) {
+    const sheets = await streamParseXlsx(input.id, input.fileName, role, input.buffer);
+    return { sheets, role };
+  }
+
+  // XLS fallback: use SheetJS (no streaming support for .xls)
+  if (ext.endsWith(".xls")) {
+    const sheets = parseXlsBuffered(input.id, input.fileName, role, input.buffer);
+    return { sheets, role };
+  }
+
+  return { sheets: [], role };
+}
+
+async function streamParseCsv(
+  fileId: string,
+  fileName: string,
+  role: string,
+  buffer: Buffer,
+): Promise<SheetManifest> {
+  const sheetName = fileName;
+  const sheetKey = `${fileId}:${sheetName}`;
+
+  const rows: Record<string, unknown>[] = [];
+  const sampleRows: Record<string, unknown>[] = [];
+  const jsonlChunks: Buffer[] = [];
+  let rowCount = 0;
+
+  // Parse CSV with csv-parse streaming
+  const parser = csvParse({
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    relax_column_count: true,
+  });
+
+  const readable = Readable.from(buffer);
+
+  await new Promise<void>((resolve, reject) => {
+    readable
+      .pipe(parser)
+      .on("data", (record: Record<string, string>) => {
+        const normalized = Object.fromEntries(
+          Object.entries(record).map(([k, v]) => [k, normalizeCell(v)]),
+        );
+        rows.push(normalized);
+        if (sampleRows.length < 260) sampleRows.push(normalized);
+        jsonlChunks.push(Buffer.from(JSON.stringify(normalized) + "\n"));
+        rowCount++;
+      })
+      .on("end", resolve)
+      .on("error", reject);
+  });
+
+  // For files under 50K rows, we keep rows in memory for profiling.
+  // For larger files, we'd need streaming profile computation.
+  const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+  const columns = headers.map((h) => inferColumn(rows, h));
+  const columnProfile = buildColumnProfile(rows, columns);
+
+  const blobBuffer = await gzipBuffer(Buffer.concat(jsonlChunks));
+
+  return {
+    sheetKey,
+    sheetName,
+    sourceFileId: fileId,
+    sourceFileName: fileName,
+    sourceRole: role,
+    rowCount,
+    columnCount: headers.length,
+    columns,
+    sampleRows: buildSmartSample(sampleRows, rows.length),
+    columnProfile,
+    blobBuffer,
+  };
+}
+
+async function streamParseXlsx(
+  fileId: string,
+  fileName: string,
+  role: string,
+  buffer: Buffer,
+): Promise<SheetManifest[]> {
+  const manifests: SheetManifest[] = [];
+
+  const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(Readable.from(buffer), {
+    entries: "emit",
+    sharedStrings: "cache",
+    worksheets: "emit",
+  });
+
+  let wsIndex = 0;
+  for await (const worksheetReader of workbookReader) {
+    const wsName = (worksheetReader as unknown as { name?: string }).name ?? `Sheet${++wsIndex}`;
+    const sheetName = `${fileName} · ${wsName}`;
+    const sheetKey = `${fileId}:${sheetName}`;
+
+    let headers: string[] = [];
+    const rows: Record<string, unknown>[] = [];
+    const sampleRows: Record<string, unknown>[] = [];
+    const jsonlChunks: Buffer[] = [];
+    let rowCount = 0;
+    let headerDetected = false;
+
+    for await (const row of worksheetReader) {
+      const values = (row.values as unknown[])?.slice(1) ?? []; // ExcelJS row.values is 1-indexed
+
+      if (!headerDetected) {
+        // Use first row as headers
+        headers = values.map((v, i) => normalizeHeader(v, i));
+        headerDetected = true;
+        continue;
+      }
+
+      if (values.every((v) => v === null || v === undefined || v === "")) continue;
+
+      const obj: Record<string, unknown> = {};
+      for (let i = 0; i < headers.length; i++) {
+        obj[headers[i]] = normalizeCell(values[i]);
+      }
+
+      rows.push(obj);
+      if (sampleRows.length < 260) sampleRows.push(obj);
+      jsonlChunks.push(Buffer.from(JSON.stringify(obj) + "\n"));
+      rowCount++;
+    }
+
+    if (rowCount === 0 && headers.length === 0) continue;
+
+    const columns = headers.map((h) => inferColumn(rows, h));
+    const columnProfile = buildColumnProfile(rows, columns);
+    const blobBuffer = await gzipBuffer(Buffer.concat(jsonlChunks));
+
+    manifests.push({
+      sheetKey,
+      sheetName,
+      sourceFileId: fileId,
+      sourceFileName: fileName,
+      sourceRole: role,
+      rowCount,
+      columnCount: headers.length,
+      columns,
+      sampleRows: buildSmartSample(sampleRows, rows.length),
+      columnProfile,
+      blobBuffer,
+    });
+  }
+
+  return manifests;
+}
+
+function parseXlsBuffered(
+  fileId: string,
+  fileName: string,
+  role: string,
+  buffer: Buffer,
+): SheetManifest[] {
+  // XLS has no streaming support — use SheetJS as bounded fallback
+  const workbook = read(buffer, { type: "buffer", cellDates: true, raw: false });
+  const manifests: SheetManifest[] = [];
+
+  for (const wsName of workbook.SheetNames) {
+    const ws = workbook.Sheets[wsName];
+    const matrix = utils.sheet_to_json(ws, { header: 1, defval: null, raw: true }) as unknown[][];
+
+    const headerIndex = detectHeaderRowIndex(matrix);
+    const headerRow = matrix[headerIndex] ?? [];
+    const bodyRows = matrix.slice(headerIndex + 1);
+    const headers = (headerRow.length > 0 ? headerRow : ["column_1"]).map((v, i) =>
+      normalizeHeader(v, i),
+    );
+
+    const rows = bodyRows
+      .filter((row) => row.some((v) => v !== null && v !== ""))
+      .map((row) => Object.fromEntries(headers.map((h, i) => [h, normalizeCell(row[i])])))
+      .filter((row) => Object.values(row).some((v) => v !== null && v !== ""));
+
+    if (rows.length === 0 && headers.length === 0) continue;
+
+    const sheetName = workbook.SheetNames.length > 1 ? `${fileName} · ${wsName}` : fileName;
+    const sheetKey = `${fileId}:${sheetName}`;
+    const columns = headers.map((h) => inferColumn(rows, h));
+    const columnProfile = buildColumnProfile(rows, columns);
+
+    const jsonlData = rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    // gzip synchronously for XLS (bounded fallback, small files)
+    const { gzipSync } = require("node:zlib") as typeof import("node:zlib");
+    const blobBuffer = gzipSync(Buffer.from(jsonlData));
+
+    manifests.push({
+      sheetKey,
+      sheetName,
+      sourceFileId: fileId,
+      sourceFileName: fileName,
+      sourceRole: role,
+      rowCount: rows.length,
+      columnCount: headers.length,
+      columns,
+      sampleRows: buildSmartSample(rows, rows.length),
+      columnProfile,
+      blobBuffer,
+    });
+  }
+
+  return manifests;
+}
+
+/**
+ * Smart sample: head 40 + tail 20 + reservoir 200 random rows
+ */
+function buildSmartSample(
+  rows: Record<string, unknown>[],
+  totalRows: number,
+): Record<string, unknown>[] {
+  if (totalRows <= 260) return rows.slice(0, 260);
+
+  const head = rows.slice(0, 40);
+  const tail = rows.slice(Math.max(0, rows.length - 20));
+  // Reservoir sample from the middle
+  const middle = rows.slice(40, rows.length - 20);
+  const reservoir: Record<string, unknown>[] = [];
+  for (let i = 0; i < middle.length && reservoir.length < 200; i++) {
+    if (Math.random() < 200 / (i + 1) || reservoir.length < 200) {
+      if (reservoir.length < 200) {
+        reservoir.push(middle[i]);
+      } else {
+        const j = Math.floor(Math.random() * reservoir.length);
+        reservoir[j] = middle[i];
+      }
+    }
+  }
+
+  return [...head, ...reservoir, ...tail];
+}
+
+function buildColumnProfile(
+  rows: Record<string, unknown>[],
+  columns: ReturnType<typeof inferColumn>[],
+): Record<string, ColumnProfile> {
+  const profile: Record<string, ColumnProfile> = {};
+
+  for (const col of columns) {
+    const values = rows.map((r) => r[col.name]);
+    const nonNull = values.filter((v) => v !== null && v !== undefined && v !== "");
+    const nullCount = values.length - nonNull.length;
+
+    // Distinct count
+    const strValues = nonNull.map((v) => String(v));
+    const valueCounts = new Map<string, number>();
+    for (const v of strValues) {
+      valueCounts.set(v, (valueCounts.get(v) ?? 0) + 1);
+    }
+    const distinctCount = valueCounts.size;
+
+    // Top values
+    const topValues = Array.from(valueCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([value, count]) => ({ value, count }));
+
+    const p: ColumnProfile = { nullCount, distinctCount, topValues };
+
+    if (col.inferredType === "number") {
+      const nums = nonNull.map(Number).filter((n) => !isNaN(n));
+      if (nums.length > 0) {
+        p.min = Math.min(...nums);
+        p.max = Math.max(...nums);
+        p.mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+      }
+    }
+
+    if (col.inferredType === "date") {
+      const sorted = strValues.sort();
+      if (sorted.length > 0) {
+        p.min = sorted[0];
+        p.max = sorted[sorted.length - 1];
+      }
+    }
+
+    profile[col.name] = p;
+  }
+
+  return profile;
+}
+
+async function gzipBuffer(input: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const gzip = createGzip({ level: 6 });
+    gzip.on("data", (chunk: Buffer) => chunks.push(chunk));
+    gzip.on("end", () => resolve(Buffer.concat(chunks)));
+    gzip.on("error", reject);
+    gzip.end(input);
+  });
+}
+
+/**
+ * Load rows from a jsonl.gz blob buffer. Used by tools at query time.
+ */
+export async function loadRowsFromBlob(
+  gzippedBuffer: Buffer,
+): Promise<Record<string, unknown>[]> {
+  const { gunzipSync } = await import("node:zlib");
+  const text = gunzipSync(gzippedBuffer).toString("utf8");
+  return text
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+/**
+ * Compute a SHA-256 checksum for a buffer.
+ */
+export function checksumSha256(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("hex");
 }

@@ -1,4 +1,4 @@
-import { parseEvidencePackage } from "@basquio/data-ingest";
+import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, type SheetManifest } from "@basquio/data-ingest";
 import { runAnalystAgent, runAuthorAgent, runCriticAgent } from "@basquio/intelligence";
 import { renderPdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
@@ -451,44 +451,62 @@ export const basquioV2Generation = inngest.createFunction(
         })),
       );
 
-      const parsed = await parseEvidencePackage({
-        datasetId: runId,
-        files: fileBuffers.map((f) => ({
+      // ── Stream-parse workbook files → jsonl.gz blobs + manifests ──
+      const workbookFiles = fileBuffers.filter((f) => f.kind === "workbook");
+      const supportFiles = fileBuffers.filter((f) => f.kind !== "workbook");
+
+      const allSheetManifests: SheetManifest[] = [];
+      const fileRoles: Record<string, string> = {};
+
+      for (const f of workbookFiles) {
+        const result = await streamParseFile({
           id: f.id,
           fileName: f.fileName,
           buffer: f.buffer,
-          kind: f.kind as "workbook" | "pptx" | "pdf" | "unknown",
-        })),
-      });
+          kind: f.kind,
+        });
+        fileRoles[f.id] = result.role;
+        allSheetManifests.push(...result.sheets);
+      }
 
-      // Build file inventory
+      // Parse support files for text extraction only (legacy path, bounded)
+      let supportParsed: Awaited<ReturnType<typeof parseEvidencePackage>> | undefined;
+      if (supportFiles.length > 0) {
+        supportParsed = await parseEvidencePackage({
+          datasetId: runId,
+          files: supportFiles.map((f) => ({
+            id: f.id,
+            fileName: f.fileName,
+            buffer: f.buffer,
+            kind: f.kind as "workbook" | "pptx" | "pdf" | "unknown",
+          })),
+        });
+      }
+
+      // Build file inventory from both paths
       const fileInventory = fileBuffers.map((f) => {
-        const parsedFile = parsed.normalizedWorkbook.files.find((pf: { fileName: string }) => pf.fileName === f.fileName);
+        const sheetsForFile = allSheetManifests.filter((s) => s.sourceFileId === f.id);
+        const supportFile = supportParsed?.normalizedWorkbook.files.find(
+          (pf: { fileName: string }) => pf.fileName === f.fileName,
+        );
         return {
           id: f.id,
           fileName: f.fileName,
           kind: f.kind,
-          role: parsedFile?.role ?? "unknown-support",
+          role: fileRoles[f.id] ?? supportFile?.role ?? "unknown-support",
           mediaType: "application/octet-stream",
-          sheets: (parsedFile?.sheets ?? []).map((s) => ({
-            name: s.name,
+          sheets: sheetsForFile.map((s) => ({
+            name: s.sheetName,
             rowCount: s.rowCount,
-            columnCount: s.columns.length,
+            columnCount: s.columnCount,
             columns: s.columns.map((c) => ({ ...c })),
           })),
-          textContent: parsedFile?.textContent,
-          warnings: parsedFile?.warnings ?? [],
+          textContent: supportFile?.textContent,
+          warnings: supportFile?.warnings ?? [],
         };
       });
 
-      // Build sheet data map
-      const sheetData: Record<string, Array<Record<string, unknown>>> = {};
-      for (const sheet of parsed.normalizedWorkbook.sheets) {
-        const key = `${sheet.sourceFileId ?? sheet.sourceFileName}:${sheet.name}`;
-        sheetData[key] = sheet.rows ?? [];
-      }
-
-      // Parse template if provided
+      // Parse template
       let templateProfile: TemplateProfile | undefined;
       if (templateProfileId) {
         const tpResponse = await fetch(
@@ -505,15 +523,14 @@ export const basquioV2Generation = inngest.createFunction(
           templateProfile = tpRows[0].template_profile as TemplateProfile;
         }
       }
-
-      // If no template, create system default
       if (!templateProfile) {
-        const result = await interpretTemplateSource({ id: "system-default" });
-        templateProfile = result;
+        templateProfile = await interpretTemplateSource({ id: "system-default" });
       }
 
-      // Persist evidence workspace
+      // Persist evidence workspace (no sheet_data — data lives in Storage blobs)
       const workspaceId = crypto.randomUUID();
+      const blobManifest: Record<string, { bytes: number; checksum: string; sheetKey: string }> = {};
+
       await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces`,
         {
@@ -528,39 +545,120 @@ export const basquioV2Generation = inngest.createFunction(
             id: workspaceId,
             run_id: runId,
             file_inventory: fileInventory,
-            dataset_profile: parsed.datasetProfile ?? {},
+            dataset_profile: supportParsed?.datasetProfile ?? {},
             template_profile: templateProfile,
-            sheet_data: sheetData,
+            sheet_data: {},
+            normalization_version: "v2",
+            blob_manifest: {},
           }),
         },
       );
 
+      // Upload blobs to Storage + persist sheet manifests
+      for (const manifest of allSheetManifests) {
+        const blobPath = `runs/${runId}/sheets/${manifest.sheetKey.replace(/[^a-zA-Z0-9._-]/g, "_")}.jsonl.gz`;
+        const checksum = checksumSha256(manifest.blobBuffer);
+
+        const uploadResp = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/evidence-workspace-blobs/${blobPath}`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+              "Content-Type": "application/gzip",
+            },
+            body: new Uint8Array(manifest.blobBuffer),
+          },
+        );
+        if (!uploadResp.ok) {
+          throw new Error(`Blob upload failed for ${manifest.sheetKey}: ${await uploadResp.text().catch(() => "unknown")}`);
+        }
+
+        blobManifest[blobPath] = { bytes: manifest.blobBuffer.length, checksum, sheetKey: manifest.sheetKey };
+
+        const sheetResp = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+              Prefer: "return=minimal",
+            },
+            body: JSON.stringify({
+              workspace_id: workspaceId,
+              run_id: runId,
+              source_file_id: manifest.sourceFileId,
+              sheet_key: manifest.sheetKey,
+              sheet_name: manifest.sheetName,
+              source_file_name: manifest.sourceFileName,
+              source_role: manifest.sourceRole,
+              row_count: manifest.rowCount,
+              column_count: manifest.columnCount,
+              columns: manifest.columns,
+              sample_rows: manifest.sampleRows,
+              column_profile: manifest.columnProfile,
+              blob_bucket: "evidence-workspace-blobs",
+              blob_path: blobPath,
+              blob_bytes: manifest.blobBuffer.length,
+              checksum_sha256: checksum,
+            }),
+          },
+        );
+        if (!sheetResp.ok) {
+          throw new Error(`Sheet manifest persist failed for ${manifest.sheetKey}: ${await sheetResp.text().catch(() => "unknown")}`);
+        }
+      }
+
+      // Update blob_manifest on workspace
+      if (Object.keys(blobManifest).length > 0) {
+        await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces?id=eq.${workspaceId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            },
+            body: JSON.stringify({ blob_manifest: blobManifest }),
+          },
+        );
+      }
+
       await emitRunEvent(runId, "normalize", "phase_completed", {
         fileCount: fileInventory.length,
-        sheetCount: Object.keys(sheetData).length,
+        sheetCount: allSheetManifests.length,
       });
 
-      // Return slim reference — sheetData (often >1MB) is persisted in
-      // evidence_workspaces and loaded on-demand by subsequent steps.
-      // Inngest serializes step return values; large payloads exceed its limit.
+      // Return slim reference only — no sheetData, no blobs.
+      const emptyDatasetProfile = {
+        datasetId: runId,
+        sourceFileName: fileBuffers[0]?.fileName ?? "evidence-package",
+        sourceFiles: [],
+        sheets: [],
+        warnings: [],
+      };
+
       return {
         id: workspaceId,
         runId,
-        fileInventory,
-        datasetProfile: parsed.datasetProfile,
+        fileInventory: fileInventory as EvidenceWorkspace["fileInventory"],
+        datasetProfile: supportParsed?.datasetProfile ?? emptyDatasetProfile,
         templateProfile,
         sheetData: {} as Record<string, Array<Record<string, unknown>>>,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      } satisfies EvidenceWorkspace;
+      } as EvidenceWorkspace;
     }) as EvidenceWorkspace;
 
-    // SheetData is too large for Inngest step serialization (can be 10MB+).
-    // Each step that needs it loads from DB inside its closure — never
-    // returned through Inngest's step memoization layer.
-    async function loadHydratedWorkspace(): Promise<EvidenceWorkspace> {
-      const wsResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces?run_id=eq.${runId}&select=sheet_data&limit=1`,
+    // ── Lazy row loader: fetches from Storage blobs on demand ──
+    // Replaces loadHydratedWorkspace() — loads only the sheets requested,
+    // not the entire workspace's row data.
+    async function loadSheetRows(sheetKey: string): Promise<Record<string, unknown>[]> {
+      const sheetResp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?run_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(sheetKey)}&select=blob_bucket,blob_path,sample_rows&limit=1`,
         {
           headers: {
             apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -568,8 +666,54 @@ export const basquioV2Generation = inngest.createFunction(
           },
         },
       );
-      const wsRows = (await wsResponse.json()) as Array<{ sheet_data: Record<string, Array<Record<string, unknown>>> }>;
-      return { ...workspace, sheetData: wsRows[0]?.sheet_data ?? {} };
+      const sheets = (await sheetResp.json()) as Array<{ blob_bucket: string; blob_path: string; sample_rows: Record<string, unknown>[] }>;
+      if (sheets.length === 0) return [];
+
+      const { blob_bucket, blob_path } = sheets[0];
+      const blobResp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${blob_bucket}/${blob_path}`,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          },
+        },
+      );
+
+      if (!blobResp.ok) {
+        // Fallback to sample_rows if blob download fails
+        return sheets[0].sample_rows ?? [];
+      }
+
+      const blobBuffer = Buffer.from(await blobResp.arrayBuffer());
+      return loadRowsFromBlob(blobBuffer);
+    }
+
+    // Build a hydrated workspace with lazy sheetData loading
+    async function loadHydratedWorkspace(): Promise<EvidenceWorkspace> {
+      // Load all sheet manifests for this run
+      const sheetsResp = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?run_id=eq.${runId}&select=sheet_key,blob_bucket,blob_path,sample_rows`,
+        {
+          headers: {
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          },
+        },
+      );
+      const sheetManifests = (await sheetsResp.json()) as Array<{ sheet_key: string; blob_bucket: string; blob_path: string; sample_rows: Record<string, unknown>[] }>;
+
+      // Load all sheet data from blobs
+      const sheetData: Record<string, Array<Record<string, unknown>>> = {};
+      for (const s of sheetManifests) {
+        try {
+          sheetData[s.sheet_key] = await loadSheetRows(s.sheet_key);
+        } catch {
+          // Fallback to samples
+          sheetData[s.sheet_key] = s.sample_rows ?? [];
+        }
+      }
+
+      return { ...workspace, sheetData };
     }
 
     // ─── STEP 2: UNDERSTAND (agentic) ───────────────────────────
