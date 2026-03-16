@@ -118,12 +118,15 @@ Important:
     : "Could not generate an answer.";
 
   // 5. Confidence scoring
-  // RRF scores: max ~0.04 (rank 1 in both FTS + semantic with k=50)
-  // Single-signal rank 1 = ~0.0196, dual rank 1 = ~0.0392
+  // RRF scores with k=50: single-signal rank 1 = 1/51 ≈ 0.0196, dual rank 1 ≈ 0.0392
+  // With Italian queries, FTS (English config) often misses, leaving semantic only.
+  // Use top score + spread: if top 3 are close, results are noisy → lower confidence.
   const topScore = chunks[0]?.score ?? 0;
+  const thirdScore = chunks[2]?.score ?? 0;
+  const spread = topScore - thirdScore; // Higher spread = clearer signal
   let confidence: "high" | "medium" | "low";
-  if (topScore > 0.025) confidence = "high";
-  else if (topScore > 0.015) confidence = "medium";
+  if (topScore > 0.030 || (topScore > 0.018 && spread > 0.003)) confidence = "high";
+  else if (topScore > 0.014 || (topScore > 0.010 && spread > 0.002)) confidence = "medium";
   else confidence = "low";
 
   return { answer, sources, confidence };
