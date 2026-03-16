@@ -54,32 +54,35 @@ type BrandTokens = {
     accentLight: string;
     positive: string;
     negative: string;
+    coverBg: string;
+    calloutGreen: string;
+    calloutOrange: string;
   };
   typography: {
     headingFont: string;
     bodyFont: string;
     coverTitleSize: number;
     titleSize: number;
+    subtitleSize: number;
     bodySize: number;
     bulletSize: number;
     chartTitleSize: number;
     sourceSize: number;
     kpiValueSize: number;
     kpiLabelSize: number;
-    eyebrowSize: number;
   };
   chartPalette: string[];
 };
 
 const DEFAULT_CHART_PALETTE = [
-  "0F4C81", // deep blue (accent)
-  "D1D5DB", // muted gray (de-emphasis)
-  "1F7A4D", // green
-  "B42318", // red
-  "C97A00", // amber
-  "6B21A8", // purple
-  "0E7490", // teal
-  "78716C", // warm gray
+  "0F4C81",
+  "D1D5DB",
+  "1F7A4D",
+  "B42318",
+  "C97A00",
+  "6B21A8",
+  "0E7490",
+  "78716C",
 ];
 
 const DEFAULT_TOKENS: BrandTokens = {
@@ -93,19 +96,22 @@ const DEFAULT_TOKENS: BrandTokens = {
     accentLight: "DCEAF7",
     positive: "1F7A4D",
     negative: "B42318",
+    coverBg: "1B2541",
+    calloutGreen: "16A34A",
+    calloutOrange: "EA580C",
   },
   typography: {
-    headingFont: "Aptos Display",
-    bodyFont: "Aptos",
+    headingFont: "Arial",
+    bodyFont: "Arial",
     coverTitleSize: 32,
     titleSize: 22,
+    subtitleSize: 14,
     bodySize: 11,
     bulletSize: 11,
     chartTitleSize: 9,
-    sourceSize: 8,
-    kpiValueSize: 26,
-    kpiLabelSize: 9,
-    eyebrowSize: 9,
+    sourceSize: 7,
+    kpiValueSize: 24,
+    kpiLabelSize: 7,
   },
   chartPalette: DEFAULT_CHART_PALETTE,
 };
@@ -123,79 +129,251 @@ function resolveTokens(partial?: Partial<BrandTokens>): BrandTokens {
 
 const SLIDE_W = 10;
 const SLIDE_H = 5.625;
-const MARGIN_L = 0.55;
-const MARGIN_R = 0.55;
-const MARGIN_T = 0.35;
-const CONTENT_W = SLIDE_W - MARGIN_L - MARGIN_R; // 8.9
-const TOP_RULE_H = 0.06;
-const TITLE_Y = MARGIN_T + TOP_RULE_H + 0.12; // ~0.53
-const TITLE_H = 0.55;
-const CONTENT_Y = TITLE_Y + TITLE_H + 0.15; // ~1.23
-const SOURCE_Y = SLIDE_H - 0.32;
-const SOURCE_H = 0.22;
-const CONTENT_BOTTOM = SOURCE_Y - 0.08; // ~5.015
-const CONTENT_H = CONTENT_BOTTOM - CONTENT_Y; // ~3.785
 
 type R = { x: number; y: number; w: number; h: number };
+
+// ─── LAYOUT REGIONS ─────────────────────────────────────────────
+// Every layout defines exact { x, y, w, h } for each content zone.
+
+type LayoutRegions = {
+  title: R;
+  subtitle?: R;
+  body?: R;
+  chart?: R;
+  chart2?: R;
+  table?: R;
+  metrics?: R;
+  callout?: R;
+  bullets?: R;
+};
+
+function getLayoutRegions(layoutId: string): LayoutRegions {
+  switch (layoutId) {
+    case "cover":
+      return {
+        title: { x: 0.55, y: 1.8, w: 8.9, h: 1.5 },
+        subtitle: { x: 0.55, y: 3.2, w: 8.9, h: 0.6 },
+      };
+    case "title-body":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        body: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+      };
+    case "title-chart":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        chart: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+      };
+    case "chart-split":
+    case "two-column":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        chart: { x: 0.55, y: 0.85, w: 5.0, h: 3.2 },
+        table: { x: 5.7, y: 0.85, w: 3.75, h: 3.2 },
+        callout: { x: 0.55, y: 4.2, w: 8.9, h: 0.45 },
+        metrics: { x: 0.55, y: 4.7, w: 8.9, h: 0.35 },
+      };
+    case "evidence-grid":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        metrics: { x: 0.55, y: 0.85, w: 8.9, h: 0.5 },
+        chart: { x: 0.55, y: 1.45, w: 5.0, h: 2.6 },
+        body: { x: 5.7, y: 1.45, w: 3.75, h: 2.6 },
+        callout: { x: 0.55, y: 4.2, w: 8.9, h: 0.45 },
+      };
+    case "metrics":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        metrics: { x: 0.55, y: 0.85, w: 8.9, h: 1.0 },
+        body: { x: 0.55, y: 2.0, w: 8.9, h: 2.5 },
+      };
+    case "comparison":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        chart: { x: 0.55, y: 0.85, w: 4.3, h: 3.2 },
+        chart2: { x: 5.0, y: 0.85, w: 4.45, h: 3.2 },
+      };
+    case "table":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        table: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+      };
+    case "summary":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        body: { x: 0.55, y: 0.85, w: 8.9, h: 2.5 },
+        callout: { x: 0.55, y: 3.5, w: 8.9, h: 0.5 },
+      };
+    case "exec-summary":
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        metrics: { x: 0.55, y: 0.85, w: 8.9, h: 1.0 },
+        bullets: { x: 0.55, y: 2.0, w: 8.9, h: 2.5 },
+      };
+    default:
+      // Fallback: title-body
+      return {
+        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
+        body: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+      };
+  }
+}
+
+// ─── COLOR HELPER ───────────────────────────────────────────────
+
+function norm(color: string): string {
+  return color.replace("#", "").toUpperCase();
+}
+
+// ─── TEXT HELPERS ────────────────────────────────────────────────
+
+/** Replace literal \\n and \n sequences (from LLM output) with real newlines */
+function processNewlines(text: string): string {
+  return text.replace(/\\\\n/g, "\n").replace(/\\n/g, "\n");
+}
+
+/** Split text into TextProps array on real newlines */
+function textToProps(
+  text: string,
+  opts: { fontSize: number; fontFace: string; color: string; bold?: boolean },
+): PptxGenJS.TextProps[] {
+  const lines = processNewlines(text).split("\n").filter((l) => l.trim().length > 0);
+  return lines.map((line) => ({
+    text: line,
+    options: {
+      fontSize: opts.fontSize,
+      fontFace: opts.fontFace,
+      color: opts.color,
+      bold: opts.bold,
+      breakLine: true,
+    },
+  }));
+}
+
+function truncateWords(text: string, maxWords: number): { truncated: string; overflow: string } {
+  const words = text.split(/\s+/);
+  if (words.length <= maxWords) return { truncated: text, overflow: "" };
+  return {
+    truncated: words.slice(0, maxWords).join(" ") + "…",
+    overflow: words.slice(maxWords).join(" "),
+  };
+}
+
+function isNumericValue(val: unknown): boolean {
+  if (typeof val === "number") return true;
+  if (typeof val === "string") return /^[\d.,€$£¥%-]+$/.test(val.trim());
+  return false;
+}
+
+function formatValue(val: unknown): string {
+  if (val == null) return "";
+  if (typeof val === "number") {
+    if (Math.abs(val) >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(val) >= 1_000) return `${(val / 1_000).toFixed(1)}K`;
+    if (!Number.isInteger(val)) return val.toFixed(1);
+  }
+  return String(val);
+}
 
 // ─── CHART TRANSFORMS ───────────────────────────────────────────
 
 function mapPptxChartType(pptx: PptxGenJS, chartType: string): PptxGenJS.CHART_NAME {
   switch (chartType) {
-    case "bar": case "stacked_bar": case "waterfall": return pptx.ChartType.bar;
-    case "line": return pptx.ChartType.line;
-    case "pie": return pptx.ChartType.pie;
-    case "doughnut": return pptx.ChartType.doughnut;
-    case "scatter": return pptx.ChartType.scatter;
-    case "area": return pptx.ChartType.area;
-    default: return pptx.ChartType.bar;
+    case "bar":
+    case "stacked_bar":
+    case "waterfall":
+      return pptx.ChartType.bar;
+    case "line":
+      return pptx.ChartType.line;
+    case "pie":
+      return pptx.ChartType.pie;
+    case "doughnut":
+      return pptx.ChartType.doughnut;
+    case "scatter":
+      return pptx.ChartType.scatter;
+    case "area":
+      return pptx.ChartType.area;
+    default:
+      return pptx.ChartType.bar;
   }
 }
 
 function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   chartData: Array<{ name: string; labels: string[]; values: number[] }>;
   opts: Record<string, unknown>;
-} {
+} | null {
+  if (!chart.data || chart.data.length === 0) return null;
+  if (!chart.series || chart.series.length === 0) return null;
+
   const labels = chart.data.map((row) => String(row[chart.xAxis] ?? ""));
   const palette = chart.style.colors?.map(norm) ?? tokens.chartPalette.map(norm);
 
-  // Correct pptxgenjs option keys (per https://gitbrent.github.io/PptxGenJS/docs/api-charts/)
+  // Check if any series has valid numeric data
+  const hasValidData = chart.series.some((seriesKey) =>
+    chart.data.some((row) => typeof row[seriesKey] === "number" || !isNaN(Number(row[seriesKey]))),
+  );
+  if (!hasValidData) return null;
+
   const baseOpts: Record<string, unknown> = {
+    showTitle: false,
     showLegend: chart.style.showLegend ?? chart.series.length > 2,
     legendPos: "b",
-    showValue: chart.style.showValues ?? (chart.data.length <= 6),
-    chartColors: palette,
-    // Correct axis option names
+    legendFontSize: 8,
+    legendColor: norm(tokens.palette.muted),
+    legendFontFace: tokens.typography.bodyFont,
+
+    catAxisLabelColor: norm(tokens.palette.muted),
+    catAxisLabelFontSize: 8,
     catAxisLabelFontFace: tokens.typography.bodyFont,
-    catAxisLabelFontSize: 9,
     catAxisLineShow: false,
+
+    valAxisLabelColor: norm(tokens.palette.muted),
+    valAxisLabelFontSize: 8,
     valAxisLabelFontFace: tokens.typography.bodyFont,
-    valAxisLabelFontSize: 9,
     valAxisLineShow: false,
     valAxisLabelFormatCode: "#,##0",
-    // Gridlines — only value axis, light and thin
-    valGridLine: { color: norm(tokens.palette.border), size: 0.5 },
+    valGridLine: { color: "E5E7EB", size: 0.5 },
     catGridLine: { style: "none" },
-    // No chart border
-    plotArea: { border: { pt: 0, color: "FFFFFF" }, fill: { color: "FFFFFF" } },
-    showTitle: false,
-    lineSize: 2,
-    legendFontFace: tokens.typography.bodyFont,
-    legendFontSize: 9,
-    dataLabelFontFace: tokens.typography.bodyFont,
+
+    chartColors: palette,
+    showValue: chart.style.showValues ?? (chart.data.length <= 6),
+    dataLabelPosition: "outEnd",
     dataLabelFontSize: 8,
-    dataLabelColor: norm(tokens.palette.muted),
+    dataLabelFontFace: tokens.typography.bodyFont,
+    dataLabelColor: norm(tokens.palette.ink),
+    lineSize: 2,
+    barGapWidthPct: 80,
   };
+
+  // Horizontal bars for bar type
+  if (chart.chartType === "bar") {
+    baseOpts.barDir = "bar";
+  }
+
+  // Stacked bar
+  if (chart.chartType === "stacked_bar") {
+    baseOpts.barDir = "bar";
+    baseOpts.barGrouping = "stacked";
+  }
 
   // Waterfall: simulated stacked bar
   if (chart.chartType === "waterfall") {
     const seriesKey = chart.series[0] ?? chart.yAxis;
     const values = chart.data.map((row) => Number(row[seriesKey]) || 0);
-    const base: number[] = [], rise: number[] = [], fall: number[] = [];
+    const base: number[] = [];
+    const rise: number[] = [];
+    const fall: number[] = [];
     let running = 0;
     for (const v of values) {
-      if (v >= 0) { base.push(running); rise.push(v); fall.push(0); }
-      else { base.push(running + v); rise.push(0); fall.push(Math.abs(v)); }
+      if (v >= 0) {
+        base.push(running);
+        rise.push(v);
+        fall.push(0);
+      } else {
+        base.push(running + v);
+        rise.push(0);
+        fall.push(Math.abs(v));
+      }
       running += v;
     }
     return {
@@ -204,20 +382,28 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
         { name: "Increase", labels, values: rise },
         { name: "Decrease", labels, values: fall },
       ],
-      opts: { ...baseOpts, barGrouping: "stacked", chartColors: ["FFFFFF", norm(tokens.palette.positive), norm(tokens.palette.negative)], showLegend: false },
+      opts: {
+        ...baseOpts,
+        barDir: "bar",
+        barGrouping: "stacked",
+        chartColors: ["FFFFFF", norm(tokens.palette.positive), norm(tokens.palette.negative)],
+        showLegend: false,
+      },
     };
   }
 
-  if (chart.chartType === "stacked_bar") {
-    baseOpts.barGrouping = "stacked";
-  }
-
-  // Pie: show percentages, max 6 slices
-  if (chart.chartType === "pie") {
+  // Pie
+  if (chart.chartType === "pie" || chart.chartType === "doughnut") {
     baseOpts.showPercent = true;
     baseOpts.showValue = false;
     baseOpts.showLegend = true;
     baseOpts.dataLabelPosition = "outEnd";
+  }
+
+  // Scatter: no barDir
+  if (chart.chartType === "scatter") {
+    delete baseOpts.barDir;
+    delete baseOpts.barGapWidthPct;
   }
 
   const chartData = chart.series.map((seriesKey) => ({
@@ -229,34 +415,25 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   return { chartData, opts: baseOpts };
 }
 
-// ─── COLOR HELPER ───────────────────────────────────────────────
-
-function norm(color: string): string {
-  return color.replace("#", "").toUpperCase();
-}
-
-// ─── TEXT HELPERS ────────────────────────────────────────────────
-
-function splitNewlines(text: string): string[] {
-  return text.split(/\n/).filter((l) => l.trim().length > 0);
-}
-
-function truncateWords(text: string, maxWords: number): string {
-  const words = text.split(/\s+/);
-  if (words.length <= maxWords) return text;
-  return words.slice(0, maxWords).join(" ") + "…";
-}
-
 // ─── ELEMENT RENDERERS ──────────────────────────────────────────
 
-function renderTitle(slide: PptxGenJS.Slide, text: string, region: R, tokens: BrandTokens, isCover: boolean): void {
-  const fontSize = isCover ? tokens.typography.coverTitleSize : tokens.typography.titleSize;
-  slide.addText(text, {
-    x: region.x, y: region.y, w: region.w, h: region.h,
+function renderTitle(
+  slide: PptxGenJS.Slide,
+  text: string,
+  region: R,
+  tokens: BrandTokens,
+  isCover: boolean,
+): void {
+  const processed = processNewlines(text);
+  slide.addText(processed, {
+    x: region.x,
+    y: region.y,
+    w: region.w,
+    h: region.h,
     fontFace: tokens.typography.headingFont,
-    fontSize,
+    fontSize: isCover ? tokens.typography.coverTitleSize : tokens.typography.titleSize,
     bold: true,
-    color: norm(isCover ? tokens.palette.bg : tokens.palette.ink),
+    color: norm(isCover ? "FFFFFF" : tokens.palette.ink),
     fit: "shrink",
     breakLine: false,
     margin: 0,
@@ -264,54 +441,82 @@ function renderTitle(slide: PptxGenJS.Slide, text: string, region: R, tokens: Br
   });
 }
 
-function renderSubtitle(slide: PptxGenJS.Slide, text: string, region: R, tokens: BrandTokens, isCover: boolean): void {
-  slide.addText(text, {
-    x: region.x, y: region.y, w: region.w, h: region.h,
+function renderSubtitle(
+  slide: PptxGenJS.Slide,
+  text: string,
+  region: R,
+  tokens: BrandTokens,
+  isCover: boolean,
+): void {
+  const processed = processNewlines(text);
+  slide.addText(processed, {
+    x: region.x,
+    y: region.y,
+    w: region.w,
+    h: region.h,
     fontFace: tokens.typography.bodyFont,
-    fontSize: 14,
-    color: norm(isCover ? tokens.palette.bg : tokens.palette.muted),
+    fontSize: tokens.typography.subtitleSize,
+    color: norm(isCover ? "FFFFFF" : tokens.palette.muted),
     margin: 0,
     lineSpacingMultiple: 1.2,
   });
 }
 
-function renderBody(slide: PptxGenJS.Slide, text: string, region: R, tokens: BrandTokens): void {
-  const truncated = truncateWords(text, 80);
-  const lines = splitNewlines(truncated);
+function renderBody(
+  slide: PptxGenJS.Slide,
+  text: string,
+  region: R,
+  tokens: BrandTokens,
+  speakerNotesOverflow?: string[],
+): void {
+  const processed = processNewlines(text);
+  const { truncated, overflow } = truncateWords(processed, 80);
+  if (overflow && speakerNotesOverflow) {
+    speakerNotesOverflow.push(`[Overflow from body]: ${overflow}`);
+  }
 
-  if (lines.length <= 1) {
+  const props = textToProps(truncated, {
+    fontSize: tokens.typography.bodySize,
+    fontFace: tokens.typography.bodyFont,
+    color: norm(tokens.palette.ink),
+  });
+
+  if (props.length <= 1) {
     slide.addText(truncated, {
-      x: region.x, y: region.y, w: region.w, h: region.h,
+      x: region.x,
+      y: region.y,
+      w: region.w,
+      h: region.h,
       fontSize: tokens.typography.bodySize,
       fontFace: tokens.typography.bodyFont,
       color: norm(tokens.palette.ink),
-      align: "left", valign: "top",
+      align: "left",
+      valign: "top",
       lineSpacingMultiple: 1.4,
       wrap: true,
     });
     return;
   }
 
-  const textProps: PptxGenJS.TextProps[] = lines.map((line) => ({
-    text: line,
-    options: {
-      fontSize: tokens.typography.bodySize,
-      fontFace: tokens.typography.bodyFont,
-      color: norm(tokens.palette.ink),
-      breakLine: true,
-    },
-  }));
-
-  slide.addText(textProps, {
-    x: region.x, y: region.y, w: region.w, h: region.h,
-    lineSpacingMultiple: 1.4, valign: "top",
+  slide.addText(props, {
+    x: region.x,
+    y: region.y,
+    w: region.w,
+    h: region.h,
+    lineSpacingMultiple: 1.4,
+    valign: "top",
   });
 }
 
-function renderBullets(slide: PptxGenJS.Slide, bullets: string[], region: R, tokens: BrandTokens): void {
-  const maxBullets = 5;
+function renderBullets(
+  slide: PptxGenJS.Slide,
+  bullets: string[],
+  region: R,
+  tokens: BrandTokens,
+): void {
+  const maxBullets = 4;
   const textProps: PptxGenJS.TextProps[] = bullets.slice(0, maxBullets).map((b) => ({
-    text: b,
+    text: processNewlines(b),
     options: {
       bullet: { indent: 12 },
       fontSize: tokens.typography.bulletSize,
@@ -324,7 +529,10 @@ function renderBullets(slide: PptxGenJS.Slide, bullets: string[], region: R, tok
   }));
 
   slide.addText(textProps, {
-    x: region.x, y: region.y, w: region.w, h: region.h,
+    x: region.x,
+    y: region.y,
+    w: region.w,
+    h: region.h,
     valign: "top",
   });
 }
@@ -337,52 +545,57 @@ function renderMetrics(
   tokens: BrandTokens,
 ): void {
   const count = Math.min(metrics.length, 4);
-  const cardW = (region.w - 0.2 * (count - 1)) / count;
-  const accentBarW = 0.04;
+  const cardW = region.w / count - 0.08;
 
   metrics.slice(0, 4).forEach((m, i) => {
-    const cx = region.x + i * (cardW + 0.2);
+    const cardX = region.x + i * (region.w / count);
 
-    // Left accent bar (consulting-style KPI indicator)
+    // Left accent border
     slide.addShape(pptx.ShapeType.rect, {
-      x: cx, y: region.y, w: accentBarW, h: region.h,
+      x: cardX,
+      y: region.y,
+      w: 0.04,
+      h: 0.6,
       fill: { color: norm(tokens.palette.accent) },
     });
 
-    // Label (top, small, muted)
+    // Label (small, uppercase)
     slide.addText(m.label.toUpperCase(), {
-      x: cx + accentBarW + 0.1, y: region.y + 0.05,
-      w: cardW - accentBarW - 0.15, h: 0.25,
+      x: cardX + 0.12,
+      y: region.y,
+      w: cardW - 0.12,
+      h: 0.18,
       fontSize: tokens.typography.kpiLabelSize,
       fontFace: tokens.typography.bodyFont,
       color: norm(tokens.palette.muted),
       bold: true,
-      align: "left",
     });
 
-    // Value (large, left-aligned)
+    // Value (large)
     slide.addText(m.value, {
-      x: cx + accentBarW + 0.1, y: region.y + 0.3,
-      w: cardW - accentBarW - 0.15, h: 0.5,
+      x: cardX + 0.12,
+      y: region.y + 0.16,
+      w: cardW - 0.12,
+      h: 0.28,
       fontSize: tokens.typography.kpiValueSize,
       fontFace: tokens.typography.headingFont,
-      color: norm(tokens.palette.ink),
       bold: true,
-      align: "left",
+      color: norm(tokens.palette.ink),
     });
 
-    // Delta (small, colored)
+    // Delta (green/red)
     if (m.delta) {
-      const isPositive = m.delta.startsWith("+") || m.delta.startsWith("↑") || m.delta.toLowerCase().includes("up");
-      const deltaColor = isPositive ? tokens.palette.positive : tokens.palette.negative;
-      const arrow = isPositive ? "▲ " : "▼ ";
-      slide.addText(arrow + m.delta, {
-        x: cx + accentBarW + 0.1, y: region.y + 0.8,
-        w: cardW - accentBarW - 0.15, h: 0.2,
-        fontSize: 9,
+      const isPositive =
+        m.delta.startsWith("+") || m.delta.includes("↑") || m.delta.toLowerCase().includes("up");
+      slide.addText(m.delta, {
+        x: cardX + 0.12,
+        y: region.y + 0.42,
+        w: cardW - 0.12,
+        h: 0.16,
+        fontSize: 8,
         fontFace: tokens.typography.bodyFont,
-        color: norm(deltaColor),
-        align: "left",
+        bold: true,
+        color: norm(isPositive ? tokens.palette.positive : tokens.palette.negative),
       });
     }
   });
@@ -400,57 +613,53 @@ function renderTable(
   const maxRows = 8;
   const maxCols = 8;
   const visibleHeaders = headers.slice(0, maxCols);
+  const rows = chart.data.slice(0, maxRows);
 
-  // Header row: bold, no fill, bottom border only
-  const headerRow: PptxGenJS.TableCell[] = visibleHeaders.map((h) => ({
+  // Header row: dark navy bg, white bold text
+  const headerRow: PptxGenJS.TableCell[] = visibleHeaders.map((h, colIdx) => ({
     text: h,
     options: {
+      fill: { color: norm(tokens.palette.coverBg) },
+      color: "FFFFFF",
       bold: true,
-      fontSize: 9,
+      fontSize: 8,
       fontFace: tokens.typography.bodyFont,
-      color: norm(tokens.palette.ink),
-      align: "left" as const,
-      valign: "bottom" as const,
-      border: [
-        { type: "none" as const },
-        { type: "none" as const },
-        { type: "solid" as const, pt: 1, color: norm(tokens.palette.ink) },
-        { type: "none" as const },
-      ],
-      margin: [2, 4, 4, 4],
+      align: (colIdx === 0 ? "left" : "right") as "left" | "right",
+      valign: "middle" as const,
+      margin: [2, 4, 2, 4],
     },
   }));
 
-  // Data rows: subtle separators, right-align numbers
-  const dataRows: PptxGenJS.TableCell[][] = chart.data
-    .slice(0, maxRows)
-    .map((row, rowIdx) =>
-      visibleHeaders.map((col, colIdx) => {
-        const val = row[col];
-        const isNum = typeof val === "number" || (typeof val === "string" && /^[\d.,%-]+$/.test(val));
-        return {
-          text: String(val ?? ""),
-          options: {
-            fontSize: 9,
-            fontFace: tokens.typography.bodyFont,
-            color: norm(tokens.palette.ink),
-            align: (colIdx === 0 ? "left" : isNum ? "right" : "left") as "left" | "right",
-            valign: "middle" as const,
-            border: [
-              { type: "none" as const },
-              { type: "none" as const },
-              { type: "solid" as const, pt: 0.25, color: norm(tokens.palette.border) },
-              { type: "none" as const },
-            ],
-            margin: [2, 4, 2, 4],
-            fill: { color: rowIdx % 2 === 0 ? norm(tokens.palette.bg) : norm(tokens.palette.surface) },
-          },
-        };
-      }),
-    );
+  // Data rows: subtle bottom borders, right-aligned numbers
+  const dataRows: PptxGenJS.TableCell[][] = rows.map((row) =>
+    visibleHeaders.map((col, colIdx) => {
+      const val = row[col];
+      return {
+        text: formatValue(val),
+        options: {
+          fontSize: 8,
+          fontFace: tokens.typography.bodyFont,
+          color: norm(tokens.palette.ink),
+          align: (colIdx === 0 ? "left" : isNumericValue(val) ? "right" : "left") as
+            | "left"
+            | "right",
+          valign: "middle" as const,
+          border: [
+            { type: "none" as const },
+            { type: "none" as const },
+            { type: "solid" as const, pt: 0.5, color: "E5E7EB" },
+            { type: "none" as const },
+          ],
+          margin: [2, 4, 2, 4],
+        },
+      };
+    }),
+  );
 
   slide.addTable([headerRow, ...dataRows], {
-    x: region.x, y: region.y, w: region.w,
+    x: region.x,
+    y: region.y,
+    w: region.w,
     colW: visibleHeaders.map(() => region.w / visibleHeaders.length),
     border: { type: "none" },
     autoPage: false,
@@ -458,11 +667,53 @@ function renderTable(
 
   if (chart.data.length > maxRows) {
     slide.addText(`Showing top ${maxRows} of ${chart.data.length} rows`, {
-      x: region.x, y: region.y + region.h - 0.2, w: region.w, h: 0.18,
-      fontSize: 7, fontFace: tokens.typography.bodyFont,
-      color: norm(tokens.palette.muted), align: "right", italic: true,
+      x: region.x,
+      y: region.y + region.h - 0.2,
+      w: region.w,
+      h: 0.18,
+      fontSize: 7,
+      fontFace: tokens.typography.bodyFont,
+      color: norm(tokens.palette.muted),
+      align: "right",
+      italic: true,
     });
   }
+}
+
+function renderCallout(
+  slide: PptxGenJS.Slide,
+  pptx: PptxGenJS,
+  text: string,
+  region: R,
+  tokens: BrandTokens,
+  variant: "green" | "orange" | "accent" = "accent",
+): void {
+  const fills: Record<string, string> = {
+    green: tokens.palette.calloutGreen,
+    orange: tokens.palette.calloutOrange,
+    accent: tokens.palette.accent,
+  };
+
+  slide.addShape(pptx.ShapeType.roundRect, {
+    x: region.x,
+    y: region.y,
+    w: region.w,
+    h: region.h,
+    fill: { color: norm(fills[variant]) },
+    rectRadius: 0.06,
+  });
+
+  slide.addText(processNewlines(text), {
+    x: region.x + 0.16,
+    y: region.y + 0.04,
+    w: region.w - 0.32,
+    h: region.h - 0.08,
+    fontSize: 10,
+    fontFace: tokens.typography.bodyFont,
+    color: "FFFFFF",
+    bold: true,
+    wrap: true,
+  });
 }
 
 function renderChartElement(
@@ -477,13 +728,17 @@ function renderChartElement(
     return;
   }
 
-  const { chartData, opts } = buildChartData(chart, tokens);
-  if (chartData.length === 0) return;
+  const built = buildChartData(chart, tokens);
+  if (!built) return;
+
+  const { chartData, opts } = built;
 
   // Chart title (small, above chart area)
   slide.addText(chart.title, {
-    x: region.x, y: region.y,
-    w: region.w, h: 0.22,
+    x: region.x,
+    y: region.y,
+    w: region.w,
+    h: 0.22,
     fontFace: tokens.typography.bodyFont,
     fontSize: tokens.typography.chartTitleSize,
     bold: true,
@@ -501,323 +756,198 @@ function renderChartElement(
     mapPptxChartType(pptx, chart.chartType),
     chartData as unknown as PptxGenJS.OptsChartData[],
     {
-      x: chartRegion.x, y: chartRegion.y,
-      w: chartRegion.w, h: chartRegion.h,
+      x: chartRegion.x,
+      y: chartRegion.y,
+      w: chartRegion.w,
+      h: chartRegion.h,
       ...opts,
     } as PptxGenJS.IChartOpts,
   );
 }
 
-function renderSourceNote(slide: PptxGenJS.Slide, tokens: BrandTokens): void {
-  slide.addText("Source: Company data analysis  |  Basquio", {
-    x: MARGIN_L, y: SOURCE_Y, w: CONTENT_W * 0.7, h: SOURCE_H,
-    fontSize: tokens.typography.sourceSize,
-    fontFace: tokens.typography.bodyFont,
-    color: norm(tokens.palette.muted),
-    italic: true,
-    align: "left",
-    valign: "bottom",
-  });
-}
-
-function renderSlideNumber(slide: PptxGenJS.Slide, num: number, total: number, tokens: BrandTokens): void {
-  slide.addText(`${num} / ${total}`, {
-    x: SLIDE_W - MARGIN_R - 0.8, y: SOURCE_Y, w: 0.8, h: SOURCE_H,
-    fontSize: 8,
-    fontFace: tokens.typography.bodyFont,
-    color: norm(tokens.palette.border),
-    align: "right",
-    valign: "bottom",
-  });
-}
-
-function renderCallout(
-  slide: PptxGenJS.Slide,
-  pptx: PptxGenJS,
-  text: string,
-  region: R,
-  tokens: BrandTokens,
-): void {
-  // Left accent bar
-  slide.addShape(pptx.ShapeType.rect, {
-    x: region.x, y: region.y, w: 0.04, h: region.h,
-    fill: { color: norm(tokens.palette.accent) },
-  });
-
-  // Background
-  slide.addShape(pptx.ShapeType.rect, {
-    x: region.x + 0.04, y: region.y, w: region.w - 0.04, h: region.h,
-    fill: { color: norm(tokens.palette.accentLight) },
-  });
-
-  slide.addText(text, {
-    x: region.x + 0.2, y: region.y + 0.1,
-    w: region.w - 0.4, h: region.h - 0.2,
-    fontSize: tokens.typography.bodySize + 1,
-    fontFace: tokens.typography.bodyFont,
-    color: norm(tokens.palette.ink),
-    bold: true,
-    valign: "middle",
-    wrap: true,
-    lineSpacingMultiple: 1.3,
-  });
-}
-
-// ─── SLIDE CHROME ───────────────────────────────────────────────
-
-function applyCoverChrome(slide: PptxGenJS.Slide, pptx: PptxGenJS, tokens: BrandTokens): void {
-  slide.background = { color: norm(tokens.palette.accent) };
-}
-
-function applyContentChrome(slide: PptxGenJS.Slide, pptx: PptxGenJS, tokens: BrandTokens): void {
-  slide.background = { color: norm(tokens.palette.bg) };
-
-  // Thin accent top rule
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0, y: 0, w: SLIDE_W, h: TOP_RULE_H,
-    fill: { color: norm(tokens.palette.accent) },
-    line: { color: norm(tokens.palette.accent), width: 0 },
-  });
-
-  // Subtle title underline
-  slide.addShape(pptx.ShapeType.line, {
-    x: MARGIN_L, y: TITLE_Y + TITLE_H + 0.04,
-    w: CONTENT_W, h: 0,
-    line: { color: norm(tokens.palette.border), width: 0.5 },
-  });
-}
-
 // ─── PER-LAYOUT RENDERERS ───────────────────────────────────────
 
-function renderCover(slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow, tokens: BrandTokens): void {
-  applyCoverChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: 0.8, y: 1.2, w: 8.4, h: 1.5 }, tokens, true);
-  if (s.subtitle) {
-    renderSubtitle(slide, s.subtitle, { x: 0.8, y: 2.9, w: 8.4, h: 0.8 }, tokens, true);
-  }
-}
-
-function renderTitleChart(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow,
-  chartsMap: Map<string, V2ChartRow>, tokens: BrandTokens,
+function renderCoverSlide(
+  slide: PptxGenJS.Slide,
+  pptx: PptxGenJS,
+  s: V2SlideRow,
+  tokens: BrandTokens,
 ): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-
-  const chart = s.chartId ? chartsMap.get(s.chartId) : undefined;
-  if (chart) {
-    renderChartElement(slide, pptx, chart, { x: MARGIN_L - 0.1, y: CONTENT_Y, w: CONTENT_W + 0.2, h: CONTENT_H }, tokens);
+  // Cover uses BASQUIO_COVER master (dark navy bg, no chrome)
+  const regions = getLayoutRegions("cover");
+  renderTitle(slide, s.title, regions.title, tokens, true);
+  if (s.subtitle && regions.subtitle) {
+    renderSubtitle(slide, s.subtitle, regions.subtitle, tokens, true);
   }
 }
 
-function renderChartSplit(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow,
-  chartsMap: Map<string, V2ChartRow>, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-
-  const chartW = CONTENT_W * 0.58;
-  const contentW = CONTENT_W * 0.38;
-  const gap = CONTENT_W * 0.04;
-
-  const chart = s.chartId ? chartsMap.get(s.chartId) : undefined;
-  if (chart) {
-    renderChartElement(slide, pptx, chart, { x: MARGIN_L, y: CONTENT_Y, w: chartW, h: CONTENT_H }, tokens);
-  }
-
-  const contentX = MARGIN_L + chartW + gap;
-  if (s.bullets && s.bullets.length > 0) {
-    renderBullets(slide, s.bullets, { x: contentX, y: CONTENT_Y, w: contentW, h: CONTENT_H }, tokens);
-  } else if (s.body) {
-    renderBody(slide, s.body, { x: contentX, y: CONTENT_Y, w: contentW, h: CONTENT_H }, tokens);
-  }
-}
-
-function renderMetricsLayout(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-
-  if (s.metrics && s.metrics.length > 0) {
-    renderMetrics(slide, pptx, s.metrics, { x: MARGIN_L, y: CONTENT_Y, w: CONTENT_W, h: 1.1 }, tokens);
-  }
-
-  if (s.body) {
-    renderBody(slide, s.body, { x: MARGIN_L, y: CONTENT_Y + 1.3, w: CONTENT_W, h: CONTENT_H - 1.3 }, tokens);
-  }
-}
-
-function renderTitleBody(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-  if (s.body) {
-    renderBody(slide, s.body, { x: MARGIN_L, y: CONTENT_Y, w: CONTENT_W, h: CONTENT_H }, tokens);
-  }
-}
-
-function renderTitleBullets(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-  if (s.bullets && s.bullets.length > 0) {
-    renderBullets(slide, s.bullets, { x: MARGIN_L, y: CONTENT_Y, w: CONTENT_W, h: CONTENT_H }, tokens);
-  }
-}
-
-function renderEvidenceGrid(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow,
-  chartsMap: Map<string, V2ChartRow>, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-
-  // Top: metrics ribbon
-  if (s.metrics && s.metrics.length > 0) {
-    renderMetrics(slide, pptx, s.metrics, { x: MARGIN_L, y: CONTENT_Y, w: CONTENT_W, h: 1.0 }, tokens);
-  }
-
-  const chartY = s.metrics && s.metrics.length > 0 ? CONTENT_Y + 1.15 : CONTENT_Y;
-  const chartH = CONTENT_BOTTOM - chartY;
-  const chartW = CONTENT_W * 0.56;
-  const evidenceW = CONTENT_W * 0.40;
-  const gap = CONTENT_W * 0.04;
-
-  // Bottom-left: chart
-  const chart = s.chartId ? chartsMap.get(s.chartId) : undefined;
-  if (chart) {
-    renderChartElement(slide, pptx, chart, { x: MARGIN_L, y: chartY, w: chartW, h: chartH }, tokens);
-  }
-
-  // Bottom-right: evidence text
-  const evidenceX = MARGIN_L + chartW + gap;
-  if (s.bullets && s.bullets.length > 0) {
-    renderBullets(slide, s.bullets, { x: evidenceX, y: chartY, w: evidenceW, h: chartH }, tokens);
-  } else if (s.body) {
-    renderBody(slide, s.body, { x: evidenceX, y: chartY, w: evidenceW, h: chartH }, tokens);
-  }
-}
-
-function renderTableLayout(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow,
-  chartsMap: Map<string, V2ChartRow>, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-
-  const chart = s.chartId ? chartsMap.get(s.chartId) : undefined;
-  if (chart) {
-    renderTable(slide, chart, { x: MARGIN_L, y: CONTENT_Y, w: CONTENT_W, h: CONTENT_H }, tokens);
-  }
-}
-
-function renderComparison(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow,
-  chartsMap: Map<string, V2ChartRow>, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-
-  const halfW = (CONTENT_W - 0.2) / 2;
-
-  const chart = s.chartId ? chartsMap.get(s.chartId) : undefined;
-  if (chart) {
-    renderChartElement(slide, pptx, chart, { x: MARGIN_L, y: CONTENT_Y, w: halfW, h: CONTENT_H }, tokens);
-  }
-
-  if (s.bullets && s.bullets.length > 0) {
-    renderBullets(slide, s.bullets, { x: MARGIN_L + halfW + 0.2, y: CONTENT_Y, w: halfW, h: CONTENT_H }, tokens);
-  } else if (s.body) {
-    renderBody(slide, s.body, { x: MARGIN_L + halfW + 0.2, y: CONTENT_Y, w: halfW, h: CONTENT_H }, tokens);
-  }
-}
-
-function renderSummary(
-  slide: PptxGenJS.Slide, pptx: PptxGenJS, s: V2SlideRow, tokens: BrandTokens,
-): void {
-  applyContentChrome(slide, pptx, tokens);
-  renderTitle(slide, s.title, { x: MARGIN_L, y: TITLE_Y, w: CONTENT_W, h: TITLE_H }, tokens, false);
-
-  if (s.body) {
-    renderBody(slide, s.body, { x: MARGIN_L, y: CONTENT_Y, w: CONTENT_W, h: 2.0 }, tokens);
-  }
-
-  // Callout box for key recommendation
-  if (s.bullets && s.bullets.length > 0) {
-    const calloutText = s.bullets.join("\n");
-    renderCallout(slide, pptx, calloutText, { x: MARGIN_L + 0.5, y: CONTENT_Y + 2.2, w: CONTENT_W - 1.0, h: 1.2 }, tokens);
-  }
-}
-
-// ─── SLIDE DISPATCH ─────────────────────────────────────────────
-
-function renderV2Slide(
+function renderContentSlide(
   slide: PptxGenJS.Slide,
   pptx: PptxGenJS,
   s: V2SlideRow,
   chartsMap: Map<string, V2ChartRow>,
   tokens: BrandTokens,
-  slideNum: number,
-  totalSlides: number,
 ): void {
-  const isCover = s.layoutId === "cover";
+  // Content slides use BASQUIO_MASTER (white bg + accent top bar + navy footer)
+  const layoutId = s.layoutId || "title-body";
+  const regions = getLayoutRegions(layoutId);
+  const notesOverflow: string[] = [];
 
-  switch (s.layoutId) {
-    case "cover":
-      renderCover(slide, pptx, s, tokens);
-      break;
-    case "title-chart":
-      renderTitleChart(slide, pptx, s, chartsMap, tokens);
-      break;
-    case "chart-split":
-      renderChartSplit(slide, pptx, s, chartsMap, tokens);
-      break;
-    case "metrics":
-    case "exec-summary":
-      renderMetricsLayout(slide, pptx, s, tokens);
-      break;
-    case "title-body":
-      renderTitleBody(slide, pptx, s, tokens);
-      break;
-    case "title-bullets":
-      renderTitleBullets(slide, pptx, s, tokens);
-      break;
-    case "evidence-grid":
-      renderEvidenceGrid(slide, pptx, s, chartsMap, tokens);
-      break;
-    case "table":
-      renderTableLayout(slide, pptx, s, chartsMap, tokens);
-      break;
-    case "comparison":
-    case "two-column":
-      renderComparison(slide, pptx, s, chartsMap, tokens);
-      break;
-    case "summary":
-      renderSummary(slide, pptx, s, tokens);
-      break;
-    default:
-      // Fallback: if slide has a chart, use title-chart; else title-body
-      if (s.chartId && chartsMap.has(s.chartId)) {
-        renderTitleChart(slide, pptx, s, chartsMap, tokens);
-      } else {
-        renderTitleBody(slide, pptx, s, tokens);
+  // Title always rendered
+  renderTitle(slide, s.title, regions.title, tokens, false);
+
+  // Subtitle (if present and region exists)
+  if (s.subtitle && regions.subtitle) {
+    renderSubtitle(slide, s.subtitle, regions.subtitle, tokens, false);
+  }
+
+  const chart = s.chartId ? chartsMap.get(s.chartId) : undefined;
+
+  switch (layoutId) {
+    case "title-chart": {
+      if (chart && regions.chart) {
+        renderChartElement(slide, pptx, chart, regions.chart, tokens);
       }
       break;
+    }
+
+    case "chart-split":
+    case "two-column": {
+      // Chart on left, table on right
+      if (chart) {
+        if (regions.chart) {
+          renderChartElement(slide, pptx, chart, regions.chart, tokens);
+        }
+        // Table with same data on right
+        if (regions.table) {
+          renderTable(slide, chart, regions.table, tokens);
+        }
+      }
+      // Callout (from body or first bullet)
+      if (regions.callout && (s.body || (s.bullets && s.bullets.length > 0))) {
+        const calloutText = s.body || s.bullets?.[0] || "";
+        if (calloutText) {
+          renderCallout(slide, pptx, calloutText, regions.callout, tokens, "accent");
+        }
+      }
+      // Metrics at bottom
+      if (s.metrics && s.metrics.length > 0 && regions.metrics) {
+        renderMetrics(slide, pptx, s.metrics, regions.metrics, tokens);
+      }
+      break;
+    }
+
+    case "evidence-grid": {
+      // Metrics ribbon at top
+      if (s.metrics && s.metrics.length > 0 && regions.metrics) {
+        renderMetrics(slide, pptx, s.metrics, regions.metrics, tokens);
+      }
+      // Chart on left
+      if (chart && regions.chart) {
+        renderChartElement(slide, pptx, chart, regions.chart, tokens);
+      }
+      // Body/bullets on right
+      if (regions.body) {
+        if (s.bullets && s.bullets.length > 0) {
+          renderBullets(slide, s.bullets, regions.body, tokens);
+        } else if (s.body) {
+          renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+        }
+      }
+      // Callout at bottom
+      if (regions.callout && s.body && s.bullets && s.bullets.length > 0) {
+        // Use body as callout if bullets took the body region
+        renderCallout(slide, pptx, s.body, regions.callout, tokens, "green");
+      }
+      break;
+    }
+
+    case "metrics":
+    case "exec-summary": {
+      if (s.metrics && s.metrics.length > 0 && regions.metrics) {
+        renderMetrics(slide, pptx, s.metrics, regions.metrics, tokens);
+      }
+      // exec-summary uses bullets region; metrics layout uses body region
+      if (layoutId === "exec-summary" && s.bullets && s.bullets.length > 0 && regions.bullets) {
+        renderBullets(slide, s.bullets, regions.bullets, tokens);
+      } else if (s.body && regions.body) {
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+      } else if (s.bullets && s.bullets.length > 0) {
+        const fallbackRegion = regions.bullets || regions.body;
+        if (fallbackRegion) {
+          renderBullets(slide, s.bullets, fallbackRegion, tokens);
+        }
+      }
+      break;
+    }
+
+    case "title-body": {
+      if (s.body && regions.body) {
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+      } else if (s.bullets && s.bullets.length > 0 && regions.body) {
+        renderBullets(slide, s.bullets, regions.body, tokens);
+      }
+      break;
+    }
+
+    case "table": {
+      if (chart && regions.table) {
+        renderTable(slide, chart, regions.table, tokens);
+      }
+      break;
+    }
+
+    case "comparison": {
+      if (chart && regions.chart) {
+        renderChartElement(slide, pptx, chart, regions.chart, tokens);
+      }
+      // Second chart area: use bullets or body
+      if (regions.chart2) {
+        if (s.bullets && s.bullets.length > 0) {
+          renderBullets(slide, s.bullets, regions.chart2, tokens);
+        } else if (s.body) {
+          renderBody(slide, s.body, regions.chart2, tokens, notesOverflow);
+        }
+      }
+      break;
+    }
+
+    case "summary": {
+      if (s.body && regions.body) {
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+      }
+      if (regions.callout) {
+        const calloutText =
+          s.bullets && s.bullets.length > 0 ? s.bullets.join(" | ") : s.body || "";
+        if (calloutText && (!s.body || (s.bullets && s.bullets.length > 0))) {
+          renderCallout(slide, pptx, calloutText, regions.callout, tokens, "green");
+        }
+      }
+      break;
+    }
+
+    default: {
+      // Fallback: chart if available, else body/bullets
+      if (chart) {
+        const chartRegion = regions.chart || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
+        renderChartElement(slide, pptx, chart, chartRegion, tokens);
+      } else if (s.body && regions.body) {
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+      } else if (s.bullets && s.bullets.length > 0) {
+        const bulletRegion =
+          regions.bullets || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
+        renderBullets(slide, s.bullets, bulletRegion, tokens);
+      }
+      break;
+    }
   }
 
-  // Source note + slide number on non-cover slides
-  if (!isCover) {
-    renderSourceNote(slide, tokens);
-    renderSlideNumber(slide, slideNum, totalSlides, tokens);
-  }
-
-  // Speaker notes
-  if (s.speakerNotes) {
-    slide.addNotes(s.speakerNotes);
+  // Speaker notes — include any overflow text
+  const notesParts: string[] = [];
+  if (s.speakerNotes) notesParts.push(processNewlines(s.speakerNotes));
+  if (notesOverflow.length > 0) notesParts.push(...notesOverflow);
+  if (notesParts.length > 0) {
+    slide.addNotes(notesParts.join("\n\n"));
   }
 }
 
@@ -840,6 +970,58 @@ export async function renderV2PptxArtifact(
     bodyFontFace: tokens.typography.bodyFont,
   };
 
+  // ── Slide Masters ──
+
+  pptx.defineSlideMaster({
+    title: "BASQUIO_COVER",
+    background: { fill: norm(tokens.palette.coverBg) },
+    objects: [],
+  });
+
+  pptx.defineSlideMaster({
+    title: "BASQUIO_MASTER",
+    background: { fill: norm(tokens.palette.bg) },
+    objects: [
+      // Top accent rule
+      { rect: { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: norm(tokens.palette.accent) } } },
+      // Footer bar
+      {
+        rect: {
+          x: 0,
+          y: 5.15,
+          w: "100%",
+          h: 0.475,
+          fill: { color: norm(tokens.palette.coverBg) },
+        },
+      },
+      // Footer text left
+      {
+        text: {
+          text: "Source: Company data analysis | Basquio",
+          options: {
+            x: 0.55,
+            y: 5.22,
+            w: 5,
+            h: 0.3,
+            fontSize: tokens.typography.sourceSize,
+            fontFace: tokens.typography.bodyFont,
+            color: "FFFFFF",
+            italic: true,
+          },
+        },
+      },
+    ],
+    slideNumber: {
+      x: 8.8,
+      y: 5.22,
+      w: 0.6,
+      h: 0.3,
+      fontSize: tokens.typography.sourceSize,
+      fontFace: tokens.typography.bodyFont,
+      color: "9CA3AF",
+    },
+  });
+
   // Build chart lookup
   const chartsMap = new Map<string, V2ChartRow>();
   for (const chart of input.charts) {
@@ -847,11 +1029,21 @@ export async function renderV2PptxArtifact(
   }
 
   const sortedSlides = [...input.slides].sort((a, b) => a.position - b.position);
-  const totalSlides = sortedSlides.length;
 
   for (const slideData of sortedSlides) {
-    const slide = pptx.addSlide();
-    renderV2Slide(slide, pptx, slideData, chartsMap, tokens, slideData.position, totalSlides);
+    const isCover = slideData.layoutId === "cover";
+    const slide = pptx.addSlide({ masterName: isCover ? "BASQUIO_COVER" : "BASQUIO_MASTER" });
+
+    if (isCover) {
+      renderCoverSlide(slide, pptx, slideData, tokens);
+    } else {
+      renderContentSlide(slide, pptx, slideData, chartsMap, tokens);
+    }
+
+    // Speaker notes for cover
+    if (isCover && slideData.speakerNotes) {
+      slide.addNotes(processNewlines(slideData.speakerNotes));
+    }
   }
 
   const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;

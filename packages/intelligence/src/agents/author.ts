@@ -125,6 +125,10 @@ When you call build_chart, think about the ANALYTICAL STORY, not just the data s
 
 Chart data: max 12 categories × 4 series. Beyond that, aggregate or use a table.
 
+## TABLE + CHART COMBO (chart-split layout)
+
+On chart-split slides, ALWAYS create BOTH a chart AND include the same data as a table. The renderer automatically places the chart on the left and builds a table from the same chart data on the right. The chart shows the pattern, the table shows the exact numbers. This is standard consulting practice — never leave a chart without supporting numbers.
+
 ## SPEAKER NOTES (second narrative layer)
 
 Speaker notes are NOT slide body copy. They are 60-140 words of:
