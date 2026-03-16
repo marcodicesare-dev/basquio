@@ -165,25 +165,57 @@ export async function createIssues(
       low: 4,
     };
 
-    const result = await linear.createIssue({
-      teamId: env.LINEAR_TEAM_ID,
-      title: item.title,
-      description,
-      labelIds,
-      assigneeId,
-      priority: priorityMap[item.priority] ?? 3,
-    });
-
-    const issue = await result.issue;
-    if (issue) {
-      created.push({
-        identifier: issue.identifier,
+    try {
+      const result = await linear.createIssue({
+        teamId: env.LINEAR_TEAM_ID,
         title: item.title,
-        url: issue.url,
-        assignee: item.assignee,
-        labels: labelNames,
+        description,
+        labelIds,
+        assigneeId,
+        priority: priorityMap[item.priority] ?? 3,
       });
-      console.log(`✅ Created issue ${issue.identifier}: ${item.title}`);
+
+      const issue = await result.issue;
+      if (issue) {
+        created.push({
+          identifier: issue.identifier,
+          title: item.title,
+          url: issue.url,
+          assignee: item.assignee,
+          labels: labelNames,
+        });
+        console.log(`✅ Created issue ${issue.identifier}: ${item.title}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // If label is not associated with team, retry without labels
+      if (msg.includes("label") && msg.includes("team")) {
+        console.warn(`⚠️ Label/team mismatch for "${item.title}", retrying without labels`);
+        try {
+          const result = await linear.createIssue({
+            teamId: env.LINEAR_TEAM_ID,
+            title: item.title,
+            description,
+            assigneeId,
+            priority: priorityMap[item.priority] ?? 3,
+          });
+          const issue = await result.issue;
+          if (issue) {
+            created.push({
+              identifier: issue.identifier,
+              title: item.title,
+              url: issue.url,
+              assignee: item.assignee,
+              labels: [],
+            });
+            console.log(`✅ Created issue ${issue.identifier}: ${item.title} (no labels)`);
+          }
+        } catch (retryErr) {
+          console.error(`❌ Failed to create issue "${item.title}":`, retryErr);
+        }
+      } else {
+        console.error(`❌ Failed to create issue "${item.title}":`, err);
+      }
     }
   }
 

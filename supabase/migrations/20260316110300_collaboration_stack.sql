@@ -58,9 +58,7 @@ CREATE TABLE public.decisions (
   context TEXT,
   participants TEXT[] DEFAULT '{}',
   source_transcript_id UUID REFERENCES public.transcripts(id),
-  category TEXT CHECK (category IN (
-    'product', 'technical', 'financial', 'sales', 'marketing', 'general'
-  )),
+  category TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

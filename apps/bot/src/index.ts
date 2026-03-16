@@ -164,6 +164,14 @@ async function shutdown(signal: string): Promise<void> {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
+// Catch all unhandled errors so the bot doesn't silently die
+process.on("unhandledRejection", (err) => {
+  console.error("‼️ Unhandled rejection:", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("‼️ Uncaught exception:", err);
+});
+
 // ── Login ──────────────────────────────────────────────────────────
 
 client.login(env.DISCORD_BOT_TOKEN);

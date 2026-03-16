@@ -8,9 +8,9 @@ import { env } from "./config.js";
 const extractedActionItemSchema = z.object({
   title: z.string(),
   description: z.string(),
-  category: z.enum(["bug", "feature", "improvement", "feedback", "finance", "marketing"]),
+  category: z.string().default("feature"),
   assignee: z.string(),
-  priority: z.enum(["urgent", "high", "medium", "low"]),
+  priority: z.string().default("medium"),
 });
 
 const extractedSalesMentionSchema = z.object({
@@ -18,14 +18,14 @@ const extractedSalesMentionSchema = z.object({
   context: z.string(),
   action: z.string().optional(),
   owner: z.string().optional(),
-  status: z.enum(["mentioned", "researching", "outreach", "demo_scheduled", "pilot", "negotiation"]),
+  status: z.string().default("mentioned"),
 });
 
 const extractedDecisionSchema = z.object({
   decision: z.string(),
   context: z.string().optional(),
   participants: z.array(z.string()).default([]),
-  category: z.enum(["product", "technical", "financial", "sales", "marketing", "general"]).default("general"),
+  category: z.string().default("general"),
 });
 
 const extractionResultSchema = z.object({
