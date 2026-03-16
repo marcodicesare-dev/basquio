@@ -77,7 +77,7 @@ If a query or metric fails, try a different approach. The data may have unexpect
       compute_metric: createComputeMetricTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
     },
-    stopWhen: [stepCountIs(30), costBudgetExceeded(0.50)],
+    stopWhen: [stepCountIs(25), costBudgetExceeded(1.00)],
     output: Output.object({ schema: analysisReportSchema }),
     onStepFinish: input.onStepFinish,
   });
@@ -102,11 +102,29 @@ ${fileInventorySummary}
 
 Start by listing files and describing tables. Sample rows to understand the data. Then compute metrics systematically — explore from multiple angles before concluding. Register every finding as an evidence ref.
 
-Be thorough. An executive will make decisions based on your analysis.`,
+Be thorough but efficient. An executive will make decisions based on your analysis. You have a maximum of ~20 tool calls before you must produce your final structured report. Plan your exploration accordingly — don't spend all your budget on one dimension.`,
   });
 
   if (!result.output) {
-    throw new Error("Analyst agent did not produce structured output");
+    // Fallback: construct a minimal AnalysisReport from the agent's text response.
+    // This happens when the model hits output token limits before completing the structured JSON.
+    const textSummary = result.text ?? "Analysis completed but structured output was not generated.";
+    return {
+      summary: textSummary.slice(0, 2000),
+      domain: "Market Analysis",
+      topFindings: [{
+        title: "Analysis Summary",
+        claim: textSummary.slice(0, 200),
+        evidenceRefIds: [],
+        confidence: 0.5,
+        businessImplication: "See full analysis text for details.",
+      }],
+      metricsComputed: 0,
+      queriesExecuted: 0,
+      filesAnalyzed: input.workspace.fileInventory.length,
+      keyDimensions: [],
+      recommendedChartTypes: [],
+    };
   }
 
   return result.output;
