@@ -118,7 +118,7 @@ async function endSession(): Promise<void> {
     // 2. Transcribe (download from Supabase Storage if needed, or use local buffers)
     // For now, we'll mark the path — full transcription happens via the audio chunks
     // that were uploaded during recording. We need to download them back for transcription.
-    const transcript = await transcribeSessionAudio(audioPaths);
+    const transcript = await transcribeSessionAudio(audioPaths, participants);
 
     if (!transcript.fullText.trim()) {
       console.log("⚠️ Empty transcript, skipping processing.");
@@ -236,6 +236,7 @@ async function processInterimSegment(): Promise<void> {
  */
 async function transcribeSessionAudio(
   paths: string[],
+  participants: string[] = [],
 ): Promise<{ fullText: string; durationSeconds: number }> {
   const { createClient } = await import("@supabase/supabase-js");
   const db = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
@@ -255,7 +256,14 @@ async function transcribeSessionAudio(
     return { fullText: "", durationSeconds: 0 };
   }
 
-  const result = await transcribeChunks(chunks);
+  // Build speaker map: for solo sessions we know exactly who it is.
+  // For multi-participant, map Speaker N → participant N (best-effort by join order).
+  const speakerMap = new Map<string, string>();
+  for (let i = 0; i < participants.length; i++) {
+    speakerMap.set(`Speaker ${i}`, participants[i]!);
+  }
+
+  const result = await transcribeChunks(chunks, speakerMap);
   return { fullText: result.fullText, durationSeconds: result.durationSeconds };
 }
 
