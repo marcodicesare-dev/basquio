@@ -142,8 +142,8 @@ export function RunProgressView(input: {
               <p className="section-label light">Generation run</p>
               <h1>{isTerminal ? title : "Basquio is thinking through the deck."}</h1>
               <p className="page-copy loading-copy">
-                {snapshot.currentDetail ||
-                  "The system is reading the package, planning the metrics, shaping the narrative, and preparing the final artifact pair."}
+                {humanizeDetail(snapshot.currentDetail, snapshot.currentStage) ||
+                  "The agents are analyzing your data, building the narrative, and preparing the final deliverables."}
               </p>
             </div>
 
@@ -225,8 +225,8 @@ export function RunProgressView(input: {
       <section className="loading-board">
         <article className="technical-panel stack-xl">
           <div className="stack">
-            <p className="section-label light">Pipeline state</p>
-            <h2>Every stage is visible while the run is in flight.</h2>
+            <p className="section-label light">Agent phases</p>
+            <h2>Every phase is visible while the agents work.</h2>
           </div>
 
           <div className="loading-stage-list">
@@ -252,9 +252,11 @@ export function RunProgressView(input: {
             <p className="section-label">Run output</p>
             <h2>{title}</h2>
             <p className="muted">
-              {snapshot.summary
-                ? `${snapshot.summary.insights.length} insight${snapshot.summary.insights.length === 1 ? "" : "s"} ranked before rendering.`
-                : "The final report shape appears here as soon as the validated plan is ready."}
+              {snapshot.status === "completed"
+                ? "The deck has been generated and artifacts are ready for download."
+                : snapshot.status === "failed"
+                  ? "The run encountered an issue. See the failure details below."
+                  : "The final report shape appears here as the agents finish their work."}
             </p>
           </div>
 
@@ -331,6 +333,34 @@ function formatDuration(value: number) {
   }
 
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function humanizeDetail(detail: string, currentStage: string) {
+  if (!detail) return "";
+
+  // Convert "Tool: sample_rows (understand)" → "Sampling data rows..."
+  const toolMatch = detail.match(/^Tool:\s*(\w+)/);
+  if (toolMatch) {
+    const toolName = toolMatch[1];
+    const toolLabels: Record<string, string> = {
+      sample_rows: "Sampling data rows",
+      read_support_doc: "Reading support documents",
+      inspect_template: "Inspecting template structure",
+      inspect_brand_tokens: "Analyzing brand tokens",
+      render_deck_preview: "Rendering slide preview",
+      build_chart: "Building chart visualization",
+      persist_slide: "Writing slide content",
+      persist_chart: "Saving chart data",
+    };
+    return `${toolLabels[toolName] ?? `Running ${toolName.replaceAll("_", " ")}`}...`;
+  }
+
+  // Convert "Running {phase} phase..." to the phase copy
+  if (detail.startsWith("Running ") && detail.endsWith("...")) {
+    return defaultV2PhaseCopy(currentStage);
+  }
+
+  return detail;
 }
 
 function defaultV2PhaseCopy(phase: string) {
