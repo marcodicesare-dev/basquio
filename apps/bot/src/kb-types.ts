@@ -48,9 +48,13 @@ export const SUPPORTED_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/webp": "webp",
   "image/gif": "gif",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-excel": "xls",
+  "image/svg+xml": "svg",
   "text/plain": "txt",
   "text/markdown": "md",
   "text/csv": "csv",
+  "application/json": "json",
 };
 
 export const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB

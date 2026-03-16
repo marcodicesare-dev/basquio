@@ -8,10 +8,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE public.knowledge_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   filename TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN (
-    'pdf', 'docx', 'pptx', 'png', 'jpg', 'jpeg', 'gif', 'webp',
-    'md', 'txt', 'csv', 'screenshot'
-  )),
+  file_type TEXT NOT NULL,
   file_size_bytes INTEGER NOT NULL,
   storage_path TEXT NOT NULL,
   uploaded_by TEXT NOT NULL,

@@ -1,6 +1,7 @@
 import { parsePdf } from "./pdf.js";
 import { parseDocx } from "./docx.js";
 import { parsePptx } from "./pptx.js";
+import { parseXlsx } from "./xlsx.js";
 import { parseImage } from "./image.js";
 import { parseMarkdown } from "./markdown.js";
 import type { ParseResult } from "../kb-types.js";
@@ -34,11 +35,16 @@ export async function parseFile(buffer: Buffer, contentType: string, filename: s
     return parsePptx(buffer);
   }
 
+  if (ct === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || ct === "application/vnd.ms-excel") {
+    return parseXlsx(buffer);
+  }
+
   if (IMAGE_TYPES.has(ct)) {
     return parseImage(buffer, ct);
   }
 
-  if (ct === "text/plain" || ct === "text/markdown" || ct === "text/csv") {
+  // Text-like types (plain, markdown, csv, json, svg, xml)
+  if (ct.startsWith("text/") || ct === "application/json" || ct === "image/svg+xml" || ct === "application/xml") {
     return parseMarkdown(buffer);
   }
 
@@ -47,10 +53,18 @@ export async function parseFile(buffer: Buffer, contentType: string, filename: s
   if (ext === "pdf") return parsePdf(buffer);
   if (ext === "docx") return parseDocx(buffer);
   if (ext === "pptx") return parsePptx(buffer);
-  if (ext === "md" || ext === "txt" || ext === "csv") return parseMarkdown(buffer);
+  if (ext === "xlsx" || ext === "xls") return parseXlsx(buffer);
+  if (ext && ["md", "txt", "csv", "json", "svg", "xml", "yaml", "yml", "toml", "env", "log"].includes(ext)) {
+    return parseMarkdown(buffer);
+  }
   if (ext && ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
     return parseImage(buffer, `image/${ext === "jpg" ? "jpeg" : ext}`);
   }
 
-  throw new Error(`Unsupported file type: ${ct} (${filename})`);
+  // Last resort: try officeparser (handles many Office formats)
+  try {
+    return await parseXlsx(buffer);
+  } catch {
+    throw new Error(`Unsupported file type: ${ct} (${filename})`);
+  }
 }
