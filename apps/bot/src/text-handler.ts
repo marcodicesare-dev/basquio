@@ -18,6 +18,9 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let silenceTimer: ReturnType<typeof setTimeout> | null = null;
 let bufferStartedAt: Date | null = null;
 
+// Ignore messages sent before bot startup to avoid re-processing after deploys
+const BOT_STARTED_AT = new Date();
+
 // Trivial messages to skip
 const TRIVIAL_PATTERNS = /^(ok|lol|lmao|haha|nice|👍|👎|❤️|😂|🤣|yes|no|si|va bene|grazie|thanks|thx|ty)$/i;
 
@@ -28,6 +31,7 @@ export function handleTextMessage(message: Message): void {
   // Skip bot messages, @mentions (handled by searcher), and trivial content
   if (message.author.bot) return;
   if (message.mentions.users.size > 0) return;
+  if (message.createdAt < BOT_STARTED_AT) return; // Skip pre-startup messages (deploy dedup)
   if (message.content.length < 20 && TRIVIAL_PATTERNS.test(message.content.trim())) return;
   if (message.content.trim().length < 5) return;
 
