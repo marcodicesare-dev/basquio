@@ -14,7 +14,7 @@
     "@basquio/types": "workspace:*",
     "@deepgram/sdk": "^5.0.0",
     "@discordjs/opus": "^0.10.0",
-    "@discordjs/voice": "^0.19.0",
+    "@discordjs/voice": "0.19.3-dev.1773446773-2a067216c",
     "@linear/sdk": "^77.0.0",
     "@supabase/supabase-js": "^2.49.0",
     "discord.js": "^14.18.0",

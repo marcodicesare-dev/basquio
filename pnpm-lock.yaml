@@ -58,8 +58,8 @@ importers:
         specifier: ^0.10.0
         version: 0.10.0
       '@discordjs/voice':
-        specifier: ^0.19.0
-        version: 0.19.1(@discordjs/opus@0.10.0)
+        specifier: 0.19.3-dev.1773446773-2a067216c
+        version: 0.19.3-dev.1773446773-2a067216c(@discordjs/opus@0.10.0)
       '@linear/sdk':
         specifier: ^77.0.0
         version: 77.0.0(graphql@16.13.1)
@@ -353,8 +353,8 @@ packages:
     resolution: {integrity: sha512-3LKP7F2+atl9vJFhaBjn4nOaSWahZ/yWjOvA4e5pnXkt2qyXRCHLxoBQy81GFtLGCq7K9lPm9R517M1U+/90Qg==}
     engines: {node: '>=18'}
 
-  '@discordjs/voice@0.19.1':
-    resolution: {integrity: sha512-XYbFVyUBB7zhRvrjREfiWDwio24nEp/vFaVe6u9aBIC5UYuT7HvoMt8LgNfZ5hOyaCW0flFr72pkhUGz+gWw4Q==}
+  '@discordjs/voice@0.19.3-dev.1773446773-2a067216c':
+    resolution: {integrity: sha512-VroXwzmiBODFEa8m6AfxUecPHLrO/ipWxbBKE8XHPc3+VBJGmvM5fy/eSX8XEmyjFhUUEwZalzgfcRlOuI3xJw==}
     engines: {node: '>=22.12.0'}
 
   '@discordjs/ws@1.2.3':
@@ -3840,7 +3840,7 @@ snapshots:
     dependencies:
       discord-api-types: 0.38.42
 
-  '@discordjs/voice@0.19.1(@discordjs/opus@0.10.0)':
+  '@discordjs/voice@0.19.3-dev.1773446773-2a067216c(@discordjs/opus@0.10.0)':
     dependencies:
       '@snazzah/davey': 0.1.10
       '@types/ws': 8.18.1
