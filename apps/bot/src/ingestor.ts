@@ -35,7 +35,7 @@ export async function handleDocsMessage(message: Message, attachment: Attachment
   // Resolve file type — be permissive, let the parser decide if it can handle it
   const contentType = attachment.contentType ?? "";
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  const fileType = SUPPORTED_TYPES[contentType] ?? ext || "unknown";
+  const fileType = SUPPORTED_TYPES[contentType] ?? (ext || "unknown");
 
   // Signal received
   await message.react("📥");
