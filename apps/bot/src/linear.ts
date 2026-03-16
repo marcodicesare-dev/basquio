@@ -1,6 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import type { ExtractedActionItem } from "@basquio/types";
-import { env } from "./config.js";
+import { env, TEAM_MEMBERS } from "./config.js";
 
 let client: LinearClient;
 
@@ -70,7 +70,7 @@ export async function ensureLabels(): Promise<void> {
 }
 
 /**
- * Cache Linear user IDs by display name.
+ * Cache Linear user IDs by display name + all team aliases.
  */
 async function ensureUserCache(): Promise<void> {
   if (userCache.size > 0) return;
@@ -80,13 +80,36 @@ async function ensureUserCache(): Promise<void> {
     userCache.set(user.displayName.toLowerCase(), user.id);
     userCache.set(user.name.toLowerCase(), user.id);
   }
+
+  // Add team member aliases → their Linear user ID
+  for (const member of Object.values(TEAM_MEMBERS)) {
+    const linearId = userCache.get(member.linearDisplayName.toLowerCase());
+    if (linearId) {
+      for (const alias of member.aliases) {
+        userCache.set(alias.toLowerCase(), linearId);
+      }
+    }
+  }
+
+  console.log(`👥 Linear user cache: ${userCache.size} entries (${users.nodes.length} users + aliases)`);
 }
 
 /**
  * Resolve a team member name to a Linear user ID.
+ * Checks exact match, then partial match against cached names.
  */
 function resolveAssignee(name: string): string | undefined {
-  return userCache.get(name.toLowerCase());
+  const key = name.toLowerCase();
+  const exact = userCache.get(key);
+  if (exact) return exact;
+
+  // Partial match: "Marco" should match "marco.dicesare"
+  for (const [cachedName, id] of userCache.entries()) {
+    if (cachedName.startsWith(key) || key.startsWith(cachedName)) {
+      return id;
+    }
+  }
+  return undefined;
 }
 
 export interface CreatedIssue {

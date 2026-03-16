@@ -50,18 +50,19 @@ function loadEnv(): Env {
 export const env = loadEnv();
 
 // Team member mapping: Discord display name → Linear/role info
+// linearDisplayName must match the actual Linear username exactly
 export const TEAM_MEMBERS: Record<
   string,
-  { role: string; linearDisplayName: string }
+  { role: string; linearDisplayName: string; aliases: string[] }
 > = {
-  marco: { role: "cto", linearDisplayName: "Marco" },
-  veronica: { role: "head_of_product_intelligence", linearDisplayName: "Veronica" },
-  fra: { role: "cfo", linearDisplayName: "Fra" },
-  francesco: { role: "cfo", linearDisplayName: "Fra" },
-  rossella: { role: "cpo", linearDisplayName: "Rossella" },
-  ale: { role: "cro", linearDisplayName: "Ale" },
-  alessandro: { role: "cro", linearDisplayName: "Ale" },
-  giulia: { role: "cmo", linearDisplayName: "Giulia" },
+  marco: { role: "cto", linearDisplayName: "marco.dicesare", aliases: ["marco", "marco.dicesare", "marco di cesare"] },
+  veronica: { role: "head_of_product_intelligence", linearDisplayName: "veronica", aliases: ["veronica"] },
+  fra: { role: "cfo", linearDisplayName: "francesco", aliases: ["fra", "francesco", "francesco lama"] },
+  francesco: { role: "cfo", linearDisplayName: "francesco", aliases: ["fra", "francesco"] },
+  rossella: { role: "cpo", linearDisplayName: "rossella", aliases: ["rossella"] },
+  ale: { role: "cro", linearDisplayName: "alessandro", aliases: ["ale", "alessandro", "alessandro salerni"] },
+  alessandro: { role: "cro", linearDisplayName: "alessandro", aliases: ["ale", "alessandro"] },
+  giulia: { role: "cmo", linearDisplayName: "giulia", aliases: ["giulia"] },
 };
 
 // Auto-assignment rules based on content category
