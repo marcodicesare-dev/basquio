@@ -128,18 +128,24 @@ async function endSession(): Promise<void> {
     // 4. Route everything in parallel
     const transcriptUrl = `${env.SUPABASE_URL}/storage/v1/object/voice-recordings/${audioPaths[0] ?? ""}`;
 
-    const [transcriptId, issues] = await Promise.all([
-      saveTranscript({
-        sessionType: isVoiceMemo ? "voice" : "voice",
-        startedAt: session.startedAt,
-        endedAt,
-        participants,
-        rawTranscript: transcript.fullText,
-        extraction,
-        audioStoragePath: audioPaths[0],
-      }),
-      createIssues(extraction.action_items, transcriptUrl, "voice"),
-    ]);
+    // Save transcript first — this must succeed
+    const transcriptId = await saveTranscript({
+      sessionType: "voice",
+      startedAt: session.startedAt,
+      endedAt,
+      participants,
+      rawTranscript: transcript.fullText,
+      extraction,
+      audioStoragePath: audioPaths[0],
+    });
+
+    // Create issues separately — failures here shouldn't kill the pipeline
+    let issues: Awaited<ReturnType<typeof createIssues>> = [];
+    try {
+      issues = await createIssues(extraction.action_items, transcriptUrl, "voice");
+    } catch (err) {
+      console.error("⚠️ Issue creation failed (continuing pipeline):", err);
+    }
 
     // Save decisions
     await saveDecisions(extraction.decisions, transcriptId);

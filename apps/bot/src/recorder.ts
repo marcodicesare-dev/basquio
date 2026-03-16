@@ -5,7 +5,7 @@ import {
   type VoiceConnection,
   EndBehaviorType,
 } from "@discordjs/voice";
-import type { VoiceBasedChannel } from "discord.js";
+import { PermissionFlagsBits, type VoiceBasedChannel } from "discord.js";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { OpusEncoder } = require("@discordjs/opus") as typeof import("@discordjs/opus");
@@ -24,10 +24,53 @@ let connection: VoiceConnection | null = null;
 let sessionAudioPaths: string[] = [];
 
 /**
+ * Check and log the bot's permissions in the voice channel.
+ */
+function checkPermissions(channel: VoiceBasedChannel): boolean {
+  const me = channel.guild.members.me;
+  if (!me) {
+    console.error("❌ Cannot resolve bot's own guild member");
+    return false;
+  }
+
+  const perms = channel.permissionsFor(me);
+  if (!perms) {
+    console.error("❌ Cannot resolve permissions for voice channel");
+    return false;
+  }
+
+  const required = [
+    { flag: PermissionFlagsBits.Connect, name: "Connect" },
+    { flag: PermissionFlagsBits.Speak, name: "Speak" },
+    { flag: PermissionFlagsBits.UseVAD, name: "UseVAD" },
+  ] as const;
+
+  let allGood = true;
+  for (const { flag, name } of required) {
+    const has = perms.has(flag);
+    console.log(`  ${has ? "✅" : "❌"} ${name}`);
+    if (!has) allGood = false;
+  }
+
+  // Also log some useful info
+  console.log(`  Channel type: ${channel.type} (2=voice, 13=stage)`);
+  console.log(`  Channel members: ${channel.members.map((m) => `${m.displayName}${m.user.bot ? " [BOT]" : ""}`).join(", ")}`);
+
+  return allGood;
+}
+
+/**
  * Join a voice channel and start recording all participants.
  */
 export async function startRecording(channel: VoiceBasedChannel): Promise<void> {
   sessionAudioPaths = [];
+
+  // Check permissions first
+  console.log(`🔑 Checking bot permissions in #${channel.name}:`);
+  const hasPerms = checkPermissions(channel);
+  if (!hasPerms) {
+    throw new Error("Bot missing required voice channel permissions");
+  }
 
   connection = joinVoiceChannel({
     channelId: channel.id,
@@ -39,26 +82,38 @@ export async function startRecording(channel: VoiceBasedChannel): Promise<void> 
     // build (PR #11449) which fixes audio receive decryption with DAVE.
   });
 
+  // Full debug logging
+  connection.on("stateChange", (oldState, newState) => {
+    console.log(`🔌 Voice connection: ${oldState.status} → ${newState.status}`);
+  });
+
+  connection.on("error", (err) => {
+    console.error("🔌 Voice connection error:", err);
+  });
+
   // Wait for connection to be ready
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
-  } catch {
+    console.log("✅ Voice connection ready");
+  } catch (err) {
+    console.error("❌ Voice connection failed:", err);
     connection.destroy();
     connection = null;
     throw new Error("Voice connection timed out");
   }
 
   // Handle disconnects with reconnection
-  connection.on(VoiceConnectionStatus.Disconnected, async () => {
+  connection.on(VoiceConnectionStatus.Disconnected, async (_oldState, newState) => {
+    console.log("⚠️ Voice disconnected, reason:", (newState as unknown as { reason?: number }).reason);
     if (!connection) return;
     try {
       await Promise.race([
         entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
         entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
       ]);
-      // Auto-reconnect succeeded
+      console.log("🔄 Auto-reconnect succeeded");
     } catch {
-      // Auto-reconnect failed — save what we have and destroy
+      console.error("❌ Auto-reconnect failed, destroying connection");
       await flushAllStreams();
       connection.destroy();
       connection = null;
@@ -68,6 +123,9 @@ export async function startRecording(channel: VoiceBasedChannel): Promise<void> 
   // Subscribe to each user that speaks
   const receiver = connection.receiver;
 
+  console.log("🔊 Listening for speaking events...");
+
+  // Log all speaking map events
   receiver.speaking.on("start", (userId) => {
     if (activeStreams.has(userId)) return;
 
