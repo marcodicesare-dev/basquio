@@ -35,10 +35,9 @@ export async function startRecording(channel: VoiceBasedChannel): Promise<void> 
     adapterCreator: channel.guild.voiceAdapterCreator,
     selfDeaf: false,
     selfMute: true,
-    // DAVE E2EE breaks audio receiving in @discordjs/voice 0.19.x
-    // Disable until upstream fix lands (discord.js#11419)
-    daveEncryption: false,
-  } as Parameters<typeof joinVoiceChannel>[0] & { daveEncryption: boolean });
+    // DAVE E2EE is required since March 2, 2026. Using @discordjs/voice dev
+    // build (PR #11449) which fixes audio receive decryption with DAVE.
+  });
 
   // Wait for connection to be ready
   try {
