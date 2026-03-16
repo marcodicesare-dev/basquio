@@ -8,6 +8,7 @@ import { handleBotMention } from "./searcher.js";
 import { embedAndStoreTranscript } from "./transcript-embedder.js";
 
 interface BufferedMessage {
+  id: string; // Discord message ID for deduplication
   author: string;
   content: string;
   timestamp: Date;
@@ -16,7 +17,10 @@ interface BufferedMessage {
 let messageBuffer: BufferedMessage[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let silenceTimer: ReturnType<typeof setTimeout> | null = null;
-let bufferStartedAt: Date | null = null;
+
+// Track recently processed message IDs to prevent duplicate sessions
+const processedMessageIds = new Set<string>();
+const MAX_PROCESSED_IDS = 500;
 
 // Ignore messages sent before bot startup to avoid re-processing after deploys
 const BOT_STARTED_AT = new Date();
@@ -28,22 +32,21 @@ const TRIVIAL_PATTERNS = /^(ok|lol|lmao|haha|nice|👍|👎|❤️|😂|🤣|yes
  * Handle an incoming text message in #general.
  */
 export function handleTextMessage(message: Message): void {
-  // Skip bot messages, @mentions (handled by searcher), and trivial content
+  // Skip bot messages, webhooks, @mentions (handled by searcher), and trivial content
   if (message.author.bot) return;
+  if (message.webhookId) return;
   if (message.mentions.users.size > 0) return;
   if (message.createdAt < BOT_STARTED_AT) return; // Skip pre-startup messages (deploy dedup)
+  if (processedMessageIds.has(message.id)) return; // Already processed
   if (message.content.length < 20 && TRIVIAL_PATTERNS.test(message.content.trim())) return;
   if (message.content.trim().length < 5) return;
 
   const buffered: BufferedMessage = {
+    id: message.id,
     author: message.member?.displayName ?? message.author.username,
     content: message.content,
-    timestamp: new Date(),
+    timestamp: message.createdAt,
   };
-
-  if (!bufferStartedAt) {
-    bufferStartedAt = new Date();
-  }
 
   messageBuffer.push(buffered);
 
@@ -139,12 +142,12 @@ async function createQuickIssue(
     "text",
   );
 
-  // If extraction didn't produce action items, create one manually
+  // If LLM found nothing actionable, create a minimal issue from the reaction intent
   if (extraction.action_items.length === 0) {
     extraction.action_items = [
       {
         title: content.slice(0, 80),
-        description: content,
+        description: `Flagged via ${category === "bug" ? "🐛" : "💡"} reaction by ${author}:\n${content}`,
         category,
         assignee: "Marco",
         priority: category === "bug" ? "high" : "medium",
@@ -237,9 +240,21 @@ async function flushBuffer(): Promise<void> {
   if (messageBuffer.length === 0) return;
 
   const messages = [...messageBuffer];
-  const startedAt = bufferStartedAt ?? new Date();
   messageBuffer = [];
-  bufferStartedAt = null;
+
+  // Mark all messages as processed to prevent reprocessing after deploys/restarts
+  for (const m of messages) {
+    processedMessageIds.add(m.id);
+    // Keep the set bounded
+    if (processedMessageIds.size > MAX_PROCESSED_IDS) {
+      const first = processedMessageIds.values().next().value;
+      if (first) processedMessageIds.delete(first);
+    }
+  }
+
+  // Use actual message timestamps for duration, not buffer timer
+  const startedAt = messages[0]!.timestamp;
+  const endedAt = messages[messages.length - 1]!.timestamp;
 
   // Build transcript from buffered messages
   const transcript = messages
@@ -252,9 +267,16 @@ async function flushBuffer(): Promise<void> {
     `💬 Processing ${messages.length} text messages from ${participants.join(", ")}`,
   );
 
+  // For thin sessions (1-2 messages from a single person), save transcript
+  // for the knowledge base but skip extraction — these rarely contain
+  // actionable items and just create noise in Linear.
+  const isThinSession = messages.length <= 2 && participants.length === 1;
+
   try {
-    const extraction = await extractFromTranscript(transcript, "text");
-    const endedAt = new Date();
+    const extraction = await extractFromTranscript(transcript, "text", {
+      messageCount: messages.length,
+      participantCount: participants.length,
+    });
 
     const transcriptUrl = "text-session"; // No audio URL for text
 
@@ -273,14 +295,16 @@ async function flushBuffer(): Promise<void> {
       console.error(`Failed to embed text transcript ${transcriptId}:`, err);
     });
 
-    // Only create issues if extraction found genuinely actionable items
+    // Skip issue creation for thin sessions — they're mostly noise
     let issues: Awaited<ReturnType<typeof createIssues>> = [];
-    if (extraction.action_items.length > 0) {
+    if (!isThinSession && extraction.action_items.length > 0) {
       try {
         issues = await createIssues(extraction.action_items, transcriptUrl, "text");
       } catch (err) {
         console.error("⚠️ Issue creation failed (continuing pipeline):", err);
       }
+    } else if (isThinSession && extraction.action_items.length > 0) {
+      console.log(`📭 Thin session (${messages.length} msgs, 1 author) — skipping ${extraction.action_items.length} issue(s)`);
     }
 
     if (extraction.decisions.length > 0) {
@@ -288,7 +312,7 @@ async function flushBuffer(): Promise<void> {
     }
 
     const crmUpdates: string[] = [];
-    if (extraction.sales_mentions.length > 0) {
+    if (!isThinSession && extraction.sales_mentions.length > 0) {
       for (const mention of extraction.sales_mentions) {
         await upsertLead(mention, transcriptId);
         crmUpdates.push(`${mention.company} — ${mention.status}`);
@@ -296,6 +320,12 @@ async function flushBuffer(): Promise<void> {
     }
 
     const duration = formatDuration(endedAt.getTime() - startedAt.getTime());
+
+    // Skip posting summary for thin sessions that had no meaningful extraction
+    if (isThinSession && issues.length === 0 && extraction.decisions.length === 0) {
+      console.log(`📭 Thin session — saved transcript only, no summary posted`);
+      return;
+    }
 
     await postSessionSummary({
       sessionType: "text",
