@@ -139,13 +139,24 @@ export function formatSearchEmbed(query: string, result: SearchResult): EmbedBui
     .setDescription(result.answer)
     .setColor(color);
 
-  // Add source fields (max 5 to avoid embed size limits)
-  const displaySources = result.sources.slice(0, 5);
+  // Show only sources that Claude actually cited in the answer
+  const citedIndices = new Set<number>();
+  const citationPattern = /\[(\d+)\]/g;
+  let match;
+  while ((match = citationPattern.exec(result.answer)) !== null) {
+    citedIndices.add(parseInt(match[1], 10) - 1); // convert 1-indexed to 0-indexed
+  }
+
+  // If Claude cited specific sources, show only those; otherwise fall back to top 5
+  const displaySources = citedIndices.size > 0
+    ? result.sources.filter((_, i) => citedIndices.has(i))
+    : result.sources.slice(0, 5);
+
   if (displaySources.length > 0) {
-    const sourceLines = displaySources.map((s, i) => {
+    const sourceLines = displaySources.map((s) => {
       const icon = s.type === "document" ? "📄" : "🎙️";
       const pageStr = s.page ? ` (p. ${s.page})` : "";
-      return `${icon} [${i + 1}] ${s.name}${pageStr}`;
+      return `${icon} ${s.name}${pageStr}`;
     });
     embed.addFields({ name: "Sources", value: sourceLines.join("\n") });
   }
