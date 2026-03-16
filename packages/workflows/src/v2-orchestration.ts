@@ -796,10 +796,10 @@ export const basquioV2Generation = inngest.createFunction(
           },
         );
 
-        const criticalIssuesRemain = reCritique.hasIssues &&
-          reCritique.issues.some((i: { severity: string }) => i.severity === "critical");
+        const blockingIssuesRemain = reCritique.hasIssues &&
+          reCritique.issues.some((i: { severity: string }) => i.severity === "critical" || i.severity === "major");
 
-        if (reCritique.hasIssues && reCritique.issues.some((i: { severity: string }) => i.severity === "critical" || i.severity === "major")) {
+        if (blockingIssuesRemain) {
           logPhaseEvent(runId, "re-critique", "issues_remain_after_max_revisions", {
             issueCount: reCritique.issues.length,
             severities: reCritique.issues.map((i: { severity: string }) => i.severity),
@@ -812,15 +812,15 @@ export const basquioV2Generation = inngest.createFunction(
           iteration: 2,
         });
 
-        if (criticalIssuesRemain) {
-          const criticalMessages = reCritique.issues
-            .filter((i: { severity: string }) => i.severity === "critical")
-            .map((i: { suggestion: string }) => i.suggestion)
+        if (blockingIssuesRemain) {
+          const blockingMessages = reCritique.issues
+            .filter((i: { severity: string }) => i.severity === "critical" || i.severity === "major")
+            .map((i: { suggestion: string; severity: string }) => `[${i.severity}] ${i.suggestion}`)
             .join("; ");
           await updateRunStatus(runId, "failed", "critique", {
-            failure_message: `Critical issues remain after max revisions: ${criticalMessages}`,
+            failure_message: `Critical/major issues remain after max revisions: ${blockingMessages}`,
           });
-          throw new Error(`Critical issues remain after max revisions: ${criticalMessages}`);
+          throw new Error(`Critical/major issues remain after max revisions: ${blockingMessages}`);
         }
       });
     }
@@ -941,6 +941,17 @@ export const basquioV2Generation = inngest.createFunction(
         passed: hasValidPdfHeader,
       });
 
+      // Check: actual PDF page count matches slide count
+      // Count /Type /Page (but not /Type /Pages) in the PDF buffer
+      const pdfText = pdfBuffer.toString("latin1");
+      const pageMatches = pdfText.match(/\/Type\s*\/Page(?!s)/g);
+      const actualPdfPageCount = pageMatches ? pageMatches.length : 0;
+      qaChecks.push({
+        name: "pdf_page_count_matches_slides",
+        passed: actualPdfPageCount === slides.length,
+        detail: `expected ${slides.length}, got ${actualPdfPageCount}`,
+      });
+
       const qaPassed = qaChecks.every((c) => c.passed);
 
       if (!qaPassed) {
@@ -956,7 +967,7 @@ export const basquioV2Generation = inngest.createFunction(
         id: manifestId,
         run_id: runId,
         slide_count: slides.length,
-        page_count: slides.length,
+        page_count: actualPdfPageCount,
         qa_passed: true,
         qa_report: { checks: qaChecks },
         artifacts: [
@@ -984,7 +995,7 @@ export const basquioV2Generation = inngest.createFunction(
         published_at: new Date().toISOString(),
       };
 
-      await fetch(
+      const manifestResponse = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/artifact_manifests_v2`,
         {
           method: "POST",
@@ -997,6 +1008,14 @@ export const basquioV2Generation = inngest.createFunction(
           body: JSON.stringify(manifest),
         },
       );
+
+      if (!manifestResponse.ok) {
+        const errorText = await manifestResponse.text().catch(() => "Unknown error");
+        await updateRunStatus(runId, "failed", "export", {
+          failure_message: `Failed to persist artifact manifest: ${errorText}`,
+        });
+        throw new Error(`Failed to persist artifact manifest: ${errorText}`);
+      }
 
       await updateRunStatus(runId, "completed", "export", {
         completed_at: new Date().toISOString(),
@@ -1048,11 +1067,9 @@ function buildSlideBlocks(slide: SlideRow): SlideSpec["blocks"] {
 
   const blocks: SlideSpec["blocks"] = [];
 
-  blocks.push(block("title", { content: slide.title }));
-
-  if (slide.subtitle) {
-    blocks.push(block("subtitle", { content: slide.subtitle }));
-  }
+  // Note: title and subtitle are NOT added as blocks because the PPTX renderer
+  // already draws slideSpec.title and slideSpec.subtitle in the header region.
+  // Adding them as blocks would duplicate the content in the body area.
 
   if (slide.body) {
     blocks.push(block("body", { content: slide.body }));
