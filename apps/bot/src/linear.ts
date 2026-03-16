@@ -166,8 +166,14 @@ export async function createIssues(
       labelNames.push(sessionType === "voice" ? "from-voice" : "from-text");
     }
 
-    // Resolve assignee
+    // Resolve assignee + add color-coded assignee label
     const assigneeId = resolveAssignee(item.assignee);
+    const assigneeLabelName = item.assignee.toLowerCase();
+    const assigneeLabel = labelCache.get(assigneeLabelName);
+    if (assigneeLabel) {
+      labelIds.push(assigneeLabel);
+      labelNames.push(assigneeLabelName);
+    }
 
     // Build description
     const description = [
