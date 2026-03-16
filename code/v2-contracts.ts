@@ -155,32 +155,34 @@ export const notebookEntrySchema = z.object({
 // Working deck state, slide by slide. Built incrementally by the author agent.
 // Replaces: current slide blueprints + materialized slides
 
+// DB schema — NOT used as Output.object(). Optional fields are nullable in Postgres.
 export const deckSpecV2SlideSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
   position: z.number().int().positive(),
   layoutId: z.string(),
   title: z.string(),
-  subtitle: z.string(),
-  body: z.string(),
-  bullets: z.array(z.string()),
-  chartId: z.string(),
+  subtitle: z.string().nullable().optional(),
+  body: z.string().nullable().optional(),
+  bullets: z.array(z.string()).nullable().optional(),
+  chartId: z.string().nullable().optional(),
   metrics: z.array(z.object({
     label: z.string(),
     value: z.string(),
-    delta: z.string(),
-  })),
-  evidenceIds: z.array(z.string()),
-  speakerNotes: z.string(),
-  transition: z.string(),
-  sceneGraph: z.record(z.string(), z.unknown()),
-  previewUrl: z.string(),
-  qaStatus: z.enum(["pending", "passed", "failed"]),
-  revision: z.number().int().positive(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+    delta: z.string().optional(),
+  })).nullable().optional(),
+  evidenceIds: z.array(z.string()).default([]),
+  speakerNotes: z.string().nullable().optional(),
+  transition: z.string().nullable().optional(),
+  sceneGraph: z.record(z.string(), z.unknown()).nullable().optional(),
+  previewUrl: z.string().nullable().optional(),
+  qaStatus: z.enum(["pending", "passed", "failed"]).default("pending"),
+  revision: z.number().int().positive().default(1),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
 });
 
+// DB schema — NOT used as Output.object().
 export const deckSpecV2ChartSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
@@ -188,17 +190,17 @@ export const deckSpecV2ChartSchema = z.object({
   title: z.string(),
   data: z.array(z.record(z.string(), z.unknown())),
   xAxis: z.string(),
-  yAxis: z.string(),
+  yAxis: z.string().default(""),
   series: z.array(z.string()),
   style: z.object({
-    colors: z.array(z.string()),
-    showLegend: z.boolean(),
-    showValues: z.boolean(),
-  }),
-  thumbnailUrl: z.string(),
-  width: z.number().int(),
-  height: z.number().int(),
-  createdAt: z.string(),
+    colors: z.array(z.string()).optional(),
+    showLegend: z.boolean().optional(),
+    showValues: z.boolean().optional(),
+  }).default({}),
+  thumbnailUrl: z.string().default(""),
+  width: z.number().int().default(0),
+  height: z.number().int().default(0),
+  createdAt: z.string().optional(),
 });
 
 // Full deck spec assembled from slides + charts

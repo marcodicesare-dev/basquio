@@ -411,6 +411,15 @@ function applyGroupByAggregate(
     groups.get(key)!.push(row);
   }
 
+  // For share/ratio, compute the global total first
+  let globalTotal: number | undefined;
+  if (aggregate.fn === "share" || aggregate.fn === "ratio") {
+    globalTotal = rows
+      .map((r) => Number(r[aggregate.column]))
+      .filter((v) => !isNaN(v))
+      .reduce((a, b) => a + b, 0);
+  }
+
   return Array.from(groups.entries()).map(([, groupRows]) => {
     const result: Record<string, unknown> = {};
     for (const col of groupBy) {
@@ -420,6 +429,7 @@ function applyGroupByAggregate(
       groupRows,
       aggregate.column,
       aggregate.fn,
+      globalTotal,
     );
     result._count = groupRows.length;
     return result;
@@ -430,6 +440,7 @@ function computeAggregate(
   rows: Record<string, unknown>[],
   column: string,
   fn: string,
+  globalTotal?: number,
 ): number | string {
   const values = rows
     .map((r) => Number(r[column]))
@@ -453,18 +464,16 @@ function computeAggregate(
     case "max":
       return round(Math.max(...values));
     case "ratio": {
-      // Ratio of first value to total
-      if (values.length < 2) return 0;
-      const total = values.reduce((a, b) => a + b, 0);
-      return total === 0 ? 0 : round(values[0] / total);
+      // Group sum / global total (or first value / group total for non-grouped)
+      const groupSum = values.reduce((a, b) => a + b, 0);
+      const denominator = globalTotal ?? groupSum;
+      return denominator === 0 ? 0 : round(groupSum / denominator);
     }
     case "share": {
-      // Each value's proportion of the total
-      const shareTotal = values.reduce((a, b) => a + b, 0);
-      if (shareTotal === 0) return 0;
-      // Return each value's share — for grouped compute_metric, the caller
-      // passes only the group's values, so we return value[0] / total.
-      return round(values[0] / shareTotal);
+      // Group sum / global total — gives each group's share of the whole
+      const groupSum = values.reduce((a, b) => a + b, 0);
+      const denominator = globalTotal ?? groupSum;
+      return denominator === 0 ? 0 : round(groupSum / denominator);
     }
     default:
       return 0;
