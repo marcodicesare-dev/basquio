@@ -278,8 +278,6 @@ async function flushBuffer(): Promise<void> {
       participantCount: participants.length,
     });
 
-    const transcriptUrl = "text-session"; // No audio URL for text
-
     // Save transcript first — always
     const transcriptId = await saveTranscript({
       sessionType: "text",
@@ -289,6 +287,9 @@ async function flushBuffer(): Promise<void> {
       rawTranscript: transcript,
       extraction,
     });
+
+    // Build a real transcript link (Supabase dashboard)
+    const transcriptUrl = `${env.SUPABASE_URL}/rest/v1/transcripts?id=eq.${transcriptId}`;
 
     // Embed transcript chunks for knowledge base (fire-and-forget)
     embedAndStoreTranscript(transcriptId, transcript).catch((err) => {
