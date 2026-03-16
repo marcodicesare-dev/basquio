@@ -158,7 +158,7 @@ Speaker notes are NOT slide body copy. They are 60-140 words of:
       render_deck_preview: createRenderDeckPreviewTool(authoringCtx),
       query_data: createQueryDataTool(toolCtx),
     },
-    stopWhen: [stepCountIs(35), costBudgetExceeded(1.00)],
+    stopWhen: stepCountIs(40),
     prepareStep: async ({ stepNumber, steps }) => {
       const result: Record<string, unknown> = {};
 
