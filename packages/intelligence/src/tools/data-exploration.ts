@@ -86,6 +86,7 @@ export function createDescribeTableTool(ctx: ToolContext) {
         sampleValues: col.sampleValues.slice(0, 5),
         nullRate: col.nullRate,
         uniqueCount: col.uniqueCount,
+        ...(col.uniqueCountApproximate ? { uniqueCountApproximate: true, uniqueCountNote: `≥${col.uniqueCount} (tracking capped at 1000 distinct values)` } : {}),
       }));
 
       await ctx.persistNotebookEntry({

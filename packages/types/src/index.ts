@@ -45,6 +45,7 @@ export const normalizedSheetPreviewSchema = z.object({
       nullable: z.boolean().default(true),
       sampleValues: z.array(z.string()).default([]),
       uniqueCount: z.number().int().nonnegative().default(0),
+      uniqueCountApproximate: z.boolean().optional(),
       nullRate: z.number().min(0).max(1).default(0),
     }),
   ),

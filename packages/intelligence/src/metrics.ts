@@ -150,6 +150,7 @@ function buildCompactMetricProfile(datasetProfile: DatasetProfile) {
         inferredType: column.inferredType,
         nullable: column.nullable,
         uniqueCount: column.uniqueCount,
+        ...(column.uniqueCountApproximate ? { uniqueCountApproximate: true } : {}),
       })),
     })),
   };

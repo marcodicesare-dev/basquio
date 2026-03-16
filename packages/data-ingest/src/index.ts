@@ -615,6 +615,7 @@ export type SheetManifest = {
     nullable: boolean;
     sampleValues: string[];
     uniqueCount: number;
+    uniqueCountApproximate?: boolean;
     nullRate: number;
   }>;
   sampleRows: Record<string, unknown>[];
@@ -1045,9 +1046,8 @@ function buildColumnFromStats(
     role,
     nullable: stats.nullCount > 0,
     sampleValues: topEntries.slice(0, 10).map(([v]) => v),
-    uniqueCount: stats.cappedDistinct
-      ? stats.valueCounts.size // lower bound — flagged in profile
-      : stats.valueCounts.size,
+    uniqueCount: stats.valueCounts.size,
+    uniqueCountApproximate: stats.cappedDistinct || undefined,
     nullRate: totalRows === 0 ? 0 : stats.nullCount / totalRows,
   };
 }

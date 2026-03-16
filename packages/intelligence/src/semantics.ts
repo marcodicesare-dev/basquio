@@ -92,6 +92,7 @@ function buildCompactProfile(datasetProfile: DatasetProfile, workbook: Normalize
           role: column.role,
           sampleValues: column.sampleValues.slice(0, 10),
           uniqueCount: column.uniqueCount,
+          ...(column.uniqueCountApproximate ? { uniqueCountApproximate: true } : {}),
           nullRate: column.nullRate,
         })),
         sampleRows: sheet.sampleRows.slice(0, 20),
