@@ -283,7 +283,7 @@ async function persistChart(runId: string, chart: {
   xAxis?: string;
   yAxis?: string;
   series?: string[];
-  style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean };
+  style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean; highlightCategories?: string[] };
 }) {
   const id = crypto.randomUUID();
 
@@ -1614,11 +1614,11 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
     // Metrics
     let metricsHtml = "";
     if (s.metrics?.length) {
-      metricsHtml = `<div style="display:flex;gap:8px;margin-bottom:8px;">${s.metrics.map((m) => `
-        <div style="flex:1;border-left:3px solid #0F4C81;padding:4px 8px;">
-          <div style="font-size:7px;color:#4B5563;text-transform:uppercase;font-weight:700;">${esc(m.label)}</div>
-          <div style="font-size:20px;font-weight:700;color:#111827;">${esc(m.value)}</div>
-          ${m.delta ? `<div style="font-size:7px;font-weight:700;color:${m.delta.startsWith("+") || m.delta.includes("↑") ? "#1F7A4D" : "#B42318"};">${esc(m.delta)}</div>` : ""}
+      metricsHtml = `<div style="display:flex;gap:10px;margin-bottom:10px;">${s.metrics.map((m) => `
+        <div style="flex:1;background:#F8FAFC;border:1px solid #D1D5DB;border-left:4px solid #0F4C81;border-radius:4px;padding:8px 12px;">
+          <div style="font-size:8px;color:#4B5563;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">${esc(m.label)}</div>
+          <div style="font-size:26px;font-weight:700;color:#111827;margin:4px 0;">${esc(m.value)}</div>
+          ${m.delta ? `<div style="font-size:8px;font-weight:700;color:${m.delta.startsWith("+") || m.delta.includes("↑") ? "#1F7A4D" : "#B42318"};">${esc(m.delta)}</div>` : ""}
         </div>`).join("")}</div>`;
     }
 
@@ -1669,7 +1669,8 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
           <tr><th style="text-align:left;border-bottom:1px solid #D1D5DB;padding:2px 4px;">${esc(chart.xAxis)}</th>${chart.series.map((s) => `<th style="text-align:right;border-bottom:1px solid #D1D5DB;padding:2px 4px;">${esc(s)}</th>`).join("")}</tr>
           ${chart.data.slice(0, 6).map((row) => `<tr><td style="padding:2px 4px;border-bottom:0.5px solid #E5E7EB;">${esc(String(row[chart.xAxis] ?? ""))}</td>${chart.series.map((s) => `<td style="text-align:right;padding:2px 4px;border-bottom:0.5px solid #E5E7EB;">${esc(String(row[s] ?? ""))}</td>`).join("")}</tr>`).join("")}
         </table>`;
-        chartHtml = `<img src="${qcUrl}" style="max-width:100%;max-height:220px;" onerror="this.style.display='none'"/>${fallbackTable}`;
+        // Chart image only — no fallback table below (clutters the slide)
+        chartHtml = `<img src="${qcUrl}" style="max-width:100%;max-height:260px;" onerror="this.style.display='none'"/>`;
       }
     }
 
@@ -1694,13 +1695,13 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
       content = `${metricsHtml}${bodyHtml}${bulletsHtml}${chartHtml}`;
     }
 
-    return `<div style="width:960px;height:540px;background:${isCover ? "#1B2541" : "#fff"};box-sizing:border-box;position:relative;page-break-after:always;font-family:Arial,sans-serif;display:flex;flex-direction:column;${isCover ? "padding:100px 52px;justify-content:center;" : "padding:20px 52px 50px 52px;"}">
+    return `<div style="width:960px;height:540px;background:${isCover ? "#1B2541" : "#fff"};box-sizing:border-box;position:relative;page-break-after:always;font-family:Arial,sans-serif;display:flex;flex-direction:column;${isCover ? "padding:100px 52px;justify-content:center;" : "padding:16px 45px 32px 45px;"}">
       ${!isCover ? '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:#0F4C81;"></div>' : ""}
       <div style="font-size:${isCover ? "28px" : "18px"};font-weight:700;color:${isCover ? "#fff" : "#111827"};line-height:1.2;margin-bottom:${isCover ? "12px" : "4px"};flex-shrink:0;">${esc(s.title ?? "")}</div>
       ${s.subtitle ? `<div style="font-size:12px;color:${isCover ? "rgba(255,255,255,0.7)" : "#4B5563"};margin-bottom:8px;flex-shrink:0;">${esc(s.subtitle)}</div>` : ""}
       ${!isCover ? '<div style="border-top:1px solid #D1D5DB;margin-bottom:6px;flex-shrink:0;"></div>' : ""}
       <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">${content}</div>
-      ${!isCover ? `<div style="position:absolute;bottom:0;left:0;right:0;height:36px;background:#1B2541;display:flex;align-items:center;padding:0 52px;"><div style="font-size:7px;color:#fff;font-style:italic;flex:1;">Source: Company data analysis | ${esc(deckTitle)}</div><div style="font-size:7px;color:#9CA3AF;">${s.position} / ${slides.length}</div></div>` : ""}
+      ${!isCover ? `<div style="position:absolute;bottom:0;left:0;right:0;height:26px;background:#1B2541;display:flex;align-items:center;padding:0 45px;"><div style="font-size:7px;color:#fff;font-style:italic;flex:1;">Source: ${esc(deckTitle)} | Basquio</div><div style="font-size:7px;color:#9CA3AF;">${s.position} / ${slides.length}</div></div>` : ""}
     </div>`;
   });
 

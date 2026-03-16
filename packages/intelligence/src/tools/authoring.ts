@@ -34,7 +34,7 @@ export type AuthoringToolContext = {
     xAxis?: string;
     yAxis?: string;
     series?: string[];
-    style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean };
+    style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean; highlightCategories?: string[] };
   }) => Promise<{ chartId: string; thumbnailUrl?: string; width?: number; height?: number }>;
   getTemplateProfile: () => TemplateProfile | null;
   getSlides?: () => Promise<Array<{
@@ -278,6 +278,8 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
       xAxis: z.string().describe("Column name for categories/x-axis"),
       series: z.array(z.string()).min(1).describe("Column names for numeric data series — minimum 1"),
       sort: z.enum(["none", "asc", "desc"]).default("none").describe("Sort data by first series value"),
+      highlightCategories: z.array(z.string()).optional()
+        .describe("Category values to highlight (e.g. ['Affinity'] to spotlight the client brand in charts and tables)"),
       style: z
         .object({
           colors: z.array(z.string()).optional(),
@@ -338,7 +340,10 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
         data: sortedData,
         xAxis: params.xAxis,
         series: params.series,
-        style: params.style,
+        style: {
+          ...params.style,
+          highlightCategories: params.highlightCategories,
+        },
       });
 
       await ctx.persistNotebookEntry({

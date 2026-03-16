@@ -31,6 +31,7 @@ export type V2ChartRow = {
     colors?: string[];
     showLegend?: boolean;
     showValues?: boolean;
+    highlightCategories?: string[];
   };
 };
 
@@ -149,73 +150,75 @@ type LayoutRegions = {
 
 function getLayoutRegions(layoutId: string): LayoutRegions {
   switch (layoutId) {
+    // Consulting-grade layout regions — content fills 85%+ of usable area
     case "cover":
       return {
-        title: { x: 0.55, y: 1.8, w: 8.9, h: 1.5 },
-        subtitle: { x: 0.55, y: 3.2, w: 8.9, h: 0.6 },
+        title: { x: 0.45, y: 1.6, w: 9.1, h: 1.6 },
+        subtitle: { x: 0.45, y: 3.1, w: 9.1, h: 0.7 },
       };
     case "title-body":
     case "title-bullets":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        body: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        body: { x: 0.45, y: 0.88, w: 9.1, h: 3.95 },
+        callout: { x: 0.45, y: 4.85, w: 9.1, h: 0.28 },
       };
     case "title-chart":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        chart: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        chart: { x: 0.35, y: 0.88, w: 9.25, h: 3.95 },
+        callout: { x: 0.45, y: 4.85, w: 9.1, h: 0.28 },
       };
     case "chart-split":
     case "two-column":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        chart: { x: 0.55, y: 0.85, w: 5.0, h: 3.2 },
-        table: { x: 5.7, y: 0.85, w: 3.75, h: 3.2 },
-        callout: { x: 0.55, y: 4.2, w: 8.9, h: 0.45 },
-        metrics: { x: 0.55, y: 4.7, w: 8.9, h: 0.35 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        metrics: { x: 0.45, y: 0.82, w: 9.1, h: 0.85 },
+        chart: { x: 0.35, y: 1.72, w: 5.75, h: 2.75 },
+        table: { x: 6.2, y: 1.72, w: 3.2, h: 1.5 },
+        body: { x: 6.2, y: 3.32, w: 3.2, h: 1.1 },
+        callout: { x: 6.2, y: 4.5, w: 3.2, h: 0.46 },
       };
     case "evidence-grid":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        metrics: { x: 0.55, y: 0.85, w: 8.9, h: 0.5 },
-        chart: { x: 0.55, y: 1.45, w: 5.0, h: 2.6 },
-        body: { x: 5.7, y: 1.45, w: 3.75, h: 2.6 },
-        callout: { x: 0.55, y: 4.2, w: 8.9, h: 0.45 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        metrics: { x: 0.45, y: 0.82, w: 9.1, h: 0.85 },
+        chart: { x: 0.35, y: 1.72, w: 5.75, h: 2.75 },
+        body: { x: 6.2, y: 1.72, w: 3.2, h: 2.75 },
+        callout: { x: 0.45, y: 4.55, w: 9.1, h: 0.42 },
       };
     case "metrics":
+    case "exec-summary":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        metrics: { x: 0.55, y: 0.85, w: 8.9, h: 1.0 },
-        body: { x: 0.55, y: 2.0, w: 8.9, h: 2.5 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        metrics: { x: 0.45, y: 0.88, w: 9.1, h: 1.35 },
+        body: { x: 0.45, y: 2.35, w: 9.1, h: 1.65 },
+        bullets: { x: 0.45, y: 2.35, w: 9.1, h: 1.65 },
+        callout: { x: 0.45, y: 4.15, w: 9.1, h: 0.48 },
       };
     case "comparison":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        chart: { x: 0.55, y: 0.85, w: 4.3, h: 3.2 },
-        chart2: { x: 5.0, y: 0.85, w: 4.45, h: 3.2 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        chart: { x: 0.35, y: 0.88, w: 4.6, h: 3.6 },
+        chart2: { x: 5.05, y: 0.88, w: 4.5, h: 3.6 },
+        callout: { x: 0.45, y: 4.55, w: 9.1, h: 0.42 },
       };
     case "table":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        table: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        table: { x: 0.35, y: 0.88, w: 9.25, h: 3.95 },
       };
     case "summary":
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        body: { x: 0.55, y: 0.85, w: 8.9, h: 2.5 },
-        callout: { x: 0.55, y: 3.5, w: 8.9, h: 0.5 },
-      };
-    case "exec-summary":
-      return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        metrics: { x: 0.55, y: 0.85, w: 8.9, h: 1.0 },
-        bullets: { x: 0.55, y: 2.0, w: 8.9, h: 2.5 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        body: { x: 0.45, y: 0.88, w: 9.1, h: 2.6 },
+        callout: { x: 0.45, y: 3.6, w: 9.1, h: 0.65 },
+        bullets: { x: 0.45, y: 4.35, w: 9.1, h: 0.6 },
       };
     default:
-      // Fallback: title-body
       return {
-        title: { x: 0.55, y: 0.25, w: 8.9, h: 0.5 },
-        body: { x: 0.55, y: 0.85, w: 8.9, h: 3.8 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
+        body: { x: 0.45, y: 0.88, w: 9.1, h: 3.95 },
       };
   }
 }
@@ -315,16 +318,24 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   );
   if (!hasValidData) return null;
 
+  const singleSeries = chart.series.length === 1;
+  const pieLike = chart.chartType === "pie" || chart.chartType === "doughnut";
+  const isBar = chart.chartType === "bar" || chart.chartType === "stacked_bar";
+
+  // Smart legend: hide for single series, minimize for pies with few slices
+  const showLegend = chart.style.showLegend ??
+    (pieLike ? chart.data.length <= 4 : singleSeries ? false : chart.series.length >= 3);
+
   const baseOpts: Record<string, unknown> = {
     showTitle: false,
-    showLegend: chart.style.showLegend ?? chart.series.length > 2,
-    legendPos: "b",
-    legendFontSize: 8,
+    showLegend,
+    legendPos: pieLike ? "r" : "b",
+    legendFontSize: 7,
     legendColor: norm(tokens.palette.muted),
     legendFontFace: tokens.typography.bodyFont,
 
     catAxisLabelColor: norm(tokens.palette.muted),
-    catAxisLabelFontSize: 8,
+    catAxisLabelFontSize: 9,
     catAxisLabelFontFace: tokens.typography.bodyFont,
     catAxisLineShow: false,
 
@@ -337,13 +348,15 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     catGridLine: { style: "none" },
 
     chartColors: palette,
-    showValue: chart.style.showValues ?? (chart.data.length <= 6),
-    dataLabelPosition: "outEnd",
-    dataLabelFontSize: 8,
+    // Larger data labels, more visible
+    showValue: chart.style.showValues ?? (isBar ? chart.data.length <= 8 : false),
+    dataLabelPosition: isBar ? "outEnd" : "t",
+    dataLabelFontSize: 10,
     dataLabelFontFace: tokens.typography.bodyFont,
     dataLabelColor: norm(tokens.palette.ink),
+    dataLabelFontBold: true,
     lineSize: 2,
-    barGapWidthPct: 80,
+    barGapWidthPct: 60,
   };
 
   // Horizontal bars for bar type
@@ -546,54 +559,68 @@ function renderMetrics(
   tokens: BrandTokens,
 ): void {
   const count = Math.min(metrics.length, 4);
-  const cardW = region.w / count - 0.08;
+  const gap = 0.12;
+  const cardW = (region.w - gap * (count - 1)) / count;
+  const cardH = Math.min(region.h, 1.15);
 
   metrics.slice(0, 4).forEach((m, i) => {
-    const cardX = region.x + i * (region.w / count);
+    const cardX = region.x + i * (cardW + gap);
 
-    // Left accent border
+    // Card container (rounded rectangle with surface fill)
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: cardX,
+      y: region.y,
+      w: cardW,
+      h: cardH,
+      rectRadius: 0.06,
+      fill: { color: norm(tokens.palette.surface) },
+      line: { color: norm(tokens.palette.border), pt: 0.5 },
+    });
+
+    // Left accent strip
     slide.addShape(pptx.ShapeType.rect, {
       x: cardX,
       y: region.y,
-      w: 0.04,
-      h: 0.6,
+      w: 0.045,
+      h: cardH,
       fill: { color: norm(tokens.palette.accent) },
     });
 
-    // Label (small, uppercase)
+    // Label (uppercase, muted)
     slide.addText(m.label.toUpperCase(), {
-      x: cardX + 0.12,
-      y: region.y,
-      w: cardW - 0.12,
-      h: 0.18,
-      fontSize: tokens.typography.kpiLabelSize,
+      x: cardX + 0.14,
+      y: region.y + 0.08,
+      w: cardW - 0.22,
+      h: 0.22,
+      fontSize: 9,
       fontFace: tokens.typography.bodyFont,
       color: norm(tokens.palette.muted),
       bold: true,
     });
 
-    // Value (large)
+    // Value (large, bold — the hero element)
     slide.addText(m.value, {
-      x: cardX + 0.12,
-      y: region.y + 0.16,
-      w: cardW - 0.12,
-      h: 0.28,
-      fontSize: tokens.typography.kpiValueSize,
+      x: cardX + 0.14,
+      y: region.y + 0.28,
+      w: cardW - 0.22,
+      h: 0.45,
+      fontSize: 28,
       fontFace: tokens.typography.headingFont,
       bold: true,
       color: norm(tokens.palette.ink),
+      valign: "middle",
     });
 
-    // Delta (green/red)
+    // Delta (color-coded)
     if (m.delta) {
       const isPositive =
         m.delta.startsWith("+") || m.delta.includes("↑") || m.delta.toLowerCase().includes("up");
       slide.addText(m.delta, {
-        x: cardX + 0.12,
-        y: region.y + 0.42,
-        w: cardW - 0.12,
-        h: 0.16,
-        fontSize: 8,
+        x: cardX + 0.14,
+        y: region.y + 0.72,
+        w: cardW - 0.22,
+        h: 0.2,
+        fontSize: 9,
         fontFace: tokens.typography.bodyFont,
         bold: true,
         color: norm(isPositive ? tokens.palette.positive : tokens.palette.negative),
@@ -631,9 +658,20 @@ function renderTable(
     },
   }));
 
-  // Data rows: subtle bottom borders, right-aligned numbers
-  const dataRows: PptxGenJS.TableCell[][] = rows.map((row) =>
-    visibleHeaders.map((col, colIdx) => {
+  // Highlight keywords for focal-row detection (client brand, key entities)
+  const highlightKeywords = new Set(
+    (chart.style.highlightCategories ?? []).map((k: string) => k.toLowerCase()),
+  );
+
+  // Data rows: zebra striping + focal-row highlighting
+  const dataRows: PptxGenJS.TableCell[][] = rows.map((row, rowIdx) => {
+    const firstColVal = String(row[visibleHeaders[0]] ?? "").toLowerCase();
+    const isHighlighted = highlightKeywords.size > 0 &&
+      [...highlightKeywords].some((kw) => firstColVal.includes(kw));
+    const zebraFill = rowIdx % 2 === 0 ? "F8FAFC" : "FFFFFF";
+    const rowFill = isHighlighted ? norm(tokens.palette.accentLight) : zebraFill;
+
+    return visibleHeaders.map((col, colIdx) => {
       const val = row[col];
       return {
         text: formatValue(val),
@@ -641,6 +679,8 @@ function renderTable(
           fontSize: 8,
           fontFace: tokens.typography.bodyFont,
           color: norm(tokens.palette.ink),
+          bold: isHighlighted || colIdx === 0,
+          fill: { color: rowFill },
           align: (colIdx === 0 ? "left" : isNumericValue(val) ? "right" : "left") as
             | "left"
             | "right",
@@ -654,8 +694,8 @@ function renderTable(
           margin: [2, 4, 2, 4],
         },
       };
-    }),
-  );
+    });
+  });
 
   slide.addTable([headerRow, ...dataRows], {
     x: region.x,
@@ -1005,26 +1045,26 @@ export async function renderV2PptxArtifact(
     objects: [
       // Top accent rule
       { rect: { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: norm(tokens.palette.accent) } } },
-      // Footer bar
+      // Footer bar (thinner, more refined)
       {
         rect: {
           x: 0,
-          y: 5.15,
+          y: 5.3,
           w: "100%",
-          h: 0.475,
+          h: 0.32,
           fill: { color: norm(tokens.palette.coverBg) },
         },
       },
-      // Footer text left
+      // Footer source text
       {
         text: {
-          text: "Source: Company data analysis | Basquio",
+          text: `Source: ${input.deckTitle} | Basquio`,
           options: {
-            x: 0.55,
-            y: 5.22,
-            w: 5,
-            h: 0.3,
-            fontSize: tokens.typography.sourceSize,
+            x: 0.45,
+            y: 5.35,
+            w: 6,
+            h: 0.22,
+            fontSize: 7,
             fontFace: tokens.typography.bodyFont,
             color: "FFFFFF",
             italic: true,
@@ -1034,10 +1074,10 @@ export async function renderV2PptxArtifact(
     ],
     slideNumber: {
       x: 8.8,
-      y: 5.22,
+      y: 5.35,
       w: 0.6,
-      h: 0.3,
-      fontSize: tokens.typography.sourceSize,
+      h: 0.22,
+      fontSize: 7,
       fontFace: tokens.typography.bodyFont,
       color: "9CA3AF",
     },
