@@ -81,3 +81,9 @@ export const TEXT_SILENCE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min text silence â†
 export const TEXT_BUFFER_FLUSH_MS = 5 * 60 * 1000; // 5 min text buffer
 export const AUDIO_CHUNK_DURATION_MS = 5 * 60 * 1000; // 5 min audio chunks
 export const LONG_SESSION_SEGMENT_MS = 3 * 60 * 60 * 1000; // 3 hour segments
+
+// Easter eggs â€” set to false to disable all
+export const EASTER_EGGS_ENABLED = true;
+
+// Ale gets Japanese-only responses from @Basquio Bot
+export const ALE_DISCORD_ID = "1483207572176638194";
