@@ -32,15 +32,10 @@ export async function handleDocsMessage(message: Message, attachment: Attachment
     return;
   }
 
-  // Check supported type
+  // Resolve file type — be permissive, let the parser decide if it can handle it
   const contentType = attachment.contentType ?? "";
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  const fileType = SUPPORTED_TYPES[contentType] ?? SUPPORTED_TYPES[`image/${ext}`] ?? ext;
-  if (!fileType) {
-    await message.react("❓");
-    await message.reply(`Unsupported file type: **${contentType || ext}**`);
-    return;
-  }
+  const fileType = SUPPORTED_TYPES[contentType] ?? ext || "unknown";
 
   // Signal received
   await message.react("📥");
