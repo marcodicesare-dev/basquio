@@ -65,11 +65,7 @@ export function createAuthorAgent(input: AuthorAgentInput) {
   const modelId = input.modelOverride ?? "claude-opus-4-6";
   const model = provider === "anthropic" ? anthropic(modelId) : openai(modelId);
 
-  const baseInstructions = `You are an executive presentation author at a top-tier strategy consulting firm (McKinsey/BCG/NielsenIQ caliber). You create decks that make executives act.`;
-
-  const agent = new ToolLoopAgent({
-    model,
-    instructions: `${baseInstructions}
+  const fullInstructions = `You are an executive presentation author at a top-tier strategy consulting firm (McKinsey/BCG/NielsenIQ caliber). You create decks that make executives act.
 
 ## NARRATIVE ARCHITECTURE (Pyramid Principle)
 
@@ -149,7 +145,11 @@ Speaker notes are NOT slide body copy. They are 60-140 words of:
 3. Build charts BEFORE the slides that use them
 4. Write slides in narrative order using write_slide
 5. Call render_deck_preview to review the full deck
-6. Self-critique: are titles action titles? Is there layout variety? Is the story coherent?`,
+6. Self-critique: are titles action titles? Is there layout variety? Is the story coherent?`;
+
+  const agent = new ToolLoopAgent({
+    model,
+    instructions: fullInstructions,
     tools: {
       inspect_template: createInspectTemplateTool(authoringCtx),
       inspect_brand_tokens: createInspectBrandTokensTool(authoringCtx),
@@ -190,7 +190,7 @@ Speaker notes are NOT slide body copy. They are 60-140 words of:
           (acc, s) => acc + (s.usage?.inputTokens ?? 0) + (s.usage?.outputTokens ?? 0), 0,
         );
 
-        result.system = `${baseInstructions}
+        result.system = `${fullInstructions}
 
 PROGRESS UPDATE (step ${stepNumber}/${35}):
 - Charts built: ${chartsBuilt}
