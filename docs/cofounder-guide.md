@@ -117,10 +117,10 @@ Every issue in the Discord summary has a colored dot next to the assignee so you
 
 | Color | Person | Role |
 |-------|--------|------|
-| 🔵 | **Marco** | CTO |
+| 🟣 | **Marco** | CTO |
 | 🟢 | **Fra** | CFO |
 | 🟠 | **Ale** | CRO |
-| 🟣 | **Rossella** | CPO |
+| 🔵 | **Rossella** | CPO |
 | 🔴 | **Veronica** | Head of Product Intelligence |
 | 🟡 | **Giulia** | CMO |
 
@@ -128,7 +128,7 @@ Example in Discord:
 ```
 LINEAR ISSUES CREATED
 • BAS-14: Design per-deck pricing calculator  `finance` → 🟢 Fra
-• BAS-12: Improve PDF export styling  `from-voice` → 🔵 Marco
+• BAS-12: Improve PDF export styling  `from-voice` → 🟣 Marco
 ```
 
 ### Issue Labels

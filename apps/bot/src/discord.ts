@@ -9,12 +9,12 @@ import { getWeeklyDigest } from "./supabase.js";
 
 // Assignee → colored circle emoji for at-a-glance identification
 const ASSIGNEE_COLORS: Record<string, string> = {
-  marco: "🔵",
+  marco: "🟣",
   fra: "🟢",
   francesco: "🟢",
   ale: "🟠",
   alessandro: "🟠",
-  rossella: "🟣",
+  rossella: "🔵",
   veronica: "🔴",
   giulia: "🟡",
 };
