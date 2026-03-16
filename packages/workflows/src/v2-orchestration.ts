@@ -539,7 +539,7 @@ export const basquioV2Generation = inngest.createFunction(
             "Content-Type": "application/json",
             apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
             Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-            Prefer: "return=minimal",
+            Prefer: "return=minimal,resolution=merge-duplicates",
           },
           body: JSON.stringify({
             id: workspaceId,
@@ -566,6 +566,7 @@ export const basquioV2Generation = inngest.createFunction(
             headers: {
               Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
               "Content-Type": "application/gzip",
+              "x-upsert": "true", // overwrite on retry
             },
             body: new Uint8Array(manifest.blobBuffer),
           },
@@ -584,7 +585,7 @@ export const basquioV2Generation = inngest.createFunction(
               "Content-Type": "application/json",
               apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
               Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-              Prefer: "return=minimal",
+              Prefer: "return=minimal,resolution=merge-duplicates",
             },
             body: JSON.stringify({
               workspace_id: workspaceId,
