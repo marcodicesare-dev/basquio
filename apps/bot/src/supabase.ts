@@ -171,6 +171,22 @@ export async function uploadAudio(buffer: Buffer, path: string): Promise<string>
   return path;
 }
 
+/**
+ * Generate a signed URL for a voice recording (7-day expiry).
+ * The bucket is private so raw URLs return 404.
+ */
+export async function getSignedAudioUrl(path: string): Promise<string | null> {
+  const db = getClient();
+  const { data, error } = await db.storage
+    .from("voice-recordings")
+    .createSignedUrl(path, 7 * 24 * 60 * 60); // 7 days
+  if (error || !data?.signedUrl) {
+    console.error(`Failed to sign audio URL for ${path}:`, error);
+    return null;
+  }
+  return data.signedUrl;
+}
+
 // ── Search ─────────────────────────────────────────────────────────
 
 export async function searchTranscripts(
