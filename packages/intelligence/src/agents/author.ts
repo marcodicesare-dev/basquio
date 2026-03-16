@@ -157,19 +157,19 @@ Speaker notes are NOT slide body copy. They are 60-140 words of:
       query_data: createQueryDataTool(toolCtx),
     },
     stopWhen: [stepCountIs(35), costBudgetExceeded(1.00)],
-    prepareStep: async ({ stepNumber, steps }) => {
-      // After step 20, summarize older tool results to save context window
-      if (stepNumber > 20 && steps.length > 15) {
-        // Trim tool result content from steps older than the last 10
-        const trimmedMessages = steps.slice(0, -10).flatMap((s) =>
-          s.toolCalls?.map(() => ({
-            role: "tool" as const,
-            content: [{ type: "text" as const, text: "[Earlier tool result trimmed to save context]" }],
-          })) ?? [],
-        );
-        if (trimmedMessages.length > 0) {
-          return {}; // Return empty to use defaults — context trimming is advisory
-        }
+    prepareStep: async ({ stepNumber }) => {
+      // Phase 1 (steps 0-5): Force chart/data building before slide writing
+      if (stepNumber < 5) {
+        return {
+          activeTools: ["inspect_template", "inspect_brand_tokens", "build_chart", "query_data"] as Array<keyof typeof authoringCtx extends string ? string : never>,
+        } as Record<string, unknown>;
+      }
+      // Phase 2 (steps 5-25): All tools available
+      // Phase 3 (steps 25+): Focus on write_slide and preview only
+      if (stepNumber > 25) {
+        return {
+          activeTools: ["write_slide", "render_deck_preview"] as Array<keyof typeof authoringCtx extends string ? string : never>,
+        } as Record<string, unknown>;
       }
       return {};
     },

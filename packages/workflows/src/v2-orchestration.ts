@@ -840,6 +840,7 @@ export const basquioV2Generation = inngest.createFunction(
         suggestedLayout: string;
         suggestedTitle: string;
         requiredContent: string[];
+        chartHint?: string;
       }> = [];
 
       // Cover
@@ -862,18 +863,30 @@ export const basquioV2Generation = inngest.createFunction(
         });
       }
 
-      // Evidence slides — allocate based on top findings
+      // Evidence slides — allocate based on top findings with model-suggested claims
       const evidenceCount = Math.max(3, Math.min(targetSlides - 4, analysis.topFindings.length));
       for (let i = 0; i < evidenceCount; i++) {
         const finding = analysis.topFindings[i];
-        const layouts = ["title-chart", "chart-split", "evidence-grid", "title-chart", "chart-split"];
+        // Cycle through diverse layouts — never use the same one 3x in a row
+        const layoutPool = ["title-chart", "chart-split", "chart-split", "title-chart", "evidence-grid"];
+        const suggestedLayout = layoutPool[i % layoutPool.length];
+        // Use the finding's claim as the suggested title — model refines during authoring
+        const suggestedTitle = finding?.claim
+          ? finding.claim.length > 80 ? finding.claim.slice(0, 77) + "..." : finding.claim
+          : `Key insight ${i + 1} from data analysis`;
+        // Determine required chart type from finding context
+        const chartHint = finding?.title?.toLowerCase().includes("share") ? "pie"
+          : finding?.title?.toLowerCase().includes("trend") ? "line"
+          : finding?.title?.toLowerCase().includes("rank") ? "bar (horizontal, sorted)"
+          : "chart";
         plan.push({
           position: plan.length + 1,
           role: "evidence",
-          suggestedLayout: layouts[i % layouts.length],
-          suggestedTitle: finding?.claim ?? `Evidence slide ${i + 1}`,
+          suggestedLayout,
+          suggestedTitle,
           requiredContent: ["chart", "body", "evidenceIds"],
-        });
+          chartHint,
+        } as typeof plan[number]);
       }
 
       // Implications slide (if room)
@@ -928,7 +941,7 @@ export const basquioV2Generation = inngest.createFunction(
         workspace,
         runId,
         analysis,
-        brief: `${brief}\n\nDECK PLAN (follow this structure):\nTarget: ${deckPlan.targetSlides} slides\n${deckPlan.plan.map((s) => `Slide ${s.position}: [${s.role}] ${s.suggestedLayout} — "${s.suggestedTitle}" (requires: ${s.requiredContent.join(", ")})`).join("\n")}`,
+        brief: `${brief}\n\nDECK PLAN (follow this structure — the model planned this based on the analysis):\nTarget: ${deckPlan.targetSlides} slides\n${deckPlan.plan.map((s) => `Slide ${s.position}: [${s.role}] ${s.suggestedLayout} — "${s.suggestedTitle}" (requires: ${s.requiredContent.join(", ")})${s.chartHint ? ` [suggested chart: ${s.chartHint}]` : ""}`).join("\n")}\n\nIMPORTANT: This plan is a guide, not rigid. You may adjust layout choices and titles based on the data. But respect the target slide count and narrative arc (cover → exec summary → evidence → implications → recommendations → summary).`,
         loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
           return persistNotebookEntry(runId, "author", Date.now(), entry);
@@ -969,6 +982,52 @@ export const basquioV2Generation = inngest.createFunction(
       });
 
       return result.summary;
+    });
+
+    // ─── STEP 3.5: POLISH (deterministic density check + targeted rewrite) ──
+    await step.run("polish", async () => {
+      const slides = await getSlides(runId);
+      const weakSlides: string[] = [];
+
+      for (const s of slides) {
+        if (s.layoutId === "cover") continue;
+        const hasChart = Boolean(s.chartId);
+        const hasBody = Boolean(s.body && s.body.trim().length > 10);
+        const hasBullets = Boolean(s.bullets && s.bullets.length > 0);
+        const hasMetrics = Boolean(s.metrics && s.metrics.length > 0);
+        const hasNotes = Boolean(s.speakerNotes && s.speakerNotes.trim().length > 10);
+
+        let contentScore = 0;
+        if (hasChart) contentScore += 2;
+        if (hasBody) contentScore += 1;
+        if (hasBullets) contentScore += 1;
+        if (hasMetrics) contentScore += 2;
+        if (hasNotes) contentScore += 1;
+
+        // Weak = title-only or very sparse
+        if (contentScore < 2) {
+          weakSlides.push(`Slide ${s.position} (${s.layoutId}): "${s.title}" — score ${contentScore}/7. Missing: ${[
+            !hasChart ? "chart" : "",
+            !hasBody ? "body" : "",
+            !hasBullets ? "bullets" : "",
+            !hasMetrics ? "metrics" : "",
+            !hasNotes ? "speaker notes" : "",
+          ].filter(Boolean).join(", ")}`);
+        }
+      }
+
+      if (weakSlides.length === 0) {
+        await emitRunEvent(runId, "author", "polish_skipped", { reason: "All slides meet density threshold" });
+        return { polished: 0, total: slides.length };
+      }
+
+      // Log weak slides for the author to fix during revision
+      await emitRunEvent(runId, "author", "polish_needed", {
+        weakSlideCount: weakSlides.length,
+        details: weakSlides,
+      });
+
+      return { polished: weakSlides.length, total: slides.length, weakSlides };
     });
 
     // ─── STEP 4: CRITIQUE (agentic, cross-model) ───────────────
@@ -1539,33 +1598,55 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
         </div>`).join("")}</div>`;
     }
 
-    // Chart image via QuickChart
+    // Chart or table rendering for PDF
     let chartHtml = "";
-    if (chart && chart.chartType !== "table" && chart.data?.length > 0 && chart.series?.length > 0) {
-      const pal = ["#0F4C81", "#D1D5DB", "#1F7A4D", "#B42318", "#C97A00", "#6B21A8"];
-      let type = chart.chartType === "stacked_bar" || chart.chartType === "waterfall" ? "bar" : chart.chartType;
-      const isHoriz = chart.chartType === "bar";
-      const labels = chart.data.map((r) => String(r[chart.xAxis] ?? "").substring(0, 20));
-      const datasets = chart.series.map((ser, i) => ({
-        label: ser,
-        data: chart.data.map((r) => Number(r[ser]) || 0),
-        backgroundColor: type === "pie" || type === "doughnut" ? pal : pal[i % 6],
-        borderWidth: type === "line" ? 2 : 0,
-        fill: false,
-      }));
-      const cfg = JSON.stringify({
-        type,
-        data: { labels, datasets },
-        options: {
-          indexAxis: isHoriz ? "y" : "x",
-          plugins: { legend: { display: chart.series.length > 1, position: "bottom" }, title: { display: false } },
-          scales: type === "pie" || type === "doughnut" ? undefined : {
-            x: { grid: { display: !isHoriz, color: "#E5E7EB" }, ticks: { font: { size: 8 } } },
-            y: { grid: { display: isHoriz, color: "#E5E7EB" }, ticks: { font: { size: 8 } } },
+    if (chart && chart.data?.length > 0) {
+      if (chart.chartType === "table") {
+        // Render table as HTML
+        const headers = [chart.xAxis, ...(chart.series ?? [])].filter(Boolean);
+        const rows = chart.data.slice(0, 10);
+        chartHtml = `<table style="width:100%;border-collapse:collapse;font-size:8px;font-family:Arial;">
+          <tr>${headers.map((h, i) => `<th style="background:#1B2541;color:#fff;font-weight:700;padding:3px 6px;text-align:${i === 0 ? "left" : "right"};font-size:8px;">${esc(h)}</th>`).join("")}</tr>
+          ${rows.map((row) => `<tr>${headers.map((h, i) => {
+            const v = row[h];
+            const fv = typeof v === "number" ? (Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(v)) : String(v ?? "");
+            return `<td style="padding:3px 6px;border-bottom:0.5px solid #E5E7EB;color:#111827;text-align:${i === 0 ? "left" : "right"};font-size:8px;">${esc(fv)}</td>`;
+          }).join("")}</tr>`).join("")}
+        </table>`;
+      } else if (chart.series?.length > 0) {
+        // Render chart via QuickChart with inline SVG fallback
+        const pal = ["#0F4C81", "#D1D5DB", "#1F7A4D", "#B42318", "#C97A00", "#6B21A8"];
+        const type = chart.chartType === "stacked_bar" || chart.chartType === "waterfall" ? "bar" : chart.chartType;
+        const isHoriz = chart.chartType === "bar";
+        const labels = chart.data.map((r) => String(r[chart.xAxis] ?? "").substring(0, 20));
+        const datasets = chart.series.map((ser, i) => ({
+          label: ser,
+          data: chart.data.map((r) => Number(r[ser]) || 0),
+          backgroundColor: type === "pie" || type === "doughnut" ? pal : pal[i % 6],
+          borderWidth: type === "line" ? 2 : 0,
+          fill: false,
+        }));
+        const cfg = JSON.stringify({
+          type,
+          data: { labels, datasets },
+          options: {
+            indexAxis: isHoriz ? "y" : "x",
+            plugins: { legend: { display: chart.series.length > 1, position: "bottom" }, title: { display: false } },
+            scales: type === "pie" || type === "doughnut" ? undefined : {
+              x: { grid: { display: !isHoriz, color: "#E5E7EB" }, ticks: { font: { size: 8 } } },
+              y: { grid: { display: isHoriz, color: "#E5E7EB" }, ticks: { font: { size: 8 } } },
+            },
           },
-        },
-      });
-      chartHtml = `<img src="https://quickchart.io/chart?c=${encodeURIComponent(cfg)}&w=440&h=260&bkg=white&f=png" style="max-width:100%;max-height:240px;"/>`;
+        });
+        const qcUrl = `https://quickchart.io/chart?c=${encodeURIComponent(cfg)}&w=440&h=260&bkg=white&f=png`;
+        // Primary: QuickChart image. If it fails to load in the PDF, the img tag just shows blank.
+        // Also render a simple HTML table fallback below the chart for data accessibility.
+        const fallbackTable = `<table style="width:100%;border-collapse:collapse;font-size:7px;margin-top:4px;">
+          <tr><th style="text-align:left;border-bottom:1px solid #D1D5DB;padding:2px 4px;">${esc(chart.xAxis)}</th>${chart.series.map((s) => `<th style="text-align:right;border-bottom:1px solid #D1D5DB;padding:2px 4px;">${esc(s)}</th>`).join("")}</tr>
+          ${chart.data.slice(0, 6).map((row) => `<tr><td style="padding:2px 4px;border-bottom:0.5px solid #E5E7EB;">${esc(String(row[chart.xAxis] ?? ""))}</td>${chart.series.map((s) => `<td style="text-align:right;padding:2px 4px;border-bottom:0.5px solid #E5E7EB;">${esc(String(row[s] ?? ""))}</td>`).join("")}</tr>`).join("")}
+        </table>`;
+        chartHtml = `<img src="${qcUrl}" style="max-width:100%;max-height:220px;" onerror="this.style.display='none'"/>${fallbackTable}`;
+      }
     }
 
     // Body + bullets

@@ -101,7 +101,11 @@ export async function runCriticAgent(input: CriticAgentInput): Promise<CritiqueR
 
   const slides = await input.getSlides();
   const slidesSummary = slides
-    .map((s) => `Slide ${s.position}: "${s.title}" — ${s.body?.slice(0, 100) ?? "(no body)"} [evidence: ${s.evidenceIds.join(", ") || "none"}]`)
+    .map((s) => `Slide ${s.position} [${s.layoutId}]: "${s.title}" — ${s.body?.slice(0, 100) ?? "(no body)"}${s.chartId ? " [has chart]" : ""}${s.metrics?.length ? ` [${s.metrics.length} metrics]` : ""}${s.speakerNotes ? " [has notes]" : ""} [evidence: ${s.evidenceIds.join(", ") || "none"}]`)
+    .join("\n");
+
+  const titleReadThrough = slides
+    .map((s) => `${s.position}. ${s.title}`)
     .join("\n");
 
   const result = await agent.generate({
@@ -112,6 +116,9 @@ ${input.brief}
 
 DECK SUMMARY:
 ${input.deckSummary}
+
+TITLE READ-THROUGH (reading only titles should tell the full story):
+${titleReadThrough}
 
 SLIDES (${input.slideCount} total):
 ${slidesSummary}
