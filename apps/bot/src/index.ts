@@ -2,6 +2,7 @@ import {
   Client,
   GatewayIntentBits,
   Events,
+  MessageType,
   type VoiceState,
   type Message,
   type MessageReaction,
@@ -77,6 +78,9 @@ client.on(Events.VoiceStateUpdate, async (oldState: VoiceState, newState: VoiceS
 
 client.on(Events.MessageCreate, (message: Message) => {
   if (message.author.bot) return;
+  if (message.webhookId) return; // Skip webhook messages
+  // Skip system messages (join notifications, boosts, etc.)
+  if (message.type !== MessageType.Default && message.type !== MessageType.Reply) return;
 
   // #docs channel — file ingestion
   if (message.channelId === env.DISCORD_DOCS_CHANNEL_ID) {

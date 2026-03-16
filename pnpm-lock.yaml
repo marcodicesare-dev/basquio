@@ -75,6 +75,9 @@ importers:
       '@linear/sdk':
         specifier: ^77.0.0
         version: 77.0.0(graphql@16.13.1)
+      '@snazzah/davey':
+        specifier: 0.1.10
+        version: 0.1.10
       '@supabase/supabase-js':
         specifier: ^2.49.0
         version: 2.99.1

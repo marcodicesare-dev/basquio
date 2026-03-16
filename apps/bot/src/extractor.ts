@@ -126,8 +126,18 @@ Output as JSON.`;
 export async function extractFromTranscript(
   transcript: string,
   sessionType: "voice" | "text" = "voice",
+  metadata?: { messageCount?: number; participantCount?: number },
 ): Promise<ExtractionResult> {
   const anthropic = getClient();
+
+  // Add metadata hint so the LLM calibrates extraction aggressiveness
+  const metaHint = metadata
+    ? `\n\nMETADATA: ${metadata.messageCount ?? "?"} messages from ${metadata.participantCount ?? "?"} participants. ${
+        (metadata.messageCount ?? 0) <= 2 && (metadata.participantCount ?? 0) <= 1
+          ? "This is a very short snippet — be EXTRA conservative. Only extract if something is genuinely actionable."
+          : ""
+      }`
+    : "";
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -135,7 +145,7 @@ export async function extractFromTranscript(
     messages: [
       {
         role: "user",
-        content: `${EXTRACTION_PROMPT}
+        content: `${EXTRACTION_PROMPT}${metaHint}
 
 --- TRANSCRIPT (${sessionType} session) ---
 ${transcript}
