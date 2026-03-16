@@ -139,22 +139,30 @@ async function endSession(): Promise<void> {
       audioStoragePath: audioPaths[0],
     });
 
-    // Create issues separately — failures here shouldn't kill the pipeline
+    // Create issues only if extraction found genuinely actionable items
     let issues: Awaited<ReturnType<typeof createIssues>> = [];
-    try {
-      issues = await createIssues(extraction.action_items, transcriptUrl, "voice");
-    } catch (err) {
-      console.error("⚠️ Issue creation failed (continuing pipeline):", err);
+    if (extraction.action_items.length > 0) {
+      try {
+        issues = await createIssues(extraction.action_items, transcriptUrl, "voice");
+      } catch (err) {
+        console.error("⚠️ Issue creation failed (continuing pipeline):", err);
+      }
+    } else {
+      console.log("📭 No action items extracted — skipping Linear issue creation");
     }
 
-    // Save decisions
-    await saveDecisions(extraction.decisions, transcriptId);
+    // Save decisions only if there are real ones
+    if (extraction.decisions.length > 0) {
+      await saveDecisions(extraction.decisions, transcriptId);
+    }
 
-    // Upsert CRM leads
+    // Upsert CRM leads only if there are real mentions
     const crmUpdates: string[] = [];
-    for (const mention of extraction.sales_mentions) {
-      await upsertLead(mention, transcriptId);
-      crmUpdates.push(`${mention.company} — ${mention.status}`);
+    if (extraction.sales_mentions.length > 0) {
+      for (const mention of extraction.sales_mentions) {
+        await upsertLead(mention, transcriptId);
+        crmUpdates.push(`${mention.company} — ${mention.status}`);
+      }
     }
 
     // 5. Post summary to Discord
