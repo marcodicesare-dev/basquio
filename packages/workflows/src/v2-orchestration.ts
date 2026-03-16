@@ -1070,13 +1070,22 @@ export const basquioV2Generation = inngest.createFunction(
           iteration: 2,
         });
 
-        // After max revisions, proceed to export regardless.
-        // The critique report is persisted — downstream consumers can check qa_passed.
-        // Blocking the entire run here wastes all the work done so far.
+        // Hard gate: do NOT ship decks with critical issues remaining.
+        // Major issues are allowed through after max revisions (degraded but usable).
+        // Critical issues mean the deck has factually wrong numbers — never ship.
         if (blockingIssuesRemain) {
-          logPhaseEvent(runId, "re-critique", "proceeding_despite_issues", {
+          const criticalCount = reCritique.issues.filter((i: { severity: string }) => i.severity === "critical").length;
+          if (criticalCount > 0) {
+            throw new Error(
+              `Export blocked: ${criticalCount} critical issue(s) remain after 2 revision cycles. ` +
+              `The deck contains factually wrong data that would embarrass the firm. ` +
+              `Issues: ${reCritique.issues.filter((i: { severity: string }) => i.severity === "critical").map((i: { claim: string }) => i.claim).join("; ")}`,
+            );
+          }
+          logPhaseEvent(runId, "re-critique", "proceeding_with_major_issues", {
             issueCount: reCritique.issues.length,
             severities: reCritique.issues.map((i: { severity: string }) => i.severity),
+            note: "Major issues remain but no critical factual errors — proceeding to export",
           });
         }
       });

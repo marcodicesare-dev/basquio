@@ -3,6 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { Output, ToolLoopAgent, stepCountIs } from "ai";
 
 import { deckSpecV2Schema, type AnalysisReport, type DeckSpecV2, type EvidenceWorkspace } from "@basquio/types";
+import { costBudgetExceeded } from "../agent-utils";
 
 import {
   createInspectTemplateTool,
@@ -155,7 +156,7 @@ Speaker notes are NOT slide body copy. They are 60-140 words of:
       render_deck_preview: createRenderDeckPreviewTool(authoringCtx),
       query_data: createQueryDataTool(toolCtx),
     },
-    stopWhen: stepCountIs(35),
+    stopWhen: [stepCountIs(35), costBudgetExceeded(1.00)],
     onStepFinish: input.onStepFinish,
   });
 

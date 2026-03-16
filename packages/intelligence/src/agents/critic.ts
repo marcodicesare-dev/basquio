@@ -3,11 +3,13 @@ import { openai } from "@ai-sdk/openai";
 import { Output, ToolLoopAgent, stepCountIs } from "ai";
 
 import { critiqueReportSchema, type CritiqueReport, type EvidenceWorkspace } from "@basquio/types";
+import { costBudgetExceeded } from "../agent-utils";
 
 import {
   createVerifyClaimTool,
   createCheckNumericTool,
   createCompareToBriefTool,
+  createAuditDeckStructureTool,
   type CritiqueToolContext,
 } from "../tools";
 
@@ -81,11 +83,12 @@ Rate severity:
 - major: Missing key information, broken narrative flow, all-same-layout monotony, topic-label titles
 - minor: Wording improvements, minor discrepancies, density issues`,
     tools: {
+      audit_deck_structure: createAuditDeckStructureTool(ctx),
       verify_claim: createVerifyClaimTool(ctx),
       check_numeric: createCheckNumericTool(ctx),
       compare_to_brief: createCompareToBriefTool(ctx),
     },
-    stopWhen: stepCountIs(20),
+    stopWhen: [stepCountIs(20), costBudgetExceeded(0.50)],
     output: Output.object({ schema: critiqueReportSchema }),
     onStepFinish: input.onStepFinish,
   });
@@ -113,7 +116,11 @@ ${input.deckSummary}
 SLIDES (${input.slideCount} total):
 ${slidesSummary}
 
-Use verify_claim to check every factual assertion. Use check_numeric to audit numbers on each slide. Use compare_to_brief to identify gaps.
+PROCESS (follow this order):
+1. Call audit_deck_structure FIRST — this runs deterministic checks and catches sparse slides, layout monotony, missing notes, weak titles automatically.
+2. Then use verify_claim to check every factual assertion.
+3. Use check_numeric to audit numbers on each slide.
+4. Use compare_to_brief to identify gaps vs the original brief.
 
 Be adversarial — find what's wrong, not what's right. Every issue you catch saves the team from embarrassment in front of an executive.`,
   });

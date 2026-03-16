@@ -3,6 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { Output, ToolLoopAgent, stepCountIs } from "ai";
 
 import { analysisReportSchema, type AnalysisReport, type EvidenceWorkspace } from "@basquio/types";
+import { costBudgetExceeded } from "../agent-utils";
 
 import {
   createListFilesTool,
@@ -76,7 +77,7 @@ If a query or metric fails, try a different approach. The data may have unexpect
       compute_metric: createComputeMetricTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
     },
-    stopWhen: stepCountIs(30),
+    stopWhen: [stepCountIs(30), costBudgetExceeded(0.50)],
     output: Output.object({ schema: analysisReportSchema }),
     onStepFinish: input.onStepFinish,
   });

@@ -21,6 +21,7 @@ export {
   createVerifyClaimTool,
   createCheckNumericTool,
   createCompareToBriefTool,
+  createAuditDeckStructureTool,
   createExportArtifactsTool,
   createQaArtifactsTool,
   type CritiqueToolContext,
