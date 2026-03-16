@@ -10,11 +10,13 @@ export type V2SlideRow = {
   layoutId: string;
   title: string;
   subtitle: string | undefined;
+  kicker: string | undefined;
   body: string | undefined;
   bullets: string[] | undefined;
   chartId: string | undefined;
   evidenceIds: string[];
   metrics: { label: string; value: string; delta?: string }[] | undefined;
+  callout: { text: string; tone?: "accent" | "green" | "orange" } | undefined;
   speakerNotes: string | undefined;
   transition: string | undefined;
 };
@@ -105,14 +107,14 @@ const DEFAULT_TOKENS: BrandTokens = {
     headingFont: "Arial",
     bodyFont: "Arial",
     coverTitleSize: 32,
-    titleSize: 22,
-    subtitleSize: 14,
+    titleSize: 24,
+    subtitleSize: 12,
     bodySize: 11,
     bulletSize: 11,
     chartTitleSize: 9,
     sourceSize: 7,
-    kpiValueSize: 24,
-    kpiLabelSize: 7,
+    kpiValueSize: 28,
+    kpiLabelSize: 9,
   },
   chartPalette: DEFAULT_CHART_PALETTE,
 };
@@ -279,6 +281,28 @@ function formatValue(val: unknown): string {
   return String(val);
 }
 
+// ─── KICKER RENDERER ────────────────────────────────────────────
+
+function renderKicker(
+  slide: PptxGenJS.Slide,
+  text: string,
+  titleRegion: R,
+  tokens: BrandTokens,
+): void {
+  slide.addText(text.toUpperCase(), {
+    x: titleRegion.x,
+    y: titleRegion.y - 0.18,
+    w: titleRegion.w,
+    h: 0.16,
+    fontSize: 8.5,
+    fontFace: tokens.typography.bodyFont,
+    color: norm(tokens.palette.accent),
+    bold: true,
+    margin: 0,
+    charSpacing: 1.2,
+  });
+}
+
 // ─── CHART TRANSFORMS ───────────────────────────────────────────
 
 function mapPptxChartType(pptx: PptxGenJS, chartType: string): PptxGenJS.CHART_NAME {
@@ -305,12 +329,31 @@ function mapPptxChartType(pptx: PptxGenJS, chartType: string): PptxGenJS.CHART_N
 function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   chartData: Array<{ name: string; labels: string[]; values: number[] }>;
   opts: Record<string, unknown>;
+  effectiveChartType: string;
 } | null {
   if (!chart.data || chart.data.length === 0) return null;
   if (!chart.series || chart.series.length === 0) return null;
 
+  // Auto-coerce pie/doughnut to stacked_bar when >4 categories (Change 6)
+  let effectiveChartType = chart.chartType;
+  const pieLike = chart.chartType === "pie" || chart.chartType === "doughnut";
+  if (pieLike && chart.data.length > 4) {
+    effectiveChartType = "stacked_bar";
+  }
+
   const labels = chart.data.map((row) => String(row[chart.xAxis] ?? ""));
-  const palette = chart.style.colors?.map(norm) ?? tokens.chartPalette.map(norm);
+  const basePalette = chart.style.colors?.map(norm) ?? tokens.chartPalette.map(norm);
+
+  // Highlight-bar coloring: if highlightCategories specified, color focal bars with accent,
+  // all others with a muted gray (Change 7)
+  const highlightCats = chart.style.highlightCategories ?? [];
+  const highlightSet = new Set(highlightCats.map((c) => c.toLowerCase()));
+  let palette = basePalette;
+  if (highlightSet.size > 0 && chart.series.length === 1) {
+    palette = labels.map((label) =>
+      highlightSet.has(label.toLowerCase()) ? norm(tokens.palette.accent) : "D1D5DB",
+    );
+  }
 
   // Check if any series has valid numeric data
   const hasValidData = chart.series.some((seriesKey) =>
@@ -319,17 +362,17 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   if (!hasValidData) return null;
 
   const singleSeries = chart.series.length === 1;
-  const pieLike = chart.chartType === "pie" || chart.chartType === "doughnut";
-  const isBar = chart.chartType === "bar" || chart.chartType === "stacked_bar";
+  const coercedPieLike = effectiveChartType === "pie" || effectiveChartType === "doughnut";
+  const isBar = effectiveChartType === "bar" || effectiveChartType === "stacked_bar";
 
   // Smart legend: hide for single series, minimize for pies with few slices
   const showLegend = chart.style.showLegend ??
-    (pieLike ? chart.data.length <= 4 : singleSeries ? false : chart.series.length >= 3);
+    (coercedPieLike ? chart.data.length <= 4 : singleSeries ? false : chart.series.length >= 3);
 
   const baseOpts: Record<string, unknown> = {
     showTitle: false,
     showLegend,
-    legendPos: pieLike ? "r" : "b",
+    legendPos: coercedPieLike ? "r" : "b",
     legendFontSize: 7,
     legendColor: norm(tokens.palette.muted),
     legendFontFace: tokens.typography.bodyFont,
@@ -349,8 +392,8 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
 
     chartColors: palette,
     // Larger data labels, more visible
-    showValue: chart.style.showValues ?? (isBar ? chart.data.length <= 8 : false),
-    dataLabelPosition: isBar ? "outEnd" : "t",
+    showValue: chart.style.showValues ?? (isBar ? chart.data.length <= 8 : coercedPieLike ? false : false),
+    dataLabelPosition: isBar ? "outEnd" : effectiveChartType === "line" ? "t" : "outEnd",
     dataLabelFontSize: 10,
     dataLabelFontFace: tokens.typography.bodyFont,
     dataLabelColor: norm(tokens.palette.ink),
@@ -360,18 +403,18 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   };
 
   // Horizontal bars for bar type
-  if (chart.chartType === "bar") {
+  if (effectiveChartType === "bar") {
     baseOpts.barDir = "bar";
   }
 
-  // Stacked bar
-  if (chart.chartType === "stacked_bar") {
+  // Stacked bar (including coerced pie/doughnut)
+  if (effectiveChartType === "stacked_bar") {
     baseOpts.barDir = "bar";
     baseOpts.barGrouping = "stacked";
   }
 
   // Waterfall: simulated stacked bar
-  if (chart.chartType === "waterfall") {
+  if (effectiveChartType === "waterfall") {
     const seriesKey = chart.series[0] ?? chart.yAxis;
     const values = chart.data.map((row) => Number(row[seriesKey]) || 0);
     const base: number[] = [];
@@ -403,11 +446,12 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
         chartColors: ["FFFFFF", norm(tokens.palette.positive), norm(tokens.palette.negative)],
         showLegend: false,
       },
+      effectiveChartType: "waterfall",
     };
   }
 
-  // Pie
-  if (chart.chartType === "pie" || chart.chartType === "doughnut") {
+  // Pie (only if not coerced to stacked_bar)
+  if (coercedPieLike) {
     baseOpts.showPercent = true;
     baseOpts.showValue = false;
     baseOpts.showLegend = true;
@@ -415,7 +459,7 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   }
 
   // Scatter: no barDir
-  if (chart.chartType === "scatter") {
+  if (effectiveChartType === "scatter") {
     delete baseOpts.barDir;
     delete baseOpts.barGapWidthPct;
   }
@@ -426,7 +470,12 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     values: chart.data.map((row) => Number(row[seriesKey]) || 0),
   }));
 
-  return { chartData, opts: baseOpts };
+  // For single-series highlight coloring, apply per-point colors
+  if (highlightSet.size > 0 && singleSeries && !coercedPieLike) {
+    baseOpts.chartColors = palette;
+  }
+
+  return { chartData, opts: baseOpts, effectiveChartType };
 }
 
 // ─── ELEMENT RENDERERS ──────────────────────────────────────────
@@ -489,6 +538,43 @@ function renderBody(
     speakerNotesOverflow.push(`[Overflow from body]: ${overflow}`);
   }
 
+  // Executive prose formatting: bold the first sentence/clause for scannability
+  const sentences = truncated.split(/(?<=[.!?;—:])\s+/);
+  if (sentences.length >= 2) {
+    const firstSentence = sentences[0];
+    const rest = sentences.slice(1).join(" ");
+    const props: PptxGenJS.TextProps[] = [
+      {
+        text: firstSentence + " ",
+        options: {
+          fontSize: tokens.typography.bodySize,
+          fontFace: tokens.typography.bodyFont,
+          color: norm(tokens.palette.ink),
+          bold: true,
+        },
+      },
+      {
+        text: rest,
+        options: {
+          fontSize: tokens.typography.bodySize,
+          fontFace: tokens.typography.bodyFont,
+          color: norm(tokens.palette.ink),
+          bold: false,
+        },
+      },
+    ];
+    slide.addText(props, {
+      x: region.x,
+      y: region.y,
+      w: region.w,
+      h: region.h,
+      lineSpacingMultiple: 1.4,
+      valign: "top",
+    });
+    return;
+  }
+
+  // Single sentence or no split — render with multi-line support
   const props = textToProps(truncated, {
     fontSize: tokens.typography.bodySize,
     fontFace: tokens.typography.bodyFont,
@@ -786,7 +872,7 @@ function renderChartElement(
     return;
   }
 
-  const { chartData, opts } = built;
+  const { chartData, opts, effectiveChartType } = built;
 
   // Chart title (small, above chart area)
   slide.addText(chart.title, {
@@ -808,7 +894,7 @@ function renderChartElement(
   };
 
   slide.addChart(
-    mapPptxChartType(pptx, chart.chartType),
+    mapPptxChartType(pptx, effectiveChartType),
     chartData as unknown as PptxGenJS.OptsChartData[],
     {
       x: chartRegion.x,
@@ -848,6 +934,11 @@ function renderContentSlide(
   const regions = getLayoutRegions(layoutId);
   const notesOverflow: string[] = [];
 
+  // Kicker (section label above title)
+  if (s.kicker) {
+    renderKicker(slide, s.kicker, regions.title, tokens);
+  }
+
   // Title always rendered
   renderTitle(slide, s.title, regions.title, tokens, false);
 
@@ -862,6 +953,10 @@ function renderContentSlide(
     case "title-chart": {
       if (chart && regions.chart) {
         renderChartElement(slide, pptx, chart, regions.chart, tokens);
+      }
+      // First-class callout
+      if (s.callout && regions.callout) {
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
       }
       break;
     }
@@ -878,14 +973,24 @@ function renderContentSlide(
           renderTable(slide, chart, regions.table, tokens);
         }
       }
-      // Callout (from body or first bullet)
-      if (regions.callout && (s.body || (s.bullets && s.bullets.length > 0))) {
-        const calloutText = s.body || s.bullets?.[0] || "";
-        if (calloutText) {
-          renderCallout(slide, pptx, calloutText, regions.callout, tokens, "accent");
+      // Body text in right column
+      if (s.body && regions.body) {
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+      } else if (s.bullets && s.bullets.length > 0 && regions.body) {
+        renderBullets(slide, s.bullets, regions.body, tokens);
+      }
+      // First-class callout (if provided), else derive from body/bullet
+      if (regions.callout) {
+        if (s.callout) {
+          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+        } else if (s.body || (s.bullets && s.bullets.length > 0)) {
+          const calloutText = s.body || s.bullets?.[0] || "";
+          if (calloutText) {
+            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "accent");
+          }
         }
       }
-      // Metrics at bottom
+      // Metrics at top
       if (s.metrics && s.metrics.length > 0 && regions.metrics) {
         renderMetrics(slide, pptx, s.metrics, regions.metrics, tokens);
       }
@@ -909,10 +1014,13 @@ function renderContentSlide(
           renderBody(slide, s.body, regions.body, tokens, notesOverflow);
         }
       }
-      // Callout at bottom
-      if (regions.callout && s.body && s.bullets && s.bullets.length > 0) {
-        // Use body as callout if bullets took the body region
-        renderCallout(slide, pptx, s.body, regions.callout, tokens, "green");
+      // First-class callout at bottom, else fallback
+      if (regions.callout) {
+        if (s.callout) {
+          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green");
+        } else if (s.body && s.bullets && s.bullets.length > 0) {
+          renderCallout(slide, pptx, s.body, regions.callout, tokens, "green");
+        }
       }
       break;
     }
@@ -933,6 +1041,10 @@ function renderContentSlide(
           renderBullets(slide, s.bullets, fallbackRegion, tokens);
         }
       }
+      // First-class callout
+      if (s.callout && regions.callout) {
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+      }
       break;
     }
 
@@ -947,6 +1059,10 @@ function renderContentSlide(
         if (bodyH > 0.3) {
           renderBody(slide, s.body, { ...regions.body, y: bodyY, h: bodyH }, tokens, notesOverflow);
         }
+      }
+      // First-class callout
+      if (s.callout && regions.callout) {
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
       }
       break;
     }
@@ -978,10 +1094,14 @@ function renderContentSlide(
         renderBody(slide, s.body, regions.body, tokens, notesOverflow);
       }
       if (regions.callout) {
-        const calloutText =
-          s.bullets && s.bullets.length > 0 ? s.bullets.join(" | ") : s.body || "";
-        if (calloutText && (!s.body || (s.bullets && s.bullets.length > 0))) {
-          renderCallout(slide, pptx, calloutText, regions.callout, tokens, "green");
+        if (s.callout) {
+          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green");
+        } else {
+          const calloutText =
+            s.bullets && s.bullets.length > 0 ? s.bullets.join(" | ") : s.body || "";
+          if (calloutText && (!s.body || (s.bullets && s.bullets.length > 0))) {
+            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "green");
+          }
         }
       }
       break;

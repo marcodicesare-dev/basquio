@@ -19,10 +19,12 @@ export type AuthoringToolContext = {
     layoutId: string;
     title: string;
     subtitle?: string;
+    kicker?: string;
     body?: string;
     bullets?: string[];
     chartId?: string;
     metrics?: { label: string; value: string; delta?: string }[];
+    callout?: { text: string; tone?: "accent" | "green" | "orange" };
     evidenceIds: string[];
     speakerNotes?: string;
     transition?: string;
@@ -379,7 +381,8 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
       layout: z.string().describe("Layout ID: cover, exec-summary, title-chart, chart-split, metrics, title-body, title-bullets, evidence-grid, table, summary"),
       title: z.string().min(4).describe("Action title: a complete sentence stating the takeaway — NOT a topic label"),
       subtitle: z.string().optional(),
-      body: z.string().optional().describe("Executive prose — max 55 words for story slides, 80 for appendix"),
+      kicker: z.string().optional().describe("Section label above title in UPPERCASE (e.g. 'MARKET OVERVIEW', 'RECOMMENDATION'). Use to create section rhythm."),
+      body: z.string().optional().describe("Executive prose — max 55 words for story slides, 80 for appendix. First sentence will be bolded."),
       bullets: z.array(z.string()).max(5).optional().describe("Key points — max 4-5 bullets, 8-12 words each"),
       chartId: z.string().optional().describe("Chart ID from build_chart"),
       metrics: z
@@ -391,6 +394,10 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
           }),
         )
         .optional(),
+      callout: z.object({
+        text: z.string().describe("Bold insight or recommendation — max 25 words"),
+        tone: z.enum(["accent", "green", "orange"]).optional().describe("Color: accent (blue), green (positive), orange (warning)"),
+      }).optional().describe("Colored callout banner at the bottom of the slide. Use for key insight, recommendation, or warning."),
       evidenceIds: z.array(z.string()).describe("Evidence ref IDs supporting this slide — required for non-cover"),
       speakerNotes: z.string().optional().describe("Presenter narrative 60-140 words — caveats, transitions, backup data"),
       transition: z.string().optional().describe("Bridge sentence to next slide"),
@@ -411,10 +418,12 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
         layoutId: params.layout,
         title: params.title,
         subtitle: params.subtitle,
+        kicker: params.kicker,
         body: params.body,
         bullets: params.bullets,
         chartId: params.chartId,
         metrics: params.metrics,
+        callout: params.callout,
         evidenceIds: params.evidenceIds ?? [],
         speakerNotes: params.speakerNotes,
         transition: params.transition,
@@ -430,6 +439,8 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
           hasMetrics: Boolean(params.metrics?.length),
           hasBullets: Boolean(params.bullets?.length),
           hasBody: Boolean(params.body),
+          hasKicker: Boolean(params.kicker),
+          hasCallout: Boolean(params.callout),
           hasSpeakerNotes: Boolean(params.speakerNotes),
           evidenceCount: params.evidenceIds?.length ?? 0,
         },
@@ -508,6 +519,21 @@ export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
       // Check chart density
       if (chartsUsed < slides.length * 0.4 && slides.length > 4) {
         issues.push(`Only ${chartsUsed} charts across ${slides.length} slides. Data-driven decks need more visualizations.`);
+      }
+
+      // Check consecutive layout repetition (Change 18: narrative flow validation)
+      for (let i = 1; i < contentSlides.length; i++) {
+        if (contentSlides[i].layoutId === contentSlides[i - 1].layoutId &&
+            contentSlides[i].layoutId !== "chart-split") {
+          issues.push(`Slides ${contentSlides[i - 1].position} and ${contentSlides[i].position} both use "${contentSlides[i].layoutId}" — vary layouts for visual rhythm.`);
+        }
+      }
+
+      // Check that summary/recommendation slides have callout or kicker
+      for (const s of slides) {
+        if ((s.layoutId === "summary" || s.layoutId === "exec-summary") && !s.body) {
+          issues.push(`Slide ${s.position} (${s.layoutId}) has no body text — summary slides need synthesis prose.`);
+        }
       }
 
       const titleReadThrough = slides.map((s) => `${s.position}. ${s.title}`).join("\n");

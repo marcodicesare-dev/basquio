@@ -113,6 +113,16 @@ A good 15-slide deck typically has: 1 cover, 1 metrics, 3-4 title-chart, 3-4 cha
 - One chart per slide maximum
 - If you need more than one claim per slide, split it into two slides
 
+## KICKERS AND CALLOUTS (section rhythm + insight devices)
+
+Use kickers to create section rhythm — they appear as small uppercase labels above the title:
+- Use kickers like "MARKET CONTEXT", "EVIDENCE", "COMPETITIVE LANDSCAPE", "RECOMMENDATION" to signal section changes
+- Every exec-summary slide and summary slide SHOULD have a kicker
+- Use callouts to anchor the key insight at the bottom of the slide — a bold colored banner
+- Callout tones: "accent" (blue, default), "green" (positive insight), "orange" (warning/risk)
+- Every chart-split and evidence-grid slide benefits from a callout summarizing the "so what"
+- Callout text should be max 25 words — the single most important takeaway from that slide
+
 ## CHART DESIGN (story-first)
 
 When you call build_chart, think about the ANALYTICAL STORY, not just the data shape:
@@ -125,6 +135,8 @@ When you call build_chart, think about the ANALYTICAL STORY, not just the data s
 - DETAIL (exact numbers matter) → table
 
 Chart data: max 12 categories × 4 series. Beyond that, aggregate or use a table.
+
+HIGHLIGHT CATEGORIES: When building charts about competitive position, always pass highlightCategories with the client brand name (e.g. ['Affinity']). This colors the focal bar in accent blue and mutes all others to gray — essential for consulting-grade emphasis. Pie/doughnut charts with >4 categories are automatically converted to stacked bars.
 
 ## TABLE + CHART COMBO (chart-split layout)
 

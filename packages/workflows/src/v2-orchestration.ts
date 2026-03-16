@@ -46,10 +46,12 @@ type SlideInput = {
   layoutId: string;
   title: string;
   subtitle?: string;
+  kicker?: string;
   body?: string;
   bullets?: string[];
   chartId?: string;
   metrics?: { label: string; value: string; delta?: string }[];
+  callout?: { text: string; tone?: "accent" | "green" | "orange" };
   evidenceIds: string[];
   speakerNotes?: string;
   transition?: string;
@@ -62,7 +64,7 @@ type ChartInput = {
   xAxis?: string;
   yAxis?: string;
   series?: string[];
-  style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean };
+  style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean; highlightCategories?: string[] };
 };
 
 // Use the shared Inngest client (avoids circular import with ./index)
@@ -231,10 +233,12 @@ async function persistSlide(runId: string, slide: {
   layoutId: string;
   title: string;
   subtitle?: string;
+  kicker?: string;
   body?: string;
   bullets?: string[];
   chartId?: string;
   metrics?: { label: string; value: string; delta?: string }[];
+  callout?: { text: string; tone?: "accent" | "green" | "orange" };
   evidenceIds: string[];
   speakerNotes?: string;
   transition?: string;
@@ -258,10 +262,12 @@ async function persistSlide(runId: string, slide: {
         layout_id: slide.layoutId,
         title: cleanNewlines(slide.title),
         subtitle: slide.subtitle ? cleanNewlines(slide.subtitle) : undefined,
+        kicker: slide.kicker ? cleanNewlines(slide.kicker) : undefined,
         body: slide.body ? cleanNewlines(slide.body) : undefined,
         bullets: slide.bullets?.map(cleanNewlines),
         chart_id: slide.chartId,
         metrics: slide.metrics,
+        callout: slide.callout,
         evidence_ids: slide.evidenceIds,
         speaker_notes: slide.speakerNotes ? cleanNewlines(slide.speakerNotes) : undefined,
         transition: slide.transition,
@@ -324,11 +330,13 @@ type SlideRow = {
   layoutId: string;
   title: string;
   subtitle: string | undefined;
+  kicker: string | undefined;
   body: string | undefined;
   bullets: string[] | undefined;
   chartId: string | undefined;
   evidenceIds: string[];
   metrics: { label: string; value: string; delta?: string }[] | undefined;
+  callout: { text: string; tone?: "accent" | "green" | "orange" } | undefined;
   speakerNotes: string | undefined;
   transition: string | undefined;
 };
@@ -353,11 +361,13 @@ async function getSlides(runId: string): Promise<SlideRow[]> {
     layoutId: (r.layout_id as string) ?? "summary",
     title: r.title as string,
     subtitle: r.subtitle as string | undefined,
+    kicker: r.kicker as string | undefined,
     body: r.body as string | undefined,
     bullets: r.bullets as string[] | undefined,
     chartId: r.chart_id as string | undefined,
     evidenceIds: (r.evidence_ids ?? []) as string[],
     metrics: r.metrics as { label: string; value: string; delta?: string }[] | undefined,
+    callout: r.callout as { text: string; tone?: "accent" | "green" | "orange" } | undefined,
     speakerNotes: r.speaker_notes as string | undefined,
     transition: r.transition as string | undefined,
   }));
@@ -1326,25 +1336,18 @@ Return the deck plan.`,
       });
     }
 
-    // ─── STEP 6: EXPORT (deterministic) ─────────────────────────
-    const artifacts = await step.run("export", async () => {
+    // ─── STEP 6a: RENDER PPTX ────────────────────────────────────
+    const pptxResult = await step.run("render-pptx", async () => {
       await updateRunStatus(runId, "running", "export");
       await emitRunEvent(runId, "export", "phase_started");
 
-      // workspace has metadata; tools use loadSheetRows for on-demand data access
       const slides = await getSlides(runId);
-      const charts = await getCharts(runId);
-
-      // Build v2 chart rows for the native v2 renderer
       const v2ChartRows = await getV2ChartRows(runId);
-
-      // Render PPTX via native v2 renderer (direct from DeckSpecV2 schema)
       const deckTitle = analysis.summary?.slice(0, 100) ?? slides[0]?.title ?? "Basquio Report";
-      // Map template brand tokens to renderer format if available
+
+      // Map template brand tokens to renderer format
       const tp = workspace.templateProfile;
       const strip = (c?: string) => c?.replace("#", "");
-      // Map template brand tokens to renderer palette — use generic record access
-      // since template palette may have extended keys beyond the typed interface
       const brandTokenOverrides: Record<string, unknown> | undefined = (() => {
         if (!tp?.brandTokens) return undefined;
         const pal = (tp.brandTokens.palette ?? {}) as Record<string, string | undefined>;
@@ -1380,45 +1383,7 @@ Return the deck plan.`,
         brandTokens: brandTokenOverrides as Record<string, unknown> | undefined,
       });
 
-      // Unified PDF rendering via Browserless — same slide data as PPTX
-      let pdfArtifact: { fileName: string; mimeType: string; buffer: Buffer | { data: number[] } } | null = null;
-      const browserlessToken = process.env.BROWSERLESS_TOKEN;
-      const browserlessUrl = process.env.BROWSERLESS_URL ?? "https://production-sfo.browserless.io";
-      if (browserlessToken) {
-        try {
-          const html = renderSlidesToHtml(slides, v2ChartRows, deckTitle);
-          const pdfResp = await fetch(`${browserlessUrl}/pdf?token=${browserlessToken}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              html,
-              options: {
-                printBackground: true,
-                landscape: true,
-                width: "960px",
-                height: "540px",
-                margin: { top: "0", right: "0", bottom: "0", left: "0" },
-              },
-              gotoOptions: { waitUntil: "networkidle2", timeout: 30000 },
-            }),
-          });
-          if (pdfResp.ok) {
-            const pdfBuffer = Buffer.from(await pdfResp.arrayBuffer());
-            pdfArtifact = {
-              fileName: `${deckTitle.replace(/[^a-zA-Z0-9 -]/g, "").slice(0, 50)}.pdf`,
-              mimeType: "application/pdf",
-              buffer: pdfBuffer,
-            };
-          }
-        } catch {
-          // PDF rendering is best-effort; PPTX is the primary artifact
-        }
-      }
-
-      // Upload artifacts
       const pptxPath = `${runId}/deck.pptx`;
-      const pdfPath = `${runId}/deck.pdf`;
-
       const pptxBuffer = Buffer.isBuffer(pptxArtifact.buffer)
         ? pptxArtifact.buffer
         : Buffer.from((pptxArtifact.buffer as { data: number[] }).data);
@@ -1432,11 +1397,52 @@ Return the deck plan.`,
         contentType: pptxArtifact.mimeType,
       });
 
-      let pdfBuffer: Buffer | null = null;
-      if (pdfArtifact) {
-        pdfBuffer = Buffer.isBuffer(pdfArtifact.buffer)
-          ? pdfArtifact.buffer
-          : Buffer.from((pdfArtifact.buffer as { data: number[] }).data);
+      const { createHash } = await import("node:crypto");
+      const pptxSha256 = createHash("sha256").update(pptxBuffer).digest("hex");
+
+      return {
+        pptxPath,
+        pptxSha256,
+        pptxBytes: pptxBuffer.length,
+        pptxFileName: pptxArtifact.fileName,
+        pptxMimeType: pptxArtifact.mimeType,
+        slideCount: slides.length,
+        deckTitle,
+      };
+    });
+
+    // ─── STEP 6b: RENDER PDF ──────────────────────────────────────
+    const pdfResult = await step.run("render-pdf", async () => {
+      const browserlessToken = process.env.BROWSERLESS_TOKEN;
+      const browserlessUrl = process.env.BROWSERLESS_URL ?? "https://production-sfo.browserless.io";
+      if (!browserlessToken) return null;
+
+      try {
+        const slides = await getSlides(runId);
+        const v2ChartRows = await getV2ChartRows(runId);
+        const html = renderSlidesToHtml(slides, v2ChartRows, pptxResult.deckTitle);
+
+        const pdfResp = await fetch(`${browserlessUrl}/pdf?token=${browserlessToken}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            html,
+            options: {
+              printBackground: true,
+              landscape: true,
+              width: "960px",
+              height: "540px",
+              margin: { top: "0", right: "0", bottom: "0", left: "0" },
+            },
+            gotoOptions: { waitUntil: "networkidle2", timeout: 30000 },
+          }),
+        });
+
+        if (!pdfResp.ok) return null;
+
+        const pdfBuffer = Buffer.from(await pdfResp.arrayBuffer());
+        const pdfPath = `${runId}/deck.pdf`;
+        const pdfFileName = `${pptxResult.deckTitle.replace(/[^a-zA-Z0-9 -]/g, "").slice(0, 50)}.pdf`;
 
         await uploadToStorage({
           supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1444,48 +1450,55 @@ Return the deck plan.`,
           bucket: "artifacts",
           storagePath: pdfPath,
           body: pdfBuffer,
-          contentType: pdfArtifact.mimeType,
+          contentType: "application/pdf",
         });
+
+        const { createHash } = await import("node:crypto");
+        const pdfSha256 = createHash("sha256").update(pdfBuffer).digest("hex");
+
+        // Count PDF pages
+        const pdfText = pdfBuffer.toString("latin1");
+        const pageMatches = pdfText.match(/\/Type\s*\/Page(?!s)/g);
+        const pageCount = pageMatches ? pageMatches.length : 0;
+
+        return { pdfPath, pdfSha256, pdfBytes: pdfBuffer.length, pdfFileName, pageCount };
+      } catch {
+        // PDF rendering is best-effort; PPTX is the primary artifact
+        return null;
       }
+    });
 
-      // ── QA: validate artifacts before publishing manifest ──
-      const { createHash } = await import("node:crypto");
-      const pptxSha256 = createHash("sha256").update(pptxBuffer).digest("hex");
-      const pdfSha256 = pdfBuffer ? createHash("sha256").update(pdfBuffer).digest("hex") : "";
-
+    // ─── STEP 6c: ARTIFACT QA ─────────────────────────────────────
+    const qaResult = await step.run("artifact-qa", async () => {
       const qaChecks: Array<{ name: string; passed: boolean; detail?: string }> = [];
 
-      // Check: PPTX artifact is valid
       qaChecks.push({
         name: "pptx_non_empty",
-        passed: pptxBuffer.length > 0,
-        detail: `${pptxBuffer.length} bytes`,
+        passed: pptxResult.pptxBytes > 0,
+        detail: `${pptxResult.pptxBytes} bytes`,
       });
       qaChecks.push({
         name: "slide_count_positive",
-        passed: slides.length > 0,
-        detail: `${slides.length} slides`,
+        passed: pptxResult.slideCount > 0,
+        detail: `${pptxResult.slideCount} slides`,
       });
 
-      const hasValidPptxHeader = pptxBuffer.length >= 4 &&
-        pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
-        pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
-      qaChecks.push({ name: "pptx_valid_zip", passed: hasValidPptxHeader });
+      // Download PPTX header to validate ZIP signature
+      const pptxHeaderBuf = await downloadFromStorage({
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        bucket: "artifacts",
+        storagePath: pptxResult.pptxPath,
+      });
+      const hasValidPptxHeader = pptxHeaderBuf && pptxHeaderBuf.length >= 4 &&
+        pptxHeaderBuf[0] === 0x50 && pptxHeaderBuf[1] === 0x4B &&
+        pptxHeaderBuf[2] === 0x03 && pptxHeaderBuf[3] === 0x04;
+      qaChecks.push({ name: "pptx_valid_zip", passed: Boolean(hasValidPptxHeader) });
 
-      // PDF checks (only if PDF was generated)
-      let actualPdfPageCount = 0;
-      if (pdfBuffer) {
-        qaChecks.push({ name: "pdf_non_empty", passed: pdfBuffer.length > 0, detail: `${pdfBuffer.length} bytes` });
-        const hasValidPdfHeader = pdfBuffer.length >= 4 &&
-          pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50 &&
-          pdfBuffer[2] === 0x44 && pdfBuffer[3] === 0x46;
-        qaChecks.push({ name: "pdf_valid_header", passed: hasValidPdfHeader });
-        const pdfText = pdfBuffer.toString("latin1");
-        const pageMatches = pdfText.match(/\/Type\s*\/Page(?!s)/g);
-        actualPdfPageCount = pageMatches ? pageMatches.length : 0;
+      if (pdfResult) {
+        qaChecks.push({ name: "pdf_non_empty", passed: pdfResult.pdfBytes > 0, detail: `${pdfResult.pdfBytes} bytes` });
       }
 
-      // PPTX is the primary artifact — QA gates on PPTX only
       const criticalChecks = qaChecks.filter((c) => c.name.startsWith("pptx_") || c.name === "slide_count_positive");
       const qaPassed = criticalChecks.every((c) => c.passed);
 
@@ -1495,28 +1508,33 @@ Return the deck plan.`,
         throw new Error(`Artifact QA failed: ${failedChecks}`);
       }
 
+      return { qaChecks, qaPassed };
+    });
+
+    // ─── STEP 6d: PUBLISH MANIFEST ────────────────────────────────
+    const artifacts = await step.run("publish-manifest", async () => {
       const manifestArtifacts: Array<Record<string, unknown>> = [
         {
           id: crypto.randomUUID(),
           kind: "pptx",
-          fileName: pptxArtifact.fileName,
-          mimeType: pptxArtifact.mimeType,
+          fileName: pptxResult.pptxFileName,
+          mimeType: pptxResult.pptxMimeType,
           storageBucket: "artifacts",
-          storagePath: pptxPath,
-          fileBytes: pptxBuffer.length,
-          checksumSha256: pptxSha256,
+          storagePath: pptxResult.pptxPath,
+          fileBytes: pptxResult.pptxBytes,
+          checksumSha256: pptxResult.pptxSha256,
         },
       ];
-      if (pdfBuffer && pdfArtifact) {
+      if (pdfResult) {
         manifestArtifacts.push({
           id: crypto.randomUUID(),
           kind: "pdf",
-          fileName: pdfArtifact.fileName,
-          mimeType: pdfArtifact.mimeType,
+          fileName: pdfResult.pdfFileName,
+          mimeType: "application/pdf",
           storageBucket: "artifacts",
-          storagePath: pdfPath,
-          fileBytes: pdfBuffer.length,
-          checksumSha256: pdfSha256,
+          storagePath: pdfResult.pdfPath,
+          fileBytes: pdfResult.pdfBytes,
+          checksumSha256: pdfResult.pdfSha256,
         });
       }
 
@@ -1524,10 +1542,10 @@ Return the deck plan.`,
       const manifest = {
         id: manifestId,
         run_id: runId,
-        slide_count: slides.length,
-        page_count: pdfBuffer ? actualPdfPageCount : slides.length,
+        slide_count: pptxResult.slideCount,
+        page_count: pdfResult ? pdfResult.pageCount : pptxResult.slideCount,
         qa_passed: true,
-        qa_report: { checks: qaChecks },
+        qa_report: { checks: qaResult.qaChecks },
         artifacts: manifestArtifacts,
         published_at: new Date().toISOString(),
       };
@@ -1559,8 +1577,8 @@ Return the deck plan.`,
       });
 
       await emitRunEvent(runId, "export", "phase_completed", {
-        slideCount: slides.length,
-        artifactCount: 2,
+        slideCount: pptxResult.slideCount,
+        artifactCount: manifestArtifacts.length,
       });
 
       return manifest;
@@ -1674,9 +1692,20 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
       }
     }
 
-    // Body + bullets
-    const bodyHtml = s.body ? `<div style="font-size:9px;color:#111827;line-height:1.4;">${esc(s.body)}</div>` : "";
+    // Body + bullets (executive prose: bold first sentence)
+    let bodyHtml = "";
+    if (s.body) {
+      const sentences = s.body.split(/(?<=[.!?;—:])\s+/);
+      if (sentences.length >= 2) {
+        bodyHtml = `<div style="font-size:9px;color:#111827;line-height:1.5;"><strong>${esc(sentences[0])}</strong> ${esc(sentences.slice(1).join(" "))}</div>`;
+      } else {
+        bodyHtml = `<div style="font-size:9px;color:#111827;line-height:1.5;">${esc(s.body)}</div>`;
+      }
+    }
     const bulletsHtml = s.bullets?.length ? `<ul style="font-size:9px;color:#111827;line-height:1.4;padding-left:14px;margin:4px 0;">${s.bullets.slice(0, 5).map((b) => `<li style="margin-bottom:3px;">${esc(b)}</li>`).join("")}</ul>` : "";
+
+    // Callout banner
+    const calloutHtml = s.callout ? `<div style="background:${s.callout.tone === "green" ? "#16A34A" : s.callout.tone === "orange" ? "#EA580C" : "#0F4C81"};color:#fff;font-weight:700;font-size:9px;padding:6px 12px;border-radius:4px;margin-top:6px;">${esc(s.callout.text)}</div>` : "";
 
     // Layout-dependent content
     let content = "";
@@ -1684,20 +1713,21 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
     if (isCover) {
       content = "";
     } else if (layout === "chart-split" || layout === "two-column") {
-      content = `${metricsHtml}<div style="display:flex;gap:12px;flex:1;min-height:0;"><div style="flex:0 0 55%;">${chartHtml}</div><div style="flex:1;">${bulletsHtml || bodyHtml}</div></div>`;
+      content = `${metricsHtml}<div style="display:flex;gap:12px;flex:1;min-height:0;"><div style="flex:0 0 55%;">${chartHtml}</div><div style="flex:1;">${bulletsHtml || bodyHtml}${calloutHtml}</div></div>`;
     } else if (layout === "evidence-grid") {
-      content = `${metricsHtml}<div style="display:flex;gap:12px;flex:1;min-height:0;"><div style="flex:0 0 55%;">${chartHtml}</div><div style="flex:1;">${bulletsHtml || bodyHtml}</div></div>`;
+      content = `${metricsHtml}<div style="display:flex;gap:12px;flex:1;min-height:0;"><div style="flex:0 0 55%;">${chartHtml}</div><div style="flex:1;">${bulletsHtml || bodyHtml}</div></div>${calloutHtml}`;
     } else if (layout === "title-chart") {
-      content = chartHtml;
+      content = `${chartHtml}${calloutHtml}`;
     } else if (layout === "summary") {
-      content = `${bodyHtml}${bulletsHtml ? `<div style="background:#DCEAF7;border-left:3px solid #0F4C81;padding:8px 12px;margin-top:8px;">${bulletsHtml}</div>` : ""}`;
+      content = `${bodyHtml}${calloutHtml || (bulletsHtml ? `<div style="background:#DCEAF7;border-left:3px solid #0F4C81;padding:8px 12px;margin-top:8px;">${bulletsHtml}</div>` : "")}`;
     } else {
-      content = `${metricsHtml}${bodyHtml}${bulletsHtml}${chartHtml}`;
+      content = `${metricsHtml}${bodyHtml}${bulletsHtml}${chartHtml}${calloutHtml}`;
     }
 
     return `<div style="width:960px;height:540px;background:${isCover ? "#1B2541" : "#fff"};box-sizing:border-box;position:relative;page-break-after:always;font-family:Arial,sans-serif;display:flex;flex-direction:column;${isCover ? "padding:100px 52px;justify-content:center;" : "padding:16px 45px 32px 45px;"}">
       ${!isCover ? '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:#0F4C81;"></div>' : ""}
-      <div style="font-size:${isCover ? "28px" : "18px"};font-weight:700;color:${isCover ? "#fff" : "#111827"};line-height:1.2;margin-bottom:${isCover ? "12px" : "4px"};flex-shrink:0;">${esc(s.title ?? "")}</div>
+      ${!isCover && s.kicker ? `<div style="font-size:8px;font-weight:700;color:#0F4C81;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;flex-shrink:0;">${esc(s.kicker)}</div>` : ""}
+      <div style="font-size:${isCover ? "28px" : "20px"};font-weight:700;color:${isCover ? "#fff" : "#111827"};line-height:1.2;margin-bottom:${isCover ? "12px" : "4px"};flex-shrink:0;">${esc(s.title ?? "")}</div>
       ${s.subtitle ? `<div style="font-size:12px;color:${isCover ? "rgba(255,255,255,0.7)" : "#4B5563"};margin-bottom:8px;flex-shrink:0;">${esc(s.subtitle)}</div>` : ""}
       ${!isCover ? '<div style="border-top:1px solid #D1D5DB;margin-bottom:6px;flex-shrink:0;"></div>' : ""}
       <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">${content}</div>
