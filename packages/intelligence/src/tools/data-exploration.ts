@@ -16,6 +16,9 @@ export type ToolContext = {
     toolOutput: Record<string, unknown>;
     evidenceRefId?: string;
   }) => Promise<string>; // returns entry ID
+  /** Lazy row loader: fetches sheet data from Storage blobs on demand.
+   *  Falls back to workspace.sheetData[key] for backward compat. */
+  loadRows?: (sheetKey: string) => Promise<Record<string, unknown>[]>;
 };
 
 // ─── LIST FILES ───────────────────────────────────────────────────
@@ -119,7 +122,7 @@ export function createSampleRowsTool(ctx: ToolContext) {
         return { error: `Cannot resolve sheet for file: ${file}`, rows: [] };
       }
 
-      const rows = ctx.workspace.sheetData[sheetKey] ?? [];
+      const rows = await resolveRows(ctx, sheetKey);
       const sample = rows.slice(0, clampedN);
 
       await ctx.persistNotebookEntry({
@@ -160,7 +163,7 @@ export function createQueryDataTool(ctx: ToolContext) {
         return { error: `Cannot resolve sheet for file: ${params.file}`, rows: [], rowCount: 0 };
       }
 
-      let rows = ctx.workspace.sheetData[sheetKey] ?? [];
+      let rows = await resolveRows(ctx, sheetKey);
 
       // Apply filter
       if (params.filter) {
@@ -226,7 +229,7 @@ export function createComputeMetricTool(ctx: ToolContext) {
         return { error: `Cannot resolve sheet for file: ${params.file}` };
       }
 
-      let rows = ctx.workspace.sheetData[sheetKey] ?? [];
+      let rows = await resolveRows(ctx, sheetKey);
 
       if (params.filter) {
         rows = applyFilter(rows, params.filter);
@@ -313,6 +316,14 @@ export function createReadSupportDocTool(ctx: ToolContext) {
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────
+
+/** Resolve rows for a sheet: uses lazy loader if available, falls back to in-memory sheetData */
+async function resolveRows(ctx: ToolContext, sheetKey: string): Promise<Record<string, unknown>[]> {
+  if (ctx.loadRows) {
+    return ctx.loadRows(sheetKey);
+  }
+  return ctx.workspace.sheetData[sheetKey] ?? [];
+}
 
 function resolveSheetKey(
   workspace: EvidenceWorkspace,

@@ -721,13 +721,13 @@ export const basquioV2Generation = inngest.createFunction(
       await updateRunStatus(runId, "running", "understand");
       await emitRunEvent(runId, "understand", "phase_started");
 
-      const hydratedWorkspace = await loadHydratedWorkspace();
       tracker.startPhase("understand", "gpt-5.4", "openai");
 
       const result = await runAnalystAgent({
-        workspace: hydratedWorkspace,
+        workspace,
         runId,
         brief,
+        loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
           return persistNotebookEntry(runId, "understand", Date.now(), entry);
         },
@@ -756,20 +756,20 @@ export const basquioV2Generation = inngest.createFunction(
       await updateRunStatus(runId, "running", "author");
       await emitRunEvent(runId, "author", "phase_started");
 
-      const hydratedWorkspace = await loadHydratedWorkspace();
       tracker.startPhase("author", "claude-opus-4-6", "anthropic");
 
       const result = await runAuthorAgent({
-        workspace: hydratedWorkspace,
+        workspace,
         runId,
         analysis,
         brief,
+        loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
           return persistNotebookEntry(runId, "author", Date.now(), entry);
         },
         persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
         persistChart: async (chart: ChartInput) => persistChart(runId, chart),
-        getTemplateProfile: () => hydratedWorkspace.templateProfile ?? null,
+        getTemplateProfile: () => workspace.templateProfile ?? null,
         onStepFinish: async (event: StepFinishEvent) => {
           tracker.recordStep(event.usage, event.toolCalls.length);
           await emitRunEvent(runId, "author", "tool_call", {
@@ -796,13 +796,13 @@ export const basquioV2Generation = inngest.createFunction(
       await updateRunStatus(runId, "running", "critique");
       await emitRunEvent(runId, "critique", "phase_started");
 
-      const hydratedWorkspace = await loadHydratedWorkspace();
+      // workspace has metadata; tools use loadSheetRows for on-demand data access
       tracker.startPhase("critique", "gpt-5.4", "openai");
 
       const slides = await getSlides(runId);
 
       const result = await runCriticAgent({
-        workspace: hydratedWorkspace,
+        workspace: workspace,
         runId,
         deckSummary,
         brief,
@@ -874,7 +874,7 @@ export const basquioV2Generation = inngest.createFunction(
         // Delete existing slides to avoid position collisions
         await deleteRunSlides(runId);
 
-        const hydratedWorkspace = await loadHydratedWorkspace();
+        // workspace has metadata; tools use loadSheetRows for on-demand data access
         tracker.startPhase("revise", "claude-opus-4-6", "anthropic");
 
         const issuesSummary = critique.issues
@@ -882,17 +882,18 @@ export const basquioV2Generation = inngest.createFunction(
           .join("\n");
 
         const result = await runAuthorAgent({
-          workspace: hydratedWorkspace,
+          workspace,
           runId,
           analysis,
           brief,
+          loadRows: loadSheetRows,
           critiqueContext: issuesSummary,
           persistNotebookEntry: async (entry: NotebookEntry) => {
             return persistNotebookEntry(runId, "revise", Date.now(), entry);
           },
           persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
           persistChart: async (chart: ChartInput) => persistChart(runId, chart),
-          getTemplateProfile: () => hydratedWorkspace.templateProfile ?? null,
+          getTemplateProfile: () => workspace.templateProfile ?? null,
           onStepFinish: async (event: StepFinishEvent) => {
             tracker.recordStep(event.usage, event.toolCalls.length);
             await emitRunEvent(runId, "revise", "tool_call", {
@@ -915,13 +916,13 @@ export const basquioV2Generation = inngest.createFunction(
         await updateRunStatus(runId, "running", "critique");
         await emitRunEvent(runId, "critique", "phase_started");
 
-        const hydratedWorkspace = await loadHydratedWorkspace();
+        // workspace has metadata; tools use loadSheetRows for on-demand data access
         tracker.startPhase("re-critique", "gpt-5.4", "openai");
 
         const slides = await getSlides(runId);
 
         const reCritique = await runCriticAgent({
-          workspace: hydratedWorkspace,
+          workspace: workspace,
           runId,
           deckSummary,
           brief,
@@ -1010,7 +1011,7 @@ export const basquioV2Generation = inngest.createFunction(
       await updateRunStatus(runId, "running", "export");
       await emitRunEvent(runId, "export", "phase_started");
 
-      const hydratedWorkspace = await loadHydratedWorkspace();
+      // workspace has metadata; tools use loadSheetRows for on-demand data access
       const slides = await getSlides(runId);
       const charts = await getCharts(runId);
 
@@ -1031,7 +1032,7 @@ export const basquioV2Generation = inngest.createFunction(
         transition: s.transition ?? "",
       }));
 
-      const templateProfile = hydratedWorkspace.templateProfile!;
+      const templateProfile = workspace.templateProfile!;
 
       // Render PPTX
       const pptxArtifact = await renderPptxArtifact({

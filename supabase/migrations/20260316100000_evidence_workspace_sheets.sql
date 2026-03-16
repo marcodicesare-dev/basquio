@@ -191,27 +191,8 @@ BEGIN
 END $$;
 
 -- ─── Storage policies for evidence-workspace-blobs ────────────────────────────
--- Blobs are namespaced under "runs/<runId>/..." so we can scope access by
--- checking org membership via deck_runs without exposing cross-org data.
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename  = 'objects'
-      AND policyname = 'ews_blobs_insert'
-  ) THEN
-    CREATE POLICY ews_blobs_insert
-      ON storage.objects
-      FOR INSERT
-      TO authenticated
-      WITH CHECK (
-        bucket_id = 'evidence-workspace-blobs'
-        AND name LIKE 'runs/%'
-      );
-  END IF;
-END $$;
+-- Blobs are namespaced under "runs/<runId>/..." — extract runId from path
+-- and verify org membership via deck_runs to prevent cross-org data access.
 
 DO $$
 BEGIN
@@ -227,7 +208,12 @@ BEGIN
       TO authenticated
       USING (
         bucket_id = 'evidence-workspace-blobs'
-        AND name LIKE 'runs/%'
+        AND EXISTS (
+          SELECT 1 FROM public.deck_runs dr
+          JOIN public.organization_memberships om ON om.organization_id = dr.organization_id
+          WHERE dr.id::text = split_part(name, '/', 2)
+            AND om.user_id = auth.uid()
+        )
       );
   END IF;
 END $$;
@@ -238,19 +224,21 @@ BEGIN
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'storage'
       AND tablename  = 'objects'
-      AND policyname = 'ews_blobs_update'
+      AND policyname = 'ews_blobs_insert'
   ) THEN
-    CREATE POLICY ews_blobs_update
+    CREATE POLICY ews_blobs_insert
       ON storage.objects
-      FOR UPDATE
+      FOR INSERT
       TO authenticated
-      USING (
-        bucket_id = 'evidence-workspace-blobs'
-        AND name LIKE 'runs/%'
-      )
       WITH CHECK (
         bucket_id = 'evidence-workspace-blobs'
-        AND name LIKE 'runs/%'
+        AND EXISTS (
+          SELECT 1 FROM public.deck_runs dr
+          JOIN public.organization_memberships om ON om.organization_id = dr.organization_id
+          WHERE dr.id::text = split_part(name, '/', 2)
+            AND om.user_id = auth.uid()
+            AND om.role IN ('owner', 'admin', 'editor')
+        )
       );
   END IF;
 END $$;

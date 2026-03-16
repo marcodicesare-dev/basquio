@@ -27,6 +27,7 @@ export type AuthorAgentInput = {
   brief: string;
   critiqueContext?: string; // Provided during revision loop
   persistNotebookEntry: ToolContext["persistNotebookEntry"];
+  loadRows?: ToolContext["loadRows"];
   persistSlide: AuthoringToolContext["persistSlide"];
   persistChart: AuthoringToolContext["persistChart"];
   getTemplateProfile: AuthoringToolContext["getTemplateProfile"];
@@ -45,6 +46,7 @@ export function createAuthorAgent(input: AuthorAgentInput) {
     workspace: input.workspace,
     runId: input.runId,
     persistNotebookEntry: input.persistNotebookEntry,
+    loadRows: input.loadRows,
   };
 
   const authoringCtx: AuthoringToolContext = {

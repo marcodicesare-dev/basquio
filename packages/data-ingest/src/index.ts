@@ -673,12 +673,27 @@ async function streamParseCsv(
   const sheetName = fileName;
   const sheetKey = `${fileId}:${sheetName}`;
 
-  const rows: Record<string, unknown>[] = [];
-  const sampleRows: Record<string, unknown>[] = [];
-  const jsonlChunks: Buffer[] = [];
+  // True streaming: rows flow through gzip transform, never all in memory.
+  // We keep only: head sample (40), reservoir sample (200), tail sample (20),
+  // and per-column running stats for profiling.
+  const headSample: Record<string, unknown>[] = [];
+  const reservoirSample: Record<string, unknown>[] = [];
+  const tailBuffer: Record<string, unknown>[] = []; // ring buffer, last 20
   let rowCount = 0;
+  let headers: string[] | null = null;
 
-  // Parse CSV with csv-parse streaming
+  // Running column stats (single-pass)
+  const colStats = new Map<string, StreamingColumnStats>();
+
+  // Gzip transform: rows are written here and compressed incrementally
+  const gzipChunks: Buffer[] = [];
+  const gzip = createGzip({ level: 6 });
+  gzip.on("data", (chunk: Buffer) => gzipChunks.push(chunk));
+  const gzipDone = new Promise<void>((resolve, reject) => {
+    gzip.on("finish", resolve);
+    gzip.on("error", reject);
+  });
+
   const parser = csvParse({
     columns: true,
     skip_empty_lines: true,
@@ -695,22 +710,52 @@ async function streamParseCsv(
         const normalized = Object.fromEntries(
           Object.entries(record).map(([k, v]) => [k, normalizeCell(v)]),
         );
-        rows.push(normalized);
-        if (sampleRows.length < 260) sampleRows.push(normalized);
-        jsonlChunks.push(Buffer.from(JSON.stringify(normalized) + "\n"));
+
+        if (!headers) headers = Object.keys(normalized);
+
+        // Write to gzip stream (no accumulation)
+        gzip.write(JSON.stringify(normalized) + "\n");
+
+        // Sampling: head 40, reservoir 200, tail 20
+        if (headSample.length < 40) {
+          headSample.push(normalized);
+        } else {
+          // Reservoir sampling for middle rows
+          if (reservoirSample.length < 200) {
+            reservoirSample.push(normalized);
+          } else {
+            const j = Math.floor(Math.random() * (rowCount + 1));
+            if (j < 200) reservoirSample[j] = normalized;
+          }
+        }
+
+        // Tail ring buffer
+        tailBuffer[rowCount % 20] = normalized;
+
+        // Update running column stats
+        updateColumnStats(colStats, normalized);
         rowCount++;
       })
-      .on("end", resolve)
+      .on("end", () => {
+        gzip.end();
+        resolve();
+      })
       .on("error", reject);
   });
 
-  // For files under 50K rows, we keep rows in memory for profiling.
-  // For larger files, we'd need streaming profile computation.
-  const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
-  const columns = headers.map((h) => inferColumn(rows, h));
-  const columnProfile = buildColumnProfile(rows, columns);
+  await gzipDone;
 
-  const blobBuffer = await gzipBuffer(Buffer.concat(jsonlChunks));
+  const finalHeaders = headers ?? [];
+  const columns = finalHeaders.map((h) => buildColumnFromStats(h, colStats.get(h), rowCount));
+  const columnProfile = buildProfileFromStats(colStats, rowCount);
+
+  // Assemble sample: head + reservoir + tail (deduplicated)
+  const tail = rowCount <= 40
+    ? []
+    : Array.from({ length: Math.min(20, rowCount - 40) }, (_, i) =>
+        tailBuffer[(rowCount - Math.min(20, rowCount - 40) + i) % 20],
+      ).filter(Boolean);
+  const sampleRows = [...headSample, ...reservoirSample, ...tail];
 
   return {
     sheetKey,
@@ -719,11 +764,11 @@ async function streamParseCsv(
     sourceFileName: fileName,
     sourceRole: role,
     rowCount,
-    columnCount: headers.length,
+    columnCount: finalHeaders.length,
     columns,
-    sampleRows: buildSmartSample(sampleRows, rows.length),
+    sampleRows,
     columnProfile,
-    blobBuffer,
+    blobBuffer: Buffer.concat(gzipChunks),
   };
 }
 
@@ -748,17 +793,26 @@ async function streamParseXlsx(
     const sheetKey = `${fileId}:${sheetName}`;
 
     let headers: string[] = [];
-    const rows: Record<string, unknown>[] = [];
-    const sampleRows: Record<string, unknown>[] = [];
-    const jsonlChunks: Buffer[] = [];
-    let rowCount = 0;
     let headerDetected = false;
+    let rowCount = 0;
+
+    // True streaming: same pattern as CSV — gzip transform, reservoir sampling, running stats
+    const headSample: Record<string, unknown>[] = [];
+    const reservoirSample: Record<string, unknown>[] = [];
+    const tailBuffer: Record<string, unknown>[] = [];
+    const colStats = new Map<string, StreamingColumnStats>();
+    const gzipChunks: Buffer[] = [];
+    const gzip = createGzip({ level: 6 });
+    gzip.on("data", (chunk: Buffer) => gzipChunks.push(chunk));
+    const gzipDone = new Promise<void>((resolve, reject) => {
+      gzip.on("finish", resolve);
+      gzip.on("error", reject);
+    });
 
     for await (const row of worksheetReader) {
-      const values = (row.values as unknown[])?.slice(1) ?? []; // ExcelJS row.values is 1-indexed
+      const values = (row.values as unknown[])?.slice(1) ?? [];
 
       if (!headerDetected) {
-        // Use first row as headers
         headers = values.map((v, i) => normalizeHeader(v, i));
         headerDetected = true;
         continue;
@@ -771,17 +825,36 @@ async function streamParseXlsx(
         obj[headers[i]] = normalizeCell(values[i]);
       }
 
-      rows.push(obj);
-      if (sampleRows.length < 260) sampleRows.push(obj);
-      jsonlChunks.push(Buffer.from(JSON.stringify(obj) + "\n"));
+      gzip.write(JSON.stringify(obj) + "\n");
+
+      if (headSample.length < 40) {
+        headSample.push(obj);
+      } else {
+        if (reservoirSample.length < 200) {
+          reservoirSample.push(obj);
+        } else {
+          const j = Math.floor(Math.random() * (rowCount + 1));
+          if (j < 200) reservoirSample[j] = obj;
+        }
+      }
+      tailBuffer[rowCount % 20] = obj;
+      updateColumnStats(colStats, obj);
       rowCount++;
     }
 
+    gzip.end();
+    await gzipDone;
+
     if (rowCount === 0 && headers.length === 0) continue;
 
-    const columns = headers.map((h) => inferColumn(rows, h));
-    const columnProfile = buildColumnProfile(rows, columns);
-    const blobBuffer = await gzipBuffer(Buffer.concat(jsonlChunks));
+    const columns = headers.map((h) => buildColumnFromStats(h, colStats.get(h), rowCount));
+    const columnProfile = buildProfileFromStats(colStats, rowCount);
+
+    const tail = rowCount <= 40
+      ? []
+      : Array.from({ length: Math.min(20, rowCount - 40) }, (_, i) =>
+          tailBuffer[(rowCount - Math.min(20, rowCount - 40) + i) % 20],
+        ).filter(Boolean);
 
     manifests.push({
       sheetKey,
@@ -792,9 +865,9 @@ async function streamParseXlsx(
       rowCount,
       columnCount: headers.length,
       columns,
-      sampleRows: buildSmartSample(sampleRows, rows.length),
+      sampleRows: [...headSample, ...reservoirSample, ...tail],
       columnProfile,
-      blobBuffer,
+      blobBuffer: Buffer.concat(gzipChunks),
     });
   }
 
@@ -832,12 +905,20 @@ function parseXlsBuffered(
     const sheetName = workbook.SheetNames.length > 1 ? `${fileName} · ${wsName}` : fileName;
     const sheetKey = `${fileId}:${sheetName}`;
     const columns = headers.map((h) => inferColumn(rows, h));
-    const columnProfile = buildColumnProfile(rows, columns);
+
+    // Build profile from rows (XLS is bounded, in-memory is fine)
+    const colStats = new Map<string, StreamingColumnStats>();
+    for (const row of rows) updateColumnStats(colStats, row);
+    const columnProfile = buildProfileFromStats(colStats, rows.length);
 
     const jsonlData = rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
-    // gzip synchronously for XLS (bounded fallback, small files)
     const { gzipSync } = require("node:zlib") as typeof import("node:zlib");
     const blobBuffer = gzipSync(Buffer.from(jsonlData));
+
+    // Sample: head 40 + tail 20 (XLS files are small)
+    const sampleRows = rows.length <= 260
+      ? rows
+      : [...rows.slice(0, 40), ...rows.slice(-20)];
 
     manifests.push({
       sheetKey,
@@ -848,7 +929,7 @@ function parseXlsBuffered(
       rowCount: rows.length,
       columnCount: headers.length,
       columns,
-      sampleRows: buildSmartSample(rows, rows.length),
+      sampleRows,
       columnProfile,
       blobBuffer,
     });
@@ -857,79 +938,142 @@ function parseXlsBuffered(
   return manifests;
 }
 
-/**
- * Smart sample: head 40 + tail 20 + reservoir 200 random rows
- */
-function buildSmartSample(
-  rows: Record<string, unknown>[],
-  totalRows: number,
-): Record<string, unknown>[] {
-  if (totalRows <= 260) return rows.slice(0, 260);
+// ─── STREAMING COLUMN STATS (single-pass profiling) ───────────────
+// Updated per-row as data flows through. No full-dataset accumulation.
 
-  const head = rows.slice(0, 40);
-  const tail = rows.slice(Math.max(0, rows.length - 20));
-  // Reservoir sample from the middle
-  const middle = rows.slice(40, rows.length - 20);
-  const reservoir: Record<string, unknown>[] = [];
-  for (let i = 0; i < middle.length && reservoir.length < 200; i++) {
-    if (Math.random() < 200 / (i + 1) || reservoir.length < 200) {
-      if (reservoir.length < 200) {
-        reservoir.push(middle[i]);
-      } else {
-        const j = Math.floor(Math.random() * reservoir.length);
-        reservoir[j] = middle[i];
-      }
-    }
-  }
+type StreamingColumnStats = {
+  count: number;
+  nullCount: number;
+  numericSum: number;
+  numericCount: number;
+  numericMin: number;
+  numericMax: number;
+  isAllNumeric: boolean;
+  isAllDate: boolean;
+  isAllBoolean: boolean;
+  valueCounts: Map<string, number>; // capped at 1000 unique values
+  cappedDistinct: boolean;
+};
 
-  return [...head, ...reservoir, ...tail];
+function newColumnStats(): StreamingColumnStats {
+  return {
+    count: 0,
+    nullCount: 0,
+    numericSum: 0,
+    numericCount: 0,
+    numericMin: Infinity,
+    numericMax: -Infinity,
+    isAllNumeric: true,
+    isAllDate: true,
+    isAllBoolean: true,
+    valueCounts: new Map(),
+    cappedDistinct: false,
+  };
 }
 
-function buildColumnProfile(
-  rows: Record<string, unknown>[],
-  columns: ReturnType<typeof inferColumn>[],
+function updateColumnStats(
+  statsMap: Map<string, StreamingColumnStats>,
+  row: Record<string, unknown>,
+): void {
+  for (const [key, value] of Object.entries(row)) {
+    let stats = statsMap.get(key);
+    if (!stats) {
+      stats = newColumnStats();
+      statsMap.set(key, stats);
+    }
+    stats.count++;
+
+    if (value === null || value === undefined || value === "") {
+      stats.nullCount++;
+      continue;
+    }
+
+    const str = String(value);
+
+    // Track value frequency (cap at 1000 unique to bound memory)
+    if (!stats.cappedDistinct) {
+      stats.valueCounts.set(str, (stats.valueCounts.get(str) ?? 0) + 1);
+      if (stats.valueCounts.size > 1000) stats.cappedDistinct = true;
+    } else {
+      // Still increment existing entries
+      const existing = stats.valueCounts.get(str);
+      if (existing !== undefined) stats.valueCounts.set(str, existing + 1);
+    }
+
+    const num = typeof value === "number" ? value : Number(str);
+    if (!isNaN(num) && typeof value === "number") {
+      stats.numericSum += num;
+      stats.numericCount++;
+      if (num < stats.numericMin) stats.numericMin = num;
+      if (num > stats.numericMax) stats.numericMax = num;
+    } else {
+      stats.isAllNumeric = false;
+    }
+
+    if (typeof value !== "boolean") stats.isAllBoolean = false;
+    if (!(typeof value === "string" && !isNaN(Date.parse(value)) && /[-/]/.test(value))) {
+      stats.isAllDate = false;
+    }
+  }
+}
+
+function buildColumnFromStats(
+  name: string,
+  stats: StreamingColumnStats | undefined,
+  totalRows: number,
+): SheetManifest["columns"][number] {
+  if (!stats) {
+    return { name, inferredType: "unknown", role: "unknown", nullable: true, sampleValues: [], uniqueCount: 0, nullRate: 1 };
+  }
+
+  const nonNull = stats.count - stats.nullCount;
+  let inferredType: SheetManifest["columns"][number]["inferredType"] = "string";
+  if (nonNull === 0) inferredType = "unknown";
+  else if (stats.isAllBoolean) inferredType = "boolean";
+  else if (stats.isAllNumeric && stats.numericCount === nonNull) inferredType = "number";
+  else if (stats.isAllDate) inferredType = "date";
+
+  const role = inferRole(name, inferredType);
+  const topEntries = Array.from(stats.valueCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  return {
+    name,
+    inferredType,
+    role,
+    nullable: stats.nullCount > 0,
+    sampleValues: topEntries.slice(0, 10).map(([v]) => v),
+    uniqueCount: stats.valueCounts.size,
+    nullRate: totalRows === 0 ? 0 : stats.nullCount / totalRows,
+  };
+}
+
+function buildProfileFromStats(
+  statsMap: Map<string, StreamingColumnStats>,
+  totalRows: number,
 ): Record<string, ColumnProfile> {
   const profile: Record<string, ColumnProfile> = {};
 
-  for (const col of columns) {
-    const values = rows.map((r) => r[col.name]);
-    const nonNull = values.filter((v) => v !== null && v !== undefined && v !== "");
-    const nullCount = values.length - nonNull.length;
-
-    // Distinct count
-    const strValues = nonNull.map((v) => String(v));
-    const valueCounts = new Map<string, number>();
-    for (const v of strValues) {
-      valueCounts.set(v, (valueCounts.get(v) ?? 0) + 1);
-    }
-    const distinctCount = valueCounts.size;
-
-    // Top values
-    const topValues = Array.from(valueCounts.entries())
+  for (const [name, stats] of statsMap) {
+    const topValues = Array.from(stats.valueCounts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([value, count]) => ({ value, count }));
 
-    const p: ColumnProfile = { nullCount, distinctCount, topValues };
+    const p: ColumnProfile = {
+      nullCount: stats.nullCount,
+      distinctCount: stats.valueCounts.size,
+      topValues,
+    };
 
-    if (col.inferredType === "number") {
-      const nums = nonNull.map(Number).filter((n) => !isNaN(n));
-      if (nums.length > 0) {
-        p.min = Math.min(...nums);
-        p.max = Math.max(...nums);
-        p.mean = nums.reduce((a, b) => a + b, 0) / nums.length;
-      }
+    if (stats.numericCount > 0) {
+      p.min = stats.numericMin;
+      p.max = stats.numericMax;
+      p.mean = stats.numericSum / stats.numericCount;
     }
 
-    if (col.inferredType === "date") {
-      const sorted = strValues.sort();
-      if (sorted.length > 0) {
-        p.min = sorted[0];
-        p.max = sorted[sorted.length - 1];
-      }
-    }
-
-    profile[col.name] = p;
+    profile[name] = p;
   }
 
   return profile;

@@ -24,6 +24,7 @@ export type AnalystAgentInput = {
   runId: string;
   brief: string;
   persistNotebookEntry: ToolContext["persistNotebookEntry"];
+  loadRows?: ToolContext["loadRows"];
   onStepFinish?: (event: {
     stepNumber: number;
     toolCalls: Array<{ toolName: string; toolCallId: string; input: unknown }>;
@@ -39,6 +40,7 @@ export function createAnalystAgent(input: AnalystAgentInput) {
     workspace: input.workspace,
     runId: input.runId,
     persistNotebookEntry: input.persistNotebookEntry,
+    loadRows: input.loadRows,
   };
 
   const provider = input.providerOverride ?? "openai";
