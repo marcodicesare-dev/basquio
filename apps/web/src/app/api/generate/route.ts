@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
 import { GenerationValidationError, inngest } from "@basquio/workflows";
+import { interpretTemplateSource } from "@basquio/template-engine";
 import type { GenerationRequest } from "@basquio/types";
 
 import { getViewerState } from "@/lib/supabase/auth";
@@ -139,6 +140,60 @@ async function queueGeneration(
     throw new Error(`Failed to create deck_runs record: ${errorText}`);
   }
 
+  // Interpret template/style file if provided → extract design tokens
+  let templateProfileId: string | undefined;
+  if (generationRequest.styleFile) {
+    try {
+      const sf = generationRequest.styleFile;
+      const tpId = randomUUID();
+
+      // Get file content: either from base64 or download from Storage
+      let base64 = sf.base64;
+      if (!base64 && sf.storagePath && sf.storageBucket) {
+        const dlResponse = await fetch(
+          `${supabaseUrl}/storage/v1/object/${sf.storageBucket}/${sf.storagePath}`,
+          { headers: { Authorization: `Bearer ${serviceKey}` } },
+        );
+        if (dlResponse.ok) {
+          const buf = Buffer.from(await dlResponse.arrayBuffer());
+          base64 = buf.toString("base64");
+        }
+      }
+
+      if (base64) {
+        const profile = await interpretTemplateSource({
+          id: tpId,
+          sourceFile: {
+            fileName: sf.fileName,
+            base64,
+            mediaType: sf.mediaType ?? "application/octet-stream",
+          },
+          fileName: sf.fileName,
+        });
+
+        // Persist template profile
+        await fetch(`${supabaseUrl}/rest/v1/template_profiles`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            id: tpId,
+            organization_id: workspace.organizationRowId,
+            template_profile: profile,
+          }),
+        });
+
+        templateProfileId = tpId;
+      }
+    } catch {
+      // Template interpretation is best-effort — proceed without it
+    }
+  }
+
   await inngest.send({
     name: "basquio/v2.generation.requested",
     data: {
@@ -146,6 +201,7 @@ async function queueGeneration(
       organizationId: workspace.organizationId,
       projectId: workspace.projectId,
       sourceFileIds,
+      templateProfileId,
       brief: [
         generationRequest.brief.businessContext,
         generationRequest.brief.objective,

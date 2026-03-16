@@ -1060,10 +1060,26 @@ export const basquioV2Generation = inngest.createFunction(
 
       // Render PPTX via native v2 renderer (direct from DeckSpecV2 schema)
       const deckTitle = analysis.summary?.slice(0, 100) ?? slides[0]?.title ?? "Basquio Report";
+      // Map template brand tokens to renderer format if available
+      const tp = workspace.templateProfile;
+      const brandTokenOverrides: Record<string, unknown> | undefined = tp?.brandTokens ? {
+        palette: {
+          ...(tp.brandTokens.palette?.accent ? { accent: tp.brandTokens.palette.accent.replace("#", "") } : {}),
+          ...(tp.brandTokens.palette?.text ? { ink: tp.brandTokens.palette.text.replace("#", "") } : {}),
+          ...(tp.brandTokens.palette?.background ? { bg: tp.brandTokens.palette.background.replace("#", "") } : {}),
+          ...(tp.brandTokens.palette?.surface ? { surface: tp.brandTokens.palette.surface.replace("#", "") } : {}),
+        },
+        typography: {
+          ...(tp.brandTokens.typography?.headingFont ? { headingFont: tp.brandTokens.typography.headingFont } : {}),
+          ...(tp.brandTokens.typography?.bodyFont ? { bodyFont: tp.brandTokens.typography.bodyFont } : {}),
+        },
+      } as Record<string, unknown> : undefined;
+
       const pptxArtifact = await renderV2PptxArtifact({
         deckTitle,
         slides,
         charts: v2ChartRows,
+        brandTokens: brandTokenOverrides as Record<string, unknown> | undefined,
       });
 
       // Convert to v1 SlideSpec format for PDF renderer (still uses v1 schema)
