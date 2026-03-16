@@ -95,6 +95,19 @@ CRITICAL RULES — read these before extracting anything:
    A clean, empty extraction is infinitely better than noisy garbage
    that clutters Linear and makes the system useless.
 
+7. CONSOLIDATE related items. If a conversation covers one topic from
+   multiple angles (e.g. "compliance", "legal", "data security"),
+   that's ONE action item, not five. Merge related concerns into a
+   single well-scoped ticket. Max 2 action items per session.
+
+8. Questions are NOT action items. If someone asks "should we do X?",
+   that's a discussion, not a task — unless the team explicitly agrees
+   to do X and assigns someone. Same for @bot search queries.
+
+9. Observations and opinions are NOT action items. "We're going below
+   cost" or "this is a blocker" are comments, not work to be done —
+   unless someone says "I will research/fix/build X".
+
 From this transcript, extract:
 
 1. SUMMARY: 2-4 sentences. If the conversation was just casual chat,

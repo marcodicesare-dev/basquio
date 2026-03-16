@@ -133,9 +133,15 @@ export async function createIssues(
   if (labelCache.size === 0) await ensureLabels();
   await ensureUserCache();
 
+  // Hard cap: max 2 issues per session to force consolidation
+  const capped = actionItems.slice(0, 2);
+  if (actionItems.length > 2) {
+    console.log(`📎 Capped issues from ${actionItems.length} → 2 (consolidation)`);
+  }
+
   const created: CreatedIssue[] = [];
 
-  for (const item of actionItems) {
+  for (const item of capped) {
     // Deduplication: check for recent similar issues
     const existing = await linear.issues({
       filter: {
@@ -175,15 +181,22 @@ export async function createIssues(
       labelNames.push(assigneeLabelName);
     }
 
-    // Build description
+    // Build description with proper links
+    const sourceLines: string[] = [];
+    if (transcriptUrl && transcriptUrl !== "text-session") {
+      sourceLines.push(`Source: [Transcript](${transcriptUrl})`);
+    }
+    sourceLines.push(
+      `Extracted by Basquio Bot from ${sessionType === "voice" ? "🎙️ voice" : "💬 text"} session`,
+    );
+
     const description = [
       `> "${item.description}"`,
       "",
       `— ${item.assignee}, ${new Date().toLocaleDateString("en-GB")}`,
       "",
       "---",
-      `Source: [Transcript](${transcriptUrl})`,
-      `Extracted by Basquio Bot from ${sessionType} session`,
+      ...sourceLines,
     ].join("\n");
 
     // Map priority

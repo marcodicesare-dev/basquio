@@ -122,8 +122,10 @@ export async function postSessionSummary(opts: {
     lines.push("");
   }
 
-  // Transcript link
-  lines.push(`Full transcript → ${opts.transcriptUrl}`);
+  // Transcript link (only show for voice sessions with real audio URLs)
+  if (opts.transcriptUrl && !opts.transcriptUrl.includes("rest/v1/transcripts")) {
+    lines.push(`Full transcript → ${opts.transcriptUrl}`);
+  }
 
   const content = lines.join("\n");
 
