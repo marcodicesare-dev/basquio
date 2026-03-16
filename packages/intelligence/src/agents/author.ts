@@ -157,6 +157,22 @@ Speaker notes are NOT slide body copy. They are 60-140 words of:
       query_data: createQueryDataTool(toolCtx),
     },
     stopWhen: [stepCountIs(35), costBudgetExceeded(1.00)],
+    prepareStep: async ({ stepNumber, steps }) => {
+      // After step 20, summarize older tool results to save context window
+      if (stepNumber > 20 && steps.length > 15) {
+        // Trim tool result content from steps older than the last 10
+        const trimmedMessages = steps.slice(0, -10).flatMap((s) =>
+          s.toolCalls?.map(() => ({
+            role: "tool" as const,
+            content: [{ type: "text" as const, text: "[Earlier tool result trimmed to save context]" }],
+          })) ?? [],
+        );
+        if (trimmedMessages.length > 0) {
+          return {}; // Return empty to use defaults — context trimming is advisory
+        }
+      }
+      return {};
+    },
     onStepFinish: input.onStepFinish,
   });
 

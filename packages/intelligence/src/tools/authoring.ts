@@ -270,7 +270,7 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
     description:
       "Create a chart from data. Returns a chart ID. The chart must have at least 3 data rows and at least 1 series column with numeric data. Use the chart ID in write_slide.",
     inputSchema: z.object({
-      type: z.enum(["bar", "line", "pie", "scatter", "waterfall", "stacked_bar", "table"]),
+      type: z.enum(["bar", "line", "pie", "doughnut", "scatter", "waterfall", "stacked_bar", "table"]),
       title: z.string().min(5).describe("Descriptive chart title"),
       intent: z.enum(["rank", "trend", "composition", "bridge", "correlation", "comparison", "detail"])
         .describe("What analytical story does this chart tell?"),

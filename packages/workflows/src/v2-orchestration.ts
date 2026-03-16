@@ -204,6 +204,25 @@ async function deleteRunSlides(runId: string) {
   }
 }
 
+async function deleteRunCharts(runId: string) {
+  assertUuid(runId, "runId");
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_charts?run_id=eq.${runId}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        Prefer: "return=minimal",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete charts for run ${runId}: ${response.statusText}`);
+  }
+}
+
 async function persistSlide(runId: string, slide: {
   position: number;
   layoutId: string;
@@ -805,6 +824,99 @@ export const basquioV2Generation = inngest.createFunction(
       return result;
     });
 
+    // ─── STEP 2.5: PLAN DECK (deterministic + model) ───────────
+    const deckPlan = await step.run("plan-deck", async () => {
+      await emitRunEvent(runId, "author", "plan_started");
+
+      // Determine slide count from brief or default
+      const requestedSlideMatch = brief.match(/(\d+)\s*slide/i);
+      const requestedSlides = requestedSlideMatch ? parseInt(requestedSlideMatch[1], 10) : undefined;
+      const targetSlides = requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 20);
+
+      // Build slide plan based on target count
+      const plan: Array<{
+        position: number;
+        role: string;
+        suggestedLayout: string;
+        suggestedTitle: string;
+        requiredContent: string[];
+      }> = [];
+
+      // Cover
+      plan.push({
+        position: 1,
+        role: "cover",
+        suggestedLayout: "cover",
+        suggestedTitle: `${analysis.domain}: ${analysis.summary?.slice(0, 60) ?? "Strategic Analysis"}`,
+        requiredContent: ["title", "subtitle"],
+      });
+
+      // Exec summary (if > 5 slides)
+      if (targetSlides > 5) {
+        plan.push({
+          position: 2,
+          role: "exec-summary",
+          suggestedLayout: "metrics",
+          suggestedTitle: "Executive Summary: 3-4 key findings with KPIs",
+          requiredContent: ["metrics", "body"],
+        });
+      }
+
+      // Evidence slides — allocate based on top findings
+      const evidenceCount = Math.max(3, Math.min(targetSlides - 4, analysis.topFindings.length));
+      for (let i = 0; i < evidenceCount; i++) {
+        const finding = analysis.topFindings[i];
+        const layouts = ["title-chart", "chart-split", "evidence-grid", "title-chart", "chart-split"];
+        plan.push({
+          position: plan.length + 1,
+          role: "evidence",
+          suggestedLayout: layouts[i % layouts.length],
+          suggestedTitle: finding?.claim ?? `Evidence slide ${i + 1}`,
+          requiredContent: ["chart", "body", "evidenceIds"],
+        });
+      }
+
+      // Implications slide (if room)
+      if (targetSlides > evidenceCount + 4) {
+        plan.push({
+          position: plan.length + 1,
+          role: "implication",
+          suggestedLayout: "title-bullets",
+          suggestedTitle: "Strategic Implications",
+          requiredContent: ["bullets", "body"],
+        });
+      }
+
+      // Recommendation
+      plan.push({
+        position: plan.length + 1,
+        role: "recommendation",
+        suggestedLayout: "title-body",
+        suggestedTitle: "Recommended Actions",
+        requiredContent: ["body", "bullets"],
+      });
+
+      // Summary
+      plan.push({
+        position: plan.length + 1,
+        role: "summary",
+        suggestedLayout: "summary",
+        suggestedTitle: "Strategic Synthesis",
+        requiredContent: ["body", "callout"],
+      });
+
+      return {
+        targetSlides,
+        requestedSlides,
+        slideCount: plan.length,
+        plan,
+        layoutDistribution: plan.reduce((acc, s) => {
+          acc[s.suggestedLayout] = (acc[s.suggestedLayout] ?? 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+      };
+    });
+
     // ─── STEP 3: AUTHOR (agentic) ──────────────────────────────
     let deckSummary = await step.run("author", async () => {
       await updateRunStatus(runId, "running", "author");
@@ -816,7 +928,7 @@ export const basquioV2Generation = inngest.createFunction(
         workspace,
         runId,
         analysis,
-        brief,
+        brief: `${brief}\n\nDECK PLAN (follow this structure):\nTarget: ${deckPlan.targetSlides} slides\n${deckPlan.plan.map((s) => `Slide ${s.position}: [${s.role}] ${s.suggestedLayout} — "${s.suggestedTitle}" (requires: ${s.requiredContent.join(", ")})`).join("\n")}`,
         loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
           return persistNotebookEntry(runId, "author", Date.now(), entry);
@@ -958,6 +1070,7 @@ export const basquioV2Generation = inngest.createFunction(
 
         // Delete existing slides to avoid position collisions
         await deleteRunSlides(runId);
+        await deleteRunCharts(runId);
 
         // workspace has metadata; tools use loadSheetRows for on-demand data access
         tracker.startPhase("revise", "claude-opus-4-6", "anthropic");
@@ -1184,32 +1297,36 @@ export const basquioV2Generation = inngest.createFunction(
         brandTokens: brandTokenOverrides as Record<string, unknown> | undefined,
       });
 
-      // Convert to v1 SlideSpec format for PDF renderer (still uses v1 schema)
-      const slideSpecs = slides.map((s) => ({
-        id: s.id,
-        purpose: s.title ?? "",
-        section: "",
-        emphasis: s.position === 1 ? "cover" as const : "content" as const,
-        layoutId: s.layoutId ?? "summary",
-        title: s.title,
-        subtitle: s.subtitle,
-        blocks: buildSlideBlocks(s),
-        claimIds: [] as string[],
-        evidenceIds: s.evidenceIds ?? [],
-        speakerNotes: s.speakerNotes ?? "",
-        transition: s.transition ?? "",
-      }));
-      // PDF rendering is best-effort — only attempt if template profile exists
-      // The v1 PDF renderer requires a full TemplateProfile which is complex to mock
+      // Unified PDF rendering via Browserless — same slide data as PPTX
       let pdfArtifact: { fileName: string; mimeType: string; buffer: Buffer | { data: number[] } } | null = null;
-      if (workspace.templateProfile) {
+      const browserlessToken = process.env.BROWSERLESS_TOKEN;
+      const browserlessUrl = process.env.BROWSERLESS_URL ?? "https://production-sfo.browserless.io";
+      if (browserlessToken) {
         try {
-          pdfArtifact = await renderPdfArtifact({
-            deckTitle: deckTitle,
-            slidePlan: slideSpecs,
-            charts,
-            templateProfile: workspace.templateProfile,
+          const html = renderSlidesToHtml(slides, v2ChartRows, deckTitle);
+          const pdfResp = await fetch(`${browserlessUrl}/pdf?token=${browserlessToken}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              html,
+              options: {
+                printBackground: true,
+                landscape: true,
+                width: "960px",
+                height: "540px",
+                margin: { top: "0", right: "0", bottom: "0", left: "0" },
+              },
+              gotoOptions: { waitUntil: "networkidle2", timeout: 30000 },
+            }),
           });
+          if (pdfResp.ok) {
+            const pdfBuffer = Buffer.from(await pdfResp.arrayBuffer());
+            pdfArtifact = {
+              fileName: `${deckTitle.replace(/[^a-zA-Z0-9 -]/g, "").slice(0, 50)}.pdf`,
+              mimeType: "application/pdf",
+              buffer: pdfBuffer,
+            };
+          }
         } catch {
           // PDF rendering is best-effort; PPTX is the primary artifact
         }
@@ -1394,6 +1511,96 @@ export const basquioV2Generation = inngest.createFunction(
     }
   },
 );
+
+// ─── HTML RENDERER FOR UNIFIED PDF ────────────────────────────────
+
+type V2ChartRowForPdf = { id: string; chartType: string; title: string; data: Record<string, unknown>[]; xAxis: string; series: string[] };
+
+function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deckTitle: string): string {
+  const chartMap = new Map<string, V2ChartRowForPdf>();
+  for (const c of charts) chartMap.set(c.id, c);
+
+  function esc(t: string): string {
+    return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\\n/g, "\n").replace(/\n/g, "<br/>");
+  }
+
+  const pages = slides.map((s) => {
+    const isCover = s.layoutId === "cover";
+    const chart = s.chartId ? chartMap.get(s.chartId) : null;
+
+    // Metrics
+    let metricsHtml = "";
+    if (s.metrics?.length) {
+      metricsHtml = `<div style="display:flex;gap:8px;margin-bottom:8px;">${s.metrics.map((m) => `
+        <div style="flex:1;border-left:3px solid #0F4C81;padding:4px 8px;">
+          <div style="font-size:7px;color:#4B5563;text-transform:uppercase;font-weight:700;">${esc(m.label)}</div>
+          <div style="font-size:20px;font-weight:700;color:#111827;">${esc(m.value)}</div>
+          ${m.delta ? `<div style="font-size:7px;font-weight:700;color:${m.delta.startsWith("+") || m.delta.includes("↑") ? "#1F7A4D" : "#B42318"};">${esc(m.delta)}</div>` : ""}
+        </div>`).join("")}</div>`;
+    }
+
+    // Chart image via QuickChart
+    let chartHtml = "";
+    if (chart && chart.chartType !== "table" && chart.data?.length > 0 && chart.series?.length > 0) {
+      const pal = ["#0F4C81", "#D1D5DB", "#1F7A4D", "#B42318", "#C97A00", "#6B21A8"];
+      let type = chart.chartType === "stacked_bar" || chart.chartType === "waterfall" ? "bar" : chart.chartType;
+      const isHoriz = chart.chartType === "bar";
+      const labels = chart.data.map((r) => String(r[chart.xAxis] ?? "").substring(0, 20));
+      const datasets = chart.series.map((ser, i) => ({
+        label: ser,
+        data: chart.data.map((r) => Number(r[ser]) || 0),
+        backgroundColor: type === "pie" || type === "doughnut" ? pal : pal[i % 6],
+        borderWidth: type === "line" ? 2 : 0,
+        fill: false,
+      }));
+      const cfg = JSON.stringify({
+        type,
+        data: { labels, datasets },
+        options: {
+          indexAxis: isHoriz ? "y" : "x",
+          plugins: { legend: { display: chart.series.length > 1, position: "bottom" }, title: { display: false } },
+          scales: type === "pie" || type === "doughnut" ? undefined : {
+            x: { grid: { display: !isHoriz, color: "#E5E7EB" }, ticks: { font: { size: 8 } } },
+            y: { grid: { display: isHoriz, color: "#E5E7EB" }, ticks: { font: { size: 8 } } },
+          },
+        },
+      });
+      chartHtml = `<img src="https://quickchart.io/chart?c=${encodeURIComponent(cfg)}&w=440&h=260&bkg=white&f=png" style="max-width:100%;max-height:240px;"/>`;
+    }
+
+    // Body + bullets
+    const bodyHtml = s.body ? `<div style="font-size:9px;color:#111827;line-height:1.4;">${esc(s.body)}</div>` : "";
+    const bulletsHtml = s.bullets?.length ? `<ul style="font-size:9px;color:#111827;line-height:1.4;padding-left:14px;margin:4px 0;">${s.bullets.slice(0, 5).map((b) => `<li style="margin-bottom:3px;">${esc(b)}</li>`).join("")}</ul>` : "";
+
+    // Layout-dependent content
+    let content = "";
+    const layout = s.layoutId ?? "title-body";
+    if (isCover) {
+      content = "";
+    } else if (layout === "chart-split" || layout === "two-column") {
+      content = `${metricsHtml}<div style="display:flex;gap:12px;flex:1;min-height:0;"><div style="flex:0 0 55%;">${chartHtml}</div><div style="flex:1;">${bulletsHtml || bodyHtml}</div></div>`;
+    } else if (layout === "evidence-grid") {
+      content = `${metricsHtml}<div style="display:flex;gap:12px;flex:1;min-height:0;"><div style="flex:0 0 55%;">${chartHtml}</div><div style="flex:1;">${bulletsHtml || bodyHtml}</div></div>`;
+    } else if (layout === "title-chart") {
+      content = chartHtml;
+    } else if (layout === "summary") {
+      content = `${bodyHtml}${bulletsHtml ? `<div style="background:#DCEAF7;border-left:3px solid #0F4C81;padding:8px 12px;margin-top:8px;">${bulletsHtml}</div>` : ""}`;
+    } else {
+      content = `${metricsHtml}${bodyHtml}${bulletsHtml}${chartHtml}`;
+    }
+
+    return `<div style="width:960px;height:540px;background:${isCover ? "#1B2541" : "#fff"};box-sizing:border-box;position:relative;page-break-after:always;font-family:Arial,sans-serif;display:flex;flex-direction:column;${isCover ? "padding:100px 52px;justify-content:center;" : "padding:20px 52px 50px 52px;"}">
+      ${!isCover ? '<div style="position:absolute;top:0;left:0;right:0;height:4px;background:#0F4C81;"></div>' : ""}
+      <div style="font-size:${isCover ? "28px" : "18px"};font-weight:700;color:${isCover ? "#fff" : "#111827"};line-height:1.2;margin-bottom:${isCover ? "12px" : "4px"};flex-shrink:0;">${esc(s.title ?? "")}</div>
+      ${s.subtitle ? `<div style="font-size:12px;color:${isCover ? "rgba(255,255,255,0.7)" : "#4B5563"};margin-bottom:8px;flex-shrink:0;">${esc(s.subtitle)}</div>` : ""}
+      ${!isCover ? '<div style="border-top:1px solid #D1D5DB;margin-bottom:6px;flex-shrink:0;"></div>' : ""}
+      <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;">${content}</div>
+      ${!isCover ? `<div style="position:absolute;bottom:0;left:0;right:0;height:36px;background:#1B2541;display:flex;align-items:center;padding:0 52px;"><div style="font-size:7px;color:#fff;font-style:italic;flex:1;">Source: Company data analysis | ${esc(deckTitle)}</div><div style="font-size:7px;color:#9CA3AF;">${s.position} / ${slides.length}</div></div>` : ""}
+    </div>`;
+  });
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>@page{size:960px 540px;margin:0}body{margin:0;padding:0}img{display:block}</style></head><body>${pages.join("\n")}</body></html>`;
+}
 
 // ─── SLIDE BLOCK BUILDER ──────────────────────────────────────────
 // Converts DeckSpecV2 slide row data to SlideSpec blocks for existing renderers

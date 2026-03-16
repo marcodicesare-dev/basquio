@@ -23,8 +23,11 @@
     "supabase:lint": "supabase db lint --local"
   },
   "dependencies": {
+    "@types/pdf-parse": "^1.1.5",
     "csv-parse": "^6.1.0",
     "exceljs": "^4.4.0",
+    "jszip": "^3.10.1",
+    "pdf-parse": "^1.1.4",
     "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },

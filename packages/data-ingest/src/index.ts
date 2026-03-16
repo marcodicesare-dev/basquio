@@ -5,6 +5,7 @@ import { createGzip } from "node:zlib";
 import { parse as csvParse } from "csv-parse";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
+import pdfParse from "pdf-parse";
 import { inferSourceFileKind } from "@basquio/core";
 import { read, utils } from "xlsx";
 
@@ -247,7 +248,7 @@ async function extractSupportText(
   kind: ReturnType<typeof inferSourceFileKind>,
   buffer: Buffer,
 ) {
-  if (kind !== "document" && kind !== "brand-tokens") {
+  if (kind !== "document" && kind !== "brand-tokens" && kind !== "pdf" && kind !== "pptx") {
     return undefined;
   }
 
@@ -279,9 +280,55 @@ async function extractSupportText(
   }
 
   if (normalized.endsWith(".doc")) {
-    // Legacy .doc format — mammoth does not support it.
-    // Return a warning instead of silently failing.
     return `[Basquio warning: .doc format not supported. Please convert "${fileName}" to .docx for full text extraction.]`;
+  }
+
+  // PDF text extraction via pdf-parse
+  if (normalized.endsWith(".pdf")) {
+    try {
+      const pdfData = await pdfParse(buffer, { max: 100 }); // max 100 pages
+      const text = pdfData.text?.trim();
+      if (text && text.length > 20) {
+        return text;
+      }
+      return `[PDF "${fileName}" parsed but contained no readable text — may be image-only or scanned.]`;
+    } catch {
+      return `[PDF "${fileName}" could not be parsed — may be encrypted or corrupted.]`;
+    }
+  }
+
+  // PPTX content extraction (slide text + notes)
+  if (normalized.endsWith(".pptx")) {
+    try {
+      const JSZip = (await import("jszip")).default;
+      const zip = await JSZip.loadAsync(buffer);
+      const slideTexts: string[] = [];
+
+      // Extract text from each slide
+      const slideEntries = Object.keys(zip.files)
+        .filter((f: string) => /^ppt\/slides\/slide\d+\.xml$/i.test(f))
+        .sort();
+
+      for (const entry of slideEntries) {
+        const xml = await zip.files[entry].async("text");
+        // Extract text from <a:t> elements
+        const texts = (xml.match(/<a:t>([^<]*)<\/a:t>/g) ?? []) as string[];
+        const slideText = texts
+          .map((t: string) => t.replace(/<\/?a:t>/g, "").trim())
+          .filter((t: string) => t.length > 0)
+          .join(" ");
+        if (slideText) {
+          const slideNum = entry.match(/slide(\d+)/)?.[1] ?? "?";
+          slideTexts.push(`[Slide ${slideNum}] ${slideText}`);
+        }
+      }
+
+      return slideTexts.length > 0
+        ? slideTexts.join("\n\n")
+        : `[PPTX "${fileName}" contained no readable text.]`;
+    } catch {
+      return `[PPTX "${fileName}" could not be parsed.]`;
+    }
   }
 
   if (canDecodeAsText(fileName, kind)) {
