@@ -211,24 +211,36 @@ async function flushBuffer(): Promise<void> {
 
     const transcriptUrl = "text-session"; // No audio URL for text
 
-    const [transcriptId, issues] = await Promise.all([
-      saveTranscript({
-        sessionType: "text",
-        startedAt,
-        endedAt,
-        participants,
-        rawTranscript: transcript,
-        extraction,
-      }),
-      createIssues(extraction.action_items, transcriptUrl, "text"),
-    ]);
+    // Save transcript first — always
+    const transcriptId = await saveTranscript({
+      sessionType: "text",
+      startedAt,
+      endedAt,
+      participants,
+      rawTranscript: transcript,
+      extraction,
+    });
 
-    await saveDecisions(extraction.decisions, transcriptId);
+    // Only create issues if extraction found genuinely actionable items
+    let issues: Awaited<ReturnType<typeof createIssues>> = [];
+    if (extraction.action_items.length > 0) {
+      try {
+        issues = await createIssues(extraction.action_items, transcriptUrl, "text");
+      } catch (err) {
+        console.error("⚠️ Issue creation failed (continuing pipeline):", err);
+      }
+    }
+
+    if (extraction.decisions.length > 0) {
+      await saveDecisions(extraction.decisions, transcriptId);
+    }
 
     const crmUpdates: string[] = [];
-    for (const mention of extraction.sales_mentions) {
-      await upsertLead(mention, transcriptId);
-      crmUpdates.push(`${mention.company} — ${mention.status}`);
+    if (extraction.sales_mentions.length > 0) {
+      for (const mention of extraction.sales_mentions) {
+        await upsertLead(mention, transcriptId);
+        crmUpdates.push(`${mention.company} — ${mention.status}`);
+      }
     }
 
     const duration = formatDuration(endedAt.getTime() - startedAt.getTime());

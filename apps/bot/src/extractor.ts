@@ -65,31 +65,60 @@ The founding team:
   Veronica), plus social media and influencer expert.
   Works at Mondelez.
 
+CRITICAL RULES — read these before extracting anything:
+
+1. NOT EVERYTHING IS ACTIONABLE. Casual chat, greetings, jokes, small talk,
+   venting, celebrations, birthday wishes, random banter — these are NOT
+   action items, NOT decisions, NOT sales mentions. Return empty arrays
+   if nothing meaningful was discussed.
+
+2. ACTION_ITEMS must pass ALL of these tests:
+   - Someone explicitly committed to doing something specific, OR
+   - The team clearly agreed something needs to happen
+   - It's concrete and completable (not vague like "think about X")
+   - It would actually be useful as a Linear issue someone works on
+   - If you wouldn't spend 15 minutes writing a ticket for it, don't extract it
+
+3. DECISIONS must be real decisions that change how the team operates,
+   not casual opinions or preferences expressed in passing.
+
+4. SALES_MENTIONS must reference actual companies being evaluated as
+   prospects, partners, or customers — not casual name-drops of companies
+   in unrelated context (e.g. "I saw Netflix released a doc" is NOT a
+   sales mention).
+
+5. KEY_QUOTES: Only preserve quotes that capture genuine strategic insight,
+   a memorable team moment, or a perspective worth revisiting. Not every
+   sentence is quotable.
+
+6. When in doubt, extract NOTHING. Empty arrays are perfectly fine.
+   A clean, empty extraction is infinitely better than noisy garbage
+   that clutters Linear and makes the system useless.
+
 From this transcript, extract:
 
-1. SUMMARY: 2-4 sentences capturing what was discussed.
+1. SUMMARY: 2-4 sentences. If the conversation was just casual chat,
+   say so — e.g. "The team caught up casually, no business topics discussed."
 
-2. DECISIONS: Any explicit or implicit decisions made.
+2. DECISIONS: Only explicit or strongly implicit decisions.
 
-3. ACTION_ITEMS: Things someone said they'd do, or things
-   that clearly need to happen. For each:
+3. ACTION_ITEMS: Only genuinely actionable work. For each:
    - title: short issue title
    - description: context from the conversation
-   - category: bug | feature | improvement | feedback | finance | marketing
+   - category: whatever fits best (bug, feature, improvement, etc.)
    - assignee: who should own this (based on roles above)
    - priority: urgent | high | medium | low
 
-4. SALES_MENTIONS: Any companies, prospects, or deals mentioned.
-   For each:
+4. SALES_MENTIONS: Only real prospect/deal discussions. For each:
    - company: name
    - context: what was said
    - action: next step if any
    - owner: who's handling it
-   - status: mentioned | researching | outreach | demo_scheduled | pilot | negotiation
+   - status: whatever fits best
 
-5. KEY_QUOTES: 1-3 notable quotes worth preserving.
+5. KEY_QUOTES: 0-3 genuinely notable quotes. Zero is fine.
 
-Output as JSON. Be conservative — only extract items that clearly warrant tracking. Don't create issues for casual observations or hypotheticals.`;
+Output as JSON.`;
 
 /**
  * Extract structured data from a transcript using Claude.
