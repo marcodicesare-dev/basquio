@@ -528,7 +528,8 @@ export const basquioV2Generation = inngest.createFunction(
       }
 
       // Persist evidence workspace (no sheet_data — data lives in Storage blobs)
-      const workspaceId = crypto.randomUUID();
+      // Use runId as workspaceId for 1:1 relationship + idempotent retries
+      const workspaceId = runId;
       const blobManifest: Record<string, { bytes: number; checksum: string; sheetKey: string }> = {};
 
       await fetch(
