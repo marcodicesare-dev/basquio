@@ -93,14 +93,20 @@ export async function search(query: string): Promise<SearchResult> {
       metadata: chunk.metadata,
     });
 
-    contextParts.push(`[${i + 1}] (${chunk.source_type}: ${sourceName}) ${chunk.content}`);
+    const typeLabel = chunk.source_type === "document" ? "uploaded doc" : "voice/text transcript";
+    contextParts.push(`[${i + 1}] (${typeLabel}: ${sourceName}) ${chunk.content}`);
   }
 
   // 4. Synthesize with Claude
   const synthesis = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
-    system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks. Cite sources by [number]. If the context doesn't contain enough info, say so — never make things up. Keep answers concise (2-5 sentences) unless the question demands detail.`,
+    system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks. Cite sources by [number]. If the context doesn't contain enough info, say so — never make things up. Keep answers concise (2-5 sentences) unless the question demands detail.
+
+Important:
+- Each source is labeled as "uploaded doc" or "voice/text transcript". Treat them as distinct — an uploaded screenshot about a person is different from a voice session where a similarly-named team member participated.
+- Do NOT conflate people who share a name. A document mentioning "Francesco Lama" is not the same person as a team member called "Francesco" in a voice session, unless the content explicitly links them.
+- Prioritize uploaded docs when the question is about specific names, leads, or external contacts.`,
     messages: [{
       role: "user",
       content: `Question: ${query}\n\nContext:\n${contextParts.join("\n\n")}`,
@@ -129,7 +135,7 @@ export function formatSearchEmbed(query: string, result: SearchResult): EmbedBui
   const color = result.confidence === "high" ? 0x22c55e : result.confidence === "medium" ? 0xeab308 : 0xef4444;
 
   const embed = new EmbedBuilder()
-    .setTitle(`🔍 ${query.slice(0, 200)}`)
+    .setTitle(`🔍 ${query.replace(/<@[!&]?\d+>/g, "").trim().slice(0, 200)}`)
     .setDescription(result.answer)
     .setColor(color);
 
