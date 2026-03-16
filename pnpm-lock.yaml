@@ -261,6 +261,9 @@ importers:
 
   packages/workflows:
     dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.41
+        version: 3.0.41(zod@3.25.76)
       '@basquio/core':
         specifier: workspace:*
         version: link:../core
@@ -285,6 +288,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.49.4
         version: 2.99.1
+      ai:
+        specifier: ^6.0.116
+        version: 6.0.116(zod@3.25.76)
       inngest:
         specifier: ^3.31.0
         version: 3.52.6(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(next@15.5.12(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(typescript@5.9.3)(zod@3.25.76)
@@ -294,6 +300,9 @@ importers:
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
 packages:
 

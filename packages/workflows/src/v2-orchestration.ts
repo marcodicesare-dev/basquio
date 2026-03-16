@@ -1,3 +1,6 @@
+import { openai } from "@ai-sdk/openai";
+import { generateText, Output } from "ai";
+import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, type SheetManifest } from "@basquio/data-ingest";
 import { runAnalystAgent, runAuthorAgent, runCriticAgent } from "@basquio/intelligence";
 import { renderPdfArtifact } from "@basquio/render-pdf";
@@ -824,7 +827,8 @@ export const basquioV2Generation = inngest.createFunction(
       return result;
     });
 
-    // ─── STEP 2.5: PLAN DECK (deterministic + model) ───────────
+    // ─── STEP 2.5: PLAN DECK (model-driven) ────────────────────
+    type DeckPlanSlide = { position: number; role: string; layout: string; title: string; chartType: string; requiredContent: string[] };
     const deckPlan = await step.run("plan-deck", async () => {
       await emitRunEvent(runId, "author", "plan_started");
 
@@ -833,102 +837,72 @@ export const basquioV2Generation = inngest.createFunction(
       const requestedSlides = requestedSlideMatch ? parseInt(requestedSlideMatch[1], 10) : undefined;
       const targetSlides = requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 20);
 
-      // Build slide plan based on target count
-      const plan: Array<{
-        position: number;
-        role: string;
-        suggestedLayout: string;
-        suggestedTitle: string;
-        requiredContent: string[];
-        chartHint?: string;
-      }> = [];
+      const findingsSummary = analysis.topFindings
+        .map((f, i) => `${i + 1}. ${f.title}: ${f.claim} (confidence: ${f.confidence})`)
+        .join("\n");
 
-      // Cover
-      plan.push({
-        position: 1,
-        role: "cover",
-        suggestedLayout: "cover",
-        suggestedTitle: `${analysis.domain}: ${analysis.summary?.slice(0, 60) ?? "Strategic Analysis"}`,
-        requiredContent: ["title", "subtitle"],
+      // Schema for model-driven deck plan — all fields required for OpenAI strict mode
+      const deckPlanSchema = z.object({
+        slides: z.array(z.object({
+          position: z.number(),
+          role: z.string(),
+          layout: z.string(),
+          title: z.string(),
+          chartType: z.string(),
+          requiredContent: z.array(z.string()),
+        })),
       });
 
-      // Exec summary (if > 5 slides)
-      if (targetSlides > 5) {
-        plan.push({
-          position: 2,
-          role: "exec-summary",
-          suggestedLayout: "metrics",
-          suggestedTitle: "Executive Summary: 3-4 key findings with KPIs",
-          requiredContent: ["metrics", "body"],
-        });
-      }
+      const planResult = await generateText({
+        model: openai("gpt-5.4"),
+        output: Output.object({ schema: deckPlanSchema }),
+        prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation.
 
-      // Evidence slides — allocate based on top findings with model-suggested claims
-      const evidenceCount = Math.max(3, Math.min(targetSlides - 4, analysis.topFindings.length));
-      for (let i = 0; i < evidenceCount; i++) {
-        const finding = analysis.topFindings[i];
-        // Cycle through diverse layouts — never use the same one 3x in a row
-        const layoutPool = ["title-chart", "chart-split", "chart-split", "title-chart", "evidence-grid"];
-        const suggestedLayout = layoutPool[i % layoutPool.length];
-        // Use the finding's claim as the suggested title — model refines during authoring
-        const suggestedTitle = finding?.claim
-          ? finding.claim.length > 80 ? finding.claim.slice(0, 77) + "..." : finding.claim
-          : `Key insight ${i + 1} from data analysis`;
-        // Determine required chart type from finding context
-        const chartHint = finding?.title?.toLowerCase().includes("share") ? "pie"
-          : finding?.title?.toLowerCase().includes("trend") ? "line"
-          : finding?.title?.toLowerCase().includes("rank") ? "bar (horizontal, sorted)"
-          : "chart";
-        plan.push({
-          position: plan.length + 1,
-          role: "evidence",
-          suggestedLayout,
-          suggestedTitle,
-          requiredContent: ["chart", "body", "evidenceIds"],
-          chartHint,
-        } as typeof plan[number]);
-      }
+BRIEF:
+${brief}
 
-      // Implications slide (if room)
-      if (targetSlides > evidenceCount + 4) {
-        plan.push({
-          position: plan.length + 1,
-          role: "implication",
-          suggestedLayout: "title-bullets",
-          suggestedTitle: "Strategic Implications",
-          requiredContent: ["bullets", "body"],
-        });
-      }
+ANALYSIS DOMAIN: ${analysis.domain}
+ANALYSIS SUMMARY: ${analysis.summary}
 
-      // Recommendation
-      plan.push({
-        position: plan.length + 1,
-        role: "recommendation",
-        suggestedLayout: "title-body",
-        suggestedTitle: "Recommended Actions",
-        requiredContent: ["body", "bullets"],
+KEY FINDINGS:
+${findingsSummary}
+
+AVAILABLE LAYOUTS: cover, exec-summary (metrics), title-chart, chart-split, title-body, title-bullets, evidence-grid, table, summary
+
+CHART TYPES: bar (horizontal sorted for rankings), line (trends), pie (composition, max 5 slices), scatter (correlations), waterfall (bridges), stacked_bar (part-to-whole), table (exact numbers)
+
+RULES:
+1. First slide MUST be "cover" layout
+2. If >5 slides, slide 2 should be exec-summary with 3-4 KPI metrics
+3. Evidence slides use title-chart or chart-split — pick chart type based on the analytical story
+4. Last slide should be "summary" layout
+5. Use at least 3 different layouts — no layout >50% of slides
+6. Every title must be an action title (full sentence stating the takeaway, with a number)
+7. Exactly ${targetSlides} slides
+
+Return the deck plan.`,
       });
 
-      // Summary
-      plan.push({
-        position: plan.length + 1,
-        role: "summary",
-        suggestedLayout: "summary",
-        suggestedTitle: "Strategic Synthesis",
-        requiredContent: ["body", "callout"],
-      });
+      if (!planResult.output) {
+        // Fallback: deterministic plan if model fails
+        const fallbackPlan = Array.from({ length: targetSlides }, (_, i) => ({
+          position: i + 1,
+          role: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : "evidence",
+          layout: i === 0 ? "cover" : i === 1 ? "metrics" : i === targetSlides - 1 ? "summary" : i % 2 === 0 ? "title-chart" : "chart-split",
+          title: i === 0 ? `${analysis.domain} Analysis` : analysis.topFindings[i - 2]?.claim ?? `Slide ${i + 1}`,
+          chartType: "bar",
+          requiredContent: i === 0 ? ["title"] : ["chart", "body", "evidenceIds"],
+        }));
+        return { targetSlides, requestedSlides, slideCount: fallbackPlan.length, plan: fallbackPlan as DeckPlanSlide[] };
+      }
 
       return {
         targetSlides,
         requestedSlides,
-        slideCount: plan.length,
-        plan,
-        layoutDistribution: plan.reduce((acc, s) => {
-          acc[s.suggestedLayout] = (acc[s.suggestedLayout] ?? 0) + 1;
-          return acc;
-        }, {} as Record<string, number>),
+        slideCount: planResult.output.slides.length,
+        plan: planResult.output.slides as DeckPlanSlide[],
       };
-    });
+    }) as { targetSlides: number; requestedSlides?: number; slideCount: number; plan: DeckPlanSlide[] };
 
     // ─── STEP 3: AUTHOR (agentic) ──────────────────────────────
     let deckSummary = await step.run("author", async () => {
@@ -941,7 +915,7 @@ export const basquioV2Generation = inngest.createFunction(
         workspace,
         runId,
         analysis,
-        brief: `${brief}\n\nDECK PLAN (follow this structure — the model planned this based on the analysis):\nTarget: ${deckPlan.targetSlides} slides\n${deckPlan.plan.map((s) => `Slide ${s.position}: [${s.role}] ${s.suggestedLayout} — "${s.suggestedTitle}" (requires: ${s.requiredContent.join(", ")})${s.chartHint ? ` [suggested chart: ${s.chartHint}]` : ""}`).join("\n")}\n\nIMPORTANT: This plan is a guide, not rigid. You may adjust layout choices and titles based on the data. But respect the target slide count and narrative arc (cover → exec summary → evidence → implications → recommendations → summary).`,
+        brief: `${brief}\n\nDECK PLAN (AI-planned based on the analysis — follow this structure):\nTarget: ${deckPlan.targetSlides} slides\n${deckPlan.plan.map((s) => `Slide ${s.position}: [${s.role}] ${s.layout} — "${s.title}" (chart: ${s.chartType}, requires: ${s.requiredContent.join(", ")})`).join("\n")}\n\nIMPORTANT: This plan was designed by a deck architect model. Follow the slide sequence, layouts, and chart types. You may refine titles and add content, but respect the plan's narrative arc and slide count.`,
         loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
           return persistNotebookEntry(runId, "author", Date.now(), entry);
@@ -984,10 +958,10 @@ export const basquioV2Generation = inngest.createFunction(
       return result.summary;
     });
 
-    // ─── STEP 3.5: POLISH (deterministic density check + targeted rewrite) ──
+    // ─── STEP 3.5: POLISH (density check + targeted agent rewrite) ──
     await step.run("polish", async () => {
       const slides = await getSlides(runId);
-      const weakSlides: string[] = [];
+      const weakSlideDetails: Array<{ position: number; title: string; layout: string; score: number; missing: string[] }> = [];
 
       for (const s of slides) {
         if (s.layoutId === "cover") continue;
@@ -1004,30 +978,80 @@ export const basquioV2Generation = inngest.createFunction(
         if (hasMetrics) contentScore += 2;
         if (hasNotes) contentScore += 1;
 
-        // Weak = title-only or very sparse
-        if (contentScore < 2) {
-          weakSlides.push(`Slide ${s.position} (${s.layoutId}): "${s.title}" — score ${contentScore}/7. Missing: ${[
-            !hasChart ? "chart" : "",
-            !hasBody ? "body" : "",
-            !hasBullets ? "bullets" : "",
-            !hasMetrics ? "metrics" : "",
-            !hasNotes ? "speaker notes" : "",
-          ].filter(Boolean).join(", ")}`);
+        if (contentScore < 3) {
+          weakSlideDetails.push({
+            position: s.position,
+            title: s.title ?? "",
+            layout: s.layoutId ?? "",
+            score: contentScore,
+            missing: [
+              !hasChart ? "chart (build_chart then update slide)" : "",
+              !hasBody ? "body text (executive prose)" : "",
+              !hasBullets ? "bullet points" : "",
+              !hasMetrics ? "metric cards" : "",
+              !hasNotes ? "speaker notes" : "",
+            ].filter(Boolean),
+          });
         }
       }
 
-      if (weakSlides.length === 0) {
+      if (weakSlideDetails.length === 0) {
         await emitRunEvent(runId, "author", "polish_skipped", { reason: "All slides meet density threshold" });
         return { polished: 0, total: slides.length };
       }
 
-      // Log weak slides for the author to fix during revision
-      await emitRunEvent(runId, "author", "polish_needed", {
-        weakSlideCount: weakSlides.length,
-        details: weakSlides,
+      // Run a targeted polish agent on the weak slides
+      const hydratedWorkspace = await loadHydratedWorkspace();
+      tracker.startPhase("polish", "claude-opus-4-6", "anthropic");
+
+      const weakSlidesPrompt = weakSlideDetails.map((s) =>
+        `Slide ${s.position} (${s.layout}): "${s.title}" — score ${s.score}/7. Missing: ${s.missing.join(", ")}`,
+      ).join("\n");
+
+      await runAuthorAgent({
+        workspace: hydratedWorkspace,
+        runId,
+        analysis,
+        brief: `POLISH PASS: The following slides are below consulting quality. Fix each one by adding the missing content. Use query_data to pull real numbers. Build charts where needed. Do NOT rewrite slides that aren't listed — only fix the weak ones.\n\nWEAK SLIDES:\n${weakSlidesPrompt}`,
+        loadRows: loadSheetRows,
+        persistNotebookEntry: async (entry: NotebookEntry) => {
+          return persistNotebookEntry(runId, "polish", Date.now(), entry);
+        },
+        persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
+        persistChart: async (chart: ChartInput) => persistChart(runId, chart),
+        getTemplateProfile: () => workspace.templateProfile ?? null,
+        getSlides: async () => {
+          const rows = await getSlides(runId);
+          return rows.map((r) => ({
+            id: r.id,
+            position: r.position,
+            layoutId: r.layoutId ?? "title-body",
+            title: r.title ?? "",
+            chartId: r.chartId,
+            body: r.body,
+            bullets: r.bullets,
+            metrics: r.metrics,
+            speakerNotes: r.speakerNotes,
+          }));
+        },
+        onStepFinish: async (event: StepFinishEvent) => {
+          tracker.recordStep(event.usage, event.toolCalls.length);
+          await emitRunEvent(runId, "author", "tool_call", {
+            stepNumber: event.stepNumber,
+            tools: event.toolCalls.map((tc: { toolName: string }) => tc.toolName),
+            phase: "polish",
+          });
+        },
       });
 
-      return { polished: weakSlides.length, total: slides.length, weakSlides };
+      tracker.endPhase();
+
+      await emitRunEvent(runId, "author", "polish_completed", {
+        weakSlideCount: weakSlideDetails.length,
+        totalSlides: slides.length,
+      });
+
+      return { polished: weakSlideDetails.length, total: slides.length };
     });
 
     // ─── STEP 4: CRITIQUE (agentic, cross-model) ───────────────

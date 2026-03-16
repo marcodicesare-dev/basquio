@@ -65,9 +65,11 @@ export function createAuthorAgent(input: AuthorAgentInput) {
   const modelId = input.modelOverride ?? "claude-opus-4-6";
   const model = provider === "anthropic" ? anthropic(modelId) : openai(modelId);
 
+  const baseInstructions = `You are an executive presentation author at a top-tier strategy consulting firm (McKinsey/BCG/NielsenIQ caliber). You create decks that make executives act.`;
+
   const agent = new ToolLoopAgent({
     model,
-    instructions: `You are an executive presentation author at a top-tier strategy consulting firm (McKinsey/BCG/NielsenIQ caliber). You create decks that make executives act.
+    instructions: `${baseInstructions}
 
 ## NARRATIVE ARCHITECTURE (Pyramid Principle)
 
@@ -157,21 +159,50 @@ Speaker notes are NOT slide body copy. They are 60-140 words of:
       query_data: createQueryDataTool(toolCtx),
     },
     stopWhen: [stepCountIs(35), costBudgetExceeded(1.00)],
-    prepareStep: async ({ stepNumber }) => {
-      // Phase 1 (steps 0-5): Force chart/data building before slide writing
+    prepareStep: async ({ stepNumber, steps }) => {
+      const result: Record<string, unknown> = {};
+
+      // Tool phasing: force data exploration first, finishing last
       if (stepNumber < 5) {
-        return {
-          activeTools: ["inspect_template", "inspect_brand_tokens", "build_chart", "query_data"] as Array<keyof typeof authoringCtx extends string ? string : never>,
-        } as Record<string, unknown>;
+        result.activeTools = ["inspect_template", "inspect_brand_tokens", "build_chart", "query_data"];
+      } else if (stepNumber > 25) {
+        result.activeTools = ["write_slide", "render_deck_preview"];
       }
-      // Phase 2 (steps 5-25): All tools available
-      // Phase 3 (steps 25+): Focus on write_slide and preview only
-      if (stepNumber > 25) {
-        return {
-          activeTools: ["write_slide", "render_deck_preview"] as Array<keyof typeof authoringCtx extends string ? string : never>,
-        } as Record<string, unknown>;
+
+      // Context trimming: after step 15, inject a compressed progress summary
+      // into the system message so the model doesn't lose track of what it built
+      if (stepNumber > 15 && steps.length > 10) {
+        const chartsBuilt = steps
+          .flatMap((s) => s.toolCalls ?? [])
+          .filter((tc) => tc.toolName === "build_chart")
+          .length;
+        const slidesWritten = steps
+          .flatMap((s) => s.toolCalls ?? [])
+          .filter((tc) => tc.toolName === "write_slide")
+          .length;
+        const previewsDone = steps
+          .flatMap((s) => s.toolCalls ?? [])
+          .filter((tc) => tc.toolName === "render_deck_preview")
+          .length;
+
+        // Estimate tokens used
+        const totalTokens = steps.reduce(
+          (acc, s) => acc + (s.usage?.inputTokens ?? 0) + (s.usage?.outputTokens ?? 0), 0,
+        );
+
+        result.system = `${baseInstructions}
+
+PROGRESS UPDATE (step ${stepNumber}/${35}):
+- Charts built: ${chartsBuilt}
+- Slides written: ${slidesWritten}
+- Previews checked: ${previewsDone}
+- Tokens used: ~${Math.round(totalTokens / 1000)}K
+- Budget remaining: ~${Math.max(0, 100 - Math.round(totalTokens / 10000))}%
+${stepNumber > 25 ? "\nYou are in the FINISHING phase. Only write_slide and render_deck_preview are available. Complete any remaining slides and call render_deck_preview to verify quality." : ""}
+${slidesWritten === 0 && stepNumber > 10 ? "\nWARNING: You haven't written any slides yet. Start writing slides now using write_slide." : ""}`;
       }
-      return {};
+
+      return result;
     },
     onStepFinish: input.onStepFinish,
   });
