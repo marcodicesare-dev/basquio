@@ -160,7 +160,7 @@ export const executableMetricSpecSchema = z.object({
       direction: z.enum(["asc", "desc"]),
   })
     .optional(),
-  limit: z.number().int().positive().optional(),
+  limit: z.number().int().min(1).optional(),
 });
 
 export const stageTraceSchema = z.object({
@@ -196,7 +196,7 @@ export const pipelineStageSchema = z.enum([
 export const revisionTargetStageSchema = z.enum(["metrics", "insights", "story", "design", "slides"]);
 
 export const revisionDecisionSchema = z.object({
-  attempt: z.number().int().positive(),
+  attempt: z.number().int().min(1),
   trigger: z.enum(["deterministic-validation", "semantic-critique", "combined-review"]),
   targetStage: revisionTargetStageSchema,
   rationale: z.string(),
@@ -295,7 +295,7 @@ export const reportSectionSchema = z.object({
   objective: z.string(),
   supportingInsightIds: z.array(z.string()).default([]),
   emphasis: z.enum(["heavy", "standard", "light"]).default("standard"),
-  suggestedSlideCount: z.number().int().positive().default(1),
+  suggestedSlideCount: z.number().int().min(1).default(1),
 });
 
 export const reportOutlineSchema = z.object({
@@ -305,7 +305,7 @@ export const reportOutlineSchema = z.object({
 
 export const insightSpecSchema = z.object({
   id: z.string(),
-  rank: z.number().int().positive().default(1),
+  rank: z.number().int().min(1).default(1),
   title: z.string(),
   claim: z.string(),
   businessMeaning: z.string(),
@@ -332,7 +332,7 @@ export const storySpecSchema = z.object({
   narrativeArc: z.array(z.string()).min(1),
   keyMessages: z.array(z.string()).min(1),
   sections: z.array(reportSectionSchema).default([]),
-  recommendedSlideCount: z.number().int().positive().default(6),
+  recommendedSlideCount: z.number().int().min(1).default(6),
   recommendedActions: z.array(z.string()).default([]),
 });
 
@@ -560,7 +560,7 @@ export const validationReportSchema = z.object({
   claimCount: z.number().int().nonnegative().default(0),
   chartCount: z.number().int().nonnegative().default(0),
   slideCount: z.number().int().nonnegative().default(0),
-  attemptCount: z.number().int().positive().default(1),
+  attemptCount: z.number().int().min(1).default(1),
   targetStage: revisionTargetStageSchema.optional(),
   reviewerFeedback: z.array(z.string()).default([]),
   deterministicIssueCount: z.number().int().nonnegative().default(0),
@@ -637,7 +637,7 @@ export const templateProfileSchema = z.object({
       name: z.string(),
       sourceName: z.string().default(""),
       sourceMaster: z.string().default(""),
-      sourceSlideNumber: z.number().int().positive().optional(),
+      sourceSlideNumber: z.number().int().min(1).optional(),
       sourceSlideName: z.string().default(""),
       placeholders: z.array(z.string()).default([]),
       regions: z

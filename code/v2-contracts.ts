@@ -161,7 +161,7 @@ export const notebookEntrySchema = z.object({
 export const deckSpecV2SlideSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
-  position: z.number().int().positive(),
+  position: z.number().int().min(1),
   layoutId: z.string(),
   title: z.string(),
   subtitle: z.string().nullable().optional(),
@@ -184,7 +184,7 @@ export const deckSpecV2SlideSchema = z.object({
   sceneGraph: z.record(z.string(), z.unknown()).nullable().optional(),
   previewUrl: z.string().nullable().optional(),
   qaStatus: z.enum(["pending", "passed", "failed"]).default("pending"),
-  revision: z.number().int().positive().default(1),
+  revision: z.number().int().min(1).default(1),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
 });
@@ -263,7 +263,7 @@ export const critiqueIssueSchema = z.object({
 // Model-facing schema: only fields the LLM can generate.
 // Used as Output.object() for the critic agent.
 export const critiqueReportOutputSchema = z.object({
-  iteration: z.number().int().positive(),
+  iteration: z.number().int().min(1),
   hasIssues: z.boolean(),
   issues: z.array(critiqueIssueSchema),
   coverageScore: z.number().min(0).max(1),
@@ -276,7 +276,7 @@ export const critiqueReportOutputSchema = z.object({
 export const critiqueReportSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
-  iteration: z.number().int().positive(),
+  iteration: z.number().int().min(1),
   hasIssues: z.boolean(),
   issues: z.array(critiqueIssueSchema),
   coverageScore: z.number().min(0).max(1),
@@ -325,7 +325,7 @@ export const clarifiedBriefSchema = z.object({
   audience: z.string().describe("Who will see this deck and what decisions they make"),
   language: z.string().describe("Detected output language: en, it, de, fr, es, etc."),
   objective: z.string().describe("What the deck must accomplish"),
-  requestedSlideCount: z.number().int().positive().nullable().describe("From the brief, or null if not specified"),
+  requestedSlideCount: z.number().int().min(1).nullable().describe("From the brief, or null if not specified"),
   stakes: z.string().describe("What is at risk if the recommendation is wrong"),
   hypotheses: z.array(z.string()).describe("Initial hypotheses before deep analysis"),
 });
@@ -365,7 +365,7 @@ export const storylinePlanSchema = z.object({
 // Working paper: structured slide-level plan before authoring.
 
 export const deckPlanSlideSpecSchema = z.object({
-  position: z.number().int().positive(),
+  position: z.number().int().min(1),
   role: z.string().describe("cover, exec-summary, context, evidence, comparison, synthesis, recommendation, appendix"),
   layout: z.string(),
   governingThought: z.string().describe("The one sentence this slide must communicate"),
@@ -382,7 +382,7 @@ export const deckPlanSectionSchema = z.object({
 });
 
 export const deckPlanSchema = z.object({
-  targetSlideCount: z.number().int().positive(),
+  targetSlideCount: z.number().int().min(1),
   sections: z.array(deckPlanSectionSchema),
   appendixStrategy: z.string().describe("What goes in appendix vs main body"),
 });

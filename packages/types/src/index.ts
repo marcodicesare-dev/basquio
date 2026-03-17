@@ -156,7 +156,7 @@ export const datasetRecordSchema = z.object({
   projectId: z.string(),
   externalId: z.string().optional(),
   sourceFileId: z.string().optional(),
-  profileVersion: z.number().int().positive().default(1),
+  profileVersion: z.number().int().min(1).default(1),
   manifest: z.record(z.string(), z.unknown()).optional(),
 });
 
