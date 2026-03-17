@@ -42,7 +42,7 @@ export default function HowItWorksPage() {
       </section>
 
       {/* Verification callout — moved to top */}
-      <section className="panel dark-panel verification-callout">
+      <section className="panel dark-panel">
         <div className="stack">
           <p className="section-label light">What makes Basquio different</p>
           <h2>Every claim is verified before delivery.</h2>

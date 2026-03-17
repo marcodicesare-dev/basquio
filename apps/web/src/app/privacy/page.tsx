@@ -30,7 +30,7 @@ export default function PrivacyPage() {
             <p className="artifact-kind">Contact</p>
             <p>
               Questions about privacy or data handling can be sent to{" "}
-              <a href="mailto:marco.dicesare@loamly.ai">marco.dicesare@loamly.ai</a>.
+              <a href="mailto:marco@basquio.com">marco@basquio.com</a>.
             </p>
           </aside>
         </div>
