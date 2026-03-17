@@ -16,7 +16,6 @@ export function PublicSiteNav() {
             priority
           />
         </Link>
-        <span className="nav-pill">Beautiful Intelligence.</span>
       </div>
 
       <nav className="public-nav-links" aria-label="Public">
@@ -28,14 +27,11 @@ export function PublicSiteNav() {
       </nav>
 
       <div className="row landing-nav-copy landing-nav-actions">
-        <Link className="button secondary" href="/#output">
-          Sample output
-        </Link>
         <Link className="button secondary" href="/sign-in?next=%2Fdashboard">
           Sign in
         </Link>
         <Link className="button" href="/jobs/new">
-          Try with your data
+          Try free →
         </Link>
       </div>
     </section>

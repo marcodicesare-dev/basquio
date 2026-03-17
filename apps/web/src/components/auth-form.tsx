@@ -36,7 +36,7 @@ export function AuthForm({
         ? "Create an account to open your private Basquio workspace."
         : mode === "reset"
           ? "Enter your email and we’ll send a secure reset link to create a new password."
-          : "Sign in to continue your work.",
+          : "Sign in to start or continue a report.",
     [mode],
   );
 

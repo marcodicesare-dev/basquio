@@ -28,11 +28,27 @@ export default async function SignInPage({
   return (
     <div className="page-shell public-page auth-page-shell">
       <section className="panel auth-intro-panel stack-lg">
-        <p className="section-label light">Sign in</p>
-        <h1>Welcome back.</h1>
-        <p className="muted">
-          Your data and presentations stay private to your account.
-        </p>
+        <div className="stack">
+          <p className="section-label">Basquio</p>
+          <h1>Your next report is 5 minutes away.</h1>
+          <p className="muted">
+            Upload your data, describe the brief, and get back a branded PPTX + PDF with every number traced to source.
+          </p>
+        </div>
+        <div className="auth-value-props stack">
+          <div className="auth-value-prop">
+            <strong>Under 5 minutes</strong>
+            <span className="muted">From upload to finished deck</span>
+          </div>
+          <div className="auth-value-prop">
+            <strong>Traceable evidence</strong>
+            <span className="muted">Every claim linked to your source data</span>
+          </div>
+          <div className="auth-value-prop">
+            <strong>Two formats, one analysis</strong>
+            <span className="muted">Editable PPTX + polished PDF</span>
+          </div>
+        </div>
       </section>
 
       <AuthForm

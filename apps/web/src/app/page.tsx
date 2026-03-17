@@ -18,139 +18,6 @@ export const metadata: Metadata = {
     "Upload the files behind one reporting cycle. Basquio turns your CSVs, notes, briefs, and brand files into an executive-ready PPTX and PDF.",
 };
 
-function OutputPptxChart() {
-  return (
-    <div className="chart-frame">
-      <div className="chart-meta-row">
-        <span>Value share by channel</span>
-        <span>MAT Q1 2026</span>
-      </div>
-      <svg className="viz-svg" viewBox="0 0 520 250" aria-hidden>
-        <defs>
-          <linearGradient id="pptxBarAccent" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#f0cc27" />
-            <stop offset="100%" stopColor="#f4ad1c" />
-          </linearGradient>
-        </defs>
-        <g stroke="rgba(11,12,12,0.08)" strokeWidth="1">
-          <line x1="56" y1="28" x2="56" y2="198" />
-          <line x1="56" y1="198" x2="486" y2="198" />
-          <line x1="56" y1="158" x2="486" y2="158" />
-          <line x1="56" y1="118" x2="486" y2="118" />
-          <line x1="56" y1="78" x2="486" y2="78" />
-        </g>
-        {/* Category benchmark bars */}
-        <g fill="#7688bf" opacity="0.3">
-          <rect x="76" y="142" width="32" height="56" rx="8" />
-          <rect x="166" y="126" width="32" height="72" rx="8" />
-          <rect x="256" y="134" width="32" height="64" rx="8" />
-          <rect x="346" y="118" width="32" height="80" rx="8" />
-          <rect x="436" y="148" width="32" height="50" rx="8" />
-        </g>
-        {/* Premium segment bars */}
-        <g fill="url(#pptxBarAccent)">
-          <rect x="112" y="118" width="32" height="80" rx="8" />
-          <rect x="202" y="86" width="32" height="112" rx="8" />
-          <rect x="292" y="72" width="32" height="126" rx="8" />
-          <rect x="382" y="56" width="32" height="142" rx="8" />
-          <rect x="472" y="98" width="32" height="100" rx="8" />
-        </g>
-        <g fill="#0b0c0c" fontSize="11">
-          <text x="78" y="218">Grocery</text>
-          <text x="168" y="218">Drug</text>
-          <text x="255" y="218">Club</text>
-          <text x="348" y="218">Mass</text>
-          <text x="440" y="218">eComm</text>
-        </g>
-        <g fill="#5d656b" fontSize="11">
-          <text x="20" y="201">0%</text>
-          <text x="14" y="161">10%</text>
-          <text x="14" y="121">20%</text>
-          <text x="14" y="81">30%</text>
-        </g>
-        <g>
-          <rect x="296" y="18" width="176" height="34" rx="17" fill="rgba(11,12,12,0.06)" />
-          <text x="312" y="40" fill="#0b0c0c" fontSize="13" fontWeight="700">
-            Premium +3.2x in Mass
-          </text>
-        </g>
-      </svg>
-      <div className="chart-legend">
-        <span>
-          <i className="legend-swatch legend-swatch-muted" />
-          Total category
-        </span>
-        <span>
-          <i className="legend-swatch legend-swatch-accent" />
-          Premium segment
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function OutputPdfChart() {
-  return (
-    <div className="chart-frame chart-frame-pdf">
-      <div className="chart-meta-row">
-        <span>Distribution-weighted velocity</span>
-        <span>L52W, tracked channels</span>
-      </div>
-      <svg className="viz-svg" viewBox="0 0 520 250" aria-hidden>
-        <defs>
-          <linearGradient id="pdfAreaFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="rgba(26,106,255,0.3)" />
-            <stop offset="100%" stopColor="rgba(26,106,255,0.05)" />
-          </linearGradient>
-        </defs>
-        <g stroke="rgba(11,12,12,0.08)" strokeWidth="1">
-          <line x1="54" y1="30" x2="54" y2="200" />
-          <line x1="54" y1="200" x2="490" y2="200" />
-          <line x1="54" y1="150" x2="490" y2="150" />
-          <line x1="54" y1="100" x2="490" y2="100" />
-          <line x1="54" y1="50" x2="490" y2="50" />
-        </g>
-        {/* Category trend line (flat/declining) */}
-        <path
-          d="M54 142 L126 146 L198 152 L270 148 L342 156 L414 160 L486 164"
-          fill="none"
-          stroke="#7688bf"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity="0.4"
-        />
-        {/* Premium segment trend line (accelerating) */}
-        <path
-          d="M54 168 L126 154 L198 148 L270 112 L342 94 L414 68 L486 46"
-          fill="none"
-          stroke="#1a6aff"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M54 168 L126 154 L198 148 L270 112 L342 94 L414 68 L486 46 L486 200 L54 200 Z"
-          fill="url(#pdfAreaFill)"
-        />
-        <circle cx="486" cy="46" r="6" fill="#ffffff" stroke="#1a6aff" strokeWidth="4" />
-        <rect x="362" y="24" width="130" height="38" rx="19" fill="rgba(240,204,39,0.18)" />
-        <text x="378" y="48" fill="#0b0c0c" fontSize="13" fontWeight="700">
-          Share inflects Q3
-        </text>
-        <g fill="#0b0c0c" fontSize="12">
-          <text x="40" y="220">P1</text>
-          <text x="112" y="220">P2</text>
-          <text x="184" y="220">P3</text>
-          <text x="258" y="220">P4</text>
-          <text x="330" y="220">P5</text>
-          <text x="402" y="220">P6</text>
-          <text x="474" y="220">P7</text>
-        </g>
-      </svg>
-    </div>
-  );
-}
 
 function EvidenceTraceVisual() {
   return (
@@ -239,21 +106,25 @@ const homepagePipeline = [
     stage: "01",
     title: "Upload one evidence package",
     detail: "CSVs, spreadsheets, briefs, and brand files from one reporting cycle.",
+    time: "~30 sec",
   },
   {
     stage: "02",
     title: "Compute what matters",
     detail: "Structure the data, run the math, rank the signals worth presenting.",
+    time: "~60 sec",
   },
   {
     stage: "03",
     title: "Build the narrative",
     detail: "Shape the story for your audience with every claim traced to source.",
+    time: "~90 sec",
   },
   {
     stage: "04",
     title: "Deliver both formats",
     detail: "An editable PPTX and a polished PDF from the same analysis.",
+    time: "~30 sec",
   },
 ];
 
@@ -268,19 +139,18 @@ export default function HomePage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label light">Beautiful Intelligence.</p>
-              <h1>Turn one reporting package into a review-ready deck.</h1>
+              <h1>Evidence in. Executive deck out.</h1>
               <p className="hero-subtitle">
-                Upload the CSVs, PDFs, notes, and brand files behind one review. Basquio returns an editable PPTX and
-                a polished PDF.
+                Upload your data files and brand template. Get back a traceable, branded PPTX + PDF in under 5 minutes.
               </p>
             </div>
 
             <div className="row">
               <Link className="button" href="/jobs/new">
-                Try with your data
+                Try free — no card required
               </Link>
-              <Link className="button secondary inverted" href="#output">
-                See sample output
+              <Link className="button secondary inverted" href="/how-it-works">
+                See how it works
               </Link>
             </div>
 
@@ -344,12 +214,25 @@ export default function HomePage() {
 
       {/* ── Social proof strip ── */}
       <section className="panel social-proof-panel">
-        <div className="stack">
-          <p className="section-label">Team</p>
-          <h2>Built by a team from NielsenIQ, Mondelez, and Victorinox.</h2>
-          <p className="muted">
-            Founder-led rollout. Private workspaces. Evaluated one real reporting cycle at a time.
-          </p>
+        <div className="social-proof-content">
+          <div className="stack">
+            <p className="section-label">Background</p>
+            <h2>Built by a team with roots in NielsenIQ, Mondelez, and Victorinox.</h2>
+          </div>
+          <div className="social-proof-stats">
+            <div className="stat-block">
+              <span className="stat-number">10+</span>
+              <span className="stat-label">years in CPG reporting</span>
+            </div>
+            <div className="stat-block">
+              <span className="stat-number">&lt;5 min</span>
+              <span className="stat-label">average generation time</span>
+            </div>
+            <div className="stat-block">
+              <span className="stat-number">2</span>
+              <span className="stat-label">formats per report (PPTX + PDF)</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -368,7 +251,10 @@ export default function HomePage() {
         <div className="pipeline-strip" role="list">
           {homepagePipeline.map((step) => (
             <article key={step.stage} className="pipeline-step-card" role="listitem">
-              <p className="artifact-kind">{step.stage}</p>
+              <div className="pipeline-step-head">
+                <p className="artifact-kind">{step.stage}</p>
+                <span className="pipeline-time">{step.time}</span>
+              </div>
               <h3>{step.title}</h3>
               <p>{step.detail}</p>
             </article>
@@ -381,36 +267,49 @@ export default function HomePage() {
         <div className="stack">
           <p className="section-label">The output</p>
           <h2>One analysis. Two deliverables.</h2>
+          <p className="muted">Every Basquio report ships as an editable PPTX and a polished PDF — same data, same story, same evidence trace.</p>
         </div>
 
         <div className="output-preview-grid">
           <article className="showcase-card">
             <div className="showcase-card-top">
               <span className="artifact-chip strong">PPTX</span>
-              <span className="artifact-window-meta">Editable charts and notes</span>
+              <span className="artifact-window-meta">Editable in PowerPoint</span>
             </div>
-
-            <div className="deck-slide deck-slide-editable" aria-hidden>
-              <div className="deck-kicker">Executive summary</div>
-              <div className="deck-line long" />
-              <div className="deck-line medium" />
-              <OutputPptxChart />
+            <div className="showcase-feature-list">
+              <div className="showcase-feature">
+                <strong>Native charts</strong>
+                <p className="muted">Every chart is a real editable PowerPoint chart object, not an image.</p>
+              </div>
+              <div className="showcase-feature">
+                <strong>Speaker notes</strong>
+                <p className="muted">Key talking points and evidence references in every slide&apos;s notes field.</p>
+              </div>
+              <div className="showcase-feature">
+                <strong>Brand-matched</strong>
+                <p className="muted">Colors, fonts, and logo placement pulled from your template.</p>
+              </div>
             </div>
           </article>
 
           <article className="showcase-card showcase-card-pdf">
             <div className="showcase-card-top">
               <span className="artifact-chip strong">PDF</span>
-              <span className="artifact-window-meta">Polished shareable output</span>
+              <span className="artifact-window-meta">Ready to share</span>
             </div>
-
-            <div className="deck-slide deck-slide-pdf" aria-hidden>
-              <div className="deck-kicker">Share-ready page</div>
-              <div className="pdf-summary-card">
-                <div className="deck-line long" />
-                <div className="deck-line short" />
+            <div className="showcase-feature-list">
+              <div className="showcase-feature">
+                <strong>Polished layout</strong>
+                <p className="muted">Type-set pages optimized for screen sharing and print.</p>
               </div>
-              <OutputPdfChart />
+              <div className="showcase-feature">
+                <strong>Evidence appendix</strong>
+                <p className="muted">Source references and data lineage collected at the end.</p>
+              </div>
+              <div className="showcase-feature">
+                <strong>Same story</strong>
+                <p className="muted">Identical narrative and numbers — no drift between formats.</p>
+              </div>
             </div>
           </article>
         </div>

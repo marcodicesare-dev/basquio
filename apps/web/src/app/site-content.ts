@@ -1,4 +1,4 @@
-export const heroSignals = ["Traceable numbers", "Branded PPTX + PDF", "Story shaped for your audience"] as const;
+export const heroSignals = ["Under 5 minutes", "Traceable numbers", "Branded PPTX + PDF"] as const;
 
 
 export const evidencePackageInputs = [
@@ -92,6 +92,12 @@ export const detailedComparisonRows = [
     slideGenerators: "Partial",
     basquio: "Yes",
   },
+  {
+    label: "Free tier with no sign-up",
+    genericAi: "Yes",
+    slideGenerators: "Yes",
+    basquio: "No",
+  },
 ] as const;
 
 
@@ -99,24 +105,28 @@ export const howItWorksPhases = [
   {
     stage: "01",
     title: "Upload one evidence package",
+    time: "~30 sec",
     copy:
       "Bring the CSVs, spreadsheets, PDFs, briefs, and brand files behind one reporting cycle. Basquio treats them as one package instead of one disconnected upload at a time.",
   },
   {
     stage: "02",
     title: "Compute what matters",
+    time: "~60 sec",
     copy:
       "Basquio reads the package, works out how the files connect, and computes the numbers before it starts writing the story.",
   },
   {
     stage: "03",
     title: "Build the narrative",
+    time: "~90 sec",
     copy:
       "The deck is shaped around your audience, objective, and point of view so the story lands in the room it is meant for.",
   },
   {
     stage: "04",
     title: "Deliver both formats",
+    time: "~30 sec",
     copy:
       "You get an editable PowerPoint and a polished PDF from the same analysis, with source references attached to the claims that matter.",
   },
@@ -145,6 +155,10 @@ export const publicNavLinks = [
   {
     href: "/about",
     label: "About",
+  },
+  {
+    href: "/get-started",
+    label: "Get started",
   },
 ] as const;
 

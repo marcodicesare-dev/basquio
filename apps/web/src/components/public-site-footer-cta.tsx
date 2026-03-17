@@ -11,13 +11,13 @@ type PublicSiteFooterCtaProps = {
 };
 
 export function PublicSiteFooterCta({
-  eyebrow = "Start with real evidence",
-  title = "Bring one reporting cycle into Basquio.",
-  copy = "Start with the files behind one review and see the first editable PPTX and polished PDF Basquio can produce.",
-  primaryLabel = "Try with your data",
+  eyebrow = "Ready to try it?",
+  title = "Your first report is free.",
+  copy = "Upload one evidence package and see the output in under 5 minutes. No credit card required.",
+  primaryLabel = "Try free →",
   primaryHref = "/jobs/new",
-  secondaryLabel = "See how to get started",
-  secondaryHref = "/get-started",
+  secondaryLabel = "See how it works",
+  secondaryHref = "/how-it-works",
 }: PublicSiteFooterCtaProps) {
   return (
     <section className="dark-panel cta-footer">

@@ -12,9 +12,10 @@ export const metadata: Metadata = {
 };
 
 function capabilityIcon(value: string) {
-  if (value === "Yes") return "\u2713";
-  if (value === "Partial") return "\u25D0";
-  return "\u2014";
+  if (value === "Yes") return <span className="cap-yes">✓</span>;
+  if (value === "Partial") return <span className="cap-partial">~</span>;
+  if (value === "No") return <span className="cap-no">✗</span>;
+  return <>—</>;
 }
 
 export default function ComparePage() {
@@ -34,13 +35,19 @@ export default function ComparePage() {
       </section>
 
       <section className="panel comparison-panel">
+        <div className="comparison-legend">
+          <span><strong>✓</strong> Full support</span>
+          <span><strong>~</strong> Partial — works sometimes or with manual effort</span>
+          <span><strong>✗</strong> Not available</span>
+        </div>
+
         <div className="comparison-table-wrap">
           <table className="comparison-table">
             <thead>
               <tr>
                 <th scope="col">Capability</th>
-                <th scope="col">Generic AI</th>
-                <th scope="col">Slide generators</th>
+                <th scope="col">ChatGPT / Claude</th>
+                <th scope="col">Gamma / Tome / Beautiful.ai</th>
                 <th scope="col" className="comparison-positive">Basquio</th>
               </tr>
             </thead>

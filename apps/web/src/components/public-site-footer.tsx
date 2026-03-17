@@ -11,8 +11,8 @@ export function PublicSiteFooter() {
         <p className="muted">Executive-grade reporting from structured data.</p>
         <p className="muted">
           Contact:{" "}
-          <a href="mailto:marco.dicesare@loamly.ai">
-            marco.dicesare@loamly.ai
+          <a href="mailto:marco@basquio.com">
+            marco@basquio.com
           </a>
         </p>
       </div>
@@ -30,7 +30,7 @@ export function PublicSiteFooter() {
       </div>
 
       <div className="site-footer-meta">
-        <p>Built by Marco Di Cesare at Loamly.</p>
+        <p>Built by Marco Di Cesare in Zurich.</p>
         <p>© 2026 Basquio</p>
       </div>
     </footer>

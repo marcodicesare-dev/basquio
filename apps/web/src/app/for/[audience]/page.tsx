@@ -114,23 +114,6 @@ export default async function PersonaPage({ params }: PersonaPageProps) {
         </article>
       </section>
 
-      <section className="panel stack-lg">
-        <div className="stack">
-          <p className="section-label">Next step</p>
-          <h2>{persona.ctaTitle}</h2>
-          <p className="muted">{persona.ctaCopy}</p>
-        </div>
-
-        <div className="row">
-          <Link className="button" href="/jobs/new">
-            Start with your data
-          </Link>
-          <Link className="button secondary" href={persona.secondaryHref}>
-            {persona.secondaryLabel}
-          </Link>
-        </div>
-      </section>
-
       <PublicSiteFooterCta
         eyebrow={`For ${persona.title}`}
         title={persona.ctaTitle}

@@ -47,15 +47,15 @@ type BriefFields = {
 const steps = [
   {
     id: "upload",
-    title: "Upload data",
+    title: "1. Upload your files",
   },
   {
     id: "brief",
-    title: "Describe the brief",
+    title: "2. Describe the brief",
   },
   {
     id: "review",
-    title: "Review",
+    title: "3. Review & generate",
   },
 ] as const;
 

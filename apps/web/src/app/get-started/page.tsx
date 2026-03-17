@@ -96,10 +96,23 @@ export default function GetStartedPage() {
 
         <article className="panel stack-lg">
           <div className="stack">
+            <p className="section-label">Timeline</p>
+            <h2>Under 5 minutes from upload to download.</h2>
+            <p className="muted">
+              Upload your files, fill in the brief, and Basquio generates both deliverables. Most reports complete in 2–5 minutes.
+            </p>
+          </div>
+        </article>
+
+        <article className="panel stack-lg">
+          <div className="stack">
             <p className="section-label">Pricing</p>
             <h2>Your first report is free.</h2>
             <p className="muted">
-              Start with one real reporting cycle at no cost. If Basquio fits your workflow, we will work with you on the right plan for your team.
+              No credit card. No commitment. Generate one full report from your own data at zero cost.
+            </p>
+            <p className="muted">
+              After your first report, pricing scales with usage. Contact us at <a href="mailto:marco@basquio.com">marco@basquio.com</a> to discuss team plans.
             </p>
           </div>
         </article>

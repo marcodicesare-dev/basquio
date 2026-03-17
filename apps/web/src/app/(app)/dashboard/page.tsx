@@ -70,18 +70,40 @@ export default async function DashboardPage() {
           ) : null}
         </section>
       ) : (
-        <section className="panel workspace-empty-card">
-          <div className="empty-illustration" aria-hidden>
-            <span />
-            <span />
-            <span />
-          </div>
+        <section className="panel workspace-empty-card onboarding-card">
           <div className="stack">
-            <h2>Ready when you are</h2>
-            <p className="muted">Upload your data and Basquio will build your first report.</p>
+            <h2>Create your first report</h2>
+            <p className="muted">
+              It takes about 5 minutes. Here&apos;s what you&apos;ll need:
+            </p>
           </div>
+
+          <div className="onboarding-steps">
+            <div className="onboarding-step">
+              <span className="onboarding-step-number">1</span>
+              <div className="stack-xs">
+                <strong>Your data files</strong>
+                <p className="muted">CSVs, spreadsheets, or PDFs from one reporting cycle.</p>
+              </div>
+            </div>
+            <div className="onboarding-step">
+              <span className="onboarding-step-number">2</span>
+              <div className="stack-xs">
+                <strong>A short brief</strong>
+                <p className="muted">Who&apos;s the audience? What decision should the deck support?</p>
+              </div>
+            </div>
+            <div className="onboarding-step">
+              <span className="onboarding-step-number">3</span>
+              <div className="stack-xs">
+                <strong>Brand template (optional)</strong>
+                <p className="muted">Upload a PPTX template and Basquio will match your brand.</p>
+              </div>
+            </div>
+          </div>
+
           <Link className="button" href="/jobs/new">
-            Create your first report
+            Start your first report →
           </Link>
         </section>
       )}

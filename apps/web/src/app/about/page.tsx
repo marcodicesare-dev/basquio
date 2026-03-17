@@ -13,34 +13,40 @@ export const metadata: Metadata = {
 const team = [
   {
     name: "Marco Di Cesare",
-    title: "CTO",
-    background: "Full-stack engineer. Builds the entire system solo — AI pipeline, infrastructure, frontend, everything.",
-    contact: "marco.dicesare@loamly.ai",
+    title: "Founder & CTO",
+    background:
+      "Full-stack engineer. Builds the entire system — AI pipeline, infrastructure, frontend, everything.",
+    contact: "marco@basquio.com",
   },
   {
     name: "Francesco",
-    title: "CFO",
-    background: "NielsenIQ. Financial modeling, pricing strategy, and making sure the unit economics actually work.",
+    title: "Finance Advisor",
+    background:
+      "NielsenIQ. Financial modeling, pricing strategy, and unit economics.",
   },
   {
     name: "Rossella",
-    title: "CPO",
-    background: "NielsenIQ. Product manager and the team's #1 dogfooder — if the output wouldn't pass her review, it ships again.",
+    title: "Product Advisor",
+    background:
+      "NielsenIQ. Product management and quality — if the output wouldn't pass her review, it ships again.",
   },
   {
     name: "Alessandro",
-    title: "CRO",
-    background: "NielsenIQ. Enterprise sales. Knows what it takes to get a CPG category team to trust a new tool.",
+    title: "Commercial Advisor",
+    background:
+      "NielsenIQ. Enterprise sales. Knows what it takes to get a CPG team to trust a new tool.",
   },
   {
     name: "Veronica",
-    title: "Head of Product Intelligence",
-    background: "Victorinox. Brings the buyer side — what brand teams actually need from a category review deck.",
+    title: "Domain Expert — Buyer Side",
+    background:
+      "Victorinox. Brings the buyer perspective — what brand teams actually need from a category review deck.",
   },
   {
     name: "Giulia",
-    title: "CMO",
-    background: "Mondelez. Brand strategy, growth marketing, and making sure Basquio speaks the language CPG teams already use.",
+    title: "Domain Expert — Brand Side",
+    background:
+      "Mondelez. Brand strategy and marketing — ensures Basquio speaks the language CPG teams use.",
   },
 ] as const;
 
@@ -49,51 +55,30 @@ export default function AboutPage() {
     <div className="page-shell public-page">
       <PublicSiteNav />
 
-      {/* ── Hero: the founding story ── */}
       <section className="page-hero">
         <div className="page-header-grid">
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">About</p>
-              <h1>
-                We spent years building category review decks by hand. Now we
-                are building the tool we wish we had.
-              </h1>
+              <h1>Built by the people who used to make these decks by hand.</h1>
               <p className="page-copy">
-                Three of us come from NielsenIQ — the world&apos;s largest
-                market research firm. We lived the reporting cycle: pull
-                syndicated data, build the deck, recheck the numbers, rewrite
-                the narrative, restyle everything for brand guidelines, present,
-                repeat. Every quarter. For years.
-              </p>
-              <p className="page-copy">
-                One of us managed brands at Mondelez, a Fortune 500 CPG
-                company. One was a buyer at Victorinox, a Swiss CPG brand. We
-                all sat on different sides of the same table, and we all knew
-                the deck was the bottleneck.
-              </p>
-              <p className="page-copy">
-                Basquio exists because we got tired of the gap between having
-                the analysis and having a deck people can actually use. The
-                CTO builds the entire system. The rest of the team knows
-                exactly what right looks like — because we were the ones
-                presenting those decks.
+                Three NielsenIQ analysts, a Mondelez brand manager, a Victorinox buyer, and one engineer
+                who got tired of the gap between having the data and having a deck people can use. We know
+                what a good category review looks like because we&apos;ve presented hundreds of them.
               </p>
             </div>
           </div>
 
           <aside className="page-hero-aside stack">
-            <p className="artifact-kind">The short version</p>
-            <h2>3 NielsenIQ analysts + 1 Mondelez brand manager + 1 Victorinox buyer + 1 CTO</h2>
+            <p className="artifact-kind">The team</p>
+            <h2>1 founder-engineer + 5 domain advisors</h2>
             <p className="muted">
-              Domain experts building AI tools for the work they already know
-              how to do — not engineers guessing at a domain from the outside.
+              Domain experts shaping AI tools for work they already know — not engineers guessing at a domain.
             </p>
           </aside>
         </div>
       </section>
 
-      {/* ── The team ── */}
       <section className="stack-lg">
         <div className="stack-xs">
           <p className="section-label">The team</p>
@@ -115,7 +100,6 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── Principles ── */}
       <section className="stack-lg">
         <div className="stack-xs">
           <p className="section-label">How we build</p>
@@ -152,35 +136,13 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── Why this team ── */}
       <section className="panel dark-panel stack-lg">
         <div className="stack">
           <p className="section-label light">Why this team</p>
-          <h2>
-            Domain experts building AI tools is fundamentally different from
-            engineers building AI tools for domains they don&apos;t understand.
-          </h2>
-        </div>
-        <div className="stack">
+          <h2>We&apos;ve been on both sides of the table.</h2>
           <p className="muted">
-            Most AI tools for business reporting are built by engineers who have
-            never sat in a category review. They optimize for speed, not for
-            whether a category director would actually trust the output. They
-            demo well and fall apart in the meeting.
-          </p>
-          <p className="muted">
-            Our team has collectively spent decades on both sides of the table —
-            the analysts building the decks and the brand teams receiving them.
-            We know what a good category review looks like because we have
-            presented hundreds of them. We know what makes a buyer trust a
-            chart because we have been the buyer.
-          </p>
-          <p className="muted">
-            The CTO builds the system. Everyone else makes sure it would
-            actually survive a real review meeting. That feedback loop — build,
-            dogfood, tear apart, rebuild — is why Basquio works differently
-            from tools built by people who have never had to defend a number
-            in front of a retailer.
+            The analysts who built the decks. The brand teams who received them. The engineer who automates
+            the bridge between data and story.
           </p>
         </div>
       </section>
