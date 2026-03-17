@@ -8,4 +8,5 @@ export const maxDuration = 800; // Vercel Pro + Fluid Compute supports up to 800
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [basquioV2Generation],
+  streaming: "allow",
 });
