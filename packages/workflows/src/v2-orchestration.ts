@@ -2583,10 +2583,14 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
     });
 
     // ─── STEP 6b: RENDER PDF (scene-graph-based) ───────────────────
+    // PDF rendering is deferred to reduce total export time and prevent connection resets.
+    // PPTX is the primary artifact; PDF can be generated on-demand later.
     const pdfResult = await step.run("render-pdf", async () => {
       const browserlessToken = process.env.BROWSERLESS_TOKEN;
       const browserlessUrl = process.env.BROWSERLESS_URL ?? "https://production-sfo.browserless.io";
       if (!browserlessToken) return null;
+      // Skip PDF in pipeline — generate on-demand via API to reduce export step time
+      if (process.env.BASQUIO_SKIP_PDF_IN_PIPELINE !== "false") return null;
 
       try {
         // Load the persisted scene graph from Storage
