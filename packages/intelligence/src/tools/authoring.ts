@@ -403,7 +403,7 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
   return tool({
     description: `Commit a slide to the deck. STRICT: every non-cover slide must have speaker notes and evidence IDs. Layout-specific requirements are enforced — sparse slides will be REJECTED with validation errors. Fix violations before retrying.`,
     inputSchema: z.object({
-      position: z.number().int().positive().describe("Slide position (1-indexed)"),
+      position: z.number().int().min(1).describe("Slide position (1-indexed)"),
       layout: z.string().describe("Layout ID: cover, exec-summary, title-chart, chart-split, metrics, title-body, title-bullets, evidence-grid, table, summary"),
       title: z.string().min(4).describe("Action title: a complete sentence stating the takeaway — NOT a topic label"),
       subtitle: z.string().optional(),

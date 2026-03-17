@@ -81,7 +81,7 @@ export const sceneNodeSchema: z.ZodType<SceneNode> = z.lazy(() =>
 
 export const slideSceneSchema = z.object({
   slideId: z.string(),
-  position: z.number().int().positive(),
+  position: z.number().int().min(1),
   width: z.number(),
   height: z.number(),
   background: z.string().optional(),
