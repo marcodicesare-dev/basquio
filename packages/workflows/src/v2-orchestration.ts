@@ -1081,20 +1081,19 @@ export const basquioV2Generation = inngest.createFunction(
               const ext = f.fileName.split(".").pop()?.toLowerCase() ?? "png";
               const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/png";
 
-              const visionResp = await fetch("https://api.openai.com/v1/chat/completions", {
+              const visionResp = await fetch("https://api.openai.com/v1/responses", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
                   Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
                 },
                 body: JSON.stringify({
-                  model: "gpt-4o-mini",
-                  max_tokens: 500,
-                  messages: [{
+                  model: "gpt-5.4",
+                  input: [{
                     role: "user",
                     content: [
-                      { type: "text", text: "Describe this image for a business analyst. If it contains a chart, table, or data visualization, extract the key data points, labels, values, and trends. If it contains text, extract it. Be specific and quantitative." },
-                      { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}`, detail: "low" } },
+                      { type: "input_text", text: "Describe this image for a business analyst. If it contains a chart, table, or data visualization, extract the key data points, labels, values, and trends. If it contains text, extract it. Be specific and quantitative." },
+                      { type: "input_image", image_url: `data:${mimeType};base64,${base64}`, detail: "high" },
                     ],
                   }],
                 }),
@@ -1102,7 +1101,7 @@ export const basquioV2Generation = inngest.createFunction(
 
               if (visionResp.ok) {
                 const visionData = await visionResp.json();
-                visionDescription = visionData.choices?.[0]?.message?.content;
+                visionDescription = visionData.output_text;
               }
             }
           } catch {
