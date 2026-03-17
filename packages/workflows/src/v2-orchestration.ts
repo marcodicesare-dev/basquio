@@ -954,7 +954,7 @@ export const basquioV2Generation = inngest.createFunction(
       const blobManifest: Record<string, { bytes: number; checksum: string; sheetKey: string }> = {};
 
       const wsInsertResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces?on_conflict=run_id`,
         {
           method: "POST",
           headers: {
@@ -1005,7 +1005,7 @@ export const basquioV2Generation = inngest.createFunction(
         blobManifest[blobPath] = { bytes: manifest.blobBuffer.length, checksum, sheetKey: manifest.sheetKey };
 
         const sheetResp = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets`,
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?on_conflict=workspace_id,sheet_key`,
           {
             method: "POST",
             headers: {
