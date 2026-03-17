@@ -283,10 +283,10 @@ export function createComputeMetricTool(ctx: ToolContext) {
 
 export function createReadSupportDocTool(ctx: ToolContext) {
   return tool({
-    description: "Read text content from a support document (PDF, DOCX, methodology guide, definitions, etc.).",
+    description: "Read text content from a support document (PDF, DOCX, methodology guide, etc.). Use the pages parameter to read specific pages of a PDF or specific slides of a PPTX.",
     inputSchema: z.object({
       file: z.string().describe("File name or ID"),
-      pages: z.string().optional().describe('Page range for PDFs, e.g. "1-5"'),
+      pages: z.string().optional().describe('Page/slide range, e.g. "1-5", "7", "3,5,9". Returns only those pages.'),
     }),
     async execute({ file, pages }) {
       const fileEntry = ctx.workspace.fileInventory.find((f) => f.fileName === file || f.id === file);
@@ -294,14 +294,46 @@ export function createReadSupportDocTool(ctx: ToolContext) {
         return { error: `File not found: ${file}`, text: "" };
       }
 
+      // If pages are specified and we have page-level data, return only those pages
+      const filePages = (fileEntry as Record<string, unknown>).pages as Array<{ num: number; text: string }> | undefined;
+      if (pages && filePages && filePages.length > 0) {
+        const requestedNums = parsePageRange(pages);
+        const matchedPages = filePages.filter((p) => requestedNums.has(p.num));
+        if (matchedPages.length === 0) {
+          return {
+            error: `No pages matched range "${pages}". Available pages: ${filePages.map((p) => p.num).join(", ")}`,
+            text: "",
+            availablePages: filePages.map((p) => p.num),
+          };
+        }
+
+        const text = matchedPages.map((p) => `[Page ${p.num}]\n${p.text}`).join("\n\n");
+        const truncated = text.length > 20_000;
+
+        await ctx.persistNotebookEntry({
+          toolName: "read_support_doc",
+          toolInput: { file, pages },
+          toolOutput: { fileName: fileEntry.fileName, pagesRead: matchedPages.map((p) => p.num), charCount: Math.min(text.length, 20_000) },
+        });
+
+        return {
+          fileName: fileEntry.fileName,
+          text: truncated ? text.slice(0, 20_000) : text,
+          truncated,
+          pagesRead: matchedPages.map((p) => p.num),
+          totalPages: filePages.length,
+        };
+      }
+
       if (!fileEntry.textContent) {
         return {
           error: `No text content extracted for: ${file}. This file may be a workbook — use describe_table and sample_rows instead.`,
           text: "",
+          ...(filePages ? { availablePages: filePages.map((p) => p.num), hint: "Use the pages parameter to read specific pages." } : {}),
         };
       }
 
-      // Truncate to prevent context window explosion
+      // Full text, truncated to prevent context window explosion
       const text = fileEntry.textContent.slice(0, 20_000);
       const truncated = fileEntry.textContent.length > 20_000;
 
@@ -311,9 +343,33 @@ export function createReadSupportDocTool(ctx: ToolContext) {
         toolOutput: { fileName: fileEntry.fileName, charCount: text.length, truncated },
       });
 
-      return { fileName: fileEntry.fileName, text, truncated };
+      return {
+        fileName: fileEntry.fileName,
+        text,
+        truncated,
+        ...(filePages ? { pageCount: filePages.length, hint: `This file has ${filePages.length} pages. Use pages parameter for specific pages.` } : {}),
+      };
     },
   });
+}
+
+function parsePageRange(range: string): Set<number> {
+  const nums = new Set<number>();
+  for (const part of range.split(",")) {
+    const trimmed = part.trim();
+    const dashMatch = trimmed.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (dashMatch) {
+      const start = parseInt(dashMatch[1], 10);
+      const end = parseInt(dashMatch[2], 10);
+      for (let i = start; i <= end && i <= start + 100; i++) {
+        nums.add(i);
+      }
+    } else {
+      const num = parseInt(trimmed, 10);
+      if (!isNaN(num)) nums.add(num);
+    }
+  }
+  return nums;
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────
@@ -464,16 +520,16 @@ function computeAggregate(
     case "max":
       return round(Math.max(...values));
     case "ratio": {
-      // Group sum / global total (or first value / group total for non-grouped)
+      // Group sum / global total — requires globalTotal from grouped context
       const groupSum = values.reduce((a, b) => a + b, 0);
-      const denominator = globalTotal ?? groupSum;
-      return denominator === 0 ? 0 : round(groupSum / denominator);
+      if (globalTotal === undefined || globalTotal === 0) return 0;
+      return round(groupSum / globalTotal);
     }
     case "share": {
-      // Group sum / global total — gives each group's share of the whole
+      // Group sum / global total — each group's proportion of the whole
       const groupSum = values.reduce((a, b) => a + b, 0);
-      const denominator = globalTotal ?? groupSum;
-      return denominator === 0 ? 0 : round(groupSum / denominator);
+      if (globalTotal === undefined || globalTotal === 0) return 0;
+      return round(groupSum / globalTotal);
     }
     default:
       return 0;

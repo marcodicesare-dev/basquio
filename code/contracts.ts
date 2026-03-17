@@ -573,12 +573,19 @@ export const templateBrandTokensSchema = z.object({
   palette: z
     .object({
       text: z.string().default("#0F172A"),
+      muted: z.string().default("#4B5563"),
       background: z.string().default("#F8FAFC"),
       surface: z.string().default("#FFFFFF"),
       accent: z.string().default("#2563EB"),
       accentMuted: z.string().default("#DBEAFE"),
+      accentLight: z.string().default("#DBEAFE"),
       highlight: z.string().default("#F0CC27"),
       border: z.string().default("#CBD5E1"),
+      positive: z.string().default("#1F7A4D"),
+      negative: z.string().default("#B42318"),
+      coverBg: z.string().default("#1B2541"),
+      calloutGreen: z.string().default("#16A34A"),
+      calloutOrange: z.string().default("#EA580C"),
     })
     .default({}),
   typography: z

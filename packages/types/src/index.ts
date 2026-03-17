@@ -64,6 +64,8 @@ export const normalizedEvidenceFileSchema = z.object({
   role: datasetFileRoleSchema.default("unknown-support"),
   sheets: z.array(normalizedSheetPreviewSchema).default([]),
   textContent: z.string().optional(),
+  pages: z.array(z.object({ num: z.number(), text: z.string() })).optional(),
+  pageCount: z.number().int().nonnegative().optional(),
   warnings: z.array(z.string()).default([]),
 });
 

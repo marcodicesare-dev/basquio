@@ -228,8 +228,8 @@ async function parseEvidenceFile(
     };
   }
 
-  const textContent = await extractSupportText(input.fileName, input.kind, input.buffer);
-  const warnings = buildSupportFileWarnings(input.fileName, input.kind, role, textContent);
+  const textResult = await extractSupportText(input.fileName, input.kind, input.buffer);
+  const warnings = buildSupportFileWarnings(input.fileName, input.kind, role, textResult.fullText);
 
   return {
     id: input.id,
@@ -238,18 +238,26 @@ async function parseEvidenceFile(
     kind: input.kind,
     role,
     sheets: [],
-    textContent,
+    textContent: textResult.fullText,
+    pages: textResult.pages,
+    pageCount: textResult.pageCount,
     warnings,
   };
 }
+
+type SupportTextResult = {
+  fullText: string | undefined;
+  pages?: Array<{ num: number; text: string }>;
+  pageCount?: number;
+};
 
 async function extractSupportText(
   fileName: string,
   kind: ReturnType<typeof inferSourceFileKind>,
   buffer: Buffer,
-) {
+): Promise<SupportTextResult> {
   if (kind !== "document" && kind !== "brand-tokens" && kind !== "pdf" && kind !== "pptx") {
-    return undefined;
+    return { fullText: undefined };
   }
 
   const normalized = fileName.toLowerCase();
@@ -257,9 +265,7 @@ async function extractSupportText(
   if (normalized.endsWith(".docx")) {
     try {
       const result = await mammoth.convertToHtml({ buffer });
-      // Extract text from HTML, preserving table structure as markdown
       const html = result.value;
-      // Strip tags but preserve table separators
       const text = html
         .replace(/<\/tr>/gi, "\n")
         .replace(/<\/td>/gi, " | ")
@@ -273,69 +279,84 @@ async function extractSupportText(
         .replace(/&lt;/gi, "<")
         .replace(/&gt;/gi, ">")
         .trim();
-      return text || undefined;
+      return { fullText: text || undefined };
     } catch {
-      return undefined;
+      return { fullText: undefined };
     }
   }
 
   if (normalized.endsWith(".doc")) {
-    return `[Basquio warning: .doc format not supported. Please convert "${fileName}" to .docx for full text extraction.]`;
+    return { fullText: `[Basquio warning: .doc format not supported. Please convert "${fileName}" to .docx for full text extraction.]` };
   }
 
-  // PDF text extraction via pdf-parse
+  // PDF text extraction with per-page chunking
   if (normalized.endsWith(".pdf")) {
     try {
-      const pdfData = await pdfParse(buffer, { max: 100 }); // max 100 pages
-      const text = pdfData.text?.trim();
-      if (text && text.length > 20) {
-        return text;
+      const pages: Array<{ num: number; text: string }> = [];
+      const pdfData = await pdfParse(buffer, {
+        max: 100,
+        pagerender: async (pageData: { pageNumber: number; getTextContent: () => Promise<{ items: Array<{ str: string }> }> }) => {
+          const content = await pageData.getTextContent();
+          const text = content.items.map((item) => item.str).join(" ").trim();
+          if (text.length > 30) {
+            pages.push({ num: pageData.pageNumber, text });
+          }
+          return text;
+        },
+      });
+      const fullText = pdfData.text?.trim();
+      if (fullText && fullText.length > 20) {
+        return { fullText, pages, pageCount: pdfData.numpages ?? pages.length };
       }
-      return `[PDF "${fileName}" parsed but contained no readable text — may be image-only or scanned.]`;
+      return {
+        fullText: `[PDF "${fileName}" parsed but contained no readable text — may be image-only or scanned.]`,
+        pages,
+        pageCount: pdfData.numpages ?? 0,
+      };
     } catch {
-      return `[PDF "${fileName}" could not be parsed — may be encrypted or corrupted.]`;
+      return { fullText: `[PDF "${fileName}" could not be parsed — may be encrypted or corrupted.]` };
     }
   }
 
-  // PPTX content extraction (slide text + notes)
+  // PPTX content extraction with per-slide chunking
   if (normalized.endsWith(".pptx")) {
     try {
       const JSZip = (await import("jszip")).default;
       const zip = await JSZip.loadAsync(buffer);
-      const slideTexts: string[] = [];
+      const pages: Array<{ num: number; text: string }> = [];
 
-      // Extract text from each slide
       const slideEntries = Object.keys(zip.files)
         .filter((f: string) => /^ppt\/slides\/slide\d+\.xml$/i.test(f))
         .sort();
 
       for (const entry of slideEntries) {
         const xml = await zip.files[entry].async("text");
-        // Extract text from <a:t> elements
         const texts = (xml.match(/<a:t>([^<]*)<\/a:t>/g) ?? []) as string[];
         const slideText = texts
           .map((t: string) => t.replace(/<\/?a:t>/g, "").trim())
           .filter((t: string) => t.length > 0)
           .join(" ");
+        const slideNum = parseInt(entry.match(/slide(\d+)/)?.[1] ?? "0", 10);
         if (slideText) {
-          const slideNum = entry.match(/slide(\d+)/)?.[1] ?? "?";
-          slideTexts.push(`[Slide ${slideNum}] ${slideText}`);
+          pages.push({ num: slideNum, text: slideText });
         }
       }
 
-      return slideTexts.length > 0
-        ? slideTexts.join("\n\n")
+      const fullText = pages.length > 0
+        ? pages.map((p) => `[Slide ${p.num}] ${p.text}`).join("\n\n")
         : `[PPTX "${fileName}" contained no readable text.]`;
+
+      return { fullText, pages, pageCount: slideEntries.length };
     } catch {
-      return `[PPTX "${fileName}" could not be parsed.]`;
+      return { fullText: `[PPTX "${fileName}" could not be parsed.]` };
     }
   }
 
   if (canDecodeAsText(fileName, kind)) {
-    return buffer.toString("utf8");
+    return { fullText: buffer.toString("utf8") };
   }
 
-  return undefined;
+  return { fullText: undefined };
 }
 
 function buildManifestWarnings(files: NormalizedEvidenceFile[], sheetCount: number) {

@@ -15,6 +15,7 @@
     "@basquio/intelligence": "workspace:*",
     "@basquio/render-pdf": "workspace:*",
     "@basquio/render-pptx": "workspace:*",
+    "@basquio/scene-graph": "workspace:*",
     "@basquio/template-engine": "workspace:*",
     "@basquio/types": "workspace:*",
     "@supabase/supabase-js": "^2.49.4",

@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 
+import { auditSlideScene } from "@basquio/scene-graph";
 import type { EvidenceWorkspace, TemplateProfile } from "@basquio/types";
 
 // ─── TOOL CONTEXT ─────────────────────────────────────────────────
@@ -28,6 +29,14 @@ export type AuthoringToolContext = {
     evidenceIds: string[];
     speakerNotes?: string;
     transition?: string;
+    pageIntent?: string;
+    governingThought?: string;
+    chartIntent?: string;
+    focalObject?: string;
+    decisionAsk?: string;
+    riskNote?: string;
+    highlightCategories?: string[];
+    recommendationBlock?: { condition: string; recommendation: string; quantification: string };
   }) => Promise<{ slideId: string; previewUrl?: string; warnings?: string[] }>;
   persistChart: (chart: {
     chartType: string;
@@ -49,7 +58,24 @@ export type AuthoringToolContext = {
     bullets?: string[];
     metrics?: unknown[];
     speakerNotes?: string;
+    callout?: { text: string; tone?: string };
+    kicker?: string;
+    pageIntent?: string;
+    governingThought?: string;
+    chartIntent?: string;
+    focalObject?: string;
+    highlightCategories?: string[];
   }>>;
+  listEvidence?: () => Promise<Array<{
+    evidenceRefId: string;
+    toolName: string;
+    summary: string;
+    label?: string;
+    value?: unknown;
+    confidence?: number | null;
+  }>>;
+  getNotebookEntries?: (evidenceRefId: string) => Promise<{ toolName: string; toolOutput: Record<string, unknown> } | null>;
+  renderContactSheet?: () => Promise<{ available: boolean; slideCount: number; thumbnailDescriptions: string[]; deckLevelIssues: string[] } | null>;
 };
 
 // ─── DENSITY VALIDATION ───────────────────────────────────────────
@@ -401,6 +427,18 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
       evidenceIds: z.array(z.string()).describe("Evidence ref IDs supporting this slide — required for non-cover"),
       speakerNotes: z.string().optional().describe("Presenter narrative 60-140 words — caveats, transitions, backup data"),
       transition: z.string().optional().describe("Bridge sentence to next slide"),
+      pageIntent: z.enum(["inform", "persuade", "recommend", "context"]).optional().describe("The communication purpose of this slide"),
+      governingThought: z.string().optional().describe("The single claim this slide must communicate"),
+      chartIntent: z.string().optional().describe("rank, trend, composition, bridge, correlation, comparison, kpi, table, none"),
+      focalObject: z.string().optional().describe("The entity/metric that is the star of this slide"),
+      decisionAsk: z.string().optional().describe("What decision this slide asks the audience to make"),
+      riskNote: z.string().optional().describe("Key risk or caveat the audience should know"),
+      highlightCategories: z.array(z.string()).optional().describe("Entities to visually highlight on charts"),
+      recommendationBlock: z.object({
+        condition: z.string(),
+        recommendation: z.string(),
+        quantification: z.string(),
+      }).optional().describe("Structured recommendation for recommendation slides"),
     }),
     async execute(params) {
       // Validate density requirements
@@ -411,6 +449,23 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
           violations,
           hint: "Fix the listed violations and retry. Every non-cover slide needs speaker notes, evidence IDs, and content appropriate for the layout.",
         };
+      }
+
+      // Evidence validation: verify each evidence ID actually exists in the notebook
+      if (ctx.getNotebookEntries && params.evidenceIds && params.evidenceIds.length > 0) {
+        const missingIds: string[] = [];
+        for (const eid of params.evidenceIds) {
+          const entry = await ctx.getNotebookEntries(eid);
+          if (!entry) {
+            missingIds.push(eid);
+          }
+        }
+        if (missingIds.length > 0) {
+          return {
+            error: `Evidence validation failed: ${missingIds.length} evidence ID(s) not found in notebook: [${missingIds.join(", ")}]. Use list_evidence to see available evidence, or use compute_metric/query_data to create new evidence first.`,
+            missingIds,
+          };
+        }
       }
 
       const result = await ctx.persistSlide({
@@ -427,6 +482,14 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
         evidenceIds: params.evidenceIds ?? [],
         speakerNotes: params.speakerNotes,
         transition: params.transition,
+        pageIntent: params.pageIntent,
+        governingThought: params.governingThought,
+        chartIntent: params.chartIntent,
+        focalObject: params.focalObject,
+        decisionAsk: params.decisionAsk,
+        riskNote: params.riskNote,
+        highlightCategories: params.highlightCategories,
+        recommendationBlock: params.recommendationBlock,
       });
 
       await ctx.persistNotebookEntry({
@@ -447,6 +510,26 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
         toolOutput: result,
       });
 
+      // Spatial audit: immediate feedback on layout fill, overflow, and warnings
+      const audit = auditSlideScene({
+        id: result.slideId ?? "unknown",
+        runId: ctx.runId,
+        position: params.position,
+        layoutId: params.layout,
+        title: params.title,
+        subtitle: params.subtitle ?? null,
+        kicker: params.kicker ?? null,
+        body: params.body ?? null,
+        bullets: params.bullets ?? null,
+        chartId: params.chartId ?? null,
+        metrics: params.metrics ?? null,
+        callout: params.callout ?? null,
+        evidenceIds: params.evidenceIds ?? [],
+        speakerNotes: params.speakerNotes ?? null,
+        qaStatus: "pending" as const,
+        revision: 1,
+      } as Parameters<typeof auditSlideScene>[0]);
+
       return {
         ...result,
         density: {
@@ -456,6 +539,16 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
           hasBody: Boolean(params.body),
           hasSpeakerNotes: Boolean(params.speakerNotes),
           evidenceCount: params.evidenceIds?.length ?? 0,
+        },
+        spatialAudit: {
+          filledZones: `${audit.filledZoneCount}/${audit.totalZoneCount}`,
+          verticalUsage: `${audit.verticalUsagePct}%`,
+          balance: audit.leftRightBalance,
+          collisions: audit.collisions,
+          overflowRisk: audit.hasOverflowRisk,
+          overflowDetails: audit.overflowDetails,
+          warnings: audit.warnings,
+          zones: audit.zones.map(z => `${z.kind}: ${z.filled ? z.fillDetail : "EMPTY"}`),
         },
       };
     },
@@ -467,7 +560,7 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
 export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
   return tool({
     description:
-      "Audit the deck so far. Returns density stats, layout distribution, and issues for each slide. Call after building all slides to check quality before finishing.",
+      "Audit the deck: returns per-slide composition report (content zones filled/empty, estimated overflow, highlight coverage), deck-level density stats, layout distribution, issues, and the title read-through. Call after building all slides to check quality before finishing. Fix any issues found, then call again to verify.",
     inputSchema: z.object({}),
     async execute() {
       const slides = ctx.getSlides ? await ctx.getSlides() : [];
@@ -487,12 +580,69 @@ export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
       let slidesWithNotes = 0;
       let slidesWithBody = 0;
 
+      // Per-slide composition reports
+      const slideCompositions: Array<{
+        position: number;
+        layout: string;
+        title: string;
+        zones: { chart: boolean; body: boolean; bullets: boolean; metrics: boolean; notes: boolean; callout: boolean; kicker: boolean };
+        filledZones: number;
+        totalZones: number;
+        estimatedOverflow: boolean;
+        focalHighlighted: boolean;
+        titleWordCount: number;
+        bodyWordCount: number;
+        grade: "A" | "B" | "C" | "F";
+      }> = [];
+
       for (const s of slides) {
         layoutCounts[s.layoutId] = (layoutCounts[s.layoutId] ?? 0) + 1;
         if (s.chartId) chartsUsed++;
         if (s.metrics && (s.metrics as unknown[]).length > 0) metricsUsed++;
         if (s.speakerNotes) slidesWithNotes++;
         if (s.body) slidesWithBody++;
+
+        // Per-slide composition
+        if (s.layoutId !== "cover") {
+          const hasChart = Boolean(s.chartId);
+          const hasBody = Boolean(s.body && s.body.trim().length > 10);
+          const hasBullets = Boolean(s.bullets && s.bullets.length > 0);
+          const hasMetrics = Boolean(s.metrics && (s.metrics as unknown[]).length > 0);
+          const hasNotes = Boolean(s.speakerNotes);
+          const hasHighlight = Boolean(s.highlightCategories && s.highlightCategories.length > 0);
+          const hasCallout = Boolean(s.callout && s.callout.text);
+          const hasKicker = Boolean(s.kicker);
+
+          const bodyWords = s.body ? s.body.split(/\s+/).length : 0;
+          const titleWords = s.title.split(/\s+/).length;
+
+          // Estimate overflow: body >80 words, title >20 words, >5 bullets
+          const estimatedOverflow = bodyWords > 80 || titleWords > 20 || (s.bullets?.length ?? 0) > 5;
+
+          // Count filled content zones (excluding notes which is a separate concern)
+          const zones = { chart: hasChart, body: hasBody, bullets: hasBullets, metrics: hasMetrics, notes: hasNotes, callout: hasCallout, kicker: hasKicker };
+          const filledContent = [hasChart, hasBody, hasBullets, hasMetrics, hasCallout].filter(Boolean).length;
+
+          // Grade: A = 3+ content zones + notes + callout, B = 2 zones + notes, C = 1 zone or no notes, F = empty
+          let grade: "A" | "B" | "C" | "F" = "F";
+          if (filledContent >= 3 && hasNotes && hasCallout) grade = "A";
+          else if (filledContent >= 2 && hasNotes) grade = "B";
+          else if (filledContent >= 1) grade = "C";
+
+          slideCompositions.push({
+            position: s.position,
+            layout: s.layoutId,
+            title: s.title.slice(0, 60),
+            zones,
+            filledZones: filledContent,
+            totalZones: 4,
+            estimatedOverflow,
+            focalHighlighted: hasHighlight,
+            titleWordCount: titleWords,
+            bodyWordCount: bodyWords,
+            grade,
+          });
+        }
       }
 
       // Check layout diversity
@@ -508,6 +658,10 @@ export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
         if (s.title.split(/\s+/).length < 5) {
           issues.push(`Slide ${s.position}: title too short — "${s.title}" is not an action title`);
         }
+        // Check for topic-label titles (no number)
+        if (!/\d/.test(s.title) && s.title.split(/\s+/).length >= 3) {
+          issues.push(`Slide ${s.position}: title has no number — "${s.title}" — action titles need specific data`);
+        }
       }
 
       // Check notes coverage
@@ -521,7 +675,7 @@ export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
         issues.push(`Only ${chartsUsed} charts across ${slides.length} slides. Data-driven decks need more visualizations.`);
       }
 
-      // Check consecutive layout repetition (Change 18: narrative flow validation)
+      // Check consecutive layout repetition
       for (let i = 1; i < contentSlides.length; i++) {
         if (contentSlides[i].layoutId === contentSlides[i - 1].layoutId &&
             contentSlides[i].layoutId !== "chart-split") {
@@ -529,11 +683,35 @@ export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
         }
       }
 
-      // Check that summary/recommendation slides have callout or kicker
+      // Check highlight coverage (focal entity must be highlighted)
+      const slidesWithoutHighlight = slideCompositions.filter((s) => s.zones.chart && !s.focalHighlighted);
+      if (slidesWithoutHighlight.length > 0) {
+        issues.push(`${slidesWithoutHighlight.length} chart slide(s) without highlightCategories — focal entity won't stand out: slides ${slidesWithoutHighlight.map((s) => s.position).join(", ")}`);
+      }
+
+      // Check callout coverage (every content slide should have a callout)
+      const slidesWithoutCallout = slideCompositions.filter((s) => !s.zones.callout);
+      if (slidesWithoutCallout.length > 2) {
+        issues.push(`${slidesWithoutCallout.length} content slide(s) without callout — every analytical slide needs a "so what" banner: slides ${slidesWithoutCallout.map((s) => s.position).join(", ")}`);
+      }
+
+      // Check for overflow risks
+      const overflowSlides = slideCompositions.filter((s) => s.estimatedOverflow);
+      if (overflowSlides.length > 0) {
+        issues.push(`${overflowSlides.length} slide(s) with estimated text overflow — trim content: slides ${overflowSlides.map((s) => s.position).join(", ")}`);
+      }
+
+      // Check summary/recommendation slides
       for (const s of slides) {
         if ((s.layoutId === "summary" || s.layoutId === "exec-summary") && !s.body) {
           issues.push(`Slide ${s.position} (${s.layoutId}) has no body text — summary slides need synthesis prose.`);
         }
+      }
+
+      // Grade distribution
+      const gradeDistribution = { A: 0, B: 0, C: 0, F: 0 };
+      for (const comp of slideCompositions) {
+        gradeDistribution[comp.grade]++;
       }
 
       const titleReadThrough = slides.map((s) => `${s.position}. ${s.title}`).join("\n");
@@ -546,12 +724,14 @@ export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
           issueCount: issues.length,
           chartsUsed,
           metricsUsed,
+          gradeDistribution,
         },
       });
 
       return {
         slideCount: slides.length,
         layoutDistribution: layoutCounts,
+        gradeDistribution,
         density: {
           chartsUsed,
           metricsUsed,
@@ -559,10 +739,70 @@ export function createRenderDeckPreviewTool(ctx: AuthoringToolContext) {
           slidesWithBody,
           notesCoverage: `${Math.round(notesPct * 100)}%`,
         },
+        slideCompositions,
         titleReadThrough,
         issues: issues.length > 0 ? issues : ["No issues found. Deck quality looks good."],
-        qualityScore: issues.length === 0 ? "PASS" : issues.length <= 3 ? "ACCEPTABLE" : "NEEDS_WORK",
+        qualityScore: gradeDistribution.F > 0 ? "NEEDS_WORK" : gradeDistribution.C > 2 ? "NEEDS_WORK" : issues.length <= 3 ? "ACCEPTABLE" : "NEEDS_WORK",
       };
+    },
+  });
+}
+
+// ─── LIST EVIDENCE ───────────────────────────────────────────────
+
+export function createListEvidenceTool(ctx: AuthoringToolContext) {
+  return tool({
+    description:
+      "List all evidence entries collected during analysis. Returns evidence ref IDs, labels, values, and summaries. Use these EXACT ref IDs in write_slide's evidenceIds parameter. Also shows the computed value so you can use real numbers in slide titles and body text without re-querying.",
+    inputSchema: z.object({}),
+    async execute() {
+      if (!ctx.listEvidence) {
+        return { error: "listEvidence callback not available", entries: [] };
+      }
+
+      const entries = await ctx.listEvidence();
+
+      await ctx.persistNotebookEntry({
+        toolName: "list_evidence",
+        toolInput: {},
+        toolOutput: { entryCount: entries.length },
+      });
+
+      return { entryCount: entries.length, entries };
+    },
+  });
+}
+
+// ─── RENDER CONTACT SHEET (visual preview) ──────────────────────
+
+export function createRenderContactSheetTool(ctx: AuthoringToolContext) {
+  return tool({
+    description:
+      "Render a visual contact sheet of all slides. Returns per-slide thumbnail descriptions and deck-level visual issues. Call AFTER render_deck_preview passes to get actual visual feedback. Only available if Browserless is configured.",
+    inputSchema: z.object({}),
+    async execute() {
+      if (!ctx.renderContactSheet) {
+        return {
+          error: "Contact sheet rendering not available (Browserless not configured)",
+          available: false,
+        };
+      }
+
+      const result = await ctx.renderContactSheet();
+      if (!result) {
+        return {
+          error: "Contact sheet rendering failed",
+          available: false,
+        };
+      }
+
+      await ctx.persistNotebookEntry({
+        toolName: "render_contact_sheet",
+        toolInput: {},
+        toolOutput: { slideCount: result.slideCount, issueCount: result.deckLevelIssues.length },
+      });
+
+      return result;
     },
   });
 }

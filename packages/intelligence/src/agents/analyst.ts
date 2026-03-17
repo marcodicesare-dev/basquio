@@ -1,8 +1,17 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
-import { Output, ToolLoopAgent, stepCountIs } from "ai";
+import { generateText, Output, ToolLoopAgent, stepCountIs } from "ai";
+import { z } from "zod";
 
-import { analysisReportSchema, type AnalysisReport, type EvidenceWorkspace } from "@basquio/types";
+import {
+  analysisReportSchema,
+  clarifiedBriefSchema,
+  storylinePlanSchema,
+  type AnalysisReport,
+  type ClarifiedBrief,
+  type StorylinePlan,
+  type EvidenceWorkspace,
+} from "@basquio/types";
 import { costBudgetExceeded } from "../agent-utils";
 
 import {
@@ -50,25 +59,61 @@ export function createAnalystAgent(input: AnalystAgentInput) {
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: `You are a senior data analyst working for a strategy consulting firm. Your job is to analyze an evidence workspace — a collection of uploaded files (spreadsheets, documents, PDFs) — and produce a comprehensive analysis for a business brief.
+    instructions: `You are a senior data analyst at a top-tier strategy consulting firm. You explore evidence workspaces — collections of uploaded files (spreadsheets, documents, PDFs) — and produce deep analytical reports that drive executive decisions.
 
-Your approach:
-1. Start by listing all files to understand what you're working with.
-2. Describe each table to understand columns, types, and roles.
-3. Sample rows to understand the actual data values and patterns.
-4. Read any support documents (methodology guides, definitions) for context.
-5. Then systematically compute metrics — explore from multiple angles:
-   - Key totals and averages
-   - Breakdowns by important dimensions
-   - Period-over-period changes if time data exists
-   - Rankings and comparisons
-   - Ratios and shares
-6. Query data for specific patterns and anomalies.
-7. Register every important finding as an evidence ref via compute_metric.
+## YOUR APPROACH
 
-Be thorough. An executive will make decisions based on your analysis. Don't stop at obvious metrics — look for non-obvious patterns, outliers, and relationships.
+You think like a consultant, not a BI tool. You don't just compute aggregates — you look for the story in the data, the tensions, the opportunities, and the risks.
 
-If a query or metric fails, try a different approach. The data may have unexpected formats or missing values.`,
+### Phase 1: Understand the data (steps 1-8)
+1. List all files to understand scope
+2. Describe each table — columns, types, cardinality
+3. Sample rows to see actual values, formats, and patterns
+4. Read any support documents for methodology, definitions, context
+5. Identify: What are the key entities? What are the key dimensions? What time periods exist? What is the unit of measurement?
+
+### Phase 2: First-order analysis (steps 9-16)
+6. Compute key totals — market size, entity totals, segment sizes
+7. Compute breakdowns by every important dimension
+8. Compute period-over-period changes where time data exists
+9. Compute rankings — who is biggest, fastest growing, most efficient
+
+### Phase 3: Second-order insights (steps 17-25)
+10. **Share analysis**: entity value / total market. Do this per segment, not just overall.
+11. **Growth decomposition**: separate value growth from volume growth. Which is driving?
+12. **Relative positioning**: how does the focal entity compare to the market average? To the top competitor? Express as index, gap, or ratio.
+13. **Concentration**: top N entities = what % of total? Is value concentrated or distributed?
+14. **Structural shifts**: what categories/segments are growing vs declining? What's the trend direction?
+15. **Cross-cutting patterns**: is the focal entity strong in segment A but absent in segment B? What's the opportunity cost of that gap?
+16. **Competitive dynamics**: who is gaining share? Who is losing? At whose expense?
+
+### Phase 4: Hypothesis-driven synthesis (steps 26-30)
+17. Before producing your final structured output, formulate:
+    a. A **GOVERNING QUESTION** that captures what this deck must answer — the single question the audience needs resolved.
+    b. **ISSUE BRANCHES** — sub-questions that decompose the governing question (e.g., "Is the focal entity growing faster than the market?", "Where are the white-space opportunities?").
+    c. For each branch, **HYPOTHESES** with their evidence status: confirmed (data supports it), refuted (data contradicts it), or pending (insufficient data). Cite the evidence ref IDs that support or refute each hypothesis.
+    d. **RECOMMENDATION SHAPES** — what actions emerge from the confirmed hypotheses, with quantification where possible (e.g., "Entering segment X could capture Y% share worth Z revenue").
+
+18. Then structure your findings as:
+    - **STRENGTHS**: where does the focal entity outperform the market or competitors?
+    - **WEAKNESSES**: where does it underperform, have gaps, or face concentration risk?
+    - **OPPORTUNITIES**: what's growing that the entity could capture? Quantify the addressable gap.
+    - **THREATS**: what competitors or trends could erode the entity's position?
+    - **KEY DYNAMICS**: what structural market shifts explain the current picture?
+
+Your topFindings should map to the issue branches — each finding should address one branch of the issue tree. The businessImplication field should contain the recommendation shape for that branch.
+
+## EVIDENCE REGISTRATION
+
+Register EVERY important finding as a named evidence ref via compute_metric. Each evidence ref becomes citable by the presentation author. The more evidence you register, the richer the final deck.
+
+## CRITICAL RULES
+
+- Be thorough — an executive will make decisions based on this. Shallow analysis = bad decisions.
+- Don't stop at obvious metrics. The non-obvious cross-cutting insight is where the value is.
+- If a query fails, try a different approach. Data may have unexpected formats.
+- Always compute RELATIVE metrics (share %, index, vs-market), not just absolute values.
+- Identify the focal entity from the brief and analyze everything through their lens.`,
     tools: {
       list_files: createListFilesTool(ctx),
       describe_table: createDescribeTableTool(ctx),
@@ -85,7 +130,81 @@ If a query or metric fails, try a different approach. The data may have unexpect
   return agent;
 }
 
-export async function runAnalystAgent(input: AnalystAgentInput): Promise<AnalysisReport> {
+// ─── STORYLINE STRUCTURING (second model call) ──────────────────
+// Separation of reasoning from structuring: the analyst explores data freely,
+// then a second call structures the findings into an issue tree + storyline.
+
+const storylineOutputSchema = z.object({
+  clarifiedBrief: clarifiedBriefSchema,
+  storylinePlan: storylinePlanSchema,
+});
+
+export type AnalystResult = {
+  analysis: AnalysisReport;
+  clarifiedBrief: ClarifiedBrief | null;
+  storylinePlan: StorylinePlan | null;
+};
+
+async function structureStoryline(
+  analysis: AnalysisReport,
+  brief: string,
+  provider: "openai" | "anthropic",
+  modelId: string,
+): Promise<{ clarifiedBrief: ClarifiedBrief; storylinePlan: StorylinePlan } | null> {
+  const model = provider === "openai" ? openai(modelId) : anthropic(modelId);
+
+  const findingsSummary = analysis.topFindings
+    .map((f, i) => `${i + 1}. [${f.title}] ${f.claim} (confidence: ${f.confidence}, evidence: [${f.evidenceRefIds.join(", ")}]) → ${f.businessImplication}`)
+    .join("\n");
+
+  const chartSummary = analysis.recommendedChartTypes
+    .map((c) => `Finding ${c.findingIndex + 1}: ${c.chartType} — ${c.rationale}`)
+    .join("\n");
+
+  try {
+    const result = await generateText({
+      model,
+      output: Output.object({ schema: storylineOutputSchema }),
+      prompt: `You are a senior strategy consultant. Given an analyst's findings and the original brief, produce two structured working papers:
+
+1. **Clarified Brief** — your interpretation of what this deck must accomplish
+2. **Storyline Plan** — an issue tree that structures the narrative
+
+ORIGINAL BRIEF:
+${brief}
+
+ANALYSIS DOMAIN: ${analysis.domain}
+ANALYSIS SUMMARY: ${analysis.summary}
+
+KEY FINDINGS:
+${findingsSummary}
+
+KEY DIMENSIONS: ${analysis.keyDimensions.join(", ")}
+
+RECOMMENDED CHARTS:
+${chartSummary}
+
+METRICS COMPUTED: ${analysis.metricsComputed} | QUERIES EXECUTED: ${analysis.queriesExecuted} | FILES ANALYZED: ${analysis.filesAnalyzed}
+
+INSTRUCTIONS:
+- The GOVERNING QUESTION must be a single question that, if answered well, makes this deck worth the audience's time.
+- Each ISSUE BRANCH should be a sub-question. Map each branch to the relevant findings above.
+- For each hypothesis, set status to "confirmed" if the findings support it, "refuted" if they contradict it, "partial" if mixed, or "pending" if no data addresses it.
+- RECOMMENDATION SHAPES should be actionable, quantified where possible, and linked to confirmed hypotheses.
+- The TITLE READ-THROUGH is the proposed sequence of slide titles — each should be an action title (full sentence with a number) that communicates one governing thought.
+- Detect the language from the brief. If the brief is in Italian, French, German, etc., set language accordingly and write all content in that language.
+- requestedSlideCount: extract from the brief if mentioned (e.g., "12 slides"), otherwise null.`,
+    });
+
+    if (!result.output) return null;
+    return result.output;
+  } catch (error) {
+    console.error("[structureStoryline] Failed to produce storyline plan:", error);
+    return null;
+  }
+}
+
+export async function runAnalystAgent(input: AnalystAgentInput): Promise<AnalystResult> {
   const agent = createAnalystAgent(input);
 
   const fileInventorySummary = input.workspace.fileInventory
@@ -102,14 +221,24 @@ ${fileInventorySummary}
 
 Start by listing files and describing tables. Sample rows to understand the data. Then compute metrics systematically — explore from multiple angles before concluding. Register every finding as an evidence ref.
 
-Be thorough but efficient. An executive will make decisions based on your analysis. You have a maximum of ~20 tool calls before you must produce your final structured report. Plan your exploration accordingly — don't spend all your budget on one dimension.`,
+Be thorough but efficient. An executive will make decisions based on your analysis. You have a maximum of ~20 tool calls before you must produce your final structured report. Plan your exploration accordingly — don't spend all your budget on one dimension.
+
+IMPORTANT: Identify the focal entity from the brief above. Every metric you compute should help answer: "How is the focal entity performing, where are they strong, where are they weak, and what should they do?" Register all findings as evidence refs — the presentation author needs them.
+
+In Phase 4, before producing your final structured output, think through:
+1. What is the GOVERNING QUESTION this deck must answer?
+2. What are the ISSUE BRANCHES (sub-questions)?
+3. For each branch, what HYPOTHESES were confirmed or refuted by your analysis?
+4. What RECOMMENDATION SHAPES emerge?
+
+Encode this thinking into your topFindings — each finding should address one branch of the issue tree, with the businessImplication containing the recommendation.`,
   });
 
+  let analysis: AnalysisReport;
   if (!result.output) {
     // Fallback: construct a minimal AnalysisReport from the agent's text response.
-    // This happens when the model hits output token limits before completing the structured JSON.
     const textSummary = result.text ?? "Analysis completed but structured output was not generated.";
-    return {
+    analysis = {
       summary: textSummary.slice(0, 2000),
       domain: "Market Analysis",
       topFindings: [{
@@ -125,7 +254,18 @@ Be thorough but efficient. An executive will make decisions based on your analys
       keyDimensions: [],
       recommendedChartTypes: [],
     };
+  } else {
+    analysis = result.output;
   }
 
-  return result.output;
+  // Second model call: structure findings into issue tree + storyline plan
+  const provider = input.providerOverride ?? "openai";
+  const modelId = input.modelOverride ?? "gpt-5.4";
+  const storylineResult = await structureStoryline(analysis, input.brief, provider, modelId);
+
+  return {
+    analysis,
+    clarifiedBrief: storylineResult?.clarifiedBrief ?? null,
+    storylinePlan: storylineResult?.storylinePlan ?? null,
+  };
 }

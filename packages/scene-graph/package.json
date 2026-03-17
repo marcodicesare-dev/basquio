@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./layout-regions": "./src/layout-regions.ts"
   },
   "dependencies": {
     "@basquio/types": "workspace:*",
