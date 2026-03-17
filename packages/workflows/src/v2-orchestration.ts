@@ -2460,10 +2460,20 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       });
     }
 
-    // ─── STEP 5.5: BUILD SCENE GRAPH ─────────────────────────────
-    const sceneGraphResult = await step.run("build-scene-graph", async () => {
+    // Scene graph is built inside the consolidated export step below
+
+    // ─── STEP 6: EXPORT (consolidated: scene-graph + PPTX + QA + manifest) ──
+    // All export substeps in ONE step.run() to minimize Inngest step replay overhead.
+    // With 25+ steps in the function, each additional step adds replay latency that
+    // causes Inngest connection resets on Vercel.
+    const artifacts = await step.run("export", async () => {
+      await updateRunStatus(runId, "running", "export");
+      await emitRunEvent(runId, "export", "phase_started");
+
+      // 1. Build scene graph
       const slides = await getSlides(runId);
-      const chartRows = await getV2ChartRows(runId);
+      const v2ChartRows = await getV2ChartRows(runId);
+      const deckTitle = analysis.summary?.slice(0, 100) ?? slides[0]?.title ?? "Basquio Report";
 
       const templateProfile = workspace.templateProfile ?? createSystemTemplateProfile();
       const sceneGraph = buildDeckSceneGraph(
@@ -2486,12 +2496,11 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
           revision: 1,
         })),
         templateProfile,
-        chartRows.map(c => ({ id: c.id, chartType: c.chartType, title: c.title })),
+        v2ChartRows.map(c => ({ id: c.id, chartType: c.chartType, title: c.title })),
       );
 
-      // Persist scene graph as JSON blob
-      const sceneGraphJson = JSON.stringify(sceneGraph);
-      const sceneGraphBuffer = Buffer.from(sceneGraphJson, "utf-8");
+      // Persist scene graph
+      const sceneGraphBuffer = Buffer.from(JSON.stringify(sceneGraph), "utf-8");
       await uploadToStorage({
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
         serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -2501,22 +2510,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         contentType: "application/json",
       });
 
-      return {
-        slideCount: sceneGraph.slides.length,
-        totalNodes: sceneGraph.slides.reduce((acc, s) => acc + s.nodes.length, 0),
-      };
-    });
-
-    // ─── STEP 6a: RENDER PPTX ────────────────────────────────────
-    const pptxResult = await step.run("render-pptx", async () => {
-      await updateRunStatus(runId, "running", "export");
-      await emitRunEvent(runId, "export", "phase_started");
-
-      const slides = await getSlides(runId);
-      const v2ChartRows = await getV2ChartRows(runId);
-      const deckTitle = analysis.summary?.slice(0, 100) ?? slides[0]?.title ?? "Basquio Report";
-
-      // Map template brand tokens to renderer format
+      // 2. Render PPTX
       const tp = workspace.templateProfile;
       const strip = (c?: string) => c?.replace("#", "");
       const brandTokenOverrides: Record<string, unknown> | undefined = (() => {
@@ -2571,174 +2565,46 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       const { createHash } = await import("node:crypto");
       const pptxSha256 = createHash("sha256").update(pptxBuffer).digest("hex");
 
-      return {
-        pptxPath,
-        pptxSha256,
-        pptxBytes: pptxBuffer.length,
-        pptxFileName: pptxArtifact.fileName,
-        pptxMimeType: pptxArtifact.mimeType,
-        slideCount: slides.length,
-        deckTitle,
-      };
-    });
-
-    // ─── STEP 6b: RENDER PDF (scene-graph-based) ───────────────────
-    // PDF rendering is deferred to reduce total export time and prevent connection resets.
-    // PPTX is the primary artifact; PDF can be generated on-demand later.
-    const pdfResult = await step.run("render-pdf", async () => {
-      const browserlessToken = process.env.BROWSERLESS_TOKEN;
-      const browserlessUrl = process.env.BROWSERLESS_URL ?? "https://production-sfo.browserless.io";
-      if (!browserlessToken) return null;
-      // Skip PDF in pipeline — generate on-demand via API to reduce export step time
-      if (process.env.BASQUIO_SKIP_PDF_IN_PIPELINE !== "false") return null;
-
-      try {
-        // Load the persisted scene graph from Storage
-        const sceneGraphBuf = await downloadFromStorage({
-          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          bucket: "artifacts",
-          storagePath: `${runId}/scene-graph.json`,
-        });
-
-        let html: string;
-        if (sceneGraphBuf && sceneGraphBuf.length > 0) {
-          const sceneGraph: DeckSceneGraph = JSON.parse(sceneGraphBuf.toString("utf-8"));
-          const v2ChartRows = await getV2ChartRows(runId);
-          html = renderSceneGraphToHtml(sceneGraph, v2ChartRows, pptxResult.deckTitle);
-        } else {
-          // Fallback to old renderer if scene graph is missing
-          const slides = await getSlides(runId);
-          const v2ChartRows = await getV2ChartRows(runId);
-          html = renderSlidesToHtml(slides, v2ChartRows, pptxResult.deckTitle);
-        }
-
-        const pdfResp = await fetch(`${browserlessUrl}/pdf?token=${browserlessToken}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            html,
-            options: {
-              printBackground: true,
-              landscape: true,
-              width: "960px",
-              height: "540px",
-              margin: { top: "0", right: "0", bottom: "0", left: "0" },
-            },
-            gotoOptions: { waitUntil: "networkidle2", timeout: 30000 },
-          }),
-        });
-
-        if (!pdfResp.ok) return null;
-
-        const pdfBuffer = Buffer.from(await pdfResp.arrayBuffer());
-        const pdfPath = `${runId}/deck.pdf`;
-        const pdfFileName = `${pptxResult.deckTitle.replace(/[^a-zA-Z0-9 -]/g, "").slice(0, 50)}.pdf`;
-
-        await uploadToStorage({
-          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          bucket: "artifacts",
-          storagePath: pdfPath,
-          body: pdfBuffer,
-          contentType: "application/pdf",
-        });
-
-        const { createHash } = await import("node:crypto");
-        const pdfSha256 = createHash("sha256").update(pdfBuffer).digest("hex");
-
-        // Count PDF pages
-        const pdfText = pdfBuffer.toString("latin1");
-        const pageMatches = pdfText.match(/\/Type\s*\/Page(?!s)/g);
-        const pageCount = pageMatches ? pageMatches.length : 0;
-
-        return { pdfPath, pdfSha256, pdfBytes: pdfBuffer.length, pdfFileName, pageCount };
-      } catch {
-        // PDF rendering is best-effort; PPTX is the primary artifact
-        return null;
-      }
-    });
-
-    // ─── STEP 6c: ARTIFACT QA ─────────────────────────────────────
-    const qaResult = await step.run("artifact-qa", async () => {
+      // 3. QA checks
       const qaChecks: Array<{ name: string; passed: boolean; detail?: string }> = [];
+      qaChecks.push({ name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` });
+      qaChecks.push({ name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` });
+      const hasValidPptxHeader = pptxBuffer.length >= 4 &&
+        pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
+        pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
+      qaChecks.push({ name: "pptx_valid_zip", passed: hasValidPptxHeader });
 
-      qaChecks.push({
-        name: "pptx_non_empty",
-        passed: pptxResult.pptxBytes > 0,
-        detail: `${pptxResult.pptxBytes} bytes`,
-      });
-      qaChecks.push({
-        name: "slide_count_positive",
-        passed: pptxResult.slideCount > 0,
-        detail: `${pptxResult.slideCount} slides`,
-      });
-
-      // Download PPTX header to validate ZIP signature
-      const pptxHeaderBuf = await downloadFromStorage({
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        bucket: "artifacts",
-        storagePath: pptxResult.pptxPath,
-      });
-      const hasValidPptxHeader = pptxHeaderBuf && pptxHeaderBuf.length >= 4 &&
-        pptxHeaderBuf[0] === 0x50 && pptxHeaderBuf[1] === 0x4B &&
-        pptxHeaderBuf[2] === 0x03 && pptxHeaderBuf[3] === 0x04;
-      qaChecks.push({ name: "pptx_valid_zip", passed: Boolean(hasValidPptxHeader) });
-
-      if (pdfResult) {
-        qaChecks.push({ name: "pdf_non_empty", passed: pdfResult.pdfBytes > 0, detail: `${pdfResult.pdfBytes} bytes` });
-      }
-
-      const criticalChecks = qaChecks.filter((c) => c.name.startsWith("pptx_") || c.name === "slide_count_positive");
-      const qaPassed = criticalChecks.every((c) => c.passed);
-
+      const qaPassed = qaChecks.every((c) => c.passed);
       if (!qaPassed) {
-        const failedChecks = criticalChecks.filter((c) => !c.passed).map((c) => c.name).join(", ");
+        const failedChecks = qaChecks.filter((c) => !c.passed).map((c) => c.name).join(", ");
         await updateDeliveryStatus(runId, "failed");
         await updateRunStatus(runId, "failed", "export", { failure_message: `QA failed: ${failedChecks}` });
         throw new Error(`Artifact QA failed: ${failedChecks}`);
       }
 
-      return { qaChecks, qaPassed };
-    });
-
-    // ─── STEP 6d: PUBLISH MANIFEST ────────────────────────────────
-    const artifacts = await step.run("publish-manifest", async () => {
+      // 4. Publish manifest
       const manifestArtifacts: Array<Record<string, unknown>> = [
         {
           id: crypto.randomUUID(),
           kind: "pptx",
-          fileName: pptxResult.pptxFileName,
-          mimeType: pptxResult.pptxMimeType,
+          fileName: pptxArtifact.fileName,
+          mimeType: pptxArtifact.mimeType,
           storageBucket: "artifacts",
-          storagePath: pptxResult.pptxPath,
-          fileBytes: pptxResult.pptxBytes,
-          checksumSha256: pptxResult.pptxSha256,
+          storagePath: pptxPath,
+          fileBytes: pptxBuffer.length,
+          checksumSha256: pptxSha256,
         },
       ];
-      if (pdfResult) {
-        manifestArtifacts.push({
-          id: crypto.randomUUID(),
-          kind: "pdf",
-          fileName: pdfResult.pdfFileName,
-          mimeType: "application/pdf",
-          storageBucket: "artifacts",
-          storagePath: pdfResult.pdfPath,
-          fileBytes: pdfResult.pdfBytes,
-          checksumSha256: pdfResult.pdfSha256,
-        });
-      }
 
       const manifestId = crypto.randomUUID();
       const manifest = {
         id: manifestId,
         run_id: runId,
-        slide_count: pptxResult.slideCount,
-        page_count: pdfResult ? pdfResult.pageCount : pptxResult.slideCount,
+        slide_count: slides.length,
+        page_count: slides.length,
         qa_passed: !degradedDelivery,
         qa_report: {
-          checks: qaResult.qaChecks,
+          checks: qaChecks,
           delivery_status: degradedDelivery ? "degraded" : "reviewed",
           ...(degradedDelivery ? {
             degraded: true,
@@ -2777,7 +2643,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       });
 
       await emitRunEvent(runId, "export", "phase_completed", {
-        slideCount: pptxResult.slideCount,
+        slideCount: slides.length,
         artifactCount: manifestArtifacts.length,
       });
 
