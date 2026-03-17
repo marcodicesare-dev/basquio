@@ -30,7 +30,7 @@ export default async function DashboardPage() {
         <h1>Dashboard</h1>
 
         <Link className="button" href="/jobs/new">
-          New analysis
+          New report
         </Link>
       </section>
 
@@ -38,7 +38,7 @@ export default async function DashboardPage() {
         <section className="panel featured-analysis-card stack-xl">
           <div className="run-card-head">
             <div className="stack">
-              <p className="artifact-kind">Latest analysis</p>
+              <p className="artifact-kind">Latest report</p>
               <h2>{latestRun.story.keyMessages[0] ?? latestRun.objective}</h2>
               <p className="muted">{summarizeRunBrief(latestRun)}</p>
             </div>
@@ -77,11 +77,11 @@ export default async function DashboardPage() {
             <span />
           </div>
           <div className="stack">
-            <h2>No analyses yet</h2>
-            <p className="muted">Create your first analysis to generate a presentation.</p>
+            <h2>Ready when you are</h2>
+            <p className="muted">Upload your data and Basquio will build your first report.</p>
           </div>
           <Link className="button" href="/jobs/new">
-            Create your first analysis
+            Create your first report
           </Link>
         </section>
       )}
@@ -89,9 +89,9 @@ export default async function DashboardPage() {
       {recentRuns.length > 0 ? (
         <section className="stack-lg">
           <div className="workspace-section-head">
-            <h2>Recent analyses</h2>
+            <h2>Recent reports</h2>
             <Link className="button secondary" href="/artifacts">
-              View all presentations
+              All reports
             </Link>
           </div>
 

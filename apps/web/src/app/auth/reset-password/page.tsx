@@ -18,11 +18,11 @@ export default async function ResetPasswordPage({
 
   return (
     <div className="page-shell public-page auth-page-shell">
-      <section className="technical-panel auth-intro-panel stack-lg">
-        <p className="section-label light">Password reset</p>
-        <h1>Reset your password.</h1>
+      <section className="panel auth-intro-panel stack-lg">
+        <p className="section-label">Password reset</p>
+        <h1>Choose a new password.</h1>
         <p className="muted">
-          Open the link from your email, choose a new password, and we will bring you back into your workspace.
+          Pick a new password and you will be signed in automatically.
         </p>
       </section>
 

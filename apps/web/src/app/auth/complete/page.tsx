@@ -17,11 +17,11 @@ export default async function AuthCompletePage({
 
   return (
     <div className="page-shell public-page auth-page-shell">
-      <section className="technical-panel auth-intro-panel stack-lg">
-        <p className="section-label light">Workspace access</p>
+      <section className="panel auth-intro-panel stack-lg">
+        <p className="section-label">Almost there</p>
         <h1>Verifying your email...</h1>
         <p className="muted">
-          This usually takes a moment. Once the link checks out, we will send you straight into your workspace.
+          This usually takes a moment. Once confirmed, you will be signed in automatically.
         </p>
       </section>
 

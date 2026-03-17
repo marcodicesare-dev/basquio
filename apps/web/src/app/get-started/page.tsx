@@ -96,11 +96,10 @@ export default function GetStartedPage() {
 
         <article className="panel stack-lg">
           <div className="stack">
-            <p className="section-label">Need pricing?</p>
-            <h2>Start with fit first.</h2>
+            <p className="section-label">Pricing</p>
+            <h2>Your first report is free.</h2>
             <p className="muted">
-              Basquio is still being rolled out carefully. If the first package is a fit, use the contact link below
-              to talk through rollout and commercial details.
+              Start with one real reporting cycle at no cost. If Basquio fits your workflow, we will work with you on the right plan for your team.
             </p>
           </div>
         </article>

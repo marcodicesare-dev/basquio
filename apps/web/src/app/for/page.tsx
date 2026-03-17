@@ -22,10 +22,9 @@ export default function ForPage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">Who it&apos;s for</p>
-              <h1>Find the reporting pressure that looks most like your team.</h1>
+              <h1>Built for teams where the deck has to survive the room.</h1>
               <p className="page-copy">
-                Basquio is strongest when teams are working from several inputs, answering to a real audience, and still
-                need the deck to feel polished before it leaves the room.
+                Category reviews, client steering packs, board prep, campaign readouts. If your team pulls from multiple sources and the audience expects both the story and the proof, Basquio was built for your workflow.
               </p>
             </div>
           </div>

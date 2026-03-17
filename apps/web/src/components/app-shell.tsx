@@ -15,7 +15,7 @@ const navigation = [
   },
   {
     href: "/jobs/new",
-    label: "New analysis",
+    label: "New report",
   },
   {
     href: "/templates",
@@ -23,7 +23,7 @@ const navigation = [
   },
   {
     href: "/artifacts",
-    label: "Presentations",
+    label: "Reports",
   },
 ] as const;
 
@@ -42,7 +42,7 @@ export function AppShell({ viewer, children }: { viewer: ViewerState; children: 
         </div>
 
         <Link className="button sidebar-cta" href="/jobs/new">
-          Create analysis
+          New report
         </Link>
 
         <nav className="nav stack" aria-label="Workspace">

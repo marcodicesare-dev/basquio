@@ -3,15 +3,10 @@ import Image from "next/image";
 import Link from "next/link";
 
 import {
-  evidencePackageInputs,
   gettingStartedSteps,
   heroSignals,
-  landingComparisonRows,
   personas,
-  pipelineSteps,
   proofPoints,
-  rolloutSignals,
-  trustSignals,
 } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteFooter } from "@/components/public-site-footer";
@@ -27,8 +22,8 @@ function OutputPptxChart() {
   return (
     <div className="chart-frame">
       <div className="chart-meta-row">
-        <span>Market share by channel</span>
-        <span>Q1 2026</span>
+        <span>Value share by channel</span>
+        <span>MAT Q1 2026</span>
       </div>
       <svg className="viz-svg" viewBox="0 0 520 250" aria-hidden>
         <defs>
@@ -44,45 +39,50 @@ function OutputPptxChart() {
           <line x1="56" y1="118" x2="486" y2="118" />
           <line x1="56" y1="78" x2="486" y2="78" />
         </g>
+        {/* Category benchmark bars */}
         <g fill="#7688bf" opacity="0.3">
-          <rect x="86" y="122" width="36" height="76" rx="10" />
-          <rect x="166" y="110" width="36" height="88" rx="10" />
-          <rect x="246" y="92" width="36" height="106" rx="10" />
-          <rect x="326" y="98" width="36" height="100" rx="10" />
+          <rect x="76" y="142" width="32" height="56" rx="8" />
+          <rect x="166" y="126" width="32" height="72" rx="8" />
+          <rect x="256" y="134" width="32" height="64" rx="8" />
+          <rect x="346" y="118" width="32" height="80" rx="8" />
+          <rect x="436" y="148" width="32" height="50" rx="8" />
         </g>
+        {/* Premium segment bars */}
         <g fill="url(#pptxBarAccent)">
-          <rect x="126" y="102" width="36" height="96" rx="10" />
-          <rect x="206" y="82" width="36" height="116" rx="10" />
-          <rect x="286" y="52" width="36" height="146" rx="10" />
-          <rect x="366" y="68" width="36" height="130" rx="10" />
+          <rect x="112" y="118" width="32" height="80" rx="8" />
+          <rect x="202" y="86" width="32" height="112" rx="8" />
+          <rect x="292" y="72" width="32" height="126" rx="8" />
+          <rect x="382" y="56" width="32" height="142" rx="8" />
+          <rect x="472" y="98" width="32" height="100" rx="8" />
         </g>
-        <g fill="#0b0c0c" fontSize="12">
-          <text x="92" y="220">Retail</text>
-          <text x="171" y="220">DTC</text>
-          <text x="246" y="220">Search</text>
-          <text x="327" y="220">Social</text>
+        <g fill="#0b0c0c" fontSize="11">
+          <text x="78" y="218">Grocery</text>
+          <text x="168" y="218">Drug</text>
+          <text x="255" y="218">Club</text>
+          <text x="348" y="218">Mass</text>
+          <text x="440" y="218">eComm</text>
         </g>
         <g fill="#5d656b" fontSize="11">
-          <text x="20" y="201">0</text>
-          <text x="12" y="161">10</text>
-          <text x="12" y="121">20</text>
-          <text x="12" y="81">30</text>
+          <text x="20" y="201">0%</text>
+          <text x="14" y="161">10%</text>
+          <text x="14" y="121">20%</text>
+          <text x="14" y="81">30%</text>
         </g>
         <g>
-          <rect x="278" y="18" width="158" height="34" rx="17" fill="rgba(11,12,12,0.06)" />
-          <text x="294" y="40" fill="#0b0c0c" fontSize="14" fontWeight="700">
-            Brand X +18 pts
+          <rect x="296" y="18" width="176" height="34" rx="17" fill="rgba(11,12,12,0.06)" />
+          <text x="312" y="40" fill="#0b0c0c" fontSize="13" fontWeight="700">
+            Premium +3.2x in Mass
           </text>
         </g>
       </svg>
       <div className="chart-legend">
         <span>
           <i className="legend-swatch legend-swatch-muted" />
-          Category
+          Total category
         </span>
         <span>
           <i className="legend-swatch legend-swatch-accent" />
-          Brand X
+          Premium segment
         </span>
       </div>
     </div>
@@ -93,8 +93,8 @@ function OutputPdfChart() {
   return (
     <div className="chart-frame chart-frame-pdf">
       <div className="chart-meta-row">
-        <span>Growth trajectory</span>
-        <span>Indexed, Jan to Jun</span>
+        <span>Distribution-weighted velocity</span>
+        <span>L52W, tracked channels</span>
       </div>
       <svg className="viz-svg" viewBox="0 0 520 250" aria-hidden>
         <defs>
@@ -110,30 +110,42 @@ function OutputPdfChart() {
           <line x1="54" y1="100" x2="490" y2="100" />
           <line x1="54" y1="50" x2="490" y2="50" />
         </g>
+        {/* Category trend line (flat/declining) */}
         <path
-          d="M54 184 L126 168 L198 174 L270 108 L342 126 L414 92 L486 54 L486 200 L54 200 Z"
-          fill="url(#pdfAreaFill)"
+          d="M54 142 L126 146 L198 152 L270 148 L342 156 L414 160 L486 164"
+          fill="none"
+          stroke="#7688bf"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.4"
         />
+        {/* Premium segment trend line (accelerating) */}
         <path
-          d="M54 184 L126 168 L198 174 L270 108 L342 126 L414 92 L486 54"
+          d="M54 168 L126 154 L198 148 L270 112 L342 94 L414 68 L486 46"
           fill="none"
           stroke="#1a6aff"
           strokeWidth="4"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <circle cx="414" cy="92" r="6" fill="#ffffff" stroke="#1a6aff" strokeWidth="4" />
-        <rect x="344" y="28" width="118" height="38" rx="19" fill="rgba(240,204,39,0.18)" />
-        <text x="360" y="52" fill="#0b0c0c" fontSize="14" fontWeight="700">
-          Share inflects
+        <path
+          d="M54 168 L126 154 L198 148 L270 112 L342 94 L414 68 L486 46 L486 200 L54 200 Z"
+          fill="url(#pdfAreaFill)"
+        />
+        <circle cx="486" cy="46" r="6" fill="#ffffff" stroke="#1a6aff" strokeWidth="4" />
+        <rect x="362" y="24" width="130" height="38" rx="19" fill="rgba(240,204,39,0.18)" />
+        <text x="378" y="48" fill="#0b0c0c" fontSize="13" fontWeight="700">
+          Share inflects Q3
         </text>
         <g fill="#0b0c0c" fontSize="12">
-          <text x="52" y="220">Jan</text>
-          <text x="122" y="220">Feb</text>
-          <text x="193" y="220">Mar</text>
-          <text x="266" y="220">Apr</text>
-          <text x="338" y="220">May</text>
-          <text x="410" y="220">Jun</text>
+          <text x="40" y="220">P1</text>
+          <text x="112" y="220">P2</text>
+          <text x="184" y="220">P3</text>
+          <text x="258" y="220">P4</text>
+          <text x="330" y="220">P5</text>
+          <text x="402" y="220">P6</text>
+          <text x="474" y="220">P7</text>
         </g>
       </svg>
     </div>
@@ -222,11 +234,35 @@ function StoryMathVisual() {
   );
 }
 
+const homepagePipeline = [
+  {
+    stage: "01",
+    title: "Upload one evidence package",
+    detail: "CSVs, spreadsheets, briefs, and brand files from one reporting cycle.",
+  },
+  {
+    stage: "02",
+    title: "Compute what matters",
+    detail: "Structure the data, run the math, rank the signals worth presenting.",
+  },
+  {
+    stage: "03",
+    title: "Build the narrative",
+    detail: "Shape the story for your audience with every claim traced to source.",
+  },
+  {
+    stage: "04",
+    title: "Deliver both formats",
+    detail: "An editable PPTX and a polished PDF from the same analysis.",
+  },
+];
+
 export default function HomePage() {
   return (
     <div className="landing-shell">
       <PublicSiteNav />
 
+      {/* ── Hero ── */}
       <section className="hero-stage marketing-hero">
         <div className="hero-main">
           <div className="stack-xl">
@@ -236,10 +272,6 @@ export default function HomePage() {
               <p className="hero-subtitle">
                 Upload the CSVs, PDFs, notes, and brand files behind one review. Basquio returns an editable PPTX and
                 a polished PDF.
-              </p>
-              <p className="hero-copy">
-                An evidence package is simply the set of files behind one reporting cycle. Basquio reads them as one
-                package so the numbers, narrative, and design stay aligned.
               </p>
             </div>
 
@@ -266,7 +298,7 @@ export default function HomePage() {
           <article className="artifact-window hero-artifact-window">
             <div className="artifact-window-top">
               <span className="artifact-window-pill">Sample report</span>
-              <span className="artifact-window-meta">Executive category growth review</span>
+              <span className="artifact-window-meta">Category performance review</span>
             </div>
 
             <div className="hero-slide-preview">
@@ -276,20 +308,22 @@ export default function HomePage() {
               </div>
 
               <div className="stack">
-                <h2>Brand X is growing 3.2x faster than category.</h2>
-                <p className="slide-note">Share gains accelerate in premium retail while the category softens overall.</p>
+                <h2>Premium segment outperforms by 3.2x in tracked channels.</h2>
+                <p className="slide-note">
+                  Value share gains accelerate in mass and club while total category growth decelerates to +1.4% MAT.
+                </p>
               </div>
 
               <div className="hero-chart" aria-hidden>
                 <div className="hero-chart-bars">
-                  <span style={{ height: "42%" }} />
-                  <span style={{ height: "58%" }} />
-                  <span style={{ height: "64%" }} />
-                  <span className="accent" style={{ height: "88%" }} />
+                  <span style={{ height: "36%" }} />
+                  <span style={{ height: "52%" }} />
+                  <span style={{ height: "68%" }} />
+                  <span className="accent" style={{ height: "92%" }} />
                 </div>
                 <div className="hero-chart-callout">
-                  <strong>+18 pts</strong>
-                  <span>vs. category trend</span>
+                  <strong>+4.7 pts</strong>
+                  <span>value share, L52W</span>
                 </div>
               </div>
 
@@ -308,94 +342,23 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="panel trust-panel">
-        <div className="stack">
-          <p className="section-label">Workflow fit</p>
-          <h2>Built for teams that already have to defend the story.</h2>
-          <p className="muted">Category reviews, client updates, executive readouts, and recurring reporting loops where the numbers have to hold up.</p>
-        </div>
-
-        <div className="logo-strip" aria-label="Trusted workflow types">
-          {trustSignals.map((signal) => (
-            <span key={signal} className="logo-chip">
-              {signal}
-            </span>
-          ))}
-        </div>
-      </section>
-
+      {/* ── Social proof strip ── */}
       <section className="panel social-proof-panel">
         <div className="stack">
-          <p className="section-label">Current rollout</p>
-          <h2>Basquio is being introduced through small, live reporting pilots.</h2>
+          <p className="section-label">Team</p>
+          <h2>Built by a team from NielsenIQ, Mondelez, and Victorinox.</h2>
           <p className="muted">
-            There are no invented customer logos on this page. The product is currently founder-led, private by
-            default, and evaluated one real reporting cycle at a time.
+            Founder-led rollout. Private workspaces. Evaluated one real reporting cycle at a time.
           </p>
         </div>
-
-        <div className="logo-strip" aria-label="Current rollout signals">
-          {rolloutSignals.map((signal) => (
-            <span key={signal} className="logo-chip">
-              {signal}
-            </span>
-          ))}
-        </div>
       </section>
 
-      <section className="cards">
-        <article className="panel stack-lg">
-          <div className="stack">
-            <p className="section-label">What you upload</p>
-            <h2>One evidence package = the files behind one reporting cycle.</h2>
-            <p className="muted">
-              It is not a new format. It is simply the CSVs, spreadsheets, support docs, and brand input your team
-              already uses before the deck exists.
-            </p>
-          </div>
-
-          <ul className="clean-list">
-            {evidencePackageInputs.map((input) => (
-              <li key={input}>{input}</li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="technical-panel stack-lg">
-          <div className="stack">
-            <p className="section-label light">Getting started</p>
-            <h2>Start with one live review, not a long setup project.</h2>
-            <p className="muted">
-              Basquio works best when you begin with a single package from a real reporting cycle, review the first
-              output, and then decide if it should become a recurring workflow.
-            </p>
-          </div>
-
-          <div className="stack">
-            {gettingStartedSteps.map((step, index) => (
-              <div key={step.title} className="stage-row">
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <div className="stack-xs">
-                  <strong>{step.title}</strong>
-                  <p className="muted">{step.detail}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="row">
-            <Link className="button secondary inverted" href="/get-started">
-              Read the setup guide
-            </Link>
-          </div>
-        </article>
-      </section>
-
+      {/* ── Pipeline (4 steps) ── */}
       <section className="technical-panel stack-xl" id="pipeline">
         <div className="row split">
           <div className="stack">
-            <p className="section-label light">The pipeline</p>
-            <h2>From evidence package to executive deck in one visible flow.</h2>
+            <p className="section-label light">How it works</p>
+            <h2>From evidence package to executive deck in four steps.</h2>
           </div>
           <Link className="button secondary inverted" href="/how-it-works">
             See the full pipeline
@@ -403,7 +366,7 @@ export default function HomePage() {
         </div>
 
         <div className="pipeline-strip" role="list">
-          {pipelineSteps.map((step) => (
+          {homepagePipeline.map((step) => (
             <article key={step.stage} className="pipeline-step-card" role="listitem">
               <p className="artifact-kind">{step.stage}</p>
               <h3>{step.title}</h3>
@@ -413,6 +376,7 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Output showcase ── */}
       <section className="panel output-showcase" id="output">
         <div className="stack">
           <p className="section-label">The output</p>
@@ -452,6 +416,7 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Proof points ── */}
       <section className="proof-section">
         <div className="stack">
           <p className="section-label">Proof points</p>
@@ -462,12 +427,8 @@ export default function HomePage() {
           {proofPoints.map((point) => (
             <article key={point.title} className={`panel proof-card proof-card-${point.kind}`}>
               <div className="proof-visual" aria-hidden>
-                {point.kind === "evidence" ? (
-                  <EvidenceTraceVisual />
-                ) : null}
-
+                {point.kind === "evidence" ? <EvidenceTraceVisual /> : null}
                 {point.kind === "brand" ? <BrandControlVisual /> : null}
-
                 {point.kind === "system" ? <StoryMathVisual /> : null}
               </div>
 
@@ -480,36 +441,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="panel comparison-panel">
-        <div className="stack">
-          <p className="section-label">Comparison</p>
-          <h2>Analysis first. Slides second.</h2>
-        </div>
-
-        <div className="comparison-table-wrap">
-          <table className="comparison-table">
-            <thead>
-              <tr>
-                <th scope="col">Capability</th>
-                <th scope="col">Generic AI</th>
-                <th scope="col">Slide generators</th>
-                <th scope="col">Basquio</th>
-              </tr>
-            </thead>
-            <tbody>
-              {landingComparisonRows.map((row) => (
-                <tr key={row.label}>
-                  <th scope="row">{row.label}</th>
-                  <td>{row.genericAi}</td>
-                  <td>{row.slideGenerators}</td>
-                  <td className="comparison-positive">{row.basquio}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
+      {/* ── Personas ── */}
       <section className="panel persona-panel">
         <div className="stack">
           <p className="section-label">Who it&apos;s for</p>
@@ -524,6 +456,34 @@ export default function HomePage() {
             </Link>
           ))}
         </div>
+      </section>
+
+      {/* ── Getting started ── */}
+      <section className="cards">
+        <article className="technical-panel stack-lg">
+          <div className="stack">
+            <p className="section-label light">Getting started</p>
+            <h2>Start with one live review, not a long setup project.</h2>
+          </div>
+
+          <div className="stack">
+            {gettingStartedSteps.map((step, index) => (
+              <div key={step.title} className="stage-row">
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div className="stack-xs">
+                  <strong>{step.title}</strong>
+                  <p className="muted">{step.detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="row">
+            <Link className="button secondary inverted" href="/get-started">
+              Read the setup guide
+            </Link>
+          </div>
+        </article>
       </section>
 
       <PublicSiteFooterCta />
