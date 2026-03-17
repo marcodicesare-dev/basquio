@@ -77,7 +77,7 @@ If a query or metric fails, try a different approach. The data may have unexpect
       compute_metric: createComputeMetricTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
     },
-    stopWhen: stepCountIs(100),
+    stopWhen: stepCountIs(30),
     output: Output.object({ schema: analysisReportSchema }),
     onStepFinish: input.onStepFinish,
   });

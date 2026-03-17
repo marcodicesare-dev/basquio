@@ -253,7 +253,7 @@ async function persistSlide(runId: string, slide: {
         "Content-Type": "application/json",
         apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
         Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-        Prefer: "return=representation",
+        Prefer: "return=representation,resolution=merge-duplicates",
       },
       body: JSON.stringify({
         id,
@@ -815,7 +815,7 @@ export const basquioV2Generation = inngest.createFunction(
         brief,
         loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
-          return persistNotebookEntry(runId, "understand", Date.now(), entry);
+          return persistNotebookEntry(runId, "understand", 0, entry);
         },
         onStepFinish: async (event: StepFinishEvent) => {
           tracker.recordStep(event.usage, event.toolCalls.length);
@@ -928,7 +928,7 @@ Return the deck plan.`,
         brief: `${brief}\n\nDECK PLAN (AI-planned based on the analysis — follow this structure):\nTarget: ${deckPlan.targetSlides} slides\n${deckPlan.plan.map((s) => `Slide ${s.position}: [${s.role}] ${s.layout} — "${s.title}" (chart: ${s.chartType}, requires: ${s.requiredContent.join(", ")})`).join("\n")}\n\nIMPORTANT: This plan was designed by a deck architect model. Follow the slide sequence, layouts, and chart types. You may refine titles and add content, but respect the plan's narrative arc and slide count.`,
         loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
-          return persistNotebookEntry(runId, "author", Date.now(), entry);
+          return persistNotebookEntry(runId, "author", 0, entry);
         },
         persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
         persistChart: async (chart: ChartInput) => persistChart(runId, chart),
@@ -1025,7 +1025,7 @@ Return the deck plan.`,
         brief: `POLISH PASS: The following slides are below consulting quality. Fix each one by adding the missing content. Use query_data to pull real numbers. Build charts where needed. Do NOT rewrite slides that aren't listed — only fix the weak ones.\n\nWEAK SLIDES:\n${weakSlidesPrompt}`,
         loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
-          return persistNotebookEntry(runId, "polish", Date.now(), entry);
+          return persistNotebookEntry(runId, "polish", 0, entry);
         },
         persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
         persistChart: async (chart: ChartInput) => persistChart(runId, chart),
@@ -1083,7 +1083,7 @@ Return the deck plan.`,
         getSlides: async () => slides,
         getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
         persistNotebookEntry: async (entry: NotebookEntry) => {
-          return persistNotebookEntry(runId, "critique", Date.now(), entry);
+          return persistNotebookEntry(runId, "critique", 0, entry);
         },
         onStepFinish: async (event: StepFinishEvent) => {
           tracker.recordStep(event.usage, event.toolCalls.length);
@@ -1180,7 +1180,7 @@ Return the deck plan.`,
           loadRows: loadSheetRows,
           critiqueContext: issuesSummary,
           persistNotebookEntry: async (entry: NotebookEntry) => {
-            return persistNotebookEntry(runId, "revise", Date.now(), entry);
+            return persistNotebookEntry(runId, "revise", 0, entry);
           },
           persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
           persistChart: async (chart: ChartInput) => persistChart(runId, chart),
@@ -1235,7 +1235,7 @@ Return the deck plan.`,
           getSlides: async () => slides,
           getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
           persistNotebookEntry: async (entry: NotebookEntry) => {
-            return persistNotebookEntry(runId, "critique", Date.now(), entry);
+            return persistNotebookEntry(runId, "critique", 0, entry);
           },
           onStepFinish: async (event: StepFinishEvent) => {
             tracker.recordStep(event.usage, event.toolCalls.length);
