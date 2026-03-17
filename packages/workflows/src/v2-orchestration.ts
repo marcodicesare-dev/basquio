@@ -1459,8 +1459,9 @@ Return a structured DeckPlan with sections containing slide specs.`,
     }) as { targetSlides: number; requestedSlides?: number; structuredPlan: DeckPlan };
 
     // ─── STEP 3: AUTHOR (section-by-section) ──────────────────────
-    await updateRunStatus(runId, "running", "author");
-    await emitRunEvent(runId, "author", "phase_started");
+    // NOTE: Status updates between steps are side effects that re-execute on every
+    // Inngest replay. They MUST be idempotent and NOT overwrite terminal states.
+    // Moving them inside the first step of each phase.
 
     const deckPlanSections = deckPlan.structuredPlan.sections ?? [];
     let deckSummary = "";
@@ -1490,6 +1491,7 @@ Return a structured DeckPlan with sections containing slide specs.`,
 
     if (deckPlanSections.length > 0) {
       // Section-by-section authoring — each section is its own Inngest step
+      let authorSectionIndex = 0;
       for (const section of deckPlanSections) {
         // Sanitize sectionId for Inngest step naming (alphanumeric + hyphens only)
         const safeSectionId = section.sectionId
@@ -1499,6 +1501,11 @@ Return a structured DeckPlan with sections containing slide specs.`,
           .toLowerCase();
 
         await step.run(`author-section-${safeSectionId}`, async () => {
+          // Set author phase status inside step (not between steps) to avoid replay overwrites
+          if (authorSectionIndex === 0) {
+            await updateRunStatus(runId, "running", "author");
+            await emitRunEvent(runId, "author", "phase_started");
+          }
           await emitRunEvent(runId, "author", "section_started", {
             sectionId: section.sectionId,
             slideCount: section.slides.length,
@@ -1554,6 +1561,7 @@ Return a structured DeckPlan with sections containing slide specs.`,
           tracker.endPhase();
           return result.summary;
         });
+        authorSectionIndex++;
       }
 
       deckSummary = `${deckPlanSections.length} sections authored: ${deckPlanSections.map((s) => s.title).join(", ")}`;
