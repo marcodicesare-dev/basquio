@@ -189,6 +189,9 @@ importers:
       '@basquio/core':
         specifier: workspace:*
         version: link:../core
+      '@basquio/scene-graph':
+        specifier: workspace:*
+        version: link:../scene-graph
       '@basquio/types':
         specifier: workspace:*
         version: link:../types
@@ -222,6 +225,9 @@ importers:
       '@basquio/render-charts':
         specifier: workspace:*
         version: link:../render-charts
+      '@basquio/scene-graph':
+        specifier: workspace:*
+        version: link:../scene-graph
       '@basquio/types':
         specifier: workspace:*
         version: link:../types
@@ -279,6 +285,9 @@ importers:
       '@basquio/render-pptx':
         specifier: workspace:*
         version: link:../render-pptx
+      '@basquio/scene-graph':
+        specifier: workspace:*
+        version: link:../scene-graph
       '@basquio/template-engine':
         specifier: workspace:*
         version: link:../template-engine

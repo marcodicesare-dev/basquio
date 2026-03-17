@@ -315,8 +315,109 @@ export const analysisReportSchema = z.object({
   })),
 });
 
+// ─── CLARIFIED BRIEF ─────────────────────────────────────────────
+// Working paper: the analyst's interpretation of the user's request.
+
+export const clarifiedBriefSchema = z.object({
+  governingQuestion: z.string().describe("The single question this deck must answer"),
+  focalEntity: z.string().describe("The client/brand/company this deck is about"),
+  focalBrands: z.array(z.string()).describe("Key brands/products/sub-entities of the focal entity"),
+  audience: z.string().describe("Who will see this deck and what decisions they make"),
+  language: z.string().describe("Detected output language: en, it, de, fr, es, etc."),
+  objective: z.string().describe("What the deck must accomplish"),
+  requestedSlideCount: z.number().int().positive().nullable().describe("From the brief, or null if not specified"),
+  stakes: z.string().describe("What is at risk if the recommendation is wrong"),
+  hypotheses: z.array(z.string()).describe("Initial hypotheses before deep analysis"),
+});
+
+// ─── STORYLINE PLAN ──────────────────────────────────────────────
+// Working paper: the issue tree that structures the analysis.
+
+export const storylineHypothesisSchema = z.object({
+  claim: z.string(),
+  evidenceRequired: z.array(z.string()).describe("What data would confirm or refute this"),
+  evidenceFound: z.array(z.string()).describe("Evidence ref IDs that address this"),
+  status: z.enum(["confirmed", "refuted", "pending", "partial"]),
+});
+
+export const storylineIssueBranchSchema = z.object({
+  question: z.string().describe("A sub-question that must be answered"),
+  hypotheses: z.array(storylineHypothesisSchema),
+  conclusion: z.string().describe("What the evidence says about this branch"),
+  slideImplication: z.string().describe("What kind of slide(s) this branch needs"),
+});
+
+export const recommendationShapeSchema = z.object({
+  condition: z.string().describe("Under what conditions this recommendation applies"),
+  recommendation: z.string(),
+  quantification: z.string().describe("Expected impact, sized if possible"),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+
+export const storylinePlanSchema = z.object({
+  governingQuestion: z.string(),
+  issueBranches: z.array(storylineIssueBranchSchema),
+  recommendationShapes: z.array(recommendationShapeSchema),
+  titleReadThrough: z.array(z.string()).describe("Proposed title sequence for the full deck"),
+});
+
+// ─── DECK PLAN ───────────────────────────────────────────────────
+// Working paper: structured slide-level plan before authoring.
+
+export const deckPlanSlideSpecSchema = z.object({
+  position: z.number().int().positive(),
+  role: z.string().describe("cover, exec-summary, context, evidence, comparison, synthesis, recommendation, appendix"),
+  layout: z.string(),
+  governingThought: z.string().describe("The one sentence this slide must communicate"),
+  chartIntent: z.string().describe("rank, trend, composition, bridge, correlation, comparison, kpi, table, none"),
+  evidenceRequired: z.array(z.string()).describe("Evidence ref IDs this slide must cite"),
+  focalObject: z.string().describe("What entity/metric is the star of this slide"),
+});
+
+export const deckPlanSectionSchema = z.object({
+  sectionId: z.string(),
+  title: z.string(),
+  issueBranch: z.string().describe("Which issue branch this section addresses"),
+  slides: z.array(deckPlanSlideSpecSchema),
+});
+
+export const deckPlanSchema = z.object({
+  targetSlideCount: z.number().int().positive(),
+  sections: z.array(deckPlanSectionSchema),
+  appendixStrategy: z.string().describe("What goes in appendix vs main body"),
+});
+
+// ─── TYPED EVIDENCE ──────────────────────────────────────────────
+// Working paper: evidence registry with type-discriminated values.
+
+export const typedEvidenceSchema = z.object({
+  id: z.string(),
+  runId: z.string(),
+  evidenceType: z.enum(["metric", "table", "derived_table", "document", "claim"]),
+  refId: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  value: z.unknown().describe("Type-dependent: number for metric, rows for table, text for document/claim"),
+  sourceSheetKey: z.string().nullable(),
+  confidence: z.number().min(0).max(1).nullable(),
+});
+
+// ─── DELIVERY STATUS ─────────────────────────────────────────────
+
+export const deliveryStatusSchema = z.enum(["draft", "reviewed", "approved", "degraded", "failed"]);
+
 // ─── TYPE EXPORTS ─────────────────────────────────────────────────
 
+export type ClarifiedBrief = z.infer<typeof clarifiedBriefSchema>;
+export type StorylineHypothesis = z.infer<typeof storylineHypothesisSchema>;
+export type StorylineIssueBranch = z.infer<typeof storylineIssueBranchSchema>;
+export type RecommendationShape = z.infer<typeof recommendationShapeSchema>;
+export type StorylinePlan = z.infer<typeof storylinePlanSchema>;
+export type DeckPlanSlideSpec = z.infer<typeof deckPlanSlideSpecSchema>;
+export type DeckPlanSection = z.infer<typeof deckPlanSectionSchema>;
+export type DeckPlan = z.infer<typeof deckPlanSchema>;
+export type TypedEvidence = z.infer<typeof typedEvidenceSchema>;
+export type DeliveryStatus = z.infer<typeof deliveryStatusSchema>;
 export type DeckRunPhase = z.infer<typeof deckRunPhaseSchema>;
 export type DeckRunStatus = z.infer<typeof deckRunStatusSchema>;
 export type DeckRun = z.infer<typeof deckRunSchema>;

@@ -11,6 +11,10 @@ declare module "pdf-parse" {
   interface PdfParseOptions {
     max?: number;
     version?: string;
+    pagerender?: (pageData: {
+      pageNumber: number;
+      getTextContent: () => Promise<{ items: Array<{ str: string }> }>;
+    }) => Promise<string>;
   }
 
   function pdfParse(dataBuffer: Buffer, options?: PdfParseOptions): Promise<PdfData>;

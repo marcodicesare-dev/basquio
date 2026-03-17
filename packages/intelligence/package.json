@@ -9,6 +9,7 @@
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/openai": "^3.0.41",
     "@basquio/core": "workspace:*",
+    "@basquio/scene-graph": "workspace:*",
     "@basquio/types": "workspace:*",
     "ai": "^6.0.116"
   }

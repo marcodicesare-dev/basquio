@@ -14,6 +14,8 @@ export {
   createBuildChartTool,
   createWriteSlideTool,
   createRenderDeckPreviewTool,
+  createListEvidenceTool,
+  createRenderContactSheetTool,
   type AuthoringToolContext,
 } from "./authoring";
 

@@ -17,10 +17,13 @@ export {
 export {
   createAnalystAgent,
   runAnalystAgent,
+  type AnalystResult,
   createAuthorAgent,
   runAuthorAgent,
   createCriticAgent,
   runCriticAgent,
+  runStrategicCriticAgent,
+  type StrategicCriticInput,
 } from "./agents";
 
 export {
