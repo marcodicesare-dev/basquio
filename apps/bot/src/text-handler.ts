@@ -3,7 +3,7 @@ import { extractFromTranscript } from "./extractor.js";
 import { createIssues } from "./linear.js";
 import { saveTranscript, upsertLead, saveDecisions } from "./supabase.js";
 import { postSessionSummary } from "./discord.js";
-import { env, TEXT_BUFFER_FLUSH_MS, TEXT_SILENCE_TIMEOUT_MS } from "./config.js";
+import { env, TEXT_INACTIVITY_MS, TEXT_MAX_SESSION_MS } from "./config.js";
 import { handleBotMention } from "./searcher.js";
 import { embedAndStoreTranscript } from "./transcript-embedder.js";
 
@@ -15,8 +15,8 @@ interface BufferedMessage {
 }
 
 let messageBuffer: BufferedMessage[] = [];
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+let maxSessionTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Track recently processed message IDs to prevent duplicate sessions
 const processedMessageIds = new Set<string>();
@@ -50,13 +50,14 @@ export function handleTextMessage(message: Message): void {
 
   messageBuffer.push(buffered);
 
-  // Reset silence timer
-  if (silenceTimer) clearTimeout(silenceTimer);
-  silenceTimer = setTimeout(() => flushBuffer(), TEXT_SILENCE_TIMEOUT_MS);
+  // Reset inactivity timer on every message — session ends only after
+  // 5 min of silence, so active conversations stay as one session
+  if (inactivityTimer) clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(() => flushBuffer(), TEXT_INACTIVITY_MS);
 
-  // Start flush timer if not already running
-  if (!flushTimer) {
-    flushTimer = setTimeout(() => flushBuffer(), TEXT_BUFFER_FLUSH_MS);
+  // Start hard-cap timer on first message only (safety net: 1 hour max)
+  if (!maxSessionTimer) {
+    maxSessionTimer = setTimeout(() => flushBuffer(), TEXT_MAX_SESSION_MS);
   }
 }
 
@@ -228,13 +229,13 @@ async function indexMessageAsSnippet(content: string, author: string, message: M
  * Flush the message buffer — run extraction pipeline on accumulated text messages.
  */
 async function flushBuffer(): Promise<void> {
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = null;
+  if (inactivityTimer) {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = null;
   }
-  if (silenceTimer) {
-    clearTimeout(silenceTimer);
-    silenceTimer = null;
+  if (maxSessionTimer) {
+    clearTimeout(maxSessionTimer);
+    maxSessionTimer = null;
   }
 
   if (messageBuffer.length === 0) return;
