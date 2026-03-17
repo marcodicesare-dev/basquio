@@ -262,13 +262,15 @@ export const critiqueIssueSchema = z.object({
 
 // Model-facing schema: only fields the LLM can generate.
 // Used as Output.object() for the critic agent.
+// NOTE: OpenAI structured output rejects ALL numeric constraints (minimum, maximum,
+// exclusiveMinimum, nonnegative) on integer types. Use .describe() instead.
 export const critiqueReportOutputSchema = z.object({
-  iteration: z.number().int().min(1),
+  iteration: z.number().int().describe("Critique iteration number, starting from 1"),
   hasIssues: z.boolean(),
   issues: z.array(critiqueIssueSchema),
-  coverageScore: z.number().min(0).max(1),
-  accuracyScore: z.number().min(0).max(1),
-  narrativeScore: z.number().min(0).max(1),
+  coverageScore: z.number().describe("0.0 to 1.0"),
+  accuracyScore: z.number().describe("0.0 to 1.0"),
+  narrativeScore: z.number().describe("0.0 to 1.0"),
 });
 
 // Full schema including orchestration-assigned metadata.
@@ -301,15 +303,15 @@ export const analysisReportSchema = z.object({
     title: z.string(),
     claim: z.string(),
     evidenceRefIds: z.array(z.string()),
-    confidence: z.number().min(0).max(1),
+    confidence: z.number().describe("0.0 to 1.0"),
     businessImplication: z.string(),
   })),
-  metricsComputed: z.number().int().nonnegative(),
-  queriesExecuted: z.number().int().nonnegative(),
-  filesAnalyzed: z.number().int().nonnegative(),
+  metricsComputed: z.number().int().describe("Number of metrics computed, >= 0"),
+  queriesExecuted: z.number().int().describe("Number of queries executed, >= 0"),
+  filesAnalyzed: z.number().int().describe("Number of files analyzed, >= 0"),
   keyDimensions: z.array(z.string()),
   recommendedChartTypes: z.array(z.object({
-    findingIndex: z.number().int().nonnegative(),
+    findingIndex: z.number().int().describe("0-indexed finding reference"),
     chartType: z.string(),
     rationale: z.string(),
   })),
@@ -325,7 +327,7 @@ export const clarifiedBriefSchema = z.object({
   audience: z.string().describe("Who will see this deck and what decisions they make"),
   language: z.string().describe("Detected output language: en, it, de, fr, es, etc."),
   objective: z.string().describe("What the deck must accomplish"),
-  requestedSlideCount: z.number().int().min(1).nullable().describe("From the brief, or null if not specified"),
+  requestedSlideCount: z.number().int().nullable().describe("From the brief, or null if not specified. Must be >= 1 when present"),
   stakes: z.string().describe("What is at risk if the recommendation is wrong"),
   hypotheses: z.array(z.string()).describe("Initial hypotheses before deep analysis"),
 });
@@ -365,7 +367,7 @@ export const storylinePlanSchema = z.object({
 // Working paper: structured slide-level plan before authoring.
 
 export const deckPlanSlideSpecSchema = z.object({
-  position: z.number().int().min(1),
+  position: z.number().int().describe("1-indexed slide position"),
   role: z.string().describe("cover, exec-summary, context, evidence, comparison, synthesis, recommendation, appendix"),
   layout: z.string(),
   governingThought: z.string().describe("The one sentence this slide must communicate"),
@@ -382,7 +384,7 @@ export const deckPlanSectionSchema = z.object({
 });
 
 export const deckPlanSchema = z.object({
-  targetSlideCount: z.number().int().min(1),
+  targetSlideCount: z.number().int().describe("Target number of slides, >= 1"),
   sections: z.array(deckPlanSectionSchema),
   appendixStrategy: z.string().describe("What goes in appendix vs main body"),
 });
