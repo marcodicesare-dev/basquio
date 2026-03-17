@@ -27,11 +27,11 @@ export default async function SignInPage({
 
   return (
     <div className="page-shell public-page auth-page-shell">
-      <section className="technical-panel auth-intro-panel stack-lg">
-        <p className="section-label light">Workspace access</p>
-        <h1>Welcome back. Sign in to your workspace.</h1>
+      <section className="panel auth-intro-panel stack-lg">
+        <p className="section-label light">Sign in</p>
+        <h1>Welcome back.</h1>
         <p className="muted">
-          Your uploads, run history, progress tracking, and artifacts stay private to your Basquio account.
+          Your data and presentations stay private to your account.
         </p>
       </section>
 

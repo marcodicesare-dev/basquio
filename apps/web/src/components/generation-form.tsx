@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import * as tus from "tus-js-client";
@@ -52,11 +51,11 @@ const steps = [
   },
   {
     id: "brief",
-    title: "Write brief",
+    title: "Describe the brief",
   },
   {
     id: "review",
-    title: "Generate",
+    title: "Review",
   },
 ] as const;
 
@@ -347,7 +346,7 @@ export function GenerationForm() {
           <section className="step-panel stack-lg">
             <div className="stack-xs">
               <p className="section-label">Step 2</p>
-              <h2>Write the brief</h2>
+              <h2>Describe the brief</h2>
             </div>
 
             <div className="form-grid">
@@ -382,36 +381,42 @@ export function GenerationForm() {
                 />
               </label>
 
-              <label className="field">
-                <span>Client</span>
-                <input
-                  name="client"
-                  value={brief.client}
-                  placeholder="Optional"
-                  onChange={(event) => updateBriefField("client", event.target.value)}
-                />
-              </label>
+              <details className="field-span-2">
+                <summary>Additional context (optional)</summary>
 
-              <label className="field">
-                <span>Thesis</span>
-                <input
-                  name="thesis"
-                  value={brief.thesis}
-                  placeholder="Optional working point of view"
-                  onChange={(event) => updateBriefField("thesis", event.target.value)}
-                />
-              </label>
+                <div className="form-grid">
+                  <label className="field">
+                    <span>Client</span>
+                    <input
+                      name="client"
+                      value={brief.client}
+                      placeholder="Optional"
+                      onChange={(event) => updateBriefField("client", event.target.value)}
+                    />
+                  </label>
 
-              <label className="field field-span-2">
-                <span>Stakes</span>
-                <textarea
-                  name="stakes"
-                  value={brief.stakes}
-                  rows={4}
-                  placeholder="Optional: why this matters now and what depends on it"
-                  onChange={(event) => updateBriefField("stakes", event.target.value)}
-                />
-              </label>
+                  <label className="field">
+                    <span>Thesis</span>
+                    <input
+                      name="thesis"
+                      value={brief.thesis}
+                      placeholder="Optional working point of view"
+                      onChange={(event) => updateBriefField("thesis", event.target.value)}
+                    />
+                  </label>
+
+                  <label className="field field-span-2">
+                    <span>Stakes</span>
+                    <textarea
+                      name="stakes"
+                      value={brief.stakes}
+                      rows={4}
+                      placeholder="Optional: why this matters now and what depends on it"
+                      onChange={(event) => updateBriefField("stakes", event.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
             </div>
           </section>
         ) : null}
@@ -463,13 +468,9 @@ export function GenerationForm() {
               </button>
             ) : (
               <button className="button" type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Generating..." : "Generate presentation"}
+                {isSubmitting ? "Building report..." : "Build my report"}
               </button>
             )}
-
-            <Link className="button secondary" href="/artifacts">
-              View presentations
-            </Link>
           </div>
 
           <p className="fine-print">Basquio computes the numbers before it writes the story.</p>

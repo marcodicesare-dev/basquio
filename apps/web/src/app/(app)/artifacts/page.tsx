@@ -25,10 +25,10 @@ export default async function ArtifactsPage() {
   return (
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
-        <h1>Your presentations</h1>
+        <h1>Your reports</h1>
 
         <Link className="button" href="/jobs/new">
-          New analysis
+          New report
         </Link>
       </section>
 
@@ -40,11 +40,11 @@ export default async function ArtifactsPage() {
             <span />
           </div>
           <div className="stack">
-            <h2>No presentations yet</h2>
-            <p className="muted">Create your first analysis to generate a PPTX and PDF.</p>
+            <h2>Ready when you are</h2>
+            <p className="muted">Upload your data and Basquio will build your first report.</p>
           </div>
           <Link className="button" href="/jobs/new">
-            Create your first analysis
+            Create your first report
           </Link>
         </section>
       ) : (

@@ -1,13 +1,5 @@
 export const heroSignals = ["Traceable numbers", "Branded PPTX + PDF", "Story shaped for your audience"] as const;
 
-export const trustSignals = ["Strategy teams", "Research leads", "Brand managers", "Agencies"] as const;
-
-export const rolloutSignals = [
-  "Founder-led setup",
-  "Private workspaces",
-  "Editable PPTX + PDF",
-  "Start with one live review",
-] as const;
 
 export const evidencePackageInputs = [
   "CSVs and spreadsheets",
@@ -31,38 +23,6 @@ export const gettingStartedSteps = [
   },
 ] as const;
 
-export const pipelineSteps = [
-  {
-    stage: "01",
-    title: "Upload files",
-    detail: "Data, brief, brand",
-  },
-  {
-    stage: "02",
-    title: "Understand the package",
-    detail: "Structure and relationships",
-  },
-  {
-    stage: "03",
-    title: "Compute the numbers",
-    detail: "Math from your data",
-  },
-  {
-    stage: "04",
-    title: "Rank what matters",
-    detail: "Insights with proof",
-  },
-  {
-    stage: "05",
-    title: "Shape the story",
-    detail: "Built for your audience",
-  },
-  {
-    stage: "06",
-    title: "Deliver the deck",
-    detail: "PPTX plus PDF",
-  },
-] as const;
 
 export const proofPoints = [
   {
@@ -82,32 +42,6 @@ export const proofPoints = [
   },
 ] as const;
 
-export const landingComparisonRows = [
-  {
-    label: "Checks the math first",
-    genericAi: "No",
-    slideGenerators: "No",
-    basquio: "Yes",
-  },
-  {
-    label: "Editable PowerPoint",
-    genericAi: "Partial",
-    slideGenerators: "Yes",
-    basquio: "Yes",
-  },
-  {
-    label: "Matches your brand",
-    genericAi: "Partial",
-    slideGenerators: "Partial",
-    basquio: "Yes",
-  },
-  {
-    label: "Ready for stakeholder review",
-    genericAi: "No",
-    slideGenerators: "Partial",
-    basquio: "Yes",
-  },
-] as const;
 
 export const detailedComparisonRows = [
   {
@@ -160,11 +94,6 @@ export const detailedComparisonRows = [
   },
 ] as const;
 
-export const comparisonColumnNotes = [
-  "Generic AI = language-first tools that can draft slides or copy.",
-  "Slide generators = presentation tools that help with layout and formatting.",
-  "Basquio = analysis-first reporting built for review-ready PPTX and PDF output.",
-] as const;
 
 export const howItWorksPhases = [
   {
@@ -199,28 +128,6 @@ export const howItWorksChecks = [
   "Brand input carried through both PPTX and PDF",
 ] as const;
 
-export const aboutStory = {
-  title: "Basquio was built for teams that still have to defend the story after the analysis is done.",
-  paragraphs: [
-    "Basquio started from a simple frustration: the analysis was often already there, but the team still had to rebuild the deck by hand, recheck the numbers, rewrite the narrative, and restyle everything for the next review.",
-    "The product is being built by Marco Di Cesare inside Loamly to shorten that loop. The goal is not to automate judgment away. The goal is to help good teams move from evidence to a review-ready story faster, with less manual deck work and fewer chances to lose the thread.",
-  ],
-} as const;
-
-export const aboutPrinciples = [
-  {
-    title: "Start from evidence",
-    copy: "Basquio begins with the real files behind the reporting cycle, not a blank prompt and a hope that the story will hold.",
-  },
-  {
-    title: "Check the numbers before the slides",
-    copy: "The product computes the math first, then shapes the narrative around what the data can actually support.",
-  },
-  {
-    title: "Make output usable on day one",
-    copy: "The goal is a deck people can review, edit, share, and present without rebuilding it from scratch.",
-  },
-] as const;
 
 export const publicNavLinks = [
   {
@@ -262,15 +169,15 @@ export const personas = [
       "You need the deck to match the brand.",
       "You are translating tracker data for senior stakeholders.",
     ],
-    pressureTitle: "Where the work usually slows down",
+    pressureTitle: "The real bottleneck",
     pressureCopy:
-      "The numbers may already exist, but the deck still takes days: cleaning the story, checking which shifts matter, and reformatting everything into a leadership-ready narrative.",
-    packageTitle: "A typical package",
+      "You already have the NielsenIQ exports, the share trackers, the campaign results. The bottleneck is turning six spreadsheets into 20 slides that leadership can scan in five minutes.",
+    packageTitle: "What you would upload",
     packageCopy:
-      "Sales trackers, share tables, campaign summaries, retailer notes, and a template from the team that will present the story.",
-    valueTitle: "What Basquio gives back",
+      "Sales trackers, share tables, campaign performance CSVs, retailer scorecards, and your team's PowerPoint template.",
+    valueTitle: "What comes back",
     valueCopy:
-      "A first draft that already knows what changed, where the pressure sits, and how to frame it for leadership review in your own visual system.",
+      "A branded deck that already identifies the share shifts, frames the category story, and traces every number back to your source files.",
     valuePoints: ["Category reviews", "Campaign performance updates", "Brand health or share decks"],
     ctaTitle: "Bring your next category review.",
     ctaCopy: "Start with the files behind one review cycle and see how the story comes together.",
@@ -290,15 +197,15 @@ export const personas = [
       "You are working from several client files at once.",
       "You still need an editable deck at the end.",
     ],
-    pressureTitle: "Where the work usually slows down",
+    pressureTitle: "The real bottleneck",
     pressureCopy:
-      "The team has to turn working analysis into a client-ready storyline, check every claim, and rebuild the same narrative in PowerPoint under tight timelines.",
-    packageTitle: "A typical package",
+      "The partner needs the deck by Thursday. The analyst has the data but not the story. The associate has the story but not the math. Somebody has to merge it all into 30 slides by morning.",
+    packageTitle: "What you would upload",
     packageCopy:
-      "Client spreadsheets, interview notes, market tables, supporting PDFs, and a slide template that the final team can continue editing.",
-    valueTitle: "What Basquio gives back",
+      "Client data exports, interview transcripts, competitive benchmarks, market sizing tables, and the engagement template.",
+    valueTitle: "What comes back",
     valueCopy:
-      "A tighter first pass on the structure, storyline, and supporting numbers so the team spends more time improving the recommendation and less time rebuilding the deck.",
+      "A structured first draft with the storyline already shaped around the recommendation, every claim grounded in the data, ready for the team to sharpen.",
     valuePoints: ["Client steering packs", "Competitive reviews", "Weekly or monthly updates"],
     ctaTitle: "Use one client package as the starting point.",
     ctaCopy: "Bring the files behind the next working session and see how much deck work Basquio can absorb.",
@@ -318,15 +225,15 @@ export const personas = [
       "You need to synthesize several evidence sources quickly.",
       "You want the first story pass before manual deck work begins.",
     ],
-    pressureTitle: "Where the work usually slows down",
+    pressureTitle: "The real bottleneck",
     pressureCopy:
-      "Teams spend hours deciding what the room should focus on, cutting noise out of the deck, and making sure the recommendation stays grounded in the evidence.",
-    packageTitle: "A typical package",
+      "The board meeting is in two weeks. Three teams contributed data. Nobody agrees on the headline. Someone has to synthesize 40 pages of evidence into 12 slides that drive one decision.",
+    packageTitle: "What you would upload",
     packageCopy:
-      "Business performance files, market scans, internal notes, leadership questions, and a brief that explains the recommendation the deck needs to support.",
-    valueTitle: "What Basquio gives back",
+      "Business performance exports, market scans, internal memos, competitive intelligence, and the brief that explains what decision the room needs to make.",
+    valueTitle: "What comes back",
     valueCopy:
-      "A stronger first storyline, clearer prioritization, and a deck structure that makes it easier to focus discussion on the real decision instead of slide assembly.",
+      "A decision-ready deck with the recommendation already framed, supporting evidence ranked by impact, and every claim linked to the source file.",
     valuePoints: ["Board prep", "Quarterly business reviews", "Growth or market strategy decks"],
     ctaTitle: "Start with the decision you need to support.",
     ctaCopy: "Upload the files behind the next review and let Basquio shape the first story pass.",
@@ -346,15 +253,15 @@ export const personas = [
       "You need white-label output that still feels bespoke.",
       "You want the same analysis to produce both PPTX and PDF.",
     ],
-    pressureTitle: "Where the work usually slows down",
+    pressureTitle: "The real bottleneck",
     pressureCopy:
-      "The bottleneck is often not analysis alone. It is moving from account data to a branded deliverable fast enough to keep reporting profitable and consistent.",
-    packageTitle: "A typical package",
+      "Eight clients, monthly reporting packs, each with different brand guidelines. The analyst pulls the data; the designer rebuilds the template; the account lead rewrites the narrative. Every month.",
+    packageTitle: "What you would upload",
     packageCopy:
-      "Client trackers, campaign readouts, support documents, a house template or client template, and a short brief on what the review should land.",
-    valueTitle: "What Basquio gives back",
+      "Client performance trackers, campaign CSVs, the client's PPTX template, and a one-paragraph brief on what this month's story should be.",
+    valueTitle: "What comes back",
     valueCopy:
-      "A repeatable way to get to first draft faster while still protecting the client-facing narrative and the visual standard that keeps the work feeling premium.",
+      "A white-label deck in the client's brand system with the narrative already shaped, so your team reviews and sharpens instead of rebuilding from scratch.",
     valuePoints: ["Monthly client reporting", "White-label decks", "Renewal or performance reviews"],
     ctaTitle: "Bring one client reporting package.",
     ctaCopy: "Start with a live account package and see what the first Basquio draft gives your team back.",
@@ -363,4 +270,4 @@ export const personas = [
   },
 ] as const;
 
-export const personaMap = new Map(personas.map((persona) => [persona.slug, persona]));
+

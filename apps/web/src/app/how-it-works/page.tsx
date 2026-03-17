@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { evidencePackageInputs, howItWorksChecks, howItWorksPhases } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
@@ -9,7 +8,7 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 export const metadata: Metadata = {
   title: "How It Works | Basquio",
   description:
-    "See how Basquio moves from one evidence package to a review-ready PowerPoint and PDF in four clear steps.",
+    "See exactly what happens to your files: four stages from upload to a review-ready PowerPoint and PDF with every claim verified.",
 };
 
 export default function HowItWorksPage() {
@@ -22,11 +21,11 @@ export default function HowItWorksPage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">How it works</p>
-              <h1>From upload to review-ready deck in four clear steps.</h1>
+              <h1>Here is exactly what happens to your files, and why the output is trustworthy.</h1>
               <p className="page-copy">
-                An evidence package is simply the set of CSVs, spreadsheets, PDFs, briefs, and brand files behind one
-                reporting cycle. Basquio reads that package, computes the numbers, shapes the story, and delivers both
-                the PowerPoint and the PDF.
+                You upload one evidence package: the CSVs, spreadsheets, PDFs, briefs, and brand files behind a single
+                reporting cycle. Basquio reads every file, computes the numbers, shapes the story, verifies the claims,
+                and delivers a deck you can present.
               </p>
             </div>
           </div>
@@ -42,43 +41,50 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      <section className="cards">
+      <section className="stack-xl">
         {howItWorksPhases.map((phase) => (
-          <article key={phase.stage} className="panel stack">
-            <p className="artifact-kind">{phase.stage}</p>
-            <h2>{phase.title}</h2>
-            <p className="muted">{phase.copy}</p>
+          <article key={phase.stage} className="panel stack-lg">
+            <div className="row">
+              <span className="section-label">Stage {phase.stage}</span>
+            </div>
+            <div className="stack-xs">
+              <h2>{phase.title}</h2>
+              <p className="page-copy">
+                {phase.copy}
+              </p>
+            </div>
           </article>
         ))}
       </section>
 
-      <section className="cards">
-        <article className="panel stack">
-          <p className="section-label">Before delivery</p>
-          <h2>Every output is checked before it leaves the workflow.</h2>
+      <section className="panel dark-panel">
+        <div className="stack-lg">
+          <div className="stack">
+            <p className="section-label">Before delivery</p>
+            <h2>An independent AI reviews every claim before the deck is delivered.</h2>
+            <p className="page-copy">
+              After the narrative is built, a separate model checks every number, chart label, and written claim against
+              the source data. Issues are flagged and corrected before you see the output. This cross-model verification
+              is not a filter — it is a full second pass.
+            </p>
+          </div>
           <ul className="clean-list">
             {howItWorksChecks.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-        </article>
+        </div>
+      </section>
 
-        <article className="panel stack">
+      <section className="panel technical-panel">
+        <div className="stack">
           <p className="section-label">What you receive</p>
           <h2>One story in two formats.</h2>
           <p className="muted">
-            Basquio gives teams an editable PowerPoint for working sessions and a polished PDF for sharing, both built
-            from the same analysis and the same narrative.
+            An editable PowerPoint for working sessions and a polished PDF for sharing — both built from the same
+            analysis, the same narrative, and the same verified claims.
           </p>
-          <div className="row">
-            <Link className="button secondary" href="/compare">
-              See how it compares
-            </Link>
-            <Link className="button secondary" href="/about">
-              Read the product story
-            </Link>
-          </div>
-        </article>
+        </div>
       </section>
 
       <PublicSiteFooterCta

@@ -9,18 +9,19 @@ export default function TemplatesPage() {
   return (
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
-        <h1>Brand templates are coming soon</h1>
+        <h1>Brand system</h1>
 
         <Link className="button" href="/jobs/new">
-          Use the default brand system
+          New report
         </Link>
       </section>
 
       <section className="workspace-board">
         <article className="panel stack-xl">
           <div className="stack">
-            <h2>Basquio is currently using its default brand system for every presentation.</h2>
-            <p className="muted">Template upload will land here once branded presentation previews are ready.</p>
+            <p className="artifact-kind">Current design system</p>
+            <h2>Every report uses a clean, editorial style with your brand colors applied automatically.</h2>
+            <p className="muted">Custom template upload is coming soon. For now, Basquio applies its default design system to every report.</p>
           </div>
 
           <div className="brand-preview-strip">
@@ -36,8 +37,8 @@ export default function TemplatesPage() {
         <article className="panel stack-xl default-brand-preview">
           <div className="row split">
             <div className="stack-xs">
-              <p className="artifact-kind">Default output</p>
-              <h2>Clean editorial slides, Basquio colors, and paired deliverables.</h2>
+              <p className="artifact-kind">Preview</p>
+              <h2>Clean slides, paired PPTX and PDF, consistent typography.</h2>
             </div>
             <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={150} height={24} />
           </div>
