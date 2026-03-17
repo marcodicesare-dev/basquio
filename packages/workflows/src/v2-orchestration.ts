@@ -2277,12 +2277,11 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         });
       }
 
-      // ─── STEP 5b: RE-CRITIQUE (second pass, max 2 total) ──────
-      await step.run("re-critique", async () => {
+      // ─── STEP 5b: RE-CRITIQUE FACTUAL ──────────────────────────
+      const reCritiqueFactual = await step.run("re-critique-factual", async () => {
         await updateRunStatus(runId, "running", "critique");
         await emitRunEvent(runId, "critique", "phase_started");
 
-        // workspace has metadata; tools use loadSheetRows for on-demand data access
         tracker.startPhase("re-critique", "gpt-5.4", "openai");
 
         const slides = await getSlides(runId);
@@ -2310,9 +2309,14 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         });
 
         tracker.endPhase();
+        return reCritique;
+      });
 
-        // Also run strategic re-critique
+      // ─── STEP 5c: RE-CRITIQUE STRATEGIC ───────────────────────
+      const reCritiqueStrategic = await step.run("re-critique-strategic", async () => {
         tracker.startPhase("re-critique-strategic", "claude-opus-4-6", "anthropic");
+
+        const slides = await getSlides(runId);
 
         const strategicReCritique = await runStrategicCriticAgent({
           runId,
@@ -2338,13 +2342,17 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         });
 
         tracker.endPhase();
+        return strategicReCritique;
+      });
 
+      // ─── STEP 5d: RE-CRITIQUE MERGE + DELIVERY DECISION ──────
+      await step.run("re-critique-merge", async () => {
         // Merge factual + strategic re-critique
         const mergedReCritique = {
-          ...reCritique,
-          issues: [...reCritique.issues, ...strategicReCritique.issues],
-          hasIssues: reCritique.hasIssues || strategicReCritique.hasIssues,
-          narrativeScore: strategicReCritique.narrativeScore,
+          ...reCritiqueFactual,
+          issues: [...reCritiqueFactual.issues, ...reCritiqueStrategic.issues],
+          hasIssues: reCritiqueFactual.hasIssues || reCritiqueStrategic.hasIssues,
+          narrativeScore: reCritiqueStrategic.narrativeScore,
         };
 
         // Assemble full re-critique report
@@ -2400,7 +2408,6 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
           fullReCritique.issues.some((i) => i.severity === "critical" || i.severity === "major");
 
         // Convergence detection: compare issue types between critique rounds
-        // If the same issue types recur, the revise loop is not converging — structural problem
         const firstRoundTypes = new Set(critique.issues.map((i: { type: string }) => i.type));
         const secondRoundTypes = new Set(fullReCritique.issues.map((i) => i.type));
         const recurringTypes = [...secondRoundTypes].filter((t) => firstRoundTypes.has(t));
