@@ -317,7 +317,7 @@ textarea {
 .hero-subtitle {
   margin: 0;
   max-width: 540px;
-  color: var(--text-inverse-soft);
+  color: var(--text-inverse);
   font-size: 1.12rem;
   line-height: 1.55;
 }

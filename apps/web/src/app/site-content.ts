@@ -45,49 +45,37 @@ export const proofPoints = [
 
 export const detailedComparisonRows = [
   {
-    label: "Understands more than one file",
-    genericAi: "No",
-    slideGenerators: "Partial",
+    label: "Upload multiple files as one package",
+    genericAi: "Yes",
+    slideGenerators: "No",
     basquio: "Yes",
   },
   {
-    label: "Checks the math before writing the story",
+    label: "Automated cross-model claim verification",
     genericAi: "No",
     slideGenerators: "No",
     basquio: "Yes",
   },
   {
-    label: "Every number traceable to source",
+    label: "Editable native PPTX (not images)",
+    genericAi: "No",
+    slideGenerators: "Yes",
+    basquio: "Yes",
+  },
+  {
+    label: "PPTX + PDF from one run",
+    genericAi: "No",
+    slideGenerators: "No",
+    basquio: "Yes",
+  },
+  {
+    label: "Zero-prompt: just upload and go",
     genericAi: "No",
     slideGenerators: "Partial",
     basquio: "Yes",
   },
   {
-    label: "Story shaped for your audience",
-    genericAi: "Partial",
-    slideGenerators: "Partial",
-    basquio: "Yes",
-  },
-  {
-    label: "Editable PowerPoint output",
-    genericAi: "Partial",
-    slideGenerators: "Yes",
-    basquio: "Yes",
-  },
-  {
-    label: "Polished PDF output",
-    genericAi: "Partial",
-    slideGenerators: "Partial",
-    basquio: "Yes",
-  },
-  {
-    label: "Respects your brand system",
-    genericAi: "Partial",
-    slideGenerators: "Partial",
-    basquio: "Yes",
-  },
-  {
-    label: "Ready for leadership or client review",
+    label: "Brand template applied automatically",
     genericAi: "No",
     slideGenerators: "Partial",
     basquio: "Yes",
@@ -96,6 +84,12 @@ export const detailedComparisonRows = [
     label: "Free tier with no sign-up",
     genericAi: "Yes",
     slideGenerators: "Yes",
+    basquio: "No",
+  },
+  {
+    label: "General-purpose (not just decks)",
+    genericAi: "Yes",
+    slideGenerators: "No",
     basquio: "No",
   },
 ] as const;

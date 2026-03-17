@@ -139,18 +139,15 @@ export default function HomePage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label light">Beautiful Intelligence.</p>
-              <h1>Evidence in. Executive deck out.</h1>
+              <h1>Two weeks of analysis. Delivered in hours.</h1>
               <p className="hero-subtitle">
-                Upload your data files and brand template. Get back a traceable, branded PPTX + PDF in under 5 minutes.
+                Upload your data. Get back a finished analysis — actionable insights, compelling narrative, and a presentation you&apos;d put your name on.
               </p>
             </div>
 
             <div className="row">
               <Link className="button" href="/jobs/new">
-                Try free — no card required
-              </Link>
-              <Link className="button secondary inverted" href="/how-it-works">
-                See how it works
+                Try it with your data
               </Link>
             </div>
 
