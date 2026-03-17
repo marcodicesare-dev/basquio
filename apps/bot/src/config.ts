@@ -77,8 +77,8 @@ export const ASSIGNMENT_RULES: Record<string, string[]> = {
 
 // Session timing
 export const VOICE_EMPTY_TIMEOUT_MS = 30 * 1000; // 30s empty → end session
-export const TEXT_SILENCE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min text silence → end session
-export const TEXT_BUFFER_FLUSH_MS = 5 * 60 * 1000; // 5 min text buffer
+export const TEXT_INACTIVITY_MS = 5 * 60 * 1000; // 5 min silence after last message → end session
+export const TEXT_MAX_SESSION_MS = 60 * 60 * 1000; // 1 hour hard cap (safety net for never-ending chats)
 export const AUDIO_CHUNK_DURATION_MS = 5 * 60 * 1000; // 5 min audio chunks
 export const LONG_SESSION_SEGMENT_MS = 3 * 60 * 60 * 1000; // 3 hour segments
 
