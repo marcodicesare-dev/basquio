@@ -13,12 +13,17 @@ const extractedActionItemSchema = z.object({
   priority: z.string().default("medium"),
 });
 
+const VALID_LEAD_STATUSES = ["mentioned", "researching", "outreach", "demo_scheduled", "pilot", "negotiation", "closed_won", "closed_lost"] as const;
+
 const extractedSalesMentionSchema = z.object({
   company: z.string(),
   context: z.string(),
   action: z.string().optional(),
   owner: z.string().optional(),
-  status: z.string().default("mentioned"),
+  status: z.string().default("mentioned").transform((s) => {
+    // Coerce invalid LLM status values to "mentioned"
+    return (VALID_LEAD_STATUSES as readonly string[]).includes(s) ? s : "mentioned";
+  }),
 });
 
 const extractedDecisionSchema = z.object({
@@ -127,7 +132,7 @@ From this transcript, extract:
    - context: what was said
    - action: next step if any
    - owner: who's handling it
-   - status: whatever fits best
+   - status: one of: mentioned | researching | outreach | demo_scheduled | pilot | negotiation | closed_won | closed_lost
 
 5. KEY_QUOTES: 0-3 genuinely notable quotes. Zero is fine.
 

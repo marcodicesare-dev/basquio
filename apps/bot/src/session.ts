@@ -176,12 +176,16 @@ async function endSession(): Promise<void> {
       await saveDecisions(extraction.decisions, transcriptId);
     }
 
-    // Upsert CRM leads only if there are real mentions
+    // Upsert CRM leads only if there are real mentions (non-fatal)
     const crmUpdates: string[] = [];
     if (extraction.sales_mentions.length > 0) {
       for (const mention of extraction.sales_mentions) {
-        await upsertLead(mention, transcriptId);
-        crmUpdates.push(`${mention.company} — ${mention.status}`);
+        try {
+          await upsertLead(mention, transcriptId);
+          crmUpdates.push(`${mention.company} — ${mention.status}`);
+        } catch (err) {
+          console.error(`⚠️ CRM upsert failed for ${mention.company} (continuing):`, err);
+        }
       }
     }
 
