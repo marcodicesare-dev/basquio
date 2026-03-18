@@ -127,14 +127,14 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
       },
       metrics: {
         kind: "metrics",
-        frame: { x: 0.45, y: 0.88, w: 9.1, h: 1.1 },
+        frame: { x: 0.45, y: 0.95, w: 9.1, h: 1.3 },
         minMetrics: 3,
         maxMetrics: 5,
         required: true,
       },
       body: {
         kind: "body",
-        frame: { x: 0.45, y: 2.1, w: 9.1, h: 1.9 },
+        frame: { x: 0.45, y: 2.35, w: 9.1, h: 1.65 },
         maxWords: 60,
         maxChars: 400,
         fontRange: [11, 14],

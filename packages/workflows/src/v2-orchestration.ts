@@ -1406,6 +1406,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
                       refId,
                       label: `${f.fileName} — slide ${slide.slideNum} (vision extracted)`,
                       description: description.slice(0, 300),
+                      confidence: 0.50, // Vision extraction — uncertain
                       value: structured
                         ? {
                             ...structured,
