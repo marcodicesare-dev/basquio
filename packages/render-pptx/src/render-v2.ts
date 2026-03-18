@@ -2,6 +2,7 @@ import PptxGenJS from "pptxgenjs";
 
 import { getLayoutRegions, SLIDE_W, SLIDE_H, type LayoutRegions, type R } from "@basquio/scene-graph/layout-regions";
 import { getArchetypeOrDefault } from "@basquio/scene-graph/slot-archetypes";
+import { resolveChartArchetype, type ChartRenderingRules } from "@basquio/scene-graph/chart-design-system";
 import type { BinaryArtifact } from "@basquio/types";
 
 // ─── V2 INPUT TYPES ──────────────────────────────────────────────
@@ -37,6 +38,12 @@ export type V2ChartRow = {
     showValues?: boolean;
     highlightCategories?: string[];
   };
+  // Semantic fields from the chart design system
+  intent?: string;
+  unit?: string;
+  benchmarkLabel?: string;
+  benchmarkValue?: number;
+  sourceNote?: string;
 };
 
 export type RenderV2PptxInput = {
@@ -242,7 +249,15 @@ function renderKicker(
 function mapPptxChartType(pptx: PptxGenJS, chartType: string): PptxGenJS.CHART_NAME {
   switch (chartType) {
     case "bar":
+    case "vertical-bar":
+    case "horizontal_bar":
+    case "horizontal-bar":
     case "stacked_bar":
+    case "stacked-bar":
+    case "stacked_bar_100":
+    case "stacked-bar-100":
+    case "grouped_bar":
+    case "grouped-bar":
     case "waterfall":
       return pptx.ChartType.bar;
     case "line":
@@ -252,9 +267,12 @@ function mapPptxChartType(pptx: PptxGenJS, chartType: string): PptxGenJS.CHART_N
     case "doughnut":
       return pptx.ChartType.doughnut;
     case "scatter":
+    case "quadrant":
       return pptx.ChartType.scatter;
     case "area":
       return pptx.ChartType.area;
+    case "radar":
+      return pptx.ChartType.radar;
     default:
       return pptx.ChartType.bar;
   }
@@ -297,28 +315,39 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
 
   const singleSeries = chart.series.length === 1;
   const coercedPieLike = effectiveChartType === "pie" || effectiveChartType === "doughnut";
-  const isBar = effectiveChartType === "bar" || effectiveChartType === "stacked_bar";
+  const isBar = effectiveChartType === "bar" || effectiveChartType === "stacked_bar"
+    || effectiveChartType === "horizontal_bar" || effectiveChartType === "grouped_bar"
+    || effectiveChartType === "stacked_bar_100";
 
-  // Show legend for multi-series charts and pies; hide only for single-series bar/line
-  const showLegend = chart.style.showLegend ??
-    (coercedPieLike ? true : singleSeries ? false : true);
+  // Resolve design system archetype for this chart type + intent
+  const archetype = resolveChartArchetype(effectiveChartType, chart.intent);
+  const rules = archetype.renderingRules;
+
+  // Legend: design system first, then explicit override, then fallback
+  const showLegend = chart.style.showLegend ?? (
+    rules.showLegend === "always" ? true :
+    rules.showLegend === "never" ? false :
+    // "auto" — show if multi-series or pie
+    coercedPieLike ? true : singleSeries ? false : true
+  );
 
   const baseOpts: Record<string, unknown> = {
     showTitle: false,
     showLegend,
-    legendPos: coercedPieLike ? "r" : "b",
+    legendPos: rules.legendPosition === "none" ? "b" : rules.legendPosition === "right" ? "r" : "b",
     legendFontSize: 7,
     legendColor: norm(tokens.palette.muted),
     legendFontFace: tokens.typography.bodyFont,
 
-    showCatAxisTitle: false,
+    showCatAxisTitle: rules.categoryAxisTitle !== "none",
     catAxisLabelColor: norm(tokens.palette.ink),
     catAxisLabelFontSize: 9,
     catAxisLabelFontFace: tokens.typography.bodyFont,
     catAxisLineShow: true,
     catAxisLineColor: "D1D5DB",
 
-    showValAxisTitle: false,
+    showValAxisTitle: rules.showValueAxis && rules.valueAxisTitle !== "none",
+    valAxisTitle: chart.unit ?? "",
     valAxisLabelColor: norm(tokens.palette.muted),
     valAxisLabelFontSize: 8,
     valAxisLabelFontFace: tokens.typography.bodyFont,
@@ -329,9 +358,15 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     catGridLine: { style: "none" },
 
     chartColors: palette,
-    // Always show data labels for readability — consulting-grade
-    showValue: chart.style.showValues ?? true,
-    dataLabelPosition: isBar ? "outEnd" : effectiveChartType === "line" ? "t" : "outEnd",
+    // Data labels controlled by design system archetype
+    showValue: chart.style.showValues ?? (
+      rules.showDataLabels === "always" ? true :
+      rules.showDataLabels === "never" ? false :
+      chart.data.length <= 12  // "smart" — show if ≤12 categories
+    ),
+    dataLabelPosition: rules.dataLabelPosition === "above" ? "t" :
+      rules.dataLabelPosition === "inside" ? "ctr" :
+      rules.dataLabelPosition === "center" ? "ctr" : "outEnd",
     dataLabelFontSize: 9,
     dataLabelFormatCode: detectPercentageData(chart) ? "0.0%" : "#,##0",
     dataLabelFontFace: tokens.typography.bodyFont,
@@ -341,15 +376,23 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     barGapWidthPct: 60,
   };
 
-  // Horizontal bars for bar type
-  if (effectiveChartType === "bar") {
+  // Bar orientation and grouping from design system
+  if (rules.orientation === "horizontal" || effectiveChartType === "horizontal_bar" || effectiveChartType === "horizontal-bar") {
     baseOpts.barDir = "bar";
+  } else if (effectiveChartType === "bar" || effectiveChartType === "vertical-bar") {
+    baseOpts.barDir = "col";
   }
 
-  // Stacked bar (including coerced pie/doughnut)
-  if (effectiveChartType === "stacked_bar") {
-    baseOpts.barDir = "bar";
+  // Bar grouping
+  if (effectiveChartType === "stacked_bar" || effectiveChartType === "stacked-bar") {
+    baseOpts.barDir = baseOpts.barDir ?? "col";
     baseOpts.barGrouping = "stacked";
+  } else if (effectiveChartType === "stacked_bar_100" || effectiveChartType === "stacked-bar-100") {
+    baseOpts.barDir = baseOpts.barDir ?? "col";
+    baseOpts.barGrouping = "percentStacked";
+  } else if (effectiveChartType === "grouped_bar" || effectiveChartType === "grouped-bar") {
+    baseOpts.barDir = baseOpts.barDir ?? "col";
+    baseOpts.barGrouping = "clustered";
   }
 
   // Waterfall: simulated stacked bar
@@ -904,6 +947,10 @@ function renderChartElement(
     h: region.h - 0.3,
   };
 
+  // Reserve space for source note if present
+  const hasSource = Boolean(chart.sourceNote);
+  const actualChartH = hasSource ? chartRegion.h - 0.2 : chartRegion.h;
+
   slide.addChart(
     mapPptxChartType(pptx, effectiveChartType),
     chartData as unknown as PptxGenJS.OptsChartData[],
@@ -911,10 +958,24 @@ function renderChartElement(
       x: chartRegion.x,
       y: chartRegion.y,
       w: chartRegion.w,
-      h: chartRegion.h,
+      h: actualChartH,
       ...opts,
     } as PptxGenJS.IChartOpts,
   );
+
+  // Source note below chart
+  if (chart.sourceNote) {
+    slide.addText(`Source: ${chart.sourceNote}`, {
+      x: chartRegion.x,
+      y: chartRegion.y + actualChartH + 0.02,
+      w: chartRegion.w,
+      h: 0.16,
+      fontSize: 7,
+      fontFace: tokens.typography.bodyFont,
+      color: norm(tokens.palette.muted),
+      italic: true,
+    });
+  }
 }
 
 // ─── PER-LAYOUT RENDERERS ───────────────────────────────────────

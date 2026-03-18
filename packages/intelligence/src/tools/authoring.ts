@@ -46,6 +46,12 @@ export type AuthoringToolContext = {
     yAxis?: string;
     series?: string[];
     style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean; highlightCategories?: string[] };
+    // Semantic fields from chart design system
+    intent?: string;
+    unit?: string;
+    benchmarkLabel?: string;
+    benchmarkValue?: number;
+    sourceNote?: string;
   }) => Promise<{ chartId: string; thumbnailUrl?: string; width?: number; height?: number }>;
   getChart?: (chartId: string) => Promise<{ chartType: string; categoryCount: number; seriesCount: number; rowCount?: number; colCount?: number } | null>;
   getTemplateProfile: () => TemplateProfile | null;
@@ -299,7 +305,16 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
     description:
       "Create a chart from data. Returns a chart ID. The chart must have at least 3 data rows and at least 1 series column with numeric data. Use the chart ID in write_slide.",
     inputSchema: z.object({
-      type: z.enum(["bar", "line", "pie", "doughnut", "scatter", "waterfall", "stacked_bar", "table"]),
+      type: z.enum([
+        "bar", "horizontal_bar", "grouped_bar",
+        "stacked_bar", "stacked_bar_100",
+        "line", "area",
+        "pie", "doughnut",
+        "scatter",
+        "waterfall",
+        "table",
+        "funnel", "marimekko", "matrix", "quadrant",
+      ]),
       title: z.string().min(5).describe("Descriptive chart title"),
       intent: z.enum(["rank", "trend", "composition", "bridge", "correlation", "comparison", "detail"])
         .describe("What analytical story does this chart tell?"),
@@ -309,6 +324,11 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
       sort: z.enum(["none", "asc", "desc"]).default("none").describe("Sort data by first series value"),
       highlightCategories: z.array(z.string()).optional()
         .describe("Category values to highlight (e.g. ['Affinity'] to spotlight the client brand in charts and tables)"),
+      // Semantic fields — tell the renderer HOW to present, not just WHAT data
+      unit: z.string().optional().describe("Data unit: '€M', '%', 'units', 'pp', '$K'"),
+      benchmarkLabel: z.string().optional().describe("Reference line label: 'Industry average', 'Target', 'YoY'"),
+      benchmarkValue: z.number().optional().describe("Reference line value"),
+      sourceNote: z.string().optional().describe("Data source: 'NielsenIQ MAT Dec 2025'"),
       style: z
         .object({
           colors: z.array(z.string()).optional(),
@@ -373,6 +393,12 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
           ...params.style,
           highlightCategories: params.highlightCategories,
         },
+        // Semantic fields for the design system
+        intent: params.intent,
+        unit: params.unit,
+        benchmarkLabel: params.benchmarkLabel,
+        benchmarkValue: params.benchmarkValue,
+        sourceNote: params.sourceNote,
       });
 
       await ctx.persistNotebookEntry({

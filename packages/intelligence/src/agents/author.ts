@@ -135,6 +135,27 @@ Never default to vertical bar chart. Horizontal bar is almost always better for 
 
 Max 12 categories × 4 series per chart. If more, aggregate the tail into "Other" or use a table.
 
+## CHART TYPE SELECTION (choose the RIGHT chart for the analytical question)
+
+| Question | Chart Type | When to use |
+|----------|-----------|-------------|
+| "Who is biggest?" | horizontal_bar | Rankings by size, sorted desc. DEFAULT for single-metric comparisons. |
+| "How do they compare?" | bar or grouped_bar | Side-by-side comparison. grouped_bar for 2+ series. |
+| "What's the mix?" | stacked_bar or stacked_bar_100 | Composition/share of total. 100% for pure share view. |
+| "How is it changing?" | line | Time series, trends. Multi-series for benchmarking. |
+| "What drove the change?" | waterfall | Bridge from A to B. Show increments and decrements. |
+| "What's the share?" | pie or doughnut | Only for ≤5 categories. doughnut for metric in center. |
+| "Are these related?" | scatter | Correlation between two variables. |
+| "Show me the data" | table | Detailed breakdowns, appendix-style. |
+| "What's the volume trend?" | area | Like line but emphasizes magnitude. |
+
+Always provide:
+- **intent**: The analytical question this chart answers (rank, trend, composition, bridge, correlation, comparison, detail)
+- **unit**: The data unit ("€M", "%", "pp", "units") — affects axis formatting
+- **highlightCategories**: The focal entity (client brand) for emphasis
+- **sourceNote**: Data source citation ("NielsenIQ MAT Dec 2025")
+- **benchmarkValue** + **benchmarkLabel**: Reference lines where relevant ("Industry avg: 4.2%")
+
 ## HIGHLIGHT CATEGORIES (mandatory on every chart)
 
 ALWAYS pass highlightCategories when calling build_chart. Include:
