@@ -310,9 +310,8 @@ function validateGenerationFiles(
     return `Unsupported file type for ${unsupportedEvidenceFile.fileName}. Basquio accepts CSV/XLSX/XLS plus text, doc, PDF, PPTX, JSON, or CSS support files.`;
   }
 
-  if (!sourceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook")) {
-    return "At least one CSV, XLSX, or XLS file is required so Basquio has a tabular source for deterministic analytics.";
-  }
+  // Any evidence file type is valid — CSV, XLSX, PPTX, PDF, images, etc.
+  // No requirement for tabular data specifically.
 
   if (styleFile && !["brand-tokens", "pptx", "pdf"].includes(inferSourceFileKind(styleFile.fileName))) {
     return "Brand input must be a JSON/CSS token file, a PPTX template, or a PDF style reference.";
