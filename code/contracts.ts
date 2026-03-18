@@ -5,6 +5,7 @@ export const sourceAssetKindSchema = z.enum([
   "document",
   "pptx",
   "pdf",
+  "image",
   "brand-tokens",
   "unknown",
 ]);

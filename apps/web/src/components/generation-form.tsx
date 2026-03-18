@@ -303,7 +303,7 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
                   className="sr-only-input"
                   name="evidenceFiles"
                   type="file"
-                  accept=".csv,.xlsx,.xls,.doc,.docx,.txt,.md,.pdf,.pptx,.json,.css"
+                  accept=".csv,.xlsx,.xls,.doc,.docx,.txt,.md,.pdf,.pptx,.json,.css,.png,.jpg,.jpeg,.gif,.svg,.webp"
                   multiple
                   onChange={handleEvidenceInputChange}
                 />

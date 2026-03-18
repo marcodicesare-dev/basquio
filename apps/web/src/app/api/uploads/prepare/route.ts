@@ -67,18 +67,14 @@ export async function POST(request: Request) {
     if (unsupportedEvidenceFile) {
       return NextResponse.json(
         {
-          error: `Unsupported file type for ${unsupportedEvidenceFile.fileName}. Basquio accepts CSV/XLSX/XLS plus text, doc, PDF, PPTX, JSON, or CSS support files.`,
+          error: `Unsupported file type for ${unsupportedEvidenceFile.fileName}. Basquio accepts CSV, XLSX, PPTX, PDF, images, text, and document files.`,
         },
         { status: 400 },
       );
     }
 
-    if (!payload.evidenceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook")) {
-      return NextResponse.json(
-        { error: "At least one CSV, XLSX, or XLS file is required so Basquio has a tabular source for deterministic analytics." },
-        { status: 400 },
-      );
-    }
+    // Any evidence file type is valid — CSV, XLSX, PPTX, PDF, images, etc.
+    // No requirement for tabular data specifically.
 
     if (payload.brandFile) {
       const brandKind = inferSourceFileKind(payload.brandFile.fileName);

@@ -42,6 +42,17 @@ export function inferSourceFileKind(fileName: string) {
     return "pdf" as const;
   }
 
+  if (
+    normalized.endsWith(".png") ||
+    normalized.endsWith(".jpg") ||
+    normalized.endsWith(".jpeg") ||
+    normalized.endsWith(".gif") ||
+    normalized.endsWith(".svg") ||
+    normalized.endsWith(".webp")
+  ) {
+    return "image" as const;
+  }
+
   return "unknown" as const;
 }
 
