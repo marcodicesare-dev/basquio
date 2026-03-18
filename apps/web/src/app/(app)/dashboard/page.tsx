@@ -1,12 +1,7 @@
 import Link from "next/link";
 
 import { getViewerState } from "@/lib/supabase/auth";
-import {
-  buildArtifactDownloadUrl,
-  listGenerationRuns,
-  summarizeRunBrief,
-  summarizeRunSources,
-} from "@/lib/job-runs";
+import { listV2RunCards, type V2RunCard } from "@/lib/job-runs";
 
 export const dynamic = "force-dynamic";
 
@@ -18,18 +13,36 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function statusBadge(status: string) {
-  switch (status) {
-    case "completed": return null; // Don't show badge for completed
-    case "running": return <span className="run-pill">Generating...</span>;
-    case "failed": return <span className="run-pill">Failed</span>;
-    default: return <span className="run-pill">{status}</span>;
+function RunActions({ run }: { run: V2RunCard }) {
+  if (run.status === "running" || run.status === "queued") {
+    return <Link className="button" href={`/jobs/${run.id}`}>View progress</Link>;
   }
+  if (run.status === "failed") {
+    return <Link className="button secondary" href={`/jobs/${run.id}`}>View details</Link>;
+  }
+  if (run.artifacts.length > 0) {
+    return (
+      <>
+        {run.artifacts.map((a) => (
+          <a key={a.kind} className="button" href={a.downloadUrl}>
+            Download {a.kind.toUpperCase()}
+          </a>
+        ))}
+      </>
+    );
+  }
+  return <Link className="button secondary" href={`/jobs/${run.id}`}>View run</Link>;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === "running" || status === "queued") return <span className="run-pill">Generating...</span>;
+  if (status === "failed") return <span className="run-pill">Failed</span>;
+  return null;
 }
 
 export default async function DashboardPage() {
   const viewer = await getViewerState();
-  const runs = await listGenerationRuns(8, viewer.user?.id);
+  const runs = await listV2RunCards(8, viewer.user?.id);
   const latestRun = runs[0] ?? null;
   const recentRuns = latestRun ? runs.slice(1, 5) : [];
 
@@ -37,10 +50,7 @@ export default async function DashboardPage() {
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>Dashboard</h1>
-
-        <Link className="button" href="/jobs/new">
-          New report
-        </Link>
+        <Link className="button" href="/jobs/new">New report</Link>
       </section>
 
       {latestRun ? (
@@ -48,51 +58,28 @@ export default async function DashboardPage() {
           <div className="run-card-head">
             <div className="stack">
               <p className="artifact-kind">Latest report</p>
-              <h2>{latestRun.story.keyMessages[0] ?? latestRun.objective}</h2>
-              <p className="muted">{summarizeRunBrief(latestRun)}</p>
+              <h2>{latestRun.headline}</h2>
+              <p className="muted">
+                {[latestRun.client, latestRun.objective].filter(Boolean).join(" — ")}
+              </p>
             </div>
-
             <div className="row">
-              {latestRun.status === "running" ? (
-                <Link className="button" href={`/jobs/${latestRun.jobId}`}>
-                  View progress
-                </Link>
-              ) : latestRun.status === "failed" ? (
-                <Link className="button secondary" href={`/jobs/${latestRun.jobId}`}>
-                  View details
-                </Link>
-              ) : latestRun.artifacts.length > 0 ? (
-                latestRun.artifacts.map((artifact) => (
-                  <a key={artifact.kind} className="button" href={buildArtifactDownloadUrl(latestRun.jobId, artifact.kind)}>
-                    Download {artifact.kind.toUpperCase()}
-                  </a>
-                ))
-              ) : (
-                <Link className="button secondary" href={`/jobs/${latestRun.jobId}`}>
-                  View run
-                </Link>
-              )}
+              <RunActions run={latestRun} />
             </div>
           </div>
-
           <div className="compact-meta-row">
             <span className="run-pill">{formatDate(latestRun.createdAt)}</span>
-            <span className="run-pill">{summarizeRunSources(latestRun)}</span>
-            {latestRun.slidePlan.slides.length > 0 ? (
-              <span className="run-pill">{latestRun.slidePlan.slides.length} slides</span>
-            ) : null}
-            {statusBadge(latestRun.status)}
+            <span className="run-pill">{latestRun.sourceFileName}</span>
+            {latestRun.slideCount > 0 ? <span className="run-pill">{latestRun.slideCount} slides</span> : null}
+            <StatusBadge status={latestRun.status} />
           </div>
         </section>
       ) : (
         <section className="panel workspace-empty-card onboarding-card">
           <div className="stack">
             <h2>Create your first report</h2>
-            <p className="muted">
-              Upload your data, describe the brief, and Basquio builds a consulting-grade deck.
-            </p>
+            <p className="muted">Upload your data, describe the brief, and Basquio builds a consulting-grade deck.</p>
           </div>
-
           <div className="onboarding-steps">
             <div className="onboarding-step">
               <span className="onboarding-step-number">1</span>
@@ -116,10 +103,7 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
-
-          <Link className="button" href="/jobs/new">
-            Start your first report
-          </Link>
+          <Link className="button" href="/jobs/new">Start your first report</Link>
         </section>
       )}
 
@@ -127,42 +111,25 @@ export default async function DashboardPage() {
         <section className="stack-lg">
           <div className="workspace-section-head">
             <h2>Recent reports</h2>
-            <Link className="button secondary" href="/artifacts">
-              All reports
-            </Link>
+            <Link className="button secondary" href="/artifacts">All reports</Link>
           </div>
-
           <div className="presentation-list">
             {recentRuns.map((run) => (
-              <article key={run.jobId} className="panel presentation-card">
+              <article key={run.id} className="panel presentation-card">
                 <div className="presentation-card-head">
                   <div className="stack">
-                    <p className="artifact-kind">{summarizeRunSources(run)}</p>
-                    <h3>{run.story.keyMessages[0] ?? run.objective}</h3>
-                    <p className="muted">{summarizeRunBrief(run)}</p>
+                    <p className="artifact-kind">{run.sourceFileName}</p>
+                    <h3>{run.headline}</h3>
+                    <p className="muted">{[run.client, run.objective].filter(Boolean).join(" — ")}</p>
                   </div>
-
                   <div className="download-actions">
-                    {run.status === "running" ? (
-                      <Link className="button secondary" href={`/jobs/${run.jobId}`}>View</Link>
-                    ) : run.artifacts.length > 0 ? (
-                      run.artifacts.map((artifact) => (
-                        <a key={artifact.kind} className="button secondary" href={buildArtifactDownloadUrl(run.jobId, artifact.kind)}>
-                          {artifact.kind.toUpperCase()}
-                        </a>
-                      ))
-                    ) : (
-                      <Link className="button secondary" href={`/jobs/${run.jobId}`}>View</Link>
-                    )}
+                    <RunActions run={run} />
                   </div>
                 </div>
-
                 <div className="compact-meta-row">
                   <span className="run-pill">{formatDate(run.createdAt)}</span>
-                  {run.slidePlan.slides.length > 0 ? (
-                    <span className="run-pill">{run.slidePlan.slides.length} slides</span>
-                  ) : null}
-                  {statusBadge(run.status)}
+                  {run.slideCount > 0 ? <span className="run-pill">{run.slideCount} slides</span> : null}
+                  <StatusBadge status={run.status} />
                 </div>
               </article>
             ))}
