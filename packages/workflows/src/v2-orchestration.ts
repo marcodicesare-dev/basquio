@@ -971,6 +971,8 @@ export const basquioV2Generation = inngest.createFunction(
             columns: s.columns.map((c) => ({ ...c })),
           })),
           textContent: supportFile?.textContent,
+          pages: supportFile?.pages,
+          pageCount: supportFile?.pageCount,
           warnings: supportFile?.warnings ?? [],
         };
       });
@@ -1193,8 +1195,12 @@ export const basquioV2Generation = inngest.createFunction(
                 visionDescription = visionData.output_text;
               }
             }
-          } catch {
-            // Vision extraction is best-effort — don't block normalize
+          } catch (visionErr) {
+            // Vision extraction is best-effort — don't block normalize, but log
+            logPhaseEvent(runId, "normalize", "vision_extraction_error", {
+              fileName: f.fileName,
+              error: visionErr instanceof Error ? visionErr.message : "unknown",
+            });
           }
 
           description = visionDescription
@@ -1228,7 +1234,7 @@ export const basquioV2Generation = inngest.createFunction(
           description,
           confidence,
           value: f.textContent
-            ? { text: f.textContent.slice(0, 5000), truncated: f.textContent.length > 5000, charCount: f.textContent.length }
+            ? { text: f.textContent.slice(0, 20000), truncated: f.textContent.length > 20000, charCount: f.textContent.length }
             : isImage && description.startsWith("Image: ")
               ? { visionExtracted: true, description: description.slice(7), fileName: f.fileName }
               : { noTextExtracted: true, fileKind: f.kind, fileName: f.fileName },
@@ -1292,7 +1298,7 @@ export const basquioV2Generation = inngest.createFunction(
             const allPptxImages = slideImages.flatMap((s) => s.images);
 
             // Process up to 30 slides (vision is cheap: ~$0.02/slide)
-            for (const slide of slidesNeedingVision.slice(0, 30)) {
+            for (const slide of slidesNeedingVision.slice(0, 10)) {
               // Determine which images to send
               const slideHasOwnImages = slide.images.length > 0;
               const imagesToSend = slideHasOwnImages
@@ -1438,8 +1444,12 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
                     });
                   }
                 }
-              } catch {
-                // Vision extraction is best-effort per slide — don't block normalize
+              } catch (slideVisionErr) {
+                // Vision extraction is best-effort per slide — don't block normalize, but log
+                logPhaseEvent(runId, "normalize", "slide_vision_error", {
+                  fileName: f.fileName,
+                  error: slideVisionErr instanceof Error ? slideVisionErr.message : "unknown",
+                });
               }
             }
 
@@ -2017,6 +2027,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         runId,
         analysis,
         brief: `POLISH PASS: The following slides are below consulting quality. Fix each one by adding the missing content. Use query_data to pull real numbers. Build charts where needed. Do NOT rewrite slides that aren't listed — only fix the weak ones.\n\nWEAK SLIDES:\n${weakSlidesPrompt}`,
+        maxSteps: 15, // Cap to prevent Vercel timeout — polish is targeted, not full authoring
         loadRows: loadSheetRows,
         persistNotebookEntry: async (entry: NotebookEntry) => {
           return persistNotebookEntry(runId, "polish", 0, entry);
@@ -2068,11 +2079,10 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       return { polished: weakSlideDetails.length, total: slides.length };
     });
 
-    // Mark delivery as "draft" — authored but not yet critiqued
-    await updateDeliveryStatus(runId, "draft");
-
     // ─── STEP 4a: FACTUAL CRITIQUE (agentic, cross-model) ──────
     const factualCritique = await step.run("critique-factual", async () => {
+      // Mark delivery as "draft" INSIDE the step to avoid replay side effects
+      await updateDeliveryStatus(runId, "draft");
       await updateRunStatus(runId, "running", "critique");
       await emitRunEvent(runId, "critique", "phase_started", { critic: "factual" });
 
@@ -2224,11 +2234,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
 
     const hasCriticalOrMajor = critique.hasIssues && critique.issues.some((i: { severity: string }) => i.severity === "critical" || i.severity === "major");
 
-    // If critique passed clean, mark as reviewed; otherwise leave as draft pending revise
-    if (!hasCriticalOrMajor) {
-      await updateDeliveryStatus(runId, "reviewed");
-    }
-
+    // Delivery status update moved inside the next step to avoid replay side effects
     if (hasCriticalOrMajor) {
       // ─── STEP 5: REVISE (section-level targeted repair) ──────
       // Map flagged slides to sections, then re-run only flagged sections
@@ -2570,7 +2576,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
           totalSections: allSections.length,
         });
       } else {
-        // Fallback: monolithic revise (all sections flagged or no section mapping available)
+        // Fallback: monolithic revise (only when no section structure exists)
         await step.run("revise", async () => {
           tracker.startPhase("revise", "claude-opus-4-6", "anthropic");
 
@@ -2583,6 +2589,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
             runId,
             analysis,
             brief,
+            maxSteps: 25, // Cap to prevent Vercel timeout — monolithic revise must stay under 800s
             loadRows: loadSheetRows,
             critiqueContext: issuesSummary + evidenceInventory + preservedInfo,
             persistNotebookEntry: async (entry: NotebookEntry) => {
@@ -2837,6 +2844,11 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
     const artifacts = await step.run("export", async () => {
       await updateRunStatus(runId, "running", "export");
       await emitRunEvent(runId, "export", "phase_started");
+
+      // Set delivery status to "reviewed" if critique passed clean (moved here from between steps)
+      if (!hasCriticalOrMajor) {
+        await updateDeliveryStatus(runId, "reviewed");
+      }
 
       // 1. Load slides and verify count
       const slides = await getSlides(runId);
