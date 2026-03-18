@@ -46,19 +46,64 @@ export interface ShapeChartOptions {
 
 // ─── CONSTANTS ───────────────────────────────────────────────────
 
-const MUTED_BAR = "D1D5DB";
-const LABEL_GRAY = "6B7280";
-const GRID_GRAY = "F3F4F6";
-const AXIS_GRAY = "D1D5DB";
-const GREEN = "16A34A";
-const RED = "DC2626";
-const DATA_LABEL_SIZE = 10;
-const CAT_LABEL_SIZE = 9;
-const LEGEND_SIZE = 8.5;
-const TITLE_SIZE = 10;
-const SOURCE_SIZE = 7;
-const MAX_CATEGORIES = 12;
-const MAX_LABEL_CHARS = 25;
+// ─── DESIGN SYSTEM TOKENS (Tremor/shadcn-level polish) ──────────
+// These define the visual grammar for all chart types.
+// Comparable to a web chart library's theme but for PPTX shapes.
+
+const V = {
+  // Colors (neutral ramp)
+  mutedBar: "D1D5DB",        // Non-focal bars/segments
+  labelGray: "6B7280",       // Axis labels, category labels
+  gridGray: "F3F4F6",        // Grid lines (barely visible)
+  axisGray: "E5E7EB",        // Axis lines (subtle)
+  borderGray: "E2E8F0",      // Card/component borders
+  surfaceGray: "F8FAFC",     // Card backgrounds, zebra rows
+  // Semantic colors
+  green: "16A34A",
+  red: "DC2626",
+  // Typography sizes (pt)
+  chartTitle: 10,            // Chart title above chart area
+  dataLabel: 10,             // Values on bars/points (bold)
+  catLabel: 9,               // Category labels on axes
+  legend: 8.5,               // Legend text
+  source: 7,                 // Source note below chart
+  insideLabel: 8,            // Labels inside bar segments
+  annotation: 8,             // Benchmark/reference labels
+  // Spacing (inches)
+  titleAreaH: 0.22,          // Height reserved for chart title
+  sourceAreaH: 0.18,         // Height reserved for source note
+  labelAreaW: 1.8,           // Width for horizontal bar category labels
+  labelAreaWNarrow: 1.4,     // Narrow variant for dense charts
+  axisAreaH: 0.32,           // Height for vertical chart axis labels
+  valueLabelW: 0.60,         // Width for value labels at bar end
+  barGapRatio: 0.35,         // Gap between bars as ratio of slot height
+  barPadding: 0.02,          // Internal padding within grouped bars
+  legendH: 0.18,             // Height of legend row
+  cardPadH: 0.06,            // Horizontal cell padding
+  cardPadV: 0.04,            // Vertical cell padding
+  // Stroke
+  gridLinePt: 0.005,         // Grid line thickness in inches
+  axisLinePt: 0.007,         // Axis line thickness
+  // Limits
+  maxCategories: 12,
+  maxLabelChars: 25,
+  maxSlices: 6,              // Max pie/donut slices before rollup
+} as const;
+
+// Legacy aliases for backward compat
+const MUTED_BAR = V.mutedBar;
+const LABEL_GRAY = V.labelGray;
+const GRID_GRAY = V.gridGray;
+const AXIS_GRAY = V.axisGray;
+const GREEN = V.green;
+const RED = V.red;
+const DATA_LABEL_SIZE = V.dataLabel;
+const CAT_LABEL_SIZE = V.catLabel;
+const LEGEND_SIZE = V.legend;
+const TITLE_SIZE = V.chartTitle;
+const SOURCE_SIZE = V.source;
+const MAX_CATEGORIES = V.maxCategories;
+const MAX_LABEL_CHARS = V.maxLabelChars;
 
 // ─── ROUTER ──────────────────────────────────────────────────────
 
@@ -162,69 +207,85 @@ function renderHorizontalBar(
   options: ShapeChartOptions,
 ): void {
   const values = data.datasets[0].data;
-  let labels = data.labels;
 
   // Pair, sort descending, truncate
-  let pairs = labels.map((label, i) => ({ label, value: values[i] ?? 0 }));
+  let pairs = data.labels.map((label, i) => ({ label, value: values[i] ?? 0 }));
   pairs.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-  if (pairs.length > MAX_CATEGORIES) {
-    const rest = pairs.slice(MAX_CATEGORIES - 1);
+  if (pairs.length > V.maxCategories) {
+    const rest = pairs.slice(V.maxCategories - 1);
     const restSum = rest.reduce((s, p) => s + p.value, 0);
-    pairs = [...pairs.slice(0, MAX_CATEGORIES - 1), { label: `${rest.length} others`, value: restSum }];
+    pairs = [...pairs.slice(0, V.maxCategories - 1), { label: `${rest.length} others`, value: restSum }];
   }
 
   const maxVal = Math.max(...pairs.map((p) => Math.abs(p.value)), 1);
-  const labelAreaW = 1.8; // space for category labels
+  const labelAreaW = pairs.length > 8 ? V.labelAreaWNarrow : V.labelAreaW;
   const chartAreaX = frame.x + labelAreaW;
-  const chartAreaW = frame.w - labelAreaW - 0.6; // 0.6 for value labels
+  const chartAreaW = frame.w - labelAreaW - V.valueLabelW;
   const n = pairs.length;
-  const totalH = frame.h;
-  const barH = (totalH / n) * 0.65;
-  const gap = (totalH / n) * 0.35;
+  const slotH = frame.h / n;
+  const barH = slotH * (1 - V.barGapRatio);
+  const gapH = slotH * V.barGapRatio;
 
   const isFocal = (label: string) =>
     options.focalEntity && label.toLowerCase().includes(options.focalEntity.toLowerCase());
   const isHighlighted = (label: string) =>
     options.highlightCategories?.some((h) => label.toLowerCase().includes(h.toLowerCase()));
 
-  pairs.forEach((pair, i) => {
-    const y = frame.y + i * (barH + gap) + gap / 2;
-    const barW = (Math.abs(pair.value) / maxVal) * chartAreaW;
-    const color = isFocal(pair.label) || isHighlighted(pair.label) ? tokens.accent : MUTED_BAR;
+  // Subtle vertical grid lines (25%, 50%, 75%, 100% marks)
+  for (let g = 1; g <= 4; g++) {
+    const gridX = chartAreaX + (chartAreaW * g) / 4;
+    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      x: gridX, y: frame.y, w: V.gridLinePt, h: frame.h,
+      fill: { color: V.gridGray },
+    });
+  }
 
-    // Category label
+  // Thin baseline at chart left edge
+  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    x: chartAreaX, y: frame.y, w: V.axisLinePt, h: frame.h,
+    fill: { color: V.axisGray },
+  });
+
+  pairs.forEach((pair, i) => {
+    const y = frame.y + i * slotH + gapH / 2;
+    const barW = (Math.abs(pair.value) / maxVal) * chartAreaW;
+    const focal = isFocal(pair.label) || isHighlighted(pair.label);
+    const color = focal ? tokens.accent : V.mutedBar;
+
+    // Category label — bold for focal, regular for others
     slide.addText(truncLabel(pair.label), {
       x: frame.x,
       y,
-      w: labelAreaW - 0.08,
+      w: labelAreaW - 0.10,
       h: barH,
-      fontSize: CAT_LABEL_SIZE,
+      fontSize: V.catLabel,
       fontFace: tokens.bodyFont,
-      color: LABEL_GRAY,
+      color: focal ? tokens.ink : V.labelGray,
+      bold: focal,
       align: "right",
       valign: "middle",
     });
 
-    // Bar
+    // Bar with micro-padding from baseline
     if (barW > 0.01) {
       slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-        x: chartAreaX,
-        y,
-        w: barW,
-        h: barH,
+        x: chartAreaX + 0.02,
+        y: y + V.barPadding,
+        w: barW - 0.02,
+        h: barH - V.barPadding * 2,
         fill: { color },
       });
     }
 
-    // Value label
+    // Value label — always shown, bold, positioned at bar end
     slide.addText(formatValue(pair.value, options.unit), {
-      x: chartAreaX + barW + 0.05,
+      x: chartAreaX + barW + 0.06,
       y,
-      w: 0.55,
+      w: V.valueLabelW - 0.08,
       h: barH,
-      fontSize: DATA_LABEL_SIZE,
+      fontSize: V.dataLabel,
       fontFace: tokens.bodyFont,
-      color: tokens.ink,
+      color: focal ? tokens.ink : V.labelGray,
       bold: true,
       align: "left",
       valign: "middle",
