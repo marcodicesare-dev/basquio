@@ -849,6 +849,7 @@ export const basquioV2Generation = inngest.createFunction(
       sourceFileIds,
       brief,
       templateProfileId,
+      templateFileId,
     } = event.data as {
       runId: string;
       organizationId: string;
@@ -856,6 +857,7 @@ export const basquioV2Generation = inngest.createFunction(
       sourceFileIds: string[];
       brief: string;
       templateProfileId?: string;
+      templateFileId?: string;
     };
 
     const tracker = new UsageTracker();
@@ -955,7 +957,7 @@ export const basquioV2Generation = inngest.createFunction(
         };
       });
 
-      // Parse template
+      // Parse template — from saved profile, uploaded file, or system default
       let templateProfile: TemplateProfile | undefined;
       if (templateProfileId) {
         const tpResponse = await fetch(
@@ -970,6 +972,47 @@ export const basquioV2Generation = inngest.createFunction(
         const tpRows = await tpResponse.json();
         if (tpRows.length > 0) {
           templateProfile = tpRows[0].template_profile as TemplateProfile;
+        }
+      }
+      // If no saved profile, try interpreting from uploaded template file
+      if (!templateProfile && templateFileId) {
+        try {
+          const templateFileResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/source_files?id=eq.${templateFileId}&limit=1`,
+            {
+              headers: {
+                apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+              },
+            },
+          );
+          const templateFiles = await templateFileResponse.json();
+          if (templateFiles.length > 0) {
+            const tf = templateFiles[0];
+            const templateBlobResponse = await fetch(
+              `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${tf.storage_bucket}/${tf.storage_path}`,
+              {
+                headers: {
+                  apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                  Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+                },
+              },
+            );
+            if (templateBlobResponse.ok) {
+              const templateBuffer = Buffer.from(await templateBlobResponse.arrayBuffer());
+              templateProfile = await interpretTemplateSource({
+                id: templateFileId,
+                fileName: tf.file_name,
+                sourceFile: {
+                  fileName: tf.file_name,
+                  mediaType: tf.media_type ?? "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                  base64: templateBuffer.toString("base64"),
+                },
+              });
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to interpret template file, falling back to default:", e);
         }
       }
       if (!templateProfile) {

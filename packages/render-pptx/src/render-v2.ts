@@ -274,9 +274,9 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   const coercedPieLike = effectiveChartType === "pie" || effectiveChartType === "doughnut";
   const isBar = effectiveChartType === "bar" || effectiveChartType === "stacked_bar";
 
-  // Smart legend: hide for single series, minimize for pies with few slices
+  // Show legend for multi-series charts and pies; hide only for single-series bar/line
   const showLegend = chart.style.showLegend ??
-    (coercedPieLike ? chart.data.length <= 4 : singleSeries ? false : chart.series.length >= 3);
+    (coercedPieLike ? true : singleSeries ? false : true);
 
   const baseOpts: Record<string, unknown> = {
     showTitle: false,
@@ -286,11 +286,14 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     legendColor: norm(tokens.palette.muted),
     legendFontFace: tokens.typography.bodyFont,
 
-    catAxisLabelColor: norm(tokens.palette.muted),
+    showCatAxisTitle: false,
+    catAxisLabelColor: norm(tokens.palette.ink),
     catAxisLabelFontSize: 9,
     catAxisLabelFontFace: tokens.typography.bodyFont,
-    catAxisLineShow: false,
+    catAxisLineShow: true,
+    catAxisLineColor: "D1D5DB",
 
+    showValAxisTitle: false,
     valAxisLabelColor: norm(tokens.palette.muted),
     valAxisLabelFontSize: 8,
     valAxisLabelFontFace: tokens.typography.bodyFont,
@@ -301,9 +304,10 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
 
     chartColors: palette,
     // Larger data labels, more visible
-    showValue: chart.style.showValues ?? (isBar ? chart.data.length <= 8 : coercedPieLike ? false : false),
+    // Always show data labels for readability — this is consulting-grade, not BI-export
+    showValue: chart.style.showValues ?? true,
     dataLabelPosition: isBar ? "outEnd" : effectiveChartType === "line" ? "t" : "outEnd",
-    dataLabelFontSize: 10,
+    dataLabelFontSize: 9,
     dataLabelFontFace: tokens.typography.bodyFont,
     dataLabelColor: norm(tokens.palette.ink),
     dataLabelFontBold: true,
