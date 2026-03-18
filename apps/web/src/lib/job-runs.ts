@@ -83,18 +83,18 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
     const fileNames = new Map<string, string>();
     const allRunIds = runs.map((r) => r.id);
     try {
-      const sheets = await fetchRestRows<{ workspace_id: string; file_name: string }>({
+      const sheets = await fetchRestRows<{ workspace_id: string; source_file_name: string }>({
         ...credentials,
         table: "evidence_workspace_sheets",
         query: {
-          select: "workspace_id,file_name",
+          select: "workspace_id,source_file_name",
           workspace_id: `in.(${allRunIds.join(",")})`,
           order: "created_at.asc",
           limit: String(allRunIds.length * 5),
         },
       });
       for (const s of sheets) {
-        if (!fileNames.has(s.workspace_id)) fileNames.set(s.workspace_id, s.file_name);
+        if (!fileNames.has(s.workspace_id)) fileNames.set(s.workspace_id, s.source_file_name);
       }
     } catch { /* table may not exist */ }
 
@@ -512,11 +512,11 @@ async function listV2DeckRuns(
     const allRunIds = runs.map((r) => r.id);
     if (allRunIds.length > 0) {
       try {
-        const sheets = await fetchRestRows<{ workspace_id: string; file_name: string }>({
+        const sheets = await fetchRestRows<{ workspace_id: string; source_file_name: string }>({
           ...credentials,
           table: "evidence_workspace_sheets",
           query: {
-            select: "workspace_id,file_name",
+            select: "workspace_id,source_file_name",
             workspace_id: `in.(${allRunIds.join(",")})`,
             order: "created_at.asc",
             limit: String(allRunIds.length * 5),
@@ -525,7 +525,7 @@ async function listV2DeckRuns(
         // Group by workspace_id, take the first file name
         for (const s of sheets) {
           if (!fileNames.has(s.workspace_id)) {
-            fileNames.set(s.workspace_id, s.file_name);
+            fileNames.set(s.workspace_id, s.source_file_name);
           }
         }
       } catch {

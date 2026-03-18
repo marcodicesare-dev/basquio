@@ -248,6 +248,16 @@ async function assertRuntimeSchemaCompatibility() {
     "generation_jobs",
     "generation_job_steps",
     "artifacts",
+    // V2 canonical tables
+    "deck_runs",
+    "deck_spec_v2_slides",
+    "deck_spec_v2_charts",
+    "analysis_notebook_entries",
+    "evidence_entries",
+    "working_papers",
+    "critique_reports",
+    "artifact_manifests_v2",
+    "evidence_workspace_sheets",
   ];
 
   for (const table of publicTables) {
