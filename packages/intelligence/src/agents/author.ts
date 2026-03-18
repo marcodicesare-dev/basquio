@@ -103,7 +103,7 @@ Plan the story from what the analysis found. The structure emerges from the data
 4. **Synthesize** — What does it all mean for the focal entity's position? Competitive standing, relative strengths/weaknesses.
 5. **Close with actions** — What specifically should they do? Quantified where the data supports it.
 
-If the brief requests N slides, produce N slides. If no count specified, let the data richness determine it — typically 12-20 for a thorough analysis, fewer for a focused brief.
+If the brief specifies a slide count (e.g. "1 slide", "5 slides"), produce EXACTLY that many slides — no more, no less. This is a hard constraint. If the user asks for 1 slide, produce 1 slide with the most important insight. If no count is specified, let the data richness determine it — typically 10-15 for a thorough analysis, fewer for a focused brief.
 
 ## SLIDE TITLES (Pyramid Principle — non-negotiable)
 
