@@ -1182,9 +1182,16 @@ export const basquioV2Generation = inngest.createFunction(
       }
 
       // ─── PPTX VISION EXTRACTION ─────────────────────────────────────
-      // For PPTX files: extract embedded images from slides with visual content
-      // (shapes, SmartArt, grouped objects, screenshots) and run GPT-5.4 vision
-      // to extract data that OOXML XML parsing can't reach.
+      // For PPTX files: run GPT-5.4 vision on slides that have visual content
+      // the OOXML XML parser can't read (shapes, SmartArt, grouped objects, images).
+      //
+      // Strategy:
+      // 1. Slides WITH embedded images → send the image(s) to vision
+      // 2. Slides WITHOUT images but with shapes/SmartArt → send ALL embedded
+      //    images from the entire PPTX as context (the model can identify which
+      //    images belong to which visual). This is a fallback; full-slide rendering
+      //    via LibreOffice/Browserless would be better but adds infra complexity.
+      // 3. Request STRUCTURED JSON, not prose, for downstream evidence quality.
       for (const f of fileInventory) {
         if (!/\.pptx?$/i.test(f.fileName)) continue;
 
@@ -1193,22 +1200,83 @@ export const basquioV2Generation = inngest.createFunction(
 
         try {
           const slideImages = await extractPptxSlideImages(fileBuffer);
-          const slidesNeedingVision = slideImages.filter((s) => s.needsVision && s.images.length > 0);
+          // Process ALL slides that need vision — not just those with embedded images
+          const slidesNeedingVision = slideImages.filter((s) => s.needsVision);
 
           if (slidesNeedingVision.length > 0) {
             logPhaseEvent(runId, "normalize", "pptx_vision_extraction_started", {
               fileName: f.fileName,
               totalSlides: slideImages.length,
               slidesNeedingVision: slidesNeedingVision.length,
+              withImages: slidesNeedingVision.filter((s) => s.images.length > 0).length,
+              withoutImages: slidesNeedingVision.filter((s) => s.images.length === 0).length,
             });
 
-            // Process up to 20 slides to stay within cost/time budget
-            for (const slide of slidesNeedingVision.slice(0, 20)) {
-              // Use the first (largest) image from the slide
-              const img = slide.images[0];
-              if (!img) continue;
+            // Collect ALL images from the PPTX for slides that have no embedded images
+            // (these slides have shapes/SmartArt drawn programmatically)
+            const allPptxImages = slideImages.flatMap((s) => s.images);
+
+            // Process up to 30 slides (vision is cheap: ~$0.02/slide)
+            for (const slide of slidesNeedingVision.slice(0, 30)) {
+              // Determine which images to send
+              const slideHasOwnImages = slide.images.length > 0;
+              const imagesToSend = slideHasOwnImages
+                ? slide.images.slice(0, 4) // up to 4 images per slide
+                : allPptxImages.slice(0, 2); // fallback: send first 2 PPTX images as context
+
+              // Also include the slide's XML-extracted text as context
+              const existingPage = (f as Record<string, unknown>).pages as Array<{ num: number; text: string }> | undefined;
+              const slideText = existingPage?.find((p) => p.num === slide.slideNum)?.text ?? "";
 
               try {
+                // Build the vision request with structured extraction prompt
+                const contentParts: Array<Record<string, unknown>> = [
+                  {
+                    type: "input_text",
+                    text: `You are extracting structured data from slide ${slide.slideNum} of "${f.fileName}" for a business intelligence system.
+
+CONTEXT FROM XML PARSING (may be incomplete):
+${slideText.slice(0, 1000) || "(no text extracted from XML)"}
+
+SLIDE METADATA:
+- Has shapes: ${slide.hasShapes}
+- Has SmartArt: ${slide.hasSmartArt}
+- Has grouped shapes: ${slide.hasGroupedShapes}
+- Has native chart (already extracted): ${slide.hasNativeChart}
+
+YOUR TASK: Extract ALL quantitative data visible in the image(s) below.
+
+Return a JSON object with this structure:
+{
+  "slideTitle": "...",
+  "charts": [{ "chartType": "bar|line|pie|stacked|scatter|waterfall|other", "title": "...", "categories": ["..."], "series": [{ "name": "...", "values": [number, ...] }], "unit": "€|%|units|..." }],
+  "tables": [{ "title": "...", "headers": ["..."], "rows": [["...", ...]] }],
+  "keyMetrics": [{ "label": "...", "value": "...", "unit": "..." }],
+  "textContent": "...",
+  "visualDescription": "..."
+}
+
+Be exhaustive. Every number matters. If a value is approximate, note it. If you can't read a value, say "unreadable".`,
+                  },
+                ];
+
+                // Add images
+                for (const img of imagesToSend) {
+                  contentParts.push({
+                    type: "input_image",
+                    image_url: `data:${img.mimeType};base64,${img.base64}`,
+                    detail: "high",
+                  });
+                }
+
+                // If no images at all, add the text context and skip vision
+                if (imagesToSend.length === 0 && !slideText) continue;
+                if (imagesToSend.length === 0) {
+                  // No images available — can't do vision, but we have text context
+                  // Skip this slide for vision extraction
+                  continue;
+                }
+
                 const visionResp = await fetch("https://api.openai.com/v1/responses", {
                   method: "POST",
                   headers: {
@@ -1217,61 +1285,76 @@ export const basquioV2Generation = inngest.createFunction(
                   },
                   body: JSON.stringify({
                     model: "gpt-5.4",
-                    input: [{
-                      role: "user",
-                      content: [
-                        {
-                          type: "input_text",
-                          text: `Extract ALL data from this slide image for a business analyst. This is slide ${slide.slideNum} from "${f.fileName}".
-
-If the image contains charts: extract the chart type, all category labels, all series names, and ALL numeric values. Format as structured data.
-If it contains tables: extract all rows and columns with exact values.
-If it contains infographics or diagrams: describe the structure and extract all text/numbers.
-If it contains text: extract it verbatim.
-
-Be exhaustive and quantitative. Every number matters.`,
-                        },
-                        {
-                          type: "input_image",
-                          image_url: `data:${img.mimeType};base64,${img.base64}`,
-                          detail: "high",
-                        },
-                      ],
-                    }],
+                    input: [{ role: "user", content: contentParts }],
+                    text: { format: { type: "json_object" } },
                   }),
                 });
 
                 if (visionResp.ok) {
                   const visionData = await visionResp.json();
-                  const extractedText = visionData.output_text;
+                  const rawOutput = visionData.output_text ?? "";
+
+                  // Try to parse as JSON
+                  let structured: Record<string, unknown> | null = null;
+                  try {
+                    // Extract JSON from potential markdown code block
+                    const jsonMatch = rawOutput.match(/```json\s*([\s\S]*?)```/) ?? rawOutput.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                      structured = JSON.parse(jsonMatch[1] ?? jsonMatch[0]);
+                    }
+                  } catch { /* fall back to raw text */ }
+
+                  const extractedText = structured
+                    ? JSON.stringify(structured)
+                    : rawOutput;
 
                   if (extractedText && extractedText.length > 30) {
                     const refId = `doc-${f.id.slice(0, 8)}-slide-${slide.slideNum}-vision`;
+
+                    // Build rich description from structured data
+                    let description = "";
+                    if (structured) {
+                      const charts = (structured.charts as Array<Record<string, unknown>>) ?? [];
+                      const tables = (structured.tables as Array<Record<string, unknown>>) ?? [];
+                      const metrics = (structured.keyMetrics as Array<Record<string, unknown>>) ?? [];
+                      const parts: string[] = [];
+                      if (charts.length > 0) parts.push(`${charts.length} chart(s): ${charts.map((c) => `${c.chartType} "${c.title}"`).join(", ")}`);
+                      if (tables.length > 0) parts.push(`${tables.length} table(s)`);
+                      if (metrics.length > 0) parts.push(`${metrics.length} metric(s): ${metrics.map((m) => `${m.label}=${m.value}`).join(", ")}`);
+                      description = parts.join("; ") || (structured.visualDescription as string) ?? "";
+                    } else {
+                      description = rawOutput.slice(0, 300);
+                    }
+
                     await persistEvidenceEntry(runId, {
                       evidenceType: "visual",
                       refId,
                       label: `${f.fileName} — slide ${slide.slideNum} (vision extracted)`,
-                      description: extractedText.slice(0, 300),
-                      value: {
-                        text: extractedText,
-                        slideNum: slide.slideNum,
-                        sourceFile: f.fileName,
-                        extractionMethod: "gpt-5.4-vision",
-                        hasShapes: slide.hasShapes,
-                        hasSmartArt: slide.hasSmartArt,
-                        hasGroupedShapes: slide.hasGroupedShapes,
-                      },
+                      description: description.slice(0, 300),
+                      value: structured
+                        ? {
+                            ...structured,
+                            slideNum: slide.slideNum,
+                            sourceFile: f.fileName,
+                            extractionMethod: "gpt-5.4-vision-structured",
+                          }
+                        : {
+                            text: rawOutput,
+                            slideNum: slide.slideNum,
+                            sourceFile: f.fileName,
+                            extractionMethod: "gpt-5.4-vision-text",
+                          },
                     });
 
-                    // Also update the existing page evidence with vision data
+                    // Enrich existing page evidence
                     const existingPageRef = `doc-${f.id.slice(0, 8)}-page-${slide.slideNum}`;
                     await persistEvidenceEntry(runId, {
                       evidenceType: "document",
                       refId: existingPageRef,
                       label: `${f.fileName} — slide ${slide.slideNum}`,
-                      description: `[Vision-enriched] ${extractedText.slice(0, 200)}`,
+                      description: `[Vision-enriched] ${description.slice(0, 200)}`,
                       value: {
-                        text: extractedText,
+                        text: structured ? JSON.stringify(structured) : rawOutput,
                         pageNum: slide.slideNum,
                         sourceFile: f.fileName,
                         visionEnriched: true,
@@ -1286,11 +1369,10 @@ Be exhaustive and quantitative. Every number matters.`,
 
             logPhaseEvent(runId, "normalize", "pptx_vision_extraction_completed", {
               fileName: f.fileName,
-              slidesProcessed: Math.min(slidesNeedingVision.length, 20),
+              slidesProcessed: Math.min(slidesNeedingVision.length, 30),
             });
           }
         } catch {
-          // extractPptxSlideImages failure is non-fatal
           logPhaseEvent(runId, "normalize", "pptx_vision_extraction_skipped", {
             fileName: f.fileName,
             reason: "extractPptxSlideImages failed",
