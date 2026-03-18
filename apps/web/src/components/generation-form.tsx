@@ -82,6 +82,7 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [brandFile, setBrandFile] = useState<File | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [exportMode, setExportMode] = useState<"powerpoint-native" | "universal-compatible">("powerpoint-native");
   const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
   const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
   const [brief, setBrief] = useState<BriefFields>({
@@ -149,6 +150,7 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
           sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
           styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
           templateProfileId: selectedTemplateId ?? undefined,
+          exportMode,
           brief,
           businessContext: brief.businessContext,
           client: brief.client,
@@ -507,9 +509,35 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
               </article>
 
               <article className="review-card stack">
-                <p className="artifact-kind">Output</p>
-                <p>PowerPoint deck (PPTX)</p>
-                <p className="muted">Editable slides with native charts. Locked grid ensures clean, non-overlapping layout.</p>
+                <p className="artifact-kind">Output format</p>
+                <div className="radio-group">
+                  <label className="radio-option">
+                    <input
+                      type="radio"
+                      name="exportMode"
+                      value="powerpoint-native"
+                      checked={exportMode === "powerpoint-native"}
+                      onChange={() => setExportMode("powerpoint-native")}
+                    />
+                    <span>
+                      <strong>PowerPoint Native</strong>
+                      <small className="muted">Editable charts. Best for PowerPoint users.</small>
+                    </span>
+                  </label>
+                  <label className="radio-option">
+                    <input
+                      type="radio"
+                      name="exportMode"
+                      value="universal-compatible"
+                      checked={exportMode === "universal-compatible"}
+                      onChange={() => setExportMode("universal-compatible")}
+                    />
+                    <span>
+                      <strong>Universal Compatible</strong>
+                      <small className="muted">Shape-built charts. Works in Google Slides and Keynote.</small>
+                    </span>
+                  </label>
+                </div>
               </article>
             </div>
           </section>

@@ -202,6 +202,7 @@ async function queueGeneration(
       projectId: workspace.projectId,
       sourceFileIds,
       templateProfileId,
+      exportMode: generationRequest.exportMode ?? "powerpoint-native",
       brief: [
         generationRequest.brief.client ? `Client: ${generationRequest.brief.client}` : "",
         generationRequest.brief.audience ? `Audience: ${generationRequest.brief.audience}` : "",

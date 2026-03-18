@@ -2929,11 +2929,18 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         };
       })();
 
+      // Export mode: default to powerpoint-native for best editability
+      // Universal mode uses shape-built charts for Google Slides / Keynote compat
+      const exportMode = (event.data.exportMode as string) === "universal-compatible"
+        ? ("universal-compatible" as const)
+        : ("powerpoint-native" as const);
+
       const pptxArtifact = await renderV2PptxArtifact({
         deckTitle,
         slides,
         charts: v2ChartRows,
         brandTokens: brandTokenOverrides as Record<string, unknown> | undefined,
+        exportMode,
       });
 
       const pptxPath = `${runId}/deck.pptx`;
