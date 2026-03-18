@@ -174,6 +174,31 @@ function truncateWords(text: string, maxWords: number): { truncated: string; ove
   };
 }
 
+// ─── DATA FORMAT DETECTION ──────────────────────────────────────
+// Detect whether chart data represents percentages, currency, or plain numbers
+// Used for smart axis formatting and data labels
+
+function detectPercentageData(chart: V2ChartRow): boolean {
+  // Check if title/series names suggest percentage
+  const titleLower = (chart.title ?? "").toLowerCase();
+  if (titleLower.includes("share") || titleLower.includes("%") || titleLower.includes("percent") || titleLower.includes("penetration") || titleLower.includes("rate")) return true;
+  // Check if series names suggest percentage
+  for (const s of chart.series) {
+    if (s.includes("%") || s.toLowerCase().includes("share")) return true;
+  }
+  // Check if all values are between 0 and 1 (likely percentage as decimal)
+  const allValues = chart.data.flatMap((row) => chart.series.map((s) => Number(row[s])).filter((n) => !isNaN(n)));
+  if (allValues.length > 0 && allValues.every((v) => v >= 0 && v <= 1)) return true;
+  // Check if all values are between 0 and 100 and title suggests share
+  if (allValues.length > 0 && allValues.every((v) => v >= 0 && v <= 100) && (titleLower.includes("share") || titleLower.includes("mix"))) return true;
+  return false;
+}
+
+function detectCurrencyData(chart: V2ChartRow): boolean {
+  const titleLower = (chart.title ?? "").toLowerCase();
+  return titleLower.includes("€") || titleLower.includes("$") || titleLower.includes("revenue") || titleLower.includes("sales value") || titleLower.includes("turnover");
+}
+
 function isNumericValue(val: unknown): boolean {
   if (typeof val === "number") return true;
   if (typeof val === "string") return /^[\d.,€$£¥%-]+$/.test(val.trim());
@@ -298,16 +323,17 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     valAxisLabelFontSize: 8,
     valAxisLabelFontFace: tokens.typography.bodyFont,
     valAxisLineShow: false,
-    valAxisLabelFormatCode: "#,##0",
-    valGridLine: { color: "E5E7EB", size: 0.5 },
+    // Smart number formatting: detect percentage vs currency vs plain numbers
+    valAxisLabelFormatCode: detectPercentageData(chart) ? "0.0%" : detectCurrencyData(chart) ? "€#,##0" : "#,##0",
+    valGridLine: { color: "F3F4F6", size: 0.5 },
     catGridLine: { style: "none" },
 
     chartColors: palette,
-    // Larger data labels, more visible
-    // Always show data labels for readability — this is consulting-grade, not BI-export
+    // Always show data labels for readability — consulting-grade
     showValue: chart.style.showValues ?? true,
     dataLabelPosition: isBar ? "outEnd" : effectiveChartType === "line" ? "t" : "outEnd",
     dataLabelFontSize: 9,
+    dataLabelFormatCode: detectPercentageData(chart) ? "0.0%" : "#,##0",
     dataLabelFontFace: tokens.typography.bodyFont,
     dataLabelColor: norm(tokens.palette.ink),
     dataLabelFontBold: true,
@@ -559,72 +585,106 @@ function renderMetrics(
   region: R,
   tokens: BrandTokens,
 ): void {
-  const count = Math.min(metrics.length, 4);
-  const gap = 0.12;
+  const count = Math.min(metrics.length, 5);
+  const gap = 0.14;
   const cardW = (region.w - gap * (count - 1)) / count;
-  const cardH = Math.min(region.h, 1.15);
+  const cardH = Math.min(region.h, 1.2);
 
-  metrics.slice(0, 4).forEach((m, i) => {
+  // Use alternating accent colors from chart palette for card accents
+  const accentColors = tokens.chartPalette.length >= 2
+    ? tokens.chartPalette
+    : [tokens.palette.accent, tokens.palette.positive, tokens.palette.calloutOrange, tokens.palette.negative];
+
+  metrics.slice(0, 5).forEach((m, i) => {
     const cardX = region.x + i * (cardW + gap);
+    const cardAccent = norm(accentColors[i % accentColors.length]);
 
-    // Card container (rounded rectangle with surface fill)
+    // Shadow layer (offset slightly for depth)
+    slide.addShape(pptx.ShapeType.roundRect, {
+      x: cardX + 0.02,
+      y: region.y + 0.02,
+      w: cardW,
+      h: cardH,
+      rectRadius: 0.06,
+      fill: { color: "E5E7EB" },
+    });
+
+    // Card container
     slide.addShape(pptx.ShapeType.roundRect, {
       x: cardX,
       y: region.y,
       w: cardW,
       h: cardH,
       rectRadius: 0.06,
-      fill: { color: norm(tokens.palette.surface) },
+      fill: { color: norm(tokens.palette.bg) },
       line: { color: norm(tokens.palette.border), pt: 0.5 },
     });
 
-    // Left accent strip
+    // Top accent bar (full width of card, rounded top)
     slide.addShape(pptx.ShapeType.rect, {
-      x: cardX,
-      y: region.y,
-      w: 0.045,
-      h: cardH,
-      fill: { color: norm(tokens.palette.accent) },
+      x: cardX + 0.01,
+      y: region.y + 0.01,
+      w: cardW - 0.02,
+      h: 0.04,
+      fill: { color: cardAccent },
     });
 
-    // Label (uppercase, muted)
+    // Label (uppercase, muted, letter-spaced)
     slide.addText(m.label.toUpperCase(), {
-      x: cardX + 0.14,
-      y: region.y + 0.08,
-      w: cardW - 0.22,
+      x: cardX + 0.12,
+      y: region.y + 0.12,
+      w: cardW - 0.24,
       h: 0.22,
-      fontSize: 9,
+      fontSize: 8,
       fontFace: tokens.typography.bodyFont,
       color: norm(tokens.palette.muted),
       bold: true,
+      charSpacing: 0.8,
     });
 
-    // Value (large, bold — the hero element)
+    // Value (large, bold hero)
     slide.addText(m.value, {
-      x: cardX + 0.14,
-      y: region.y + 0.28,
-      w: cardW - 0.22,
-      h: 0.45,
-      fontSize: 28,
+      x: cardX + 0.12,
+      y: region.y + 0.32,
+      w: cardW - 0.24,
+      h: 0.42,
+      fontSize: count <= 3 ? 28 : 22,
       fontFace: tokens.typography.headingFont,
       bold: true,
       color: norm(tokens.palette.ink),
       valign: "middle",
+      shrinkText: true,
     });
 
-    // Delta (color-coded)
+    // Delta with arrow indicator
     if (m.delta) {
       const isPositive =
         m.delta.startsWith("+") || m.delta.includes("↑") || m.delta.toLowerCase().includes("up");
-      slide.addText(m.delta, {
-        x: cardX + 0.14,
-        y: region.y + 0.72,
-        w: cardW - 0.22,
-        h: 0.2,
-        fontSize: 9,
+      const arrow = isPositive ? "▲" : "▼";
+      const deltaColor = isPositive ? tokens.palette.positive : tokens.palette.negative;
+      const deltaBg = isPositive ? "ECFDF5" : "FEF2F2"; // light green/red bg
+
+      // Delta pill background
+      slide.addShape(pptx.ShapeType.roundRect, {
+        x: cardX + 0.12,
+        y: region.y + 0.78,
+        w: Math.min(cardW - 0.24, 1.2),
+        h: 0.22,
+        rectRadius: 0.11,
+        fill: { color: deltaBg },
+      });
+
+      slide.addText(`${arrow} ${m.delta}`, {
+        x: cardX + 0.12,
+        y: region.y + 0.78,
+        w: Math.min(cardW - 0.24, 1.2),
+        h: 0.22,
+        fontSize: 8,
         fontFace: tokens.typography.bodyFont,
         bold: true,
-        color: norm(isPositive ? tokens.palette.positive : tokens.palette.negative),
+        color: norm(deltaColor),
+        align: "center",
+        valign: "middle",
       });
     }
   });
@@ -676,17 +736,29 @@ function renderTable(
 
     return visibleHeaders.map((col, colIdx) => {
       const val = row[col];
+      const formatted = formatValue(val);
+      const isNum = isNumericValue(val);
+
+      // Conditional coloring: positive/negative values in numeric columns (not first col)
+      let cellColor = norm(tokens.palette.ink);
+      if (colIdx > 0 && isNum) {
+        const numStr = String(val).replace(/[^0-9.\-+%]/g, "");
+        if (numStr.startsWith("-") || numStr.startsWith("−")) {
+          cellColor = norm(tokens.palette.negative);
+        } else if (numStr.startsWith("+")) {
+          cellColor = norm(tokens.palette.positive);
+        }
+      }
+
       return {
-        text: formatValue(val),
+        text: formatted,
         options: {
           fontSize: 8,
           fontFace: tokens.typography.bodyFont,
-          color: norm(tokens.palette.ink),
+          color: cellColor,
           bold: isHighlighted || colIdx === 0,
           fill: { color: rowFill },
-          align: (colIdx === 0 ? "left" : isNumericValue(val) ? "right" : "left") as
-            | "left"
-            | "right",
+          align: (colIdx === 0 ? "left" : isNum ? "right" : "left") as "left" | "right",
           valign: "middle" as const,
           border: [
             { type: "none" as const },
@@ -732,31 +804,53 @@ function renderCallout(
   tokens: BrandTokens,
   variant: "green" | "orange" | "accent" = "accent",
 ): void {
-  const fills: Record<string, string> = {
+  const accentMap: Record<string, string> = {
     green: tokens.palette.calloutGreen,
     orange: tokens.palette.calloutOrange,
     accent: tokens.palette.accent,
   };
+  const bgMap: Record<string, string> = {
+    green: "ECFDF5",
+    orange: "FFF7ED",
+    accent: tokens.palette.accentLight,
+  };
+  const accentColor = accentMap[variant] || tokens.palette.accent;
+  const bgColor = bgMap[variant] || tokens.palette.accentLight;
 
+  // Light background fill (consulting style: left accent bar + light bg)
   slide.addShape(pptx.ShapeType.roundRect, {
     x: region.x,
     y: region.y,
     w: region.w,
     h: region.h,
-    fill: { color: norm(fills[variant]) },
-    rectRadius: 0.06,
+    fill: { color: norm(bgColor) },
+    rectRadius: 0.04,
+    line: { color: norm(tokens.palette.border), pt: 0.3 },
   });
 
-  slide.addText(processNewlines(text), {
+  // Left accent bar
+  slide.addShape(pptx.ShapeType.rect, {
+    x: region.x,
+    y: region.y,
+    w: 0.04,
+    h: region.h,
+    fill: { color: norm(accentColor) },
+  });
+
+  // Marker prefix
+  const marker = variant === "green" ? "✓ " : variant === "orange" ? "⚡ " : "→ ";
+
+  slide.addText(processNewlines(`${marker}${text}`), {
     x: region.x + 0.16,
     y: region.y + 0.04,
-    w: region.w - 0.32,
+    w: region.w - 0.28,
     h: region.h - 0.08,
     fontSize: 10,
     fontFace: tokens.typography.bodyFont,
-    color: "FFFFFF",
+    color: norm(accentColor),
     bold: true,
     wrap: true,
+    valign: "middle",
   });
 }
 
@@ -831,12 +925,54 @@ function renderCoverSlide(
   s: V2SlideRow,
   tokens: BrandTokens,
 ): void {
-  // Cover uses BASQUIO_COVER master (dark navy bg, no chrome)
   const regions = getLayoutRegions("cover");
+
+  // Premium cover: accent shape decoration (right side geometric element)
+  slide.addShape(pptx.ShapeType.rect, {
+    x: SLIDE_W - 0.08,
+    y: 0,
+    w: 0.08,
+    h: SLIDE_H,
+    fill: { color: norm(tokens.palette.accent) },
+  });
+
+  // Thin accent line above title for visual anchor
+  slide.addShape(pptx.ShapeType.rect, {
+    x: regions.title.x,
+    y: regions.title.y - 0.12,
+    w: 1.2,
+    h: 0.035,
+    fill: { color: norm(tokens.palette.accent) },
+  });
+
+  // Kicker on cover (e.g., company name, report type)
+  if (s.kicker) {
+    slide.addText(s.kicker.toUpperCase(), {
+      x: regions.title.x,
+      y: regions.title.y - 0.5,
+      w: regions.title.w,
+      h: 0.3,
+      fontSize: 10,
+      fontFace: tokens.typography.bodyFont,
+      color: norm(tokens.palette.accent),
+      bold: true,
+      charSpacing: 1.5,
+    });
+  }
+
   renderTitle(slide, s.title, regions.title, tokens, true);
   if (s.subtitle && regions.subtitle) {
     renderSubtitle(slide, s.subtitle, regions.subtitle, tokens, true);
   }
+
+  // Bottom gradient bar with accent color
+  slide.addShape(pptx.ShapeType.rect, {
+    x: 0,
+    y: SLIDE_H - 0.06,
+    w: SLIDE_W,
+    h: 0.06,
+    fill: { color: norm(tokens.palette.accent) },
+  });
 }
 
 function renderContentSlide(
@@ -1085,43 +1221,60 @@ export async function renderV2PptxArtifact(
     title: "BASQUIO_MASTER",
     background: { fill: norm(tokens.palette.bg) },
     objects: [
-      // Top accent rule
-      { rect: { x: 0, y: 0, w: "100%", h: 0.06, fill: { color: norm(tokens.palette.accent) } } },
-      // Footer bar (thinner, more refined)
+      // Top accent rule (thin, premium)
+      { rect: { x: 0, y: 0, w: "100%", h: 0.04, fill: { color: norm(tokens.palette.accent) } } },
+      // Footer bar (refined, dark)
       {
         rect: {
           x: 0,
           y: 5.3,
           w: "100%",
-          h: 0.32,
+          h: 0.325,
           fill: { color: norm(tokens.palette.coverBg) },
         },
       },
-      // Footer source text
+      // Footer left: source
       {
         text: {
-          text: `Source: ${input.deckTitle} | Basquio`,
+          text: `Source: ${input.deckTitle}`,
           options: {
             x: 0.45,
             y: 5.35,
-            w: 6,
+            w: 5,
             h: 0.22,
             fontSize: 7,
             fontFace: tokens.typography.bodyFont,
-            color: "FFFFFF",
+            color: "9CA3AF",
             italic: true,
+          },
+        },
+      },
+      // Footer right: branding
+      {
+        text: {
+          text: "Basquio",
+          options: {
+            x: 8.0,
+            y: 5.35,
+            w: 1.5,
+            h: 0.22,
+            fontSize: 7,
+            fontFace: tokens.typography.headingFont,
+            color: norm(tokens.palette.accent),
+            bold: true,
+            align: "right",
           },
         },
       },
     ],
     slideNumber: {
-      x: 8.8,
+      x: 6.0,
       y: 5.35,
-      w: 0.6,
+      w: 1.5,
       h: 0.22,
       fontSize: 7,
       fontFace: tokens.typography.bodyFont,
-      color: "9CA3AF",
+      color: "6B7280",
     },
   });
 
