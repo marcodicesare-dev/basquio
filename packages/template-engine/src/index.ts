@@ -29,6 +29,7 @@ type ExtractedBrandTokens = {
   typography?: Partial<NonNullable<TemplateProfile["brandTokens"]>["typography"]>;
   spacing?: Partial<NonNullable<TemplateProfile["brandTokens"]>["spacing"]>;
   logo?: Partial<NonNullable<TemplateProfile["brandTokens"]>["logo"]>;
+  chartPalette?: string[];
 };
 
 export function createSystemTemplateProfile(): TemplateProfile {
@@ -255,6 +256,7 @@ async function parsePptxTemplate(input: {
     {
       palette: theme.palette,
       typography: theme.typography,
+      chartPalette: theme.chartPalette,
     },
     warnings,
     input.fileName,
@@ -376,27 +378,52 @@ function applyBrandTokens(
       typography,
       spacing,
       logo,
+      ...(extracted.chartPalette ? { chartPalette: extracted.chartPalette } : {}),
     },
     warnings,
   };
 }
 
 function extractTheme(raw: string) {
-  const colors = compactUnique(
-    [...raw.matchAll(/(?:srgbClr\b[^>]*val|lastClr)="([0-9A-F]{6})"/gim)].map((match) => `#${match[1].toUpperCase()}`),
-  );
+  // Extract OOXML theme color scheme properly:
+  // Standard order: dk1, lt1, dk2, lt2, accent1, accent2, accent3, accent4, accent5, accent6, hlink, folHlink
+  const schemeColors = new Map<string, string>();
+  const schemeMatches = raw.matchAll(/<a:(dk1|lt1|dk2|lt2|accent[1-6]|hlink|folHlink)>\s*<a:srgbClr\s+val="([0-9A-Fa-f]{6})"\s*\/?>/gim);
+  for (const m of schemeMatches) {
+    schemeColors.set(m[1].toLowerCase(), `#${m[2].toUpperCase()}`);
+  }
+  // Also try lastClr attribute for dk1/lt1
+  const lastClrMatches = raw.matchAll(/<a:(dk1|lt1|dk2|lt2)>\s*<a:sysClr[^>]*lastClr="([0-9A-Fa-f]{6})"/gim);
+  for (const m of lastClrMatches) {
+    if (!schemeColors.has(m[1].toLowerCase())) {
+      schemeColors.set(m[1].toLowerCase(), `#${m[2].toUpperCase()}`);
+    }
+  }
+
+  // Build palette from semantic theme slots
+  const accent1 = schemeColors.get("accent1") ?? "#2563EB";
+  const accent2 = schemeColors.get("accent2") ?? "#7C3AED";
+  const accent3 = schemeColors.get("accent3") ?? "#059669";
+  const accent4 = schemeColors.get("accent4") ?? "#D97706";
+  const accent5 = schemeColors.get("accent5") ?? "#DC2626";
+  const accent6 = schemeColors.get("accent6") ?? "#6366F1";
+  const dk1 = schemeColors.get("dk1") ?? "#1F2937";
+  const lt1 = schemeColors.get("lt1") ?? "#FFFFFF";
+  const dk2 = schemeColors.get("dk2") ?? "#374151";
 
   return {
     themeName: matchFirst(raw, /<a:theme\b[^>]*name="([^"]+)"/i),
     palette: {
-      text: colors[1] || colors[0],
-      accent: colors[2] || colors[0],
-      highlight: colors[5] || colors[2],
-      background: colors[0] || "#FFFFFF",
-      surface: colors[1] || "#FFFFFF",
-      border: colors[3] || colors[2],
-      accentMuted: colors[4] || colors[3],
+      text: dk1,
+      accent: accent1,
+      highlight: accent2,
+      background: lt1,
+      surface: schemeColors.get("lt2") ?? "#F9FAFB",
+      border: dk2,
+      accentMuted: accent3,
     },
+    // Chart palette uses all 6 accent colors in order
+    chartPalette: [accent1, accent2, accent3, accent4, accent5, accent6],
     typography: {
       headingFont: matchFirst(raw, /<a:majorFont>[\s\S]*?<a:latin[^>]*typeface="([^"]+)"/i) || "Aptos Display",
       bodyFont: matchFirst(raw, /<a:minorFont>[\s\S]*?<a:latin[^>]*typeface="([^"]+)"/i) || "Aptos",
