@@ -1,7 +1,7 @@
 import { openai } from "@ai-sdk/openai";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, type SheetManifest } from "@basquio/data-ingest";
+import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
 import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, type AnalystResult } from "@basquio/intelligence";
 import { renderPdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
@@ -1178,6 +1178,123 @@ export const basquioV2Generation = inngest.createFunction(
               value: { text: page.text, pageNum: page.num, sourceFile: f.fileName },
             });
           }
+        }
+      }
+
+      // ─── PPTX VISION EXTRACTION ─────────────────────────────────────
+      // For PPTX files: extract embedded images from slides with visual content
+      // (shapes, SmartArt, grouped objects, screenshots) and run GPT-5.4 vision
+      // to extract data that OOXML XML parsing can't reach.
+      for (const f of fileInventory) {
+        if (!/\.pptx?$/i.test(f.fileName)) continue;
+
+        const fileBuffer = fileBuffers.find((fb) => fb.id === f.id)?.buffer;
+        if (!fileBuffer || !process.env.OPENAI_API_KEY) continue;
+
+        try {
+          const slideImages = await extractPptxSlideImages(fileBuffer);
+          const slidesNeedingVision = slideImages.filter((s) => s.needsVision && s.images.length > 0);
+
+          if (slidesNeedingVision.length > 0) {
+            logPhaseEvent(runId, "normalize", "pptx_vision_extraction_started", {
+              fileName: f.fileName,
+              totalSlides: slideImages.length,
+              slidesNeedingVision: slidesNeedingVision.length,
+            });
+
+            // Process up to 20 slides to stay within cost/time budget
+            for (const slide of slidesNeedingVision.slice(0, 20)) {
+              // Use the first (largest) image from the slide
+              const img = slide.images[0];
+              if (!img) continue;
+
+              try {
+                const visionResp = await fetch("https://api.openai.com/v1/responses", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                  },
+                  body: JSON.stringify({
+                    model: "gpt-5.4",
+                    input: [{
+                      role: "user",
+                      content: [
+                        {
+                          type: "input_text",
+                          text: `Extract ALL data from this slide image for a business analyst. This is slide ${slide.slideNum} from "${f.fileName}".
+
+If the image contains charts: extract the chart type, all category labels, all series names, and ALL numeric values. Format as structured data.
+If it contains tables: extract all rows and columns with exact values.
+If it contains infographics or diagrams: describe the structure and extract all text/numbers.
+If it contains text: extract it verbatim.
+
+Be exhaustive and quantitative. Every number matters.`,
+                        },
+                        {
+                          type: "input_image",
+                          image_url: `data:${img.mimeType};base64,${img.base64}`,
+                          detail: "high",
+                        },
+                      ],
+                    }],
+                  }),
+                });
+
+                if (visionResp.ok) {
+                  const visionData = await visionResp.json();
+                  const extractedText = visionData.output_text;
+
+                  if (extractedText && extractedText.length > 30) {
+                    const refId = `doc-${f.id.slice(0, 8)}-slide-${slide.slideNum}-vision`;
+                    await persistEvidenceEntry(runId, {
+                      evidenceType: "visual",
+                      refId,
+                      label: `${f.fileName} — slide ${slide.slideNum} (vision extracted)`,
+                      description: extractedText.slice(0, 300),
+                      value: {
+                        text: extractedText,
+                        slideNum: slide.slideNum,
+                        sourceFile: f.fileName,
+                        extractionMethod: "gpt-5.4-vision",
+                        hasShapes: slide.hasShapes,
+                        hasSmartArt: slide.hasSmartArt,
+                        hasGroupedShapes: slide.hasGroupedShapes,
+                      },
+                    });
+
+                    // Also update the existing page evidence with vision data
+                    const existingPageRef = `doc-${f.id.slice(0, 8)}-page-${slide.slideNum}`;
+                    await persistEvidenceEntry(runId, {
+                      evidenceType: "document",
+                      refId: existingPageRef,
+                      label: `${f.fileName} — slide ${slide.slideNum}`,
+                      description: `[Vision-enriched] ${extractedText.slice(0, 200)}`,
+                      value: {
+                        text: extractedText,
+                        pageNum: slide.slideNum,
+                        sourceFile: f.fileName,
+                        visionEnriched: true,
+                      },
+                    });
+                  }
+                }
+              } catch {
+                // Vision extraction is best-effort per slide — don't block normalize
+              }
+            }
+
+            logPhaseEvent(runId, "normalize", "pptx_vision_extraction_completed", {
+              fileName: f.fileName,
+              slidesProcessed: Math.min(slidesNeedingVision.length, 20),
+            });
+          }
+        } catch {
+          // extractPptxSlideImages failure is non-fatal
+          logPhaseEvent(runId, "normalize", "pptx_vision_extraction_skipped", {
+            fileName: f.fileName,
+            reason: "extractPptxSlideImages failed",
+          });
         }
       }
 
