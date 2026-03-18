@@ -59,7 +59,18 @@ const steps = [
   },
 ] as const;
 
-export function GenerationForm() {
+type SavedTemplateOption = {
+  id: string;
+  name: string;
+  sourceType: string;
+  colors: string[];
+};
+
+type GenerationFormProps = {
+  savedTemplates?: SavedTemplateOption[];
+};
+
+export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
   const router = useRouter();
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const brandInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +81,9 @@ export function GenerationForm() {
   const [isDraggingBrand, setIsDraggingBrand] = useState(false);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [brandFile, setBrandFile] = useState<File | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
+  const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: "",
     client: "",
@@ -134,6 +148,7 @@ export function GenerationForm() {
           projectId: preparePayload.projectId,
           sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
           styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
+          templateProfileId: selectedTemplateId ?? undefined,
           brief,
           businessContext: brief.businessContext,
           client: brief.client,
@@ -335,6 +350,41 @@ export function GenerationForm() {
                   <div className="file-chip">
                     <span>{brandFile.name}</span>
                     <small>{formatFileSize(brandFile.size)}</small>
+                    <button type="button" className="file-chip-remove" onClick={() => setBrandFile(null)}>Remove</button>
+                  </div>
+                ) : null}
+
+                {savedTemplates.length > 0 && !brandFile ? (
+                  <div className="stack-xs">
+                    <p className="muted">Or use a saved template:</p>
+                    <div className="template-picker">
+                      <button
+                        type="button"
+                        className={selectedTemplateId === null ? "template-option selected" : "template-option"}
+                        onClick={() => setSelectedTemplateId(null)}
+                      >
+                        <span className="template-option-name">Basquio Standard</span>
+                        <span className="template-option-type">Default</span>
+                      </button>
+                      {savedTemplates.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          className={selectedTemplateId === t.id ? "template-option selected" : "template-option"}
+                          onClick={() => setSelectedTemplateId(t.id)}
+                        >
+                          <span className="template-option-name">{t.name}</span>
+                          <span className="template-option-type">{t.sourceType}</span>
+                          {t.colors.length > 0 ? (
+                            <span className="template-option-colors">
+                              {t.colors.map((c) => (
+                                <span key={c} className="mini-swatch" style={{ backgroundColor: c }} />
+                              ))}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -446,16 +496,13 @@ export function GenerationForm() {
 
               <article className="review-card stack">
                 <p className="artifact-kind">Design template</p>
+                <p>{templateLabel}</p>
                 {brandFile ? (
-                  <>
-                    <p>{brandFile.name}</p>
-                    <p className="muted">Your colors and fonts will be extracted and applied to the locked slide grid.</p>
-                  </>
+                  <p className="muted">Your colors and fonts will be extracted and applied to the locked slide grid.</p>
+                ) : selectedTemplate ? (
+                  <p className="muted">Saved template applied. Colors, fonts, and style locked to the slide grid.</p>
                 ) : (
-                  <>
-                    <p>Basquio Standard</p>
-                    <p className="muted">Clean editorial design with the default locked slide grid. No overlapping content.</p>
-                  </>
+                  <p className="muted">Clean editorial design with the default locked slide grid.</p>
                 )}
               </article>
 

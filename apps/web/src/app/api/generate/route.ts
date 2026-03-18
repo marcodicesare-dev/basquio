@@ -140,9 +140,9 @@ async function queueGeneration(
     throw new Error(`Failed to create deck_runs record: ${errorText}`);
   }
 
-  // Interpret template/style file if provided → extract design tokens
-  let templateProfileId: string | undefined;
-  if (generationRequest.styleFile) {
+  // Use saved template if provided, otherwise interpret uploaded style file
+  let templateProfileId: string | undefined = (generationRequest as Record<string, unknown>).templateProfileId as string | undefined;
+  if (!templateProfileId && generationRequest.styleFile) {
     try {
       const sf = generationRequest.styleFile;
       const tpId = randomUUID();

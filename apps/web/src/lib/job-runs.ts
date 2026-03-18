@@ -12,6 +12,119 @@ import {
 
 type ArtifactKind = ArtifactRecord["kind"];
 
+// ─── V2-NATIVE RUN TYPE ──────────────────────────────────────────
+// Used by the dashboard and artifacts pages directly. No legacy shim.
+
+export type V2RunCard = {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  headline: string;
+  client: string;
+  objective: string;
+  sourceFileName: string;
+  slideCount: number;
+  createdAt: string;
+  artifacts: Array<{ kind: string; downloadUrl: string }>;
+};
+
+export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2RunCard[]> {
+  const credentials = getSupabaseCredentials();
+  if (!credentials || !viewerId) return [];
+
+  try {
+    const runs = await fetchRestRows<V2DeckRunRow>({
+      ...credentials,
+      table: "deck_runs",
+      query: {
+        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids",
+        requested_by: `eq.${viewerId}`,
+        order: "created_at.desc",
+        limit: String(limit),
+      },
+    });
+
+    if (runs.length === 0) return [];
+
+    // Fetch artifact manifests for completed runs
+    const completedIds = runs.filter((r) => r.status === "completed" || r.completed_at).map((r) => r.id);
+    let manifests: V2ArtifactManifestRow[] = [];
+    if (completedIds.length > 0) {
+      try {
+        manifests = await fetchRestRows<V2ArtifactManifestRow>({
+          ...credentials,
+          table: "artifact_manifests_v2",
+          query: {
+            select: "run_id,slide_count,page_count,qa_passed,artifacts",
+            run_id: `in.(${completedIds.join(",")})`,
+          },
+        });
+      } catch { /* table may not exist */ }
+    }
+    const manifestMap = new Map(manifests.map((m) => [m.run_id, m]));
+
+    // Fetch cover slide titles
+    const coverTitles = new Map<string, string>();
+    if (completedIds.length > 0) {
+      try {
+        const slides = await fetchRestRows<{ run_id: string; title: string }>({
+          ...credentials,
+          table: "deck_spec_v2_slides",
+          query: {
+            select: "run_id,title",
+            run_id: `in.(${completedIds.join(",")})`,
+            position: "eq.1",
+          },
+        });
+        for (const s of slides) coverTitles.set(s.run_id, s.title);
+      } catch { /* table may not exist */ }
+    }
+
+    // Fetch file names
+    const fileNames = new Map<string, string>();
+    const allRunIds = runs.map((r) => r.id);
+    try {
+      const sheets = await fetchRestRows<{ workspace_id: string; file_name: string }>({
+        ...credentials,
+        table: "evidence_workspace_sheets",
+        query: {
+          select: "workspace_id,file_name",
+          workspace_id: `in.(${allRunIds.join(",")})`,
+          order: "created_at.asc",
+          limit: String(allRunIds.length * 5),
+        },
+      });
+      for (const s of sheets) {
+        if (!fileNames.has(s.workspace_id)) fileNames.set(s.workspace_id, s.file_name);
+      }
+    } catch { /* table may not exist */ }
+
+    return runs.map((run) => {
+      const manifest = manifestMap.get(run.id);
+      const brief = (run.brief ?? {}) as Record<string, string>;
+      const clientName = run.client ?? brief.client ?? "";
+      const objectiveText = run.objective ?? brief.objective ?? "";
+      const coverTitle = coverTitles.get(run.id);
+
+      return {
+        id: run.id,
+        status: (run.status === "completed" ? "completed" : run.status === "failed" ? "failed" : run.status === "queued" ? "queued" : "running") as V2RunCard["status"],
+        headline: coverTitle || (clientName ? `${clientName} — ${objectiveText}` : objectiveText) || "Report",
+        client: clientName,
+        objective: objectiveText,
+        sourceFileName: fileNames.get(run.id) || "Uploaded files",
+        slideCount: manifest?.slide_count ?? 0,
+        createdAt: run.created_at,
+        artifacts: (manifest?.artifacts ?? []).map((a) => ({
+          kind: a.kind,
+          downloadUrl: `/api/artifacts/${run.id}/${a.kind}`,
+        })),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 type DurableArtifactAvailability = {
   ready: boolean;
   artifacts: ArtifactRecord[];
