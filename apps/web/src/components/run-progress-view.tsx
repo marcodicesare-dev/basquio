@@ -16,17 +16,22 @@ type ValidationIssue = {
 };
 
 type Summary = {
-  jobId: string;
-  story: {
+  // Legacy format
+  jobId?: string;
+  story?: {
     title: string;
     keyMessages: string[];
   };
-  objective: string;
-  insights: Array<{ id: string; title: string }>;
-  slidePlan: { slides: Array<{ id: string }> };
+  objective?: string;
+  insights?: Array<{ id: string; title: string }>;
+  slidePlan?: { slides: Array<{ id: string }> };
   validationReport?: { issues: ValidationIssue[]; targetStage?: string };
   revisionHistory?: Array<{ attempt: number; targetStage: string }>;
-  artifacts: ArtifactRecord[];
+  artifacts?: ArtifactRecord[];
+  // V2 format
+  slideCount?: number;
+  pageCount?: number;
+  qaPassed?: boolean;
 };
 
 type Step = {
@@ -129,7 +134,7 @@ export function RunProgressView(input: {
     );
   }
 
-  const title = snapshot.summary?.story.title || snapshot.summary?.story.keyMessages[0] || "Basquio is building your report";
+  const title = snapshot.summary?.story?.title || snapshot.summary?.story?.keyMessages?.[0] || "Your report is ready";
 
   return (
     <div className="page-shell">
@@ -188,7 +193,7 @@ export function RunProgressView(input: {
               <article className="panel stack">
                 <p className="artifact-kind">Artifacts ready</p>
                 <p className="muted">
-                  {snapshot.summary?.slidePlan.slides.length ?? 0} slides planned and rendered into the paired deliverables.
+                  {snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0} slides rendered into the deliverables.
                 </p>
                 <div className="row">
                   <a className="button" href={`/api/artifacts/${snapshot.jobId}/pptx`}>Download PPTX</a>
@@ -260,7 +265,7 @@ export function RunProgressView(input: {
             </p>
           </div>
 
-          {snapshot.summary?.insights?.length ? (
+          {snapshot.summary?.insights && snapshot.summary.insights.length > 0 ? (
             <ul className="clean-list">
               {snapshot.summary.insights.slice(0, 5).map((insight) => (
                 <li key={insight.id}>{insight.title}</li>
@@ -274,7 +279,7 @@ export function RunProgressView(input: {
             </div>
           )}
 
-          {snapshot.status === "needs_input" && snapshot.summary?.validationReport?.issues?.length ? (
+          {snapshot.status === "needs_input" && snapshot.summary?.validationReport?.issues && snapshot.summary.validationReport.issues.length > 0 ? (
             <div className="stack">
               <p className="artifact-kind">Reviewer feedback</p>
               <ul className="clean-list">
@@ -285,7 +290,7 @@ export function RunProgressView(input: {
             </div>
           ) : null}
 
-          {snapshot.summary?.revisionHistory?.length ? (
+          {snapshot.summary?.revisionHistory && snapshot.summary.revisionHistory.length > 0 ? (
             <div className="stack">
               <p className="artifact-kind">Revision history</p>
               <ul className="clean-list">

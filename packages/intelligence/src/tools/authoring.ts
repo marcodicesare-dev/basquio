@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 
-import { auditSlideScene } from "@basquio/scene-graph";
+import { auditSlideScene, validateSlotConstraints, describeAllArchetypesForPrompt } from "@basquio/scene-graph";
 import type { EvidenceWorkspace, TemplateProfile } from "@basquio/types";
 
 // ─── TOOL CONTEXT ─────────────────────────────────────────────────
@@ -47,6 +47,7 @@ export type AuthoringToolContext = {
     series?: string[];
     style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean; highlightCategories?: string[] };
   }) => Promise<{ chartId: string; thumbnailUrl?: string; width?: number; height?: number }>;
+  getChart?: (chartId: string) => Promise<{ chartType: string; categoryCount: number; seriesCount: number; rowCount?: number; colCount?: number } | null>;
   getTemplateProfile: () => TemplateProfile | null;
   getSlides?: () => Promise<Array<{
     id: string;
@@ -441,13 +442,47 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
       }).optional().describe("Structured recommendation for recommendation slides"),
     }),
     async execute(params) {
-      // Validate density requirements
+      // Validate density requirements (minimum content)
       const violations = validateSlideDensity(params);
       if (violations.length > 0) {
         return {
           error: "Slide rejected — density requirements not met",
           violations,
           hint: "Fix the listed violations and retry. Every non-cover slide needs speaker notes, evidence IDs, and content appropriate for the layout.",
+        };
+      }
+
+      // Look up chart metadata for slot validation (category count, type, table dimensions)
+      let chartMeta: { chartType?: string; chartCategories?: number; tableRows?: number; tableCols?: number } = {};
+      if (params.chartId && ctx.getChart) {
+        const chart = await ctx.getChart(params.chartId);
+        if (chart) {
+          chartMeta = {
+            chartType: chart.chartType,
+            chartCategories: chart.categoryCount,
+            tableRows: chart.rowCount,
+            tableCols: chart.colCount,
+          };
+        }
+      }
+
+      // Validate slot constraints (maximum content — prevents overflow)
+      const slotViolations = validateSlotConstraints(params.layout, {
+        title: params.title,
+        subtitle: params.subtitle,
+        kicker: params.kicker,
+        body: params.body,
+        bullets: params.bullets,
+        chartId: params.chartId,
+        metrics: params.metrics,
+        callout: params.callout?.text,
+        ...chartMeta,
+      });
+      if (slotViolations.length > 0) {
+        return {
+          error: "Slide rejected — content exceeds slot capacity",
+          slotViolations: slotViolations.map((v) => `${v.slot}: ${v.constraint} — got ${v.actual}, max ${v.limit}`),
+          hint: "Content must fit within the layout's slot limits. Shorten text, reduce bullets, or choose a different layout. Use the slot budgets in your system prompt.",
         };
       }
 

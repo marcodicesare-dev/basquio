@@ -21,7 +21,7 @@ export default function TemplatesPage() {
           <div className="stack">
             <p className="artifact-kind">Current design system</p>
             <h2>Every report uses a clean, editorial style with your brand colors applied automatically.</h2>
-            <p className="muted">Custom template upload is coming soon. For now, Basquio applies its default design system to every report.</p>
+            <p className="muted">Upload a custom brand template (PPTX, JSON, or CSS) when creating a new report. Basquio extracts your colors, fonts, and style tokens and applies them to the deck.</p>
           </div>
 
           <div className="brand-preview-strip">

@@ -3,6 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { Output, ToolLoopAgent, stepCountIs } from "ai";
 
 import { deckSpecV2Schema, type AnalysisReport, type DeckSpecV2, type EvidenceWorkspace } from "@basquio/types";
+import { describeAllArchetypesForPrompt } from "@basquio/scene-graph";
 import { costBudgetExceeded } from "../agent-utils";
 
 import {
@@ -35,6 +36,7 @@ export type AuthorAgentInput = {
   persistChart: AuthoringToolContext["persistChart"];
   getTemplateProfile: AuthoringToolContext["getTemplateProfile"];
   getSlides?: AuthoringToolContext["getSlides"];
+  getChart?: AuthoringToolContext["getChart"];
   listEvidence?: AuthoringToolContext["listEvidence"];
   getNotebookEntries?: AuthoringToolContext["getNotebookEntries"];
   renderContactSheet?: AuthoringToolContext["renderContactSheet"];
@@ -65,6 +67,7 @@ export function createAuthorAgent(input: AuthorAgentInput) {
     persistChart: input.persistChart,
     getTemplateProfile: input.getTemplateProfile,
     getSlides: input.getSlides,
+    getChart: input.getChart,
     listEvidence: input.listEvidence,
     getNotebookEntries: input.getNotebookEntries,
     renderContactSheet: input.renderContactSheet,
@@ -139,6 +142,17 @@ ALWAYS pass highlightCategories when calling build_chart. Include:
 - The focal entity's key brands
 This colors the focal entity in accent blue and mutes everything else to gray. This is non-negotiable for consulting-grade emphasis.
 
+## SLOT BUDGETS (HARD LIMITS — content that exceeds these is REJECTED)
+
+${describeAllArchetypesForPrompt()}
+
+write_slide will REJECT content that exceeds any slot limit. Before writing a slide:
+1. Count characters in your title (max varies by layout, typically ≤120)
+2. Count words in body text (typically ≤50-100 depending on layout)
+3. Count bullets (max 3-5 depending on layout)
+4. Count chart categories (max 8-12 depending on layout)
+If content exceeds limits, shorten it or split across slides.
+
 ## INFORMATION DENSITY (every slide earns its place)
 
 A slide with a chart and empty white space is NEVER acceptable. Every analytical slide must have:
@@ -147,7 +161,7 @@ A slide with a chart and empty white space is NEVER acceptable. Every analytical
 - A "so what" (callout) — the decision implication
 
 Layout selection:
-- **chart-split** — DEFAULT for analytical slides. Chart left (58%) + interpretation bullets or table right (42%) + callout bottom. Use this for most evidence slides.
+- **chart-split** — DEFAULT for analytical slides. Chart left (58%) + insight text or bullets right (34%) + callout bottom-right. No table in this layout — use body text or bullets to interpret the chart. Use this for most evidence slides.
 - **evidence-grid** — For highest-density slides that need metrics ribbon + chart + supporting text. Max 2-3 per deck.
 - **title-chart** — ONLY when the chart IS the entire message and needs full width. Rare.
 - **exec-summary / metrics** — KPI cards + synthesis paragraph. Use for slide 2 and performance overviews.

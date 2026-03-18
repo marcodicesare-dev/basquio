@@ -4,7 +4,8 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./layout-regions": "./src/layout-regions.ts"
+    "./layout-regions": "./src/layout-regions.ts",
+    "./slot-archetypes": "./src/slot-archetypes.ts"
   },
   "dependencies": {
     "@basquio/types": "workspace:*",

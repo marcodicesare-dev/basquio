@@ -419,6 +419,34 @@ async function persistChart(runId: string, chart: {
   return { chartId: id, thumbnailUrl: undefined, width: 800, height: 500 };
 }
 
+async function getChartMeta(chartId: string): Promise<{ chartType: string; categoryCount: number; seriesCount: number; rowCount?: number; colCount?: number } | null> {
+  assertUuid(chartId, "chartId");
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_charts?id=eq.${chartId}&select=chart_type,data,series`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+      },
+    },
+  );
+  if (!response.ok) return null;
+  const rows = await response.json() as Array<{ chart_type: string; data: Record<string, unknown>[]; series: string[] | null }>;
+  if (rows.length === 0) return null;
+  const row = rows[0];
+  const categoryCount = Array.isArray(row.data) ? row.data.length : 0;
+  const seriesCount = Array.isArray(row.series) ? row.series.length : 1;
+  // For table-type charts, estimate columns from first row
+  const colCount = categoryCount > 0 && typeof row.data[0] === "object" ? Object.keys(row.data[0]).length : 0;
+  return {
+    chartType: row.chart_type,
+    categoryCount,
+    seriesCount,
+    rowCount: row.chart_type === "table" ? categoryCount : undefined,
+    colCount: row.chart_type === "table" ? colCount : undefined,
+  };
+}
+
 type SlideRow = {
   id: string;
   position: number;
@@ -1542,6 +1570,7 @@ Return a structured DeckPlan with sections containing slide specs.`,
             },
             persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
             persistChart: async (chart: ChartInput) => persistChart(runId, chart),
+            getChart: (chartId: string) => getChartMeta(chartId),
             getTemplateProfile: () => workspace.templateProfile ?? null,
             listEvidence: () => listEvidenceForRun(runId),
             getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
@@ -1624,6 +1653,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
           },
           persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
           persistChart: async (chart: ChartInput) => persistChart(runId, chart),
+            getChart: (chartId: string) => getChartMeta(chartId),
           getTemplateProfile: () => workspace.templateProfile ?? null,
           listEvidence: () => listEvidenceForRun(runId),
           getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
@@ -1710,6 +1740,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         },
         persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
         persistChart: async (chart: ChartInput) => persistChart(runId, chart),
+            getChart: (chartId: string) => getChartMeta(chartId),
         getTemplateProfile: () => workspace.templateProfile ?? null,
         getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
         getSlides: async () => {
@@ -2185,6 +2216,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
               },
               persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
               persistChart: async (chart: ChartInput) => persistChart(runId, chart),
+            getChart: (chartId: string) => getChartMeta(chartId),
               getTemplateProfile: () => workspace.templateProfile ?? null,
               listEvidence: () => listEvidenceForRun(runId),
               getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
@@ -2242,6 +2274,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
             },
             persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
             persistChart: async (chart: ChartInput) => persistChart(runId, chart),
+            getChart: (chartId: string) => getChartMeta(chartId),
             getTemplateProfile: () => workspace.templateProfile ?? null,
             listEvidence: () => listEvidenceForRun(runId),
             getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),

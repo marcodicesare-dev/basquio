@@ -3,6 +3,18 @@ import { z } from "zod";
 import type { DeckSpecV2Slide, TemplateProfile } from "@basquio/types";
 import { getLayoutRegions, SLIDE_W, SLIDE_H, type R } from "./layout-regions";
 
+// Re-export slot archetypes for consumers
+export {
+  getArchetype,
+  getArchetypeOrDefault,
+  listArchetypeIds,
+  listArchetypes,
+  validateSlotConstraints,
+  describeArchetypeForPrompt,
+  describeAllArchetypesForPrompt,
+} from "./slot-archetypes";
+export type { SlideArchetype, SlotConstraint, SlotViolation, ChartSlotType } from "./slot-archetypes";
+
 // ─── UNIFIED SLIDE SCENE GRAPH ────────────────────────────────────
 // A fixed-size coordinate-based representation that both PPTX and PDF
 // renderers consume. Uses the SAME layout regions as the PPTX renderer
