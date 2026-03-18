@@ -136,6 +136,7 @@ export const generationRequestSchema = z.object({
   objective: z.string().default("Explain the business performance signal"),
   thesis: z.string().default(""),
   stakes: z.string().default(""),
+  exportMode: z.enum(["powerpoint-native", "universal-compatible"]).optional(),
 });
 
 export const sourceFileSchema = z.object({

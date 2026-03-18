@@ -47,11 +47,14 @@ export type V2ChartRow = {
   sourceNote?: string;
 };
 
+export type ExportMode = "powerpoint-native" | "universal-compatible";
+
 export type RenderV2PptxInput = {
   deckTitle: string;
   slides: V2SlideRow[];
   charts: V2ChartRow[];
   brandTokens?: Partial<BrandTokens>;
+  exportMode?: ExportMode;
 };
 
 // ─── CONSULTING-GRADE DESIGN SYSTEM ─────────────────────────────
@@ -904,6 +907,7 @@ function renderChartElement(
   chart: V2ChartRow,
   region: R,
   tokens: BrandTokens,
+  exportMode: ExportMode = "powerpoint-native",
 ): void {
   if (chart.chartType === "table") {
     renderTable(slide, chart, region, tokens);
@@ -943,57 +947,81 @@ function renderChartElement(
 
   const chartRegion = {
     x: region.x,
-    y: region.y,
+    y: region.y + 0.25,
     w: region.w,
-    h: region.h,
+    h: region.h - 0.3,
   };
 
-  // Use shape-built charts for universal cross-app compatibility
-  // (works in PowerPoint, Google Slides, and Keynote)
-  const shapeTokens: ShapeChartTokens = {
-    accent: norm(tokens.palette.accent),
-    ink: norm(tokens.palette.ink),
-    muted: norm(tokens.palette.muted),
-    surface: norm(tokens.palette.surface ?? "F8FAFC"),
-    chartPalette: (tokens.chartPalette ?? []).map(norm),
-    bodyFont: tokens.typography.bodyFont,
-    headingFont: tokens.typography.headingFont,
-  };
+  // Reserve space for source note if present
+  const hasSource = Boolean(chart.sourceNote);
+  const actualChartH = hasSource ? chartRegion.h - 0.2 : chartRegion.h;
 
-  // Convert the built chart data (PptxGenJS format) to shape-chart format
-  const shapeData = {
-    labels: chartData.map((series) => (series as { name?: string }).name ?? "").length > 0
-      ? (chartData[0] as { labels?: string[] }).labels ?? chart.data.map((row) => String(row[chart.xAxis] ?? ""))
-      : [],
-    datasets: chartData.map((series) => ({
-      label: (series as { name?: string }).name ?? "",
-      data: (series as { values?: number[] }).values ?? [],
-    })),
-  };
+  if (exportMode === "universal-compatible") {
+    // Shape-built charts for cross-app compatibility (Google Slides, Keynote)
+    const shapeTokens: ShapeChartTokens = {
+      accent: norm(tokens.palette.accent),
+      ink: norm(tokens.palette.ink),
+      muted: norm(tokens.palette.muted),
+      surface: norm(tokens.palette.surface ?? "F8FAFC"),
+      chartPalette: (tokens.chartPalette ?? []).map(norm),
+      bodyFont: tokens.typography.bodyFont,
+      headingFont: tokens.typography.headingFont,
+    };
 
-  // Fallback: if shapeData is empty, try to extract directly from raw data
-  if (shapeData.labels.length === 0 && chart.data.length > 0 && chart.xAxis) {
-    shapeData.labels = chart.data.map((row) => String(row[chart.xAxis] ?? ""));
-    if (shapeData.datasets.length === 0 || shapeData.datasets[0].data.length === 0) {
-      const yCol = chart.yAxis || chart.series[0];
-      if (yCol) {
-        shapeData.datasets = [{
-          label: yCol,
-          data: chart.data.map((row) => {
-            const v = row[yCol];
-            return typeof v === "number" ? v : parseFloat(String(v)) || 0;
-          }),
-        }];
-      }
-    }
+    // Build shape-chart data from raw chart rows
+    const shapeData = {
+      labels: chart.data.map((row) => String(row[chart.xAxis] ?? "")),
+      datasets: chart.series.length > 0
+        ? chart.series.map((colName) => ({
+            label: colName,
+            data: chart.data.map((row) => {
+              const v = row[colName];
+              return typeof v === "number" ? v : parseFloat(String(v)) || 0;
+            }),
+          }))
+        : [{
+            label: chart.yAxis || chart.title,
+            data: chart.data.map((row) => {
+              const v = row[chart.yAxis];
+              return typeof v === "number" ? v : parseFloat(String(v)) || 0;
+            }),
+          }],
+    };
+
+    const fullFrame = { x: region.x, y: region.y, w: region.w, h: region.h };
+    renderShapeChart(slide, effectiveChartType, shapeData, fullFrame, shapeTokens, {
+      title: chart.title,
+      sourceNote: chart.sourceNote,
+      unit: chart.unit,
+      highlightCategories: chart.style?.highlightCategories,
+    });
+  } else {
+    // PowerPoint Native: editable OOXML charts (best experience in PowerPoint)
+    slide.addChart(
+      mapPptxChartType(pptx, effectiveChartType),
+      chartData as unknown as PptxGenJS.OptsChartData[],
+      {
+        x: chartRegion.x,
+        y: chartRegion.y,
+        w: chartRegion.w,
+        h: actualChartH,
+        ...opts,
+      } as PptxGenJS.IChartOpts,
+    );
   }
 
-  renderShapeChart(slide, effectiveChartType, shapeData, chartRegion, shapeTokens, {
-    title: chart.title,
-    sourceNote: chart.sourceNote,
-    unit: chart.unit,
-    highlightCategories: chart.style?.highlightCategories,
-  });
+  // Source note below chart
+  if (chart.sourceNote) {
+    slide.addText(`Source: ${chart.sourceNote}`, {
+      x: chartRegion.x,
+      y: chartRegion.y + actualChartH + 0.02,
+      w: chartRegion.w,
+      h: 0.16,
+      fontSize: 7,
+      fontFace: tokens.typography.bodyFont,
+      color: "9CA3AF",
+    });
+  }
 }
 
 // ─── PER-LAYOUT RENDERERS ───────────────────────────────────────
@@ -1060,6 +1088,7 @@ function renderContentSlide(
   s: V2SlideRow,
   chartsMap: Map<string, V2ChartRow>,
   tokens: BrandTokens,
+  exportMode: ExportMode = "powerpoint-native",
 ): void {
   // Content slides use BASQUIO_MASTER (white bg + accent top bar + navy footer)
   const layoutId = s.layoutId || "title-body";
@@ -1089,7 +1118,7 @@ function renderContentSlide(
   switch (layoutId) {
     case "title-chart": {
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
       }
       // First-class callout
       if (s.callout && regions.callout) {
@@ -1103,7 +1132,7 @@ function renderContentSlide(
       // Chart on left, table on right
       if (chart) {
         if (regions.chart) {
-          renderChartElement(slide, pptx, chart, regions.chart, tokens);
+          renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
         }
         // Table with same data on right
         if (regions.table) {
@@ -1141,7 +1170,7 @@ function renderContentSlide(
       }
       // Chart on left
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
       }
       // Body/bullets on right
       if (regions.body) {
@@ -1213,7 +1242,7 @@ function renderContentSlide(
 
     case "comparison": {
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
       }
       // Second chart area: use bullets or body
       if (regions.chart2) {
@@ -1248,7 +1277,7 @@ function renderContentSlide(
       // Fallback: chart if available, else body/bullets
       if (chart) {
         const chartRegion = regions.chart || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
-        renderChartElement(slide, pptx, chart, chartRegion, tokens);
+        renderChartElement(slide, pptx, chart, chartRegion, tokens, exportMode);
       } else if (s.body && regions.body) {
         renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       } else if (s.bullets && s.bullets.length > 0) {
@@ -1347,7 +1376,7 @@ export async function renderV2PptxArtifact(
     if (isCover) {
       renderCoverSlide(slide, pptx, slideData, tokens);
     } else {
-      renderContentSlide(slide, pptx, slideData, chartsMap, tokens);
+      renderContentSlide(slide, pptx, slideData, chartsMap, tokens, input.exportMode ?? "powerpoint-native");
     }
 
     // Speaker notes for cover
