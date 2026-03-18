@@ -159,12 +159,22 @@ export function extractRequestedSlideCount(brief: ReportBrief, fallback = 12) {
   const haystack = [brief.objective, brief.businessContext, brief.thesis, brief.stakes]
     .filter(Boolean)
     .join(" ");
-  const match = haystack.match(/\b(\d{1,2})\s*[- ]?(?:slide|slides)\b/i);
-  const requested = match ? Number(match[1]) : fallback;
+  // Match numeric ("5 slides") and word ("one slide") patterns
+  const numMatch = haystack.match(/\b(\d{1,3})\s*[- ]?(?:slide|slides)\b/i);
+  const wordMatch = haystack.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*[- ]?(?:slide|slides)\b/i);
+  const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
 
-  if (!Number.isFinite(requested)) {
+  const requested = numMatch
+    ? Number(numMatch[1])
+    : wordMatch
+      ? wordToNum[wordMatch[1].toLowerCase()] ?? fallback
+      : fallback;
+
+  if (!Number.isFinite(requested) || requested < 1) {
     return fallback;
   }
 
-  return Math.max(6, Math.min(20, requested));
+  // Respect the user's explicit request — no minimum clamp.
+  // Only cap at 100 to prevent runaway generation.
+  return Math.min(100, requested);
 }
