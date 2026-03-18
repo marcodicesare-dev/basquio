@@ -43,11 +43,11 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
     case "exec-summary":
     case "metrics":
       return {
-        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.56 },
-        metrics: { x: 0.45, y: 0.88, w: 9.1, h: 1.1 },
-        body: { x: 0.45, y: 2.1, w: 9.1, h: 1.9 },
-        bullets: { x: 0.45, y: 2.1, w: 9.1, h: 1.9 },
-        callout: { x: 0.45, y: 4.15, w: 9.1, h: 0.42 },
+        title: { x: 0.45, y: 0.22, w: 9.1, h: 0.52 },
+        metrics: { x: 0.45, y: 0.95, w: 9.1, h: 1.3 },
+        body: { x: 0.45, y: 2.35, w: 9.1, h: 1.65 },
+        bullets: { x: 0.45, y: 2.35, w: 9.1, h: 1.65 },
+        callout: { x: 0.45, y: 4.15, w: 9.1, h: 0.45 },
       };
 
     case "title-chart":

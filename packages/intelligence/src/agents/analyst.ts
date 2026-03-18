@@ -20,6 +20,7 @@ import {
   createSampleRowsTool,
   createQueryDataTool,
   createComputeMetricTool,
+  createComputeDerivedTool,
   createReadSupportDocTool,
   type ToolContext,
 } from "../tools";
@@ -78,10 +79,28 @@ You think like a consultant, not a BI tool. You don't just compute aggregates �
 8. Compute period-over-period changes where time data exists
 9. Compute rankings — who is biggest, fastest growing, most efficient
 
+### DERIVED METRICS — ALWAYS COMPUTE THESE (use compute_derived tool)
+
+When you find Value + Volume/Units columns in the same dataset:
+- **Price per unit** = Value / Volume (formula="per_unit", numeratorColumn="Value col", denominatorColumn="Volume col")
+- **Market share** = Entity Value / Total Value (formula="share", valueColumn="Value col", entityFilter="Brand = X")
+- **Growth rate** for ALL major entities (formula="growth_rate", valueColumn="Value col", currentFilter="Year = 2025", priorFilter="Year = 2024")
+- **Contribution to growth** for focal entity (formula="contribution")
+
+When you have both Value and Volume shares:
+- **Mix gap** = Value share - Volume share (formula="mix_gap"). Positive = premium. Negative = volume play.
+- **Price index** = Entity price / Category avg price * 100 (formula="index")
+
+DO NOT skip derived metrics. Raw columns are inputs, not insights. An executive needs "Ultima's price index is 112 vs category" — not "Ultima's value is X and volume is Y."
+
+For every finding, include WHY it matters and WHAT to do about it.
+"X grew 5%" is NOT a finding.
+"X grew 5% driven by price (+7%) despite volume decline (-2%), suggesting premiumization works but penetration risk is building — recommend trial-driving investment" IS a finding.
+
 ### Phase 3: Second-order insights (steps 17-25)
-10. **Share analysis**: entity value / total market. Do this per segment, not just overall.
-11. **Growth decomposition**: separate value growth from volume growth. Which is driving?
-12. **Relative positioning**: how does the focal entity compare to the market average? To the top competitor? Express as index, gap, or ratio.
+10. **Share analysis**: entity value / total market. Do this per segment, not just overall. Use compute_derived with formula="share".
+11. **Growth decomposition**: separate value growth from volume growth. Which is driving? Use compute_derived with formula="growth_rate" on both value and volume columns.
+12. **Relative positioning**: how does the focal entity compare to the market average? To the top competitor? Use compute_derived with formula="index".
 13. **Concentration**: top N entities = what % of total? Is value concentrated or distributed?
 14. **Structural shifts**: what categories/segments are growing vs declining? What's the trend direction?
 15. **Cross-cutting patterns**: is the focal entity strong in segment A but absent in segment B? What's the opportunity cost of that gap?
@@ -120,6 +139,7 @@ Register EVERY important finding as a named evidence ref via compute_metric. Eac
       sample_rows: createSampleRowsTool(ctx),
       query_data: createQueryDataTool(ctx),
       compute_metric: createComputeMetricTool(ctx),
+      compute_derived: createComputeDerivedTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
     },
     stopWhen: stepCountIs(30),
