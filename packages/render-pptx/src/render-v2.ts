@@ -1149,11 +1149,80 @@ export async function renderV2PptxArtifact(
     }
   }
 
-  const buffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+  const rawBuffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+
+  // Post-process PPTX for Google Slides / Keynote compatibility:
+  // PptxGenJS uses multiLvlStrRef for category labels, which Google Slides
+  // misreads (shows numbers instead of labels). Replace with strRef.
+  // Also fixes some Keynote chart rendering issues.
+  const buffer = await fixPptxChartCompatibility(rawBuffer);
 
   return {
     fileName: "basquio-deck.pptx",
     mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     buffer,
   };
+}
+
+// ─── CROSS-APP COMPATIBILITY POST-PROCESSOR ─────────────────────
+// Fix PptxGenJS chart XML bugs that break Google Slides and Keynote:
+// 1. Replace multiLvlStrRef with strRef (Google Slides label bug, PR #1273)
+// 2. Replace hardcoded Calibri font refs with safe fonts
+
+async function fixPptxChartCompatibility(pptxBuffer: Buffer): Promise<Buffer> {
+  try {
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(pptxBuffer);
+    let modified = false;
+
+    // Fix chart XML files
+    const chartEntries = Object.keys(zip.files).filter(
+      (f) => /^ppt\/charts\/chart\d+\.xml$/i.test(f),
+    );
+
+    for (const entry of chartEntries) {
+      let xml = await zip.files[entry].async("text");
+      const original = xml;
+
+      // Replace multiLvlStrRef with strRef (Google Slides compat)
+      // multiLvlStrRef uses <c:lvl> nesting that Google Slides can't parse
+      // strRef uses flat <c:strCache> which works everywhere
+      xml = xml.replace(/<c:multiLvlStrRef>/g, "<c:strRef>");
+      xml = xml.replace(/<\/c:multiLvlStrRef>/g, "</c:strRef>");
+      // Flatten <c:lvl> wrappers inside strRef (now-renamed from multiLvlStrRef)
+      xml = xml.replace(/<c:lvl>/g, "");
+      xml = xml.replace(/<\/c:lvl>/g, "");
+
+      if (xml !== original) {
+        zip.file(entry, xml);
+        modified = true;
+      }
+    }
+
+    // Fix hardcoded Calibri in chart Excel theme (cosmetic but prevents Keynote warnings)
+    const chartStyleEntries = Object.keys(zip.files).filter(
+      (f) => /^ppt\/charts\/_rels\/|^ppt\/embeddings\/.*\.xml$/i.test(f),
+    );
+    for (const entry of chartStyleEntries) {
+      if (!zip.files[entry] || zip.files[entry].dir) continue;
+      try {
+        let xml = await zip.files[entry].async("text");
+        const original = xml;
+        xml = xml.replace(/typeface="Calibri"/g, 'typeface="Arial"');
+        xml = xml.replace(/typeface="Calibri Light"/g, 'typeface="Arial"');
+        if (xml !== original) {
+          zip.file(entry, xml);
+          modified = true;
+        }
+      } catch { /* skip binary entries */ }
+    }
+
+    if (modified) {
+      return Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+    }
+    return pptxBuffer;
+  } catch {
+    // If post-processing fails, return original buffer
+    return pptxBuffer;
+  }
 }
