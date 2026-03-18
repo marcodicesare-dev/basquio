@@ -61,7 +61,7 @@ You are adversarial — find what's wrong, not what's right.
 
 9. CONTENT DENSITY LIMITS: Flag slides with body text exceeding 80 words, >5 bullets, or titles exceeding 20 words. Severity: minor.
 
-10. SLIDE COUNT: The deck should match the brief's requested slide count (±2). Too many = padded. Too few = incomplete. Severity: major.
+10. SLIDE COUNT: If the brief specifies an exact slide count, the deck MUST match it exactly — no tolerance. "1 slide" means 1, "5 slides" means 5. If no count was specified, the deck length should match data richness. Severity: critical if explicit count violated, major if implicit count is padded/incomplete.
 
 Be specific. "Slide 5 title 'Revenue Analysis' is a topic label — should state the finding, e.g., 'Revenue declined -3.2% driven by volume loss in Q3'" is useful. "Titles could be better" is not.
 
