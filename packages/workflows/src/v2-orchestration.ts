@@ -1364,7 +1364,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
                       if (charts.length > 0) parts.push(`${charts.length} chart(s): ${charts.map((c) => `${c.chartType} "${c.title}"`).join(", ")}`);
                       if (tables.length > 0) parts.push(`${tables.length} table(s)`);
                       if (metrics.length > 0) parts.push(`${metrics.length} metric(s): ${metrics.map((m) => `${m.label}=${m.value}`).join(", ")}`);
-                      description = parts.join("; ") || (structured.visualDescription as string) ?? "";
+                      description = parts.join("; ") || ((structured.visualDescription as string) ?? "");
                     } else {
                       description = rawOutput.slice(0, 300);
                     }
