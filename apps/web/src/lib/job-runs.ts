@@ -188,6 +188,43 @@ async function listDurableArtifactRecords(jobId: string, viewerId?: string) {
   const credentials = getSupabaseCredentials();
 
   if (credentials) {
+    // Try v2 artifact_manifests_v2 first (canonical for new pipeline)
+    try {
+      const v2Manifests = await fetchRestRows<{
+        artifacts: Array<{ kind: string; fileName: string; mimeType: string; storagePath: string; storageBucket: string; fileBytes: number; checksumSha256?: string }>;
+        slide_count: number;
+        page_count: number;
+      }>({
+        ...credentials,
+        table: "artifact_manifests_v2",
+        query: {
+          select: "artifacts,slide_count,page_count",
+          run_id: `eq.${jobId}`,
+          limit: "1",
+        },
+      });
+
+      if (v2Manifests.length > 0 && v2Manifests[0].artifacts?.length > 0) {
+        return v2Manifests[0].artifacts.map((a) => ({
+          id: `${jobId}-${a.kind}`,
+          jobId,
+          kind: a.kind as ArtifactKind,
+          fileName: a.fileName,
+          mimeType: a.mimeType,
+          storagePath: a.storagePath,
+          byteSize: a.fileBytes,
+          provider: "supabase" as const,
+          checksumSha256: a.checksumSha256 ?? "",
+          exists: true,
+          slideCount: v2Manifests[0].slide_count,
+          pageCount: v2Manifests[0].page_count,
+        }));
+      }
+    } catch {
+      // v2 table may not exist; fall through to legacy
+    }
+
+    // Fall back to legacy artifacts table
     try {
       const jobIdRow = await loadGenerationJobRowId(jobId, viewerId);
 
@@ -233,6 +270,11 @@ async function listGenerationRunsFromSupabase(limit: number, viewerId?: string) 
     return [];
   }
 
+  // Try v2 deck_runs first (the canonical pipeline)
+  const v2Runs = await listV2DeckRuns(credentials, limit, viewerId);
+
+  // Also try legacy generation_jobs for older runs
+  let legacyRuns: GenerationRunSummary[] = [];
   try {
     const data = await fetchRestRows<{ summary: unknown }>({
       ...credentials,
@@ -246,15 +288,206 @@ async function listGenerationRunsFromSupabase(limit: number, viewerId?: string) 
       },
     });
 
-    return (data ?? [])
+    legacyRuns = (data ?? [])
       .flatMap((row) => {
         try {
           return row.summary ? [generationRunSummarySchema.parse(row.summary)] : [];
         } catch {
           return [];
         }
-      })
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      });
+  } catch {
+    // Legacy table may not exist or be empty
+  }
+
+  // Merge, deduplicate by jobId, sort by createdAt desc
+  const allRuns = [...v2Runs, ...legacyRuns];
+  const seen = new Set<string>();
+  return allRuns
+    .filter((run) => {
+      if (seen.has(run.jobId)) return false;
+      seen.add(run.jobId);
+      return true;
+    })
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, limit);
+}
+
+type V2DeckRunRow = {
+  id: string;
+  status: string;
+  current_phase: string;
+  delivery_status: string;
+  brief: Record<string, unknown> | null;
+  business_context: string | null;
+  client: string | null;
+  audience: string | null;
+  objective: string | null;
+  created_at: string;
+  completed_at: string | null;
+  failure_message: string | null;
+  source_file_ids: string[] | null;
+};
+
+type V2ArtifactManifestRow = {
+  run_id: string;
+  slide_count: number;
+  page_count: number;
+  qa_passed: boolean;
+  artifacts: Array<{ kind: string; fileName: string; mimeType: string; storagePath: string; storageBucket: string; fileBytes: number; checksumSha256?: string }>;
+};
+
+async function listV2DeckRuns(
+  credentials: { supabaseUrl: string; serviceKey: string },
+  limit: number,
+  viewerId: string,
+): Promise<GenerationRunSummary[]> {
+  try {
+    const runs = await fetchRestRows<V2DeckRunRow>({
+      ...credentials,
+      table: "deck_runs",
+      query: {
+        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids",
+        requested_by: `eq.${viewerId}`,
+        order: "created_at.desc",
+        limit: String(limit),
+      },
+    });
+
+    // Fetch artifact manifests for completed runs
+    const completedIds = runs.filter((r) => r.status === "completed" || r.completed_at).map((r) => r.id);
+    let manifests: V2ArtifactManifestRow[] = [];
+    if (completedIds.length > 0) {
+      try {
+        manifests = await fetchRestRows<V2ArtifactManifestRow>({
+          ...credentials,
+          table: "artifact_manifests_v2",
+          query: {
+            select: "run_id,slide_count,page_count,qa_passed,artifacts",
+            run_id: `in.(${completedIds.join(",")})`,
+          },
+        });
+      } catch {
+        // Table may not exist yet
+      }
+    }
+
+    const manifestMap = new Map(manifests.map((m) => [m.run_id, m]));
+
+    // Fetch cover slide titles for completed runs (the real headline)
+    const completedRunIds = runs.filter((r) => r.status === "completed" || r.completed_at).map((r) => r.id);
+    let coverTitles = new Map<string, string>();
+    if (completedRunIds.length > 0) {
+      try {
+        const slides = await fetchRestRows<{ run_id: string; title: string }>({
+          ...credentials,
+          table: "deck_spec_v2_slides",
+          query: {
+            select: "run_id,title",
+            run_id: `in.(${completedRunIds.join(",")})`,
+            position: "eq.1",
+          },
+        });
+        coverTitles = new Map(slides.map((s) => [s.run_id, s.title]));
+      } catch {
+        // Table may not exist
+      }
+    }
+
+    // Fetch real file names from evidence_workspace_sheets
+    let fileNames = new Map<string, string>();
+    const allRunIds = runs.map((r) => r.id);
+    if (allRunIds.length > 0) {
+      try {
+        const sheets = await fetchRestRows<{ workspace_id: string; file_name: string }>({
+          ...credentials,
+          table: "evidence_workspace_sheets",
+          query: {
+            select: "workspace_id,file_name",
+            workspace_id: `in.(${allRunIds.join(",")})`,
+            order: "created_at.asc",
+            limit: String(allRunIds.length * 5),
+          },
+        });
+        // Group by workspace_id, take the first file name
+        for (const s of sheets) {
+          if (!fileNames.has(s.workspace_id)) {
+            fileNames.set(s.workspace_id, s.file_name);
+          }
+        }
+      } catch {
+        // Table may not exist
+      }
+    }
+
+    return runs.map((run) => {
+      const manifest = manifestMap.get(run.id);
+      const brief = (run.brief ?? {}) as Record<string, string>;
+      const coverTitle = coverTitles.get(run.id);
+      const fileName = fileNames.get(run.id);
+      const clientName = run.client ?? brief.client ?? "";
+      const objectiveText = run.objective ?? brief.objective ?? "";
+      const headline = coverTitle || (clientName ? `${clientName} — ${objectiveText}` : objectiveText) || "Report";
+
+      const artifacts = (manifest?.artifacts ?? []).map((a) => ({
+        id: `${run.id}-${a.kind}`,
+        jobId: run.id,
+        kind: a.kind as "pptx" | "pdf",
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        storagePath: a.storagePath,
+        byteSize: a.fileBytes,
+        provider: "supabase" as const,
+        checksumSha256: a.checksumSha256 ?? "",
+        exists: true,
+        slideCount: manifest?.slide_count,
+        pageCount: manifest?.page_count,
+      }));
+
+      return generationRunSummarySchema.parse({
+        jobId: run.id,
+        createdAt: run.created_at,
+        status: run.status === "completed" ? "completed" : run.status === "failed" ? "failed" : "running",
+        failureMessage: run.failure_message ?? "",
+        sourceFileName: fileName || "Uploaded files",
+        brief: {
+          businessContext: brief.businessContext ?? run.business_context ?? "",
+          client: clientName,
+          audience: brief.audience ?? run.audience ?? "",
+          objective: objectiveText,
+        },
+        businessContext: run.business_context ?? brief.businessContext ?? "",
+        client: clientName,
+        audience: run.audience ?? brief.audience ?? "Executive stakeholder",
+        objective: objectiveText,
+        thesis: brief.thesis ?? "",
+        stakes: brief.stakes ?? "",
+        datasetProfile: {
+          totalRows: 0,
+          totalColumns: 0,
+          sheets: [],
+          manifest: { files: fileName ? [{ fileName }] : [] },
+        },
+        packageSemantics: { entityType: "unknown", timeGranularity: "unknown", metrics: [], dimensions: [] },
+        metricPlan: [],
+        analyticsResult: { findings: [], executiveSummary: "" },
+        insights: [],
+        story: {
+          client: clientName,
+          audience: run.audience ?? "Executive stakeholder",
+          objective: objectiveText,
+          title: headline,
+          executiveSummary: "",
+          narrativeArc: [headline],
+          keyMessages: [headline],
+        },
+        slidePlan: {
+          slides: manifest ? Array.from({ length: manifest.slide_count }, (_, i) => ({ id: `slide-${i}` })) : [],
+          charts: [],
+        },
+        artifacts,
+      });
+    });
   } catch {
     return [];
   }

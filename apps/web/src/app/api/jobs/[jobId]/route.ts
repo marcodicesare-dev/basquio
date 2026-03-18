@@ -161,11 +161,49 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
         ? run.failure_message ?? "Run failed."
         : `Running ${currentPhase ?? "pipeline"}...`;
 
+  // Fetch artifact manifest if completed
+  let summary: Record<string, unknown> | null = null;
+  if (run.status === "completed" || run.completed_at) {
+    try {
+      const manifests = await fetchRestRows<{
+        slide_count: number;
+        page_count: number;
+        qa_passed: boolean;
+        artifacts: Array<{ kind: string; fileName: string; fileBytes: number; storagePath: string }>;
+      }>({
+        supabaseUrl: supabaseUrl!,
+        serviceKey: serviceKey!,
+        table: "artifact_manifests_v2",
+        query: {
+          select: "slide_count,page_count,qa_passed,artifacts",
+          run_id: `eq.${jobId}`,
+          limit: "1",
+        },
+      });
+      if (manifests.length > 0) {
+        const m = manifests[0];
+        summary = {
+          slideCount: m.slide_count,
+          pageCount: m.page_count,
+          qaPassed: m.qa_passed,
+          artifacts: m.artifacts.map((a) => ({
+            kind: a.kind,
+            fileName: a.fileName,
+            fileBytes: a.fileBytes,
+            downloadUrl: `/api/artifacts/${jobId}/${a.kind}`,
+          })),
+        };
+      }
+    } catch {
+      // Manifest not available yet
+    }
+  }
+
   return {
     jobId,
     pipelineVersion: "v2" as const,
     status: run.status as "queued" | "running" | "completed" | "failed",
-    artifactsReady: run.status === "completed",
+    artifactsReady: Boolean(run.completed_at) || run.status === "completed",
     createdAt,
     updatedAt: run.updated_at ?? undefined,
     currentStage: currentPhase ?? V2_PHASES[0],
@@ -174,7 +212,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     elapsedSeconds,
     estimatedRemainingSeconds,
     steps,
-    summary: null,
+    summary,
     failureMessage: run.failure_message ?? undefined,
   };
 }

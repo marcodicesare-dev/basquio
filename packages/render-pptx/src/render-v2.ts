@@ -1,6 +1,7 @@
 import PptxGenJS from "pptxgenjs";
 
 import { getLayoutRegions, SLIDE_W, SLIDE_H, type LayoutRegions, type R } from "@basquio/scene-graph/layout-regions";
+import { getArchetypeOrDefault } from "@basquio/scene-graph/slot-archetypes";
 import type { BinaryArtifact } from "@basquio/types";
 
 // ─── V2 INPUT TYPES ──────────────────────────────────────────────
@@ -439,9 +440,10 @@ function renderBody(
   region: R,
   tokens: BrandTokens,
   speakerNotesOverflow?: string[],
+  maxWords?: number,
 ): void {
   const processed = processNewlines(text);
-  const { truncated, overflow } = truncateWords(processed, 80);
+  const { truncated, overflow } = truncateWords(processed, maxWords ?? 80);
   if (overflow && speakerNotesOverflow) {
     speakerNotesOverflow.push(`[Overflow from body]: ${overflow}`);
   }
@@ -521,8 +523,9 @@ function renderBullets(
   bullets: string[],
   region: R,
   tokens: BrandTokens,
+  maxBulletsOverride?: number,
 ): void {
-  const maxBullets = 4;
+  const maxBullets = maxBulletsOverride ?? 4;
   const textProps: PptxGenJS.TextProps[] = bullets.slice(0, maxBullets).map((b) => ({
     text: processNewlines(b),
     options: {
@@ -628,12 +631,14 @@ function renderTable(
   chart: V2ChartRow,
   region: R,
   tokens: BrandTokens,
+  maxRowsOverride?: number,
+  maxColsOverride?: number,
 ): void {
   const headers = [chart.xAxis, ...chart.series].filter(Boolean);
   if (headers.length === 0) return;
 
-  const maxRows = 8;
-  const maxCols = 8;
+  const maxRows = maxRowsOverride ?? 8;
+  const maxCols = maxColsOverride ?? 6;
   const visibleHeaders = headers.slice(0, maxCols);
   const rows = chart.data.slice(0, maxRows);
 
@@ -840,6 +845,11 @@ function renderContentSlide(
   // Content slides use BASQUIO_MASTER (white bg + accent top bar + navy footer)
   const layoutId = s.layoutId || "title-body";
   const regions = getLayoutRegions(layoutId);
+  const arch = getArchetypeOrDefault(layoutId);
+  const bodyMaxWords = arch.slots.body?.maxWords ?? 80;
+  const maxBulletsFromArch = arch.slots.bullets?.maxBullets ?? arch.slots.body?.maxBullets ?? 4;
+  const tableMaxRows = arch.slots.table?.maxTableRows ?? 8;
+  const tableMaxCols = arch.slots.table?.maxTableCols ?? 6;
   const notesOverflow: string[] = [];
 
   // Kicker (section label above title)
@@ -878,14 +888,14 @@ function renderContentSlide(
         }
         // Table with same data on right
         if (regions.table) {
-          renderTable(slide, chart, regions.table, tokens);
+          renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
         }
       }
       // Body text in right column
       if (s.body && regions.body) {
-        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       } else if (s.bullets && s.bullets.length > 0 && regions.body) {
-        renderBullets(slide, s.bullets, regions.body, tokens);
+        renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch);
       }
       // First-class callout (if provided), else derive from body/bullet
       if (regions.callout) {
@@ -917,9 +927,9 @@ function renderContentSlide(
       // Body/bullets on right
       if (regions.body) {
         if (s.bullets && s.bullets.length > 0) {
-          renderBullets(slide, s.bullets, regions.body, tokens);
+          renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch);
         } else if (s.body) {
-          renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+          renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
         }
       }
       // First-class callout at bottom, else fallback
@@ -940,13 +950,13 @@ function renderContentSlide(
       }
       // exec-summary uses bullets region; metrics layout uses body region
       if (layoutId === "exec-summary" && s.bullets && s.bullets.length > 0 && regions.bullets) {
-        renderBullets(slide, s.bullets, regions.bullets, tokens);
+        renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch);
       } else if (s.body && regions.body) {
-        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       } else if (s.bullets && s.bullets.length > 0) {
         const fallbackRegion = regions.bullets || regions.body;
         if (fallbackRegion) {
-          renderBullets(slide, s.bullets, fallbackRegion, tokens);
+          renderBullets(slide, s.bullets, fallbackRegion, tokens, maxBulletsFromArch);
         }
       }
       // First-class callout
@@ -959,13 +969,13 @@ function renderContentSlide(
     case "title-body":
     case "title-bullets": {
       if (s.bullets && s.bullets.length > 0 && regions.body) {
-        renderBullets(slide, s.bullets, regions.body, tokens);
+        renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch);
       }
       if (s.body && regions.body) {
         const bodyY = s.bullets?.length ? regions.body.y + Math.min(s.bullets.length * 0.3, 1.5) : regions.body.y;
         const bodyH = s.bullets?.length ? regions.body.h - Math.min(s.bullets.length * 0.3, 1.5) : regions.body.h;
         if (bodyH > 0.3) {
-          renderBody(slide, s.body, { ...regions.body, y: bodyY, h: bodyH }, tokens, notesOverflow);
+          renderBody(slide, s.body, { ...regions.body, y: bodyY, h: bodyH }, tokens, notesOverflow, bodyMaxWords);
         }
       }
       // First-class callout
@@ -977,7 +987,7 @@ function renderContentSlide(
 
     case "table": {
       if (chart && regions.table) {
-        renderTable(slide, chart, regions.table, tokens);
+        renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
       }
       break;
     }
@@ -989,9 +999,9 @@ function renderContentSlide(
       // Second chart area: use bullets or body
       if (regions.chart2) {
         if (s.bullets && s.bullets.length > 0) {
-          renderBullets(slide, s.bullets, regions.chart2, tokens);
+          renderBullets(slide, s.bullets, regions.chart2, tokens, maxBulletsFromArch);
         } else if (s.body) {
-          renderBody(slide, s.body, regions.chart2, tokens, notesOverflow);
+          renderBody(slide, s.body, regions.chart2, tokens, notesOverflow, bodyMaxWords);
         }
       }
       break;
@@ -999,7 +1009,7 @@ function renderContentSlide(
 
     case "summary": {
       if (s.body && regions.body) {
-        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       }
       if (regions.callout) {
         if (s.callout) {
@@ -1021,11 +1031,11 @@ function renderContentSlide(
         const chartRegion = regions.chart || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
         renderChartElement(slide, pptx, chart, chartRegion, tokens);
       } else if (s.body && regions.body) {
-        renderBody(slide, s.body, regions.body, tokens, notesOverflow);
+        renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       } else if (s.bullets && s.bullets.length > 0) {
         const bulletRegion =
           regions.bullets || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
-        renderBullets(slide, s.bullets, bulletRegion, tokens);
+        renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch);
       }
       break;
     }
