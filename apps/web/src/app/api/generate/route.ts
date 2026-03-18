@@ -301,7 +301,7 @@ function validateGenerationFiles(
   styleFile?: GenerationRequest["styleFile"],
 ) {
   if (sourceFiles.length === 0) {
-    return "Upload at least one CSV, XLSX, or support file to start a generation run.";
+    return "Upload at least one data file (CSV, XLSX, PPTX, PDF, image, or document) to start a generation run.";
   }
 
   const unsupportedEvidenceFile = sourceFiles.find((file) => inferSourceFileKind(file.fileName) === "unknown");
