@@ -120,6 +120,11 @@ export const evidenceFileInventoryItemSchema = z.object({
     })).default([]),
   })).default([]),
   textContent: z.string().optional(),
+  pages: z.array(z.object({
+    num: z.number().int(),
+    text: z.string(),
+  })).optional(),
+  pageCount: z.number().int().optional(),
   warnings: z.array(z.string()).default([]),
 });
 

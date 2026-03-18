@@ -1360,11 +1360,15 @@ export async function renderV2PptxArtifact(
 
   const rawBuffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
 
-  // Post-process PPTX for Google Slides / Keynote compatibility:
-  // PptxGenJS uses multiLvlStrRef for category labels, which Google Slides
-  // misreads (shows numbers instead of labels). Replace with strRef.
-  // Also fixes some Keynote chart rendering issues.
-  const buffer = await fixPptxChartCompatibility(rawBuffer);
+  // Post-process for Google Slides / Keynote compatibility ONLY in universal mode.
+  // CRITICAL: Do NOT run this for powerpoint-native mode — JSZip re-compression
+  // can reorder ZIP entries and break OOXML conformance that PowerPoint enforces.
+  // In universal-compatible mode, charts are shape-built (no native chart XML),
+  // so the post-processor is effectively a no-op anyway — but we run it for
+  // the Calibri font replacement which helps in Keynote.
+  const buffer = input.exportMode === "universal-compatible"
+    ? await fixPptxChartCompatibility(rawBuffer)
+    : rawBuffer;
 
   return {
     fileName: "basquio-deck.pptx",
