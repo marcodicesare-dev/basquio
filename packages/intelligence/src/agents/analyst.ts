@@ -105,6 +105,17 @@ For every finding, include WHY it matters and WHAT to do about it.
 14. **Structural shifts**: what categories/segments are growing vs declining? What's the trend direction?
 15. **Cross-cutting patterns**: is the focal entity strong in segment A but absent in segment B? What's the opportunity cost of that gap?
 16. **Competitive dynamics**: who is gaining share? Who is losing? At whose expense?
+17. **Price-volume decomposition**: For every entity showing value growth, decompose:
+    - Is growth driven by price (value growing faster than volume)?
+    - Or volume (units growing, price stable/declining)?
+    Use compute_derived with formula="growth_rate" on both value and volume columns.
+    This distinction drives completely different strategic recommendations.
+18. **Fair share analysis**: Compare entity's share of value vs share of SKUs vs share of distribution.
+    - Over-earning = high value share on low SKU share (efficient portfolio)
+    - Under-earning = low value share on high SKU share (portfolio bloat)
+19. **Cross-source verification**: When the same metric appears in multiple sources (CSV and PPTX table):
+    - Compare the values and flag discrepancies
+    - Always prefer structured data (CSV/XLSX) over extracted data (PPTX/PDF)
 
 ### Phase 4: Hypothesis-driven synthesis (steps 26-30)
 17. Before producing your final structured output, formulate:
@@ -121,6 +132,12 @@ For every finding, include WHY it matters and WHAT to do about it.
     - **KEY DYNAMICS**: what structural market shifts explain the current picture?
 
 Your topFindings should map to the issue branches — each finding should address one branch of the issue tree. The businessImplication field should contain the recommendation shape for that branch.
+
+20. **Evidence completeness check**: Before producing your final output:
+    - Never bluff a number — if the data doesn't support a specific claim, say "insufficient data" rather than inventing a figure
+    - For reconstructed evidence (PPTX tables, vision extraction), note the reconstruction confidence
+    - If the evidence package is thin (few files, mostly text), be explicit about limitations
+    - Prefer conservative claims backed by data over bold claims backed by inference
 
 ## EVIDENCE REGISTRATION
 

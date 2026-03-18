@@ -627,75 +627,59 @@ function renderBullets(
 
 function renderMetrics(
   slide: PptxGenJS.Slide,
-  pptx: PptxGenJS,
+  _pptx: PptxGenJS,
   metrics: NonNullable<V2SlideRow["metrics"]>,
   region: R,
   tokens: BrandTokens,
 ): void {
   const count = Math.min(metrics.length, 5);
-  const gap = 0.14;
+  const gap = 0.15;
   const cardW = (region.w - gap * (count - 1)) / count;
-  const cardH = Math.min(region.h, 1.2);
-
-  // Use alternating accent colors from chart palette for card accents
-  const accentColors = tokens.chartPalette.length >= 2
-    ? tokens.chartPalette
-    : [tokens.palette.accent, tokens.palette.positive, tokens.palette.calloutOrange, tokens.palette.negative];
+  const cardH = Math.min(region.h, 1.3);
+  const accentColor = norm(tokens.palette.accent);
 
   metrics.slice(0, 5).forEach((m, i) => {
     const cardX = region.x + i * (cardW + gap);
-    const cardAccent = norm(accentColors[i % accentColors.length]);
 
-    // Shadow layer (offset slightly for depth)
-    slide.addShape(pptx.ShapeType.roundRect, {
-      x: cardX + 0.02,
-      y: region.y + 0.02,
-      w: cardW,
-      h: cardH,
-      rectRadius: 0.06,
-      fill: { color: "E5E7EB" },
-    });
-
-    // Card container
-    slide.addShape(pptx.ShapeType.roundRect, {
+    // Card background: sharp corners, surface fill, thin border
+    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
       x: cardX,
       y: region.y,
       w: cardW,
       h: cardH,
-      rectRadius: 0.06,
-      fill: { color: norm(tokens.palette.bg) },
+      fill: { color: norm(tokens.palette.surface ?? "F8FAFC") },
       line: { color: norm(tokens.palette.border), pt: 0.5 },
     });
 
-    // Top accent bar (full width of card, rounded top)
-    slide.addShape(pptx.ShapeType.rect, {
-      x: cardX + 0.01,
-      y: region.y + 0.01,
-      w: cardW - 0.02,
-      h: 0.04,
-      fill: { color: cardAccent },
+    // Left accent bar (3-4px wide, full card height)
+    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      x: cardX,
+      y: region.y,
+      w: 0.04,
+      h: cardH,
+      fill: { color: accentColor },
     });
 
-    // Label (uppercase, muted, letter-spaced)
+    // Label: ALL CAPS, bold, muted gray
     slide.addText(m.label.toUpperCase(), {
-      x: cardX + 0.12,
-      y: region.y + 0.12,
-      w: cardW - 0.24,
-      h: 0.22,
-      fontSize: 8,
+      x: cardX + 0.15,
+      y: region.y + 0.08,
+      w: cardW - 0.25,
+      h: 0.20,
+      fontSize: tokens.typography.kpiLabelSize,
       fontFace: tokens.typography.bodyFont,
-      color: norm(tokens.palette.muted),
+      color: "6B7280",
       bold: true,
-      charSpacing: 0.8,
+      charSpacing: 1.0,
     });
 
-    // Value (large, bold hero)
+    // Value: large, bold, near-black
     slide.addText(m.value, {
-      x: cardX + 0.12,
-      y: region.y + 0.32,
-      w: cardW - 0.24,
-      h: 0.42,
-      fontSize: count <= 3 ? 28 : 22,
+      x: cardX + 0.15,
+      y: region.y + 0.30,
+      w: cardW - 0.25,
+      h: 0.50,
+      fontSize: count <= 3 ? tokens.typography.kpiValueSize : 24,
       fontFace: tokens.typography.headingFont,
       bold: true,
       color: norm(tokens.palette.ink),
@@ -703,34 +687,20 @@ function renderMetrics(
       shrinkText: true,
     });
 
-    // Delta with arrow indicator
+    // Delta: plain text, semibold, green/red
     if (m.delta) {
-      const isPositive =
-        m.delta.startsWith("+") || m.delta.includes("↑") || m.delta.toLowerCase().includes("up");
-      const arrow = isPositive ? "▲" : "▼";
-      const deltaColor = isPositive ? tokens.palette.positive : tokens.palette.negative;
-      const deltaBg = isPositive ? "ECFDF5" : "FEF2F2"; // light green/red bg
+      const isPositive = m.delta.startsWith("+") || m.delta.includes("up") || m.delta.includes("↑");
+      const deltaColor = isPositive ? norm(tokens.palette.positive) : norm(tokens.palette.negative);
 
-      // Delta pill background
-      slide.addShape(pptx.ShapeType.roundRect, {
-        x: cardX + 0.12,
-        y: region.y + 0.78,
-        w: Math.min(cardW - 0.24, 1.2),
+      slide.addText(m.delta, {
+        x: cardX + 0.15,
+        y: region.y + 0.85,
+        w: cardW - 0.25,
         h: 0.22,
-        rectRadius: 0.11,
-        fill: { color: deltaBg },
-      });
-
-      slide.addText(`${arrow} ${m.delta}`, {
-        x: cardX + 0.12,
-        y: region.y + 0.78,
-        w: Math.min(cardW - 0.24, 1.2),
-        h: 0.22,
-        fontSize: 8,
+        fontSize: 10,
         fontFace: tokens.typography.bodyFont,
         bold: true,
-        color: norm(deltaColor),
-        align: "center",
+        color: deltaColor,
         valign: "middle",
       });
     }
@@ -753,18 +723,24 @@ function renderTable(
   const visibleHeaders = headers.slice(0, maxCols);
   const rows = chart.data.slice(0, maxRows);
 
-  // Header row: dark navy bg, white bold text
+  // Header row: accent-color bg, white bold text, 9pt
   const headerRow: PptxGenJS.TableCell[] = visibleHeaders.map((h, colIdx) => ({
     text: h,
     options: {
-      fill: { color: norm(tokens.palette.coverBg) },
+      fill: { color: norm(tokens.palette.accent) },
       color: "FFFFFF",
       bold: true,
-      fontSize: 8,
+      fontSize: 9,
       fontFace: tokens.typography.bodyFont,
       align: (colIdx === 0 ? "left" : "right") as "left" | "right",
       valign: "middle" as const,
       margin: [2, 4, 2, 4],
+      border: [
+        { type: "solid" as const, pt: 0.5, color: "E5E7EB" },
+        { type: "none" as const },
+        { type: "solid" as const, pt: 0.5, color: "E5E7EB" },
+        { type: "none" as const },
+      ],
     },
   }));
 
@@ -800,7 +776,7 @@ function renderTable(
       return {
         text: formatted,
         options: {
-          fontSize: 8,
+          fontSize: 9,
           fontFace: tokens.typography.bodyFont,
           color: cellColor,
           bold: isHighlighted || colIdx === 0,
@@ -845,7 +821,7 @@ function renderTable(
 
 function renderCallout(
   slide: PptxGenJS.Slide,
-  pptx: PptxGenJS,
+  _pptx: PptxGenJS,
   text: string,
   region: R,
   tokens: BrandTokens,
@@ -857,44 +833,41 @@ function renderCallout(
     accent: tokens.palette.accent,
   };
   const bgMap: Record<string, string> = {
-    green: "ECFDF5",
-    orange: "FFF7ED",
-    accent: tokens.palette.accentLight,
+    green: "F0FDF4",
+    orange: "FFFBEB",
+    accent: "EFF6FF",
   };
   const accentColor = accentMap[variant] || tokens.palette.accent;
-  const bgColor = bgMap[variant] || tokens.palette.accentLight;
+  const bgColor = bgMap[variant] || "EFF6FF";
+  const calloutH = 0.45;
 
-  // Light background fill (consulting style: left accent bar + light bg)
-  slide.addShape(pptx.ShapeType.roundRect, {
+  // Tinted background (no border, sharp corners)
+  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
     x: region.x,
     y: region.y,
     w: region.w,
-    h: region.h,
+    h: calloutH,
     fill: { color: norm(bgColor) },
-    rectRadius: 0.04,
-    line: { color: norm(tokens.palette.border), pt: 0.3 },
   });
 
-  // Left accent bar
-  slide.addShape(pptx.ShapeType.rect, {
+  // Left accent bar (3-4px, full height)
+  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
     x: region.x,
     y: region.y,
     w: 0.04,
-    h: region.h,
+    h: calloutH,
     fill: { color: norm(accentColor) },
   });
 
-  // Marker prefix
-  const marker = variant === "green" ? "✓ " : variant === "orange" ? "⚡ " : "→ ";
-
-  slide.addText(processNewlines(`${marker}${text}`), {
+  // Text: bold, dark gray (ink), no emoji markers
+  slide.addText(processNewlines(text), {
     x: region.x + 0.16,
-    y: region.y + 0.04,
-    w: region.w - 0.28,
-    h: region.h - 0.08,
+    y: region.y + 0.08,
+    w: region.w - 0.24,
+    h: calloutH - 0.16,
     fontSize: 10,
     fontFace: tokens.typography.bodyFont,
-    color: norm(accentColor),
+    color: norm(tokens.palette.ink),
     bold: true,
     wrap: true,
     valign: "middle",

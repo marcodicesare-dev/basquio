@@ -1214,11 +1214,19 @@ export const basquioV2Generation = inngest.createFunction(
           description = `${f.kind} file: ${f.fileName}`;
         }
 
+        // Confidence scoring by source quality
+        const confidence = isImage ? 0.30
+          : f.kind === "pptx" ? 0.70
+          : f.kind === "pdf" ? 0.65
+          : f.textContent ? 0.70
+          : 0.30;
+
         await persistEvidenceEntry(runId, {
           evidenceType,
           refId,
           label: f.fileName,
           description,
+          confidence,
           value: f.textContent
             ? { text: f.textContent.slice(0, 5000), truncated: f.textContent.length > 5000, charCount: f.textContent.length }
             : isImage && description.startsWith("Image: ")
@@ -1231,12 +1239,18 @@ export const basquioV2Generation = inngest.createFunction(
         if (pages && pages.length > 0) {
           for (const page of pages) {
             const pageRefId = `${refId}-page-${page.num}`;
+            // Check if page has table data (higher confidence for structured content)
+            const hasTable = page.text.includes("[Table data]");
+            const hasChart = page.text.includes("[Chart data]");
+            const pageConfidence = hasTable ? 0.85 : hasChart ? 0.80 : f.kind === "pdf" ? 0.65 : 0.70;
+
             await persistEvidenceEntry(runId, {
-              evidenceType: "document",
+              evidenceType: hasTable ? "table" : "document",
               refId: pageRefId,
               label: `${f.fileName} — page ${page.num}`,
               description: page.text.slice(0, 200),
-              value: { text: page.text, pageNum: page.num, sourceFile: f.fileName },
+              confidence: pageConfidence,
+              value: { text: page.text, pageNum: page.num, sourceFile: f.fileName, hasTable, hasChart },
             });
           }
         }
@@ -1463,6 +1477,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
             })),
           },
           sourceSheetKey: manifest.sheetKey,
+          confidence: 1.0, // Fully structured tabular data
         });
       }
 
