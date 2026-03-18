@@ -166,7 +166,16 @@ type LayoutContext = {
 export function buildDeckSceneGraph(
   slides: DeckSpecV2Slide[],
   templateProfile: TemplateProfile,
-  charts: Array<{ id: string; chartType: string; title: string }> = [],
+  charts: Array<{
+    id: string;
+    chartType: string;
+    title: string;
+    intent?: string;
+    unit?: string;
+    benchmarkLabel?: string;
+    benchmarkValue?: number;
+    sourceNote?: string;
+  }> = [],
 ): DeckSceneGraph {
   const tokens = templateProfile.brandTokens ?? defaultBrandTokens;
 
