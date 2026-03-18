@@ -313,9 +313,50 @@ export function createComputeDerivedTool(ctx: ToolContext) {
     }),
     async execute(params) {
       const sheetKey = resolveSheetKey(ctx.workspace, params.file, params.sheet);
-      if (!sheetKey) return { error: `Cannot resolve sheet for file: ${params.file}` };
+      let rows: Record<string, unknown>[];
 
-      let rows = await resolveRows(ctx, sheetKey);
+      if (sheetKey) {
+        rows = await resolveRows(ctx, sheetKey);
+      } else {
+        // Fallback: try to reconstruct rows from PPTX/PDF table evidence
+        // Look for evidence entries with table data for this file
+        const file = ctx.workspace.fileInventory.find(
+          (f) => f.fileName.toLowerCase().includes(params.file.toLowerCase()) || f.id === params.file,
+        );
+        if (!file) return { error: `Cannot find file: ${params.file}` };
+
+        // Try to find pages with [Table data] markers
+        const pages = (file as Record<string, unknown>).pages as Array<{ num: number; text: string }> | undefined;
+        const tablePages = pages?.filter((p) => p.text.includes("[Table data]")) ?? [];
+
+        if (tablePages.length === 0) {
+          return { error: `No tabular data found in ${params.file}. This file may only contain text/visual content.` };
+        }
+
+        // Parse table text into rows
+        rows = [];
+        for (const page of tablePages) {
+          const tableMatch = page.text.match(/\[Table data\]\s*([\s\S]*?)(?=\[|$)/);
+          if (!tableMatch) continue;
+          const lines = tableMatch[1].trim().split("\n").filter(Boolean);
+          if (lines.length < 2) continue;
+
+          const headers = lines[0].split("|").map((h) => h.trim()).filter(Boolean);
+          for (let li = 1; li < lines.length; li++) {
+            const cells = lines[li].split("|").map((c) => c.trim());
+            const row: Record<string, unknown> = {};
+            headers.forEach((h, ci) => {
+              const val = cells[ci] ?? "";
+              const num = parseFloat(val.replace(/[,%€$£]/g, ""));
+              row[h] = isNaN(num) ? val : num;
+            });
+            rows.push(row);
+          }
+        }
+
+        if (rows.length === 0) return { error: `Could not reconstruct table data from ${params.file}` };
+      }
+
       if (params.filter) rows = applyFilter(rows, params.filter);
       if (rows.length === 0) return { error: "No rows match the filter criteria" };
 
