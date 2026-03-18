@@ -88,7 +88,7 @@ async function planSlideBlueprints(
   const result = await generateStructuredStage({
     stage: "slide-architect",
     schema: z.object({
-      slides: z.array(llmSlideBlueprintSchema).min(1).max(40),
+      slides: z.array(llmSlideBlueprintSchema).min(1).max(100),
     }),
     modelId,
     providerPreference: modelId.startsWith("claude") ? "anthropic" : "openai",
