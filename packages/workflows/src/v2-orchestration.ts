@@ -2477,8 +2477,8 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         ? allSections.filter((s) => flaggedSectionIds.has(s.sectionId))
         : allSections; // Fall back to all sections if all flagged or none mapped
 
-      if (sectionsToRevise.length > 0 && sectionsToRevise.length < allSections.length) {
-        // Section-level targeted repair — re-run only flagged sections
+      if (sectionsToRevise.length > 0) {
+        // Section-level targeted repair — always split into per-section steps to avoid Vercel timeout
         for (const section of sectionsToRevise) {
           const safeSectionId = section.sectionId
             .replace(/[^a-zA-Z0-9-]/g, "-")
