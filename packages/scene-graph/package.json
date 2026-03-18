@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./layout-regions": "./src/layout-regions.ts",
-    "./slot-archetypes": "./src/slot-archetypes.ts"
+    "./slot-archetypes": "./src/slot-archetypes.ts",
+    "./chart-design-system": "./src/chart-design-system.ts"
   },
   "dependencies": {
     "@basquio/types": "workspace:*",
