@@ -2875,7 +2875,16 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
           revision: 1,
         })),
         templateProfile,
-        v2ChartRows.map(c => ({ id: c.id, chartType: c.chartType, title: c.title })),
+        v2ChartRows.map(c => ({
+          id: c.id,
+          chartType: c.chartType,
+          title: c.title,
+          intent: c.intent,
+          unit: c.unit,
+          benchmarkLabel: c.benchmarkLabel,
+          benchmarkValue: c.benchmarkValue,
+          sourceNote: c.sourceNote,
+        })),
       );
 
       // Persist scene graph
@@ -3061,7 +3070,20 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
 
 // ─── HTML RENDERER FOR UNIFIED PDF ────────────────────────────────
 
-type V2ChartRowForPdf = { id: string; chartType: string; title: string; data: Record<string, unknown>[]; xAxis: string; series: string[] };
+type V2ChartRowForPdf = {
+  id: string;
+  chartType: string;
+  title: string;
+  data: Record<string, unknown>[];
+  xAxis: string;
+  series: string[];
+  // Semantic fields from chart design system
+  intent?: string;
+  unit?: string;
+  benchmarkLabel?: string;
+  benchmarkValue?: number;
+  sourceNote?: string;
+};
 
 function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deckTitle: string): string {
   const chartMap = new Map<string, V2ChartRowForPdf>();
@@ -3102,10 +3124,16 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
           }).join("")}</tr>`).join("")}
         </table>`;
       } else if (chart.series?.length > 0) {
-        // Render chart via QuickChart with inline SVG fallback
+        // Render chart via QuickChart — use design system intent for type mapping
         const pal = ["#0F4C81", "#D1D5DB", "#1F7A4D", "#B42318", "#C97A00", "#6B21A8"];
-        const type = chart.chartType === "stacked_bar" || chart.chartType === "waterfall" ? "bar" : chart.chartType;
-        const isHoriz = chart.chartType === "bar";
+        const typeMap: Record<string, string> = {
+          bar: "bar", horizontal_bar: "bar", grouped_bar: "bar",
+          stacked_bar: "bar", stacked_bar_100: "bar", waterfall: "bar",
+          line: "line", area: "line", pie: "pie", doughnut: "doughnut",
+          scatter: "scatter",
+        };
+        const type = typeMap[chart.chartType] ?? "bar";
+        const isHoriz = chart.chartType === "bar" || chart.chartType === "horizontal_bar";
         const labels = chart.data.map((r) => String(r[chart.xAxis] ?? "").substring(0, 20));
         const datasets = chart.series.map((ser, i) => ({
           label: ser,
@@ -3133,8 +3161,9 @@ function renderSlidesToHtml(slides: SlideRow[], charts: V2ChartRowForPdf[], deck
           <tr><th style="text-align:left;border-bottom:1px solid #D1D5DB;padding:2px 4px;">${esc(chart.xAxis)}</th>${chart.series.map((s) => `<th style="text-align:right;border-bottom:1px solid #D1D5DB;padding:2px 4px;">${esc(s)}</th>`).join("")}</tr>
           ${chart.data.slice(0, 6).map((row) => `<tr><td style="padding:2px 4px;border-bottom:0.5px solid #E5E7EB;">${esc(String(row[chart.xAxis] ?? ""))}</td>${chart.series.map((s) => `<td style="text-align:right;padding:2px 4px;border-bottom:0.5px solid #E5E7EB;">${esc(String(row[s] ?? ""))}</td>`).join("")}</tr>`).join("")}
         </table>`;
-        // Chart image only — no fallback table below (clutters the slide)
-        chartHtml = `<img src="${qcUrl}" style="max-width:100%;max-height:260px;" onerror="this.style.display='none'"/>`;
+        // Chart image + source note
+        const sourceHtml = chart.sourceNote ? `<div style="font-size:7px;color:#4B5563;font-style:italic;margin-top:2px;">Source: ${esc(chart.sourceNote)}</div>` : "";
+        chartHtml = `<img src="${qcUrl}" style="max-width:100%;max-height:260px;" onerror="this.style.display='none'"/>${sourceHtml}`;
       }
     }
 
