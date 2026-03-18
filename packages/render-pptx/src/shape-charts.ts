@@ -302,22 +302,19 @@ function renderVerticalBar(
   tokens: ShapeChartTokens,
   options: ShapeChartOptions,
 ): void {
-  const labels = data.labels.slice(0, MAX_CATEGORIES);
+  const labels = data.labels.slice(0, V.maxCategories);
   const datasets = data.datasets;
   const isGrouped = datasets.length > 1;
-  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, MUTED_BAR, "93C5FD", "FCA5A5"];
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, V.mutedBar, "93C5FD", "FCA5A5"];
 
-  // Find global max across all datasets
   const allVals = datasets.flatMap((ds) => ds.data.slice(0, labels.length));
   const maxVal = Math.max(...allVals.map((v) => Math.abs(v)), 1);
 
-  const axisAreaH = 0.35;
-  const labelAreaH = 0.25;
-  const chartAreaH = frame.h - axisAreaH - labelAreaH;
-  const chartAreaY = frame.y + labelAreaH;
+  const chartAreaH = frame.h - V.axisAreaH - 0.20;
+  const chartAreaY = frame.y + 0.20;
   const n = labels.length;
   const groupW = frame.w / n;
-  const groupGap = groupW * 0.2;
+  const groupGap = groupW * 0.18;
   const usableGroupW = groupW - groupGap;
   const seriesCount = isGrouped ? datasets.length : 1;
   const barW = usableGroupW / seriesCount;
@@ -325,14 +322,20 @@ function renderVerticalBar(
   const isFocal = (label: string) =>
     options.focalEntity && label.toLowerCase().includes(options.focalEntity.toLowerCase());
 
-  // Horizontal grid lines
-  for (let g = 1; g <= 3; g++) {
+  // Subtle horizontal grid lines
+  for (let g = 1; g <= 4; g++) {
     const gridY = chartAreaY + chartAreaH - (chartAreaH * g) / 4;
     slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-      x: frame.x, y: gridY, w: frame.w, h: 0.005,
-      fill: { color: GRID_GRAY },
+      x: frame.x, y: gridY, w: frame.w, h: V.gridLinePt,
+      fill: { color: V.gridGray },
     });
   }
+
+  // Baseline
+  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    x: frame.x, y: chartAreaY + chartAreaH, w: frame.w, h: V.axisLinePt,
+    fill: { color: V.axisGray },
+  });
 
   labels.forEach((label, i) => {
     const groupX = frame.x + i * groupW + groupGap / 2;
@@ -341,32 +344,33 @@ function renderVerticalBar(
       const val = ds.data[i] ?? 0;
       const barH = (Math.abs(val) / maxVal) * chartAreaH;
       const barY = chartAreaY + chartAreaH - barH;
-      const barX = groupX + di * barW;
-      const color = isGrouped ? palette[di % palette.length] : (isFocal(label) ? tokens.accent : MUTED_BAR);
+      const barX = groupX + di * barW + V.barPadding;
+      const focal = !isGrouped && isFocal(label);
+      const color = isGrouped ? palette[di % palette.length] : (focal ? tokens.accent : V.mutedBar);
 
       if (barH > 0.01) {
         slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-          x: barX, y: barY, w: barW * 0.9, h: barH,
+          x: barX, y: barY, w: barW - V.barPadding * 2, h: barH,
           fill: { color },
         });
       }
 
-      // Value label on top (only for single series or if bar is wide enough)
-      if (!isGrouped || barW > 0.4) {
+      // Value label on top
+      if (!isGrouped || barW > 0.35) {
         slide.addText(formatValue(val, options.unit), {
-          x: barX, y: barY - labelAreaH, w: barW * 0.9, h: labelAreaH,
-          fontSize: isGrouped ? DATA_LABEL_SIZE - 2 : DATA_LABEL_SIZE,
-          fontFace: tokens.bodyFont, color: tokens.ink, bold: true,
-          align: "center", valign: "bottom",
+          x: barX - 0.05, y: barY - 0.22, w: barW + 0.1, h: 0.20,
+          fontSize: isGrouped ? V.dataLabel - 2 : V.dataLabel,
+          fontFace: tokens.bodyFont, color: focal ? tokens.ink : V.labelGray,
+          bold: true, align: "center", valign: "bottom",
         });
       }
     });
 
-    // Category label below
+    // Category label below baseline
     slide.addText(truncLabel(label), {
-      x: groupX, y: chartAreaY + chartAreaH + 0.02, w: usableGroupW, h: axisAreaH - 0.04,
-      fontSize: CAT_LABEL_SIZE - 1, fontFace: tokens.bodyFont,
-      color: LABEL_GRAY, align: "center", valign: "top",
+      x: groupX, y: chartAreaY + chartAreaH + 0.03, w: usableGroupW, h: V.axisAreaH - 0.06,
+      fontSize: V.catLabel - 1, fontFace: tokens.bodyFont,
+      color: V.labelGray, align: "center", valign: "top",
     });
   });
 
@@ -374,7 +378,7 @@ function renderVerticalBar(
   if (isGrouped) {
     renderLegend(slide, datasets.map((ds, i) => ({
       label: ds.label, color: palette[i % palette.length],
-    })), { x: frame.x, y: frame.y + frame.h - 0.18, w: frame.w }, tokens);
+    })), { x: frame.x, y: frame.y + frame.h - V.legendH, w: frame.w }, tokens);
   }
 }
 
@@ -388,62 +392,51 @@ function renderStackedBar(
   options: ShapeChartOptions,
   normalize100 = false,
 ): void {
-  const labels = data.labels.slice(0, MAX_CATEGORIES);
+  const labels = data.labels.slice(0, V.maxCategories);
   const datasets = data.datasets;
-  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, MUTED_BAR, "93C5FD", "FCA5A5", "86EFAC"];
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, V.mutedBar, "93C5FD", "FCA5A5", "86EFAC"];
 
-  // Compute totals for each category
   const totals = labels.map((_, i) =>
     datasets.reduce((sum, ds) => sum + (ds.data[i] ?? 0), 0),
   );
-  // For 100% stacked, all bars are same width (100%). For normal stacked, scale to max total.
   const maxTotal = normalize100 ? 1 : Math.max(...totals, 1);
 
-  const labelAreaW = 1.6;
+  const labelAreaW = V.labelAreaWNarrow;
   const chartAreaX = frame.x + labelAreaW;
   const chartAreaW = frame.w - labelAreaW - 0.1;
   const n = labels.length;
-  const barH = (frame.h / n) * 0.65;
-  const gap = (frame.h / n) * 0.35;
+  const slotH = frame.h / n;
+  const barH = slotH * (1 - V.barGapRatio);
+  const gapH = slotH * V.barGapRatio;
 
   labels.forEach((label, i) => {
-    const y = frame.y + i * (barH + gap) + gap / 2;
+    const y = frame.y + i * slotH + gapH / 2;
     let offsetX = 0;
 
     // Category label
     slide.addText(truncLabel(label), {
-      x: frame.x,
-      y,
-      w: labelAreaW - 0.08,
-      h: barH,
-      fontSize: CAT_LABEL_SIZE,
-      fontFace: tokens.bodyFont,
-      color: LABEL_GRAY,
-      align: "right",
-      valign: "middle",
+      x: frame.x, y, w: labelAreaW - 0.08, h: barH,
+      fontSize: V.catLabel, fontFace: tokens.bodyFont,
+      color: V.labelGray, align: "right", valign: "middle",
     });
 
     datasets.forEach((ds, di) => {
       const val = ds.data[i] ?? 0;
-      // For 100% stacked: segment width = (val / category total) * chart width
-      // For normal stacked: segment width = (val / max total) * chart width
       const segW = normalize100
         ? (totals[i] > 0 ? (val / totals[i]) * chartAreaW : 0)
         : (val / maxTotal) * chartAreaW;
 
       if (segW > 0.01) {
         slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-          x: chartAreaX + offsetX,
-          y,
-          w: segW,
-          h: barH,
+          x: chartAreaX + offsetX, y: y + V.barPadding,
+          w: segW, h: barH - V.barPadding * 2,
           fill: { color: palette[di % palette.length] },
         });
 
-        // Label inside segment if wide enough
+        // Label inside segment if wide enough (percentage or value)
         const pct = totals[i] > 0 ? (val / totals[i]) * 100 : 0;
-        if (pct >= 15 && segW > 0.4) {
-          slide.addText(`${Math.round(pct)}%`, {
+        if (pct >= 15 && segW > 0.35) {
+          slide.addText(normalize100 ? `${Math.round(pct)}%` : formatValue(val, options.unit), {
             x: chartAreaX + offsetX,
             y,
             w: segW,
@@ -466,7 +459,7 @@ function renderStackedBar(
     renderLegend(slide, datasets.map((ds, i) => ({
       label: ds.label,
       color: palette[i % palette.length],
-    })), { x: frame.x + labelAreaW, y: frame.y + frame.h - 0.18, w: chartAreaW }, tokens);
+    })), { x: frame.x + labelAreaW, y: frame.y + frame.h - V.legendH, w: chartAreaW }, tokens);
   }
 }
 
@@ -610,85 +603,76 @@ function renderArcChart(
   frame: ShapeChartFrame,
   tokens: ShapeChartTokens,
   options: ShapeChartOptions,
-  thicknessRatio: number,
+  _thicknessRatio: number,
 ): void {
-  const maxSlices = thicknessRatio < 1 ? 6 : 5;
   const values = data.datasets[0].data;
   let slices = data.labels.map((label, i) => ({ label, value: values[i] ?? 0 }));
 
-  // Roll up small slices into "Other"
-  if (slices.length > maxSlices) {
-    slices.sort((a, b) => b.value - a.value);
-    const top = slices.slice(0, maxSlices - 1);
-    const rest = slices.slice(maxSlices - 1);
-    const restSum = rest.reduce((s, p) => s + p.value, 0);
-    slices = [...top, { label: "Other", value: restSum }];
+  // Roll up small slices, sort descending
+  slices.sort((a, b) => b.value - a.value);
+  if (slices.length > V.maxSlices) {
+    const top = slices.slice(0, V.maxSlices - 1);
+    const rest = slices.slice(V.maxSlices - 1);
+    slices = [...top, { label: "Other", value: rest.reduce((s, p) => s + p.value, 0) }];
   }
 
   const total = slices.reduce((s, p) => s + p.value, 0);
   if (total === 0) return;
 
-  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, MUTED_BAR, "93C5FD", "FCA5A5", "86EFAC", "FDE68A"];
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, V.mutedBar, "93C5FD", "FCA5A5", "86EFAC", "FDE68A"];
 
-  // Chart takes left 60%, legend takes right 40%
-  const chartDiameter = Math.min(frame.w * 0.55, frame.h * 0.9);
-  const centerX = frame.x + chartDiameter / 2 + 0.1;
-  const centerY = frame.y + frame.h / 2;
-  const radius = chartDiameter / 2;
+  // Composition chart: horizontal proportion bars with labels
+  // This is the consulting-grade approach — clearer than pie/donut, works everywhere
+  const rowH = Math.min(0.42, frame.h / slices.length);
+  const rowGap = Math.min(0.08, (frame.h - rowH * slices.length) / Math.max(slices.length - 1, 1));
+  const barAreaX = frame.x + 0.05;
+  const barAreaW = frame.w * 0.55;
+  const labelAreaX = barAreaX + barAreaW + 0.12;
+  const labelAreaW = frame.w - barAreaW - 0.22;
 
-  let startAngle = -90; // Start from top
-
+  // Full-width background bar (100% reference)
   slices.forEach((slc, i) => {
-    const sweepAngle = (slc.value / total) * 360;
+    const y = frame.y + i * (rowH + rowGap);
     const color = palette[i % palette.length];
-
-    // Draw arc/pie segment using a filled shape approximation
-    // PptxGenJS blockArc is complex — use a simple rect-based approximation
-    // For production: consider rendering as image via ECharts
-    // For now: use colored rectangles in a legend-style layout
-
-    // Actually, let's render this as a legend-based value display
-    // since PptxGenJS shape types for arcs are unreliable across apps
-    const legendY = frame.y + 0.05 + i * 0.35;
-    const legendX = frame.x + 0.1;
     const pct = Math.round((slc.value / total) * 100);
+    const barW = (slc.value / total) * barAreaW;
 
-    // Color swatch
+    // Background track (subtle)
     slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-      x: legendX,
-      y: legendY + 0.04,
-      w: 0.18,
-      h: 0.18,
-      fill: { color },
-      rectRadius: 0.02,
+      x: barAreaX, y: y + rowH * 0.25, w: barAreaW, h: rowH * 0.50,
+      fill: { color: V.surfaceGray },
     });
 
-    // Label + value
+    // Value bar
+    if (barW > 0.01) {
+      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+        x: barAreaX, y: y + rowH * 0.25, w: barW, h: rowH * 0.50,
+        fill: { color },
+      });
+    }
+
+    // Label row: swatch + name + percentage + absolute value
+    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      x: labelAreaX, y: y + rowH * 0.30, w: 0.14, h: 0.14,
+      fill: { color },
+    });
+
     slide.addText(
       [
-        { text: `${truncLabel(slc.label)}  `, options: { fontSize: 10, color: tokens.ink } },
-        { text: `${pct}%`, options: { fontSize: 12, bold: true, color: tokens.ink } },
-        { text: `  (${formatValue(slc.value, options.unit)})`, options: { fontSize: 9, color: LABEL_GRAY } },
+        { text: `${truncLabel(slc.label)}  `, options: { fontSize: V.dataLabel, color: tokens.ink } },
+        { text: `${pct}%`, options: { fontSize: V.dataLabel + 1, bold: true, color: tokens.ink } },
+        { text: `  (${formatValue(slc.value, options.unit)})`, options: { fontSize: V.catLabel, color: V.labelGray } },
       ],
       {
-        x: legendX + 0.25,
-        y: legendY,
-        w: frame.w - 0.45,
+        x: labelAreaX + 0.20,
+        y,
+        w: labelAreaW - 0.25,
         h: 0.28,
         fontFace: tokens.bodyFont,
         valign: "middle",
       },
     );
 
-    // Proportion bar (horizontal, simulating the donut/pie visually)
-    const barW = (slc.value / total) * (frame.w - 0.5);
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-      x: legendX + 0.25,
-      y: legendY + 0.26,
-      w: barW,
-      h: 0.04,
-      fill: { color },
-    });
   });
 }
 
