@@ -2152,6 +2152,50 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         }
       }
 
+      // ─── SLIDE COUNT REPAIR ────────────────────────────────────
+      // If user explicitly requested N slides and we have more, trim the excess.
+      // The DeckPlan's targetSlideCount carries the user's intent.
+      const requestedCount = deckPlan.structuredPlan.targetSlideCount;
+      const currentCount = allSlides.length;
+
+      if (requestedCount && currentCount > requestedCount) {
+        // Too many slides — delete the excess (keep the first N by position)
+        const sorted = [...allSlides].sort((a: { position: number }, b: { position: number }) => a.position - b.position);
+        const slidesToKeep = new Set(sorted.slice(0, requestedCount).map((s: { id: string }) => s.id));
+        const slidesToDelete = sorted.filter((s: { id: string }) => !slidesToKeep.has(s.id));
+
+        for (const slide of slidesToDelete) {
+          await step.run(`count-trim-slide-${(slide as { position: number }).position}`, async () => {
+            await fetch(
+              `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_slides?id=eq.${slide.id}`,
+              {
+                method: "DELETE",
+                headers: {
+                  apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                  Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+                },
+              },
+            );
+            logPhaseEvent(runId, "revise", "count_trim_deleted_slide", {
+              slideId: slide.id,
+              position: (slide as { position: number }).position,
+              requestedCount,
+              hadCount: currentCount,
+            });
+          });
+        }
+
+        logPhaseEvent(runId, "revise", "count_repair", {
+          action: "trimmed",
+          requestedCount,
+          hadCount: currentCount,
+          deletedCount: slidesToDelete.length,
+        });
+      }
+      // If too few slides, the revise author loop below will handle it via the
+      // critique feedback which flags "too few slides" as critical.
+      // The author prompt already says "produce EXACTLY N slides."
+
       // Section-level targeted repair: re-run only flagged sections
       const sectionsToRevise = flaggedSectionIds.size > 0 && flaggedSectionIds.size < allSections.length
         ? allSections.filter((s) => flaggedSectionIds.has(s.sectionId))
@@ -2518,9 +2562,36 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       await updateRunStatus(runId, "running", "export");
       await emitRunEvent(runId, "export", "phase_started");
 
-      // 1. Build scene graph
+      // 1. Load slides and verify count
       const slides = await getSlides(runId);
       const v2ChartRows = await getV2ChartRows(runId);
+
+      // Hard count gate: if user explicitly requested N slides and we don't have N, trim/fail
+      const targetCount = deckPlan.structuredPlan.targetSlideCount;
+      if (targetCount && slides.length > targetCount) {
+        // Trim excess slides by position (keep first N)
+        const sorted = [...slides].sort((a, b) => a.position - b.position);
+        const toDelete = sorted.slice(targetCount);
+        for (const slide of toDelete) {
+          await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_slides?id=eq.${slide.id}`,
+            {
+              method: "DELETE",
+              headers: {
+                apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+              },
+            },
+          );
+        }
+        // Re-fetch after trim
+        slides.splice(0, slides.length, ...(await getSlides(runId)));
+        logPhaseEvent(runId, "export", "count_gate_trimmed", {
+          targetCount,
+          hadCount: sorted.length,
+          trimmedTo: slides.length,
+        });
+      }
       const deckTitle = analysis.summary?.slice(0, 100) ?? slides[0]?.title ?? "Basquio Report";
 
       const templateProfile = workspace.templateProfile ?? createSystemTemplateProfile();
