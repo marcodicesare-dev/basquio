@@ -124,9 +124,9 @@ export function renderShapeChart(
     // Grouped bar = vertical bar with multi-series support
     renderVerticalBar(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("100%") || normalized.includes("percent")) {
-    renderStackedBar(slide, data, chartFrame, tokens, options);
+    renderStackedBar(slide, data, chartFrame, tokens, options, true);
   } else if (normalized.includes("stack")) {
-    renderStackedBar(slide, data, chartFrame, tokens, options);
+    renderStackedBar(slide, data, chartFrame, tokens, options, false);
   } else if (normalized.includes("waterfall") || normalized.includes("bridge")) {
     renderWaterfall(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("donut") || normalized.includes("doughnut")) {
@@ -146,8 +146,9 @@ export function renderShapeChart(
     // Tables/matrices: render as a data table
     renderDataTable(slide, data, chartFrame, tokens, options);
   } else {
-    // Unknown type: render as horizontal bar (most versatile consulting chart)
-    renderHorizontalBar(slide, data, chartFrame, tokens, options);
+    // Unknown chart type: render as data table with a note about the chart type
+    // This is better than silently forcing a horizontal bar which may misrepresent the data
+    renderDataTable(slide, data, chartFrame, tokens, { ...options, title: options.title ? `${options.title} (${chartType})` : chartType });
   }
 }
 
@@ -240,79 +241,80 @@ function renderVerticalBar(
   tokens: ShapeChartTokens,
   options: ShapeChartOptions,
 ): void {
-  const values = data.datasets[0].data;
-  let labels = data.labels.slice(0, MAX_CATEGORIES);
-  const vals = values.slice(0, MAX_CATEGORIES);
+  const labels = data.labels.slice(0, MAX_CATEGORIES);
+  const datasets = data.datasets;
+  const isGrouped = datasets.length > 1;
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, MUTED_BAR, "93C5FD", "FCA5A5"];
 
-  const maxVal = Math.max(...vals.map((v) => Math.abs(v)), 1);
-  const axisAreaH = 0.35; // space for category labels at bottom
-  const labelAreaH = 0.25; // space for value labels on top
+  // Find global max across all datasets
+  const allVals = datasets.flatMap((ds) => ds.data.slice(0, labels.length));
+  const maxVal = Math.max(...allVals.map((v) => Math.abs(v)), 1);
+
+  const axisAreaH = 0.35;
+  const labelAreaH = 0.25;
   const chartAreaH = frame.h - axisAreaH - labelAreaH;
   const chartAreaY = frame.y + labelAreaH;
   const n = labels.length;
-  const totalW = frame.w;
-  const barW = (totalW / n) * 0.65;
-  const gap = (totalW / n) * 0.35;
+  const groupW = frame.w / n;
+  const groupGap = groupW * 0.2;
+  const usableGroupW = groupW - groupGap;
+  const seriesCount = isGrouped ? datasets.length : 1;
+  const barW = usableGroupW / seriesCount;
 
   const isFocal = (label: string) =>
     options.focalEntity && label.toLowerCase().includes(options.focalEntity.toLowerCase());
 
-  // Horizontal grid lines (3 lines)
+  // Horizontal grid lines
   for (let g = 1; g <= 3; g++) {
     const gridY = chartAreaY + chartAreaH - (chartAreaH * g) / 4;
     slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-      x: frame.x,
-      y: gridY,
-      w: frame.w,
-      h: 0.005,
+      x: frame.x, y: gridY, w: frame.w, h: 0.005,
       fill: { color: GRID_GRAY },
     });
   }
 
   labels.forEach((label, i) => {
-    const x = frame.x + i * (barW + gap) + gap / 2;
-    const barH = (Math.abs(vals[i]) / maxVal) * chartAreaH;
-    const barY = chartAreaY + chartAreaH - barH;
-    const color = isFocal(label) ? tokens.accent : MUTED_BAR;
+    const groupX = frame.x + i * groupW + groupGap / 2;
 
-    // Bar
-    if (barH > 0.01) {
-      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-        x,
-        y: barY,
-        w: barW,
-        h: barH,
-        fill: { color },
-      });
-    }
+    datasets.forEach((ds, di) => {
+      const val = ds.data[i] ?? 0;
+      const barH = (Math.abs(val) / maxVal) * chartAreaH;
+      const barY = chartAreaY + chartAreaH - barH;
+      const barX = groupX + di * barW;
+      const color = isGrouped ? palette[di % palette.length] : (isFocal(label) ? tokens.accent : MUTED_BAR);
 
-    // Value label on top
-    slide.addText(formatValue(vals[i], options.unit), {
-      x,
-      y: barY - labelAreaH,
-      w: barW,
-      h: labelAreaH,
-      fontSize: DATA_LABEL_SIZE,
-      fontFace: tokens.bodyFont,
-      color: tokens.ink,
-      bold: true,
-      align: "center",
-      valign: "bottom",
+      if (barH > 0.01) {
+        slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+          x: barX, y: barY, w: barW * 0.9, h: barH,
+          fill: { color },
+        });
+      }
+
+      // Value label on top (only for single series or if bar is wide enough)
+      if (!isGrouped || barW > 0.4) {
+        slide.addText(formatValue(val, options.unit), {
+          x: barX, y: barY - labelAreaH, w: barW * 0.9, h: labelAreaH,
+          fontSize: isGrouped ? DATA_LABEL_SIZE - 2 : DATA_LABEL_SIZE,
+          fontFace: tokens.bodyFont, color: tokens.ink, bold: true,
+          align: "center", valign: "bottom",
+        });
+      }
     });
 
     // Category label below
     slide.addText(truncLabel(label), {
-      x,
-      y: chartAreaY + chartAreaH + 0.02,
-      w: barW,
-      h: axisAreaH - 0.04,
-      fontSize: CAT_LABEL_SIZE - 1,
-      fontFace: tokens.bodyFont,
-      color: LABEL_GRAY,
-      align: "center",
-      valign: "top",
+      x: groupX, y: chartAreaY + chartAreaH + 0.02, w: usableGroupW, h: axisAreaH - 0.04,
+      fontSize: CAT_LABEL_SIZE - 1, fontFace: tokens.bodyFont,
+      color: LABEL_GRAY, align: "center", valign: "top",
     });
   });
+
+  // Legend for multi-series
+  if (isGrouped) {
+    renderLegend(slide, datasets.map((ds, i) => ({
+      label: ds.label, color: palette[i % palette.length],
+    })), { x: frame.x, y: frame.y + frame.h - 0.18, w: frame.w }, tokens);
+  }
 }
 
 // ─── STACKED BAR CHART ───────────────────────────────────────────
@@ -323,6 +325,7 @@ function renderStackedBar(
   frame: ShapeChartFrame,
   tokens: ShapeChartTokens,
   options: ShapeChartOptions,
+  normalize100 = false,
 ): void {
   const labels = data.labels.slice(0, MAX_CATEGORIES);
   const datasets = data.datasets;
@@ -332,7 +335,8 @@ function renderStackedBar(
   const totals = labels.map((_, i) =>
     datasets.reduce((sum, ds) => sum + (ds.data[i] ?? 0), 0),
   );
-  const maxTotal = Math.max(...totals, 1);
+  // For 100% stacked, all bars are same width (100%). For normal stacked, scale to max total.
+  const maxTotal = normalize100 ? 1 : Math.max(...totals, 1);
 
   const labelAreaW = 1.6;
   const chartAreaX = frame.x + labelAreaW;
@@ -360,7 +364,11 @@ function renderStackedBar(
 
     datasets.forEach((ds, di) => {
       const val = ds.data[i] ?? 0;
-      const segW = (val / maxTotal) * chartAreaW;
+      // For 100% stacked: segment width = (val / category total) * chart width
+      // For normal stacked: segment width = (val / max total) * chart width
+      const segW = normalize100
+        ? (totals[i] > 0 ? (val / totals[i]) * chartAreaW : 0)
+        : (val / maxTotal) * chartAreaW;
 
       if (segW > 0.01) {
         slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
