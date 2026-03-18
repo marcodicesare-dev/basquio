@@ -193,7 +193,18 @@ export const deckSpecV2SlideSchema = z.object({
 export const deckSpecV2ChartSchema = z.object({
   id: z.string().uuid(),
   runId: z.string().uuid(),
-  chartType: z.enum(["bar", "line", "pie", "scatter", "waterfall", "heatmap", "stacked_bar", "table"]),
+  chartType: z.enum([
+    "bar", "horizontal_bar", "grouped_bar",
+    "stacked_bar", "stacked_bar_100",
+    "line", "area",
+    "pie", "doughnut",
+    "scatter",
+    "waterfall",
+    "table",
+    "funnel", "marimekko", "matrix", "quadrant",
+    // Legacy compat
+    "heatmap",
+  ]),
   title: z.string(),
   data: z.array(z.record(z.string(), z.unknown())),
   xAxis: z.string(),
@@ -205,6 +216,16 @@ export const deckSpecV2ChartSchema = z.object({
     showValues: z.boolean().optional(),
     highlightCategories: z.array(z.string()).optional(),
   }).default({}),
+  // Semantic fields from chart design system
+  intent: z.enum([
+    "rank", "trend", "composition", "bridge", "correlation",
+    "comparison", "distribution", "flow", "detail", "positioning",
+    "timeline", "proportion",
+  ]).nullable().optional(),
+  unit: z.string().nullable().optional(),
+  benchmarkLabel: z.string().nullable().optional(),
+  benchmarkValue: z.number().nullable().optional(),
+  sourceNote: z.string().nullable().optional(),
   thumbnailUrl: z.string().default(""),
   width: z.number().int().default(0),
   height: z.number().int().default(0),
