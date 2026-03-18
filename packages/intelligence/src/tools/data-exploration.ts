@@ -279,6 +279,232 @@ export function createComputeMetricTool(ctx: ToolContext) {
   });
 }
 
+// ─── COMPUTE DERIVED METRIC ──────────────────────────────────────
+// Cross-column derived metrics: price, share, growth, index, etc.
+
+export function createComputeDerivedTool(ctx: ToolContext) {
+  return tool({
+    description:
+      "Compute a derived cross-column metric: price (value/units), market share, growth rate, index, contribution, mix gap. Use this for any metric that requires dividing or comparing two columns or two filtered subsets.",
+    inputSchema: z.object({
+      name: z.string().describe("Human-readable metric name, e.g. 'Ultima price per unit'"),
+      description: z.string().describe("What this measures and why it matters"),
+      file: z.string(),
+      sheet: z.string().optional(),
+      formula: z.enum([
+        "ratio",        // numeratorColumn / denominatorColumn
+        "per_unit",     // same as ratio, for price = value / units
+        "share",        // entity value / total value (value-based)
+        "growth_rate",  // (current - prior) / prior
+        "index",        // (entity value / category average) * 100
+        "contribution", // entity abs change / total abs change
+        "mix_gap",      // share(col1) - share(col2) per entity
+        "difference",   // sum(colA) - sum(colB) per group
+      ]),
+      numeratorColumn: z.string().optional().describe("Column for numerator (ratio/per_unit/difference)"),
+      denominatorColumn: z.string().optional().describe("Column for denominator (ratio/per_unit)"),
+      valueColumn: z.string().optional().describe("Primary value column (share/growth_rate/index/contribution)"),
+      secondValueColumn: z.string().optional().describe("Second value column (mix_gap: volume column; difference: column B)"),
+      currentFilter: z.string().optional().describe('Filter for current period, e.g. "Year = 2025"'),
+      priorFilter: z.string().optional().describe('Filter for prior period, e.g. "Year = 2024"'),
+      entityFilter: z.string().optional().describe('Filter to isolate entity, e.g. "Brand = Ultima"'),
+      groupBy: z.array(z.string()).optional(),
+      filter: z.string().optional().describe("Global filter applied before computation"),
+    }),
+    async execute(params) {
+      const sheetKey = resolveSheetKey(ctx.workspace, params.file, params.sheet);
+      if (!sheetKey) return { error: `Cannot resolve sheet for file: ${params.file}` };
+
+      let rows = await resolveRows(ctx, sheetKey);
+      if (params.filter) rows = applyFilter(rows, params.filter);
+      if (rows.length === 0) return { error: "No rows match the filter criteria" };
+
+      const metricId = `derived-${crypto.randomUUID().slice(0, 8)}`;
+      let result: Record<string, unknown>;
+
+      try {
+        switch (params.formula) {
+          case "ratio":
+          case "per_unit": {
+            if (!params.numeratorColumn || !params.denominatorColumn) {
+              return { error: `${params.formula} requires numeratorColumn and denominatorColumn` };
+            }
+            if (params.groupBy && params.groupBy.length > 0) {
+              const groups = groupRowsBy(rows, params.groupBy);
+              const breakdown = Object.entries(groups).map(([key, groupRows]) => {
+                const num = sumCol(groupRows, params.numeratorColumn!);
+                const den = sumCol(groupRows, params.denominatorColumn!);
+                return { group: key, value: den !== 0 ? round(num / den) : null, numerator: round(num), denominator: round(den) };
+              }).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+              result = { formula: params.formula, breakdown: breakdown.slice(0, 30) };
+            } else {
+              const num = sumCol(rows, params.numeratorColumn);
+              const den = sumCol(rows, params.denominatorColumn);
+              result = { formula: params.formula, value: den !== 0 ? round(num / den) : null, numerator: round(num), denominator: round(den) };
+            }
+            break;
+          }
+
+          case "share": {
+            if (!params.valueColumn) return { error: "share requires valueColumn" };
+            const totalValue = sumCol(rows, params.valueColumn);
+            if (totalValue === 0) return { error: "Total value is zero — cannot compute share" };
+
+            if (params.entityFilter) {
+              const entityRows = applyFilter(rows, params.entityFilter);
+              const entityValue = sumCol(entityRows, params.valueColumn);
+              result = { formula: "share", value: round((entityValue / totalValue) * 100), entityValue: round(entityValue), totalValue: round(totalValue), unit: "%" };
+            } else if (params.groupBy && params.groupBy.length > 0) {
+              const groups = groupRowsBy(rows, params.groupBy);
+              const breakdown = Object.entries(groups).map(([key, groupRows]) => {
+                const val = sumCol(groupRows, params.valueColumn!);
+                return { group: key, value: round((val / totalValue) * 100), absoluteValue: round(val) };
+              }).sort((a, b) => b.value - a.value);
+              result = { formula: "share", breakdown: breakdown.slice(0, 30), totalValue: round(totalValue), unit: "%" };
+            } else {
+              return { error: "share requires either entityFilter or groupBy" };
+            }
+            break;
+          }
+
+          case "growth_rate": {
+            if (!params.valueColumn || !params.currentFilter || !params.priorFilter) {
+              return { error: "growth_rate requires valueColumn, currentFilter, and priorFilter" };
+            }
+            const compute = (subset: Record<string, unknown>[]) => {
+              const current = sumCol(applyFilter(subset, params.currentFilter!), params.valueColumn!);
+              const prior = sumCol(applyFilter(subset, params.priorFilter!), params.valueColumn!);
+              return { current: round(current), prior: round(prior), growth: prior !== 0 ? round(((current - prior) / prior) * 100) : null };
+            };
+
+            if (params.groupBy && params.groupBy.length > 0) {
+              const groups = groupRowsBy(rows, params.groupBy);
+              const breakdown = Object.entries(groups).map(([key, groupRows]) => ({
+                group: key, ...compute(groupRows),
+              })).sort((a, b) => (b.growth ?? 0) - (a.growth ?? 0));
+              result = { formula: "growth_rate", breakdown: breakdown.slice(0, 30), unit: "%" };
+            } else {
+              result = { formula: "growth_rate", ...compute(rows), unit: "%" };
+            }
+            break;
+          }
+
+          case "index": {
+            if (!params.valueColumn || !params.entityFilter) {
+              return { error: "index requires valueColumn and entityFilter" };
+            }
+            const entityRows = applyFilter(rows, params.entityFilter);
+            const entityAvg = sumCol(entityRows, params.valueColumn) / (entityRows.length || 1);
+            const categoryAvg = sumCol(rows, params.valueColumn) / (rows.length || 1);
+            result = { formula: "index", value: categoryAvg !== 0 ? round((entityAvg / categoryAvg) * 100) : null, entityAvg: round(entityAvg), categoryAvg: round(categoryAvg) };
+            break;
+          }
+
+          case "contribution": {
+            if (!params.valueColumn || !params.currentFilter || !params.priorFilter || !params.entityFilter) {
+              return { error: "contribution requires valueColumn, currentFilter, priorFilter, and entityFilter" };
+            }
+            const entityCurrent = sumCol(applyFilter(applyFilter(rows, params.entityFilter), params.currentFilter), params.valueColumn);
+            const entityPrior = sumCol(applyFilter(applyFilter(rows, params.entityFilter), params.priorFilter), params.valueColumn);
+            const totalCurrent = sumCol(applyFilter(rows, params.currentFilter), params.valueColumn);
+            const totalPrior = sumCol(applyFilter(rows, params.priorFilter), params.valueColumn);
+            const totalChange = totalCurrent - totalPrior;
+            const entityChange = entityCurrent - entityPrior;
+            result = {
+              formula: "contribution",
+              value: totalChange !== 0 ? round((entityChange / totalChange) * 100) : null,
+              entityChange: round(entityChange), totalChange: round(totalChange), unit: "%",
+            };
+            break;
+          }
+
+          case "mix_gap": {
+            if (!params.valueColumn || !params.secondValueColumn) {
+              return { error: "mix_gap requires valueColumn (value) and secondValueColumn (volume)" };
+            }
+            const totalVal = sumCol(rows, params.valueColumn);
+            const totalVol = sumCol(rows, params.secondValueColumn);
+            if (totalVal === 0 || totalVol === 0) return { error: "Total value or volume is zero" };
+
+            if (params.groupBy && params.groupBy.length > 0) {
+              const groups = groupRowsBy(rows, params.groupBy);
+              const breakdown = Object.entries(groups).map(([key, groupRows]) => {
+                const valShare = (sumCol(groupRows, params.valueColumn!) / totalVal) * 100;
+                const volShare = (sumCol(groupRows, params.secondValueColumn!) / totalVol) * 100;
+                return { group: key, valueShare: round(valShare), volumeShare: round(volShare), mixGap: round(valShare - volShare) };
+              }).sort((a, b) => b.mixGap - a.mixGap);
+              result = { formula: "mix_gap", breakdown: breakdown.slice(0, 30), unit: "pp" };
+            } else if (params.entityFilter) {
+              const entityRows = applyFilter(rows, params.entityFilter);
+              const valShare = (sumCol(entityRows, params.valueColumn) / totalVal) * 100;
+              const volShare = (sumCol(entityRows, params.secondValueColumn) / totalVol) * 100;
+              result = { formula: "mix_gap", valueShare: round(valShare), volumeShare: round(volShare), mixGap: round(valShare - volShare), unit: "pp" };
+            } else {
+              return { error: "mix_gap requires groupBy or entityFilter" };
+            }
+            break;
+          }
+
+          case "difference": {
+            if (!params.numeratorColumn || !params.secondValueColumn) {
+              return { error: "difference requires numeratorColumn (column A) and secondValueColumn (column B)" };
+            }
+            if (params.groupBy && params.groupBy.length > 0) {
+              const groups = groupRowsBy(rows, params.groupBy);
+              const breakdown = Object.entries(groups).map(([key, groupRows]) => {
+                const a = sumCol(groupRows, params.numeratorColumn!);
+                const b = sumCol(groupRows, params.secondValueColumn!);
+                return { group: key, value: round(a - b), columnA: round(a), columnB: round(b) };
+              }).sort((a, b) => b.value - a.value);
+              result = { formula: "difference", breakdown: breakdown.slice(0, 30) };
+            } else {
+              const a = sumCol(rows, params.numeratorColumn);
+              const b = sumCol(rows, params.secondValueColumn);
+              result = { formula: "difference", value: round(a - b), columnA: round(a), columnB: round(b) };
+            }
+            break;
+          }
+
+          default:
+            return { error: `Unknown formula: ${params.formula}` };
+        }
+      } catch (err) {
+        return { error: `Computation failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+
+      const evidenceRefId = `ev-${metricId}`;
+      await ctx.persistNotebookEntry({
+        toolName: "compute_derived",
+        toolInput: params,
+        toolOutput: { metricId, ...result, evidenceRef: evidenceRefId },
+        evidenceRefId,
+      });
+
+      return { metricId, name: params.name, description: params.description, ...result, evidenceRef: evidenceRefId };
+    },
+  });
+}
+
+// ─── DERIVED METRIC HELPERS ──────────────────────────────────────
+
+function sumCol(rows: Record<string, unknown>[], column: string): number {
+  return rows.reduce((total, row) => {
+    const val = row[column];
+    const num = typeof val === "number" ? val : typeof val === "string" ? parseFloat(val) : NaN;
+    return total + (isNaN(num) ? 0 : num);
+  }, 0);
+}
+
+function groupRowsBy(rows: Record<string, unknown>[], keys: string[]): Record<string, Record<string, unknown>[]> {
+  const groups: Record<string, Record<string, unknown>[]> = {};
+  for (const row of rows) {
+    const key = keys.map((k) => String(row[k] ?? "")).join(" | ");
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(row);
+  }
+  return groups;
+}
+
 // ─── READ SUPPORT DOC ─────────────────────────────────────────────
 
 export function createReadSupportDocTool(ctx: ToolContext) {

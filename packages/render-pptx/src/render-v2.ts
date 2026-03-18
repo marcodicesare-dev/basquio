@@ -3,6 +3,7 @@ import PptxGenJS from "pptxgenjs";
 import { getLayoutRegions, SLIDE_W, SLIDE_H, type LayoutRegions, type R } from "@basquio/scene-graph/layout-regions";
 import { getArchetypeOrDefault } from "@basquio/scene-graph/slot-archetypes";
 import { resolveChartArchetype, type ChartRenderingRules } from "@basquio/scene-graph/chart-design-system";
+import { renderShapeChart, type ShapeChartTokens } from "./shape-charts";
 import type { BinaryArtifact } from "@basquio/types";
 
 // ─── V2 INPUT TYPES ──────────────────────────────────────────────
@@ -99,15 +100,15 @@ const DEFAULT_CHART_PALETTE = [
 
 const DEFAULT_TOKENS: BrandTokens = {
   palette: {
-    ink: "111827",
+    ink: "1A1A2E",
     muted: "4B5563",
-    border: "D1D5DB",
+    border: "E2E8F0",
     surface: "F8FAFC",
     bg: "FFFFFF",
     accent: "0F4C81",
     accentLight: "DCEAF7",
-    positive: "1F7A4D",
-    negative: "B42318",
+    positive: "16A34A",
+    negative: "DC2626",
     coverBg: "1B2541",
     calloutGreen: "16A34A",
     calloutOrange: "EA580C",
@@ -116,14 +117,14 @@ const DEFAULT_TOKENS: BrandTokens = {
     headingFont: "Arial",
     bodyFont: "Arial",
     coverTitleSize: 32,
-    titleSize: 24,
+    titleSize: 20,
     subtitleSize: 12,
     bodySize: 11,
     bulletSize: 11,
-    chartTitleSize: 9,
+    chartTitleSize: 10,
     sourceSize: 7,
-    kpiValueSize: 28,
-    kpiLabelSize: 9,
+    kpiValueSize: 32,
+    kpiLabelSize: 8.5,
   },
   chartPalette: DEFAULT_CHART_PALETTE,
 };
@@ -942,40 +943,57 @@ function renderChartElement(
 
   const chartRegion = {
     x: region.x,
-    y: region.y + 0.25,
+    y: region.y,
     w: region.w,
-    h: region.h - 0.3,
+    h: region.h,
   };
 
-  // Reserve space for source note if present
-  const hasSource = Boolean(chart.sourceNote);
-  const actualChartH = hasSource ? chartRegion.h - 0.2 : chartRegion.h;
+  // Use shape-built charts for universal cross-app compatibility
+  // (works in PowerPoint, Google Slides, and Keynote)
+  const shapeTokens: ShapeChartTokens = {
+    accent: norm(tokens.palette.accent),
+    ink: norm(tokens.palette.ink),
+    muted: norm(tokens.palette.muted),
+    surface: norm(tokens.palette.surface ?? "F8FAFC"),
+    chartPalette: (tokens.chartPalette ?? []).map(norm),
+    bodyFont: tokens.typography.bodyFont,
+    headingFont: tokens.typography.headingFont,
+  };
 
-  slide.addChart(
-    mapPptxChartType(pptx, effectiveChartType),
-    chartData as unknown as PptxGenJS.OptsChartData[],
-    {
-      x: chartRegion.x,
-      y: chartRegion.y,
-      w: chartRegion.w,
-      h: actualChartH,
-      ...opts,
-    } as PptxGenJS.IChartOpts,
-  );
+  // Convert the built chart data (PptxGenJS format) to shape-chart format
+  const shapeData = {
+    labels: chartData.map((series) => (series as { name?: string }).name ?? "").length > 0
+      ? (chartData[0] as { labels?: string[] }).labels ?? chart.data.map((row) => String(row[chart.xAxis] ?? ""))
+      : [],
+    datasets: chartData.map((series) => ({
+      label: (series as { name?: string }).name ?? "",
+      data: (series as { values?: number[] }).values ?? [],
+    })),
+  };
 
-  // Source note below chart
-  if (chart.sourceNote) {
-    slide.addText(`Source: ${chart.sourceNote}`, {
-      x: chartRegion.x,
-      y: chartRegion.y + actualChartH + 0.02,
-      w: chartRegion.w,
-      h: 0.16,
-      fontSize: 7,
-      fontFace: tokens.typography.bodyFont,
-      color: norm(tokens.palette.muted),
-      italic: true,
-    });
+  // Fallback: if shapeData is empty, try to extract directly from raw data
+  if (shapeData.labels.length === 0 && chart.data.length > 0 && chart.xAxis) {
+    shapeData.labels = chart.data.map((row) => String(row[chart.xAxis] ?? ""));
+    if (shapeData.datasets.length === 0 || shapeData.datasets[0].data.length === 0) {
+      const yCol = chart.yAxis || chart.series[0];
+      if (yCol) {
+        shapeData.datasets = [{
+          label: yCol,
+          data: chart.data.map((row) => {
+            const v = row[yCol];
+            return typeof v === "number" ? v : parseFloat(String(v)) || 0;
+          }),
+        }];
+      }
+    }
   }
+
+  renderShapeChart(slide, effectiveChartType, shapeData, chartRegion, shapeTokens, {
+    title: chart.title,
+    sourceNote: chart.sourceNote,
+    unit: chart.unit,
+    highlightCategories: chart.style?.highlightCategories,
+  });
 }
 
 // ─── PER-LAYOUT RENDERERS ───────────────────────────────────────
@@ -1282,60 +1300,35 @@ export async function renderV2PptxArtifact(
     title: "BASQUIO_MASTER",
     background: { fill: norm(tokens.palette.bg) },
     objects: [
-      // Top accent rule (thin, premium)
-      { rect: { x: 0, y: 0, w: "100%", h: 0.04, fill: { color: norm(tokens.palette.accent) } } },
-      // Footer bar (refined, dark)
-      {
-        rect: {
-          x: 0,
-          y: 5.3,
-          w: "100%",
-          h: 0.325,
-          fill: { color: norm(tokens.palette.coverBg) },
-        },
-      },
+      // Top accent rule — thin 2pt colored line (consulting-grade header)
+      { rect: { x: 0, y: 0.02, w: "100%", h: 0.028, fill: { color: norm(tokens.palette.accent) } } },
+      // Footer hairline rule — 0.5pt gray line (not a dark band)
+      { rect: { x: 0.45, y: 5.30, w: 9.1, h: 0.007, fill: { color: "E5E7EB" } } },
       // Footer left: source
       {
         text: {
           text: `Source: ${input.deckTitle}`,
           options: {
             x: 0.45,
-            y: 5.35,
+            y: 5.34,
             w: 5,
-            h: 0.22,
+            h: 0.20,
             fontSize: 7,
             fontFace: tokens.typography.bodyFont,
             color: "9CA3AF",
-            italic: true,
-          },
-        },
-      },
-      // Footer right: branding
-      {
-        text: {
-          text: "Basquio",
-          options: {
-            x: 8.0,
-            y: 5.35,
-            w: 1.5,
-            h: 0.22,
-            fontSize: 7,
-            fontFace: tokens.typography.headingFont,
-            color: norm(tokens.palette.accent),
-            bold: true,
-            align: "right",
           },
         },
       },
     ],
     slideNumber: {
-      x: 6.0,
-      y: 5.35,
-      w: 1.5,
-      h: 0.22,
+      x: 8.5,
+      y: 5.34,
+      w: 1.0,
+      h: 0.20,
       fontSize: 7,
       fontFace: tokens.typography.bodyFont,
-      color: "6B7280",
+      color: "9CA3AF",
+      align: "right",
     },
   });
 
