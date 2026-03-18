@@ -442,13 +442,27 @@ export function GenerationForm() {
                     ))}
                   </div>
                 ) : null}
-                {brandFile ? <p className="muted">Template: {brandFile.name}</p> : <p className="muted">Default brand system</p>}
+              </article>
+
+              <article className="review-card stack">
+                <p className="artifact-kind">Design template</p>
+                {brandFile ? (
+                  <>
+                    <p>{brandFile.name}</p>
+                    <p className="muted">Your colors and fonts will be extracted and applied to the locked slide grid.</p>
+                  </>
+                ) : (
+                  <>
+                    <p>Basquio Standard</p>
+                    <p className="muted">Clean editorial design with the default locked slide grid. No overlapping content.</p>
+                  </>
+                )}
               </article>
 
               <article className="review-card stack">
                 <p className="artifact-kind">Output</p>
-                <p>PPTX and PDF</p>
-                <p className="muted">One analysis, two synced deliverables</p>
+                <p>PowerPoint deck (PPTX)</p>
+                <p className="muted">Editable slides with native charts. Locked grid ensures clean, non-overlapping layout.</p>
               </article>
             </div>
           </section>
