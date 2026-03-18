@@ -59,18 +59,30 @@ export default async function ArtifactsPage() {
                 </div>
 
                 <div className="download-actions">
-                  {run.artifacts.map((artifact) => (
-                    <a key={artifact.kind} className="button" href={buildArtifactDownloadUrl(run.jobId, artifact.kind)}>
-                      {artifact.kind.toUpperCase()}
-                    </a>
-                  ))}
+                  {run.status === "running" ? (
+                    <Link className="button" href={`/jobs/${run.jobId}`}>View progress</Link>
+                  ) : run.status === "failed" ? (
+                    <Link className="button secondary" href={`/jobs/${run.jobId}`}>View details</Link>
+                  ) : run.artifacts.length > 0 ? (
+                    run.artifacts.map((artifact) => (
+                      <a key={artifact.kind} className="button" href={buildArtifactDownloadUrl(run.jobId, artifact.kind)}>
+                        Download {artifact.kind.toUpperCase()}
+                      </a>
+                    ))
+                  ) : (
+                    <Link className="button secondary" href={`/jobs/${run.jobId}`}>View run</Link>
+                  )}
                 </div>
               </div>
 
               <div className="compact-meta-row">
                 <span className="run-pill">{formatDate(run.createdAt)}</span>
                 <span className="run-pill">{summarizeRunSources(run)}</span>
-                <span className="run-pill">{run.slidePlan.slides.length} slides</span>
+                {run.slidePlan.slides.length > 0 ? (
+                  <span className="run-pill">{run.slidePlan.slides.length} slides</span>
+                ) : null}
+                {run.status === "running" ? <span className="run-pill">Generating...</span> : null}
+                {run.status === "failed" ? <span className="run-pill">Failed</span> : null}
               </div>
             </article>
           ))}

@@ -395,7 +395,7 @@ async function listV2DeckRuns(
     }
 
     // Fetch real file names from evidence_workspace_sheets
-    let fileNames = new Map<string, string>();
+    const fileNames = new Map<string, string>();
     const allRunIds = runs.map((r) => r.id);
     if (allRunIds.length > 0) {
       try {
