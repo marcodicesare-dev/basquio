@@ -245,6 +245,101 @@ async function parseEvidenceFile(
   };
 }
 
+// ─── PPTX CHART DATA EXTRACTION ────────────────────────────────────
+// Extract data series from OOXML chart XML (c:chart namespace).
+// Supports bar, line, pie, scatter, area charts.
+
+function extractChartDataFromXml(chartXml: string): string | null {
+  const parts: string[] = [];
+
+  // Extract chart title
+  const titleMatch = chartXml.match(/<c:chart[^>]*>[\s\S]*?<c:title>[\s\S]*?<a:t>([^<]+)<\/a:t>/);
+  if (titleMatch) parts.push(`Title: ${titleMatch[1].trim()}`);
+
+  // Extract category labels from c:cat
+  const catLabels: string[] = [];
+  const catMatches = chartXml.match(/<c:cat>[\s\S]*?<\/c:cat>/g) ?? [];
+  for (const catBlock of catMatches) {
+    const vals = (catBlock.match(/<c:v>([^<]*)<\/c:v>/g) ?? []) as string[];
+    for (const v of vals) {
+      const val = v.replace(/<\/?c:v>/g, "").trim();
+      if (val && !catLabels.includes(val)) catLabels.push(val);
+    }
+    // Also check string references
+    const strVals = (catBlock.match(/<c:pt[^>]*><c:v>([^<]*)<\/c:v><\/c:pt>/g) ?? []) as string[];
+    for (const sv of strVals) {
+      const val = sv.replace(/<c:pt[^>]*><c:v>|<\/c:v><\/c:pt>/g, "").trim();
+      if (val && !catLabels.includes(val)) catLabels.push(val);
+    }
+  }
+
+  // Extract series names and values
+  const serMatches = chartXml.match(/<c:ser>[\s\S]*?<\/c:ser>/g) ?? [];
+  for (const serBlock of serMatches) {
+    // Series name
+    const nameMatch = serBlock.match(/<c:tx>[\s\S]*?<c:v>([^<]*)<\/c:v>/);
+    const seriesName = nameMatch ? nameMatch[1].trim() : "Series";
+
+    // Series values
+    const valBlock = serBlock.match(/<c:val>[\s\S]*?<\/c:val>/) ?? serBlock.match(/<c:yVal>[\s\S]*?<\/c:yVal>/);
+    if (valBlock) {
+      const nums = (valBlock[0].match(/<c:v>([^<]*)<\/c:v>/g) ?? []) as string[];
+      const values = nums.map((n: string) => n.replace(/<\/?c:v>/g, "").trim());
+      if (values.length > 0) {
+        if (catLabels.length === values.length) {
+          const pairs = catLabels.map((cat, i) => `${cat}: ${values[i]}`);
+          parts.push(`${seriesName}: ${pairs.join(", ")}`);
+        } else {
+          parts.push(`${seriesName}: ${values.join(", ")}`);
+        }
+      }
+    }
+  }
+
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+// ─── PPTX TABLE DATA EXTRACTION ───────────────────────────────────
+// Extract table content from slide XML <a:tbl> elements.
+
+function extractTableDataFromSlideXml(slideXml: string): string | null {
+  const tableMatches = slideXml.match(/<a:tbl>[\s\S]*?<\/a:tbl>/g);
+  if (!tableMatches || tableMatches.length === 0) return null;
+
+  const tables: string[] = [];
+  for (const tableXml of tableMatches) {
+    const rows = tableXml.match(/<a:tr[^>]*>[\s\S]*?<\/a:tr>/g) ?? [];
+    const tableRows: string[][] = [];
+
+    for (const rowXml of rows) {
+      const cells = rowXml.match(/<a:tc[^>]*>[\s\S]*?<\/a:tc>/g) ?? [];
+      const rowValues: string[] = [];
+
+      for (const cellXml of cells) {
+        const texts = (cellXml.match(/<a:t>([^<]*)<\/a:t>/g) ?? []) as string[];
+        const cellText = texts
+          .map((t: string) => t.replace(/<\/?a:t>/g, "").trim())
+          .filter(Boolean)
+          .join(" ");
+        rowValues.push(cellText || "");
+      }
+
+      if (rowValues.some((v) => v.length > 0)) {
+        tableRows.push(rowValues);
+      }
+    }
+
+    if (tableRows.length > 0) {
+      // Format as header row + data rows
+      const header = tableRows[0].join(" | ");
+      const dataRows = tableRows.slice(1).map((r) => r.join(" | "));
+      tables.push([header, ...dataRows].join("\n"));
+    }
+  }
+
+  return tables.length > 0 ? tables.join("\n\n") : null;
+}
+
 type SupportTextResult = {
   fullText: string | undefined;
   pages?: Array<{ num: number; text: string }>;
@@ -318,7 +413,7 @@ async function extractSupportText(
     }
   }
 
-  // PPTX content extraction with per-slide chunking
+  // PPTX content extraction with per-slide chunking + chart/table data
   if (normalized.endsWith(".pptx")) {
     try {
       const JSZip = (await import("jszip")).default;
@@ -329,16 +424,66 @@ async function extractSupportText(
         .filter((f: string) => /^ppt\/slides\/slide\d+\.xml$/i.test(f))
         .sort();
 
+      // Extract chart data from ppt/charts/*.xml
+      const chartDataMap = new Map<string, string>();
+      const chartEntries = Object.keys(zip.files)
+        .filter((f: string) => /^ppt\/charts\/chart\d+\.xml$/i.test(f));
+      for (const chartEntry of chartEntries) {
+        try {
+          const chartXml = await zip.files[chartEntry].async("text");
+          const chartText = extractChartDataFromXml(chartXml);
+          if (chartText) {
+            const chartName = chartEntry.replace(/^ppt\/charts\//, "").replace(/\.xml$/i, "");
+            chartDataMap.set(chartName, chartText);
+          }
+        } catch { /* skip unparseable charts */ }
+      }
+
+      // Map slide relationships to chart files
+      const slideChartMap = new Map<number, string[]>();
+      for (const entry of slideEntries) {
+        const slideNum = parseInt(entry.match(/slide(\d+)/)?.[1] ?? "0", 10);
+        const relsPath = entry.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels";
+        if (zip.files[relsPath]) {
+          try {
+            const relsXml = await zip.files[relsPath].async("text");
+            const chartRefs = (relsXml.match(/Target="\.\.\/charts\/(chart\d+)\.xml"/g) ?? []) as string[];
+            const chartNames = chartRefs.map((r: string) => r.match(/chart\d+/)?.[0] ?? "").filter(Boolean);
+            if (chartNames.length > 0) {
+              slideChartMap.set(slideNum, chartNames);
+            }
+          } catch { /* skip */ }
+        }
+      }
+
       for (const entry of slideEntries) {
         const xml = await zip.files[entry].async("text");
+        const slideNum = parseInt(entry.match(/slide(\d+)/)?.[1] ?? "0", 10);
+
+        // Extract text
         const texts = (xml.match(/<a:t>([^<]*)<\/a:t>/g) ?? []) as string[];
         const slideText = texts
           .map((t: string) => t.replace(/<\/?a:t>/g, "").trim())
           .filter((t: string) => t.length > 0)
           .join(" ");
-        const slideNum = parseInt(entry.match(/slide(\d+)/)?.[1] ?? "0", 10);
-        if (slideText) {
-          pages.push({ num: slideNum, text: slideText });
+
+        // Extract table data from <a:tbl> elements
+        const tableData = extractTableDataFromSlideXml(xml);
+
+        // Get associated chart data
+        const chartNames = slideChartMap.get(slideNum) ?? [];
+        const chartTexts = chartNames
+          .map((name) => chartDataMap.get(name))
+          .filter(Boolean) as string[];
+
+        // Combine all content for this slide
+        const parts: string[] = [];
+        if (slideText) parts.push(slideText);
+        if (tableData) parts.push(`[Table data] ${tableData}`);
+        for (const ct of chartTexts) parts.push(`[Chart data] ${ct}`);
+
+        if (parts.length > 0) {
+          pages.push({ num: slideNum, text: parts.join("\n") });
         }
       }
 

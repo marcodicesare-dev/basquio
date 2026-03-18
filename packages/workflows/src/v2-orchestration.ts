@@ -1378,10 +1378,17 @@ export const basquioV2Generation = inngest.createFunction(
     const deckPlan = await step.run("plan-deck", async () => {
       await emitRunEvent(runId, "author", "plan_started");
 
-      // Use clarified brief's slide count if available, then regex from brief, then heuristic
+      // Use clarified brief's slide count if available, then parse from brief, then heuristic
       const clarifiedSlideCount = analystResult.clarifiedBrief?.requestedSlideCount ?? null;
-      const requestedSlideMatch = brief.match(/(\d+)\s*slide/i);
-      const requestedSlides = clarifiedSlideCount ?? (requestedSlideMatch ? parseInt(requestedSlideMatch[1], 10) : undefined);
+      // Match patterns: "1 slide", "5 slides", "one slide", "create 3 slides", etc.
+      const requestedSlideMatch = brief.match(/(\d+)\s*slide/i)
+        ?? brief.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*slide/i);
+      const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+      const parsedCount = requestedSlideMatch
+        ? (parseInt(requestedSlideMatch[1], 10) || wordToNum[requestedSlideMatch[1].toLowerCase()] || undefined)
+        : undefined;
+      const requestedSlides = clarifiedSlideCount ?? parsedCount;
+      // Respect the user's explicit request — even 1 slide. Only apply heuristic when no count specified.
       const targetSlides = requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 20);
 
       const findingsSummary = analysis.topFindings
