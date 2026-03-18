@@ -504,6 +504,104 @@ async function extractSupportText(
   return { fullText: undefined };
 }
 
+// ─── PPTX SLIDE IMAGE EXTRACTION ──────────────────────────────────
+// Extract embedded images from PPTX slides for vision-based data extraction.
+// Returns slide images as base64 data URIs + metadata about which slides
+// have visual content (shapes, SmartArt, grouped objects) that XML parsing missed.
+
+export type PptxSlideImage = {
+  slideNum: number;
+  images: Array<{ name: string; base64: string; mimeType: string }>;
+  hasShapes: boolean;      // slide has <p:sp> shape elements (possible chart-as-shapes)
+  hasSmartArt: boolean;    // slide has SmartArt
+  hasGroupedShapes: boolean; // slide has <p:grpSp> grouped shapes
+  hasNativeChart: boolean; // slide has native OOXML chart (already extracted by XML parser)
+  needsVision: boolean;    // true if slide has visual content NOT covered by XML extraction
+};
+
+export async function extractPptxSlideImages(buffer: Buffer): Promise<PptxSlideImage[]> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buffer);
+  const results: PptxSlideImage[] = [];
+
+  const slideEntries = Object.keys(zip.files)
+    .filter((f: string) => /^ppt\/slides\/slide\d+\.xml$/i.test(f))
+    .sort();
+
+  for (const entry of slideEntries) {
+    const slideNum = parseInt(entry.match(/slide(\d+)/)?.[1] ?? "0", 10);
+    const xml = await zip.files[entry].async("text");
+
+    // Detect content types
+    const hasNativeChart = xml.includes("<c:chart") || xml.includes("chart.xml");
+    const hasShapes = (xml.match(/<p:sp\b/g) ?? []).length > 3; // >3 shapes suggests complex visuals
+    const hasSmartArt = xml.includes("dgm:") || xml.includes("smartArt");
+    const hasGroupedShapes = xml.includes("<p:grpSp");
+    const hasEmbeddedImages = xml.includes("<a:blip");
+
+    // Extract embedded images from this slide's relationships
+    const images: Array<{ name: string; base64: string; mimeType: string }> = [];
+    const relsPath = entry.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels";
+
+    if (zip.files[relsPath]) {
+      try {
+        const relsXml = await zip.files[relsPath].async("text");
+        const imageRefs = relsXml.match(/Target="([^"]*\.(png|jpg|jpeg|gif|bmp|tiff|emf|wmf))"/gi) ?? [];
+
+        for (const ref of imageRefs) {
+          const targetMatch = ref.match(/Target="([^"]*)"/);
+          if (!targetMatch) continue;
+
+          let imagePath = targetMatch[1];
+          // Resolve relative path
+          if (imagePath.startsWith("../")) {
+            imagePath = "ppt/" + imagePath.replace("../", "");
+          } else if (!imagePath.startsWith("ppt/")) {
+            imagePath = "ppt/slides/" + imagePath;
+          }
+
+          if (zip.files[imagePath]) {
+            try {
+              const imageBuffer = await zip.files[imagePath].async("nodebuffer");
+              // Only include images > 5KB (skip tiny icons/bullets)
+              if (imageBuffer.length > 5000) {
+                const ext = imagePath.split(".").pop()?.toLowerCase() ?? "png";
+                const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+                  : ext === "png" ? "image/png"
+                  : ext === "gif" ? "image/gif"
+                  : "image/png";
+                images.push({
+                  name: imagePath.split("/").pop() ?? `slide${slideNum}-image`,
+                  base64: imageBuffer.toString("base64"),
+                  mimeType,
+                });
+              }
+            } catch { /* skip unreadable images */ }
+          }
+        }
+      } catch { /* skip unreadable rels */ }
+    }
+
+    // A slide needs vision if it has visual content that XML parsing can't handle
+    const needsVision = (
+      (!hasNativeChart && (hasShapes || hasGroupedShapes || hasSmartArt)) ||
+      (hasEmbeddedImages && images.length > 0)
+    );
+
+    results.push({
+      slideNum,
+      images,
+      hasShapes,
+      hasSmartArt,
+      hasGroupedShapes,
+      hasNativeChart,
+      needsVision,
+    });
+  }
+
+  return results;
+}
+
 function buildManifestWarnings(files: NormalizedEvidenceFile[], sheetCount: number) {
   const warnings: string[] = [];
 
