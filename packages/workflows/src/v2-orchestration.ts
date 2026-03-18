@@ -384,6 +384,12 @@ async function persistChart(runId: string, chart: {
   yAxis?: string;
   series?: string[];
   style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean; highlightCategories?: string[] };
+  // Semantic fields from chart design system
+  intent?: string;
+  unit?: string;
+  benchmarkLabel?: string;
+  benchmarkValue?: number;
+  sourceNote?: string;
 }) {
   const id = crypto.randomUUID();
 
@@ -407,6 +413,11 @@ async function persistChart(runId: string, chart: {
         y_axis: chart.yAxis,
         series: chart.series,
         style: chart.style,
+        intent: chart.intent ?? null,
+        unit: chart.unit ?? null,
+        benchmark_label: chart.benchmarkLabel ?? null,
+        benchmark_value: chart.benchmarkValue ?? null,
+        source_note: chart.sourceNote ?? null,
       }),
     },
   );
@@ -565,7 +576,14 @@ async function getV2ChartRows(runId: string): Promise<V2ChartRow[]> {
       colors: (r.style as Record<string, unknown> | null)?.colors as string[] | undefined,
       showLegend: (r.style as Record<string, unknown> | null)?.showLegend as boolean | undefined,
       showValues: (r.style as Record<string, unknown> | null)?.showValues as boolean | undefined,
+      highlightCategories: (r.style as Record<string, unknown> | null)?.highlightCategories as string[] | undefined,
     },
+    // Semantic fields from DB
+    intent: (r.intent as string) ?? undefined,
+    unit: (r.unit as string) ?? undefined,
+    benchmarkLabel: (r.benchmark_label as string) ?? undefined,
+    benchmarkValue: r.benchmark_value != null ? Number(r.benchmark_value) : undefined,
+    sourceNote: (r.source_note as string) ?? undefined,
   }));
 }
 

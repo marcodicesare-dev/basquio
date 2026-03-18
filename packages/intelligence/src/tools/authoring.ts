@@ -316,8 +316,11 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
         "funnel", "marimekko", "matrix", "quadrant",
       ]),
       title: z.string().min(5).describe("Descriptive chart title"),
-      intent: z.enum(["rank", "trend", "composition", "bridge", "correlation", "comparison", "detail"])
-        .describe("What analytical story does this chart tell?"),
+      intent: z.enum([
+        "rank", "trend", "composition", "bridge", "correlation",
+        "comparison", "distribution", "flow", "detail", "positioning",
+        "timeline", "proportion",
+      ]).describe("What analytical story does this chart tell?"),
       data: z.array(z.record(z.unknown())).min(3).describe("Array of data objects — minimum 3 rows"),
       xAxis: z.string().describe("Column name for categories/x-axis"),
       series: z.array(z.string()).min(1).describe("Column names for numeric data series — minimum 1"),
