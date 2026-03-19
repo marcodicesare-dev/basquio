@@ -749,6 +749,17 @@ function resolveCellValue(value: unknown): unknown {
 }
 
 /**
+ * Extract formula information from an ExcelJS cell value.
+ * Returns whether the value is formula-driven and the formula text if so.
+ */
+function extractFormulaInfo(value: unknown): { isFormula: boolean; formula?: string } {
+  if (value && typeof value === "object" && "formula" in value) {
+    return { isFormula: true, formula: (value as { formula: string }).formula };
+  }
+  return { isFormula: false };
+}
+
+/**
  * Pick the best header row from buffered rows.
  * Scores each row based on:
  * 1. Number of non-empty cells (more = better header candidate)
@@ -1025,6 +1036,22 @@ export type SheetManifest = {
   sampleRows: Record<string, unknown>[];
   columnProfile: Record<string, ColumnProfile>;
   blobBuffer: Buffer; // gzipped jsonl — caller uploads to Storage
+  // Region metadata — only present for region-level manifests from dense parse
+  regionId?: string;
+  regionIndex?: number;
+  regionType?: "structured_table" | "financial_model_block" | "kpi_grid" | "narrative_sheet" | "unsafe";
+  regionConfidence?: number;
+  regionBounds?: {
+    startRow: number;
+    endRow: number;
+    startCol: number;
+    endCol: number;
+    headerStartRow: number;
+    headerEndRow: number;
+    dataStartRow: number;
+  };
+  sourceSheetKey?: string; // parent sheet if this is a sub-region
+  formulaColumns?: string[]; // columns with formula-driven values
 };
 
 export type ColumnProfile = {
@@ -1059,10 +1086,21 @@ export async function streamParseFile(input: {
   if (ext.endsWith(".xlsx")) {
     const sheets = await streamParseXlsx(input.id, input.fileName, role, input.buffer);
 
-    // After streaming parse, check for suspicious results (low column count).
-    // Dense parse provides region detection for financial models / multi-block sheets.
-    const suspiciousSheets = sheets.filter((m) => m.columnCount <= 2);
-    if (suspiciousSheets.length > 0) {
+    // Detect sheets that need dense region analysis
+    const needsDenseParse = sheets.some((m) => {
+      // Obviously broken
+      if (m.columnCount <= 2) return true;
+      // Too many generic column names (column_1, column_2, etc.)
+      const genericHeaders = m.columns.filter((c) => /^column_\d+$/.test(c.name)).length;
+      if (genericHeaders > m.columnCount * 0.5) return true;
+      // Suspiciously low usable row count for a workbook sheet
+      if (m.rowCount <= 3 && m.columnCount <= 4) return true;
+      // Duplicate header names
+      const uniqueHeaders = new Set(m.columns.map((c) => c.name));
+      if (uniqueHeaders.size < m.columnCount * 0.7) return true;
+      return false;
+    });
+    if (needsDenseParse) {
       try {
         const denseManifests = await denseParseXlsx(input.id, input.fileName, role, input.buffer, sheets);
         // Replace manifests for sheets that got better results from dense parse
@@ -1259,40 +1297,18 @@ async function streamParseXlsx(
       if (!headerDetected) {
         bufferedRows.push(resolved);
 
-        // Score this row as a header candidate
-        if (bufferedRows.length <= MAX_HEADER_SCAN) {
-          const bestRow = pickBestHeaderRow(bufferedRows);
-          if (bestRow >= 0 && bufferedRows.length >= bestRow + 2) {
-            // We have the header + at least 1 data row to confirm
-            headerRowIndex = bestRow;
-            headers = bufferedRows[bestRow].map((v, i) => normalizeHeader(v, i));
-            headerDetected = true;
-
-            // Process buffered rows after the header
-            for (let r = bestRow + 1; r < bufferedRows.length; r++) {
-              const rowValues = bufferedRows[r];
-              if (rowValues.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
-              const obj: Record<string, unknown> = {};
-              for (let i = 0; i < headers.length; i++) {
-                obj[headers[i]] = normalizeCell(rowValues[i]);
-              }
-              gzip.write(JSON.stringify(obj) + "\n");
-              if (headSample.length < 40) headSample.push(obj);
-              tailBuffer[rowCount % 20] = obj;
-              updateColumnStats(colStats, obj);
-              rowCount++;
-            }
-          }
+        // Keep buffering until we have MAX_HEADER_SCAN rows — don't commit early
+        if (bufferedRows.length < MAX_HEADER_SCAN) {
           continue;
         }
 
-        // Fallback: after MAX_HEADER_SCAN rows, pick best or use row 0
+        // Now we have MAX_HEADER_SCAN rows, pick the best header from the full buffer
         headerRowIndex = pickBestHeaderRow(bufferedRows);
         if (headerRowIndex < 0) headerRowIndex = 0;
         headers = bufferedRows[headerRowIndex].map((v, i) => normalizeHeader(v, i));
         headerDetected = true;
 
-        // Process all buffered rows after header
+        // Process ALL buffered rows after the header
         for (let r = headerRowIndex + 1; r < bufferedRows.length; r++) {
           const rowValues = bufferedRows[r];
           if (rowValues.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
@@ -1331,6 +1347,29 @@ async function streamParseXlsx(
       tailBuffer[rowCount % 20] = obj;
       updateColumnStats(colStats, obj);
       rowCount++;
+    }
+
+    // Handle worksheets with fewer than MAX_HEADER_SCAN rows
+    // (the for-await loop ended before the buffer filled up)
+    if (!headerDetected && bufferedRows.length > 0) {
+      headerRowIndex = pickBestHeaderRow(bufferedRows);
+      if (headerRowIndex < 0) headerRowIndex = 0;
+      headers = bufferedRows[headerRowIndex].map((v, i) => normalizeHeader(v, i));
+      headerDetected = true;
+
+      for (let r = headerRowIndex + 1; r < bufferedRows.length; r++) {
+        const rowValues = bufferedRows[r];
+        if (rowValues.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
+        const obj: Record<string, unknown> = {};
+        for (let i = 0; i < headers.length; i++) {
+          obj[headers[i]] = normalizeCell(rowValues[i]);
+        }
+        gzip.write(JSON.stringify(obj) + "\n");
+        if (headSample.length < 40) headSample.push(obj);
+        tailBuffer[rowCount % 20] = obj;
+        updateColumnStats(colStats, obj);
+        rowCount++;
+      }
     }
 
     gzip.end();
@@ -1635,7 +1674,77 @@ function detectRegions(
     });
   }
 
-  return regions;
+  // Second pass: split wide regions at blank column bands
+  const refinedRegions: Region[] = [];
+  for (const region of regions) {
+    // Check for blank columns within the region
+    const blankCols: number[] = [];
+    for (let c = region.startCol; c <= region.endCol; c++) {
+      let isEmpty = true;
+      for (let r = region.startRow; r <= region.endRow; r++) {
+        if (grid[r]?.[c] !== null && grid[r]?.[c] !== undefined && String(grid[r]?.[c]).trim() !== "") {
+          isEmpty = false;
+          break;
+        }
+      }
+      if (isEmpty) blankCols.push(c);
+    }
+
+    // Find blank column bands (2+ consecutive blank columns) and split the region
+    if (blankCols.length >= 2) {
+      // Find runs of consecutive blank columns
+      const bands: Array<{ start: number; end: number }> = [];
+      let bandStart = blankCols[0];
+      for (let i = 1; i < blankCols.length; i++) {
+        if (blankCols[i] !== blankCols[i - 1] + 1) {
+          if (blankCols[i - 1] - bandStart >= 1) bands.push({ start: bandStart, end: blankCols[i - 1] });
+          bandStart = blankCols[i];
+        }
+      }
+      if (blankCols[blankCols.length - 1] - bandStart >= 1) {
+        bands.push({ start: bandStart, end: blankCols[blankCols.length - 1] });
+      }
+
+      if (bands.length > 0) {
+        // Split at the widest blank band
+        const widest = bands.reduce((a, b) => (b.end - b.start > a.end - a.start) ? b : a);
+        let didSplit = false;
+        // Left sub-region
+        if (widest.start > region.startCol) {
+          // Re-detect header for the left sub-region
+          const leftSubGrid: unknown[][] = [];
+          for (let r = region.startRow; r <= region.endRow; r++) {
+            leftSubGrid.push(grid[r] ? grid[r].slice(region.startCol, widest.start) : []);
+          }
+          const leftHeaderIdx = pickBestHeaderRow(leftSubGrid.slice(0, Math.min(15, leftSubGrid.length)));
+          refinedRegions.push({
+            ...region,
+            endCol: widest.start - 1,
+            headerRow: region.startRow + (leftHeaderIdx >= 0 ? leftHeaderIdx : 0),
+          });
+          didSplit = true;
+        }
+        // Right sub-region
+        if (widest.end < region.endCol) {
+          const rightSubGrid: unknown[][] = [];
+          for (let r = region.startRow; r <= region.endRow; r++) {
+            rightSubGrid.push(grid[r] ? grid[r].slice(widest.end + 1, region.endCol + 1) : []);
+          }
+          const rightHeaderIdx = pickBestHeaderRow(rightSubGrid.slice(0, Math.min(15, rightSubGrid.length)));
+          refinedRegions.push({
+            ...region,
+            startCol: widest.end + 1,
+            headerRow: region.startRow + (rightHeaderIdx >= 0 ? rightHeaderIdx : 0),
+          });
+          didSplit = true;
+        }
+        if (didSplit) continue;
+      }
+    }
+    refinedRegions.push(region);
+  }
+
+  return refinedRegions;
 }
 
 /**
@@ -1664,20 +1773,24 @@ async function denseParseXlsx(
     // Skip sheets that already have good results (>2 columns) unless no existing manifest
     if (existingManifest && existingManifest.columnCount > 2) continue;
 
-    // Build dense grid of resolved cell values
+    // Build dense grid of resolved cell values + formula tracking
     const rowCount = worksheet.rowCount;
     const colCount = worksheet.columnCount;
     if (rowCount === 0 || colCount === 0) continue;
 
     const grid: unknown[][] = [];
+    const formulaGrid: boolean[][] = []; // parallel grid tracking which cells are formulas
     for (let r = 1; r <= rowCount; r++) {
       const row = worksheet.getRow(r);
       const values: unknown[] = [];
+      const formulaFlags: boolean[] = [];
       for (let c = 1; c <= colCount; c++) {
         const cell = row.getCell(c);
         values.push(resolveCellValue(cell.value));
+        formulaFlags.push(extractFormulaInfo(cell.value).isFormula);
       }
       grid.push(values);
+      formulaGrid.push(formulaFlags);
     }
 
     // Extract merged cell ranges
@@ -1760,6 +1873,9 @@ async function denseParseXlsx(
       const tailBuffer: Record<string, unknown>[] = [];
       let dataRowCount = 0;
 
+      // Track formula columns (columns where values are computed, not input)
+      const formulaColumns = new Set<string>();
+
       // Gzip blob for this region
       const gzipChunks: Buffer[] = [];
       const gzip = createGzip({ level: 6 });
@@ -1776,6 +1892,12 @@ async function denseParseXlsx(
         // Extract values for this region's column range
         const values = row.slice(region.startCol, region.endCol + 1);
         if (values.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
+
+        // Check for formula cells in this row's region columns
+        const rowFormulas = formulaGrid[r]?.slice(region.startCol, region.endCol + 1) ?? [];
+        for (let i = 0; i < headers.length; i++) {
+          if (rowFormulas[i]) formulaColumns.add(headers[i]);
+        }
 
         const obj: Record<string, unknown> = {};
         for (let i = 0; i < headers.length; i++) {
@@ -1831,6 +1953,22 @@ async function denseParseXlsx(
         sampleRows: [...headSample, ...reservoirSample, ...tail],
         columnProfile,
         blobBuffer: Buffer.concat(gzipChunks),
+        // Region metadata
+        regionId: `${fileId}:${wsName}:region-${ri + 1}`,
+        regionIndex: ri,
+        regionType: region.type,
+        regionConfidence: region.confidence,
+        regionBounds: {
+          startRow: region.startRow,
+          endRow: region.endRow,
+          startCol: region.startCol,
+          endCol: region.endCol,
+          headerStartRow: headerStartRow,
+          headerEndRow: headerRowInGrid,
+          dataStartRow,
+        },
+        sourceSheetKey: existingKey,
+        formulaColumns: Array.from(formulaColumns),
       });
     }
   }

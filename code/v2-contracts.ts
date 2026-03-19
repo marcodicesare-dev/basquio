@@ -99,6 +99,16 @@ export const deckRunEventSchema = z.object({
 // Normalized uploaded files + extracted text/tables + brand/template assets.
 // Replaces: current intake/profiling stage output
 
+export const evidenceWorkspaceSheetRegionBoundsSchema = z.object({
+  startRow: z.number(),
+  endRow: z.number(),
+  startCol: z.number(),
+  endCol: z.number(),
+  headerStartRow: z.number(),
+  headerEndRow: z.number(),
+  dataStartRow: z.number(),
+});
+
 export const evidenceFileInventoryItemSchema = z.object({
   id: z.string(),
   fileName: z.string(),
@@ -118,6 +128,14 @@ export const evidenceFileInventoryItemSchema = z.object({
       uniqueCountApproximate: z.boolean().optional(),
       nullRate: z.number().min(0).max(1).default(0),
     })).default([]),
+    // Region metadata — only present for region-level manifests from dense parse
+    regionId: z.string().optional(),
+    regionIndex: z.number().optional(),
+    regionType: z.string().optional(), // structured_table, financial_model_block, kpi_grid, narrative_sheet, unsafe
+    regionConfidence: z.number().optional(),
+    regionBounds: evidenceWorkspaceSheetRegionBoundsSchema.optional(),
+    sourceSheetKey: z.string().optional(), // parent sheet if this is a sub-region
+    formulaColumns: z.array(z.string()).optional(), // columns with formula-driven values
   })).default([]),
   textContent: z.string().optional(),
   pages: z.array(z.object({
@@ -529,6 +547,7 @@ export type DeckRun = z.infer<typeof deckRunSchema>;
 export type DeckRunEventType = z.infer<typeof deckRunEventTypeSchema>;
 export type TokenUsage = z.infer<typeof tokenUsageSchema>;
 export type DeckRunEvent = z.infer<typeof deckRunEventSchema>;
+export type EvidenceWorkspaceSheetRegionBounds = z.infer<typeof evidenceWorkspaceSheetRegionBoundsSchema>;
 export type EvidenceFileInventoryItem = z.infer<typeof evidenceFileInventoryItemSchema>;
 export type EvidenceWorkspace = z.infer<typeof evidenceWorkspaceSchema>;
 export type NotebookEntry = z.infer<typeof notebookEntrySchema>;
