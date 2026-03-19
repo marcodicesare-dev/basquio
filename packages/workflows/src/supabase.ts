@@ -56,7 +56,7 @@ export async function uploadToStorage(input: {
     headers: buildServiceHeaders(input.serviceKey, {
       "cache-control": "max-age=3600",
       "content-type": input.contentType,
-      "x-upsert": String(input.upsert ?? false),
+      "x-upsert": String(input.upsert ?? true),
     }),
     body: new Uint8Array(input.body),
     signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
