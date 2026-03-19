@@ -916,7 +916,7 @@ function renderTable(
     const firstColVal = String(row[visibleHeaders[0]] ?? "").toLowerCase();
     const isHighlighted = highlightKeywords.size > 0 &&
       [...highlightKeywords].some((kw) => firstColVal.includes(kw));
-    const zebraFill = rowIdx % 2 === 0 ? "F8FAFC" : "FFFFFF";
+    const zebraFill = rowIdx % 2 === 0 ? norm(tokens.palette.surface) : norm(tokens.palette.bg);
     const rowFill = isHighlighted ? norm(tokens.palette.accentLight) : zebraFill;
 
     return visibleHeaders.map((col, colIdx) => {
@@ -1473,8 +1473,8 @@ function renderContentSlide(
                   fontFace: tokens.typography.bodyFont,
                   color: norm(tokens.palette.ink),
                   fill: rowIdx % 2 === 0
-                    ? { color: norm(tokens.palette.surface ?? "F8FAFC") }
-                    : { color: "FFFFFF" },
+                    ? { color: norm(tokens.palette.surface) }
+                    : { color: norm(tokens.palette.bg) },
                 },
               })),
             );

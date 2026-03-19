@@ -56,16 +56,16 @@ export interface ShapeChartOptions {
 // Comparable to a web chart library's theme but for PPTX shapes.
 
 const V = {
-  // Colors (neutral ramp)
-  mutedBar: "D1D5DB",        // Non-focal bars/segments
-  labelGray: "6B7280",       // Axis labels, category labels
-  gridGray: "F3F4F6",        // Grid lines (barely visible)
-  axisGray: "E5E7EB",        // Axis lines (subtle)
-  borderGray: "E2E8F0",      // Card/component borders
-  surfaceGray: "F8FAFC",     // Card backgrounds, zebra rows
-  // Semantic colors
-  green: "16A34A",
-  red: "DC2626",
+  // Colors — Dark-mode tokens from basquio-deck-templates-v3.jsx
+  mutedBar: "272630",        // Non-focal bars/segments (border color, subtle on dark)
+  labelGray: "6B6A72",       // Axis labels, category labels (JSX: textDim)
+  gridGray: "1F1E28",        // Grid lines (JSX: borderSubtle — barely visible on dark)
+  axisGray: "272630",        // Axis lines (JSX: border — subtle on dark)
+  borderGray: "272630",      // Card/component borders (JSX: border)
+  surfaceGray: "16151E",     // Card backgrounds, zebra rows (JSX: card)
+  // Semantic colors (from JSX design system)
+  green: "4CC9A0",           // JSX: green — positive, growth
+  red: "E8636F",             // JSX: red — negative, decline
   // Typography sizes (pt)
   chartTitle: 10,            // Chart title above chart area
   dataLabel: 10,             // Values on bars/points (bold)
@@ -1128,7 +1128,7 @@ function renderDataTable(
   // Data rows
   labels.slice(0, maxRows).forEach((label, ri) => {
     const rowY = frame.y + (ri + 1) * rowH;
-    const bg = ri % 2 === 0 ? tokens.surface : "FFFFFF";
+    const bg = ri % 2 === 0 ? tokens.surface : V.surfaceGray;
 
     // Label column
     slide.addText(truncLabel(label), {
