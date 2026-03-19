@@ -1360,12 +1360,14 @@ export async function renderV2PptxArtifact(
 
   const rawBuffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
 
-  // Post-process for Google Slides / Keynote compatibility ONLY in universal mode.
-  // CRITICAL: Do NOT run this for powerpoint-native mode — JSZip re-compression
-  // Post-processor: fix Google Slides multiLvlStrRef bug + Calibri font leaks.
-  // Runs for ALL export modes — the multiLvlStrRef fix is valid OOXML and safe for PowerPoint.
-  // For universal-compatible, native charts don't exist (shape-built), but Calibri replacement still helps.
-  const buffer = await fixPptxChartCompatibility(rawBuffer);
+  // Post-process ONLY for universal-compatible mode.
+  // CRITICAL: For powerpoint-native mode, skip entirely — JSZip re-compression can
+  // reorder ZIP entries and break OOXML conformance that PowerPoint enforces strictly.
+  // For universal-compatible, native charts don't exist (shape-built), but Calibri
+  // replacement in theme XML still helps cross-app font rendering.
+  const buffer = (input.exportMode ?? "powerpoint-native") === "universal-compatible"
+    ? await fixPptxChartCompatibility(rawBuffer)
+    : rawBuffer;
 
   return {
     fileName: "basquio-deck.pptx",
