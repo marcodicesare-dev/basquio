@@ -1655,426 +1655,20 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       timeout: "20m",
     }) as AnalystResult;
 
-    const analysis = analystResult.analysis;
+    // ─── STEP 2.5+3+4: PLAN + AUTHOR + POLISH (child function) ────
+    // Entire plan → author → polish block runs in a child function with
+    // its own 25min timeout. Isolates the most token-heavy phase.
+    const authorResult = await step.invoke("author-polish", {
+      function: basquioAuthor,
+      data: { runId, brief },
+      timeout: "25m",
+    }) as { deckSummary: string; slideCount: number; chartCount: number };
 
-    // ─── STEP 2.5: PLAN DECK (model-driven, storyline-aware) ────
-    const deckPlan = await step.run("plan-deck", async () => {
-      await emitRunEvent(runId, "author", "plan_started");
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const deckSummary = authorResult.deckSummary;
 
-      // Use clarified brief's slide count if available, then parse from brief, then heuristic
-      const clarifiedSlideCount = analystResult.clarifiedBrief?.requestedSlideCount ?? null;
-      // Match patterns: "1 slide", "5 slides", "one slide", "create 3 slides", etc.
-      const requestedSlideMatch = brief.match(/(\d+)\s*slide/i)
-        ?? brief.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*slide/i);
-      const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
-      const parsedCount = requestedSlideMatch
-        ? (parseInt(requestedSlideMatch[1], 10) || wordToNum[requestedSlideMatch[1].toLowerCase()] || undefined)
-        : undefined;
-      const requestedSlides = clarifiedSlideCount ?? parsedCount;
-      // Respect the user's explicit request — even 1 slide. Only apply heuristic when no count specified.
-      const targetSlides = requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 20);
-
-      const findingsSummary = analysis.topFindings
-        .map((f, i) => `${i + 1}. ${f.title}: ${f.claim} (confidence: ${f.confidence})`)
-        .join("\n");
-
-      // Build storyline context if available
-      const storylinePlan = analystResult.storylinePlan;
-      let storylineContext = "";
-      if (storylinePlan) {
-        const branchSummary = storylinePlan.issueBranches
-          .map((b, i) => `  Branch ${i + 1}: "${b.question}" → ${b.conclusion} (slide implication: ${b.slideImplication})`)
-          .join("\n");
-        const recoSummary = storylinePlan.recommendationShapes
-          .map((r) => `  - [${r.confidence}] ${r.recommendation} (${r.quantification})`)
-          .join("\n");
-        const titleReadThrough = storylinePlan.titleReadThrough
-          .map((t, i) => `  ${i + 1}. ${t}`)
-          .join("\n");
-        storylineContext = `
-STORYLINE PLAN (from issue tree analysis):
-Governing question: "${storylinePlan.governingQuestion}"
-
-Issue branches:
-${branchSummary}
-
-Recommendation shapes:
-${recoSummary}
-
-Proposed title read-through:
-${titleReadThrough}
-
-IMPORTANT: Map each section to an issue branch. The deck must answer the governing question through its narrative arc. Use the title read-through as a starting point for slide titles.`;
-      }
-
-      const planResult = await generateText({
-        model: openai("gpt-5.4"),
-        output: Output.object({ schema: deckPlanSchema }),
-        prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation structured around an issue tree.
-
-BRIEF:
-${brief}
-
-ANALYSIS DOMAIN: ${analysis.domain}
-ANALYSIS SUMMARY: ${analysis.summary}
-
-KEY FINDINGS:
-${findingsSummary}
-${storylineContext}
-
-AVAILABLE LAYOUTS: cover, exec-summary (metrics), title-chart, chart-split, title-body, title-bullets, evidence-grid, table, summary
-
-CHART INTENTS: rank, trend, composition, bridge, correlation, comparison, kpi, table, none
-
-RULES:
-1. First slide MUST be "cover" layout — role "cover"
-2. If >5 slides, slide 2 should be exec-summary with 3-4 KPI metrics — role "exec-summary"
-3. Evidence slides use title-chart or chart-split — pick chart intent based on the analytical story
-4. Last slide should be "summary" layout — role "recommendation" or "synthesis"
-5. Use at least 3 different layouts — no layout >50% of slides
-6. Every governingThought must be an action title (full sentence stating the takeaway, with a number)
-7. Exactly ${targetSlides} slides
-8. Each section must reference which issue branch it addresses (use "overview" for cover/exec-summary, "synthesis" for closing)
-9. Each slide must specify evidenceRequired — the evidence ref IDs it must cite
-
-Return a structured DeckPlan with sections containing slide specs.`,
-      });
-
-      if (!planResult.output) {
-        // Fallback: deterministic plan if model fails (backward compatible flat plan)
-        const fallbackSections = [{
-          sectionId: "main",
-          title: analysis.domain,
-          issueBranch: "overview",
-          slides: Array.from({ length: targetSlides }, (_, i) => ({
-            position: i + 1,
-            role: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : "evidence",
-            layout: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : i % 2 === 0 ? "title-chart" : "chart-split",
-            governingThought: i === 0 ? `${analysis.domain} Analysis` : analysis.topFindings[i - 2]?.claim ?? `Slide ${i + 1}`,
-            chartIntent: i === 0 || i === 1 || i === targetSlides - 1 ? "none" : "rank",
-            evidenceRequired: [] as string[],
-            focalObject: analysis.domain,
-          })),
-        }];
-        const fallbackPlan: DeckPlan = {
-          targetSlideCount: targetSlides,
-          sections: fallbackSections,
-          appendixStrategy: "No appendix",
-        };
-
-        // Persist fallback plan as working paper
-        try { await persistWorkingPaper(runId, "deck_plan", fallbackPlan); } catch {}
-
-        return { targetSlides, requestedSlides, structuredPlan: fallbackPlan };
-      }
-
-      const structuredPlan = planResult.output;
-
-      // Persist structured deck plan as working paper
-      try { await persistWorkingPaper(runId, "deck_plan", structuredPlan); } catch {}
-
-      return { targetSlides, requestedSlides, structuredPlan };
-    }) as { targetSlides: number; requestedSlides?: number; structuredPlan: DeckPlan };
-
-    // ─── STEP 3: AUTHOR (section-by-section) ──────────────────────
-    // NOTE: Status updates between steps are side effects that re-execute on every
-    // Inngest replay. They MUST be idempotent and NOT overwrite terminal states.
-    // Moving them inside the first step of each phase.
-
-    const deckPlanSections = deckPlan.structuredPlan.sections ?? [];
-    let deckSummary = "";
-
-    // Helper: build getSlides callback (shared between section + monolithic paths)
-    const makeGetSlides = () => async () => {
-      const rows = await getSlides(runId);
-      return rows.map((r) => ({
-        id: r.id,
-        position: r.position,
-        layoutId: r.layoutId ?? "title-body",
-        title: r.title ?? "",
-        chartId: r.chartId,
-        body: r.body,
-        bullets: r.bullets,
-        metrics: r.metrics,
-        speakerNotes: r.speakerNotes,
-        callout: r.callout,
-        kicker: r.kicker,
-        pageIntent: r.pageIntent,
-        governingThought: r.governingThought,
-        chartIntent: r.chartIntent,
-        focalObject: r.focalObject,
-        highlightCategories: r.highlightCategories,
-      }));
-    };
-
-    if (deckPlanSections.length > 0) {
-      // Parallel section authoring — all sections run concurrently in ONE step.
-      // Each section writes to distinct slide positions (defined in deck plan).
-      // Saves 40-60% of author time for multi-section decks.
-      await step.run("author-all-sections", async () => {
-        await updateRunStatus(runId, "running", "author");
-        await emitRunEvent(runId, "author", "phase_started");
-
-        // Author all sections in parallel
-        await Promise.all(deckPlanSections.map(async (section) => {
-          await emitRunEvent(runId, "author", "section_started", {
-            sectionId: section.sectionId,
-            slideCount: section.slides.length,
-          });
-
-          // Author cascade: Opus for sacred sections (exec-summary, recommendations),
-          // Sonnet for data-heavy sections (evidence, context, comparison).
-          // Sacred sections carry the argument; data sections are formulaic given the storyline.
-          const sacredRoles = ["cover", "exec-summary", "summary", "recommendation"];
-          const isSacredSection = section.slides.some((s) =>
-            sacredRoles.includes(s.role ?? "") || sacredRoles.includes(s.layout ?? ""),
-          );
-          const sectionModel = isSacredSection ? "claude-opus-4-6" : "claude-sonnet-4-6";
-          tracker.startPhase("author", sectionModel, "anthropic");
-
-          // Build section-scoped brief
-          const sectionBrief = buildSectionBrief(brief, section, analystResult, deckPlan.structuredPlan);
-
-          // Step limit proportional to section size
-          const sectionStepLimit = Math.min(5 + section.slides.length * 6, 30);
-
-          const result = await runAuthorAgent({
-            workspace,
-            runId,
-            analysis: analystResult.analysis,
-            modelOverride: sectionModel,
-            brief: sectionBrief,
-            maxSteps: sectionStepLimit,
-            loadRows: loadSheetRows,
-            persistNotebookEntry: async (entry: NotebookEntry) => {
-              const notebookId = await persistNotebookEntry(runId, "author", 0, entry);
-              if (entry.evidenceRefId) {
-                await persistEvidenceEntry(runId, {
-                  evidenceType: entry.toolName === "compute_metric" ? "metric" : entry.toolName === "query_data" ? "table" : "document",
-                  refId: entry.evidenceRefId,
-                  label: (entry.toolInput as Record<string, unknown>)?.name as string ?? entry.toolName,
-                  description: (entry.toolOutput as Record<string, unknown>)?.summary as string ?? undefined,
-                  value: entry.toolOutput,
-                  sourceNotebookEntryId: notebookId,
-                });
-              }
-              return notebookId;
-            },
-            persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
-            persistChart: async (chart: ChartInput) => persistChart(runId, chart),
-            getChart: (chartId: string) => getChartMeta(chartId),
-            getTemplateProfile: () => workspace.templateProfile ?? null,
-            listEvidence: () => listEvidenceForRun(runId),
-            getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
-            getSlides: makeGetSlides(),
-            renderContactSheet: () => renderContactSheetForRun(runId),
-            onStepFinish: async (event: StepFinishEvent) => {
-              tracker.recordStep(event.usage, event.toolCalls.length);
-              await emitRunEvent(runId, "author", "tool_call", {
-                sectionId: section.sectionId,
-                stepNumber: event.stepNumber,
-                tools: event.toolCalls.map((tc: { toolName: string }) => tc.toolName),
-                usage: event.usage,
-              });
-            },
-          });
-
-          tracker.endPhase();
-          return result.summary;
-        }));
-
-        // Emit phase completion
-        const slides = await getSlides(runId);
-        await emitRunEvent(runId, "author", "phase_completed", {
-          slideCount: slides.length,
-          sections: deckPlanSections.length,
-        });
-      });
-
-      deckSummary = `${deckPlanSections.length} sections authored: ${deckPlanSections.map((s) => s.title).join(", ")}`;
-    } else {
-      // Fallback: monolithic author (backward compatible if deck plan has no sections)
-      deckSummary = await step.run("author", async () => {
-        tracker.startPhase("author", "claude-opus-4-6", "anthropic");
-
-        const { structuredPlan } = deckPlan;
-        const deckPlanBrief = structuredPlan.sections
-          .map((sec) => {
-            const slideSpecs = sec.slides
-              .map((slide) => `  Slide ${slide.position}: [${slide.role}] ${slide.layout} — "${slide.governingThought}" (chart: ${slide.chartIntent}, evidence: [${slide.evidenceRequired.join(", ")}], focal: ${slide.focalObject})`)
-              .join("\n");
-            return `Section: "${sec.title}" (${sec.slides.length} slides, addresses: "${sec.issueBranch}")\n${slideSpecs}`;
-          })
-          .join("\n\n");
-
-        const governingQuestionNote = analystResult.storylinePlan
-          ? `\nGOVERNING QUESTION: "${analystResult.storylinePlan.governingQuestion}"\n`
-          : "";
-
-        const result = await runAuthorAgent({
-          workspace,
-          runId,
-          analysis,
-          brief: `${brief}
-${governingQuestionNote}
-DECK PLAN (structured from issue tree — follow this structure):
-Target: ${deckPlan.targetSlides} slides
-Appendix strategy: ${structuredPlan.appendixStrategy}
-
-${deckPlanBrief}
-
-IMPORTANT: This plan was designed by a deck architect model from the issue tree analysis. Follow the section structure, slide sequence, layouts, and chart intents. Each slide's governingThought is the action title — use it as-is or refine with real numbers. Respect the plan's narrative arc and slide count.`,
-          loadRows: loadSheetRows,
-          persistNotebookEntry: async (entry: NotebookEntry) => {
-            const notebookId = await persistNotebookEntry(runId, "author", 0, entry);
-            if (entry.evidenceRefId) {
-              await persistEvidenceEntry(runId, {
-                evidenceType: entry.toolName === "compute_metric" ? "metric" : entry.toolName === "query_data" ? "table" : "document",
-                refId: entry.evidenceRefId,
-                label: (entry.toolInput as Record<string, unknown>)?.name as string ?? entry.toolName,
-                description: (entry.toolOutput as Record<string, unknown>)?.summary as string ?? undefined,
-                value: entry.toolOutput,
-                sourceNotebookEntryId: notebookId,
-              });
-            }
-            return notebookId;
-          },
-          persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
-          persistChart: async (chart: ChartInput) => persistChart(runId, chart),
-            getChart: (chartId: string) => getChartMeta(chartId),
-          getTemplateProfile: () => workspace.templateProfile ?? null,
-          listEvidence: () => listEvidenceForRun(runId),
-          getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
-          getSlides: makeGetSlides(),
-          onStepFinish: async (event: StepFinishEvent) => {
-            tracker.recordStep(event.usage, event.toolCalls.length);
-            await emitRunEvent(runId, "author", "tool_call", {
-              stepNumber: event.stepNumber,
-              tools: event.toolCalls.map((tc: { toolName: string }) => tc.toolName),
-              usage: event.usage,
-            });
-          },
-        });
-
-        tracker.endPhase();
-
-        const slides = await getSlides(runId);
-        await emitRunEvent(runId, "author", "phase_completed", {
-          slideCount: slides.length,
-        });
-
-        return result.summary;
-      });
-    }
-
-    // ─── STEP 3.5: POLISH (density check + targeted agent rewrite) ──
-    await step.run("polish", async () => {
-      const slides = await getSlides(runId);
-      const weakSlideDetails: Array<{ position: number; title: string; layout: string; score: number; missing: string[] }> = [];
-
-      for (const s of slides) {
-        if (s.layoutId === "cover") continue;
-        const hasChart = Boolean(s.chartId);
-        const hasBody = Boolean(s.body && s.body.trim().length > 10);
-        const hasBullets = Boolean(s.bullets && s.bullets.length > 0);
-        const hasMetrics = Boolean(s.metrics && s.metrics.length > 0);
-        const hasNotes = Boolean(s.speakerNotes && s.speakerNotes.trim().length > 10);
-
-        let contentScore = 0;
-        if (hasChart) contentScore += 2;
-        if (hasBody) contentScore += 1;
-        if (hasBullets) contentScore += 1;
-        if (hasMetrics) contentScore += 2;
-        if (hasNotes) contentScore += 1;
-
-        if (contentScore < 3) {
-          weakSlideDetails.push({
-            position: s.position,
-            title: s.title ?? "",
-            layout: s.layoutId ?? "",
-            score: contentScore,
-            missing: [
-              !hasChart ? "chart (build_chart then update slide)" : "",
-              !hasBody ? "body text (executive prose)" : "",
-              !hasBullets ? "bullet points" : "",
-              !hasMetrics ? "metric cards" : "",
-              !hasNotes ? "speaker notes" : "",
-            ].filter(Boolean),
-          });
-        }
-      }
-
-      if (weakSlideDetails.length === 0) {
-        await emitRunEvent(runId, "author", "polish_skipped", { reason: "All slides meet density threshold" });
-        return { polished: 0, total: slides.length };
-      }
-
-      // Run a targeted polish agent on the weak slides
-      const hydratedWorkspace = await loadHydratedWorkspace();
-      // Polish uses Sonnet 4.6 (not Opus) — rubric-based scoring + rewrite, not creative synthesis
-      tracker.startPhase("polish", "claude-sonnet-4-6", "anthropic");
-
-      const weakSlidesPrompt = weakSlideDetails.map((s) =>
-        `Slide ${s.position} (${s.layout}): "${s.title}" — score ${s.score}/7. Missing: ${s.missing.join(", ")}`,
-      ).join("\n");
-
-      await runAuthorAgent({
-        workspace: hydratedWorkspace,
-        runId,
-        analysis,
-        modelOverride: "claude-sonnet-4-6", // Sonnet for rubric tasks — saves ~$0.30/deck
-        brief: `POLISH PASS: The following slides are below consulting quality. Fix each one by adding the missing content. Use query_data to pull real numbers. Build charts where needed. Do NOT rewrite slides that aren't listed — only fix the weak ones.\n\nWEAK SLIDES:\n${weakSlidesPrompt}`,
-        maxSteps: 15,
-        loadRows: loadSheetRows,
-        persistNotebookEntry: async (entry: NotebookEntry) => {
-          return persistNotebookEntry(runId, "polish", 0, entry);
-        },
-        persistSlide: async (slide: SlideInput) => persistSlide(runId, slide),
-        persistChart: async (chart: ChartInput) => persistChart(runId, chart),
-            getChart: (chartId: string) => getChartMeta(chartId),
-        getTemplateProfile: () => workspace.templateProfile ?? null,
-        getNotebookEntries: async (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
-        getSlides: async () => {
-          const rows = await getSlides(runId);
-          return rows.map((r) => ({
-            id: r.id,
-            position: r.position,
-            layoutId: r.layoutId ?? "title-body",
-            title: r.title ?? "",
-            chartId: r.chartId,
-            body: r.body,
-            bullets: r.bullets,
-            metrics: r.metrics,
-            speakerNotes: r.speakerNotes,
-            callout: r.callout,
-            kicker: r.kicker,
-            pageIntent: r.pageIntent,
-            governingThought: r.governingThought,
-            chartIntent: r.chartIntent,
-            focalObject: r.focalObject,
-            highlightCategories: r.highlightCategories,
-          }));
-        },
-        renderContactSheet: () => renderContactSheetForRun(runId),
-        onStepFinish: async (event: StepFinishEvent) => {
-          tracker.recordStep(event.usage, event.toolCalls.length);
-          await emitRunEvent(runId, "author", "tool_call", {
-            stepNumber: event.stepNumber,
-            tools: event.toolCalls.map((tc: { toolName: string }) => tc.toolName),
-            phase: "polish",
-          });
-        },
-      });
-
-      tracker.endPhase();
-
-      await emitRunEvent(runId, "author", "polish_completed", {
-        weakSlideCount: weakSlideDetails.length,
-        totalSlides: slides.length,
-      });
-
-      return { polished: weakSlideDetails.length, total: slides.length };
-    });
+    // Plan+Author+Polish code has been moved to basquioAuthor child function.
+    // Dead code removed — see basquioAuthor for the implementation.
 
     // ─── STEP 4+5: CRITIQUE + REVISE (invoked as child function) ───
     const critiqueReviseResult = await step.invoke("critique-revise", {
@@ -2230,6 +1824,223 @@ export const basquioUnderstand = inngest.createFunction(
         costSummary: tracker.getSummary(runId),
       };
     });
+  },
+);
+
+/**
+ * basquioAuthor: Plan + Author + Polish as independent function.
+ * Reads analyst output from working papers, plans deck, authors sections
+ * in parallel, then polishes weak slides.
+ */
+export const basquioAuthor = inngest.createFunction(
+  { id: "basquio-author", retries: 1, timeouts: { finish: "25m" } },
+  { event: "basquio/author.requested" },
+  async ({ event, step }) => {
+    const { runId, brief } = event.data as { runId: string; brief: string };
+
+    // Step 1: Plan the deck
+    const deckPlan = await step.run("plan-deck", async () => {
+      await updateRunStatus(runId, "running", "author");
+      await emitRunEvent(runId, "author", "plan_started");
+
+      // Load analyst result from working papers
+      const analysisResult = await loadWorkingPaper<{
+        analysis: { domain: string; summary: string; topFindings: Array<{ confidence: number; title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }>; metricsComputed: number; queriesExecuted: number; filesAnalyzed: number; keyDimensions: string[]; recommendedChartTypes: Array<{ chartType: string; reason: string }> };
+        clarifiedBrief?: { audience: string; objective: string; stakes: string; governingQuestion: string; focalEntity: string; focalBrands: string[]; language: string; requestedSlideCount: number | null; hypotheses: string[] };
+        storylinePlan?: { issueBranches: Array<{ question: string; conclusion: string; hypotheses: Array<{ claim: string }> }> };
+      }>(runId, "analysis_result");
+      if (!analysisResult) throw new Error(`Analysis result not found for run ${runId}`);
+
+      const analysis = analysisResult.analysis;
+      const clarifiedSlideCount = analysisResult.clarifiedBrief?.requestedSlideCount ?? null;
+      const requestedSlideMatch = brief.match(/(\d+)\s*slide/i)
+        ?? brief.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*slide/i);
+      const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+      const parsedCount = requestedSlideMatch
+        ? (parseInt(requestedSlideMatch[1], 10) || wordToNum[requestedSlideMatch[1].toLowerCase()] || undefined)
+        : undefined;
+      const requestedSlides = clarifiedSlideCount ?? parsedCount;
+      const targetSlides = requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 20);
+
+      const findingsSummary = analysis.topFindings
+        .map((f: { title: string; claim: string; confidence: number }, i: number) => `${i + 1}. ${f.title}: ${f.claim} (confidence: ${f.confidence})`)
+        .join("\n");
+
+      const storylinePlan = analysisResult.storylinePlan;
+      let storylineContext = "";
+      if (storylinePlan) {
+        storylineContext = `\n\n## Storyline (issue tree)\n${storylinePlan.issueBranches.map(
+          (b: { question: string; conclusion: string; hypotheses: Array<{ claim: string }> }) =>
+            `Q: ${b.question}\nConclusion: ${b.conclusion}\nHypotheses: ${b.hypotheses.map((h: { claim: string }) => h.claim).join("; ")}`,
+        ).join("\n\n")}`;
+      }
+
+      // Generate plan via GPT-5.4
+      const { generateObject } = await import("ai");
+      const { openai } = await import("@ai-sdk/openai");
+
+      try {
+        const planResult = await generateObject({
+          model: openai("gpt-5.4"),
+          schema: deckPlanSchema,
+          prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation structured around an issue tree.
+
+## Analysis findings
+${findingsSummary}
+${storylineContext}
+
+## Brief
+${brief}
+
+## Rules
+1. Every slide must exist because it resolves one branch of the issue tree
+2. Cover slide is always position 1
+3. Exec summary is position 2
+4. Recommendation/summary is the final position
+5. Each section maps to one issue branch
+6. Assign chartIntent based on the analytical question
+7. Exactly ${targetSlides} slides
+
+Return a structured DeckPlan with sections containing slide specs.`,
+        });
+
+        const structuredPlan = planResult.object;
+        try { await persistWorkingPaper(runId, "deck_plan", structuredPlan); } catch {}
+        return { targetSlides, requestedSlides, structuredPlan };
+      } catch {
+        // Fallback plan
+        const fallbackSections = [{ sectionId: "sec-0", title: "Analysis", issueBranch: "overview", slides: Array.from({ length: targetSlides }, (_, i) => ({ position: i + 1, role: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : "evidence", layout: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : i % 2 === 0 ? "title-chart" : "chart-split", governingThought: "", chartIntent: i === 0 || i === 1 || i === targetSlides - 1 ? "none" : "rank", focalObject: analysis.domain, evidenceRequired: [] as string[] })) }];
+        const fallbackPlan: DeckPlan = { targetSlideCount: targetSlides, sections: fallbackSections, appendixStrategy: "No appendix" };
+        try { await persistWorkingPaper(runId, "deck_plan", fallbackPlan); } catch {}
+        return { targetSlides, requestedSlides, structuredPlan: fallbackPlan };
+      }
+    }) as { targetSlides: number; requestedSlides?: number; structuredPlan: DeckPlan };
+
+    // Step 2: Author all sections in parallel
+    const deckPlanSections = deckPlan.structuredPlan.sections ?? [];
+    const workspace = await loadWorkspaceFromDb(runId);
+    const loadRows = createLoadSheetRows(runId);
+    const analysisForAuthor = await loadWorkingPaper<{
+      analysis: { domain: string; summary: string; topFindings: Array<{ title: string; claim: string; confidence: number; evidenceRefIds: string[]; businessImplication: string }>; keyDimensions: string[]; recommendedChartTypes: Array<{ chartType: string; reason: string }> };
+      clarifiedBrief?: { focalEntity: string; focalBrands: string[]; language: string };
+    }>(runId, "analysis_result");
+    const analysis = analysisForAuthor?.analysis;
+
+    let deckSummary = "";
+
+    if (deckPlanSections.length > 0) {
+      await step.run("author-all-sections", async () => {
+        await emitRunEvent(runId, "author", "phase_started");
+
+        await Promise.all(deckPlanSections.map(async (section) => {
+          const isSacredSection = ["cover", "exec-summary", "summary", "recommendation"].some(
+            (role) => section.slides.some((s: { role?: string }) => s.role === role),
+          );
+          const sectionModel = isSacredSection ? "claude-opus-4-6" : "claude-sonnet-4-6";
+
+          const sectionBrief = `## Section: ${section.title}
+Issue branch: ${section.issueBranch ?? "N/A"}
+Slides: ${section.slides.map((s: { position: number; role?: string; governingThought?: string }) => `${s.position}. [${s.role}] ${s.governingThought ?? ""}`).join("\n")}
+
+## Full brief
+${brief}
+
+## Analysis summary
+${analysis?.summary ?? ""}
+
+## Key findings
+${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.title}: ${f.claim}`).join("\n") ?? ""}`;
+
+          const tracker = new UsageTracker();
+          tracker.startPhase("author", sectionModel, "anthropic");
+
+          const result = await runAuthorAgent({
+            workspace: workspace!,
+            runId,
+            analysis: analysis as unknown as AnalysisReport,
+            brief: sectionBrief,
+            loadRows,
+            modelOverride: sectionModel,
+            maxSteps: 30,
+            persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "author", 0, entry),
+            getTemplateProfile: (async () => undefined) as never,
+            persistSlide: (slide) => persistSlide(runId, slide),
+            persistChart: (chart) => persistChart(runId, chart),
+            getSlides: () => getSlides(runId),
+            listEvidence: () => listEvidenceForRun(runId),
+            onStepFinish: async (event: StepFinishEvent) => {
+              tracker.recordStep(event.usage, event.toolCalls.length);
+            },
+          });
+
+          tracker.endPhase();
+          return result.summary;
+        }));
+
+        const slides = await getSlides(runId);
+        await emitRunEvent(runId, "author", "phase_completed", {
+          slideCount: slides.length,
+          sections: deckPlanSections.length,
+        });
+      });
+
+      deckSummary = `${deckPlanSections.length} sections authored`;
+    }
+
+    // Step 3: Polish weak slides
+    await step.run("polish", async () => {
+      await updateRunStatus(runId, "running", "polish");
+      const slides = await getSlides(runId);
+      if (slides.length === 0) return { polished: 0, total: 0 };
+
+      const weakSlides = slides.filter((s: { body?: string; title?: string }) => {
+        const bodyLen = (s.body ?? "").split(/\s+/).length;
+        const titleLen = (s.title ?? "").length;
+        return bodyLen < 20 || titleLen < 15;
+      });
+
+      if (weakSlides.length === 0) {
+        return { polished: 0, total: slides.length };
+      }
+
+      const tracker = new UsageTracker();
+      tracker.startPhase("polish", "claude-sonnet-4-6", "anthropic");
+
+      const weakSlideDetails = weakSlides.map((s: { position: number; title?: string; body?: string; layoutId?: string }) =>
+        `Slide ${s.position} (${s.layoutId ?? "unknown"}): title="${s.title ?? ""}", body="${(s.body ?? "").slice(0, 100)}..."`,
+      ).join("\n");
+
+      await runAuthorAgent({
+        workspace: workspace!,
+        runId,
+        analysis: analysis as unknown as AnalysisReport,
+        brief: `## Polish task\nReview and strengthen these weak slides:\n${weakSlideDetails}\n\nFull brief: ${brief}`,
+        loadRows,
+        modelOverride: "claude-sonnet-4-6",
+        maxSteps: 15,
+        persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "polish", 0, entry),
+        getTemplateProfile: (async () => undefined) as never,
+        persistSlide: (slide) => persistSlide(runId, slide),
+        persistChart: (chart) => persistChart(runId, chart),
+        getSlides: () => getSlides(runId),
+        listEvidence: () => listEvidenceForRun(runId),
+        onStepFinish: async (event: StepFinishEvent) => {
+          tracker.recordStep(event.usage, event.toolCalls.length);
+        },
+      });
+
+      tracker.endPhase();
+      return { polished: weakSlides.length, total: slides.length };
+    });
+
+    // Return summary for parent
+    const finalSlides = await getSlides(runId);
+    const finalCharts = await getV2ChartRows(runId);
+    return {
+      deckSummary,
+      slideCount: finalSlides.length,
+      chartCount: finalCharts.length,
+    };
   },
 );
 
