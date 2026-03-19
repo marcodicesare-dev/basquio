@@ -2198,6 +2198,27 @@ export const basquioUnderstand = inngest.createFunction(
           clarifiedBrief: result.clarifiedBrief,
           storylinePlan: result.storylinePlan,
         });
+
+        // Persist RunIntent — the single source of truth for "what are we building"
+        const runIntent = {
+          analysisMode: "deep_analysis" as const,
+          requestedSlideCount: result.clarifiedBrief?.requestedSlideCount ?? null,
+          audience: result.clarifiedBrief?.audience ?? "Executive stakeholder",
+          focalEntity: result.clarifiedBrief?.focalEntity ?? "",
+          coreQuestion: result.clarifiedBrief?.objective ?? brief,
+          exportMode: ((event.data as Record<string, unknown>).exportMode as string) ?? "powerpoint-native",
+          costTier: "standard" as const,
+          language: result.clarifiedBrief?.language ?? "en",
+          evidenceConfidence: result.analysis?.topFindings?.length > 0 ? 0.7 : 0.3,
+          sourceManifest: (workspace.fileInventory ?? []).map((f: { fileId?: string; fileName?: string; kind?: string }) => ({
+            fileId: f.fileId ?? "",
+            fileName: f.fileName ?? "",
+            kind: f.kind ?? "unknown",
+            hasTabularData: f.kind === "workbook",
+            hasVisualContent: ["pptx", "image"].includes(f.kind ?? ""),
+          })),
+        };
+        await persistWorkingPaper(runId, "run_intent", runIntent);
       } catch (error) {
         console.error("[understand] Failed to persist working papers:", error);
       }
