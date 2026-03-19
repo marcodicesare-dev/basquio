@@ -1362,13 +1362,10 @@ export async function renderV2PptxArtifact(
 
   // Post-process for Google Slides / Keynote compatibility ONLY in universal mode.
   // CRITICAL: Do NOT run this for powerpoint-native mode — JSZip re-compression
-  // can reorder ZIP entries and break OOXML conformance that PowerPoint enforces.
-  // In universal-compatible mode, charts are shape-built (no native chart XML),
-  // so the post-processor is effectively a no-op anyway — but we run it for
-  // the Calibri font replacement which helps in Keynote.
-  const buffer = input.exportMode === "universal-compatible"
-    ? await fixPptxChartCompatibility(rawBuffer)
-    : rawBuffer;
+  // Post-processor: fix Google Slides multiLvlStrRef bug + Calibri font leaks.
+  // Runs for ALL export modes — the multiLvlStrRef fix is valid OOXML and safe for PowerPoint.
+  // For universal-compatible, native charts don't exist (shape-built), but Calibri replacement still helps.
+  const buffer = await fixPptxChartCompatibility(rawBuffer);
 
   return {
     fileName: "basquio-deck.pptx",
@@ -1412,9 +1409,10 @@ async function fixPptxChartCompatibility(pptxBuffer: Buffer): Promise<Buffer> {
       }
     }
 
-    // Fix hardcoded Calibri in chart Excel theme (cosmetic but prevents Keynote warnings)
+    // Fix hardcoded Calibri everywhere — theme XML, chart Excel, slide layouts, embeddings
+    // Keynote reads font declarations from theme1.xml and shows warnings for missing Calibri
     const chartStyleEntries = Object.keys(zip.files).filter(
-      (f) => /^ppt\/charts\/_rels\/|^ppt\/embeddings\/.*\.xml$/i.test(f),
+      (f) => /^ppt\/charts\/_rels\/|^ppt\/embeddings\/.*\.xml$|^ppt\/theme\/.*\.xml$|^ppt\/slideLayouts\/.*\.xml$/i.test(f),
     );
     for (const entry of chartStyleEntries) {
       if (!zip.files[entry] || zip.files[entry].dir) continue;
