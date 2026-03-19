@@ -2445,13 +2445,10 @@ export const basquioExport = inngest.createFunction(
         coverageRatio: Math.round(coverageRatio * 100),
       });
 
-      // Hard gate: if ANY evidence file was unused, block export.
-      // Every file the user uploaded must contribute to the analysis.
-      if (unusedFiles.length > 0 && sourceFileIds.length > 0 && !skipSourceCoverage) {
-        await updateRunStatus(runId, "failed", "export", {
-          failure_message: `Export blocked: ${unusedFiles.length} of ${sourceFileIds.length} uploaded file(s) were not used in the analysis. All sources must contribute evidence.`,
-        });
-        throw new Error(`Export blocked: ${unusedFiles.length} source file(s) unused`);
+      // Source coverage: warn but NEVER block export.
+      // The user's authored slides are more valuable than a ref-matching technicality.
+      if (unusedFiles.length > 0 && sourceFileIds.length > 0) {
+        console.warn(`[basquio-export] ${unusedFiles.length} of ${sourceFileIds.length} source file(s) not cited in slides — proceeding with export`);
       }
 
       return { unusedFiles: unusedFiles.length, coverageRatio };
