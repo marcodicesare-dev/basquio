@@ -71,7 +71,8 @@ Rate severity:
 - minor: Wording improvements, density issues, minor layout concerns`;
 
 export async function runStrategicCriticAgent(input: StrategicCriticInput): Promise<CritiqueReportOutput> {
-  const model = anthropic("claude-opus-4-6");
+  // Sonnet 4.6 for strategic critique — checklist evaluation, not creative synthesis
+  const model = anthropic("claude-sonnet-4-6");
 
   const slidesSummary = input.slides
     .map((s) => {

@@ -190,7 +190,7 @@ Register EVERY important finding as a named evidence ref via compute_metric. Eac
       join_query: createJoinQueryTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
     },
-    stopWhen: stepCountIs(30),
+    stopWhen: stepCountIs(20), // 20 steps is sufficient for Phase 1-3; saves 2-4 min + $0.15-0.30
     output: Output.object({ schema: analysisReportSchema }),
     onStepFinish: input.onStepFinish,
   });
