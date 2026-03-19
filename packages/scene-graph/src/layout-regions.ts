@@ -1,10 +1,41 @@
 // ─── SHARED LAYOUT REGIONS ────────────────────────────────────────
 // Single source of truth for slide content placement coordinates.
-// Derived from the slot archetypes. Consumed by both the PPTX renderer
-// (PptxGenJS) and the scene graph (which drives PDF rendering).
+// All regions derived from a 12-column grid system.
+// Consumed by both the PPTX renderer and the scene graph (PDF).
 
 export const SLIDE_W = 10;
 export const SLIDE_H = 5.625;
+
+// ─── 12-COLUMN GRID SYSTEM ──────────────────────────────────────
+// Consulting-grade grid: consistent margins, gutters, column widths.
+// Both PPTX and PDF render from these exact coordinates.
+
+export const GRID = {
+  // Outer margins
+  marginL: 0.55,           // left margin
+  marginR: 0.55,           // right margin
+  marginTop: 0.35,         // top margin (below header rule)
+  marginBottom: 0.28,      // bottom margin (above footer)
+
+  // Grid dimensions
+  columns: 12,
+  gutter: 0.12,            // gutter between columns
+
+  // Reserved zones
+  headerRuleH: 0.03,       // accent rule at top
+  footerZoneH: 0.22,       // footer (source note + page number)
+
+  // Derived
+  get contentW() { return SLIDE_W - this.marginL - this.marginR; },
+  get contentH() { return SLIDE_H - this.marginTop - this.marginBottom - this.headerRuleH - this.footerZoneH; },
+  get colW() { return (this.contentW - (this.columns - 1) * this.gutter) / this.columns; },
+
+  // Helpers: convert column spans to absolute coordinates
+  colX(startCol: number): number { return this.marginL + (startCol - 1) * (this.colW + this.gutter); },
+  colSpanW(nCols: number): number { return nCols * this.colW + (nCols - 1) * this.gutter; },
+  contentY: 0.35 + 0.03, // marginTop + headerRule
+  contentBottom: SLIDE_H - 0.28 - 0.22, // above footer
+} as const;
 
 export type R = { x: number; y: number; w: number; h: number };
 
