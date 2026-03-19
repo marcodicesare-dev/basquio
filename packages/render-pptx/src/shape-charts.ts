@@ -274,14 +274,18 @@ function renderHorizontalBar(
   // Subtle vertical grid lines (25%, 50%, 75%, 100% marks)
   for (let g = 1; g <= 4; g++) {
     const gridX = chartAreaX + (chartAreaW * g) / 4;
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: gridX, y: frame.y, w: V.gridLinePt, h: frame.h,
       fill: { color: V.gridGray },
     });
   }
 
   // Thin baseline at chart left edge
-  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+  // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
     x: chartAreaX, y: frame.y, w: V.axisLinePt, h: frame.h,
     fill: { color: V.axisGray },
   });
@@ -308,7 +312,9 @@ function renderHorizontalBar(
 
     // Bar with micro-padding from baseline
     if (barW > 0.01) {
-      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
         x: chartAreaX + 0.02,
         y: y + V.barPadding,
         w: barW - 0.02,
@@ -337,7 +343,9 @@ function renderHorizontalBar(
     const bmX = chartAreaX + (options.benchmarkValue / maxVal) * chartAreaW;
     // Dashed line (rendered as thin rect since PptxGenJS shapes don't support dash)
     for (let dy = 0; dy < frame.h; dy += 0.08) {
-      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
         x: bmX - 0.003, y: frame.y + dy, w: 0.006, h: 0.04,
         fill: { color: V.labelGray },
       });
@@ -385,14 +393,18 @@ function renderVerticalBar(
   // Subtle horizontal grid lines
   for (let g = 1; g <= 4; g++) {
     const gridY = chartAreaY + chartAreaH - (chartAreaH * g) / 4;
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: frame.x, y: gridY, w: frame.w, h: V.gridLinePt,
       fill: { color: V.gridGray },
     });
   }
 
   // Baseline
-  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+  // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
     x: frame.x, y: chartAreaY + chartAreaH, w: frame.w, h: V.axisLinePt,
     fill: { color: V.axisGray },
   });
@@ -409,7 +421,9 @@ function renderVerticalBar(
       const color = isGrouped ? palette[di % palette.length] : (focal ? tokens.accent : V.mutedBar);
 
       if (barH > 0.01) {
-        slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+        // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
           x: barX, y: barY, w: barW - V.barPadding * 2, h: barH,
           fill: { color },
         });
@@ -487,7 +501,9 @@ function renderStackedBar(
         : (val / maxTotal) * chartAreaW;
 
       if (segW > 0.01) {
-        slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+        // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
           x: chartAreaX + offsetX, y: y + V.barPadding,
           w: segW, h: barH - V.barPadding * 2,
           fill: { color: palette[di % palette.length] },
@@ -578,7 +594,9 @@ function renderWaterfall(
 
     // Bar
     if (barH > 0.005) {
-      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
         x,
         y: barY,
         w: barW,
@@ -619,7 +637,9 @@ function renderWaterfall(
       const nextSeg = segments[i + 1];
       const connectorY = chartAreaY + chartAreaH - ((seg.end - minVal) / range) * chartAreaH;
       if (!nextSeg.isTotal) {
-        slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+        // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
           x: x + barW,
           y: connectorY,
           w: gap,
@@ -698,21 +718,27 @@ function renderArcChart(
     const barW = (slc.value / total) * barAreaW;
 
     // Background track (subtle)
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: barAreaX, y: y + rowH * 0.25, w: barAreaW, h: rowH * 0.50,
       fill: { color: V.surfaceGray },
     });
 
     // Value bar
     if (barW > 0.01) {
-      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
         x: barAreaX, y: y + rowH * 0.25, w: barW, h: rowH * 0.50,
         fill: { color },
       });
     }
 
     // Label row: swatch + name + percentage + absolute value
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: labelAreaX, y: y + rowH * 0.30, w: 0.14, h: 0.14,
       fill: { color },
     });
@@ -760,7 +786,9 @@ function renderLineChart(
   // Grid lines
   for (let g = 1; g <= 3; g++) {
     const gridY = chartY + chartH - (chartH * g) / 4;
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: frame.x, y: gridY, w: frame.w, h: 0.005,
       fill: { color: GRID_GRAY },
     });
@@ -776,7 +804,9 @@ function renderLineChart(
       const y = chartY + chartH - ((val - minVal) / range) * chartH;
 
       // Data point (circle approximated with small square)
-      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
         x: x - 0.04, y: y - 0.04, w: 0.08, h: 0.08,
         fill: { color },
         rectRadius: 0.04,
@@ -846,7 +876,9 @@ function renderAreaChart(
   // Grid lines
   for (let g = 1; g <= 3; g++) {
     const gridY = chartY + chartH - (chartH * g) / 4;
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: frame.x, y: gridY, w: frame.w, h: 0.005,
       fill: { color: GRID_GRAY },
     });
@@ -854,7 +886,9 @@ function renderAreaChart(
 
   // Baseline
   const baselineY = chartY + chartH;
-  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+  // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
     x: frame.x, y: baselineY, w: frame.w, h: V.axisLinePt,
     fill: { color: AXIS_GRAY },
   });
@@ -872,7 +906,9 @@ function renderAreaChart(
       const barW = frame.w / labels.length * 0.9;
 
       if (fillH > 0.01) {
-        slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+        // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
           x: x - barW / 2, y, w: barW, h: fillH,
           fill: { color, transparency: 70 }, // 70% transparent for area effect
         });
@@ -898,7 +934,9 @@ function renderAreaChart(
       const x = frame.x + (i / Math.max(labels.length - 1, 1)) * frame.w;
       const y = chartY + chartH - ((val - minVal) / range) * chartH;
 
-      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
         x: x - 0.04, y: y - 0.04, w: 0.08, h: 0.08,
         fill: { color },
         rectRadius: 0.04,
@@ -964,10 +1002,14 @@ function renderScatterChart(
   // Quadrant lines (if quadrant chart)
   const midX = chartX + chartW / 2;
   const midY = chartY + chartH / 2;
-  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+  // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
     x: midX, y: chartY, w: 0.005, h: chartH, fill: { color: AXIS_GRAY },
   });
-  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+  // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
     x: chartX, y: midY, w: chartW, h: 0.005, fill: { color: AXIS_GRAY },
   });
 
@@ -990,7 +1032,9 @@ function renderScatterChart(
     const dotSize = focal ? 0.12 : 0.08;
 
     // Data point (circle)
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: px - dotSize / 2, y: py - dotSize / 2, w: dotSize, h: dotSize,
       fill: { color: dotColor },
       rectRadius: dotSize / 2,
@@ -1038,7 +1082,9 @@ function renderFunnel(
     const barX = frame.x + (frame.w - barW) / 2; // Center each bar
     const color = palette[i % palette.length];
 
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: barX, y, w: barW, h: barH,
       fill: { color },
     });
@@ -1113,7 +1159,9 @@ function renderLegend(
   let offsetX = 0;
   items.forEach((item) => {
     // Color swatch
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    // Use addText("") instead of addShape("rect") for Keynote compatibility.
+  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
+  slide.addText("", {
       x: frame.x + offsetX,
       y: frame.y + 0.02,
       w: 0.12,
