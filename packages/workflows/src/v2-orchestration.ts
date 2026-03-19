@@ -2125,7 +2125,7 @@ export const basquioAuthor = inngest.createFunction(
 
     // ─── STEP 1: PLAN (GPT-5.4-mini, structured output with chart grammar) ───
     const v1Plan = await step.run("plan-deck", async () => {
-      await updateRunStatus(runId, "running", "plan");
+      await updateRunStatus(runId, "running", "author"); // "plan" is part of author phase (no separate DB enum)
       await emitRunEvent(runId, "plan", "phase_started");
 
       const analysisResult = await loadWorkingPaper<{
