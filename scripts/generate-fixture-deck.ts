@@ -239,7 +239,7 @@ const SAMPLE_SLIDES = [
     position: 9,
     layoutId: "table",
     title: "Top 5 brands by value share with growth and price index",
-    body: "Brand A: €76.3M (34.2%, +4.1%, PI 112) | Brand B: €49.3M (22.1%, +6.2%, PI 98) | Brand C: €35.2M (15.8%, +1.3%, PI 104) | Brand D: €25.2M (11.3%, -2.1%, PI 89) | Brand E: €16.5M (7.4%, +0.5%, PI 76)",
+    body: "Brand | Value €M | Share % | Growth % | Price Index\nBrand A | 76.3 | 34.2 | +4.1 | 112\nBrand B | 49.3 | 22.1 | +6.2 | 98\nBrand C | 35.2 | 15.8 | +1.3 | 104\nBrand D | 25.2 | 11.3 | -2.1 | 89\nBrand E | 16.5 | 7.4 | +0.5 | 76",
     kicker: "BRAND SCORECARD",
     callout: null,
     evidenceIds: [],

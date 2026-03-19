@@ -918,23 +918,26 @@ function renderChartElement(
 
   const { chartData, opts, effectiveChartType } = built;
 
-  // Chart title (small, above chart area)
-  slide.addText(chart.title, {
-    x: region.x,
-    y: region.y,
-    w: region.w,
-    h: 0.22,
-    fontFace: tokens.typography.bodyFont,
-    fontSize: tokens.typography.chartTitleSize,
-    bold: true,
-    color: norm(tokens.palette.ink),
-  });
+  // For powerpoint-native: render chart title externally (above the chart object)
+  // For universal-compatible: shape-chart renders its own title, so skip external title
+  if (exportMode !== "universal-compatible") {
+    slide.addText(chart.title, {
+      x: region.x,
+      y: region.y,
+      w: region.w,
+      h: 0.22,
+      fontFace: tokens.typography.bodyFont,
+      fontSize: tokens.typography.chartTitleSize,
+      bold: true,
+      color: norm(tokens.palette.ink),
+    });
+  }
 
   const chartRegion = {
     x: region.x,
-    y: region.y + 0.25,
+    y: exportMode === "universal-compatible" ? region.y : region.y + 0.25,
     w: region.w,
-    h: region.h - 0.3,
+    h: exportMode === "universal-compatible" ? region.h : region.h - 0.3,
   };
 
   // Reserve space for source note if present
@@ -1227,8 +1230,50 @@ function renderContentSlide(
       if (chart && regions.table) {
         renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
       } else if (s.body && regions.table) {
-        // No chart data — render body text as content in the table region
-        renderBody(slide, s.body, regions.table, tokens, notesOverflow, bodyMaxWords);
+        // Parse pipe-delimited body into a real table if it contains | separators
+        const bodyText = processNewlines(s.body);
+        if (bodyText.includes("|")) {
+          const lines = bodyText.split(/\n/).filter((l) => l.trim().length > 0 && l.includes("|"));
+          if (lines.length > 0) {
+            const rows = lines.map((line) =>
+              line.split("|").map((cell) => cell.trim()).filter((c) => c.length > 0),
+            );
+            // First row is header
+            const headerRow = rows[0].map((cell) => ({
+              text: cell,
+              options: {
+                bold: true,
+                fontSize: 10,
+                fontFace: tokens.typography.bodyFont,
+                color: "FFFFFF",
+                fill: { color: norm(tokens.palette.accent) },
+              },
+            }));
+            const dataRows = rows.slice(1).map((row, rowIdx) =>
+              row.map((cell) => ({
+                text: cell,
+                options: {
+                  fontSize: 10,
+                  fontFace: tokens.typography.bodyFont,
+                  color: norm(tokens.palette.ink),
+                  fill: rowIdx % 2 === 0
+                    ? { color: norm(tokens.palette.surface ?? "F8FAFC") }
+                    : { color: "FFFFFF" },
+                },
+              })),
+            );
+            slide.addTable([headerRow, ...dataRows], {
+              x: regions.table.x,
+              y: regions.table.y,
+              w: regions.table.w,
+              rowH: 0.35,
+              border: { type: "solid", color: norm(tokens.palette.border), pt: 0.5 },
+              autoPage: false,
+            });
+          }
+        } else {
+          renderBody(slide, s.body, regions.table, tokens, notesOverflow, bodyMaxWords);
+        }
       }
       break;
     }
