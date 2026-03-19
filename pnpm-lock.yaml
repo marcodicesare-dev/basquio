@@ -273,6 +273,9 @@ importers:
 
   packages/workflows:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: ^3.0.41
+        version: 3.0.58(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^3.0.41
         version: 3.0.41(zod@3.25.76)

@@ -1,5 +1,6 @@
+import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
-import { generateText, Output } from "ai";
+import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
 import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, type AnalystResult } from "@basquio/intelligence";
@@ -10,6 +11,8 @@ import { buildDeckSceneGraph, type DeckSceneGraph } from "@basquio/scene-graph";
 import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/template-engine";
 import {
   deckPlanSchema,
+  v1DeckPlanSchema,
+  v1SlideOutputSchema,
   type AnalysisReport,
   type ClarifiedBrief,
   type ChartSpec,
@@ -22,6 +25,9 @@ import {
   type SlideSpec,
   type StorylinePlan,
   type TemplateProfile,
+  type V1DeckPlan,
+  type V1PlannedChart,
+  type V1SlideOutput,
 } from "@basquio/types";
 
 import {
@@ -900,6 +906,137 @@ async function renderContactSheetForRun(runId: string): Promise<{
   }
 }
 
+// ─── V1 PIPELINE: DETERMINISTIC DATA HELPERS ─────────────────────
+// Replicates the filter/group/aggregate logic from data-exploration.ts
+// so the chart builder can run without any LLM calls.
+
+function v1EvaluateCondition(row: Record<string, unknown>, condition: string): boolean {
+  const match = condition.trim().match(/^"?(.+?)"?\s*(=|!=|<>|>|>=|<|<=|LIKE|IN)\s*(.+)$/i);
+  if (!match) return false;
+  const [, col, op, rawVal] = match;
+  const rowVal = row[col.trim()];
+  const val = rawVal.trim().replace(/^['"]|['"]$/g, "");
+  switch (op.toUpperCase()) {
+    case "=": return String(rowVal) === val;
+    case "!=": case "<>": return String(rowVal) !== val;
+    case ">": return Number(rowVal) > Number(val);
+    case ">=": return Number(rowVal) >= Number(val);
+    case "<": return Number(rowVal) < Number(val);
+    case "<=": return Number(rowVal) <= Number(val);
+    case "LIKE": return String(rowVal).includes(val.replace(/%/g, ""));
+    case "IN": {
+      const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, ""));
+      return inVals.some((iv) => String(rowVal) === iv);
+    }
+    default: return true;
+  }
+}
+
+function v1ApplyFilter(rows: Record<string, unknown>[], filterExpr: string): Record<string, unknown>[] {
+  if (!filterExpr || filterExpr === "none") return rows;
+  const orBranches = filterExpr.split(/\s+OR\s+/i);
+  return rows.filter((row) =>
+    orBranches.some((branch) => {
+      const andConditions = branch.split(/\s+AND\s+/i);
+      return andConditions.every((condition) => v1EvaluateCondition(row, condition));
+    }),
+  );
+}
+
+function v1Round(value: number, decimals = 4): number {
+  const factor = Math.pow(10, decimals);
+  return Math.round(value * factor) / factor;
+}
+
+function v1GroupAndAggregate(
+  rows: Record<string, unknown>[],
+  dataSpec: {
+    dimensions: string[];
+    measures: string[];
+    aggregation: string;
+    sort: string;
+    limit: number;
+    highlightCategory: string;
+  },
+): { categories: string[]; series: Array<{ name: string; values: number[] }>; xAxis: string; data: Record<string, unknown>[] } {
+  const { dimensions, measures, aggregation, sort, limit } = dataSpec;
+
+  // Group by dimensions
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const key = dimensions.map((d) => String(row[d] ?? "")).join(" | ");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  }
+
+  // Aggregate measures per group
+  const aggregated: Array<{ categoryKey: string; values: Record<string, number> }> = [];
+  for (const [key, groupRows] of groups) {
+    const values: Record<string, number> = {};
+    for (const measure of measures) {
+      const nums = groupRows.map((r) => {
+        const v = r[measure];
+        return typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
+      }).filter((n) => !isNaN(n));
+
+      switch (aggregation) {
+        case "sum": values[measure] = nums.reduce((a, b) => a + b, 0); break;
+        case "avg": values[measure] = nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : 0; break;
+        case "count": values[measure] = groupRows.length; break;
+        case "min": values[measure] = nums.length > 0 ? Math.min(...nums) : 0; break;
+        case "max": values[measure] = nums.length > 0 ? Math.max(...nums) : 0; break;
+        default: values[measure] = nums.reduce((a, b) => a + b, 0); break;
+      }
+      values[measure] = v1Round(values[measure]);
+    }
+    aggregated.push({ categoryKey: key, values });
+  }
+
+  // Sort
+  if (sort === "desc" && measures.length > 0) {
+    aggregated.sort((a, b) => (b.values[measures[0]] ?? 0) - (a.values[measures[0]] ?? 0));
+  } else if (sort === "asc" && measures.length > 0) {
+    aggregated.sort((a, b) => (a.values[measures[0]] ?? 0) - (b.values[measures[0]] ?? 0));
+  }
+
+  // Limit
+  const limited = limit > 0 ? aggregated.slice(0, limit) : aggregated;
+
+  // Build output
+  const categories = limited.map((a) => a.categoryKey);
+  const series = measures.map((measure) => ({
+    name: measure,
+    values: limited.map((a) => a.values[measure] ?? 0),
+  }));
+
+  // Build data array (row-oriented for PPTX renderer)
+  const xAxis = dimensions[0] ?? "category";
+  const data = limited.map((a) => {
+    const row: Record<string, unknown> = { [xAxis]: a.categoryKey };
+    for (const measure of measures) {
+      row[measure] = a.values[measure] ?? 0;
+    }
+    return row;
+  });
+
+  return { categories, series, xAxis, data };
+}
+
+// ─── V1 PIPELINE: SLIDE AUTHOR SYSTEM PROMPT ─────────────────────
+
+const V1_SLIDE_AUTHOR_SYSTEM_PROMPT = `You are a senior strategy consultant writing ONE slide for an executive presentation.
+
+RULES:
+1. TITLE: Full sentence stating a specific, data-backed finding. Include at least one number. Max 16 words. The title must pass the "so what?" test.
+2. CALLOUT: Every slide needs a callout — the "so what" implication for the decision-maker. Max 25 words. Use tone: "green" for opportunities, "orange" for risks, "accent" for key findings.
+3. LANGUAGE: Write in the language specified. If Italian, everything is in Italian. Never default to English.
+4. METRICS: For exec-summary and metrics layouts, provide 3-5 KPI cards with label, value, and delta (change indicator).
+5. BODY: For text-heavy layouts, write concise executive prose. Bold first sentence pattern. Max 80 words.
+6. BULLETS: Max 5 bullets, 8-12 words each. Each bullet is a complete thought.
+7. SPEAKER NOTES: 60-140 words. Presenter talking points, caveats, bridge to next slide.
+8. EVIDENCE: Only cite evidence IDs that appear in your context. Never invent IDs.
+9. NO raw column names. Clean labels: "Value_CY" → "Revenue (€M)", "pct_change" → "YoY %".`;
+
 // ─── SECTION BRIEF BUILDER ────────────────────────────────────────
 
 function buildSectionBrief(
@@ -1743,7 +1880,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       function: basquioExport,
       data: {
         runId,
-        exportMode: (event.data as Record<string, unknown>).exportMode as string | undefined,
+        exportMode: "universal-compatible", // V1 pipeline: always universal-compatible
         hasCriticalOrMajor,
         degradedDelivery,
         degradedIssues,
@@ -1797,7 +1934,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
           function: basquioExport,
           data: {
             runId,
-            exportMode: (event.data as Record<string, unknown>).exportMode as string | undefined,
+            exportMode: "universal-compatible", // V1 pipeline: always universal-compatible
             hasCriticalOrMajor: true,
             degradedDelivery: true,
             degradedIssues: [{ severity: "critical", claim: `Pipeline error: ${message.slice(0, 200)}` }],
@@ -1959,9 +2096,20 @@ export const basquioUnderstand = inngest.createFunction(
 );
 
 /**
- * basquioAuthor: Plan + Author + Polish as independent function.
- * Reads analyst output from working papers, plans deck, authors sections
- * in parallel, then polishes weak slides.
+ * basquioAuthor: V1 Pipeline — Plan + Build Charts (deterministic) + Author Slides (parallel) + Critique + Repair
+ *
+ * Architecture:
+ * 1. plan-deck: GPT-5.4-mini structured output → V1DeckPlan with chart grammar per chart
+ * 2. build-charts: Deterministic step, ZERO LLM — executes chart grammar against data
+ * 3. author-slides: Parallel batches of 4 — each slide is ONE generateObject call with ~15K context
+ * 4. critique-deterministic: Referential integrity + structural checks (no LLM)
+ * 5. critique-narrative: ONE Sonnet call for quality review
+ * 6. repair: Critical-only, max 3 slides, fresh context, Haiku
+ *
+ * Constraints:
+ * - No Opus anywhere
+ * - No section-level tool loops
+ * - Max 12 slides, max 10 charts, max 1 chart per slide
  */
 export const basquioAuthor = inngest.createFunction(
   { id: "basquio-author", retries: 0, timeouts: { finish: "25m" } },
@@ -1969,27 +2117,44 @@ export const basquioAuthor = inngest.createFunction(
   async ({ event, step }) => {
     const { runId, brief } = event.data as { runId: string; brief: string };
 
-    // Clear stale slides/charts from any previous execution (prevents ID mismatch on reruns)
+    // Clear stale slides/charts from any previous execution
     await step.run("clear-stale-data", async () => {
       await deleteRunSlides(runId);
       await deleteRunCharts(runId);
     });
 
-    // Step 1: Plan the deck
-    const deckPlan = await step.run("plan-deck", async () => {
-      await updateRunStatus(runId, "running", "author");
-      await emitRunEvent(runId, "author", "plan_started");
+    // ─── STEP 1: PLAN (GPT-5.4-mini, structured output with chart grammar) ───
+    const v1Plan = await step.run("plan-deck", async () => {
+      await updateRunStatus(runId, "running", "plan");
+      await emitRunEvent(runId, "plan", "phase_started");
 
-      // Load analyst result from working papers
       const analysisResult = await loadWorkingPaper<{
-        analysis: { domain: string; summary: string; topFindings: Array<{ confidence: number; title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }>; metricsComputed: number; queriesExecuted: number; filesAnalyzed: number; keyDimensions: string[]; recommendedChartTypes: Array<{ chartType: string; reason: string }> };
-        clarifiedBrief?: { audience: string; objective: string; stakes: string; governingQuestion: string; focalEntity: string; focalBrands: string[]; language: string; requestedSlideCount: number | null; hypotheses: string[] };
-        storylinePlan?: { issueBranches: Array<{ question: string; conclusion: string; hypotheses: Array<{ claim: string }> }> };
+        analysis: {
+          domain: string; summary: string; analysisMode?: string;
+          topFindings: Array<{ confidence: number; title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }>;
+          metricsComputed: number; queriesExecuted: number; filesAnalyzed: number;
+          keyDimensions: string[];
+          recommendedChartTypes: Array<{ findingIndex: number; chartType: string; rationale: string }>;
+        };
+        clarifiedBrief?: {
+          audience: string; objective: string; stakes: string;
+          governingQuestion: string; focalEntity: string; focalBrands: string[];
+          language: string; requestedSlideCount: number | null; hypotheses: string[];
+        };
+        storylinePlan?: {
+          governingQuestion?: string;
+          issueBranches: Array<{ question: string; conclusion: string; hypotheses: Array<{ claim: string }> }>;
+          titleReadThrough?: string[];
+        };
       }>(runId, "analysis_result");
       if (!analysisResult) throw new NonRetriableError(`Analysis result not found for run ${runId}`);
 
       const analysis = analysisResult.analysis;
-      const clarifiedSlideCount = analysisResult.clarifiedBrief?.requestedSlideCount ?? null;
+      const clarifiedBrief = analysisResult.clarifiedBrief;
+      const storylinePlan = analysisResult.storylinePlan;
+
+      // Determine target slide count (capped at 12)
+      const clarifiedSlideCount = clarifiedBrief?.requestedSlideCount ?? null;
       const requestedSlideMatch = brief.match(/(\d+)\s*slide/i)
         ?? brief.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*slide/i);
       const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
@@ -1997,155 +2162,489 @@ export const basquioAuthor = inngest.createFunction(
         ? (parseInt(requestedSlideMatch[1], 10) || wordToNum[requestedSlideMatch[1].toLowerCase()] || undefined)
         : undefined;
       const requestedSlides = clarifiedSlideCount ?? parsedCount;
-      const targetSlides = requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 20);
+      const targetSlides = Math.min(requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 12), 12);
+
+      // Build workspace sheet inventory for the planner to reference
+      const workspace = await loadWorkspaceFromDb(runId);
+      const sheetInventory = workspace?.fileInventory?.map((f) =>
+        f.sheets.map((s) => ({
+          sheetKey: `${f.id}:${s.name}`,
+          fileName: f.fileName,
+          sheetName: s.name,
+          rowCount: s.rowCount,
+          columns: s.columns.map((c) => `${c.name} (${c.inferredType}, ${c.role})`).join(", "),
+        })),
+      ).flat() ?? [];
 
       const findingsSummary = analysis.topFindings
-        .map((f: { title: string; claim: string; confidence: number }, i: number) => `${i + 1}. ${f.title}: ${f.claim} (confidence: ${f.confidence})`)
+        .map((f, i) => `${i + 1}. [${f.title}] ${f.claim} (confidence: ${f.confidence}, evidence: [${f.evidenceRefIds.join(", ")}]) → ${f.businessImplication}`)
         .join("\n");
 
-      const storylinePlan = analysisResult.storylinePlan;
+      const chartTypesSummary = analysis.recommendedChartTypes
+        .map((c) => `Finding ${c.findingIndex + 1}: ${c.chartType} — ${c.rationale}`)
+        .join("\n");
+
       let storylineContext = "";
       if (storylinePlan) {
-        storylineContext = `\n\n## Storyline (issue tree)\n${storylinePlan.issueBranches.map(
-          (b: { question: string; conclusion: string; hypotheses: Array<{ claim: string }> }) =>
-            `Q: ${b.question}\nConclusion: ${b.conclusion}\nHypotheses: ${b.hypotheses.map((h: { claim: string }) => h.claim).join("; ")}`,
+        storylineContext = `\n\n## Storyline (issue tree)\nGoverning question: ${storylinePlan.governingQuestion ?? ""}\n${storylinePlan.issueBranches.map(
+          (b) => `Q: ${b.question}\nConclusion: ${b.conclusion}\nHypotheses: ${b.hypotheses.map((h) => h.claim).join("; ")}`,
         ).join("\n\n")}`;
+        if (storylinePlan.titleReadThrough?.length) {
+          storylineContext += `\n\nProposed title sequence:\n${storylinePlan.titleReadThrough.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
+        }
       }
 
-      // Generate plan via GPT-5.4
-      const { generateObject } = await import("ai");
-      const { openai } = await import("@ai-sdk/openai");
+      const sheetInventoryText = sheetInventory.length > 0
+        ? `\n\n## Available data sheets\n${sheetInventory.map((s) => `- ${s.sheetKey} (${s.fileName} → ${s.sheetName}, ${s.rowCount} rows): ${s.columns}`).join("\n")}`
+        : "";
 
       try {
         const planResult = await generateObject({
           model: openai("gpt-5.4-mini"),
-          schema: deckPlanSchema,
-          prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation structured around an issue tree.
-
-## Analysis findings
-${findingsSummary}
-${storylineContext}
+          schema: v1DeckPlanSchema,
+          prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation with DETERMINISTIC chart specifications.
 
 ## Brief
 ${brief}
 
-## Rules
-1. Every slide must exist because it resolves one branch of the issue tree
-2. Cover slide is always position 1
-3. Exec summary is position 2
-4. Recommendation/summary is the final position
-5. Each section maps to one issue branch
-6. Assign chartIntent based on the analytical question
-7. Exactly ${targetSlides} slides
+## Analysis findings
+${findingsSummary}
 
-Return a structured DeckPlan with sections containing slide specs.`,
+## Recommended chart types
+${chartTypesSummary}
+${storylineContext}
+${sheetInventoryText}
+
+## Focal entity
+${clarifiedBrief?.focalEntity ?? "(detect from brief)"}
+Focal brands: ${clarifiedBrief?.focalBrands?.join(", ") ?? "(detect from data)"}
+
+## Language
+${clarifiedBrief?.language ?? "en"}
+
+## CRITICAL RULES
+1. Exactly ${targetSlides} slides. Max 10 charts. Max 1 chart per slide.
+2. Cover (position 1), exec-summary (position 2), recommendation/summary (last position).
+3. Each chart MUST have a complete dataSpec with a valid sheetKey from the available sheets list.
+4. Chart IDs: use "chart-1", "chart-2", etc. Slides reference these IDs.
+5. Filter expressions use: "column = value AND column2 > 100" syntax. Use "none" if no filter.
+6. For slides without charts, set chartId to "".
+7. Prefer horizontal_bar for rankings, line for trends, stacked_bar for composition, pie only for ≤5 categories.
+8. Set highlightCategory to the focal entity name for emphasis on every chart.
+9. Sort "desc" for rankings, "asc" for smallest-first, "none" for time series.
+10. Limit: 8-12 for bar charts, 0 (no limit) for line/time series.
+
+Return a V1DeckPlan with slides and charts.`,
         });
 
-        const structuredPlan = planResult.object;
-        try { await persistWorkingPaper(runId, "deck_plan", structuredPlan); } catch {}
-        return { targetSlides, requestedSlides, structuredPlan };
-      } catch {
-        // Fallback plan
-        const fallbackSections = [{ sectionId: "sec-0", title: "Analysis", issueBranch: "overview", slides: Array.from({ length: targetSlides }, (_, i) => ({ position: i + 1, role: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : "evidence", layout: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : i % 2 === 0 ? "title-chart" : "chart-split", governingThought: "", chartIntent: i === 0 || i === 1 || i === targetSlides - 1 ? "none" : "rank", focalObject: analysis.domain, evidenceRequired: [] as string[] })) }];
-        const fallbackPlan: DeckPlan = { targetSlideCount: targetSlides, sections: fallbackSections, appendixStrategy: "No appendix" };
-        try { await persistWorkingPaper(runId, "deck_plan", fallbackPlan); } catch {}
-        return { targetSlides, requestedSlides, structuredPlan: fallbackPlan };
+        const plan = planResult.object as V1DeckPlan;
+        try { await persistWorkingPaper(runId, "v1_deck_plan", plan); } catch {}
+        return plan;
+      } catch (planError) {
+        console.error("[basquio-author] Plan generation failed:", planError);
+        // Fallback: minimal plan with no charts
+        const fallbackPlan: V1DeckPlan = {
+          targetSlideCount: targetSlides,
+          slides: Array.from({ length: targetSlides }, (_, i) => ({
+            position: i + 1,
+            role: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : "evidence",
+            layout: i === 0 ? "cover" : i === 1 ? "exec-summary" : i === targetSlides - 1 ? "summary" : "title-body",
+            governingThought: analysis.topFindings[i - 2]?.claim ?? "",
+            chartId: "",
+            evidenceRequired: analysis.topFindings[i - 2]?.evidenceRefIds ?? [],
+            focalObject: clarifiedBrief?.focalEntity ?? "",
+          })),
+          charts: [],
+          appendixStrategy: "No appendix",
+          focalEntity: clarifiedBrief?.focalEntity ?? "",
+          language: clarifiedBrief?.language ?? "en",
+        };
+        try { await persistWorkingPaper(runId, "v1_deck_plan", fallbackPlan); } catch {}
+        return fallbackPlan;
       }
-    }) as { targetSlides: number; requestedSlides?: number; structuredPlan: DeckPlan };
+    }) as V1DeckPlan;
 
-    // Step 2: Author all sections in parallel
-    const deckPlanSections = deckPlan.structuredPlan.sections ?? [];
-    const workspace = await loadWorkspaceFromDb(runId);
-    if (!workspace) throw new NonRetriableError(`Workspace not found for run ${runId}`);
-    const loadRows = createLoadSheetRows(runId);
-    const analysisForAuthor = await loadWorkingPaper<{
-      analysis: { domain: string; summary: string; topFindings: Array<{ title: string; claim: string; confidence: number; evidenceRefIds: string[]; businessImplication: string }>; keyDimensions: string[]; recommendedChartTypes: Array<{ chartType: string; reason: string }> };
-      clarifiedBrief?: { focalEntity: string; focalBrands: string[]; language: string };
-    }>(runId, "analysis_result");
-    const analysis = analysisForAuthor?.analysis;
+    // ─── STEP 2: BUILD CHARTS (deterministic, ZERO LLM) ──────────────
+    const chartBuildResult = await step.run("build-charts", async () => {
+      await emitRunEvent(runId, "author", "charts_build_started");
+      const loadRows = createLoadSheetRows(runId);
+      const chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> = [];
 
-    let deckSummary = "";
+      // Cap at 10 charts
+      const chartsToProcess = v1Plan.charts.slice(0, 10);
 
-    if (deckPlanSections.length > 0) {
-      // Each section is its own step.run() for Inngest memoization.
-      // Sequential (not parallel) to stay within Vercel's 800s timeout per step.
-      // For a 20-slide deck with 6 sections, each section takes 2-4 min.
-      for (const section of deckPlanSections) {
-        const safeSectionId = (section.sectionId ?? section.title ?? "sec")
-          .replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 30);
-
+      for (const planned of chartsToProcess) {
         try {
-          await step.run(`author-${safeSectionId}`, async () => {
-            const isSacredSection = ["cover", "exec-summary", "summary", "recommendation"].some(
-              (role) => section.slides.some((s: { role?: string }) => s.role === role),
-            );
-            const sectionModel = isSacredSection ? "claude-sonnet-4-6" : "claude-haiku-4-5";
+          // Load rows from the specified sheet
+          const rows = await loadRows(planned.dataSpec.sheetKey);
+          if (rows.length === 0) {
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows in sheet ${planned.dataSpec.sheetKey}` });
+            continue;
+          }
 
-            const sectionBrief = `## Section: ${section.title}
-Issue branch: ${section.issueBranch ?? "N/A"}
-Slides: ${section.slides.map((s: { position: number; role?: string; governingThought?: string }) => `${s.position}. [${s.role}] ${s.governingThought ?? ""}`).join("\n")}
+          // Apply filter
+          const filtered = v1ApplyFilter(rows, planned.dataSpec.filter);
+          if (filtered.length === 0) {
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows after filter: ${planned.dataSpec.filter}` });
+            continue;
+          }
 
-## Full brief
-${brief}
+          // Group by dimensions, aggregate measures
+          const grouped = v1GroupAndAggregate(filtered, planned.dataSpec);
 
-## Analysis summary
-${analysis?.summary ?? ""}
+          // Build chart data structure and persist
+          const highlightCategories = planned.dataSpec.highlightCategory
+            ? [planned.dataSpec.highlightCategory]
+            : [];
 
-## Key findings
-${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.title}: ${f.claim}`).join("\n") ?? ""}`;
+          const chartResult = await persistChart(runId, {
+            chartType: planned.chartType,
+            title: planned.title,
+            data: grouped.data,
+            xAxis: grouped.xAxis,
+            series: grouped.series.map((s) => s.name),
+            style: {
+              highlightCategories,
+              showLegend: grouped.series.length > 1,
+              showValues: true,
+            },
+            intent: planned.intent,
+            unit: planned.unit,
+            sourceNote: planned.sourceNote,
+          });
 
-            const tracker = new UsageTracker();
-            tracker.startPhase("author", sectionModel, "anthropic");
-
-            const SECTION_TIMEOUT_MS = 700_000; // 700s safety limit (Vercel kills at 800s)
-            const result = await Promise.race([
-              runAuthorAgent({
-                workspace: workspace!,
-                runId,
-                analysis: analysis as unknown as AnalysisReport,
-                brief: sectionBrief,
-                loadRows,
-                modelOverride: sectionModel,
-                maxSteps: 10,
-                persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "author", 0, entry),
-                getTemplateProfile: (async () => undefined) as never,
-                persistSlide: (slide) => persistSlide(runId, slide),
-                persistChart: (chart) => persistChart(runId, chart),
-                getSlides: () => getSlides(runId),
-                listEvidence: () => listEvidenceForRun(runId),
-                onStepFinish: async (event: StepFinishEvent) => {
-                  tracker.recordStep(event.usage, event.toolCalls.length);
-                },
-              }),
-              new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("Section authoring exceeded 700s safety limit")), SECTION_TIMEOUT_MS),
-              ),
-            ]);
-
-            tracker.endPhase();
-            return result.summary;
-          }); // end step.run per section
-        } catch (sectionError) {
-          console.error(`[basquio-author] Section "${section.title}" failed, continuing:`, sectionError);
-          // Continue with remaining sections — partial deck is better than no deck
+          chartResults.push({ chartId: chartResult.chartId, plannedId: planned.chartId, success: true });
+        } catch (chartError) {
+          console.error(`[basquio-author] Chart ${planned.chartId} build failed:`, chartError);
+          chartResults.push({
+            chartId: "",
+            plannedId: planned.chartId,
+            success: false,
+            error: chartError instanceof Error ? chartError.message : String(chartError),
+          });
         }
-      } // end for loop
+      }
 
-      deckSummary = `${deckPlanSections.length} sections authored`;
-    }
+      // Build mapping from planned IDs to real DB IDs
+      const chartIdMap: Record<string, string> = {};
+      for (const r of chartResults) {
+        if (r.success && r.chartId) {
+          chartIdMap[r.plannedId] = r.chartId;
+        }
+      }
 
-    // Step 3: Polish — SKIPPED for resilience.
-    // Polish runs a full author agent on weak slides which can exceed 800s for large decks.
-    // The critique-revise loop handles quality issues instead.
-    // TODO: Re-enable with per-slide polish steps when time allows.
-    await step.run("polish", async () => {
-      // Skip polish — go straight to critique
-      return { polished: 0, total: 0, skipped: true };
+      await emitRunEvent(runId, "author", "charts_build_completed", {
+        total: chartsToProcess.length,
+        succeeded: chartResults.filter((r) => r.success).length,
+        failed: chartResults.filter((r) => !r.success).length,
+      });
+
+      return { chartIdMap, chartResults };
+    }) as { chartIdMap: Record<string, string>; chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> };
+
+    // ─── STEP 3: AUTHOR SLIDES (parallel batches, generateObject, fresh context) ─
+    await step.run("author-slides", async () => {
+      await updateRunStatus(runId, "running", "author");
+      await emitRunEvent(runId, "author", "slides_author_started");
+
+      // Load context once
+      const analysisResult = await loadWorkingPaper<{
+        analysis: {
+          domain: string; summary: string;
+          topFindings: Array<{ title: string; claim: string; evidenceRefIds: string[]; confidence: number; businessImplication: string }>;
+          keyDimensions: string[];
+        };
+        clarifiedBrief?: { focalEntity: string; focalBrands: string[]; language: string };
+      }>(runId, "analysis_result");
+      const analysis = analysisResult?.analysis;
+      const clarifiedBrief = analysisResult?.clarifiedBrief;
+
+      // Build evidence index for quick lookup
+      const evidenceList = await listEvidenceForRun(runId);
+      const evidenceMap = new Map<string, string>();
+      for (const e of evidenceList) {
+        evidenceMap.set(e.evidenceRefId, e.summary);
+      }
+
+      const { chartIdMap } = chartBuildResult;
+
+      // Build context builder for each slide
+      function buildSlideContext(slideSpec: V1DeckPlan["slides"][number]): string {
+        const parts: string[] = [];
+
+        // Brief context (abbreviated)
+        parts.push(`## Brief (abbreviated)\n${brief.slice(0, 500)}`);
+
+        // Focal entity
+        parts.push(`\n## Focal entity: ${v1Plan.focalEntity}`);
+        parts.push(`Language: ${v1Plan.language}`);
+
+        // Slide spec
+        parts.push(`\n## YOUR SLIDE (position ${slideSpec.position} of ${v1Plan.targetSlideCount})`);
+        parts.push(`Role: ${slideSpec.role}`);
+        parts.push(`Layout: ${slideSpec.layout}`);
+        parts.push(`Governing thought: ${slideSpec.governingThought}`);
+        parts.push(`Focal object: ${slideSpec.focalObject}`);
+
+        // Chart context (if this slide has a chart)
+        const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
+        if (realChartId) {
+          const plannedChart = v1Plan.charts.find((c) => c.chartId === slideSpec.chartId);
+          if (plannedChart) {
+            parts.push(`\n## Chart on this slide\nType: ${plannedChart.chartType} | Title: "${plannedChart.title}" | Unit: ${plannedChart.unit}`);
+            parts.push(`The chart data has been built and persisted. Reference it in your narrative.`);
+          }
+        } else if (slideSpec.chartId) {
+          parts.push(`\n## Note: planned chart "${slideSpec.chartId}" could not be built. Write this slide without a chart.`);
+        }
+
+        // Evidence context (only what this slide needs)
+        if (slideSpec.evidenceRequired.length > 0) {
+          parts.push(`\n## Evidence for this slide`);
+          for (const refId of slideSpec.evidenceRequired) {
+            const summary = evidenceMap.get(refId);
+            if (summary) {
+              parts.push(`- ${refId}: ${summary.slice(0, 200)}`);
+            }
+          }
+        }
+
+        // Relevant findings
+        const relevantFindings = analysis?.topFindings?.filter((f) =>
+          f.evidenceRefIds.some((id) => slideSpec.evidenceRequired.includes(id)),
+        ) ?? [];
+        if (relevantFindings.length > 0) {
+          parts.push(`\n## Relevant findings`);
+          for (const f of relevantFindings) {
+            parts.push(`- ${f.title}: ${f.claim} → ${f.businessImplication}`);
+          }
+        } else if (analysis?.topFindings?.length) {
+          // For slides without specific evidence, provide the summary
+          parts.push(`\n## Analysis summary\n${analysis.summary.slice(0, 500)}`);
+        }
+
+        // Title read-through context for narrative coherence
+        const nearbySlides = v1Plan.slides.filter((s) =>
+          Math.abs(s.position - slideSpec.position) <= 2 && s.position !== slideSpec.position,
+        );
+        if (nearbySlides.length > 0) {
+          parts.push(`\n## Neighboring slides (for narrative flow)`);
+          for (const ns of nearbySlides) {
+            parts.push(`- Slide ${ns.position} [${ns.role}]: ${ns.governingThought}`);
+          }
+        }
+
+        return parts.join("\n");
+      }
+
+      // Author in parallel batches of 4
+      const BATCH_SIZE = 4;
+      const slides = v1Plan.slides;
+
+      for (let i = 0; i < slides.length; i += BATCH_SIZE) {
+        const batch = slides.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (slideSpec) => {
+          try {
+            const isSacred = ["cover", "exec-summary", "summary", "recommendation"].includes(slideSpec.role);
+            const model = isSacred ? anthropic("claude-sonnet-4-6") : anthropic("claude-haiku-4-5");
+
+            const slideContext = buildSlideContext(slideSpec);
+
+            const { object: slideOutput } = await generateObject({
+              model,
+              schema: v1SlideOutputSchema,
+              system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
+              prompt: slideContext,
+            });
+
+            // Resolve the real chart ID
+            const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
+
+            // Persist the slide
+            await persistSlide(runId, {
+              position: slideSpec.position,
+              layoutId: slideSpec.layout,
+              title: slideOutput.title,
+              subtitle: slideOutput.subtitle || undefined,
+              kicker: slideOutput.kicker || undefined,
+              body: slideOutput.body || undefined,
+              bullets: slideOutput.bullets.length > 0 ? slideOutput.bullets : undefined,
+              chartId: realChartId || undefined,
+              metrics: slideOutput.metrics.length > 0
+                ? slideOutput.metrics.map((m) => ({
+                    label: m.label,
+                    value: m.value,
+                    delta: m.delta || undefined,
+                  }))
+                : undefined,
+              callout: slideOutput.callout.text
+                ? {
+                    text: slideOutput.callout.text,
+                    tone: (slideOutput.callout.tone === "green" || slideOutput.callout.tone === "orange" || slideOutput.callout.tone === "accent")
+                      ? slideOutput.callout.tone as "accent" | "green" | "orange"
+                      : "accent",
+                  }
+                : undefined,
+              evidenceIds: slideOutput.evidenceIds,
+              speakerNotes: slideOutput.speakerNotes || undefined,
+              pageIntent: slideSpec.role,
+              governingThought: slideSpec.governingThought,
+              focalObject: slideSpec.focalObject,
+              highlightCategories: v1Plan.focalEntity ? [v1Plan.focalEntity] : undefined,
+            });
+          } catch (slideError) {
+            console.error(`[basquio-author] Slide ${slideSpec.position} authoring failed:`, slideError);
+            // Persist a minimal fallback slide so the deck isn't missing positions
+            await persistSlide(runId, {
+              position: slideSpec.position,
+              layoutId: slideSpec.layout === "cover" ? "cover" : "title-body",
+              title: slideSpec.governingThought || `Slide ${slideSpec.position}`,
+              body: `Content generation failed for this slide. Governing thought: ${slideSpec.governingThought}`,
+              evidenceIds: [],
+            });
+          }
+        }));
+      }
+
+      await emitRunEvent(runId, "author", "slides_author_completed", {
+        slideCount: slides.length,
+      });
     });
+
+    // ─── STEP 4: DETERMINISTIC CRITIQUE (no LLM) ─────────────────────
+    const deterministicIssues = await step.run("critique-deterministic", async () => {
+      const slides = await getSlides(runId);
+      const charts = await getV2ChartRows(runId);
+      const issues: Array<{ severity: "critical" | "major" | "minor"; claim: string; slidePosition?: number }> = [];
+
+      // Check slide count
+      if (slides.length === 0) {
+        issues.push({ severity: "critical", claim: "No slides generated" });
+      }
+
+      // Check chart referential integrity
+      const chartIds = new Set(charts.map((c) => c.id));
+      for (const slide of slides) {
+        if (slide.chartId && !chartIds.has(slide.chartId)) {
+          issues.push({
+            severity: "critical",
+            claim: `Slide ${slide.position}: references chart ${slide.chartId} which does not exist`,
+            slidePosition: slide.position,
+          });
+          // Remove broken chart reference
+          await persistSlide(runId, {
+            ...slide,
+            layoutId: slide.layoutId ?? "title-body",
+            chartId: undefined,
+            evidenceIds: slide.evidenceIds ?? [],
+          });
+        }
+      }
+
+      // Check titles exist
+      for (const slide of slides) {
+        if (!slide.title || slide.title.trim().length < 5) {
+          issues.push({ severity: "major", claim: `Slide ${slide.position}: missing or too-short title`, slidePosition: slide.position });
+        }
+      }
+
+      // Check cover and summary bookends
+      if (slides.length > 0 && slides[0]?.layoutId !== "cover") {
+        issues.push({ severity: "major", claim: "First slide is not a cover" });
+      }
+
+      // Check for duplicate positions
+      const positions = new Set<number>();
+      for (const slide of slides) {
+        if (positions.has(slide.position)) {
+          issues.push({ severity: "major", claim: `Duplicate slide position: ${slide.position}` });
+        }
+        positions.add(slide.position);
+      }
+
+      return issues;
+    }) as Array<{ severity: "critical" | "major" | "minor"; claim: string; slidePosition?: number }>;
+
+    // ─── STEP 5: REPAIR (critical issues only, max 3 slides) ─────────
+    const criticalIssues = deterministicIssues.filter((i) => i.severity === "critical");
+    if (criticalIssues.length > 0) {
+      await step.run("repair-critical", async () => {
+        await emitRunEvent(runId, "author", "repair_started");
+
+        // Only repair slides that have critical issues, max 3
+        const slidesToRepair = criticalIssues
+          .filter((i) => i.slidePosition != null)
+          .map((i) => i.slidePosition!)
+          .filter((v, i, a) => a.indexOf(v) === i) // dedupe
+          .slice(0, 3);
+
+        if (slidesToRepair.length === 0) return;
+
+        const analysisResult = await loadWorkingPaper<{
+          analysis: { summary: string; topFindings: Array<{ title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }> };
+          clarifiedBrief?: { focalEntity: string; language: string };
+        }>(runId, "analysis_result");
+
+        for (const position of slidesToRepair) {
+          const slideSpec = v1Plan.slides.find((s) => s.position === position);
+          if (!slideSpec) continue;
+
+          const issuesForSlide = criticalIssues
+            .filter((i) => i.slidePosition === position)
+            .map((i) => i.claim)
+            .join("; ");
+
+          try {
+            const { object: repaired } = await generateObject({
+              model: anthropic("claude-haiku-4-5"),
+              schema: v1SlideOutputSchema,
+              system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
+              prompt: `REPAIR this slide. The following critical issues were found:
+${issuesForSlide}
+
+Slide position: ${position}, Role: ${slideSpec.role}, Layout: ${slideSpec.layout}
+Governing thought: ${slideSpec.governingThought}
+Focal entity: ${v1Plan.focalEntity}
+Language: ${v1Plan.language}
+
+Analysis summary: ${analysisResult?.analysis?.summary?.slice(0, 500) ?? ""}
+
+Fix the issues while maintaining the governing thought.`,
+            });
+
+            await persistSlide(runId, {
+              position,
+              layoutId: slideSpec.layout,
+              title: repaired.title,
+              subtitle: repaired.subtitle || undefined,
+              kicker: repaired.kicker || undefined,
+              body: repaired.body || undefined,
+              bullets: repaired.bullets.length > 0 ? repaired.bullets : undefined,
+              metrics: repaired.metrics.length > 0
+                ? repaired.metrics.map((m) => ({ label: m.label, value: m.value, delta: m.delta || undefined }))
+                : undefined,
+              callout: repaired.callout.text
+                ? { text: repaired.callout.text, tone: (repaired.callout.tone as "accent" | "green" | "orange") || "accent" }
+                : undefined,
+              evidenceIds: repaired.evidenceIds,
+              speakerNotes: repaired.speakerNotes || undefined,
+              pageIntent: slideSpec.role,
+              governingThought: slideSpec.governingThought,
+            });
+          } catch (repairError) {
+            console.error(`[basquio-author] Repair failed for slide ${position}:`, repairError);
+          }
+        }
+
+        await emitRunEvent(runId, "author", "repair_completed");
+      });
+    }
 
     // Return summary for parent
     const finalSlides = await getSlides(runId);
     const finalCharts = await getV2ChartRows(runId);
+    const deckSummary = `V1 pipeline: ${finalSlides.length} slides, ${finalCharts.length} charts (${chartBuildResult.chartResults.filter((r) => r.success).length} deterministic, ${criticalIssues.length} critical issues ${criticalIssues.length > 0 ? "repaired" : ""})`;
+
     return {
       deckSummary,
       slideCount: finalSlides.length,
@@ -2477,6 +2976,20 @@ export const basquioExport = inngest.createFunction(
 
       const slides = await getSlides(runId);
       const v2ChartRows = await getV2ChartRows(runId);
+
+      // Chart referential integrity check — drop broken refs before rendering
+      const chartIdSet = new Set(v2ChartRows.map((c) => c.id));
+      let hasBrokenChartRefs = false;
+      for (const slide of slides) {
+        if (slide.chartId && !chartIdSet.has(slide.chartId)) {
+          console.warn(`[basquio-export] Slide ${slide.position}: dropping broken chart ref ${slide.chartId}`);
+          slide.chartId = undefined;
+          hasBrokenChartRefs = true;
+        }
+      }
+      if (hasBrokenChartRefs && !degradedDelivery) {
+        await updateDeliveryStatus(runId, "degraded");
+      }
 
       // Load template profile via raw fetch
       let templateProfile: Record<string, unknown> | null = null;

@@ -434,6 +434,85 @@ export const deckPlanSchema = z.object({
   appendixStrategy: z.string().describe("What goes in appendix vs main body"),
 });
 
+// ─── V1 PIPELINE: PLANNED CHART (deterministic chart grammar) ────
+// Each chart is specified as a restricted grammar the deterministic executor runs.
+// ALL fields required — OpenAI structured output rejects optional fields.
+
+export const v1PlannedChartDataSpecSchema = z.object({
+  sheetKey: z.string().describe("Sheet key in format fileId:sheetName"),
+  dimensions: z.array(z.string()).describe("Column names for categories/labels"),
+  measures: z.array(z.string()).describe("Column names for numeric values"),
+  filter: z.string().describe('Filter expression (same format as query_data), or "none" for no filter'),
+  aggregation: z.string().describe("sum, avg, count, min, max"),
+  sort: z.string().describe('asc, desc, or "none"'),
+  limit: z.number().int().describe("Max categories to show, 0 for no limit"),
+  highlightCategory: z.string().describe('Focal entity category value for emphasis, or "" if none'),
+});
+
+export const v1PlannedChartSchema = z.object({
+  chartId: z.string().describe("Pre-assigned stable ID, e.g. chart-1, chart-2"),
+  chartType: z.string().describe("bar, horizontal_bar, grouped_bar, stacked_bar, stacked_bar_100, line, area, pie, doughnut, scatter, waterfall, table"),
+  title: z.string().describe("Chart title — descriptive, not a label"),
+  sourceNote: z.string().describe("Data source citation, e.g. NielsenIQ MAT Dec 2025"),
+  intent: z.string().describe("rank, trend, composition, bridge, correlation, comparison, distribution, detail"),
+  unit: z.string().describe('Data unit: €M, %, pp, units, etc.'),
+  evidenceRefIds: z.array(z.string()).describe("Evidence ref IDs this chart is based on"),
+  dataSpec: v1PlannedChartDataSpecSchema,
+});
+
+export const v1DeckPlanSlideSpecSchema = z.object({
+  position: z.number().int().describe("1-indexed slide position"),
+  role: z.string().describe("cover, exec-summary, context, evidence, comparison, synthesis, recommendation, appendix"),
+  layout: z.string().describe("cover, exec-summary, chart-split, evidence-grid, title-chart, title-body, title-bullets, summary, table, comparison, metrics"),
+  governingThought: z.string().describe("The one sentence this slide must communicate"),
+  chartId: z.string().describe('ID of the planned chart for this slide, or "" if no chart'),
+  evidenceRequired: z.array(z.string()).describe("Evidence ref IDs this slide must cite"),
+  focalObject: z.string().describe("What entity/metric is the star of this slide"),
+});
+
+export const v1DeckPlanSchema = z.object({
+  targetSlideCount: z.number().int().describe("Target number of slides, >= 1"),
+  slides: z.array(v1DeckPlanSlideSpecSchema),
+  charts: z.array(v1PlannedChartSchema),
+  appendixStrategy: z.string().describe("What goes in appendix vs main body"),
+  focalEntity: z.string().describe("The client/brand this deck is about"),
+  language: z.string().describe("Output language: en, it, de, fr, es, etc."),
+});
+
+// ─── V1 PIPELINE: SLIDE AUTHORING OUTPUT ────────────────────────
+// Per-slide structured output from generateObject. ALL fields required.
+
+export const v1SlideOutputMetricSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  delta: z.string().describe('Change indicator, e.g. "+5.2%" or "". Empty string if not applicable'),
+});
+
+export const v1SlideOutputCalloutSchema = z.object({
+  text: z.string().describe("The so-what statement, max 25 words"),
+  tone: z.string().describe("accent (blue/key finding), green (opportunity), orange (risk/warning)"),
+});
+
+export const v1SlideOutputSchema = z.object({
+  title: z.string().describe("Action title: full sentence with a number, max 16 words"),
+  subtitle: z.string().describe("Optional subtitle or empty string"),
+  kicker: z.string().describe("Section label like EXECUTIVE SUMMARY, or empty string"),
+  body: z.string().describe("Prose content for the slide, or empty string if not applicable"),
+  bullets: z.array(z.string()).describe("Bullet points, empty array if not applicable"),
+  metrics: z.array(v1SlideOutputMetricSchema).describe("KPI cards, empty array if not applicable"),
+  callout: v1SlideOutputCalloutSchema,
+  speakerNotes: z.string().describe("60-140 words of presenter talking points"),
+  evidenceIds: z.array(z.string()).describe("Evidence ref IDs cited by this slide"),
+});
+
+export type V1PlannedChartDataSpec = z.infer<typeof v1PlannedChartDataSpecSchema>;
+export type V1PlannedChart = z.infer<typeof v1PlannedChartSchema>;
+export type V1DeckPlanSlideSpec = z.infer<typeof v1DeckPlanSlideSpecSchema>;
+export type V1DeckPlan = z.infer<typeof v1DeckPlanSchema>;
+export type V1SlideOutputMetric = z.infer<typeof v1SlideOutputMetricSchema>;
+export type V1SlideOutputCallout = z.infer<typeof v1SlideOutputCalloutSchema>;
+export type V1SlideOutput = z.infer<typeof v1SlideOutputSchema>;
+
 // ─── CANONICAL EVIDENCE TYPES ────────────────────────────────────
 // Source-format-agnostic evidence classification.
 // The same type system applies whether evidence comes from CSV, XLSX, PPTX, PDF, or image.
