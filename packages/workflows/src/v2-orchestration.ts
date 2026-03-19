@@ -2806,36 +2806,102 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
           iteration: 2,
         });
 
-        // Degraded delivery: always proceed to export, but track state durably.
-        if (blockingIssuesRemain) {
+        // Hard quality gate: CRITICAL issues block export entirely.
+        // MAJOR issues proceed as degraded (the deck is usable but imperfect).
+        const criticalCount = fullReCritique.issues.filter((i) => i.severity === "critical").length;
+        const majorCount = fullReCritique.issues.filter((i) => i.severity === "major").length;
+
+        if (criticalCount > 0) {
+          // CRITICAL = factually wrong data, fabricated claims, wrong slide count.
+          // These MUST NOT be shipped to users. Hard fail.
+          await updateDeliveryStatus(runId, "failed");
+          await updateRunStatus(runId, "failed", "critique", {
+            failure_message: `Export blocked: ${criticalCount} critical issue(s) remain after 2 revision cycles. Issues: ${fullReCritique.issues.filter((i) => i.severity === "critical").map((i) => i.claim).join("; ")}`,
+          });
+          throw new Error(`Export blocked: ${criticalCount} critical issue(s) remain after 2 revisions`);
+        }
+
+        if (majorCount > 0) {
+          // MAJOR = weak evidence, missing sources, imprecise claims.
+          // Proceed but mark as degraded so the user knows.
           degradedDelivery = true;
           degradedIssues = fullReCritique.issues
-            .filter((i) => i.severity === "critical" || i.severity === "major")
+            .filter((i) => i.severity === "major")
             .map((i) => ({ severity: i.severity, claim: i.claim }));
-
           await updateDeliveryStatus(runId, "degraded");
-
-          const criticalCount = fullReCritique.issues.filter((i) => i.severity === "critical").length;
-          if (criticalCount > 0) {
-            logPhaseEvent(runId, "re-critique", "proceeding_with_critical_issues_degraded", {
-              criticalCount,
-              issues: degradedIssues.filter((i) => i.severity === "critical").map((i) => i.claim),
-              note: "Degraded delivery: rendering deck despite critical issues.",
-            });
-          }
-          logPhaseEvent(runId, "re-critique", "proceeding_with_major_issues", {
-            issueCount: fullReCritique.issues.length,
-            severities: fullReCritique.issues.map((i) => i.severity),
-            note: "Major issues remain but proceeding to export — degraded delivery",
+          logPhaseEvent(runId, "re-critique", "proceeding_with_major_issues_degraded", {
+            majorCount,
+            issues: degradedIssues.map((i) => i.claim),
+            note: "Major issues remain — exporting as degraded delivery.",
           });
         } else {
-          // Revise resolved all critical/major issues — mark as reviewed
+          // All issues resolved — mark as reviewed
           await updateDeliveryStatus(runId, "reviewed");
         }
       });
     }
 
-    // Scene graph is built inside the consolidated export step below
+    // ─── SOURCE COVERAGE CHECK ─────────────────────────────────────
+    // Verify that ALL uploaded source files were actually used by the analyst.
+    // This prevents the "Mintel PPTX was ignored" class of failure.
+    await step.run("source-coverage-check", async () => {
+      const evidenceRows = await listEvidenceForRun(runId);
+      const slides = await getSlides(runId);
+
+      // Collect all source file IDs that produced evidence entries
+      const usedFileIds = new Set<string>();
+      for (const ev of evidenceRows) {
+        // Evidence ref_ids encode the file ID: sheet-{fileId8}-..., doc-{fileId8}-..., img-{fileId8}-...
+        const refMatch = ev.evidenceRefId.match(/^(?:sheet|doc|img)-([a-f0-9]{8})/);
+        if (refMatch) usedFileIds.add(refMatch[1]);
+      }
+
+      // Check which uploaded files have NO evidence
+      const unusedFiles: string[] = [];
+      for (const fileId of sourceFileIds) {
+        const fileIdShort = fileId.slice(0, 8);
+        if (!usedFileIds.has(fileIdShort)) {
+          unusedFiles.push(fileId);
+        }
+      }
+
+      // Collect all evidence IDs cited by slides
+      const citedEvidenceIds = new Set<string>();
+      for (const slide of slides) {
+        if (slide.evidenceIds) {
+          for (const eid of slide.evidenceIds) {
+            citedEvidenceIds.add(eid);
+          }
+        }
+      }
+
+      const totalEvidence = evidenceRows.length;
+      const citedEvidence = evidenceRows.filter((e) => citedEvidenceIds.has(e.evidenceRefId)).length;
+      const coverageRatio = totalEvidence > 0 ? citedEvidence / totalEvidence : 0;
+
+      logPhaseEvent(runId, "export", "source_coverage_report", {
+        totalSourceFiles: sourceFileIds.length,
+        unusedFileCount: unusedFiles.length,
+        unusedFileIds: unusedFiles,
+        totalEvidence,
+        citedEvidence,
+        coverageRatio: Math.round(coverageRatio * 100),
+        note: unusedFiles.length > 0
+          ? `WARNING: ${unusedFiles.length} source file(s) were not used in the analysis. The analyst may have missed important data.`
+          : "All source files contributed evidence to the deck.",
+      });
+
+      // If more than half the files were unused, that's a quality concern but not a hard block.
+      // Log it prominently so it shows in the run report.
+      if (unusedFiles.length > 0 && unusedFiles.length >= sourceFileIds.length / 2) {
+        logPhaseEvent(runId, "export", "low_source_coverage_warning", {
+          unusedRatio: `${unusedFiles.length}/${sourceFileIds.length}`,
+          note: "More than half of uploaded files were not used. Consider re-running with clearer brief instructions.",
+        });
+      }
+
+      return { unusedFiles, coverageRatio, totalEvidence, citedEvidence };
+    });
 
     // ─── STEP 6: EXPORT (consolidated: scene-graph + PPTX + QA + manifest) ──
     // All export substeps in ONE step.run() to minimize Inngest step replay overhead.
