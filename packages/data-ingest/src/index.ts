@@ -1058,6 +1058,27 @@ export async function streamParseFile(input: {
 
   if (ext.endsWith(".xlsx")) {
     const sheets = await streamParseXlsx(input.id, input.fileName, role, input.buffer);
+
+    // After streaming parse, check for suspicious results (low column count).
+    // Dense parse provides region detection for financial models / multi-block sheets.
+    const suspiciousSheets = sheets.filter((m) => m.columnCount <= 2);
+    if (suspiciousSheets.length > 0) {
+      try {
+        const denseManifests = await denseParseXlsx(input.id, input.fileName, role, input.buffer, sheets);
+        // Replace manifests for sheets that got better results from dense parse
+        for (const dm of denseManifests) {
+          const idx = sheets.findIndex((m) => m.sheetKey === dm.sheetKey);
+          if (idx >= 0 && dm.columnCount > sheets[idx].columnCount) {
+            sheets[idx] = dm;
+          } else if (idx < 0) {
+            sheets.push(dm); // New region-level manifest
+          }
+        }
+      } catch (denseError) {
+        console.warn(`[data-ingest] Dense parse failed, using streaming results:`, denseError);
+      }
+    }
+
     return { sheets, role };
   }
 
@@ -1406,6 +1427,431 @@ function parseXlsBuffered(
   }
 
   return manifests;
+}
+
+// ─── DENSE XLSX PARSE (region detection enrichment) ───────────────
+// Non-streaming fallback for financial models & multi-block sheets.
+// Uses ExcelJS Workbook for full cell access + merged cell info.
+
+type Region = {
+  startRow: number;
+  endRow: number;
+  startCol: number;
+  endCol: number;
+  headerRow: number;
+  type: "structured_table" | "financial_model_block" | "kpi_grid" | "narrative_sheet" | "unsafe";
+  confidence: number;
+};
+
+/**
+ * Propagate merged cell values across their ranges.
+ * Mutates the grid in-place: every cell in a merged range gets the top-left value.
+ */
+function resolveMergedCells(
+  grid: unknown[][],
+  merges: Array<{ top: number; left: number; bottom: number; right: number }>,
+): void {
+  for (const merge of merges) {
+    const value = grid[merge.top]?.[merge.left];
+    if (value === null || value === undefined) continue;
+    for (let r = merge.top; r <= merge.bottom; r++) {
+      for (let c = merge.left; c <= merge.right; c++) {
+        if (r === merge.top && c === merge.left) continue;
+        if (grid[r]) grid[r][c] = value;
+      }
+    }
+  }
+}
+
+/**
+ * Collapse multi-row headers (common in financial models with merged header cells)
+ * into a single row of header strings joined by " — ".
+ */
+function collapseMultiRowHeaders(
+  grid: unknown[][],
+  headerStart: number,
+  headerEnd: number,
+  colCount: number,
+): string[] {
+  const headers: string[] = [];
+  for (let c = 0; c < colCount; c++) {
+    const parts: string[] = [];
+    for (let r = headerStart; r <= headerEnd; r++) {
+      const val = grid[r]?.[c];
+      if (val !== null && val !== undefined && String(val).trim()) {
+        parts.push(String(val).trim());
+      }
+    }
+    headers.push(parts.join(" — ") || `column_${c + 1}`);
+  }
+  return headers;
+}
+
+/**
+ * Detect table regions within a dense grid by finding blank row bands.
+ * 3+ consecutive empty rows = region separator.
+ */
+function detectRegions(
+  grid: unknown[][],
+  mergedRanges: Array<{ top: number; left: number; bottom: number; right: number }>,
+): Region[] {
+  if (grid.length === 0) return [];
+
+  // 1. Find blank rows (rows where all cells are empty)
+  const isBlankRow = (rowIdx: number): boolean => {
+    const row = grid[rowIdx];
+    if (!row) return true;
+    return row.every((v) => v === null || v === undefined || String(v).trim() === "");
+  };
+
+  // 2. Split into vertical segments at blank bands (3+ consecutive blank rows)
+  const segments: Array<{ start: number; end: number }> = [];
+  let segStart = -1;
+  let blankRun = 0;
+
+  for (let r = 0; r < grid.length; r++) {
+    if (isBlankRow(r)) {
+      blankRun++;
+      if (blankRun >= 3 && segStart >= 0) {
+        // End current segment at the row before the blank band
+        segments.push({ start: segStart, end: r - blankRun });
+        segStart = -1;
+      }
+    } else {
+      if (segStart < 0) segStart = r;
+      blankRun = 0;
+    }
+  }
+  // Close last segment
+  if (segStart >= 0) {
+    segments.push({ start: segStart, end: grid.length - 1 });
+  }
+
+  // 3. For each segment, determine column extent and classify
+  const regions: Region[] = [];
+  for (const seg of segments) {
+    // Find the column extent (min/max non-empty columns)
+    let minCol = Infinity;
+    let maxCol = 0;
+    for (let r = seg.start; r <= seg.end; r++) {
+      const row = grid[r];
+      if (!row) continue;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] !== null && row[c] !== undefined && String(row[c]).trim() !== "") {
+          if (c < minCol) minCol = c;
+          if (c > maxCol) maxCol = c;
+        }
+      }
+    }
+
+    if (minCol > maxCol) continue; // completely empty segment
+
+    const colCount = maxCol - minCol + 1;
+    const rowCount = seg.end - seg.start + 1;
+
+    // Extract sub-grid for header detection
+    const subGrid: unknown[][] = [];
+    for (let r = seg.start; r <= seg.end; r++) {
+      const row = grid[r];
+      subGrid.push(row ? row.slice(minCol, maxCol + 1) : []);
+    }
+
+    // Detect header row within this segment
+    const scanRows = subGrid.slice(0, Math.min(15, subGrid.length));
+    let headerIdx = pickBestHeaderRow(scanRows);
+    if (headerIdx < 0) headerIdx = 0;
+
+    // Check for multi-row headers: if the row above the detected header has
+    // merged cells spanning the same columns, it's part of the header
+    let headerStart = headerIdx;
+    if (headerIdx > 0) {
+      const prevRow = subGrid[headerIdx - 1];
+      if (prevRow) {
+        const prevNonEmpty = prevRow.filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
+        const prevStringCount = prevNonEmpty.filter((v) => typeof v === "string").length;
+        // If previous row is mostly strings and has at least 2 values, it's likely a stacked header
+        if (prevNonEmpty.length >= 2 && prevStringCount / prevNonEmpty.length > 0.5) {
+          // Check if any merged cells span this row
+          const hasMergeAbove = mergedRanges.some(
+            (m) => m.top <= seg.start + headerIdx - 1 && m.bottom >= seg.start + headerIdx &&
+                   m.left >= minCol && m.right <= maxCol,
+          );
+          if (hasMergeAbove) headerStart = headerIdx - 1;
+        }
+      }
+    }
+
+    // Score and classify the region
+    const dataRowCount = rowCount - (headerIdx + 1);
+    const headerRow = subGrid[headerIdx] ?? [];
+    const headerNonEmpty = headerRow.filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
+    const headerStringCount = headerNonEmpty.filter((v) => typeof v === "string").length;
+    const headerStringRatio = headerNonEmpty.length > 0 ? headerStringCount / headerNonEmpty.length : 0;
+
+    // Count numeric values in data rows
+    let numericDataCells = 0;
+    let totalDataCells = 0;
+    for (let r = headerIdx + 1; r < subGrid.length; r++) {
+      const row = subGrid[r];
+      if (!row) continue;
+      for (let c = 0; c < row.length; c++) {
+        const v = row[c];
+        if (v !== null && v !== undefined && String(v).trim() !== "") {
+          totalDataCells++;
+          if (typeof v === "number") numericDataCells++;
+        }
+      }
+    }
+    const numericRatio = totalDataCells > 0 ? numericDataCells / totalDataCells : 0;
+
+    let type: Region["type"];
+    let confidence: number;
+
+    if (colCount >= 3 && dataRowCount >= 3 && headerStringRatio > 0.8) {
+      type = "structured_table";
+      confidence = 0.9 + Math.min(0.09, dataRowCount / 1000);
+    } else if (colCount >= 2 && numericRatio > 0.3) {
+      type = "financial_model_block";
+      confidence = 0.7 + Math.min(0.15, dataRowCount / 100) * (numericRatio > 0.5 ? 1 : 0.8);
+    } else if (dataRowCount <= 4 && numericRatio > 0.5) {
+      type = "kpi_grid";
+      confidence = 0.6;
+    } else if (colCount < 3 && headerStringRatio > 0.5) {
+      type = "narrative_sheet";
+      confidence = 0.5;
+    } else {
+      type = "unsafe";
+      confidence = 0.3;
+    }
+
+    regions.push({
+      startRow: seg.start,
+      endRow: seg.end,
+      startCol: minCol,
+      endCol: maxCol,
+      headerRow: seg.start + headerIdx,
+      type,
+      confidence,
+    });
+  }
+
+  return regions;
+}
+
+/**
+ * Dense XLSX parse for region detection.
+ * Uses non-streaming ExcelJS Workbook for full cell access + merged cells.
+ * Only used when streaming parse produces suspicious results or when
+ * the workbook looks like a financial model (multiple header candidates per sheet).
+ */
+async function denseParseXlsx(
+  fileId: string,
+  fileName: string,
+  role: string,
+  buffer: Buffer,
+  existingManifests: SheetManifest[],
+): Promise<SheetManifest[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+  const manifests: SheetManifest[] = [];
+
+  for (const worksheet of workbook.worksheets) {
+    const wsName = worksheet.name;
+    const existingKey = `${fileId}:${fileName} · ${wsName}`;
+    const existingManifest = existingManifests.find((m) => m.sheetKey === existingKey);
+
+    // Skip sheets that already have good results (>2 columns) unless no existing manifest
+    if (existingManifest && existingManifest.columnCount > 2) continue;
+
+    // Build dense grid of resolved cell values
+    const rowCount = worksheet.rowCount;
+    const colCount = worksheet.columnCount;
+    if (rowCount === 0 || colCount === 0) continue;
+
+    const grid: unknown[][] = [];
+    for (let r = 1; r <= rowCount; r++) {
+      const row = worksheet.getRow(r);
+      const values: unknown[] = [];
+      for (let c = 1; c <= colCount; c++) {
+        const cell = row.getCell(c);
+        values.push(resolveCellValue(cell.value));
+      }
+      grid.push(values);
+    }
+
+    // Extract merged cell ranges
+    const mergedRanges: Array<{ top: number; left: number; bottom: number; right: number }> = [];
+    // worksheet.model.merges is an array of range strings like "A1:C3"
+    const merges = (worksheet.model as { merges?: string[] }).merges ?? [];
+    for (const mergeStr of merges) {
+      // Parse "A1:C3" → {top, left, bottom, right} (0-indexed)
+      const parts = mergeStr.split(":");
+      if (parts.length !== 2) continue;
+      const tl = parseCellRef(parts[0]);
+      const br = parseCellRef(parts[1]);
+      if (tl && br) {
+        mergedRanges.push({ top: tl.row, left: tl.col, bottom: br.row, right: br.col });
+      }
+    }
+
+    // Propagate merged cell values
+    resolveMergedCells(grid, mergedRanges);
+
+    // Detect regions
+    const regions = detectRegions(grid, mergedRanges);
+
+    if (regions.length === 0) continue;
+
+    // If only one region found and it's worse than existing, skip
+    if (regions.length === 1 && existingManifest) {
+      const r = regions[0];
+      const regionColCount = r.endCol - r.startCol + 1;
+      if (regionColCount <= existingManifest.columnCount) continue;
+    }
+
+    // Build a manifest for each region
+    for (let ri = 0; ri < regions.length; ri++) {
+      const region = regions[ri];
+      const regionColCount = region.endCol - region.startCol + 1;
+
+      // Skip unsafe regions with very low confidence
+      if (region.type === "unsafe" && region.confidence < 0.4) continue;
+
+      // Determine headers
+      let headers: string[];
+      const headerRowInGrid = region.headerRow;
+
+      // Check for multi-row headers: look one row above for merged cells
+      let headerStartRow = headerRowInGrid;
+      if (headerRowInGrid > region.startRow) {
+        const hasMergeAbove = mergedRanges.some(
+          (m) => m.top <= headerRowInGrid - 1 && m.bottom >= headerRowInGrid &&
+                 m.left >= region.startCol && m.right <= region.endCol,
+        );
+        if (hasMergeAbove) headerStartRow = headerRowInGrid - 1;
+      }
+
+      if (headerStartRow < headerRowInGrid) {
+        // Multi-row header: collapse
+        headers = collapseMultiRowHeaders(grid, headerStartRow, headerRowInGrid, regionColCount);
+      } else {
+        // Single-row header
+        const headerRow = grid[headerRowInGrid] ?? [];
+        headers = [];
+        for (let c = region.startCol; c <= region.endCol; c++) {
+          headers.push(normalizeHeader(headerRow[c], c - region.startCol));
+        }
+      }
+
+      // Deduplicate header names
+      const headerCounts = new Map<string, number>();
+      headers = headers.map((h) => {
+        const count = headerCounts.get(h) ?? 0;
+        headerCounts.set(h, count + 1);
+        return count > 0 ? `${h}_${count + 1}` : h;
+      });
+
+      // Build rows from data area (after header)
+      const dataStartRow = headerRowInGrid + 1;
+      const colStats = new Map<string, StreamingColumnStats>();
+      const headSample: Record<string, unknown>[] = [];
+      const reservoirSample: Record<string, unknown>[] = [];
+      const tailBuffer: Record<string, unknown>[] = [];
+      let dataRowCount = 0;
+
+      // Gzip blob for this region
+      const gzipChunks: Buffer[] = [];
+      const gzip = createGzip({ level: 6 });
+      gzip.on("data", (chunk: Buffer) => gzipChunks.push(chunk));
+      const gzipDone = new Promise<void>((resolve, reject) => {
+        gzip.on("finish", resolve);
+        gzip.on("error", reject);
+      });
+
+      for (let r = dataStartRow; r <= region.endRow; r++) {
+        const row = grid[r];
+        if (!row) continue;
+
+        // Extract values for this region's column range
+        const values = row.slice(region.startCol, region.endCol + 1);
+        if (values.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
+
+        const obj: Record<string, unknown> = {};
+        for (let i = 0; i < headers.length; i++) {
+          obj[headers[i]] = normalizeCell(values[i]);
+        }
+
+        gzip.write(JSON.stringify(obj) + "\n");
+
+        // Sampling
+        if (headSample.length < 40) {
+          headSample.push(obj);
+        } else {
+          if (reservoirSample.length < 200) {
+            reservoirSample.push(obj);
+          } else {
+            const j = Math.floor(Math.random() * (dataRowCount + 1));
+            if (j < 200) reservoirSample[j] = obj;
+          }
+        }
+        tailBuffer[dataRowCount % 20] = obj;
+        updateColumnStats(colStats, obj);
+        dataRowCount++;
+      }
+
+      gzip.end();
+      await gzipDone;
+
+      if (dataRowCount === 0) continue;
+
+      const columns = headers.map((h) => buildColumnFromStats(h, colStats.get(h), dataRowCount));
+      const columnProfile = buildProfileFromStats(colStats, dataRowCount);
+
+      const tail = dataRowCount <= 40
+        ? []
+        : Array.from({ length: Math.min(20, dataRowCount - 40) }, (_, i) =>
+            tailBuffer[(dataRowCount - Math.min(20, dataRowCount - 40) + i) % 20],
+          ).filter(Boolean);
+
+      // Build sheet name: include region index if multiple regions
+      const regionSuffix = regions.length > 1 ? ` [region ${ri + 1}]` : "";
+      const sheetName = `${fileName} · ${wsName}${regionSuffix}`;
+      const sheetKey = `${fileId}:${sheetName}`;
+
+      manifests.push({
+        sheetKey,
+        sheetName,
+        sourceFileId: fileId,
+        sourceFileName: fileName,
+        sourceRole: role,
+        rowCount: dataRowCount,
+        columnCount: headers.length,
+        columns,
+        sampleRows: [...headSample, ...reservoirSample, ...tail],
+        columnProfile,
+        blobBuffer: Buffer.concat(gzipChunks),
+      });
+    }
+  }
+
+  return manifests;
+}
+
+/**
+ * Parse a cell reference like "A1" or "BC42" to 0-indexed {row, col}.
+ */
+function parseCellRef(ref: string): { row: number; col: number } | null {
+  const match = ref.match(/^([A-Z]+)(\d+)$/i);
+  if (!match) return null;
+  const letters = match[1].toUpperCase();
+  const rowNum = parseInt(match[2], 10) - 1; // 0-indexed
+  let colNum = 0;
+  for (let i = 0; i < letters.length; i++) {
+    colNum = colNum * 26 + (letters.charCodeAt(i) - 64);
+  }
+  colNum -= 1; // 0-indexed
+  return { row: rowNum, col: colNum };
 }
 
 // ─── STREAMING COLUMN STATS (single-pass profiling) ───────────────
