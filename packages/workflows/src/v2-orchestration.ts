@@ -2166,15 +2166,15 @@ export const basquioAuthor = inngest.createFunction(
 
       // Build workspace sheet inventory for the planner to reference
       const workspace = await loadWorkspaceFromDb(runId);
-      const sheetInventory = workspace?.fileInventory?.map((f) =>
-        f.sheets.map((s) => ({
-          sheetKey: `${f.id}:${s.name}`,
-          fileName: f.fileName,
-          sheetName: s.name,
-          rowCount: s.rowCount,
-          columns: s.columns.map((c) => `${c.name} (${c.inferredType}, ${c.role})`).join(", "),
+      const sheetInventory = workspace?.fileInventory?.flatMap((f) =>
+        (f.sheets ?? []).filter(Boolean).map((s) => ({
+          sheetKey: `${f.id}:${s?.name ?? "unknown"}`,
+          fileName: f.fileName ?? "unknown",
+          sheetName: s?.name ?? "unknown",
+          rowCount: s?.rowCount ?? 0,
+          columns: (s?.columns ?? []).filter(Boolean).map((c) => `${c?.name ?? "?"} (${c?.inferredType ?? "?"}, ${c?.role ?? "?"})`).join(", "),
         })),
-      ).flat() ?? [];
+      ) ?? [];
 
       const findingsSummary = analysis.topFindings
         .map((f, i) => `${i + 1}. [${f.title}] ${f.claim} (confidence: ${f.confidence}, evidence: [${f.evidenceRefIds.join(", ")}]) → ${f.businessImplication}`)
