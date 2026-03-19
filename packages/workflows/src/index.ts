@@ -60,7 +60,7 @@ import {
 export { inngest } from "./inngest-client";
 
 // V2 orchestration (AI-native agents) — the only pipeline
-export { basquioV2Generation, basquioExport } from "./v2-orchestration";
+export { basquioV2Generation, basquioExport, basquioUnderstand } from "./v2-orchestration";
 
 type GenerationStepRunner = <T>(executionId: string, fn: () => Promise<T> | T) => Promise<T>;
 type ResolvedUploadedFile = GenerationRequest["sourceFiles"][number] & { base64: string };
