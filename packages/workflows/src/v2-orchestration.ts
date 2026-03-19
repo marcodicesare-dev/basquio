@@ -1768,28 +1768,39 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       // Attempt best-effort export with whatever slides exist
       try {
         const existingSlides = await getSlides(runId);
-        if (existingSlides.length > 0) {
-          console.log(`[basquio-v2] Attempting best-effort export with ${existingSlides.length} existing slides`);
-          await step.invoke("best-effort-export", {
-            function: basquioExport,
-            data: {
-              runId,
-              exportMode: (event.data as Record<string, unknown>).exportMode as string | undefined,
-              hasCriticalOrMajor: true,
-              degradedDelivery: true,
-              degradedIssues: [{ severity: "critical", claim: `Pipeline error: ${message.slice(0, 200)}` }],
-              deckTitle: brief.slice(0, 100),
-              sourceFileIds,
-              skipSourceCoverage: true, // Don't gate on source coverage for best-effort
-            },
-            timeout: "10m",
+
+        // If zero slides, create a minimal error slide so the user always gets SOMETHING
+        if (existingSlides.length === 0) {
+          console.log(`[basquio-v2] Zero slides found — creating error slide`);
+          await persistSlide(runId, {
+            position: 1,
+            layoutId: "title-body",
+            title: "Analysis could not be completed",
+            body: `We encountered an error while generating your deck: ${message.slice(0, 300)}. Please try again or contact support.`,
+            evidenceIds: [],
           });
-          await updateRunStatus(runId, "completed", "export", {
-            failure_message: `Completed with degraded delivery: ${message.slice(0, 500)}`,
-          });
-          await updateDeliveryStatus(runId, "degraded");
-          return { runId, artifacts: null, costSummary: null, degraded: true };
         }
+
+        console.log(`[basquio-v2] Attempting best-effort export with ${existingSlides.length || 1} slides`);
+        await step.invoke("best-effort-export", {
+          function: basquioExport,
+          data: {
+            runId,
+            exportMode: (event.data as Record<string, unknown>).exportMode as string | undefined,
+            hasCriticalOrMajor: true,
+            degradedDelivery: true,
+            degradedIssues: [{ severity: "critical", claim: `Pipeline error: ${message.slice(0, 200)}` }],
+            deckTitle: brief.slice(0, 100),
+            sourceFileIds,
+            skipSourceCoverage: true,
+          },
+          timeout: "10m",
+        });
+        await updateRunStatus(runId, "completed", "export", {
+          failure_message: `Completed with degraded delivery: ${message.slice(0, 500)}`,
+        });
+        await updateDeliveryStatus(runId, "degraded");
+        return { runId, artifacts: null, costSummary: null, degraded: true };
       } catch (bestEffortError) {
         console.error(`[basquio-v2] Best-effort export also failed:`, bestEffortError);
       }
@@ -1869,7 +1880,7 @@ export const basquioUnderstand = inngest.createFunction(
 
         // Persist RunIntent — the single source of truth for "what are we building"
         const runIntent = {
-          analysisMode: "deep_analysis" as const,
+          analysisMode: result.analysis?.analysisMode ?? "deep_analysis",
           requestedSlideCount: result.clarifiedBrief?.requestedSlideCount ?? null,
           audience: result.clarifiedBrief?.audience ?? "Executive stakeholder",
           focalEntity: result.clarifiedBrief?.focalEntity ?? "",
@@ -2471,6 +2482,11 @@ export const basquioExport = inngest.createFunction(
       // Render PDF (best-effort — null if Browserless unavailable)
       let pdfArtifactEntry: { id: string; kind: "pdf"; fileName: string; mimeType: string; fileBytes: number; storagePath: string; storageBucket: string; checksumSha256: string } | null = null;
       try {
+        // Extract brand tokens for PDF visual parity with PPTX
+        const brandTokens = templateProfile?.brandTokens as Record<string, unknown> | undefined;
+        const pdfPalette = brandTokens?.palette as Record<string, string> | undefined;
+        const pdfTypo = brandTokens?.typography as Record<string, string> | undefined;
+
         const pdfResult = await renderV2PdfArtifact({
           slides: slides.map((s) => ({
             position: s.position,
@@ -2484,6 +2500,10 @@ export const basquioExport = inngest.createFunction(
             kicker: s.kicker,
           })),
           deckTitle: deckTitle || "Basquio Analysis",
+          accentColor: pdfPalette?.accent,
+          coverBgColor: pdfPalette?.coverBg,
+          headingFont: pdfTypo?.headingFont,
+          bodyFont: pdfTypo?.bodyFont,
         });
 
         if (pdfResult) {
@@ -2544,8 +2564,9 @@ export const basquioExport = inngest.createFunction(
         qa_passed: qaPassed,
         qa_report: {
           checks: qaChecks,
-          delivery_status: degradedDelivery ? "degraded" : "reviewed",
+          delivery_status: (!qaPassed || degradedDelivery) ? "degraded" : "reviewed",
           ...(degradedDelivery ? { unresolvedIssues: degradedIssues } : {}),
+          ...(!qaPassed ? { qaFailures: qaChecks.filter((c) => !c.passed).map((c) => c.name) } : {}),
         },
         artifacts: [
           {
