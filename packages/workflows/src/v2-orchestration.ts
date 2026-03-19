@@ -2829,18 +2829,6 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
             failure_message: `Export blocked: ${majorCount} major issue(s) remain after 2 revision cycles. Issues: ${fullReCritique.issues.filter((i) => i.severity === "major").map((i) => i.claim).join("; ")}`,
           });
           throw new Error(`Export blocked: ${majorCount} major issue(s) remain after 2 revisions`);
-
-          // Dead code — kept for reference if we ever want to reintroduce degraded delivery
-          degradedDelivery = true;
-          degradedIssues = fullReCritique.issues
-            .filter((i) => i.severity === "major")
-            .map((i) => ({ severity: i.severity, claim: i.claim }));
-          await updateDeliveryStatus(runId, "degraded");
-          logPhaseEvent(runId, "re-critique", "proceeding_with_major_issues_degraded", {
-            majorCount,
-            issues: degradedIssues.map((i) => i.claim),
-            note: "Major issues remain — exporting as degraded delivery.",
-          });
         } else {
           // All issues resolved — mark as reviewed
           await updateDeliveryStatus(runId, "reviewed");
