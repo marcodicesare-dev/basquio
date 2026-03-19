@@ -1969,6 +1969,12 @@ export const basquioAuthor = inngest.createFunction(
   async ({ event, step }) => {
     const { runId, brief } = event.data as { runId: string; brief: string };
 
+    // Clear stale slides/charts from any previous execution (prevents ID mismatch on reruns)
+    await step.run("clear-stale-data", async () => {
+      await deleteRunSlides(runId);
+      await deleteRunCharts(runId);
+    });
+
     // Step 1: Plan the deck
     const deckPlan = await step.run("plan-deck", async () => {
       await updateRunStatus(runId, "running", "author");
@@ -2012,7 +2018,7 @@ export const basquioAuthor = inngest.createFunction(
 
       try {
         const planResult = await generateObject({
-          model: openai("gpt-5.4"),
+          model: openai("gpt-5.4-mini"),
           schema: deckPlanSchema,
           prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation structured around an issue tree.
 
@@ -2073,7 +2079,7 @@ Return a structured DeckPlan with sections containing slide specs.`,
             const isSacredSection = ["cover", "exec-summary", "summary", "recommendation"].some(
               (role) => section.slides.some((s: { role?: string }) => s.role === role),
             );
-            const sectionModel = isSacredSection ? "claude-opus-4-6" : "claude-sonnet-4-6";
+            const sectionModel = isSacredSection ? "claude-sonnet-4-6" : "claude-haiku-4-5";
 
             const sectionBrief = `## Section: ${section.title}
 Issue branch: ${section.issueBranch ?? "N/A"}
@@ -2100,7 +2106,7 @@ ${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.tit
                 brief: sectionBrief,
                 loadRows,
                 modelOverride: sectionModel,
-                maxSteps: 15,
+                maxSteps: 10,
                 persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "author", 0, entry),
                 getTemplateProfile: (async () => undefined) as never,
                 persistSlide: (slide) => persistSlide(runId, slide),
@@ -2257,6 +2263,12 @@ export const basquioCritiqueRevise = inngest.createFunction(
         return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues };
       }
 
+      // Only revise for critical issues — major issues are acceptable for delivery
+      if (criticalCount === 0) {
+        await updateDeliveryStatus(runId, "reviewed");
+        return { hasCriticalOrMajor: true, needsRevise: false, issues: allIssues, criticalCount, majorCount };
+      }
+
       return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount };
     });
 
@@ -2400,9 +2412,9 @@ export const basquioExport = inngest.createFunction(
       skipSourceCoverage?: boolean;
     };
 
-    const exportMode = rawExportMode === "universal-compatible"
-      ? ("universal-compatible" as const)
-      : ("powerpoint-native" as const);
+    const exportMode = rawExportMode === "powerpoint-native"
+      ? ("powerpoint-native" as const)
+      : ("universal-compatible" as const);
 
     // Source coverage check
     await step.run("source-coverage-check", async () => {

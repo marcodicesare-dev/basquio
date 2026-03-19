@@ -86,7 +86,7 @@ Rate severity:
       check_numeric: createCheckNumericTool(ctx),
       compare_to_brief: createCompareToBriefTool(ctx),
     },
-    stopWhen: (opts) => stepCountIs(12)(opts) || costBudgetExceeded(1.5)(opts),
+    stopWhen: (opts) => stepCountIs(5)(opts) || costBudgetExceeded(1.5)(opts),
     output: Output.object({ schema: critiqueReportOutputSchema }),
     onStepFinish: input.onStepFinish,
   });
