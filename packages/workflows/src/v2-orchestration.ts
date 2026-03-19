@@ -1829,7 +1829,15 @@ Return a structured DeckPlan with sections containing slide specs.`,
             slideCount: section.slides.length,
           });
 
-          tracker.startPhase("author", "claude-opus-4-6", "anthropic");
+          // Author cascade: Opus for sacred sections (exec-summary, recommendations),
+          // Sonnet for data-heavy sections (evidence, context, comparison).
+          // Sacred sections carry the argument; data sections are formulaic given the storyline.
+          const sacredRoles = ["cover", "exec-summary", "summary", "recommendation"];
+          const isSacredSection = section.slides.some((s) =>
+            sacredRoles.includes(s.role ?? "") || sacredRoles.includes(s.layout ?? ""),
+          );
+          const sectionModel = isSacredSection ? "claude-opus-4-6" : "claude-sonnet-4-6";
+          tracker.startPhase("author", sectionModel, "anthropic");
 
           // Build section-scoped brief
           const sectionBrief = buildSectionBrief(brief, section, analystResult, deckPlan.structuredPlan);
@@ -1841,6 +1849,7 @@ Return a structured DeckPlan with sections containing slide specs.`,
             workspace,
             runId,
             analysis: analystResult.analysis,
+            modelOverride: sectionModel,
             brief: sectionBrief,
             maxSteps: sectionStepLimit,
             loadRows: loadSheetRows,
@@ -2243,60 +2252,53 @@ export const basquioCritiqueRevise = inngest.createFunction(
     const deckPlanWp = await loadWorkingPaper<DeckPlan>(runId, "deck_plan");
     const loadRows = createLoadSheetRows(runId);
 
-    // ─── FACTUAL CRITIQUE ──────────────────────────────────────
-    const factualCritique = await step.run("critique-factual", async () => {
+    // ─── PARALLEL CRITIQUE (factual + strategic run concurrently) ──
+    // Both critiques are independent evaluations — running them in parallel saves 1.5-2.5 min.
+    const critiqueResults = await step.run("critique-parallel", async () => {
       await updateDeliveryStatus(runId, "draft");
       await updateRunStatus(runId, "running", "critique");
-      await emitRunEvent(runId, "critique", "phase_started", { critic: "factual" });
+      await emitRunEvent(runId, "critique", "phase_started");
 
       const slides = await getSlides(runId);
 
-      const result = await runCriticAgent({
-        workspace,
-        runId,
-        deckSummary: "",
-        brief,
-        slideCount: slides.length,
-        getSlides: async () => slides.map((s) => ({
-          id: s.id,
-          position: s.position,
-          layoutId: s.layoutId ?? "title-body",
-          title: s.title ?? "",
-          body: s.body,
-          bullets: s.bullets,
-          metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
-          chartId: s.chartId,
-          evidenceIds: s.evidenceIds ?? [],
-        })),
-        getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
-        persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 0, entry),
-      });
+      const slideData = slides.map((s) => ({
+        id: s.id,
+        position: s.position,
+        layoutId: s.layoutId ?? "title-body",
+        title: s.title ?? "",
+        body: s.body,
+        bullets: s.bullets,
+        metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+        chartId: s.chartId,
+        evidenceIds: s.evidenceIds ?? [],
+      }));
 
-      return result;
+      // Run factual + strategic in parallel
+      const [factual, strategic] = await Promise.all([
+        runCriticAgent({
+          workspace,
+          runId,
+          deckSummary: "",
+          brief,
+          slideCount: slides.length,
+          getSlides: async () => slideData,
+          getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
+          persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 0, entry),
+        }),
+        runStrategicCriticAgent({
+          runId,
+          brief,
+          deckSummary: "",
+          slideCount: slides.length,
+          slides: slideData,
+        }),
+      ]);
+
+      return { factual, strategic };
     });
 
-    // ─── STRATEGIC CRITIQUE ────────────────────────────────────
-    const strategicCritique = await step.run("critique-strategic", async () => {
-      const slides = await getSlides(runId);
-
-      const result = await runStrategicCriticAgent({
-        runId,
-        brief,
-        deckSummary: "",
-        slideCount: slides.length,
-        slides: slides.map((s) => ({
-          position: s.position,
-          layoutId: s.layoutId ?? "title-body",
-          title: s.title ?? "",
-          body: s.body,
-          bullets: s.bullets,
-          chartId: s.chartId,
-          evidenceIds: s.evidenceIds ?? [],
-        })),
-      });
-
-      return result;
-    });
+    const factualCritique = critiqueResults.factual;
+    const strategicCritique = critiqueResults.strategic;
 
     // ─── MERGE + GATE DECISION ─────────────────────────────────
     const gateResult = await step.run("critique-merge-gate", async () => {
