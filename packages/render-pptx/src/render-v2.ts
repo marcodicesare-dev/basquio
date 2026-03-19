@@ -161,7 +161,12 @@ function norm(color: string): string {
 
 /** Replace literal \\n and \n sequences (from LLM output) with real newlines */
 function processNewlines(text: string): string {
-  return text.replace(/\\\\n/g, "\n").replace(/\\n/g, "\n");
+  return text
+    .replace(/\\\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")  // Strip markdown bold **text** → text
+    .replace(/\*([^*]+)\*/g, "$1")       // Strip markdown italic *text* → text
+    .replace(/`([^`]+)`/g, "$1");         // Strip markdown code `text` → text
 }
 
 /** Split text into TextProps array on real newlines */
@@ -649,7 +654,7 @@ function renderMetrics(
     const cardX = region.x + i * (cardW + gap);
 
     // Card background: sharp corners, surface fill, thin border
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    slide.addText("", { // addText for Keynote compat (addShape invisible)
       x: cardX,
       y: region.y,
       w: cardW,
@@ -659,7 +664,7 @@ function renderMetrics(
     });
 
     // Left accent bar (3-4px wide, full card height)
-    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    slide.addText("", { // addText for Keynote compat (addShape invisible)
       x: cardX,
       y: region.y,
       w: 0.04,
@@ -849,7 +854,7 @@ function renderCallout(
   const calloutH = 0.45;
 
   // Tinted background (no border, sharp corners)
-  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+  slide.addText("", { // addText for Keynote compat (addShape invisible)
     x: region.x,
     y: region.y,
     w: region.w,
@@ -858,7 +863,7 @@ function renderCallout(
   });
 
   // Left accent bar (3-4px, full height)
-  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+  slide.addText("", { // addText for Keynote compat (addShape invisible)
     x: region.x,
     y: region.y,
     w: 0.04,
@@ -1015,7 +1020,8 @@ function renderCoverSlide(
   const regions = getLayoutRegions("cover");
 
   // Premium cover: accent shape decoration (right side geometric element)
-  slide.addShape(pptx.ShapeType.rect, {
+  // Use addText("") instead of addShape for Keynote compatibility
+  slide.addText("", {
     x: SLIDE_W - 0.08,
     y: 0,
     w: 0.08,
@@ -1024,11 +1030,11 @@ function renderCoverSlide(
   });
 
   // Thin accent line above title for visual anchor
-  slide.addShape(pptx.ShapeType.rect, {
+  slide.addText("", {
     x: regions.title.x,
-    y: regions.title.y - 0.12,
-    w: 1.2,
-    h: 0.035,
+    y: regions.title.y - 0.15,
+    w: 1.5,
+    h: 0.04,
     fill: { color: norm(tokens.palette.accent) },
   });
 
@@ -1052,8 +1058,8 @@ function renderCoverSlide(
     renderSubtitle(slide, s.subtitle, regions.subtitle, tokens, true);
   }
 
-  // Bottom gradient bar with accent color
-  slide.addShape(pptx.ShapeType.rect, {
+  // Bottom gradient bar with accent color (addText for Keynote compat)
+  slide.addText("", {
     x: 0,
     y: SLIDE_H - 0.06,
     w: SLIDE_W,
@@ -1220,6 +1226,9 @@ function renderContentSlide(
     case "table": {
       if (chart && regions.table) {
         renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
+      } else if (s.body && regions.table) {
+        // No chart data — render body text as content in the table region
+        renderBody(slide, s.body, regions.table, tokens, notesOverflow, bodyMaxWords);
       }
       break;
     }
