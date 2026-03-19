@@ -685,6 +685,92 @@ function resolveSheetKey(
   return canonicalKey;
 }
 
+// ─── CROSS-FILE JOIN TOOL ────────────────────────────────────────
+
+export function createJoinQueryTool(ctx: ToolContext) {
+  return tool({
+    description: "Join data from two different files/sheets on a common key column, then aggregate. Use when you need to combine sales data with distribution data, or compare metrics across sources.",
+    inputSchema: z.object({
+      leftFile: z.string().describe("First file name"),
+      leftSheet: z.string().optional(),
+      rightFile: z.string().describe("Second file name"),
+      rightSheet: z.string().optional(),
+      joinKey: z.string().describe("Column name that exists in both tables to join on"),
+      selectColumns: z.array(z.string()).describe("Columns to include in the result (prefix with L. or R. for ambiguous names)"),
+      filter: z.string().optional().describe("Filter applied AFTER join"),
+      limit: z.number().optional().describe("Max rows to return"),
+    }),
+    execute: async (params) => {
+      const leftKey = resolveSheetKey(ctx.workspace, params.leftFile, params.leftSheet);
+      const rightKey = resolveSheetKey(ctx.workspace, params.rightFile, params.rightSheet);
+      if (!leftKey) return { error: `Left table not found: ${params.leftFile}/${params.leftSheet ?? "default"}` };
+      if (!rightKey) return { error: `Right table not found: ${params.rightFile}/${params.rightSheet ?? "default"}` };
+
+      const leftRows = await resolveRows(ctx, leftKey);
+      const rightRows = await resolveRows(ctx, rightKey);
+
+      if (leftRows.length === 0) return { error: "Left table is empty" };
+      if (rightRows.length === 0) return { error: "Right table is empty" };
+
+      // Build index on right table
+      const rightIndex = new Map<string, Record<string, unknown>[]>();
+      for (const row of rightRows) {
+        const key = String(row[params.joinKey] ?? "").toLowerCase().trim();
+        if (!rightIndex.has(key)) rightIndex.set(key, []);
+        rightIndex.get(key)!.push(row);
+      }
+
+      // Perform inner join
+      let joined: Record<string, unknown>[] = [];
+      for (const leftRow of leftRows) {
+        const key = String(leftRow[params.joinKey] ?? "").toLowerCase().trim();
+        const matches = rightIndex.get(key);
+        if (matches) {
+          for (const rightRow of matches) {
+            const merged: Record<string, unknown> = {};
+            // Left columns with L. prefix for ambiguous
+            for (const [k, v] of Object.entries(leftRow)) merged[`L.${k}`] = v;
+            // Right columns with R. prefix
+            for (const [k, v] of Object.entries(rightRow)) merged[`R.${k}`] = v;
+            // Also add unprefixed for convenience
+            for (const [k, v] of Object.entries(leftRow)) if (!(k in merged)) merged[k] = v;
+            for (const [k, v] of Object.entries(rightRow)) if (!(k in merged)) merged[k] = v;
+            joined.push(merged);
+          }
+        }
+      }
+
+      // Apply filter
+      if (params.filter) joined = applyFilter(joined, params.filter);
+
+      // Select columns
+      const maxRows = params.limit ?? 50;
+      const result = joined.slice(0, maxRows).map((row) => {
+        const selected: Record<string, unknown> = {};
+        for (const col of params.selectColumns) {
+          selected[col] = row[col] ?? row[`L.${col}`] ?? row[`R.${col}`] ?? null;
+        }
+        return selected;
+      });
+
+      const evidenceRefId = `ev-join-${crypto.randomUUID().slice(0, 8)}`;
+      await ctx.persistNotebookEntry({
+        toolName: "join_query",
+        toolInput: params,
+        toolOutput: { rowCount: result.length, totalMatched: joined.length, sample: result.slice(0, 5) },
+        evidenceRefId,
+      });
+
+      return {
+        rows: result,
+        totalMatched: joined.length,
+        returned: result.length,
+        evidenceRef: evidenceRefId,
+      };
+    },
+  });
+}
+
 // ─── STATISTICAL ANALYSIS TOOL ───────────────────────────────────
 
 function toNum(v: unknown): number | null {

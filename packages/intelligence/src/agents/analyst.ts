@@ -22,6 +22,7 @@ import {
   createComputeMetricTool,
   createComputeDerivedTool,
   createComputeStatisticalTool,
+  createJoinQueryTool,
   createReadSupportDocTool,
   type ToolContext,
 } from "../tools";
@@ -186,6 +187,7 @@ Register EVERY important finding as a named evidence ref via compute_metric. Eac
       compute_metric: createComputeMetricTool(ctx),
       compute_derived: createComputeDerivedTool(ctx),
       compute_statistical: createComputeStatisticalTool(ctx),
+      join_query: createJoinQueryTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
     },
     stopWhen: stepCountIs(30),
