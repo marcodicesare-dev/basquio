@@ -785,6 +785,19 @@ function pickBestHeaderRow(rows: unknown[][]): number {
     // Slight penalty for row 0 (often a title, not a header)
     if (i === 0) score *= 0.7;
 
+    // Heavy penalty for instruction/description rows: headers are SHORT labels,
+    // not long sentences. If average string length > 30 chars, it's probably
+    // a merged instruction row, not a header.
+    const avgStringLen = nonEmpty
+      .filter((v): v is string => typeof v === "string")
+      .reduce((sum, s) => sum + s.length, 0) / Math.max(1, stringCount);
+    if (avgStringLen > 30) score *= 0.3; // Very likely instruction text, not headers
+    else if (avgStringLen > 20) score *= 0.6; // Somewhat long for headers
+
+    // Penalty if all values are identical (merged cell propagation artifact)
+    const uniqueValues = new Set(nonEmpty.map((v) => String(v)));
+    if (uniqueValues.size === 1 && nonEmpty.length > 2) score *= 0.1; // All same = merged instruction
+
     // Bonus for being preceded by a blank or single-value row (section break)
     if (i > 0) {
       const prevNonEmpty = rows[i - 1].filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
@@ -1103,12 +1116,25 @@ export async function streamParseFile(input: {
     if (needsDenseParse) {
       try {
         const denseManifests = await denseParseXlsx(input.id, input.fileName, role, input.buffer, sheets);
-        // Replace manifests for sheets that got better results from dense parse
+        // Merge dense results: dense replaces streaming only when it finds
+        // genuinely better structure (more columns, fewer generic headers,
+        // or region metadata). Prevents instruction-text headers from
+        // overriding good streaming results.
         for (const dm of denseManifests) {
           const idx = sheets.findIndex((m) => m.sheetKey === dm.sheetKey);
-          if (idx >= 0 && dm.columnCount > sheets[idx].columnCount) {
-            sheets[idx] = dm;
-          } else if (idx < 0) {
+          if (idx >= 0) {
+            const existing = sheets[idx];
+            const denseGenericCount = dm.columns.filter((c) => /^column_\d+$/.test(c.name)).length;
+            const existingGenericCount = existing.columns.filter((c) => /^column_\d+$/.test(c.name)).length;
+            // Dense wins if: more columns, or fewer generic headers, or has region metadata
+            const denseIsBetter =
+              dm.columnCount > existing.columnCount ||
+              (dm.columnCount === existing.columnCount && denseGenericCount < existingGenericCount) ||
+              (dm.regionType && !existing.regionType);
+            if (denseIsBetter) {
+              sheets[idx] = dm;
+            }
+          } else {
             sheets.push(dm); // New region-level manifest
           }
         }
@@ -1770,8 +1796,8 @@ async function denseParseXlsx(
     const existingKey = `${fileId}:${fileName} · ${wsName}`;
     const existingManifest = existingManifests.find((m) => m.sheetKey === existingKey);
 
-    // Skip sheets that already have good results (>2 columns) unless no existing manifest
-    if (existingManifest && existingManifest.columnCount > 2) continue;
+    // Dense parse runs on ALL sheets when triggered — even sheets with >2 columns
+    // may have wrong headers, merged-cell issues, or multiple undetected regions.
 
     // Build dense grid of resolved cell values + formula tracking
     const rowCount = worksheet.rowCount;

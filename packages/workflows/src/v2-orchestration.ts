@@ -1200,6 +1200,16 @@ export const basquioV2Generation = inngest.createFunction(
               blob_path: blobPath,
               blob_bytes: manifest.blobBuffer.length,
               checksum_sha256: checksum,
+              // Region metadata (null for simple CSV/streaming-parsed sheets)
+              ...(manifest.regionId ? {
+                region_id: manifest.regionId,
+                region_index: manifest.regionIndex,
+                region_type: manifest.regionType,
+                region_confidence: manifest.regionConfidence,
+                region_bounds: manifest.regionBounds,
+                source_sheet_key: manifest.sourceSheetKey,
+                formula_columns: manifest.formulaColumns,
+              } : {}),
             }),
           },
         );
