@@ -103,36 +103,35 @@ type BrandTokens = {
 };
 
 const DEFAULT_CHART_PALETTE = [
-  "0F4C81",
-  "D1D5DB",
-  "1F7A4D",
-  "B42318",
-  "C97A00",
-  "6B21A8",
-  "0E7490",
-  "78716C",
+  "E8A84C",  // amber — brand / primary
+  "4CC9A0",  // green — positive / secondary
+  "6B8EE8",  // blue — info / tertiary
+  "9B7AE0",  // purple — accent
+  "E8636F",  // red — danger / competitor
+  "5AC4D4",  // cyan — highlight
+  "E8B86C",  // warm amber variant
+  "7ABBE0",  // light blue variant
 ];
 
 // ─── "SLATE" HOUSE TEMPLATE (default) ─────────────────────────────
-// Corporate modern. Clean, authoritative, premium.
-// Inter font with Arial fallback (safe everywhere).
-// Monochromatic blue chart palette: accent + shades + gray.
-// From agency-grade-design-research.md — Slate template spec.
+// Premium dark-mode design. Ported from basquio-deck-templates-v2.jsx.
+// Deep near-black backgrounds with warm amber accent.
+// 8-color chart palette tuned for dark surfaces.
 
 const DEFAULT_TOKENS: BrandTokens = {
   palette: {
-    ink: "0F172A",        // Slate 900 (near-black, more refined than pure black)
-    muted: "475569",      // Slate 600 (secondary text)
-    border: "E2E8F0",     // Slate 200 (subtle borders)
-    surface: "F8FAFC",    // Slate 50 (card/table backgrounds)
-    bg: "FFFFFF",         // White
-    accent: "2563EB",     // Blue 600 (primary accent — assertive, trustworthy)
-    accentLight: "DBEAFE", // Blue 100 (callout backgrounds)
-    positive: "16A34A",   // Green 600
-    negative: "DC2626",   // Red 600
-    coverBg: "0F172A",    // Slate 900 (dark, premium cover)
-    calloutGreen: "16A34A",
-    calloutOrange: "EA580C",
+    ink: "F2F0EB",        // Light text on dark (JSX: text)
+    muted: "A09FA6",      // Secondary text (JSX: textSec)
+    border: "272630",     // Subtle borders on dark (JSX: border)
+    surface: "13121A",    // Card/table bg (JSX: surface)
+    bg: "13121A",         // Slide background (JSX: surface)
+    accent: "E8A84C",     // Amber — warm, premium (JSX: amber)
+    accentLight: "1A1922", // Dark tint for callout backgrounds (JSX: surfaceAlt)
+    positive: "4CC9A0",   // Green — growth, opportunity (JSX: green)
+    negative: "E8636F",   // Red — decline, risk (JSX: red)
+    coverBg: "0A090D",    // Deepest black for cover (JSX: bg)
+    calloutGreen: "4CC9A0",
+    calloutOrange: "E8A84C",
   },
   typography: {
     headingFont: "Arial",  // Universal safe — zero substitution in PowerPoint, Google Slides, Keynote
@@ -147,7 +146,7 @@ const DEFAULT_TOKENS: BrandTokens = {
     kpiValueSize: 44,      // Hero metrics: large, bold, accent-colored
     kpiLabelSize: 10,      // KPI labels: uppercase, semibold
   },
-  chartPalette: ["2563EB", "60A5FA", "BFDBFE", "1E40AF"], // Monochromatic blue
+  chartPalette: ["E8A84C", "4CC9A0", "6B8EE8", "9B7AE0", "E8636F", "5AC4D4", "E8B86C", "7ABBE0"],
 };
 
 // ─── "OBSIDIAN" HOUSE TEMPLATE — Dark Executive ─────────────────

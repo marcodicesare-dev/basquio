@@ -481,6 +481,23 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
         };
       }
 
+      // ─── Chart ID validation (critical — prevents phantom chart references) ───
+      const chartLayouts = ["chart-split", "title-chart", "evidence-grid", "comparison"];
+      if (params.chartId && ctx.getChart) {
+        const chart = await ctx.getChart(params.chartId);
+        if (!chart) {
+          // Chart ID doesn't exist — this is the #1 bug from March 19 co-founder tests
+          return {
+            error: `chartId "${params.chartId}" does not exist. You MUST use the exact chartId returned by build_chart. Do not invent chart IDs.`,
+            hint: "Call build_chart first, then use the returned chartId in write_slide.",
+          };
+        }
+      }
+      if (!params.chartId && chartLayouts.includes(params.layout)) {
+        // Chart layout without a chart — warn but don't block
+        console.warn(`[write_slide] Slide ${params.position} uses layout "${params.layout}" but has no chartId. The slide will render without a chart.`);
+      }
+
       // Look up chart metadata for slot validation (category count, type, table dimensions)
       let chartMeta: { chartType?: string; chartCategories?: number; tableRows?: number; tableCols?: number } = {};
       if (params.chartId && ctx.getChart) {

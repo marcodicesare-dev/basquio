@@ -2935,19 +2935,31 @@ export const basquioExport = inngest.createFunction(
       }
 
       // Extract file IDs from CITED evidence only (not all registered evidence)
-      // A file is "used" only if at least one of its evidence refs appears in a slide
-      const usedFileIds = new Set<string>();
+      // A file is "used" if at least one of its evidence refs appears in a slide.
+      // Evidence refs use 8-char hex from the file ID. We match against BOTH
+      // first-8 and last-8 of the UUID to handle both ref conventions.
+      const usedFileIdFragments = new Set<string>();
       for (const ev of evidenceRows) {
         if (citedEvidenceIds.has(ev.evidenceRefId)) {
           const refMatch = ev.evidenceRefId.match(/^(?:sheet|doc|img)-([a-f0-9]{8})/);
-          if (refMatch) usedFileIds.add(refMatch[1]);
+          if (refMatch) usedFileIdFragments.add(refMatch[1]);
         }
       }
 
+      // Fallback: if no cited evidence matched but we have evidence rows at all,
+      // consider the file "used" — the analyst explored it even if the author
+      // didn't cite specific refs. This fixes single-file runs.
+      const hasAnyEvidence = evidenceRows.length > 0;
+
       const unusedFiles: string[] = [];
       for (const fileId of sourceFileIds) {
-        const fileIdShort = fileId.slice(-8);
-        if (!usedFileIds.has(fileIdShort)) unusedFiles.push(fileId);
+        const first8 = fileId.replace(/-/g, "").slice(0, 8);
+        const last8 = fileId.slice(-8);
+        const matched = usedFileIdFragments.has(first8) || usedFileIdFragments.has(last8);
+        // Single-file runs: if there's evidence from any source, the file was used
+        if (!matched && !(sourceFileIds.length === 1 && hasAnyEvidence)) {
+          unusedFiles.push(fileId);
+        }
       }
 
       const totalEvidence = evidenceRows.length;
@@ -3115,16 +3127,33 @@ export const basquioExport = inngest.createFunction(
         pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
         pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
 
+      // Chart coverage check: slides with chart layouts must have valid chart_id
+      const chartLayouts = ["chart-split", "title-chart", "evidence-grid", "comparison"];
+      const chartLayoutSlides = slides.filter((s: any) => chartLayouts.includes(s.layoutId ?? s.layout_id));
+      const chartlessSlides = chartLayoutSlides.filter((s: any) => {
+        const cid = s.chartId ?? s.chart_id;
+        if (!cid) return true;
+        return !chartIdSet.has(cid);
+      });
+      const chartCoverageRatio = chartLayoutSlides.length > 0
+        ? (chartLayoutSlides.length - chartlessSlides.length) / chartLayoutSlides.length
+        : 1;
+      const chartCoverageOk = chartCoverageRatio >= 0.7; // At least 70% of chart-layout slides have valid charts
+
       const qaChecks = [
         { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
         { name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` },
         { name: "pptx_valid_zip", passed: hasValidPptxHeader },
+        { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
       ];
 
-      const qaPassed = qaChecks.every((c) => c.passed);
+      const qaStructuralPassed = qaChecks.every((c) => c.passed);
+      // QA TRUTHFULNESS: qa_passed must be false if delivery is degraded
+      const qaPassed = qaStructuralPassed && !degradedDelivery;
 
       if (!qaPassed) {
-        console.warn(`[basquio-export] QA checks failed: ${qaChecks.filter((c) => !c.passed).map((c) => c.name).join(", ")}`);
+        const failedChecks = qaChecks.filter((c) => !c.passed).map((c) => c.name);
+        console.warn(`[basquio-export] QA: passed=${qaPassed}, degraded=${degradedDelivery}, failed=[${failedChecks.join(", ")}], chartCoverage=${Math.round(chartCoverageRatio * 100)}%`);
         await updateDeliveryStatus(runId, "degraded");
       }
 
@@ -3138,9 +3167,10 @@ export const basquioExport = inngest.createFunction(
         qa_passed: qaPassed,
         qa_report: {
           checks: qaChecks,
-          delivery_status: (!qaPassed || degradedDelivery) ? "degraded" : "reviewed",
+          delivery_status: qaPassed ? "reviewed" : "degraded",
+          chartCoverage: { total: chartLayoutSlides.length, linked: chartLayoutSlides.length - chartlessSlides.length, ratio: chartCoverageRatio },
           ...(degradedDelivery ? { unresolvedIssues: degradedIssues } : {}),
-          ...(!qaPassed ? { qaFailures: qaChecks.filter((c) => !c.passed).map((c) => c.name) } : {}),
+          ...(!qaStructuralPassed ? { qaFailures: qaChecks.filter((c) => !c.passed).map((c) => c.name) } : {}),
         },
         artifacts: [
           {
