@@ -1145,7 +1145,14 @@ async function streamParseXlsx(
     });
 
     for await (const row of worksheetReader) {
-      const values = (row.values as unknown[])?.slice(1) ?? [];
+      // ExcelJS row.values can be a sparse array (index 0 is always empty) or
+      // an object with numeric keys. Handle both to avoid column_count=1 bug.
+      const rawValues = row.values;
+      const values = Array.isArray(rawValues)
+        ? rawValues.slice(1) // Standard: drop empty index 0
+        : rawValues && typeof rawValues === "object"
+          ? Object.values(rawValues as Record<number, unknown>)
+          : [];
 
       if (!headerDetected) {
         headers = values.map((v, i) => normalizeHeader(v, i));

@@ -82,6 +82,7 @@ type ChartInput = {
 };
 
 // Use the shared Inngest client (avoids circular import with ./index)
+import { NonRetriableError } from "inngest";
 import { inngest } from "./inngest-client";
 
 // ─── TEXT HELPERS ────────────────────────────────────────────────
@@ -1805,12 +1806,47 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
         console.error(`[basquio-v2] Best-effort export also failed:`, bestEffortError);
       }
 
-      // Absolute last resort: mark as failed, but do NOT throw
+      // Absolute last resort: render a minimal error PPTX directly (no child function)
+      try {
+        const { renderV2PptxArtifact } = await import("@basquio/render-pptx/v2");
+        const errorSlides = await getSlides(runId).catch(() => []);
+        const slidesForRender = errorSlides.length > 0
+          ? errorSlides.map((s) => ({
+              id: s.id, position: s.position, layoutId: s.layoutId ?? "title-body",
+              title: s.title ?? "", body: s.body, bullets: s.bullets,
+              chartId: s.chartId, kicker: s.kicker, evidenceIds: s.evidenceIds ?? [],
+              callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+              metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            })) as any
+          : [{ id: "error", position: 1, layoutId: "title-body",
+               title: "Analysis could not be completed",
+               body: `Error: ${message.slice(0, 300)}. Please try again.`,
+               evidenceIds: [] }];
+        const pptx = await renderV2PptxArtifact({
+          slides: slidesForRender, charts: [], deckTitle: brief.slice(0, 100),
+          exportMode: "universal-compatible",
+        });
+        const buf = Buffer.isBuffer(pptx.buffer) ? pptx.buffer : Buffer.from((pptx.buffer as { data: number[] }).data);
+        await uploadToStorage({
+          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          bucket: "artifacts", storagePath: `${runId}/deck.pptx`, body: buf, contentType: pptx.mimeType,
+        });
+        await updateRunStatus(runId, "completed", "export", {
+          failure_message: `Last-resort export: ${message.slice(0, 500)}`,
+        });
+        await updateDeliveryStatus(runId, "degraded");
+        return { runId, artifacts: null, costSummary: null, degraded: true, lastResort: true };
+      } catch (lastResortError) {
+        console.error(`[basquio-v2] Last-resort PPTX render also failed:`, lastResortError);
+      }
+
+      // If even the last-resort PPTX render fails, mark as failed
       await updateDeliveryStatus(runId, "failed").catch(() => {});
       await updateRunStatus(runId, "failed", undefined, {
         failure_message: message.slice(0, 1000),
       }).catch(() => {});
-      // DO NOT re-throw — Inngest retries would just burn more tokens
       return { runId, artifacts: null, costSummary: null, failed: true, error: message.slice(0, 500) };
     }
   },
@@ -1833,7 +1869,7 @@ export const basquioUnderstand = inngest.createFunction(
       await emitRunEvent(runId, "understand", "phase_started");
 
       const workspace = await loadWorkspaceFromDb(runId);
-      if (!workspace) throw new Error(`Workspace not found for run ${runId}`);
+      if (!workspace) throw new NonRetriableError(`Workspace not found for run ${runId}`);
       const loadRows = createLoadSheetRows(runId);
 
       const tracker = new UsageTracker();
@@ -1918,7 +1954,7 @@ export const basquioUnderstand = inngest.createFunction(
  * in parallel, then polishes weak slides.
  */
 export const basquioAuthor = inngest.createFunction(
-  { id: "basquio-author", retries: 1, timeouts: { finish: "25m" } },
+  { id: "basquio-author", retries: 0, timeouts: { finish: "25m" } },
   { event: "basquio/author.requested" },
   async ({ event, step }) => {
     const { runId, brief } = event.data as { runId: string; brief: string };
@@ -1934,7 +1970,7 @@ export const basquioAuthor = inngest.createFunction(
         clarifiedBrief?: { audience: string; objective: string; stakes: string; governingQuestion: string; focalEntity: string; focalBrands: string[]; language: string; requestedSlideCount: number | null; hypotheses: string[] };
         storylinePlan?: { issueBranches: Array<{ question: string; conclusion: string; hypotheses: Array<{ claim: string }> }> };
       }>(runId, "analysis_result");
-      if (!analysisResult) throw new Error(`Analysis result not found for run ${runId}`);
+      if (!analysisResult) throw new NonRetriableError(`Analysis result not found for run ${runId}`);
 
       const analysis = analysisResult.analysis;
       const clarifiedSlideCount = analysisResult.clarifiedBrief?.requestedSlideCount ?? null;
@@ -2004,7 +2040,7 @@ Return a structured DeckPlan with sections containing slide specs.`,
     // Step 2: Author all sections in parallel
     const deckPlanSections = deckPlan.structuredPlan.sections ?? [];
     const workspace = await loadWorkspaceFromDb(runId);
-    if (!workspace) throw new Error(`Workspace not found for run ${runId}`);
+    if (!workspace) throw new NonRetriableError(`Workspace not found for run ${runId}`);
     const loadRows = createLoadSheetRows(runId);
     const analysisForAuthor = await loadWorkingPaper<{
       analysis: { domain: string; summary: string; topFindings: Array<{ title: string; claim: string; confidence: number; evidenceRefIds: string[]; businessImplication: string }>; keyDimensions: string[]; recommendedChartTypes: Array<{ chartType: string; reason: string }> };
@@ -2113,7 +2149,7 @@ ${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.tit
  * Returns the quality gate decision.
  */
 export const basquioCritiqueRevise = inngest.createFunction(
-  { id: "basquio-critique-revise", retries: 2, timeouts: { finish: "25m" } },
+  { id: "basquio-critique-revise", retries: 0, timeouts: { finish: "25m" } },
   { event: "basquio/critique-revise.requested" },
   async ({ event, step }) => {
     const { runId, brief, sourceFileIds } = event.data as {
@@ -2124,7 +2160,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
     // Load dependencies from DB
     const workspace = await loadWorkspaceFromDb(runId);
-    if (!workspace) throw new Error(`Workspace not found for run ${runId}`);
+    if (!workspace) throw new NonRetriableError(`Workspace not found for run ${runId}`);
 
     const analysisResult = await loadWorkingPaper<AnalystResult>(runId, "analysis_result");
     const analysis = analysisResult?.analysis ?? { topFindings: [], metricsComputed: 0, dataSummary: "" };
