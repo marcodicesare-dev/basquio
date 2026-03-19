@@ -757,8 +757,25 @@ async function loadWorkspaceFromDb(runId: string): Promise<EvidenceWorkspace | n
     },
   );
   if (!response.ok) return null;
-  const rows = await response.json() as Array<{ manifest: EvidenceWorkspace }>;
-  return rows[0]?.manifest ?? null;
+  const rows = await response.json() as Array<{
+    id: string;
+    run_id: string;
+    file_inventory: unknown;
+    dataset_profile: unknown;
+    package_semantics: unknown;
+    template_profile: unknown;
+    blob_manifest: unknown;
+  }>;
+  if (!rows[0]) return null;
+  // Reconstruct EvidenceWorkspace from the individual columns
+  const row = rows[0];
+  return {
+    fileInventory: row.file_inventory as EvidenceWorkspace["fileInventory"],
+    datasetProfile: row.dataset_profile as EvidenceWorkspace["datasetProfile"],
+    packageSemantics: row.package_semantics as EvidenceWorkspace["packageSemantics"],
+    templateProfile: row.template_profile as EvidenceWorkspace["templateProfile"],
+    sheetData: {},
+  } as EvidenceWorkspace;
 }
 
 function createLoadSheetRows(runId: string) {
