@@ -415,19 +415,56 @@ export const deckPlanSchema = z.object({
   appendixStrategy: z.string().describe("What goes in appendix vs main body"),
 });
 
+// ─── CANONICAL EVIDENCE TYPES ────────────────────────────────────
+// Source-format-agnostic evidence classification.
+// The same type system applies whether evidence comes from CSV, XLSX, PPTX, PDF, or image.
+
+export const canonicalEvidenceTypeSchema = z.enum([
+  "table",           // Structured rows/columns from any source
+  "metric",          // Single computed value with context
+  "derived_metric",  // Cross-column/cross-source computed value
+  "claim",           // Textual assertion from a document
+  "visual",          // Chart/image description from vision extraction
+  "statistical",     // Statistical measure (correlation, HHI, etc.)
+]);
+
+// ─── ANALYSIS MODE ──────────────────────────────────────────────
+// Inferred from the brief + evidence to calibrate analytical depth and focus.
+// The analyst agent determines the mode BEFORE exploring data.
+
+export const analysisModeSchema = z.enum([
+  "deep_analysis",        // Full market/category deep dive (10-20 slides)
+  "board_summary",        // High-level exec summary (1-3 slides)
+  "recommendation_memo",  // Decision-focused with quantified actions
+  "trend_report",         // Time-series focused, period-over-period
+  "competitive_review",   // Competitor-focused, relative positioning
+  "evidence_book",        // Appendix-style data compilation, maximize coverage
+]);
+
+// ─── SOURCE COVERAGE STATUS ─────────────────────────────────────
+// Tracks how each uploaded file was used in the final deck.
+// This is a first-class runtime object, not a log message.
+
+export const sourceCoverageStatusSchema = z.enum([
+  "used",             // File produced evidence that was cited in slides
+  "partially_used",   // File produced evidence but not all was cited
+  "unused",           // File was processed but no evidence was cited
+  "failed_to_parse",  // File could not be processed
+]);
+
 // ─── TYPED EVIDENCE ──────────────────────────────────────────────
 // Working paper: evidence registry with type-discriminated values.
 
 export const typedEvidenceSchema = z.object({
   id: z.string(),
   runId: z.string(),
-  evidenceType: z.enum(["metric", "table", "derived_table", "document", "claim"]),
+  evidenceType: canonicalEvidenceTypeSchema,
   refId: z.string(),
   label: z.string(),
   description: z.string().nullable(),
-  value: z.unknown().describe("Type-dependent: number for metric, rows for table, text for document/claim"),
+  value: z.unknown().describe("Type-dependent: number for metric, rows for table, text for claim, description for visual"),
   sourceSheetKey: z.string().nullable(),
-  confidence: z.number().min(0).max(1).nullable(),
+  confidence: z.number().nullable(),
 });
 
 // ─── DELIVERY STATUS ─────────────────────────────────────────────
@@ -444,6 +481,9 @@ export type StorylinePlan = z.infer<typeof storylinePlanSchema>;
 export type DeckPlanSlideSpec = z.infer<typeof deckPlanSlideSpecSchema>;
 export type DeckPlanSection = z.infer<typeof deckPlanSectionSchema>;
 export type DeckPlan = z.infer<typeof deckPlanSchema>;
+export type CanonicalEvidenceType = z.infer<typeof canonicalEvidenceTypeSchema>;
+export type AnalysisMode = z.infer<typeof analysisModeSchema>;
+export type SourceCoverageStatus = z.infer<typeof sourceCoverageStatusSchema>;
 export type TypedEvidence = z.infer<typeof typedEvidenceSchema>;
 export type DeliveryStatus = z.infer<typeof deliveryStatusSchema>;
 export type DeckRunPhase = z.infer<typeof deckRunPhaseSchema>;

@@ -67,6 +67,25 @@ export function createAnalystAgent(input: AnalystAgentInput) {
 
 You think like a consultant, not a BI tool. You don't just compute aggregates — you look for the story in the data, the tensions, the opportunities, and the risks.
 
+### Phase 0: Infer Analysis Mode
+Before exploring data, determine the analysis mode from the brief:
+- "overview", "deep dive", "full analysis", "category review" → deep_analysis (explore ALL dimensions, 20+ evidence refs)
+- "summary", "board", "executive", "1 slide", "recap", "highlights" → board_summary (3-5 headline metrics, 5-8 evidence refs)
+- "recommend", "action", "decision", "what should we do", "strategy" → recommendation_memo (decision-forcing findings, quantified actions)
+- "trend", "over time", "evolution", "trajectory", "year on year" → trend_report (period-over-period, growth decomposition)
+- "competitor", "vs", "benchmark", "competitive", "versus" → competitive_review (share analysis, relative positioning)
+- "appendix", "evidence", "data book", "backup", "all data" → evidence_book (maximize data coverage)
+
+Your analysis mode determines depth and focus:
+- deep_analysis: compute ALL derived metrics across ALL dimensions
+- board_summary: focus on the 3-5 most impactful numbers
+- recommendation_memo: focus on decision-forcing findings with quantified actions
+- trend_report: prioritize period-over-period analysis and growth decomposition
+- competitive_review: prioritize share analysis and relative positioning
+- evidence_book: maximize data extraction and registration
+
+State your inferred analysis mode in your first response.
+
 ### Phase 1: Understand the data (steps 1-8)
 1. List all files to understand scope
 2. Describe each table — columns, types, cardinality
