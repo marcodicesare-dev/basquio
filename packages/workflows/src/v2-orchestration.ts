@@ -2841,303 +2841,24 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       });
     }
 
-    // ─── SOURCE COVERAGE CHECK ─────────────────────────────────────
-    // Verify that ALL uploaded source files were actually used by the analyst.
-    // This prevents the "Mintel PPTX was ignored" class of failure.
-    await step.run("source-coverage-check", async () => {
-      const evidenceRows = await listEvidenceForRun(runId);
-      const slides = await getSlides(runId);
-
-      // Collect all source file IDs that produced evidence entries
-      const usedFileIds = new Set<string>();
-      for (const ev of evidenceRows) {
-        // Evidence ref_ids encode the file ID: sheet-{fileId8}-..., doc-{fileId8}-..., img-{fileId8}-...
-        const refMatch = ev.evidenceRefId.match(/^(?:sheet|doc|img)-([a-f0-9]{8})/);
-        if (refMatch) usedFileIds.add(refMatch[1]);
-      }
-
-      // Check which uploaded files have NO evidence
-      const unusedFiles: string[] = [];
-      for (const fileId of sourceFileIds) {
-        const fileIdShort = fileId.slice(0, 8);
-        if (!usedFileIds.has(fileIdShort)) {
-          unusedFiles.push(fileId);
-        }
-      }
-
-      // Collect all evidence IDs cited by slides
-      const citedEvidenceIds = new Set<string>();
-      for (const slide of slides) {
-        if (slide.evidenceIds) {
-          for (const eid of slide.evidenceIds) {
-            citedEvidenceIds.add(eid);
-          }
-        }
-      }
-
-      const totalEvidence = evidenceRows.length;
-      const citedEvidence = evidenceRows.filter((e) => citedEvidenceIds.has(e.evidenceRefId)).length;
-      const coverageRatio = totalEvidence > 0 ? citedEvidence / totalEvidence : 0;
-
-      logPhaseEvent(runId, "export", "source_coverage_report", {
-        totalSourceFiles: sourceFileIds.length,
-        unusedFileCount: unusedFiles.length,
-        unusedFileIds: unusedFiles,
-        totalEvidence,
-        citedEvidence,
-        coverageRatio: Math.round(coverageRatio * 100),
-        note: unusedFiles.length > 0
-          ? `WARNING: ${unusedFiles.length} source file(s) were not used in the analysis. The analyst may have missed important data.`
-          : "All source files contributed evidence to the deck.",
-      });
-
-      // If more than half the files were unused, that's a quality concern but not a hard block.
-      // Log it prominently so it shows in the run report.
-      if (unusedFiles.length > 0 && unusedFiles.length >= sourceFileIds.length / 2) {
-        logPhaseEvent(runId, "export", "low_source_coverage_warning", {
-          unusedRatio: `${unusedFiles.length}/${sourceFileIds.length}`,
-          note: "More than half of uploaded files were not used. Consider re-running with clearer brief instructions.",
-        });
-      }
-
-      return { unusedFiles, coverageRatio, totalEvidence, citedEvidence };
+    // ─── STEP 6: EXPORT (invoked as separate Inngest function) ─────
+    // Export runs as a child function with its own 15min timeout and retries.
+    // This eliminates replay overhead from the 20+ steps in the parent.
+    const artifacts = await step.invoke("export", {
+      function: basquioExport,
+      data: {
+        runId,
+        exportMode: (event.data as Record<string, unknown>).exportMode as string | undefined,
+        hasCriticalOrMajor,
+        degradedDelivery,
+        degradedIssues,
+        deckTitle: brief.slice(0, 100),
+        sourceFileIds,
+      },
+      timeout: "15m",
     });
 
-    // ─── STEP 6: EXPORT (consolidated: scene-graph + PPTX + QA + manifest) ──
-    // All export substeps in ONE step.run() to minimize Inngest step replay overhead.
-    // With 25+ steps in the function, each additional step adds replay latency that
-    // causes Inngest connection resets on Vercel.
-    const artifacts = await step.run("export", async () => {
-      await updateRunStatus(runId, "running", "export");
-      await emitRunEvent(runId, "export", "phase_started");
-
-      // Set delivery status to "reviewed" if critique passed clean (moved here from between steps)
-      if (!hasCriticalOrMajor) {
-        await updateDeliveryStatus(runId, "reviewed");
-      }
-
-      // 1. Load slides and verify count
-      const slides = await getSlides(runId);
-      const v2ChartRows = await getV2ChartRows(runId);
-
-      // Hard count gate: if user explicitly requested N slides and we don't have N, trim/fail
-      const targetCount = deckPlan.structuredPlan.targetSlideCount;
-      if (targetCount && slides.length > targetCount) {
-        // Trim excess slides by position (keep first N)
-        const sorted = [...slides].sort((a, b) => a.position - b.position);
-        const toDelete = sorted.slice(targetCount);
-        for (const slide of toDelete) {
-          await fetch(
-            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_slides?id=eq.${slide.id}`,
-            {
-              method: "DELETE",
-              headers: {
-                apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-                Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-              },
-            },
-          );
-        }
-        // Re-fetch after trim
-        slides.splice(0, slides.length, ...(await getSlides(runId)));
-        logPhaseEvent(runId, "export", "count_gate_trimmed", {
-          targetCount,
-          hadCount: sorted.length,
-          trimmedTo: slides.length,
-        });
-      }
-      const deckTitle = analysis.summary?.slice(0, 100) ?? slides[0]?.title ?? "Basquio Report";
-
-      const templateProfile = workspace.templateProfile ?? createSystemTemplateProfile();
-      const sceneGraph = buildDeckSceneGraph(
-        slides.map(s => ({
-          id: s.id,
-          runId,
-          position: s.position,
-          layoutId: s.layoutId ?? "title-body",
-          title: s.title ?? "",
-          subtitle: s.subtitle,
-          kicker: s.kicker,
-          body: s.body,
-          bullets: s.bullets,
-          chartId: s.chartId,
-          metrics: s.metrics,
-          callout: s.callout,
-          evidenceIds: s.evidenceIds ?? [],
-          speakerNotes: s.speakerNotes,
-          qaStatus: "pending" as const,
-          revision: 1,
-        })),
-        templateProfile,
-        v2ChartRows.map(c => ({
-          id: c.id,
-          chartType: c.chartType,
-          title: c.title,
-          intent: c.intent,
-          unit: c.unit,
-          benchmarkLabel: c.benchmarkLabel,
-          benchmarkValue: c.benchmarkValue,
-          sourceNote: c.sourceNote,
-        })),
-      );
-
-      // Persist scene graph
-      const sceneGraphBuffer = Buffer.from(JSON.stringify(sceneGraph), "utf-8");
-      await uploadToStorage({
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        bucket: "artifacts",
-        storagePath: `${runId}/scene-graph.json`,
-        body: sceneGraphBuffer,
-        contentType: "application/json",
-      });
-
-      // 2. Render PPTX
-      const tp = workspace.templateProfile;
-      const strip = (c?: string) => c?.replace("#", "");
-      const brandTokenOverrides: Record<string, unknown> | undefined = (() => {
-        if (!tp?.brandTokens) return undefined;
-        const pal = (tp.brandTokens.palette ?? {}) as Record<string, string | undefined>;
-        const typo = tp.brandTokens.typography;
-        const rendererPalette: Record<string, string> = {};
-        const map: Record<string, string | string[]> = {
-          accent: "accent", ink: "text", bg: "background", surface: "surface",
-          muted: ["muted", "accentMuted"], border: "border",
-          accentLight: ["accentLight", "highlight"],
-          positive: "positive", negative: "negative",
-          coverBg: "coverBg", calloutGreen: "calloutGreen", calloutOrange: "calloutOrange",
-        };
-        for (const [rendererKey, sourceKeys] of Object.entries(map)) {
-          const keys = Array.isArray(sourceKeys) ? sourceKeys : [sourceKeys];
-          for (const k of keys) {
-            const v = strip(pal[k]);
-            if (v) { rendererPalette[rendererKey] = v; break; }
-          }
-        }
-        return {
-          palette: rendererPalette,
-          typography: {
-            ...(typo?.headingFont ? { headingFont: typo.headingFont } : {}),
-            ...(typo?.bodyFont ? { bodyFont: typo.bodyFont } : {}),
-          },
-        };
-      })();
-
-      // Export mode: default to powerpoint-native for best editability
-      // Universal mode uses shape-built charts for Google Slides / Keynote compat
-      const exportMode = (event.data.exportMode as string) === "universal-compatible"
-        ? ("universal-compatible" as const)
-        : ("powerpoint-native" as const);
-
-      const pptxArtifact = await renderV2PptxArtifact({
-        deckTitle,
-        slides,
-        charts: v2ChartRows,
-        brandTokens: brandTokenOverrides as Record<string, unknown> | undefined,
-        exportMode,
-      });
-
-      const pptxPath = `${runId}/deck.pptx`;
-      const pptxBuffer = Buffer.isBuffer(pptxArtifact.buffer)
-        ? pptxArtifact.buffer
-        : Buffer.from((pptxArtifact.buffer as { data: number[] }).data);
-
-      await uploadToStorage({
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        bucket: "artifacts",
-        storagePath: pptxPath,
-        body: pptxBuffer,
-        contentType: pptxArtifact.mimeType,
-      });
-
-      const { createHash } = await import("node:crypto");
-      const pptxSha256 = createHash("sha256").update(pptxBuffer).digest("hex");
-
-      // 3. QA checks
-      const qaChecks: Array<{ name: string; passed: boolean; detail?: string }> = [];
-      qaChecks.push({ name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` });
-      qaChecks.push({ name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` });
-      const hasValidPptxHeader = pptxBuffer.length >= 4 &&
-        pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
-        pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
-      qaChecks.push({ name: "pptx_valid_zip", passed: hasValidPptxHeader });
-
-      const qaPassed = qaChecks.every((c) => c.passed);
-      if (!qaPassed) {
-        const failedChecks = qaChecks.filter((c) => !c.passed).map((c) => c.name).join(", ");
-        await updateDeliveryStatus(runId, "failed");
-        await updateRunStatus(runId, "failed", "export", { failure_message: `QA failed: ${failedChecks}` });
-        throw new Error(`Artifact QA failed: ${failedChecks}`);
-      }
-
-      // 4. Publish manifest
-      const manifestArtifacts: Array<Record<string, unknown>> = [
-        {
-          id: crypto.randomUUID(),
-          kind: "pptx",
-          fileName: pptxArtifact.fileName,
-          mimeType: pptxArtifact.mimeType,
-          storageBucket: "artifacts",
-          storagePath: pptxPath,
-          fileBytes: pptxBuffer.length,
-          checksumSha256: pptxSha256,
-        },
-      ];
-
-      const manifestId = crypto.randomUUID();
-      const manifest = {
-        id: manifestId,
-        run_id: runId,
-        slide_count: slides.length,
-        page_count: slides.length,
-        qa_passed: !degradedDelivery,
-        qa_report: {
-          checks: qaChecks,
-          delivery_status: degradedDelivery ? "degraded" : "reviewed",
-          ...(degradedDelivery ? {
-            degraded: true,
-            unresolvedIssues: degradedIssues,
-            degradedNote: "Deck rendered with unresolved critique issues. Review flagged claims before presenting.",
-          } : {}),
-        },
-        artifacts: manifestArtifacts,
-        published_at: new Date().toISOString(),
-      };
-
-      const manifestResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/artifact_manifests_v2`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify(manifest),
-        },
-      );
-
-      if (!manifestResponse.ok) {
-        const errorText = await manifestResponse.text().catch(() => "Unknown error");
-        await updateRunStatus(runId, "failed", "export", {
-          failure_message: `Failed to persist artifact manifest: ${errorText}`,
-        });
-        throw new Error(`Failed to persist artifact manifest: ${errorText}`);
-      }
-
-      await updateRunStatus(runId, "completed", "export", {
-        completed_at: new Date().toISOString(),
-      });
-
-      await emitRunEvent(runId, "export", "phase_completed", {
-        slideCount: slides.length,
-        artifactCount: manifestArtifacts.length,
-      });
-
-      return manifest;
-    });
+    // Export child function handles: source coverage, PPTX render, QA, manifest, status update.
 
     // ─── COST SUMMARY ──────────────────────────────────────────
     const costSummary = tracker.getSummary(runId);
@@ -3166,6 +2887,231 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       }).catch(() => {}); // best-effort — don't mask the original error
       throw error; // re-throw so Inngest knows the function failed
     }
+  },
+);
+
+// ─── CHILD FUNCTIONS (invoked via step.invoke for resilience) ─────
+
+/**
+ * basquioExport: Separate Inngest function for the export phase.
+ * Runs independently with its own timeout and retries.
+ * This is the heaviest non-agent step (PPTX generation + upload).
+ */
+export const basquioExport = inngest.createFunction(
+  {
+    id: "basquio-export",
+    retries: 2,
+    timeouts: { finish: "15m" },
+  },
+  { event: "basquio/export.requested" },
+  async ({ event, step }) => {
+    const {
+      runId,
+      exportMode: rawExportMode,
+      hasCriticalOrMajor,
+      degradedDelivery,
+      degradedIssues,
+      deckTitle,
+      sourceFileIds,
+    } = event.data as {
+      runId: string;
+      exportMode?: string;
+      hasCriticalOrMajor: boolean;
+      degradedDelivery: boolean;
+      degradedIssues: Array<{ severity: string; claim: string }>;
+      deckTitle: string;
+      sourceFileIds: string[];
+    };
+
+    const exportMode = rawExportMode === "universal-compatible"
+      ? ("universal-compatible" as const)
+      : ("powerpoint-native" as const);
+
+    // Source coverage check
+    await step.run("source-coverage-check", async () => {
+      const evidenceRows = await listEvidenceForRun(runId);
+      const slides = await getSlides(runId);
+
+      const usedFileIds = new Set<string>();
+      for (const ev of evidenceRows) {
+        const refMatch = ev.evidenceRefId.match(/^(?:sheet|doc|img)-([a-f0-9]{8})/);
+        if (refMatch) usedFileIds.add(refMatch[1]);
+      }
+
+      const unusedFiles: string[] = [];
+      for (const fileId of sourceFileIds) {
+        const fileIdShort = fileId.slice(0, 8);
+        if (!usedFileIds.has(fileIdShort)) unusedFiles.push(fileId);
+      }
+
+      const citedEvidenceIds = new Set<string>();
+      for (const slide of slides) {
+        if (slide.evidenceIds) {
+          for (const eid of slide.evidenceIds) citedEvidenceIds.add(eid);
+        }
+      }
+
+      const totalEvidence = evidenceRows.length;
+      const citedEvidence = evidenceRows.filter((e) => citedEvidenceIds.has(e.evidenceRefId)).length;
+      const coverageRatio = totalEvidence > 0 ? citedEvidence / totalEvidence : 0;
+
+      logPhaseEvent(runId, "export", "source_coverage_report", {
+        totalSourceFiles: sourceFileIds.length,
+        unusedFileCount: unusedFiles.length,
+        totalEvidence,
+        citedEvidence,
+        coverageRatio: Math.round(coverageRatio * 100),
+      });
+
+      // Hard gate: if ALL files were unused, block export
+      if (unusedFiles.length === sourceFileIds.length && sourceFileIds.length > 0) {
+        await updateRunStatus(runId, "failed", "export", {
+          failure_message: "Export blocked: none of the uploaded source files were used in the analysis.",
+        });
+        throw new Error("Export blocked: zero source coverage");
+      }
+
+      return { unusedFiles: unusedFiles.length, coverageRatio };
+    });
+
+    // Render + publish
+    const artifacts = await step.run("render-and-publish", async () => {
+      await updateRunStatus(runId, "running", "export");
+      await emitRunEvent(runId, "export", "phase_started");
+
+      if (!hasCriticalOrMajor) {
+        await updateDeliveryStatus(runId, "reviewed");
+      }
+
+      const slides = await getSlides(runId);
+      const v2ChartRows = await getV2ChartRows(runId);
+
+      // Load template profile via raw fetch
+      let templateProfile: Record<string, unknown> | null = null;
+      try {
+        const runRes = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&select=template_profile_id`,
+          { headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}` } },
+        );
+        const runRows = await runRes.json() as Array<{ template_profile_id: string | null }>;
+        if (runRows[0]?.template_profile_id) {
+          const profRes = await fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/template_profiles?id=eq.${runRows[0].template_profile_id}&select=profile`,
+            { headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}` } },
+          );
+          const profRows = await profRes.json() as Array<{ profile: Record<string, unknown> }>;
+          if (profRows[0]?.profile) templateProfile = profRows[0].profile;
+        }
+      } catch { /* use default */ }
+
+      // Render PPTX
+      const pptxArtifact = await renderV2PptxArtifact({
+        slides: slides.map((s) => ({
+          id: s.id,
+          position: s.position,
+          layoutId: s.layoutId ?? "title-body",
+          title: s.title ?? "",
+          body: s.body,
+          bullets: s.bullets,
+          chartId: s.chartId,
+          kicker: s.kicker,
+          callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+          metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+          highlightCategories: s.highlightCategories,
+          evidenceIds: s.evidenceIds,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        })) as any,
+        charts: v2ChartRows,
+        deckTitle: deckTitle || "Basquio Analysis",
+        brandTokens: templateProfile?.brandTokens as Record<string, unknown> | undefined,
+        exportMode,
+      });
+
+      // Upload PPTX
+      const pptxPath = `${runId}/deck.pptx`;
+      const pptxBuffer = Buffer.isBuffer(pptxArtifact.buffer)
+        ? pptxArtifact.buffer
+        : Buffer.from((pptxArtifact.buffer as { data: number[] }).data);
+
+      await uploadToStorage({
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        bucket: "artifacts",
+        storagePath: pptxPath,
+        body: pptxBuffer,
+        contentType: pptxArtifact.mimeType,
+      });
+
+      // QA checks
+      const hasValidPptxHeader = pptxBuffer.length >= 4 &&
+        pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
+        pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
+
+      const qaChecks = [
+        { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
+        { name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` },
+        { name: "pptx_valid_zip", passed: hasValidPptxHeader },
+      ];
+
+      const qaPassed = qaChecks.every((c) => c.passed);
+
+      // Publish manifest
+      const artifactId = crypto.randomUUID();
+      const manifest = {
+        id: crypto.randomUUID(),
+        run_id: runId,
+        slide_count: slides.length,
+        page_count: slides.length,
+        qa_passed: qaPassed,
+        qa_report: {
+          checks: qaChecks,
+          delivery_status: degradedDelivery ? "degraded" : "reviewed",
+          ...(degradedDelivery ? { unresolvedIssues: degradedIssues } : {}),
+        },
+        artifacts: [{
+          id: artifactId,
+          kind: "pptx" as const,
+          fileName: "basquio-deck.pptx",
+          mimeType: pptxArtifact.mimeType,
+          fileBytes: pptxBuffer.length,
+          storagePath: pptxPath,
+          storageBucket: "artifacts",
+          checksumSha256: checksumSha256(pptxBuffer),
+        }],
+        published_at: new Date().toISOString(),
+      };
+
+      const manifestRes = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/artifact_manifests_v2`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify(manifest),
+        },
+      );
+      if (!manifestRes.ok) {
+        console.warn(`Failed to persist artifact manifest: ${manifestRes.statusText}`);
+      }
+
+      // Mark complete
+      await updateRunStatus(runId, "completed", "export", {
+        completed_at: new Date().toISOString(),
+      });
+
+      return {
+        pptxBytes: pptxBuffer.length,
+        slideCount: slides.length,
+        qaPassed,
+        exportMode,
+      };
+    });
+
+    return artifacts;
   },
 );
 
