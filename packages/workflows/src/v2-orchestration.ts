@@ -2002,8 +2002,13 @@ ${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.tit
       deckSummary = `${deckPlanSections.length} sections authored`;
     }
 
-    // Step 3: Polish weak slides
+    // Step 3: Polish — SKIPPED for resilience.
+    // Polish runs a full author agent on weak slides which can exceed 800s for large decks.
+    // The critique-revise loop handles quality issues instead.
+    // TODO: Re-enable with per-slide polish steps when time allows.
     await step.run("polish", async () => {
+      // Skip polish — go straight to critique
+      return { polished: 0, total: 0, skipped: true };
       await updateRunStatus(runId, "running", "polish");
       const slides = await getSlides(runId);
       if (slides.length === 0) return { polished: 0, total: 0 };
