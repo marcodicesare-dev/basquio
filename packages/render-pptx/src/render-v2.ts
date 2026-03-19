@@ -101,35 +101,41 @@ const DEFAULT_CHART_PALETTE = [
   "78716C",
 ];
 
+// ─── "SLATE" HOUSE TEMPLATE (default) ─────────────────────────────
+// Corporate modern. Clean, authoritative, premium.
+// Inter font with Arial fallback (safe everywhere).
+// Monochromatic blue chart palette: accent + shades + gray.
+// From agency-grade-design-research.md — Slate template spec.
+
 const DEFAULT_TOKENS: BrandTokens = {
   palette: {
-    ink: "1A1A2E",
-    muted: "4B5563",
-    border: "E2E8F0",
-    surface: "F8FAFC",
-    bg: "FFFFFF",
-    accent: "0F4C81",
-    accentLight: "DCEAF7",
-    positive: "16A34A",
-    negative: "DC2626",
-    coverBg: "1B2541",
+    ink: "0F172A",        // Slate 900 (near-black, more refined than pure black)
+    muted: "475569",      // Slate 600 (secondary text)
+    border: "E2E8F0",     // Slate 200 (subtle borders)
+    surface: "F8FAFC",    // Slate 50 (card/table backgrounds)
+    bg: "FFFFFF",         // White
+    accent: "2563EB",     // Blue 600 (primary accent — assertive, trustworthy)
+    accentLight: "DBEAFE", // Blue 100 (callout backgrounds)
+    positive: "16A34A",   // Green 600
+    negative: "DC2626",   // Red 600
+    coverBg: "0F172A",    // Slate 900 (dark, premium cover)
     calloutGreen: "16A34A",
     calloutOrange: "EA580C",
   },
   typography: {
-    headingFont: "Arial",
-    bodyFont: "Arial",
-    coverTitleSize: 32,
-    titleSize: 20,
-    subtitleSize: 12,
-    bodySize: 11,
-    bulletSize: 11,
-    chartTitleSize: 10,
-    sourceSize: 7,
-    kpiValueSize: 32,
-    kpiLabelSize: 8.5,
+    headingFont: "Arial",  // Universal safe font — works in PowerPoint, Google Slides, Keynote
+    bodyFont: "Arial",     // Inter is prettier but substitutes unpredictably cross-app
+    coverTitleSize: 36,    // Agency-grade: large, commanding
+    titleSize: 24,         // Action titles — readable at distance
+    subtitleSize: 14,      // Clear secondary info
+    bodySize: 14,          // Legible body copy
+    bulletSize: 14,        // Same as body
+    chartTitleSize: 12,    // Bold chart titles
+    sourceSize: 8,         // Source notes: readable but unobtrusive
+    kpiValueSize: 44,      // Hero metrics: large, bold, accent-colored
+    kpiLabelSize: 10,      // KPI labels: uppercase, semibold
   },
-  chartPalette: DEFAULT_CHART_PALETTE,
+  chartPalette: ["2563EB", "60A5FA", "BFDBFE", "1E40AF"], // Monochromatic blue
 };
 
 function resolveTokens(partial?: Partial<BrandTokens>): BrandTokens {
@@ -1302,34 +1308,32 @@ export async function renderV2PptxArtifact(
     title: "BASQUIO_MASTER",
     background: { fill: norm(tokens.palette.bg) },
     objects: [
-      // Top accent rule — thin 2pt colored line (consulting-grade header)
-      { rect: { x: 0, y: 0.02, w: "100%", h: 0.028, fill: { color: norm(tokens.palette.accent) } } },
-      // Footer hairline rule — 0.5pt gray line (not a dark band)
-      { rect: { x: 0.45, y: 5.30, w: 9.1, h: 0.007, fill: { color: "E5E7EB" } } },
-      // Footer left: source
+      // Footer hairline rule — 0.5pt gray line at y=7.1"
+      { rect: { x: 0.6, y: 7.1, w: 12.133, h: 0.007, fill: { color: norm(tokens.palette.border) } } },
+      // Footer left: source note
       {
         text: {
           text: `Source: ${input.deckTitle}`,
           options: {
-            x: 0.45,
-            y: 5.34,
-            w: 5,
-            h: 0.20,
-            fontSize: 7,
+            x: 0.6,
+            y: 7.15,
+            w: 6,
+            h: 0.25,
+            fontSize: 8,
             fontFace: tokens.typography.bodyFont,
-            color: "9CA3AF",
+            color: "94A3B8", // Slate 400 — tertiary text
           },
         },
       },
     ],
     slideNumber: {
-      x: 8.5,
-      y: 5.34,
-      w: 1.0,
-      h: 0.20,
-      fontSize: 7,
+      x: 12.0,
+      y: 7.15,
+      w: 0.733,
+      h: 0.25,
+      fontSize: 8,
       fontFace: tokens.typography.bodyFont,
-      color: "9CA3AF",
+      color: "94A3B8",
       align: "right",
     },
   });
