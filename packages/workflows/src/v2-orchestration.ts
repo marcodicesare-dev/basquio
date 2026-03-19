@@ -2823,7 +2823,14 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
 
         if (majorCount > 0) {
           // MAJOR = weak evidence, missing sources, imprecise claims.
-          // Proceed but mark as degraded so the user knows.
+          // For 10/10 standard: major issues also block export. No degraded delivery.
+          await updateDeliveryStatus(runId, "failed");
+          await updateRunStatus(runId, "failed", "critique", {
+            failure_message: `Export blocked: ${majorCount} major issue(s) remain after 2 revision cycles. Issues: ${fullReCritique.issues.filter((i) => i.severity === "major").map((i) => i.claim).join("; ")}`,
+          });
+          throw new Error(`Export blocked: ${majorCount} major issue(s) remain after 2 revisions`);
+
+          // Dead code — kept for reference if we ever want to reintroduce degraded delivery
           degradedDelivery = true;
           degradedIssues = fullReCritique.issues
             .filter((i) => i.severity === "major")
@@ -2963,12 +2970,14 @@ export const basquioExport = inngest.createFunction(
         coverageRatio: Math.round(coverageRatio * 100),
       });
 
-      // Hard gate: if ALL files were unused, block export
-      if (unusedFiles.length === sourceFileIds.length && sourceFileIds.length > 0) {
+      // Hard gate: if ANY evidence file was unused, block export.
+      // Every file the user uploaded must contribute to the analysis.
+      // This prevents the "important PPTX was ignored" class of failure.
+      if (unusedFiles.length > 0 && sourceFileIds.length > 0) {
         await updateRunStatus(runId, "failed", "export", {
-          failure_message: "Export blocked: none of the uploaded source files were used in the analysis.",
+          failure_message: `Export blocked: ${unusedFiles.length} of ${sourceFileIds.length} uploaded file(s) were not used in the analysis. All sources must contribute evidence.`,
         });
-        throw new Error("Export blocked: zero source coverage");
+        throw new Error(`Export blocked: ${unusedFiles.length} source file(s) unused`);
       }
 
       return { unusedFiles: unusedFiles.length, coverageRatio };
