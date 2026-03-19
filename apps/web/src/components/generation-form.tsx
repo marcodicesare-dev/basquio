@@ -520,8 +520,8 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
                       onChange={() => setExportMode("powerpoint-native")}
                     />
                     <span>
-                      <strong>PowerPoint Native</strong>
-                      <small className="muted">Editable charts. Best for PowerPoint users.</small>
+                      <strong>Microsoft PowerPoint</strong>
+                      <small className="muted">Native editable charts. Best visual fidelity in PowerPoint.</small>
                     </span>
                   </label>
                   <label className="radio-option">
@@ -533,8 +533,8 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
                       onChange={() => setExportMode("universal-compatible")}
                     />
                     <span>
-                      <strong>Universal Compatible</strong>
-                      <small className="muted">Shape-built charts. Works in Google Slides and Keynote.</small>
+                      <strong>Google Slides / Keynote</strong>
+                      <small className="muted">Universal charts that work everywhere. Fully editable shapes.</small>
                     </span>
                   </label>
                 </div>
