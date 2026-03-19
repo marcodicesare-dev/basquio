@@ -1181,23 +1181,15 @@ export const basquioV2Generation = inngest.createFunction(
               Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
               Prefer: "return=minimal,resolution=merge-duplicates",
             },
+            // Only write columns that exist in the evidence_workspace_sheets schema:
+            // id, workspace_id, sheet_key, blob_path, column_stats, sample_rows, row_count, created_at
             body: JSON.stringify({
               workspace_id: workspaceId,
-              run_id: runId,
-              source_file_id: manifest.sourceFileId,
               sheet_key: manifest.sheetKey,
-              sheet_name: manifest.sheetName,
-              source_file_name: manifest.sourceFileName,
-              source_role: manifest.sourceRole,
-              row_count: manifest.rowCount,
-              column_count: manifest.columnCount,
-              columns: manifest.columns,
-              sample_rows: manifest.sampleRows,
-              column_profile: manifest.columnProfile,
-              blob_bucket: "evidence-workspace-blobs",
               blob_path: blobPath,
-              blob_bytes: manifest.blobBuffer.length,
-              checksum_sha256: checksum,
+              row_count: manifest.rowCount,
+              sample_rows: manifest.sampleRows,
+              column_stats: manifest.columnProfile ?? manifest.columns,
             }),
           },
         );
@@ -1599,7 +1591,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     // not the entire workspace's row data.
     async function loadSheetRows(sheetKey: string): Promise<Record<string, unknown>[]> {
       const sheetResp = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?run_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(sheetKey)}&select=blob_bucket,blob_path,sample_rows&limit=1`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(sheetKey)}&select=blob_path,sample_rows&limit=1`,
         {
           headers: {
             apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -1607,12 +1599,12 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
           },
         },
       );
-      const sheets = (await sheetResp.json()) as Array<{ blob_bucket: string; blob_path: string; sample_rows: Record<string, unknown>[] }>;
+      const sheets = (await sheetResp.json()) as Array<{ blob_path: string; sample_rows: Record<string, unknown>[] }>;
       if (sheets.length === 0) return [];
 
-      const { blob_bucket, blob_path } = sheets[0];
+      const blob_path = sheets[0].blob_path;
       const blobResp = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${blob_bucket}/${blob_path}`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/evidence-workspace-blobs/${blob_path}`,
         {
           headers: {
             Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
@@ -1641,7 +1633,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     async function loadHydratedWorkspace(): Promise<EvidenceWorkspace> {
       // Load all sheet manifests for this run
       const sheetsResp = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?run_id=eq.${runId}&select=sheet_key,blob_bucket,blob_path,sample_rows`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&select=sheet_key,blob_path,sample_rows`,
         {
           headers: {
             apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -1649,7 +1641,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
           },
         },
       );
-      const sheetManifests = (await sheetsResp.json()) as Array<{ sheet_key: string; blob_bucket: string; blob_path: string; sample_rows: Record<string, unknown>[] }>;
+      const sheetManifests = (await sheetsResp.json()) as Array<{ sheet_key: string; blob_path: string; sample_rows: Record<string, unknown>[] }>;
 
       // Load all sheet data from blobs
       const sheetData: Record<string, Array<Record<string, unknown>>> = {};
