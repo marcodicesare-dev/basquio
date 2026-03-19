@@ -727,6 +727,65 @@ async function persistWorkingPaper(runId: string, paperType: string, content: un
   }
 }
 
+async function loadWorkingPaper<T = unknown>(runId: string, paperType: string): Promise<T | null> {
+  assertUuid(runId, "runId");
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/working_papers?run_id=eq.${runId}&paper_type=eq.${paperType}&order=version.desc&limit=1`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        Accept: "application/json",
+      },
+    },
+  );
+  if (!response.ok) return null;
+  const rows = await response.json() as Array<{ content: T }>;
+  return rows[0]?.content ?? null;
+}
+
+async function loadWorkspaceFromDb(runId: string): Promise<EvidenceWorkspace | null> {
+  assertUuid(runId, "runId");
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspaces?run_id=eq.${runId}&limit=1`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        Accept: "application/json",
+      },
+    },
+  );
+  if (!response.ok) return null;
+  const rows = await response.json() as Array<{ manifest: EvidenceWorkspace }>;
+  return rows[0]?.manifest ?? null;
+}
+
+function createLoadSheetRows(runId: string) {
+  return async (sheetKey: string): Promise<Record<string, unknown>[]> => {
+    const sheetRes = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(sheetKey)}&limit=1`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!sheetRes.ok) return [];
+    const sheets = await sheetRes.json() as Array<{ blob_path: string }>;
+    if (!sheets[0]?.blob_path) return [];
+    const blobBuffer = await downloadFromStorage({
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      bucket: "evidence-workspace-blobs",
+      storagePath: sheets[0].blob_path,
+    });
+    return loadRowsFromBlob(blobBuffer);
+  };
+}
+
 // ─── CONTACT SHEET RENDERER ──────────────────────────────────────
 
 async function renderContactSheetForRun(runId: string): Promise<{
