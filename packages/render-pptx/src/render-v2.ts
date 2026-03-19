@@ -123,8 +123,8 @@ const DEFAULT_TOKENS: BrandTokens = {
     calloutOrange: "EA580C",
   },
   typography: {
-    headingFont: "Arial",  // Universal safe font — works in PowerPoint, Google Slides, Keynote
-    bodyFont: "Arial",     // Inter is prettier but substitutes unpredictably cross-app
+    headingFont: "Arial",  // Universal safe — zero substitution in PowerPoint, Google Slides, Keynote
+    bodyFont: "Arial",     // Premium look from type scale + spacing + palette, not font choice
     coverTitleSize: 36,    // Agency-grade: large, commanding
     titleSize: 24,         // Action titles — readable at distance
     subtitleSize: 14,      // Clear secondary info
@@ -237,20 +237,21 @@ function formatValue(val: unknown): string {
 function renderKicker(
   slide: PptxGenJS.Slide,
   text: string,
-  titleRegion: R,
+  region: R,
   tokens: BrandTokens,
+  useDirectRegion = false,
 ): void {
   slide.addText(text.toUpperCase(), {
-    x: titleRegion.x,
-    y: titleRegion.y - 0.18,
-    w: titleRegion.w,
-    h: 0.16,
-    fontSize: 8.5,
+    x: region.x,
+    y: useDirectRegion ? region.y : region.y - 0.25,
+    w: region.w,
+    h: useDirectRegion ? region.h : 0.2,
+    fontSize: 10,          // Agency-grade: 10pt bold uppercase
     fontFace: tokens.typography.bodyFont,
     color: norm(tokens.palette.accent),
     bold: true,
     margin: 0,
-    charSpacing: 1.2,
+    charSpacing: 1.5,      // +1.5pt tracking for ALL CAPS
   });
 }
 
@@ -1079,9 +1080,13 @@ function renderContentSlide(
   const tableMaxCols = arch.slots.table?.maxTableCols ?? 6;
   const notesOverflow: string[] = [];
 
-  // Kicker (section label above title)
+  // Kicker (section label above title) — use kicker region if available
   if (s.kicker) {
-    renderKicker(slide, s.kicker, regions.title, tokens);
+    if (regions.kicker) {
+      renderKicker(slide, s.kicker, regions.kicker, tokens, true);
+    } else {
+      renderKicker(slide, s.kicker, regions.title, tokens, false);
+    }
   }
 
   // Title always rendered

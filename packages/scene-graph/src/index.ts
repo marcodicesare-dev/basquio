@@ -183,7 +183,7 @@ export function buildDeckSceneGraph(
     headingFont: tokens.typography?.headingFont ?? "Arial",
     bodyFont: tokens.typography?.bodyFont ?? "Arial",
     titleSize: tokens.typography?.titleSize ?? 24,
-    bodySize: tokens.typography?.bodySize ?? 11,
+    bodySize: tokens.typography?.bodySize ?? 14,
   };
 
   const palette: Record<string, string> = {
@@ -219,7 +219,7 @@ export function buildDeckSceneGraph(
     brandTokens: {
       palette,
       typography,
-      spacing: { pageX: 0.45, pageY: 0.22, sectionGap: 0.12, blockGap: 0.1 },
+      spacing: { pageX: 0.6, pageY: 0.5, sectionGap: 0.15, blockGap: 0.12 },
     },
   };
 }
