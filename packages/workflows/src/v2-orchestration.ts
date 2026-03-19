@@ -1648,73 +1648,11 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       return { ...workspace, sheetData };
     }
 
-    // ─── STEP 2: UNDERSTAND (agentic) ───────────────────────────
-    const analystResult = await step.run("understand", async () => {
-      await updateRunStatus(runId, "running", "understand");
-      await emitRunEvent(runId, "understand", "phase_started");
-
-      tracker.startPhase("understand", "gpt-5.4", "openai");
-
-      const result = await runAnalystAgent({
-        workspace,
-        runId,
-        brief,
-        loadRows: loadSheetRows,
-        persistNotebookEntry: async (entry: NotebookEntry) => {
-          const notebookId = await persistNotebookEntry(runId, "understand", 0, entry);
-          if (entry.evidenceRefId) {
-            await persistEvidenceEntry(runId, {
-              evidenceType: entry.toolName === "compute_metric" ? "metric" : entry.toolName === "query_data" ? "table" : "document",
-              refId: entry.evidenceRefId,
-              label: (entry.toolInput as Record<string, unknown>)?.name as string ?? entry.toolName,
-              description: (entry.toolInput as Record<string, unknown>)?.description as string
-                ?? (entry.toolOutput as Record<string, unknown>)?.summary as string
-                ?? undefined,
-              value: entry.toolOutput,
-              sourceSheetKey: (entry.toolInput as Record<string, unknown>)?.file as string ?? undefined,
-              sourceNotebookEntryId: notebookId,
-            });
-          }
-          return notebookId;
-        },
-        onStepFinish: async (event: StepFinishEvent) => {
-          tracker.recordStep(event.usage, event.toolCalls.length);
-          await emitRunEvent(runId, "understand", "tool_call", {
-            stepNumber: event.stepNumber,
-            tools: event.toolCalls.map((tc: { toolName: string }) => tc.toolName),
-            usage: event.usage,
-          });
-        },
-      });
-
-      tracker.endPhase();
-
-      await emitRunEvent(runId, "understand", "phase_completed", {
-        metricsComputed: result.analysis.metricsComputed,
-        findingsCount: result.analysis.topFindings.length,
-        hasStorylinePlan: result.storylinePlan !== null,
-        hasClarifiedBrief: result.clarifiedBrief !== null,
-      });
-
-      // Persist durable working papers (best-effort — don't block pipeline on persistence failure)
-      try {
-        if (result.clarifiedBrief) {
-          await persistWorkingPaper(runId, "clarified_brief", result.clarifiedBrief);
-        }
-        if (result.storylinePlan) {
-          await persistWorkingPaper(runId, "storyline_plan", result.storylinePlan);
-        }
-      } catch (error) {
-        console.error("[understand] Failed to persist working papers:", error);
-        // Non-fatal: the pipeline can continue with in-memory data
-      }
-
-      // Return slim serializable result for Inngest step memoization
-      return {
-        analysis: result.analysis,
-        clarifiedBrief: result.clarifiedBrief,
-        storylinePlan: result.storylinePlan,
-      };
+    // ─── STEP 2: UNDERSTAND (invoked as child function) ────────
+    const analystResult = await step.invoke("understand", {
+      function: basquioUnderstand,
+      data: { runId, brief },
+      timeout: "20m",
     }) as AnalystResult;
 
     const analysis = analystResult.analysis;
@@ -2945,6 +2883,79 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
 );
 
 // ─── CHILD FUNCTIONS (invoked via step.invoke for resilience) ─────
+
+/**
+ * basquioUnderstand: Analyst agent exploration as independent function.
+ * Runs GPT-5.4 with up to 30 tool loop iterations.
+ */
+export const basquioUnderstand = inngest.createFunction(
+  { id: "basquio-understand", retries: 2, timeouts: { finish: "20m" } },
+  { event: "basquio/understand.requested" },
+  async ({ event, step }) => {
+    const { runId, brief } = event.data as { runId: string; brief: string };
+
+    return step.run("run-analyst", async () => {
+      await updateRunStatus(runId, "running", "understand");
+      await emitRunEvent(runId, "understand", "phase_started");
+
+      const workspace = await loadWorkspaceFromDb(runId);
+      if (!workspace) throw new Error(`Workspace not found for run ${runId}`);
+      const loadRows = createLoadSheetRows(runId);
+
+      const tracker = new UsageTracker();
+      tracker.startPhase("understand", "gpt-5.4", "openai");
+
+      const result = await runAnalystAgent({
+        workspace,
+        runId,
+        brief,
+        loadRows,
+        persistNotebookEntry: async (entry: NotebookEntry) => {
+          const notebookId = await persistNotebookEntry(runId, "understand", 0, entry);
+          if (entry.evidenceRefId) {
+            await persistEvidenceEntry(runId, {
+              evidenceType: entry.toolName === "compute_metric" ? "metric" : entry.toolName === "compute_statistical" ? "statistical" : entry.toolName === "query_data" ? "table" : "document",
+              refId: entry.evidenceRefId,
+              label: (entry.toolInput as Record<string, unknown>)?.name as string ?? entry.toolName,
+              description: (entry.toolInput as Record<string, unknown>)?.description as string
+                ?? (entry.toolOutput as Record<string, unknown>)?.summary as string
+                ?? undefined,
+              value: entry.toolOutput,
+              sourceSheetKey: (entry.toolInput as Record<string, unknown>)?.file as string ?? undefined,
+              sourceNotebookEntryId: notebookId,
+            });
+          }
+          return notebookId;
+        },
+        onStepFinish: async (event: StepFinishEvent) => {
+          tracker.recordStep(event.usage, event.toolCalls.length);
+        },
+      });
+
+      tracker.endPhase();
+
+      // Persist working papers
+      try {
+        if (result.clarifiedBrief) await persistWorkingPaper(runId, "clarified_brief", result.clarifiedBrief);
+        if (result.storylinePlan) await persistWorkingPaper(runId, "storyline_plan", result.storylinePlan);
+        await persistWorkingPaper(runId, "analysis_result", {
+          analysis: result.analysis,
+          clarifiedBrief: result.clarifiedBrief,
+          storylinePlan: result.storylinePlan,
+        });
+      } catch (error) {
+        console.error("[understand] Failed to persist working papers:", error);
+      }
+
+      return {
+        analysis: result.analysis,
+        clarifiedBrief: result.clarifiedBrief,
+        storylinePlan: result.storylinePlan,
+        costSummary: tracker.getSummary(runId),
+      };
+    });
+  },
+);
 
 /**
  * basquioExport: Separate Inngest function for the export phase.
