@@ -1946,10 +1946,14 @@ Return a structured DeckPlan with sections containing slide specs.`,
     let deckSummary = "";
 
     if (deckPlanSections.length > 0) {
-      await step.run("author-all-sections", async () => {
-        await emitRunEvent(runId, "author", "phase_started");
+      // Each section is its own step.run() for Inngest memoization.
+      // Sequential (not parallel) to stay within Vercel's 800s timeout per step.
+      // For a 20-slide deck with 6 sections, each section takes 2-4 min.
+      for (const section of deckPlanSections) {
+        const safeSectionId = (section.sectionId ?? section.title ?? "sec")
+          .replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 30);
 
-        await Promise.all(deckPlanSections.map(async (section) => {
+        await step.run(`author-${safeSectionId}`, async () => {
           const isSacredSection = ["cover", "exec-summary", "summary", "recommendation"].some(
             (role) => section.slides.some((s: { role?: string }) => s.role === role),
           );
@@ -1992,14 +1996,8 @@ ${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.tit
 
           tracker.endPhase();
           return result.summary;
-        }));
-
-        const slides = await getSlides(runId);
-        await emitRunEvent(runId, "author", "phase_completed", {
-          slideCount: slides.length,
-          sections: deckPlanSections.length,
-        });
-      });
+        }); // end step.run per section
+      } // end for loop
 
       deckSummary = `${deckPlanSections.length} sections authored`;
     }
