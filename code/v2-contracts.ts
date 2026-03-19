@@ -441,6 +441,42 @@ export const analysisModeSchema = z.enum([
   "evidence_book",        // Appendix-style data compilation, maximize coverage
 ]);
 
+// ─── RUN INTENT ────────────────────────────────────────────────
+// Persisted as a working paper after the understand phase.
+// Every downstream phase reads from this — no hidden assumptions.
+// This is the single source of truth for "what kind of output are we producing."
+
+export const runIntentSchema = z.object({
+  // What kind of analysis
+  analysisMode: analysisModeSchema,
+  // How many slides (null = system decides)
+  requestedSlideCount: z.number().nullable(),
+  // Who is the audience
+  audience: z.string(),
+  // What is the client/entity being analyzed
+  focalEntity: z.string(),
+  // What is the core question/objective
+  coreQuestion: z.string(),
+  // What export mode
+  exportMode: z.enum(["powerpoint-native", "universal-compatible"]),
+  // Cost tier: standard (Sonnet-first) or premium (Opus-first)
+  costTier: z.enum(["standard", "premium"]),
+  // Language detected from brief/data
+  language: z.string(),
+  // Confidence in evidence quality (0-1)
+  evidenceConfidence: z.number(),
+  // Which sources were provided and their types
+  sourceManifest: z.array(z.object({
+    fileId: z.string(),
+    fileName: z.string(),
+    kind: z.string(),
+    hasTabularData: z.boolean(),
+    hasVisualContent: z.boolean(),
+  })),
+});
+
+export type RunIntent = z.infer<typeof runIntentSchema>;
+
 // ─── SOURCE COVERAGE STATUS ─────────────────────────────────────
 // Tracks how each uploaded file was used in the final deck.
 // This is a first-class runtime object, not a log message.
