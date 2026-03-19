@@ -685,6 +685,117 @@ function resolveSheetKey(
   return canonicalKey;
 }
 
+// ─── STATISTICAL ANALYSIS TOOL ───────────────────────────────────
+
+function toNum(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function createComputeStatisticalTool(ctx: ToolContext) {
+  return tool({
+    description: "Compute statistical measures: correlation, percentile, standard deviation, HHI (concentration index). Use for deeper analytical insights beyond basic aggregation.",
+    inputSchema: z.object({
+      name: z.string().describe("Human-readable name for this statistical measure"),
+      file: z.string().describe("File to analyze"),
+      sheet: z.string().optional(),
+      formula: z.enum(["correlation", "percentile", "std_dev", "hhi", "median"]),
+      columnA: z.string().describe("Primary column (required for all formulas)"),
+      columnB: z.string().optional().describe("Second column (required for correlation)"),
+      percentileValue: z.number().optional().describe("Percentile to compute (0-100), e.g. 25, 50, 75, 90"),
+      groupBy: z.string().optional().describe("Column to group by (e.g. for HHI: group by brand to get market concentration)"),
+      filter: z.string().optional(),
+    }),
+    execute: async (params) => {
+      const sheetKey = resolveSheetKey(ctx.workspace, params.file, params.sheet);
+      if (!sheetKey) return { error: `Sheet not found: ${params.file}/${params.sheet ?? "default"}` };
+      let rows = await resolveRows(ctx, sheetKey);
+      if (params.filter) rows = applyFilter(rows, params.filter);
+      if (rows.length === 0) return { error: "No data after filtering" };
+
+      const getNumCol = (col: string) => rows.map((r) => toNum(r[col])).filter((v): v is number => v !== null);
+
+      let result: Record<string, unknown> = { formula: params.formula, name: params.name };
+
+      switch (params.formula) {
+        case "correlation": {
+          if (!params.columnB) return { error: "columnB required for correlation" };
+          const a = getNumCol(params.columnA);
+          const b = getNumCol(params.columnB);
+          const n = Math.min(a.length, b.length);
+          if (n < 3) return { error: "Need at least 3 data points for correlation" };
+          const meanA = a.slice(0, n).reduce((s, v) => s + v, 0) / n;
+          const meanB = b.slice(0, n).reduce((s, v) => s + v, 0) / n;
+          let sumAB = 0, sumA2 = 0, sumB2 = 0;
+          for (let i = 0; i < n; i++) {
+            const da = a[i] - meanA, db = b[i] - meanB;
+            sumAB += da * db; sumA2 += da * da; sumB2 += db * db;
+          }
+          const r = sumA2 > 0 && sumB2 > 0 ? sumAB / Math.sqrt(sumA2 * sumB2) : 0;
+          result = { ...result, correlation: round(r, 4), n, interpretation: Math.abs(r) > 0.7 ? "strong" : Math.abs(r) > 0.4 ? "moderate" : "weak" };
+          break;
+        }
+        case "percentile": {
+          const vals = getNumCol(params.columnA).sort((a, b) => a - b);
+          const p = (params.percentileValue ?? 50) / 100;
+          const idx = Math.max(0, Math.ceil(p * vals.length) - 1);
+          result = { ...result, percentile: params.percentileValue ?? 50, value: round(vals[idx], 2), n: vals.length };
+          break;
+        }
+        case "median": {
+          const vals = getNumCol(params.columnA).sort((a, b) => a - b);
+          const mid = Math.floor(vals.length / 2);
+          const median = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+          result = { ...result, median: round(median, 2), n: vals.length };
+          break;
+        }
+        case "std_dev": {
+          const vals = getNumCol(params.columnA);
+          const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+          const variance = vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length;
+          const cv = mean !== 0 ? Math.sqrt(variance) / Math.abs(mean) : 0;
+          result = { ...result, mean: round(mean, 2), stdDev: round(Math.sqrt(variance), 2), coeffOfVariation: round(cv, 4), n: vals.length };
+          break;
+        }
+        case "hhi": {
+          // Herfindahl-Hirschman Index: sum of squared market shares
+          if (!params.groupBy) return { error: "groupBy required for HHI" };
+          const groups = new Map<string, number>();
+          let total = 0;
+          for (const r of rows) {
+            const key = String(r[params.groupBy] ?? "");
+            const val = toNum(r[params.columnA]) ?? 0;
+            groups.set(key, (groups.get(key) ?? 0) + val);
+            total += val;
+          }
+          let hhi = 0;
+          const shares: Array<{ entity: string; share: number }> = [];
+          for (const [entity, val] of groups) {
+            const share = total > 0 ? val / total : 0;
+            hhi += share * share;
+            shares.push({ entity, share: round(share * 100, 1) });
+          }
+          shares.sort((a, b) => b.share - a.share);
+          const interpretation = hhi > 0.25 ? "highly concentrated" : hhi > 0.15 ? "moderately concentrated" : "competitive";
+          result = { ...result, hhi: round(hhi, 4), hhiNormalized: round(hhi * 10000, 0), interpretation, topEntities: shares.slice(0, 5) };
+          break;
+        }
+      }
+
+      const evidenceRefId = `ev-stat-${crypto.randomUUID().slice(0, 8)}`;
+      await ctx.persistNotebookEntry({
+        toolName: "compute_statistical",
+        toolInput: params,
+        toolOutput: result,
+        evidenceRefId,
+      });
+
+      return { ...result, evidenceRef: evidenceRefId };
+    },
+  });
+}
+
 function applyFilter(rows: Record<string, unknown>[], filterExpr: string): Record<string, unknown>[] {
   // Parse simple filter expressions: "column = value AND column > value"
   const conditions = filterExpr.split(/\s+AND\s+/i);

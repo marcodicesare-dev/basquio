@@ -42,6 +42,8 @@ export interface ShapeChartOptions {
   unit?: string;
   highlightCategories?: string[];
   showLegend?: boolean;
+  benchmarkValue?: number;
+  benchmarkLabel?: string;
 }
 
 // ─── CONSTANTS ───────────────────────────────────────────────────
@@ -291,6 +293,26 @@ function renderHorizontalBar(
       valign: "middle",
     });
   });
+
+  // Benchmark reference line (dashed vertical line at benchmark value)
+  if (options.benchmarkValue != null && maxVal > 0) {
+    const bmX = chartAreaX + (options.benchmarkValue / maxVal) * chartAreaW;
+    // Dashed line (rendered as thin rect since PptxGenJS shapes don't support dash)
+    for (let dy = 0; dy < frame.h; dy += 0.08) {
+      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+        x: bmX - 0.003, y: frame.y + dy, w: 0.006, h: 0.04,
+        fill: { color: V.labelGray },
+      });
+    }
+    // Benchmark label
+    if (options.benchmarkLabel) {
+      slide.addText(options.benchmarkLabel, {
+        x: bmX - 0.5, y: frame.y - 0.18, w: 1.0, h: 0.16,
+        fontSize: V.annotation, fontFace: tokens.bodyFont,
+        color: V.labelGray, align: "center", valign: "bottom",
+      });
+    }
+  }
 }
 
 // ─── VERTICAL BAR CHART ──────────────────────────────────────────
@@ -722,16 +744,13 @@ function renderLineChart(
         rectRadius: 0.04,
       });
 
-      // Line to next point
+      // Line to next point (proper diagonal line, not rectangle)
       if (i < vals.length - 1) {
         const nextX = frame.x + ((i + 1) / Math.max(labels.length - 1, 1)) * frame.w;
         const nextY = chartY + chartH - ((vals[i + 1] - minVal) / range) * chartH;
-        const lineW = nextX - x;
-        const lineH = nextY - y;
-        // Approximate line with thin rect (horizontal component)
-        slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-          x, y: Math.min(y, nextY), w: lineW, h: Math.max(Math.abs(lineH), 0.015),
-          fill: { color },
+        slide.addShape("line" as unknown as PptxGenJS.ShapeType, {
+          x, y, w: nextX - x, h: nextY - y,
+          line: { color, width: 2.5 },
         });
       }
 
@@ -801,15 +820,46 @@ function renderScatterChart(
     x: chartX, y: midY, w: chartW, h: 0.005, fill: { color: AXIS_GRAY },
   });
 
+  // Use second dataset labels for entity names if available
+  const entityLabels = data.datasets.length > 1
+    ? data.datasets[1].data.map((_, i) => data.labels[i] ?? `${i + 1}`)
+    : data.labels;
+
+  const isFocal = (label: string) =>
+    options.focalEntity && label.toLowerCase().includes(options.focalEntity.toLowerCase());
+  const isHighlighted = (label: string) =>
+    options.highlightCategories?.some((h) => label.toLowerCase().includes(h.toLowerCase()));
+
   for (let i = 0; i < n; i++) {
     const px = chartX + ((xVals[i] - minX) / rangeX) * chartW;
     const py = chartY + chartH - ((yVals[i] - minY) / rangeY) * chartH;
+    const label = entityLabels[i] ?? `${i + 1}`;
+    const focal = isFocal(label) || isHighlighted(label);
+    const dotColor = focal ? tokens.accent : MUTED_BAR;
+    const dotSize = focal ? 0.12 : 0.08;
 
+    // Data point (circle)
     slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
-      x: px - 0.05, y: py - 0.05, w: 0.10, h: 0.10,
-      fill: { color: tokens.accent },
-      rectRadius: 0.05,
+      x: px - dotSize / 2, y: py - dotSize / 2, w: dotSize, h: dotSize,
+      fill: { color: dotColor },
+      rectRadius: dotSize / 2,
     });
+
+    // Entity label next to dot (offset right and up)
+    if (n <= 15) {
+      slide.addText(truncLabel(label), {
+        x: px + dotSize / 2 + 0.04,
+        y: py - 0.10,
+        w: 1.0,
+        h: 0.20,
+        fontSize: V.catLabel - 1,
+        fontFace: tokens.bodyFont,
+        color: focal ? tokens.ink : LABEL_GRAY,
+        bold: focal,
+        align: "left",
+        valign: "middle",
+      });
+    }
   }
 }
 

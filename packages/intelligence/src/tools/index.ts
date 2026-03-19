@@ -5,6 +5,7 @@ export {
   createQueryDataTool,
   createComputeMetricTool,
   createComputeDerivedTool,
+  createComputeStatisticalTool,
   createReadSupportDocTool,
   type ToolContext,
 } from "./data-exploration";
