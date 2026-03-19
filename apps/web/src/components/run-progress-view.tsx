@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Script from "next/script";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type Summary = {
   jobId?: string;
@@ -171,7 +171,7 @@ export function RunProgressView(input: {
             <div className="stack" style={{ alignItems: "center", gap: "1rem" }}>
               <h1 style={{ fontSize: "2rem" }}>Something went wrong</h1>
               <p className="muted" style={{ fontSize: "1.1rem", maxWidth: 480 }}>
-                We hit an issue while generating your deck. You can try again — it won't cost you extra.
+                We hit an issue while generating your deck. You can try again — it won&apos;t cost you extra.
               </p>
               {snapshot.failureMessage && (
                 <p style={{ fontSize: "0.85rem", color: "#94A3B8", fontFamily: "monospace", maxWidth: 500, wordBreak: "break-word" }}>
@@ -252,7 +252,6 @@ export function RunProgressView(input: {
             {USER_STEPS.map((step, idx) => {
               const isDone = idx < currentUserStepIdx || snapshot.status === "completed";
               const isActive = idx === currentUserStepIdx && snapshot.status === "running";
-              const isWaiting = idx > currentUserStepIdx;
               const dotClass = isDone ? "done" : isActive ? "active" : "waiting";
               const labelClass = isDone ? "done" : isActive ? "active" : "waiting";
 
