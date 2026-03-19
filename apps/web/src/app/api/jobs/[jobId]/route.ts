@@ -102,25 +102,59 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const currentPhase = run.current_phase ?? (completedPhases.size > 0 ? undefined : V2_PHASES[0]);
   const currentPhaseIndex = currentPhase ? V2_PHASES.indexOf(currentPhase as typeof V2_PHASES[number]) : -1;
 
-  const progressPercent =
+  const toolCalls = events.filter((e) => e.event_type === "tool_call");
+  const currentPhaseTools = toolCalls.filter((e) => e.phase === currentPhase);
+
+  let progressPercent =
     run.status === "completed"
       ? 100
       : run.status === "failed"
-        ? 0
+        ? Math.max(2, Math.round(
+            ((completedPhases.size) / V2_PHASES.length) * 100,
+          ))
         : Math.max(2, Math.min(99, Math.round(
             ((completedPhases.size + (currentPhaseIndex >= 0 ? 0.5 : 0)) / V2_PHASES.length) * 100,
           )));
 
+  // Sub-phase smoothing: use tool call count within current phase
+  const phaseWeight = 1 / V2_PHASES.length; // ~16.7%
+  const subPhaseProgress = currentPhaseTools.length > 0
+    ? Math.min(0.9, currentPhaseTools.length / 15) * phaseWeight * 100 // max 90% through current phase
+    : 0;
+
+  // Only apply sub-phase smoothing for running status
+  if (run.status !== "completed" && run.status !== "failed") {
+    progressPercent = Math.max(2, Math.min(99, Math.round(
+      (completedPhases.size / V2_PHASES.length) * 100 + subPhaseProgress
+    )));
+  }
+
   const createdAt = run.created_at;
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
-  const estimatedRemainingSeconds =
-    run.status === "completed" || progressPercent >= 99
-      ? 0
-      : progressPercent > 8
-        ? Math.max(5, Math.round((elapsedSeconds / progressPercent) * (100 - progressPercent)))
-        : null;
 
-  const toolCalls = events.filter((e) => e.event_type === "tool_call");
+  const PHASE_ESTIMATE_SECONDS: Record<string, number> = {
+    normalize: 15,
+    understand: 90,
+    author: 180,
+    critique: 60,
+    revise: 60,
+    export: 30,
+  };
+
+  const estimatedRemainingSeconds =
+    run.status === "completed" || run.status === "failed"
+      ? 0
+      : (() => {
+          // Sum estimated seconds for remaining phases
+          const remaining = V2_PHASES.filter((p) => !completedPhases.has(p) && p !== currentPhase);
+          const remainingEstimate = remaining.reduce((sum, p) => sum + (PHASE_ESTIMATE_SECONDS[p] ?? 30), 0);
+          // Current phase: estimate fraction remaining
+          const currentEstimate = PHASE_ESTIMATE_SECONDS[currentPhase ?? ""] ?? 30;
+          const currentFraction = currentPhaseTools.length > 0
+            ? Math.min(0.9, currentPhaseTools.length / 15)
+            : 0;
+          return Math.max(5, Math.round(remainingEstimate + currentEstimate * (1 - currentFraction)));
+        })();
   const lastToolCall = toolCalls.length > 0 ? toolCalls[toolCalls.length - 1] : null;
 
   const steps = V2_PHASES.map((phase, index) => {
@@ -214,5 +248,6 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     steps,
     summary,
     failureMessage: run.failure_message ?? undefined,
+    toolCallCount: toolCalls.length,
   };
 }

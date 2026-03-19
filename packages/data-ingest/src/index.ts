@@ -1155,6 +1155,11 @@ async function streamParseXlsx(
           : [];
 
       if (!headerDetected) {
+        // Detect real header row: must have ≥2 non-empty string-like values.
+        // Financial models often have title/instruction rows before headers
+        // (e.g., "Assumptions" on row 1, blank on row 2-4, real headers on row 5).
+        const nonEmpty = values.filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
+        if (nonEmpty.length < 2) continue; // Skip title/blank rows
         headers = values.map((v, i) => normalizeHeader(v, i));
         headerDetected = true;
         continue;

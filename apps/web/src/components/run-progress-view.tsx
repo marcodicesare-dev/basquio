@@ -58,6 +58,7 @@ export type RunProgressSnapshot = {
   steps: Step[];
   summary: Summary | null;
   failureMessage?: string;
+  toolCallCount?: number;
 };
 
 const V2_PHASES = ["normalize", "understand", "author", "critique", "revise", "export"] as const;
@@ -138,6 +139,7 @@ export function RunProgressView(input: {
 
   return (
     <div className="page-shell">
+      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
       <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
 
       <section className="page-hero loading-hero">
@@ -155,14 +157,30 @@ export function RunProgressView(input: {
             <div className="loading-progress-card stack">
               <div className="row loading-progress-head">
                 <div className="stack-xs">
-                  <p className="artifact-kind">{humanizeStatus(snapshot.status)}</p>
+                  <p className="artifact-kind">
+                    {humanizeStatus(snapshot.status)}
+                    {snapshot.status === "running" && (
+                      <span className="pulse-dot" style={{
+                        display: "inline-block",
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        backgroundColor: "#2563EB",
+                        marginLeft: 8,
+                        animation: "pulse 1.5s ease-in-out infinite",
+                      }} />
+                    )}
+                  </p>
                   <p className="loading-stage-title">{humanizeStage(snapshot.currentStage)}</p>
                 </div>
                 <strong className="loading-progress-value">{snapshot.progressPercent}%</strong>
               </div>
 
               <div className="loading-progress-track" aria-hidden="true">
-                <div className="loading-progress-fill" style={{ width: `${snapshot.progressPercent}%` }} />
+                <div className="loading-progress-fill" style={{
+                  width: `${snapshot.progressPercent}%`,
+                  transition: "width 1s ease-out",
+                }} />
               </div>
 
               <div className="loading-stat-strip">
@@ -244,7 +262,14 @@ export function RunProgressView(input: {
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <strong>{humanizeStage(stage)}</strong>
                   </div>
-                  <p>{step?.detail || defaultV2PhaseCopy(stage)}</p>
+                  <p>
+                    {step?.detail || defaultV2PhaseCopy(stage)}
+                    {status === "running" && snapshot.toolCallCount != null && snapshot.toolCallCount > 0 && (
+                      <span className="muted" style={{ marginLeft: 8, fontSize: "0.85em" }}>
+                        ({snapshot.toolCallCount} tool calls)
+                      </span>
+                    )}
+                  </p>
                   <span className="loading-stage-pill">{humanizeStatus(status)}</span>
                 </article>
               );
@@ -348,12 +373,27 @@ function humanizeDetail(detail: string, currentStage: string) {
   if (toolMatch) {
     const toolName = toolMatch[1];
     const toolLabels: Record<string, string> = {
+      list_files: "Scanning uploaded files",
+      describe_table: "Analyzing table structure",
       sample_rows: "Sampling data rows",
+      query_data: "Querying data",
+      compute_metric: "Computing metrics",
+      compute_derived: "Deriving advanced metrics",
+      compute_statistical: "Running statistical analysis",
+      join_query: "Joining data sources",
+      cross_reference: "Cross-referencing sources",
       read_support_doc: "Reading support documents",
-      inspect_template: "Inspecting template structure",
-      inspect_brand_tokens: "Analyzing brand tokens",
-      render_deck_preview: "Rendering slide preview",
-      build_chart: "Building chart visualization",
+      inspect_template: "Inspecting template",
+      inspect_brand_tokens: "Reading brand tokens",
+      build_chart: "Building chart",
+      write_slide: "Writing slide",
+      render_deck_preview: "Previewing deck",
+      render_contact_sheet: "Rendering contact sheet",
+      list_evidence: "Reviewing evidence",
+      audit_deck_structure: "Auditing deck structure",
+      verify_claim: "Verifying data claims",
+      check_numeric: "Checking numeric accuracy",
+      compare_to_brief: "Comparing to brief",
       persist_slide: "Writing slide content",
       persist_chart: "Saving chart data",
     };
