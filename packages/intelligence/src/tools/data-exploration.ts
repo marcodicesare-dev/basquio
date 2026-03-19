@@ -292,19 +292,23 @@ export function createComputeDerivedTool(ctx: ToolContext) {
       file: z.string(),
       sheet: z.string().optional(),
       formula: z.enum([
-        "ratio",        // numeratorColumn / denominatorColumn
-        "per_unit",     // same as ratio, for price = value / units
-        "share",        // entity value / total value (value-based)
-        "growth_rate",  // (current - prior) / prior
-        "index",        // (entity value / category average) * 100
-        "contribution", // entity abs change / total abs change
-        "mix_gap",      // share(col1) - share(col2) per entity
-        "difference",   // sum(colA) - sum(colB) per group
+        "ratio",            // numeratorColumn / denominatorColumn
+        "per_unit",         // same as ratio, for price = value / units
+        "share",            // entity value / total value (value-based)
+        "growth_rate",      // (current - prior) / prior
+        "index",            // (entity value / category average) * 100
+        "contribution",     // entity abs change / total abs change
+        "mix_gap",          // share(col1) - share(col2) per entity
+        "difference",       // sum(colA) - sum(colB) per group
+        "cagr",             // (endValue / startValue)^(1/periods) - 1
+        "weighted_average", // sum(value * weight) / sum(weight)
       ]),
       numeratorColumn: z.string().optional().describe("Column for numerator (ratio/per_unit/difference)"),
       denominatorColumn: z.string().optional().describe("Column for denominator (ratio/per_unit)"),
       valueColumn: z.string().optional().describe("Primary value column (share/growth_rate/index/contribution)"),
       secondValueColumn: z.string().optional().describe("Second value column (mix_gap: volume column; difference: column B)"),
+      periodColumn: z.string().optional().describe("Time/period column for CAGR (sorted to find first and last values)"),
+      weightColumn: z.string().optional().describe("Weight column for weighted_average"),
       currentFilter: z.string().optional().describe('Filter for current period, e.g. "Year = 2025"'),
       priorFilter: z.string().optional().describe('Filter for prior period, e.g. "Year = 2024"'),
       entityFilter: z.string().optional().describe('Filter to isolate entity, e.g. "Brand = Ultima"'),
@@ -502,6 +506,77 @@ export function createComputeDerivedTool(ctx: ToolContext) {
               const a = sumCol(rows, params.numeratorColumn);
               const b = sumCol(rows, params.secondValueColumn);
               result = { formula: "difference", value: round(a - b), columnA: round(a), columnB: round(b) };
+            }
+            break;
+          }
+
+          case "cagr": {
+            if (!params.valueColumn || !params.periodColumn) {
+              return { error: "cagr requires valueColumn and periodColumn" };
+            }
+            const computeCagr = (subset: Record<string, unknown>[]) => {
+              const sorted = [...subset].sort((a, b) => {
+                const av = a[params.periodColumn!], bv = b[params.periodColumn!];
+                if (typeof av === "number" && typeof bv === "number") return av - bv;
+                return String(av ?? "").localeCompare(String(bv ?? ""));
+              });
+              const startValue = sumCol([sorted[0]], params.valueColumn!) || toNum(sorted[0][params.valueColumn!]);
+              const endValue = sumCol([sorted[sorted.length - 1]], params.valueColumn!) || toNum(sorted[sorted.length - 1][params.valueColumn!]);
+              // Count distinct periods
+              const distinctPeriods = new Set(sorted.map((r) => String(r[params.periodColumn!]))).size;
+              const periods = distinctPeriods - 1; // number of intervals
+              if (!startValue || startValue === 0 || !endValue || periods <= 0) {
+                return { startValue: startValue ?? 0, endValue: endValue ?? 0, periods, cagr: null };
+              }
+              if (startValue < 0 || endValue < 0) {
+                return { startValue: round(startValue), endValue: round(endValue), periods, cagr: null, error: `CAGR not applicable for negative values (start: ${startValue}, end: ${endValue})` };
+              }
+              const cagr = (Math.pow(endValue / startValue, 1 / periods) - 1) * 100;
+              return { startValue: round(startValue), endValue: round(endValue), periods, cagr: round(cagr) };
+            };
+
+            if (params.groupBy && params.groupBy.length > 0) {
+              const groups = groupRowsBy(rows, params.groupBy);
+              const breakdown = Object.entries(groups).map(([key, groupRows]) => ({
+                group: key, ...computeCagr(groupRows),
+              })).sort((a, b) => (b.cagr ?? 0) - (a.cagr ?? 0));
+              result = { formula: "cagr", breakdown: breakdown.slice(0, 30), unit: "%" };
+            } else {
+              result = { formula: "cagr", ...computeCagr(rows), unit: "%" };
+            }
+            break;
+          }
+
+          case "weighted_average": {
+            if (!params.valueColumn || !params.weightColumn) {
+              return { error: "weighted_average requires valueColumn and weightColumn" };
+            }
+            const computeWavg = (subset: Record<string, unknown>[]) => {
+              let sumVW = 0;
+              let sumW = 0;
+              for (const row of subset) {
+                const v = toNum(row[params.valueColumn!]);
+                const w = toNum(row[params.weightColumn!]);
+                if (v !== null && w !== null) {
+                  sumVW += v * w;
+                  sumW += w;
+                }
+              }
+              return {
+                value: sumW !== 0 ? round(sumVW / sumW) : null,
+                totalWeight: round(sumW),
+                n: subset.length,
+              };
+            };
+
+            if (params.groupBy && params.groupBy.length > 0) {
+              const groups = groupRowsBy(rows, params.groupBy);
+              const breakdown = Object.entries(groups).map(([key, groupRows]) => ({
+                group: key, ...computeWavg(groupRows),
+              })).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+              result = { formula: "weighted_average", breakdown: breakdown.slice(0, 30) };
+            } else {
+              result = { formula: "weighted_average", ...computeWavg(rows) };
             }
             break;
           }
@@ -882,43 +957,50 @@ export function createComputeStatisticalTool(ctx: ToolContext) {
   });
 }
 
+function evaluateCondition(row: Record<string, unknown>, condition: string): boolean {
+  const match = condition.trim().match(/^"?(.+?)"?\s*(=|!=|<>|>|>=|<|<=|LIKE|IN)\s*(.+)$/i);
+  if (!match) return false; // unparseable → exclude (fail safe, not fail open)
+
+  const [, col, op, rawVal] = match;
+  const rowVal = row[col.trim()];
+  const val = rawVal.trim().replace(/^['"]|['"]$/g, "");
+
+  switch (op.toUpperCase()) {
+    case "=":
+      return String(rowVal) === val;
+    case "!=":
+    case "<>":
+      return String(rowVal) !== val;
+    case ">":
+      return Number(rowVal) > Number(val);
+    case ">=":
+      return Number(rowVal) >= Number(val);
+    case "<":
+      return Number(rowVal) < Number(val);
+    case "<=":
+      return Number(rowVal) <= Number(val);
+    case "LIKE":
+      return String(rowVal).includes(val.replace(/%/g, ""));
+    case "IN": {
+      // Parse "IN (val1, val2, val3)" or "IN val1, val2"
+      const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, ""));
+      return inVals.some((iv) => String(rowVal) === iv);
+    }
+    default:
+      return true;
+  }
+}
+
 function applyFilter(rows: Record<string, unknown>[], filterExpr: string): Record<string, unknown>[] {
-  // Parse simple filter expressions: "column = value AND column > value"
-  const conditions = filterExpr.split(/\s+AND\s+/i);
+  // Parse filter expressions with OR and AND support.
+  // OR has lower precedence: split on OR first, then AND within each branch.
+  // A row matches if ANY OR branch matches (within a branch, ALL AND conditions must match).
+  const orBranches = filterExpr.split(/\s+OR\s+/i);
 
   return rows.filter((row) =>
-    conditions.every((condition) => {
-      const match = condition.trim().match(/^"?(.+?)"?\s*(=|!=|<>|>|>=|<|<=|LIKE|IN)\s*(.+)$/i);
-      if (!match) return false; // unparseable → exclude (fail safe, not fail open)
-
-      const [, col, op, rawVal] = match;
-      const rowVal = row[col.trim()];
-      const val = rawVal.trim().replace(/^['"]|['"]$/g, "");
-
-      switch (op.toUpperCase()) {
-        case "=":
-          return String(rowVal) === val;
-        case "!=":
-        case "<>":
-          return String(rowVal) !== val;
-        case ">":
-          return Number(rowVal) > Number(val);
-        case ">=":
-          return Number(rowVal) >= Number(val);
-        case "<":
-          return Number(rowVal) < Number(val);
-        case "<=":
-          return Number(rowVal) <= Number(val);
-        case "LIKE":
-          return String(rowVal).includes(val.replace(/%/g, ""));
-        case "IN": {
-          // Parse "IN (val1, val2, val3)" or "IN val1, val2"
-          const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, ""));
-          return inVals.some((iv) => String(rowVal) === iv);
-        }
-        default:
-          return true;
-      }
+    orBranches.some((branch) => {
+      const andConditions = branch.split(/\s+AND\s+/i);
+      return andConditions.every((condition) => evaluateCondition(row, condition));
     }),
   );
 }
@@ -1003,6 +1085,101 @@ function computeAggregate(
     default:
       return 0;
   }
+}
+
+// ─── CROSS REFERENCE ─────────────────────────────────────────────
+// Compare the same metric across two different data sources to detect discrepancies.
+
+export function createCrossReferenceTool(ctx: ToolContext) {
+  return tool({
+    description:
+      "Compare the same metric across two different data sources to detect discrepancies. Use when the same number appears in multiple files (e.g., CSV vs PPTX table) and you need to verify consistency.",
+    inputSchema: z.object({
+      metricName: z.string().describe("Name of the metric being compared (e.g., 'Revenue', 'Market Share')"),
+      sourceA: z.object({
+        sheetKey: z.string().describe("Sheet key for first source"),
+        column: z.string().describe("Column containing the metric value"),
+        filter: z.string().describe("Filter expression to isolate the value (e.g., 'Brand = Ultima AND Year = 2025'). Use 'none' for no filter."),
+      }),
+      sourceB: z.object({
+        sheetKey: z.string().describe("Sheet key for second source"),
+        column: z.string().describe("Column containing the metric value"),
+        filter: z.string().describe("Filter expression to isolate the value. Use 'none' for no filter."),
+      }),
+      tolerancePercent: z.number().describe("Acceptable discrepancy threshold as percentage (e.g., 5 means ±5%). Use 0 for exact match."),
+    }),
+    async execute(params) {
+      // Load rows from both sources
+      const [rowsA, rowsB] = await Promise.all([
+        resolveRows(ctx, params.sourceA.sheetKey),
+        resolveRows(ctx, params.sourceB.sheetKey),
+      ]);
+
+      if (rowsA.length === 0) {
+        return { error: `No rows found for source A (sheetKey: ${params.sourceA.sheetKey})` };
+      }
+      if (rowsB.length === 0) {
+        return { error: `No rows found for source B (sheetKey: ${params.sourceB.sheetKey})` };
+      }
+
+      // Apply filters
+      const filteredA = params.sourceA.filter !== "none"
+        ? applyFilter(rowsA, params.sourceA.filter)
+        : rowsA;
+      const filteredB = params.sourceB.filter !== "none"
+        ? applyFilter(rowsB, params.sourceB.filter)
+        : rowsB;
+
+      if (filteredA.length === 0) {
+        return { error: `No rows match filter for source A: "${params.sourceA.filter}"` };
+      }
+      if (filteredB.length === 0) {
+        return { error: `No rows match filter for source B: "${params.sourceB.filter}"` };
+      }
+
+      // Sum the metric column for each source
+      const sourceAValue = round(sumCol(filteredA, params.sourceA.column));
+      const sourceBValue = round(sumCol(filteredB, params.sourceB.column));
+
+      // Compute differences
+      const absoluteDifference = round(Math.abs(sourceAValue - sourceBValue));
+      const avgValue = (Math.abs(sourceAValue) + Math.abs(sourceBValue)) / 2;
+      const percentageDifference = avgValue !== 0
+        ? round((absoluteDifference / avgValue) * 100, 2)
+        : sourceAValue === sourceBValue ? 0 : 100;
+
+      const withinTolerance = percentageDifference <= params.tolerancePercent;
+
+      let recommendation: string;
+      if (percentageDifference === 0) {
+        recommendation = "Values match";
+      } else if (percentageDifference <= 5) {
+        recommendation = "Minor discrepancy — prefer structured source";
+      } else {
+        recommendation = "Significant discrepancy — investigate";
+      }
+
+      const evidenceRefId = `ev-xref-${crypto.randomUUID().slice(0, 8)}`;
+      const output = {
+        metricName: params.metricName,
+        sourceAValue,
+        sourceBValue,
+        absoluteDifference,
+        percentageDifference,
+        withinTolerance,
+        recommendation,
+      };
+
+      await ctx.persistNotebookEntry({
+        toolName: "cross_reference",
+        toolInput: params,
+        toolOutput: { ...output, evidenceRef: evidenceRefId },
+        evidenceRefId,
+      });
+
+      return { ...output, evidenceRef: evidenceRefId };
+    },
+  });
 }
 
 function round(value: number, decimals = 4): number {

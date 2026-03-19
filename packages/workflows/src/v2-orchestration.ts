@@ -3,7 +3,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
 import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, type AnalystResult } from "@basquio/intelligence";
-import { renderPdfArtifact } from "@basquio/render-pdf";
+import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
 import { buildDeckSceneGraph, type DeckSceneGraph } from "@basquio/scene-graph";
@@ -933,7 +933,7 @@ IMPORTANT: Follow the governing thought for each slide — it states the ONE cla
 // ─── MAIN ORCHESTRATION FUNCTION ──────────────────────────────────
 
 export const basquioV2Generation = inngest.createFunction(
-  { id: "basquio-v2-generation", retries: 2 },
+  { id: "basquio-v2-generation", retries: 0 },
   { event: "basquio/v2.generation.requested" },
   async ({ event, step }) => {
     const {
@@ -963,6 +963,7 @@ export const basquioV2Generation = inngest.createFunction(
       await emitRunEvent(runId, "normalize", "phase_started");
 
       // Download source files
+      for (const id of sourceFileIds) { assertUuid(id, "sourceFileId"); }
       const filesResponse = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/source_files?id=in.(${sourceFileIds.join(",")})`,
         {
@@ -1229,7 +1230,7 @@ export const basquioV2Generation = inngest.createFunction(
       for (const f of fileInventory) {
         if (f.kind === "workbook") continue; // workbook evidence comes from sheet registration + compute_metric
 
-        const refId = `doc-${f.id.slice(0, 8)}`;
+        const refId = `doc-${f.id.slice(-8)}`;
         const isImage = /\.(png|jpg|jpeg|gif|svg|webp|bmp|tiff?)$/i.test(f.fileName);
         const isPdf = /\.pdf$/i.test(f.fileName);
         const isPptx = /\.pptx?$/i.test(f.fileName);
@@ -1373,7 +1374,7 @@ export const basquioV2Generation = inngest.createFunction(
             // (these slides have shapes/SmartArt drawn programmatically)
             const allPptxImages = slideImages.flatMap((s) => s.images);
 
-            // Process up to 30 slides (vision is cheap: ~$0.02/slide)
+            // Process up to 10 slides (vision is cheap: ~$0.02/slide)
             for (const slide of slidesNeedingVision.slice(0, 10)) {
               // Determine which images to send
               const slideHasOwnImages = slide.images.length > 0;
@@ -1466,7 +1467,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
                     : rawOutput;
 
                   if (extractedText && extractedText.length > 30) {
-                    const refId = `doc-${f.id.slice(0, 8)}-slide-${slide.slideNum}-vision`;
+                    const refId = `doc-${f.id.slice(-8)}-slide-${slide.slideNum}-vision`;
 
                     // Build rich description from structured data
                     let description = "";
@@ -1505,7 +1506,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
                     });
 
                     // Enrich existing page evidence
-                    const existingPageRef = `doc-${f.id.slice(0, 8)}-page-${slide.slideNum}`;
+                    const existingPageRef = `doc-${f.id.slice(-8)}-page-${slide.slideNum}`;
                     await persistEvidenceEntry(runId, {
                       evidenceType: "document",
                       refId: existingPageRef,
@@ -1666,20 +1667,39 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     }
 
     // ─── STEP 2: UNDERSTAND (invoked as child function) ────────
-    const analystResult = await step.invoke("understand", {
-      function: basquioUnderstand,
-      data: { runId, brief },
-      timeout: "20m",
-    }) as AnalystResult;
+    let analystResult: AnalystResult;
+    try {
+      analystResult = await step.invoke("understand", {
+        function: basquioUnderstand,
+        data: { runId, brief },
+        timeout: "20m",
+      }) as AnalystResult;
+    } catch (error) {
+      console.error(`[basquio-v2] Understand phase failed, using minimal analysis:`, error);
+      analystResult = {
+        analysis: { domain: "general", summary: "Analysis could not be completed — proceeding with available evidence", analysisMode: "deep_analysis", topFindings: [], keyDimensions: [], recommendedChartTypes: [], metricsComputed: 0, queriesExecuted: 0, filesAnalyzed: 0 },
+        storylinePlan: null,
+        clarifiedBrief: null,
+      };
+    }
 
     // ─── STEP 2.5+3+4: PLAN + AUTHOR + POLISH (child function) ────
     // Entire plan → author → polish block runs in a child function with
     // its own 25min timeout. Isolates the most token-heavy phase.
-    const authorResult = await step.invoke("author-polish", {
-      function: basquioAuthor,
-      data: { runId, brief },
-      timeout: "25m",
-    }) as { deckSummary: string; slideCount: number; chartCount: number };
+    let authorResult: { deckSummary: string; slideCount: number; chartCount: number };
+    try {
+      authorResult = await step.invoke("author-polish", {
+        function: basquioAuthor,
+        data: { runId, brief },
+        timeout: "25m",
+      }) as typeof authorResult;
+    } catch (error) {
+      console.error(`[basquio-v2] Author phase failed, checking for partial slides:`, error);
+      const partialSlides = await getSlides(runId);
+      const partialCharts = await getV2ChartRows(runId);
+      if (partialSlides.length === 0) throw error; // No slides at all — cannot recover
+      authorResult = { deckSummary: `Partial: ${partialSlides.length} slides recovered`, slideCount: partialSlides.length, chartCount: partialCharts.length };
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const deckSummary = authorResult.deckSummary;
@@ -1688,11 +1708,17 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     // Dead code removed — see basquioAuthor for the implementation.
 
     // ─── STEP 4+5: CRITIQUE + REVISE (invoked as child function) ───
-    const critiqueReviseResult = await step.invoke("critique-revise", {
-      function: basquioCritiqueRevise,
-      data: { runId, brief, sourceFileIds },
-      timeout: "25m",
-    }) as { hasCriticalOrMajor: boolean; degradedDelivery: boolean; degradedIssues: Array<{ severity: string; claim: string }> };
+    let critiqueReviseResult: { hasCriticalOrMajor: boolean; degradedDelivery: boolean; degradedIssues: Array<{ severity: string; claim: string }> };
+    try {
+      critiqueReviseResult = await step.invoke("critique-revise", {
+        function: basquioCritiqueRevise,
+        data: { runId, brief, sourceFileIds },
+        timeout: "25m",
+      }) as typeof critiqueReviseResult;
+    } catch (error) {
+      console.error(`[basquio-v2] Critique-revise failed, skipping:`, error);
+      critiqueReviseResult = { hasCriticalOrMajor: false, degradedDelivery: true, degradedIssues: [{ severity: "major", claim: "Quality review skipped due to error" }] };
+    }
 
     const { hasCriticalOrMajor, degradedDelivery, degradedIssues } = critiqueReviseResult;
 
@@ -1736,14 +1762,45 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     return { runId, artifacts, costSummary };
 
     } catch (error) {
-      // Mark run as failed so the UI reflects the real state
       const message = error instanceof Error ? error.message : "Unknown orchestration error";
       console.error(`[basquio-v2] Run ${runId} failed:`, message);
+
+      // Attempt best-effort export with whatever slides exist
+      try {
+        const existingSlides = await getSlides(runId);
+        if (existingSlides.length > 0) {
+          console.log(`[basquio-v2] Attempting best-effort export with ${existingSlides.length} existing slides`);
+          await step.invoke("best-effort-export", {
+            function: basquioExport,
+            data: {
+              runId,
+              exportMode: (event.data as Record<string, unknown>).exportMode as string | undefined,
+              hasCriticalOrMajor: true,
+              degradedDelivery: true,
+              degradedIssues: [{ severity: "critical", claim: `Pipeline error: ${message.slice(0, 200)}` }],
+              deckTitle: brief.slice(0, 100),
+              sourceFileIds,
+              skipSourceCoverage: true, // Don't gate on source coverage for best-effort
+            },
+            timeout: "10m",
+          });
+          await updateRunStatus(runId, "completed", "export", {
+            failure_message: `Completed with degraded delivery: ${message.slice(0, 500)}`,
+          });
+          await updateDeliveryStatus(runId, "degraded");
+          return { runId, artifacts: null, costSummary: null, degraded: true };
+        }
+      } catch (bestEffortError) {
+        console.error(`[basquio-v2] Best-effort export also failed:`, bestEffortError);
+      }
+
+      // Absolute last resort: mark as failed, but do NOT throw
       await updateDeliveryStatus(runId, "failed").catch(() => {});
       await updateRunStatus(runId, "failed", undefined, {
         failure_message: message.slice(0, 1000),
-      }).catch(() => {}); // best-effort — don't mask the original error
-      throw error; // re-throw so Inngest knows the function failed
+      }).catch(() => {});
+      // DO NOT re-throw — Inngest retries would just burn more tokens
+      return { runId, artifacts: null, costSummary: null, failed: true, error: message.slice(0, 500) };
     }
   },
 );
@@ -1821,8 +1878,8 @@ export const basquioUnderstand = inngest.createFunction(
           costTier: "standard" as const,
           language: result.clarifiedBrief?.language ?? "en",
           evidenceConfidence: result.analysis?.topFindings?.length > 0 ? 0.7 : 0.3,
-          sourceManifest: (workspace.fileInventory ?? []).map((f: { fileId?: string; fileName?: string; kind?: string }) => ({
-            fileId: f.fileId ?? "",
+          sourceManifest: (workspace.fileInventory ?? []).map((f: { id?: string; fileName?: string; kind?: string }) => ({
+            fileId: f.id ?? "",
             fileName: f.fileName ?? "",
             kind: f.kind ?? "unknown",
             hasTabularData: f.kind === "workbook",
@@ -1936,6 +1993,7 @@ Return a structured DeckPlan with sections containing slide specs.`,
     // Step 2: Author all sections in parallel
     const deckPlanSections = deckPlan.structuredPlan.sections ?? [];
     const workspace = await loadWorkspaceFromDb(runId);
+    if (!workspace) throw new Error(`Workspace not found for run ${runId}`);
     const loadRows = createLoadSheetRows(runId);
     const analysisForAuthor = await loadWorkingPaper<{
       analysis: { domain: string; summary: string; topFindings: Array<{ title: string; claim: string; confidence: number; evidenceRefIds: string[]; businessImplication: string }>; keyDimensions: string[]; recommendedChartTypes: Array<{ chartType: string; reason: string }> };
@@ -1953,13 +2011,14 @@ Return a structured DeckPlan with sections containing slide specs.`,
         const safeSectionId = (section.sectionId ?? section.title ?? "sec")
           .replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").toLowerCase().slice(0, 30);
 
-        await step.run(`author-${safeSectionId}`, async () => {
-          const isSacredSection = ["cover", "exec-summary", "summary", "recommendation"].some(
-            (role) => section.slides.some((s: { role?: string }) => s.role === role),
-          );
-          const sectionModel = isSacredSection ? "claude-opus-4-6" : "claude-sonnet-4-6";
+        try {
+          await step.run(`author-${safeSectionId}`, async () => {
+            const isSacredSection = ["cover", "exec-summary", "summary", "recommendation"].some(
+              (role) => section.slides.some((s: { role?: string }) => s.role === role),
+            );
+            const sectionModel = isSacredSection ? "claude-opus-4-6" : "claude-sonnet-4-6";
 
-          const sectionBrief = `## Section: ${section.title}
+            const sectionBrief = `## Section: ${section.title}
 Issue branch: ${section.issueBranch ?? "N/A"}
 Slides: ${section.slides.map((s: { position: number; role?: string; governingThought?: string }) => `${s.position}. [${s.role}] ${s.governingThought ?? ""}`).join("\n")}
 
@@ -1972,31 +2031,41 @@ ${analysis?.summary ?? ""}
 ## Key findings
 ${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.title}: ${f.claim}`).join("\n") ?? ""}`;
 
-          const tracker = new UsageTracker();
-          tracker.startPhase("author", sectionModel, "anthropic");
+            const tracker = new UsageTracker();
+            tracker.startPhase("author", sectionModel, "anthropic");
 
-          const result = await runAuthorAgent({
-            workspace: workspace!,
-            runId,
-            analysis: analysis as unknown as AnalysisReport,
-            brief: sectionBrief,
-            loadRows,
-            modelOverride: sectionModel,
-            maxSteps: 30,
-            persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "author", 0, entry),
-            getTemplateProfile: (async () => undefined) as never,
-            persistSlide: (slide) => persistSlide(runId, slide),
-            persistChart: (chart) => persistChart(runId, chart),
-            getSlides: () => getSlides(runId),
-            listEvidence: () => listEvidenceForRun(runId),
-            onStepFinish: async (event: StepFinishEvent) => {
-              tracker.recordStep(event.usage, event.toolCalls.length);
-            },
-          });
+            const SECTION_TIMEOUT_MS = 700_000; // 700s safety limit (Vercel kills at 800s)
+            const result = await Promise.race([
+              runAuthorAgent({
+                workspace: workspace!,
+                runId,
+                analysis: analysis as unknown as AnalysisReport,
+                brief: sectionBrief,
+                loadRows,
+                modelOverride: sectionModel,
+                maxSteps: 15,
+                persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "author", 0, entry),
+                getTemplateProfile: (async () => undefined) as never,
+                persistSlide: (slide) => persistSlide(runId, slide),
+                persistChart: (chart) => persistChart(runId, chart),
+                getSlides: () => getSlides(runId),
+                listEvidence: () => listEvidenceForRun(runId),
+                onStepFinish: async (event: StepFinishEvent) => {
+                  tracker.recordStep(event.usage, event.toolCalls.length);
+                },
+              }),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("Section authoring exceeded 700s safety limit")), SECTION_TIMEOUT_MS),
+              ),
+            ]);
 
-          tracker.endPhase();
-          return result.summary;
-        }); // end step.run per section
+            tracker.endPhase();
+            return result.summary;
+          }); // end step.run per section
+        } catch (sectionError) {
+          console.error(`[basquio-author] Section "${section.title}" failed, continuing:`, sectionError);
+          // Continue with remaining sections — partial deck is better than no deck
+        }
       } // end for loop
 
       deckSummary = `${deckPlanSections.length} sections authored`;
@@ -2009,48 +2078,6 @@ ${analysis?.topFindings?.map((f: { title: string; claim: string }) => `- ${f.tit
     await step.run("polish", async () => {
       // Skip polish — go straight to critique
       return { polished: 0, total: 0, skipped: true };
-      await updateRunStatus(runId, "running", "polish");
-      const slides = await getSlides(runId);
-      if (slides.length === 0) return { polished: 0, total: 0 };
-
-      const weakSlides = slides.filter((s: { body?: string; title?: string }) => {
-        const bodyLen = (s.body ?? "").split(/\s+/).length;
-        const titleLen = (s.title ?? "").length;
-        return bodyLen < 20 || titleLen < 15;
-      });
-
-      if (weakSlides.length === 0) {
-        return { polished: 0, total: slides.length };
-      }
-
-      const tracker = new UsageTracker();
-      tracker.startPhase("polish", "claude-sonnet-4-6", "anthropic");
-
-      const weakSlideDetails = weakSlides.map((s: { position: number; title?: string; body?: string; layoutId?: string }) =>
-        `Slide ${s.position} (${s.layoutId ?? "unknown"}): title="${s.title ?? ""}", body="${(s.body ?? "").slice(0, 100)}..."`,
-      ).join("\n");
-
-      await runAuthorAgent({
-        workspace: workspace!,
-        runId,
-        analysis: analysis as unknown as AnalysisReport,
-        brief: `## Polish task\nReview and strengthen these weak slides:\n${weakSlideDetails}\n\nFull brief: ${brief}`,
-        loadRows,
-        modelOverride: "claude-sonnet-4-6",
-        maxSteps: 15,
-        persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "polish", 0, entry),
-        getTemplateProfile: (async () => undefined) as never,
-        persistSlide: (slide) => persistSlide(runId, slide),
-        persistChart: (chart) => persistChart(runId, chart),
-        getSlides: () => getSlides(runId),
-        listEvidence: () => listEvidenceForRun(runId),
-        onStepFinish: async (event: StepFinishEvent) => {
-          tracker.recordStep(event.usage, event.toolCalls.length);
-        },
-      });
-
-      tracker.endPhase();
-      return { polished: weakSlides.length, total: slides.length };
     });
 
     // Return summary for parent
@@ -2207,7 +2234,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
           critiqueContext: issuesSummary,
           loadRows,
           modelOverride: "claude-sonnet-4-6",
-          maxSteps: 25,
+          maxSteps: 15,
           persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "revise", 0, entry),
           getTemplateProfile: (async () => undefined) as never,
           persistSlide: (slide) => persistSlide(runId, slide),
@@ -2240,36 +2267,41 @@ export const basquioCritiqueRevise = inngest.createFunction(
           evidenceIds: s.evidenceIds ?? [],
         }));
 
-        // Only re-run factual critic (cheaper, faster)
-        const reFactual = await runCriticAgent({
-          workspace,
-          runId,
-          deckSummary: "",
-          brief,
-          slideCount: slides.length,
-          getSlides: async () => slideData,
-          getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
-          persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 1, entry),
-        });
+        // Re-run BOTH factual + strategic critics (strategic must independently gate)
+        const [reFactual, reStrategic] = await Promise.all([
+          runCriticAgent({
+            workspace,
+            runId,
+            deckSummary: "",
+            brief,
+            slideCount: slides.length,
+            getSlides: async () => slideData,
+            getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
+            persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 1, entry),
+          }),
+          runStrategicCriticAgent({
+            runId,
+            brief,
+            deckSummary: "",
+            slideCount: slides.length,
+            slides: slideData,
+          }),
+        ]);
 
-        const reIssues = reFactual.issues ?? [];
+        const reIssues = [...(reFactual.issues ?? []), ...(reStrategic.issues ?? [])];
         const reCritical = reIssues.filter((i: { severity: string }) => i.severity === "critical").length;
         const reMajor = reIssues.filter((i: { severity: string }) => i.severity === "major").length;
 
-        if (reCritical > 0) {
-          await updateDeliveryStatus(runId, "failed");
-          await updateRunStatus(runId, "failed", "critique", {
-            failure_message: `Export blocked after revision: ${reCritical} critical issue(s) remain`,
-          });
-          throw new Error(`Export blocked after revision: ${reCritical} critical issue(s)`);
-        }
-
-        if (reMajor > 0) {
-          await updateDeliveryStatus(runId, "failed");
-          await updateRunStatus(runId, "failed", "critique", {
-            failure_message: `Export blocked after revision: ${reMajor} major issue(s) remain`,
-          });
-          throw new Error(`Export blocked after revision: ${reMajor} major issue(s)`);
+        if (reCritical > 0 || reMajor > 0) {
+          console.warn(`[basquio-critique] ${reCritical} critical, ${reMajor} major issues remain after revision — proceeding with degraded delivery`);
+          await updateDeliveryStatus(runId, "degraded");
+          return {
+            hasCriticalOrMajor: true,
+            degradedDelivery: true,
+            degradedIssues: reIssues
+              .filter((i: { severity: string }) => i.severity === "critical" || i.severity === "major")
+              .map((i: { severity: string; claim: string }) => ({ severity: i.severity, claim: i.claim })),
+          };
         }
 
         await updateDeliveryStatus(runId, "reviewed");
@@ -2299,6 +2331,7 @@ export const basquioExport = inngest.createFunction(
       degradedIssues,
       deckTitle,
       sourceFileIds,
+      skipSourceCoverage,
     } = event.data as {
       runId: string;
       exportMode?: string;
@@ -2307,6 +2340,7 @@ export const basquioExport = inngest.createFunction(
       degradedIssues: Array<{ severity: string; claim: string }>;
       deckTitle: string;
       sourceFileIds: string[];
+      skipSourceCoverage?: boolean;
     };
 
     const exportMode = rawExportMode === "universal-compatible"
@@ -2318,18 +2352,7 @@ export const basquioExport = inngest.createFunction(
       const evidenceRows = await listEvidenceForRun(runId);
       const slides = await getSlides(runId);
 
-      const usedFileIds = new Set<string>();
-      for (const ev of evidenceRows) {
-        const refMatch = ev.evidenceRefId.match(/^(?:sheet|doc|img)-([a-f0-9]{8})/);
-        if (refMatch) usedFileIds.add(refMatch[1]);
-      }
-
-      const unusedFiles: string[] = [];
-      for (const fileId of sourceFileIds) {
-        const fileIdShort = fileId.slice(0, 8);
-        if (!usedFileIds.has(fileIdShort)) unusedFiles.push(fileId);
-      }
-
+      // Build set of evidence IDs actually cited by authored slides
       const citedEvidenceIds = new Set<string>();
       for (const slide of slides) {
         if (slide.evidenceIds) {
@@ -2337,8 +2360,24 @@ export const basquioExport = inngest.createFunction(
         }
       }
 
+      // Extract file IDs from CITED evidence only (not all registered evidence)
+      // A file is "used" only if at least one of its evidence refs appears in a slide
+      const usedFileIds = new Set<string>();
+      for (const ev of evidenceRows) {
+        if (citedEvidenceIds.has(ev.evidenceRefId)) {
+          const refMatch = ev.evidenceRefId.match(/^(?:sheet|doc|img)-([a-f0-9]{8})/);
+          if (refMatch) usedFileIds.add(refMatch[1]);
+        }
+      }
+
+      const unusedFiles: string[] = [];
+      for (const fileId of sourceFileIds) {
+        const fileIdShort = fileId.slice(-8);
+        if (!usedFileIds.has(fileIdShort)) unusedFiles.push(fileId);
+      }
+
       const totalEvidence = evidenceRows.length;
-      const citedEvidence = evidenceRows.filter((e) => citedEvidenceIds.has(e.evidenceRefId)).length;
+      const citedEvidence = citedEvidenceIds.size;
       const coverageRatio = totalEvidence > 0 ? citedEvidence / totalEvidence : 0;
 
       logPhaseEvent(runId, "export", "source_coverage_report", {
@@ -2351,7 +2390,7 @@ export const basquioExport = inngest.createFunction(
 
       // Hard gate: if ANY evidence file was unused, block export.
       // Every file the user uploaded must contribute to the analysis.
-      if (unusedFiles.length > 0 && sourceFileIds.length > 0) {
+      if (unusedFiles.length > 0 && sourceFileIds.length > 0 && !skipSourceCoverage) {
         await updateRunStatus(runId, "failed", "export", {
           failure_message: `Export blocked: ${unusedFiles.length} of ${sourceFileIds.length} uploaded file(s) were not used in the analysis. All sources must contribute evidence.`,
         });
@@ -2383,11 +2422,11 @@ export const basquioExport = inngest.createFunction(
         const runRows = await runRes.json() as Array<{ template_profile_id: string | null }>;
         if (runRows[0]?.template_profile_id) {
           const profRes = await fetch(
-            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/template_profiles?id=eq.${runRows[0].template_profile_id}&select=profile`,
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/template_profiles?id=eq.${runRows[0].template_profile_id}&select=template_profile`,
             { headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}` } },
           );
-          const profRows = await profRes.json() as Array<{ profile: Record<string, unknown> }>;
-          if (profRows[0]?.profile) templateProfile = profRows[0].profile;
+          const profRows = await profRes.json() as Array<{ template_profile: Record<string, unknown> }>;
+          if (profRows[0]?.template_profile) templateProfile = profRows[0].template_profile;
         }
       } catch { /* use default */ }
 
@@ -2429,6 +2468,54 @@ export const basquioExport = inngest.createFunction(
         contentType: pptxArtifact.mimeType,
       });
 
+      // Render PDF (best-effort — null if Browserless unavailable)
+      let pdfArtifactEntry: { id: string; kind: "pdf"; fileName: string; mimeType: string; fileBytes: number; storagePath: string; storageBucket: string; checksumSha256: string } | null = null;
+      try {
+        const pdfResult = await renderV2PdfArtifact({
+          slides: slides.map((s) => ({
+            position: s.position,
+            layoutId: s.layoutId ?? "title-body",
+            title: s.title ?? "",
+            subtitle: s.subtitle,
+            body: s.body,
+            bullets: s.bullets,
+            metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+            callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+            kicker: s.kicker,
+          })),
+          deckTitle: deckTitle || "Basquio Analysis",
+        });
+
+        if (pdfResult) {
+          const pdfPath = `${runId}/deck.pdf`;
+          const pdfBuffer = Buffer.isBuffer(pdfResult.buffer)
+            ? pdfResult.buffer
+            : Buffer.from((pdfResult.buffer as { data: number[] }).data);
+
+          await uploadToStorage({
+            supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            bucket: "artifacts",
+            storagePath: pdfPath,
+            body: pdfBuffer,
+            contentType: pdfResult.mimeType,
+          });
+
+          pdfArtifactEntry = {
+            id: crypto.randomUUID(),
+            kind: "pdf" as const,
+            fileName: "basquio-deck.pdf",
+            mimeType: pdfResult.mimeType,
+            fileBytes: pdfBuffer.length,
+            storagePath: pdfPath,
+            storageBucket: "artifacts",
+            checksumSha256: checksumSha256(pdfBuffer),
+          };
+        }
+      } catch (pdfError) {
+        console.warn("[basquio-export] PDF generation failed (non-blocking):", pdfError);
+      }
+
       // QA checks
       const hasValidPptxHeader = pptxBuffer.length >= 4 &&
         pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
@@ -2441,6 +2528,11 @@ export const basquioExport = inngest.createFunction(
       ];
 
       const qaPassed = qaChecks.every((c) => c.passed);
+
+      if (!qaPassed) {
+        console.warn(`[basquio-export] QA checks failed: ${qaChecks.filter((c) => !c.passed).map((c) => c.name).join(", ")}`);
+        await updateDeliveryStatus(runId, "degraded");
+      }
 
       // Publish manifest
       const artifactId = crypto.randomUUID();
@@ -2455,16 +2547,19 @@ export const basquioExport = inngest.createFunction(
           delivery_status: degradedDelivery ? "degraded" : "reviewed",
           ...(degradedDelivery ? { unresolvedIssues: degradedIssues } : {}),
         },
-        artifacts: [{
-          id: artifactId,
-          kind: "pptx" as const,
-          fileName: "basquio-deck.pptx",
-          mimeType: pptxArtifact.mimeType,
-          fileBytes: pptxBuffer.length,
-          storagePath: pptxPath,
-          storageBucket: "artifacts",
-          checksumSha256: checksumSha256(pptxBuffer),
-        }],
+        artifacts: [
+          {
+            id: artifactId,
+            kind: "pptx" as const,
+            fileName: "basquio-deck.pptx",
+            mimeType: pptxArtifact.mimeType,
+            fileBytes: pptxBuffer.length,
+            storagePath: pptxPath,
+            storageBucket: "artifacts",
+            checksumSha256: checksumSha256(pptxBuffer),
+          },
+          ...(pdfArtifactEntry ? [pdfArtifactEntry] : []),
+        ],
         published_at: new Date().toISOString(),
       };
 
@@ -2492,6 +2587,7 @@ export const basquioExport = inngest.createFunction(
 
       return {
         pptxBytes: pptxBuffer.length,
+        pdfBytes: pdfArtifactEntry?.fileBytes ?? 0,
         slideCount: slides.length,
         qaPassed,
         exportMode,

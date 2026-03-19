@@ -138,6 +138,7 @@ export function matchColumnName(name: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(name));
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 export function isRetailMarketDataset(datasetProfile: DatasetProfile, brief?: ReportBrief) {
   const haystack = [
     brief?.businessContext,

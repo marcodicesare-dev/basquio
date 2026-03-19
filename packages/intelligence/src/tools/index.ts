@@ -8,6 +8,7 @@ export {
   createComputeStatisticalTool,
   createJoinQueryTool,
   createReadSupportDocTool,
+  createCrossReferenceTool,
   type ToolContext,
 } from "./data-exploration";
 

@@ -71,7 +71,7 @@ const V = {
   dataLabel: 10,             // Values on bars/points (bold)
   catLabel: 9,               // Category labels on axes
   legend: 8.5,               // Legend text
-  source: 7,                 // Source note below chart
+  source: 8,                 // Source note below chart
   insideLabel: 8,            // Labels inside bar segments
   annotation: 8,             // Benchmark/reference labels
   // Spacing (inches)

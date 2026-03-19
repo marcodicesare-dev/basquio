@@ -37,6 +37,11 @@ type WritableSlide = {
   background?: PptxGenJS.BackgroundProps;
 };
 
+/**
+ * @deprecated Use renderV2PptxArtifact from ./render-v2 instead.
+ * This v1 renderer has known Keynote compatibility issues (13 addShape calls)
+ * and uses unsafe Aptos font default. It is maintained only for legacy v1 pipeline.
+ */
 export async function renderPptxArtifact(input: RenderPptxInput): Promise<BinaryArtifact> {
   if (input.templateFile && canPreserveTemplate(input.templateProfile)) {
     return renderTemplatePreservingArtifact(input);
@@ -792,8 +797,8 @@ function resolveTheme(templateProfile: TemplateProfile) {
     border: brandTokens?.palette.border ?? templateProfile.colors[5] ?? "#CBD5E1",
     accentMuted: brandTokens?.palette.accentMuted ?? "#DBEAFE",
     mutedText: "#475569",
-    headingFont: brandTokens?.typography.headingFont ?? templateProfile.fonts[0] ?? "Aptos",
-    bodyFont: brandTokens?.typography.bodyFont ?? templateProfile.fonts[1] ?? templateProfile.fonts[0] ?? "Aptos",
+    headingFont: brandTokens?.typography.headingFont ?? templateProfile.fonts[0] ?? "Arial",
+    bodyFont: brandTokens?.typography.bodyFont ?? templateProfile.fonts[1] ?? templateProfile.fonts[0] ?? "Arial",
     titleSize: brandTokens?.typography.titleSize ?? 24,
     bodySize: brandTokens?.typography.bodySize ?? 12,
     pageX: brandTokens?.spacing.pageX ?? 0.6,

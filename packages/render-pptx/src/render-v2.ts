@@ -6,6 +6,17 @@ import { resolveChartArchetype, type ChartRenderingRules } from "@basquio/scene-
 import { renderShapeChart, type ShapeChartTokens } from "./shape-charts";
 import type { BinaryArtifact } from "@basquio/types";
 
+// ─── HELPERS ────────────────────────────────────────────────────
+
+/** Discrete title size to avoid PptxGenJS fit:"shrink" distortion */
+function discreteTitleSize(text: string, baseSize: number): number {
+  const len = text.length;
+  if (len <= 60) return baseSize;
+  if (len <= 80) return baseSize - 2;
+  if (len <= 100) return baseSize - 4;
+  return baseSize - 6;
+}
+
 // ─── V2 INPUT TYPES ──────────────────────────────────────────────
 
 export type V2SlideRow = {
@@ -54,6 +65,7 @@ export type RenderV2PptxInput = {
   slides: V2SlideRow[];
   charts: V2ChartRow[];
   brandTokens?: Partial<BrandTokens>;
+  templateName?: string;
   exportMode?: ExportMode;
 };
 
@@ -138,12 +150,150 @@ const DEFAULT_TOKENS: BrandTokens = {
   chartPalette: ["2563EB", "60A5FA", "BFDBFE", "1E40AF"], // Monochromatic blue
 };
 
-function resolveTokens(partial?: Partial<BrandTokens>): BrandTokens {
-  if (!partial) return DEFAULT_TOKENS;
+// ─── "OBSIDIAN" HOUSE TEMPLATE — Dark Executive ─────────────────
+const OBSIDIAN_TOKENS: BrandTokens = {
+  palette: {
+    ink: "F8FAFC",        // Light text on dark
+    muted: "94A3B8",      // Slate 400
+    border: "334155",     // Slate 700
+    surface: "1E293B",    // Slate 800 (card bg on dark)
+    bg: "0F172A",         // Slate 900 (main bg)
+    accent: "F59E0B",     // Amber 500 (warm accent on dark)
+    accentLight: "451A03", // Amber 950 (subtle on dark)
+    positive: "22C55E",   // Green 500
+    negative: "EF4444",   // Red 500
+    coverBg: "020617",    // Slate 950
+    calloutGreen: "22C55E",
+    calloutOrange: "F59E0B",
+  },
+  typography: {
+    headingFont: "Arial",
+    bodyFont: "Arial",
+    coverTitleSize: 36,
+    titleSize: 24,
+    subtitleSize: 14,
+    bodySize: 14,
+    bulletSize: 14,
+    chartTitleSize: 12,
+    sourceSize: 8,
+    kpiValueSize: 44,
+    kpiLabelSize: 10,
+  },
+  chartPalette: ["F59E0B", "FBBF24", "FDE68A", "D97706"],
+};
+
+// ─── "BOWER" HOUSE TEMPLATE — MBB Consulting Classic ────────────
+const BOWER_TOKENS: BrandTokens = {
+  palette: {
+    ink: "1A1A2E",        // Near-black with warmth
+    muted: "6B7280",      // Gray 500
+    border: "D1D5DB",     // Gray 300
+    surface: "F9FAFB",    // Gray 50
+    bg: "FFFFFF",
+    accent: "1F2937",     // Gray 800 (McKinsey-style: authority from contrast, not color)
+    accentLight: "F3F4F6", // Gray 100
+    positive: "059669",   // Emerald 600
+    negative: "DC2626",   // Red 600
+    coverBg: "1F2937",    // Gray 800
+    calloutGreen: "059669",
+    calloutOrange: "D97706",
+  },
+  typography: {
+    headingFont: "Georgia",  // Serif heading = consulting classic (safe on all platforms)
+    bodyFont: "Arial",
+    coverTitleSize: 36,
+    titleSize: 24,
+    subtitleSize: 14,
+    bodySize: 14,
+    bulletSize: 14,
+    chartTitleSize: 12,
+    sourceSize: 8,
+    kpiValueSize: 44,
+    kpiLabelSize: 10,
+  },
+  chartPalette: ["1F2937", "6B7280", "D1D5DB", "374151"],
+};
+
+// ─── "SIGNAL" HOUSE TEMPLATE — Data-Heavy ───────────────────────
+const SIGNAL_TOKENS: BrandTokens = {
+  palette: {
+    ink: "111827",        // Gray 900
+    muted: "6B7280",      // Gray 500
+    border: "E5E7EB",     // Gray 200
+    surface: "F3F4F6",    // Gray 100
+    bg: "FFFFFF",
+    accent: "7C3AED",     // Violet 600 (distinctive for data viz)
+    accentLight: "EDE9FE", // Violet 100
+    positive: "16A34A",   // Green 600
+    negative: "DC2626",   // Red 600
+    coverBg: "111827",    // Gray 900
+    calloutGreen: "16A34A",
+    calloutOrange: "EA580C",
+  },
+  typography: {
+    headingFont: "Arial",
+    bodyFont: "Arial",
+    coverTitleSize: 36,
+    titleSize: 22,         // Slightly smaller — more room for data
+    subtitleSize: 12,
+    bodySize: 12,          // Smaller body — data-dense slides
+    bulletSize: 12,
+    chartTitleSize: 11,
+    sourceSize: 7,
+    kpiValueSize: 40,
+    kpiLabelSize: 9,
+  },
+  chartPalette: ["7C3AED", "A78BFA", "C4B5FD", "5B21B6"],
+};
+
+// ─── "VERSO" HOUSE TEMPLATE — Bold Modern / VC Pitch ────────────
+const VERSO_TOKENS: BrandTokens = {
+  palette: {
+    ink: "18181B",        // Zinc 900
+    muted: "71717A",      // Zinc 500
+    border: "E4E4E7",     // Zinc 200
+    surface: "FAFAFA",    // Zinc 50
+    bg: "FFFFFF",
+    accent: "E11D48",     // Rose 600 (bold, energetic)
+    accentLight: "FFE4E6", // Rose 100
+    positive: "16A34A",
+    negative: "DC2626",
+    coverBg: "18181B",    // Zinc 900
+    calloutGreen: "16A34A",
+    calloutOrange: "EA580C",
+  },
+  typography: {
+    headingFont: "Arial",
+    bodyFont: "Arial",
+    coverTitleSize: 40,    // Bolder, larger cover
+    titleSize: 26,         // Bolder titles
+    subtitleSize: 14,
+    bodySize: 14,
+    bulletSize: 14,
+    chartTitleSize: 12,
+    sourceSize: 8,
+    kpiValueSize: 48,      // Even bigger KPI numbers
+    kpiLabelSize: 10,
+  },
+  chartPalette: ["E11D48", "FB7185", "FECDD3", "BE123C"],
+};
+
+// ─── TEMPLATE LOOKUP MAP ────────────────────────────────────────
+const TEMPLATE_MAP: Record<string, BrandTokens> = {
+  slate: DEFAULT_TOKENS,
+  obsidian: OBSIDIAN_TOKENS,
+  bower: BOWER_TOKENS,
+  signal: SIGNAL_TOKENS,
+  verso: VERSO_TOKENS,
+};
+
+function resolveTokens(partial?: Partial<BrandTokens>, templateName?: string): BrandTokens {
+  const base = (templateName && TEMPLATE_MAP[templateName.toLowerCase()]) || DEFAULT_TOKENS;
+  if (!partial) return base;
   return {
-    palette: { ...DEFAULT_TOKENS.palette, ...(partial.palette as Partial<BrandTokens["palette"]>) },
-    typography: { ...DEFAULT_TOKENS.typography, ...(partial.typography as Partial<BrandTokens["typography"]>) },
-    chartPalette: partial.chartPalette ?? DEFAULT_TOKENS.chartPalette,
+    palette: { ...base.palette, ...(partial.palette as Partial<BrandTokens["palette"]>) },
+    typography: { ...base.typography, ...(partial.typography as Partial<BrandTokens["typography"]>) },
+    chartPalette: partial.chartPalette ?? base.chartPalette,
   };
 }
 
@@ -492,10 +642,12 @@ function renderTitle(
     w: region.w,
     h: region.h,
     fontFace: tokens.typography.headingFont,
-    fontSize: isCover ? tokens.typography.coverTitleSize : tokens.typography.titleSize,
+    fontSize: isCover
+      ? tokens.typography.coverTitleSize
+      : discreteTitleSize(processed, tokens.typography.titleSize),
     bold: true,
     color: norm(isCover ? "FFFFFF" : tokens.palette.ink),
-    fit: "shrink",
+    ...(isCover ? { fit: "shrink" as const } : {}),
     breakLine: false,
     margin: 0,
     lineSpacingMultiple: 1.1,
@@ -691,12 +843,11 @@ function renderMetrics(
       y: region.y + 0.30,
       w: cardW - 0.25,
       h: 0.50,
-      fontSize: count <= 3 ? tokens.typography.kpiValueSize : 24,
+      fontSize: count <= 3 ? tokens.typography.kpiValueSize : count <= 4 ? 32 : 24,
       fontFace: tokens.typography.headingFont,
       bold: true,
       color: norm(tokens.palette.ink),
       valign: "middle",
-      shrinkText: true,
     });
 
     // Delta: plain text, semibold, green/red
@@ -886,6 +1037,34 @@ function renderCallout(
   });
 }
 
+/**
+ * Decide whether a chart should render as native PptxGenJS or shape-built.
+ * Native = editable in PowerPoint but may break in Keynote/Google Slides.
+ * Shape-built = universal but not editable.
+ */
+function selectChartRenderStrategy(
+  chartType: string,
+  exportMode: ExportMode,
+): "native" | "shape-built" {
+  // Shape-built always for these (no good native support anywhere)
+  const alwaysShapeBuilt = new Set(["waterfall", "funnel", "marimekko", "treemap"]);
+  if (alwaysShapeBuilt.has(chartType)) return "shape-built";
+
+  // In universal mode, use shape-built for types that break in Keynote
+  if (exportMode === "universal-compatible") {
+    // Bar, line, pie are reasonably safe in Google Slides after multiLvlStrRef fix
+    // But Keynote has issues with most native chart types
+    return "shape-built";
+  }
+
+  // PowerPoint-native mode: use native for standard types
+  const nativeSafe = new Set(["bar", "grouped_bar", "stacked_bar_100", "horizontal_bar", "line", "pie", "doughnut", "scatter", "area", "stacked_bar"]);
+  if (nativeSafe.has(chartType)) return "native";
+
+  // Default to shape-built for unknown types
+  return "shape-built";
+}
+
 function renderChartElement(
   slide: PptxGenJS.Slide,
   pptx: PptxGenJS,
@@ -918,9 +1097,11 @@ function renderChartElement(
 
   const { chartData, opts, effectiveChartType } = built;
 
-  // For powerpoint-native: render chart title externally (above the chart object)
-  // For universal-compatible: shape-chart renders its own title, so skip external title
-  if (exportMode !== "universal-compatible") {
+  const strategy = selectChartRenderStrategy(effectiveChartType, exportMode);
+
+  // For native: render chart title externally (above the chart object)
+  // For shape-built: shape-chart renders its own title, so skip external title
+  if (strategy === "native") {
     slide.addText(chart.title, {
       x: region.x,
       y: region.y,
@@ -935,16 +1116,16 @@ function renderChartElement(
 
   const chartRegion = {
     x: region.x,
-    y: exportMode === "universal-compatible" ? region.y : region.y + 0.25,
+    y: strategy === "shape-built" ? region.y : region.y + 0.25,
     w: region.w,
-    h: exportMode === "universal-compatible" ? region.h : region.h - 0.3,
+    h: strategy === "shape-built" ? region.h : region.h - 0.3,
   };
 
   // Reserve space for source note if present
   const hasSource = Boolean(chart.sourceNote);
   const actualChartH = hasSource ? chartRegion.h - 0.2 : chartRegion.h;
 
-  if (exportMode === "universal-compatible") {
+  if (strategy === "shape-built") {
     // Shape-built charts for cross-app compatibility (Google Slides, Keynote)
     const shapeTokens: ShapeChartTokens = {
       accent: norm(tokens.palette.accent),
@@ -1005,7 +1186,7 @@ function renderChartElement(
       y: chartRegion.y + actualChartH + 0.02,
       w: chartRegion.w,
       h: 0.16,
-      fontSize: 7,
+      fontSize: tokens.typography.sourceSize,
       fontFace: tokens.typography.bodyFont,
       color: "9CA3AF",
     });
@@ -1098,17 +1279,53 @@ function renderContentSlide(
     }
   }
 
-  // Title always rendered
-  renderTitle(slide, s.title, regions.title, tokens, false);
+  // Title always rendered (except section-divider which handles its own)
+  if (layoutId !== "section-divider") {
+    renderTitle(slide, s.title, regions.title, tokens, false);
 
-  // Subtitle (if present and region exists)
-  if (s.subtitle && regions.subtitle) {
-    renderSubtitle(slide, s.subtitle, regions.subtitle, tokens, false);
+    // Subtitle (if present and region exists)
+    if (s.subtitle && regions.subtitle) {
+      renderSubtitle(slide, s.subtitle, regions.subtitle, tokens, false);
+    }
   }
 
   const chart = s.chartId ? chartsMap.get(s.chartId) : undefined;
 
   switch (layoutId) {
+    case "section-divider": {
+      // Dark background fill
+      slide.background = { fill: norm(tokens.palette.accent ?? "1E293B") };
+      // Title: white, centered vertically
+      slide.addText(processNewlines(s.title), {
+        x: regions.title.x,
+        y: regions.title.y,
+        w: regions.title.w,
+        h: regions.title.h,
+        fontFace: tokens.typography.headingFont,
+        fontSize: 32,
+        bold: true,
+        color: "FFFFFF",
+        valign: "middle",
+        margin: 0,
+        lineSpacingMultiple: 1.1,
+      });
+      // Subtitle: light gray below title
+      if (s.subtitle && regions.subtitle) {
+        slide.addText(processNewlines(s.subtitle), {
+          x: regions.subtitle.x,
+          y: regions.subtitle.y,
+          w: regions.subtitle.w,
+          h: regions.subtitle.h,
+          fontFace: tokens.typography.bodyFont,
+          fontSize: 16,
+          color: "94A3B8",
+          valign: "top",
+          margin: 0,
+        });
+      }
+      break;
+    }
+
     case "title-chart": {
       if (chart && regions.chart) {
         renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
@@ -1290,6 +1507,10 @@ function renderContentSlide(
           renderBody(slide, s.body, regions.chart2, tokens, notesOverflow, bodyMaxWords);
         }
       }
+      // Callout
+      if (s.callout && regions.callout) {
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+      }
       break;
     }
 
@@ -1341,7 +1562,7 @@ function renderContentSlide(
 export async function renderV2PptxArtifact(
   input: RenderV2PptxInput,
 ): Promise<BinaryArtifact> {
-  const tokens = resolveTokens(input.brandTokens);
+  const tokens = resolveTokens(input.brandTokens, input.templateName);
 
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "BASQUIO_16x9", width: SLIDE_W, height: SLIDE_H });
@@ -1423,14 +1644,17 @@ export async function renderV2PptxArtifact(
 
   const rawBuffer = (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
 
-  // Post-process ONLY for universal-compatible mode.
-  // CRITICAL: For powerpoint-native mode, skip entirely — JSZip re-compression can
-  // reorder ZIP entries and break OOXML conformance that PowerPoint enforces strictly.
-  // For universal-compatible, native charts don't exist (shape-built), but Calibri
-  // replacement in theme XML still helps cross-app font rendering.
-  const buffer = (input.exportMode ?? "powerpoint-native") === "universal-compatible"
-    ? await fixPptxChartCompatibility(rawBuffer)
-    : rawBuffer;
+  // Post-process for ALL export modes.
+  // The multiLvlStrRef→strRef fix is safe for PowerPoint (flat string refs are valid OOXML)
+  // and required for Google Slides / Keynote compatibility.
+  const postProcessed = await fixPptxChartCompatibility(rawBuffer);
+
+  // Validate OOXML structure — warn but don't block export
+  const validation = await validateOoxmlStructure(postProcessed);
+  if (!validation.valid) {
+    console.warn(`[render-v2] OOXML validation warnings: ${validation.errors.join("; ")}`);
+  }
+  const buffer = postProcessed;
 
   return {
     fileName: "basquio-deck.pptx",
@@ -1500,5 +1724,42 @@ async function fixPptxChartCompatibility(pptxBuffer: Buffer): Promise<Buffer> {
   } catch {
     // If post-processing fails, return original buffer
     return pptxBuffer;
+  }
+}
+
+// ─── OOXML STRUCTURE VALIDATION ──────────────────────────────────
+// Lightweight check that the PPTX ZIP contains required OOXML files
+// and that all referenced slides exist. Warns but never blocks export.
+
+async function validateOoxmlStructure(buffer: Buffer): Promise<{ valid: boolean; errors: string[] }> {
+  const errors: string[] = [];
+  try {
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(buffer);
+
+    // Check required files exist
+    const required = ["[Content_Types].xml", "ppt/presentation.xml"];
+    for (const path of required) {
+      if (!zip.file(path)) {
+        errors.push(`Missing required file: ${path}`);
+      }
+    }
+
+    // Check that slide files referenced in content types exist
+    const contentTypes = await zip.file("[Content_Types].xml")?.async("string");
+    if (contentTypes) {
+      const slideRefs = contentTypes.match(/PartName="\/ppt\/slides\/slide\d+\.xml"/g) ?? [];
+      for (const ref of slideRefs) {
+        const slidePath = ref.match(/PartName="\/(.+?)"/)?.[1];
+        if (slidePath && !zip.file(slidePath)) {
+          errors.push(`Referenced slide missing: ${slidePath}`);
+        }
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  } catch (e) {
+    errors.push(`ZIP parse failed: ${e instanceof Error ? e.message : String(e)}`);
+    return { valid: false, errors };
   }
 }

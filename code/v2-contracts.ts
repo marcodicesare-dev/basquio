@@ -325,6 +325,7 @@ export const critiqueReportSchema = z.object({
 export const analysisReportSchema = z.object({
   summary: z.string(),
   domain: z.string(),
+  analysisMode: z.string().describe("Inferred analysis mode: deep_analysis, board_summary, recommendation_memo, trend_report, competitive_review, or evidence_book"),
   topFindings: z.array(z.object({
     title: z.string(),
     claim: z.string(),

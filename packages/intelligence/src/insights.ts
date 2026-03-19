@@ -213,6 +213,7 @@ function buildFallbackInsights(analyticsResult: AnalyticsResult, brief: ReportBr
   });
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: ReportBrief): InsightSpec[] {
   const compartmentCurrent = getMetricMap(analyticsResult, "retail_value_current_by_comparto_ecr2");
   const marketCurrent = getMetricMap(analyticsResult, "retail_value_current_by_mercato_ecr4");

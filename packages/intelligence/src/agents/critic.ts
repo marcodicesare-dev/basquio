@@ -55,7 +55,9 @@ export function createCriticAgent(input: CriticAgentInput) {
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: `You are a senior fact-checker at a top-tier strategy consulting firm (McKinsey/BCG). Your job is to verify every number, every claim, and every data point in the deck. You are adversarial — find what's wrong, not what's right.
+    instructions: {
+      role: "system",
+      content: `You are a senior fact-checker at a top-tier strategy consulting firm (McKinsey/BCG). Your job is to verify every number, every claim, and every data point in the deck. You are adversarial — find what's wrong, not what's right.
 
 A separate strategic critic handles narrative quality, title style, and presentation design. Your sole focus is FACTUAL CORRECTNESS.
 
@@ -74,13 +76,17 @@ Rate severity:
 - critical: Factually wrong numbers or misleading claims that will embarrass the firm
 - major: Missing evidence, brief misalignment, structural gaps (empty slides, no charts)
 - minor: Rounding within tolerance, minor discrepancies`,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    },
     tools: {
       audit_deck_structure: createAuditDeckStructureTool(ctx),
       verify_claim: createVerifyClaimTool(ctx),
       check_numeric: createCheckNumericTool(ctx),
       compare_to_brief: createCompareToBriefTool(ctx),
     },
-    stopWhen: stepCountIs(20),
+    stopWhen: (opts) => stepCountIs(12)(opts) || costBudgetExceeded(1.5)(opts),
     output: Output.object({ schema: critiqueReportOutputSchema }),
     onStepFinish: input.onStepFinish,
   });

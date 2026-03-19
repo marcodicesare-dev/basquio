@@ -262,7 +262,13 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: fullInstructions,
+    instructions: {
+      role: "system",
+      content: fullInstructions,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    },
     tools: {
       inspect_template: createInspectTemplateTool(authoringCtx),
       inspect_brand_tokens: createInspectBrandTokensTool(authoringCtx),
@@ -273,8 +279,8 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
       list_evidence: createListEvidenceTool(authoringCtx),
       render_contact_sheet: createRenderContactSheetTool(authoringCtx),
     },
-    stopWhen: stepCountIs(input.maxSteps ?? 50),
-    prepareStep: async ({ stepNumber, steps }) => {
+    stopWhen: (opts) => stepCountIs(input.maxSteps ?? 50)(opts) || costBudgetExceeded(3.0)(opts),
+    prepareStep: async ({ stepNumber, steps, messages }) => {
       const result: Record<string, unknown> = {};
 
       // Tool phasing: force data exploration first, finishing last
@@ -287,10 +293,21 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
         result.activeTools = ["write_slide", "render_deck_preview"];
       }
 
-      // Context trimming: after step 15, inject a compressed progress summary
-      // into the system message so the model doesn't lose track of what it built
-      const trimCutoff = Math.max(8, Math.round(maxS * 0.3));
-      if (stepNumber > trimCutoff && steps.length > Math.round(trimCutoff * 0.7)) {
+      // ── Context trimming ─────────────────────────────────────────
+      // After step 8 the conversation history balloons (100K+ tokens).
+      // We trim old tool call/result message pairs, keeping:
+      //   1. All system messages (instructions)
+      //   2. The first user message (brief + analysis)
+      //   3. A synthetic user message summarizing trimmed work
+      //   4. The last 4 assistant+tool exchange pairs
+      //
+      // This cuts input tokens by ~60-70% on long runs while preserving
+      // everything the model needs to finish the deck.
+      const TRIM_AFTER_STEP = 8;
+      const KEEP_TAIL_PAIRS = 4; // keep last N assistant+tool exchanges
+
+      if (stepNumber >= TRIM_AFTER_STEP && messages.length > 12) {
+        // Collect progress stats from steps for the summary
         const chartsBuilt = steps
           .flatMap((s) => s.toolCalls ?? [])
           .filter((tc) => tc.toolName === "build_chart")
@@ -304,21 +321,79 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
           .filter((tc) => tc.toolName === "render_deck_preview")
           .length;
 
-        // Estimate tokens used
-        const totalTokens = steps.reduce(
-          (acc, s) => acc + (s.usage?.inputTokens ?? 0) + (s.usage?.outputTokens ?? 0), 0,
-        );
+        // Build per-step summary from steps metadata
+        const stepSummaryLines = steps.map((s, i) => {
+          const toolNames = (s.toolCalls ?? []).map((tc) => tc.toolName).join(", ") || "thinking";
+          return `  Step ${i + 1}: ${toolNames}`;
+        }).join("\n");
 
-        result.system = `${fullInstructions}
+        // Partition messages: system, first user, middle exchanges, tail exchanges
+        const systemMsgs = messages.filter((m) => m.role === "system");
+        const firstUserIdx = messages.findIndex((m) => m.role === "user");
+        const firstUserMsg = firstUserIdx >= 0 ? messages[firstUserIdx] : null;
 
-PROGRESS UPDATE (step ${stepNumber}/${input.maxSteps ?? 50}):
+        // Find the exchange messages (everything after system + first user)
+        const exchangeStartIdx = firstUserIdx >= 0 ? firstUserIdx + 1 : systemMsgs.length;
+        const exchangeMsgs = messages.slice(exchangeStartIdx);
+
+        // Count assistant messages in exchanges to determine tail cut point
+        let assistantCount = 0;
+        for (const m of exchangeMsgs) {
+          if (m.role === "assistant") assistantCount++;
+        }
+
+        // Walk backwards to find where the last KEEP_TAIL_PAIRS assistant msgs start
+        const keepFromAssistant = Math.max(0, assistantCount - KEEP_TAIL_PAIRS);
+        let tailStartIdx = 0;
+        let seenAssistants = 0;
+        for (let i = 0; i < exchangeMsgs.length; i++) {
+          if (exchangeMsgs[i].role === "assistant") {
+            seenAssistants++;
+            if (seenAssistants > keepFromAssistant) {
+              tailStartIdx = i;
+              break;
+            }
+          }
+        }
+
+        const tailMsgs = exchangeMsgs.slice(tailStartIdx);
+
+        // Only trim if we'd actually remove something meaningful
+        const trimmedCount = exchangeMsgs.length - tailMsgs.length;
+        if (trimmedCount > 4) {
+          // Build the trimmed conversation
+          const progressSummary: (typeof messages)[number] = {
+            role: "user" as const,
+            content: `[CONTEXT TRIMMED — steps 1-${steps.length - KEEP_TAIL_PAIRS} compressed]
+
+PROGRESS SO FAR:
 - Charts built: ${chartsBuilt}
 - Slides written: ${slidesWritten}
-- Previews checked: ${previewsDone}
-- Tokens used: ~${Math.round(totalTokens / 1000)}K
-- Budget remaining: ~${Math.max(0, 100 - Math.round(totalTokens / 10000))}%
-${stepNumber > finishingCutoff ? "\nYou are in the FINISHING phase. Only write_slide and render_deck_preview are available. Complete any remaining slides and call render_deck_preview to verify quality." : ""}
-${slidesWritten === 0 && stepNumber > trimCutoff ? "\nWARNING: You haven't written any slides yet. Start writing slides now using write_slide." : ""}`;
+- Previews done: ${previewsDone}
+
+STEP HISTORY:
+${stepSummaryLines}
+
+Continue from where you left off. Do not repeat tool calls from earlier steps. All charts and slides from previous steps are already persisted.${
+  stepNumber > finishingCutoff
+    ? "\n\nYou are in the FINISHING phase. Only write_slide and render_deck_preview are available."
+    : ""
+}${
+  slidesWritten === 0 && stepNumber > TRIM_AFTER_STEP
+    ? "\n\nWARNING: You haven't written any slides yet. Start writing slides now."
+    : ""
+}`,
+          };
+
+          const trimmedMessages: typeof messages = [
+            ...systemMsgs,
+            ...(firstUserMsg ? [firstUserMsg] : []),
+            progressSummary,
+            ...tailMsgs,
+          ];
+
+          result.messages = trimmedMessages;
+        }
       }
 
       return result;

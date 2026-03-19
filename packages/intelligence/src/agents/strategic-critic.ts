@@ -141,17 +141,25 @@ Set iteration to 1, and score coverage/accuracy/narrative from 0-1.`;
 
   const result = await generateText({
     model,
-    system: STRATEGIC_CRITIC_SYSTEM,
-    prompt,
-    experimental_output: Output.object({ schema: critiqueReportOutputSchema }),
+    messages: [
+      {
+        role: "system",
+        content: STRATEGIC_CRITIC_SYSTEM,
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral" } },
+        },
+      },
+      { role: "user", content: prompt },
+    ],
+    output: Output.object({ schema: critiqueReportOutputSchema }),
   });
 
-  if (!result.experimental_output) {
+  if (!result.output) {
     throw new Error(
       `Strategic critic agent did not produce structured output for run ${input.runId}. ` +
       `Text output: ${result.text?.slice(0, 500) ?? "(none)"}`,
     );
   }
 
-  return result.experimental_output;
+  return result.output;
 }

@@ -174,6 +174,7 @@ function buildFallbackStory(input: PlanStoryInput) {
   });
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailSections(
   insights: InsightSpec[],
   brief: ReportBrief,

@@ -982,6 +982,7 @@ function isRetailSlideContext(
   return false;
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailExecutiveSummaryBlocks(
   input: {
     section?: ReportOutline["sections"][number];
@@ -1027,6 +1028,7 @@ function buildRetailExecutiveSummaryBlocks(
   ]);
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailSynthesisBlocks(
   input: {
     section?: ReportOutline["sections"][number];
@@ -1055,6 +1057,7 @@ function buildRetailSynthesisBlocks(
   ]);
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailRecommendationBlocks(
   input: {
     section?: ReportOutline["sections"][number];
@@ -1083,6 +1086,7 @@ function buildRetailRecommendationBlocks(
   ]);
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailHeadlineMetric(insight: InsightSpec) {
   const value =
     insight.claim.match(/\b\d+(?:[.,]\d+)?\s*mld\b/i)?.[0] ||
@@ -1100,6 +1104,7 @@ function buildRetailHeadlineMetric(insight: InsightSpec) {
   };
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailActionItems(insights: InsightSpec[], story: StorySpec, shortMode: boolean) {
   const insightIds = new Set(insights.map((insight) => insight.id));
   const deterministicActions = compactUnique([

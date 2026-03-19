@@ -24,6 +24,7 @@ import {
   createComputeStatisticalTool,
   createJoinQueryTool,
   createReadSupportDocTool,
+  createCrossReferenceTool,
   type ToolContext,
 } from "../tools";
 
@@ -62,7 +63,9 @@ export function createAnalystAgent(input: AnalystAgentInput) {
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: `You are a senior data analyst at a top-tier strategy consulting firm. You explore evidence workspaces — collections of uploaded files (spreadsheets, documents, PDFs) — and produce deep analytical reports that drive executive decisions.
+    instructions: {
+      role: "system",
+      content: `You are a senior data analyst at a top-tier strategy consulting firm. You explore evidence workspaces — collections of uploaded files (spreadsheets, documents, PDFs) — and produce deep analytical reports that drive executive decisions.
 
 ## YOUR APPROACH
 
@@ -179,6 +182,10 @@ Register EVERY important finding as a named evidence ref via compute_metric. Eac
 - If a query fails, try a different approach. Data may have unexpected formats.
 - Always compute RELATIVE metrics (share %, index, vs-market), not just absolute values.
 - Identify the focal entity from the brief and analyze everything through their lens.`,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    },
     tools: {
       list_files: createListFilesTool(ctx),
       describe_table: createDescribeTableTool(ctx),
@@ -189,8 +196,9 @@ Register EVERY important finding as a named evidence ref via compute_metric. Eac
       compute_statistical: createComputeStatisticalTool(ctx),
       join_query: createJoinQueryTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
+      cross_reference: createCrossReferenceTool(ctx),
     },
-    stopWhen: stepCountIs(20), // 20 steps is sufficient for Phase 1-3; saves 2-4 min + $0.15-0.30
+    stopWhen: (opts) => stepCountIs(20)(opts) || costBudgetExceeded(2.0)(opts),
     output: Output.object({ schema: analysisReportSchema }),
     onStepFinish: input.onStepFinish,
   });
@@ -309,6 +317,7 @@ Encode this thinking into your topFindings — each finding should address one b
     analysis = {
       summary: textSummary.slice(0, 2000),
       domain: "Market Analysis",
+      analysisMode: "deep_analysis",
       topFindings: [{
         title: "Analysis Summary",
         claim: textSummary.slice(0, 200),

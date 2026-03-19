@@ -382,6 +382,7 @@ function buildFallbackMetricPlan(
   return metrics.map((metric) => executableMetricSpecSchema.parse(metric));
 }
 
+/** @deprecated Legacy v1 retail/FMCG logic. Not used by v2 pipeline. */
 function buildRetailMetricPlan(datasetProfile: DatasetProfile) {
   const metrics: ExecutableMetricSpec[] = [];
   const seen = new Set<string>();

@@ -738,3 +738,137 @@ function toPdfFrame(frame: Frame, templateProfile: TemplateProfile): Frame {
     h: inchesToPoints(frame.h),
   };
 }
+
+// ─── V2 PDF RENDERER ──────────────────────────────────────────────
+
+export type V2PdfSlide = {
+  position: number;
+  layoutId: string;
+  title: string;
+  subtitle?: string;
+  body?: string;
+  bullets?: string[];
+  metrics?: Array<{ label: string; value: string; delta?: string }>;
+  callout?: { text: string; tone?: string };
+  kicker?: string;
+};
+
+export type V2PdfInput = {
+  slides: V2PdfSlide[];
+  deckTitle: string;
+  accentColor?: string;
+  coverBgColor?: string;
+  headingFont?: string;
+  bodyFont?: string;
+};
+
+export async function renderV2PdfArtifact(input: V2PdfInput): Promise<BinaryArtifact | null> {
+  const browserlessToken = process.env.BROWSERLESS_TOKEN;
+  if (!browserlessToken) {
+    console.warn("[render-pdf] BROWSERLESS_TOKEN not set — skipping PDF generation");
+    return null;
+  }
+
+  const html = buildV2DeckHtml(input);
+  try {
+    const buffer = await renderViaBrowserless(html, input.deckTitle);
+    return {
+      fileName: "basquio-deck.pdf",
+      mimeType: "application/pdf",
+      buffer,
+    };
+  } catch (error) {
+    console.error("[render-pdf] Browserless PDF rendering failed:", error);
+    return null;
+  }
+}
+
+function buildV2DeckHtml(input: V2PdfInput): string {
+  const accent = input.accentColor ?? "2563EB";
+  const coverBg = input.coverBgColor ?? "0F172A";
+  const safeFont = (f: string) => f.replace(/[^a-zA-Z0-9 ,\-]/g, "");
+  const headingFont = safeFont(input.headingFont ?? "Arial");
+  const bodyFont = safeFont(input.bodyFont ?? "Arial");
+
+  const slideHtml = input.slides.map((s) => {
+    const isCover = s.layoutId === "cover";
+    const isDivider = s.layoutId === "section-divider";
+
+    if (isCover) {
+      return `<div class="slide cover" style="background:#${coverBg}">
+        <div class="cover-content">
+          ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(s.kicker)}</div>` : ""}
+          <h1 style="color:#FFFFFF">${escHtml(s.title)}</h1>
+          ${s.subtitle ? `<p class="subtitle" style="color:#94A3B8">${escHtml(s.subtitle)}</p>` : ""}
+        </div>
+      </div>`;
+    }
+
+    if (isDivider) {
+      return `<div class="slide divider" style="background:#${accent}">
+        <h1 style="color:#FFFFFF;text-align:center;margin-top:2.5in">${escHtml(s.title)}</h1>
+        ${s.subtitle ? `<p style="color:#E2E8F0;text-align:center">${escHtml(s.subtitle)}</p>` : ""}
+      </div>`;
+    }
+
+    // Content slide
+    const metricsHtml = s.metrics?.length
+      ? `<div class="metrics">${s.metrics.map((m) =>
+          `<div class="metric-card">
+            <div class="metric-label">${escHtml(m.label)}</div>
+            <div class="metric-value" style="color:#${accent}">${escHtml(m.value)}</div>
+            ${m.delta ? `<div class="metric-delta">${escHtml(m.delta)}</div>` : ""}
+          </div>`
+        ).join("")}</div>`
+      : "";
+
+    const bulletsHtml = s.bullets?.length
+      ? `<ul>${s.bullets.map((b) => `<li>${escHtml(b)}</li>`).join("")}</ul>`
+      : "";
+
+    const calloutHtml = s.callout
+      ? `<div class="callout" style="border-left:3px solid #${accent};background:#${accent}11;padding:8px 12px">
+          <strong>${escHtml(s.callout.text)}</strong>
+        </div>`
+      : "";
+
+    return `<div class="slide">
+      ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(s.kicker)}</div>` : ""}
+      <h2>${escHtml(s.title)}</h2>
+      ${metricsHtml}
+      ${s.body ? `<p class="body">${escHtml(s.body)}</p>` : ""}
+      ${bulletsHtml}
+      ${calloutHtml}
+    </div>`;
+  }).join("\n");
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+@page { size: 13.333in 7.5in; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: ${bodyFont}, Arial, sans-serif; }
+.slide { width: 13.333in; height: 7.5in; padding: 0.5in 0.6in 0.4in; page-break-after: always; position: relative; overflow: hidden; }
+.slide:last-child { page-break-after: auto; }
+.cover { display: flex; align-items: center; justify-content: center; }
+.cover-content { text-align: center; max-width: 10in; }
+.cover h1 { font-family: ${headingFont}, Arial, sans-serif; font-size: 36pt; font-weight: 700; margin-bottom: 0.3in; }
+.cover .subtitle { font-size: 16pt; }
+.divider { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.divider h1 { font-family: ${headingFont}, Arial, sans-serif; font-size: 32pt; font-weight: 700; }
+.kicker { font-size: 10pt; text-transform: uppercase; letter-spacing: 1.5pt; font-weight: 600; margin-bottom: 0.1in; }
+h2 { font-family: ${headingFont}, Arial, sans-serif; font-size: 24pt; font-weight: 700; color: #0F172A; margin-bottom: 0.25in; }
+.body { font-size: 14pt; line-height: 1.5; color: #334155; max-width: 10in; }
+ul { padding-left: 0.3in; margin-top: 0.15in; }
+li { font-size: 14pt; line-height: 1.6; color: #334155; margin-bottom: 0.08in; }
+.metrics { display: flex; gap: 0.25in; margin-bottom: 0.25in; flex-wrap: wrap; }
+.metric-card { border: 1px solid #E2E8F0; border-left: 3px solid currentColor; padding: 0.15in 0.2in; min-width: 2in; }
+.metric-label { font-size: 10pt; text-transform: uppercase; font-weight: 600; color: #64748B; letter-spacing: 1pt; }
+.metric-value { font-size: 32pt; font-weight: 700; }
+.metric-delta { font-size: 12pt; font-weight: 600; }
+.callout { margin-top: 0.2in; font-size: 12pt; border-radius: 4px; }
+</style></head><body>${slideHtml}</body></html>`;
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
