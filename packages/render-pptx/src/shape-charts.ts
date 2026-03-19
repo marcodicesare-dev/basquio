@@ -223,8 +223,8 @@ export function renderShapeChart(
   } else if (normalized.includes("scatter") || normalized.includes("bubble") || normalized.includes("quadrant")) {
     renderScatterChart(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("area")) {
-    // Area charts: render as stacked bar (closest shape-built equivalent)
-    renderStackedBar(slide, data, chartFrame, tokens, options);
+    // Area charts: render as line chart with filled columns below each point
+    renderAreaChart(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("funnel")) {
     renderFunnel(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("table") || normalized.includes("matrix")) {
@@ -822,6 +822,119 @@ function renderLineChart(
 }
 
 // ─── SCATTER CHART ───────────────────────────────────────────────
+
+// ─── AREA CHART ─────────────────────────────────────────────────
+
+function renderAreaChart(
+  slide: PptxGenJS.Slide,
+  data: ShapeChartData,
+  frame: ShapeChartFrame,
+  tokens: ShapeChartTokens,
+  options: ShapeChartOptions,
+): void {
+  const labels = data.labels.slice(0, MAX_CATEGORIES);
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, MUTED_BAR];
+  const axisH = 0.30;
+  const chartH = frame.h - axisH - 0.20;
+  const chartY = frame.y + 0.20;
+
+  const allVals = data.datasets.flatMap((ds) => ds.data.slice(0, labels.length));
+  const minVal = Math.min(...allVals, 0);
+  const maxVal = Math.max(...allVals, 1);
+  const range = maxVal - minVal || 1;
+
+  // Grid lines
+  for (let g = 1; g <= 3; g++) {
+    const gridY = chartY + chartH - (chartH * g) / 4;
+    slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+      x: frame.x, y: gridY, w: frame.w, h: 0.005,
+      fill: { color: GRID_GRAY },
+    });
+  }
+
+  // Baseline
+  const baselineY = chartY + chartH;
+  slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+    x: frame.x, y: baselineY, w: frame.w, h: V.axisLinePt,
+    fill: { color: AXIS_GRAY },
+  });
+
+  // For each dataset: draw filled columns from baseline to data point, then lines on top
+  data.datasets.forEach((ds, di) => {
+    const color = palette[di % palette.length];
+    const vals = ds.data.slice(0, labels.length);
+
+    // Filled area approximation: thin vertical bars from baseline to each point
+    vals.forEach((val, i) => {
+      const x = frame.x + (i / Math.max(labels.length - 1, 1)) * frame.w;
+      const y = chartY + chartH - ((val - minVal) / range) * chartH;
+      const fillH = baselineY - y;
+      const barW = frame.w / labels.length * 0.9;
+
+      if (fillH > 0.01) {
+        slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+          x: x - barW / 2, y, w: barW, h: fillH,
+          fill: { color, transparency: 70 }, // 70% transparent for area effect
+        });
+      }
+    });
+
+    // Line connecting points on top
+    vals.forEach((val, i) => {
+      if (i >= vals.length - 1) return;
+      const x = frame.x + (i / Math.max(labels.length - 1, 1)) * frame.w;
+      const y = chartY + chartH - ((val - minVal) / range) * chartH;
+      const nextX = frame.x + ((i + 1) / Math.max(labels.length - 1, 1)) * frame.w;
+      const nextY = chartY + chartH - ((vals[i + 1] - minVal) / range) * chartH;
+
+      slide.addShape("line" as unknown as PptxGenJS.ShapeType, {
+        x, y, w: nextX - x, h: nextY - y,
+        line: { color, width: 2.5 },
+      });
+    });
+
+    // Data points
+    vals.forEach((val, i) => {
+      const x = frame.x + (i / Math.max(labels.length - 1, 1)) * frame.w;
+      const y = chartY + chartH - ((val - minVal) / range) * chartH;
+
+      slide.addShape("rect" as unknown as PptxGenJS.ShapeType, {
+        x: x - 0.04, y: y - 0.04, w: 0.08, h: 0.08,
+        fill: { color },
+        rectRadius: 0.04,
+      });
+
+      // Labels on first and last
+      if (i === 0 || i === vals.length - 1) {
+        slide.addText(formatValue(val, options.unit), {
+          x: x - 0.3, y: y - 0.25, w: 0.6, h: 0.20,
+          fontSize: DATA_LABEL_SIZE - 1, fontFace: tokens.bodyFont,
+          color: tokens.ink, bold: true, align: "center",
+        });
+      }
+    });
+  });
+
+  // Category labels
+  labels.forEach((label, i) => {
+    const x = frame.x + (i / Math.max(labels.length - 1, 1)) * frame.w;
+    slide.addText(truncLabel(label), {
+      x: x - 0.4, y: chartY + chartH + 0.02, w: 0.8, h: axisH - 0.04,
+      fontSize: CAT_LABEL_SIZE - 1, fontFace: tokens.bodyFont,
+      color: LABEL_GRAY, align: "center", valign: "top",
+    });
+  });
+
+  // Legend for multi-series
+  if (data.datasets.length > 1) {
+    renderLegend(slide, data.datasets.map((ds, i) => ({
+      label: ds.label,
+      color: palette[i % palette.length],
+    })), { x: frame.x, y: frame.y + frame.h - V.legendH, w: frame.w }, tokens);
+  }
+}
+
+// ─── SCATTER / QUADRANT CHART ───────────────────────────────────
 
 function renderScatterChart(
   slide: PptxGenJS.Slide,

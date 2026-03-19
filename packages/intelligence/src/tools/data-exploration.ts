@@ -911,6 +911,11 @@ function applyFilter(rows: Record<string, unknown>[], filterExpr: string): Recor
           return Number(rowVal) <= Number(val);
         case "LIKE":
           return String(rowVal).includes(val.replace(/%/g, ""));
+        case "IN": {
+          // Parse "IN (val1, val2, val3)" or "IN val1, val2"
+          const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, ""));
+          return inVals.some((iv) => String(rowVal) === iv);
+        }
         default:
           return true;
       }
