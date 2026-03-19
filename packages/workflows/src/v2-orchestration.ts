@@ -2858,8 +2858,8 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       timeout: "15m",
     });
 
-    // Old export step.run() removed — replaced by step.invoke(basquioExport) above.
-    // The child function handles: source coverage, PPTX render, QA, manifest, status update.
+    // Export child function handles: source coverage, PPTX render, QA, manifest, status update.
+
     // ─── COST SUMMARY ──────────────────────────────────────────
     const costSummary = tracker.getSummary(runId);
     const budgetCheck = checkCostBudget(costSummary);
