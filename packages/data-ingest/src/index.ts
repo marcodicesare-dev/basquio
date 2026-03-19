@@ -718,6 +718,77 @@ function canDecodeAsText(fileName: string, kind: ReturnType<typeof inferSourceFi
   );
 }
 
+/**
+ * Resolve ExcelJS rich cell values to primitives.
+ * ExcelJS returns: string, number, Date, boolean, { richText: [...] },
+ * { formula: string, result: unknown }, { text: string, hyperlink: string }, or null.
+ */
+function resolveCellValue(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (value instanceof Date) return value;
+
+  // Rich text: { richText: [{ text: '...' }, ...] }
+  if (typeof value === "object" && "richText" in value && Array.isArray((value as { richText: unknown[] }).richText)) {
+    return (value as { richText: Array<{ text?: string }> }).richText.map((r) => r.text ?? "").join("");
+  }
+
+  // Formula: { formula: '...', result: ... }
+  if (typeof value === "object" && "result" in value) {
+    const result = (value as { result: unknown }).result;
+    return resolveCellValue(result); // Recurse in case result is also complex
+  }
+
+  // Hyperlink: { text: '...', hyperlink: '...' }
+  if (typeof value === "object" && "text" in value) {
+    return (value as { text: string }).text;
+  }
+
+  // Fallback: stringify
+  return String(value);
+}
+
+/**
+ * Pick the best header row from buffered rows.
+ * Scores each row based on:
+ * 1. Number of non-empty cells (more = better header candidate)
+ * 2. Proportion of string values (headers are typically strings, not numbers)
+ * 3. Penalty for being the very first row (often a title)
+ * Returns the index of the best header row, or -1 if none qualifies.
+ */
+function pickBestHeaderRow(rows: unknown[][]): number {
+  let bestIndex = -1;
+  let bestScore = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const nonEmpty = row.filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
+    if (nonEmpty.length < 2) continue; // Need at least 2 columns to be a header
+
+    const stringCount = nonEmpty.filter((v) => typeof v === "string").length;
+    const stringRatio = stringCount / nonEmpty.length;
+
+    // Score: favor rows with many columns and mostly-string values
+    let score = nonEmpty.length * (0.5 + stringRatio * 0.5);
+
+    // Slight penalty for row 0 (often a title, not a header)
+    if (i === 0) score *= 0.7;
+
+    // Bonus for being preceded by a blank or single-value row (section break)
+    if (i > 0) {
+      const prevNonEmpty = rows[i - 1].filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
+      if (prevNonEmpty.length <= 1) score *= 1.2; // Blank/title row before = likely header
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+
+  return bestIndex;
+}
+
 function normalizeHeader(value: unknown, index: number) {
   const raw = typeof value === "string" ? value.trim() : String(value ?? "").trim();
   return raw.length > 0 ? raw : `column_${index + 1}`;
@@ -1144,32 +1215,84 @@ async function streamParseXlsx(
       gzip.on("error", reject);
     });
 
+    // Buffer first N rows for smart header detection instead of locking on row 1.
+    // Financial models have title rows, instruction rows, blanks before headers.
+    const MAX_HEADER_SCAN = 25;
+    const bufferedRows: unknown[][] = [];
+    let headerRowIndex = -1;
+
     for await (const row of worksheetReader) {
-      // ExcelJS row.values can be a sparse array (index 0 is always empty) or
-      // an object with numeric keys. Handle both to avoid column_count=1 bug.
+      // ExcelJS row.values: sparse array (index 0 empty) or object with numeric keys.
+      // Cell values may be: string, number, Date, boolean, { richText: [...] },
+      // { formula: string, result: unknown }, { text: string, hyperlink: string }, or null.
       const rawValues = row.values;
       const values = Array.isArray(rawValues)
-        ? rawValues.slice(1) // Standard: drop empty index 0
+        ? rawValues.slice(1)
         : rawValues && typeof rawValues === "object"
           ? Object.values(rawValues as Record<number, unknown>)
           : [];
 
+      // Resolve rich text / formula objects to primitives
+      const resolved = values.map(resolveCellValue);
+
       if (!headerDetected) {
-        // Detect real header row: must have ≥2 non-empty string-like values.
-        // Financial models often have title/instruction rows before headers
-        // (e.g., "Assumptions" on row 1, blank on row 2-4, real headers on row 5).
-        const nonEmpty = values.filter((v) => v !== null && v !== undefined && String(v).trim() !== "");
-        if (nonEmpty.length < 2) continue; // Skip title/blank rows
-        headers = values.map((v, i) => normalizeHeader(v, i));
+        bufferedRows.push(resolved);
+
+        // Score this row as a header candidate
+        if (bufferedRows.length <= MAX_HEADER_SCAN) {
+          const bestRow = pickBestHeaderRow(bufferedRows);
+          if (bestRow >= 0 && bufferedRows.length >= bestRow + 2) {
+            // We have the header + at least 1 data row to confirm
+            headerRowIndex = bestRow;
+            headers = bufferedRows[bestRow].map((v, i) => normalizeHeader(v, i));
+            headerDetected = true;
+
+            // Process buffered rows after the header
+            for (let r = bestRow + 1; r < bufferedRows.length; r++) {
+              const rowValues = bufferedRows[r];
+              if (rowValues.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
+              const obj: Record<string, unknown> = {};
+              for (let i = 0; i < headers.length; i++) {
+                obj[headers[i]] = normalizeCell(rowValues[i]);
+              }
+              gzip.write(JSON.stringify(obj) + "\n");
+              if (headSample.length < 40) headSample.push(obj);
+              tailBuffer[rowCount % 20] = obj;
+              updateColumnStats(colStats, obj);
+              rowCount++;
+            }
+          }
+          continue;
+        }
+
+        // Fallback: after MAX_HEADER_SCAN rows, pick best or use row 0
+        headerRowIndex = pickBestHeaderRow(bufferedRows);
+        if (headerRowIndex < 0) headerRowIndex = 0;
+        headers = bufferedRows[headerRowIndex].map((v, i) => normalizeHeader(v, i));
         headerDetected = true;
+
+        // Process all buffered rows after header
+        for (let r = headerRowIndex + 1; r < bufferedRows.length; r++) {
+          const rowValues = bufferedRows[r];
+          if (rowValues.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
+          const obj: Record<string, unknown> = {};
+          for (let i = 0; i < headers.length; i++) {
+            obj[headers[i]] = normalizeCell(rowValues[i]);
+          }
+          gzip.write(JSON.stringify(obj) + "\n");
+          if (headSample.length < 40) headSample.push(obj);
+          tailBuffer[rowCount % 20] = obj;
+          updateColumnStats(colStats, obj);
+          rowCount++;
+        }
         continue;
       }
 
-      if (values.every((v) => v === null || v === undefined || v === "")) continue;
+      if (resolved.every((v) => v === null || v === undefined || String(v).trim() === "")) continue;
 
       const obj: Record<string, unknown> = {};
       for (let i = 0; i < headers.length; i++) {
-        obj[headers[i]] = normalizeCell(values[i]);
+        obj[headers[i]] = normalizeCell(resolved[i]);
       }
 
       gzip.write(JSON.stringify(obj) + "\n");
