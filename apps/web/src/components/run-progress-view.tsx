@@ -4,31 +4,13 @@ import Link from "next/link";
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 
-
-type ArtifactRecord = {
-  kind: "pptx" | "pdf";
-  fileName: string;
-};
-
-type ValidationIssue = {
-  message: string;
-  severity: "error" | "warning";
-};
-
 type Summary = {
-  // Legacy format
   jobId?: string;
-  story?: {
-    title: string;
-    keyMessages: string[];
-  };
+  story?: { title: string; keyMessages: string[] };
   objective?: string;
   insights?: Array<{ id: string; title: string }>;
   slidePlan?: { slides: Array<{ id: string }> };
-  validationReport?: { issues: ValidationIssue[]; targetStage?: string };
-  revisionHistory?: Array<{ attempt: number; targetStage: string }>;
-  artifacts?: ArtifactRecord[];
-  // V2 format
+  artifacts?: Array<{ kind: string; fileName: string }>;
   slideCount?: number;
   pageCount?: number;
   qaPassed?: boolean;
@@ -40,7 +22,6 @@ type Step = {
   attempt: number;
   status: "queued" | "running" | "completed" | "failed" | "needs_input";
   detail: string;
-  completedAt?: string;
 };
 
 export type RunProgressSnapshot = {
@@ -61,7 +42,25 @@ export type RunProgressSnapshot = {
   toolCallCount?: number;
 };
 
-const V2_PHASES = ["normalize", "understand", "author", "critique", "revise", "export"] as const;
+// ─── USER-FACING PHASE MAP ─────────────────────────────────────
+// Internal pipeline has 6 phases. User sees 4 simple steps.
+// No jargon. No "normalize". No "critique". No "revise".
+const USER_STEPS = [
+  { id: "read", label: "Reading your files", phases: ["normalize"] },
+  { id: "analyze", label: "Finding the story", phases: ["understand"] },
+  { id: "design", label: "Designing the deck", phases: ["author", "critique", "revise"] },
+  { id: "export", label: "Preparing downloads", phases: ["export"] },
+] as const;
+
+function getUserStep(internalPhase: string): typeof USER_STEPS[number] {
+  return USER_STEPS.find((s) => (s.phases as readonly string[]).includes(internalPhase)) ?? USER_STEPS[0];
+}
+
+function getUserStepIndex(internalPhase: string): number {
+  return USER_STEPS.findIndex((s) => (s.phases as readonly string[]).includes(internalPhase));
+}
+
+// ─── COMPONENT ─────────────────────────────────────────────────
 
 export function RunProgressView(input: {
   jobId: string;
@@ -72,357 +71,237 @@ export function RunProgressView(input: {
   const [missingPollCount, setMissingPollCount] = useState(0);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
+  // Polling
   useEffect(() => {
-    if (isTerminal) {
-      return;
-    }
-
+    if (isTerminal) return;
     let active = true;
     const poll = async () => {
       try {
-        const response = await fetch(`/api/jobs/${input.jobId}`, {
-          cache: "no-store",
-        });
+        const response = await fetch(`/api/jobs/${input.jobId}`, { cache: "no-store" });
         const payload = (await response.json()) as RunProgressSnapshot & { error?: string };
-
-        if (!active) {
-          return;
-        }
-
+        if (!active) return;
         if (!response.ok) {
           if (response.status === 404 && !snapshot) {
-            setMissingPollCount((current) => current + 1);
+            setMissingPollCount((c) => c + 1);
             setError(null);
             return;
           }
-          throw new Error(payload.error ?? "Unable to load run progress.");
+          throw new Error(payload.error ?? "Something went wrong.");
         }
-
         setSnapshot(payload);
         setMissingPollCount(0);
         setError(null);
-      } catch (pollError) {
-        if (!active) {
-          return;
-        }
-        setError(pollError instanceof Error ? pollError.message : "Unable to load run progress.");
+      } catch (e) {
+        if (!active) return;
+        setError(e instanceof Error ? e.message : "Something went wrong.");
       }
     };
-
     void poll();
     const interval = window.setInterval(poll, 2500);
-
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
+    return () => { active = false; window.clearInterval(interval); };
   }, [input.jobId, isTerminal, snapshot]);
 
-  const stageList = V2_PHASES;
-  const stageSet = useMemo(() => new Map(snapshot?.steps.map((step) => [step.baseStage, step]) ?? []), [snapshot?.steps]);
-
+  // ─── WAITING STATE ───────────────────────────────────────────
   if (!snapshot) {
     return (
       <section className="page-shell">
-        <article className="panel empty-state">
-          <p>
+        <article className="panel empty-state" style={{ textAlign: "center", padding: "3rem" }}>
+          <p style={{ fontSize: "1.1rem" }}>
             {missingPollCount > 6
-              ? "Basquio is still waiting for this run to register. If this takes much longer, the run key may be invalid or the hosted state may still be recovering."
-              : "Basquio is waiting for this run to register. Refresh in a moment."}
+              ? "This is taking longer than expected. Try refreshing the page."
+              : "Starting up..."}
           </p>
         </article>
       </section>
     );
   }
 
-  const title = snapshot.summary?.story?.title || snapshot.summary?.story?.keyMessages?.[0] || "Your report is ready";
+  const slideCount = snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0;
+  const currentUserStep = getUserStep(snapshot.currentStage);
+  const currentUserStepIdx = getUserStepIndex(snapshot.currentStage);
 
-  return (
-    <div className="page-shell">
-      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
-      <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
-
-      <section className="page-hero loading-hero">
-        <div className="page-header-grid">
-          <div className="stack-lg">
-            <div className="stack">
-              <p className="section-label light">Generation run</p>
-              <h1>{isTerminal ? title : "Basquio is thinking through the deck."}</h1>
-              <p className="page-copy loading-copy">
-                {humanizeDetail(snapshot.currentDetail, snapshot.currentStage) ||
-                  "The agents are analyzing your data, building the narrative, and preparing the final deliverables."}
+  // ─── COMPLETED STATE ─────────────────────────────────────────
+  if (snapshot.status === "completed" && snapshot.artifactsReady) {
+    return (
+      <div className="page-shell">
+        <section className="page-hero loading-hero">
+          <div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
+            <div className="stack" style={{ alignItems: "center", gap: "1rem" }}>
+              <div style={{ fontSize: "3rem" }}>&#10003;</div>
+              <h1 style={{ fontSize: "2rem" }}>Your deck is ready</h1>
+              <p className="muted" style={{ fontSize: "1.1rem", maxWidth: 480 }}>
+                {slideCount} slides generated from your data. Download below.
               </p>
             </div>
 
-            <div className="loading-progress-card stack">
-              <div className="row loading-progress-head">
-                <div className="stack-xs">
-                  <p className="artifact-kind">
-                    {humanizeStatus(snapshot.status)}
-                    {snapshot.status === "running" && (
-                      <span className="pulse-dot" style={{
-                        display: "inline-block",
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        backgroundColor: "#2563EB",
-                        marginLeft: 8,
-                        animation: "pulse 1.5s ease-in-out infinite",
-                      }} />
-                    )}
-                  </p>
-                  <p className="loading-stage-title">{humanizeStage(snapshot.currentStage)}</p>
-                </div>
-                <strong className="loading-progress-value">{snapshot.progressPercent}%</strong>
-              </div>
-
-              <div className="loading-progress-track" aria-hidden="true">
-                <div className="loading-progress-fill" style={{
-                  width: `${snapshot.progressPercent}%`,
-                  transition: "width 1s ease-out",
-                }} />
-              </div>
-
-              <div className="loading-stat-strip">
-                <article className="loading-stat">
-                  <span className="loading-stat-label">Elapsed</span>
-                  <strong>{formatDuration(snapshot.elapsedSeconds)}</strong>
-                </article>
-                <article className="loading-stat">
-                  <span className="loading-stat-label">Estimated left</span>
-                  <strong>{snapshot.estimatedRemainingSeconds === null ? "Calculating" : formatDuration(snapshot.estimatedRemainingSeconds)}</strong>
-                </article>
-                <article className="loading-stat">
-                  <span className="loading-stat-label">Run ID</span>
-                  <strong>{snapshot.jobId.slice(-8)}</strong>
-                </article>
-              </div>
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", marginTop: "2rem" }}>
+              <a
+                className="button"
+                href={`/api/artifacts/${snapshot.jobId}/pptx`}
+                style={{ fontSize: "1rem", padding: "0.75rem 2rem" }}
+              >
+                Download PPTX
+              </a>
+              <a
+                className="button secondary"
+                href={`/api/artifacts/${snapshot.jobId}/pdf`}
+                style={{ fontSize: "1rem", padding: "0.75rem 2rem", border: "1px solid #E2E8F0", color: "#334155" }}
+              >
+                Download PDF
+              </a>
             </div>
 
-            <div className="row">
-              <Link className="button secondary" href="/artifacts">
-                Open artifact library
+            <div style={{ marginTop: "2rem" }}>
+              <Link href="/jobs/new" style={{ color: "#2563EB", fontSize: "0.9rem" }}>
+                Generate another report
               </Link>
             </div>
           </div>
+        </section>
+      </div>
+    );
+  }
 
-          <aside className="loading-aside stack">
-            {snapshot.artifactsReady ? (
-              <article className="panel stack">
-                <p className="artifact-kind">Artifacts ready</p>
-                <p className="muted">
-                  {snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0} slides rendered into the deliverables.
-                </p>
-                <div className="row">
-                  <a className="button" href={`/api/artifacts/${snapshot.jobId}/pptx`}>Download PPTX</a>
-                  <a className="button secondary" href={`/api/artifacts/${snapshot.jobId}/pdf`}>Download PDF</a>
-                </div>
-              </article>
-            ) : (
-              <article className="loading-gif-shell">
-                <div
-                  className="tenor-gif-embed"
-                  data-postid="5925040"
-                  data-share-method="host"
-                  data-aspect-ratio="2.31481"
-                  data-width="100%"
-                >
-                  <a href="https://tenor.com/view/mathew-wolf-gif-5925040">Mathew Wolf GIF</a>
-                  from <a href="https://tenor.com/search/mathew-gifs">Mathew GIFs</a>
-                </div>
-              </article>
-            )}
-
-            <article className="panel stack">
-              <p className="artifact-kind">What Basquio is doing</p>
-              <p className="muted">
-                Long runs are expected here. Bigger decks can spend more time in planning, critique, and revision before rendering.
+  // ─── FAILED STATE ────────────────────────────────────────────
+  if (snapshot.status === "failed") {
+    return (
+      <div className="page-shell">
+        <section className="page-hero loading-hero">
+          <div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
+            <div className="stack" style={{ alignItems: "center", gap: "1rem" }}>
+              <h1 style={{ fontSize: "2rem" }}>Something went wrong</h1>
+              <p className="muted" style={{ fontSize: "1.1rem", maxWidth: 480 }}>
+                We hit an issue while generating your deck. You can try again — it won't cost you extra.
               </p>
-            </article>
-          </aside>
-        </div>
-      </section>
-
-      {error ? <article className="panel danger-panel">{error}</article> : null}
-
-      <section className="loading-board">
-        <article className="technical-panel stack-xl">
-          <div className="stack">
-            <p className="section-label light">Agent phases</p>
-            <h2>Every phase is visible while the agents work.</h2>
+              {snapshot.failureMessage && (
+                <p style={{ fontSize: "0.85rem", color: "#94A3B8", fontFamily: "monospace", maxWidth: 500, wordBreak: "break-word" }}>
+                  {snapshot.failureMessage}
+                </p>
+              )}
+            </div>
+            <div style={{ marginTop: "2rem" }}>
+              <Link className="button" href="/jobs/new">Try again</Link>
+            </div>
           </div>
+        </section>
+      </div>
+    );
+  }
 
-          <div className="loading-stage-list">
-            {stageList.map((stage, index) => {
-              const step = stageSet.get(stage);
-              const status = step?.status ?? (snapshot.status === "queued" && index === 0 ? "queued" : "queued");
-              return (
-                <article key={stage} className={`loading-stage-card status-${status}`}>
-                  <div className="loading-stage-kicker">
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{humanizeStage(stage)}</strong>
-                  </div>
-                  <p>
-                    {step?.detail || defaultV2PhaseCopy(stage)}
-                    {status === "running" && snapshot.toolCallCount != null && snapshot.toolCallCount > 0 && (
-                      <span className="muted" style={{ marginLeft: 8, fontSize: "0.85em" }}>
-                        ({snapshot.toolCallCount} tool calls)
-                      </span>
-                    )}
-                  </p>
-                  <span className="loading-stage-pill">{humanizeStatus(status)}</span>
-                </article>
-              );
-            })}
-          </div>
-        </article>
+  // ─── IN-PROGRESS STATE ───────────────────────────────────────
+  const elapsed = snapshot.elapsedSeconds;
+  const remaining = snapshot.estimatedRemainingSeconds;
 
-        <article className="panel stack-xl">
-          <div className="stack">
-            <p className="section-label">Run output</p>
-            <h2>{title}</h2>
-            <p className="muted">
-              {snapshot.status === "completed"
-                ? "The deck has been generated and artifacts are ready for download."
-                : snapshot.status === "failed"
-                  ? "The run encountered an issue. See the failure details below."
-                  : "The final report shape appears here as the agents finish their work."}
+  return (
+    <div className="page-shell">
+      <style>{`
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .progress-bar-fill {
+          transition: width 1.5s ease-out;
+          background: linear-gradient(90deg, #2563EB, #60A5FA, #2563EB);
+          background-size: 200% 100%;
+          animation: shimmer 2s ease-in-out infinite;
+        }
+        .step-dot {
+          width: 32px; height: 32px; border-radius: 50%;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.8rem; font-weight: 700; flex-shrink: 0;
+        }
+        .step-dot.done { background: #2563EB; color: white; }
+        .step-dot.active { background: #2563EB; color: white; animation: pulse 1.5s ease-in-out infinite; }
+        .step-dot.waiting { background: #E2E8F0; color: #94A3B8; }
+        .step-label { font-size: 0.95rem; }
+        .step-label.active { color: #0F172A; font-weight: 600; }
+        .step-label.done { color: #64748B; }
+        .step-label.waiting { color: #CBD5E1; }
+      `}</style>
+      <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
+
+      <section className="page-hero loading-hero">
+        <div style={{ maxWidth: 640, margin: "0 auto" }}>
+          {/* Header */}
+          <div className="stack" style={{ textAlign: "center", marginBottom: "2rem" }}>
+            <h1 style={{ fontSize: "1.8rem" }}>Building your deck</h1>
+            <p className="muted" style={{ fontSize: "1.05rem" }}>
+              {currentUserStep.label}...
             </p>
           </div>
 
-          {snapshot.summary?.insights && snapshot.summary.insights.length > 0 ? (
-            <ul className="clean-list">
-              {snapshot.summary.insights.slice(0, 5).map((insight) => (
-                <li key={insight.id}>{insight.title}</li>
-              ))}
-            </ul>
-          ) : (
-            <div className="loading-placeholder-grid">
-              <div className="loading-placeholder-block" />
-              <div className="loading-placeholder-block short" />
-              <div className="loading-placeholder-block" />
+          {/* Progress bar */}
+          <div style={{ marginBottom: "2rem" }}>
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "baseline",
+              marginBottom: "0.5rem", fontSize: "0.85rem", color: "#64748B",
+            }}>
+              <span>{remaining != null && remaining > 0 ? `About ${formatTime(remaining)} left` : elapsed < 10 ? "Starting..." : "Almost there..."}</span>
+              <span>{snapshot.progressPercent}%</span>
             </div>
-          )}
-
-          {snapshot.status === "needs_input" && snapshot.summary?.validationReport?.issues && snapshot.summary.validationReport.issues.length > 0 ? (
-            <div className="stack">
-              <p className="artifact-kind">Reviewer feedback</p>
-              <ul className="clean-list">
-                {snapshot.summary.validationReport.issues.slice(0, 5).map((issue, index) => (
-                  <li key={`${issue.message}-${index}`}>{issue.message}</li>
-                ))}
-              </ul>
+            <div style={{
+              height: 6, borderRadius: 3, background: "#E2E8F0", overflow: "hidden",
+            }}>
+              <div
+                className="progress-bar-fill"
+                style={{ height: "100%", borderRadius: 3, width: `${snapshot.progressPercent}%` }}
+              />
             </div>
-          ) : null}
+          </div>
 
-          {snapshot.summary?.revisionHistory && snapshot.summary.revisionHistory.length > 0 ? (
-            <div className="stack">
-              <p className="artifact-kind">Revision history</p>
-              <ul className="clean-list">
-                {snapshot.summary.revisionHistory.slice(0, 4).map((revision) => (
-                  <li key={`${revision.attempt}-${revision.targetStage}`}>
-                    Attempt {revision.attempt} routed back to {revision.targetStage}.
-                  </li>
-                ))}
-              </ul>
+          {/* Steps */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "2rem" }}>
+            {USER_STEPS.map((step, idx) => {
+              const isDone = idx < currentUserStepIdx || snapshot.status === "completed";
+              const isActive = idx === currentUserStepIdx && snapshot.status === "running";
+              const isWaiting = idx > currentUserStepIdx;
+              const dotClass = isDone ? "done" : isActive ? "active" : "waiting";
+              const labelClass = isDone ? "done" : isActive ? "active" : "waiting";
+
+              return (
+                <div key={step.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <div className={`step-dot ${dotClass}`}>
+                    {isDone ? "\u2713" : idx + 1}
+                  </div>
+                  <span className={`step-label ${labelClass}`}>{step.label}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* GIF */}
+          <div style={{ borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
+            <div
+              className="tenor-gif-embed"
+              data-postid="5925040"
+              data-share-method="host"
+              data-aspect-ratio="2.31481"
+              data-width="100%"
+            >
+              <a href="https://tenor.com/view/mathew-wolf-gif-5925040">Mathew Wolf GIF</a>
+              from <a href="https://tenor.com/search/mathew-gifs">Mathew GIFs</a>
             </div>
-          ) : null}
+          </div>
 
-          {snapshot.failureMessage ? <div className="danger-panel">{snapshot.failureMessage}</div> : null}
-        </article>
+          {/* Elapsed time — small, unobtrusive */}
+          <p style={{ textAlign: "center", fontSize: "0.8rem", color: "#94A3B8" }}>
+            {formatTime(elapsed)} elapsed
+          </p>
+        </div>
       </section>
+
+      {error && (
+        <div style={{ maxWidth: 640, margin: "1rem auto", padding: "1rem", background: "#FEF2F2", borderRadius: 8, color: "#991B1B", fontSize: "0.9rem" }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }
 
-function humanizeStage(stage: string) {
-  return stage.replaceAll("-", " ").replace(/\b\w/g, (value) => value.toUpperCase());
-}
+// ─── HELPERS ───────────────────────────────────────────────────
 
-function humanizeStatus(status: RunProgressSnapshot["status"] | Step["status"]) {
-  switch (status) {
-    case "completed":
-      return "Complete";
-    case "running":
-      return "In flight";
-    case "needs_input":
-      return "Needs review";
-    case "failed":
-      return "Failed";
-    default:
-      return "Queued";
-  }
-}
-
-function formatDuration(value: number) {
-  const minutes = Math.floor(value / 60);
-  const seconds = value % 60;
-
-  if (minutes <= 0) {
-    return `${seconds}s`;
-  }
-
-  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-}
-
-function humanizeDetail(detail: string, currentStage: string) {
-  if (!detail) return "";
-
-  // Convert "Tool: sample_rows (understand)" → "Sampling data rows..."
-  const toolMatch = detail.match(/^Tool:\s*(\w+)/);
-  if (toolMatch) {
-    const toolName = toolMatch[1];
-    const toolLabels: Record<string, string> = {
-      list_files: "Scanning uploaded files",
-      describe_table: "Analyzing table structure",
-      sample_rows: "Sampling data rows",
-      query_data: "Querying data",
-      compute_metric: "Computing metrics",
-      compute_derived: "Deriving advanced metrics",
-      compute_statistical: "Running statistical analysis",
-      join_query: "Joining data sources",
-      cross_reference: "Cross-referencing sources",
-      read_support_doc: "Reading support documents",
-      inspect_template: "Inspecting template",
-      inspect_brand_tokens: "Reading brand tokens",
-      build_chart: "Building chart",
-      write_slide: "Writing slide",
-      render_deck_preview: "Previewing deck",
-      render_contact_sheet: "Rendering contact sheet",
-      list_evidence: "Reviewing evidence",
-      audit_deck_structure: "Auditing deck structure",
-      verify_claim: "Verifying data claims",
-      check_numeric: "Checking numeric accuracy",
-      compare_to_brief: "Comparing to brief",
-      persist_slide: "Writing slide content",
-      persist_chart: "Saving chart data",
-    };
-    return `${toolLabels[toolName] ?? `Running ${toolName.replaceAll("_", " ")}`}...`;
-  }
-
-  // Convert "Running {phase} phase..." to the phase copy
-  if (detail.startsWith("Running ") && detail.endsWith("...")) {
-    return defaultV2PhaseCopy(currentStage);
-  }
-
-  return detail;
-}
-
-function defaultV2PhaseCopy(phase: string) {
-  switch (phase) {
-    case "normalize":
-      return "Basquio is normalizing uploaded files into structured profiles and workbook schemas.";
-    case "understand":
-      return "The analyst agent is exploring the data, computing metrics, and identifying insights.";
-    case "author":
-      return "The author agent is building the narrative, slide plan, and chart bindings.";
-    case "critique":
-      return "An independent critic agent is reviewing the deck for accuracy and argument quality.";
-    case "revise":
-      return "The author is revising slides based on critic feedback.";
-    case "export":
-      return "Basquio is rendering the final PPTX and PDF artifacts.";
-    default:
-      return "This phase is queued for the current run.";
-  }
+function formatTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
 }
