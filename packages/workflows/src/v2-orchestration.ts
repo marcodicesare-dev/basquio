@@ -140,7 +140,7 @@ async function updateRunStatus(runId: string, status: string, phase?: DeckRunPha
 
 async function updateDeliveryStatus(runId: string, deliveryStatus: string) {
   assertUuid(runId, "runId");
-  await fetch(
+  const response = await fetch(
     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}`,
     {
       method: "PATCH",
@@ -153,6 +153,9 @@ async function updateDeliveryStatus(runId: string, deliveryStatus: string) {
       body: JSON.stringify({ delivery_status: deliveryStatus }),
     },
   );
+  if (!response.ok) {
+    console.error(`[updateDeliveryStatus] Failed for ${runId}: ${response.status} ${response.statusText}`);
+  }
 }
 
 async function emitRunEvent(
@@ -455,7 +458,7 @@ async function getChartMeta(chartId: string): Promise<{ chartType: string; categ
   const categoryCount = Array.isArray(row.data) ? row.data.length : 0;
   const seriesCount = Array.isArray(row.series) ? row.series.length : 1;
   // For table-type charts, estimate columns from first row
-  const colCount = categoryCount > 0 && typeof row.data[0] === "object" ? Object.keys(row.data[0]).length : 0;
+  const colCount = categoryCount > 0 && row.data[0] != null && typeof row.data[0] === "object" ? Object.keys(row.data[0]).length : 0;
   return {
     chartType: row.chart_type,
     categoryCount,
@@ -1111,6 +1114,10 @@ export const basquioV2Generation = inngest.createFunction(
           },
         },
       );
+
+      if (!filesResponse.ok) {
+        throw new NonRetriableError(`Failed to fetch source files: ${filesResponse.status} ${filesResponse.statusText}`);
+      }
 
       const sourceFiles = (await filesResponse.json()) as Array<{
         id: string;
@@ -2126,7 +2133,7 @@ export const basquioAuthor = inngest.createFunction(
     // ─── STEP 1: PLAN (GPT-5.4-mini, structured output with chart grammar) ───
     const v1Plan = await step.run("plan-deck", async () => {
       await updateRunStatus(runId, "running", "author"); // "plan" is part of author phase (no separate DB enum)
-      await emitRunEvent(runId, "plan", "phase_started");
+      await emitRunEvent(runId, "author", "phase_started");
 
       const analysisResult = await loadWorkingPaper<{
         analysis: {
@@ -2752,7 +2759,6 @@ export const basquioCritiqueRevise = inngest.createFunction(
           run_id: runId,
           iteration: 1,
           has_issues: hasIssues,
-          issue_count: allIssues.length,
           issues: allIssues,
         }),
       });
