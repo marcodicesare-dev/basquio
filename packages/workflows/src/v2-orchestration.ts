@@ -2150,31 +2150,116 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       if (!hasCriticalOrMajor) {
         await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
+        return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues };
       }
 
-      // Critical issues block export
-      if (criticalCount > 0) {
-        await updateDeliveryStatus(runId, "failed");
-        await updateRunStatus(runId, "failed", "critique", {
-          failure_message: `Export blocked: ${criticalCount} critical issue(s). Issues: ${allIssues.filter((i) => i.severity === "critical").map((i) => i.claim).join("; ")}`,
-        });
-        throw new Error(`Export blocked: ${criticalCount} critical issue(s)`);
-      }
-
-      // Major issues also block
-      if (majorCount > 0) {
-        await updateDeliveryStatus(runId, "failed");
-        await updateRunStatus(runId, "failed", "critique", {
-          failure_message: `Export blocked: ${majorCount} major issue(s). Issues: ${allIssues.filter((i) => i.severity === "major").map((i) => i.claim).join("; ")}`,
-        });
-        throw new Error(`Export blocked: ${majorCount} major issue(s)`);
-      }
-
-      return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
+      return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount };
     });
 
-    return gateResult;
+    // ─── REVISE (targeted section-level repair) ────────────────────
+    if (gateResult.needsRevise) {
+      await step.run("revise", async () => {
+        await updateRunStatus(runId, "running", "revise");
+        await emitRunEvent(runId, "revise", "phase_started");
+
+        const slides = await getSlides(runId);
+        const issues = gateResult.issues as Array<{ severity: string; claim: string; slideId?: string }>;
+
+        // Build evidence inventory for the revise agent
+        const evidenceList = await listEvidenceForRun(runId);
+        const evidenceContext = evidenceList.length > 0
+          ? `\n\n## Available evidence (${evidenceList.length} items)\n${evidenceList.slice(0, 30).map((e) => `- ${(e as Record<string, unknown>).ref_id ?? (e as Record<string, unknown>).evidenceRefId ?? "?"}: ${(e as Record<string, unknown>).label ?? (e as Record<string, unknown>).summary ?? ""}`).join("\n")}`
+          : "";
+
+        // Build critique context for the revise agent
+        const issuesSummary = issues
+          .map((i: { severity: string; claim: string; slideId?: string }) => `[${i.severity}] ${i.slideId ? `Slide ${i.slideId}: ` : ""}${i.claim}`)
+          .join("\n");
+
+        const tracker = new UsageTracker();
+        tracker.startPhase("revise", "claude-sonnet-4-6", "anthropic");
+
+        await runAuthorAgent({
+          workspace,
+          runId,
+          analysis: analysis as unknown as AnalysisReport,
+          brief: `## REVISION TASK — fix these critique issues\n${issuesSummary}\n\n## Original brief\n${brief}${evidenceContext}`,
+          critiqueContext: issuesSummary,
+          loadRows,
+          modelOverride: "claude-sonnet-4-6",
+          maxSteps: 25,
+          persistNotebookEntry: async (entry: NotebookEntry) => persistNotebookEntry(runId, "revise", 0, entry),
+          getTemplateProfile: (async () => undefined) as never,
+          persistSlide: (slide) => persistSlide(runId, slide),
+          persistChart: (chart) => persistChart(runId, chart),
+          getSlides: () => getSlides(runId),
+          listEvidence: () => listEvidenceForRun(runId),
+          onStepFinish: async (event: StepFinishEvent) => {
+            tracker.recordStep(event.usage, event.toolCalls.length);
+          },
+        });
+
+        tracker.endPhase();
+        await emitRunEvent(runId, "revise", "phase_completed");
+      });
+
+      // ─── RE-CRITIQUE (verify revisions fixed the issues) ──────
+      const reGateResult = await step.run("re-critique-gate", async () => {
+        await updateRunStatus(runId, "running", "critique");
+
+        const slides = await getSlides(runId);
+        const slideData = slides.map((s) => ({
+          id: s.id,
+          position: s.position,
+          layoutId: s.layoutId ?? "title-body",
+          title: s.title ?? "",
+          body: s.body,
+          bullets: s.bullets,
+          metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+          chartId: s.chartId,
+          evidenceIds: s.evidenceIds ?? [],
+        }));
+
+        // Only re-run factual critic (cheaper, faster)
+        const reFactual = await runCriticAgent({
+          workspace,
+          runId,
+          deckSummary: "",
+          brief,
+          slideCount: slides.length,
+          getSlides: async () => slideData,
+          getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
+          persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 1, entry),
+        });
+
+        const reIssues = reFactual.issues ?? [];
+        const reCritical = reIssues.filter((i: { severity: string }) => i.severity === "critical").length;
+        const reMajor = reIssues.filter((i: { severity: string }) => i.severity === "major").length;
+
+        if (reCritical > 0) {
+          await updateDeliveryStatus(runId, "failed");
+          await updateRunStatus(runId, "failed", "critique", {
+            failure_message: `Export blocked after revision: ${reCritical} critical issue(s) remain`,
+          });
+          throw new Error(`Export blocked after revision: ${reCritical} critical issue(s)`);
+        }
+
+        if (reMajor > 0) {
+          await updateDeliveryStatus(runId, "failed");
+          await updateRunStatus(runId, "failed", "critique", {
+            failure_message: `Export blocked after revision: ${reMajor} major issue(s) remain`,
+          });
+          throw new Error(`Export blocked after revision: ${reMajor} major issue(s)`);
+        }
+
+        await updateDeliveryStatus(runId, "reviewed");
+        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
+      });
+
+      return reGateResult;
+    }
+
+    return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
   },
 );
 
