@@ -210,11 +210,11 @@ export function RunProgressView(input: {
         }
         .step-dot.done { background: #2563EB; color: white; }
         .step-dot.active { background: #2563EB; color: white; animation: pulse 1.5s ease-in-out infinite; }
-        .step-dot.waiting { background: #E2E8F0; color: #94A3B8; }
+        .step-dot.waiting { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.4); }
         .step-label { font-size: 0.95rem; }
-        .step-label.active { color: #0F172A; font-weight: 600; }
-        .step-label.done { color: #64748B; }
-        .step-label.waiting { color: #CBD5E1; }
+        .step-label.active { color: #FFFFFF; font-weight: 600; }
+        .step-label.done { color: rgba(255,255,255,0.6); }
+        .step-label.waiting { color: rgba(255,255,255,0.35); }
       `}</style>
       <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
 
@@ -222,8 +222,8 @@ export function RunProgressView(input: {
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           {/* Header */}
           <div className="stack" style={{ textAlign: "center", marginBottom: "2rem" }}>
-            <h1 style={{ fontSize: "1.8rem" }}>Building your deck</h1>
-            <p className="muted" style={{ fontSize: "1.05rem" }}>
+            <h1 style={{ fontSize: "1.8rem", color: "#FFFFFF" }}>Building your deck</h1>
+            <p style={{ fontSize: "1.05rem", color: "rgba(255,255,255,0.6)" }}>
               {currentUserStep.label}...
             </p>
           </div>
@@ -232,13 +232,13 @@ export function RunProgressView(input: {
           <div style={{ marginBottom: "2rem" }}>
             <div style={{
               display: "flex", justifyContent: "space-between", alignItems: "baseline",
-              marginBottom: "0.5rem", fontSize: "0.85rem", color: "#64748B",
+              marginBottom: "0.5rem", fontSize: "0.85rem", color: "rgba(255,255,255,0.5)",
             }}>
               <span>{remaining != null && remaining > 0 ? `About ${formatTime(remaining)} left` : elapsed < 10 ? "Starting..." : "Almost there..."}</span>
               <span>{snapshot.progressPercent}%</span>
             </div>
             <div style={{
-              height: 6, borderRadius: 3, background: "#E2E8F0", overflow: "hidden",
+              height: 6, borderRadius: 3, background: "rgba(255,255,255,0.15)", overflow: "hidden",
             }}>
               <div
                 className="progress-bar-fill"
@@ -281,7 +281,7 @@ export function RunProgressView(input: {
           </div>
 
           {/* Elapsed time — small, unobtrusive */}
-          <p style={{ textAlign: "center", fontSize: "0.8rem", color: "#94A3B8" }}>
+          <p style={{ textAlign: "center", fontSize: "0.8rem", color: "rgba(255,255,255,0.35)" }}>
             {formatTime(elapsed)} elapsed
           </p>
         </div>
