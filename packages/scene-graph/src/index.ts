@@ -609,28 +609,29 @@ export function auditSlideScene(
 
 // ─── DEFAULTS ────────────────────────────────────────────────────
 
+// Slate house template defaults — must match render-v2.ts DEFAULT_TOKENS
 const defaultBrandTokens = {
   palette: {
-    text: "#111827",
+    text: "#0F172A",       // Slate 900
     background: "#FFFFFF",
-    surface: "#F8FAFC",
-    accent: "#0F4C81",
-    accentMuted: "#DCEAF7",
-    border: "#D1D5DB",
+    surface: "#F8FAFC",    // Slate 50
+    accent: "#2563EB",     // Blue 600
+    accentMuted: "#DBEAFE", // Blue 100
+    border: "#E2E8F0",     // Slate 200
   },
   typography: {
     headingFont: "Arial",
     bodyFont: "Arial",
     monoFont: "Arial",
     titleSize: 24,
-    bodySize: 11,
+    bodySize: 14,          // Agency-grade: legible at distance
   },
   spacing: {
-    pageX: 0.45,
-    pageY: 0.22,
-    sectionGap: 0.12,
-    blockGap: 0.1,
-    cardRadius: 0.06,
+    pageX: 0.6,            // Match new grid margins
+    pageY: 0.5,
+    sectionGap: 0.15,
+    blockGap: 0.12,
+    cardRadius: 0.0,       // Consulting-grade: sharp corners
   },
   logo: {},
 };
