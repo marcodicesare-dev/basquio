@@ -5,8 +5,11 @@
  *
  * This is the consulting-firm approach (McKinsey/BCG): charts are drawn
  * as grouped rectangles + text, not embedded chart objects.
+ *
+ * Chart rendering rules are driven by the chart design system archetypes.
  */
 import PptxGenJS from "pptxgenjs";
+import { resolveChartArchetype } from "@basquio/scene-graph/chart-design-system";
 
 // ─── TYPES ───────────────────────────────────────────────────────
 
@@ -119,6 +122,41 @@ export function renderShapeChart(
 ): void {
   if (!data || !data.labels || data.labels.length === 0) return;
   if (!data.datasets || data.datasets.length === 0) return;
+
+  // Resolve archetype rendering rules from the design system
+  const archetype = resolveChartArchetype(chartType);
+  const rules = archetype.renderingRules;
+
+  // Enforce max categories from archetype constraints
+  if (data.labels.length > archetype.constraints.maxCategories) {
+    data = {
+      ...data,
+      labels: data.labels.slice(0, archetype.constraints.maxCategories),
+      datasets: data.datasets.map((ds) => ({
+        ...ds,
+        data: ds.data.slice(0, archetype.constraints.maxCategories),
+      })),
+    };
+  }
+
+  // Apply sort policy from archetype
+  if (rules.sortBars === "desc" && data.datasets.length === 1) {
+    const pairs = data.labels.map((l, i) => ({ label: l, value: data.datasets[0].data[i] ?? 0 }));
+    pairs.sort((a, b) => b.value - a.value);
+    data = {
+      ...data,
+      labels: pairs.map((p) => p.label),
+      datasets: [{ ...data.datasets[0], data: pairs.map((p) => p.value) }],
+    };
+  } else if (rules.sortBars === "asc" && data.datasets.length === 1) {
+    const pairs = data.labels.map((l, i) => ({ label: l, value: data.datasets[0].data[i] ?? 0 }));
+    pairs.sort((a, b) => a.value - b.value);
+    data = {
+      ...data,
+      labels: pairs.map((p) => p.label),
+      datasets: [{ ...data.datasets[0], data: pairs.map((p) => p.value) }],
+    };
+  }
 
   // Reserve space for title and source
   const titleH = options.title ? 0.22 : 0;
