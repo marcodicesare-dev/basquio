@@ -2076,9 +2076,19 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
       return { polished: weakSlideDetails.length, total: slides.length };
     });
 
-    // ─── STEP 4a: FACTUAL CRITIQUE (agentic, cross-model) ──────
+    // ─── STEP 4+5: CRITIQUE + REVISE (invoked as child function) ───
+    const critiqueReviseResult = await step.invoke("critique-revise", {
+      function: basquioCritiqueRevise,
+      data: { runId, brief, sourceFileIds },
+      timeout: "25m",
+    }) as { hasCriticalOrMajor: boolean; degradedDelivery: boolean; degradedIssues: Array<{ severity: string; claim: string }> };
+
+    const { hasCriticalOrMajor, degradedDelivery, degradedIssues } = critiqueReviseResult;
+
+    // OLD INLINE CRITIQUE+REVISE CODE — replaced by step.invoke(basquioCritiqueRevise)
+    // Kept as dead code reference for the child function implementation.
+    if (false as boolean) {
     const factualCritique = await step.run("critique-factual", async () => {
-      // Mark delivery as "draft" INSIDE the step to avoid replay side effects
       await updateDeliveryStatus(runId, "draft");
       await updateRunStatus(runId, "running", "critique");
       await emitRunEvent(runId, "critique", "phase_started", { critic: "factual" });
@@ -2832,6 +2842,7 @@ IMPORTANT: This plan was designed by a deck architect model from the issue tree 
         }
       });
     }
+    } // end dead code block (old critique+revise)
 
     // ─── STEP 6: EXPORT (invoked as separate Inngest function) ─────
     // Export runs as a child function with its own 15min timeout and retries.
@@ -2962,6 +2973,142 @@ export const basquioUnderstand = inngest.createFunction(
  * Runs independently with its own timeout and retries.
  * This is the heaviest non-agent step (PPTX generation + upload).
  */
+/**
+ * basquioCritiqueRevise: Critique + revise loop as independent function.
+ * Runs factual + strategic critique, then targeted revise, then re-critique.
+ * Returns the quality gate decision.
+ */
+export const basquioCritiqueRevise = inngest.createFunction(
+  { id: "basquio-critique-revise", retries: 2, timeouts: { finish: "25m" } },
+  { event: "basquio/critique-revise.requested" },
+  async ({ event, step }) => {
+    const { runId, brief, sourceFileIds } = event.data as {
+      runId: string;
+      brief: string;
+      sourceFileIds: string[];
+    };
+
+    // Load dependencies from DB
+    const workspace = await loadWorkspaceFromDb(runId);
+    if (!workspace) throw new Error(`Workspace not found for run ${runId}`);
+
+    const analysisResult = await loadWorkingPaper<AnalystResult>(runId, "analysis_result");
+    const analysis = analysisResult?.analysis ?? { topFindings: [], metricsComputed: 0, dataSummary: "" };
+    const deckPlanWp = await loadWorkingPaper<DeckPlan>(runId, "deck_plan");
+    const loadRows = createLoadSheetRows(runId);
+
+    // ─── FACTUAL CRITIQUE ──────────────────────────────────────
+    const factualCritique = await step.run("critique-factual", async () => {
+      await updateDeliveryStatus(runId, "draft");
+      await updateRunStatus(runId, "running", "critique");
+      await emitRunEvent(runId, "critique", "phase_started", { critic: "factual" });
+
+      const slides = await getSlides(runId);
+
+      const result = await runCriticAgent({
+        workspace,
+        runId,
+        deckSummary: "",
+        brief,
+        slideCount: slides.length,
+        getSlides: async () => slides.map((s) => ({
+          id: s.id,
+          position: s.position,
+          layoutId: s.layoutId ?? "title-body",
+          title: s.title ?? "",
+          body: s.body,
+          bullets: s.bullets,
+          metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+          chartId: s.chartId,
+          evidenceIds: s.evidenceIds ?? [],
+        })),
+        getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
+        persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 0, entry),
+      });
+
+      return result;
+    });
+
+    // ─── STRATEGIC CRITIQUE ────────────────────────────────────
+    const strategicCritique = await step.run("critique-strategic", async () => {
+      const slides = await getSlides(runId);
+
+      const result = await runStrategicCriticAgent({
+        runId,
+        brief,
+        deckSummary: "",
+        slideCount: slides.length,
+        slides: slides.map((s) => ({
+          position: s.position,
+          layoutId: s.layoutId ?? "title-body",
+          title: s.title ?? "",
+          body: s.body,
+          bullets: s.bullets,
+          chartId: s.chartId,
+          evidenceIds: s.evidenceIds ?? [],
+        })),
+      });
+
+      return result;
+    });
+
+    // ─── MERGE + GATE DECISION ─────────────────────────────────
+    const gateResult = await step.run("critique-merge-gate", async () => {
+      const allIssues = [...factualCritique.issues, ...strategicCritique.issues];
+      const hasIssues = allIssues.length > 0;
+      const hasCriticalOrMajor = allIssues.some((i) => i.severity === "critical" || i.severity === "major");
+      const criticalCount = allIssues.filter((i) => i.severity === "critical").length;
+      const majorCount = allIssues.filter((i) => i.severity === "major").length;
+
+      // Persist critique report
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          run_id: runId,
+          iteration: 1,
+          has_issues: hasIssues,
+          issue_count: allIssues.length,
+          issues: allIssues,
+        }),
+      });
+
+      if (!hasCriticalOrMajor) {
+        await updateDeliveryStatus(runId, "reviewed");
+        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
+      }
+
+      // Critical issues block export
+      if (criticalCount > 0) {
+        await updateDeliveryStatus(runId, "failed");
+        await updateRunStatus(runId, "failed", "critique", {
+          failure_message: `Export blocked: ${criticalCount} critical issue(s). Issues: ${allIssues.filter((i) => i.severity === "critical").map((i) => i.claim).join("; ")}`,
+        });
+        throw new Error(`Export blocked: ${criticalCount} critical issue(s)`);
+      }
+
+      // Major issues also block
+      if (majorCount > 0) {
+        await updateDeliveryStatus(runId, "failed");
+        await updateRunStatus(runId, "failed", "critique", {
+          failure_message: `Export blocked: ${majorCount} major issue(s). Issues: ${allIssues.filter((i) => i.severity === "major").map((i) => i.claim).join("; ")}`,
+        });
+        throw new Error(`Export blocked: ${majorCount} major issue(s)`);
+      }
+
+      return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
+    });
+
+    return gateResult;
+  },
+);
+
 export const basquioExport = inngest.createFunction(
   {
     id: "basquio-export",
