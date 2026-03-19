@@ -2972,7 +2972,6 @@ export const basquioExport = inngest.createFunction(
 
       // Hard gate: if ANY evidence file was unused, block export.
       // Every file the user uploaded must contribute to the analysis.
-      // This prevents the "important PPTX was ignored" class of failure.
       if (unusedFiles.length > 0 && sourceFileIds.length > 0) {
         await updateRunStatus(runId, "failed", "export", {
           failure_message: `Export blocked: ${unusedFiles.length} of ${sourceFileIds.length} uploaded file(s) were not used in the analysis. All sources must contribute evidence.`,
