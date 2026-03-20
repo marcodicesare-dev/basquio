@@ -1069,11 +1069,34 @@ async function renderContactSheetForRun(runId: string): Promise<{
 // Replicates the filter/group/aggregate logic from data-exploration.ts
 // so the chart builder can run without any LLM calls.
 
-function v1EvaluateCondition(row: Record<string, unknown>, condition: string): boolean {
+/**
+ * Case-insensitive column resolver. LLM-generated column names may differ in casing
+ * from actual data headers (e.g. "GROCERY" vs "Grocery"). This builds a lookup map
+ * once per dataset and resolves any casing variant to the real column name.
+ */
+function buildColumnMap(row: Record<string, unknown>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const key of Object.keys(row)) {
+    map.set(key.toLowerCase().trim(), key);
+  }
+  return map;
+}
+
+function resolveColumn(row: Record<string, unknown>, col: string, colMap?: Map<string, string>): unknown {
+  // Direct lookup first (fast path)
+  const trimmed = col.trim();
+  if (trimmed in row) return row[trimmed];
+  // Case-insensitive fallback
+  const map = colMap ?? buildColumnMap(row);
+  const realKey = map.get(trimmed.toLowerCase());
+  return realKey ? row[realKey] : undefined;
+}
+
+function v1EvaluateCondition(row: Record<string, unknown>, condition: string, colMap?: Map<string, string>): boolean {
   const match = condition.trim().match(/^"?(.+?)"?\s*(=|!=|<>|>|>=|<|<=|LIKE|IN)\s*(.+)$/i);
   if (!match) return false;
   const [, col, op, rawVal] = match;
-  const rowVal = row[col.trim()];
+  const rowVal = resolveColumn(row, col, colMap);
   const val = rawVal.trim().replace(/^['"]|['"]$/g, "");
   // Case-insensitive string comparison — "AFFINITY" matches "Affinity"
   const rowStr = String(rowVal ?? "").toLowerCase();
@@ -1097,10 +1120,12 @@ function v1EvaluateCondition(row: Record<string, unknown>, condition: string): b
 function v1ApplyFilter(rows: Record<string, unknown>[], filterExpr: string): Record<string, unknown>[] {
   if (!filterExpr || filterExpr === "none") return rows;
   const orBranches = filterExpr.split(/\s+OR\s+/i);
+  // Build column map once from first row, reuse for all rows
+  const colMap = rows.length > 0 ? buildColumnMap(rows[0]) : new Map<string, string>();
   return rows.filter((row) =>
     orBranches.some((branch) => {
       const andConditions = branch.split(/\s+AND\s+/i);
-      return andConditions.every((condition) => v1EvaluateCondition(row, condition));
+      return andConditions.every((condition) => v1EvaluateCondition(row, condition, colMap));
     }),
   );
 }
@@ -1123,10 +1148,13 @@ function v1GroupAndAggregate(
 ): { categories: string[]; series: Array<{ name: string; values: number[] }>; xAxis: string; data: Record<string, unknown>[] } {
   const { dimensions, measures, aggregation, sort, limit } = dataSpec;
 
-  // Group by dimensions
+  // Build column map once from first row for case-insensitive resolution
+  const colMap = rows.length > 0 ? buildColumnMap(rows[0]) : new Map<string, string>();
+
+  // Group by dimensions (case-insensitive column access)
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const row of rows) {
-    const key = dimensions.map((d) => String(row[d] ?? "")).join(" | ");
+    const key = dimensions.map((d) => String(resolveColumn(row, d, colMap) ?? "")).join(" | ");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
@@ -1137,7 +1165,7 @@ function v1GroupAndAggregate(
     const values: Record<string, number> = {};
     for (const measure of measures) {
       const nums = groupRows.map((r) => {
-        const v = r[measure];
+        const v = resolveColumn(r, measure, colMap);
         return typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
       }).filter((n) => !isNaN(n));
 
@@ -2068,7 +2096,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     try {
       critiqueReviseResult = await step.invoke("critique-revise", {
         function: basquioCritiqueRevise,
-        data: { runId, brief, sourceFileIds },
+        data: { runId, brief, sourceFileIds, parentCostUsd: authorResult.estimatedCostUsd ?? 0 },
         timeout: "25m",
       }) as typeof critiqueReviseResult;
     } catch (error) {
@@ -2478,39 +2506,67 @@ function validateAndFixPlan(plan: V1DeckPlan, analysisFindings?: Array<{ title: 
     return { ...plan, slides: kept, charts: keptCharts, targetSlideCount: kept.length };
   }
 
-  // ── Rule 5: Deduplicate governing thoughts (weak similarity check) ──
-  const seen = new Map<string, number>(); // normalized thought → position
-  for (const s of slides) {
-    if (!s.governingThought) continue;
-    const normalized = s.governingThought.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
-    const words = normalized.split(/\s+/).slice(0, 5).join(" "); // First 5 words
-    if (seen.has(words) && s.role !== "cover" && s.role !== "exec-summary") {
-      // Duplicate — keep the one with a chart
-      const existing = slides.find(sl => sl.position === seen.get(words));
-      if (existing && !existing.chartId && s.chartId) {
-        existing.governingThought = s.governingThought;
-        existing.chartId = s.chartId;
-        existing.layout = s.layout;
-      }
-    } else {
-      seen.set(words, s.position);
-    }
+  // ── Rule 5: Deduplicate governing thoughts (Jaccard similarity on content words) ──
+  // Extracts content words (4+ chars, no stopwords), compares sets with Jaccard coefficient.
+  // Threshold 0.4 catches "Affinity cat dry collapsed" vs "Cat dry share loss accelerating"
+  const stopwords = new Set(["the","and","for","that","with","from","this","which","their","have","been","would","should","could","between","through","della","delle","degli","nella","nelle","sono","also","while","more","than","into","over","these","those","about","being","most","some","each","will","must","only","very","just","when","where","after","before"]);
+  function extractContentWords(text: string): Set<string> {
+    return new Set(
+      text.toLowerCase().replace(/[^a-z0-9àèéìòù ]/g, "").split(/\s+/)
+        .filter(w => w.length >= 4 && !stopwords.has(w))
+    );
   }
+  function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+    if (a.size === 0 && b.size === 0) return 0;
+    let intersection = 0;
+    for (const w of a) if (b.has(w)) intersection++;
+    return intersection / (a.size + b.size - intersection);
+  }
+
+  const slideWordSets: Array<{ position: number; words: Set<string> }> = [];
+  for (const s of slides) {
+    if (!s.governingThought || s.role === "cover" || s.role === "exec-summary") continue;
+    const words = extractContentWords(s.governingThought);
+    // Check against all previously seen slides
+    for (const prev of slideWordSets) {
+      if (jaccardSimilarity(words, prev.words) >= 0.4) {
+        // Duplicate found — keep the one with a chart, merge the other
+        const existing = slides.find(sl => sl.position === prev.position);
+        if (existing) {
+          if (!existing.chartId && s.chartId) {
+            existing.governingThought = s.governingThought;
+            existing.chartId = s.chartId;
+            existing.layout = s.layout;
+          }
+          // Mark duplicate for removal
+          s.governingThought = `[DUPLICATE:${prev.position}]`;
+        }
+        break;
+      }
+    }
+    slideWordSets.push({ position: s.position, words });
+  }
+  // Remove slides marked as duplicates
+  const deduped = slides.filter(s => !s.governingThought?.startsWith("[DUPLICATE:"));
+  deduped.forEach((s, i) => { s.position = i + 1; });
+  // Update charts to match
+  const dedupedChartIds = new Set(deduped.filter(s => s.chartId).map(s => s.chartId));
+  const dedupedCharts = charts.filter(c => dedupedChartIds.has(c.chartId));
 
   // ── Rule 6: Layout variety — no 3+ consecutive same layout ──
   const chartLayoutOptions = ["chart-split", "evidence-grid", "title-chart", "comparison"];
-  for (let i = 2; i < slides.length; i++) {
-    const prev2 = slides[i - 2]?.layout;
-    const prev1 = slides[i - 1]?.layout;
-    const curr = slides[i].layout;
+  for (let i = 2; i < deduped.length; i++) {
+    const prev2 = deduped[i - 2]?.layout;
+    const prev1 = deduped[i - 1]?.layout;
+    const curr = deduped[i].layout;
     if (prev2 === prev1 && prev1 === curr && curr !== "cover" && curr !== "exec-summary" && curr !== "summary") {
       // 3 in a row — switch to a different chart layout
       const alternatives = chartLayoutOptions.filter(l => l !== curr);
-      slides[i].layout = alternatives[i % alternatives.length];
+      deduped[i].layout = alternatives[i % alternatives.length];
     }
   }
 
-  return { ...plan, slides, charts, targetSlideCount: slides.length };
+  return { ...plan, slides: deduped, charts: dedupedCharts, targetSlideCount: deduped.length };
 }
 
 /**
@@ -3091,20 +3147,19 @@ Return a V1DeckPlan with slides and charts.`,
             addUsage(slideGenResult.usage, modelId);
 
             // ─── Language consistency check (deterministic, post-generation) ───
+            // Only retry for clear language mismatches. Skip retry if:
+            // - Budget is exhausted (retries cost $0.07 each)
+            // - Detected language is "en" (fallback when no markers found — not a real mismatch)
             const expectedLang = validatedPlan.language || "en";
             const slideText = [slideOutput.title, slideOutput.body, ...(slideOutput.bullets ?? [])].filter(Boolean).join(" ");
             const detectedLang = detectLanguage(slideText);
-            // Retry if: (a) non-English brief but English output, (b) wrong non-English language, (c) mixed language
-            const langMismatch = slideText.length > 30 && detectedLang !== expectedLang && (
-              // Case 1: non-English brief, fully English output
-              (expectedLang !== "en" && detectedLang === "en") ||
-              // Case 2: wrong non-English language (e.g., brief is Italian but slide is French)
-              (expectedLang !== "en" && detectedLang !== "en" && detectedLang !== expectedLang) ||
-              // Case 3: English brief but output is non-English
-              (expectedLang === "en" && detectedLang !== "en")
+            const langMismatch = slideText.length > 50 && detectedLang !== expectedLang && (
+              // Only retry for CLEAR mismatches: non-English brief, output detected as different non-English
+              (expectedLang !== "en" && detectedLang !== "en" && detectedLang !== expectedLang)
             );
-            if (langMismatch) {
-              console.warn(`[basquio-author] Slide ${slideSpec.position} language mismatch: expected ${expectedLang}, got ${detectedLang}. Retrying.`);
+            // Skip retry if budget is tight
+            if (langMismatch && remainingBudget() > 0.20) {
+              console.warn(`[basquio-author] Slide ${slideSpec.position} language mismatch: expected ${expectedLang}, got ${detectedLang}. Retrying (1 attempt).`);
               try {
                 const retryResult = await generateObject({
                   model,
@@ -3161,13 +3216,18 @@ Return a V1DeckPlan with slides and charts.`,
           } catch (slideError) {
             console.error(`[basquio-author] Slide ${slideSpec.position} authoring failed:`, slideError);
             // Persist a dignified fallback slide — no error text visible to user
+            // Use governing thought as title, and build meaningful body from plan context
+            const fallbackTitle = slideSpec.governingThought || `${slideSpec.role.charAt(0).toUpperCase()}${slideSpec.role.slice(1)}`;
+            const fallbackBody = slideSpec.focalObject
+              ? `Focus: ${slideSpec.focalObject}`
+              : "";
             await persistSlide(runId, {
               position: slideSpec.position,
               layoutId: slideSpec.layout === "cover" ? "cover" : "title-body",
-              title: slideSpec.governingThought || `Analysis — ${slideSpec.role}`,
-              body: "",
+              title: fallbackTitle,
+              body: fallbackBody,
               bullets: [],
-              speakerNotes: `Slide authoring failed: ${slideError instanceof Error ? slideError.message : String(slideError)}`,
+              speakerNotes: `[Auto-generated fallback] Original authoring failed: ${slideError instanceof Error ? slideError.message : String(slideError)}`,
               evidenceIds: [],
               pageIntent: slideSpec.role,
               governingThought: slideSpec.governingThought,
@@ -3367,11 +3427,17 @@ export const basquioCritiqueRevise = inngest.createFunction(
   { id: "basquio-critique-revise", retries: 0, timeouts: { finish: "25m" } },
   { event: "basquio/critique-revise.requested" },
   async ({ event, step }) => {
-    const { runId, brief, sourceFileIds } = event.data as {
+    const { runId, brief, sourceFileIds, parentCostUsd } = event.data as {
       runId: string;
       brief: string;
       sourceFileIds: string[];
+      parentCostUsd?: number;
     };
+
+    // Budget tracking: total budget is $1, parent already spent some
+    const HARD_BUDGET_USD = 1.0;
+    const parentSpend = parentCostUsd ?? 0;
+    function remainingBudget(): number { return Math.max(0, HARD_BUDGET_USD - parentSpend); }
 
     // Load dependencies from DB
     const workspace = await loadWorkspaceFromDb(runId);
@@ -3397,11 +3463,20 @@ export const basquioCritiqueRevise = inngest.createFunction(
     }
 
     // ─── PARALLEL CRITIQUE (factual + strategic run concurrently) ──
-    // Both critiques are independent evaluations — running them in parallel saves 1.5-2.5 min.
+    // Budget gate: skip expensive LLM critique if budget is exhausted
+    // The deterministic critique above ($0) already caught structural issues
     const critiqueResults = await step.run("critique-parallel", async () => {
       await updateDeliveryStatus(runId, "draft");
       await updateRunStatus(runId, "running", "critique");
       await emitRunEvent(runId, "critique", "phase_started");
+
+      // Budget gate: if remaining budget < $0.15, skip LLM critique entirely
+      if (remainingBudget() < 0.15) {
+        console.warn(`[basquio-critique] Skipping LLM critique — only $${remainingBudget().toFixed(2)} budget remaining`);
+        const emptyFactual = { issues: [] as never[], overallAssessment: "Budget-gated: deterministic critique only", verdict: "pass" as const, coverageScore: 0, accuracyScore: 0 };
+        const emptyStrategic = { issues: [] as never[], overallAssessment: "Budget-gated: deterministic critique only", verdict: "pass" as const, narrativeScore: 0 };
+        return { factual: emptyFactual, strategic: emptyStrategic, stepCostUsd: 0 };
+      }
 
       const slides = await getSlides(runId);
 
@@ -3421,39 +3496,50 @@ export const basquioCritiqueRevise = inngest.createFunction(
       let factualTokens = { inputTokens: 0, outputTokens: 0 };
       let strategicTokens = { inputTokens: 0, outputTokens: 0 };
 
-      // Run factual + strategic in parallel
-      const [factual, strategic] = await Promise.all([
-        runCriticAgent({
-          workspace,
-          runId,
-          deckSummary: "",
-          brief,
-          slideCount: slides.length,
-          getSlides: async () => slideData,
-          getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
-          persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 0, entry),
-          onStepFinish: async (ev) => {
-            factualTokens.inputTokens += ev.usage?.inputTokens ?? 0;
-            factualTokens.outputTokens += ev.usage?.outputTokens ?? 0;
-          },
-        }),
-        runStrategicCriticAgent({
-          runId,
-          brief,
-          deckSummary: "",
-          slideCount: slides.length,
-          slides: slideData,
-          onStepFinish: async (ev) => {
-            strategicTokens.inputTokens += ev.usage?.inputTokens ?? 0;
-            strategicTokens.outputTokens += ev.usage?.outputTokens ?? 0;
-          },
-        }),
-      ]);
+      // Budget-aware critic selection:
+      // - Always run factual (GPT-5.4, ~$0.10-0.15)
+      // - Only run strategic (Opus, ~$0.30-0.50) if budget allows
+      const canAffordStrategic = remainingBudget() > 0.40;
+
+      const factualPromise = runCriticAgent({
+        workspace,
+        runId,
+        deckSummary: "",
+        brief,
+        slideCount: slides.length,
+        getSlides: async () => slideData,
+        getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
+        persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 0, entry),
+        onStepFinish: async (ev) => {
+          factualTokens.inputTokens += ev.usage?.inputTokens ?? 0;
+          factualTokens.outputTokens += ev.usage?.outputTokens ?? 0;
+        },
+      });
+
+      const strategicPromise = canAffordStrategic
+        ? runStrategicCriticAgent({
+            runId,
+            brief,
+            deckSummary: "",
+            slideCount: slides.length,
+            slides: slideData,
+            onStepFinish: async (ev) => {
+              strategicTokens.inputTokens += ev.usage?.inputTokens ?? 0;
+              strategicTokens.outputTokens += ev.usage?.outputTokens ?? 0;
+            },
+          })
+        : Promise.resolve({ issues: [] as never[], overallAssessment: "Skipped — budget conservation", verdict: "pass" as const, narrativeScore: 0 });
+
+      if (!canAffordStrategic) {
+        console.warn(`[basquio-critique] Skipping strategic (Opus) critic — only $${remainingBudget().toFixed(2)} remaining`);
+      }
+
+      const [factual, strategic] = await Promise.all([factualPromise, strategicPromise]);
 
       // Factual critic defaults to gpt-5.4 (cross-model), strategic uses claude-opus-4-6
       const stepCostUsd =
         computeStepCost(factualTokens, "gpt-5.4") +
-        computeStepCost(strategicTokens, "claude-opus-4-6");
+        (canAffordStrategic ? computeStepCost(strategicTokens, "claude-opus-4-6") : 0);
 
       return { factual, strategic, stepCostUsd };
     });
@@ -3464,11 +3550,11 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
     // ─── MERGE + GATE DECISION ─────────────────────────────────
     const gateResult = await step.run("critique-merge-gate", async () => {
-      const allIssues = [...factualCritique.issues, ...strategicCritique.issues];
+      const allIssues = [...factualCritique.issues, ...strategicCritique.issues].filter(Boolean);
       const hasIssues = allIssues.length > 0;
-      const hasCriticalOrMajor = allIssues.some((i) => i.severity === "critical" || i.severity === "major");
-      const criticalCount = allIssues.filter((i) => i.severity === "critical").length;
-      const majorCount = allIssues.filter((i) => i.severity === "major").length;
+      const hasCriticalOrMajor = allIssues.some((i) => i?.severity === "critical" || i?.severity === "major");
+      const criticalCount = allIssues.filter((i) => i?.severity === "critical").length;
+      const majorCount = allIssues.filter((i) => i?.severity === "major").length;
 
       // Persist critique report
       await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`, {
@@ -3485,9 +3571,9 @@ export const basquioCritiqueRevise = inngest.createFunction(
           iteration: 1,
           has_issues: hasIssues,
           issues: allIssues,
-          coverage_score: factualCritique.coverageScore ?? null,
-          accuracy_score: factualCritique.accuracyScore ?? null,
-          narrative_score: strategicCritique.narrativeScore ?? null,
+          coverage_score: ("coverageScore" in factualCritique ? factualCritique.coverageScore : null) ?? null,
+          accuracy_score: ("accuracyScore" in factualCritique ? factualCritique.accuracyScore : null) ?? null,
+          narrative_score: ("narrativeScore" in strategicCritique ? strategicCritique.narrativeScore : null) ?? null,
           provider: "anthropic",
           model_id: "claude-sonnet-4-6",
           usage: null,

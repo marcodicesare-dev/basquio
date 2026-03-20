@@ -431,12 +431,30 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
 
 // ─── LANGUAGE DETECTION (deterministic, not LLM) ──────────────────
 
+// Italian-exclusive markers (words that do NOT appear in Spanish/French/English)
+// Spanish-exclusive markers (words that do NOT appear in Italian/French/English)
+// This prevents false it↔es detection that was burning $0.77/deck in retries
 const LANG_MARKERS: Record<string, string[]> = {
   en: ["the", "and", "for", "that", "with", "from", "this", "which", "their", "have", "been", "would", "should", "could", "between", "through"],
-  it: ["della", "delle", "degli", "nella", "nelle", "sono", "questo", "questa", "questi", "anche", "come", "perché", "quando", "ogni", "stato", "attraverso"],
+  it: [
+    // Italian-exclusive: these NEVER appear in Spanish
+    "della", "delle", "degli", "nella", "nelle", "dello", "nello",
+    "questo", "questa", "questi", "queste", "quello", "quella",
+    "anche", "perché", "quando", "ogni", "stato", "attraverso",
+    "sono", "molto", "sempre", "mentre", "quindi", "ancora",
+    "tuttavia", "oppure", "infatti", "invece", "inoltre",
+    // Italian articles/prepositions not shared with Spanish
+    "il", "gli", "nei", "dai", "sul", "sulla",
+  ],
   de: ["und", "der", "die", "das", "ist", "ein", "eine", "für", "mit", "auf", "werden", "durch", "nach", "über", "unter", "zwischen"],
-  fr: ["les", "des", "une", "pour", "avec", "dans", "sur", "par", "sont", "cette", "entre", "aussi", "comme", "mais", "être"],
-  es: ["los", "las", "del", "para", "con", "una", "por", "son", "esta", "como", "entre", "pero", "desde", "también"],
+  fr: ["les", "des", "une", "pour", "avec", "dans", "sur", "par", "cette", "aussi", "comme", "mais", "être", "leurs", "nous", "vous"],
+  es: [
+    // Spanish-exclusive: these NEVER appear in Italian
+    "los", "las", "para", "por", "pero", "desde", "también",
+    "está", "están", "tiene", "tienen", "puede", "pueden",
+    "hay", "muy", "más", "sin", "sobre", "otro", "otra",
+    "estos", "estas", "aquel", "aquella", "hacia", "según",
+  ],
 };
 
 export function detectLanguage(text: string): string {
@@ -445,8 +463,9 @@ export function detectLanguage(text: string): string {
   for (const [lang, markers] of Object.entries(LANG_MARKERS)) {
     scores[lang] = words.filter((w) => markers.includes(w)).length;
   }
+  // Require minimum 2 marker hits to avoid false positives on short text
   const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-  return best && best[1] > 0 ? best[0] : "en";
+  return best && best[1] >= 2 ? best[0] : "en";
 }
 
 function checkLanguageConsistency(briefLang: string, slideText: string): string | null {
