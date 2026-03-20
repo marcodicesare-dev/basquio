@@ -43,4 +43,5 @@ export {
   createCompareToBriefTool,
   createExportArtifactsTool,
   createQaArtifactsTool,
+  detectLanguage,
 } from "./tools";

@@ -20,6 +20,7 @@ export {
   createRenderDeckPreviewTool,
   createListEvidenceTool,
   createRenderContactSheetTool,
+  detectLanguage,
   type AuthoringToolContext,
 } from "./authoring";
 

@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, type AnalystResult } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, type AnalystResult } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -1914,6 +1914,35 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       console.warn(budgetCheck.message);
     }
 
+    // Persist cost telemetry to deck_runs (best-effort — don't crash if column missing)
+    try {
+      await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            cost_telemetry: {
+              totalTokens: costSummary.totalUsage.totalTokens,
+              inputTokens: costSummary.totalUsage.inputTokens,
+              outputTokens: costSummary.totalUsage.outputTokens,
+              estimatedCostUsd: costSummary.estimatedCostUsd,
+              durationMs: costSummary.durationMs,
+              phases: costSummary.phases,
+              budgetExceeded: budgetCheck.exceeded,
+            },
+          }),
+        },
+      );
+    } catch (e) {
+      console.warn("Failed to persist cost telemetry:", e);
+    }
+
     return { runId, artifacts, costSummary };
 
     } catch (error) {
@@ -2760,6 +2789,12 @@ export const basquioCritiqueRevise = inngest.createFunction(
           iteration: 1,
           has_issues: hasIssues,
           issues: allIssues,
+          coverage_score: factualCritique.coverageScore ?? null,
+          accuracy_score: factualCritique.accuracyScore ?? null,
+          narrative_score: strategicCritique.narrativeScore ?? null,
+          provider: "anthropic",
+          model_id: "claude-sonnet-4-6",
+          usage: null,
         }),
       });
 

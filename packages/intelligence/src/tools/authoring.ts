@@ -9,6 +9,7 @@ import type { EvidenceWorkspace, TemplateProfile } from "@basquio/types";
 export type AuthoringToolContext = {
   workspace: EvidenceWorkspace;
   runId: string;
+  briefLanguage?: string; // Detected from brief text — enforced on all slides
   persistNotebookEntry: (entry: {
     toolName: string;
     toolInput: Record<string, unknown>;
@@ -428,6 +429,43 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
   });
 }
 
+// ─── LANGUAGE DETECTION (deterministic, not LLM) ──────────────────
+
+const LANG_MARKERS: Record<string, string[]> = {
+  en: ["the", "and", "for", "that", "with", "from", "this", "which", "their", "have", "been", "would", "should", "could", "between", "through"],
+  it: ["della", "delle", "degli", "nella", "nelle", "sono", "questo", "questa", "questi", "anche", "come", "perché", "quando", "ogni", "stato", "attraverso"],
+  de: ["und", "der", "die", "das", "ist", "ein", "eine", "für", "mit", "auf", "werden", "durch", "nach", "über", "unter", "zwischen"],
+  fr: ["les", "des", "une", "pour", "avec", "dans", "sur", "par", "sont", "cette", "entre", "aussi", "comme", "mais", "être"],
+  es: ["los", "las", "del", "para", "con", "una", "por", "son", "esta", "como", "entre", "pero", "desde", "también"],
+};
+
+export function detectLanguage(text: string): string {
+  const words = text.toLowerCase().split(/\s+/);
+  const scores: Record<string, number> = {};
+  for (const [lang, markers] of Object.entries(LANG_MARKERS)) {
+    scores[lang] = words.filter((w) => markers.includes(w)).length;
+  }
+  const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] > 0 ? best[0] : "en";
+}
+
+function checkLanguageConsistency(briefLang: string, slideText: string): string | null {
+  if (!briefLang || slideText.length < 20) return null;
+  const slideLang = detectLanguage(slideText);
+  if (slideLang !== briefLang && slideLang !== "en" && briefLang !== "en") {
+    // Only warn for clear mismatches (ignore English terms in non-English decks)
+    return `Language mismatch: brief is ${briefLang}, slide text appears to be ${slideLang}. All slides must match the brief language.`;
+  }
+  if (briefLang !== "en" && slideLang === "en") {
+    // Brief is non-English but slide is English — warn
+    const nonEnScore = (LANG_MARKERS[briefLang] ?? []).filter((m) => slideText.toLowerCase().includes(m)).length;
+    if (nonEnScore === 0) {
+      return `Language warning: brief is ${briefLang} but this slide appears entirely English. Write in ${briefLang}.`;
+    }
+  }
+  return null;
+}
+
 // ─── WRITE SLIDE (strict scene-graph commit) ──────────────────────
 
 export function createWriteSlideTool(ctx: AuthoringToolContext) {
@@ -497,6 +535,18 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
       if (!params.chartId && chartLayouts.includes(params.layout)) {
         // Chart layout without a chart — warn but don't block
         console.warn(`[write_slide] Slide ${params.position} uses layout "${params.layout}" but has no chartId. The slide will render without a chart.`);
+      }
+
+      // ─── Language consistency check (deterministic) ───
+      if (ctx.briefLanguage && params.layout !== "cover") {
+        const slideText = [params.title, params.body, ...(params.bullets ?? [])].filter(Boolean).join(" ");
+        const langWarning = checkLanguageConsistency(ctx.briefLanguage, slideText);
+        if (langWarning) {
+          return {
+            error: langWarning,
+            hint: `Rewrite this slide in ${ctx.briefLanguage}. The entire deck must be in the same language as the brief.`,
+          };
+        }
       }
 
       // Look up chart metadata for slot validation (category count, type, table dimensions)
