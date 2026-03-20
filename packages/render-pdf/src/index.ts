@@ -760,6 +760,14 @@ export type V2PdfInput = {
   coverBgColor?: string;
   headingFont?: string;
   bodyFont?: string;
+  // Full dark-mode palette (matching PPTX tokens)
+  paletteBg?: string;
+  paletteSurface?: string;
+  paletteText?: string;
+  paletteMuted?: string;
+  paletteBorder?: string;
+  palettePositive?: string;
+  paletteNegative?: string;
 };
 
 export async function renderV2PdfArtifact(input: V2PdfInput): Promise<BinaryArtifact | null> {
@@ -784,11 +792,19 @@ export async function renderV2PdfArtifact(input: V2PdfInput): Promise<BinaryArti
 }
 
 function buildV2DeckHtml(input: V2PdfInput): string {
-  const accent = input.accentColor ?? "2563EB";
-  const coverBg = input.coverBgColor ?? "0F172A";
+  const accent = input.accentColor ?? input.paletteBg ? "E8A84C" : "2563EB";
+  const coverBg = input.coverBgColor ?? input.paletteBg ?? "0A090D";
   const safeFont = (f: string) => f.replace(/[^a-zA-Z0-9 ,\-]/g, "");
   const headingFont = safeFont(input.headingFont ?? "Arial");
   const bodyFont = safeFont(input.bodyFont ?? "Arial");
+  // Dark-mode tokens with fallbacks
+  const bg = input.paletteBg ?? "0A090D";
+  const surface = input.paletteSurface ?? "13121A";
+  const text = input.paletteText ?? "F2F0EB";
+  const muted = input.paletteMuted ?? "A09FA6";
+  const border = input.paletteBorder ?? "272630";
+  const positive = input.palettePositive ?? "4CC9A0";
+  const negative = input.paletteNegative ?? "E8636F";
 
   const slideHtml = input.slides.map((s) => {
     const isCover = s.layoutId === "cover";
@@ -846,8 +862,8 @@ function buildV2DeckHtml(input: V2PdfInput): string {
 <html><head><meta charset="utf-8"><style>
 @page { size: 13.333in 7.5in; margin: 0; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: ${bodyFont}, Arial, sans-serif; }
-.slide { width: 13.333in; height: 7.5in; padding: 0.5in 0.6in 0.4in; page-break-after: always; position: relative; overflow: hidden; }
+body { font-family: ${bodyFont}, Arial, sans-serif; background: #${bg}; color: #${text}; }
+.slide { width: 13.333in; height: 7.5in; padding: 0.5in 0.6in 0.4in; page-break-after: always; position: relative; overflow: hidden; background: #${surface}; }
 .slide:last-child { page-break-after: auto; }
 .cover { display: flex; align-items: center; justify-content: center; }
 .cover-content { text-align: center; max-width: 10in; }
@@ -856,13 +872,13 @@ body { font-family: ${bodyFont}, Arial, sans-serif; }
 .divider { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .divider h1 { font-family: ${headingFont}, Arial, sans-serif; font-size: 32pt; font-weight: 700; }
 .kicker { font-size: 10pt; text-transform: uppercase; letter-spacing: 1.5pt; font-weight: 600; margin-bottom: 0.1in; }
-h2 { font-family: ${headingFont}, Arial, sans-serif; font-size: 24pt; font-weight: 700; color: #0F172A; margin-bottom: 0.25in; }
-.body { font-size: 14pt; line-height: 1.5; color: #334155; max-width: 10in; }
+h2 { font-family: ${headingFont}, Arial, sans-serif; font-size: 24pt; font-weight: 700; color: #${text}; margin-bottom: 0.25in; }
+.body { font-size: 14pt; line-height: 1.5; color: #${muted}; max-width: 10in; }
 ul { padding-left: 0.3in; margin-top: 0.15in; }
-li { font-size: 14pt; line-height: 1.6; color: #334155; margin-bottom: 0.08in; }
+li { font-size: 14pt; line-height: 1.6; color: #${muted}; margin-bottom: 0.08in; }
 .metrics { display: flex; gap: 0.25in; margin-bottom: 0.25in; flex-wrap: wrap; }
-.metric-card { border: 1px solid #E2E8F0; border-left: 3px solid currentColor; padding: 0.15in 0.2in; min-width: 2in; }
-.metric-label { font-size: 10pt; text-transform: uppercase; font-weight: 600; color: #64748B; letter-spacing: 1pt; }
+.metric-card { border: 1px solid #${border}; border-left: 3px solid currentColor; padding: 0.15in 0.2in; min-width: 2in; background: #${bg}; }
+.metric-label { font-size: 10pt; text-transform: uppercase; font-weight: 600; color: #${muted}; letter-spacing: 1pt; }
 .metric-value { font-size: 32pt; font-weight: 700; }
 .metric-delta { font-size: 12pt; font-weight: 600; }
 .callout { margin-top: 0.2in; font-size: 12pt; border-radius: 4px; }

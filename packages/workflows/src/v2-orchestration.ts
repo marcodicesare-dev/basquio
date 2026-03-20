@@ -3177,9 +3177,17 @@ export const basquioExport = inngest.createFunction(
           })),
           deckTitle: deckTitle || "Basquio Analysis",
           accentColor: pdfPalette?.accent,
-          coverBgColor: pdfPalette?.coverBg,
+          coverBgColor: pdfPalette?.coverBg ?? pdfPalette?.background,
           headingFont: pdfTypo?.headingFont,
           bodyFont: pdfTypo?.bodyFont,
+          // Full dark-mode palette for PDF/PPTX visual parity
+          paletteBg: pdfPalette?.background,
+          paletteSurface: pdfPalette?.surface,
+          paletteText: pdfPalette?.text,
+          paletteMuted: pdfPalette?.muted ?? pdfPalette?.accentMuted,
+          paletteBorder: pdfPalette?.border,
+          palettePositive: pdfPalette?.positive,
+          paletteNegative: pdfPalette?.negative,
         });
 
         if (pdfResult) {

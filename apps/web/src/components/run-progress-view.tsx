@@ -145,14 +145,14 @@ export function RunProgressView(input: {
               <a
                 className="button secondary"
                 href={`/api/artifacts/${snapshot.jobId}/pdf`}
-                style={{ fontSize: "1rem", padding: "0.75rem 2rem", border: "1px solid #E2E8F0", color: "#334155" }}
+                style={{ fontSize: "1rem", padding: "0.75rem 2rem", border: "1px solid rgba(255,255,255,0.2)", color: "#FFFFFF" }}
               >
                 Download PDF
               </a>
             </div>
 
             <div style={{ marginTop: "2rem" }}>
-              <Link href="/jobs/new" style={{ color: "#2563EB", fontSize: "0.9rem" }}>
+              <Link href="/jobs/new" style={{ color: "#E8A84C", fontSize: "0.9rem" }}>
                 Generate another report
               </Link>
             </div>
@@ -199,7 +199,7 @@ export function RunProgressView(input: {
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
         .progress-bar-fill {
           transition: width 1.5s ease-out;
-          background: linear-gradient(90deg, #2563EB, #60A5FA, #2563EB);
+          background: linear-gradient(90deg, #E8A84C, #F0CC6B, #E8A84C);
           background-size: 200% 100%;
           animation: shimmer 2s ease-in-out infinite;
         }
@@ -208,8 +208,8 @@ export function RunProgressView(input: {
           display: flex; align-items: center; justify-content: center;
           font-size: 0.8rem; font-weight: 700; flex-shrink: 0;
         }
-        .step-dot.done { background: #2563EB; color: white; }
-        .step-dot.active { background: #2563EB; color: white; animation: pulse 1.5s ease-in-out infinite; }
+        .step-dot.done { background: #E8A84C; color: #0A090D; }
+        .step-dot.active { background: #E8A84C; color: #0A090D; animation: pulse 1.5s ease-in-out infinite; }
         .step-dot.waiting { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.4); }
         .step-label { font-size: 0.95rem; }
         .step-label.active { color: #FFFFFF; font-weight: 600; }

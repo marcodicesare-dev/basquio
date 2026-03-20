@@ -105,33 +105,6 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const toolCalls = events.filter((e) => e.event_type === "tool_call");
   const currentPhaseTools = toolCalls.filter((e) => e.phase === currentPhase);
 
-  let progressPercent =
-    run.status === "completed"
-      ? 100
-      : run.status === "failed"
-        ? Math.max(2, Math.round(
-            ((completedPhases.size) / V2_PHASES.length) * 100,
-          ))
-        : Math.max(2, Math.min(99, Math.round(
-            ((completedPhases.size + (currentPhaseIndex >= 0 ? 0.5 : 0)) / V2_PHASES.length) * 100,
-          )));
-
-  // Sub-phase smoothing: use tool call count within current phase
-  const phaseWeight = 1 / V2_PHASES.length; // ~16.7%
-  const subPhaseProgress = currentPhaseTools.length > 0
-    ? Math.min(0.9, currentPhaseTools.length / 15) * phaseWeight * 100 // max 90% through current phase
-    : 0;
-
-  // Only apply sub-phase smoothing for running status
-  if (run.status !== "completed" && run.status !== "failed") {
-    progressPercent = Math.max(2, Math.min(99, Math.round(
-      (completedPhases.size / V2_PHASES.length) * 100 + subPhaseProgress
-    )));
-  }
-
-  const createdAt = run.created_at;
-  const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
-
   const PHASE_ESTIMATE_SECONDS: Record<string, number> = {
     normalize: 15,
     understand: 90,
@@ -140,6 +113,40 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     revise: 60,
     export: 30,
   };
+
+  let progressPercent: number;
+  if (run.status === "completed") {
+    progressPercent = 100;
+  } else if (run.status === "failed") {
+    progressPercent = Math.max(2, Math.round((completedPhases.size / V2_PHASES.length) * 100));
+  } else {
+    // Use current_phase position as primary signal (not tool calls which may not exist in V1)
+    const phaseWeight = 100 / V2_PHASES.length; // ~16.7% per phase
+    const baseProgress = currentPhaseIndex >= 0 ? currentPhaseIndex * phaseWeight : 0;
+
+    // Smooth within current phase using elapsed time since last phase change
+    const phaseStartEvent = events.find(
+      (e) => e.phase === currentPhase && (e.event_type === "phase_started" || e.event_type === "plan_started"),
+    );
+    const phaseElapsed = phaseStartEvent
+      ? (Date.now() - new Date(phaseStartEvent.created_at).getTime()) / 1000
+      : 0;
+    const expectedPhaseDuration = PHASE_ESTIMATE_SECONDS[currentPhase ?? ""] ?? 60;
+    const phaseFraction = Math.min(0.9, phaseElapsed / expectedPhaseDuration); // Max 90% through current phase
+
+    // If tool calls exist (agent path), use them for finer granularity
+    const toolFraction = currentPhaseTools.length > 0
+      ? Math.min(0.9, currentPhaseTools.length / 15)
+      : 0;
+    const subFraction = Math.max(phaseFraction, toolFraction);
+
+    progressPercent = Math.max(2, Math.min(99, Math.round(
+      baseProgress + subFraction * phaseWeight,
+    )));
+  }
+
+  const createdAt = run.created_at;
+  const elapsedSeconds = Math.max(1, Math.round((Date.now() - new Date(createdAt).getTime()) / 1000));
 
   const estimatedRemainingSeconds =
     run.status === "completed" || run.status === "failed"
