@@ -1861,7 +1861,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     // ─── STEP 2.5+3+4: PLAN + AUTHOR + POLISH (child function) ────
     // Entire plan → author → polish block runs in a child function with
     // its own 25min timeout. Isolates the most token-heavy phase.
-    let authorResult: { deckSummary: string; slideCount: number; chartCount: number };
+    let authorResult: { deckSummary: string; slideCount: number; chartCount: number; estimatedCostUsd?: number };
     try {
       authorResult = await step.invoke("author-polish", {
         function: basquioAuthor,
@@ -1921,6 +1921,14 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
 
     // ─── COST SUMMARY ──────────────────────────────────────────
     const costSummary = tracker.getSummary(runId);
+    // Aggregate child function cost estimates (parent tracker only captures orchestration)
+    const understandCost = (analystResult as Record<string, unknown>).costSummary
+      ? ((analystResult as Record<string, unknown>).costSummary as { estimatedCostUsd?: number })?.estimatedCostUsd ?? 0
+      : 0;
+    const authorCost = authorResult?.estimatedCostUsd ?? 0;
+    // Critique-revise: ~2 Sonnet calls (factual + strategic) + optional revise
+    const critiqueCost = 0.08; // ~2 Sonnet calls + 1 optional revise
+    costSummary.estimatedCostUsd = Math.round((understandCost + authorCost + critiqueCost) * 1000) / 1000;
     const budgetCheck = checkCostBudget(costSummary);
 
     logPhaseEvent(runId, "complete", "job_finished", {
@@ -2737,15 +2745,31 @@ Fix the issues while maintaining the governing thought.`,
       });
     }
 
-    // Return summary for parent
+    // Return summary for parent (including cost estimate)
     const finalSlides = await getSlides(runId);
     const finalCharts = await getV2ChartRows(runId);
     const deckSummary = `V1 pipeline: ${finalSlides.length} slides, ${finalCharts.length} charts (${chartBuildResult.chartResults.filter((r) => r.success).length} deterministic, ${criticalIssues.length} critical issues ${criticalIssues.length > 0 ? "repaired" : ""})`;
+
+    // Cost estimate based on V1 architecture:
+    // Plan: 1 GPT-5.4-mini call (~2K in, ~3K out) = ~$0.015
+    // Author: N slides × (Sonnet sacred / Haiku regular) (~1.5K in, ~0.5K out each)
+    // Sonnet: $3/$15 per MTok, Haiku: $1/$5 per MTok
+    // Critique deterministic: 0 LLM cost
+    // Repair: ~1 Sonnet call per critical issue
+    const sacredSlides = finalSlides.filter((s) => ["cover", "exec-summary", "summary", "recommendation"].includes(s.layoutId ?? "")).length;
+    const regularSlides = finalSlides.length - sacredSlides;
+    const repairCalls = criticalIssues.length;
+    const estimatedCostUsd =
+      0.015 + // plan (GPT-5.4-mini)
+      sacredSlides * 0.03 + // Sonnet per sacred slide (~1.5K in + 0.5K out)
+      regularSlides * 0.01 + // Haiku per regular slide
+      repairCalls * 0.03; // Sonnet per repair
 
     return {
       deckSummary,
       slideCount: finalSlides.length,
       chartCount: finalCharts.length,
+      estimatedCostUsd: Math.round(estimatedCostUsd * 1000) / 1000,
     };
   },
 );
