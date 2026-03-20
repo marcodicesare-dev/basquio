@@ -2594,6 +2594,16 @@ Return a V1DeckPlan with slides and charts.`,
             console.warn(`[basquio-author] Chart type overridden: ${planned.chartType} → ${exhibitResult.chartType} (${exhibitResult.reason})`);
           }
 
+          // ─── CHART DATA VALIDATION ───
+          // Reject charts where all values are zero or near-zero (broken aggregation)
+          const allValues = grouped.series.flatMap((s) => s.values);
+          const maxValue = Math.max(...allValues.map(Math.abs), 0);
+          if (maxValue < 0.001 || allValues.every((v) => v === 0)) {
+            console.warn(`[basquio-author] Chart ${planned.chartId} has all-zero data — skipping`);
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: "All values are zero — data aggregation produced empty results" });
+            continue;
+          }
+
           // ─── ONTOLOGY MAPPER (deterministic label replacement, $0) ───
           // Replace raw Italian column names with canonical English in chart data
           const allColNames = [grouped.xAxis, ...grouped.series.map((s) => s.name)];
@@ -3013,8 +3023,10 @@ Fix the issues while maintaining the governing thought.`,
       });
     }
 
-    // ─── SLIDE-KILL QA (deterministic, post-author, $0) ───────────
-    // Remove slides that fail quality gates (but always keep cover + exec-summary + last)
+    // ─── SLIDE QUALITY LOG (advisory only — no deletion) ───────────
+    // Log quality issues for telemetry but do NOT delete slides.
+    // Slide-kill QA was causing regressions by gutting decks without rebuilding.
+    // Critique step handles quality gating instead.
     const allSlides = await getSlides(runId);
     const qualityResults = allSlides.map((s: Record<string, unknown>) => evaluateSlideQuality({
       position: s.position as number,
@@ -3026,21 +3038,11 @@ Fix the issues while maintaining the governing thought.`,
       callout: s.callout as { text: string } | null | undefined,
       metrics: s.metrics as Array<{ label: string; value: string; delta?: string }> | null | undefined,
     }));
-    const killedSlides = qualityResults.filter((r) => !r.pass);
-    if (killedSlides.length > 0) {
-      console.warn(`[basquio-author] Slide-kill QA: ${killedSlides.length} slides failed quality gates:`);
-      for (const k of killedSlides) {
+    const issueSlides = qualityResults.filter((r) => !r.pass);
+    if (issueSlides.length > 0) {
+      console.warn(`[basquio-author] Quality issues (advisory, not deleting): ${issueSlides.length} slides have issues`);
+      for (const k of issueSlides) {
         console.warn(`  Slide ${k.position}: ${k.issues.join("; ")}`);
-      }
-      // Delete failed slides from DB (except protected ones)
-      const positionsToDelete = killedSlides
-        .filter((k) => k.position !== allSlides[0]?.position && k.position !== allSlides[1]?.position && k.position !== allSlides[allSlides.length - 1]?.position)
-        .map((k) => k.position);
-      if (positionsToDelete.length > 0) {
-        for (const pos of positionsToDelete) {
-          await deleteSlideByPosition(runId, pos);
-        }
-        console.warn(`[basquio-author] Deleted ${positionsToDelete.length} low-quality slides`);
       }
     }
 
