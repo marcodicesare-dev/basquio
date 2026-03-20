@@ -1930,8 +1930,11 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     const authorReturn = authorResult as Record<string, unknown>;
     const authorCost = (authorReturn?.estimatedCostUsd as number) ?? 0;
     const authorTokens = (authorReturn?.tokenUsage as { inputTokens?: number; outputTokens?: number; totalTokens?: number }) ?? {};
-    // Aggregate: understand + author/critique/repair
-    costSummary.estimatedCostUsd = Math.round((understandCost + authorCost) * 1000) / 1000;
+    // Critique-revise returns estimatedCostUsd (from LLM critic agents)
+    const critiqueReturn = critiqueReviseResult as Record<string, unknown>;
+    const critiqueCost = (critiqueReturn?.estimatedCostUsd as number) ?? 0;
+    // Aggregate: understand + author + critique/revise
+    costSummary.estimatedCostUsd = Math.round((understandCost + authorCost + critiqueCost) * 1000) / 1000;
     costSummary.totalUsage = {
       totalTokens: (understandTokens.totalTokens ?? 0) + (authorTokens.totalTokens ?? 0),
       inputTokens: (understandTokens.inputTokens ?? 0) + (authorTokens.inputTokens ?? 0),
@@ -2910,16 +2913,16 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       if (!hasCriticalOrMajor) {
         await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues };
+        return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues, estimatedCostUsd: 0.12 };
       }
 
       // Only revise for critical issues — major issues are acceptable for delivery
       if (criticalCount === 0) {
         await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: true, needsRevise: false, issues: allIssues, criticalCount, majorCount };
+        return { hasCriticalOrMajor: true, needsRevise: false, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: 0.12 };
       }
 
-      return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount };
+      return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: 0.12 };
     });
 
     // ─── REVISE (targeted section-level repair) ────────────────────
@@ -3020,17 +3023,18 @@ export const basquioCritiqueRevise = inngest.createFunction(
             degradedIssues: reIssues
               .filter((i: { severity: string }) => i.severity === "critical" || i.severity === "major")
               .map((i: { severity: string; claim: string }) => ({ severity: i.severity, claim: i.claim })),
+            estimatedCostUsd: 0.30, // critique + revise + re-critique
           };
         }
 
         await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
+        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: 0.30 };
       });
 
       return reGateResult;
     }
 
-    return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }> };
+    return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: 0.06 };
   },
 );
 
