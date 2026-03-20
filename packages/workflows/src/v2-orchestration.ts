@@ -2349,7 +2349,7 @@ export const basquioUnderstand = inngest.createFunction(
  * Deterministic plan validation — $0 cost, runs after LLM plan generation.
  * Enforces structural rules that the LLM doesn't reliably follow.
  */
-function validateAndFixPlan(plan: V1DeckPlan): V1DeckPlan {
+function validateAndFixPlan(plan: V1DeckPlan, analysisFindings?: Array<{ title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }>, recommendedChartTypes?: Array<{ findingIndex: number; chartType: string; rationale: string }>): V1DeckPlan {
   const slides = [...plan.slides].sort((a, b) => a.position - b.position);
   const charts = [...plan.charts];
   const chartIds = new Set(charts.map(c => c.chartId));
@@ -2366,23 +2366,67 @@ function validateAndFixPlan(plan: V1DeckPlan): V1DeckPlan {
     }
   }
 
-  // ── Rule 2: Every chart-layout slide with a chartId must reference a real chart ──
-  const chartLayouts = new Set(["chart-split", "title-chart", "evidence-grid", "comparison", "two-column"]);
+  // ── Rule 2: Every chart-layout slide must have a valid chart; chartless analytical slides get upgraded ──
+  const chartLayoutSet = new Set(["chart-split", "title-chart", "evidence-grid", "comparison", "two-column"]);
+  const analyticalSlides = slides.filter(s =>
+    s.position > 2 && s.position < slides.length && !["cover", "exec-summary"].includes(s.role)
+  );
+
   for (const s of slides) {
     if (s.chartId && !chartIds.has(s.chartId)) {
-      // Broken reference — clear it so the slide renders without a chart
-      s.chartId = "";
+      s.chartId = ""; // Clear broken reference
     }
-    // If a chart-layout slide has no chart, downgrade to title-body
-    if (chartLayouts.has(s.layout) && !s.chartId) {
-      // Check if there's an unassigned chart we can use
-      const assignedChartIds = new Set(slides.filter(sl => sl.chartId).map(sl => sl.chartId));
-      const unassigned = charts.find(c => !assignedChartIds.has(c.chartId));
-      if (unassigned) {
-        s.chartId = unassigned.chartId;
-      } else {
-        s.layout = "title-body";
-      }
+  }
+
+  // Force charts on ALL analytical slides (positions 3 to N-1)
+  for (const s of analyticalSlides) {
+    if (s.chartId && chartIds.has(s.chartId)) continue; // Already has valid chart
+
+    // Try to find an unassigned chart
+    const assignedChartIds = new Set(slides.filter(sl => sl.chartId).map(sl => sl.chartId));
+    const unassigned = charts.find(c => !assignedChartIds.has(c.chartId));
+    if (unassigned) {
+      s.chartId = unassigned.chartId;
+      if (!chartLayoutSet.has(s.layout)) s.layout = "chart-split";
+      continue;
+    }
+
+    // No unassigned charts — generate one from analysis findings
+    const slideIndex = slides.indexOf(s);
+    const findingIndex = slideIndex - 2; // offset for cover + exec-summary
+    const finding = analysisFindings?.[findingIndex];
+    const chartRec = recommendedChartTypes?.find(r => r.findingIndex === findingIndex);
+    if (finding) {
+      const newChartId = `chart-gen-${charts.length + 1}`;
+      charts.push({
+        chartId: newChartId,
+        chartType: chartRec?.chartType ?? "horizontal_bar",
+        title: finding.title,
+        sourceNote: "",
+        intent: "rank",
+        unit: "",
+        evidenceRefIds: finding.evidenceRefIds ?? [],
+        dataSpec: {
+          sheetKey: "",
+          dimensions: [] as string[],
+          measures: [] as string[],
+          filter: "none",
+          aggregation: "sum",
+          sort: "desc",
+          limit: 10,
+          highlightCategory: plan.focalEntity ?? "",
+        },
+      } as typeof charts[0]);
+      s.chartId = newChartId;
+      if (!chartLayoutSet.has(s.layout)) s.layout = "chart-split";
+    }
+    // If no finding available either, leave as-is (will be title-body)
+  }
+
+  // Also fix any chart-layout slide that still has no chart
+  for (const s of slides) {
+    if (chartLayoutSet.has(s.layout) && !s.chartId) {
+      s.layout = "title-body";
     }
   }
 
@@ -2611,7 +2655,7 @@ export const basquioAuthor = inngest.createFunction(
           prompt: `You are a top-tier strategy consultant deck architect (McKinsey/BCG-level). Plan a ${targetSlides}-slide VISUAL presentation — not a text report.
 
 ## EXHIBIT PLANNER RULES (non-negotiable)
-Every content slide should have a chart unless the message truly cannot be shown visually. Max 1 text-only slide.
+Every analytical content slide (positions 3 through N-1) MUST have a chart with a valid chartId. ZERO text-only analytical slides allowed. The ONLY slides without charts are: cover (position 1), exec-summary (position 2, but SHOULD have a chart), and the final summary/recommendation slide.
 
 Choose chart types by ANALYTICAL QUESTION, not data availability:
 - "How big is each segment?" → horizontal_bar (ranked by size, largest on top)
@@ -2658,7 +2702,7 @@ ${clarifiedBrief?.language ?? "en"}
 3. Each chart MUST have a complete dataSpec with a valid sheetKey from the available sheets list.
 4. Chart IDs: use "chart-1", "chart-2", etc. Slides reference these IDs.
 5. Filter expressions use: "column = value AND column2 > 100" syntax. Use "none" if no filter.
-6. For slides without charts, set chartId to "".
+6. Every analytical slide (positions 3 to N-1) MUST have a chartId. Only cover and final summary may have chartId="".
 7. Prefer horizontal_bar for rankings, line for trends, stacked_bar for composition, pie only for ≤5 categories.
 8. Set highlightCategory to the focal entity name for emphasis on every chart.
 9. Sort "desc" for rankings, "asc" for smallest-first, "none" for time series.
@@ -2696,7 +2740,18 @@ Return a V1DeckPlan with slides and charts.`,
     }) as V1DeckPlan;
 
     // ─── STEP 1.5: VALIDATE PLAN (deterministic, $0) ────────────────
-    const validatedPlan = validateAndFixPlan(v1Plan);
+    // Load analysis findings for plan validation (analysis was loaded inside plan-deck step)
+    const analysisForValidation = await loadWorkingPaper<{
+      analysis: {
+        topFindings: Array<{ title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }>;
+        recommendedChartTypes: Array<{ findingIndex: number; chartType: string; rationale: string }>;
+      };
+    }>(runId, "analysis_result");
+    const validatedPlan = validateAndFixPlan(
+      v1Plan,
+      analysisForValidation?.analysis?.topFindings,
+      analysisForValidation?.analysis?.recommendedChartTypes,
+    );
 
     // ─── STEP 2: BUILD CHARTS (deterministic, ZERO LLM) ──────────────
     const chartBuildResult = await step.run("build-charts", async () => {
@@ -2709,6 +2764,13 @@ Return a V1DeckPlan with slides and charts.`,
 
       for (const planned of chartsToProcess) {
         try {
+          // Skip generated charts with no data spec (from validateAndFixPlan auto-generation)
+          if (!planned.dataSpec.sheetKey) {
+            console.warn(`[basquio-author] Chart ${planned.chartId} has no sheetKey (auto-generated), skipping`);
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: "No sheetKey — auto-generated chart without data binding" });
+            continue;
+          }
+
           // Load rows from the specified sheet
           const rows = await loadRows(planned.dataSpec.sheetKey);
           if (rows.length === 0) {
@@ -2962,19 +3024,34 @@ Return a V1DeckPlan with slides and charts.`,
         await Promise.all(batch.map(async (slideSpec) => {
           try {
             const isSacred = ["cover", "exec-summary", "summary", "recommendation"].includes(slideSpec.role);
-            // Budget enforcement: downgrade sacred slides to Haiku if budget is tight
-            const canAffordSonnet = remainingBudget() > 0.30; // Sonnet slide costs ~$0.05-0.08, reserve buffer for critique
+            // Budget enforcement: tiered model selection
+            const budgetPct = 1 - (remainingBudget() / HARD_BUDGET_USD);
+            const forceHaiku = budgetPct >= 0.70; // 70%+ budget used → all Haiku
+            const canAffordSonnet = !forceHaiku && remainingBudget() > 0.30;
             const model = (isSacred && canAffordSonnet) ? anthropic("claude-sonnet-4-6") : anthropic("claude-haiku-4-5");
             const modelId = (isSacred && canAffordSonnet) ? "claude-sonnet-4-6" : "claude-haiku-4-5";
 
             const slideContext = buildSlideContext(slideSpec);
 
-            let slideGenResult = await generateObject({
+            // Retry once on transient network errors
+            const generateSlide = () => generateObject({
               model,
               schema: v1SlideOutputSchema,
               system: v1SlideSystemPrompt,
               prompt: slideContext,
             });
+            let slideGenResult: Awaited<ReturnType<typeof generateSlide>>;
+            try {
+              slideGenResult = await generateSlide();
+            } catch (firstErr) {
+              const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+              if (/ECONNRESET|ETIMEDOUT|429|500|502|503|504|overloaded/i.test(msg)) {
+                console.warn(`[basquio-author] Slide ${slideSpec.position} transient error, retrying: ${msg.slice(0, 80)}`);
+                slideGenResult = await generateSlide(); // Retry once
+              } else {
+                throw firstErr;
+              }
+            }
             let slideOutput = slideGenResult.object;
             addUsage(slideGenResult.usage, modelId);
 
@@ -3048,13 +3125,17 @@ Return a V1DeckPlan with slides and charts.`,
             });
           } catch (slideError) {
             console.error(`[basquio-author] Slide ${slideSpec.position} authoring failed:`, slideError);
-            // Persist a minimal fallback slide so the deck isn't missing positions
+            // Persist a dignified fallback slide — no error text visible to user
             await persistSlide(runId, {
               position: slideSpec.position,
               layoutId: slideSpec.layout === "cover" ? "cover" : "title-body",
-              title: slideSpec.governingThought || `Slide ${slideSpec.position}`,
-              body: `Content generation failed for this slide. Governing thought: ${slideSpec.governingThought}`,
+              title: slideSpec.governingThought || `Analysis — ${slideSpec.role}`,
+              body: "",
+              bullets: [],
+              speakerNotes: `Slide authoring failed: ${slideError instanceof Error ? slideError.message : String(slideError)}`,
               evidenceIds: [],
+              pageIntent: slideSpec.role,
+              governingThought: slideSpec.governingThought,
             });
           }
         }));

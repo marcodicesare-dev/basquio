@@ -1497,9 +1497,29 @@ function renderLegend(
 
 // ─── HELPERS ─────────────────────────────────────────────────────
 
-function truncLabel(label: string): string {
-  if (label.length <= MAX_LABEL_CHARS) return label;
-  return label.slice(0, MAX_LABEL_CHARS - 1) + "…";
+function truncLabel(raw: string): string {
+  let label = raw;
+
+  // Strip leading/trailing numeric product codes (P-008294-001, 12345-, etc.)
+  label = label.replace(/^[\dA-Z]{2,}-[\dA-Z-]+\s*/i, "");
+  label = label.replace(/\s*[\dA-Z]{2,}-[\dA-Z-]+$/i, "");
+
+  // Split camelCase: "petFood" → "Pet Food"
+  label = label.replace(/([a-z])([A-Z])/g, "$1 $2");
+
+  // Title-case if ALL CAPS and longer than 4 chars
+  if (label === label.toUpperCase() && label.length > 4) {
+    label = label.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  // Smart truncation: break at word boundary
+  if (label.length > MAX_LABEL_CHARS) {
+    const truncated = label.slice(0, MAX_LABEL_CHARS - 1);
+    const lastSpace = truncated.lastIndexOf(" ");
+    label = (lastSpace > MAX_LABEL_CHARS * 0.5 ? truncated.slice(0, lastSpace) : truncated) + "…";
+  }
+
+  return label.trim() || raw.slice(0, MAX_LABEL_CHARS);
 }
 
 function formatValue(value: number, unit?: string): string {

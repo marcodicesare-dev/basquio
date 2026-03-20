@@ -1578,15 +1578,33 @@ function renderContentSlide(
     }
 
     case "summary": {
-      if (s.body && regions.body) {
-        renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
+      // Chart if available (recommendation slides can have charts)
+      if (chart && regions.chart) {
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
       }
+      // Metrics if available
+      if (s.metrics && s.metrics.length > 0 && regions.metrics) {
+        renderMetrics(slide, pptx, s.metrics, regions.metrics, tokens);
+      }
+      // Bullets
+      if (s.bullets && s.bullets.length > 0 && regions.bullets) {
+        renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch);
+      }
+      // Body — shift down if chart was rendered above
+      if (s.body && regions.body) {
+        const bodyRegion = (chart && regions.chart)
+          ? { ...regions.body, y: regions.chart.y + regions.chart.h + 0.15, h: Math.max(0.5, regions.body.h - regions.chart.h - 0.15) }
+          : regions.body;
+        if (bodyRegion.h > 0.3) {
+          renderBody(slide, s.body, bodyRegion, tokens, notesOverflow, bodyMaxWords);
+        }
+      }
+      // Callout
       if (regions.callout) {
         if (s.callout) {
           renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green");
         } else {
-          const calloutText =
-            s.bullets && s.bullets.length > 0 ? s.bullets.join(" | ") : s.body || "";
+          const calloutText = s.bullets && s.bullets.length > 0 ? s.bullets.join(" | ") : s.body || "";
           if (calloutText && (!s.body || (s.bullets && s.bullets.length > 0))) {
             renderCallout(slide, pptx, calloutText, regions.callout, tokens, "green");
           }

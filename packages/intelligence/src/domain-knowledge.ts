@@ -224,7 +224,26 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 ### Every Section Must Ladder: What → So What → Now What
 - Distill findings into 3-4 POVs, not a pile of facts
 - Recommendations prioritized by: Prize × Feasibility × Ease × Time × Fit
-- FMCG levers: distribution expansion, pricing/pack architecture, promo optimization, portfolio rebalancing, hero renovation, tail pruning`,
+- FMCG levers: distribution expansion, pricing/pack architecture, promo optimization, portfolio rebalancing, hero renovation, tail pruning
+
+### Exhibit Selection Rules (for chart planning — ABSOLUTE, no exceptions)
+| Question | CORRECT Chart | FORBIDDEN |
+|---|---|---|
+| How big is each segment? | horizontal_bar (ranked) | pie (>5), line |
+| How does mix compare? | stacked_bar_100 | separate pies, line |
+| CY vs PY (2 periods)? | grouped_bar / waterfall | line, area |
+| What's growing/declining? | horizontal_bar (diverging) | table, line |
+| Who dominates? | doughnut / pareto | scatter |
+| Top N items? | horizontal_bar (humanized) | table with codes |
+| What changed and why? | waterfall bridge | stacked bar |
+| Trend over time (4+)? | line | bar |
+
+### Anti-Patterns (MUST NEVER plan these)
+- Line chart for categorical/unordered comparisons
+- Line chart for 2-period CY/PY data
+- Memo slides when a chart proves the point — ALWAYS plan a chart
+- More than 1 text-only analytical slide per deck
+- Every analytical slide (positions 3 through N-1) MUST have a chartId`,
 
   author: `## NIQ STORYMASTERS SLIDE AUTHORING
 
