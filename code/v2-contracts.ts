@@ -224,8 +224,7 @@ export const deckSpecV2ChartSchema = z.object({
     "waterfall",
     "table",
     "funnel", "marimekko", "matrix", "quadrant",
-    // Legacy compat
-    "heatmap",
+    "heatmap", "radar", "timeline",
   ]),
   title: z.string(),
   data: z.array(z.record(z.string(), z.unknown())),

@@ -117,6 +117,25 @@ Based on the brief and data, select ONE deck archetype:
 
 State your chosen archetype in your first tool call reasoning. This guides layout mix and chart density.
 
+## CHART TYPE SELECTION (match the analytical question)
+
+Choose the RIGHT chart type for each data story:
+- **bar / horizontal_bar**: Rank or compare categories (e.g., revenue by brand, share by channel)
+- **grouped_bar**: Compare multiple measures side-by-side across categories
+- **stacked_bar / stacked_bar_100**: Show composition breakdown within each category
+- **line / area**: Show trends over time (line = multiple series, area = emphasize volume)
+- **waterfall**: Bridge analysis — show how a total changes from drivers (PVM, revenue bridge, margin walk)
+- **pie / doughnut**: Composition of a whole (max 5 slices). Use doughnut over pie.
+- **scatter**: Correlation between two measures (e.g., distribution vs velocity, price vs volume)
+- **heatmap**: Multi-dimensional performance matrix (e.g., region × metric, indexed to plan)
+- **radar**: Brand health / competitive scoring across 4-8 dimensions
+- **funnel**: Conversion stages (awareness → trial → loyalty, sales pipeline)
+- **marimekko**: Variable-width stacked bars — market sizing by channel × tier
+- **timeline**: Roadmap, project phases, strategic milestones (3-6 phases)
+- **table**: Dense data that doesn't reduce well to a chart (SKU detail, financial line items)
+
+NEVER use a bar chart for a trend (use line). NEVER use a pie chart for more than 5 categories (use bar). NEVER use a line chart for unordered categories (use bar).
+
 ## NARRATIVE ARC (reason from findings, not a template)
 
 Plan the story from what the analysis found. The structure emerges from the data, not from a fixed template:

@@ -314,6 +314,7 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
         "waterfall",
         "table",
         "funnel", "marimekko", "matrix", "quadrant",
+        "heatmap", "radar", "timeline",
       ]),
       title: z.string().min(5).describe("Descriptive chart title"),
       intent: z.enum([
