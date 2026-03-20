@@ -1186,19 +1186,52 @@ function v1GroupAndAggregate(
 
 // ─── V1 PIPELINE: SLIDE AUTHOR SYSTEM PROMPT ─────────────────────
 
-const V1_SLIDE_AUTHOR_SYSTEM_PROMPT = `You are a senior strategy consultant writing ONE slide for an executive presentation. You are a VISUAL STORYTELLER, not a report writer.
+const V1_SLIDE_AUTHOR_SYSTEM_PROMPT = `You are a senior strategy consultant writing ONE slide. You are a VISUAL STORYTELLER.
 
-RULES:
-1. TITLE: Full sentence stating a specific, data-backed finding. Include at least one number. Max 16 words. Title IS the insight — never a topic label like "Category Overview."
-2. CALLOUT: Every slide MUST have a callout — the "so what" for the decision-maker. Max 25 words. "green" = opportunity, "orange" = risk, "accent" = key finding. The callout says what to DO or WORRY ABOUT.
-3. LANGUAGE: Write in the language specified. If Italian, everything is Italian. Never default to English.
-4. METRICS: For exec-summary, max 3 KPI cards. Delta MUST be numeric (+4.2%, -0.8 pts, flat). Never descriptions as deltas.
-5. BODY: Max 2 sentences. Explain WHY, not WHAT (the chart shows WHAT). Max 50 words for chart-split layouts.
-6. BULLETS: Max 3 bullets, max 15 words each. Bullets = actionable specifics, never restate body text.
-7. SPEAKER NOTES: 60-140 words. Presenter talking points, caveats, bridge to next slide.
-8. EVIDENCE: Only cite evidence IDs from your context. Never invent IDs.
-9. LABELS: Never show raw column names or internal codes. Clean: "V. Valore" → "Sales Value", "BPWK0YLY" → product name. Use human-readable labels everywhere.
-10. VISUAL HIERARCHY: Chart-layout slides must let the chart be the hero. Text supports, doesn't compete. Cover = title + subtitle ONLY — no data.`;
+## TITLE (non-negotiable)
+Full sentence with at least one number. Max 14 words. Must pass "so what?" test.
+NEVER: "Category Overview", "Market Analysis", "Summary"
+ALWAYS: "Cat wet is the largest pool at 781M but Ultima captures only 0.8%"
+
+## CALLOUT (required on every slide except cover)
+Max 20 words. Says what to DO or WORRY ABOUT. tone: green=opportunity, orange=risk, accent=finding.
+
+## LANGUAGE
+Write in the specified language. Never default to English.
+
+## LAYOUT-SPECIFIC TEXT BUDGETS (HARD LIMITS — violating these is a failure)
+
+cover:
+  title + subtitle only. NO body, NO bullets, NO metrics, NO callout.
+
+exec-summary:
+  metrics: exactly 3 KPI cards. Delta MUST be numeric (+4.2%, -0.8 pts, flat).
+  body: 1 sentence max (the SCQA answer). 25 words max.
+  bullets: NONE.
+
+chart-split / title-chart:
+  body: 1 sentence. 30 words max. Explains WHY, not WHAT.
+  bullets: max 2 bullets, max 12 words each.
+  The CHART is the content. Text is minimal support.
+
+title-body:
+  body: max 2 sentences. 50 words max.
+  bullets: max 3 bullets, max 12 words each.
+  RARE: max 1 per deck. If you're writing prose, you're probably wrong.
+
+summary / recommendation:
+  body: 1 sentence framing the action.
+  bullets: 3-4 specific, quantified actions. Each max 15 words.
+  NOT a memo. NOT an agenda. Specific retailer/SKU/channel actions.
+
+table:
+  NO body text. The table IS the content.
+
+## EVIDENCE
+Only cite evidence IDs from your context. Never invent.
+
+## LABELS
+Never raw column names. "V. Valore" → "Sales Value". Internal codes → product names.`;
 
 // ─── SECTION BRIEF BUILDER ────────────────────────────────────────
 
@@ -2594,13 +2627,38 @@ Return a V1DeckPlan with slides and charts.`,
             console.warn(`[basquio-author] Chart type overridden: ${planned.chartType} → ${exhibitResult.chartType} (${exhibitResult.reason})`);
           }
 
-          // ─── CHART DATA VALIDATION ───
-          // Reject charts where all values are zero or near-zero (broken aggregation)
+          // ─── EXHIBIT PREFLIGHT (deterministic validation, $0) ───
+          // Prevent broken charts from reaching the renderer
           const allValues = grouped.series.flatMap((s) => s.values);
           const maxValue = Math.max(...allValues.map(Math.abs), 0);
+
+          // 1. All-zero data → broken aggregation
           if (maxValue < 0.001 || allValues.every((v) => v === 0)) {
-            console.warn(`[basquio-author] Chart ${planned.chartId} has all-zero data — skipping`);
+            console.warn(`[basquio-author] Chart ${planned.chartId} PREFLIGHT FAIL: all-zero data`);
             chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: "All values are zero — data aggregation produced empty results" });
+            continue;
+          }
+
+          // 2. Too many categories for the chart type (unreadable)
+          const catCount = grouped.categories.length;
+          if (catCount > 20 && !["table", "heatmap"].includes(exhibitResult.chartType)) {
+            // Truncate to top 12 by first measure value
+            const pairs = grouped.categories.map((c, i) => ({ cat: c, val: grouped.series[0]?.values[i] ?? 0 }));
+            pairs.sort((a, b) => Math.abs(b.val) - Math.abs(a.val));
+            const kept = new Set(pairs.slice(0, 12).map((p) => p.cat));
+            const keptIndices = grouped.categories.map((c, i) => kept.has(c) ? i : -1).filter((i) => i >= 0);
+            grouped.categories = keptIndices.map((i) => grouped.categories[i]);
+            for (const s of grouped.series) {
+              s.values = keptIndices.map((i) => s.values[i]);
+            }
+            grouped.data = keptIndices.map((i) => grouped.data[i]);
+            console.warn(`[basquio-author] Chart ${planned.chartId} PREFLIGHT: truncated ${catCount} → ${grouped.categories.length} categories`);
+          }
+
+          // 3. Single-value chart (meaningless)
+          if (catCount <= 1 && !["kpi_card", "table"].includes(exhibitResult.chartType)) {
+            console.warn(`[basquio-author] Chart ${planned.chartId} PREFLIGHT FAIL: only ${catCount} category`);
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `Only ${catCount} category — not enough data for a chart` });
             continue;
           }
 
