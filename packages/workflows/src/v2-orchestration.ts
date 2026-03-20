@@ -1221,6 +1221,7 @@ export const basquioV2Generation = inngest.createFunction(
     };
 
     const tracker = new UsageTracker();
+    const runStartMs = Date.now();
 
     try {
     // ─── STEP 1: NORMALIZE (deterministic) ──────────────────────
@@ -2040,6 +2041,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     const critiqueCost = (critiqueReturn?.estimatedCostUsd as number) ?? 0;
     // Aggregate: understand + author + critique/revise
     costSummary.estimatedCostUsd = Math.round((understandCost + authorCost + critiqueCost) * 1000) / 1000;
+    costSummary.durationMs = Date.now() - runStartMs;
     costSummary.totalUsage = {
       totalTokens: (understandTokens.totalTokens ?? 0) + (authorTokens.totalTokens ?? 0),
       inputTokens: (understandTokens.inputTokens ?? 0) + (authorTokens.inputTokens ?? 0),
@@ -2411,7 +2413,31 @@ export const basquioAuthor = inngest.createFunction(
         const planGenResult = await generateObject({
           model: openai("gpt-5.4-mini"),
           schema: v1DeckPlanSchema,
-          prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation with DETERMINISTIC chart specifications.
+          prompt: `You are a top-tier strategy consultant deck architect (McKinsey/BCG-level). Plan a ${targetSlides}-slide VISUAL presentation — not a text report.
+
+## EXHIBIT PLANNER RULES (non-negotiable)
+Every content slide should have a chart unless the message truly cannot be shown visually. Max 1 text-only slide.
+
+Choose chart types by ANALYTICAL QUESTION, not data availability:
+- "How big is each segment?" → horizontal_bar (ranked by size, largest on top)
+- "How does mix compare?" → stacked_bar_100 (category mix vs brand mix side-by-side)
+- "Current vs prior period?" → grouped_bar or waterfall (NEVER line chart for 2-period data)
+- "What's growing/declining?" → horizontal_bar (sorted by growth rate, green/red coding)
+- "Who dominates?" → doughnut or pareto (concentration chart)
+- "What are the top N items?" → horizontal_bar with humanized labels
+- "How does performance vary?" → heatmap or scatter
+- "What changed and why?" → waterfall (bridge chart)
+
+NEVER use a line chart unless there are 4+ time periods in sequence.
+NEVER use a line chart for categorical comparisons.
+
+## STORY COMPRESSION RULES
+- Each slide answers exactly ONE strategic question
+- No slide repeats a point already made earlier
+- The deck should ESCALATE: context → tension → evidence → action
+- Max 8-10 content slides. Fewer is better.
+- Kill any slide that only restates what another slide already proved
+- Recommendation slide must have specific, quantified actions — not topic labels
 
 ## Brief
 ${brief}
