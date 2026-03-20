@@ -2,6 +2,22 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import type { EvidenceWorkspace } from "@basquio/types";
+import { resolveColumnKey, resolveColumns, type ColumnRegistry } from "../column-registry";
+
+// ─── CASE-INSENSITIVE COLUMN HELPERS ────────────────────────────
+// All data access goes through these helpers so GROCERY vs Grocery,
+// V. Valore vs V.Valore, etc. are resolved correctly.
+
+function getRowValue(row: Record<string, unknown>, col: string, registry?: ColumnRegistry): unknown {
+  if (col in row) return row[col];
+  const resolved = resolveColumnKey(row, col, registry ?? new Map());
+  return resolved ? row[resolved] : undefined;
+}
+
+function resolveKey(row: Record<string, unknown>, col: string, registry?: ColumnRegistry): string {
+  if (col in row) return col;
+  return resolveColumnKey(row, col, registry ?? new Map()) ?? col;
+}
 
 // ─── TOOL CONTEXT ─────────────────────────────────────────────────
 // All data exploration tools receive workspace + persistence context
@@ -187,10 +203,12 @@ export function createQueryDataTool(ctx: ToolContext) {
       rows = rows.slice(0, clampedLimit);
 
       if (params.columns.length > 0 && !params.groupBy?.length) {
+        const selectRegistry = rows.length > 0 ? resolveColumns(Object.keys(rows[0])) : new Map() as ColumnRegistry;
         rows = rows.map((row) => {
           const selected: Record<string, unknown> = {};
           for (const col of params.columns) {
-            selected[col] = row[col];
+            const key = resolveKey(row, col, selectRegistry);
+            selected[col] = row[key];
           }
           return selected;
         });
@@ -604,17 +622,19 @@ export function createComputeDerivedTool(ctx: ToolContext) {
 // ─── DERIVED METRIC HELPERS ──────────────────────────────────────
 
 function sumCol(rows: Record<string, unknown>[], column: string): number {
+  const reg = rows.length > 0 ? resolveColumns(Object.keys(rows[0])) : new Map() as ColumnRegistry;
   return rows.reduce((total, row) => {
-    const val = row[column];
+    const val = getRowValue(row, column, reg);
     const num = typeof val === "number" ? val : typeof val === "string" ? parseFloat(val) : NaN;
     return total + (isNaN(num) ? 0 : num);
   }, 0);
 }
 
 function groupRowsBy(rows: Record<string, unknown>[], keys: string[]): Record<string, Record<string, unknown>[]> {
+  const reg = rows.length > 0 ? resolveColumns(Object.keys(rows[0])) : new Map() as ColumnRegistry;
   const groups: Record<string, Record<string, unknown>[]> = {};
   for (const row of rows) {
-    const key = keys.map((k) => String(row[k] ?? "")).join(" | ");
+    const key = keys.map((k) => String(getRowValue(row, k, reg) ?? "")).join(" | ");
     if (!groups[key]) groups[key] = [];
     groups[key].push(row);
   }
@@ -957,20 +977,22 @@ export function createComputeStatisticalTool(ctx: ToolContext) {
   });
 }
 
-function evaluateCondition(row: Record<string, unknown>, condition: string): boolean {
+function evaluateCondition(row: Record<string, unknown>, condition: string, registry?: ColumnRegistry): boolean {
   const match = condition.trim().match(/^"?(.+?)"?\s*(=|!=|<>|>|>=|<|<=|LIKE|IN)\s*(.+)$/i);
   if (!match) return false; // unparseable → exclude (fail safe, not fail open)
 
   const [, col, op, rawVal] = match;
-  const rowVal = row[col.trim()];
+  const rowVal = getRowValue(row, col.trim(), registry);
   const val = rawVal.trim().replace(/^['"]|['"]$/g, "");
 
+  const rowStr = String(rowVal ?? "").toLowerCase();
+  const valLower = val.toLowerCase();
   switch (op.toUpperCase()) {
     case "=":
-      return String(rowVal) === val;
+      return rowStr === valLower;
     case "!=":
     case "<>":
-      return String(rowVal) !== val;
+      return rowStr !== valLower;
     case ">":
       return Number(rowVal) > Number(val);
     case ">=":
@@ -980,11 +1002,11 @@ function evaluateCondition(row: Record<string, unknown>, condition: string): boo
     case "<=":
       return Number(rowVal) <= Number(val);
     case "LIKE":
-      return String(rowVal).includes(val.replace(/%/g, ""));
+      return rowStr.includes(valLower.replace(/%/g, ""));
     case "IN": {
       // Parse "IN (val1, val2, val3)" or "IN val1, val2"
-      const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, ""));
-      return inVals.some((iv) => String(rowVal) === iv);
+      const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, "").toLowerCase());
+      return inVals.some((iv) => rowStr === iv);
     }
     default:
       return true;
@@ -996,11 +1018,13 @@ function applyFilter(rows: Record<string, unknown>[], filterExpr: string): Recor
   // OR has lower precedence: split on OR first, then AND within each branch.
   // A row matches if ANY OR branch matches (within a branch, ALL AND conditions must match).
   const orBranches = filterExpr.split(/\s+OR\s+/i);
+  // Build registry once for all rows
+  const registry = rows.length > 0 ? resolveColumns(Object.keys(rows[0])) : new Map() as ColumnRegistry;
 
   return rows.filter((row) =>
     orBranches.some((branch) => {
       const andConditions = branch.split(/\s+AND\s+/i);
-      return andConditions.every((condition) => evaluateCondition(row, condition));
+      return andConditions.every((condition) => evaluateCondition(row, condition, registry));
     }),
   );
 }
@@ -1010,10 +1034,12 @@ function applyGroupByAggregate(
   groupBy: string[],
   aggregate: { column: string; fn: string },
 ): Record<string, unknown>[] {
+  // Build registry once for column resolution
+  const registry = rows.length > 0 ? resolveColumns(Object.keys(rows[0])) : new Map() as ColumnRegistry;
   const groups = new Map<string, Record<string, unknown>[]>();
 
   for (const row of rows) {
-    const key = groupBy.map((col) => String(row[col] ?? "")).join("|");
+    const key = groupBy.map((col) => String(getRowValue(row, col, registry) ?? "")).join("|");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
@@ -1022,7 +1048,7 @@ function applyGroupByAggregate(
   let globalTotal: number | undefined;
   if (aggregate.fn === "share" || aggregate.fn === "ratio") {
     globalTotal = rows
-      .map((r) => Number(r[aggregate.column]))
+      .map((r) => Number(getRowValue(r, aggregate.column, registry)))
       .filter((v) => !isNaN(v))
       .reduce((a, b) => a + b, 0);
   }
@@ -1030,7 +1056,7 @@ function applyGroupByAggregate(
   return Array.from(groups.entries()).map(([, groupRows]) => {
     const result: Record<string, unknown> = {};
     for (const col of groupBy) {
-      result[col] = groupRows[0][col];
+      result[col] = getRowValue(groupRows[0], col, registry);
     }
     result[`${aggregate.fn}_${aggregate.column}`] = computeAggregate(
       groupRows,
@@ -1049,8 +1075,9 @@ function computeAggregate(
   fn: string,
   globalTotal?: number,
 ): number | string {
+  const colRegistry = rows.length > 0 ? resolveColumns(Object.keys(rows[0])) : new Map() as ColumnRegistry;
   const values = rows
-    .map((r) => Number(r[column]))
+    .map((r) => Number(getRowValue(r, column, colRegistry)))
     .filter((v) => !isNaN(v));
 
   if (values.length === 0) return 0;
