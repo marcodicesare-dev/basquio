@@ -1231,7 +1231,14 @@ table:
 Only cite evidence IDs from your context. Never invent.
 
 ## LABELS
-Never raw column names. "V. Valore" → "Sales Value". Internal codes → product names.`;
+Never raw column names. "V. Valore" → "Sales Value". Internal codes → product names.
+
+## DESIGN ANTI-PATTERNS (NEVER do these)
+- NEVER use accent lines or bars under/above titles
+- NEVER center body text — left-align all prose
+- NEVER put more than 3 metrics on a slide unless the layout is exec-summary or evidence-grid
+- Body text should be SPARSE — if you're writing paragraphs, the chart should be saying it instead
+- Callout tone MUST match the message: green for opportunity/positive, orange for risk/warning, accent for neutral finding`;
 
 // ─── SECTION BRIEF BUILDER ────────────────────────────────────────
 
@@ -2490,6 +2497,19 @@ function validateAndFixPlan(plan: V1DeckPlan, analysisFindings?: Array<{ title: 
     }
   }
 
+  // ── Rule 6: Layout variety — no 3+ consecutive same layout ──
+  const chartLayoutOptions = ["chart-split", "evidence-grid", "title-chart", "comparison"];
+  for (let i = 2; i < slides.length; i++) {
+    const prev2 = slides[i - 2]?.layout;
+    const prev1 = slides[i - 1]?.layout;
+    const curr = slides[i].layout;
+    if (prev2 === prev1 && prev1 === curr && curr !== "cover" && curr !== "exec-summary" && curr !== "summary") {
+      // 3 in a row — switch to a different chart layout
+      const alternatives = chartLayoutOptions.filter(l => l !== curr);
+      slides[i].layout = alternatives[i % alternatives.length];
+    }
+  }
+
   return { ...plan, slides, charts, targetSlideCount: slides.length };
 }
 
@@ -2669,6 +2689,21 @@ Choose chart types by ANALYTICAL QUESTION, not data availability:
 
 NEVER use a line chart unless there are 4+ time periods in sequence.
 NEVER use a line chart for categorical comparisons.
+
+## LAYOUT VARIETY RULES (non-negotiable)
+- NEVER use the same layout 3 times in a row. Alternate: chart-split → evidence-grid → comparison → title-chart
+- Use "evidence-grid" for slides with 3+ metrics AND a chart
+- Use "comparison" for side-by-side (CY vs PY, brand vs market)
+- Use "chart-split" for chart + narrative explanation
+- Use "title-chart" for full-width chart evidence slides
+- The deck MUST use at least 3 different layout types across analytical slides
+
+## DESIGN ANTI-PATTERNS (never do these)
+- NEVER create text-only analytical slides — every insight needs a chart
+- NEVER repeat the same layout more than 2x consecutively
+- NEVER use accent lines or bars under titles (AI-generated hallmark)
+- NEVER center body text paragraphs — left-align all prose
+- NEVER put more than 4 KPI metrics on one slide unless layout is "evidence-grid"
 
 ## STORY COMPRESSION RULES
 - Each slide answers exactly ONE strategic question

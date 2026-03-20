@@ -1286,13 +1286,13 @@ function renderCoverSlide(
     });
   }
 
-  // Bottom accent bar (JSX: thin amber bar at very bottom)
+  // Subtle bottom border — thin, muted, not an accent bar (accent bars are AI hallmarks)
   slide.addText("", {
     x: 0,
-    y: SLIDE_H - 0.04,
+    y: SLIDE_H - 0.007,
     w: SLIDE_W,
-    h: 0.04,
-    fill: { color: norm(tokens.palette.accent) },
+    h: 0.007,
+    fill: { color: norm(tokens.palette.border) },
   });
 }
 
@@ -1578,7 +1578,7 @@ function renderContentSlide(
     }
 
     case "summary": {
-      // Chart if available (recommendation slides can have charts)
+      // Chart on left if available (recommendation slides — chart-split style)
       if (chart && regions.chart) {
         renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
       }
@@ -1586,18 +1586,19 @@ function renderContentSlide(
       if (s.metrics && s.metrics.length > 0 && regions.metrics) {
         renderMetrics(slide, pptx, s.metrics, regions.metrics, tokens);
       }
-      // Bullets
-      if (s.bullets && s.bullets.length > 0 && regions.bullets) {
-        renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch);
-      }
-      // Body — shift down if chart was rendered above
+      // Body on right (or full width if no chart)
       if (s.body && regions.body) {
-        const bodyRegion = (chart && regions.chart)
-          ? { ...regions.body, y: regions.chart.y + regions.chart.h + 0.15, h: Math.max(0.5, regions.body.h - regions.chart.h - 0.15) }
+        const bodyRegion = (!chart || !regions.chart)
+          ? { ...regions.body, x: regions.body.x - (regions.body.x - (regions.callout?.x ?? 0.6)), w: regions.callout?.w ?? regions.body.w + 4 }
           : regions.body;
-        if (bodyRegion.h > 0.3) {
-          renderBody(slide, s.body, bodyRegion, tokens, notesOverflow, bodyMaxWords);
-        }
+        renderBody(slide, s.body, bodyRegion, tokens, notesOverflow, bodyMaxWords);
+      }
+      // Bullets below body on right (or full width if no chart)
+      if (s.bullets && s.bullets.length > 0 && regions.bullets) {
+        const bulletRegion = (!chart || !regions.chart)
+          ? { ...regions.bullets, x: regions.body?.x ?? 0.6, w: regions.callout?.w ?? regions.bullets.w + 4 }
+          : regions.bullets;
+        renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch);
       }
       // Callout
       if (regions.callout) {

@@ -159,10 +159,10 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        chart: { x: ml, y: 1.75, w: cw, h: 3.0 },
-        body: { x: ml, y: 1.75, w: cw, h: 2.8 },
-        bullets: { x: ml, y: 4.7, w: cw, h: 1.5 },
-        callout: { x: ml, y: 6.30, w: cw, h: 0.40 },
+        chart: { x: ml, y: 1.75, w: cw * 0.55, h: 2.8 },   // Left 55% for chart
+        body: { x: ml + cw * 0.58, y: 1.75, w: cw * 0.42, h: 1.2 }, // Right 42% for body
+        bullets: { x: ml + cw * 0.58, y: 3.05, w: cw * 0.42, h: 1.5 }, // Right below body
+        callout: { x: ml, y: 6.30, w: cw, h: 0.40 },        // Full width callout
       };
 
     default:
