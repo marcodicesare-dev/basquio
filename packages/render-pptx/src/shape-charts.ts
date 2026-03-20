@@ -10,6 +10,7 @@
  */
 import PptxGenJS from "pptxgenjs";
 import { resolveChartArchetype } from "@basquio/scene-graph/chart-design-system";
+import { heatmapColor } from "../../../code/design-tokens";
 
 // ─── TYPES ───────────────────────────────────────────────────────
 
@@ -1157,9 +1158,10 @@ function renderHeatmap(
     // Value cells with color coding
     ds.data.slice(0, cols.length).forEach((val, ci) => {
       const x = frame.x + labelColW + ci * cellW;
-      // 3-tier: green ≥80, amber 60-79, red <60 (per JSX design)
-      const color = val >= 80 ? V.green : val >= 60 ? tokens.accent : V.red;
-      const bgColor = val >= 80 ? "1A3D2E" : val >= 60 ? "2D2618" : "2D1A1D";
+      // 3-tier: green ≥80, amber 60-79, red <60 (shared design tokens)
+      const hm = heatmapColor(val);
+      const color = hm.fg;
+      const bgColor = hm.bg;
 
       slide.addText("", {
         x: x + 0.02, y: y + 0.02,

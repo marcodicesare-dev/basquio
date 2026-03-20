@@ -2169,7 +2169,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
 
         // If zero slides, create a minimal error slide so the user always gets SOMETHING
         if (existingSlides.length === 0) {
-          console.log(`[basquio-v2] Zero slides found — creating error slide`);
+          console.warn(`[basquio-v2] Zero slides found — creating error slide`);
           await persistSlide(runId, {
             position: 1,
             layoutId: "title-body",
@@ -2179,7 +2179,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
           });
         }
 
-        console.log(`[basquio-v2] Attempting best-effort export with ${existingSlides.length || 1} slides`);
+        console.warn(`[basquio-v2] Attempting best-effort export with ${existingSlides.length || 1} slides`);
         await step.invoke("best-effort-export", {
           function: basquioExport,
           data: {
