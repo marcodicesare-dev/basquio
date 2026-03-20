@@ -1,7 +1,8 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, Output } from "ai";
 
-import { critiqueReportOutputSchema, type CritiqueReportOutput } from "@basquio/types";
+import { critiqueReportOutputSchema, type CritiqueReportOutput, type EvidenceWorkspace } from "@basquio/types";
+import { buildDomainKnowledgeContext } from "../domain-knowledge";
 
 // ─── STRATEGIC CRITIC AGENT ──────────────────────────────────────
 // Model: Claude Opus 4.6 (strategic/narrative reasoning is Claude's strength)
@@ -11,6 +12,7 @@ import { critiqueReportOutputSchema, type CritiqueReportOutput } from "@basquio/
 export type StrategicCriticInput = {
   runId: string;
   brief: string;
+  workspace?: EvidenceWorkspace;
   deckSummary: string;
   slideCount: number;
   slides: Array<{
@@ -55,13 +57,13 @@ You are adversarial — find what's wrong, not what's right.
 
 6. FOCAL ENTITY EMPHASIS: On every chart, the client or focal entity must be visually distinct — highlighted via color, callout, or highlightCategories. Flag charts where all elements use the same color treatment, forcing the audience to hunt for the entity they care about. Severity: major.
 
-7. RECOMMENDATION QUALITY: If the deck includes recommendations, they must be specific, quantified, and actionable. "Consider expanding" is weak; "Expand private label shelf space by 15% in top 20 stores to capture €1.2M incremental revenue" is actionable. Flag vague recommendations. Severity: major.
+7. RECOMMENDATION QUALITY: If the deck includes recommendations, they must be specific, quantified, and actionable. "Consider expanding" is weak; "Expand private-label shelf space by 15% in top 20 stores to capture 1.2M in category currency" is actionable. Flag vague recommendations. Severity: major.
 
 8. LAYOUT VARIETY: Count layout types. If >50% of slides use the same layout, flag it. Professional decks use 4+ different layouts. Severity: major.
 
 9. CONTENT DENSITY LIMITS: Flag slides with body text exceeding 80 words, >5 bullets, or titles exceeding 20 words. Severity: minor.
 
-10. SLIDE COUNT: If the brief specifies an exact slide count, the deck MUST match it exactly — no tolerance. "1 slide" means 1, "5 slides" means 5. If no count was specified, the deck length should match data richness. Severity: critical if explicit count violated, major if implicit count is padded/incomplete.
+10. SLIDE COUNT: The deck should match the brief's requested slide count (±2). Too many = padded. Too few = incomplete. Severity: major.
 
 Be specific. "Slide 5 title 'Revenue Analysis' is a topic label — should state the finding, e.g., 'Revenue declined -3.2% driven by volume loss in Q3'" is useful. "Titles could be better" is not.
 
@@ -71,8 +73,12 @@ Rate severity:
 - minor: Wording improvements, density issues, minor layout concerns`;
 
 export async function runStrategicCriticAgent(input: StrategicCriticInput): Promise<CritiqueReportOutput> {
-  // Sonnet 4.6 for strategic critique — checklist evaluation, not creative synthesis
-  const model = anthropic("claude-sonnet-4-6");
+  const model = anthropic("claude-opus-4-6");
+  const domainKnowledgeContext = buildDomainKnowledgeContext({
+    workspace: input.workspace,
+    brief: input.brief,
+    stage: "strategic-critic",
+  });
 
   const slidesSummary = input.slides
     .map((s) => {
@@ -137,29 +143,22 @@ For every issue, provide:
 - evidence: your reasoning
 - suggestion: specific fix
 
-Set iteration to 1, and score coverage/accuracy/narrative from 0-1.`;
+Set iteration to 1, and score coverage/accuracy/narrative from 0-1.
+${domainKnowledgeContext ? `\n\n${domainKnowledgeContext}` : ""}`;
 
   const result = await generateText({
     model,
-    messages: [
-      {
-        role: "system",
-        content: STRATEGIC_CRITIC_SYSTEM,
-        providerOptions: {
-          anthropic: { cacheControl: { type: "ephemeral" } },
-        },
-      },
-      { role: "user", content: prompt },
-    ],
-    output: Output.object({ schema: critiqueReportOutputSchema }),
+    system: STRATEGIC_CRITIC_SYSTEM,
+    prompt,
+    experimental_output: Output.object({ schema: critiqueReportOutputSchema }),
   });
 
-  if (!result.output) {
+  if (!result.experimental_output) {
     throw new Error(
       `Strategic critic agent did not produce structured output for run ${input.runId}. ` +
       `Text output: ${result.text?.slice(0, 500) ?? "(none)"}`,
     );
   }
 
-  return result.output;
+  return result.experimental_output;
 }

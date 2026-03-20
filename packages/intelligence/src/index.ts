@@ -45,3 +45,10 @@ export {
   createQaArtifactsTool,
   detectLanguage,
 } from "./tools";
+
+export {
+  buildDomainKnowledgeContext,
+  scoreDomainKnowledgePacks,
+  type DomainKnowledgeStage,
+  type DomainKnowledgePackId,
+} from "./domain-knowledge";

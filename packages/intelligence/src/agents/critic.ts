@@ -4,6 +4,7 @@ import { Output, ToolLoopAgent, stepCountIs } from "ai";
 
 import { critiqueReportOutputSchema, type CritiqueReportOutput, type CritiqueReport, type EvidenceWorkspace } from "@basquio/types";
 import { costBudgetExceeded } from "../agent-utils";
+import { buildDomainKnowledgeContext } from "../domain-knowledge";
 
 import {
   createVerifyClaimTool,
@@ -52,12 +53,15 @@ export function createCriticAgent(input: CriticAgentInput) {
   const criticProvider = authorProvider === "anthropic" ? "openai" : "anthropic";
   const modelId = input.modelOverride ?? (criticProvider === "openai" ? "gpt-5.4" : "claude-opus-4-6");
   const model = criticProvider === "openai" ? openai(modelId) : anthropic(modelId);
+  const domainKnowledgeContext = buildDomainKnowledgeContext({
+    workspace: input.workspace,
+    brief: input.brief,
+    stage: "critic",
+  });
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: {
-      role: "system",
-      content: `You are a senior fact-checker at a top-tier strategy consulting firm (McKinsey/BCG). Your job is to verify every number, every claim, and every data point in the deck. You are adversarial — find what's wrong, not what's right.
+    instructions: `You are a senior fact-checker at a top-tier strategy consulting firm (McKinsey/BCG). Your job is to verify every number, every claim, and every data point in the deck. You are adversarial — find what's wrong, not what's right.
 
 A separate strategic critic handles narrative quality, title style, and presentation design. Your sole focus is FACTUAL CORRECTNESS.
 
@@ -68,25 +72,22 @@ A separate strategic critic handles narrative quality, title style, and presenta
 3. BRIEF ALIGNMENT: Use compare_to_brief to verify the deck addresses what was asked.
 4. EVIDENCE GROUNDING: Does every claim cite evidence? Flag unsupported assertions.
 5. STRUCTURAL CHECKS: Use audit_deck_structure to run deterministic checks (sparse slides, missing notes, missing evidence refs, chart coverage).
-6. CHART DATA ACCURACY: Does each chart type match its data story? Pie charts with >6 slices should be bars. Time series shown as bars should be lines. Unsorted bar charts comparing magnitudes should be sorted.
+      6. CHART DATA ACCURACY: Does each chart type match its data story? Pie charts with >6 slices should be bars. Time series shown as bars should be lines. Unsorted bar charts comparing magnitudes should be sorted.
 
 Be specific. "Slide 3 claims revenue grew 23% but evidence shows 21.8%" is useful. "Some numbers might be wrong" is not.
 
 Rate severity:
 - critical: Factually wrong numbers or misleading claims that will embarrass the firm
 - major: Missing evidence, brief misalignment, structural gaps (empty slides, no charts)
-- minor: Rounding within tolerance, minor discrepancies`,
-      providerOptions: {
-        anthropic: { cacheControl: { type: "ephemeral" } },
-      },
-    },
+- minor: Rounding within tolerance, minor discrepancies
+${domainKnowledgeContext ? `\n\n${domainKnowledgeContext}` : ""}`,
     tools: {
       audit_deck_structure: createAuditDeckStructureTool(ctx),
       verify_claim: createVerifyClaimTool(ctx),
       check_numeric: createCheckNumericTool(ctx),
       compare_to_brief: createCompareToBriefTool(ctx),
     },
-    stopWhen: (opts) => stepCountIs(5)(opts) || costBudgetExceeded(1.5)(opts),
+    stopWhen: stepCountIs(20),
     output: Output.object({ schema: critiqueReportOutputSchema }),
     onStepFinish: input.onStepFinish,
   });

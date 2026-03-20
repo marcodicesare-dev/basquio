@@ -3,8 +3,8 @@ import { openai } from "@ai-sdk/openai";
 import { Output, ToolLoopAgent, stepCountIs } from "ai";
 
 import { deckSpecV2Schema, type AnalysisReport, type DeckSpecV2, type EvidenceWorkspace } from "@basquio/types";
-import { describeAllArchetypesForPrompt } from "@basquio/scene-graph";
 import { costBudgetExceeded } from "../agent-utils";
+import { buildDomainKnowledgeContext } from "../domain-knowledge";
 
 import {
   createInspectTemplateTool,
@@ -36,7 +36,6 @@ export type AuthorAgentInput = {
   persistChart: AuthoringToolContext["persistChart"];
   getTemplateProfile: AuthoringToolContext["getTemplateProfile"];
   getSlides?: AuthoringToolContext["getSlides"];
-  getChart?: AuthoringToolContext["getChart"];
   listEvidence?: AuthoringToolContext["listEvidence"];
   getNotebookEntries?: AuthoringToolContext["getNotebookEntries"];
   renderContactSheet?: AuthoringToolContext["renderContactSheet"];
@@ -67,7 +66,6 @@ export function createAuthorAgent(input: AuthorAgentInput) {
     persistChart: input.persistChart,
     getTemplateProfile: input.getTemplateProfile,
     getSlides: input.getSlides,
-    getChart: input.getChart,
     listEvidence: input.listEvidence,
     getNotebookEntries: input.getNotebookEntries,
     renderContactSheet: input.renderContactSheet,
@@ -76,6 +74,11 @@ export function createAuthorAgent(input: AuthorAgentInput) {
   const provider = input.providerOverride ?? "anthropic";
   const modelId = input.modelOverride ?? "claude-opus-4-6";
   const model = provider === "anthropic" ? anthropic(modelId) : openai(modelId);
+  const domainKnowledgeContext = buildDomainKnowledgeContext({
+    workspace: input.workspace,
+    brief: input.brief,
+    stage: "author",
+  });
 
   const fullInstructions = `You are the lead author at a world-class strategy consulting firm. You produce executive presentations that drive decisions. Your decks are the kind CMOs, CFOs, and GMs act on.
 
@@ -83,72 +86,15 @@ export function createAuthorAgent(input: AuthorAgentInput) {
 
 You are not a data reporter. You are a strategic storyteller who uses data as evidence. Every slide must answer a question the executive is asking, not just display numbers.
 
-## LANGUAGE LOCK (non-negotiable)
+## LANGUAGE
 
-Detect the language of the brief. Produce the ENTIRE deck in that language. If the brief is in Italian, every title, body, bullet, callout, source note, and speaker note MUST be in Italian. No English terms unless they are proper nouns or standard industry terminology (e.g., ROI, CAGR, LTV, CAC). Mixed-language output is a critical failure. If the brief is English, everything is English. If mixed, follow the dominant brief language.
-
-## VISUAL STORYTELLING (non-negotiable)
-
-You are a visual storyteller, not a report writer. Every slide must SHOW, not TELL.
-- chart-split slides: RIGHT column max 2 sentences body + max 3 bullets. Total max 60 words. The chart IS the story.
-- title-chart slides: NO body text. The chart fills the slide. Title is the insight.
-- exec-summary: max 3 metrics (not 5), each metric delta must be a REAL delta (starts with +/- or ends with %, pts, pp). "largest single segment" is NOT a delta.
-- Metrics delta field: ONLY use for numeric changes. Examples: "+4.2%", "-€3.1M", "+2.1 pts", "flat". Never descriptions.
-- Cover slide: title + subtitle + kicker ONLY. No metrics, no callouts, no data on covers.
-- Max 1 text-only slide per deck (title-body or title-bullets). Everything else must have a chart or metrics.
-
-## SYNTHESIS QUALITY
-
-Body text: max 2 sentences per slide. Each sentence adds NEW information — never restate the title. If the chart shows the data, the body explains WHY or WHAT TO DO ABOUT IT.
-
-## BULLET DEDUPLICATION
-
-Max 3 bullets per slide. Bullets = actionable specifics, not restatements of body text. Each bullet max 15 words.
-
-## NUMBER PRECISION
-
-Format: percentages to 1 decimal (+4.6%), currency abbreviated (€14.4M not €14,412,583). Never +0.0% — say 'flat'.
-
-## LABEL QUALITY
-
-CRITICAL: When building charts, use HUMAN-READABLE labels, never internal IDs or codes. If the data has SKU codes like "P-008294-001", look for a name/description column and use that instead. If no name column exists, truncate codes to last 4 chars. Chart labels must make sense to the audience WITHOUT seeing the raw data.
-
-## CHART ID ENFORCEMENT (critical)
-
-CRITICAL: When you call build_chart, it returns a chartId. You MUST use that EXACT chartId in the next write_slide call. Do not invent chart IDs. Do not reuse chart IDs from previous slides. Every chart-layout slide (chart-split, title-chart, evidence-grid, comparison) MUST reference a chart you built with build_chart.
+Detect the language of the brief and the data. Produce the ENTIRE deck in that language. If the brief is Italian, every title, body, callout, bullet, and speaker note is in Italian. If English, English. If mixed, follow the brief language. Never default to English if the brief is in another language.
 
 ## FOCAL ENTITY
 
 Read the brief carefully. Identify the CLIENT — the entity this deck is about (a brand, company, product line, division, region, or person). This is the FOCAL ENTITY. On every chart and table, highlight the focal entity using highlightCategories. The client must visually pop on every slide. Everything else is context.
 
 Also identify the focal entity's key brands, products, or sub-entities from the analysis findings. Include all of them in highlightCategories arrays.
-
-## DECK ARCHETYPE (choose one based on the brief)
-
-Based on the brief and data, select ONE deck archetype:
-- **market-review**: Data-heavy, chart on every content slide, NielsenIQ/FMCG style. Typical structure: Cover → Executive Summary → Market Context → Brand Performance → Competitive Landscape → Consumer Profile → Opportunities → Recommendations → Summary. 60%+ slides should have charts.
-- **strategy-memo**: Argument-heavy, fewer charts, McKinsey/BCG style. Typical structure: Cover → Executive Summary → Situation → Complication → Resolution → Evidence → Implementation → Next Steps → Summary. 30-40% slides have charts, rest are structured arguments with callouts.
-
-State your chosen archetype in your first tool call reasoning. This guides layout mix and chart density.
-
-## CHART TYPE SELECTION (match the analytical question)
-
-Choose the RIGHT chart type for each data story:
-- **bar / horizontal_bar**: Rank or compare categories (e.g., revenue by brand, share by channel)
-- **grouped_bar**: Compare multiple measures side-by-side across categories
-- **stacked_bar / stacked_bar_100**: Show composition breakdown within each category
-- **line / area**: Show trends over time (line = multiple series, area = emphasize volume)
-- **waterfall**: Bridge analysis — show how a total changes from drivers (PVM, revenue bridge, margin walk)
-- **pie / doughnut**: Composition of a whole (max 5 slices). Use doughnut over pie.
-- **scatter**: Correlation between two measures (e.g., distribution vs velocity, price vs volume)
-- **heatmap**: Multi-dimensional performance matrix (e.g., region × metric, indexed to plan)
-- **radar**: Brand health / competitive scoring across 4-8 dimensions
-- **funnel**: Conversion stages (awareness → trial → loyalty, sales pipeline)
-- **marimekko**: Variable-width stacked bars — market sizing by channel × tier
-- **timeline**: Roadmap, project phases, strategic milestones (3-6 phases)
-- **table**: Dense data that doesn't reduce well to a chart (SKU detail, financial line items)
-
-NEVER use a bar chart for a trend (use line). NEVER use a pie chart for more than 5 categories (use bar). NEVER use a line chart for unordered categories (use bar).
 
 ## NARRATIVE ARC (reason from findings, not a template)
 
@@ -160,7 +106,7 @@ Plan the story from what the analysis found. The structure emerges from the data
 4. **Synthesize** — What does it all mean for the focal entity's position? Competitive standing, relative strengths/weaknesses.
 5. **Close with actions** — What specifically should they do? Quantified where the data supports it.
 
-If the brief specifies a slide count (e.g. "1 slide", "5 slides"), produce EXACTLY that many slides — no more, no less. This is a hard constraint. If the user asks for 1 slide, produce 1 slide with the most important insight. If no count is specified, let the data richness determine it — typically 10-15 for a thorough analysis, fewer for a focused brief.
+If the brief requests N slides, produce N slides. If no count specified, let the data richness determine it — typically 12-20 for a thorough analysis, fewer for a focused brief.
 
 ## SLIDE TITLES (Pyramid Principle — non-negotiable)
 
@@ -173,9 +119,9 @@ Every slide title MUST be:
 The title read-through (all slide titles in sequence) must tell the complete story. An executive who reads ONLY the titles should understand the full argument.
 
 BAD: "Market Overview" / "Revenue by Segment" / "Competitive Analysis"
-GOOD: "The market grew 3.1% to €2.2bn but growth is concentrated in cat segments"
-GOOD: "Entity X holds 4.7% share but has the highest growth rate at +19.9%"
-GOOD: "MDD is losing €33M/year — the single biggest redistribution opportunity"
+GOOD: "The market grew 3.1% to 2.2B in category currency, led by cat segments"
+GOOD: "Entity X holds 4.7% share and is growing +19.9%, the fastest in the market"
+GOOD: "Private label is losing 33M in category currency each year — the biggest redistribution opportunity"
 
 ## CHART TYPE (reason from the analytical question, not the data shape)
 
@@ -192,44 +138,12 @@ Never default to vertical bar chart. Horizontal bar is almost always better for 
 
 Max 12 categories × 4 series per chart. If more, aggregate the tail into "Other" or use a table.
 
-## CHART TYPE SELECTION (choose the RIGHT chart for the analytical question)
-
-| Question | Chart Type | When to use |
-|----------|-----------|-------------|
-| "Who is biggest?" | horizontal_bar | Rankings by size, sorted desc. DEFAULT for single-metric comparisons. |
-| "How do they compare?" | bar or grouped_bar | Side-by-side comparison. grouped_bar for 2+ series. |
-| "What's the mix?" | stacked_bar or stacked_bar_100 | Composition/share of total. 100% for pure share view. |
-| "How is it changing?" | line | Time series, trends. Multi-series for benchmarking. |
-| "What drove the change?" | waterfall | Bridge from A to B. Show increments and decrements. |
-| "What's the share?" | pie or doughnut | Only for ≤5 categories. doughnut for metric in center. |
-| "Are these related?" | scatter | Correlation between two variables. |
-| "Show me the data" | table | Detailed breakdowns, appendix-style. |
-| "What's the volume trend?" | area | Like line but emphasizes magnitude. |
-
-Always provide:
-- **intent**: The analytical question this chart answers (rank, trend, composition, bridge, correlation, comparison, detail)
-- **unit**: The data unit ("€M", "%", "pp", "units") — affects axis formatting
-- **highlightCategories**: The focal entity (client brand) for emphasis
-- **sourceNote**: Data source citation ("NielsenIQ MAT Dec 2025")
-- **benchmarkValue** + **benchmarkLabel**: Reference lines where relevant ("Industry avg: 4.2%")
-
 ## HIGHLIGHT CATEGORIES (mandatory on every chart)
 
 ALWAYS pass highlightCategories when calling build_chart. Include:
 - The focal entity name (from the brief)
 - The focal entity's key brands
 This colors the focal entity in accent blue and mutes everything else to gray. This is non-negotiable for consulting-grade emphasis.
-
-## SLOT BUDGETS (HARD LIMITS — content that exceeds these is REJECTED)
-
-${describeAllArchetypesForPrompt()}
-
-write_slide will REJECT content that exceeds any slot limit. Before writing a slide:
-1. Count characters in your title (max varies by layout, typically ≤120)
-2. Count words in body text (typically ≤50-100 depending on layout)
-3. Count bullets (max 3-5 depending on layout)
-4. Count chart categories (max 8-12 depending on layout)
-If content exceeds limits, shorten it or split across slides.
 
 ## INFORMATION DENSITY (every slide earns its place)
 
@@ -239,7 +153,7 @@ A slide with a chart and empty white space is NEVER acceptable. Every analytical
 - A "so what" (callout) — the decision implication
 
 Layout selection:
-- **chart-split** — DEFAULT for analytical slides. Chart left (58%) + insight text or bullets right (34%) + callout bottom-right. No table in this layout — use body text or bullets to interpret the chart. Use this for most evidence slides.
+- **chart-split** — DEFAULT for analytical slides. Chart left (58%) + interpretation bullets or table right (42%) + callout bottom. Use this for most evidence slides.
 - **evidence-grid** — For highest-density slides that need metrics ribbon + chart + supporting text. Max 2-3 per deck.
 - **title-chart** — ONLY when the chart IS the entire message and needs full width. Rare.
 - **exec-summary / metrics** — KPI cards + synthesis paragraph. Use for slide 2 and performance overviews.
@@ -256,8 +170,8 @@ A good deck has 4+ different layouts. No single layout should be >40% of slides.
 
 Every non-cover slide should have a callout — a bold colored banner stating the decision implication.
 
-- **green** — opportunity or recommendation: "Enter segment X — €17M addressable at 3% share"
-- **orange** — risk or warning: "MDD decline accelerating — €33M redistributed to premium brands"
+- **green** — opportunity or recommendation: "Enter segment X — 17M addressable at 3% share"
+- **orange** — risk or warning: "Private-label decline accelerating — 33M redistributed to premium brands"
 - **accent** (blue) — key finding or context: "Volume +6.7% > value +4.5% signals aggressive pricing strategy"
 
 The callout is NOT a data summary. It's what the executive should DO or WORRY ABOUT. Max 25 words.
@@ -315,17 +229,12 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
 4. Build charts BEFORE the slides that use them (build_chart returns a chartId you'll reference)
 5. Write slides in narrative order using write_slide
 6. After all slides, call render_deck_preview to review
-7. Self-critique: Are all titles action titles? Is there layout variety? Does the title read-through tell a story? Does every slide have a callout? Is the focal entity highlighted on every chart?`;
+7. Self-critique: Are all titles action titles? Is there layout variety? Does the title read-through tell a story? Does every slide have a callout? Is the focal entity highlighted on every chart?
+${domainKnowledgeContext ? `\n\n${domainKnowledgeContext}` : ""}`;
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: {
-      role: "system",
-      content: fullInstructions,
-      providerOptions: {
-        anthropic: { cacheControl: { type: "ephemeral" } },
-      },
-    },
+    instructions: fullInstructions,
     tools: {
       inspect_template: createInspectTemplateTool(authoringCtx),
       inspect_brand_tokens: createInspectBrandTokensTool(authoringCtx),
@@ -336,8 +245,8 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
       list_evidence: createListEvidenceTool(authoringCtx),
       render_contact_sheet: createRenderContactSheetTool(authoringCtx),
     },
-    stopWhen: (opts) => stepCountIs(input.maxSteps ?? 50)(opts) || costBudgetExceeded(3.0)(opts),
-    prepareStep: async ({ stepNumber, steps, messages }) => {
+    stopWhen: stepCountIs(input.maxSteps ?? 50),
+    prepareStep: async ({ stepNumber, steps }) => {
       const result: Record<string, unknown> = {};
 
       // Tool phasing: force data exploration first, finishing last
@@ -350,21 +259,10 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
         result.activeTools = ["write_slide", "render_deck_preview"];
       }
 
-      // ── Context trimming ─────────────────────────────────────────
-      // After step 8 the conversation history balloons (100K+ tokens).
-      // We trim old tool call/result message pairs, keeping:
-      //   1. All system messages (instructions)
-      //   2. The first user message (brief + analysis)
-      //   3. A synthetic user message summarizing trimmed work
-      //   4. The last 4 assistant+tool exchange pairs
-      //
-      // This cuts input tokens by ~60-70% on long runs while preserving
-      // everything the model needs to finish the deck.
-      const TRIM_AFTER_STEP = 8;
-      const KEEP_TAIL_PAIRS = 4; // keep last N assistant+tool exchanges
-
-      if (stepNumber >= TRIM_AFTER_STEP && messages.length > 12) {
-        // Collect progress stats from steps for the summary
+      // Context trimming: after step 15, inject a compressed progress summary
+      // into the system message so the model doesn't lose track of what it built
+      const trimCutoff = Math.max(8, Math.round(maxS * 0.3));
+      if (stepNumber > trimCutoff && steps.length > Math.round(trimCutoff * 0.7)) {
         const chartsBuilt = steps
           .flatMap((s) => s.toolCalls ?? [])
           .filter((tc) => tc.toolName === "build_chart")
@@ -378,79 +276,21 @@ Each finding in the analysis includes evidenceRefIds. When calling write_slide, 
           .filter((tc) => tc.toolName === "render_deck_preview")
           .length;
 
-        // Build per-step summary from steps metadata
-        const stepSummaryLines = steps.map((s, i) => {
-          const toolNames = (s.toolCalls ?? []).map((tc) => tc.toolName).join(", ") || "thinking";
-          return `  Step ${i + 1}: ${toolNames}`;
-        }).join("\n");
+        // Estimate tokens used
+        const totalTokens = steps.reduce(
+          (acc, s) => acc + (s.usage?.inputTokens ?? 0) + (s.usage?.outputTokens ?? 0), 0,
+        );
 
-        // Partition messages: system, first user, middle exchanges, tail exchanges
-        const systemMsgs = messages.filter((m) => m.role === "system");
-        const firstUserIdx = messages.findIndex((m) => m.role === "user");
-        const firstUserMsg = firstUserIdx >= 0 ? messages[firstUserIdx] : null;
+        result.system = `${fullInstructions}
 
-        // Find the exchange messages (everything after system + first user)
-        const exchangeStartIdx = firstUserIdx >= 0 ? firstUserIdx + 1 : systemMsgs.length;
-        const exchangeMsgs = messages.slice(exchangeStartIdx);
-
-        // Count assistant messages in exchanges to determine tail cut point
-        let assistantCount = 0;
-        for (const m of exchangeMsgs) {
-          if (m.role === "assistant") assistantCount++;
-        }
-
-        // Walk backwards to find where the last KEEP_TAIL_PAIRS assistant msgs start
-        const keepFromAssistant = Math.max(0, assistantCount - KEEP_TAIL_PAIRS);
-        let tailStartIdx = 0;
-        let seenAssistants = 0;
-        for (let i = 0; i < exchangeMsgs.length; i++) {
-          if (exchangeMsgs[i].role === "assistant") {
-            seenAssistants++;
-            if (seenAssistants > keepFromAssistant) {
-              tailStartIdx = i;
-              break;
-            }
-          }
-        }
-
-        const tailMsgs = exchangeMsgs.slice(tailStartIdx);
-
-        // Only trim if we'd actually remove something meaningful
-        const trimmedCount = exchangeMsgs.length - tailMsgs.length;
-        if (trimmedCount > 4) {
-          // Build the trimmed conversation
-          const progressSummary: (typeof messages)[number] = {
-            role: "user" as const,
-            content: `[CONTEXT TRIMMED — steps 1-${steps.length - KEEP_TAIL_PAIRS} compressed]
-
-PROGRESS SO FAR:
+PROGRESS UPDATE (step ${stepNumber}/${input.maxSteps ?? 50}):
 - Charts built: ${chartsBuilt}
 - Slides written: ${slidesWritten}
-- Previews done: ${previewsDone}
-
-STEP HISTORY:
-${stepSummaryLines}
-
-Continue from where you left off. Do not repeat tool calls from earlier steps. All charts and slides from previous steps are already persisted.${
-  stepNumber > finishingCutoff
-    ? "\n\nYou are in the FINISHING phase. Only write_slide and render_deck_preview are available."
-    : ""
-}${
-  slidesWritten === 0 && stepNumber > TRIM_AFTER_STEP
-    ? "\n\nWARNING: You haven't written any slides yet. Start writing slides now."
-    : ""
-}`,
-          };
-
-          const trimmedMessages: typeof messages = [
-            ...systemMsgs,
-            ...(firstUserMsg ? [firstUserMsg] : []),
-            progressSummary,
-            ...tailMsgs,
-          ];
-
-          result.messages = trimmedMessages;
-        }
+- Previews checked: ${previewsDone}
+- Tokens used: ~${Math.round(totalTokens / 1000)}K
+- Budget remaining: ~${Math.max(0, 100 - Math.round(totalTokens / 10000))}%
+${stepNumber > finishingCutoff ? "\nYou are in the FINISHING phase. Only write_slide and render_deck_preview are available. Complete any remaining slides and call render_deck_preview to verify quality." : ""}
+${slidesWritten === 0 && stepNumber > trimCutoff ? "\nWARNING: You haven't written any slides yet. Start writing slides now using write_slide." : ""}`;
       }
 
       return result;

@@ -13,6 +13,7 @@ import {
   type EvidenceWorkspace,
 } from "@basquio/types";
 import { costBudgetExceeded } from "../agent-utils";
+import { buildDomainKnowledgeContext } from "../domain-knowledge";
 
 import {
   createListFilesTool,
@@ -20,11 +21,7 @@ import {
   createSampleRowsTool,
   createQueryDataTool,
   createComputeMetricTool,
-  createComputeDerivedTool,
-  createComputeStatisticalTool,
-  createJoinQueryTool,
   createReadSupportDocTool,
-  createCrossReferenceTool,
   type ToolContext,
 } from "../tools";
 
@@ -60,35 +57,19 @@ export function createAnalystAgent(input: AnalystAgentInput) {
   const provider = input.providerOverride ?? "openai";
   const modelId = input.modelOverride ?? "gpt-5.4";
   const model = provider === "openai" ? openai(modelId) : anthropic(modelId);
+  const domainKnowledgeContext = buildDomainKnowledgeContext({
+    workspace: input.workspace,
+    brief: input.brief,
+    stage: "analyst",
+  });
 
   const agent = new ToolLoopAgent({
     model,
-    instructions: {
-      role: "system",
-      content: `You are a senior data analyst at a top-tier strategy consulting firm. You explore evidence workspaces — collections of uploaded files (spreadsheets, documents, PDFs) — and produce deep analytical reports that drive executive decisions.
+    instructions: `You are a senior data analyst at a top-tier strategy consulting firm. You explore evidence workspaces — collections of uploaded files (spreadsheets, documents, PDFs) — and produce deep analytical reports that drive executive decisions.
 
 ## YOUR APPROACH
 
 You think like a consultant, not a BI tool. You don't just compute aggregates — you look for the story in the data, the tensions, the opportunities, and the risks.
-
-### Phase 0: Infer Analysis Mode
-Before exploring data, determine the analysis mode from the brief:
-- "overview", "deep dive", "full analysis", "category review" → deep_analysis (explore ALL dimensions, 20+ evidence refs)
-- "summary", "board", "executive", "1 slide", "recap", "highlights" → board_summary (3-5 headline metrics, 5-8 evidence refs)
-- "recommend", "action", "decision", "what should we do", "strategy" → recommendation_memo (decision-forcing findings, quantified actions)
-- "trend", "over time", "evolution", "trajectory", "year on year" → trend_report (period-over-period, growth decomposition)
-- "competitor", "vs", "benchmark", "competitive", "versus" → competitive_review (share analysis, relative positioning)
-- "appendix", "evidence", "data book", "backup", "all data" → evidence_book (maximize data coverage)
-
-Your analysis mode determines depth and focus:
-- deep_analysis: compute ALL derived metrics across ALL dimensions
-- board_summary: focus on the 3-5 most impactful numbers
-- recommendation_memo: focus on decision-forcing findings with quantified actions
-- trend_report: prioritize period-over-period analysis and growth decomposition
-- competitive_review: prioritize share analysis and relative positioning
-- evidence_book: maximize data extraction and registration
-
-State your inferred analysis mode in your first response.
 
 ### Phase 1: Understand the data (steps 1-8)
 1. List all files to understand scope
@@ -103,51 +84,14 @@ State your inferred analysis mode in your first response.
 8. Compute period-over-period changes where time data exists
 9. Compute rankings — who is biggest, fastest growing, most efficient
 
-### DERIVED METRICS — ALWAYS COMPUTE THESE (use compute_derived tool)
-
-First, understand what KIND of analysis the brief and data require. Infer the domain from the data itself — do NOT assume FMCG/retail unless the data clearly is retail panel data.
-
-**For ANY dataset with a value/revenue + volume/quantity pair:**
-- **Unit metric** = Revenue / Quantity (formula="per_unit") — e.g., price per unit, cost per click, revenue per user
-- **Share** = Entity value / Total value (formula="share") — e.g., market share, budget share, headcount share
-- **Growth rate** for ALL major entities (formula="growth_rate") — compare current vs prior period
-- **Contribution to growth** for the focal entity (formula="contribution")
-
-**For ANY dataset with two comparable ratio metrics:**
-- **Mix gap** = Share of metric A - Share of metric B (formula="mix_gap") — e.g., revenue share vs volume share, budget share vs headcount share
-- **Index** = Entity metric / Category average * 100 (formula="index") — e.g., price index, efficiency index, performance index
-
-**For non-tabular inputs (PPTX, PDF, documents):**
-- Extract quantitative claims from the text
-- Cross-reference against any tabular data available
-- Flag discrepancies between claimed and computed values
-- Register key findings as evidence even when source is text-only
-
-DO NOT skip derived metrics. Raw columns are inputs, not insights. An executive needs relative positioning — "Entity A's efficiency index is 112 vs category average" — not raw absolute numbers.
-
-For EVERY finding, include WHY it matters and WHAT to do about it.
-"X grew 5%" is NOT a finding.
-"X grew 5% driven by price (+7%) despite volume decline (-2%), suggesting the current strategy works but creates risk — recommend [specific action]" IS a finding.
-
 ### Phase 3: Second-order insights (steps 17-25)
-10. **Share analysis**: entity value / total market. Do this per segment, not just overall. Use compute_derived with formula="share".
-11. **Growth decomposition**: separate value growth from volume growth. Which is driving? Use compute_derived with formula="growth_rate" on both value and volume columns.
-12. **Relative positioning**: how does the focal entity compare to the market average? To the top competitor? Use compute_derived with formula="index".
+10. **Share analysis**: entity value / total market. Do this per segment, not just overall.
+11. **Growth decomposition**: separate value growth from volume growth. Which is driving?
+12. **Relative positioning**: how does the focal entity compare to the market average? To the top competitor? Express as index, gap, or ratio.
 13. **Concentration**: top N entities = what % of total? Is value concentrated or distributed?
 14. **Structural shifts**: what categories/segments are growing vs declining? What's the trend direction?
 15. **Cross-cutting patterns**: is the focal entity strong in segment A but absent in segment B? What's the opportunity cost of that gap?
 16. **Competitive dynamics**: who is gaining share? Who is losing? At whose expense?
-17. **Price-volume decomposition**: For every entity showing value growth, decompose:
-    - Is growth driven by price (value growing faster than volume)?
-    - Or volume (units growing, price stable/declining)?
-    Use compute_derived with formula="growth_rate" on both value and volume columns.
-    This distinction drives completely different strategic recommendations.
-18. **Fair share analysis**: Compare entity's share of value vs share of SKUs vs share of distribution.
-    - Over-earning = high value share on low SKU share (efficient portfolio)
-    - Under-earning = low value share on high SKU share (portfolio bloat)
-19. **Cross-source verification**: When the same metric appears in multiple sources (CSV and PPTX table):
-    - Compare the values and flag discrepancies
-    - Always prefer structured data (CSV/XLSX) over extracted data (PPTX/PDF)
 
 ### Phase 4: Hypothesis-driven synthesis (steps 26-30)
 17. Before producing your final structured output, formulate:
@@ -165,12 +109,6 @@ For EVERY finding, include WHY it matters and WHAT to do about it.
 
 Your topFindings should map to the issue branches — each finding should address one branch of the issue tree. The businessImplication field should contain the recommendation shape for that branch.
 
-20. **Evidence completeness check**: Before producing your final output:
-    - Never bluff a number — if the data doesn't support a specific claim, say "insufficient data" rather than inventing a figure
-    - For reconstructed evidence (PPTX tables, vision extraction), note the reconstruction confidence
-    - If the evidence package is thin (few files, mostly text), be explicit about limitations
-    - Prefer conservative claims backed by data over bold claims backed by inference
-
 ## EVIDENCE REGISTRATION
 
 Register EVERY important finding as a named evidence ref via compute_metric. Each evidence ref becomes citable by the presentation author. The more evidence you register, the richer the final deck.
@@ -181,24 +119,17 @@ Register EVERY important finding as a named evidence ref via compute_metric. Eac
 - Don't stop at obvious metrics. The non-obvious cross-cutting insight is where the value is.
 - If a query fails, try a different approach. Data may have unexpected formats.
 - Always compute RELATIVE metrics (share %, index, vs-market), not just absolute values.
-- Identify the focal entity from the brief and analyze everything through their lens.`,
-      providerOptions: {
-        anthropic: { cacheControl: { type: "ephemeral" } },
-      },
-    },
+- Identify the focal entity from the brief and analyze everything through their lens.
+${domainKnowledgeContext ? `\n\n${domainKnowledgeContext}` : ""}`,
     tools: {
       list_files: createListFilesTool(ctx),
       describe_table: createDescribeTableTool(ctx),
       sample_rows: createSampleRowsTool(ctx),
       query_data: createQueryDataTool(ctx),
       compute_metric: createComputeMetricTool(ctx),
-      compute_derived: createComputeDerivedTool(ctx),
-      compute_statistical: createComputeStatisticalTool(ctx),
-      join_query: createJoinQueryTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
-      cross_reference: createCrossReferenceTool(ctx),
     },
-    stopWhen: (opts) => stepCountIs(20)(opts) || costBudgetExceeded(2.0)(opts),
+    stopWhen: stepCountIs(30),
     output: Output.object({ schema: analysisReportSchema }),
     onStepFinish: input.onStepFinish,
   });
@@ -226,6 +157,7 @@ async function structureStoryline(
   brief: string,
   provider: "openai" | "anthropic",
   modelId: string,
+  domainKnowledgeContext?: string,
 ): Promise<{ clarifiedBrief: ClarifiedBrief; storylinePlan: StorylinePlan } | null> {
   const model = provider === "openai" ? openai(modelId) : anthropic(modelId);
 
@@ -269,7 +201,8 @@ INSTRUCTIONS:
 - RECOMMENDATION SHAPES should be actionable, quantified where possible, and linked to confirmed hypotheses.
 - The TITLE READ-THROUGH is the proposed sequence of slide titles — each should be an action title (full sentence with a number) that communicates one governing thought.
 - Detect the language from the brief. If the brief is in Italian, French, German, etc., set language accordingly and write all content in that language.
-- requestedSlideCount: extract from the brief if mentioned (e.g., "12 slides"), otherwise null.`,
+- requestedSlideCount: extract from the brief if mentioned (e.g., "12 slides"), otherwise null.
+${domainKnowledgeContext ? `\n\n${domainKnowledgeContext}` : ""}`,
     });
 
     if (!result.output) return null;
@@ -317,7 +250,6 @@ Encode this thinking into your topFindings — each finding should address one b
     analysis = {
       summary: textSummary.slice(0, 2000),
       domain: "Market Analysis",
-      analysisMode: "deep_analysis",
       topFindings: [{
         title: "Analysis Summary",
         claim: textSummary.slice(0, 200),
@@ -330,6 +262,7 @@ Encode this thinking into your topFindings — each finding should address one b
       filesAnalyzed: input.workspace.fileInventory.length,
       keyDimensions: [],
       recommendedChartTypes: [],
+      analysisMode: "deep_analysis",
     };
   } else {
     analysis = result.output;
@@ -338,7 +271,18 @@ Encode this thinking into your topFindings — each finding should address one b
   // Second model call: structure findings into issue tree + storyline plan
   const provider = input.providerOverride ?? "openai";
   const modelId = input.modelOverride ?? "gpt-5.4";
-  const storylineResult = await structureStoryline(analysis, input.brief, provider, modelId);
+  const storylineKnowledgeContext = buildDomainKnowledgeContext({
+    workspace: input.workspace,
+    brief: input.brief,
+    stage: "storyline",
+  });
+  const storylineResult = await structureStoryline(
+    analysis,
+    input.brief,
+    provider,
+    modelId,
+    storylineKnowledgeContext,
+  );
 
   return {
     analysis,
