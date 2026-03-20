@@ -1004,6 +1004,26 @@ function escHtml(s: string): string {
 
 const CHART_PALETTE = ["E8A84C", "4CC9A0", "6B8EE8", "9B7AE0", "E8636F", "5AC4D4", "E8B86C", "7ABBE0"];
 
+/** Format numeric values for chart labels — same logic as PPTX shape-charts */
+function fmtVal(v: number, unit?: string): string {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? "-" : "";
+  let f: string;
+  if (abs >= 1_000_000_000) f = `${sign}${(abs / 1e9).toFixed(1)}B`;
+  else if (abs >= 1_000_000) f = `${sign}${(abs / 1e6).toFixed(1)}M`;
+  else if (abs >= 10_000) f = `${sign}${Math.round(abs / 1e3)}K`;
+  else if (abs >= 1_000) f = `${sign}${(abs / 1e3).toFixed(1)}K`;
+  else if (abs === Math.floor(abs)) f = `${sign}${abs}`;
+  else f = `${sign}${abs.toFixed(1)}`;
+  // Sanitize unit — strip raw column header junk
+  const JUNK = ["CM","KM","UM","UN","NR","QT","CT","PC","EA","ST","PK","BX","CS","DZ"];
+  const clean = unit?.trim();
+  if (!clean || JUNK.includes(clean.toUpperCase()) || clean.length > 5) return f;
+  if (clean === "%" || clean === "pp") return `${f}${clean}`;
+  if (["€","$","£","CHF"].includes(clean)) return `${clean}${f}`;
+  return `${f} ${clean}`;
+}
+
 function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: string, border: string): string {
   const { chartType, data, xAxis, yAxis, series, title, unit, sourceNote } = chart;
   if (!data || data.length === 0 || !xAxis) return "";
@@ -1049,7 +1069,7 @@ function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: 
     const gy = PAD.t + (plotH / gridCount) * i;
     const gv = maxVal - (range / gridCount) * i;
     chartSvg += `<line x1="${PAD.l}" y1="${gy}" x2="${W - PAD.r}" y2="${gy}" stroke="#2A293A" stroke-width="0.5"/>`;
-    chartSvg += `<text x="${PAD.l - 8}" y="${gy + 4}" fill="#${muted}" font-size="10" text-anchor="end">${gv >= 1000 ? (gv/1000).toFixed(1) + "K" : gv.toFixed(gv % 1 === 0 ? 0 : 1)}</text>`;
+    chartSvg += `<text x="${PAD.l - 8}" y="${gy + 4}" fill="#${muted}" font-size="10" text-anchor="end">${fmtVal(gv, unit)}</text>`;
   }
 
   if (isLine) {
@@ -1121,7 +1141,7 @@ function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: 
         // Data label
         if (data.length <= 8) {
           const labelY = v >= 0 ? barY - 5 : barY + barH + 12;
-          const fmtV = Math.abs(v) >= 1000 ? (v/1000).toFixed(1) + "K" : v.toFixed(v % 1 === 0 ? 0 : 1);
+          const fmtV = fmtVal(v, unit);
           chartSvg += `<text x="${barX + barW/2}" y="${labelY}" fill="#${text}" font-size="9" font-weight="600" text-anchor="middle">${fmtV}${unit ? " " + escHtml(unit) : ""}</text>`;
         }
       });

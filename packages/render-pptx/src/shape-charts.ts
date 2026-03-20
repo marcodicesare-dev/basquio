@@ -68,14 +68,14 @@ const V = {
   // Semantic colors (from JSX design system)
   green: "4CC9A0",           // JSX: green — positive, growth
   red: "E8636F",             // JSX: red — negative, decline
-  // Typography sizes (pt)
-  chartTitle: 10,            // Chart title above chart area
+  // Typography sizes (pt) — minimum readable sizes on dark bg
+  chartTitle: 11,            // Chart title above chart area
   dataLabel: 10,             // Values on bars/points (bold)
-  catLabel: 9,               // Category labels on axes
-  legend: 8.5,               // Legend text
+  catLabel: 10,              // Category labels on axes (was 9, too small)
+  legend: 9,                 // Legend text (was 8.5, too small on dark)
   source: 8,                 // Source note below chart
-  insideLabel: 8,            // Labels inside bar segments
-  annotation: 8,             // Benchmark/reference labels
+  insideLabel: 9,            // Labels inside bar segments (was 8, unreadable)
+  annotation: 9,             // Benchmark/reference labels (was 8)
   // Spacing (inches)
   titleAreaH: 0.22,          // Height reserved for chart title
   sourceAreaH: 0.18,         // Height reserved for source note
@@ -170,16 +170,17 @@ export function renderShapeChart(
     h: frame.h - titleH - sourceH,
   };
 
-  // Render title above chart
+  // Render chart title above chart (truncated to max 70 chars for readability)
   if (options.title) {
-    slide.addText(options.title, {
+    const displayTitle = options.title.length > 70 ? options.title.slice(0, 67) + "..." : options.title;
+    slide.addText(displayTitle, {
       x: frame.x,
       y: frame.y,
       w: frame.w,
       h: 0.20,
-      fontSize: TITLE_SIZE,
+      fontSize: 11, // Readable chart title, not too small
       fontFace: tokens.bodyFont,
-      color: tokens.accent,
+      color: tokens.ink,
       bold: true,
       align: "left",
       valign: "bottom",
@@ -522,7 +523,7 @@ function renderStackedBar(
 
         // Label inside segment if wide enough (percentage or value)
         const pct = totals[i] > 0 ? (val / totals[i]) * 100 : 0;
-        if (pct >= 15 && segW > 0.35) {
+        if (pct >= 20 && segW > 0.50) { // Only label segments that are wide enough to be readable
           slide.addText(normalize100 ? `${Math.round(pct)}%` : formatValue(val, options.unit), {
             x: chartAreaX + offsetX,
             y,
@@ -1500,6 +1501,9 @@ function formatValue(value: number, unit?: string): string {
     formatted = `${sign}${(abs / 1_000_000_000).toFixed(1)}B`;
   } else if (abs >= 1_000_000) {
     formatted = `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+  } else if (abs >= 10_000) {
+    // Skip decimal for cleaner labels when value is large
+    formatted = `${sign}${Math.round(abs / 1_000)}K`;
   } else if (abs >= 1_000) {
     formatted = `${sign}${(abs / 1_000).toFixed(1)}K`;
   } else if (abs === Math.floor(abs)) {
@@ -1508,8 +1512,22 @@ function formatValue(value: number, unit?: string): string {
     formatted = `${sign}${abs.toFixed(1)}`;
   }
 
-  if (unit === "%" || unit === "pp") return `${formatted}${unit}`;
-  if (unit === "€" || unit === "$" || unit === "£") return `${unit}${formatted}`;
-  if (unit) return `${formatted} ${unit}`;
+  // Sanitize unit — strip raw column header junk (CM, KM, UM, etc.)
+  const cleanUnit = sanitizeUnit(unit);
+  if (cleanUnit === "%" || cleanUnit === "pp") return `${formatted}${cleanUnit}`;
+  if (cleanUnit === "€" || cleanUnit === "$" || cleanUnit === "£" || cleanUnit === "CHF") return `${cleanUnit}${formatted}`;
+  if (cleanUnit) return `${formatted} ${cleanUnit}`;
   return formatted;
+}
+
+/** Strip raw data header junk from units. "CM", "KM", "UM" etc. are not real units. */
+function sanitizeUnit(unit?: string): string | undefined {
+  if (!unit) return undefined;
+  const clean = unit.trim();
+  // Known garbage units from raw data headers
+  const JUNK_UNITS = ["CM", "KM", "UM", "UN", "NR", "QT", "CT", "PC", "EA", "ST", "PK", "BX", "CS", "DZ"];
+  if (JUNK_UNITS.includes(clean.toUpperCase())) return undefined;
+  // If unit is longer than 5 chars, it's probably a column header, not a unit
+  if (clean.length > 5) return undefined;
+  return clean;
 }
