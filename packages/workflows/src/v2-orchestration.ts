@@ -1225,7 +1225,16 @@ ALWAYS: "Cat wet is the largest pool at 781M but Ultima captures only 0.8%"
 Max 20 words. Says what to DO or WORRY ABOUT. tone: green=opportunity, orange=risk, accent=finding.
 
 ## LANGUAGE
-Write in the specified language. Never default to English.
+Write ENTIRELY in the language specified in your slide context. Never default to English.
+Exception: proper nouns, brand names, and universal industry terms (KPI, SKU, CAGR) stay in their original form.
+
+## COPYWRITING RULES (non-negotiable)
+- SPECIFICITY over vagueness: "Birre lost €2.3M (-14%) while Pasta grew €1.1M (+8%)" NOT "decline concentrated in a few categories"
+- Every claim MUST include at least one number from the evidence
+- ONE insight per slide — if you're making two points, the second belongs on the next slide
+- Active voice: "Affinity lost 0.1pp share" NOT "share was lost by Affinity"
+- No marketing buzzwords: "leverage", "optimize", "streamline", "innovative" are banned
+- Callout must state the SO WHAT — what to DO, not what happened
 
 ## LAYOUT-SPECIFIC TEXT BUDGETS (HARD LIMITS — violating these is a failure)
 
@@ -1262,11 +1271,13 @@ Only cite evidence IDs from your context. Never invent.
 Never raw column names. "V. Valore" → "Sales Value". Internal codes → product names.
 
 ## DESIGN ANTI-PATTERNS (NEVER do these)
-- NEVER use accent lines or bars under/above titles
+- NEVER use accent lines or bars under/above titles — hallmark of AI-generated slides
 - NEVER center body text — left-align all prose
 - NEVER put more than 3 metrics on a slide unless the layout is exec-summary or evidence-grid
+- NEVER repeat the same insight across slides — each slide must advance the argument
 - Body text should be SPARSE — if you're writing paragraphs, the chart should be saying it instead
-- Callout tone MUST match the message: green for opportunity/positive, orange for risk/warning, accent for neutral finding`;
+- Callout tone MUST match the message: green for opportunity/positive, orange for risk/warning, accent for neutral finding
+- NEVER use generic topic labels as kickers — "EVIDENCE" is lazy, "DISTRIBUTION GAP" is specific`;
 
 // ─── SECTION BRIEF BUILDER ────────────────────────────────────────
 
@@ -3143,34 +3154,13 @@ Return a V1DeckPlan with slides and charts.`,
                 throw firstErr;
               }
             }
-            let slideOutput = slideGenResult.object;
+            const slideOutput = slideGenResult.object;
             addUsage(slideGenResult.usage, modelId);
 
-            // ─── Language consistency check (deterministic, post-generation) ───
-            // Only retry for clear language mismatches. Skip retry if:
-            // - Budget is exhausted (retries cost $0.07 each)
-            // - Detected language is "en" (fallback when no markers found — not a real mismatch)
-            const expectedLang = validatedPlan.language || "en";
-            const slideText = [slideOutput.title, slideOutput.body, ...(slideOutput.bullets ?? [])].filter(Boolean).join(" ");
-            const detectedLang = detectLanguage(slideText);
-            const langMismatch = slideText.length > 50 && detectedLang !== expectedLang && (
-              // Only retry for CLEAR mismatches: non-English brief, output detected as different non-English
-              (expectedLang !== "en" && detectedLang !== "en" && detectedLang !== expectedLang)
-            );
-            // Skip retry if budget is tight
-            if (langMismatch && remainingBudget() > 0.20) {
-              console.warn(`[basquio-author] Slide ${slideSpec.position} language mismatch: expected ${expectedLang}, got ${detectedLang}. Retrying (1 attempt).`);
-              try {
-                const retryResult = await generateObject({
-                  model,
-                  schema: v1SlideOutputSchema,
-                  system: v1SlideSystemPrompt,
-                  prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns and industry terms.\n\n${slideContext}`,
-                });
-                slideOutput = retryResult.object;
-                addUsage(retryResult.usage, modelId);
-              } catch { /* keep original if retry fails */ }
-            }
+            // Language is enforced via the system prompt, not post-hoc detection.
+            // The old detectLanguage() approach caused 11 false retries per Italian deck
+            // ($0.77 wasted) because Italian/Spanish share too many marker words.
+            // The LLM already writes in the correct language when told to.
 
             // Resolve the real chart ID
             const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
