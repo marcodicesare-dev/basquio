@@ -754,6 +754,111 @@ async function loadWorkingPaper<T = unknown>(runId: string, paperType: string): 
   return rows[0]?.content ?? null;
 }
 
+/**
+ * Deterministic data intelligence — $0 cost, pure pattern matching.
+ * Detects: currency, period structure, dimension/measure roles, hierarchy, data grain.
+ * Injected into analyst + plan prompts so LLM doesn't have to guess these basics.
+ */
+function buildDataIntelligence(workspace: EvidenceWorkspace | null): string | null {
+  if (!workspace?.fileInventory?.length) return null;
+
+  const lines: string[] = [];
+  const allColumns: Array<{ name: string; inferredType: string; role: string; sampleValues?: string[]; uniqueCount?: number }> = [];
+
+  for (const file of workspace.fileInventory) {
+    for (const sheet of file.sheets ?? []) {
+      if (!sheet?.columns) continue;
+      for (const col of sheet.columns) {
+        if (col) allColumns.push(col as typeof allColumns[0]);
+      }
+    }
+  }
+
+  if (allColumns.length === 0) return null;
+
+  // 1. CURRENCY DETECTION — scan column names and sample values for currency symbols
+  const currencyPatterns: Record<string, string> = { "€": "EUR", "$": "USD", "£": "GBP", "CHF": "CHF", "¥": "JPY" };
+  let detectedCurrency: string | null = null;
+  for (const col of allColumns) {
+    const name = col.name.toLowerCase();
+    // Check column name for currency words
+    if (name.includes("valore") || name.includes("value") || name.includes("revenue") || name.includes("sales")) {
+      // Check sample values for currency prefix
+      for (const sv of col.sampleValues ?? []) {
+        const val = String(sv ?? "").trim();
+        for (const [symbol, code] of Object.entries(currencyPatterns)) {
+          if (val.startsWith(symbol) || val.includes(symbol)) {
+            detectedCurrency = code;
+            break;
+          }
+        }
+        if (detectedCurrency) break;
+      }
+    }
+    if (detectedCurrency) break;
+  }
+  if (detectedCurrency) {
+    const symbol = Object.entries(currencyPatterns).find(([, code]) => code === detectedCurrency)?.[0] ?? detectedCurrency;
+    lines.push(`- Currency: ${detectedCurrency} (${symbol}). Use "${symbol}" as unit for all monetary chart values.`);
+  }
+
+  // 2. PERIOD DETECTION — find CY/PY column pairs
+  const periodPairs: Array<{ current: string; prior: string }> = [];
+  const colNames = allColumns.map((c) => c.name);
+  for (const name of colNames) {
+    const lower = name.toLowerCase();
+    // Pattern: "X Anno prec." vs "X" (Italian NielsenIQ)
+    if (lower.includes("anno prec")) {
+      const base = name.replace(/\s*Anno prec\.?/i, "").trim();
+      const match = colNames.find((n) => n.trim() === base);
+      if (match) periodPairs.push({ current: match, prior: name });
+    }
+    // Pattern: "X PY" vs "X CY" or "X Prior" vs "X Current"
+    if (lower.endsWith(" py") || lower.endsWith(" prior") || lower.endsWith(" prior year")) {
+      const base = name.replace(/\s*(PY|Prior|Prior Year)$/i, "").trim();
+      const match = colNames.find((n) =>
+        n.trim() === base ||
+        n.trim() === `${base} CY` ||
+        n.trim() === `${base} Current` ||
+        n.trim() === `${base} Current Year`
+      );
+      if (match) periodPairs.push({ current: match, prior: name });
+    }
+  }
+  if (periodPairs.length > 0) {
+    lines.push(`- Period structure: TWO-PERIOD COMPARISON (current year vs prior year). This is NOT a time series — do NOT use line/area charts for period comparison. Use grouped bar or waterfall instead.`);
+    lines.push(`  Paired columns: ${periodPairs.map((p) => `"${p.current}" (CY) ↔ "${p.prior}" (PY)`).join(", ")}`);
+  }
+
+  // 3. HIERARCHY DETECTION — columns with nesting cardinality patterns
+  const dimensions = allColumns.filter((c) => c.role === "dimension" || c.inferredType === "string");
+  const hierarchyCandidates = dimensions
+    .filter((c) => {
+      const name = c.name.toLowerCase();
+      return name.includes("ecr") || name.includes("level") || name.includes("tier") ||
+        name.includes("area") || name.includes("category") || name.includes("segment") ||
+        name.includes("comparto") || name.includes("famiglia") || name.includes("mercato");
+    })
+    .sort((a, b) => (a.uniqueCount ?? 0) - (b.uniqueCount ?? 0)); // fewer distinct = higher in hierarchy
+
+  if (hierarchyCandidates.length >= 2) {
+    lines.push(`- Hierarchy detected: ${hierarchyCandidates.map((c) => `${c.name} (~${c.uniqueCount ?? "?"} values)`).join(" → ")} (from broadest to most granular)`);
+  }
+
+  // 4. DATA GRAIN — what does each row represent?
+  const identifiers = allColumns.filter((c) => c.role === "identifier" || c.name.toLowerCase().includes("item") || c.name.toLowerCase().includes("sku") || c.name.toLowerCase().includes("upc") || c.name.toLowerCase().includes("code"));
+  if (identifiers.length > 0) {
+    lines.push(`- Data grain: one row per ${identifiers.map((c) => c.name).join(" / ")} (item/SKU level)`);
+  }
+
+  // 5. CHART TYPE CONSTRAINTS from detected structure
+  if (periodPairs.length > 0) {
+    lines.push(`- Chart constraint: For CY vs PY comparisons, use grouped_bar (side-by-side) or horizontal_bar (ranked by change). NEVER use line or area charts — there is no time series dimension.`);
+  }
+
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 async function loadWorkspaceFromDb(runId: string): Promise<EvidenceWorkspace | null> {
   assertUuid(runId, "runId");
   const response = await fetch(
@@ -2295,6 +2400,13 @@ export const basquioAuthor = inngest.createFunction(
         ? `\n\n## Available data sheets\n${sheetInventory.map((s) => `- ${s.sheetKey} (${s.fileName} → ${s.sheetName}, ${s.rowCount} rows): ${s.columns}`).join("\n")}`
         : "";
 
+      // ─── DETERMINISTIC DATA INTELLIGENCE ($0 cost) ─────────────
+      // Detect: currency, period structure, dimension/measure roles, hierarchy
+      const dataIntelligence = buildDataIntelligence(workspace);
+      const dataIntelligenceText = dataIntelligence
+        ? `\n\n## Data Intelligence (auto-detected, use this for chart design)\n${dataIntelligence}`
+        : "";
+
       try {
         const planGenResult = await generateObject({
           model: openai("gpt-5.4-mini"),
@@ -2310,7 +2422,7 @@ ${findingsSummary}
 ## Recommended chart types
 ${chartTypesSummary}
 ${storylineContext}
-${sheetInventoryText}
+${sheetInventoryText}${dataIntelligenceText}
 
 ## Focal entity
 ${clarifiedBrief?.focalEntity ?? "(detect from brief)"}
