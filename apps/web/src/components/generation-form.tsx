@@ -94,6 +94,9 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
     stakes: "",
   });
 
+  // Track whether the submit was from the explicit button click
+  const submitIntentRef = useRef(false);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // Prevent accidental form submission from Enter key on non-final steps
@@ -101,6 +104,11 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
       goToNextStep();
       return;
     }
+    // On the final step, only submit if the user explicitly clicked the button
+    if (!submitIntentRef.current) {
+      return;
+    }
+    submitIntentRef.current = false;
     setIsSubmitting(true);
     setError(null);
 
@@ -536,7 +544,12 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
                 Continue
               </button>
             ) : (
-              <button className="button" type="submit" disabled={isSubmitting}>
+              <button
+                className="button"
+                type="submit"
+                disabled={isSubmitting}
+                onClick={() => { submitIntentRef.current = true; }}
+              >
                 {isSubmitting ? "Building report..." : "Build my report"}
               </button>
             )}

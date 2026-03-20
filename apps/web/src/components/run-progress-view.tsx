@@ -253,9 +253,9 @@ export function RunProgressView(input: {
           })}
         </div>
 
-        {/* GIF — large, centered */}
+        {/* GIF — large, centered, fills panel width */}
         <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
-        <div style={{ borderRadius: 4, overflow: "hidden", zIndex: 1, width: "100%", maxWidth: 520 }}>
+        <div style={{ borderRadius: 4, overflow: "hidden", zIndex: 1, width: "100%", maxWidth: 600 }}>
           <div
             className="tenor-gif-embed"
             data-postid="5925040"
@@ -270,7 +270,7 @@ export function RunProgressView(input: {
       </div>
 
       {error && (
-        <div style={{ position: "fixed", bottom: "2rem", left: "50%", transform: "translateX(-50%)", padding: "0.75rem 1.5rem", background: "#2D1B1B", borderRadius: 4, color: "#E8636F", fontSize: "0.85rem", border: "1px solid #4A2020" }}>
+        <div style={{ position: "absolute", bottom: "1.5rem", left: "50%", transform: "translateX(-50%)", padding: "0.75rem 1.5rem", background: "#2D1B1B", borderRadius: 4, color: "#E8636F", fontSize: "0.85rem", border: "1px solid #4A2020", zIndex: 2 }}>
           {error}
         </div>
       )}
@@ -282,21 +282,22 @@ export function RunProgressView(input: {
 
 const styles = {
   fullPage: {
-    position: "fixed" as const,
-    inset: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "#0A090D",
+    minHeight: "calc(100vh - 160px)",
+    borderRadius: 6,
+    background: "linear-gradient(180deg, #0D0C14 0%, #0A090D 100%)",
+    border: "1px solid rgba(255,255,255,0.06)",
     overflow: "hidden",
-    zIndex: 50,
+    position: "relative" as const,
   },
   center: {
     display: "flex",
     flexDirection: "column" as const,
     alignItems: "center",
     textAlign: "center" as const,
-    padding: "2rem",
+    padding: "3rem 2rem",
     maxWidth: 640,
     width: "100%",
     position: "relative" as const,
