@@ -1024,10 +1024,10 @@ function renderCallout(
   };
   const accentColor = accentMap[variant] || tokens.palette.accent;
   const bgColor = bgMap[variant] || "EFF6FF";
-  const calloutH = 0.45;
+  const calloutH = Math.min(region.h, 0.45); // Respect region height — never overflow
 
   // Tinted background (no border, sharp corners)
-  slide.addText("", { // addText for Keynote compat (addShape invisible)
+  slide.addText("", {
     x: region.x,
     y: region.y,
     w: region.w,
@@ -1036,7 +1036,7 @@ function renderCallout(
   });
 
   // Left accent bar (3-4px, full height)
-  slide.addText("", { // addText for Keynote compat (addShape invisible)
+  slide.addText("", {
     x: region.x,
     y: region.y,
     w: 0.04,

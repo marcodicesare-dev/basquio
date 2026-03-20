@@ -362,12 +362,13 @@ function renderHorizontalBar(
         fill: { color: V.labelGray },
       });
     }
-    // Benchmark label
+    // Benchmark label — clamped to stay within chart frame (never overlap title)
     if (options.benchmarkLabel) {
+      const labelY = Math.max(frame.y + 0.02, frame.y);
       slide.addText(options.benchmarkLabel, {
-        x: bmX - 0.5, y: frame.y - 0.18, w: 1.0, h: 0.16,
+        x: bmX - 0.5, y: labelY, w: 1.0, h: 0.16,
         fontSize: V.annotation, fontFace: tokens.bodyFont,
-        color: V.labelGray, align: "center", valign: "bottom",
+        color: V.labelGray, align: "center", valign: "top",
       });
     }
   }
@@ -441,10 +442,11 @@ function renderVerticalBar(
         });
       }
 
-      // Value label on top
+      // Value label on top — clamped to chart area
       if (!isGrouped || barW > 0.35) {
+        const labelY = Math.max(barY - 0.22, frame.y);
         slide.addText(formatValue(val, options.unit), {
-          x: barX - 0.05, y: barY - 0.22, w: barW + 0.1, h: 0.20,
+          x: barX - 0.05, y: labelY, w: barW + 0.1, h: 0.20,
           fontSize: isGrouped ? V.dataLabel - 2 : V.dataLabel,
           fontFace: tokens.bodyFont, color: focal ? tokens.ink : V.labelGray,
           bold: true, align: "center", valign: "bottom",
@@ -617,10 +619,11 @@ function renderWaterfall(
       });
     }
 
-    // Value label
+    // Value label — clamped to chart area
+    const valLabelY = Math.max(barY - labelAreaH, frame.y);
     slide.addText(formatValue(seg.end - seg.start, options.unit), {
       x,
-      y: barY - labelAreaH,
+      y: valLabelY,
       w: barW,
       h: labelAreaH,
       fontSize: DATA_LABEL_SIZE - 1,
@@ -834,10 +837,12 @@ function renderLineChart(
         });
       }
 
-      // Value label on first, last, and highlighted points
+      // Value label on first, last — clamped to slide edges
       if (i === 0 || i === vals.length - 1) {
+        const labelX = Math.max(x - 0.3, frame.x);
+        const labelY = Math.max(y - 0.25, frame.y);
         slide.addText(formatValue(val, options.unit), {
-          x: x - 0.3, y: y - 0.25, w: 0.6, h: 0.20,
+          x: labelX, y: labelY, w: 0.6, h: 0.20,
           fontSize: DATA_LABEL_SIZE - 1, fontFace: tokens.bodyFont,
           color: tokens.ink, bold: true, align: "center",
         });
@@ -845,11 +850,12 @@ function renderLineChart(
     });
   });
 
-  // Category labels
+  // Category labels — clamped to frame edges
   labels.forEach((label, i) => {
     const x = frame.x + (i / Math.max(labels.length - 1, 1)) * frame.w;
+    const catLabelX = Math.max(x - 0.4, frame.x);
     slide.addText(truncLabel(label), {
-      x: x - 0.4, y: chartY + chartH + 0.02, w: 0.8, h: axisH - 0.04,
+      x: catLabelX, y: chartY + chartH + 0.02, w: 0.8, h: axisH - 0.04,
       fontSize: CAT_LABEL_SIZE - 1, fontFace: tokens.bodyFont,
       color: LABEL_GRAY, align: "center", valign: "top",
     });
@@ -1456,11 +1462,14 @@ function renderLegend(
   tokens: ShapeChartTokens,
 ): void {
   let offsetX = 0;
+  const maxX = frame.w; // Don't exceed frame width
   items.forEach((item) => {
+    const labelW = Math.min(item.label.length * 0.065 + 0.15, 1.5);
+    // Stop rendering legend items if they'd overflow the frame
+    if (offsetX + labelW + 0.16 > maxX) return;
+
     // Color swatch
-    // Use addText("") instead of addShape("rect") for Keynote compatibility.
-  // PptxGenJS addShape produces empty <a:ln/> and missing <p:txBody>, which Keynote ignores.
-  slide.addText("", {
+    slide.addText("", {
       x: frame.x + offsetX,
       y: frame.y + 0.02,
       w: 0.12,
@@ -1469,7 +1478,6 @@ function renderLegend(
     });
 
     // Label
-    const labelW = Math.min(item.label.length * 0.065 + 0.15, 1.5);
     slide.addText(item.label, {
       x: frame.x + offsetX + 0.16,
       y: frame.y,

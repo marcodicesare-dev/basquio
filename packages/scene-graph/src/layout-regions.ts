@@ -98,8 +98,8 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        chart: { x: ml, y: 1.75, w: cw, h: 4.85 },
-        callout: { x: ml, y: 6.7, w: 6.0, h: 0.35 }, // callout above footer
+        chart: { x: ml, y: 1.75, w: cw, h: 4.55 },           // shrunk to avoid footer
+        callout: { x: ml, y: 6.40, w: 6.0, h: 0.35 },        // moved up: bottom=6.75, safe from footer@7.1
       };
 
     case "chart-split":
@@ -107,44 +107,45 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        chart: { x: ml, y: 1.5, w: 7.1, h: 5.1 },
-        body: { x: 8.0, y: 1.5, w: 4.733, h: 3.8 },
-        callout: { x: 8.0, y: 5.5, w: 4.733, h: 1.1 },
+        chart: { x: ml, y: 1.5, w: 6.8, h: 4.8 },            // slightly narrower for breathing room
+        body: { x: 7.6, y: 1.5, w: 5.133, h: 3.5 },          // wider body (was 4.733), less dense
+        table: { x: 7.6, y: 1.5, w: 5.133, h: 3.5 },         // table same region as body
+        callout: { x: 7.6, y: 5.2, w: 5.133, h: 1.0 },       // moved up from 5.5
       };
 
     case "evidence-grid":
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        metrics: { x: ml, y: 1.5, w: cw, h: 1.4 },
-        chart: { x: ml, y: 3.1, w: 7.5, h: 3.2 },
-        body: { x: 8.4, y: 3.1, w: 4.333, h: 2.0 },
-        callout: { x: 8.4, y: 5.3, w: 4.333, h: 1.0 },
+        metrics: { x: ml, y: 1.5, w: cw, h: 1.3 },
+        chart: { x: ml, y: 3.0, w: 7.2, h: 3.2 },
+        body: { x: 7.5, y: 3.0, w: 5.233, h: 2.0 },          // wider body
+        callout: { x: 7.5, y: 5.2, w: 5.233, h: 0.9 },       // moved up
       };
 
     case "comparison":
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        chart: { x: ml, y: 1.5, w: 5.817, h: 5.1 },
-        chart2: { x: 6.717, y: 1.5, w: 5.817, h: 5.1 },
-        callout: { x: ml, y: 6.7, w: 6.0, h: 0.35 },
+        chart: { x: ml, y: 1.5, w: 5.817, h: 4.8 },          // slightly shorter
+        chart2: { x: 6.717, y: 1.5, w: 5.817, h: 4.8 },
+        callout: { x: ml, y: 6.40, w: 6.0, h: 0.35 },        // moved up from 6.7
       };
 
     case "title-body":
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        body: { x: ml, y: 1.75, w: cw, h: 4.85 },
-        callout: { x: ml, y: 6.55, w: cw, h: 0.35 },
+        body: { x: ml, y: 1.75, w: cw, h: 4.55 },            // shrunk: bottom=6.30
+        callout: { x: ml, y: 6.40, w: cw, h: 0.35 },         // moved up: bottom=6.75
       };
 
     case "title-bullets":
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        bullets: { x: ml, y: 1.75, w: cw, h: 4.85 },
-        callout: { x: ml, y: 6.55, w: cw, h: 0.35 },
+        bullets: { x: ml, y: 1.75, w: cw, h: 4.55 },         // shrunk: bottom=6.30
+        callout: { x: ml, y: 6.40, w: cw, h: 0.35 },         // moved up: bottom=6.75
       };
 
     case "table":
@@ -158,9 +159,9 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        body: { x: ml, y: 1.75, w: cw, h: 3.0 },
-        bullets: { x: ml, y: 4.9, w: cw, h: 1.5 },
-        callout: { x: ml, y: 6.55, w: cw, h: 0.35 },
+        body: { x: ml, y: 1.75, w: cw, h: 2.8 },
+        bullets: { x: ml, y: 4.7, w: cw, h: 1.5 },
+        callout: { x: ml, y: 6.30, w: cw, h: 0.40 },         // moved up: bottom=6.70
       };
 
     default:
