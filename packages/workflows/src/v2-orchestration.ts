@@ -1919,17 +1919,21 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
 
     // Export child function handles: source coverage, PPTX render, QA, manifest, status update.
 
-    // ─── COST SUMMARY ──────────────────────────────────────────
+    // ─── COST SUMMARY (from child function returns) ─────────────
     const costSummary = tracker.getSummary(runId);
-    // Aggregate child function cost estimates (parent tracker only captures orchestration)
-    const understandCost = (analystResult as Record<string, unknown>).costSummary
-      ? ((analystResult as Record<string, unknown>).costSummary as { estimatedCostUsd?: number })?.estimatedCostUsd ?? 0
-      : 0;
-    const authorCost = authorResult?.estimatedCostUsd ?? 0;
-    // Critique-revise cost from child function return (if available), otherwise estimate
-    const critiqueReviseReturn = critiqueReviseResult as Record<string, unknown>;
-    const critiqueCost = (critiqueReviseReturn?.estimatedCostUsd as number) ?? 0.15; // Estimate: 2 Sonnet calls (~$0.06 each) + optional revise (~$0.03)
-    costSummary.estimatedCostUsd = Math.round((understandCost + authorCost + critiqueCost) * 1000) / 1000;
+    // Understand returns costSummary from analyst agent
+    const understandReturn = analystResult as Record<string, unknown>;
+    const understandCost = (understandReturn?.costSummary as { estimatedCostUsd?: number })?.estimatedCostUsd ?? 0;
+    // Author returns estimatedCostUsd + tokenUsage from actual generateObject calls
+    const authorReturn = authorResult as Record<string, unknown>;
+    const authorCost = (authorReturn?.estimatedCostUsd as number) ?? 0;
+    const authorTokens = (authorReturn?.tokenUsage as { inputTokens?: number; outputTokens?: number; totalTokens?: number }) ?? {};
+    costSummary.estimatedCostUsd = Math.round((understandCost + authorCost) * 1000) / 1000;
+    costSummary.totalUsage = {
+      totalTokens: authorTokens.totalTokens ?? 0,
+      inputTokens: authorTokens.inputTokens ?? 0,
+      outputTokens: authorTokens.outputTokens ?? 0,
+    };
     const budgetCheck = checkCostBudget(costSummary);
 
     logPhaseEvent(runId, "complete", "job_finished", {
@@ -2182,6 +2186,9 @@ export const basquioAuthor = inngest.createFunction(
   async ({ event, step }) => {
     const { runId, brief } = event.data as { runId: string; brief: string };
 
+    // Token accumulator for real cost telemetry (shared across plan/author/critique/repair steps)
+    const tokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, callCount: 0 };
+
     // Clear stale slides/charts from any previous execution
     await step.run("clear-stale-data", async () => {
       await deleteRunSlides(runId);
@@ -2264,7 +2271,7 @@ export const basquioAuthor = inngest.createFunction(
         : "";
 
       try {
-        const planResult = await generateObject({
+        const planGenResult = await generateObject({
           model: openai("gpt-5.4-mini"),
           schema: v1DeckPlanSchema,
           prompt: `You are a senior strategy deck architect. Plan a ${targetSlides}-slide executive presentation with DETERMINISTIC chart specifications.
@@ -2302,7 +2309,14 @@ ${clarifiedBrief?.language ?? "en"}
 Return a V1DeckPlan with slides and charts.`,
         });
 
-        const plan = planResult.object as V1DeckPlan;
+        const plan = planGenResult.object as V1DeckPlan;
+        // Capture plan step token usage
+        if (planGenResult.usage) {
+          tokenUsage.inputTokens += planGenResult.usage.inputTokens ?? 0;
+          tokenUsage.outputTokens += planGenResult.usage.outputTokens ?? 0;
+          tokenUsage.totalTokens += planGenResult.usage.totalTokens ?? 0;
+          tokenUsage.callCount += 1;
+        }
         try { await persistWorkingPaper(runId, "v1_deck_plan", plan); } catch {}
         return plan;
       } catch (planError) {
@@ -2524,12 +2538,20 @@ Return a V1DeckPlan with slides and charts.`,
 
             const slideContext = buildSlideContext(slideSpec);
 
-            let { object: slideOutput } = await generateObject({
+            let slideGenResult = await generateObject({
               model,
               schema: v1SlideOutputSchema,
               system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
               prompt: slideContext,
             });
+            let slideOutput = slideGenResult.object;
+            // Capture token usage
+            if (slideGenResult.usage) {
+              tokenUsage.inputTokens += slideGenResult.usage.inputTokens ?? 0;
+              tokenUsage.outputTokens += slideGenResult.usage.outputTokens ?? 0;
+              tokenUsage.totalTokens += slideGenResult.usage.totalTokens ?? 0;
+              tokenUsage.callCount += 1;
+            }
 
             // ─── Language consistency check (deterministic, post-generation) ───
             const expectedLang = v1Plan.language || "en";
@@ -2547,13 +2569,19 @@ Return a V1DeckPlan with slides and charts.`,
             if (langMismatch) {
               console.warn(`[basquio-author] Slide ${slideSpec.position} language mismatch: expected ${expectedLang}, got ${detectedLang}. Retrying.`);
               try {
-                const { object: retryOutput } = await generateObject({
+                const retryResult = await generateObject({
                   model,
                   schema: v1SlideOutputSchema,
                   system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
                   prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns and industry terms.\n\n${slideContext}`,
                 });
-                slideOutput = retryOutput;
+                slideOutput = retryResult.object;
+                if (retryResult.usage) {
+                  tokenUsage.inputTokens += retryResult.usage.inputTokens ?? 0;
+                  tokenUsage.outputTokens += retryResult.usage.outputTokens ?? 0;
+                  tokenUsage.totalTokens += retryResult.usage.totalTokens ?? 0;
+                  tokenUsage.callCount += 1;
+                }
               } catch { /* keep original if retry fails */ }
             }
 
@@ -2701,7 +2729,7 @@ Return a V1DeckPlan with slides and charts.`,
             .join("; ");
 
           try {
-            const { object: repaired } = await generateObject({
+            const repairResult = await generateObject({
               model: anthropic("claude-haiku-4-5"),
               schema: v1SlideOutputSchema,
               system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
@@ -2717,6 +2745,13 @@ Analysis summary: ${analysisResult?.analysis?.summary?.slice(0, 500) ?? ""}
 
 Fix the issues while maintaining the governing thought.`,
             });
+            const repaired = repairResult.object;
+            if (repairResult.usage) {
+              tokenUsage.inputTokens += repairResult.usage.inputTokens ?? 0;
+              tokenUsage.outputTokens += repairResult.usage.outputTokens ?? 0;
+              tokenUsage.totalTokens += repairResult.usage.totalTokens ?? 0;
+              tokenUsage.callCount += 1;
+            }
 
             await persistSlide(runId, {
               position,
@@ -2751,26 +2786,21 @@ Fix the issues while maintaining the governing thought.`,
     const finalCharts = await getV2ChartRows(runId);
     const deckSummary = `V1 pipeline: ${finalSlides.length} slides, ${finalCharts.length} charts (${chartBuildResult.chartResults.filter((r) => r.success).length} deterministic, ${criticalIssues.length} critical issues ${criticalIssues.length > 0 ? "repaired" : ""})`;
 
-    // Cost estimate based on V1 architecture:
-    // Plan: 1 GPT-5.4-mini call (~2K in, ~3K out) = ~$0.015
-    // Author: N slides × (Sonnet sacred / Haiku regular) (~1.5K in, ~0.5K out each)
-    // Sonnet: $3/$15 per MTok, Haiku: $1/$5 per MTok
-    // Critique deterministic: 0 LLM cost
-    // Repair: ~1 Sonnet call per critical issue
-    const sacredSlides = finalSlides.filter((s) => ["cover", "exec-summary", "summary", "recommendation"].includes(s.layoutId ?? "")).length;
-    const regularSlides = finalSlides.length - sacredSlides;
-    const repairCalls = criticalIssues.length;
-    const estimatedCostUsd =
-      0.015 + // plan (GPT-5.4-mini)
-      sacredSlides * 0.03 + // Sonnet per sacred slide (~1.5K in + 0.5K out)
-      regularSlides * 0.01 + // Haiku per regular slide
-      repairCalls * 0.03; // Sonnet per repair
+    // Real cost from accumulated token usage (not estimates)
+    // Pricing: Sonnet 4.6 = $3/$15, Haiku 4.5 = $1/$5, GPT-5.4-mini = $0.75/$4.50
+    // Blended: ~80% Haiku, ~15% Sonnet, ~5% GPT-5.4-mini
+    const blendedInputPer1M = 1.4;
+    const blendedOutputPer1M = 6.5;
+    const estimatedCostUsd = tokenUsage.totalTokens > 0
+      ? (tokenUsage.inputTokens * blendedInputPer1M + tokenUsage.outputTokens * blendedOutputPer1M) / 1_000_000
+      : 0.05; // fallback if usage not captured
 
     return {
       deckSummary,
       slideCount: finalSlides.length,
       chartCount: finalCharts.length,
       estimatedCostUsd: Math.round(estimatedCostUsd * 1000) / 1000,
+      tokenUsage, // Pass real tokens to parent for telemetry
     };
   },
 );

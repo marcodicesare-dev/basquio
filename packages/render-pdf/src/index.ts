@@ -889,16 +889,51 @@ function buildV2DeckHtml(input: V2PdfInput): string {
       }
     }
 
-    return `<div class="slide">
+    // ─── Layout-aware composition (matches PPTX archetypes) ───
+    const headerHtml = `
       ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
-      <h2>${escHtml(clean(s.title))}</h2>
-      ${metricsHtml}
-      ${chartHtml}
-      ${bodyHtml}
-      ${bulletsHtml}
-      ${calloutHtml}
-      <div class="slide-footer">Basquio | Confidential</div>
-    </div>`;
+      <h2>${escHtml(clean(s.title))}</h2>`;
+    const footerHtml = `<div class="slide-footer">Basquio | Confidential</div>`;
+    const layout = s.layoutId || "title-body";
+
+    // Layout-specific composition
+    let slideContent = "";
+    switch (layout) {
+      case "exec-summary":
+      case "metrics":
+        // Top: metrics grid. Bottom: chart (if available) or body+bullets
+        slideContent = `${headerHtml}${metricsHtml}${chartHtml || bodyHtml}${calloutHtml}`;
+        break;
+      case "title-chart":
+        // Full-width chart below title
+        slideContent = `${headerHtml}${chartHtml}${calloutHtml}`;
+        break;
+      case "chart-split":
+      case "two-column":
+        // Left: chart. Right: body+bullets+callout (side by side)
+        slideContent = `${headerHtml}<div class="split-layout">
+          <div class="split-left">${chartHtml}</div>
+          <div class="split-right">${bodyHtml}${bulletsHtml}${calloutHtml}</div>
+        </div>`;
+        break;
+      case "comparison":
+        // Body + chart side by side
+        slideContent = `${headerHtml}<div class="split-layout">
+          <div class="split-left">${bodyHtml}${bulletsHtml}</div>
+          <div class="split-right">${chartHtml || metricsHtml}</div>
+        </div>${calloutHtml}`;
+        break;
+      case "table":
+        // Full-width table (chart data rendered as HTML table)
+        slideContent = `${headerHtml}${chartHtml || bodyHtml}${calloutHtml}`;
+        break;
+      default:
+        // title-body, title-bullets, summary, recommendation — stack vertically
+        slideContent = `${headerHtml}${metricsHtml}${chartHtml}${bodyHtml}${bulletsHtml}${calloutHtml}`;
+        break;
+    }
+
+    return `<div class="slide">${slideContent}${footerHtml}</div>`;
   }).join("\n");
 
   return `<!DOCTYPE html>
@@ -944,6 +979,11 @@ li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in;
 .callout { margin-top: 0.2in; display: flex; align-items: stretch; border-radius: 0; overflow: hidden; background: #${accent}11; }
 .callout-bar { width: 3px; flex-shrink: 0; }
 .callout-text { padding: 0.1in 0.15in; font-size: 11pt; font-weight: 600; color: #${text}; line-height: 1.5; }
+
+/* Split layout — matches PPTX chart-split archetype */
+.split-layout { display: flex; gap: 0.3in; margin-top: 0.15in; }
+.split-left { flex: 1; min-width: 0; }
+.split-right { flex: 1; min-width: 0; }
 
 /* Charts */
 .chart-container { margin: 0.15in 0; background: #${bg}; border: 1px solid #${border}; border-radius: 6px; padding: 0.15in 0.2in; }
