@@ -2460,7 +2460,7 @@ Return a V1DeckPlan with slides and charts.`,
             parts.push(`The chart data has been built and persisted. Reference it in your narrative.`);
           }
         } else if (slideSpec.chartId) {
-          parts.push(`\n## Note: planned chart "${slideSpec.chartId}" could not be built. Write this slide without a chart.`);
+          parts.push(`\n## Note: planned chart "${slideSpec.chartId}" could not be built. Write a text-focused argument slide instead. Use metrics, bullets, and a callout to convey the data story.`);
         }
 
         // Evidence context (only what this slide needs)
@@ -2551,10 +2551,16 @@ Return a V1DeckPlan with slides and charts.`,
             // Resolve the real chart ID
             const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
 
+            // If slide expects a chart but none was built, downgrade layout to text-only
+            const chartLayouts = ["chart-split", "title-chart", "evidence-grid", "comparison"];
+            const effectiveLayout = (!realChartId && chartLayouts.includes(slideSpec.layout))
+              ? "title-body"  // Downgrade: text-only layout instead of chartless chart-layout
+              : slideSpec.layout;
+
             // Persist the slide
             await persistSlide(runId, {
               position: slideSpec.position,
-              layoutId: slideSpec.layout,
+              layoutId: effectiveLayout,
               title: slideOutput.title,
               subtitle: slideOutput.subtitle || undefined,
               kicker: slideOutput.kicker || undefined,
