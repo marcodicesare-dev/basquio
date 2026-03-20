@@ -2594,6 +2594,31 @@ Return a V1DeckPlan with slides and charts.`,
             console.warn(`[basquio-author] Chart type overridden: ${planned.chartType} → ${exhibitResult.chartType} (${exhibitResult.reason})`);
           }
 
+          // ─── ONTOLOGY MAPPER (deterministic label replacement, $0) ───
+          // Replace raw Italian column names with canonical English in chart data
+          const allColNames = [grouped.xAxis, ...grouped.series.map((s) => s.name)];
+          const canonicalMap = mapColumns(allColNames);
+          const colNameMap: Record<string, string> = {};
+          for (const c of canonicalMap) {
+            if (c.canonicalName !== c.originalName) colNameMap[c.originalName] = c.canonicalName;
+          }
+          // Apply to data rows
+          const cleanedData = grouped.data.map((row) => {
+            const clean: Record<string, unknown> = {};
+            for (const [key, val] of Object.entries(row)) {
+              clean[colNameMap[key] ?? key] = val;
+            }
+            return clean;
+          });
+          const cleanXAxis = colNameMap[grouped.xAxis] ?? grouped.xAxis;
+          const cleanSeries = grouped.series.map((s) => colNameMap[s.name] ?? s.name);
+
+          // Infer currency unit from column data if not set
+          const inferredUnit = planned.unit || (() => {
+            const measureCol = canonicalMap.find((c) => c.role === "measure" && c.unit?.type === "currency");
+            return measureCol?.unit?.currencySymbol ?? undefined;
+          })();
+
           // Build chart data structure and persist
           const highlightCategories = planned.dataSpec.highlightCategory
             ? [planned.dataSpec.highlightCategory]
@@ -2602,16 +2627,16 @@ Return a V1DeckPlan with slides and charts.`,
           const chartResult = await persistChart(runId, {
             chartType: exhibitResult.chartType, // Enforced chart type
             title: planned.title,
-            data: grouped.data,
-            xAxis: grouped.xAxis,
-            series: grouped.series.map((s) => s.name),
+            data: cleanedData,
+            xAxis: cleanXAxis,
+            series: cleanSeries,
             style: {
               highlightCategories,
               showLegend: grouped.series.length > 1,
               showValues: true,
             },
             intent: planned.intent,
-            unit: planned.unit,
+            unit: inferredUnit,
             sourceNote: planned.sourceNote,
           });
 

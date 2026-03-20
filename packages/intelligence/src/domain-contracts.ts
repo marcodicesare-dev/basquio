@@ -283,10 +283,11 @@ export function evaluateSlideQuality(slide: {
     issues.push(`Topic-label title: "${slide.title}" — must be a specific finding with a number`);
   }
 
-  // 2. Title should contain at least one number (except cover/section-divider)
+  // 2. Title should contain at least one number (except cover/divider/summary/recommendation)
   const hasNumber = /\d/.test(slide.title);
-  if (!hasNumber && !["cover", "section-divider"].includes(slide.layoutId)) {
-    issues.push("Title has no number — executive titles need quantification");
+  const numberExemptLayouts = ["cover", "section-divider", "summary", "title-body", "title-bullets"];
+  if (!hasNumber && !numberExemptLayouts.includes(slide.layoutId)) {
+    issues.push("Title has no number — analytical titles need quantification");
   }
 
   // 3. Chart-layout slides MUST have a chart
@@ -319,8 +320,9 @@ export function evaluateSlideQuality(slide: {
     issues.push(`Too many bullets (${slide.bullets.length}, max 5)`);
   }
 
-  // Slide passes if it has 0-1 minor issues, fails on 2+
-  const pass = issues.length <= 1;
+  // Only kill truly broken slides (3+ issues). 1-2 issues = degraded but keep.
+  // A slide with a chart but missing callout is still better than no slide.
+  const pass = issues.length <= 2;
 
   return { position: slide.position, pass, issues };
 }
