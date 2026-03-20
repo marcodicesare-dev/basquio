@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, type AnalystResult } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, type AnalystResult } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -1152,18 +1152,19 @@ function v1GroupAndAggregate(
 
 // ─── V1 PIPELINE: SLIDE AUTHOR SYSTEM PROMPT ─────────────────────
 
-const V1_SLIDE_AUTHOR_SYSTEM_PROMPT = `You are a senior strategy consultant writing ONE slide for an executive presentation.
+const V1_SLIDE_AUTHOR_SYSTEM_PROMPT = `You are a senior strategy consultant writing ONE slide for an executive presentation. You are a VISUAL STORYTELLER, not a report writer.
 
 RULES:
-1. TITLE: Full sentence stating a specific, data-backed finding. Include at least one number. Max 16 words. The title must pass the "so what?" test.
-2. CALLOUT: Every slide needs a callout — the "so what" implication for the decision-maker. Max 25 words. Use tone: "green" for opportunities, "orange" for risks, "accent" for key findings.
-3. LANGUAGE: Write in the language specified. If Italian, everything is in Italian. Never default to English.
-4. METRICS: For exec-summary and metrics layouts, provide 3-5 KPI cards with label, value, and delta (change indicator).
-5. BODY: For text-heavy layouts, write concise executive prose. Bold first sentence pattern. Max 80 words.
-6. BULLETS: Max 5 bullets, 8-12 words each. Each bullet is a complete thought.
+1. TITLE: Full sentence stating a specific, data-backed finding. Include at least one number. Max 16 words. Title IS the insight — never a topic label like "Category Overview."
+2. CALLOUT: Every slide MUST have a callout — the "so what" for the decision-maker. Max 25 words. "green" = opportunity, "orange" = risk, "accent" = key finding. The callout says what to DO or WORRY ABOUT.
+3. LANGUAGE: Write in the language specified. If Italian, everything is Italian. Never default to English.
+4. METRICS: For exec-summary, max 3 KPI cards. Delta MUST be numeric (+4.2%, -0.8 pts, flat). Never descriptions as deltas.
+5. BODY: Max 2 sentences. Explain WHY, not WHAT (the chart shows WHAT). Max 50 words for chart-split layouts.
+6. BULLETS: Max 3 bullets, max 15 words each. Bullets = actionable specifics, never restate body text.
 7. SPEAKER NOTES: 60-140 words. Presenter talking points, caveats, bridge to next slide.
-8. EVIDENCE: Only cite evidence IDs that appear in your context. Never invent IDs.
-9. NO raw column names. Clean labels: "Value_CY" → "Revenue (€M)", "pct_change" → "YoY %".`;
+8. EVIDENCE: Only cite evidence IDs from your context. Never invent IDs.
+9. LABELS: Never show raw column names or internal codes. Clean: "V. Valore" → "Sales Value", "BPWK0YLY" → product name. Use human-readable labels everywhere.
+10. VISUAL HIERARCHY: Chart-layout slides must let the chart be the hero. Text supports, doesn't compete. Cover = title + subtitle ONLY — no data.`;
 
 // ─── SECTION BRIEF BUILDER ────────────────────────────────────────
 
@@ -2301,6 +2302,16 @@ export const basquioAuthor = inngest.createFunction(
 
     // Token accumulator for real cost telemetry (shared across plan/author/critique/repair steps)
     const tokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, callCount: 0 };
+
+    // Domain knowledge for V1 slide authoring (FMCG lens if detected, computed once)
+    const v1AuthorDomainContext = buildDomainKnowledgeContext({
+      workspace: undefined, // workspace loaded later, but brief is enough for initial detection
+      brief,
+      stage: "author",
+    });
+    const v1SlideSystemPrompt = v1AuthorDomainContext
+      ? `${V1_SLIDE_AUTHOR_SYSTEM_PROMPT}\n\n${v1AuthorDomainContext}`
+      : V1_SLIDE_AUTHOR_SYSTEM_PROMPT;
     // Per-model cost accumulator (exact pricing, not blended)
     let exactCostUsd = 0;
     // Model pricing per million tokens (March 2026 verified)
@@ -2409,6 +2420,14 @@ export const basquioAuthor = inngest.createFunction(
         ? `\n\n## Data Intelligence (auto-detected, use this for chart design)\n${dataIntelligence}`
         : "";
 
+      // ─── FMCG DOMAIN KNOWLEDGE (conditional, ~$0.005) ─────────
+      const planDomainContext = buildDomainKnowledgeContext({
+        workspace: workspace ?? undefined,
+        brief,
+        stage: "storyline",
+      });
+      const planDomainText = planDomainContext ? `\n\n${planDomainContext}` : "";
+
       try {
         const planGenResult = await generateObject({
           model: openai("gpt-5.4-mini"),
@@ -2448,7 +2467,7 @@ ${findingsSummary}
 ## Recommended chart types
 ${chartTypesSummary}
 ${storylineContext}
-${sheetInventoryText}${dataIntelligenceText}
+${sheetInventoryText}${dataIntelligenceText}${planDomainText}
 
 ## Focal entity
 ${clarifiedBrief?.focalEntity ?? "(detect from brief)"}
@@ -2698,7 +2717,7 @@ Return a V1DeckPlan with slides and charts.`,
             let slideGenResult = await generateObject({
               model,
               schema: v1SlideOutputSchema,
-              system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
+              system: v1SlideSystemPrompt,
               prompt: slideContext,
             });
             let slideOutput = slideGenResult.object;
@@ -2723,7 +2742,7 @@ Return a V1DeckPlan with slides and charts.`,
                 const retryResult = await generateObject({
                   model,
                   schema: v1SlideOutputSchema,
-                  system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
+                  system: v1SlideSystemPrompt,
                   prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns and industry terms.\n\n${slideContext}`,
                 });
                 slideOutput = retryResult.object;
@@ -2878,7 +2897,7 @@ Return a V1DeckPlan with slides and charts.`,
             const repairResult = await generateObject({
               model: anthropic("claude-haiku-4-5"),
               schema: v1SlideOutputSchema,
-              system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
+              system: v1SlideSystemPrompt,
               prompt: `REPAIR this slide. The following critical issues were found:
 ${issuesForSlide}
 
