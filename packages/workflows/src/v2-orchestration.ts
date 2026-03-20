@@ -2486,7 +2486,7 @@ Return a V1DeckPlan with slides and charts.`,
 
             const slideContext = buildSlideContext(slideSpec);
 
-            const { object: slideOutput } = await generateObject({
+            let { object: slideOutput } = await generateObject({
               model,
               schema: v1SlideOutputSchema,
               system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
@@ -2507,7 +2507,7 @@ Return a V1DeckPlan with slides and charts.`,
                   system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
                   prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns.\n\n${slideContext}`,
                 });
-                Object.assign(slideOutput, retryOutput);
+                slideOutput = retryOutput;
               } catch { /* keep original if retry fails */ }
             }
 
