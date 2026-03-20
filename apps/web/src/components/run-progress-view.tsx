@@ -255,7 +255,7 @@ export function RunProgressView(input: {
 
         {/* GIF — large, centered */}
         <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
-        <div style={{ borderRadius: 16, overflow: "hidden", zIndex: 1, width: "100%", maxWidth: 520 }}>
+        <div style={{ borderRadius: 4, overflow: "hidden", zIndex: 1, width: "100%", maxWidth: 520 }}>
           <div
             className="tenor-gif-embed"
             data-postid="5925040"
@@ -270,7 +270,7 @@ export function RunProgressView(input: {
       </div>
 
       {error && (
-        <div style={{ position: "fixed", bottom: "2rem", left: "50%", transform: "translateX(-50%)", padding: "0.75rem 1.5rem", background: "#2D1B1B", borderRadius: 8, color: "#E8636F", fontSize: "0.85rem", border: "1px solid #4A2020" }}>
+        <div style={{ position: "fixed", bottom: "2rem", left: "50%", transform: "translateX(-50%)", padding: "0.75rem 1.5rem", background: "#2D1B1B", borderRadius: 4, color: "#E8636F", fontSize: "0.85rem", border: "1px solid #4A2020" }}>
           {error}
         </div>
       )}
@@ -315,13 +315,13 @@ const styles = {
   },
   progressTrack: {
     height: 4,
-    borderRadius: 2,
+    borderRadius: 1,
     background: "rgba(255,255,255,0.08)",
     overflow: "hidden" as const,
   },
   progressFill: {
     height: "100%",
-    borderRadius: 2,
+    borderRadius: 1,
     background: "linear-gradient(90deg, #E8A84C, #F0CC6B, #E8A84C)",
     backgroundSize: "200% 100%",
     animation: "shimmer 2s ease-in-out infinite",
@@ -342,7 +342,7 @@ const styles = {
     color: "#0A090D",
     fontWeight: 700,
     fontSize: "1rem",
-    borderRadius: 8,
+    borderRadius: 4,
     textDecoration: "none",
   } as React.CSSProperties,
   secondaryButton: {
@@ -352,7 +352,7 @@ const styles = {
     color: "#F2F0EB",
     fontWeight: 600,
     fontSize: "1rem",
-    borderRadius: 8,
+    borderRadius: 4,
     border: "1px solid rgba(255,255,255,0.2)",
     textDecoration: "none",
   } as React.CSSProperties,
