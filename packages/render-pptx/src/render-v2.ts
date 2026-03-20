@@ -994,10 +994,11 @@ function renderCallout(
     orange: tokens.palette.calloutOrange,
     accent: tokens.palette.accent,
   };
+  // Dark-mode-safe callout backgrounds (10% opacity tint of accent color)
   const bgMap: Record<string, string> = {
-    green: "F0FDF4",
-    orange: "FFFBEB",
-    accent: "EFF6FF",
+    green: "1A2E24",   // Dark green tint on dark bg
+    orange: "2D2618",  // Dark amber tint on dark bg
+    accent: "1A1F2E",  // Dark blue tint on dark bg
   };
   const accentColor = accentMap[variant] || tokens.palette.accent;
   const bgColor = bgMap[variant] || "EFF6FF";
@@ -1495,15 +1496,28 @@ function renderContentSlide(
     }
 
     case "comparison": {
+      // Metrics at top (if present, shift chart down)
+      let chartYOffset = 0;
+      if (s.metrics && s.metrics.length > 0) {
+        const metricsRegion = { x: regions.chart?.x ?? 0.6, y: 1.5, w: (regions.chart?.w ?? 5.8) + (regions.chart2?.w ?? 5.8) + 0.5, h: 1.2 };
+        renderMetrics(slide, pptx, s.metrics, metricsRegion, tokens);
+        chartYOffset = 1.4; // Push chart below metrics
+      }
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
+        const adjustedChart = chartYOffset > 0
+          ? { ...regions.chart, y: regions.chart.y + chartYOffset, h: regions.chart.h - chartYOffset }
+          : regions.chart;
+        renderChartElement(slide, pptx, chart, adjustedChart, tokens, exportMode);
       }
       // Second chart area: use bullets or body
       if (regions.chart2) {
+        const adjusted2 = chartYOffset > 0
+          ? { ...regions.chart2, y: regions.chart2.y + chartYOffset, h: regions.chart2.h - chartYOffset }
+          : regions.chart2;
         if (s.bullets && s.bullets.length > 0) {
-          renderBullets(slide, s.bullets, regions.chart2, tokens, maxBulletsFromArch);
+          renderBullets(slide, s.bullets, adjusted2, tokens, maxBulletsFromArch);
         } else if (s.body) {
-          renderBody(slide, s.body, regions.chart2, tokens, notesOverflow, bodyMaxWords);
+          renderBody(slide, s.body, adjusted2, tokens, notesOverflow, bodyMaxWords);
         }
       }
       // Callout
@@ -1592,7 +1606,7 @@ export async function renderV2PptxArtifact(
       // Footer left: source note
       {
         text: {
-          text: `Source: ${input.deckTitle}`,
+          text: "Basquio | Confidential",
           options: {
             x: 0.6,
             y: 7.15,
@@ -1600,7 +1614,7 @@ export async function renderV2PptxArtifact(
             h: 0.25,
             fontSize: 8,
             fontFace: tokens.typography.bodyFont,
-            color: "94A3B8", // Slate 400 — tertiary text
+            color: norm(tokens.palette.muted),
           },
         },
       },
