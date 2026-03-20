@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, type AnalystResult } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, type AnalystResult } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -869,6 +869,22 @@ function buildDataIntelligence(workspace: EvidenceWorkspace | null): string | nu
   // 5. CHART TYPE CONSTRAINTS from detected structure
   if (periodPairs.length > 0) {
     lines.push(`- Chart constraint: For CY vs PY comparisons, use grouped_bar (side-by-side) or horizontal_bar (ranked by change). NEVER use line or area charts — there is no time series dimension.`);
+  }
+
+  // 6. ONTOLOGY MAPPING — translate raw column names to canonical English
+  const columnNames = allColumns.map((c) => c.name);
+  const sampleMap: Record<string, string[]> = {};
+  for (const col of allColumns) {
+    if (col.sampleValues?.length) sampleMap[col.name] = col.sampleValues;
+  }
+  const canonicalColumns = mapColumns(columnNames, sampleMap);
+  const mappedColumns = canonicalColumns.filter((c) => c.canonicalName !== c.originalName);
+  if (mappedColumns.length > 0) {
+    lines.push(`- Column dictionary (use canonical names in chart labels and slide text):`);
+    for (const c of mappedColumns.slice(0, 15)) {
+      const unitInfo = c.unit?.type === "currency" && c.unit.currencySymbol ? ` [${c.unit.currencySymbol}]` : c.unit?.type === "percentage" ? " [%]" : "";
+      lines.push(`  "${c.originalName}" → "${c.canonicalName}"${unitInfo} (${c.role})`);
+    }
   }
 
   return lines.length > 0 ? lines.join("\n") : null;

@@ -193,10 +193,9 @@ NEVER show raw column names to the user. Clean all labels:
 - "V. Confezioni" → "Units"
 
 NEVER hardcode currency symbols. Infer from the data:
-- If values contain € → use € prefix
-- If values contain $ → use $ prefix
-- If values contain £ → use £ prefix
-- If unclear → omit currency symbol, just abbreviate (e.g., "781M" not "€781M")
+- Scan sample values for currency indicators (symbols or ISO codes)
+- Use the DETECTED symbol as prefix for monetary values
+- If unclear, omit currency symbol entirely and just abbreviate (e.g., "781M")
 
 Compute derived metrics when the insight requires them:
 - Share of total: entity value / market total
