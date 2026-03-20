@@ -1895,7 +1895,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       critiqueReviseResult = { hasCriticalOrMajor: false, degradedDelivery: true, degradedIssues: [{ severity: "major", claim: "Quality review skipped due to error" }] };
     }
 
-    const { hasCriticalOrMajor, degradedDelivery, degradedIssues } = critiqueReviseResult;
+    let { hasCriticalOrMajor, degradedDelivery, degradedIssues } = critiqueReviseResult;
 
     // OLD INLINE CRITIQUE+REVISE CODE — replaced by step.invoke(basquioCritiqueRevise)
     // Kept as dead code reference for the child function implementation.
@@ -3170,12 +3170,58 @@ export const basquioExport = inngest.createFunction(
         exportMode,
       });
 
-      // Upload PPTX
+      // Prepare PPTX buffer for QA + upload
       const pptxPath = `${runId}/deck.pptx`;
       const pptxBuffer = Buffer.isBuffer(pptxArtifact.buffer)
         ? pptxArtifact.buffer
         : Buffer.from((pptxArtifact.buffer as { data: number[] }).data);
 
+      // ── PRE-UPLOAD QA ─────────────────────────────────────────
+      // Run QA BEFORE uploading so broken artifacts never reach storage
+      const hasValidPptxHeader = pptxBuffer.length >= 4 &&
+        pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
+        pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
+
+      const chartLayouts = ["chart-split", "title-chart", "evidence-grid", "comparison"];
+      const chartLayoutSlides = slides.filter((s: any) => chartLayouts.includes(s.layoutId ?? s.layout_id));
+      const chartlessSlides = chartLayoutSlides.filter((s: any) => {
+        const cid = s.chartId ?? s.chart_id;
+        if (!cid) return true;
+        return !chartIdSet.has(cid);
+      });
+      const chartCoverageRatio = chartLayoutSlides.length > 0
+        ? (chartLayoutSlides.length - chartlessSlides.length) / chartLayoutSlides.length
+        : 1;
+      const chartCoverageOk = chartCoverageRatio >= 0.7;
+
+      const contentLayouts = ["title-chart", "chart-split", "title-body", "title-bullets", "exec-summary", "metrics", "table", "comparison", "evidence-grid", "two-column"];
+      const emptySlides = slides.filter((s: any) => {
+        const lid = s.layoutId ?? s.layout_id;
+        if (!contentLayouts.includes(lid)) return false;
+        return !(s.body) && !(Array.isArray(s.bullets) && s.bullets.length > 0) && !(Array.isArray(s.metrics) && s.metrics.length > 0) && !(s.callout) && !(s.chartId ?? s.chart_id);
+      });
+      const noEmptySlides = emptySlides.length === 0;
+
+      const qaChecks = [
+        { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
+        { name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` },
+        { name: "pptx_valid_zip", passed: hasValidPptxHeader },
+        { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
+        { name: "no_empty_slides", passed: noEmptySlides, detail: emptySlides.length > 0 ? `${emptySlides.length} empty content slide(s)` : "all slides have content" },
+      ];
+
+      const qaStructuralPassed = qaChecks.every((c) => c.passed);
+      const qaPassed = qaStructuralPassed && !degradedDelivery;
+
+      if (!qaPassed) {
+        const failedChecks = qaChecks.filter((c) => !c.passed).map((c) => c.name);
+        console.warn(`[basquio-export] PRE-UPLOAD QA: passed=${qaPassed}, degraded=${degradedDelivery}, failed=[${failedChecks.join(", ")}], chartCoverage=${Math.round(chartCoverageRatio * 100)}%`);
+        await updateDeliveryStatus(runId, "degraded");
+      }
+      // ── END PRE-UPLOAD QA ─────────────────────────────────────
+      const finalDegraded = degradedDelivery || !qaPassed;
+
+      // Upload PPTX (always — even degraded, user should still get something)
       await uploadToStorage({
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
         serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -3250,55 +3296,7 @@ export const basquioExport = inngest.createFunction(
         console.warn("[basquio-export] PDF generation failed (non-blocking):", pdfError);
       }
 
-      // QA checks
-      const hasValidPptxHeader = pptxBuffer.length >= 4 &&
-        pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
-        pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
-
-      // Chart coverage check: slides with chart layouts must have valid chart_id
-      const chartLayouts = ["chart-split", "title-chart", "evidence-grid", "comparison"];
-      const chartLayoutSlides = slides.filter((s: any) => chartLayouts.includes(s.layoutId ?? s.layout_id));
-      const chartlessSlides = chartLayoutSlides.filter((s: any) => {
-        const cid = s.chartId ?? s.chart_id;
-        if (!cid) return true;
-        return !chartIdSet.has(cid);
-      });
-      const chartCoverageRatio = chartLayoutSlides.length > 0
-        ? (chartLayoutSlides.length - chartlessSlides.length) / chartLayoutSlides.length
-        : 1;
-      const chartCoverageOk = chartCoverageRatio >= 0.7; // At least 70% of chart-layout slides have valid charts
-
-      // Empty slide detection: slides with no body, bullets, metrics, callout, or chart
-      const contentLayouts = ["title-chart", "chart-split", "title-body", "title-bullets", "exec-summary", "metrics", "table", "comparison", "evidence-grid", "two-column"];
-      const emptySlides = slides.filter((s: any) => {
-        const lid = s.layoutId ?? s.layout_id;
-        if (!contentLayouts.includes(lid)) return false;
-        const hasBody = !!(s.body);
-        const hasBullets = Array.isArray(s.bullets) && s.bullets.length > 0;
-        const hasMetrics = Array.isArray(s.metrics) && s.metrics.length > 0;
-        const hasCallout = !!(s.callout);
-        const hasChart = !!(s.chartId ?? s.chart_id);
-        return !hasBody && !hasBullets && !hasMetrics && !hasCallout && !hasChart;
-      });
-      const noEmptySlides = emptySlides.length === 0;
-
-      const qaChecks = [
-        { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
-        { name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` },
-        { name: "pptx_valid_zip", passed: hasValidPptxHeader },
-        { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
-        { name: "no_empty_slides", passed: noEmptySlides, detail: emptySlides.length > 0 ? `${emptySlides.length} empty content slide(s)` : "all slides have content" },
-      ];
-
-      const qaStructuralPassed = qaChecks.every((c) => c.passed);
-      // QA TRUTHFULNESS: qa_passed must be false if delivery is degraded
-      const qaPassed = qaStructuralPassed && !degradedDelivery;
-
-      if (!qaPassed) {
-        const failedChecks = qaChecks.filter((c) => !c.passed).map((c) => c.name);
-        console.warn(`[basquio-export] QA: passed=${qaPassed}, degraded=${degradedDelivery}, failed=[${failedChecks.join(", ")}], chartCoverage=${Math.round(chartCoverageRatio * 100)}%`);
-        await updateDeliveryStatus(runId, "degraded");
-      }
+      // QA already computed before upload (see PRE-UPLOAD QA above)
 
       // Publish manifest
       const artifactId = crypto.randomUUID();

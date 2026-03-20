@@ -202,9 +202,10 @@ export function renderShapeChart(
 
   const normalized = chartType.toLowerCase().replace(/[_\s]/g, "-");
 
-  if (normalized.includes("horizontal") || normalized === "bar") {
+  if (normalized.includes("horizontal") || normalized === "horizontal-bar") {
     renderHorizontalBar(slide, data, chartFrame, tokens, options);
-  } else if (normalized.includes("vertical") || normalized === "column" || normalized === "bar-vertical") {
+  } else if (normalized === "bar" || normalized.includes("vertical") || normalized === "column" || normalized === "bar-vertical") {
+    // Plain "bar" defaults to vertical (standard chart convention)
     renderVerticalBar(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("grouped")) {
     // Grouped bar = vertical bar with multi-series support
