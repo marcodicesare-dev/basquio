@@ -18,73 +18,75 @@ type DomainKnowledgeMatch = {
   matchedNegativeCues: string[];
 };
 
+// Brief cues: must be FMCG-specific terms, not generic business words
 const FMCG_POSITIVE_CUES = [
   "fmcg",
   "cpg",
   "consumer packaged goods",
-  "retail",
   "grocery",
-  "brand",
-  "category",
   "shopper",
   "trade marketing",
-  "trade",
-  "channel",
+  "category management",
+  "category review",
+  "brand analysis",
+  "market share",
   "distribution",
-  "share",
   "velocity",
   "rotation",
   "promo",
   "promotion",
-  "pack",
   "sku",
   "upc",
   "pos",
   "rms",
-  "category management",
   "assortment",
   "shelf",
   "sell-in",
   "sell out",
-  "loyalty",
   "buyer",
   "household",
-  "segment",
-  "market",
   "brand mix",
+  "petfood",
+  "pet care",
+  "food",
+  "beverage",
+  "personal care",
+  "home care",
+  "confectionery",
+  "snack",
+  "dairy",
+  "frozen",
 ];
 
+// Data cues: column/sheet names that strongly indicate FMCG retail data
+// Removed generic terms (brand, sales, value, market) that appear in ANY business dataset
 const FMCG_DATA_CUES = [
   "marca",
-  "brand",
   "fornitore",
-  "manufacturer",
-  "retailer",
-  "category",
   "comparto",
   "famiglia",
-  "segment",
-  "channel",
-  "share",
-  "sales",
-  "value",
-  "valore",
-  "volume",
-  "packs",
+  "mercato_ecr",
+  "area_ecr",
   "confezioni",
-  "price",
-  "distribution",
-  "velocity",
-  "rotation",
+  "valore",
+  "quota",          // Italian for "share"
+  "distr",          // matches "distribuzione", "distr. pond.", etc.
+  "rotazioni",
   "promo",
-  "pack",
+  "baseline",
   "sku",
   "upc",
-  "shopper",
-  "panel",
+  "ean",
   "pet care",
   "nielseniq",
-  "market",
+  "niq",
+  "iri",
+  "circana",
+  "kantar",
+  "shopper",
+  "panel",
+  "velocity",
+  "penetration",
 ];
 
 const FMCG_NEGATIVE_CUES = [
@@ -139,10 +141,11 @@ export function scoreDomainKnowledgePacks(args: {
   const dataMatches = collectCueMatches(workspaceText, FMCG_DATA_CUES);
   const negativeMatches = collectCueMatches(`${args.brief} ${workspaceText}`, FMCG_NEGATIVE_CUES);
 
-  const score = briefMatches.length * 2 + dataMatches.length - negativeMatches.length * 3;
+  const score = briefMatches.length * 2 + dataMatches.length - negativeMatches.length * 5;
+  // Stricter activation: need strong signal from BOTH brief AND data, or very strong data signal
   const activated =
     negativeMatches.length === 0 &&
-    ((briefMatches.length >= 1 && dataMatches.length >= 1) || dataMatches.length >= 3);
+    ((briefMatches.length >= 2 && dataMatches.length >= 2) || dataMatches.length >= 4);
 
   return [{
     packId: "niq-storymasters-fmcg",

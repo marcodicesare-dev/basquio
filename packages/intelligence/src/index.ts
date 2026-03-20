@@ -47,6 +47,20 @@ export {
 } from "./tools";
 
 export {
+  enforceExhibit,
+  inferQuestionType,
+  evaluateSlideQuality,
+  filterSlidesByQuality,
+  mapColumns,
+  inferUnitContract,
+  type QuestionType,
+  type ExhibitType,
+  type UnitContract,
+  type CanonicalColumn,
+  type SlideQualityResult,
+} from "./domain-contracts";
+
+export {
   buildDomainKnowledgeContext,
   scoreDomainKnowledgePacks,
   type DomainKnowledgeStage,

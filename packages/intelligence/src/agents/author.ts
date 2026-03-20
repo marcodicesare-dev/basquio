@@ -186,9 +186,17 @@ Use kickers (small uppercase labels above the title) to create section rhythm:
 ## COLUMN NAMES AND METRICS
 
 NEVER show raw column names to the user. Clean all labels:
-- "Value_CY" → "€M" or "Revenue (€M)"
+- "Value_CY" → "Revenue" or "Sales Value"
 - "pct_change" → "YoY %"
 - "qty" → "Volume (units)"
+- "V. Valore" → "Sales Value"
+- "V. Confezioni" → "Units"
+
+NEVER hardcode currency symbols. Infer from the data:
+- If values contain € → use € prefix
+- If values contain $ → use $ prefix
+- If values contain £ → use £ prefix
+- If unclear → omit currency symbol, just abbreviate (e.g., "781M" not "€781M")
 
 Compute derived metrics when the insight requires them:
 - Share of total: entity value / market total
@@ -196,7 +204,7 @@ Compute derived metrics when the insight requires them:
 - Index: entity metric / market average × 100
 - Gap: value difference vs competitor or benchmark
 
-Format numbers contextually: currencies with symbols, percentages with %, large numbers abbreviated (K/M/B).
+Format numbers contextually: inferred currency with symbols, percentages with %, large numbers abbreviated (K/M/B).
 
 ## COLOR AS MEANING
 

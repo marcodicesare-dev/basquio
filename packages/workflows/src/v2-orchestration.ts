@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, type AnalystResult } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, type AnalystResult } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -288,6 +288,21 @@ async function deleteRunSlides(runId: string) {
   if (!response.ok) {
     throw new Error(`Failed to delete slides for run ${runId}: ${response.statusText}`);
   }
+}
+
+async function deleteSlideByPosition(runId: string, position: number) {
+  assertUuid(runId, "runId");
+  await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_slides?run_id=eq.${runId}&position=eq.${position}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        Prefer: "return=minimal",
+      },
+    },
+  );
 }
 
 async function deleteRunCharts(runId: string) {
@@ -1689,7 +1704,7 @@ YOUR TASK: Extract ALL quantitative data visible in the image(s) below.
 Return a JSON object with this structure:
 {
   "slideTitle": "...",
-  "charts": [{ "chartType": "bar|line|pie|stacked|scatter|waterfall|other", "title": "...", "categories": ["..."], "series": [{ "name": "...", "values": [number, ...] }], "unit": "€|%|units|..." }],
+  "charts": [{ "chartType": "bar|line|pie|stacked|scatter|waterfall|other", "title": "...", "categories": ["..."], "series": [{ "name": "...", "values": [number, ...] }], "unit": "currency|%|units|..." }],
   "tables": [{ "title": "...", "headers": ["..."], "rows": [["...", ...]] }],
   "keyMetrics": [{ "label": "...", "value": "...", "unit": "..." }],
   "textContent": "...",
@@ -2547,13 +2562,26 @@ Return a V1DeckPlan with slides and charts.`,
           // Group by dimensions, aggregate measures
           const grouped = v1GroupAndAggregate(filtered, planned.dataSpec);
 
+          // ─── EXHIBIT ENFORCEMENT (deterministic, $0) ───
+          // Override chart type if it's wrong for the analytical question
+          const questionType = inferQuestionType(planned.title || planned.intent || "");
+          // Detect period count from plan's data intelligence (check if CY/PY columns exist)
+          const hasPeriodPairs = v1Plan.charts.some((c) =>
+            c.dataSpec?.measures?.some((m: string) => /anno\s*prec|prior|py$/i.test(m))
+          );
+          const periodCount = hasPeriodPairs ? 2 : 1;
+          const exhibitResult = enforceExhibit(questionType, planned.chartType, periodCount);
+          if (exhibitResult.wasOverridden) {
+            console.warn(`[basquio-author] Chart type overridden: ${planned.chartType} → ${exhibitResult.chartType} (${exhibitResult.reason})`);
+          }
+
           // Build chart data structure and persist
           const highlightCategories = planned.dataSpec.highlightCategory
             ? [planned.dataSpec.highlightCategory]
             : [];
 
           const chartResult = await persistChart(runId, {
-            chartType: planned.chartType,
+            chartType: exhibitResult.chartType, // Enforced chart type
             title: planned.title,
             data: grouped.data,
             xAxis: grouped.xAxis,
@@ -2941,10 +2969,41 @@ Fix the issues while maintaining the governing thought.`,
       });
     }
 
+    // ─── SLIDE-KILL QA (deterministic, post-author, $0) ───────────
+    // Remove slides that fail quality gates (but always keep cover + exec-summary + last)
+    const allSlides = await getSlides(runId);
+    const qualityResults = allSlides.map((s: Record<string, unknown>) => evaluateSlideQuality({
+      position: s.position as number,
+      layoutId: (s.layoutId ?? s.layout_id ?? "title-body") as string,
+      title: (s.title ?? "") as string,
+      body: s.body as string | undefined,
+      bullets: s.bullets as string[] | undefined,
+      chartId: (s.chartId ?? s.chart_id ?? null) as string | null,
+      callout: s.callout as { text: string } | null | undefined,
+      metrics: s.metrics as Array<{ label: string; value: string; delta?: string }> | null | undefined,
+    }));
+    const killedSlides = qualityResults.filter((r) => !r.pass);
+    if (killedSlides.length > 0) {
+      console.warn(`[basquio-author] Slide-kill QA: ${killedSlides.length} slides failed quality gates:`);
+      for (const k of killedSlides) {
+        console.warn(`  Slide ${k.position}: ${k.issues.join("; ")}`);
+      }
+      // Delete failed slides from DB (except protected ones)
+      const positionsToDelete = killedSlides
+        .filter((k) => k.position !== allSlides[0]?.position && k.position !== allSlides[1]?.position && k.position !== allSlides[allSlides.length - 1]?.position)
+        .map((k) => k.position);
+      if (positionsToDelete.length > 0) {
+        for (const pos of positionsToDelete) {
+          await deleteSlideByPosition(runId, pos);
+        }
+        console.warn(`[basquio-author] Deleted ${positionsToDelete.length} low-quality slides`);
+      }
+    }
+
     // Return summary for parent (including cost estimate)
     const finalSlides = await getSlides(runId);
     const finalCharts = await getV2ChartRows(runId);
-    const deckSummary = `V1 pipeline: ${finalSlides.length} slides, ${finalCharts.length} charts (${chartBuildResult.chartResults.filter((r) => r.success).length} deterministic, ${criticalIssues.length} critical issues ${criticalIssues.length > 0 ? "repaired" : ""})`;
+    const deckSummary = `V1 pipeline: ${finalSlides.length} slides (${allSlides.length - finalSlides.length} killed by QA), ${finalCharts.length} charts (${chartBuildResult.chartResults.filter((r) => r.success).length} deterministic, ${criticalIssues.length} critical issues ${criticalIssues.length > 0 ? "repaired" : ""})`;
 
     // Exact cost from per-model token accumulation (not blended estimates)
     const estimatedCostUsd = exactCostUsd > 0 ? exactCostUsd : 0.05; // fallback if usage not captured
