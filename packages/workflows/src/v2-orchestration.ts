@@ -1075,17 +1075,20 @@ function v1EvaluateCondition(row: Record<string, unknown>, condition: string): b
   const [, col, op, rawVal] = match;
   const rowVal = row[col.trim()];
   const val = rawVal.trim().replace(/^['"]|['"]$/g, "");
+  // Case-insensitive string comparison — "AFFINITY" matches "Affinity"
+  const rowStr = String(rowVal ?? "").toLowerCase();
+  const valLower = val.toLowerCase();
   switch (op.toUpperCase()) {
-    case "=": return String(rowVal) === val;
-    case "!=": case "<>": return String(rowVal) !== val;
+    case "=": return rowStr === valLower;
+    case "!=": case "<>": return rowStr !== valLower;
     case ">": return Number(rowVal) > Number(val);
     case ">=": return Number(rowVal) >= Number(val);
     case "<": return Number(rowVal) < Number(val);
     case "<=": return Number(rowVal) <= Number(val);
-    case "LIKE": return String(rowVal).includes(val.replace(/%/g, ""));
+    case "LIKE": return rowStr.includes(valLower.replace(/%/g, ""));
     case "IN": {
-      const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, ""));
-      return inVals.some((iv) => String(rowVal) === iv);
+      const inVals = val.replace(/^\(|\)$/g, "").split(",").map((v) => v.trim().replace(/^['"]|['"]$/g, "").toLowerCase());
+      return inVals.some((iv) => rowStr === iv);
     }
     default: return true;
   }
