@@ -3125,6 +3125,23 @@ export const basquioExport = inngest.createFunction(
           hasBrokenChartRefs = true;
         }
       }
+      // Filter out empty content slides before rendering
+      const contentLayoutsCheck = ["title-chart", "chart-split", "title-body", "title-bullets", "exec-summary", "metrics", "table", "comparison", "evidence-grid", "two-column"];
+      const validSlides = slides.filter((s) => {
+        const lid = s.layoutId;
+        if (!lid || !contentLayoutsCheck.includes(lid)) return true; // Keep cover, summary, section-divider
+        const hasContent = s.body || (Array.isArray(s.bullets) && s.bullets.length > 0) ||
+          (Array.isArray(s.metrics) && s.metrics.length > 0) || s.callout || s.chartId;
+        if (!hasContent) {
+          console.warn(`[basquio-export] Filtering out empty slide ${s.position} (${lid})`);
+          return false;
+        }
+        return true;
+      });
+      // Re-number positions
+      validSlides.forEach((s, i) => { s.position = i + 1; });
+      const filteredSlides = validSlides;
+
       if (hasBrokenChartRefs && !degradedDelivery) {
         await updateDeliveryStatus(runId, "degraded");
       }
@@ -3147,9 +3164,9 @@ export const basquioExport = inngest.createFunction(
         }
       } catch { /* use default */ }
 
-      // Render PPTX
+      // Render PPTX (using filteredSlides — empty slides already removed)
       const pptxArtifact = await renderV2PptxArtifact({
-        slides: slides.map((s) => ({
+        slides: filteredSlides.map((s) => ({
           id: s.id,
           position: s.position,
           layoutId: s.layoutId ?? "title-body",
@@ -3182,8 +3199,9 @@ export const basquioExport = inngest.createFunction(
         pptxBuffer[0] === 0x50 && pptxBuffer[1] === 0x4B &&
         pptxBuffer[2] === 0x03 && pptxBuffer[3] === 0x04;
 
+      // QA uses filteredSlides (empty slides already removed)
       const chartLayouts = ["chart-split", "title-chart", "evidence-grid", "comparison"];
-      const chartLayoutSlides = slides.filter((s: any) => chartLayouts.includes(s.layoutId ?? s.layout_id));
+      const chartLayoutSlides = filteredSlides.filter((s: any) => chartLayouts.includes(s.layoutId ?? s.layout_id));
       const chartlessSlides = chartLayoutSlides.filter((s: any) => {
         const cid = s.chartId ?? s.chart_id;
         if (!cid) return true;
@@ -3194,20 +3212,21 @@ export const basquioExport = inngest.createFunction(
         : 1;
       const chartCoverageOk = chartCoverageRatio >= 0.7;
 
-      const contentLayouts = ["title-chart", "chart-split", "title-body", "title-bullets", "exec-summary", "metrics", "table", "comparison", "evidence-grid", "two-column"];
-      const emptySlides = slides.filter((s: any) => {
+      // Empty slides should not exist after filtering, but verify
+      const remainingEmptySlides = filteredSlides.filter((s: any) => {
         const lid = s.layoutId ?? s.layout_id;
-        if (!contentLayouts.includes(lid)) return false;
+        const contentLayoutsQA = ["title-chart", "chart-split", "title-body", "title-bullets", "exec-summary", "metrics", "table", "comparison", "evidence-grid", "two-column"];
+        if (!contentLayoutsQA.includes(lid)) return false;
         return !(s.body) && !(Array.isArray(s.bullets) && s.bullets.length > 0) && !(Array.isArray(s.metrics) && s.metrics.length > 0) && !(s.callout) && !(s.chartId ?? s.chart_id);
       });
-      const noEmptySlides = emptySlides.length === 0;
+      const noEmptySlides = remainingEmptySlides.length === 0;
 
       const qaChecks = [
         { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
-        { name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` },
+        { name: "slide_count_positive", passed: filteredSlides.length > 0, detail: `${filteredSlides.length} slides` },
         { name: "pptx_valid_zip", passed: hasValidPptxHeader },
         { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
-        { name: "no_empty_slides", passed: noEmptySlides, detail: emptySlides.length > 0 ? `${emptySlides.length} empty content slide(s)` : "all slides have content" },
+        { name: "no_empty_slides", passed: noEmptySlides, detail: remainingEmptySlides.length > 0 ? `${remainingEmptySlides.length} empty content slide(s)` : "all slides have content" },
       ];
 
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
@@ -3234,23 +3253,45 @@ export const basquioExport = inngest.createFunction(
       // Render PDF (best-effort — null if Browserless unavailable)
       let pdfArtifactEntry: { id: string; kind: "pdf"; fileName: string; mimeType: string; fileBytes: number; storagePath: string; storageBucket: string; checksumSha256: string } | null = null;
       try {
+        // Build chart lookup map for PDF (same data as PPTX charts)
+        const chartsMap = new Map<string, Record<string, unknown>>();
+        for (const c of v2ChartRows) {
+          chartsMap.set(c.id, c as unknown as Record<string, unknown>);
+        }
+
         // Extract brand tokens for PDF visual parity with PPTX
         const brandTokens = templateProfile?.brandTokens as Record<string, unknown> | undefined;
         const pdfPalette = brandTokens?.palette as Record<string, string> | undefined;
         const pdfTypo = brandTokens?.typography as Record<string, string> | undefined;
 
         const pdfResult = await renderV2PdfArtifact({
-          slides: slides.map((s) => ({
-            position: s.position,
-            layoutId: s.layoutId ?? "title-body",
-            title: s.title ?? "",
-            subtitle: s.subtitle,
-            body: s.body,
-            bullets: s.bullets,
-            metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
-            callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
-            kicker: s.kicker,
-          })),
+          slides: filteredSlides.map((s) => {
+            // Resolve chart for this slide (same logic as PPTX)
+            const chartId = s.chartId;
+            const chartRow = chartId ? chartsMap.get(chartId) : undefined;
+            const pdfChart = chartRow ? {
+              chartType: String((chartRow as Record<string, unknown>).chartType ?? (chartRow as Record<string, unknown>).chart_type ?? "bar"),
+              title: String((chartRow as Record<string, unknown>).title ?? ""),
+              data: Array.isArray((chartRow as Record<string, unknown>).data) ? (chartRow as Record<string, unknown>).data as Record<string, unknown>[] : [],
+              xAxis: String((chartRow as Record<string, unknown>).xAxis ?? (chartRow as Record<string, unknown>).x_axis ?? ""),
+              yAxis: String((chartRow as Record<string, unknown>).yAxis ?? (chartRow as Record<string, unknown>).y_axis ?? ""),
+              series: Array.isArray((chartRow as Record<string, unknown>).series) ? (chartRow as Record<string, unknown>).series as string[] : [],
+              unit: (chartRow as Record<string, unknown>).unit as string | undefined,
+              sourceNote: ((chartRow as Record<string, unknown>).sourceNote ?? (chartRow as Record<string, unknown>).source_note) as string | undefined,
+            } : undefined;
+            return {
+              position: s.position,
+              layoutId: s.layoutId ?? "title-body",
+              title: s.title ?? "",
+              subtitle: s.subtitle,
+              body: s.body,
+              bullets: s.bullets,
+              metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+              callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+              kicker: s.kicker,
+              chart: pdfChart,
+            };
+          }),
           deckTitle: deckTitle || "Basquio Analysis",
           accentColor: pdfPalette?.accent,
           coverBgColor: pdfPalette?.coverBg ?? pdfPalette?.background,
@@ -3303,8 +3344,8 @@ export const basquioExport = inngest.createFunction(
       const manifest = {
         id: crypto.randomUUID(),
         run_id: runId,
-        slide_count: slides.length,
-        page_count: slides.length,
+        slide_count: filteredSlides.length,
+        page_count: filteredSlides.length,
         qa_passed: qaPassed,
         qa_report: {
           checks: qaChecks,

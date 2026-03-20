@@ -741,6 +741,17 @@ function toPdfFrame(frame: Frame, templateProfile: TemplateProfile): Frame {
 
 // ─── V2 PDF RENDERER ──────────────────────────────────────────────
 
+export type V2PdfChart = {
+  chartType: string;
+  title: string;
+  data: Record<string, unknown>[];
+  xAxis: string;
+  yAxis: string;
+  series: string[];
+  unit?: string;
+  sourceNote?: string;
+};
+
 export type V2PdfSlide = {
   position: number;
   layoutId: string;
@@ -751,6 +762,7 @@ export type V2PdfSlide = {
   metrics?: Array<{ label: string; value: string; delta?: string }>;
   callout?: { text: string; tone?: string };
   kicker?: string;
+  chart?: V2PdfChart;
 };
 
 export type V2PdfInput = {
@@ -832,14 +844,14 @@ function buildV2DeckHtml(input: V2PdfInput): string {
       </div>`;
     }
 
-    // Skip empty slides (no content at all)
-    const hasContent = s.metrics?.length || s.body || s.bullets?.length || s.callout;
-    if (!hasContent && s.layoutId !== "summary") {
-      return `<div class="slide">
-        ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
-        <h2>${escHtml(clean(s.title))}</h2>
-      </div>`;
+    // Skip empty slides entirely — don't render garbage
+    const hasContent = s.metrics?.length || s.body || s.bullets?.length || s.callout || s.chart;
+    if (!hasContent && s.layoutId !== "summary" && s.layoutId !== "cover" && s.layoutId !== "section-divider") {
+      return ""; // Omit from PDF output
     }
+
+    // Chart (inline SVG)
+    const chartHtml = s.chart ? renderSvgChart(s.chart, accent, text, muted, border) : "";
 
     // Content slide
     const metricsHtml = s.metrics?.length
@@ -881,6 +893,7 @@ function buildV2DeckHtml(input: V2PdfInput): string {
       ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
       <h2>${escHtml(clean(s.title))}</h2>
       ${metricsHtml}
+      ${chartHtml}
       ${bodyHtml}
       ${bulletsHtml}
       ${calloutHtml}
@@ -932,6 +945,10 @@ li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in;
 .callout-bar { width: 3px; flex-shrink: 0; }
 .callout-text { padding: 0.1in 0.15in; font-size: 11pt; font-weight: 600; color: #${text}; line-height: 1.5; }
 
+/* Charts */
+.chart-container { margin: 0.15in 0; background: #${bg}; border: 1px solid #${border}; border-radius: 6px; padding: 0.15in 0.2in; }
+.chart-title { font-size: 11pt; font-weight: 600; color: #${text}; margin-bottom: 0.08in; }
+
 /* Footer */
 .slide-footer { position: absolute; bottom: 0.15in; left: 0.6in; font-size: 8pt; color: #${muted}; letter-spacing: 0.5pt; }
 </style></head><body>${slideHtml}</body></html>`;
@@ -939,4 +956,165 @@ li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in;
 
 function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// ─── INLINE SVG CHART RENDERER ──────────────────────────────────
+// Generates simple SVG charts for PDF. Not Recharts-level but functional
+// and visually consistent with the PPTX shape-built charts.
+
+const CHART_PALETTE = ["E8A84C", "4CC9A0", "6B8EE8", "9B7AE0", "E8636F", "5AC4D4", "E8B86C", "7ABBE0"];
+
+function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: string, border: string): string {
+  const { chartType, data, xAxis, yAxis, series, title, unit, sourceNote } = chart;
+  if (!data || data.length === 0 || !xAxis) return "";
+
+  const W = 700; // SVG width
+  const H = 280; // SVG height
+  const PAD = { t: 30, r: 20, b: 50, l: 60 };
+  const plotW = W - PAD.l - PAD.r;
+  const plotH = H - PAD.t - PAD.b;
+
+  const labels = data.map(d => String(d[xAxis] ?? ""));
+  const activeSeries = series.length > 0 ? series : [yAxis];
+
+  // Extract numeric values
+  const allValues: number[] = [];
+  for (const s of activeSeries) {
+    for (const d of data) {
+      const v = Number(d[s]);
+      if (!isNaN(v)) allValues.push(v);
+    }
+  }
+  if (allValues.length === 0) return "";
+
+  const maxVal = Math.max(...allValues, 0);
+  const minVal = Math.min(...allValues, 0);
+  const range = (maxVal - minVal) || 1;
+  const yScale = (v: number) => PAD.t + plotH - ((v - minVal) / range) * plotH;
+  const zeroY = yScale(0);
+
+  const normalized = chartType.toLowerCase().replace(/[_\s]/g, "-");
+  const isLine = normalized.includes("line") || normalized.includes("area");
+  const isHorizontal = normalized.includes("horizontal");
+  const isStacked = normalized.includes("stack");
+  const isPie = normalized.includes("pie") || normalized.includes("donut") || normalized.includes("doughnut");
+
+  let chartSvg = "";
+
+  // Grid lines
+  const gridCount = 5;
+  for (let i = 0; i <= gridCount; i++) {
+    const gy = PAD.t + (plotH / gridCount) * i;
+    const gv = maxVal - (range / gridCount) * i;
+    chartSvg += `<line x1="${PAD.l}" y1="${gy}" x2="${W - PAD.r}" y2="${gy}" stroke="#2A293A" stroke-width="0.5"/>`;
+    chartSvg += `<text x="${PAD.l - 8}" y="${gy + 4}" fill="#${muted}" font-size="10" text-anchor="end">${gv >= 1000 ? (gv/1000).toFixed(1) + "K" : gv.toFixed(gv % 1 === 0 ? 0 : 1)}</text>`;
+  }
+
+  if (isLine) {
+    // Line chart
+    for (let si = 0; si < activeSeries.length; si++) {
+      const s = activeSeries[si];
+      const color = CHART_PALETTE[si % CHART_PALETTE.length];
+      const points = data.map((d, i) => {
+        const x = PAD.l + (i / Math.max(data.length - 1, 1)) * plotW;
+        const y = yScale(Number(d[s]) || 0);
+        return `${x},${y}`;
+      });
+      chartSvg += `<polyline points="${points.join(" ")}" fill="none" stroke="#${color}" stroke-width="2.5"/>`;
+      // Dots
+      data.forEach((d, i) => {
+        const x = PAD.l + (i / Math.max(data.length - 1, 1)) * plotW;
+        const y = yScale(Number(d[s]) || 0);
+        chartSvg += `<circle cx="${x}" cy="${y}" r="3" fill="#${color}"/>`;
+      });
+    }
+  } else if (isPie) {
+    // Donut chart
+    const total = allValues.reduce((a, b) => a + Math.abs(b), 0);
+    const cx = W / 2;
+    const cy = H / 2;
+    const outerR = Math.min(plotW, plotH) / 2 - 10;
+    const innerR = outerR * 0.55;
+    let startAngle = -Math.PI / 2;
+    const firstSeries = activeSeries[0];
+    data.forEach((d, i) => {
+      const v = Math.abs(Number(d[firstSeries]) || 0);
+      const sweep = (v / total) * 2 * Math.PI;
+      const endAngle = startAngle + sweep;
+      const color = CHART_PALETTE[i % CHART_PALETTE.length];
+      const x1 = cx + outerR * Math.cos(startAngle);
+      const y1 = cy + outerR * Math.sin(startAngle);
+      const x2 = cx + outerR * Math.cos(endAngle);
+      const y2 = cy + outerR * Math.sin(endAngle);
+      const x3 = cx + innerR * Math.cos(endAngle);
+      const y3 = cy + innerR * Math.sin(endAngle);
+      const x4 = cx + innerR * Math.cos(startAngle);
+      const y4 = cy + innerR * Math.sin(startAngle);
+      const largeArc = sweep > Math.PI ? 1 : 0;
+      chartSvg += `<path d="M${x1},${y1} A${outerR},${outerR} 0 ${largeArc},1 ${x2},${y2} L${x3},${y3} A${innerR},${innerR} 0 ${largeArc},0 ${x4},${y4} Z" fill="#${color}"/>`;
+      startAngle = endAngle;
+    });
+    // Legend below
+    data.forEach((d, i) => {
+      const color = CHART_PALETTE[i % CHART_PALETTE.length];
+      const lx = PAD.l + (i % 4) * 170;
+      const ly = H - 15 + Math.floor(i / 4) * 18;
+      chartSvg += `<rect x="${lx}" y="${ly}" width="10" height="10" fill="#${color}" rx="2"/>`;
+      chartSvg += `<text x="${lx + 15}" y="${ly + 9}" fill="#${muted}" font-size="10">${escHtml(String(d[xAxis] ?? ""))}</text>`;
+    });
+  } else {
+    // Bar chart (vertical by default)
+    const barGroupW = plotW / Math.max(labels.length, 1);
+    const barW = Math.min(barGroupW * 0.6 / Math.max(activeSeries.length, 1), 40);
+
+    for (let si = 0; si < activeSeries.length; si++) {
+      const s = activeSeries[si];
+      const color = CHART_PALETTE[si % CHART_PALETTE.length];
+      data.forEach((d, i) => {
+        const v = Number(d[s]) || 0;
+        const barX = PAD.l + i * barGroupW + (barGroupW - barW * activeSeries.length) / 2 + si * barW;
+        const barY = v >= 0 ? yScale(v) : zeroY;
+        const barH = Math.abs(yScale(v) - zeroY);
+        chartSvg += `<rect x="${barX}" y="${barY}" width="${barW}" height="${Math.max(barH, 1)}" fill="#${color}" rx="2"/>`;
+        // Data label
+        if (data.length <= 8) {
+          const labelY = v >= 0 ? barY - 5 : barY + barH + 12;
+          const fmtV = Math.abs(v) >= 1000 ? (v/1000).toFixed(1) + "K" : v.toFixed(v % 1 === 0 ? 0 : 1);
+          chartSvg += `<text x="${barX + barW/2}" y="${labelY}" fill="#${text}" font-size="9" font-weight="600" text-anchor="middle">${fmtV}${unit ? " " + escHtml(unit) : ""}</text>`;
+        }
+      });
+    }
+  }
+
+  // X-axis labels
+  if (!isPie) {
+    labels.forEach((label, i) => {
+      const x = isLine
+        ? PAD.l + (i / Math.max(labels.length - 1, 1)) * plotW
+        : PAD.l + i * (plotW / labels.length) + (plotW / labels.length) / 2;
+      const truncLabel = label.length > 12 ? label.slice(0, 11) + "…" : label;
+      chartSvg += `<text x="${x}" y="${H - PAD.b + 18}" fill="#${muted}" font-size="9" text-anchor="middle">${escHtml(truncLabel)}</text>`;
+    });
+  }
+
+  // Legend for multi-series
+  if (activeSeries.length > 1 && !isPie) {
+    activeSeries.forEach((s, i) => {
+      const color = CHART_PALETTE[i % CHART_PALETTE.length];
+      const lx = PAD.l + i * 140;
+      const ly = 12;
+      chartSvg += `<rect x="${lx}" y="${ly}" width="10" height="10" fill="#${color}" rx="2"/>`;
+      chartSvg += `<text x="${lx + 14}" y="${ly + 9}" fill="#${muted}" font-size="10">${escHtml(s)}</text>`;
+    });
+  }
+
+  const sourceHtml = sourceNote ? `<div style="font-size:8pt;color:#${muted};margin-top:4px">Source: ${escHtml(sourceNote)}</div>` : "";
+
+  return `<div class="chart-container">
+    <div class="chart-title">${escHtml(title)}</div>
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:3in">
+      ${chartSvg}
+    </svg>
+    ${sourceHtml}
+  </div>`;
 }
