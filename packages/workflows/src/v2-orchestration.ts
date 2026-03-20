@@ -2497,15 +2497,23 @@ Return a V1DeckPlan with slides and charts.`,
             const expectedLang = v1Plan.language || "en";
             const slideText = [slideOutput.title, slideOutput.body, ...(slideOutput.bullets ?? [])].filter(Boolean).join(" ");
             const detectedLang = detectLanguage(slideText);
-            if (expectedLang !== "en" && detectedLang === "en" && slideText.length > 30) {
-              // Brief is non-English but slide came out English — retry once
+            // Retry if: (a) non-English brief but English output, (b) wrong non-English language, (c) mixed language
+            const langMismatch = slideText.length > 30 && detectedLang !== expectedLang && (
+              // Case 1: non-English brief, fully English output
+              (expectedLang !== "en" && detectedLang === "en") ||
+              // Case 2: wrong non-English language (e.g., brief is Italian but slide is French)
+              (expectedLang !== "en" && detectedLang !== "en" && detectedLang !== expectedLang) ||
+              // Case 3: English brief but output is non-English
+              (expectedLang === "en" && detectedLang !== "en")
+            );
+            if (langMismatch) {
               console.warn(`[basquio-author] Slide ${slideSpec.position} language mismatch: expected ${expectedLang}, got ${detectedLang}. Retrying.`);
               try {
                 const { object: retryOutput } = await generateObject({
                   model,
                   schema: v1SlideOutputSchema,
                   system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
-                  prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns.\n\n${slideContext}`,
+                  prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns and industry terms.\n\n${slideContext}`,
                 });
                 slideOutput = retryOutput;
               } catch { /* keep original if retry fails */ }

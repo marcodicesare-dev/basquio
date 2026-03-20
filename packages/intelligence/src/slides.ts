@@ -1161,21 +1161,72 @@ function formatCompactEvidenceValue(value: unknown) {
 
 function inferChartFamily(insight: InsightSpec, dimensionKey: string, rowCount: number) {
   const suggestion = (insight.chartSuggestion || "").toLowerCase();
-  if (suggestion.includes("line") || dimensionKey.includes("date") || dimensionKey.includes("month")) {
+  const dimLow = dimensionKey.toLowerCase();
+
+  // Time-series → line or area
+  if (suggestion.includes("line") || dimLow.includes("date") || dimLow.includes("month") || dimLow.includes("quarter") || dimLow.includes("year") || dimLow.includes("week") || dimLow.includes("period")) {
     return "line" as const;
   }
-  if (suggestion.includes("area")) {
+  if (suggestion.includes("area") || suggestion.includes("trend")) {
     return "area" as const;
   }
-  if (suggestion.includes("scatter")) {
-    return "scatter" as const;
-  }
-  if (suggestion.includes("waterfall")) {
+
+  // Bridge/decomposition → waterfall
+  if (suggestion.includes("waterfall") || suggestion.includes("bridge") || suggestion.includes("pvm") || suggestion.includes("decomp")) {
     return "waterfall" as const;
   }
-  if (rowCount > 8) {
-    return "bar" as const;
+
+  // Correlation → scatter
+  if (suggestion.includes("scatter") || suggestion.includes("correlation") || suggestion.includes("bubble") || suggestion.includes("quadrant")) {
+    return "scatter" as const;
   }
+
+  // Composition → pie/doughnut
+  if (suggestion.includes("pie") || suggestion.includes("donut") || suggestion.includes("doughnut") || suggestion.includes("mix") || suggestion.includes("composition")) {
+    return rowCount <= 5 ? "pie" as const : "bar" as const;
+  }
+
+  // Stacked → stacked-bar
+  if (suggestion.includes("stack") || suggestion.includes("100%") || suggestion.includes("breakdown")) {
+    return "stacked-bar" as const;
+  }
+
+  // Matrix / heatmap
+  if (suggestion.includes("heatmap") || suggestion.includes("heat") || suggestion.includes("matrix") || suggestion.includes("scorecard")) {
+    return "heatmap" as const;
+  }
+
+  // Health / radar
+  if (suggestion.includes("radar") || suggestion.includes("spider") || suggestion.includes("health") || suggestion.includes("diagnostic")) {
+    return "radar" as const;
+  }
+
+  // Funnel
+  if (suggestion.includes("funnel") || suggestion.includes("conversion") || suggestion.includes("pipeline")) {
+    return "funnel" as const;
+  }
+
+  // Marimekko / market sizing
+  if (suggestion.includes("mekko") || suggestion.includes("marimekko") || suggestion.includes("market size")) {
+    return "marimekko" as const;
+  }
+
+  // Timeline / roadmap
+  if (suggestion.includes("timeline") || suggestion.includes("roadmap") || suggestion.includes("gantt") || suggestion.includes("phase")) {
+    return "timeline" as const;
+  }
+
+  // Dense data → table
+  if (suggestion.includes("table") || rowCount > 12) {
+    return "table" as const;
+  }
+
+  // Horizontal bar for ranking
+  if (suggestion.includes("horizontal") || suggestion.includes("rank")) {
+    return "horizontal-bar" as const;
+  }
+
+  // Default: bar for ≤12 categories
   return "bar" as const;
 }
 
