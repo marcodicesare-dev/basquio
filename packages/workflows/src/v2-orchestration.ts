@@ -790,7 +790,8 @@ async function loadWorkspaceFromDb(runId: string): Promise<EvidenceWorkspace | n
 
 function createLoadSheetRows(runId: string) {
   return async (sheetKey: string): Promise<Record<string, unknown>[]> => {
-    const sheetRes = await fetch(
+    // Try exact match first
+    let sheetRes = await fetch(
       `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(sheetKey)}&limit=1`,
       {
         headers: {
@@ -800,8 +801,27 @@ function createLoadSheetRows(runId: string) {
         },
       },
     );
-    if (!sheetRes.ok) return [];
-    const sheets = await sheetRes.json() as Array<{ blob_path: string }>;
+    let sheets: Array<{ blob_path: string; sheet_key: string }> = [];
+    if (sheetRes.ok) sheets = await sheetRes.json();
+
+    // If exact match fails, try fuzzy match: plan may use "fileId:SheetName"
+    // but DB stores "fileId:FileName.xlsx · SheetName"
+    if (!sheets[0]?.blob_path) {
+      // Try suffix match using PostgREST like operator
+      const suffixKey = sheetKey.includes(":") ? sheetKey.split(":").pop() ?? sheetKey : sheetKey;
+      sheetRes = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=like.*${encodeURIComponent(suffixKey)}&limit=1`,
+        {
+          headers: {
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            Accept: "application/json",
+          },
+        },
+      );
+      if (sheetRes.ok) sheets = await sheetRes.json();
+    }
+
     if (!sheets[0]?.blob_path) return [];
     const blobBuffer = await downloadFromStorage({
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -2369,11 +2389,20 @@ Return a V1DeckPlan with slides and charts.`,
         }
       }
 
+      const chartSucceeded = chartResults.filter((r) => r.success).length;
+      const chartFailed = chartResults.filter((r) => !r.success).length;
+      const chartErrors = chartResults.filter((r) => !r.success).map((r) => `${r.plannedId}: ${r.error}`);
+
       await emitRunEvent(runId, "author", "charts_build_completed", {
         total: chartsToProcess.length,
-        succeeded: chartResults.filter((r) => r.success).length,
-        failed: chartResults.filter((r) => !r.success).length,
+        succeeded: chartSucceeded,
+        failed: chartFailed,
+        errors: chartErrors.length > 0 ? chartErrors : undefined,
       });
+
+      if (chartSucceeded === 0 && chartsToProcess.length > 0) {
+        console.warn(`[basquio-author] ALL ${chartsToProcess.length} charts failed to build. Errors: ${chartErrors.join(" | ")}`);
+      }
 
       return { chartIdMap, chartResults };
     }) as { chartIdMap: Record<string, string>; chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> };
