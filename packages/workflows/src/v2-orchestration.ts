@@ -2493,6 +2493,24 @@ Return a V1DeckPlan with slides and charts.`,
               prompt: slideContext,
             });
 
+            // ─── Language consistency check (deterministic, post-generation) ───
+            const expectedLang = v1Plan.language || "en";
+            const slideText = [slideOutput.title, slideOutput.body, ...(slideOutput.bullets ?? [])].filter(Boolean).join(" ");
+            const detectedLang = detectLanguage(slideText);
+            if (expectedLang !== "en" && detectedLang === "en" && slideText.length > 30) {
+              // Brief is non-English but slide came out English — retry once
+              console.warn(`[basquio-author] Slide ${slideSpec.position} language mismatch: expected ${expectedLang}, got ${detectedLang}. Retrying.`);
+              try {
+                const { object: retryOutput } = await generateObject({
+                  model,
+                  schema: v1SlideOutputSchema,
+                  system: V1_SLIDE_AUTHOR_SYSTEM_PROMPT,
+                  prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns.\n\n${slideContext}`,
+                });
+                Object.assign(slideOutput, retryOutput);
+              } catch { /* keep original if retry fails */ }
+            }
+
             // Resolve the real chart ID
             const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
 

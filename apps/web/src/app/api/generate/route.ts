@@ -183,6 +183,7 @@ async function queueGeneration(
           body: JSON.stringify({
             id: tpId,
             organization_id: workspace.organizationRowId,
+            source_type: profile.sourceType ?? "pptx",
             template_profile: profile,
           }),
         });
