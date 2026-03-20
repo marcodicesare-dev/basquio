@@ -65,7 +65,7 @@ export function buildDeckHtml(
       section {
         background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 22px;
+        border-radius: 0;
         padding: ${theme.pageY}in ${theme.pageX}in;
         width: ${pageWidth}in;
         min-height: ${pageHeight}in;
@@ -89,14 +89,14 @@ export function buildDeckHtml(
       .metric {
         background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 18px;
+        border-radius: 0;
         padding: 14px 16px;
       }
       .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
       .metric-value { font-size: 28px; font-weight: 700; margin-top: 6px; }
       .cover .metric { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); }
       .callout, .panel {
-        border-radius: 18px;
+        border-radius: 0;
         padding: 16px 18px;
         border: 1px solid var(--border);
         background: var(--surface);
@@ -110,8 +110,8 @@ export function buildDeckHtml(
       .chart-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
       .chart-row { display: grid; grid-template-columns: 1fr 64px; gap: 12px; align-items: center; }
       .chart-label { font-size: 12px; color: var(--text); }
-      .bar-track { background: rgba(148, 163, 184, 0.18); border-radius: 999px; height: 10px; overflow: hidden; margin-top: 6px; }
-      .bar-fill { background: linear-gradient(90deg, var(--accent), var(--highlight)); height: 100%; border-radius: 999px; }
+      .bar-track { background: rgba(148, 163, 184, 0.18); border-radius: 0; height: 10px; overflow: hidden; margin-top: 6px; }
+      .bar-fill { background: linear-gradient(90deg, var(--accent), var(--highlight)); height: 100%; border-radius: 0; }
       .chart-value { text-align: right; font-size: 12px; color: var(--muted); }
       .body-copy { line-height: 1.55; }
       .two-column-layout { display: grid; gap: 16px; }
@@ -949,7 +949,7 @@ body { font-family: ${bodyFont}, Arial, sans-serif; background: #${bg}; color: #
 
 /* Cover — JSX-inspired with radial glow */
 .cover { display: flex; align-items: center; justify-content: center; }
-.cover-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 8in; height: 8in; border-radius: 50%; background: radial-gradient(circle, rgba(232,168,76,0.08) 0%, transparent 70%); pointer-events: none; }
+.cover-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 8in; height: 8in; border-radius: 0; background: radial-gradient(circle, rgba(232,168,76,0.08) 0%, transparent 70%); pointer-events: none; }
 .cover-content { text-align: center; max-width: 10in; z-index: 1; }
 .cover h1 { font-family: ${headingFont}, Arial, sans-serif; font-size: 36pt; font-weight: 700; margin-bottom: 0.2in; line-height: 1.1; letter-spacing: -0.5pt; }
 .cover .subtitle { font-size: 14pt; color: #${muted}; line-height: 1.6; }
@@ -987,7 +987,7 @@ li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in;
 .split-right { flex: 1; min-width: 0; }
 
 /* Charts */
-.chart-container { margin: 0.15in 0; background: #${bg}; border: 1px solid #${border}; border-radius: 6px; padding: 0.15in 0.2in; }
+.chart-container { margin: 0.15in 0; background: #${bg}; border: 1px solid #${border}; border-radius: 0; padding: 0.15in 0.2in; }
 .chart-title { font-size: 11pt; font-weight: 600; color: #${text}; margin-bottom: 0.08in; }
 
 /* Footer */

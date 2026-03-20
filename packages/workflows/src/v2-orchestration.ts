@@ -2504,6 +2504,10 @@ export const basquioAuthor = inngest.createFunction(
       exactCostUsd += (inp * prices.input + out * prices.output) / 1_000_000;
     }
 
+    const HARD_BUDGET_USD = 1.0;
+    function isOverBudget(): boolean { return exactCostUsd >= HARD_BUDGET_USD; }
+    function remainingBudget(): number { return Math.max(0, HARD_BUDGET_USD - exactCostUsd); }
+
     // Clear stale slides/charts from any previous execution
     await step.run("clear-stale-data", async () => {
       await deleteRunSlides(runId);
@@ -2958,7 +2962,10 @@ Return a V1DeckPlan with slides and charts.`,
         await Promise.all(batch.map(async (slideSpec) => {
           try {
             const isSacred = ["cover", "exec-summary", "summary", "recommendation"].includes(slideSpec.role);
-            const model = isSacred ? anthropic("claude-sonnet-4-6") : anthropic("claude-haiku-4-5");
+            // Budget enforcement: downgrade sacred slides to Haiku if budget is tight
+            const canAffordSonnet = remainingBudget() > 0.30; // Sonnet slide costs ~$0.05-0.08, reserve buffer for critique
+            const model = (isSacred && canAffordSonnet) ? anthropic("claude-sonnet-4-6") : anthropic("claude-haiku-4-5");
+            const modelId = (isSacred && canAffordSonnet) ? "claude-sonnet-4-6" : "claude-haiku-4-5";
 
             const slideContext = buildSlideContext(slideSpec);
 
@@ -2969,7 +2976,7 @@ Return a V1DeckPlan with slides and charts.`,
               prompt: slideContext,
             });
             let slideOutput = slideGenResult.object;
-            addUsage(slideGenResult.usage, isSacred ? "claude-sonnet-4-6" : "claude-haiku-4-5");
+            addUsage(slideGenResult.usage, modelId);
 
             // ─── Language consistency check (deterministic, post-generation) ───
             const expectedLang = validatedPlan.language || "en";
@@ -2994,7 +3001,7 @@ Return a V1DeckPlan with slides and charts.`,
                   prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns and industry terms.\n\n${slideContext}`,
                 });
                 slideOutput = retryResult.object;
-                addUsage(retryResult.usage, isSacred ? "claude-sonnet-4-6" : "claude-haiku-4-5");
+                addUsage(retryResult.usage, modelId);
               } catch { /* keep original if retry fails */ }
             }
 
@@ -3114,7 +3121,7 @@ Return a V1DeckPlan with slides and charts.`,
 
     // ─── STEP 5: REPAIR (critical issues only, max 3 slides) ─────────
     const criticalIssues = deterministicIssues.filter((i) => i.severity === "critical");
-    if (criticalIssues.length > 0) {
+    if (criticalIssues.length > 0 && remainingBudget() > 0.05) {
       await step.run("repair-critical", async () => {
         await emitRunEvent(runId, "author", "repair_started");
 
@@ -3259,6 +3266,20 @@ export const basquioCritiqueRevise = inngest.createFunction(
     const deckPlanWp = await loadWorkingPaper<DeckPlan>(runId, "deck_plan");
     const loadRows = createLoadSheetRows(runId);
 
+    // ─── Token-based cost tracking ──────────────────────────────
+    // Prices per 1M tokens (USD). Each step.run returns its stepCostUsd so
+    // the total survives Inngest memoisation on replay.
+    const CRITIQUE_PRICES: Record<string, { input: number; output: number }> = {
+      "gpt-5.4":           { input: 2.50, output: 10.00 },
+      "claude-opus-4-6":   { input: 15.00, output: 75.00 },
+      "claude-sonnet-4-6": { input: 3.00, output: 15.00 },
+      "claude-haiku-4-5":  { input: 1.00, output: 5.00 },
+    };
+    function computeStepCost(tokens: { inputTokens: number; outputTokens: number }, modelId: string): number {
+      const prices = CRITIQUE_PRICES[modelId] ?? CRITIQUE_PRICES["claude-haiku-4-5"];
+      return (tokens.inputTokens * prices.input + tokens.outputTokens * prices.output) / 1_000_000;
+    }
+
     // ─── PARALLEL CRITIQUE (factual + strategic run concurrently) ──
     // Both critiques are independent evaluations — running them in parallel saves 1.5-2.5 min.
     const critiqueResults = await step.run("critique-parallel", async () => {
@@ -3280,6 +3301,10 @@ export const basquioCritiqueRevise = inngest.createFunction(
         evidenceIds: s.evidenceIds ?? [],
       }));
 
+      // Accumulate token usage from both critics
+      let factualTokens = { inputTokens: 0, outputTokens: 0 };
+      let strategicTokens = { inputTokens: 0, outputTokens: 0 };
+
       // Run factual + strategic in parallel
       const [factual, strategic] = await Promise.all([
         runCriticAgent({
@@ -3291,6 +3316,10 @@ export const basquioCritiqueRevise = inngest.createFunction(
           getSlides: async () => slideData,
           getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
           persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 0, entry),
+          onStepFinish: async (ev) => {
+            factualTokens.inputTokens += ev.usage?.inputTokens ?? 0;
+            factualTokens.outputTokens += ev.usage?.outputTokens ?? 0;
+          },
         }),
         runStrategicCriticAgent({
           runId,
@@ -3298,14 +3327,24 @@ export const basquioCritiqueRevise = inngest.createFunction(
           deckSummary: "",
           slideCount: slides.length,
           slides: slideData,
+          onStepFinish: async (ev) => {
+            strategicTokens.inputTokens += ev.usage?.inputTokens ?? 0;
+            strategicTokens.outputTokens += ev.usage?.outputTokens ?? 0;
+          },
         }),
       ]);
 
-      return { factual, strategic };
+      // Factual critic defaults to gpt-5.4 (cross-model), strategic uses claude-opus-4-6
+      const stepCostUsd =
+        computeStepCost(factualTokens, "gpt-5.4") +
+        computeStepCost(strategicTokens, "claude-opus-4-6");
+
+      return { factual, strategic, stepCostUsd };
     });
 
     const factualCritique = critiqueResults.factual;
     const strategicCritique = critiqueResults.strategic;
+    let runningCostUsd = critiqueResults.stepCostUsd ?? 0;
 
     // ─── MERGE + GATE DECISION ─────────────────────────────────
     const gateResult = await step.run("critique-merge-gate", async () => {
@@ -3339,23 +3378,25 @@ export const basquioCritiqueRevise = inngest.createFunction(
         }),
       });
 
+      const critiqueCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
+
       if (!hasCriticalOrMajor) {
         await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues, estimatedCostUsd: 0.12 };
+        return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues, estimatedCostUsd: critiqueCostUsd };
       }
 
       // Only revise for critical issues — major issues are acceptable for delivery
       if (criticalCount === 0) {
         await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: true, needsRevise: false, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: 0.12 };
+        return { hasCriticalOrMajor: true, needsRevise: false, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: critiqueCostUsd };
       }
 
-      return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: 0.12 };
+      return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: critiqueCostUsd };
     });
 
     // ─── REVISE (targeted section-level repair) ────────────────────
     if (gateResult.needsRevise) {
-      await step.run("revise", async () => {
+      const reviseResult = await step.run("revise", async () => {
         await updateRunStatus(runId, "running", "revise");
         await emitRunEvent(runId, "revise", "phase_started");
 
@@ -3375,6 +3416,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
         const tracker = new UsageTracker();
         tracker.startPhase("revise", "claude-sonnet-4-6", "anthropic");
+        let reviseTokens = { inputTokens: 0, outputTokens: 0 };
 
         await runAuthorAgent({
           workspace,
@@ -3393,12 +3435,16 @@ export const basquioCritiqueRevise = inngest.createFunction(
           listEvidence: () => listEvidenceForRun(runId),
           onStepFinish: async (event: StepFinishEvent) => {
             tracker.recordStep(event.usage, event.toolCalls.length);
+            reviseTokens.inputTokens += event.usage?.inputTokens ?? 0;
+            reviseTokens.outputTokens += event.usage?.outputTokens ?? 0;
           },
         });
 
         tracker.endPhase();
         await emitRunEvent(runId, "revise", "phase_completed");
+        return { stepCostUsd: computeStepCost(reviseTokens, "claude-sonnet-4-6") };
       });
+      runningCostUsd += reviseResult.stepCostUsd ?? 0;
 
       // ─── RE-CRITIQUE (verify revisions fixed the issues) ──────
       const reGateResult = await step.run("re-critique-gate", async () => {
@@ -3417,6 +3463,10 @@ export const basquioCritiqueRevise = inngest.createFunction(
           evidenceIds: s.evidenceIds ?? [],
         }));
 
+        // Accumulate re-critique token usage
+        let reFactualTokens = { inputTokens: 0, outputTokens: 0 };
+        let reStrategicTokens = { inputTokens: 0, outputTokens: 0 };
+
         // Re-run BOTH factual + strategic critics (strategic must independently gate)
         const [reFactual, reStrategic] = await Promise.all([
           runCriticAgent({
@@ -3428,6 +3478,10 @@ export const basquioCritiqueRevise = inngest.createFunction(
             getSlides: async () => slideData,
             getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
             persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 1, entry),
+            onStepFinish: async (ev) => {
+              reFactualTokens.inputTokens += ev.usage?.inputTokens ?? 0;
+              reFactualTokens.outputTokens += ev.usage?.outputTokens ?? 0;
+            },
           }),
           runStrategicCriticAgent({
             runId,
@@ -3435,8 +3489,17 @@ export const basquioCritiqueRevise = inngest.createFunction(
             deckSummary: "",
             slideCount: slides.length,
             slides: slideData,
+            onStepFinish: async (ev) => {
+              reStrategicTokens.inputTokens += ev.usage?.inputTokens ?? 0;
+              reStrategicTokens.outputTokens += ev.usage?.outputTokens ?? 0;
+            },
           }),
         ]);
+
+        const reCritiqueCostUsd =
+          computeStepCost(reFactualTokens, "gpt-5.4") +
+          computeStepCost(reStrategicTokens, "claude-opus-4-6");
+        const totalCostUsd = Math.round((runningCostUsd + reCritiqueCostUsd) * 1000) / 1000 || 0.01;
 
         const reIssues = [...(reFactual.issues ?? []), ...(reStrategic.issues ?? [])];
         const reCritical = reIssues.filter((i: { severity: string }) => i.severity === "critical").length;
@@ -3451,18 +3514,18 @@ export const basquioCritiqueRevise = inngest.createFunction(
             degradedIssues: reIssues
               .filter((i: { severity: string }) => i.severity === "critical" || i.severity === "major")
               .map((i: { severity: string; claim: string }) => ({ severity: i.severity, claim: i.claim })),
-            estimatedCostUsd: 0.30, // critique + revise + re-critique
+            estimatedCostUsd: totalCostUsd,
           };
         }
 
         await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: 0.30 };
+        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: totalCostUsd };
       });
 
       return reGateResult;
     }
 
-    return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: 0.06 };
+    return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: Math.round(runningCostUsd * 1000) / 1000 || 0.01 };
   },
 );
 

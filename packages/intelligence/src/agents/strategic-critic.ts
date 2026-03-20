@@ -160,5 +160,19 @@ ${domainKnowledgeContext ? `\n\n${domainKnowledgeContext}` : ""}`;
     );
   }
 
+  // Fire onStepFinish so the orchestration can track token usage
+  if (input.onStepFinish) {
+    await input.onStepFinish({
+      stepNumber: 1,
+      toolCalls: [],
+      usage: {
+        inputTokens: result.usage?.inputTokens,
+        outputTokens: result.usage?.outputTokens,
+        totalTokens: (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0),
+      },
+      finishReason: result.finishReason ?? "stop",
+    });
+  }
+
   return result.experimental_output;
 }

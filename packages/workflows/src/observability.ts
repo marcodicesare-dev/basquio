@@ -141,7 +141,7 @@ export class UsageTracker {
 
 // ─── COST ALERTS ──────────────────────────────────────────────────
 
-const DEFAULT_COST_BUDGET_USD = 5.0; // Per job
+const DEFAULT_COST_BUDGET_USD = 1.0; // Per deck — non-negotiable product rule
 
 export function checkCostBudget(
   summary: JobCostSummary,
