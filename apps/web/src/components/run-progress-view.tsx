@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 
 type Summary = {
@@ -222,7 +223,7 @@ export function RunProgressView(input: {
         </div>
 
         {/* Steps — minimal, horizontal */}
-        <div style={{ display: "flex", gap: "2rem", zIndex: 1 }}>
+        <div style={{ display: "flex", gap: "2rem", zIndex: 1, marginBottom: "2rem" }}>
           {USER_STEPS.map((step, idx) => {
             const isDone = idx < currentUserStepIdx || snapshot.status === "completed";
             const isActive = idx === currentUserStepIdx;
@@ -251,6 +252,21 @@ export function RunProgressView(input: {
             );
           })}
         </div>
+
+        {/* GIF — large, centered */}
+        <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
+        <div style={{ borderRadius: 16, overflow: "hidden", zIndex: 1, width: "100%", maxWidth: 520 }}>
+          <div
+            className="tenor-gif-embed"
+            data-postid="5925040"
+            data-share-method="host"
+            data-aspect-ratio="2.31481"
+            data-width="100%"
+          >
+            <a href="https://tenor.com/view/mathew-wolf-gif-5925040">Mathew Wolf GIF</a>
+            from <a href="https://tenor.com/search/mathew-gifs">Mathew GIFs</a>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -266,13 +282,14 @@ export function RunProgressView(input: {
 
 const styles = {
   fullPage: {
-    minHeight: "100vh",
+    position: "fixed" as const,
+    inset: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     background: "#0A090D",
-    position: "relative" as const,
     overflow: "hidden",
+    zIndex: 50,
   },
   center: {
     display: "flex",

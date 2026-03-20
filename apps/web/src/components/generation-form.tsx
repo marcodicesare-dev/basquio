@@ -96,6 +96,11 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Prevent accidental form submission from Enter key on non-final steps
+    if (currentStep < steps.length - 1) {
+      goToNextStep();
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
 
