@@ -88,6 +88,7 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
         metrics: { x: ml, y: 1.8, w: cw, h: 1.6 },
+        chart: { x: ml, y: 3.6, w: 7.5, h: 2.8 },
         body: { x: ml, y: 3.6, w: 7.5, h: 2.4 },
         bullets: { x: ml, y: 3.6, w: 7.5, h: 2.4 },
         callout: { x: 8.4, y: 3.6, w: 4.333, h: 2.4 },

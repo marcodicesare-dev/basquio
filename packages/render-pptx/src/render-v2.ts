@@ -1179,16 +1179,17 @@ function renderChartElement(
     );
   }
 
-  // Source note below chart
+  // Source note below chart — clamped to never overlap footer (max y = 6.6")
   if (chart.sourceNote) {
+    const sourceY = Math.min(chartRegion.y + actualChartH + 0.02, 6.6);
     slide.addText(`Source: ${chart.sourceNote}`, {
       x: chartRegion.x,
-      y: chartRegion.y + actualChartH + 0.02,
+      y: sourceY,
       w: chartRegion.w,
       h: 0.16,
       fontSize: tokens.typography.sourceSize,
       fontFace: tokens.typography.bodyFont,
-      color: "9CA3AF",
+      color: norm(tokens.palette.muted),
     });
   }
 }
@@ -1406,8 +1407,11 @@ function renderContentSlide(
       if (s.metrics && s.metrics.length > 0 && regions.metrics) {
         renderMetrics(slide, pptx, s.metrics, regions.metrics, tokens);
       }
-      // exec-summary uses bullets region; metrics layout uses body region
-      if (layoutId === "exec-summary" && s.bullets && s.bullets.length > 0 && regions.bullets) {
+      // Chart support for exec-summary (JSX: metrics on top, chart below)
+      if (chart && regions.chart) {
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
+      } else if (layoutId === "exec-summary" && s.bullets && s.bullets.length > 0 && regions.bullets) {
+        // Fallback to bullets if no chart
         renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch);
       } else if (s.body && regions.body) {
         renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
