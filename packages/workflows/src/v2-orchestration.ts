@@ -1921,18 +1921,21 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
 
     // ─── COST SUMMARY (from child function returns) ─────────────
     const costSummary = tracker.getSummary(runId);
-    // Understand returns costSummary from analyst agent
+    // Understand returns costSummary with totalUsage from analyst agent (GPT-5.4: $2.50/$15 per MTok)
     const understandReturn = analystResult as Record<string, unknown>;
-    const understandCost = (understandReturn?.costSummary as { estimatedCostUsd?: number })?.estimatedCostUsd ?? 0;
+    const understandSummary = understandReturn?.costSummary as { estimatedCostUsd?: number; totalUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } } | undefined;
+    const understandCost = understandSummary?.estimatedCostUsd ?? 0;
+    const understandTokens = understandSummary?.totalUsage ?? {};
     // Author returns estimatedCostUsd + tokenUsage from actual generateObject calls
     const authorReturn = authorResult as Record<string, unknown>;
     const authorCost = (authorReturn?.estimatedCostUsd as number) ?? 0;
     const authorTokens = (authorReturn?.tokenUsage as { inputTokens?: number; outputTokens?: number; totalTokens?: number }) ?? {};
+    // Aggregate: understand + author/critique/repair
     costSummary.estimatedCostUsd = Math.round((understandCost + authorCost) * 1000) / 1000;
     costSummary.totalUsage = {
-      totalTokens: authorTokens.totalTokens ?? 0,
-      inputTokens: authorTokens.inputTokens ?? 0,
-      outputTokens: authorTokens.outputTokens ?? 0,
+      totalTokens: (understandTokens.totalTokens ?? 0) + (authorTokens.totalTokens ?? 0),
+      inputTokens: (understandTokens.inputTokens ?? 0) + (authorTokens.inputTokens ?? 0),
+      outputTokens: (understandTokens.outputTokens ?? 0) + (authorTokens.outputTokens ?? 0),
     };
     const budgetCheck = checkCostBudget(costSummary);
 
@@ -2188,6 +2191,25 @@ export const basquioAuthor = inngest.createFunction(
 
     // Token accumulator for real cost telemetry (shared across plan/author/critique/repair steps)
     const tokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, callCount: 0 };
+    // Per-model cost accumulator (exact pricing, not blended)
+    let exactCostUsd = 0;
+    // Model pricing per million tokens (March 2026 verified)
+    const MODEL_PRICES: Record<string, { input: number; output: number }> = {
+      "gpt-5.4-mini": { input: 0.75, output: 4.50 },
+      "claude-sonnet-4-6": { input: 3.00, output: 15.00 },
+      "claude-haiku-4-5": { input: 1.00, output: 5.00 },
+    };
+    function addUsage(usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined, modelId: string) {
+      if (!usage) return;
+      const inp = usage.inputTokens ?? 0;
+      const out = usage.outputTokens ?? 0;
+      tokenUsage.inputTokens += inp;
+      tokenUsage.outputTokens += out;
+      tokenUsage.totalTokens += (usage.totalTokens ?? inp + out);
+      tokenUsage.callCount += 1;
+      const prices = MODEL_PRICES[modelId] ?? MODEL_PRICES["claude-haiku-4-5"];
+      exactCostUsd += (inp * prices.input + out * prices.output) / 1_000_000;
+    }
 
     // Clear stale slides/charts from any previous execution
     await step.run("clear-stale-data", async () => {
@@ -2310,13 +2332,7 @@ Return a V1DeckPlan with slides and charts.`,
         });
 
         const plan = planGenResult.object as V1DeckPlan;
-        // Capture plan step token usage
-        if (planGenResult.usage) {
-          tokenUsage.inputTokens += planGenResult.usage.inputTokens ?? 0;
-          tokenUsage.outputTokens += planGenResult.usage.outputTokens ?? 0;
-          tokenUsage.totalTokens += planGenResult.usage.totalTokens ?? 0;
-          tokenUsage.callCount += 1;
-        }
+        addUsage(planGenResult.usage, "gpt-5.4-mini");
         try { await persistWorkingPaper(runId, "v1_deck_plan", plan); } catch {}
         return plan;
       } catch (planError) {
@@ -2545,13 +2561,7 @@ Return a V1DeckPlan with slides and charts.`,
               prompt: slideContext,
             });
             let slideOutput = slideGenResult.object;
-            // Capture token usage
-            if (slideGenResult.usage) {
-              tokenUsage.inputTokens += slideGenResult.usage.inputTokens ?? 0;
-              tokenUsage.outputTokens += slideGenResult.usage.outputTokens ?? 0;
-              tokenUsage.totalTokens += slideGenResult.usage.totalTokens ?? 0;
-              tokenUsage.callCount += 1;
-            }
+            addUsage(slideGenResult.usage, isSacred ? "claude-sonnet-4-6" : "claude-haiku-4-5");
 
             // ─── Language consistency check (deterministic, post-generation) ───
             const expectedLang = v1Plan.language || "en";
@@ -2576,12 +2586,7 @@ Return a V1DeckPlan with slides and charts.`,
                   prompt: `CRITICAL: Write ENTIRELY in ${expectedLang}. No English except proper nouns and industry terms.\n\n${slideContext}`,
                 });
                 slideOutput = retryResult.object;
-                if (retryResult.usage) {
-                  tokenUsage.inputTokens += retryResult.usage.inputTokens ?? 0;
-                  tokenUsage.outputTokens += retryResult.usage.outputTokens ?? 0;
-                  tokenUsage.totalTokens += retryResult.usage.totalTokens ?? 0;
-                  tokenUsage.callCount += 1;
-                }
+                addUsage(retryResult.usage, isSacred ? "claude-sonnet-4-6" : "claude-haiku-4-5");
               } catch { /* keep original if retry fails */ }
             }
 
@@ -2746,12 +2751,7 @@ Analysis summary: ${analysisResult?.analysis?.summary?.slice(0, 500) ?? ""}
 Fix the issues while maintaining the governing thought.`,
             });
             const repaired = repairResult.object;
-            if (repairResult.usage) {
-              tokenUsage.inputTokens += repairResult.usage.inputTokens ?? 0;
-              tokenUsage.outputTokens += repairResult.usage.outputTokens ?? 0;
-              tokenUsage.totalTokens += repairResult.usage.totalTokens ?? 0;
-              tokenUsage.callCount += 1;
-            }
+            addUsage(repairResult.usage, "claude-haiku-4-5");
 
             await persistSlide(runId, {
               position,
@@ -2786,14 +2786,8 @@ Fix the issues while maintaining the governing thought.`,
     const finalCharts = await getV2ChartRows(runId);
     const deckSummary = `V1 pipeline: ${finalSlides.length} slides, ${finalCharts.length} charts (${chartBuildResult.chartResults.filter((r) => r.success).length} deterministic, ${criticalIssues.length} critical issues ${criticalIssues.length > 0 ? "repaired" : ""})`;
 
-    // Real cost from accumulated token usage (not estimates)
-    // Pricing: Sonnet 4.6 = $3/$15, Haiku 4.5 = $1/$5, GPT-5.4-mini = $0.75/$4.50
-    // Blended: ~80% Haiku, ~15% Sonnet, ~5% GPT-5.4-mini
-    const blendedInputPer1M = 1.4;
-    const blendedOutputPer1M = 6.5;
-    const estimatedCostUsd = tokenUsage.totalTokens > 0
-      ? (tokenUsage.inputTokens * blendedInputPer1M + tokenUsage.outputTokens * blendedOutputPer1M) / 1_000_000
-      : 0.05; // fallback if usage not captured
+    // Exact cost from per-model token accumulation (not blended estimates)
+    const estimatedCostUsd = exactCostUsd > 0 ? exactCostUsd : 0.05; // fallback if usage not captured
 
     return {
       deckSummary,
