@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, File, MagnifyingGlass, PaintBrush, Package } from "@phosphor-icons/react";
 import Link from "next/link";
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
@@ -44,10 +45,10 @@ export type RunProgressSnapshot = {
 
 // ─── USER-FACING PHASE MAP ─────────────────────────────────────
 const USER_STEPS = [
-  { id: "read", label: "Reading your files", icon: "📄" },
-  { id: "analyze", label: "Finding the story", icon: "🔍" },
-  { id: "design", label: "Designing the deck", icon: "✨" },
-  { id: "export", label: "Preparing downloads", icon: "📦" },
+  { id: "read", label: "Reading your files", Icon: File },
+  { id: "analyze", label: "Finding the story", Icon: MagnifyingGlass },
+  { id: "design", label: "Designing the deck", Icon: PaintBrush },
+  { id: "export", label: "Preparing downloads", Icon: Package },
 ] as const;
 
 const PHASE_TO_USER_STEP: Record<string, number> = {
@@ -132,7 +133,7 @@ export function RunProgressView(input: {
     return (
       <div style={styles.fullPage}>
         <div style={styles.center}>
-          <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>✓</div>
+          <div style={{ marginBottom: "1rem" }}><Check size={56} weight="bold" color="#4CC9A0" /></div>
           <h1 style={{ fontSize: "2.2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.5rem" }}>
             Your deck is ready
           </h1>
@@ -227,19 +228,19 @@ export function RunProgressView(input: {
           {USER_STEPS.map((step, idx) => {
             const isDone = idx < currentUserStepIdx || snapshot.status === "completed";
             const isActive = idx === currentUserStepIdx;
+            const StepIcon = step.Icon;
             return (
               <div key={step.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.4rem" }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: "50%",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "1rem",
                   background: isDone ? "#E8A84C" : isActive ? "rgba(232,168,76,0.2)" : "rgba(255,255,255,0.08)",
                   color: isDone ? "#0A090D" : isActive ? "#E8A84C" : "#6B6A72",
                   border: isActive ? "2px solid #E8A84C" : "2px solid transparent",
                   animation: isActive ? "breathe 2s ease-in-out infinite" : undefined,
                   transition: "all 0.5s ease",
                 }}>
-                  {isDone ? "✓" : step.icon}
+                  {isDone ? <Check size={16} weight="bold" /> : <StepIcon size={16} weight={isActive ? "fill" : "regular"} />}
                 </div>
                 <span style={{
                   fontSize: "0.75rem", fontWeight: isActive ? 600 : 400,

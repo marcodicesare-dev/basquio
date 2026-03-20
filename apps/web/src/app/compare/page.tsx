@@ -1,3 +1,4 @@
+import { Check, Minus, X } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 
 import { detailedComparisonRows } from "@/app/site-content";
@@ -12,9 +13,9 @@ export const metadata: Metadata = {
 };
 
 function capabilityIcon(value: string) {
-  if (value === "Yes") return <span className="cap-yes">✓</span>;
-  if (value === "Partial") return <span className="cap-partial">~</span>;
-  if (value === "No") return <span className="cap-no">✗</span>;
+  if (value === "Yes") return <span className="cap-yes"><Check size={16} weight="bold" /></span>;
+  if (value === "Partial") return <span className="cap-partial"><Minus size={16} weight="bold" /></span>;
+  if (value === "No") return <span className="cap-no"><X size={16} weight="bold" /></span>;
   return <>—</>;
 }
 
@@ -36,9 +37,9 @@ export default function ComparePage() {
 
       <section className="panel comparison-panel">
         <div className="comparison-legend">
-          <span><strong>✓</strong> Full support</span>
-          <span><strong>~</strong> Partial — works sometimes or with manual effort</span>
-          <span><strong>✗</strong> Not available</span>
+          <span><Check size={14} weight="bold" /> Full support</span>
+          <span><Minus size={14} weight="bold" /> Partial — works sometimes or with manual effort</span>
+          <span><X size={14} weight="bold" /> Not available</span>
         </div>
 
         <div className="comparison-table-wrap">
