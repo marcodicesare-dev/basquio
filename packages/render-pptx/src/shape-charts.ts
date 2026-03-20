@@ -57,7 +57,7 @@ export interface ShapeChartOptions {
 
 const V = {
   // Colors — Dark-mode tokens from basquio-deck-templates-v3.jsx
-  mutedBar: "272630",        // Non-focal bars/segments (border color, subtle on dark)
+  mutedBar: "3D3C47",        // Non-focal bars/segments (lighter than border, readable on dark)
   labelGray: "6B6A72",       // Axis labels, category labels (JSX: textDim)
   gridGray: "1F1E28",        // Grid lines (JSX: borderSubtle — barely visible on dark)
   axisGray: "272630",        // Axis lines (JSX: border — subtle on dark)
@@ -193,7 +193,7 @@ export function renderShapeChart(
       h: 0.14,
       fontSize: SOURCE_SIZE,
       fontFace: tokens.bodyFont,
-      color: "9CA3AF",
+      color: V.labelGray,
       align: "left",
       valign: "top",
     });
@@ -227,6 +227,14 @@ export function renderShapeChart(
     renderAreaChart(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("funnel")) {
     renderFunnel(slide, data, chartFrame, tokens, options);
+  } else if (normalized.includes("heatmap") || normalized.includes("heat-map")) {
+    renderHeatmap(slide, data, chartFrame, tokens, options);
+  } else if (normalized.includes("radar") || normalized.includes("spider")) {
+    renderRadar(slide, data, chartFrame, tokens, options);
+  } else if (normalized.includes("mekko") || normalized.includes("marimekko")) {
+    renderMekko(slide, data, chartFrame, tokens, options);
+  } else if (normalized.includes("timeline") || normalized.includes("gantt") || normalized.includes("roadmap")) {
+    renderTimeline(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("table") || normalized.includes("matrix")) {
     // Tables/matrices: render as a data table
     renderDataTable(slide, data, chartFrame, tokens, options);
@@ -1095,6 +1103,293 @@ function renderFunnel(
       fontSize: DATA_LABEL_SIZE, fontFace: tokens.bodyFont,
       color: "FFFFFF", bold: true, align: "center", valign: "middle",
     });
+  });
+}
+
+// ─── HEATMAP (Region × Metric color-coded grid) ─────────────────
+
+function renderHeatmap(
+  slide: PptxGenJS.Slide,
+  data: ShapeChartData,
+  frame: ShapeChartFrame,
+  tokens: ShapeChartTokens,
+  options: ShapeChartOptions,
+): void {
+  // Labels = column headers (metrics), datasets = rows (regions)
+  const cols = data.labels.slice(0, 8);
+  const rows = data.datasets.slice(0, 8);
+  const labelColW = 1.0; // Width for row labels
+  const cellW = (frame.w - labelColW) / cols.length;
+  const headerH = 0.28;
+  const cellH = Math.min((frame.h - headerH) / rows.length, 0.36);
+
+  // Column headers
+  cols.forEach((col, ci) => {
+    slide.addText(truncLabel(col), {
+      x: frame.x + labelColW + ci * cellW, y: frame.y,
+      w: cellW, h: headerH,
+      fontSize: 8, fontFace: tokens.bodyFont,
+      color: V.labelGray, align: "center", valign: "middle",
+    });
+  });
+
+  // Row labels + colored cells
+  rows.forEach((ds, ri) => {
+    const y = frame.y + headerH + ri * cellH;
+
+    // Row label
+    slide.addText(truncLabel(ds.label), {
+      x: frame.x, y, w: labelColW, h: cellH,
+      fontSize: 9, fontFace: tokens.bodyFont,
+      color: tokens.ink, align: "left", valign: "middle",
+    });
+
+    // Value cells with color coding
+    ds.data.slice(0, cols.length).forEach((val, ci) => {
+      const x = frame.x + labelColW + ci * cellW;
+      // 3-tier: green ≥80, amber 60-79, red <60 (per JSX design)
+      const color = val >= 80 ? V.green : val >= 60 ? tokens.accent : V.red;
+      const bgColor = val >= 80 ? "1A3D2E" : val >= 60 ? "2D2618" : "2D1A1D";
+
+      slide.addText("", {
+        x: x + 0.02, y: y + 0.02,
+        w: cellW - 0.04, h: cellH - 0.04,
+        fill: { color: bgColor },
+      });
+
+      slide.addText(String(Math.round(val)), {
+        x: x + 0.02, y: y + 0.02,
+        w: cellW - 0.04, h: cellH - 0.04,
+        fontSize: 11, fontFace: tokens.bodyFont,
+        color, bold: true, align: "center", valign: "middle",
+      });
+    });
+  });
+}
+
+// ─── RADAR / SPIDER CHART ───────────────────────────────────────
+
+function renderRadar(
+  slide: PptxGenJS.Slide,
+  data: ShapeChartData,
+  frame: ShapeChartFrame,
+  tokens: ShapeChartTokens,
+  options: ShapeChartOptions,
+): void {
+  // Radar chart approximation using PptxGenJS shapes:
+  // Draw concentric ring guides, axis labels at each spoke, and data points
+  const labels = data.labels.slice(0, 8);
+  const n = labels.length;
+  const cx = frame.x + frame.w / 2;
+  const cy = frame.y + frame.h / 2;
+  const r = Math.min(frame.w, frame.h) / 2 * 0.72; // Leave room for labels
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent];
+
+  // Draw concentric guide rings (3 levels: 33%, 66%, 100%)
+  for (let level = 1; level <= 3; level++) {
+    const lr = r * (level / 3);
+    // Approximate circle with small rect at center (visual guide)
+    slide.addText("", {
+      x: cx - lr, y: cy - lr, w: lr * 2, h: lr * 2,
+      shape: "ellipse" as any,
+      line: { color: V.gridGray, width: 0.5 },
+      fill: { color: V.gridGray, transparency: 95 },
+    });
+  }
+
+  // Axis labels at each spoke endpoint
+  labels.forEach((label, i) => {
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    const lx = cx + (r + 0.15) * Math.cos(angle);
+    const ly = cy + (r + 0.15) * Math.sin(angle);
+    slide.addText(truncLabel(label), {
+      x: lx - 0.5, y: ly - 0.08, w: 1.0, h: 0.16,
+      fontSize: 8, fontFace: tokens.bodyFont,
+      color: V.labelGray, align: "center", valign: "middle",
+    });
+  });
+
+  // Data points for each dataset
+  data.datasets.forEach((ds, di) => {
+    const color = palette[di % palette.length];
+    const vals = ds.data.slice(0, n);
+    const maxVal = Math.max(...data.datasets.flatMap(d => d.data), 1);
+
+    // Draw dots at each data point
+    vals.forEach((val, i) => {
+      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+      const pr = (val / maxVal) * r;
+      const px = cx + pr * Math.cos(angle);
+      const py = cy + pr * Math.sin(angle);
+      const dotSize = 0.08;
+
+      slide.addText("", {
+        x: px - dotSize / 2, y: py - dotSize / 2,
+        w: dotSize, h: dotSize,
+        fill: { color },
+      });
+    });
+
+    // Dataset label
+    if (ds.label) {
+      slide.addText(ds.label, {
+        x: frame.x, y: frame.y + frame.h - 0.16 - di * 0.14,
+        w: 1.2, h: 0.14,
+        fontSize: 8, fontFace: tokens.bodyFont, color,
+      });
+    }
+  });
+}
+
+// ─── MEKKO / MARIMEKKO CHART ────────────────────────────────────
+
+function renderMekko(
+  slide: PptxGenJS.Slide,
+  data: ShapeChartData,
+  frame: ShapeChartFrame,
+  tokens: ShapeChartTokens,
+  options: ShapeChartOptions,
+): void {
+  // Mekko: variable-width stacked columns.
+  // First dataset = column widths (% of total).
+  // Remaining datasets = stack tiers within each column.
+  const labels = data.labels.slice(0, 6);
+  const n = labels.length;
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, V.green, V.red];
+
+  // First dataset provides column widths; others provide tier values
+  const widths = data.datasets[0]?.data.slice(0, n) ?? labels.map(() => 100 / n);
+  const totalWidth = widths.reduce((a, b) => a + b, 0) || 1;
+  const tiers = data.datasets.slice(1);
+  const axisH = 0.36;
+  const chartH = frame.h - axisH;
+  const gap = 0.04;
+
+  let offsetX = frame.x;
+
+  labels.forEach((label, ci) => {
+    const colW = ((widths[ci] / totalWidth) * frame.w) - gap;
+    if (colW < 0.1) { offsetX += colW + gap; return; }
+
+    // Stack tiers bottom-up
+    const tierVals = tiers.map(t => t.data[ci] ?? 0);
+    const tierTotal = tierVals.reduce((a, b) => a + b, 0) || 1;
+    let stackY = frame.y + chartH; // Start from bottom
+
+    tierVals.forEach((val, ti) => {
+      const tierH = (val / tierTotal) * chartH;
+      stackY -= tierH;
+      const color = palette[(ti + 1) % palette.length]; // Skip first (widths)
+
+      slide.addText("", {
+        x: offsetX, y: stackY, w: colW, h: tierH,
+        fill: { color, transparency: 25 },
+      });
+
+      // Label inside segment if tall enough
+      if (tierH > 0.18 && colW > 0.3) {
+        slide.addText(`${Math.round(val)}%`, {
+          x: offsetX, y: stackY, w: colW, h: tierH,
+          fontSize: 8, fontFace: tokens.bodyFont,
+          color: "FFFFFF", bold: true, align: "center", valign: "middle",
+        });
+      }
+    });
+
+    // Column label below
+    slide.addText(truncLabel(label), {
+      x: offsetX, y: frame.y + chartH + 0.02, w: colW, h: 0.16,
+      fontSize: 9, fontFace: tokens.bodyFont,
+      color: tokens.ink, align: "center", valign: "top",
+    });
+
+    // Width label (% of total)
+    slide.addText(`${Math.round(widths[ci])}%`, {
+      x: offsetX, y: frame.y + chartH + 0.16, w: colW, h: 0.14,
+      fontSize: 8, fontFace: tokens.bodyFont,
+      color: V.labelGray, align: "center", valign: "top",
+    });
+
+    offsetX += colW + gap;
+  });
+
+  // Legend for tiers
+  if (tiers.length > 0) {
+    renderLegend(slide, tiers.map((t, i) => ({
+      label: t.label || `Tier ${i + 1}`,
+      color: palette[(i + 1) % palette.length],
+    })), { x: frame.x, y: frame.y + frame.h - 0.02, w: frame.w }, tokens);
+  }
+}
+
+// ─── TIMELINE / ROADMAP / GANTT ─────────────────────────────────
+
+function renderTimeline(
+  slide: PptxGenJS.Slide,
+  data: ShapeChartData,
+  frame: ShapeChartFrame,
+  tokens: ShapeChartTokens,
+  options: ShapeChartOptions,
+): void {
+  // Labels = phase names, datasets[0] = start positions, datasets[1] = durations
+  // Simplified: treat each label as a sequential phase with proportional width
+  const labels = data.labels.slice(0, 6);
+  const n = labels.length;
+  const palette = tokens.chartPalette.length > 0 ? tokens.chartPalette : [tokens.accent, V.green, "6B8EE8"];
+  const phaseH = 0.32;
+  const labelH = 0.22;
+  const rowH = phaseH + labelH + 0.12;
+
+  // If we have duration data, use it for proportional widths
+  const durations = data.datasets[0]?.data.slice(0, n) ?? labels.map(() => 1);
+  const totalDur = durations.reduce((a, b) => a + b, 0) || 1;
+
+  // Timeline track line
+  slide.addText("", {
+    x: frame.x, y: frame.y + 0.14,
+    w: frame.w, h: 0.003,
+    fill: { color: V.axisGray },
+  });
+
+  let offsetX = frame.x;
+
+  labels.forEach((label, i) => {
+    const phaseW = (durations[i] / totalDur) * frame.w - 0.06;
+    const color = palette[i % palette.length];
+
+    // Phase bar
+    slide.addText("", {
+      x: offsetX, y: frame.y + 0.04,
+      w: phaseW, h: phaseH,
+      fill: { color, transparency: 50 },
+    });
+
+    // Phase name on bar
+    slide.addText(truncLabel(label), {
+      x: offsetX, y: frame.y + 0.04,
+      w: phaseW, h: phaseH,
+      fontSize: 9, fontFace: tokens.bodyFont,
+      color: tokens.ink, bold: true, align: "center", valign: "middle",
+    });
+
+    // Milestone dot at start
+    slide.addText("", {
+      x: offsetX - 0.03, y: frame.y + 0.12,
+      w: 0.06, h: 0.06,
+      fill: { color },
+    });
+
+    // Details below (from second dataset if available)
+    if (data.datasets[1]?.data[i] !== undefined) {
+      slide.addText(formatValue(data.datasets[1].data[i], options.unit), {
+        x: offsetX, y: frame.y + phaseH + 0.08,
+        w: phaseW, h: labelH,
+        fontSize: 8, fontFace: tokens.bodyFont,
+        color: V.labelGray, align: "center", valign: "top",
+      });
+    }
+
+    offsetX += phaseW + 0.06;
   });
 }
 

@@ -468,7 +468,7 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
   let palette = basePalette;
   if (highlightSet.size > 0 && chart.series.length === 1) {
     palette = labels.map((label) =>
-      highlightSet.has(label.toLowerCase()) ? norm(tokens.palette.accent) : "D1D5DB",
+      highlightSet.has(label.toLowerCase()) ? norm(tokens.palette.accent) : norm(tokens.palette.muted),
     );
   }
 
@@ -509,7 +509,7 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     catAxisLabelFontSize: 9,
     catAxisLabelFontFace: tokens.typography.bodyFont,
     catAxisLineShow: true,
-    catAxisLineColor: "D1D5DB",
+    catAxisLineColor: norm(tokens.palette.border),
 
     showValAxisTitle: rules.showValueAxis && rules.valueAxisTitle !== "none",
     valAxisTitle: chart.unit ?? "",
@@ -831,12 +831,12 @@ function renderMetrics(
       h: 0.20,
       fontSize: tokens.typography.kpiLabelSize,
       fontFace: tokens.typography.bodyFont,
-      color: "6B7280",
+      color: norm(tokens.palette.muted),
       bold: true,
       charSpacing: 1.0,
     });
 
-    // Value: large, bold, near-black
+    // Value: large, bold
     slide.addText(m.value, {
       x: cardX + 0.15,
       y: region.y + 0.30,
