@@ -72,8 +72,8 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
   switch (layoutId) {
     case "cover":
       return {
-        title: { x: ml, y: 2.4, w: cw, h: 2.0 },
-        subtitle: { x: ml, y: 4.6, w: cw, h: 0.6 },
+        title: { x: ml + 0.5, y: 2.6, w: 9.0, h: 1.8 },
+        subtitle: { x: ml + 0.5, y: 4.5, w: 8.0, h: 0.6 },
       };
 
     case "section-divider":

@@ -806,55 +806,85 @@ function buildV2DeckHtml(input: V2PdfInput): string {
   const positive = input.palettePositive ?? "4CC9A0";
   const negative = input.paletteNegative ?? "E8636F";
 
+  // Strip markdown from all text
+  const clean = (s: string) => s.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+
   const slideHtml = input.slides.map((s) => {
     const isCover = s.layoutId === "cover";
     const isDivider = s.layoutId === "section-divider";
 
     if (isCover) {
       return `<div class="slide cover" style="background:#${coverBg}">
+        <div class="cover-glow"></div>
         <div class="cover-content">
-          ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(s.kicker)}</div>` : ""}
-          <h1 style="color:#FFFFFF">${escHtml(s.title)}</h1>
-          ${s.subtitle ? `<p class="subtitle" style="color:#94A3B8">${escHtml(s.subtitle)}</p>` : ""}
+          ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
+          <h1 style="color:#FFFFFF">${escHtml(clean(s.title))}</h1>
+          ${s.subtitle ? `<p class="subtitle" style="color:#${muted}">${escHtml(clean(s.subtitle))}</p>` : ""}
         </div>
+        <div class="cover-bar" style="background:#${accent}"></div>
       </div>`;
     }
 
     if (isDivider) {
       return `<div class="slide divider" style="background:#${accent}">
-        <h1 style="color:#FFFFFF;text-align:center;margin-top:2.5in">${escHtml(s.title)}</h1>
-        ${s.subtitle ? `<p style="color:#E2E8F0;text-align:center">${escHtml(s.subtitle)}</p>` : ""}
+        <h1 style="color:#FFFFFF;text-align:center;margin-top:2.5in">${escHtml(clean(s.title))}</h1>
+        ${s.subtitle ? `<p style="color:#E2E8F0;text-align:center">${escHtml(clean(s.subtitle))}</p>` : ""}
+      </div>`;
+    }
+
+    // Skip empty slides (no content at all)
+    const hasContent = s.metrics?.length || s.body || s.bullets?.length || s.callout;
+    if (!hasContent && s.layoutId !== "summary") {
+      return `<div class="slide">
+        ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
+        <h2>${escHtml(clean(s.title))}</h2>
       </div>`;
     }
 
     // Content slide
     const metricsHtml = s.metrics?.length
-      ? `<div class="metrics">${s.metrics.map((m) =>
-          `<div class="metric-card">
-            <div class="metric-label">${escHtml(m.label)}</div>
-            <div class="metric-value" style="color:#${accent}">${escHtml(m.value)}</div>
-            ${m.delta ? `<div class="metric-delta">${escHtml(m.delta)}</div>` : ""}
-          </div>`
-        ).join("")}</div>`
+      ? `<div class="metrics">${s.metrics.slice(0, 4).map((m) => {
+          const isPositive = m.delta && !m.delta.startsWith("-");
+          const deltaColor = m.delta?.startsWith("-") ? negative : positive;
+          return `<div class="metric-card">
+            <div class="metric-label">${escHtml(clean(m.label))}</div>
+            <div class="metric-value" style="color:#${accent}">${escHtml(clean(m.value))}</div>
+            ${m.delta ? `<div class="metric-delta" style="color:#${deltaColor}">${escHtml(clean(m.delta))}</div>` : ""}
+          </div>`;
+        }).join("")}</div>`
       : "";
 
     const bulletsHtml = s.bullets?.length
-      ? `<ul>${s.bullets.map((b) => `<li>${escHtml(b)}</li>`).join("")}</ul>`
+      ? `<ul>${s.bullets.slice(0, 5).map((b) => `<li>${escHtml(clean(b))}</li>`).join("")}</ul>`
       : "";
 
     const calloutHtml = s.callout
-      ? `<div class="callout" style="border-left:3px solid #${accent};background:#${accent}11;padding:8px 12px">
-          <strong>${escHtml(s.callout.text)}</strong>
+      ? `<div class="callout">
+          <div class="callout-bar" style="background:#${accent}"></div>
+          <div class="callout-text">${escHtml(clean(s.callout.text))}</div>
         </div>`
       : "";
 
+    // Body: bold first sentence for scannability
+    let bodyHtml = "";
+    if (s.body) {
+      const cleanBody = clean(s.body);
+      const sentences = cleanBody.split(/(?<=[.!?;—:])\s+/);
+      if (sentences.length >= 2) {
+        bodyHtml = `<p class="body"><strong>${escHtml(sentences[0])}</strong> ${escHtml(sentences.slice(1).join(" "))}</p>`;
+      } else {
+        bodyHtml = `<p class="body">${escHtml(cleanBody)}</p>`;
+      }
+    }
+
     return `<div class="slide">
-      ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(s.kicker)}</div>` : ""}
-      <h2>${escHtml(s.title)}</h2>
+      ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
+      <h2>${escHtml(clean(s.title))}</h2>
       ${metricsHtml}
-      ${s.body ? `<p class="body">${escHtml(s.body)}</p>` : ""}
+      ${bodyHtml}
       ${bulletsHtml}
       ${calloutHtml}
+      <div class="slide-footer">Basquio | Confidential</div>
     </div>`;
   }).join("\n");
 
@@ -863,25 +893,47 @@ function buildV2DeckHtml(input: V2PdfInput): string {
 @page { size: 13.333in 7.5in; margin: 0; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: ${bodyFont}, Arial, sans-serif; background: #${bg}; color: #${text}; }
-.slide { width: 13.333in; height: 7.5in; padding: 0.5in 0.6in 0.4in; page-break-after: always; position: relative; overflow: hidden; background: #${surface}; }
+
+/* Slide container — matches PPTX 13.333×7.5" with same margins */
+.slide { width: 13.333in; height: 7.5in; padding: 0.5in 0.6in 0.5in; page-break-after: always; position: relative; overflow: hidden; background: #${surface}; }
 .slide:last-child { page-break-after: auto; }
+
+/* Cover — JSX-inspired with radial glow */
 .cover { display: flex; align-items: center; justify-content: center; }
-.cover-content { text-align: center; max-width: 10in; }
-.cover h1 { font-family: ${headingFont}, Arial, sans-serif; font-size: 36pt; font-weight: 700; margin-bottom: 0.3in; }
-.cover .subtitle { font-size: 16pt; }
+.cover-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 8in; height: 8in; border-radius: 50%; background: radial-gradient(circle, rgba(232,168,76,0.08) 0%, transparent 70%); pointer-events: none; }
+.cover-content { text-align: center; max-width: 10in; z-index: 1; }
+.cover h1 { font-family: ${headingFont}, Arial, sans-serif; font-size: 36pt; font-weight: 700; margin-bottom: 0.2in; line-height: 1.1; letter-spacing: -0.5pt; }
+.cover .subtitle { font-size: 14pt; color: #${muted}; line-height: 1.6; }
+.cover-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 4px; }
+
+/* Section divider */
 .divider { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .divider h1 { font-family: ${headingFont}, Arial, sans-serif; font-size: 32pt; font-weight: 700; }
-.kicker { font-size: 10pt; text-transform: uppercase; letter-spacing: 1.5pt; font-weight: 600; margin-bottom: 0.1in; }
-h2 { font-family: ${headingFont}, Arial, sans-serif; font-size: 24pt; font-weight: 700; color: #${text}; margin-bottom: 0.25in; }
-.body { font-size: 14pt; line-height: 1.5; color: #${muted}; max-width: 10in; }
-ul { padding-left: 0.3in; margin-top: 0.15in; }
-li { font-size: 14pt; line-height: 1.6; color: #${muted}; margin-bottom: 0.08in; }
-.metrics { display: flex; gap: 0.25in; margin-bottom: 0.25in; flex-wrap: wrap; }
-.metric-card { border: 1px solid #${border}; border-left: 3px solid currentColor; padding: 0.15in 0.2in; min-width: 2in; background: #${bg}; }
-.metric-label { font-size: 10pt; text-transform: uppercase; font-weight: 600; color: #${muted}; letter-spacing: 1pt; }
-.metric-value { font-size: 32pt; font-weight: 700; }
-.metric-delta { font-size: 12pt; font-weight: 600; }
-.callout { margin-top: 0.2in; font-size: 12pt; border-radius: 4px; }
+
+/* Typography — locked sizes matching PPTX */
+.kicker { font-size: 10pt; text-transform: uppercase; letter-spacing: 1.5pt; font-weight: 600; margin-bottom: 0.12in; }
+h2 { font-family: ${headingFont}, Arial, sans-serif; font-size: 22pt; font-weight: 700; color: #${text}; margin-bottom: 0.2in; line-height: 1.2; }
+.body { font-size: 12pt; line-height: 1.65; color: #${muted}; max-width: 10in; margin-bottom: 0.15in; }
+.body strong { color: #${text}; font-weight: 600; }
+
+/* Bullets — compact, readable */
+ul { padding-left: 0.25in; margin-top: 0.1in; margin-bottom: 0.15in; }
+li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in; list-style-type: disc; }
+
+/* Metrics — max 4, card style matching PPTX */
+.metrics { display: flex; gap: 0.15in; margin-bottom: 0.2in; }
+.metric-card { border: 1px solid #${border}; padding: 0.15in 0.2in; flex: 1; max-width: 3in; background: #${bg}; border-top: 2.5px solid #${accent}; }
+.metric-label { font-size: 9pt; text-transform: uppercase; font-weight: 600; color: #${muted}; letter-spacing: 1pt; margin-bottom: 0.04in; }
+.metric-value { font-size: 28pt; font-weight: 700; line-height: 1.1; }
+.metric-delta { font-size: 11pt; font-weight: 600; margin-top: 0.03in; }
+
+/* Callout — accent bar left, tinted background */
+.callout { margin-top: 0.2in; display: flex; align-items: stretch; border-radius: 0; overflow: hidden; background: #${accent}11; }
+.callout-bar { width: 3px; flex-shrink: 0; }
+.callout-text { padding: 0.1in 0.15in; font-size: 11pt; font-weight: 600; color: #${text}; line-height: 1.5; }
+
+/* Footer */
+.slide-footer { position: absolute; bottom: 0.15in; left: 0.6in; font-size: 8pt; color: #${muted}; letter-spacing: 0.5pt; }
 </style></head><body>${slideHtml}</body></html>`;
 }
 

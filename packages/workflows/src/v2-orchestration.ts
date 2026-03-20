@@ -3268,11 +3268,26 @@ export const basquioExport = inngest.createFunction(
         : 1;
       const chartCoverageOk = chartCoverageRatio >= 0.7; // At least 70% of chart-layout slides have valid charts
 
+      // Empty slide detection: slides with no body, bullets, metrics, callout, or chart
+      const contentLayouts = ["title-chart", "chart-split", "title-body", "title-bullets", "exec-summary", "metrics", "table", "comparison", "evidence-grid", "two-column"];
+      const emptySlides = slides.filter((s: any) => {
+        const lid = s.layoutId ?? s.layout_id;
+        if (!contentLayouts.includes(lid)) return false;
+        const hasBody = !!(s.body);
+        const hasBullets = Array.isArray(s.bullets) && s.bullets.length > 0;
+        const hasMetrics = Array.isArray(s.metrics) && s.metrics.length > 0;
+        const hasCallout = !!(s.callout);
+        const hasChart = !!(s.chartId ?? s.chart_id);
+        return !hasBody && !hasBullets && !hasMetrics && !hasCallout && !hasChart;
+      });
+      const noEmptySlides = emptySlides.length === 0;
+
       const qaChecks = [
         { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
         { name: "slide_count_positive", passed: slides.length > 0, detail: `${slides.length} slides` },
         { name: "pptx_valid_zip", passed: hasValidPptxHeader },
         { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
+        { name: "no_empty_slides", passed: noEmptySlides, detail: emptySlides.length > 0 ? `${emptySlides.length} empty content slide(s)` : "all slides have content" },
       ];
 
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
