@@ -634,7 +634,9 @@ function renderTitle(
   tokens: BrandTokens,
   isCover: boolean,
 ): void {
-  const processed = processNewlines(text);
+  // Strip markdown bold/italic from titles
+  const cleaned = text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+  const processed = processNewlines(cleaned);
   slide.addText(processed, {
     x: region.x,
     y: region.y,
@@ -682,7 +684,9 @@ function renderBody(
   speakerNotesOverflow?: string[],
   maxWords?: number,
 ): void {
-  const processed = processNewlines(text);
+  // Strip markdown bold/italic markers (** and *)
+  const cleaned = text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+  const processed = processNewlines(cleaned);
   const { truncated, overflow } = truncateWords(processed, maxWords ?? 80);
   if (overflow && speakerNotesOverflow) {
     speakerNotesOverflow.push(`[Overflow from body]: ${overflow}`);
@@ -767,7 +771,7 @@ function renderBullets(
 ): void {
   const maxBullets = maxBulletsOverride ?? 4;
   const textProps: PptxGenJS.TextProps[] = bullets.slice(0, maxBullets).map((b) => ({
-    text: processNewlines(b),
+    text: processNewlines(b.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1")),
     options: {
       bullet: { indent: 12 },
       fontSize: tokens.typography.bulletSize,
@@ -795,13 +799,13 @@ function renderMetrics(
   region: R,
   tokens: BrandTokens,
 ): void {
-  const count = Math.min(metrics.length, 5);
+  const count = Math.min(metrics.length, 4); // Max 4 KPI cards per row for visual clarity
   const gap = 0.15;
   const cardW = (region.w - gap * (count - 1)) / count;
   const cardH = Math.min(region.h, 1.3);
   const accentColor = norm(tokens.palette.accent);
 
-  metrics.slice(0, 5).forEach((m, i) => {
+  metrics.slice(0, 4).forEach((m, i) => {
     const cardX = region.x + i * (cardW + gap);
 
     // Card background: sharp corners, surface fill, thin border
@@ -1022,8 +1026,9 @@ function renderCallout(
     fill: { color: norm(accentColor) },
   });
 
-  // Text: bold, dark gray (ink), no emoji markers
-  slide.addText(processNewlines(text), {
+  // Text: bold, ink color, strip markdown markers
+  const cleanText = text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+  slide.addText(processNewlines(cleanText), {
     x: region.x + 0.16,
     y: region.y + 0.08,
     w: region.w - 0.24,
@@ -1450,6 +1455,9 @@ function renderContentSlide(
     case "table": {
       if (chart && regions.table) {
         renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
+      } else if (!s.body && !s.bullets && s.callout && regions.callout) {
+        // Empty table slide — render only callout (skip empty content area)
+        break;
       } else if (s.body && regions.table) {
         // Parse pipe-delimited body into a real table if it contains | separators
         const bodyText = processNewlines(s.body);
