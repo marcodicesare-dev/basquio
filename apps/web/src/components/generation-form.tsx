@@ -509,35 +509,10 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
               </article>
 
               <article className="review-card stack">
-                <p className="artifact-kind">Output format</p>
-                <div className="radio-group">
-                  <label className="radio-option">
-                    <input
-                      type="radio"
-                      name="exportMode"
-                      value="powerpoint-native"
-                      checked={exportMode === "powerpoint-native"}
-                      onChange={() => setExportMode("powerpoint-native")}
-                    />
-                    <span>
-                      <strong>Microsoft PowerPoint</strong>
-                      <small className="muted">Native editable charts. Best visual fidelity in PowerPoint.</small>
-                    </span>
-                  </label>
-                  <label className="radio-option">
-                    <input
-                      type="radio"
-                      name="exportMode"
-                      value="universal-compatible"
-                      checked={exportMode === "universal-compatible"}
-                      onChange={() => setExportMode("universal-compatible")}
-                    />
-                    <span>
-                      <strong>Google Slides / Keynote</strong>
-                      <small className="muted">Universal charts that work everywhere. Fully editable shapes.</small>
-                    </span>
-                  </label>
-                </div>
+                <p className="artifact-kind">Output</p>
+                <p className="muted" style={{ fontSize: "0.9rem" }}>
+                  PPTX + PDF — works in PowerPoint, Google Slides, and Keynote.
+                </p>
               </article>
             </div>
           </section>
