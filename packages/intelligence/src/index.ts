@@ -66,3 +66,13 @@ export {
   type DomainKnowledgeStage,
   type DomainKnowledgePackId,
 } from "./domain-knowledge";
+
+export {
+  resolveColumns,
+  resolveColumnValue,
+  resolveColumnKey,
+  buildColumnReport,
+  type ColumnRegistry,
+  type ColumnRegistryEntry,
+  type ResolvedColumn,
+} from "./column-registry";

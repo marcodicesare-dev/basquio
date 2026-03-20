@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, type AnalystResult } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -1070,9 +1070,9 @@ async function renderContactSheetForRun(runId: string): Promise<{
 // so the chart builder can run without any LLM calls.
 
 /**
- * Case-insensitive column resolver. LLM-generated column names may differ in casing
- * from actual data headers (e.g. "GROCERY" vs "Grocery"). This builds a lookup map
- * once per dataset and resolves any casing variant to the real column name.
+ * Column resolution uses the NIQ Column Registry for semantic matching.
+ * Falls back to case-insensitive matching for non-FMCG datasets.
+ * The registry handles: case, punctuation, Italian/English aliases, semantic keys.
  */
 function buildColumnMap(row: Record<string, unknown>): Map<string, string> {
   const map = new Map<string, string>();
@@ -1082,21 +1082,44 @@ function buildColumnMap(row: Record<string, unknown>): Map<string, string> {
   return map;
 }
 
-function resolveColumn(row: Record<string, unknown>, col: string, colMap?: Map<string, string>): unknown {
+function resolveColumnLocal(row: Record<string, unknown>, col: string, colMap?: Map<string, string>, registry?: ColumnRegistry): unknown {
   // Direct lookup first (fast path)
   const trimmed = col.trim();
   if (trimmed in row) return row[trimmed];
+
+  // Registry-based resolution (handles Italian aliases, semantic keys, etc.)
+  if (registry) {
+    const val = resolveColumnValue(row, trimmed, registry);
+    if (val !== undefined) return val;
+  }
+
   // Case-insensitive fallback
   const map = colMap ?? buildColumnMap(row);
   const realKey = map.get(trimmed.toLowerCase());
   return realKey ? row[realKey] : undefined;
 }
 
-function v1EvaluateCondition(row: Record<string, unknown>, condition: string, colMap?: Map<string, string>): boolean {
+function resolveColumnKeyLocal(row: Record<string, unknown>, col: string, colMap?: Map<string, string>, registry?: ColumnRegistry): string | undefined {
+  const trimmed = col.trim();
+  if (trimmed in row) return trimmed;
+
+  // Registry-based key resolution
+  if (registry) {
+    const key = resolveColumnKey(row, trimmed, registry);
+    if (key) return key;
+  }
+
+  // Case-insensitive fallback
+  const map = colMap ?? buildColumnMap(row);
+  const realKey = map.get(trimmed.toLowerCase());
+  return realKey;
+}
+
+function v1EvaluateCondition(row: Record<string, unknown>, condition: string, colMap?: Map<string, string>, registry?: ColumnRegistry): boolean {
   const match = condition.trim().match(/^"?(.+?)"?\s*(=|!=|<>|>|>=|<|<=|LIKE|IN)\s*(.+)$/i);
   if (!match) return false;
   const [, col, op, rawVal] = match;
-  const rowVal = resolveColumn(row, col, colMap);
+  const rowVal = resolveColumnLocal(row, col, colMap, registry);
   const val = rawVal.trim().replace(/^['"]|['"]$/g, "");
   // Case-insensitive string comparison — "AFFINITY" matches "Affinity"
   const rowStr = String(rowVal ?? "").toLowerCase();
@@ -1117,7 +1140,7 @@ function v1EvaluateCondition(row: Record<string, unknown>, condition: string, co
   }
 }
 
-function v1ApplyFilter(rows: Record<string, unknown>[], filterExpr: string): Record<string, unknown>[] {
+function v1ApplyFilter(rows: Record<string, unknown>[], filterExpr: string, registry?: ColumnRegistry): Record<string, unknown>[] {
   if (!filterExpr || filterExpr === "none") return rows;
   const orBranches = filterExpr.split(/\s+OR\s+/i);
   // Build column map once from first row, reuse for all rows
@@ -1125,7 +1148,7 @@ function v1ApplyFilter(rows: Record<string, unknown>[], filterExpr: string): Rec
   return rows.filter((row) =>
     orBranches.some((branch) => {
       const andConditions = branch.split(/\s+AND\s+/i);
-      return andConditions.every((condition) => v1EvaluateCondition(row, condition, colMap));
+      return andConditions.every((condition) => v1EvaluateCondition(row, condition, colMap, registry));
     }),
   );
 }
@@ -1148,13 +1171,14 @@ function v1GroupAndAggregate(
 ): { categories: string[]; series: Array<{ name: string; values: number[] }>; xAxis: string; data: Record<string, unknown>[] } {
   const { dimensions, measures, aggregation, sort, limit } = dataSpec;
 
-  // Build column map once from first row for case-insensitive resolution
+  // Build column map + registry for robust column resolution
   const colMap = rows.length > 0 ? buildColumnMap(rows[0]) : new Map<string, string>();
+  const registry = rows.length > 0 ? resolveColumns(Object.keys(rows[0])) : new Map() as ColumnRegistry;
 
-  // Group by dimensions (case-insensitive column access)
+  // Group by dimensions (registry-aware column access)
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const row of rows) {
-    const key = dimensions.map((d) => String(resolveColumn(row, d, colMap) ?? "")).join(" | ");
+    const key = dimensions.map((d) => String(resolveColumnLocal(row, d, colMap, registry) ?? "")).join(" | ");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
@@ -1165,7 +1189,7 @@ function v1GroupAndAggregate(
     const values: Record<string, number> = {};
     for (const measure of measures) {
       const nums = groupRows.map((r) => {
-        const v = resolveColumn(r, measure, colMap);
+        const v = resolveColumnLocal(r, measure, colMap, registry);
         return typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
       }).filter((n) => !isNaN(n));
 
@@ -2577,6 +2601,58 @@ function validateAndFixPlan(plan: V1DeckPlan, analysisFindings?: Array<{ title: 
     }
   }
 
+  // ── Rule 7: Exhibit Selection Validation (NIQ StoryMasters as code, not prompt) ──
+  // Deterministic chart-type enforcement: match analytical question → allowed chart types.
+  // This is $0 and prevents the LLM from choosing wrong chart types.
+  const EXHIBIT_RULES: Array<{
+    questionPattern: RegExp;
+    forbiddenCharts: string[];
+    fallback: string;
+  }> = [
+    // CY vs PY comparisons (2 periods) → grouped_bar or waterfall, NEVER line
+    { questionPattern: /anno\s*prec|prior|py|yoy|year.over|vs\s*(last|prev)/i,
+      forbiddenCharts: ["line", "area"],
+      fallback: "grouped_bar" },
+    // Size/ranking questions → horizontal_bar, NEVER pie/line
+    { questionPattern: /how\s*big|rank|top\s*\d|largest|smallest|most|least/i,
+      forbiddenCharts: ["pie", "line"],
+      fallback: "horizontal_bar" },
+    // Mix/composition → stacked_bar_100
+    { questionPattern: /mix|composition|share.*break|breakdown|split/i,
+      forbiddenCharts: ["line", "scatter"],
+      fallback: "stacked_bar_100" },
+    // Growth/decline → horizontal_bar
+    { questionPattern: /grow|decline|change|shift|movement/i,
+      forbiddenCharts: ["pie", "scatter"],
+      fallback: "horizontal_bar" },
+    // Trend over time (4+ periods) → line
+    { questionPattern: /trend|over\s*time|evolution|trajectory|monthly|weekly|quarterly/i,
+      forbiddenCharts: ["pie", "doughnut"],
+      fallback: "line" },
+    // Distribution vs velocity → scatter
+    { questionPattern: /distribut.*veloc|velocity.*distribut|dist.*ros|ros.*dist/i,
+      forbiddenCharts: ["line", "pie"],
+      fallback: "scatter" },
+  ];
+
+  for (const chart of dedupedCharts) {
+    const textToMatch = `${chart.title ?? ""} ${chart.intent ?? ""}`.trim();
+    if (!textToMatch) continue;
+    for (const rule of EXHIBIT_RULES) {
+      if (rule.questionPattern.test(textToMatch)) {
+        if (rule.forbiddenCharts.includes(chart.chartType)) {
+          console.warn(
+            `[validateAndFixPlan] Rule 7: corrected chart "${chart.chartId}" ` +
+            `from "${chart.chartType}" → "${rule.fallback}" ` +
+            `(matched: ${rule.questionPattern.source})`
+          );
+          chart.chartType = rule.fallback;
+        }
+        break; // first matching pattern wins
+      }
+    }
+  }
+
   return { ...plan, slides: deduped, charts: dedupedCharts, targetSlideCount: deduped.length };
 }
 
@@ -2880,8 +2956,11 @@ Return a V1DeckPlan with slides and charts.`,
             continue;
           }
 
-          // Apply filter
-          const filtered = v1ApplyFilter(rows, planned.dataSpec.filter);
+          // Build column registry once per sheet for semantic resolution
+          const sheetRegistry = resolveColumns(Object.keys(rows[0]));
+
+          // Apply filter (registry-aware: handles GROCERY vs Grocery, V. Valore vs V.Valore, etc.)
+          const filtered = v1ApplyFilter(rows, planned.dataSpec.filter, sheetRegistry);
           if (filtered.length === 0) {
             chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows after filter: ${planned.dataSpec.filter}` });
             continue;
