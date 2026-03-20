@@ -75,8 +75,10 @@ type BrandTokens = {
   palette: {
     ink: string;
     muted: string;
+    dim: string;
     border: string;
     surface: string;
+    card: string;
     bg: string;
     accent: string;
     accentLight: string;
@@ -89,6 +91,7 @@ type BrandTokens = {
   typography: {
     headingFont: string;
     bodyFont: string;
+    monoFont: string;
     coverTitleSize: number;
     titleSize: number;
     subtitleSize: number;
@@ -120,31 +123,34 @@ const DEFAULT_CHART_PALETTE = [
 
 const DEFAULT_TOKENS: BrandTokens = {
   palette: {
-    ink: "F2F0EB",        // Light text on dark (JSX: text)
-    muted: "A09FA6",      // Secondary text (JSX: textSec)
-    border: "272630",     // Subtle borders on dark (JSX: border)
-    surface: "13121A",    // Card/table bg (JSX: surface)
-    bg: "13121A",         // Slide background (JSX: surface)
-    accent: "E8A84C",     // Amber — warm, premium (JSX: amber)
-    accentLight: "1A1922", // Dark tint for callout backgrounds (JSX: surfaceAlt)
-    positive: "4CC9A0",   // Green — growth, opportunity (JSX: green)
-    negative: "E8636F",   // Red — decline, risk (JSX: red)
-    coverBg: "0A090D",    // Deepest black for cover (JSX: bg)
+    ink: "F2F0EB",        // JSX: text
+    muted: "A09FA6",      // JSX: textSec
+    dim: "6B6A72",        // JSX: textDim — metadata, labels, source notes
+    border: "272630",     // JSX: border
+    surface: "13121A",    // JSX: surface — slide content bg
+    card: "16151E",       // JSX: card — KPI card, chart container bg
+    bg: "0A090D",         // JSX: bg — cover slide deepest black
+    accent: "E8A84C",     // JSX: amber
+    accentLight: "1A1922", // JSX: surfaceAlt
+    positive: "4CC9A0",   // JSX: green
+    negative: "E8636F",   // JSX: red
+    coverBg: "0A090D",    // JSX: bg
     calloutGreen: "4CC9A0",
     calloutOrange: "E8A84C",
   },
   typography: {
-    headingFont: "Arial",  // Universal safe — zero substitution in PowerPoint, Google Slides, Keynote
-    bodyFont: "Arial",     // Premium look from type scale + spacing + palette, not font choice
-    coverTitleSize: 36,    // Agency-grade: large, commanding
-    titleSize: 24,         // Action titles — readable at distance
-    subtitleSize: 14,      // Clear secondary info
-    bodySize: 14,          // Legible body copy
-    bulletSize: 14,        // Same as body
-    chartTitleSize: 12,    // Bold chart titles
-    sourceSize: 8,         // Source notes: readable but unobtrusive
-    kpiValueSize: 44,      // Hero metrics: large, bold, accent-colored
-    kpiLabelSize: 10,      // KPI labels: uppercase, semibold
+    headingFont: "Georgia",      // Serif — safe fallback for Playfair Display
+    bodyFont: "Arial",           // Sans — safe fallback for DM Sans
+    monoFont: "Courier New",     // Mono — safe fallback for JetBrains Mono
+    coverTitleSize: 40,          // JSX: 56px → scaled for PPTX
+    titleSize: 22,               // JSX: 24px → action titles
+    subtitleSize: 14,            // JSX: 12px body → slightly larger for PPTX readability
+    bodySize: 12,                // JSX: 12px → consulting-grade body
+    bulletSize: 12,              // Same as body
+    chartTitleSize: 12,          // JSX: 14px card title → scaled
+    sourceSize: 9,               // JSX: 9pt mono source notes
+    kpiValueSize: 30,            // JSX: 30px serif large number
+    kpiLabelSize: 9,             // JSX: 9px mono uppercase
   },
   chartPalette: ["E8A84C", "4CC9A0", "6B8EE8", "9B7AE0", "E8636F", "5AC4D4", "E8B86C", "7ABBE0"],
 };
@@ -154,8 +160,10 @@ const OBSIDIAN_TOKENS: BrandTokens = {
   palette: {
     ink: "F8FAFC",        // Light text on dark
     muted: "94A3B8",      // Slate 400
+    dim: "64748B",        // Slate 700
     border: "334155",     // Slate 700
     surface: "1E293B",    // Slate 800 (card bg on dark)
+    card: "1E293B",       // Slate 800
     bg: "0F172A",         // Slate 900 (main bg)
     accent: "F59E0B",     // Amber 500 (warm accent on dark)
     accentLight: "451A03", // Amber 950 (subtle on dark)
@@ -168,6 +176,7 @@ const OBSIDIAN_TOKENS: BrandTokens = {
   typography: {
     headingFont: "Arial",
     bodyFont: "Arial",
+    monoFont: "Courier New",
     coverTitleSize: 36,
     titleSize: 24,
     subtitleSize: 14,
@@ -186,8 +195,10 @@ const BOWER_TOKENS: BrandTokens = {
   palette: {
     ink: "1A1A2E",        // Near-black with warmth
     muted: "6B7280",      // Gray 500
+    dim: "9CA3AF",        // Gray 400
     border: "D1D5DB",     // Gray 300
     surface: "F9FAFB",    // Gray 50
+    card: "F9FAFB",       // Gray 50
     bg: "FFFFFF",
     accent: "1F2937",     // Gray 800 (McKinsey-style: authority from contrast, not color)
     accentLight: "F3F4F6", // Gray 100
@@ -200,6 +211,7 @@ const BOWER_TOKENS: BrandTokens = {
   typography: {
     headingFont: "Georgia",  // Serif heading = consulting classic (safe on all platforms)
     bodyFont: "Arial",
+    monoFont: "Courier New",
     coverTitleSize: 36,
     titleSize: 24,
     subtitleSize: 14,
@@ -218,8 +230,10 @@ const SIGNAL_TOKENS: BrandTokens = {
   palette: {
     ink: "111827",        // Gray 900
     muted: "6B7280",      // Gray 500
+    dim: "9CA3AF",        // Gray 400
     border: "E5E7EB",     // Gray 200
     surface: "F3F4F6",    // Gray 100
+    card: "F3F4F6",       // Gray 100
     bg: "FFFFFF",
     accent: "7C3AED",     // Violet 600 (distinctive for data viz)
     accentLight: "EDE9FE", // Violet 100
@@ -232,6 +246,7 @@ const SIGNAL_TOKENS: BrandTokens = {
   typography: {
     headingFont: "Arial",
     bodyFont: "Arial",
+    monoFont: "Courier New",
     coverTitleSize: 36,
     titleSize: 22,         // Slightly smaller — more room for data
     subtitleSize: 12,
@@ -250,8 +265,10 @@ const VERSO_TOKENS: BrandTokens = {
   palette: {
     ink: "18181B",        // Zinc 900
     muted: "71717A",      // Zinc 500
+    dim: "A1A1AA",        // Zinc 400
     border: "E4E4E7",     // Zinc 200
     surface: "FAFAFA",    // Zinc 50
+    card: "FAFAFA",       // Zinc 50
     bg: "FFFFFF",
     accent: "E11D48",     // Rose 600 (bold, energetic)
     accentLight: "FFE4E6", // Rose 100
@@ -264,6 +281,7 @@ const VERSO_TOKENS: BrandTokens = {
   typography: {
     headingFont: "Arial",
     bodyFont: "Arial",
+    monoFont: "Courier New",
     coverTitleSize: 40,    // Bolder, larger cover
     titleSize: 26,         // Bolder titles
     subtitleSize: 14,
@@ -401,12 +419,12 @@ function renderKicker(
     y: useDirectRegion ? region.y : region.y - 0.25,
     w: region.w,
     h: useDirectRegion ? region.h : 0.2,
-    fontSize: 10,          // Agency-grade: 10pt bold uppercase
-    fontFace: tokens.typography.bodyFont,
+    fontSize: 9,
+    fontFace: tokens.typography.monoFont,
     color: norm(tokens.palette.accent),
     bold: true,
     margin: 0,
-    charSpacing: 1.5,      // +1.5pt tracking for ALL CAPS
+    charSpacing: 1.5,
   });
 }
 
@@ -800,71 +818,70 @@ function renderMetrics(
   region: R,
   tokens: BrandTokens,
 ): void {
-  const count = Math.min(metrics.length, 4); // Max 4 KPI cards per row for visual clarity
-  const gap = 0.15;
+  const count = Math.min(metrics.length, 6); // JSX: max 6 KPIs
+  const gap = 0.12;
   const cardW = (region.w - gap * (count - 1)) / count;
-  const cardH = Math.min(region.h, 1.3);
-  const accentColor = norm(tokens.palette.accent);
+  const cardH = Math.min(region.h, 1.2);
 
-  metrics.slice(0, 4).forEach((m, i) => {
+  metrics.slice(0, 6).forEach((m, i) => {
     const cardX = region.x + i * (cardW + gap);
 
-    // Card background: sharp corners, surface fill, thin border
-    slide.addText("", { // addText for Keynote compat (addShape invisible)
+    // Card background: card fill, thin border (JSX: Card component)
+    slide.addText("", {
       x: cardX,
       y: region.y,
       w: cardW,
       h: cardH,
-      fill: { color: norm(tokens.palette.surface ?? "13121A") },
+      fill: { color: norm(tokens.palette.card ?? tokens.palette.surface) },
       line: { color: norm(tokens.palette.border), pt: 0.5 },
     });
 
-    // Left accent bar (3-4px wide, full card height)
-    slide.addText("", { // addText for Keynote compat (addShape invisible)
+    // TOP semantic bar: 2.5px, green/red (JSX: position absolute top, height 2.5)
+    const isPositive = m.delta ? (m.delta.startsWith("+") || m.delta.includes("↑")) : true;
+    slide.addText("", {
       x: cardX,
       y: region.y,
-      w: 0.04,
-      h: cardH,
-      fill: { color: accentColor },
+      w: cardW,
+      h: 0.035,  // ~2.5px at 72dpi
+      fill: { color: norm(isPositive ? tokens.palette.positive : tokens.palette.negative), transparency: 40 },
     });
 
-    // Label: ALL CAPS, bold, muted gray
+    // Label: monospace, ALL CAPS, dim color, 1.5 letter-spacing (JSX: T.mono 9px textDim)
     slide.addText(m.label.toUpperCase(), {
       x: cardX + 0.15,
       y: region.y + 0.08,
       w: cardW - 0.25,
-      h: 0.20,
+      h: 0.18,
       fontSize: tokens.typography.kpiLabelSize,
-      fontFace: tokens.typography.bodyFont,
-      color: norm(tokens.palette.muted),
-      bold: true,
-      charSpacing: 1.0,
+      fontFace: tokens.typography.monoFont,
+      color: norm(tokens.palette.dim ?? tokens.palette.muted),
+      bold: false,
+      charSpacing: 1.5,
     });
 
-    // Value: large, bold
+    // Value: serif, large, bold (JSX: T.serif 30px text, letterSpacing -1)
+    const valueSize = count <= 3 ? tokens.typography.kpiValueSize : count <= 4 ? 26 : 22;
     slide.addText(m.value, {
       x: cardX + 0.15,
-      y: region.y + 0.30,
+      y: region.y + 0.28,
       w: cardW - 0.25,
-      h: 0.50,
-      fontSize: count <= 3 ? tokens.typography.kpiValueSize : count <= 4 ? 32 : 24,
+      h: 0.45,
+      fontSize: valueSize,
       fontFace: tokens.typography.headingFont,
       bold: true,
       color: norm(tokens.palette.ink),
       valign: "middle",
     });
 
-    // Delta: plain text, semibold, green/red
+    // Delta + sub on same row (JSX: delta then sub with marginLeft 8)
     if (m.delta) {
-      const isPositive = m.delta.startsWith("+") || m.delta.includes("up") || m.delta.includes("↑");
       const deltaColor = isPositive ? norm(tokens.palette.positive) : norm(tokens.palette.negative);
-
       slide.addText(m.delta, {
         x: cardX + 0.15,
-        y: region.y + 0.85,
-        w: cardW - 0.25,
-        h: 0.22,
-        fontSize: 10,
+        y: region.y + 0.78,
+        w: cardW * 0.45,
+        h: 0.20,
+        fontSize: 11,
         fontFace: tokens.typography.bodyFont,
         bold: true,
         color: deltaColor,
@@ -903,9 +920,9 @@ function renderTable(
       valign: "middle" as const,
       margin: [2, 4, 2, 4],
       border: [
-        { type: "solid" as const, pt: 0.5, color: "E5E7EB" },
+        { type: "solid" as const, pt: 0.5, color: norm(tokens.palette.border) },
         { type: "none" as const },
-        { type: "solid" as const, pt: 0.5, color: "E5E7EB" },
+        { type: "solid" as const, pt: 0.5, color: norm(tokens.palette.border) },
         { type: "none" as const },
       ],
     },
@@ -953,7 +970,7 @@ function renderTable(
           border: [
             { type: "none" as const },
             { type: "none" as const },
-            { type: "solid" as const, pt: 0.5, color: "E5E7EB" },
+            { type: "solid" as const, pt: 0.5, color: norm(tokens.palette.border) },
             { type: "none" as const },
           ],
           margin: [2, 4, 2, 4],
@@ -1194,7 +1211,7 @@ function renderChartElement(
       w: chartRegion.w,
       h: 0.16,
       fontSize: tokens.typography.sourceSize,
-      fontFace: tokens.typography.bodyFont,
+      fontFace: tokens.typography.monoFont,
       color: norm(tokens.palette.muted),
     });
   }
@@ -1208,53 +1225,73 @@ function renderCoverSlide(
   s: V2SlideRow,
   tokens: BrandTokens,
 ): void {
-  const regions = getLayoutRegions("cover");
-
-  // Premium cover: accent shape decoration (right side geometric element)
-  // Use addText("") instead of addShape for Keynote compatibility
+  // Subtle amber glow simulation — large centered translucent amber rectangle
   slide.addText("", {
-    x: SLIDE_W - 0.08,
-    y: 0,
-    w: 0.08,
-    h: SLIDE_H,
-    fill: { color: norm(tokens.palette.accent) },
+    x: SLIDE_W / 2 - 3.5,
+    y: SLIDE_H / 2 - 2.5,
+    w: 7,
+    h: 5,
+    fill: { color: norm(tokens.palette.accent), transparency: 92 },
   });
 
-  // Thin accent line above title for visual anchor
-  slide.addText("", {
-    x: regions.title.x,
-    y: regions.title.y - 0.15,
-    w: 1.5,
-    h: 0.04,
-    fill: { color: norm(tokens.palette.accent) },
-  });
-
-  // Kicker on cover (e.g., company name, report type)
+  // Kicker pill: monospace, small, with subtle border (JSX: Pill component)
   if (s.kicker) {
+    const kickerY = SLIDE_H / 2 - 1.8;
     slide.addText(s.kicker.toUpperCase(), {
-      x: regions.title.x,
-      y: regions.title.y - 0.5,
-      w: regions.title.w,
-      h: 0.3,
-      fontSize: 10,
-      fontFace: tokens.typography.bodyFont,
+      x: SLIDE_W / 2 - 1.5,
+      y: kickerY,
+      w: 3.0,
+      h: 0.28,
+      fontSize: 9,
+      fontFace: tokens.typography.monoFont,
       color: norm(tokens.palette.accent),
       bold: true,
       charSpacing: 1.5,
+      align: "center",
+      valign: "middle",
+      line: { color: norm(tokens.palette.accent), pt: 0.5, transparency: 70 },
     });
   }
 
-  renderTitle(slide, s.title, regions.title, tokens, true);
-  if (s.subtitle && regions.subtitle) {
-    renderSubtitle(slide, s.subtitle, regions.subtitle, tokens, true);
+  // Title: serif, centered, large (JSX: Playfair Display 56px)
+  const titleY = SLIDE_H / 2 - 1.2;
+  slide.addText(processNewlines(s.title), {
+    x: 1.5,
+    y: titleY,
+    w: SLIDE_W - 3.0,
+    h: 1.6,
+    fontFace: tokens.typography.headingFont,
+    fontSize: tokens.typography.coverTitleSize,
+    bold: true,
+    color: norm(tokens.palette.ink),
+    align: "center",
+    valign: "middle",
+    lineSpacingMultiple: 1.08,
+    fit: "shrink" as const,
+  });
+
+  // Subtitle: sans, centered, muted (JSX: DM Sans 16px textSec)
+  if (s.subtitle) {
+    slide.addText(processNewlines(s.subtitle), {
+      x: 2.0,
+      y: titleY + 1.7,
+      w: SLIDE_W - 4.0,
+      h: 0.8,
+      fontFace: tokens.typography.bodyFont,
+      fontSize: 14,
+      color: norm(tokens.palette.muted),
+      align: "center",
+      valign: "top",
+      lineSpacingMultiple: 1.5,
+    });
   }
 
-  // Bottom gradient bar with accent color (addText for Keynote compat)
+  // Bottom accent bar (JSX: thin amber bar at very bottom)
   slide.addText("", {
     x: 0,
-    y: SLIDE_H - 0.06,
+    y: SLIDE_H - 0.04,
     w: SLIDE_W,
-    h: 0.06,
+    h: 0.04,
     fill: { color: norm(tokens.palette.accent) },
   });
 }
@@ -1612,7 +1649,7 @@ export async function renderV2PptxArtifact(
 
   pptx.defineSlideMaster({
     title: "BASQUIO_MASTER",
-    background: { fill: norm(tokens.palette.bg) },
+    background: { fill: norm(tokens.palette.surface) },
     objects: [
       // Footer hairline rule — 0.5pt gray line at y=7.1"
       { rect: { x: 0.6, y: 7.1, w: 12.133, h: 0.007, fill: { color: norm(tokens.palette.border) } } },
@@ -1626,7 +1663,7 @@ export async function renderV2PptxArtifact(
             w: 6,
             h: 0.25,
             fontSize: 8,
-            fontFace: tokens.typography.bodyFont,
+            fontFace: tokens.typography.monoFont,
             color: norm(tokens.palette.muted),
           },
         },
@@ -1638,7 +1675,7 @@ export async function renderV2PptxArtifact(
       w: 0.733,
       h: 0.25,
       fontSize: 8,
-      fontFace: tokens.typography.bodyFont,
+      fontFace: tokens.typography.monoFont,
       color: "94A3B8",
       align: "right",
     },

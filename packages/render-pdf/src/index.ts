@@ -2,6 +2,7 @@ import { PDFDocument, PDFPage, StandardFonts, rgb, type PDFFont } from "pdf-lib"
 
 import { renderChartSvg } from "@basquio/render-charts";
 import type { BinaryArtifact, ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
+import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
 
 type RenderPdfInput = {
   deckTitle: string;
@@ -1002,7 +1003,7 @@ function escHtml(s: string): string {
 // Generates simple SVG charts for PDF. Not Recharts-level but functional
 // and visually consistent with the PPTX shape-built charts.
 
-const CHART_PALETTE = ["E8A84C", "4CC9A0", "6B8EE8", "9B7AE0", "E8636F", "5AC4D4", "E8B86C", "7ABBE0"];
+const CHART_PALETTE = BASQUIO_CHART_PALETTE;
 
 /** Format numeric values for chart labels — same logic as PPTX shape-charts */
 function fmtVal(v: number, unit?: string): string {

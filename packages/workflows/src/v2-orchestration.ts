@@ -2346,10 +2346,115 @@ export const basquioUnderstand = inngest.createFunction(
 );
 
 /**
+ * Deterministic plan validation — $0 cost, runs after LLM plan generation.
+ * Enforces structural rules that the LLM doesn't reliably follow.
+ */
+function validateAndFixPlan(plan: V1DeckPlan): V1DeckPlan {
+  const slides = [...plan.slides].sort((a, b) => a.position - b.position);
+  const charts = [...plan.charts];
+  const chartIds = new Set(charts.map(c => c.chartId));
+
+  // ── Rule 1: Max 1 memo slide (title-body or title-bullets without chart) ──
+  const memoLayouts = new Set(["title-body", "title-bullets"]);
+  const memoSlides = slides.filter(s =>
+    memoLayouts.has(s.layout) && !s.chartId
+  );
+  if (memoSlides.length > 1) {
+    // Keep first memo, convert rest to chart-split
+    for (const memo of memoSlides.slice(1)) {
+      memo.layout = "chart-split";
+    }
+  }
+
+  // ── Rule 2: Every chart-layout slide with a chartId must reference a real chart ──
+  const chartLayouts = new Set(["chart-split", "title-chart", "evidence-grid", "comparison", "two-column"]);
+  for (const s of slides) {
+    if (s.chartId && !chartIds.has(s.chartId)) {
+      // Broken reference — clear it so the slide renders without a chart
+      s.chartId = "";
+    }
+    // If a chart-layout slide has no chart, downgrade to title-body
+    if (chartLayouts.has(s.layout) && !s.chartId) {
+      // Check if there's an unassigned chart we can use
+      const assignedChartIds = new Set(slides.filter(sl => sl.chartId).map(sl => sl.chartId));
+      const unassigned = charts.find(c => !assignedChartIds.has(c.chartId));
+      if (unassigned) {
+        s.chartId = unassigned.chartId;
+      } else {
+        s.layout = "title-body";
+      }
+    }
+  }
+
+  // ── Rule 3: Verify SCQA structure ──
+  // Slide 1 must be cover
+  if (slides.length > 0 && slides[0].layout !== "cover") {
+    slides[0].layout = "cover";
+    slides[0].role = "cover";
+    slides[0].chartId = "";
+  }
+  // Slide 2 must be exec-summary
+  if (slides.length > 1 && slides[1].layout !== "exec-summary") {
+    slides[1].layout = "exec-summary";
+    slides[1].role = "exec-summary";
+  }
+  // Last slide must be recommendation or summary
+  const last = slides[slides.length - 1];
+  if (last && !["summary", "recommendation"].includes(last.role)) {
+    last.role = "recommendation";
+    last.layout = "summary";
+  }
+
+  // ── Rule 4: Cap at 12 slides ──
+  if (slides.length > 12) {
+    // Keep cover, exec-summary, last (recommendation). Remove weakest middle slides.
+    const protected_ = new Set([1, 2, slides.length]); // positions to keep
+    const removable = slides.filter(s => !protected_.has(s.position));
+    // Sort: slides without charts first (least valuable)
+    removable.sort((a, b) => {
+      const aHasChart = a.chartId ? 1 : 0;
+      const bHasChart = b.chartId ? 1 : 0;
+      return aHasChart - bHasChart; // no-chart slides first
+    });
+    const toRemove = removable.slice(0, slides.length - 12);
+    const removePositions = new Set(toRemove.map(s => s.position));
+    const kept = slides.filter(s => !removePositions.has(s.position));
+    // Re-number positions
+    kept.forEach((s, i) => { s.position = i + 1; });
+    // Remove orphaned charts
+    const keptChartIds = new Set(kept.filter(s => s.chartId).map(s => s.chartId));
+    const keptCharts = charts.filter(c => keptChartIds.has(c.chartId));
+    return { ...plan, slides: kept, charts: keptCharts, targetSlideCount: kept.length };
+  }
+
+  // ── Rule 5: Deduplicate governing thoughts (weak similarity check) ──
+  const seen = new Map<string, number>(); // normalized thought → position
+  for (const s of slides) {
+    if (!s.governingThought) continue;
+    const normalized = s.governingThought.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+    const words = normalized.split(/\s+/).slice(0, 5).join(" "); // First 5 words
+    if (seen.has(words) && s.role !== "cover" && s.role !== "exec-summary") {
+      // Duplicate — keep the one with a chart
+      const existing = slides.find(sl => sl.position === seen.get(words));
+      if (existing && !existing.chartId && s.chartId) {
+        existing.governingThought = s.governingThought;
+        existing.chartId = s.chartId;
+        existing.layout = s.layout;
+      }
+    } else {
+      seen.set(words, s.position);
+    }
+  }
+
+  return { ...plan, slides, charts, targetSlideCount: slides.length };
+}
+
+/**
  * basquioAuthor: V1 Pipeline — Plan + Build Charts (deterministic) + Author Slides (parallel) + Critique + Repair
  *
  * Architecture:
  * 1. plan-deck: GPT-5.4-mini structured output → V1DeckPlan with chart grammar per chart
+ * 1.5. validate-plan: Deterministic structural validation ($0 cost)
  * 2. build-charts: Deterministic step, ZERO LLM — executes chart grammar against data
  * 3. author-slides: Parallel batches of 4 — each slide is ONE generateObject call with ~15K context
  * 4. critique-deterministic: Referential integrity + structural checks (no LLM)
@@ -2586,6 +2691,9 @@ Return a V1DeckPlan with slides and charts.`,
       }
     }) as V1DeckPlan;
 
+    // ─── STEP 1.5: VALIDATE PLAN (deterministic, $0) ────────────────
+    const validatedPlan = validateAndFixPlan(v1Plan);
+
     // ─── STEP 2: BUILD CHARTS (deterministic, ZERO LLM) ──────────────
     const chartBuildResult = await step.run("build-charts", async () => {
       await emitRunEvent(runId, "author", "charts_build_started");
@@ -2593,7 +2701,7 @@ Return a V1DeckPlan with slides and charts.`,
       const chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> = [];
 
       // Cap at 10 charts
-      const chartsToProcess = v1Plan.charts.slice(0, 10);
+      const chartsToProcess = validatedPlan.charts.slice(0, 10);
 
       for (const planned of chartsToProcess) {
         try {
@@ -2618,7 +2726,7 @@ Return a V1DeckPlan with slides and charts.`,
           // Override chart type if it's wrong for the analytical question
           const questionType = inferQuestionType(planned.title || planned.intent || "");
           // Detect period count from plan's data intelligence (check if CY/PY columns exist)
-          const hasPeriodPairs = v1Plan.charts.some((c) =>
+          const hasPeriodPairs = validatedPlan.charts.some((c) =>
             c.dataSpec?.measures?.some((m: string) => /anno\s*prec|prior|py$/i.test(m))
           );
           const periodCount = hasPeriodPairs ? 2 : 1;
@@ -2780,11 +2888,11 @@ Return a V1DeckPlan with slides and charts.`,
         parts.push(`## Brief (abbreviated)\n${brief.slice(0, 500)}`);
 
         // Focal entity
-        parts.push(`\n## Focal entity: ${v1Plan.focalEntity}`);
-        parts.push(`Language: ${v1Plan.language}`);
+        parts.push(`\n## Focal entity: ${validatedPlan.focalEntity}`);
+        parts.push(`Language: ${validatedPlan.language}`);
 
         // Slide spec
-        parts.push(`\n## YOUR SLIDE (position ${slideSpec.position} of ${v1Plan.targetSlideCount})`);
+        parts.push(`\n## YOUR SLIDE (position ${slideSpec.position} of ${validatedPlan.targetSlideCount})`);
         parts.push(`Role: ${slideSpec.role}`);
         parts.push(`Layout: ${slideSpec.layout}`);
         parts.push(`Governing thought: ${slideSpec.governingThought}`);
@@ -2793,7 +2901,7 @@ Return a V1DeckPlan with slides and charts.`,
         // Chart context (if this slide has a chart)
         const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
         if (realChartId) {
-          const plannedChart = v1Plan.charts.find((c) => c.chartId === slideSpec.chartId);
+          const plannedChart = validatedPlan.charts.find((c) => c.chartId === slideSpec.chartId);
           if (plannedChart) {
             parts.push(`\n## Chart on this slide\nType: ${plannedChart.chartType} | Title: "${plannedChart.title}" | Unit: ${plannedChart.unit}`);
             parts.push(`The chart data has been built and persisted. Reference it in your narrative.`);
@@ -2828,7 +2936,7 @@ Return a V1DeckPlan with slides and charts.`,
         }
 
         // Title read-through context for narrative coherence
-        const nearbySlides = v1Plan.slides.filter((s) =>
+        const nearbySlides = validatedPlan.slides.filter((s) =>
           Math.abs(s.position - slideSpec.position) <= 2 && s.position !== slideSpec.position,
         );
         if (nearbySlides.length > 0) {
@@ -2843,7 +2951,7 @@ Return a V1DeckPlan with slides and charts.`,
 
       // Author in parallel batches of 4
       const BATCH_SIZE = 4;
-      const slides = v1Plan.slides;
+      const slides = validatedPlan.slides;
 
       for (let i = 0; i < slides.length; i += BATCH_SIZE) {
         const batch = slides.slice(i, i + BATCH_SIZE);
@@ -2864,7 +2972,7 @@ Return a V1DeckPlan with slides and charts.`,
             addUsage(slideGenResult.usage, isSacred ? "claude-sonnet-4-6" : "claude-haiku-4-5");
 
             // ─── Language consistency check (deterministic, post-generation) ───
-            const expectedLang = v1Plan.language || "en";
+            const expectedLang = validatedPlan.language || "en";
             const slideText = [slideOutput.title, slideOutput.body, ...(slideOutput.bullets ?? [])].filter(Boolean).join(" ");
             const detectedLang = detectLanguage(slideText);
             // Retry if: (a) non-English brief but English output, (b) wrong non-English language, (c) mixed language
@@ -2929,7 +3037,7 @@ Return a V1DeckPlan with slides and charts.`,
               pageIntent: slideSpec.role,
               governingThought: slideSpec.governingThought,
               focalObject: slideSpec.focalObject,
-              highlightCategories: v1Plan.focalEntity ? [v1Plan.focalEntity] : undefined,
+              highlightCategories: validatedPlan.focalEntity ? [validatedPlan.focalEntity] : undefined,
             });
           } catch (slideError) {
             console.error(`[basquio-author] Slide ${slideSpec.position} authoring failed:`, slideError);
@@ -3025,7 +3133,7 @@ Return a V1DeckPlan with slides and charts.`,
         }>(runId, "analysis_result");
 
         for (const position of slidesToRepair) {
-          const slideSpec = v1Plan.slides.find((s) => s.position === position);
+          const slideSpec = validatedPlan.slides.find((s) => s.position === position);
           if (!slideSpec) continue;
 
           const issuesForSlide = criticalIssues
@@ -3043,8 +3151,8 @@ ${issuesForSlide}
 
 Slide position: ${position}, Role: ${slideSpec.role}, Layout: ${slideSpec.layout}
 Governing thought: ${slideSpec.governingThought}
-Focal entity: ${v1Plan.focalEntity}
-Language: ${v1Plan.language}
+Focal entity: ${validatedPlan.focalEntity}
+Language: ${validatedPlan.language}
 
 Analysis summary: ${analysisResult?.analysis?.summary?.slice(0, 500) ?? ""}
 

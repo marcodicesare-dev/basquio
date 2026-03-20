@@ -990,10 +990,19 @@ function parseNumericString(value: string) {
     return null;
   }
 
+  // Dashes and single dots are null indicators, not numbers
+  if (trimmed === "-" || trimmed === "\u2014" || trimmed === "\u2013" || trimmed === "." || trimmed === "..") {
+    return null;
+  }
+
   let candidate = trimmed
-    .replace(/[€$£¥%]/g, "")
-    .replace(/\s+/g, "")
-    .replace(/[’']/g, "");
+    .replace(/^[\u20AC$\u00A3\u00A5\u20B9\u20BD\u20A9]/, "")        // Leading currency symbols
+    .replace(/[\u20AC$\u00A3\u00A5\u20B9\u20BD\u20A9%]$/g, "")       // Trailing currency symbols
+    .replace(/^(CHF|USD|EUR|GBP|SEK|NOK|DKK|CZK|PLN|BRL|JPY|CNY|KRW|INR|RUB)\s*/i, "") // ISO currency prefixes
+    .replace(/\s*(CHF|USD|EUR|GBP|SEK|NOK|DKK|CZK|PLN|BRL|JPY|CNY|KRW|INR|RUB)$/i, "") // ISO currency suffixes
+    .replace(/[‘\u2019\u02BC\u201B`\u00B4]/g, "")           // All apostrophe/quote variants (thousand separators)
+    .replace(/\s+/g, "")                // Whitespace (space as thousand separator)
+    .replace(/%$/, "");                 // Trailing percent
 
   if (!/[0-9]/.test(candidate)) {
     return null;
