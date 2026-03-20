@@ -2820,18 +2820,43 @@ export const basquioAuthor = inngest.createFunction(
 ## EXHIBIT PLANNER RULES (non-negotiable)
 Every analytical content slide (positions 3 through N-1) MUST have a chart with a valid chartId. ZERO text-only analytical slides allowed. The ONLY slides without charts are: cover (position 1), exec-summary (position 2, but SHOULD have a chart), and the final summary/recommendation slide.
 
+## AVAILABLE CHART TYPES (renderer supports exactly these — use ONLY these names)
+| chartType | When to use | Data shape |
+|---|---|---|
+| horizontal_bar | Rankings, size comparison, top N | 1 dimension, 1-2 measures, sorted desc |
+| grouped_bar | CY vs PY, A vs B side-by-side comparison | 1 dimension, 2+ measures (CY/PY pairs) |
+| stacked_bar | Composition showing absolute contribution | 1 dimension, 2+ segment measures |
+| stacked_bar_100 | Mix/share comparison (brand mix vs category mix) | 1 dimension, 2+ segment measures |
+| waterfall | Bridge/decomposition — what drove the change | Sequential items showing +/- contributions |
+| line | Time trend with 4+ sequential periods | 1 time dimension, 1-3 measures |
+| area | Time trend emphasizing cumulative volume | 1 time dimension, 1-2 measures |
+| scatter | Distribution vs velocity, two-variable correlation | 2 measures as x/y axes |
+| doughnut | Simple share split (max 5 categories) | 1 dimension, 1 measure |
+| pie | Simple share split (max 4 categories) | 1 dimension, 1 measure |
+| heatmap | Cross-tabulation, performance matrix | 2 dimensions, 1 measure |
+| marimekko | Portfolio analysis — segment size × mix simultaneously | 1 dimension, width + height measures |
+| pareto | Concentration analysis (top N = X% of total) | 1 dimension, 1 measure, sorted desc |
+| funnel | Sequential conversion/loss stages | Sequential stages, 1 measure |
+| radar | Multi-attribute comparison (brand scorecard) | 1 entity, 5-8 attributes |
+| table | Dense data requiring exact numbers (price lists, SKU detail) | Multiple columns, too dense for chart |
+
 Choose chart types by ANALYTICAL QUESTION, not data availability:
 - "How big is each segment?" → horizontal_bar (ranked by size, largest on top)
 - "How does mix compare?" → stacked_bar_100 (category mix vs brand mix side-by-side)
-- "Current vs prior period?" → grouped_bar or waterfall (NEVER line chart for 2-period data)
-- "What's growing/declining?" → horizontal_bar (sorted by growth rate, green/red coding)
-- "Who dominates?" → doughnut or pareto (concentration chart)
+- "Current vs prior period?" → grouped_bar or waterfall (NEVER line for 2-period)
+- "What's growing/declining?" → horizontal_bar (sorted by growth rate)
+- "Who dominates?" → doughnut or pareto (concentration)
 - "What are the top N items?" → horizontal_bar with humanized labels
-- "How does performance vary?" → heatmap or scatter
+- "How does performance vary across two dimensions?" → heatmap or scatter
 - "What changed and why?" → waterfall (bridge chart)
+- "What's the portfolio structure?" → marimekko (size × mix)
+- "How concentrated is revenue?" → pareto (cumulative %)
+- "How does the brand score on multiple attributes?" → radar
+- "What's the conversion funnel?" → funnel
 
-NEVER use a line chart unless there are 4+ time periods in sequence.
-NEVER use a line chart for categorical comparisons.
+NEVER use line unless there are 4+ time periods in sequence.
+NEVER use line for categorical comparisons.
+NEVER use pie/doughnut with >5 categories — use horizontal_bar instead.
 
 ## LAYOUT VARIETY RULES (non-negotiable)
 - NEVER use the same layout 3 times in a row. Alternate: chart-split → evidence-grid → comparison → title-chart
