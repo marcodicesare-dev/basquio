@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Script from "next/script";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Summary = {
   jobId?: string;
@@ -43,22 +42,22 @@ export type RunProgressSnapshot = {
 };
 
 // ─── USER-FACING PHASE MAP ─────────────────────────────────────
-// Internal pipeline has 6 phases. User sees 4 simple steps.
-// No jargon. No "normalize". No "critique". No "revise".
 const USER_STEPS = [
-  { id: "read", label: "Reading your files", phases: ["normalize"] },
-  { id: "analyze", label: "Finding the story", phases: ["understand"] },
-  { id: "design", label: "Designing the deck", phases: ["author", "critique", "revise"] },
-  { id: "export", label: "Preparing downloads", phases: ["export"] },
+  { id: "read", label: "Reading your files", icon: "📄" },
+  { id: "analyze", label: "Finding the story", icon: "🔍" },
+  { id: "design", label: "Designing the deck", icon: "✨" },
+  { id: "export", label: "Preparing downloads", icon: "📦" },
 ] as const;
 
-function getUserStep(internalPhase: string): typeof USER_STEPS[number] {
-  return USER_STEPS.find((s) => (s.phases as readonly string[]).includes(internalPhase)) ?? USER_STEPS[0];
-}
-
-function getUserStepIndex(internalPhase: string): number {
-  return USER_STEPS.findIndex((s) => (s.phases as readonly string[]).includes(internalPhase));
-}
+const PHASE_TO_USER_STEP: Record<string, number> = {
+  normalize: 0,
+  understand: 1,
+  author: 2,
+  polish: 2,
+  critique: 2,
+  revise: 2,
+  export: 3,
+};
 
 // ─── COMPONENT ─────────────────────────────────────────────────
 
@@ -69,6 +68,8 @@ export function RunProgressView(input: {
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [missingPollCount, setMissingPollCount] = useState(0);
+  // Monotonic progress: never goes backward
+  const maxProgressRef = useRef(2);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
   // Polling
@@ -104,60 +105,53 @@ export function RunProgressView(input: {
   // ─── WAITING STATE ───────────────────────────────────────────
   if (!snapshot) {
     return (
-      <section className="page-shell">
-        <article className="panel empty-state" style={{ textAlign: "center", padding: "3rem" }}>
-          <p style={{ fontSize: "1.1rem" }}>
+      <div style={styles.fullPage}>
+        <div style={styles.center}>
+          <div style={styles.spinner} />
+          <p style={{ color: "#A09FA6", fontSize: "1.1rem", marginTop: "1.5rem" }}>
             {missingPollCount > 6
-              ? "This is taking longer than expected. Try refreshing the page."
+              ? "This is taking longer than expected. Try refreshing."
               : "Starting up..."}
           </p>
-        </article>
-      </section>
+        </div>
+      </div>
     );
   }
 
   const slideCount = snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0;
-  const currentUserStep = getUserStep(snapshot.currentStage);
-  const currentUserStepIdx = getUserStepIndex(snapshot.currentStage);
+  const currentUserStepIdx = PHASE_TO_USER_STEP[snapshot.currentStage] ?? 0;
+
+  // Monotonic progress — only goes up
+  const rawPercent = snapshot.status === "completed" ? 100 : snapshot.progressPercent;
+  if (rawPercent > maxProgressRef.current) maxProgressRef.current = rawPercent;
+  const displayPercent = snapshot.status === "completed" ? 100 : maxProgressRef.current;
 
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
     return (
-      <div className="page-shell">
-        <section className="page-hero loading-hero">
-          <div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
-            <div className="stack" style={{ alignItems: "center", gap: "1rem" }}>
-              <div style={{ fontSize: "3rem" }}>&#10003;</div>
-              <h1 style={{ fontSize: "2rem" }}>Your deck is ready</h1>
-              <p className="muted" style={{ fontSize: "1.1rem", maxWidth: 480 }}>
-                {slideCount} slides generated from your data. Download below.
-              </p>
-            </div>
+      <div style={styles.fullPage}>
+        <div style={styles.center}>
+          <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>✓</div>
+          <h1 style={{ fontSize: "2.2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.5rem" }}>
+            Your deck is ready
+          </h1>
+          <p style={{ color: "#A09FA6", fontSize: "1.1rem", marginBottom: "2.5rem" }}>
+            {slideCount} slides generated from your data.
+          </p>
 
-            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", marginTop: "2rem" }}>
-              <a
-                className="button"
-                href={`/api/artifacts/${snapshot.jobId}/pptx`}
-                style={{ fontSize: "1rem", padding: "0.75rem 2rem" }}
-              >
-                Download PPTX
-              </a>
-              <a
-                className="button secondary"
-                href={`/api/artifacts/${snapshot.jobId}/pdf`}
-                style={{ fontSize: "1rem", padding: "0.75rem 2rem", border: "1px solid rgba(255,255,255,0.2)", color: "#FFFFFF" }}
-              >
-                Download PDF
-              </a>
-            </div>
-
-            <div style={{ marginTop: "2rem" }}>
-              <Link href="/jobs/new" style={{ color: "#E8A84C", fontSize: "0.9rem" }}>
-                Generate another report
-              </Link>
-            </div>
+          <div style={{ display: "flex", gap: "1rem" }}>
+            <a href={`/api/artifacts/${snapshot.jobId}/pptx`} style={styles.primaryButton}>
+              Download PPTX
+            </a>
+            <a href={`/api/artifacts/${snapshot.jobId}/pdf`} style={styles.secondaryButton}>
+              Download PDF
+            </a>
           </div>
-        </section>
+
+          <Link href="/jobs/new" style={{ color: "#E8A84C", fontSize: "0.95rem", marginTop: "2rem", display: "block" }}>
+            Generate another deck →
+          </Link>
+        </div>
       </div>
     );
   }
@@ -165,136 +159,187 @@ export function RunProgressView(input: {
   // ─── FAILED STATE ────────────────────────────────────────────
   if (snapshot.status === "failed") {
     return (
-      <div className="page-shell">
-        <section className="page-hero loading-hero">
-          <div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
-            <div className="stack" style={{ alignItems: "center", gap: "1rem" }}>
-              <h1 style={{ fontSize: "2rem" }}>Something went wrong</h1>
-              <p className="muted" style={{ fontSize: "1.1rem", maxWidth: 480 }}>
-                We hit an issue while generating your deck. You can try again — it won&apos;t cost you extra.
-              </p>
-              {snapshot.failureMessage && (
-                <p style={{ fontSize: "0.85rem", color: "#94A3B8", fontFamily: "monospace", maxWidth: 500, wordBreak: "break-word" }}>
-                  {snapshot.failureMessage}
-                </p>
-              )}
-            </div>
-            <div style={{ marginTop: "2rem" }}>
-              <Link className="button" href="/jobs/new">Try again</Link>
-            </div>
-          </div>
-        </section>
+      <div style={styles.fullPage}>
+        <div style={styles.center}>
+          <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.5rem" }}>
+            Something went wrong
+          </h1>
+          <p style={{ color: "#A09FA6", fontSize: "1.05rem", maxWidth: 480, marginBottom: "1.5rem" }}>
+            We hit an issue generating your deck. Try again — it won&apos;t cost extra.
+          </p>
+          {snapshot.failureMessage && (
+            <p style={{ fontSize: "0.8rem", color: "#6B6A72", fontFamily: "monospace", maxWidth: 500, wordBreak: "break-word", marginBottom: "1.5rem" }}>
+              {snapshot.failureMessage}
+            </p>
+          )}
+          <Link href="/jobs/new" style={styles.primaryButton}>Try again</Link>
+        </div>
       </div>
     );
   }
 
   // ─── IN-PROGRESS STATE ───────────────────────────────────────
   const elapsed = snapshot.elapsedSeconds;
-  const remaining = snapshot.estimatedRemainingSeconds;
 
   return (
-    <div className="page-shell">
+    <div style={styles.fullPage}>
       <style>{`
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        .progress-bar-fill {
-          transition: width 1.5s ease-out;
-          background: linear-gradient(90deg, #E8A84C, #F0CC6B, #E8A84C);
-          background-size: 200% 100%;
-          animation: shimmer 2s ease-in-out infinite;
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
         }
-        .step-dot {
-          width: 32px; height: 32px; border-radius: 50%;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 0.8rem; font-weight: 700; flex-shrink: 0;
-        }
-        .step-dot.done { background: #E8A84C; color: #0A090D; }
-        .step-dot.active { background: #E8A84C; color: #0A090D; animation: pulse 1.5s ease-in-out infinite; }
-        .step-dot.waiting { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.4); }
-        .step-label { font-size: 0.95rem; }
-        .step-label.active { color: #FFFFFF; font-weight: 600; }
-        .step-label.done { color: rgba(255,255,255,0.6); }
-        .step-label.waiting { color: rgba(255,255,255,0.35); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
       `}</style>
-      <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
 
-      <section className="page-hero loading-hero">
-        <div style={{ maxWidth: 640, margin: "0 auto" }}>
-          {/* Header */}
-          <div className="stack" style={{ textAlign: "center", marginBottom: "2rem" }}>
-            <h1 style={{ fontSize: "1.8rem", color: "#FFFFFF" }}>Building your deck</h1>
-            <p style={{ fontSize: "1.05rem", color: "rgba(255,255,255,0.6)" }}>
-              {currentUserStep.label}...
-            </p>
-          </div>
+      <div style={styles.center}>
+        {/* Ambient glow */}
+        <div style={styles.glow} />
 
-          {/* Progress bar */}
-          <div style={{ marginBottom: "2rem" }}>
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "baseline",
-              marginBottom: "0.5rem", fontSize: "0.85rem", color: "rgba(255,255,255,0.5)",
-            }}>
-              <span>{remaining != null && remaining > 0 ? `About ${formatTime(remaining)} left` : elapsed < 10 ? "Starting..." : "Almost there..."}</span>
-              <span>{snapshot.progressPercent}%</span>
-            </div>
-            <div style={{
-              height: 6, borderRadius: 3, background: "rgba(255,255,255,0.15)", overflow: "hidden",
-            }}>
-              <div
-                className="progress-bar-fill"
-                style={{ height: "100%", borderRadius: 3, width: `${snapshot.progressPercent}%` }}
-              />
-            </div>
-          </div>
+        {/* Title */}
+        <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.3rem", zIndex: 1 }}>
+          Building your deck
+        </h1>
+        <p style={{ color: "#A09FA6", fontSize: "1.05rem", marginBottom: "2.5rem", zIndex: 1 }}>
+          {USER_STEPS[currentUserStepIdx]?.label ?? "Working..."}
+        </p>
 
-          {/* Steps */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "2rem" }}>
-            {USER_STEPS.map((step, idx) => {
-              const isDone = idx < currentUserStepIdx || snapshot.status === "completed";
-              const isActive = idx === currentUserStepIdx && snapshot.status === "running";
-              const dotClass = isDone ? "done" : isActive ? "active" : "waiting";
-              const labelClass = isDone ? "done" : isActive ? "active" : "waiting";
-
-              return (
-                <div key={step.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <div className={`step-dot ${dotClass}`}>
-                    {isDone ? "\u2713" : idx + 1}
-                  </div>
-                  <span className={`step-label ${labelClass}`}>{step.label}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* GIF */}
-          <div style={{ borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem" }}>
+        {/* Progress bar — full width, smooth, never goes backward */}
+        <div style={{ width: "100%", maxWidth: 480, marginBottom: "2.5rem", zIndex: 1 }}>
+          <div style={styles.progressTrack}>
             <div
-              className="tenor-gif-embed"
-              data-postid="5925040"
-              data-share-method="host"
-              data-aspect-ratio="2.31481"
-              data-width="100%"
-            >
-              <a href="https://tenor.com/view/mathew-wolf-gif-5925040">Mathew Wolf GIF</a>
-              from <a href="https://tenor.com/search/mathew-gifs">Mathew GIFs</a>
-            </div>
+              style={{
+                ...styles.progressFill,
+                width: `${displayPercent}%`,
+              }}
+            />
           </div>
-
-          {/* Elapsed time — small, unobtrusive */}
-          <p style={{ textAlign: "center", fontSize: "0.8rem", color: "rgba(255,255,255,0.35)" }}>
-            {formatTime(elapsed)} elapsed
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem" }}>
+            <span style={{ color: "#6B6A72", fontSize: "0.8rem" }}>{formatTime(elapsed)} elapsed</span>
+            <span style={{ color: "#A09FA6", fontSize: "0.8rem", fontWeight: 600 }}>{displayPercent}%</span>
+          </div>
         </div>
-      </section>
+
+        {/* Steps — minimal, horizontal */}
+        <div style={{ display: "flex", gap: "2rem", zIndex: 1 }}>
+          {USER_STEPS.map((step, idx) => {
+            const isDone = idx < currentUserStepIdx || snapshot.status === "completed";
+            const isActive = idx === currentUserStepIdx;
+            return (
+              <div key={step.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.4rem" }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "1rem",
+                  background: isDone ? "#E8A84C" : isActive ? "rgba(232,168,76,0.2)" : "rgba(255,255,255,0.08)",
+                  color: isDone ? "#0A090D" : isActive ? "#E8A84C" : "#6B6A72",
+                  border: isActive ? "2px solid #E8A84C" : "2px solid transparent",
+                  animation: isActive ? "breathe 2s ease-in-out infinite" : undefined,
+                  transition: "all 0.5s ease",
+                }}>
+                  {isDone ? "✓" : step.icon}
+                </div>
+                <span style={{
+                  fontSize: "0.75rem", fontWeight: isActive ? 600 : 400,
+                  color: isDone ? "#A09FA6" : isActive ? "#F2F0EB" : "#6B6A72",
+                  transition: "color 0.5s ease",
+                }}>
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {error && (
-        <div style={{ maxWidth: 640, margin: "1rem auto", padding: "1rem", background: "#FEF2F2", borderRadius: 8, color: "#991B1B", fontSize: "0.9rem" }}>
+        <div style={{ position: "fixed", bottom: "2rem", left: "50%", transform: "translateX(-50%)", padding: "0.75rem 1.5rem", background: "#2D1B1B", borderRadius: 8, color: "#E8636F", fontSize: "0.85rem", border: "1px solid #4A2020" }}>
           {error}
         </div>
       )}
     </div>
   );
 }
+
+// ─── STYLES ───────────────────────────────────────────────────
+
+const styles = {
+  fullPage: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#0A090D",
+    position: "relative" as const,
+    overflow: "hidden",
+  },
+  center: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    textAlign: "center" as const,
+    padding: "2rem",
+    maxWidth: 640,
+    width: "100%",
+    position: "relative" as const,
+  },
+  glow: {
+    position: "absolute" as const,
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    width: 500,
+    height: 500,
+    borderRadius: "50%",
+    background: "radial-gradient(circle, rgba(232,168,76,0.06) 0%, transparent 70%)",
+    pointerEvents: "none" as const,
+    filter: "blur(60px)",
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    background: "rgba(255,255,255,0.08)",
+    overflow: "hidden" as const,
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+    background: "linear-gradient(90deg, #E8A84C, #F0CC6B, #E8A84C)",
+    backgroundSize: "200% 100%",
+    animation: "shimmer 2s ease-in-out infinite",
+    transition: "width 2s ease-out",
+  },
+  spinner: {
+    width: 40,
+    height: 40,
+    border: "3px solid rgba(255,255,255,0.1)",
+    borderTop: "3px solid #E8A84C",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite",
+  },
+  primaryButton: {
+    display: "inline-block",
+    padding: "0.85rem 2.5rem",
+    background: "#E8A84C",
+    color: "#0A090D",
+    fontWeight: 700,
+    fontSize: "1rem",
+    borderRadius: 8,
+    textDecoration: "none",
+  } as React.CSSProperties,
+  secondaryButton: {
+    display: "inline-block",
+    padding: "0.85rem 2.5rem",
+    background: "transparent",
+    color: "#F2F0EB",
+    fontWeight: 600,
+    fontSize: "1rem",
+    borderRadius: 8,
+    border: "1px solid rgba(255,255,255,0.2)",
+    textDecoration: "none",
+  } as React.CSSProperties,
+} as const;
 
 // ─── HELPERS ───────────────────────────────────────────────────
 
