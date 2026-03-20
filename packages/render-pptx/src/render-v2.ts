@@ -315,7 +315,8 @@ function processNewlines(text: string): string {
     .replace(/\\n/g, "\n")
     .replace(/\*\*([^*]+)\*\*/g, "$1")  // Strip markdown bold **text** → text
     .replace(/\*([^*]+)\*/g, "$1")       // Strip markdown italic *text* → text
-    .replace(/`([^`]+)`/g, "$1");         // Strip markdown code `text` → text
+    .replace(/`([^`]+)`/g, "$1")         // Strip markdown code `text` → text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"); // Strip markdown links [text](url) → text
 }
 
 /** Split text into TextProps array on real newlines */
@@ -647,7 +648,7 @@ function renderTitle(
       ? tokens.typography.coverTitleSize
       : discreteTitleSize(processed, tokens.typography.titleSize),
     bold: true,
-    color: norm(isCover ? "FFFFFF" : tokens.palette.ink),
+    color: norm(tokens.palette.ink), // ink is F2F0EB (near-white) — works on both cover and content slides
     ...(isCover ? { fit: "shrink" as const } : {}),
     breakLine: false,
     margin: 0,
@@ -670,7 +671,7 @@ function renderSubtitle(
     h: region.h,
     fontFace: tokens.typography.bodyFont,
     fontSize: tokens.typography.subtitleSize,
-    color: norm(isCover ? "FFFFFF" : tokens.palette.muted),
+    color: norm(tokens.palette.muted), // muted is A09FA6 — readable on both dark cover and content bg
     margin: 0,
     lineSpacingMultiple: 1.2,
   });
@@ -814,7 +815,7 @@ function renderMetrics(
       y: region.y,
       w: cardW,
       h: cardH,
-      fill: { color: norm(tokens.palette.surface ?? "F8FAFC") },
+      fill: { color: norm(tokens.palette.surface ?? "13121A") },
       line: { color: norm(tokens.palette.border), pt: 0.5 },
     });
 
@@ -1136,7 +1137,7 @@ function renderChartElement(
       accent: norm(tokens.palette.accent),
       ink: norm(tokens.palette.ink),
       muted: norm(tokens.palette.muted),
-      surface: norm(tokens.palette.surface ?? "F8FAFC"),
+      surface: norm(tokens.palette.surface ?? "13121A"),
       chartPalette: (tokens.chartPalette ?? []).map(norm),
       bodyFont: tokens.typography.bodyFont,
       headingFont: tokens.typography.headingFont,

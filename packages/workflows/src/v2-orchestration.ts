@@ -1926,8 +1926,9 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       ? ((analystResult as Record<string, unknown>).costSummary as { estimatedCostUsd?: number })?.estimatedCostUsd ?? 0
       : 0;
     const authorCost = authorResult?.estimatedCostUsd ?? 0;
-    // Critique-revise: ~2 Sonnet calls (factual + strategic) + optional revise
-    const critiqueCost = 0.08; // ~2 Sonnet calls + 1 optional revise
+    // Critique-revise cost from child function return (if available), otherwise estimate
+    const critiqueReviseReturn = critiqueReviseResult as Record<string, unknown>;
+    const critiqueCost = (critiqueReviseReturn?.estimatedCostUsd as number) ?? 0.15; // Estimate: 2 Sonnet calls (~$0.06 each) + optional revise (~$0.03)
     costSummary.estimatedCostUsd = Math.round((understandCost + authorCost + critiqueCost) * 1000) / 1000;
     const budgetCheck = checkCostBudget(costSummary);
 

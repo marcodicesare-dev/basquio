@@ -998,6 +998,8 @@ function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: 
   const isHorizontal = normalized.includes("horizontal");
   const isStacked = normalized.includes("stack");
   const isPie = normalized.includes("pie") || normalized.includes("donut") || normalized.includes("doughnut");
+  const isWaterfall = normalized.includes("waterfall") || normalized.includes("bridge");
+  // Unsupported types (bubble, radar, heatmap, matrix, quadrant, funnel, scatter) → fall through to bar chart
 
   let chartSvg = "";
 

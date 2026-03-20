@@ -57,11 +57,12 @@ export interface ShapeChartOptions {
 
 const V = {
   // Colors — Dark-mode tokens from basquio-deck-templates-v3.jsx
-  // CRITICAL: these must be VISIBLE on #13121A background
-  mutedBar: "5A596A",        // Non-focal bars — clearly visible but recessive (40% lightness)
-  labelGray: "9594A0",       // Axis/category labels — must be READABLE (60% lightness, JSX: between textSec and textDim)
-  gridGray: "2A293A",        // Grid lines — faint structure lines (visible but not distracting)
-  axisGray: "3A3948",        // Axis lines — slightly stronger than grid
+  // CRITICAL: must pass WCAG contrast on #13121A (7% lightness)
+  // JSX reference: textDim=#6B6A72 (45%), textSec=#A09FA6 (63%), border=#272630 (16%)
+  mutedBar: "706F7E",        // Non-focal bars — 50% lightness, 4:1 contrast ratio on dark bg
+  labelGray: "A09FA6",       // Axis/category labels — JSX textSec, 63% lightness, ~6:1 contrast
+  gridGray: "33323E",        // Grid lines — visible structure (20% lightness, ~2.5:1 vs bg)
+  axisGray: "4A4958",        // Axis lines — stronger than grid (30% lightness)
   borderGray: "272630",      // Card/component borders (JSX: border)
   surfaceGray: "1A1922",     // Card backgrounds, zebra rows (JSX: surfaceAlt)
   // Semantic colors (from JSX design system)
