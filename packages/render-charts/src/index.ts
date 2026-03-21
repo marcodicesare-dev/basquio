@@ -685,7 +685,31 @@ export function renderV2ChartSvg(
       left: 16,
       containLabel: true,
     },
-    ...((isPie || isRadar) ? {} : isHorizontal ? {
+    ...((isPie || isRadar) ? {} : (isBubble || chart.chartType === "scatter") ? {
+      // Scatter/bubble: both axes must be numeric (value), not categorical
+      xAxis: {
+        type: "value",
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: {
+          color: muted,
+          fontFamily: theme.bodyFont,
+          fontSize: 10,
+          formatter: (v: number) => formatValue(v),
+        },
+        splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
+      },
+      yAxis: {
+        type: "value",
+        axisLine: { show: false },
+        axisLabel: {
+          color: muted,
+          fontFamily: theme.bodyFont,
+          fontSize: 10,
+          formatter: (v: number) => formatValue(v),
+        },
+        splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
+      },
+    } : isHorizontal ? {
       xAxis: {
         type: "value",
         axisLine: { lineStyle: { color: border } },

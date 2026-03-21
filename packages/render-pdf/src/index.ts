@@ -1061,7 +1061,9 @@ function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: 
   const isStacked = normalized.includes("stack");
   const isPie = normalized.includes("pie") || normalized.includes("donut") || normalized.includes("doughnut");
   const isWaterfall = normalized.includes("waterfall") || normalized.includes("bridge");
-  // Unsupported types (bubble, radar, heatmap, matrix, quadrant, funnel, scatter) → fall through to bar chart
+  const isScatter = normalized.includes("scatter") || normalized.includes("bubble");
+  // Note: radar, heatmap, matrix, quadrant, funnel → fall through to bar chart
+  // Scatter/bubble render as a dot plot (simplified but correct axis type)
 
   let chartSvg = "";
 
@@ -1126,6 +1128,25 @@ function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: 
       chartSvg += `<rect x="${lx}" y="${ly}" width="10" height="10" fill="#${color}" rx="2"/>`;
       chartSvg += `<text x="${lx + 15}" y="${ly + 9}" fill="#${muted}" font-size="10">${escHtml(String(d[xAxis] ?? ""))}</text>`;
     });
+  } else if (isScatter) {
+    // Scatter/bubble chart — dots positioned by numeric x and y values
+    for (let si = 0; si < activeSeries.length; si++) {
+      const s = activeSeries[si];
+      const color = CHART_PALETTE[si % CHART_PALETTE.length];
+      data.forEach((d) => {
+        const xVal = Number(d[xAxis]) || 0;
+        const yVal = Number(d[s]) || 0;
+        // Scale x across the plot width based on data range
+        const allXVals = data.map(r => Number(r[xAxis]) || 0);
+        const xMin = Math.min(...allXVals);
+        const xMax = Math.max(...allXVals);
+        const xRange = xMax - xMin || 1;
+        const cx = PAD.l + ((xVal - xMin) / xRange) * plotW;
+        const cy = yScale(yVal);
+        const r = normalized.includes("bubble") ? 8 : 5;
+        chartSvg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#${color}" opacity="0.7"/>`;
+      });
+    }
   } else {
     // Bar chart (vertical by default)
     const barGroupW = plotW / Math.max(labels.length, 1);

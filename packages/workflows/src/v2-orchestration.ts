@@ -5139,10 +5139,10 @@ export const basquioExport = inngest.createFunction(
             kind: "pptx" as const,
             fileName: "basquio-deck.pptx",
             mimeType: pptxArtifact.mimeType,
-            fileBytes: pptxBuffer.length,
+            fileBytes: pptxToUpload.length,
             storagePath: pptxPath,
             storageBucket: "artifacts",
-            checksumSha256: checksumSha256(pptxBuffer),
+            checksumSha256: checksumSha256(pptxToUpload),
           },
           ...(pdfArtifactEntry ? [pdfArtifactEntry] : []),
         ],
@@ -5172,9 +5172,9 @@ export const basquioExport = inngest.createFunction(
       });
 
       return {
-        pptxBytes: pptxBuffer.length,
+        pptxBytes: pptxToUpload.length,
         pdfBytes: pdfArtifactEntry?.fileBytes ?? 0,
-        slideCount: slides.length,
+        slideCount: slidesForExport.length,
         qaPassed,
         exportMode,
       };
