@@ -3555,6 +3555,19 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
         parts.push(`Governing thought: ${slideSpec.governingThought}`);
         parts.push(`Focal object: ${slideSpec.focalObject}`);
 
+        // ── CRITICAL: For exec-summary and cover, inject ALL top findings with actual numbers ──
+        // These slides MUST have real data, never placeholders.
+        if (["exec-summary", "cover"].includes(slideSpec.role) && analysis?.topFindings?.length) {
+          parts.push(`\n## TOP FINDINGS WITH ACTUAL NUMBERS (use these — NEVER write "X" or placeholder values)`);
+          for (const f of analysis.topFindings) {
+            parts.push(`- ${f.title}: ${f.claim} → ${f.businessImplication}`);
+          }
+          parts.push(`\nEVERY metric value MUST be a real number from the data above.`);
+          parts.push(`BAD: "–X mln pz", "+€X mln", "+X%"`);
+          parts.push(`GOOD: "–12.3M pz", "+€47M", "+2.1%"`);
+          parts.push(`If you cannot find the exact number, use "N/D" (not available), never "X".`);
+        }
+
         // Chart context (if this slide has a chart)
         const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
         if (realChartId) {
@@ -3680,8 +3693,19 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
 
             // --- Title: locked from narrative arc, never from LLM ---
             const arcSlide = arcSlideMap.get(slideSpec.position);
-            const finalTitle = arcSlide?.title || slideOutput.title;
+            let finalTitle = arcSlide?.title || slideOutput.title;
             const finalKicker = arcSlide?.kicker || slideOutput.kicker;
+
+            // --- Title quality gate: non-cover content titles MUST contain a number ---
+            // Cover is exempted because its title can be the deck's main claim.
+            // But ALL other titles must have at least one digit.
+            if (slideSpec.role !== "cover" && finalTitle && !/\d/.test(finalTitle)) {
+              console.warn(`[basquio-author] Slide ${slideSpec.position} (${slideSpec.role}): title has no number: "${finalTitle.slice(0, 60)}"`);
+            }
+            // Cover title: warn if no number (narrative arc should provide one, but don't block)
+            if (slideSpec.role === "cover" && finalTitle && !/\d/.test(finalTitle)) {
+              console.warn(`[basquio-author] Cover title has no number — quality degraded: "${finalTitle.slice(0, 60)}"`);
+            }
 
             // --- Body: hard word/char limits per layout ---
             const BODY_LIMITS: Record<string, number> = {
@@ -3755,12 +3779,21 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
             } else {
               sanitizedMetrics = sanitizedMetrics.slice(0, Math.max(metricLimit, 3)).map(m => ({
                 label: m.label,
-                value: m.value,
+                // Reject placeholder values: anything with literal X, N, ?, _ as the numeric part
+                // "–X mln pz" → REJECTED. "€1.94B" → OK. "+4.2%" → OK.
+                value: /[XN?_]{1,3}\s*(mln|bln|%|pp|pts|k|m|b)/i.test(m.value) || m.value.trim() === "X" || m.value.trim() === "N/A"
+                  ? "—"  // Em dash = graceful "no data" instead of fake placeholder
+                  : m.value,
                 // Force numeric delta or empty string — no descriptive text
                 delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim())
                   ? m.delta.trim()
                   : "",
               }));
+              // Log if any metrics were placeholder-rejected
+              const rejectedCount = sanitizedMetrics.filter(m => m.value === "—").length;
+              if (rejectedCount > 0) {
+                console.warn(`[basquio-author] Slide ${slideSpec.position}: ${rejectedCount} metric value(s) were placeholder patterns (e.g., "–X mln") — replaced with "—"`);
+              }
             }
 
             // --- Callout: enforce arc tone, cap length ---
@@ -4024,7 +4057,11 @@ Fix the issues while maintaining the governing thought.`,
               rMetrics = [];
             } else {
               rMetrics = rMetrics.slice(0, Math.max(rMetLim, 3)).map((m: any) => ({
-                label: m.label, value: m.value,
+                label: m.label,
+                // Same placeholder rejection as main path
+                value: /[XN?_]{1,3}\s*(mln|bln|%|pp|pts|k|m|b)/i.test(m.value) || m.value.trim() === "X" || m.value.trim() === "N/A"
+                  ? "—"
+                  : m.value,
                 delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim()) ? m.delta.trim() : "",
               }));
             }
