@@ -1091,22 +1091,10 @@ function createLoadSheetRows(runId: string) {
       }
     }
 
-    // Last resort: grab any sheet for this run
+    // NO last-resort "grab any sheet" — that silently binds wrong data.
+    // If all 3 lookups failed, the planner hallucinated the key. Return empty.
     if (!sheets[0]?.blob_path) {
-      sheetRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&limit=1`,
-        {
-          headers: {
-            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-            Accept: "application/json",
-          },
-        },
-      );
-      if (sheetRes.ok) sheets = await sheetRes.json();
-      if (sheets[0]?.blob_path) {
-        console.warn(`[loadSheetRows] Last resort: "${sheetKey}" resolved to "${sheets[0].sheet_key}" (only sheet available)`);
-      }
+      console.error(`[loadSheetRows] ALL lookups failed for "${sheetKey}" (normalized: "${normalizedKey}"). Planner hallucinated this key.`);
     }
 
     if (!sheets[0]?.blob_path) return [];
@@ -2362,7 +2350,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     try {
       critiqueReviseResult = await step.invoke("critique-revise", {
         function: basquioCritiqueRevise,
-        data: { runId, brief, sourceFileIds, parentCostUsd: authorResult.estimatedCostUsd ?? 0 },
+        data: { runId, brief, sourceFileIds, parentCostUsd: authorResult.estimatedCostUsd ?? 0, chartCount: authorResult.chartCount ?? 0 },
         timeout: "25m",
       }) as typeof critiqueReviseResult;
     } catch (error) {
@@ -3099,7 +3087,7 @@ export const basquioAuthor = inngest.createFunction(
       }
 
       const sheetInventoryText = sheetInventory.length > 0
-        ? `\n\n## Available data sheets\n${sheetInventory.map((s) => `- ${s.sheetKey} (${s.fileName} → ${s.sheetName}, ${s.rowCount} rows): ${s.columns}`).join("\n")}`
+        ? `\n\n## Available data sheets\nIMPORTANT: Copy the sheetKey EXACTLY as shown (before the pipe). Do NOT invent keys.\n${sheetInventory.map((s) => `- sheetKey="${s.sheetKey}" | file: ${s.fileName}, sheet: ${s.sheetName}, ${s.rowCount} rows | columns: ${s.columns}`).join("\n")}`
         : "";
 
       // ─── DETERMINISTIC DATA INTELLIGENCE ($0 cost) ─────────────
@@ -3226,7 +3214,7 @@ ${clarifiedBrief?.language ?? "en"}
 ## CRITICAL RULES
 1. Exactly ${targetSlides} slides. Max 10 charts. Max 1 chart per slide.
 2. Cover (position 1), exec-summary (position 2), recommendation/summary (last position).
-3. Each chart MUST have a complete dataSpec with a valid sheetKey from the available sheets list.
+3. Each chart MUST have a complete dataSpec. Copy sheetKey EXACTLY from the "Available data sheets" list (the value inside quotes after sheetKey=). NEVER construct or modify sheetKey strings.
 4. Chart IDs: use "chart-1", "chart-2", etc. Slides reference these IDs.
 5. Filter expressions use: "column = value AND column2 > 100" syntax. Use "none" if no filter.
    CRITICAL: Filter values MUST match EXACT values from the [values: ...] list shown in the data sheets section.
@@ -3578,25 +3566,20 @@ Return a V1DeckPlan with slides and charts.`,
 
     // In safe/guaranteed tiers, trim the plan to fewer slides (reduce complexity, preserve quality)
     if (fallbackTier === "guaranteed") {
-      // Keep only: cover, exec-summary, up to 3 best content slides, recommendation
-      const essential = validatedPlan.slides.filter(s =>
-        s.role === "cover" || s.role === "exec-summary" || s.role === "recommendation" || s.role === "summary"
-      );
-      const content = validatedPlan.slides
-        .filter(s => !essential.some(e => e.position === s.position))
-        .filter(s => {
-          // Keep only slides with successful charts
-          if (!s.chartId) return true;
-          const result = chartBuildResult.chartResults.find(r => r.plannedId === s.chartId);
-          return result?.success ?? false;
-        })
-        .slice(0, 3);
-      const trimmed = [...essential, ...content].sort((a, b) => a.position - b.position);
-      // Reindex positions
-      trimmed.forEach((s, i) => { s.position = i + 1; });
-      validatedPlan.slides = trimmed;
-      validatedPlan.targetSlideCount = trimmed.length;
-      console.warn(`[basquio-author] Guaranteed tier: trimmed to ${trimmed.length} slides`);
+      // Convert ALL failed-chart slides to text-only. Keep ALL slides.
+      // Never delete slides — that produces a 4-slide garbage deck.
+      let convertedCount = 0;
+      for (const s of validatedPlan.slides) {
+        if (!s.chartId) continue;
+        const result = chartBuildResult.chartResults.find(r => r.plannedId === s.chartId);
+        if (!result?.success) {
+          const textLayout = s.role === "recommendation" || s.role === "synthesis" ? "summary" : "title-bullets";
+          s.layout = textLayout;
+          s.chartId = "";
+          convertedCount++;
+        }
+      }
+      console.warn(`[basquio-author] Guaranteed tier: converted ${convertedCount} failed-chart slides to text layouts, all ${validatedPlan.slides.length} slides preserved`);
     } else if (fallbackTier === "safe") {
       // Convert slides with failed charts to text-only layouts instead of deleting them.
       // Deleting 8 of 12 slides produces a garbage 4-slide deck. Converting preserves
@@ -4618,11 +4601,12 @@ export const basquioCritiqueRevise = inngest.createFunction(
   { id: "basquio-critique-revise", retries: 0, timeouts: { finish: "25m" } },
   { event: "basquio/critique-revise.requested" },
   async ({ event, step }) => {
-    const { runId, brief, sourceFileIds, parentCostUsd } = event.data as {
+    const { runId, brief, sourceFileIds, parentCostUsd, chartCount } = event.data as {
       runId: string;
       brief: string;
       sourceFileIds: string[];
       parentCostUsd?: number;
+      chartCount?: number;
     };
 
     // Budget tracking: total budget is $1, parent already spent some
@@ -4742,6 +4726,12 @@ export const basquioCritiqueRevise = inngest.createFunction(
     // ─── MERGE + GATE DECISION ─────────────────────────────────
     const gateResult = await step.run("critique-merge-gate", async () => {
       const allIssues = [...factualCritique.issues, ...strategicCritique.issues].filter(Boolean);
+
+      // 0 charts = critical quality failure. The deck has no visual evidence.
+      if ((chartCount ?? 0) === 0) {
+        allIssues.push({ severity: "critical", claim: "[CHART-COLLAPSE] Zero charts built — deck has no visual evidence. All chart data bindings failed." } as (typeof allIssues)[number]);
+      }
+
       const hasIssues = allIssues.length > 0;
       const hasCriticalOrMajor = allIssues.some((i) => i?.severity === "critical" || i?.severity === "major");
       const criticalCount = allIssues.filter((i) => i?.severity === "critical").length;
