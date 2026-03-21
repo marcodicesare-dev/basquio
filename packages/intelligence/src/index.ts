@@ -109,6 +109,21 @@ export {
   type FmcgMeasure,
 } from "./fmcg-semantic-layer";
 
+// ─── EVAL HARNESS (benchmark scoring framework) ──────────────────
+export {
+  scoreWritingQuality,
+  scoreVisualQuality,
+  scoreCost,
+  scoreEvidenceLinkage,
+  aggregateEvals,
+  EVAL_THRESHOLDS,
+  BENCHMARK_CASES,
+  type EvalDimension,
+  type EvalScore,
+  type RunEval,
+  type BenchmarkCase,
+} from "./eval-harness";
+
 // ─── RENDERING CONTRACT (constrained compatibility surface) ───────
 export {
   SUPPORTED_LAYOUTS,

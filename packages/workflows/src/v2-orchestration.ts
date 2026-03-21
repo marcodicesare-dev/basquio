@@ -4705,16 +4705,44 @@ export const basquioCritiqueRevise = inngest.createFunction(
       });
       runningCostUsd += reviseResult.stepCostUsd ?? 0;
 
-      // Skip re-critique: logs prove second cycle produces zero improvement
-      // (every run still has 6-8 critical + 13-23 major after re-critique).
-      // Fix quality at the source (author) instead of post-hoc patching.
-      // Always deliver — Basquio must always produce output.
+      // After revision, re-evaluate quality to determine publish grade.
+      // Always deliver, but grade determines what gets published:
+      //   GREEN: full deck, all gates passed
+      //   YELLOW: full deck with known issues (major but not critical)
+      //   RED: dignified minimum (critical writing/contract violations remain)
       const totalCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
-      await updateDeliveryStatus(runId, "reviewed");
-      return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: totalCostUsd };
+      const gr = gateResult as { criticalCount?: number; majorCount?: number; issues?: Array<{ severity: string; claim: string }> };
+      const hasRemainingCritical = (gr.criticalCount ?? 0) > 0;
+      const hasRemainingMajor = (gr.majorCount ?? 0) > 0;
+      const publishGrade = hasRemainingCritical ? "red" : hasRemainingMajor ? "yellow" : "green";
+      await updateDeliveryStatus(runId, publishGrade === "green" ? "reviewed" : "degraded");
+      console.info(`[basquio-critique] Publish grade: ${publishGrade} (${gr.criticalCount ?? 0} critical, ${gr.majorCount ?? 0} major issues after revision)`);
+      return {
+        hasCriticalOrMajor: hasRemainingCritical || hasRemainingMajor,
+        degradedDelivery: publishGrade === "red",
+        degradedIssues: (gr.issues ?? []).filter(i => i.severity === "critical" || i.severity === "major").map(i => ({ severity: i.severity, claim: i.claim })),
+        estimatedCostUsd: totalCostUsd,
+        publishGrade,
+      };
     }
 
-    return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: Math.round(runningCostUsd * 1000) / 1000 || 0.01 };
+    // No revision was needed — determine publish grade from gate results
+    const finalCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
+    const criticalCount = (gateResult as { criticalCount?: number }).criticalCount ?? 0;
+    const majorCount = (gateResult as { majorCount?: number }).majorCount ?? 0;
+    const publishGrade = criticalCount > 0 ? "red" : majorCount > 0 ? "yellow" : "green";
+    if (publishGrade !== "green") {
+      await updateDeliveryStatus(runId, "degraded");
+    }
+    const gr2 = gateResult as { issues?: Array<{ severity: string; claim: string }> };
+    console.info(`[basquio-critique] Publish grade: ${publishGrade} (${criticalCount} critical, ${majorCount} major issues)`);
+    return {
+      hasCriticalOrMajor: criticalCount > 0 || majorCount > 0,
+      degradedDelivery: publishGrade === "red",
+      degradedIssues: (gr2.issues ?? []).filter(i => i.severity === "critical" || i.severity === "major").map(i => ({ severity: i.severity, claim: i.claim })),
+      estimatedCostUsd: finalCostUsd,
+      publishGrade,
+    };
   },
 );
 
