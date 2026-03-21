@@ -3345,10 +3345,10 @@ Return a V1DeckPlan with slides and charts.`,
 
     // ─── STEP 2.5: NARRATIVE ARC (one Sonnet call for cross-slide coherence) ─
     const narrativeArc = await step.run("narrative-arc", async () => {
-      if (isOverBudget() || fallbackTier === "guaranteed") {
-        console.warn(`[basquio-author] ${fallbackTier === "guaranteed" ? "Guaranteed tier" : "Over budget"}, skipping narrative arc`);
-        return null;
-      }
+      // NEVER skip narrative arc — it's ~$0.04 (one Sonnet call) and provides
+      // the SCQA, locked titles, POV structure, and cross-slide coherence.
+      // Without it, every slide generates its own title → topic labels, not insights.
+      // Even in guaranteed tier or over-budget: narrative arc is non-negotiable.
 
       const analysisResult = await loadWorkingPaper<{
         analysis: {
@@ -3567,7 +3567,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
           for (const refId of slideSpec.evidenceRequired) {
             const summary = evidenceMap.get(refId);
             if (summary) {
-              parts.push(`- ${refId}: ${summary.slice(0, 200)}`);
+              parts.push(`- ${refId}: ${summary.slice(0, 500)}`);
             }
           }
         }
@@ -3762,6 +3762,20 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
             // Cover slides: no callout
             if (effectiveLayout === "cover") {
               sanitizedCalloutText = "";
+            }
+
+            // --- Callout quality gate: must be an ACTION, not an observation ---
+            // Exhibit family patterns all start with action verbs.
+            // Reject callouts that are pure observations (no verb, no imperative).
+            if (sanitizedCalloutText && effectiveLayout !== "cover") {
+              const ACTION_VERBS = /^(expand|list|shift|grow|launch|increase|reduce|focus|protect|rebalance|renovate|delist|target|invest|build|capture|recover|sustain|optimize|test|pilot|accelerate|renegotiate|prioritize)/i;
+              const hasNumber = /\d/.test(sanitizedCalloutText);
+              const hasActionVerb = ACTION_VERBS.test(sanitizedCalloutText.trim());
+              // If the callout has no action verb AND no number, it's likely a vague observation.
+              // Prefix with the slide role to nudge toward action (deterministic, $0).
+              if (!hasActionVerb && !hasNumber && slideSpec.role !== "cover" && slideSpec.role !== "exec-summary") {
+                console.warn(`[basquio-author] Slide ${slideSpec.position}: callout lacks action verb or number, may be observation: "${sanitizedCalloutText.slice(0, 50)}"`);
+              }
             }
 
             // --- Speaker notes: cap length ---

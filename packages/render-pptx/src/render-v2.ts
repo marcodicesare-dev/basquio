@@ -324,10 +324,26 @@ function resolveTokens(partial?: Partial<BrandTokens>, templateName?: string): B
 // Imported from @basquio/scene-graph/layout-regions (single source of truth)
 // Re-exported types used locally: R, LayoutRegions, SLIDE_W, SLIDE_H, getLayoutRegions
 
-// ─── COLOR HELPER ───────────────────────────────────────────────
+// ─── COLOR HELPERS ──────────────────────────────────────────────
 
 function norm(color: string): string {
   return color.replace("#", "").toUpperCase();
+}
+
+/** Blend `fg` onto `bg` at `alpha` (0-1). Produces a tinted color that works on any background. */
+function tintColor(fg: string, bg: string, alpha: number): string {
+  const fgHex = fg.replace("#", "");
+  const bgHex = bg.replace("#", "");
+  const fr = parseInt(fgHex.slice(0, 2), 16) || 0;
+  const fg_ = parseInt(fgHex.slice(2, 4), 16) || 0;
+  const fb = parseInt(fgHex.slice(4, 6), 16) || 0;
+  const br = parseInt(bgHex.slice(0, 2), 16) || 0;
+  const bg_ = parseInt(bgHex.slice(2, 4), 16) || 0;
+  const bb = parseInt(bgHex.slice(4, 6), 16) || 0;
+  const r = Math.round(fr * alpha + br * (1 - alpha));
+  const g = Math.round(fg_ * alpha + bg_ * (1 - alpha));
+  const b = Math.round(fb * alpha + bb * (1 - alpha));
+  return [r, g, b].map(c => c.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
 // ─── TEXT HELPERS ────────────────────────────────────────────────
@@ -544,7 +560,7 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     valAxisLineShow: false,
     // Smart number formatting: detect percentage vs currency vs plain numbers
     valAxisLabelFormatCode: detectPercentageData(chart) ? "0.0%" : detectCurrencyData(chart) ? "€#,##0" : "#,##0",
-    valGridLine: { color: "F3F4F6", size: 0.5 },
+    valGridLine: { color: norm(tokens.palette.border), size: 0.5 },
     catGridLine: { style: "none" },
 
     chartColors: palette,
@@ -1022,14 +1038,10 @@ function renderCallout(
     orange: tokens.palette.calloutOrange,
     accent: tokens.palette.accent,
   };
-  // Dark-mode-safe callout backgrounds (10% opacity tint of accent color)
-  const bgMap: Record<string, string> = {
-    green: "1A2E24",   // Dark green tint on dark bg
-    orange: "2D2618",  // Dark amber tint on dark bg
-    accent: "1A1F2E",  // Dark blue tint on dark bg
-  };
+  // Derive callout background from the accent color at ~10% opacity on the surface color.
+  // Works on both dark (Slate/Obsidian) and light (Bower/Signal/Verso) templates.
   const accentColor = accentMap[variant] || tokens.palette.accent;
-  const bgColor = bgMap[variant] || "EFF6FF";
+  const bgColor = tintColor(accentColor, tokens.palette.surface ?? tokens.palette.bg, 0.12);
   const calloutH = Math.min(region.h, 0.45); // Respect region height — never overflow
 
   // Tinted background (no border, sharp corners)
@@ -1721,7 +1733,7 @@ export async function renderV2PptxArtifact(
     if (isCover) {
       renderCoverSlide(slide, pptx, slideData, tokens);
     } else {
-      renderContentSlide(slide, pptx, slideData, chartsMap, tokens, input.exportMode ?? "powerpoint-native");
+      renderContentSlide(slide, pptx, slideData, chartsMap, tokens, input.exportMode ?? "universal-compatible");
     }
 
     // Speaker notes for cover
@@ -1804,9 +1816,9 @@ async function fixPptxChartCompatibility(pptxBuffer: Buffer): Promise<Buffer> {
       [/typeface="Aptos Narrow"/g, 'typeface="Arial Narrow"'],
     ];
 
-    // Apply font replacements across all XML entries (theme, chart styles, slide layouts)
+    // Apply font replacements across ALL XML entries (theme, charts, layouts, notes, handouts)
     const fontFixEntries = Object.keys(zip.files).filter(
-      (f) => /^ppt\/charts\/_rels\/|^ppt\/embeddings\/.*\.xml$|^ppt\/theme\/.*\.xml$|^ppt\/slideLayouts\/.*\.xml$|^ppt\/slideMasters\/.*\.xml$/i.test(f),
+      (f) => /^ppt\/charts\/_rels\/|^ppt\/embeddings\/.*\.xml$|^ppt\/theme\/.*\.xml$|^ppt\/slideLayouts\/.*\.xml$|^ppt\/slideMasters\/.*\.xml$|^ppt\/notesMaster.*\.xml$|^ppt\/notesSlides\/.*\.xml$|^ppt\/handoutMasters\/.*\.xml$|^docProps\/.*\.xml$/i.test(f),
     );
     for (const entry of fontFixEntries) {
       if (!zip.files[entry] || zip.files[entry].dir) continue;
