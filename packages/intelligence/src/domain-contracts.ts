@@ -524,6 +524,105 @@ export type SlideQualityResult = {
   issues: string[];
 };
 
+// ─── DETERMINISTIC DIAGNOSTIC MOTIF DETECTOR ────────────────────
+// Scans analyst-computed metrics and flags which FMCG diagnostic
+// patterns are present. Zero LLM cost. Injected into narrative arc
+// and author context so the story angle is structurally guaranteed.
+
+export type DiagnosticMotif =
+  | "availability_problem"   // Low dist + reasonable velocity
+  | "velocity_problem"       // Good dist + weak velocity
+  | "price_mix_tension"      // Value growth > volume growth
+  | "promo_dependence"       // Promo intensity >50%
+  | "portfolio_mismatch"     // Brand mix differs from category by >5pp
+  | "hero_concentration"     // Top 3 SKUs >50% of value
+  | "share_erosion";         // Declining share in flat/growing category
+
+export type DetectedMotif = {
+  motif: DiagnosticMotif;
+  signal: string;
+  confidence: number; // 0-1
+};
+
+/**
+ * Detect diagnostic motifs from analyst findings.
+ * Scans the topFindings array for quantitative signals.
+ * Returns motifs sorted by confidence (highest first).
+ */
+export function detectDiagnosticMotifs(findings: Array<{
+  title: string;
+  claim: string;
+  businessImplication: string;
+}>): DetectedMotif[] {
+  const detected: DetectedMotif[] = [];
+  const allText = findings.map(f => `${f.title} ${f.claim} ${f.businessImplication}`).join(" ").toLowerCase();
+
+  // Availability Problem: distribution gap + reasonable velocity
+  if (
+    (allText.includes("distribu") && (allText.includes("gap") || allText.includes("sotto") || allText.includes("below") || allText.includes("under"))) ||
+    (allText.includes("void") && allText.includes("analys"))
+  ) {
+    // Check for velocity not being the problem
+    const velocityOk = !allText.includes("velocity problem") && !allText.includes("weak ros") && !allText.includes("low rotation");
+    if (velocityOk) {
+      detected.push({ motif: "availability_problem", signal: "Distribution gap detected with acceptable velocity", confidence: 0.7 });
+    }
+  }
+
+  // Velocity Problem: good distribution but weak movement
+  if (
+    (allText.includes("velocity") || allText.includes("rotation") || allText.includes("ros")) &&
+    (allText.includes("weak") || allText.includes("low") || allText.includes("below") || allText.includes("declining") || allText.includes("bass"))
+  ) {
+    detected.push({ motif: "velocity_problem", signal: "Weak velocity/ROS despite adequate distribution", confidence: 0.65 });
+  }
+
+  // Price/Mix Tension: value vs volume divergence
+  if (
+    (allText.includes("value") && allText.includes("volume") && (allText.includes("diverge") || allText.includes("tension"))) ||
+    (allText.includes("price") && allText.includes("mix") && allText.includes("shift")) ||
+    (/value.*grow.*volume.*declin/i.test(allText) || /volume.*grow.*value.*declin/i.test(allText))
+  ) {
+    detected.push({ motif: "price_mix_tension", signal: "Value and volume growth diverging", confidence: 0.7 });
+  }
+
+  // Promo Dependence: intensity signals
+  if (
+    allText.includes("promo") && (
+      /(?:intensity|dipendenz|dependenc).*(?:5[0-9]|6[0-9]|7[0-9]|8[0-9]|9[0-9])%/i.test(allText) ||
+      allText.includes(">50%") || allText.includes("high promo") || allText.includes("promo depend")
+    )
+  ) {
+    detected.push({ motif: "promo_dependence", signal: "Promo intensity signals dependency (>50%)", confidence: 0.75 });
+  }
+
+  // Portfolio Mismatch: mix gap
+  if (
+    (allText.includes("mix") && (allText.includes("gap") || allText.includes("mismatch") || allText.includes("differ") || allText.includes("sbilanc"))) ||
+    (allText.includes("portfolio") && allText.includes("rebalance"))
+  ) {
+    detected.push({ motif: "portfolio_mismatch", signal: "Brand mix differs significantly from category structure", confidence: 0.6 });
+  }
+
+  // Hero Concentration: top SKUs dominate
+  if (
+    (allText.includes("top") && (allText.includes("sku") || allText.includes("product") || allText.includes("referenz")) && allText.includes(">50%")) ||
+    (allText.includes("concentrat") && (allText.includes("hero") || allText.includes("top 3") || allText.includes("top 5")))
+  ) {
+    detected.push({ motif: "hero_concentration", signal: "Top SKUs account for >50% of brand value", confidence: 0.7 });
+  }
+
+  // Share Erosion: declining share
+  if (
+    (allText.includes("share") || allText.includes("quota")) &&
+    (allText.includes("declin") || allText.includes("los") || allText.includes("eros") || allText.includes("pers") || allText.includes("calo"))
+  ) {
+    detected.push({ motif: "share_erosion", signal: "Share declining or eroding vs. prior period", confidence: 0.65 });
+  }
+
+  return detected.sort((a, b) => b.confidence - a.confidence);
+}
+
 /**
  * Deterministic quality gate for each slide.
  * Returns pass/fail with specific issues.

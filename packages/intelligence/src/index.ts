@@ -61,6 +61,9 @@ export {
   type CanonicalColumn,
   type SlideQualityResult,
   type NiqExhibitFamily,
+  detectDiagnosticMotifs,
+  type DiagnosticMotif,
+  type DetectedMotif,
 } from "./domain-contracts";
 
 export {

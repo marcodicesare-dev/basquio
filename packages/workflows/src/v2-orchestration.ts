@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, detectDiagnosticMotifs, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact, renderPdfFromSceneGraph, type V2PdfChart } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -98,6 +98,69 @@ import { inngest } from "./inngest-client";
 // Fix literal \n sequences from LLM output into actual newlines
 function cleanNewlines(text: string): string {
   return text.replace(/\\n/g, "\n").replace(/\\\\n/g, "\n");
+}
+
+// ─── AI SLOP SANITIZER (deterministic, $0) ──────────────────────
+// Catches AI writing patterns that leak through prompt constraints.
+// Applied to every text field BEFORE persistence.
+function deSlop(text: string): string {
+  if (!text) return text;
+  let t = text;
+
+  // Em dashes → commas (most natural replacement)
+  t = t.replace(/\s*[—–]\s*/g, ", ");
+
+  // Banned phrases (case-insensitive, whole-word-ish)
+  const BANNED = [
+    /\blet'?s dive into\b/gi,
+    /\bit'?s worth noting\b/gi,
+    /\bmoving forward\b/gi,
+    /\bin today'?s landscape\b/gi,
+    /\bat the end of the day\b/gi,
+    /\bparadigm shift\b/gi,
+    /\bleverag(e|ing|ed)\b/gi,
+    /\bsynerg(y|ies|istic)\b/gi,
+    /\bholistic(ally)?\b/gi,
+    /\brobust\b/gi,
+    /\binnovative\b/gi,
+    /\bstreamlin(e|ing|ed)\b/gi,
+    /\bunlock(ing|ed|s)?\b/gi,
+    /\bempower(ing|ed|s|ment)?\b/gi,
+    /\belevat(e|ing|ed)\b/gi,
+    /\bdisruptive\b/gi,
+    /\bscalable\b/gi,
+    /\bgame[- ]?chang(er|ing)\b/gi,
+    /\bcutting[- ]?edge\b/gi,
+  ];
+  for (const rx of BANNED) {
+    t = t.replace(rx, "");
+  }
+
+  // Hedging phrases
+  t = t.replace(/\bmay potentially\b/gi, "may");
+  t = t.replace(/\bcould possibly\b/gi, "could");
+  t = t.replace(/\bit appears that\b/gi, "");
+  t = t.replace(/\bit seems that\b/gi, "");
+  t = t.replace(/\bwe observed that\b/gi, "");
+
+  // Sycophantic openers (strip word + comma)
+  t = t.replace(/^(Interestingly|Notably|Importantly|Remarkably|Significantly|Crucially),?\s*/i, "");
+
+  // Exclamation marks in analytical text → periods
+  t = t.replace(/!/g, ".");
+
+  // Strip gerund-starting bullets (in a bullet context, this is "Driving...", "Optimizing...")
+  // We only strip the gerund prefix, keep the content
+  t = t.replace(/^(Driving|Optimizing|Leveraging|Enabling|Fostering|Spearheading|Pioneering|Championing)\s+/i, "");
+
+  // Clean up double spaces, double commas, leading/trailing commas
+  t = t.replace(/,\s*,/g, ",");
+  t = t.replace(/\s{2,}/g, " ");
+  t = t.replace(/^\s*,\s*/, "");
+  t = t.replace(/\s*,\s*$/, "");
+  t = t.replace(/\.\./g, ".");
+
+  return t.trim();
 }
 
 // ─── PERSISTENCE HELPERS ──────────────────────────────────────────
@@ -3432,6 +3495,12 @@ Return a V1DeckPlan with slides and charts.`,
         stage: "storyline",
       });
 
+      // Deterministic diagnostic motif detection ($0, code-level)
+      const detectedMotifs = detectDiagnosticMotifs(analysis?.topFindings ?? []);
+      const motifContext = detectedMotifs.length > 0
+        ? `\n## DETECTED DIAGNOSTIC MOTIFS (deterministic, from data)\n${detectedMotifs.map(m => `- ${m.motif}: ${m.signal} (confidence: ${(m.confidence * 100).toFixed(0)}%)`).join("\n")}\nFrame your POVs around these motifs. They are structurally present in the data.`
+        : "";
+
       const arcPrompt = `You are a McKinsey/BCG partner planning the narrative arc for a consulting-grade deck.
 Your job: write the SCQA, assign titles to every slide, and structure 2-4 Points of View (POVs).
 
@@ -3478,7 +3547,7 @@ ${slidePlanSummary}
 ## CHARTS (built)
 ${chartSummaries}
 
-${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
+${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifContext}`;
 
       // Narrative arc is the #1 intelligence feature (~$0.04). Retry once on transient errors.
       const generateArc = () => generateObject({
@@ -3700,6 +3769,11 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
         const batch = slides.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map(async (slideSpec) => {
           try {
+            // Per-slide budget gate: stop generating if budget exhausted
+            if (isOverBudget()) {
+              console.warn(`[basquio-author] Budget exhausted, skipping slide ${slideSpec.position} (${slideSpec.role})`);
+              return;
+            }
             // With narrative arc providing titles, all slides can use Haiku (intelligence is upstream)
             // Sacred slides still get Sonnet when budget allows for better prose quality
             const isSacred = ["cover", "exec-summary", "summary", "recommendation"].includes(slideSpec.role);
@@ -3888,12 +3962,21 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
               sanitizedNotes = notesWords.slice(0, 160).join(" ");
             }
 
+            // --- AI SLOP SANITIZER (deterministic, $0) ---
+            // Catches patterns the prompt missed. ~10-20% leak rate without this.
+            finalTitle = deSlop(finalTitle);
+            sanitizedBody = deSlop(sanitizedBody);
+            sanitizedBullets = sanitizedBullets.map(b => deSlop(b)).filter(Boolean);
+            sanitizedCalloutText = deSlop(sanitizedCalloutText);
+            sanitizedNotes = deSlop(sanitizedNotes);
+            const sanitizedSubtitle = deSlop(slideOutput.subtitle || "");
+
             // --- Persist the sanitized slide ---
             await persistSlide(runId, {
               position: slideSpec.position,
               layoutId: effectiveLayout,
               title: finalTitle,
-              subtitle: slideOutput.subtitle || undefined,
+              subtitle: sanitizedSubtitle || undefined,
               kicker: finalKicker || undefined,
               body: sanitizedBody || undefined,
               bullets: sanitizedBullets.length > 0 ? sanitizedBullets : undefined,
@@ -4131,11 +4214,18 @@ Fix the issues while maintaining the governing thought.`,
             const rNotesWords = rNotes.split(/\s+/);
             if (rNotesWords.length > 160) rNotes = rNotesWords.slice(0, 160).join(" ");
 
+            // AI slop sanitizer (same as main path)
+            const slopFreeTitle = deSlop(repairTitle);
+            rBody = deSlop(rBody);
+            rBullets = rBullets.map((b: string) => deSlop(b)).filter(Boolean);
+            rCallout = deSlop(rCallout);
+            rNotes = deSlop(rNotes);
+
             await persistSlide(runId, {
               position,
               layoutId: repairLayout,
-              title: repairTitle,
-              subtitle: repaired.subtitle || undefined,
+              title: slopFreeTitle,
+              subtitle: deSlop(repaired.subtitle || "") || undefined,
               kicker: repairKicker || undefined,
               body: rBody || undefined,
               bullets: rBullets.length > 0 ? rBullets : undefined,
