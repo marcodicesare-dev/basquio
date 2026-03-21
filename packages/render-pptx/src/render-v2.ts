@@ -1,5 +1,4 @@
 import PptxGenJS from "pptxgenjs";
-import sharp from "sharp";
 
 import { getLayoutRegions, SLIDE_W, SLIDE_H, type LayoutRegions, type R } from "@basquio/scene-graph/layout-regions";
 import { getArchetypeOrDefault } from "@basquio/scene-graph/slot-archetypes";
@@ -1799,7 +1798,11 @@ export async function renderV2PptxArtifact(
 
       // Render at 2x resolution for retina-quality images
       const svg = renderV2ChartSvg(chart, chartTheme, 1920, 1080, suppressTitle);
-      const pngBuffer = await sharp(Buffer.from(svg))
+      // Dynamic import: sharp has native binaries that fail at Next.js build time
+      // if imported statically. Dynamic import defers loading to runtime.
+      const sharpModule = await import("sharp");
+      const sharpFn = sharpModule.default;
+      const pngBuffer = await sharpFn(Buffer.from(svg))
         .resize(1920, 1080)
         .png({ quality: 95 })
         .toBuffer();
