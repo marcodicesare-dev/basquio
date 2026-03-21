@@ -3935,10 +3935,28 @@ Fix the issues while maintaining the governing thought.`,
             const repaired = repairResult.object;
             addUsage(repairResult.usage, "claude-haiku-4-5", `repair-slide-${position}`);
 
-            // Same deterministic sanitization as main author path
+            // ─── REPAIR SANITIZATION (IDENTICAL to main author path) ──────
+            // CRITICAL: Arc-locked fields (title, kicker, callout tone) MUST be
+            // re-locked here. The repair LLM's output is NOT trusted for these.
             const repairLayout = slideSpec.layout;
-            const repairBodyLimit: Record<string, number> = { "cover": 0, "exec-summary": 150, "chart-split": 180, "title-chart": 180, "evidence-grid": 180, "title-body": 300, "summary": 180, "recommendation": 180, "table": 0 };
-            const rbl = repairBodyLimit[repairLayout] ?? 200;
+
+            // --- Arc-locked fields: narrative arc overrides LLM output ---
+            const repairArcSlide = narrativeArc?.slides?.find((s: any) => s.position === position);
+            const repairTitle = repairArcSlide?.title || repaired.title;
+            const repairKicker = repairArcSlide?.kicker || repaired.kicker;
+            const repairArcTone = repairArcSlide?.calloutTone;
+            const repairCalloutTone: "accent" | "green" | "orange" =
+              (repairArcTone === "green" || repairArcTone === "orange" || repairArcTone === "accent")
+                ? repairArcTone
+                : repaired.callout.tone;
+
+            // --- Body: same limits as main path (BODY_LIMITS) ---
+            const REPAIR_BODY_LIMITS: Record<string, number> = {
+              "cover": 0, "exec-summary": 150, "chart-split": 180, "title-chart": 180,
+              "evidence-grid": 180, "title-body": 300, "summary": 180, "recommendation": 180,
+              "table": 0, "comparison": 180,
+            };
+            const rbl = REPAIR_BODY_LIMITS[repairLayout] ?? 200;
             let rBody = repaired.body || "";
             if (rbl === 0) rBody = "";
             else if (rBody.length > rbl) {
@@ -3946,38 +3964,72 @@ Fix the issues while maintaining the governing thought.`,
               const ls = Math.max(t.lastIndexOf(". "), t.lastIndexOf("? "), t.lastIndexOf("! "));
               rBody = ls > rbl * 0.4 ? t.slice(0, ls + 1).trim() : t.trim();
             }
-            const repairBulletLimit: Record<string, number> = { "cover": 0, "exec-summary": 0, "chart-split": 2, "title-body": 3, "summary": 4, "recommendation": 4, "table": 0 };
-            const rbul = repairBulletLimit[repairLayout] ?? 3;
-            const rBullets = (repaired.bullets ?? []).slice(0, rbul).map(b => {
-              const w = b.split(/\s+/);
-              return w.length > 18 ? w.slice(0, 18).join(" ") : b;
-            });
-            const rMetrics = (repaired.metrics ?? []).slice(0, 3).map(m => ({
-              label: m.label, value: m.value,
-              delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim()) ? m.delta.trim() : "",
-            }));
+
+            // --- Bullets: same limits as main path (BULLET_LIMITS) ---
+            const REPAIR_BULLET_LIMITS: Record<string, { max: number; maxWords: number }> = {
+              "cover": { max: 0, maxWords: 0 }, "exec-summary": { max: 0, maxWords: 0 },
+              "chart-split": { max: 2, maxWords: 15 }, "title-chart": { max: 2, maxWords: 15 },
+              "evidence-grid": { max: 2, maxWords: 15 }, "title-body": { max: 3, maxWords: 15 },
+              "title-bullets": { max: 4, maxWords: 15 }, "summary": { max: 4, maxWords: 18 },
+              "recommendation": { max: 4, maxWords: 18 }, "table": { max: 0, maxWords: 0 },
+            };
+            const rBulLim = REPAIR_BULLET_LIMITS[repairLayout] ?? { max: 3, maxWords: 15 };
+            let rBullets = repaired.bullets ?? [];
+            if (rBulLim.max === 0) {
+              rBullets = [];
+            } else {
+              rBullets = rBullets.slice(0, rBulLim.max).map((b: string) => {
+                const w = b.split(/\s+/);
+                return w.length > rBulLim.maxWords ? w.slice(0, rBulLim.maxWords).join(" ") : b;
+              });
+            }
+
+            // --- Metrics: same limits as main path ---
+            const REPAIR_METRIC_LIMITS: Record<string, number> = {
+              "exec-summary": 3, "metrics": 6, "evidence-grid": 3,
+            };
+            const rMetLim = REPAIR_METRIC_LIMITS[repairLayout] ?? 0;
+            let rMetrics = repaired.metrics ?? [];
+            if (rMetLim === 0 && !["exec-summary", "metrics", "evidence-grid"].includes(repairLayout)) {
+              rMetrics = [];
+            } else {
+              rMetrics = rMetrics.slice(0, Math.max(rMetLim, 3)).map((m: any) => ({
+                label: m.label, value: m.value,
+                delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim()) ? m.delta.trim() : "",
+              }));
+            }
+
+            // --- Callout: arc tone locked, cap length ---
             let rCallout = repaired.callout.text || "";
             const rcw = rCallout.split(/\s+/);
             if (rcw.length > 25) rCallout = rcw.slice(0, 25).join(" ");
+            if (repairLayout === "cover") rCallout = "";
+
+            // --- Speaker notes: cap length (same as main path) ---
+            let rNotes = repaired.speakerNotes || "";
+            const rNotesWords = rNotes.split(/\s+/);
+            if (rNotesWords.length > 160) rNotes = rNotesWords.slice(0, 160).join(" ");
 
             await persistSlide(runId, {
               position,
               layoutId: repairLayout,
-              title: repaired.title,
+              title: repairTitle,
               subtitle: repaired.subtitle || undefined,
-              kicker: repaired.kicker || undefined,
+              kicker: repairKicker || undefined,
               body: rBody || undefined,
               bullets: rBullets.length > 0 ? rBullets : undefined,
               metrics: rMetrics.length > 0
-                ? rMetrics.map((m) => ({ label: m.label, value: m.value, delta: m.delta || undefined }))
+                ? rMetrics.map((m: any) => ({ label: m.label, value: m.value, delta: m.delta || undefined }))
                 : undefined,
               callout: rCallout
-                ? { text: rCallout, tone: repaired.callout.tone }
+                ? { text: rCallout, tone: repairCalloutTone }
                 : undefined,
               evidenceIds: repaired.evidenceIds,
-              speakerNotes: repaired.speakerNotes || undefined,
+              speakerNotes: rNotes || undefined,
               pageIntent: slideSpec.role,
               governingThought: slideSpec.governingThought,
+              focalObject: slideSpec.focalObject,
+              highlightCategories: validatedPlan.focalEntity ? [validatedPlan.focalEntity] : undefined,
             });
           } catch (repairError) {
             console.error(`[basquio-author] Repair failed for slide ${position}:`, repairError);
