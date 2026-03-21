@@ -1860,9 +1860,9 @@ async function validateOoxmlStructure(buffer: Buffer): Promise<{ valid: boolean;
       warnings.push("Missing ppt/theme/theme1.xml — Keynote may show font warnings");
     }
 
-    // Check for broken XML in slides (common PptxGenJS issue)
+    // Check for broken XML in ALL slides (common PptxGenJS issue)
     const slideFiles = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/i.test(f));
-    for (const slideFile of slideFiles.slice(0, 3)) { // sample first 3 slides
+    for (const slideFile of slideFiles) {
       try {
         const xml = await zip.files[slideFile].async("text");
         // Check for unclosed tags (basic well-formedness)
@@ -1877,7 +1877,7 @@ async function validateOoxmlStructure(buffer: Buffer): Promise<{ valid: boolean;
     }
 
     // Check for slide relationships (Google Slides needs these)
-    for (const slideFile of slideFiles.slice(0, 3)) {
+    for (const slideFile of slideFiles) {
       const relPath = slideFile.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels";
       if (!zip.file(relPath)) {
         warnings.push(`Missing relationship file: ${relPath} — Google Slides may fail to import`);

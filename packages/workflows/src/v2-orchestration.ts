@@ -2258,6 +2258,8 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
               durationMs: costSummary.durationMs,
               phases: costSummary.phases,
               budgetExceeded: budgetCheck.exceeded,
+              // Per-step cost breakdown from author phase (plan, narrative-arc, per-slide, repair)
+              stepBreakdown: (authorReturn?.costLedger as Array<{ step: string; model: string; costUsd: number }>) ?? [],
             },
           }),
         },
@@ -2865,6 +2867,24 @@ export const basquioAuthor = inngest.createFunction(
       });
       const planDomainText = planDomainContext ? `\n\n${planDomainContext}` : "";
 
+      // ─── NIQ EXHIBIT PRE-SELECTION (deterministic, $0) ─────────
+      // Match each finding to the best NIQ exhibit family BEFORE the planner runs.
+      // This gives the planner concrete chart type recommendations grounded in data availability.
+      const niqExhibitRecommendations = (analysis.topFindings ?? []).map((finding, idx) => {
+        const qType = inferQuestionType(finding.claim);
+        // Collect available measure names from all sheets
+        const allMeasures = sheetInventory.flatMap(s =>
+          s.columns.split(", ").filter(c => c.includes("measure")).map(c => c.split(" (")[0].toLowerCase())
+        );
+        const match = findBestExhibitFamily(qType, allMeasures);
+        return match.family
+          ? `Finding ${idx + 1} [${qType}]: use ${match.family.chartType} (${match.family.name}, ${match.confidence} confidence)`
+          : `Finding ${idx + 1} [${qType}]: no strong NIQ exhibit match — use general rules`;
+      });
+      const niqExhibitText = niqExhibitRecommendations.length > 0
+        ? `\n\n## NIQ Exhibit Library Pre-Selection (deterministic, use these over general heuristics when confidence is high)\n${niqExhibitRecommendations.join("\n")}`
+        : "";
+
       try {
         const planGenResult = await generateObject({
           model: openai("gpt-5.4-mini"),
@@ -2944,7 +2964,7 @@ ${findingsSummary}
 ## Recommended chart types
 ${chartTypesSummary}
 ${storylineContext}
-${sheetInventoryText}${dataIntelligenceText}${planDomainText}
+${sheetInventoryText}${dataIntelligenceText}${niqExhibitText}${planDomainText}
 
 ## Focal entity
 ${clarifiedBrief?.focalEntity ?? "(detect from brief)"}
