@@ -3612,50 +3612,152 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
             const slideOutput = slideGenResult.object;
             addUsage(slideGenResult.usage, modelId, `author-slide-${slideSpec.position}`);
 
-            // Language is enforced via the system prompt, not post-hoc detection.
-            // The old detectLanguage() approach caused 11 false retries per Italian deck
-            // ($0.77 wasted) because Italian/Spanish share too many marker words.
-            // The LLM already writes in the correct language when told to.
+            // ─── DETERMINISTIC SANITIZATION (code for truth, $0) ───────
+            // The author's output is NOT trusted as-is. Every field is clamped,
+            // truncated, or overridden by deterministic code. This is the
+            // "hard product shell" around the AI reasoning core.
+            // No retries. No re-generation. Code fixes it. $0.
 
-            // Resolve the real chart ID
             const realChartId = slideSpec.chartId ? chartIdMap[slideSpec.chartId] : undefined;
-
-            // If slide expects a chart but none was built, downgrade layout to text-only
             const chartLayouts = ["chart-split", "title-chart", "evidence-grid", "comparison"];
             const effectiveLayout = (!realChartId && chartLayouts.includes(slideSpec.layout))
-              ? "title-body"  // Downgrade: text-only layout instead of chartless chart-layout
+              ? "title-body"
               : slideSpec.layout;
 
-            // Use narrative arc title (preferred) or fall back to LLM-generated title
+            // --- Title: locked from narrative arc, never from LLM ---
             const arcSlide = arcSlideMap.get(slideSpec.position);
             const finalTitle = arcSlide?.title || slideOutput.title;
             const finalKicker = arcSlide?.kicker || slideOutput.kicker;
 
-            // Persist the slide
+            // --- Body: hard word/char limits per layout ---
+            const BODY_LIMITS: Record<string, number> = {
+              "cover": 0,
+              "exec-summary": 150,  // ~25 words
+              "chart-split": 180,   // ~30 words
+              "title-chart": 180,
+              "evidence-grid": 180,
+              "title-body": 300,    // ~50 words
+              "summary": 180,
+              "recommendation": 180,
+              "table": 0,
+              "comparison": 180,
+            };
+            const bodyLimit = BODY_LIMITS[effectiveLayout] ?? 200;
+            let sanitizedBody = slideOutput.body || "";
+            if (bodyLimit === 0) {
+              sanitizedBody = "";
+            } else if (sanitizedBody.length > bodyLimit) {
+              // Truncate to last complete sentence within limit
+              const truncated = sanitizedBody.slice(0, bodyLimit);
+              const lastSentenceEnd = Math.max(
+                truncated.lastIndexOf(". "),
+                truncated.lastIndexOf(".)"),
+                truncated.lastIndexOf("? "),
+                truncated.lastIndexOf("! "),
+              );
+              sanitizedBody = lastSentenceEnd > bodyLimit * 0.4
+                ? truncated.slice(0, lastSentenceEnd + 1).trim()
+                : truncated.trim();
+            }
+
+            // --- Bullets: hard count + word limits ---
+            const BULLET_LIMITS: Record<string, { max: number; maxWords: number }> = {
+              "cover": { max: 0, maxWords: 0 },
+              "exec-summary": { max: 0, maxWords: 0 },
+              "chart-split": { max: 2, maxWords: 15 },
+              "title-chart": { max: 2, maxWords: 15 },
+              "evidence-grid": { max: 2, maxWords: 15 },
+              "title-body": { max: 3, maxWords: 15 },
+              "title-bullets": { max: 4, maxWords: 15 },
+              "summary": { max: 4, maxWords: 18 },
+              "recommendation": { max: 4, maxWords: 18 },
+              "table": { max: 0, maxWords: 0 },
+            };
+            const bulletLimit = BULLET_LIMITS[effectiveLayout] ?? { max: 3, maxWords: 15 };
+            let sanitizedBullets = slideOutput.bullets ?? [];
+            if (bulletLimit.max === 0) {
+              sanitizedBullets = [];
+            } else {
+              sanitizedBullets = sanitizedBullets
+                .slice(0, bulletLimit.max)
+                .map(b => {
+                  const words = b.split(/\s+/);
+                  return words.length > bulletLimit.maxWords
+                    ? words.slice(0, bulletLimit.maxWords).join(" ")
+                    : b;
+                });
+            }
+
+            // --- Metrics: cap count, force numeric deltas ---
+            const METRIC_LIMITS: Record<string, number> = {
+              "exec-summary": 3,
+              "metrics": 6,
+              "evidence-grid": 3,
+            };
+            const metricLimit = METRIC_LIMITS[effectiveLayout] ?? 0;
+            let sanitizedMetrics = slideOutput.metrics ?? [];
+            if (metricLimit === 0 && !["exec-summary", "metrics", "evidence-grid"].includes(effectiveLayout)) {
+              sanitizedMetrics = [];
+            } else {
+              sanitizedMetrics = sanitizedMetrics.slice(0, Math.max(metricLimit, 3)).map(m => ({
+                label: m.label,
+                value: m.value,
+                // Force numeric delta or empty string — no descriptive text
+                delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim())
+                  ? m.delta.trim()
+                  : "",
+              }));
+            }
+
+            // --- Callout: enforce arc tone, cap length ---
+            const arcTone = arcSlide?.calloutTone;
+            const sanitizedCalloutTone: "accent" | "green" | "orange" =
+              (arcTone === "green" || arcTone === "orange" || arcTone === "accent")
+                ? arcTone
+                : slideOutput.callout.tone;
+            let sanitizedCalloutText = slideOutput.callout.text || "";
+            // Cap callout to 25 words
+            const calloutWords = sanitizedCalloutText.split(/\s+/);
+            if (calloutWords.length > 25) {
+              sanitizedCalloutText = calloutWords.slice(0, 25).join(" ");
+            }
+            // Cover slides: no callout
+            if (effectiveLayout === "cover") {
+              sanitizedCalloutText = "";
+            }
+
+            // --- Speaker notes: cap length ---
+            let sanitizedNotes = slideOutput.speakerNotes || "";
+            const notesWords = sanitizedNotes.split(/\s+/);
+            if (notesWords.length > 160) {
+              sanitizedNotes = notesWords.slice(0, 160).join(" ");
+            }
+
+            // --- Persist the sanitized slide ---
             await persistSlide(runId, {
               position: slideSpec.position,
               layoutId: effectiveLayout,
               title: finalTitle,
               subtitle: slideOutput.subtitle || undefined,
               kicker: finalKicker || undefined,
-              body: slideOutput.body || undefined,
-              bullets: slideOutput.bullets.length > 0 ? slideOutput.bullets : undefined,
+              body: sanitizedBody || undefined,
+              bullets: sanitizedBullets.length > 0 ? sanitizedBullets : undefined,
               chartId: realChartId || undefined,
-              metrics: slideOutput.metrics.length > 0
-                ? slideOutput.metrics.map((m) => ({
+              metrics: sanitizedMetrics.length > 0
+                ? sanitizedMetrics.map((m) => ({
                     label: m.label,
                     value: m.value,
                     delta: m.delta || undefined,
                   }))
                 : undefined,
-              callout: slideOutput.callout.text
+              callout: sanitizedCalloutText
                 ? {
-                    text: slideOutput.callout.text,
-                    tone: slideOutput.callout.tone, // Enum-validated by schema: "accent" | "green" | "orange"
+                    text: sanitizedCalloutText,
+                    tone: sanitizedCalloutTone,
                   }
                 : undefined,
               evidenceIds: slideOutput.evidenceIds,
-              speakerNotes: slideOutput.speakerNotes || undefined,
+              speakerNotes: sanitizedNotes || undefined,
               pageIntent: slideSpec.role,
               governingThought: slideSpec.governingThought,
               focalObject: slideSpec.focalObject,
@@ -3795,19 +3897,44 @@ Fix the issues while maintaining the governing thought.`,
             const repaired = repairResult.object;
             addUsage(repairResult.usage, "claude-haiku-4-5", `repair-slide-${position}`);
 
+            // Same deterministic sanitization as main author path
+            const repairLayout = slideSpec.layout;
+            const repairBodyLimit: Record<string, number> = { "cover": 0, "exec-summary": 150, "chart-split": 180, "title-chart": 180, "evidence-grid": 180, "title-body": 300, "summary": 180, "recommendation": 180, "table": 0 };
+            const rbl = repairBodyLimit[repairLayout] ?? 200;
+            let rBody = repaired.body || "";
+            if (rbl === 0) rBody = "";
+            else if (rBody.length > rbl) {
+              const t = rBody.slice(0, rbl);
+              const ls = Math.max(t.lastIndexOf(". "), t.lastIndexOf("? "), t.lastIndexOf("! "));
+              rBody = ls > rbl * 0.4 ? t.slice(0, ls + 1).trim() : t.trim();
+            }
+            const repairBulletLimit: Record<string, number> = { "cover": 0, "exec-summary": 0, "chart-split": 2, "title-body": 3, "summary": 4, "recommendation": 4, "table": 0 };
+            const rbul = repairBulletLimit[repairLayout] ?? 3;
+            const rBullets = (repaired.bullets ?? []).slice(0, rbul).map(b => {
+              const w = b.split(/\s+/);
+              return w.length > 18 ? w.slice(0, 18).join(" ") : b;
+            });
+            const rMetrics = (repaired.metrics ?? []).slice(0, 3).map(m => ({
+              label: m.label, value: m.value,
+              delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim()) ? m.delta.trim() : "",
+            }));
+            let rCallout = repaired.callout.text || "";
+            const rcw = rCallout.split(/\s+/);
+            if (rcw.length > 25) rCallout = rcw.slice(0, 25).join(" ");
+
             await persistSlide(runId, {
               position,
-              layoutId: slideSpec.layout,
+              layoutId: repairLayout,
               title: repaired.title,
               subtitle: repaired.subtitle || undefined,
               kicker: repaired.kicker || undefined,
-              body: repaired.body || undefined,
-              bullets: repaired.bullets.length > 0 ? repaired.bullets : undefined,
-              metrics: repaired.metrics.length > 0
-                ? repaired.metrics.map((m) => ({ label: m.label, value: m.value, delta: m.delta || undefined }))
+              body: rBody || undefined,
+              bullets: rBullets.length > 0 ? rBullets : undefined,
+              metrics: rMetrics.length > 0
+                ? rMetrics.map((m) => ({ label: m.label, value: m.value, delta: m.delta || undefined }))
                 : undefined,
-              callout: repaired.callout.text
-                ? { text: repaired.callout.text, tone: (repaired.callout.tone as "accent" | "green" | "orange") || "accent" }
+              callout: rCallout
+                ? { text: rCallout, tone: repaired.callout.tone }
                 : undefined,
               evidenceIds: repaired.evidenceIds,
               speakerNotes: repaired.speakerNotes || undefined,
