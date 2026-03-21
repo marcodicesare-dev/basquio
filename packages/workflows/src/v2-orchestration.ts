@@ -3426,17 +3426,33 @@ ${chartSummaries}
 
 ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
 
+      // Narrative arc is the #1 intelligence feature (~$0.04). Retry once on transient errors.
+      const generateArc = () => generateObject({
+        model: anthropic("claude-sonnet-4-6"),
+        schema: v1NarrativeArcSchema,
+        prompt: arcPrompt,
+      });
       try {
-        const arcResult = await generateObject({
-          model: anthropic("claude-sonnet-4-6"),
-          schema: v1NarrativeArcSchema,
-          prompt: arcPrompt,
-        });
+        let arcResult: Awaited<ReturnType<typeof generateArc>>;
+        try {
+          arcResult = await generateArc();
+        } catch (firstErr) {
+          const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          if (/ECONNRESET|ETIMEDOUT|429|500|502|503|504|overloaded/i.test(msg)) {
+            console.warn(`[basquio-author] Narrative arc transient error, retrying once: ${msg.slice(0, 80)}`);
+            arcResult = await generateArc();
+          } else {
+            throw firstErr;
+          }
+        }
         addUsage(arcResult.usage, "claude-sonnet-4-6", "narrative-arc");
         console.warn(`[basquio-author] Narrative arc: ${arcResult.object.povs.length} POVs, SCQA answer: "${arcResult.object.answer.slice(0, 80)}..."`);
         return arcResult.object;
       } catch (err) {
-        console.error("[basquio-author] Narrative arc failed, proceeding without:", err);
+        // Narrative arc failure is a QUALITY EMERGENCY — all titles will be topic labels.
+        // Flag as degraded so the manifest reflects it, but never abort.
+        console.error("[basquio-author] CRITICAL: Narrative arc failed after retry. Titles will be LLM-generated (likely topic labels):", err);
+        await emitRunEvent(runId, "author", "narrative_arc_failed", { error: err instanceof Error ? err.message : String(err) });
         return null;
       }
     }) as V1NarrativeArc | null;

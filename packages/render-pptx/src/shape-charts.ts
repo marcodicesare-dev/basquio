@@ -238,6 +238,8 @@ export function renderShapeChart(
     renderRadar(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("mekko") || normalized.includes("marimekko")) {
     renderMekko(slide, data, chartFrame, tokens, options);
+  } else if (normalized.includes("pareto") || normalized.includes("concentration")) {
+    renderPareto(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("timeline") || normalized.includes("gantt") || normalized.includes("roadmap")) {
     renderTimeline(slide, data, chartFrame, tokens, options);
   } else if (normalized.includes("table") || normalized.includes("matrix")) {
@@ -1403,6 +1405,126 @@ function renderTimeline(
 
     offsetX += phaseW + 0.06;
   });
+}
+
+// ─── PARETO CHART (bars + cumulative % line) ─────────────────────
+// Key FMCG exhibit: "Top N SKUs account for X% of value"
+// Bars show individual values (desc sorted), dots show cumulative %.
+
+function renderPareto(
+  slide: PptxGenJS.Slide,
+  data: ShapeChartData,
+  frame: ShapeChartFrame,
+  tokens: ShapeChartTokens,
+  options: ShapeChartOptions,
+): void {
+  const labels = data.labels;
+  const values = data.datasets[0]?.data ?? [];
+  if (labels.length === 0 || values.length === 0) return;
+
+  const n = labels.length;
+  const total = values.reduce((s, v) => s + Math.abs(v), 0);
+  if (total === 0) return;
+
+  // Compute cumulative percentages
+  const cumPcts: number[] = [];
+  let cumSum = 0;
+  for (const v of values) {
+    cumSum += Math.abs(v);
+    cumPcts.push(cumSum / total);
+  }
+
+  const maxVal = Math.max(...values.map(Math.abs), 1);
+  const barW = (frame.w - 0.2) / n;
+  const plotH = frame.h - 0.35; // Leave room for labels
+  const baseY = frame.y + plotH;
+  const colors = tokens.chartPalette;
+
+  // Render bars (values)
+  for (let i = 0; i < n; i++) {
+    const v = Math.abs(values[i]);
+    const barH = (v / maxVal) * plotH * 0.85; // 85% height for bars, 15% for cum line
+    const x = frame.x + 0.1 + i * barW;
+    const y = baseY - barH;
+    const isHighlight = options.highlightCategories?.includes(labels[i]);
+    const barColor = isHighlight ? tokens.accent : (colors[i % colors.length] ?? colors[0]);
+
+    // Bar
+    slide.addText("", {
+      x, y, w: barW * 0.8, h: barH,
+      fill: { color: barColor },
+    });
+
+    // Value label above bar
+    slide.addText(fmtCompact(v, options.unit), {
+      x, y: y - 0.16, w: barW * 0.8, h: 0.14,
+      fontSize: 8, fontFace: tokens.bodyFont, color: tokens.ink,
+      align: "center", valign: "bottom", bold: true,
+    });
+
+    // Category label below
+    const displayLabel = labels[i].length > 10 ? labels[i].slice(0, 9) + "…" : labels[i];
+    slide.addText(displayLabel, {
+      x, y: baseY + 0.02, w: barW * 0.8, h: 0.16,
+      fontSize: 7, fontFace: tokens.bodyFont, color: V.labelGray,
+      align: "center", valign: "top",
+    });
+  }
+
+  // Render cumulative % dots and connecting lines (shape-built, no addShape("line"))
+  // Use small filled squares as dots and thin rectangles as connectors
+  for (let i = 0; i < n; i++) {
+    const x = frame.x + 0.1 + i * barW + barW * 0.4; // Center of bar
+    const dotY = baseY - cumPcts[i] * plotH;
+    const dotSize = 0.06;
+
+    // Dot (small square)
+    slide.addText("", {
+      x: x - dotSize / 2, y: dotY - dotSize / 2, w: dotSize, h: dotSize,
+      fill: { color: tokens.accent ?? "E8A84C" },
+    });
+
+    // Cumulative % label
+    slide.addText(`${Math.round(cumPcts[i] * 100)}%`, {
+      x: x - 0.2, y: dotY - 0.18, w: 0.4, h: 0.14,
+      fontSize: 7, fontFace: tokens.bodyFont, color: tokens.accent ?? "E8A84C",
+      align: "center", valign: "bottom", bold: true,
+    });
+
+    // Connector to next dot (thin horizontal + vertical rectangles)
+    if (i < n - 1) {
+      const nextX = frame.x + 0.1 + (i + 1) * barW + barW * 0.4;
+      const nextDotY = baseY - cumPcts[i + 1] * plotH;
+      // Horizontal segment at current height
+      const segW = nextX - x;
+      const midY = (dotY + nextDotY) / 2;
+      slide.addText("", {
+        x, y: midY - 0.005, w: segW, h: 0.01,
+        fill: { color: tokens.accent ?? "E8A84C" },
+      });
+    }
+  }
+
+  // Right-side % axis label
+  slide.addText("100%", {
+    x: frame.x + frame.w - 0.4, y: frame.y, w: 0.35, h: 0.14,
+    fontSize: 7, fontFace: tokens.bodyFont, color: V.labelGray,
+    align: "right", valign: "top",
+  });
+}
+
+// Compact number formatter for Pareto labels
+function fmtCompact(v: number, unit?: string): string {
+  const abs = Math.abs(v);
+  let f: string;
+  if (abs >= 1e9) f = `${(v / 1e9).toFixed(1)}B`;
+  else if (abs >= 1e6) f = `${(v / 1e6).toFixed(1)}M`;
+  else if (abs >= 1e4) f = `${Math.round(v / 1e3)}K`;
+  else if (abs >= 1e3) f = `${(v / 1e3).toFixed(1)}K`;
+  else f = String(Math.round(v));
+  if (unit === "%" || unit === "pp") return `${f}${unit}`;
+  if (unit && ["€", "$", "£", "CHF"].includes(unit)) return `${unit}${f}`;
+  return f;
 }
 
 // ─── DATA TABLE (for matrix/table chart types) ──────────────────

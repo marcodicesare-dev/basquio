@@ -193,7 +193,7 @@ const OBSIDIAN_TOKENS: BrandTokens = {
     kpiValueSize: 44,
     kpiLabelSize: 10,
   },
-  chartPalette: ["F59E0B", "FBBF24", "FDE68A", "D97706"],
+  chartPalette: ["F59E0B", "3B82F6", "10B981", "EF4444", "8B5CF6", "EC4899", "06B6D4", "D97706"],
 };
 
 // ─── "BOWER" HOUSE TEMPLATE — MBB Consulting Classic ────────────
@@ -228,7 +228,7 @@ const BOWER_TOKENS: BrandTokens = {
     kpiValueSize: 44,
     kpiLabelSize: 10,
   },
-  chartPalette: ["1F2937", "6B7280", "D1D5DB", "374151"],
+  chartPalette: ["1F2937", "2563EB", "059669", "DC2626", "7C3AED", "D97706", "0891B2", "6B7280"],
 };
 
 // ─── "SIGNAL" HOUSE TEMPLATE — Data-Heavy ───────────────────────
@@ -263,7 +263,7 @@ const SIGNAL_TOKENS: BrandTokens = {
     kpiValueSize: 40,
     kpiLabelSize: 9,
   },
-  chartPalette: ["7C3AED", "A78BFA", "C4B5FD", "5B21B6"],
+  chartPalette: ["7C3AED", "2563EB", "059669", "F59E0B", "EC4899", "DC2626", "0891B2", "A78BFA"],
 };
 
 // ─── "VERSO" HOUSE TEMPLATE — Bold Modern / VC Pitch ────────────
@@ -298,7 +298,7 @@ const VERSO_TOKENS: BrandTokens = {
     kpiValueSize: 48,      // Even bigger KPI numbers
     kpiLabelSize: 10,
   },
-  chartPalette: ["E11D48", "FB7185", "FECDD3", "BE123C"],
+  chartPalette: ["E11D48", "2563EB", "059669", "F59E0B", "7C3AED", "0891B2", "18181B", "FB7185"],
 };
 
 // ─── TEMPLATE LOOKUP MAP ────────────────────────────────────────
@@ -1380,7 +1380,7 @@ function renderContentSlide(
           h: regions.subtitle.h,
           fontFace: tokens.typography.bodyFont,
           fontSize: 16,
-          color: "94A3B8",
+          color: norm(tokens.palette.dim),
           valign: "top",
           margin: 0,
         });
