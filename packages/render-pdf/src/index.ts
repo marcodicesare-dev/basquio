@@ -1173,13 +1173,27 @@ function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: 
 
   // X-axis labels
   if (!isPie) {
-    labels.forEach((label, i) => {
-      const x = isLine
-        ? PAD.l + (i / Math.max(labels.length - 1, 1)) * plotW
-        : PAD.l + i * (plotW / labels.length) + (plotW / labels.length) / 2;
-      const truncLabel = label.length > 12 ? label.slice(0, 11) + "…" : label;
-      chartSvg += `<text x="${x}" y="${H - PAD.b + 18}" fill="#${muted}" font-size="9" text-anchor="middle">${escHtml(truncLabel)}</text>`;
-    });
+    if (isScatter) {
+      // Scatter/bubble: numeric tick marks on x-axis (not category labels)
+      const allXVals = data.map(r => Number(r[xAxis]) || 0);
+      const xMin = Math.min(...allXVals);
+      const xMax = Math.max(...allXVals);
+      const xRange = xMax - xMin || 1;
+      const tickCount = 5;
+      for (let i = 0; i <= tickCount; i++) {
+        const tickVal = xMin + (xRange / tickCount) * i;
+        const x = PAD.l + (i / tickCount) * plotW;
+        chartSvg += `<text x="${x}" y="${H - PAD.b + 18}" fill="#${muted}" font-size="9" text-anchor="middle">${fmtVal(tickVal, unit)}</text>`;
+      }
+    } else {
+      labels.forEach((label, i) => {
+        const x = isLine
+          ? PAD.l + (i / Math.max(labels.length - 1, 1)) * plotW
+          : PAD.l + i * (plotW / labels.length) + (plotW / labels.length) / 2;
+        const truncLabel = label.length > 12 ? label.slice(0, 11) + "…" : label;
+        chartSvg += `<text x="${x}" y="${H - PAD.b + 18}" fill="#${muted}" font-size="9" text-anchor="middle">${escHtml(truncLabel)}</text>`;
+      });
+    }
   }
 
   // Legend for multi-series
