@@ -3690,9 +3690,13 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
           keyDimensions: string[];
         };
         clarifiedBrief?: { focalEntity: string; focalBrands: string[]; language: string };
+        questionRoutes?: Array<{ id: string; name: string; domain: string; requiredEvidence: string[]; diagnosticMotifs: string[]; recommendationLevers: string[] }>;
+        computableDerivatives?: Record<string, string[]>;
       }>(runId, "analysis_result");
       const analysis = analysisResult?.analysis;
       const clarifiedBrief = analysisResult?.clarifiedBrief;
+      const questionRoutes = analysisResult?.questionRoutes ?? [];
+      const computableDerivatives = analysisResult?.computableDerivatives ?? {};
 
       // Build evidence index for quick lookup
       const evidenceList = await listEvidenceForRun(runId);
@@ -3851,6 +3855,23 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
         } else if (analysis?.topFindings?.length) {
           // For slides without specific evidence, provide the summary
           parts.push(`\n## Analysis summary\n${analysis.summary.slice(0, 500)}`);
+        }
+
+        // Question route intelligence (what this deck is trying to answer)
+        if (questionRoutes.length > 0) {
+          parts.push(`\n## QUESTION ROUTES (from semantic layer)`);
+          for (const r of questionRoutes) {
+            parts.push(`- ${r.name} [${r.domain}]: required evidence = ${r.requiredEvidence.join(", ")}`);
+            if (r.recommendationLevers.length > 0) {
+              parts.push(`  Recommendation levers: ${r.recommendationLevers.join(", ")}`);
+            }
+          }
+          // Show computable derivatives so the author knows what metrics exist
+          const allDerivs = [...new Set(Object.values(computableDerivatives).flat())];
+          if (allDerivs.length > 0) {
+            parts.push(`\nComputable derived metrics from the data: ${allDerivs.join(", ")}`);
+            parts.push(`Reference these metrics in your narrative. They are real, computed from the dataset.`);
+          }
         }
 
         // Title read-through from narrative arc (full deck context)
@@ -4772,8 +4793,8 @@ export const basquioCritiqueRevise = inngest.createFunction(
       const postMajor = postLintResult.slideResults.flatMap(r => r.result.violations).filter(v => v.severity === "major").length
         + postLintResult.deckViolations.filter(v => v.severity === "major").length;
 
-      // Re-run per-slide rendering contract
-      let postSlideContractViolations = 0;
+      // Re-run per-slide rendering contract (surface each violation)
+      const postSlideContractIssues: Array<{ severity: "major"; claim: string }> = [];
       for (const s of postRevisionSlides) {
         const chart = postRevisionCharts.find(c => c.id === s.chartId);
         const scr = validateSlideContract({
@@ -4785,28 +4806,41 @@ export const basquioCritiqueRevise = inngest.createFunction(
           metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
           callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
         });
-        postSlideContractViolations += scr.violations.length;
+        for (const v of scr.violations) {
+          postSlideContractIssues.push({ severity: "major", claim: `[CONTRACT] Slide ${s.position}: ${v.message}` });
+        }
       }
 
       // Re-run deck-level rendering contract
       const postDeckContract = validateDeckContract(
         postRevisionSlides.map(s => ({ layoutId: s.layoutId ?? "title-body", chartType: postRevisionCharts.find(c => c.id === s.chartId)?.chartType }))
       );
-      const contractMajor = postDeckContract.violations.length + postSlideContractViolations;
+      const contractMajor = postDeckContract.violations.length + postSlideContractIssues.length;
 
-      // Re-run evidence validation
-      let postEvidenceMajor = 0;
+      // Re-run evidence validation (per-slide AND deck-level)
+      const postEvidenceIssues: Array<{ severity: "major" | "minor"; claim: string }> = [];
       try {
         const analysisWp = await loadWorkingPaper<{ questionRoutes?: Array<{ requiredEvidence: string[] }> }>(runId, "analysis_result");
         const requiredEvidence = analysisWp?.questionRoutes?.flatMap(r => r.requiredEvidence) ?? [];
         if (requiredEvidence.length > 0) {
           const allEvidenceIds = postRevisionSlides.flatMap(s => s.evidenceIds ?? []);
+          // Per-slide evidence check
+          for (const slide of postRevisionSlides) {
+            if (["cover", "section-divider"].includes(slide.layoutId ?? "")) continue;
+            const slideEvidence = slide.evidenceIds ?? [];
+            const result = validateSlideEvidence(slide.title ?? "", requiredEvidence, slideEvidence);
+            if (!result.valid && result.coverage < 0.5) {
+              postEvidenceIssues.push({ severity: "minor", claim: `[EVIDENCE] Slide ${slide.position}: low evidence coverage (${Math.round(result.coverage * 100)}%), missing: ${result.missing.slice(0, 3).join(", ")}` });
+            }
+          }
+          // Deck-level evidence check
           const deckResult = validateSlideEvidence("deck", requiredEvidence, allEvidenceIds);
           if (!deckResult.valid && deckResult.coverage < 0.5) {
-            postEvidenceMajor = 1;
+            postEvidenceIssues.push({ severity: "major", claim: `[EVIDENCE] Deck-level evidence coverage: ${Math.round(deckResult.coverage * 100)}%. Missing: ${deckResult.missing.slice(0, 5).join(", ")}` });
           }
         }
       } catch { /* analysis working paper may not exist */ }
+      const postEvidenceMajor = postEvidenceIssues.filter(i => i.severity === "major").length;
 
       const finalCritical = postCritical;
       const finalMajor = postMajor + contractMajor + postEvidenceMajor;
@@ -4818,6 +4852,8 @@ export const basquioCritiqueRevise = inngest.createFunction(
         ...postLintResult.slideResults.flatMap(r => r.result.violations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] Slide ${r.position}: ${v.message}` }))),
         ...postLintResult.deckViolations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] ${v.message}` })),
         ...postDeckContract.violations.map(v => ({ severity: "major" as const, claim: `[CONTRACT] ${v.message}` })),
+        ...postSlideContractIssues,
+        ...postEvidenceIssues.filter(i => i.severity === "major"),
       ];
       return {
         hasCriticalOrMajor: finalCritical > 0 || finalMajor > 0,
