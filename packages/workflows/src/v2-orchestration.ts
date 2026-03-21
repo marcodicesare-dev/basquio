@@ -4963,11 +4963,32 @@ export const basquioExport = inngest.createFunction(
       const placeholderMetricCount = allMetrics.filter((m: { value?: string }) => m.value === "—" || m.value === "---").length;
       const placeholderRatio = allMetrics.length > 0 ? placeholderMetricCount / allMetrics.length : 0;
 
-      if (finalDegraded && placeholderRatio > 0.5 && allMetrics.length >= 4) {
-        console.warn(`[basquio-export] ${Math.round(placeholderRatio * 100)}% of metrics are placeholders (${placeholderMetricCount}/${allMetrics.length}). Shipping dignified minimum instead of degraded deck.`);
-        // Re-render with just cover + status slide
+      // Also check for RAW placeholder patterns that might have slipped past the upstream sanitizer
+      const RAW_PLACEHOLDER = /[XN?_]{1,3}\s*(mln|bln|%|pp|pts|k|m|b)/i;
+      const rawPlaceholderSlides = filteredSlides.filter((s: any) => {
+        const metricsArr = s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : [];
+        if (!Array.isArray(metricsArr)) return false;
+        return metricsArr.some((m: { value?: string }) => m.value && RAW_PLACEHOLDER.test(m.value));
+      });
+
+      const useDignifiedMinimum = finalDegraded && (
+        (placeholderRatio > 0.5 && allMetrics.length >= 4) ||
+        rawPlaceholderSlides.length > 0
+      );
+
+      // When using dignified minimum, replace filteredSlides and charts for ALL downstream paths
+      // (PPTX, PDF, and manifest must all be consistent)
+      let slidesForExport = filteredSlides;
+      let chartsForExport = v2ChartRows;
+
+      if (useDignifiedMinimum) {
+        const reason = rawPlaceholderSlides.length > 0
+          ? `${rawPlaceholderSlides.length} slides have raw placeholder metrics`
+          : `${Math.round(placeholderRatio * 100)}% of metrics are placeholders (${placeholderMetricCount}/${allMetrics.length})`;
+        console.warn(`[basquio-export] ${reason}. Shipping dignified minimum instead of degraded deck.`);
+
         const coverTitle = filteredSlides[0]?.title ?? (deckTitle || "Analysis").slice(0, 100);
-        const dignifiedSlides = [
+        slidesForExport = [
           { id: "cover", position: 1, layoutId: "cover", title: coverTitle, subtitle: "Preliminary analysis",
             kicker: undefined, body: undefined, bullets: undefined, chartId: undefined, metrics: undefined,
             callout: undefined, highlightCategories: undefined, evidenceIds: [] as string[] },
@@ -4976,10 +4997,13 @@ export const basquioExport = inngest.createFunction(
             kicker: undefined, bullets: undefined, chartId: undefined, metrics: undefined,
             callout: { text: "Re-run analysis for complete results", tone: "accent" }, highlightCategories: undefined,
             subtitle: undefined, evidenceIds: [] as string[] },
-        ];
+        ] as any;
+        chartsForExport = [];
+
+        // Re-render PPTX with dignified minimum
         try {
           const dignifiedArtifact = await renderV2PptxArtifact({
-            slides: dignifiedSlides as any, charts: [],
+            slides: slidesForExport as any, charts: [],
             deckTitle: deckTitle || "Basquio Analysis",
             brandTokens: templateProfile?.brandTokens as Record<string, unknown> | undefined,
             exportMode,
@@ -4990,6 +5014,9 @@ export const basquioExport = inngest.createFunction(
           pptxToUpload = dignifiedBuffer;
         } catch (e) {
           console.warn("[basquio-export] Failed to render dignified minimum, uploading original degraded deck:", e);
+          // Revert to original slides for consistency
+          slidesForExport = filteredSlides;
+          chartsForExport = v2ChartRows;
         }
       }
 
@@ -5006,9 +5033,9 @@ export const basquioExport = inngest.createFunction(
       // Render PDF via unified scene graph (same coordinates as PPTX)
       let pdfArtifactEntry: { id: string; kind: "pdf"; fileName: string; mimeType: string; fileBytes: number; storagePath: string; storageBucket: string; checksumSha256: string } | null = null;
       try {
-        // Build chart lookup map for PDF (same data as PPTX charts)
+        // Build chart lookup map for PDF (same data as PPTX — uses chartsForExport for consistency)
         const chartsMap = new Map<string, V2PdfChart>();
-        for (const c of v2ChartRows) {
+        for (const c of chartsForExport) {
           chartsMap.set(c.id, {
             chartType: String(c.chartType ?? "bar"),
             title: String(c.title ?? ""),
@@ -5021,9 +5048,9 @@ export const basquioExport = inngest.createFunction(
           });
         }
 
-        // Build scene graph from the SAME slide data as PPTX — unified rendering
+        // Build scene graph from the SAME slide data as PPTX — uses slidesForExport for consistency
         const pdfSceneGraph = buildDeckSceneGraph(
-          filteredSlides.map((s: any) => ({
+          slidesForExport.map((s: any) => ({
             ...s,
             id: s.id ?? `slide-${s.position}`,
             layoutId: s.layoutId ?? s.layout_id ?? "title-body",
@@ -5036,7 +5063,7 @@ export const basquioExport = inngest.createFunction(
             callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
           })),
           templateProfile ?? { brandTokens: null } as any,
-          v2ChartRows.map((c: V2ChartRow) => ({
+          chartsForExport.map((c: V2ChartRow) => ({
             id: c.id,
             chartType: String(c.chartType ?? "bar"),
             title: String(c.title ?? ""),
@@ -5090,8 +5117,8 @@ export const basquioExport = inngest.createFunction(
       const manifest = {
         id: crypto.randomUUID(),
         run_id: runId,
-        slide_count: filteredSlides.length,
-        page_count: filteredSlides.length,
+        slide_count: slidesForExport.length,
+        page_count: slidesForExport.length,
         qa_passed: qaPassed,
         qa_report: {
           checks: qaChecks,
