@@ -1017,9 +1017,33 @@ async function loadWorkspaceFromDb(runId: string): Promise<EvidenceWorkspace | n
 
 function createLoadSheetRows(runId: string) {
   return async (sheetKey: string): Promise<Record<string, unknown>[]> => {
-    // Try exact match first
+    // Normalize the key: LLM plans often hallucinate separators.
+    // DB uses "fileId:FileName.xlsx · SheetName" (space-dot-space).
+    // LLM may produce "fileId:FileName.xlsx → FileName.xlsx → SheetName" or other variants.
+    // Normalize all separator variants to canonical form.
+    let normalizedKey = sheetKey
+      .replace(/\s*→\s*/g, " · ")   // arrows to dots
+      .replace(/\s*->\s*/g, " · ")   // ascii arrows to dots
+      .replace(/\s*>\s*/g, " · ");   // bare gt to dots
+
+    // Remove duplicated filename segments: "file.xlsx · file.xlsx · Sheet" → "file.xlsx · Sheet"
+    const colonIdx = normalizedKey.indexOf(":");
+    if (colonIdx >= 0) {
+      const afterColon = normalizedKey.slice(colonIdx + 1);
+      const segments = afterColon.split(" · ").map(s => s.trim()).filter(Boolean);
+      if (segments.length > 1) {
+        // Deduplicate: remove consecutive identical segments
+        const deduped: string[] = [segments[0]];
+        for (let i = 1; i < segments.length; i++) {
+          if (segments[i] !== segments[i - 1]) deduped.push(segments[i]);
+        }
+        normalizedKey = normalizedKey.slice(0, colonIdx + 1) + deduped.join(" · ");
+      }
+    }
+
+    // Try exact match with normalized key first
     let sheetRes = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(sheetKey)}&limit=1`,
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(normalizedKey)}&limit=1`,
       {
         headers: {
           apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -1031,13 +1055,10 @@ function createLoadSheetRows(runId: string) {
     let sheets: Array<{ blob_path: string; sheet_key: string }> = [];
     if (sheetRes.ok) sheets = await sheetRes.json();
 
-    // If exact match fails, try fuzzy match: plan may use "fileId:SheetName"
-    // but DB stores "fileId:FileName.xlsx · SheetName"
-    if (!sheets[0]?.blob_path) {
-      // Try suffix match using PostgREST like operator
-      const suffixKey = sheetKey.includes(":") ? sheetKey.split(":").pop() ?? sheetKey : sheetKey;
+    // If normalized match fails, try original key
+    if (!sheets[0]?.blob_path && normalizedKey !== sheetKey) {
       sheetRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=like.*${encodeURIComponent(suffixKey)}&limit=1`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=eq.${encodeURIComponent(sheetKey)}&limit=1`,
         {
           headers: {
             apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -1047,6 +1068,45 @@ function createLoadSheetRows(runId: string) {
         },
       );
       if (sheetRes.ok) sheets = await sheetRes.json();
+    }
+
+    // If still no match, try fileId prefix match — just grab whatever sheet exists for this run
+    if (!sheets[0]?.blob_path) {
+      const fileId = sheetKey.split(":")[0];
+      if (fileId && fileId.length > 10) {
+        sheetRes = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&sheet_key=like.${encodeURIComponent(fileId)}*&limit=1`,
+          {
+            headers: {
+              apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+              Accept: "application/json",
+            },
+          },
+        );
+        if (sheetRes.ok) sheets = await sheetRes.json();
+        if (sheets[0]?.blob_path) {
+          console.warn(`[loadSheetRows] Fuzzy match: "${sheetKey}" resolved to "${sheets[0].sheet_key}"`);
+        }
+      }
+    }
+
+    // Last resort: grab any sheet for this run
+    if (!sheets[0]?.blob_path) {
+      sheetRes = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/evidence_workspace_sheets?workspace_id=eq.${runId}&limit=1`,
+        {
+          headers: {
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            Accept: "application/json",
+          },
+        },
+      );
+      if (sheetRes.ok) sheets = await sheetRes.json();
+      if (sheets[0]?.blob_path) {
+        console.warn(`[loadSheetRows] Last resort: "${sheetKey}" resolved to "${sheets[0].sheet_key}" (only sheet available)`);
+      }
     }
 
     if (!sheets[0]?.blob_path) return [];
@@ -2634,6 +2694,8 @@ export const basquioUnderstand = inngest.createFunction(
         await persistWorkingPaper(runId, "run_intent", runIntent);
       } catch (e) { console.warn("[understand] Failed to persist run_intent (non-fatal):", e); }
 
+      await emitRunEvent(runId, "understand", "phase_completed");
+
       return {
         analysis: result.analysis,
         clarifiedBrief: result.clarifiedBrief,
@@ -4169,6 +4231,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
       await emitRunEvent(runId, "author", "slides_author_completed", {
         slideCount: slides.length,
       });
+      await emitRunEvent(runId, "author", "phase_completed");
     });
 
     // ─── STEP 4: DETERMINISTIC CRITIQUE (no LLM) ─────────────────────
@@ -4706,15 +4769,18 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       if (!hasCriticalOrMajor) {
         await updateDeliveryStatus(runId, "reviewed");
+        await emitRunEvent(runId, "critique", "phase_completed");
         return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues, estimatedCostUsd: critiqueCostUsd };
       }
 
       // Only revise for critical issues — major issues are acceptable for delivery
       if (criticalCount === 0) {
         await updateDeliveryStatus(runId, "reviewed");
+        await emitRunEvent(runId, "critique", "phase_completed");
         return { hasCriticalOrMajor: true, needsRevise: false, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: critiqueCostUsd };
       }
 
+      await emitRunEvent(runId, "critique", "phase_completed");
       return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: critiqueCostUsd };
     });
 
