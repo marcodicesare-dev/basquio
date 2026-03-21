@@ -204,7 +204,45 @@ Classify every finding as: connection (confirms hypothesis), contradiction (chal
 
 ### FMCG Action Levers
 share, distribution, rotation, promotion, pack/format, retailer, channel, buyer, loyalty.
-Do NOT hardcode currency symbols — infer from data.`,
+Do NOT hardcode currency symbols — infer from data.
+
+### Consumer Panel (CPS) KPIs — When Shopper Data Present
+| KPI | Key | Formula |
+|---|---|---|
+| Penetration | penetration_pct | % households buying in period |
+| Frequency | purchase_frequency | occasions per buyer per period |
+| Basket Size | basket_size | spend or units per occasion |
+| Loyalty (SoR) | share_of_requirements | % category spend on brand |
+| Trial | trial_buyers | first-time buyers in period |
+| Repeat Rate | repeat_rate_pct | repeat buyers / trial buyers |
+
+Dupont decomposition: Value = Penetration * Frequency * Basket * Price
+Use to explain WHY value changed (fewer buyers? less often? smaller baskets?).
+
+### Price & Promo Modeling — When Promo/Pricing Data Present
+- Baseline Sales: modeled sales without any promotion
+- Incremental Sales: additional volume from promo activity
+- Promo Lift: incremental / baseline (diminishing returns above 2x)
+- TPR Depth Bands: 10-20% (light), 20-30% (moderate), 30-40% (aggressive), >40% (margin destruction)
+- Price Elasticity: % volume change / % price change (>|1| = elastic, respond to promo)
+- EDLP: regular price IS the competitive price (Discount channel strategy)
+
+### Innovation / Launch — When New Product Data Present
+- Trial Volume: projected first-year buyers
+- Repeat Rate: % of triers who repurchase
+- Incrementality: % of launch volume NEW to category (vs. cannibalization)
+- Source of Volume: from competitor, from adjacent category, or new occasions
+
+### Client Need Routing — Match Question to Right Analysis
+| Client Question | Primary Analysis | Key Metrics |
+|---|---|---|
+| How is my category performing? | RMS tracking | Value, Volume, Share, Growth |
+| Who is buying my brand? | CPS panel | Penetration, Frequency, Loyalty |
+| Why are sales declining? | RMS + Price & Promo | Baseline vs Incremental, Distribution |
+| Where should I distribute? | RMS void analysis | Wtd. Distribution gap, ACV |
+| Is my promo working? | Price & Promo model | Lift, Elasticity, Baseline trend |
+| Should I launch this product? | Innovation/BASES | Trial, Repeat, Incrementality |
+| How do I grow in Discount? | RMS channel + CPS | Channel share, Price Index, EDLP fit |`,
 
   storyline: `## NIQ STORYMASTERS STORYLINE FRAMEWORK
 
