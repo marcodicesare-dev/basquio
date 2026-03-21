@@ -2770,7 +2770,17 @@ export const basquioAuthor = inngest.createFunction(
           fileName: f.fileName ?? "unknown",
           sheetName: s?.name ?? "unknown",
           rowCount: s?.rowCount ?? 0,
-          columns: (s?.columns ?? []).filter(Boolean).map((c) => `${c?.name ?? "?"} (${c?.inferredType ?? "?"}, ${c?.role ?? "?"})`).join(", "),
+          columns: (s?.columns ?? []).filter(Boolean).map((c) => {
+            const name = c?.name ?? "?";
+            const type = c?.inferredType ?? "?";
+            const role = c?.role ?? "?";
+            const samples = (c?.sampleValues ?? []).slice(0, 5);
+            // Show sample values for dimensions so the planner knows valid filter values
+            const sampleStr = role === "dimension" || role === "segment" || role === "time"
+              ? ` [values: ${samples.map(v => `"${v}"`).join(", ")}${(c?.uniqueCount ?? 0) > 5 ? `, ... (${c?.uniqueCount} unique)` : ""}]`
+              : "";
+            return `${name} (${type}, ${role}${sampleStr})`;
+          }).join(", "),
         })),
       ) ?? [];
 
@@ -2905,6 +2915,9 @@ ${clarifiedBrief?.language ?? "en"}
 3. Each chart MUST have a complete dataSpec with a valid sheetKey from the available sheets list.
 4. Chart IDs: use "chart-1", "chart-2", etc. Slides reference these IDs.
 5. Filter expressions use: "column = value AND column2 > 100" syntax. Use "none" if no filter.
+   CRITICAL: Filter values MUST match EXACT values from the [values: ...] list shown in the data sheets section.
+   NEVER guess filter values from filenames. If a column's values are ["Totale Italia", "Ipermercati"], you CANNOT filter by "Discount".
+   When in doubt, use "none" as the filter — the chart will show all data, which is better than 0 rows.
 6. Every analytical slide (positions 3 to N-1) MUST have a chartId. Only cover and final summary may have chartId="".
 7. Prefer horizontal_bar for rankings, line for trends, stacked_bar for composition, pie only for ≤5 categories.
 8. Set highlightCategory to the focal entity name for emphasis on every chart.
@@ -2985,9 +2998,14 @@ Return a V1DeckPlan with slides and charts.`,
           const sheetRegistry = resolveColumns(Object.keys(rows[0]));
 
           // Apply filter (registry-aware: handles GROCERY vs Grocery, V. Valore vs V.Valore, etc.)
-          const filtered = v1ApplyFilter(rows, planned.dataSpec.filter, sheetRegistry);
+          let filtered = v1ApplyFilter(rows, planned.dataSpec.filter, sheetRegistry);
+          if (filtered.length === 0 && planned.dataSpec.filter && planned.dataSpec.filter !== "none") {
+            // Filter returned 0 rows — fall back to unfiltered data rather than failing
+            console.warn(`[basquio-author] Chart ${planned.chartId}: filter "${planned.dataSpec.filter}" returned 0 rows. Falling back to unfiltered data (${rows.length} rows).`);
+            filtered = rows;
+          }
           if (filtered.length === 0) {
-            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows after filter: ${planned.dataSpec.filter}` });
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows in sheet ${planned.dataSpec.sheetKey} (even unfiltered)` });
             continue;
           }
 
