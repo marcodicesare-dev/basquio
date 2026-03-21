@@ -449,17 +449,43 @@ function normalizeMeasureIds(columnNames: string[]): Set<string> {
   return ids;
 }
 
+// ─── DIMENSION ROLE NORMALIZATION ──────────────────────────────
+// Maps column names (Italian, English, snake_case) to semantic dimension roles.
+// This is the bridge between what the data has and what families require.
+
+const DIMENSION_NORMALIZE_MAP: Array<{ pattern: RegExp; role: string }> = [
+  { pattern: /brand|marca|marchio|manufacturer|produttore/i, role: "brand" },
+  { pattern: /period|periodo|year|anno|quarter|trimestre|month|mese|week|settimana|date|data/i, role: "period" },
+  { pattern: /segment|segmento|category|categoria|subcategory|sotto.?cat/i, role: "segment" },
+  { pattern: /product|prodotto|sku|item|articolo|ean|barcode/i, role: "product" },
+  { pattern: /channel|canale|retailer|insegna|customer|cliente/i, role: "channel" },
+  { pattern: /region|regione|area|geography|territorio/i, role: "region" },
+];
+
+function normalizeDimensionRoles(columnNames: string[]): Set<string> {
+  const roles = new Set<string>();
+  for (const col of columnNames) {
+    for (const { pattern, role } of DIMENSION_NORMALIZE_MAP) {
+      if (pattern.test(col)) roles.add(role);
+    }
+  }
+  return roles;
+}
+
 /**
  * Find the best NIQ exhibit family for a given question type and available data.
  * Accepts column names in any form: raw Italian, canonical English, or snake_case.
+ * Now validates BOTH measures AND dimensions for accurate matching.
  * Returns the family and whether it's a confident match.
  * Deterministic, $0 cost.
  */
 export function findBestExhibitFamily(
   questionType: QuestionType,
   availableMeasures: string[],
+  availableDimensions?: string[],
 ): { family: NiqExhibitFamily | null; confidence: "high" | "medium" | "low" } {
   const normalizedIds = normalizeMeasureIds(availableMeasures);
+  const normalizedDims = availableDimensions ? normalizeDimensionRoles(availableDimensions) : null;
 
   const candidates = NIQ_EXHIBIT_FAMILIES.filter(f =>
     f.questionTypes.includes(questionType)
@@ -467,11 +493,21 @@ export function findBestExhibitFamily(
 
   if (candidates.length === 0) return { family: null, confidence: "low" };
 
-  // Score by how many required measures (snake_case) are in the normalized set
+  // Score by how many required measures + dimensions are in the normalized sets
   const scored = candidates.map(f => {
-    const matched = f.requiredMeasures.filter(m => normalizedIds.has(m)).length;
-    const total = f.requiredMeasures.length;
-    const score = total === 0 ? 1 : matched / total;
+    const measureMatched = f.requiredMeasures.filter(m => normalizedIds.has(m)).length;
+    const measureTotal = f.requiredMeasures.length;
+    const measureScore = measureTotal === 0 ? 1 : measureMatched / measureTotal;
+
+    // Dimension score (if dimensions provided and family requires them)
+    let dimScore = 1;
+    if (normalizedDims && f.requiredDimensions.length > 0) {
+      const dimMatched = f.requiredDimensions.filter(d => normalizedDims.has(d)).length;
+      dimScore = dimMatched / f.requiredDimensions.length;
+    }
+
+    // Combined: 70% measures, 30% dimensions
+    const score = measureScore * 0.7 + dimScore * 0.3;
     return { family: f, score };
   }).sort((a, b) => b.score - a.score);
 

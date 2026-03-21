@@ -2,6 +2,7 @@ import { PDFDocument, PDFPage, StandardFonts, rgb, type PDFFont } from "pdf-lib"
 
 import { renderChartSvg } from "@basquio/render-charts";
 import type { BinaryArtifact, ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
+import type { DeckSceneGraph, SceneNode } from "@basquio/scene-graph";
 import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
 
 type RenderPdfInput = {
@@ -1180,4 +1181,153 @@ function renderSvgChart(chart: V2PdfChart, accent: string, text: string, muted: 
     </svg>
     ${sourceHtml}
   </div>`;
+}
+
+// ─── SCENE-GRAPH-BASED PDF RENDERER ─────────────────────────────
+// Unified rendering path: PPTX and PDF both consume the same scene graph.
+// Scene graph nodes have exact coordinates (in inches). Convert to CSS.
+
+export type SceneGraphPdfInput = {
+  sceneGraph: DeckSceneGraph;
+  charts: Map<string, V2PdfChart>;
+  deckTitle: string;
+};
+
+/**
+ * Render PDF from the unified scene graph.
+ * Same coordinates as PPTX → guaranteed visual parity.
+ */
+export async function renderPdfFromSceneGraph(input: SceneGraphPdfInput): Promise<BinaryArtifact | null> {
+  const browserlessToken = process.env.BROWSERLESS_TOKEN;
+  if (!browserlessToken) {
+    console.warn("[render-pdf] BROWSERLESS_TOKEN not set — skipping scene-graph PDF");
+    return null;
+  }
+
+  const html = buildHtmlFromSceneGraph(input.sceneGraph, input.charts);
+  try {
+    const buffer = await renderViaBrowserless(html, input.deckTitle);
+    return { fileName: "basquio-deck.pdf", mimeType: "application/pdf", buffer };
+  } catch (error) {
+    console.error("[render-pdf] Scene-graph PDF rendering failed:", error);
+    return null;
+  }
+}
+
+function buildHtmlFromSceneGraph(sg: DeckSceneGraph, charts: Map<string, V2PdfChart>): string {
+  const PPI = 96; // pixels per inch (CSS px)
+  const slideW = sg.slideWidth * PPI;
+  const slideH = sg.slideHeight * PPI;
+  const palette = sg.brandTokens.palette;
+  const typo = sg.brandTokens.typography;
+
+  const slidesHtml = sg.slides.map((slide: DeckSceneGraph["slides"][number]) => {
+    const nodesHtml = slide.nodes.map((node: SceneNode) =>
+      renderSceneNodeHtml(node, PPI, palette, typo, charts),
+    ).join("\n");
+    const bg = slide.background ?? palette.background ?? "#FFFFFF";
+    return `<div class="sg-slide" style="width:${slideW}px;height:${slideH}px;background:${bg};position:relative;overflow:hidden;">
+      ${nodesHtml}
+      <div class="sg-footer" style="position:absolute;bottom:${0.15 * PPI}px;left:${0.6 * PPI}px;font-size:8pt;color:${palette.accentMuted ?? "#999"};letter-spacing:0.5pt;">Basquio | Confidential</div>
+    </div>`;
+  }).join("\n");
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+@page { size: ${sg.slideWidth}in ${sg.slideHeight}in; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: ${typo.bodyFont}, Arial, sans-serif; background: #FFF; }
+.sg-slide { page-break-after: always; }
+.sg-slide:last-child { page-break-after: auto; }
+</style></head><body>${slidesHtml}</body></html>`;
+}
+
+function renderSceneNodeHtml(
+  node: SceneNode,
+  ppi: number,
+  palette: Record<string, string>,
+  typo: { headingFont: string; bodyFont: string; titleSize: number; bodySize: number },
+  charts: Map<string, V2PdfChart>,
+): string {
+  const x = node.frame.x * ppi;
+  const y = node.frame.y * ppi;
+  const w = node.frame.w * ppi;
+  const h = node.frame.h * ppi;
+  const pos = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;overflow:hidden;`;
+
+  const fontFamily = node.style?.fontFamily ?? typo.bodyFont;
+  const fontSize = node.style?.fontSize ?? typo.bodySize;
+  const fontWeight = node.style?.fontWeight ?? "normal";
+  const color = node.style?.color ?? palette.text ?? "#111";
+  const align = node.style?.align ?? "left";
+
+  switch (node.kind) {
+    case "title":
+      return `<div style="${pos}font-family:${fontFamily},Arial,sans-serif;font-size:${fontSize}pt;font-weight:700;color:${color};text-align:${align};line-height:1.15;">${escHtml(node.content ?? "")}</div>`;
+
+    case "subtitle":
+      return `<div style="${pos}font-family:${fontFamily},Arial,sans-serif;font-size:${fontSize}pt;color:${color};text-align:${align};line-height:1.4;">${escHtml(node.content ?? "")}</div>`;
+
+    case "kicker":
+      return `<div style="${pos}font-family:${fontFamily},Arial,sans-serif;font-size:${fontSize}pt;font-weight:600;color:${color};text-transform:uppercase;letter-spacing:1.5pt;">${escHtml(node.content ?? "")}</div>`;
+
+    case "body":
+      return `<div style="${pos}font-family:${fontFamily},Arial,sans-serif;font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};text-align:${align};line-height:1.6;">${escHtml(node.content ?? "")}</div>`;
+
+    case "bullet_list": {
+      const items = (node.items ?? []).map((b: string) => `<li>${escHtml(b)}</li>`).join("");
+      return `<div style="${pos}font-family:${fontFamily},Arial,sans-serif;font-size:${fontSize}pt;color:${color};line-height:1.5;"><ul style="padding-left:0.25in;margin:0;">${items}</ul></div>`;
+    }
+
+    case "metric_card": {
+      const metrics = node.metrics ?? [];
+      const cardWidth = w / Math.max(metrics.length, 1);
+      const cardsHtml = metrics.map((m: { label: string; value: string; delta?: string }, i: number) => {
+        const deltaColor = m.delta?.startsWith("-") ? (palette.negative ?? "#E8636F") : (palette.positive ?? "#4CC9A0");
+        return `<div style="display:inline-block;vertical-align:top;width:${cardWidth - 8}px;border:1px solid ${palette.border ?? "#DDD"};padding:8px 12px;margin-right:8px;border-top:2.5px solid ${palette.accent ?? "#2563EB"};">
+          <div style="font-size:9pt;text-transform:uppercase;font-weight:600;color:${palette.accentMuted ?? "#999"};letter-spacing:1pt;">${escHtml(m.label)}</div>
+          <div style="font-size:24pt;font-weight:700;color:${palette.accent ?? "#2563EB"};line-height:1.1;">${escHtml(m.value)}</div>
+          ${m.delta ? `<div style="font-size:11pt;font-weight:600;color:${deltaColor};">${escHtml(m.delta)}</div>` : ""}
+        </div>`;
+      }).join("");
+      return `<div style="${pos}">${cardsHtml}</div>`;
+    }
+
+    case "chart_placeholder": {
+      const chart = node.chartId ? charts.get(node.chartId) : undefined;
+      if (!chart) return `<div style="${pos}"></div>`;
+      const accent = palette.accent ?? "2563EB";
+      const text = palette.text ?? "111827";
+      const muted = palette.accentMuted ?? "999";
+      const border = palette.border ?? "DDD";
+      return `<div style="${pos}">${renderSvgChart(chart, accent.replace("#", ""), text.replace("#", ""), muted.replace("#", ""), border.replace("#", ""))}</div>`;
+    }
+
+    case "callout": {
+      const toneColor = node.calloutTone === "green" ? (palette.positive ?? "#16A34A")
+        : node.calloutTone === "orange" ? (palette.negative ?? "#EA580C")
+        : (palette.accent ?? "#2563EB");
+      return `<div style="${pos}display:flex;align-items:stretch;background:${toneColor}11;overflow:hidden;">
+        <div style="width:3px;flex-shrink:0;background:${toneColor};"></div>
+        <div style="padding:6px 10px;font-size:11pt;font-weight:600;color:${palette.text ?? "#111"};line-height:1.5;">${escHtml(node.content ?? "")}</div>
+      </div>`;
+    }
+
+    case "table": {
+      if (!node.tableData) return `<div style="${pos}"></div>`;
+      const { headers, rows } = node.tableData;
+      const headerHtml = headers.map((h: string) => `<th style="padding:4px 8px;font-size:9pt;font-weight:600;text-align:left;border-bottom:2px solid ${palette.border ?? "#DDD"};">${escHtml(h)}</th>`).join("");
+      const rowsHtml = rows.map((row: string[]) =>
+        `<tr>${row.map((cell: string) => `<td style="padding:3px 8px;font-size:9pt;border-bottom:1px solid ${palette.border ?? "#EEE"};">${escHtml(cell)}</td>`).join("")}</tr>`,
+      ).join("");
+      return `<div style="${pos}overflow:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    }
+
+    default:
+      // shape, divider, image, recommendation — render content if available
+      if (node.content) {
+        return `<div style="${pos}font-family:${fontFamily},Arial,sans-serif;font-size:${fontSize}pt;color:${color};">${escHtml(node.content)}</div>`;
+      }
+      return `<div style="${pos}"></div>`;
+  }
 }

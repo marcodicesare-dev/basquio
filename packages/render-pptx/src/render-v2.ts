@@ -1791,21 +1791,52 @@ async function fixPptxChartCompatibility(pptxBuffer: Buffer): Promise<Buffer> {
 
     // Fix hardcoded Calibri everywhere — theme XML, chart Excel, slide layouts, embeddings
     // Keynote reads font declarations from theme1.xml and shows warnings for missing Calibri
-    const chartStyleEntries = Object.keys(zip.files).filter(
-      (f) => /^ppt\/charts\/_rels\/|^ppt\/embeddings\/.*\.xml$|^ppt\/theme\/.*\.xml$|^ppt\/slideLayouts\/.*\.xml$/i.test(f),
+    // Font fallback strategy: Replace ALL Calibri/Aptos with universally safe fonts.
+    // PptxGenJS does NOT support font embedding. The OOXML file specifies font names,
+    // and the host app (PowerPoint, Slides, Keynote) resolves them from system fonts.
+    // Safe chain: Georgia (heading) → Arial (body) → Courier New (mono)
+    // These are installed on Windows, macOS, and available in Google Slides.
+    const FONT_REPLACEMENTS: Array<[RegExp, string]> = [
+      [/typeface="Calibri"/g, 'typeface="Arial"'],
+      [/typeface="Calibri Light"/g, 'typeface="Arial"'],
+      [/typeface="Aptos"/g, 'typeface="Arial"'],
+      [/typeface="Aptos Display"/g, 'typeface="Georgia"'],
+      [/typeface="Aptos Narrow"/g, 'typeface="Arial Narrow"'],
+    ];
+
+    // Apply font replacements across all XML entries (theme, chart styles, slide layouts)
+    const fontFixEntries = Object.keys(zip.files).filter(
+      (f) => /^ppt\/charts\/_rels\/|^ppt\/embeddings\/.*\.xml$|^ppt\/theme\/.*\.xml$|^ppt\/slideLayouts\/.*\.xml$|^ppt\/slideMasters\/.*\.xml$/i.test(f),
     );
-    for (const entry of chartStyleEntries) {
+    for (const entry of fontFixEntries) {
       if (!zip.files[entry] || zip.files[entry].dir) continue;
       try {
         let xml = await zip.files[entry].async("text");
         const original = xml;
-        xml = xml.replace(/typeface="Calibri"/g, 'typeface="Arial"');
-        xml = xml.replace(/typeface="Calibri Light"/g, 'typeface="Arial"');
+        for (const [pattern, replacement] of FONT_REPLACEMENTS) {
+          xml = xml.replace(pattern, replacement);
+        }
         if (xml !== original) {
           zip.file(entry, xml);
           modified = true;
         }
       } catch { /* skip binary entries */ }
+    }
+
+    // Also fix fonts in ALL slide XML files (PptxGenJS sometimes hardcodes Calibri in text runs)
+    const slideEntries = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/i.test(f));
+    for (const entry of slideEntries) {
+      try {
+        let xml = await zip.files[entry].async("text");
+        const original = xml;
+        for (const [pattern, replacement] of FONT_REPLACEMENTS) {
+          xml = xml.replace(pattern, replacement);
+        }
+        if (xml !== original) {
+          zip.file(entry, xml);
+          modified = true;
+        }
+      } catch { /* skip */ }
     }
 
     if (modified) {
@@ -1881,6 +1912,69 @@ async function validateOoxmlStructure(buffer: Buffer): Promise<{ valid: boolean;
       const relPath = slideFile.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels";
       if (!zip.file(relPath)) {
         warnings.push(`Missing relationship file: ${relPath} — Google Slides may fail to import`);
+      }
+    }
+
+    // ─── CHART XML INTEGRITY ──────────────────────────────────────
+    const chartFiles = Object.keys(zip.files).filter(f => /^ppt\/charts\/chart\d+\.xml$/i.test(f));
+    for (const chartFile of chartFiles) {
+      try {
+        const xml = await zip.files[chartFile].async("text");
+        // Check for data series presence (chart must have at least one series)
+        if (!xml.includes("<c:ser>") && !xml.includes("<c:val>")) {
+          warnings.push(`${chartFile}: no data series — chart may render empty in all apps`);
+        }
+        // Check for category references (labels)
+        if (!xml.includes("<c:cat>") && !xml.includes("<c:strRef>") && !xml.includes("<c:numRef>")) {
+          warnings.push(`${chartFile}: no category/label references — axis labels may be missing`);
+        }
+        // Check for unclosed CDATA sections
+        const cdataOpen = (xml.match(/<!\[CDATA\[/g) ?? []).length;
+        const cdataClose = (xml.match(/\]\]>/g) ?? []).length;
+        if (cdataOpen !== cdataClose) {
+          errors.push(`${chartFile}: unclosed CDATA section (${cdataOpen} open, ${cdataClose} close)`);
+        }
+        // Check for multiLvlStrRef remnants (should have been cleaned)
+        if (xml.includes("<c:multiLvlStrRef>")) {
+          warnings.push(`${chartFile}: still contains multiLvlStrRef — Google Slides will break`);
+        }
+      } catch { /* skip binary entries */ }
+    }
+
+    // Check chart relationship files exist
+    for (const chartFile of chartFiles) {
+      const relPath = chartFile.replace("ppt/charts/", "ppt/charts/_rels/") + ".rels";
+      if (!zip.file(relPath)) {
+        warnings.push(`Missing chart relationship: ${relPath}`);
+      }
+    }
+
+    // ─── MEDIA INTEGRITY ──────────────────────────────────────────
+    // Collect all referenced media from all relationship files
+    const relEntries = Object.keys(zip.files).filter(f => f.includes("_rels") && f.endsWith(".rels"));
+    const allRelText: string[] = [];
+    for (const rel of relEntries) {
+      try {
+        allRelText.push(await zip.files[rel].async("text"));
+      } catch { /* skip */ }
+    }
+    const combinedRelText = allRelText.join("\n");
+
+    // Check that media files are referenced (orphaned media = bloat or missing content)
+    const mediaFiles = Object.keys(zip.files).filter(f => /^ppt\/media\//i.test(f));
+    for (const media of mediaFiles) {
+      const mediaName = media.split("/").pop();
+      if (mediaName && !combinedRelText.includes(mediaName)) {
+        warnings.push(`Orphaned media file: ${media} — not referenced by any relationship`);
+      }
+    }
+
+    // ─── PRESENTATION.XML CONSISTENCY ─────────────────────────────
+    const presXml = await zip.file("ppt/presentation.xml")?.async("string");
+    if (presXml) {
+      const presSlideRefs = presXml.match(/r:id="rId\d+"/g) ?? [];
+      if (presSlideRefs.length === 0) {
+        errors.push("ppt/presentation.xml has no slide references — file is structurally broken");
       }
     }
 

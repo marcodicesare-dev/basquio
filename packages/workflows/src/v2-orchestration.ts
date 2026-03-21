@@ -4,10 +4,10 @@ import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
 import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
-import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
+import { renderPdfArtifact, renderV2PdfArtifact, renderPdfFromSceneGraph, type V2PdfChart } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
-import { buildDeckSceneGraph, type DeckSceneGraph } from "@basquio/scene-graph";
+import { buildDeckSceneGraph, auditSlideScene, type DeckSceneGraph } from "@basquio/scene-graph";
 import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/template-engine";
 import {
   deckPlanSchema,
@@ -2258,8 +2258,12 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
               durationMs: costSummary.durationMs,
               phases: costSummary.phases,
               budgetExceeded: budgetCheck.exceeded,
-              // Per-step cost breakdown from author phase (plan, narrative-arc, per-slide, repair)
-              stepBreakdown: (authorReturn?.costLedger as Array<{ step: string; model: string; costUsd: number }>) ?? [],
+              // Per-step cost breakdown: author phase (plan, narrative-arc, per-slide, repair) + critique + export
+              stepBreakdown: [
+                ...((authorReturn?.costLedger as Array<{ step: string; model: string; costUsd: number }>) ?? []),
+                // Add critique phase as a single step entry for complete coverage
+                ...(critiqueCost > 0 ? [{ step: "critique", model: "claude-sonnet-4-6", costUsd: Math.round(critiqueCost * 1000) / 1000 }] : []),
+              ],
             },
           }),
         },
@@ -3041,6 +3045,7 @@ Return a V1DeckPlan with slides and charts.`,
       await emitRunEvent(runId, "author", "charts_build_started");
       const loadRows = createLoadSheetRows(runId);
       const chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> = [];
+      const chartFamilyMap: Record<string, { familyId: string; titlePattern: string; calloutPattern: string; highlightRule: string }> = {};
 
       // Cap at 10 charts
       const chartsToProcess = validatedPlan.charts.slice(0, 10);
@@ -3093,10 +3098,11 @@ Return a V1DeckPlan with slides and charts.`,
           }
 
           // ─── NIQ EXHIBIT FAMILY MATCH (deterministic, $0) ───
-          // Find the best NIQ-safe exhibit family and apply its full contract:
-          // chartType override, maxCategories, sortRule, highlightRule
+          // Find the best NIQ-safe exhibit family and apply its FULL contract:
+          // chartType, maxCategories, sortRule, highlightRule, titlePattern, calloutPattern
           const availableMeasureNames = planned.dataSpec?.measures ?? [];
-          const exhibitFamily = findBestExhibitFamily(questionType, availableMeasureNames);
+          const availableDimensions = planned.dataSpec?.dimensions ?? [];
+          const exhibitFamily = findBestExhibitFamily(questionType, availableMeasureNames, availableDimensions);
           let familyHighlightRule: string | undefined;
           if (exhibitFamily.family) {
             const fam = exhibitFamily.family;
@@ -3196,13 +3202,35 @@ Return a V1DeckPlan with slides and charts.`,
             return measureCol?.unit?.currencySymbol ?? undefined;
           })();
 
+          // Store family metadata for slide author (titlePattern, calloutPattern)
+          if (exhibitFamily.family && exhibitFamily.confidence !== "low") {
+            chartFamilyMap[planned.chartId] = {
+              familyId: exhibitFamily.family.id,
+              titlePattern: exhibitFamily.family.titlePattern,
+              calloutPattern: exhibitFamily.family.calloutPattern,
+              highlightRule: exhibitFamily.family.highlightRule,
+            };
+          }
+
           // Build chart data structure and persist
-          // Apply NIQ family highlight rule: focal_amber → highlight focal entity
+          // Apply ALL NIQ family highlight rules (focal_amber, top_n, diverging)
           const highlightCategories = planned.dataSpec.highlightCategory
             ? [planned.dataSpec.highlightCategory]
-            : (familyHighlightRule === "focal_amber" && validatedPlan.focalEntity)
+            : familyHighlightRule === "focal_amber" && validatedPlan.focalEntity
               ? [validatedPlan.focalEntity]
-              : [];
+              : familyHighlightRule === "top_n" && grouped.categories.length > 0
+                ? grouped.categories.slice(0, 3) // Top 3 by sorted value (already sorted if desc)
+                : familyHighlightRule === "diverging" && grouped.series.length > 0
+                  ? (() => {
+                      // Highlight the most extreme positive and negative values
+                      const vals = grouped.series[0].values;
+                      return grouped.categories
+                        .map((cat, i) => ({ cat, val: vals[i] }))
+                        .sort((a, b) => Math.abs(b.val) - Math.abs(a.val))
+                        .slice(0, 3)
+                        .map((s) => s.cat);
+                    })()
+                  : [];
 
           const chartResult = await persistChart(runId, {
             chartType: exhibitResult.chartType, // Enforced chart type
@@ -3255,8 +3283,8 @@ Return a V1DeckPlan with slides and charts.`,
         console.warn(`[basquio-author] ALL ${chartsToProcess.length} charts failed to build. Errors: ${chartErrors.join(" | ")}`);
       }
 
-      return { chartIdMap, chartResults };
-    }) as { chartIdMap: Record<string, string>; chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> };
+      return { chartIdMap, chartResults, chartFamilyMap };
+    }) as { chartIdMap: Record<string, string>; chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }>; chartFamilyMap: Record<string, { familyId: string; titlePattern: string; calloutPattern: string; highlightRule: string }> };
 
     // ─── QUALITY-PRESERVING FALLBACK LADDER ──────────────────────────
     // Reduce complexity, not quality, when things go wrong.
@@ -3437,7 +3465,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
         evidenceMap.set(e.evidenceRefId, e.summary);
       }
 
-      const { chartIdMap } = chartBuildResult;
+      const { chartIdMap, chartFamilyMap } = chartBuildResult;
 
       // Build narrative arc lookup for quick access
       const arcSlideMap = new Map<number, V1NarrativeArc["slides"][number]>();
@@ -3521,6 +3549,16 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
           }
         } else if (slideSpec.chartId) {
           parts.push(`\n## Note: planned chart "${slideSpec.chartId}" could not be built. Write a text-focused argument slide instead. Use metrics, bullets, and a callout to convey the data story.`);
+        }
+
+        // Exhibit family intelligence (if chart matched an NIQ family)
+        if (slideSpec.chartId && chartFamilyMap[slideSpec.chartId]) {
+          const fm = chartFamilyMap[slideSpec.chartId];
+          parts.push(`\n## EXHIBIT FAMILY GUIDANCE (from NIQ library, family: ${fm.familyId})`);
+          parts.push(`Title template: ${fm.titlePattern}`);
+          parts.push(`Callout template: ${fm.calloutPattern}`);
+          parts.push(`Use these templates as structural guides. Fill placeholders with actual numbers from the data and analysis.`);
+          parts.push(`Callout MUST follow the template pattern — it's an action, not an observation.`);
         }
 
         // Evidence context (only what this slide needs)
@@ -4507,6 +4545,30 @@ export const basquioExport = inngest.createFunction(
         return chartLayoutsQA.includes(lid) && body.length > 250;
       });
 
+      // ── SCENE GRAPH VISUAL AUDIT (deterministic, $0) ──────────
+      // Run the scene graph spatial audit on every slide.
+      // Catches: overflow, collisions, missing callouts, low vertical usage, numberless titles.
+      const sceneAudits = filteredSlides.map((s: any) => auditSlideScene({
+        ...s,
+        id: s.id ?? `slide-${s.position}`,
+        layoutId: s.layoutId ?? s.layout_id ?? "title-body",
+        title: s.title ?? "",
+        evidenceIds: s.evidenceIds ?? [],
+        runId: s.runId ?? s.run_id ?? runId,
+        qaStatus: s.qaStatus ?? s.qa_status ?? "pending",
+        revision: s.revision ?? 1,
+        metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+        callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+      }));
+      const overflowSlides = sceneAudits.filter(a => a.hasOverflowRisk);
+      const collisionSlides = sceneAudits.filter(a => a.collisions.length > 0);
+      const lowUsageSlides = sceneAudits.filter(a => a.verticalUsagePct < 40);
+      const totalSceneWarnings = sceneAudits.reduce((sum, a) => sum + a.warnings.length, 0);
+
+      if (overflowSlides.length > 0 || collisionSlides.length > 0) {
+        console.warn(`[basquio-export] Scene graph audit: ${overflowSlides.length} overflow, ${collisionSlides.length} collision, ${lowUsageSlides.length} low-usage, ${totalSceneWarnings} total warnings`);
+      }
+
       const qaChecks = [
         { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
         { name: "slide_count_positive", passed: filteredSlides.length > 0, detail: `${filteredSlides.length} slides` },
@@ -4516,6 +4578,8 @@ export const basquioExport = inngest.createFunction(
         { name: "no_topic_label_titles", passed: topicLabelTitles.length === 0, detail: topicLabelTitles.length > 0 ? `${topicLabelTitles.length} slides have topic-label titles: ${topicLabelTitles.map((s: any) => `"${(s.title ?? "").slice(0, 40)}"`).join(", ")}` : "all titles are insights" },
         { name: "no_zero_value_charts", passed: zeroValueCharts.length === 0, detail: zeroValueCharts.length > 0 ? `${zeroValueCharts.length} charts have >80% zero values (possible parsing failure)` : "all chart data looks valid" },
         { name: "no_body_overflow", passed: bodyOverflowSlides.length === 0, detail: bodyOverflowSlides.length > 0 ? `${bodyOverflowSlides.length} slides have body text >250 chars on chart layouts` : "all body text within limits" },
+        { name: "scene_no_overflow", passed: overflowSlides.length === 0, detail: overflowSlides.length > 0 ? `${overflowSlides.length} slides have content overflow: ${overflowSlides.map(a => `slide ${a.position}: ${a.overflowDetails.join(", ")}`).join("; ")}` : "no overflow detected" },
+        { name: "scene_no_collisions", passed: collisionSlides.length === 0, detail: collisionSlides.length > 0 ? `${collisionSlides.length} slides have zone collisions` : "no collisions" },
       ];
 
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
@@ -4539,69 +4603,54 @@ export const basquioExport = inngest.createFunction(
         contentType: pptxArtifact.mimeType,
       });
 
-      // Render PDF (best-effort — null if Browserless unavailable)
+      // Render PDF via unified scene graph (same coordinates as PPTX)
       let pdfArtifactEntry: { id: string; kind: "pdf"; fileName: string; mimeType: string; fileBytes: number; storagePath: string; storageBucket: string; checksumSha256: string } | null = null;
       try {
         // Build chart lookup map for PDF (same data as PPTX charts)
-        const chartsMap = new Map<string, Record<string, unknown>>();
+        const chartsMap = new Map<string, V2PdfChart>();
         for (const c of v2ChartRows) {
-          chartsMap.set(c.id, c as unknown as Record<string, unknown>);
+          chartsMap.set(c.id, {
+            chartType: String(c.chartType ?? "bar"),
+            title: String(c.title ?? ""),
+            data: Array.isArray(c.data) ? c.data as Record<string, unknown>[] : [],
+            xAxis: String(c.xAxis ?? ""),
+            yAxis: String(c.yAxis ?? ""),
+            series: Array.isArray(c.series) ? c.series as string[] : [],
+            unit: c.unit as string | undefined,
+            sourceNote: c.sourceNote as string | undefined,
+          });
         }
 
-        // Extract brand tokens for PDF visual parity with PPTX
-        // CRITICAL: Use explicit Slate defaults when no template — ensures PDF matches PPTX default
-        const brandTokens = templateProfile?.brandTokens as Record<string, unknown> | undefined;
-        const SLATE_PALETTE_DEFAULTS: Record<string, string> = {
-          accent: "E8A84C", background: "0A090D", surface: "13121A", text: "F2F0EB",
-          muted: "A09FA6", border: "272630", positive: "4CC9A0", negative: "E8636F", coverBg: "0A090D",
-        };
-        const SLATE_TYPO_DEFAULTS: Record<string, string> = {
-          headingFont: "Georgia", bodyFont: "Arial",
-        };
-        const pdfPalette = (brandTokens?.palette as Record<string, string> | undefined) ?? SLATE_PALETTE_DEFAULTS;
-        const pdfTypo = (brandTokens?.typography as Record<string, string> | undefined) ?? SLATE_TYPO_DEFAULTS;
+        // Build scene graph from the SAME slide data as PPTX — unified rendering
+        const pdfSceneGraph = buildDeckSceneGraph(
+          filteredSlides.map((s: any) => ({
+            ...s,
+            id: s.id ?? `slide-${s.position}`,
+            layoutId: s.layoutId ?? s.layout_id ?? "title-body",
+            title: s.title ?? "",
+            evidenceIds: s.evidenceIds ?? [],
+            runId: s.runId ?? s.run_id ?? runId,
+            qaStatus: s.qaStatus ?? s.qa_status ?? "pending",
+            revision: s.revision ?? 1,
+            metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+            callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+          })),
+          templateProfile ?? { brandTokens: null } as any,
+          v2ChartRows.map((c: V2ChartRow) => ({
+            id: c.id,
+            chartType: String(c.chartType ?? "bar"),
+            title: String(c.title ?? ""),
+            intent: c.intent as string | undefined,
+            unit: c.unit as string | undefined,
+            sourceNote: c.sourceNote as string | undefined,
+          })),
+        );
 
-        const pdfResult = await renderV2PdfArtifact({
-          slides: filteredSlides.map((s) => {
-            // Resolve chart for this slide (same logic as PPTX)
-            const chartId = s.chartId;
-            const chartRow = chartId ? chartsMap.get(chartId) : undefined;
-            const pdfChart = chartRow ? {
-              chartType: String((chartRow as Record<string, unknown>).chartType ?? (chartRow as Record<string, unknown>).chart_type ?? "bar"),
-              title: String((chartRow as Record<string, unknown>).title ?? ""),
-              data: Array.isArray((chartRow as Record<string, unknown>).data) ? (chartRow as Record<string, unknown>).data as Record<string, unknown>[] : [],
-              xAxis: String((chartRow as Record<string, unknown>).xAxis ?? (chartRow as Record<string, unknown>).x_axis ?? ""),
-              yAxis: String((chartRow as Record<string, unknown>).yAxis ?? (chartRow as Record<string, unknown>).y_axis ?? ""),
-              series: Array.isArray((chartRow as Record<string, unknown>).series) ? (chartRow as Record<string, unknown>).series as string[] : [],
-              unit: (chartRow as Record<string, unknown>).unit as string | undefined,
-              sourceNote: ((chartRow as Record<string, unknown>).sourceNote ?? (chartRow as Record<string, unknown>).source_note) as string | undefined,
-            } : undefined;
-            return {
-              position: s.position,
-              layoutId: s.layoutId ?? "title-body",
-              title: s.title ?? "",
-              subtitle: s.subtitle,
-              body: s.body,
-              bullets: s.bullets,
-              metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
-              callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
-              kicker: s.kicker,
-              chart: pdfChart,
-            };
-          }),
+        // Scene-graph-based PDF (preferred — guaranteed visual parity with PPTX)
+        const pdfResult = await renderPdfFromSceneGraph({
+          sceneGraph: pdfSceneGraph,
+          charts: chartsMap,
           deckTitle: deckTitle || "Basquio Analysis",
-          accentColor: pdfPalette?.accent,
-          coverBgColor: pdfPalette?.coverBg ?? pdfPalette?.background,
-          headingFont: pdfTypo?.headingFont,
-          bodyFont: pdfTypo?.bodyFont,
-          // Full dark-mode palette for PDF/PPTX visual parity
-          paletteBg: pdfPalette?.background,
-          paletteSurface: pdfPalette?.surface,
-          paletteText: pdfPalette?.text,
-          paletteMuted: pdfPalette?.muted ?? pdfPalette?.accentMuted,
-          paletteBorder: pdfPalette?.border,
-          palettePositive: pdfPalette?.positive,
-          paletteNegative: pdfPalette?.negative,
         });
 
         if (pdfResult) {
@@ -4650,6 +4699,12 @@ export const basquioExport = inngest.createFunction(
           chartCoverage: { total: chartLayoutSlides.length, linked: chartLayoutSlides.length - chartlessSlides.length, ratio: chartCoverageRatio },
           ...(degradedDelivery ? { unresolvedIssues: degradedIssues } : {}),
           ...(!qaStructuralPassed ? { qaFailures: qaChecks.filter((c) => !c.passed).map((c) => c.name) } : {}),
+          sceneGraphAudit: {
+            totalWarnings: totalSceneWarnings,
+            overflowSlides: overflowSlides.map(a => ({ position: a.position, details: a.overflowDetails })),
+            collisionSlides: collisionSlides.map(a => ({ position: a.position, collisions: a.collisions })),
+            lowUsageSlides: lowUsageSlides.map(a => ({ position: a.position, usagePct: a.verticalUsagePct })),
+          },
         },
         artifacts: [
           {
