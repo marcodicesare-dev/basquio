@@ -210,3 +210,333 @@ function pickSeriesColor(index: number, theme: ReturnType<typeof resolveTheme>) 
 function indexOfSeries(chart: ChartSpec, series: ChartSpec["series"][number]) {
   return Math.max(0, chart.series.findIndex((candidate) => candidate.name === series.name));
 }
+
+// ─── V2 CHART ROW RENDERER (pixel-perfect image charts) ─────────
+//
+// Converts V2ChartRow (the pipeline's chart format) into an ECharts SVG
+// string, styled with brand tokens from the PPTX design system.
+// The SVG is then converted to PNG by the PPTX renderer and embedded
+// as an image — giving pixel-perfect charts with universal compatibility.
+
+export type V2ChartImageTheme = {
+  background: string;     // e.g. "#0A090D" (dark) or "#FFFFFF" (light)
+  cardBg: string;         // e.g. "#16151E" — chart card background
+  ink: string;            // primary text
+  muted: string;          // axis labels, legend
+  dim: string;            // grid lines
+  border: string;         // axis lines
+  chartPalette: string[]; // 8-color palette
+  headingFont: string;
+  bodyFont: string;
+};
+
+export type V2ChartRow = {
+  id: string;
+  chartType: string;
+  title: string;
+  data: Record<string, unknown>[];
+  xAxis: string;
+  yAxis: string;
+  series: string[];
+  style: {
+    colors?: string[];
+    showLegend?: boolean;
+    showValues?: boolean;
+    highlightCategories?: string[];
+  };
+  intent?: string;
+  unit?: string;
+  benchmarkLabel?: string;
+  benchmarkValue?: number;
+  sourceNote?: string;
+};
+
+/**
+ * Render a V2ChartRow as a pixel-perfect SVG string using ECharts SSR.
+ * No canvas required — works in Node.js serverless (Vercel).
+ *
+ * @param chart - V2ChartRow from the pipeline
+ * @param theme - Brand tokens from the PPTX design system
+ * @param width - Chart width in pixels (2x for retina)
+ * @param height - Chart height in pixels (2x for retina)
+ * @param suppressTitle - If true, suppresses the chart title (when it duplicates slide title)
+ */
+export function renderV2ChartSvg(
+  chart: V2ChartRow,
+  theme: V2ChartImageTheme,
+  width = 960,
+  height = 540,
+  suppressTitle = false,
+): string {
+  if (chart.chartType === "table") {
+    return createFallbackSvg("Table data — see slide");
+  }
+  if (!chart.data?.length) {
+    return createFallbackSvg("No data available");
+  }
+
+  const palette = chart.style.colors?.map(c => c.startsWith("#") ? c : `#${c}`) ?? theme.chartPalette.map(c => c.startsWith("#") ? c : `#${c}`);
+  const bg = theme.cardBg.startsWith("#") ? theme.cardBg : `#${theme.cardBg}`;
+  const ink = theme.ink.startsWith("#") ? theme.ink : `#${theme.ink}`;
+  const muted = theme.muted.startsWith("#") ? theme.muted : `#${theme.muted}`;
+  const dim = theme.dim.startsWith("#") ? theme.dim : `#${theme.dim}`;
+  const border = theme.border.startsWith("#") ? theme.border : `#${theme.border}`;
+
+  // Extract categories from xAxis field
+  const categories = chart.data.map(row => String(row[chart.xAxis] ?? "")).filter(Boolean);
+
+  // Determine chart type mapping
+  const echartsType = mapV2ChartType(chart.chartType);
+  const isPie = chart.chartType === "pie" || chart.chartType === "doughnut";
+  const isHorizontal = chart.chartType === "horizontal_bar";
+  const isStacked = chart.chartType === "stacked_bar" || chart.chartType === "stacked_bar_100";
+
+  // Build series data
+  const seriesNames = chart.series.length > 0
+    ? chart.series
+    : chart.yAxis ? [chart.yAxis] : [];
+
+  // Detect percentage data for y-axis formatting
+  const isPercentage = (chart.unit ?? "").includes("%") ||
+    chart.chartType === "stacked_bar_100" ||
+    chart.title.toLowerCase().includes("share") ||
+    chart.title.toLowerCase().includes("quota");
+
+  // Format numbers based on unit/intent
+  const formatValue = (v: number): string => {
+    if (isPercentage) return `${v.toFixed(1)}%`;
+    if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
+    return v.toFixed(v % 1 === 0 ? 0 : 1);
+  };
+
+  // Build ECharts series
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const echartsSeries: any[] = isPie
+    ? [{
+        type: "pie" as const,
+        radius: chart.chartType === "doughnut" ? ["40%", "70%"] : "65%",
+        center: ["50%", suppressTitle ? "50%" : "55%"],
+        data: chart.data.map((row, i) => ({
+          name: String(row[chart.xAxis] ?? `Item ${i}`),
+          value: Number(row[chart.yAxis] ?? row[seriesNames[0]] ?? 0),
+          itemStyle: { color: palette[i % palette.length] },
+        })),
+        label: {
+          color: ink,
+          fontFamily: theme.bodyFont,
+          fontSize: 11,
+          formatter: isPercentage ? "{b}: {d}%" : "{b}: {c}",
+        },
+        labelLine: { lineStyle: { color: dim } },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.3)" } },
+      }]
+    : seriesNames.map((name, seriesIdx) => {
+        const data = chart.data.map(row => {
+          const v = row[name];
+          return typeof v === "number" ? v : parseFloat(String(v)) || 0;
+        });
+
+        // Highlight categories support
+        const highlightSet = new Set(chart.style.highlightCategories ?? []);
+        const hasHighlights = highlightSet.size > 0;
+
+        return {
+          name,
+          type: echartsType as "bar" | "line" | "scatter",
+          data: hasHighlights
+            ? data.map((v, i) => ({
+                value: v,
+                itemStyle: {
+                  color: highlightSet.has(categories[i])
+                    ? palette[seriesIdx % palette.length]
+                    : `${palette[seriesIdx % palette.length]}66`, // 40% opacity for non-highlighted
+                },
+              }))
+            : data,
+          stack: isStacked ? "total" : undefined,
+          smooth: chart.chartType === "line" || chart.chartType === "area" ? 0.3 : undefined,
+          areaStyle: chart.chartType === "area" ? { opacity: 0.15 } : undefined,
+          itemStyle: {
+            color: palette[seriesIdx % palette.length],
+            borderRadius: echartsType === "bar" ? (isHorizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]) : 0,
+          },
+          lineStyle: echartsType === "line" ? { width: 2.5, color: palette[seriesIdx % palette.length] } : undefined,
+          barMaxWidth: 48,
+          label: chart.style.showValues ? {
+            show: true,
+            position: isHorizontal ? "right" : "top",
+            color: muted,
+            fontFamily: theme.bodyFont,
+            fontSize: 9,
+            formatter: (params: { value: number | number[] }) => {
+              const val = Array.isArray(params.value) ? params.value[1] : params.value;
+              return formatValue(val);
+            },
+          } : undefined,
+          emphasis: { focus: seriesNames.length > 1 ? "series" : "self" as const },
+        };
+      });
+
+  // Benchmark reference line
+  const markLine = chart.benchmarkValue != null ? {
+    markLine: {
+      silent: true,
+      symbol: "none",
+      lineStyle: { color: muted, type: "dashed" as const, width: 1.5 },
+      data: [{ yAxis: chart.benchmarkValue, name: chart.benchmarkLabel ?? "Benchmark" }],
+      label: {
+        color: muted,
+        fontFamily: theme.bodyFont,
+        fontSize: 9,
+        formatter: chart.benchmarkLabel ?? `Benchmark: ${chart.benchmarkValue}`,
+      },
+    },
+  } : {};
+
+  // Merge benchmark into first series if bar/line
+  if (!isPie && echartsSeries && Array.isArray(echartsSeries) && echartsSeries.length > 0 && chart.benchmarkValue != null) {
+    Object.assign(echartsSeries[0], markLine);
+  }
+
+  // Chart title — suppress if slide already shows it
+  const titleConfig = suppressTitle ? {} : {
+    title: {
+      text: chart.title,
+      left: 20,
+      top: 12,
+      textStyle: {
+        color: ink,
+        fontFamily: theme.headingFont,
+        fontSize: 13,
+        fontWeight: "bold" as const,
+      },
+    },
+  };
+
+  // Source note at bottom
+  const sourceConfig = chart.sourceNote ? {
+    graphic: [{
+      type: "text" as const,
+      left: 20,
+      bottom: 6,
+      style: {
+        text: `Source: ${chart.sourceNote}`,
+        fill: dim,
+        fontFamily: theme.bodyFont,
+        fontSize: 8,
+      },
+    }],
+  } : {};
+
+  const topMargin = suppressTitle ? 40 : 56;
+
+  const instance = echarts.init(null, undefined, {
+    renderer: "svg",
+    ssr: true,
+    width,
+    height,
+  });
+
+  const option: Record<string, unknown> = {
+    backgroundColor: bg,
+    animation: false,
+    ...titleConfig,
+    legend: seriesNames.length > 1 && !isPie ? {
+      top: suppressTitle ? 8 : 14,
+      right: 20,
+      textStyle: { color: muted, fontFamily: theme.bodyFont, fontSize: 10 },
+      itemWidth: 12,
+      itemHeight: 8,
+    } : undefined,
+    grid: isPie ? undefined : {
+      top: topMargin,
+      right: 24,
+      bottom: chart.sourceNote ? 32 : 20,
+      left: 16,
+      containLabel: true,
+    },
+    ...(isPie ? {} : isHorizontal ? {
+      xAxis: {
+        type: "value",
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: {
+          color: muted,
+          fontFamily: theme.bodyFont,
+          fontSize: 10,
+          formatter: (v: number) => formatValue(v),
+        },
+        splitLine: { lineStyle: { color: border, opacity: 0.3 } },
+      },
+      yAxis: {
+        type: "category",
+        data: categories,
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: {
+          color: muted,
+          fontFamily: theme.bodyFont,
+          fontSize: 10,
+          width: 120,
+          overflow: "truncate",
+        },
+        inverse: true,
+      },
+    } : {
+      xAxis: {
+        type: "category",
+        data: categories,
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: {
+          color: muted,
+          fontFamily: theme.bodyFont,
+          fontSize: 10,
+          width: 100,
+          overflow: "truncate",
+          rotate: categories.length > 8 ? 30 : 0,
+        },
+        axisTick: { show: false },
+      },
+      yAxis: {
+        type: "value",
+        axisLine: { show: false },
+        axisLabel: {
+          color: muted,
+          fontFamily: theme.bodyFont,
+          fontSize: 9,
+          formatter: (v: number) => formatValue(v),
+        },
+        splitLine: { lineStyle: { color: border, opacity: 0.3 } },
+      },
+    }),
+    series: echartsSeries,
+    ...sourceConfig,
+  };
+
+  instance.setOption(option);
+  const svg = instance.renderToSVGString();
+  instance.dispose();
+
+  return svg;
+}
+
+function mapV2ChartType(chartType: string): string {
+  switch (chartType) {
+    case "bar":
+    case "grouped_bar":
+    case "horizontal_bar":
+    case "stacked_bar":
+    case "stacked_bar_100":
+    case "waterfall":
+      return "bar";
+    case "line":
+    case "area":
+      return "line";
+    case "scatter":
+      return "scatter";
+    case "pie":
+    case "doughnut":
+      return "pie";
+    default:
+      return "bar";
+  }
+}

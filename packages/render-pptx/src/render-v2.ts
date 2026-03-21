@@ -1,9 +1,11 @@
 import PptxGenJS from "pptxgenjs";
+import sharp from "sharp";
 
 import { getLayoutRegions, SLIDE_W, SLIDE_H, type LayoutRegions, type R } from "@basquio/scene-graph/layout-regions";
 import { getArchetypeOrDefault } from "@basquio/scene-graph/slot-archetypes";
 import { resolveChartArchetype, type ChartRenderingRules } from "@basquio/scene-graph/chart-design-system";
 import { renderShapeChart, type ShapeChartTokens } from "./shape-charts";
+import { renderV2ChartSvg, type V2ChartImageTheme } from "@basquio/render-charts";
 import type { BinaryArtifact } from "@basquio/types";
 
 // ─── HELPERS ────────────────────────────────────────────────────
@@ -1114,11 +1116,43 @@ function renderChartElement(
   tokens: BrandTokens,
   exportMode: ExportMode = "powerpoint-native",
   slideTitle?: string,
+  chartImageMap?: Map<string, Buffer>,
 ): void {
   if (chart.chartType === "table") {
     renderTable(slide, chart, region, tokens);
     return;
   }
+
+  // ── IMAGE MODE: pixel-perfect chart as embedded PNG ──
+  // If we have a pre-rendered image for this chart, use it.
+  // This gives pixel-perfect rendering across PowerPoint, Google Slides, and Keynote.
+  const chartImage = chartImageMap?.get(chart.id);
+  if (chartImage) {
+    slide.addImage({
+      data: `image/png;base64,${chartImage.toString("base64")}`,
+      x: region.x,
+      y: region.y,
+      w: region.w,
+      h: region.h,
+      rounding: false,
+    });
+
+    // Source note below chart (still editable text)
+    if (chart.sourceNote) {
+      slide.addText(`Source: ${chart.sourceNote}`, {
+        x: region.x,
+        y: region.y + region.h - 0.15,
+        w: region.w,
+        h: 0.15,
+        fontSize: tokens.typography.sourceSize,
+        fontFace: tokens.typography.monoFont,
+        color: norm(tokens.palette.dim),
+      });
+    }
+    return;
+  }
+
+  // ── FALLBACK: shape-built or native chart (when image rendering failed) ──
 
   const built = buildChartData(chart, tokens);
   if (!built) {
@@ -1332,6 +1366,7 @@ function renderContentSlide(
   chartsMap: Map<string, V2ChartRow>,
   tokens: BrandTokens,
   exportMode: ExportMode = "powerpoint-native",
+  chartImageMap?: Map<string, Buffer>,
 ): void {
   // Content slides use BASQUIO_MASTER (white bg + accent top bar + navy footer)
   const layoutId = s.layoutId || "title-body";
@@ -1401,7 +1436,7 @@ function renderContentSlide(
 
     case "title-chart": {
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
       }
       // First-class callout
       if (s.callout && regions.callout) {
@@ -1415,7 +1450,7 @@ function renderContentSlide(
       // Chart on left, table on right
       if (chart) {
         if (regions.chart) {
-          renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
+          renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
         }
         // Table with same data on right
         if (regions.table) {
@@ -1453,7 +1488,7 @@ function renderContentSlide(
       }
       // Chart on left
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
       }
       // Body/bullets on right
       if (regions.body) {
@@ -1481,7 +1516,7 @@ function renderContentSlide(
       }
       // Chart support for exec-summary (JSX: metrics on top, chart below)
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
       } else if (layoutId === "exec-summary" && s.bullets && s.bullets.length > 0 && regions.bullets) {
         // Fallback to bullets if no chart
         renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch);
@@ -1586,7 +1621,7 @@ function renderContentSlide(
         const adjustedChart = chartYOffset > 0
           ? { ...regions.chart, y: regions.chart.y + chartYOffset, h: regions.chart.h - chartYOffset }
           : regions.chart;
-        renderChartElement(slide, pptx, chart, adjustedChart, tokens, exportMode, s.title);
+        renderChartElement(slide, pptx, chart, adjustedChart, tokens, exportMode, s.title, chartImageMap);
       }
       // Second chart area: use bullets or body
       if (regions.chart2) {
@@ -1609,7 +1644,7 @@ function renderContentSlide(
     case "summary": {
       // Chart on left if available (recommendation slides — chart-split style)
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
       }
       // Metrics if available
       if (s.metrics && s.metrics.length > 0 && regions.metrics) {
@@ -1647,7 +1682,7 @@ function renderContentSlide(
       // Fallback: chart if available, else body/bullets
       if (chart) {
         const chartRegion = regions.chart || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
-        renderChartElement(slide, pptx, chart, chartRegion, tokens, exportMode, s.title);
+        renderChartElement(slide, pptx, chart, chartRegion, tokens, exportMode, s.title, chartImageMap);
       } else if (s.body && regions.body) {
         renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       } else if (s.bullets && s.bullets.length > 0) {
@@ -1735,6 +1770,49 @@ export async function renderV2PptxArtifact(
     chartsMap.set(chart.id, chart);
   }
 
+  // ── Pre-render all charts to PNG images (pixel-perfect, universal compatibility) ──
+  // Charts are rendered as high-res images via ECharts SSR + sharp.
+  // Text remains editable OOXML. Charts are pixel-perfect images.
+  const chartImageMap = new Map<string, Buffer>();
+  const chartTheme: V2ChartImageTheme = {
+    background: tokens.palette.surface,
+    cardBg: tokens.palette.card,
+    ink: tokens.palette.ink,
+    muted: tokens.palette.muted,
+    dim: tokens.palette.dim,
+    border: tokens.palette.border,
+    chartPalette: tokens.chartPalette,
+    headingFont: tokens.typography.headingFont,
+    bodyFont: tokens.typography.bodyFont,
+  };
+
+  // Find which charts duplicate their slide's title (for suppression)
+  const chartSlideMap = new Map<string, string>(); // chartId → slideTitle
+  for (const s of input.slides) {
+    if (s.chartId) chartSlideMap.set(s.chartId, s.title);
+  }
+
+  await Promise.all(input.charts.map(async (chart) => {
+    if (chart.chartType === "table") return; // Tables stay as OOXML
+    try {
+      const slideTitle = chartSlideMap.get(chart.id);
+      const titleNorm = (chart.title ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const slideTitleNorm = (slideTitle ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const suppressTitle = titleNorm.length > 0 && slideTitleNorm.length > 0 &&
+        (titleNorm === slideTitleNorm || slideTitleNorm.includes(titleNorm) || titleNorm.includes(slideTitleNorm));
+
+      // Render at 2x resolution for retina-quality images
+      const svg = renderV2ChartSvg(chart, chartTheme, 1920, 1080, suppressTitle);
+      const pngBuffer = await sharp(Buffer.from(svg))
+        .resize(1920, 1080)
+        .png({ quality: 95 })
+        .toBuffer();
+      chartImageMap.set(chart.id, pngBuffer);
+    } catch (err) {
+      console.warn(`[render-v2] Chart image render failed for ${chart.id}, falling back to shape:`, err);
+    }
+  }));
+
   const sortedSlides = [...input.slides].sort((a, b) => a.position - b.position);
 
   for (const slideData of sortedSlides) {
@@ -1744,7 +1822,7 @@ export async function renderV2PptxArtifact(
     if (isCover) {
       renderCoverSlide(slide, pptx, slideData, tokens);
     } else {
-      renderContentSlide(slide, pptx, slideData, chartsMap, tokens, input.exportMode ?? "universal-compatible");
+      renderContentSlide(slide, pptx, slideData, chartsMap, tokens, input.exportMode ?? "universal-compatible", chartImageMap);
     }
 
     // Speaker notes for cover
