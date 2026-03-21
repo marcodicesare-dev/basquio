@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -3069,6 +3069,33 @@ Return a V1DeckPlan with slides and charts.`,
             console.warn(`[basquio-author] Chart type overridden: ${planned.chartType} → ${exhibitResult.chartType} (${exhibitResult.reason})`);
           }
 
+          // ─── NIQ EXHIBIT FAMILY MATCH (deterministic, $0) ───
+          // Find the best NIQ-safe exhibit family and apply its constraints
+          const availableMeasureNames = planned.dataSpec?.measures?.map((m: string) => m.toLowerCase()) ?? [];
+          const exhibitFamily = findBestExhibitFamily(questionType, availableMeasureNames);
+          if (exhibitFamily.family) {
+            // Apply family's max categories constraint
+            if (grouped.categories.length > exhibitFamily.family.maxCategories && exhibitFamily.family.maxCategories > 0) {
+              const excess = grouped.categories.length - exhibitFamily.family.maxCategories;
+              console.warn(`[basquio-author] Chart ${planned.chartId}: NIQ exhibit family "${exhibitFamily.family.id}" caps at ${exhibitFamily.family.maxCategories} categories, trimming ${excess}`);
+              grouped.categories = grouped.categories.slice(0, exhibitFamily.family.maxCategories);
+              for (const s of grouped.series) {
+                s.values = s.values.slice(0, exhibitFamily.family.maxCategories);
+              }
+            }
+            // Apply family's sort rule
+            if (exhibitFamily.family.sortRule === "desc" && grouped.series.length > 0) {
+              const indices = grouped.series[0].values
+                .map((v, i) => ({ v, i }))
+                .sort((a, b) => b.v - a.v)
+                .map((x) => x.i);
+              grouped.categories = indices.map((i) => grouped.categories[i]);
+              for (const s of grouped.series) {
+                s.values = indices.map((i) => s.values[i]);
+              }
+            }
+          }
+
           // ─── EXHIBIT PREFLIGHT (deterministic validation, $0) ───
           // Prevent broken charts from reaching the renderer
           const allValues = grouped.series.flatMap((s) => s.values);
@@ -3703,8 +3730,8 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
             .join("; ");
 
           try {
-            // Replace {language} placeholder in system prompt for repair step too
-            const repairLanguage = validatedPlan.language || "en";
+            // Use narrative arc language (single source) → plan language → fallback
+            const repairLanguage = narrativeArc?.language ?? validatedPlan.language ?? "en";
             const repairSystemPrompt = v1SlideSystemPrompt.replace("{language}", repairLanguage);
             const repairResult = await generateObject({
               model: anthropic("claude-haiku-4-5"),
@@ -3955,29 +3982,36 @@ export const basquioCritiqueRevise = inngest.createFunction(
       const criticalCount = allIssues.filter((i) => i?.severity === "critical").length;
       const majorCount = allIssues.filter((i) => i?.severity === "major").length;
 
-      // Persist critique report
-      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          id: crypto.randomUUID(),
-          run_id: runId,
-          iteration: 1,
-          has_issues: hasIssues,
-          issues: allIssues,
-          coverage_score: ("coverageScore" in factualCritique ? factualCritique.coverageScore : null) ?? null,
-          accuracy_score: ("accuracyScore" in factualCritique ? factualCritique.accuracyScore : null) ?? null,
-          narrative_score: ("narrativeScore" in strategicCritique ? strategicCritique.narrativeScore : null) ?? null,
-          provider: "anthropic",
-          model_id: "claude-sonnet-4-6",
-          usage: null,
-        }),
-      });
+      // Persist critique report — check response to avoid silent state loss
+      try {
+        const critiqueInsertRes = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/critique_reports`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            id: crypto.randomUUID(),
+            run_id: runId,
+            iteration: 1,
+            has_issues: hasIssues,
+            issues: allIssues,
+            coverage_score: ("coverageScore" in factualCritique ? factualCritique.coverageScore : null) ?? null,
+            accuracy_score: ("accuracyScore" in factualCritique ? factualCritique.accuracyScore : null) ?? null,
+            narrative_score: ("narrativeScore" in strategicCritique ? strategicCritique.narrativeScore : null) ?? null,
+            provider: "anthropic",
+            model_id: "claude-sonnet-4-6",
+            usage: null,
+          }),
+        });
+        if (!critiqueInsertRes.ok) {
+          console.warn(`[basquio-critique] Failed to persist critique report: ${critiqueInsertRes.status} ${critiqueInsertRes.statusText}`);
+        }
+      } catch (critiqueInsertErr) {
+        console.warn("[basquio-critique] Failed to persist critique report:", critiqueInsertErr);
+      }
 
       const critiqueCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
 

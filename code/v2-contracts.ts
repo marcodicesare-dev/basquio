@@ -486,7 +486,7 @@ export const v1NarrativeArcSlideSchema = z.object({
   position: z.number().describe("Slide position (1-indexed, matching plan)"),
   title: z.string().describe("Action title: full sentence, at least one number, max 14 words. Must pass 'so what?' test. NEVER a topic label."),
   kicker: z.string().describe("Section label — specific, not generic. 'DISTRIBUTION GAP' not 'EVIDENCE'. Empty string for cover."),
-  calloutTone: z.string().describe("green (opportunity), orange (risk/warning), accent (neutral finding). Empty string for cover."),
+  calloutTone: z.enum(["accent", "green", "orange", ""]).describe("green=opportunity, orange=risk/warning, accent=neutral finding. Empty string for cover."),
   povIndex: z.number().describe("Which POV (1-3) this slide supports. 0 for cover, exec-summary, recommendation."),
   whatSoWhatNowWhat: z.string().describe("Brief note: What (evidence) | So What (interpretation) | Now What (action). Guides the slide author."),
 });
