@@ -477,32 +477,63 @@ export const v1DeckPlanSchema = z.object({
   language: z.string().describe("Output language: en, it, de, fr, es, etc."),
 });
 
+// ─── V1 PIPELINE: NARRATIVE ARC OUTPUT ──────────────────────────
+// Single Sonnet call that plans the entire deck narrative before per-slide authoring.
+// Produces: SCQA, title sequence, POV assignments, callout tones, kicker sequence.
+// This ensures cross-slide coherence that parallel per-slide authoring can't achieve alone.
+
+export const v1NarrativeArcSlideSchema = z.object({
+  position: z.number().describe("Slide position (1-indexed, matching plan)"),
+  title: z.string().describe("Action title: full sentence, at least one number, max 14 words. Must pass 'so what?' test. NEVER a topic label."),
+  kicker: z.string().describe("Section label — specific, not generic. 'DISTRIBUTION GAP' not 'EVIDENCE'. Empty string for cover."),
+  calloutTone: z.string().describe("green (opportunity), orange (risk/warning), accent (neutral finding). Empty string for cover."),
+  povIndex: z.number().describe("Which POV (1-3) this slide supports. 0 for cover, exec-summary, recommendation."),
+  whatSoWhatNowWhat: z.string().describe("Brief note: What (evidence) | So What (interpretation) | Now What (action). Guides the slide author."),
+});
+
+export const v1NarrativeArcSchema = z.object({
+  situation: z.string().describe("SCQA Situation: current state the audience already knows, with specifics. 1-2 sentences."),
+  complication: z.string().describe("SCQA Complication: the problem or tension. Why it matters NOW. 1-2 sentences."),
+  question: z.string().describe("SCQA Question: the strategic issue to solve. Rooted in a growth opportunity. 1 sentence."),
+  answer: z.string().describe("SCQA Answer: quantified, action-oriented recommendation. NOT a generic observation. 1-2 sentences."),
+  focalEntity: z.string().describe("The client/brand this deck is about — must appear highlighted on every chart."),
+  language: z.string().describe("Output language code: en, it, de, fr, es, etc. Detected from brief."),
+  povs: z.array(z.object({
+    index: z.number().describe("POV index (1, 2, or 3)"),
+    theme: z.string().describe("POV theme: a sentence summarizing this argument strand"),
+    diagnosticMotif: z.string().describe("Which FMCG diagnostic motif applies: availability_problem, velocity_problem, price_mix_tension, promo_dependence, portfolio_mismatch, hero_concentration, share_erosion, or none"),
+  })).describe("2-4 Points of View that support the Answer. Each backed by evidence slides."),
+  slides: z.array(v1NarrativeArcSlideSchema).describe("One entry per slide — title, kicker, callout tone, POV assignment."),
+});
+
 // ─── V1 PIPELINE: SLIDE AUTHORING OUTPUT ────────────────────────
 // Per-slide structured output from generateObject. ALL fields required.
 
 export const v1SlideOutputMetricSchema = z.object({
   label: z.string(),
   value: z.string(),
-  delta: z.string().describe('Change indicator, e.g. "+5.2%" or "". Empty string if not applicable'),
+  delta: z.string().describe('Numeric change indicator with sign and unit. Examples: "+5.2%", "-0.8 pts", "+€1.2M", "flat", "". NEVER descriptive text like "of cat sales" or just "-". Empty string if not applicable.'),
 });
 
 export const v1SlideOutputCalloutSchema = z.object({
-  text: z.string().describe("The so-what statement, max 25 words"),
-  tone: z.string().describe("accent (blue/key finding), green (opportunity), orange (risk/warning)"),
+  text: z.string().describe("The so-what action statement: what to DO or WORRY ABOUT. Max 25 words."),
+  tone: z.enum(["accent", "green", "orange"]).describe("accent=key finding, green=opportunity/positive, orange=risk/warning"),
 });
 
 export const v1SlideOutputSchema = z.object({
-  title: z.string().describe("Action title: full sentence with a number, max 16 words"),
+  title: z.string().describe("Action title: full sentence with a number, max 14 words. Must pass 'so what?' test."),
   subtitle: z.string().describe("Optional subtitle or empty string"),
-  kicker: z.string().describe("Section label like EXECUTIVE SUMMARY, or empty string"),
-  body: z.string().describe("Prose content for the slide, or empty string if not applicable"),
-  bullets: z.array(z.string()).describe("Bullet points, empty array if not applicable"),
-  metrics: z.array(v1SlideOutputMetricSchema).describe("KPI cards, empty array if not applicable"),
+  kicker: z.string().describe("Section label — specific, not generic. 'PORTFOLIO MIX' not 'ANALYSIS'. Empty string if not applicable."),
+  body: z.string().describe("Prose explaining WHY (not WHAT — the chart shows WHAT). Max 30 words for chart-split, 50 for title-body. Empty string if not applicable."),
+  bullets: z.array(z.string()).describe("Max 2-4 bullets, each max 15 words. Empty array if not applicable."),
+  metrics: z.array(v1SlideOutputMetricSchema).describe("KPI cards, max 3 unless exec-summary. Empty array if not applicable."),
   callout: v1SlideOutputCalloutSchema,
-  speakerNotes: z.string().describe("60-140 words of presenter talking points"),
-  evidenceIds: z.array(z.string()).describe("Evidence ref IDs cited by this slide"),
+  speakerNotes: z.string().describe("80-140 words of presenter talking points. Must reference at least one evidence ID. Include the What/So What/Now What structure."),
+  evidenceIds: z.array(z.string()).describe("Evidence ref IDs cited by this slide. At least 1 required for content slides."),
 });
 
+export type V1NarrativeArc = z.infer<typeof v1NarrativeArcSchema>;
+export type V1NarrativeArcSlide = z.infer<typeof v1NarrativeArcSlideSchema>;
 export type V1PlannedChartDataSpec = z.infer<typeof v1PlannedChartDataSpecSchema>;
 export type V1PlannedChart = z.infer<typeof v1PlannedChartSchema>;
 export type V1DeckPlanSlideSpec = z.infer<typeof v1DeckPlanSlideSpecSchema>;

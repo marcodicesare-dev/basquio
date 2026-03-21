@@ -590,10 +590,18 @@ function parseNumericString(value: string) {
     return null;
   }
 
+  // Detect NA/null indicators
+  if (/^(n\/a|na|null|nil|-{1,3}|—|–|\.{1,3})$/i.test(trimmed)) {
+    return null;
+  }
+
   let candidate = trimmed
-    .replace(/[€$£¥%]/g, "")
-    .replace(/\s+/g, "")
-    .replace(/[’']/g, "");
+    .replace(/^[€$£¥₹₽₩]\s*/g, "")          // Leading currency symbols
+    .replace(/\s*[€$£¥₹₽₩%]$/g, "")          // Trailing currency/percent symbols
+    .replace(/^(USD|EUR|GBP|CHF|JPY)\s*/i, "") // ISO currency prefix
+    .replace(/\s*(USD|EUR|GBP|CHF|JPY)$/i, "") // ISO currency suffix
+    .replace(/\s+/g, "")                        // Whitespace (thousand separator in some locales)
+    .replace(/[‘\u2019\u02BC\u201B`\u00B4]/g, ""); // All apostrophe/quote variants as thousand separators
 
   if (!/[0-9]/.test(candidate)) {
     return null;

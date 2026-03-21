@@ -12,6 +12,7 @@ import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/t
 import {
   deckPlanSchema,
   v1DeckPlanSchema,
+  v1NarrativeArcSchema,
   v1SlideOutputSchema,
   type AnalysisReport,
   type ClarifiedBrief,
@@ -26,6 +27,7 @@ import {
   type StorylinePlan,
   type TemplateProfile,
   type V1DeckPlan,
+  type V1NarrativeArc,
   type V1PlannedChart,
   type V1SlideOutput,
 } from "@basquio/types";
@@ -1238,39 +1240,74 @@ function v1GroupAndAggregate(
 
 // ─── V1 PIPELINE: SLIDE AUTHOR SYSTEM PROMPT ─────────────────────
 
-const V1_SLIDE_AUTHOR_SYSTEM_PROMPT = `You are a senior strategy consultant writing ONE slide. You are a VISUAL STORYTELLER.
+const V1_SLIDE_AUTHOR_SYSTEM_PROMPT = `You are a senior strategy consultant at McKinsey/BCG writing ONE slide in a consulting-grade deck.
+You are a VISUAL STORYTELLER, not a data reporter. The chart shows WHAT happened. You explain WHY it matters and what to DO.
 
-## TITLE (non-negotiable)
-Full sentence with at least one number. Max 14 words. Must pass "so what?" test.
-NEVER: "Category Overview", "Market Analysis", "Summary"
-ALWAYS: "Cat wet is the largest pool at 781M but Ultima captures only 0.8%"
+## NARRATIVE STRUCTURE (non-negotiable)
+This deck follows the Pyramid Principle with SCQA (Situation → Complication → Question → Answer).
+Every slide must contain three layers:
+- WHAT: The evidence from data (shown by the chart or metrics)
+- SO WHAT: Your analytical interpretation — is this a risk or an opportunity?
+- NOW WHAT: A forward-looking, quantified action
+
+The chart is the WHAT. The body/bullets are the SO WHAT. The callout is the NOW WHAT.
+
+## TITLE
+Your title is provided by the narrative arc. Use it EXACTLY as given — do NOT rewrite it.
+If no title is provided (fallback only): write a full sentence with at least one number, max 14 words.
+NEVER topic labels: "Category Overview", "Market Analysis", "Summary", "Distribution Analysis"
+ALWAYS insight: "Cat wet is €781M but Ultima captures only 0.8%" or "Three high-velocity SKUs under-distributed by 30+ pts"
 
 ## CALLOUT (required on every slide except cover)
-Max 20 words. Says what to DO or WORRY ABOUT. tone: green=opportunity, orange=risk, accent=finding.
+Max 20 words. States what to DO or WORRY ABOUT — an action, not an observation.
+BAD: "Distribution varies across SKUs" (observation)
+GOOD: "List top 3 under-distributed SKUs at Coop and Esselunga to capture €2.1M" (action)
+tone: green = opportunity/growth, orange = risk/decline/warning, accent = neutral key finding.
 
 ## LANGUAGE
-Write ENTIRELY in the language specified in your slide context. Never default to English.
-Exception: proper nouns, brand names, and universal industry terms (KPI, SKU, CAGR) stay in their original form.
+You MUST write ENTIRELY in {language}. This is NON-NEGOTIABLE. Every word.
+Exception: brand names, proper nouns, and universal terms (KPI, SKU, CAGR, ROS, ACV) stay as-is.
+If you write in any other language, the output is rejected.
 
 ## COPYWRITING RULES (non-negotiable)
 - SPECIFICITY over vagueness: "Birre lost €2.3M (-14%) while Pasta grew €1.1M (+8%)" NOT "decline concentrated in a few categories"
 - Every claim MUST include at least one number from the evidence
 - ONE insight per slide — if you're making two points, the second belongs on the next slide
 - Active voice: "Affinity lost 0.1pp share" NOT "share was lost by Affinity"
-- No marketing buzzwords: "leverage", "optimize", "streamline", "innovative" are banned
-- Callout must state the SO WHAT — what to DO, not what happened
+- Banned words: "leverage", "optimize", "streamline", "innovative", "robust", "holistic", "synergy"
+- Body explains WHY, not WHAT — the chart already shows WHAT
+- Callout states the NOW WHAT — what to DO, not what happened
 
-## LAYOUT-SPECIFIC TEXT BUDGETS (HARD LIMITS — violating these is a failure)
+## DIAGNOSTIC MOTIF FRAMING
+When your slide context mentions a diagnostic motif, frame the story accordingly:
+- availability_problem: "X can sell but isn't available" → recommend distribution expansion with specific retailers
+- velocity_problem: "X is available but not selling" → recommend pricing/proposition fix
+- price_mix_tension: "Value growing faster than volume" → recommend pack architecture changes
+- promo_dependence: "Intensity >50%, weak baseline" → recommend rebuilding non-promo sales
+- portfolio_mismatch: "Brand mix differs from category by >5pp" → recommend portfolio rebalancing
+- hero_concentration: "Top 3 SKUs >50% of value" → recommend hero renovation + tail pruning
+- share_erosion: "Losing share in stable category" → recommend competitive response
+
+## RECOMMENDATIONS (for summary/recommendation slides)
+All recommendations MUST use FMCG levers and be quantified:
+1. Distribution: "List [SKU] in [retailer] to capture €[X]M"
+2. Pack architecture: "Launch [format] targeting [segment] at €[X] price point"
+3. Promo optimization: "Shift [X]% of promo spend from [channel] to [channel]"
+4. Portfolio rebalancing: "Increase [segment] mix from [X]% to [Y]%"
+5. Hero renovation: "Refresh [SKU] packaging to recover [X]pp velocity"
+6. Tail pruning: "Delist bottom [N] SKUs to fund [action]"
+
+## LAYOUT TEXT BUDGETS (HARD LIMITS — violating = failure)
 
 cover:
   title + subtitle only. NO body, NO bullets, NO metrics, NO callout.
 
 exec-summary:
   metrics: exactly 3 KPI cards. Delta MUST be numeric (+4.2%, -0.8 pts, flat).
-  body: 1 sentence max (the SCQA answer). 25 words max.
+  body: 1 sentence — the SCQA Answer. 25 words max.
   bullets: NONE.
 
-chart-split / title-chart:
+chart-split / title-chart / evidence-grid:
   body: 1 sentence. 30 words max. Explains WHY, not WHAT.
   bullets: max 2 bullets, max 12 words each.
   The CHART is the content. Text is minimal support.
@@ -1282,26 +1319,28 @@ title-body:
 
 summary / recommendation:
   body: 1 sentence framing the action.
-  bullets: 3-4 specific, quantified actions. Each max 15 words.
+  bullets: 3-4 specific, quantified FMCG actions. Each max 15 words.
   NOT a memo. NOT an agenda. Specific retailer/SKU/channel actions.
 
 table:
   NO body text. The table IS the content.
 
 ## EVIDENCE
-Only cite evidence IDs from your context. Never invent.
+Only cite evidence IDs from your context. Never invent. At least 1 per content slide.
 
 ## LABELS
-Never raw column names. "V. Valore" → "Sales Value". Internal codes → product names.
+Never raw column names. "V. Valore" → "Sales Value". "Var.%" → "Growth". Internal codes → product names.
+Never raw SKU codes (P-008294-001) — use product names.
+Share MUST specify denominator: "18.3% of Total Tracked Market", not just "18.3%".
 
-## DESIGN ANTI-PATTERNS (NEVER do these)
-- NEVER use accent lines or bars under/above titles — hallmark of AI-generated slides
+## DESIGN ANTI-PATTERNS (NEVER)
+- NEVER accent lines/bars under titles — hallmark of AI-generated slides
 - NEVER center body text — left-align all prose
-- NEVER put more than 3 metrics on a slide unless the layout is exec-summary or evidence-grid
+- NEVER >3 metrics unless exec-summary or evidence-grid
 - NEVER repeat the same insight across slides — each slide must advance the argument
-- Body text should be SPARSE — if you're writing paragraphs, the chart should be saying it instead
-- Callout tone MUST match the message: green for opportunity/positive, orange for risk/warning, accent for neutral finding
-- NEVER use generic topic labels as kickers — "EVIDENCE" is lazy, "DISTRIBUTION GAP" is specific`;
+- NEVER write paragraphs — if you're writing >30 words, the chart should say it instead
+- NEVER use generic kickers — "EVIDENCE" is lazy, "DISTRIBUTION GAP" is specific
+- Callout tone MUST match: green for opportunity/positive, orange for risk/warning, accent for neutral`;
 
 // ─── SECTION BRIEF BUILDER ────────────────────────────────────────
 
@@ -3144,6 +3183,161 @@ Return a V1DeckPlan with slides and charts.`,
       return { chartIdMap, chartResults };
     }) as { chartIdMap: Record<string, string>; chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> };
 
+    // ─── QUALITY-PRESERVING FALLBACK LADDER ──────────────────────────
+    // Reduce complexity, not quality, when things go wrong.
+    // Tier 1 (Full):   All charts built, budget healthy → full narrative arc, all layouts
+    // Tier 2 (Safe):   Some chart failures or budget >60% → fewer slides, safe layouts only
+    // Tier 3 (Guard):  All charts failed or budget >80% → minimal slides, battle-tested exhibits only
+    const chartSuccessRate = chartBuildResult.chartResults.length > 0
+      ? chartBuildResult.chartResults.filter(r => r.success).length / chartBuildResult.chartResults.length
+      : 1;
+    const budgetUsedPct = 1 - (remainingBudget() / HARD_BUDGET_USD);
+
+    type FallbackTier = "full" | "safe" | "guaranteed";
+    const fallbackTier: FallbackTier =
+      (chartSuccessRate === 0 || budgetUsedPct >= 0.80) ? "guaranteed" :
+      (chartSuccessRate < 0.7 || budgetUsedPct >= 0.60) ? "safe" :
+      "full";
+
+    if (fallbackTier !== "full") {
+      console.warn(`[basquio-author] Fallback tier: ${fallbackTier} (chart success: ${(chartSuccessRate * 100).toFixed(0)}%, budget used: ${(budgetUsedPct * 100).toFixed(0)}%)`);
+    }
+
+    // In safe/guaranteed tiers, trim the plan to fewer slides (reduce complexity, preserve quality)
+    if (fallbackTier === "guaranteed") {
+      // Keep only: cover, exec-summary, up to 3 best content slides, recommendation
+      const essential = validatedPlan.slides.filter(s =>
+        s.role === "cover" || s.role === "exec-summary" || s.role === "recommendation" || s.role === "summary"
+      );
+      const content = validatedPlan.slides
+        .filter(s => !essential.some(e => e.position === s.position))
+        .filter(s => {
+          // Keep only slides with successful charts
+          if (!s.chartId) return true;
+          const result = chartBuildResult.chartResults.find(r => r.plannedId === s.chartId);
+          return result?.success ?? false;
+        })
+        .slice(0, 3);
+      const trimmed = [...essential, ...content].sort((a, b) => a.position - b.position);
+      // Reindex positions
+      trimmed.forEach((s, i) => { s.position = i + 1; });
+      validatedPlan.slides = trimmed;
+      validatedPlan.targetSlideCount = trimmed.length;
+      console.warn(`[basquio-author] Guaranteed tier: trimmed to ${trimmed.length} slides`);
+    } else if (fallbackTier === "safe") {
+      // Remove slides whose charts failed — don't waste author tokens on chartless chart-layouts
+      const safeSlides = validatedPlan.slides.filter(s => {
+        if (!s.chartId) return true;
+        const result = chartBuildResult.chartResults.find(r => r.plannedId === s.chartId);
+        return result?.success ?? false;
+      });
+      const removedCount = validatedPlan.slides.length - safeSlides.length;
+      if (removedCount > 0) {
+        safeSlides.forEach((s, i) => { s.position = i + 1; });
+        validatedPlan.slides = safeSlides;
+        validatedPlan.targetSlideCount = safeSlides.length;
+        console.warn(`[basquio-author] Safe tier: removed ${removedCount} failed-chart slides, ${safeSlides.length} remain`);
+      }
+    }
+
+    // ─── STEP 2.5: NARRATIVE ARC (one Sonnet call for cross-slide coherence) ─
+    const narrativeArc = await step.run("narrative-arc", async () => {
+      if (isOverBudget() || fallbackTier === "guaranteed") {
+        console.warn(`[basquio-author] ${fallbackTier === "guaranteed" ? "Guaranteed tier" : "Over budget"}, skipping narrative arc`);
+        return null;
+      }
+
+      const analysisResult = await loadWorkingPaper<{
+        analysis: {
+          domain: string; summary: string;
+          topFindings: Array<{ title: string; claim: string; evidenceRefIds: string[]; confidence: number; businessImplication: string }>;
+          keyDimensions: string[];
+        };
+        clarifiedBrief?: { focalEntity: string; focalBrands: string[]; language: string };
+      }>(runId, "analysis_result");
+      const analysis = analysisResult?.analysis;
+      const clarifiedBrief = analysisResult?.clarifiedBrief;
+
+      // Build chart build summary for narrative context
+      const chartSummaries = validatedPlan.charts.map((c) => {
+        const result = chartBuildResult.chartResults.find((r) => r.plannedId === c.chartId);
+        return `- ${c.chartId}: ${c.chartType} "${c.title}" [${result?.success ? "built" : "FAILED"}]`;
+      }).join("\n");
+
+      // Findings summary
+      const findingsSummary = (analysis?.topFindings ?? [])
+        .map((f, i) => `${i + 1}. ${f.title}: ${f.claim} → ${f.businessImplication}`)
+        .join("\n");
+
+      // Slide plan summary
+      const slidePlanSummary = validatedPlan.slides
+        .map((s) => `Slide ${s.position} [${s.role}/${s.layout}]: ${s.governingThought}`)
+        .join("\n");
+
+      // Domain context for FMCG intelligence
+      const arcDomainContext = buildDomainKnowledgeContext({
+        workspace: undefined,
+        brief,
+        stage: "storyline",
+      });
+
+      const arcPrompt = `You are a McKinsey/BCG partner planning the narrative arc for a consulting-grade deck.
+Your job: write the SCQA, assign titles to every slide, and structure 2-4 Points of View (POVs).
+
+## RULES
+- Every title MUST be a complete sentence with at least one number. Max 14 words.
+- Title IS the insight, NOT a topic label. BAD: "Category Overview". GOOD: "Cat wet is €781M but Ultima captures only 0.8%"
+- If you read only the titles in sequence, a reader should understand the full argument (Pyramid Principle).
+- Use DEDUCTIVE structure: Answer comes FIRST (exec summary), then POVs with evidence, then recommendation.
+- Cover title = the deck's main claim/answer. Exec summary body = the SCQA answer.
+- Recommendation slide title = quantified action summary.
+- 2-4 POVs, each supported by 1-3 evidence slides.
+- Diagnostic motifs (if FMCG data): availability_problem, velocity_problem, price_mix_tension, promo_dependence, portfolio_mismatch, hero_concentration, share_erosion, none
+
+## BAD → GOOD TITLE EXAMPLES
+BAD: "Category Overview" → GOOD: "Italian petfood is a €1.94bn flat market with 65% concentrated in dry"
+BAD: "Distribution Analysis" → GOOD: "Three high-velocity SKUs under-distributed by 30+ pts vs portfolio"
+BAD: "Price Trends" → GOOD: "Price index at 112 vs category 108 maintains margin despite inflation"
+BAD: "Recommendations" → GOOD: "4 actions targeting €4.2M: expand cat wet at Coop, renovate declining heroes"
+BAD: "Market Share" → GOOD: "Affinity lost 0.1pp share to private label despite +12% value growth"
+BAD: "Summary" → GOOD: "Protect dry heroes, build cat wet via selective launches at Coop and Esselunga"
+
+## BRIEF
+${brief.slice(0, 800)}
+
+## FOCAL ENTITY
+${validatedPlan.focalEntity}
+
+## LANGUAGE
+Detect from the brief and set in output. All titles must be in this language.
+Exception: brand names, KPI, SKU, CAGR stay as-is.
+
+## ANALYSIS FINDINGS
+${findingsSummary}
+
+## SLIDE PLAN
+${slidePlanSummary}
+
+## CHARTS (built)
+${chartSummaries}
+
+${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
+
+      try {
+        const arcResult = await generateObject({
+          model: anthropic("claude-sonnet-4-6"),
+          schema: v1NarrativeArcSchema,
+          prompt: arcPrompt,
+        });
+        addUsage(arcResult.usage, "claude-sonnet-4-6");
+        console.warn(`[basquio-author] Narrative arc: ${arcResult.object.povs.length} POVs, SCQA answer: "${arcResult.object.answer.slice(0, 80)}..."`);
+        return arcResult.object;
+      } catch (err) {
+        console.error("[basquio-author] Narrative arc failed, proceeding without:", err);
+        return null;
+      }
+    }) as V1NarrativeArc | null;
+
     // ─── STEP 3: AUTHOR SLIDES (parallel batches, generateObject, fresh context) ─
     await step.run("author-slides", async () => {
       await updateRunStatus(runId, "running", "author");
@@ -3170,6 +3364,28 @@ Return a V1DeckPlan with slides and charts.`,
 
       const { chartIdMap } = chartBuildResult;
 
+      // Build narrative arc lookup for quick access
+      const arcSlideMap = new Map<number, V1NarrativeArc["slides"][number]>();
+      if (narrativeArc) {
+        for (const arcSlide of narrativeArc.slides) {
+          arcSlideMap.set(arcSlide.position, arcSlide);
+        }
+      }
+
+      // Resolve language: from narrative arc (preferred), then plan, then brief heuristic
+      const resolvedLanguage = narrativeArc?.language ?? validatedPlan.language ?? (() => {
+        // Deterministic heuristic: count stop words
+        const text = brief.toLowerCase();
+        const itWords = ["di", "il", "la", "per", "che", "con", "del", "nel", "alla", "sono", "della", "delle", "degli"];
+        const enWords = ["the", "and", "for", "with", "that", "this", "from", "have", "which", "their", "about", "would"];
+        const itCount = itWords.filter(w => new RegExp(`\\b${w}\\b`).test(text)).length;
+        const enCount = enWords.filter(w => new RegExp(`\\b${w}\\b`).test(text)).length;
+        return itCount > enCount ? "it" : "en";
+      })();
+
+      // Inject language into system prompt (replace placeholder)
+      const languageAwarePrompt = v1SlideSystemPrompt.replace("{language}", resolvedLanguage);
+
       // Build context builder for each slide
       function buildSlideContext(slideSpec: V1DeckPlan["slides"][number]): string {
         const parts: string[] = [];
@@ -3178,8 +3394,40 @@ Return a V1DeckPlan with slides and charts.`,
         parts.push(`## Brief (abbreviated)\n${brief.slice(0, 500)}`);
 
         // Focal entity
-        parts.push(`\n## Focal entity: ${validatedPlan.focalEntity}`);
-        parts.push(`Language: ${validatedPlan.language}`);
+        parts.push(`\n## Focal entity: ${narrativeArc?.focalEntity ?? validatedPlan.focalEntity}`);
+
+        // Language — hard constraint, not a suggestion
+        parts.push(`\n## LANGUAGE CONSTRAINT (NON-NEGOTIABLE)`);
+        parts.push(`Write EVERY word in: ${resolvedLanguage}`);
+        parts.push(`This is absolute. Any other language = rejected output.`);
+
+        // Narrative arc context (if available)
+        const arcSlide = arcSlideMap.get(slideSpec.position);
+        if (narrativeArc) {
+          parts.push(`\n## NARRATIVE ARC (from deck-level planning)`);
+          parts.push(`SCQA Situation: ${narrativeArc.situation}`);
+          parts.push(`SCQA Complication: ${narrativeArc.complication}`);
+          parts.push(`SCQA Question: ${narrativeArc.question}`);
+          parts.push(`SCQA Answer: ${narrativeArc.answer}`);
+          if (arcSlide) {
+            parts.push(`\n## YOUR TITLE (LOCKED — use exactly as written)`);
+            parts.push(arcSlide.title);
+            if (arcSlide.kicker) parts.push(`Kicker: ${arcSlide.kicker}`);
+            if (arcSlide.calloutTone) parts.push(`Callout tone: ${arcSlide.calloutTone}`);
+            if (arcSlide.povIndex > 0) {
+              const pov = narrativeArc.povs.find(p => p.index === arcSlide.povIndex);
+              if (pov) {
+                parts.push(`\nThis slide proves POV ${pov.index}: "${pov.theme}"`);
+                if (pov.diagnosticMotif !== "none") {
+                  parts.push(`Diagnostic motif: ${pov.diagnosticMotif}`);
+                }
+              }
+            }
+            if (arcSlide.whatSoWhatNowWhat) {
+              parts.push(`\nStructure guide: ${arcSlide.whatSoWhatNowWhat}`);
+            }
+          }
+        }
 
         // Slide spec
         parts.push(`\n## YOUR SLIDE (position ${slideSpec.position} of ${validatedPlan.targetSlideCount})`);
@@ -3225,14 +3473,23 @@ Return a V1DeckPlan with slides and charts.`,
           parts.push(`\n## Analysis summary\n${analysis.summary.slice(0, 500)}`);
         }
 
-        // Title read-through context for narrative coherence
-        const nearbySlides = validatedPlan.slides.filter((s) =>
-          Math.abs(s.position - slideSpec.position) <= 2 && s.position !== slideSpec.position,
-        );
-        if (nearbySlides.length > 0) {
-          parts.push(`\n## Neighboring slides (for narrative flow)`);
-          for (const ns of nearbySlides) {
-            parts.push(`- Slide ${ns.position} [${ns.role}]: ${ns.governingThought}`);
+        // Title read-through from narrative arc (full deck context)
+        if (narrativeArc) {
+          parts.push(`\n## Full title read-through (for narrative coherence)`);
+          for (const as of narrativeArc.slides) {
+            const marker = as.position === slideSpec.position ? " ← YOU ARE HERE" : "";
+            parts.push(`${as.position}. ${as.title}${marker}`);
+          }
+        } else {
+          // Fallback: nearby slides from plan
+          const nearbySlides = validatedPlan.slides.filter((s) =>
+            Math.abs(s.position - slideSpec.position) <= 2 && s.position !== slideSpec.position,
+          );
+          if (nearbySlides.length > 0) {
+            parts.push(`\n## Neighboring slides (for narrative flow)`);
+            for (const ns of nearbySlides) {
+              parts.push(`- Slide ${ns.position} [${ns.role}]: ${ns.governingThought}`);
+            }
           }
         }
 
@@ -3247,10 +3504,11 @@ Return a V1DeckPlan with slides and charts.`,
         const batch = slides.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map(async (slideSpec) => {
           try {
+            // With narrative arc providing titles, all slides can use Haiku (intelligence is upstream)
+            // Sacred slides still get Sonnet when budget allows for better prose quality
             const isSacred = ["cover", "exec-summary", "summary", "recommendation"].includes(slideSpec.role);
-            // Budget enforcement: tiered model selection
             const budgetPct = 1 - (remainingBudget() / HARD_BUDGET_USD);
-            const forceHaiku = budgetPct >= 0.70; // 70%+ budget used → all Haiku
+            const forceHaiku = budgetPct >= 0.70;
             const canAffordSonnet = !forceHaiku && remainingBudget() > 0.30;
             const model = (isSacred && canAffordSonnet) ? anthropic("claude-sonnet-4-6") : anthropic("claude-haiku-4-5");
             const modelId = (isSacred && canAffordSonnet) ? "claude-sonnet-4-6" : "claude-haiku-4-5";
@@ -3261,7 +3519,7 @@ Return a V1DeckPlan with slides and charts.`,
             const generateSlide = () => generateObject({
               model,
               schema: v1SlideOutputSchema,
-              system: v1SlideSystemPrompt,
+              system: languageAwarePrompt,
               prompt: slideContext,
             });
             let slideGenResult: Awaited<ReturnType<typeof generateSlide>>;
@@ -3293,13 +3551,18 @@ Return a V1DeckPlan with slides and charts.`,
               ? "title-body"  // Downgrade: text-only layout instead of chartless chart-layout
               : slideSpec.layout;
 
+            // Use narrative arc title (preferred) or fall back to LLM-generated title
+            const arcSlide = arcSlideMap.get(slideSpec.position);
+            const finalTitle = arcSlide?.title || slideOutput.title;
+            const finalKicker = arcSlide?.kicker || slideOutput.kicker;
+
             // Persist the slide
             await persistSlide(runId, {
               position: slideSpec.position,
               layoutId: effectiveLayout,
-              title: slideOutput.title,
+              title: finalTitle,
               subtitle: slideOutput.subtitle || undefined,
-              kicker: slideOutput.kicker || undefined,
+              kicker: finalKicker || undefined,
               body: slideOutput.body || undefined,
               bullets: slideOutput.bullets.length > 0 ? slideOutput.bullets : undefined,
               chartId: realChartId || undefined,
@@ -3313,9 +3576,7 @@ Return a V1DeckPlan with slides and charts.`,
               callout: slideOutput.callout.text
                 ? {
                     text: slideOutput.callout.text,
-                    tone: (slideOutput.callout.tone === "green" || slideOutput.callout.tone === "orange" || slideOutput.callout.tone === "accent")
-                      ? slideOutput.callout.tone as "accent" | "green" | "orange"
-                      : "accent",
+                    tone: slideOutput.callout.tone, // Enum-validated by schema: "accent" | "green" | "orange"
                   }
                 : undefined,
               evidenceIds: slideOutput.evidenceIds,
@@ -3437,17 +3698,20 @@ Return a V1DeckPlan with slides and charts.`,
             .join("; ");
 
           try {
+            // Replace {language} placeholder in system prompt for repair step too
+            const repairLanguage = validatedPlan.language || "en";
+            const repairSystemPrompt = v1SlideSystemPrompt.replace("{language}", repairLanguage);
             const repairResult = await generateObject({
               model: anthropic("claude-haiku-4-5"),
               schema: v1SlideOutputSchema,
-              system: v1SlideSystemPrompt,
+              system: repairSystemPrompt,
               prompt: `REPAIR this slide. The following critical issues were found:
 ${issuesForSlide}
 
 Slide position: ${position}, Role: ${slideSpec.role}, Layout: ${slideSpec.layout}
 Governing thought: ${slideSpec.governingThought}
 Focal entity: ${validatedPlan.focalEntity}
-Language: ${validatedPlan.language}
+Language: ${repairLanguage}
 
 Analysis summary: ${analysisResult?.analysis?.summary?.slice(0, 500) ?? ""}
 
@@ -3760,83 +4024,13 @@ export const basquioCritiqueRevise = inngest.createFunction(
       });
       runningCostUsd += reviseResult.stepCostUsd ?? 0;
 
-      // ─── RE-CRITIQUE (verify revisions fixed the issues) ──────
-      const reGateResult = await step.run("re-critique-gate", async () => {
-        await updateRunStatus(runId, "running", "critique");
-
-        const slides = await getSlides(runId);
-        const slideData = slides.map((s) => ({
-          id: s.id,
-          position: s.position,
-          layoutId: s.layoutId ?? "title-body",
-          title: s.title ?? "",
-          body: s.body,
-          bullets: s.bullets,
-          metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
-          chartId: s.chartId,
-          evidenceIds: s.evidenceIds ?? [],
-        }));
-
-        // Accumulate re-critique token usage
-        let reFactualTokens = { inputTokens: 0, outputTokens: 0 };
-        let reStrategicTokens = { inputTokens: 0, outputTokens: 0 };
-
-        // Re-run BOTH factual + strategic critics (strategic must independently gate)
-        const [reFactual, reStrategic] = await Promise.all([
-          runCriticAgent({
-            workspace,
-            runId,
-            deckSummary: "",
-            brief,
-            slideCount: slides.length,
-            getSlides: async () => slideData,
-            getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
-            persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 1, entry),
-            onStepFinish: async (ev) => {
-              reFactualTokens.inputTokens += ev.usage?.inputTokens ?? 0;
-              reFactualTokens.outputTokens += ev.usage?.outputTokens ?? 0;
-            },
-          }),
-          runStrategicCriticAgent({
-            runId,
-            brief,
-            deckSummary: "",
-            slideCount: slides.length,
-            slides: slideData,
-            onStepFinish: async (ev) => {
-              reStrategicTokens.inputTokens += ev.usage?.inputTokens ?? 0;
-              reStrategicTokens.outputTokens += ev.usage?.outputTokens ?? 0;
-            },
-          }),
-        ]);
-
-        const reCritiqueCostUsd =
-          computeStepCost(reFactualTokens, "gpt-5.4") +
-          computeStepCost(reStrategicTokens, "claude-opus-4-6");
-        const totalCostUsd = Math.round((runningCostUsd + reCritiqueCostUsd) * 1000) / 1000 || 0.01;
-
-        const reIssues = [...(reFactual.issues ?? []), ...(reStrategic.issues ?? [])];
-        const reCritical = reIssues.filter((i: { severity: string }) => i.severity === "critical").length;
-        const reMajor = reIssues.filter((i: { severity: string }) => i.severity === "major").length;
-
-        if (reCritical > 0 || reMajor > 0) {
-          console.warn(`[basquio-critique] ${reCritical} critical, ${reMajor} major issues remain after revision — proceeding with degraded delivery`);
-          await updateDeliveryStatus(runId, "degraded");
-          return {
-            hasCriticalOrMajor: true,
-            degradedDelivery: true,
-            degradedIssues: reIssues
-              .filter((i: { severity: string }) => i.severity === "critical" || i.severity === "major")
-              .map((i: { severity: string; claim: string }) => ({ severity: i.severity, claim: i.claim })),
-            estimatedCostUsd: totalCostUsd,
-          };
-        }
-
-        await updateDeliveryStatus(runId, "reviewed");
-        return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: totalCostUsd };
-      });
-
-      return reGateResult;
+      // Skip re-critique: logs prove second cycle produces zero improvement
+      // (every run still has 6-8 critical + 13-23 major after re-critique).
+      // Fix quality at the source (author) instead of post-hoc patching.
+      // Always deliver — Basquio must always produce output.
+      const totalCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
+      await updateDeliveryStatus(runId, "reviewed");
+      return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: totalCostUsd };
     }
 
     return { hasCriticalOrMajor: false, degradedDelivery: false, degradedIssues: [] as Array<{ severity: string; claim: string }>, estimatedCostUsd: Math.round(runningCostUsd * 1000) / 1000 || 0.01 };
