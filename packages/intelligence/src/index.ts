@@ -53,11 +53,14 @@ export {
   filterSlidesByQuality,
   mapColumns,
   inferUnitContract,
+  findBestExhibitFamily,
+  NIQ_EXHIBIT_FAMILIES,
   type QuestionType,
   type ExhibitType,
   type UnitContract,
   type CanonicalColumn,
   type SlideQualityResult,
+  type NiqExhibitFamily,
 } from "./domain-contracts";
 
 export {

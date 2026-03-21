@@ -252,6 +252,176 @@ export function mapColumns(columnNames: string[], sampleValues?: Record<string, 
   });
 }
 
+// ─── NIQ-SAFE EXHIBIT LIBRARY ────────────────────────────────────
+// Deterministic exhibit families for the NielsenIQ / FMCG wedge.
+// Each family defines: when to use, required data fields, allowed title forms,
+// allowed callout forms, and how to highlight the focal brand.
+// The author picks from this menu — no improvisation.
+
+export type NiqExhibitFamily = {
+  id: string;
+  name: string;
+  questionTypes: QuestionType[];
+  chartType: ExhibitType;
+  requiredDimensions: string[];  // Column roles needed (e.g., "brand", "period")
+  requiredMeasures: string[];    // Measure types needed (e.g., "sales_value", "share")
+  titlePattern: string;          // Template: "{focal} {verb} {metric} {comparison}"
+  calloutPattern: string;        // Template for the "now what" action
+  highlightRule: "focal_amber" | "top_n" | "diverging" | "none";
+  maxCategories: number;
+  sortRule: "desc" | "asc" | "natural" | "none";
+};
+
+export const NIQ_EXHIBIT_FAMILIES: NiqExhibitFamily[] = [
+  {
+    id: "ranked_share_bar",
+    name: "Ranked Share Bar",
+    questionTypes: ["sizing", "ranking"],
+    chartType: "horizontal_bar",
+    requiredDimensions: ["brand"],
+    requiredMeasures: ["sales_value"],
+    titlePattern: "{focal} ranks #{rank} with {value} ({share} share) in {market}",
+    calloutPattern: "Expand distribution of {focal} in {channel} to close {gap} gap",
+    highlightRule: "focal_amber",
+    maxCategories: 12,
+    sortRule: "desc",
+  },
+  {
+    id: "cy_vs_py_grouped",
+    name: "Current vs Prior Year Grouped Bar",
+    questionTypes: ["comparison"],
+    chartType: "grouped_bar",
+    requiredDimensions: ["brand"],
+    requiredMeasures: ["sales_value", "sales_value_py"],
+    titlePattern: "{focal} {grew/declined} {delta}% while {competitor} {grew/declined} {delta}%",
+    calloutPattern: "{action} to {recover/sustain} {metric} momentum",
+    highlightRule: "focal_amber",
+    maxCategories: 8,
+    sortRule: "desc",
+  },
+  {
+    id: "pvm_waterfall",
+    name: "Price Volume Mix Waterfall",
+    questionTypes: ["bridge"],
+    chartType: "waterfall",
+    requiredDimensions: [],
+    requiredMeasures: ["sales_value", "sales_value_py", "sales_volume", "sales_volume_py"],
+    titlePattern: "Revenue bridge: {driver1} and {driver2} drive {direction} of {delta}",
+    calloutPattern: "{primary_lever} accounts for {pct}% of the {direction} — {action}",
+    highlightRule: "diverging",
+    maxCategories: 8,
+    sortRule: "none",
+  },
+  {
+    id: "mix_comparison_stack",
+    name: "Mix / Composition Stacked Bar",
+    questionTypes: ["composition"],
+    chartType: "stacked_bar_100",
+    requiredDimensions: ["segment"],
+    requiredMeasures: ["sales_value"],
+    titlePattern: "{focal} over-indexed in {segment1} ({pct1}% vs category {pct2}%)",
+    calloutPattern: "Rebalance portfolio: grow {underweight_segment} from {current}% to {target}%",
+    highlightRule: "focal_amber",
+    maxCategories: 6,
+    sortRule: "none",
+  },
+  {
+    id: "trend_line",
+    name: "Trend Line (4+ Periods)",
+    questionTypes: ["trend"],
+    chartType: "line",
+    requiredDimensions: ["period"],
+    requiredMeasures: ["sales_value"],
+    titlePattern: "{focal} {metric} {trend_direction} {delta}% over {period_count} periods",
+    calloutPattern: "If trend continues, {focal} will {projection} by {date}",
+    highlightRule: "focal_amber",
+    maxCategories: 52,
+    sortRule: "natural",
+  },
+  {
+    id: "dist_vs_velocity_scatter",
+    name: "Distribution vs Velocity Scatter",
+    questionTypes: ["correlation"],
+    chartType: "scatter",
+    requiredDimensions: ["product"],
+    requiredMeasures: ["weighted_distribution", "ros_value"],
+    titlePattern: "{count} high-velocity SKUs under-distributed by {gap}+ pts vs portfolio",
+    calloutPattern: "List {sku1} and {sku2} at {retailer} to capture {value}",
+    highlightRule: "focal_amber",
+    maxCategories: 20,
+    sortRule: "none",
+  },
+  {
+    id: "hero_concentration_pareto",
+    name: "Hero Concentration Pareto",
+    questionTypes: ["concentration"],
+    chartType: "pareto",
+    requiredDimensions: ["product"],
+    requiredMeasures: ["sales_value"],
+    titlePattern: "Top {n} SKUs account for {pct}% of {focal} value — hero risk",
+    calloutPattern: "Renovate {declining_hero} and prune bottom {n} SKUs to fund growth",
+    highlightRule: "top_n",
+    maxCategories: 15,
+    sortRule: "desc",
+  },
+  {
+    id: "promo_baseline_stack",
+    name: "Promo vs Baseline Stacked Bar",
+    questionTypes: ["composition", "comparison"],
+    chartType: "stacked_bar",
+    requiredDimensions: ["brand"],
+    requiredMeasures: ["baseline_value", "promo_value"],
+    titlePattern: "{focal} promo intensity at {pct}% — {above/below} category average of {cat_pct}%",
+    calloutPattern: "Shift {amount} from promo to baseline growth via {lever}",
+    highlightRule: "focal_amber",
+    maxCategories: 8,
+    sortRule: "desc",
+  },
+  {
+    id: "kpi_delta_card",
+    name: "KPI Delta Card (Flat Market)",
+    questionTypes: ["flat"],
+    chartType: "kpi_card",
+    requiredDimensions: [],
+    requiredMeasures: ["sales_value"],
+    titlePattern: "{market} flat at {value} — {focal} {gained/lost} {delta} pts share",
+    calloutPattern: "Focus on {lever}: {specific_action} to capture {value}",
+    highlightRule: "none",
+    maxCategories: 0,
+    sortRule: "none",
+  },
+];
+
+/**
+ * Find the best NIQ exhibit family for a given question type and available data.
+ * Returns the family and whether it's a confident match.
+ * Deterministic, $0 cost.
+ */
+export function findBestExhibitFamily(
+  questionType: QuestionType,
+  availableMeasures: string[],
+): { family: NiqExhibitFamily | null; confidence: "high" | "medium" | "low" } {
+  const measureSet = new Set(availableMeasures.map(m => m.toLowerCase()));
+
+  const candidates = NIQ_EXHIBIT_FAMILIES.filter(f =>
+    f.questionTypes.includes(questionType)
+  );
+
+  if (candidates.length === 0) return { family: null, confidence: "low" };
+
+  // Score by how many required measures are available
+  const scored = candidates.map(f => {
+    const matched = f.requiredMeasures.filter(m => measureSet.has(m)).length;
+    const total = f.requiredMeasures.length;
+    const score = total === 0 ? 1 : matched / total;
+    return { family: f, score };
+  }).sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  const confidence = best.score >= 0.8 ? "high" : best.score >= 0.5 ? "medium" : "low";
+  return { family: best.family, confidence };
+}
+
 // ─── SLIDE KILL QA (deterministic post-author gate) ─────────────
 
 export type SlideQualityResult = {

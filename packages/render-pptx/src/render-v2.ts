@@ -139,6 +139,12 @@ const DEFAULT_TOKENS: BrandTokens = {
     calloutOrange: "E8A84C",
   },
   typography: {
+    // Font strategy: Use universally-available safe fonts.
+    // Playfair Display / DM Sans / JetBrains Mono are the JSX v2 spec targets,
+    // but PptxGenJS cannot embed fonts. If client has Google Fonts installed,
+    // they can swap via Find & Replace in PowerPoint. Georgia/Arial/Courier New
+    // are visually close and render correctly on every platform.
+    // See: .context/march21-full-audit-and-roadmap.md → Font Strategy
     headingFont: "Georgia",      // Serif — safe fallback for Playfair Display
     bodyFont: "Arial",           // Sans — safe fallback for DM Sans
     monoFont: "Courier New",     // Mono — safe fallback for JetBrains Mono
@@ -1734,7 +1740,10 @@ export async function renderV2PptxArtifact(
   // Validate OOXML structure — warn but don't block export
   const validation = await validateOoxmlStructure(postProcessed);
   if (!validation.valid) {
-    console.warn(`[render-v2] OOXML validation warnings: ${validation.errors.join("; ")}`);
+    console.warn(`[render-v2] OOXML validation errors: ${validation.errors.join("; ")}`);
+  }
+  if (validation.warnings.length > 0) {
+    console.warn(`[render-v2] OOXML compatibility warnings: ${validation.warnings.join("; ")}`);
   }
   const buffer = postProcessed;
 
@@ -1813,17 +1822,18 @@ async function fixPptxChartCompatibility(pptxBuffer: Buffer): Promise<Buffer> {
 // Lightweight check that the PPTX ZIP contains required OOXML files
 // and that all referenced slides exist. Warns but never blocks export.
 
-async function validateOoxmlStructure(buffer: Buffer): Promise<{ valid: boolean; errors: string[] }> {
+async function validateOoxmlStructure(buffer: Buffer): Promise<{ valid: boolean; warnings: string[]; errors: string[] }> {
   const errors: string[] = [];
+  const warnings: string[] = [];
   try {
     const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(buffer);
 
-    // Check required files exist
-    const required = ["[Content_Types].xml", "ppt/presentation.xml"];
+    // Check required OOXML files exist
+    const required = ["[Content_Types].xml", "ppt/presentation.xml", "_rels/.rels"];
     for (const path of required) {
       if (!zip.file(path)) {
-        errors.push(`Missing required file: ${path}`);
+        errors.push(`Missing required OOXML file: ${path}`);
       }
     }
 
@@ -1834,14 +1844,49 @@ async function validateOoxmlStructure(buffer: Buffer): Promise<{ valid: boolean;
       for (const ref of slideRefs) {
         const slidePath = ref.match(/PartName="\/(.+?)"/)?.[1];
         if (slidePath && !zip.file(slidePath)) {
-          errors.push(`Referenced slide missing: ${slidePath}`);
+          errors.push(`Referenced slide missing from ZIP: ${slidePath}`);
         }
+      }
+
+      // Check slide count makes sense
+      if (slideRefs.length === 0) {
+        errors.push("No slides found in [Content_Types].xml");
       }
     }
 
-    return { valid: errors.length === 0, errors };
+    // Check for theme file (Keynote reads fonts from here)
+    const themeFile = zip.file("ppt/theme/theme1.xml");
+    if (!themeFile) {
+      warnings.push("Missing ppt/theme/theme1.xml — Keynote may show font warnings");
+    }
+
+    // Check for broken XML in slides (common PptxGenJS issue)
+    const slideFiles = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/i.test(f));
+    for (const slideFile of slideFiles.slice(0, 3)) { // sample first 3 slides
+      try {
+        const xml = await zip.files[slideFile].async("text");
+        // Check for unclosed tags (basic well-formedness)
+        if (xml.includes("<<") || xml.includes(">>")) {
+          errors.push(`Malformed XML in ${slideFile}: double angle brackets`);
+        }
+        // Check for Calibri residue (should have been cleaned by fixPptxChartCompatibility)
+        if (xml.includes('typeface="Calibri"')) {
+          warnings.push(`${slideFile} still contains Calibri font reference — may cause Keynote warnings`);
+        }
+      } catch { /* skip if can't read */ }
+    }
+
+    // Check for slide relationships (Google Slides needs these)
+    for (const slideFile of slideFiles.slice(0, 3)) {
+      const relPath = slideFile.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels";
+      if (!zip.file(relPath)) {
+        warnings.push(`Missing relationship file: ${relPath} — Google Slides may fail to import`);
+      }
+    }
+
+    return { valid: errors.length === 0, warnings, errors };
   } catch (e) {
     errors.push(`ZIP parse failed: ${e instanceof Error ? e.message : String(e)}`);
-    return { valid: false, errors };
+    return { valid: false, warnings, errors };
   }
 }

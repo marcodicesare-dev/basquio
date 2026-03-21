@@ -2738,7 +2738,10 @@ export const basquioAuthor = inngest.createFunction(
       "claude-sonnet-4-6": { input: 3.00, output: 15.00 },
       "claude-haiku-4-5": { input: 1.00, output: 5.00 },
     };
-    function addUsage(usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined, modelId: string) {
+    // Per-step cost ledger for instrumentation
+    const costLedger: Array<{ step: string; model: string; inputTokens: number; outputTokens: number; costUsd: number }> = [];
+
+    function addUsage(usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined, modelId: string, stepLabel?: string) {
       if (!usage) return;
       const inp = usage.inputTokens ?? 0;
       const out = usage.outputTokens ?? 0;
@@ -2747,7 +2750,9 @@ export const basquioAuthor = inngest.createFunction(
       tokenUsage.totalTokens += (usage.totalTokens ?? inp + out);
       tokenUsage.callCount += 1;
       const prices = MODEL_PRICES[modelId] ?? MODEL_PRICES["claude-haiku-4-5"];
-      exactCostUsd += (inp * prices.input + out * prices.output) / 1_000_000;
+      const stepCost = (inp * prices.input + out * prices.output) / 1_000_000;
+      exactCostUsd += stepCost;
+      costLedger.push({ step: stepLabel ?? "unknown", model: modelId, inputTokens: inp, outputTokens: out, costUsd: stepCost });
     }
 
     const HARD_BUDGET_USD = 1.0;
@@ -2967,7 +2972,7 @@ Return a V1DeckPlan with slides and charts.`,
         });
 
         const plan = planGenResult.object as V1DeckPlan;
-        addUsage(planGenResult.usage, "gpt-5.4-mini");
+        addUsage(planGenResult.usage, "gpt-5.4-mini", "plan-deck");
         try { await persistWorkingPaper(runId, "v1_deck_plan", plan); } catch {}
         return plan;
       } catch (planError) {
@@ -3329,7 +3334,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
           schema: v1NarrativeArcSchema,
           prompt: arcPrompt,
         });
-        addUsage(arcResult.usage, "claude-sonnet-4-6");
+        addUsage(arcResult.usage, "claude-sonnet-4-6", "narrative-arc");
         console.warn(`[basquio-author] Narrative arc: ${arcResult.object.povs.length} POVs, SCQA answer: "${arcResult.object.answer.slice(0, 80)}..."`);
         return arcResult.object;
       } catch (err) {
@@ -3535,7 +3540,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}`;
               }
             }
             const slideOutput = slideGenResult.object;
-            addUsage(slideGenResult.usage, modelId);
+            addUsage(slideGenResult.usage, modelId, `author-slide-${slideSpec.position}`);
 
             // Language is enforced via the system prompt, not post-hoc detection.
             // The old detectLanguage() approach caused 11 false retries per Italian deck
@@ -3718,7 +3723,7 @@ Analysis summary: ${analysisResult?.analysis?.summary?.slice(0, 500) ?? ""}
 Fix the issues while maintaining the governing thought.`,
             });
             const repaired = repairResult.object;
-            addUsage(repairResult.usage, "claude-haiku-4-5");
+            addUsage(repairResult.usage, "claude-haiku-4-5", `repair-slide-${position}`);
 
             await persistSlide(runId, {
               position,
@@ -3779,12 +3784,30 @@ Fix the issues while maintaining the governing thought.`,
     // Exact cost from per-model token accumulation (not blended estimates)
     const estimatedCostUsd = exactCostUsd > 0 ? exactCostUsd : 0.05; // fallback if usage not captured
 
+    // Per-step cost breakdown for debugging and optimization
+    if (costLedger.length > 0) {
+      const byStep: Record<string, { calls: number; tokens: number; cost: number }> = {};
+      for (const entry of costLedger) {
+        const key = entry.step.replace(/-\d+$/, ""); // Collapse "author-slide-1", "author-slide-2" → "author-slide"
+        if (!byStep[key]) byStep[key] = { calls: 0, tokens: 0, cost: 0 };
+        byStep[key].calls += 1;
+        byStep[key].tokens += entry.inputTokens + entry.outputTokens;
+        byStep[key].cost += entry.costUsd;
+      }
+      const breakdown = Object.entries(byStep)
+        .sort((a, b) => b[1].cost - a[1].cost)
+        .map(([step, data]) => `${step}: $${data.cost.toFixed(3)} (${data.calls} calls, ${Math.round(data.tokens / 1000)}K tok)`)
+        .join(" | ");
+      console.warn(`[basquio-cost] Total: $${exactCostUsd.toFixed(3)} | ${breakdown}`);
+    }
+
     return {
       deckSummary,
       slideCount: finalSlides.length,
       chartCount: finalCharts.length,
       estimatedCostUsd: Math.round(estimatedCostUsd * 1000) / 1000,
       tokenUsage, // Pass real tokens to parent for telemetry
+      costLedger: costLedger.slice(0, 50), // Cap to prevent Inngest serialization bloat
     };
   },
 );
@@ -4249,12 +4272,46 @@ export const basquioExport = inngest.createFunction(
       });
       const noEmptySlides = remainingEmptySlides.length === 0;
 
+      // ── CONTENT-LEVEL QA (catches author-side damage) ──────────
+      // These checks detect the real production failures from the 5 runs:
+      // all-zero charts, body overflow, topic-label titles, language drift
+
+      // Check for topic-label titles (the #1 author quality issue)
+      const topicLabelTitles = filteredSlides.filter((s: any) => {
+        const title = s.title ?? "";
+        const lid = s.layoutId ?? s.layout_id;
+        if (lid === "cover" || lid === "section-divider") return false;
+        return /^(overview|summary|analysis|introduction|background|market|category|distribution|price|conclusion)/i.test(title.trim());
+      });
+
+      // Check for slides with zero-value chart data (parsing failure symptom)
+      const zeroValueCharts = v2ChartRows.filter((c: V2ChartRow) => {
+        if (!c.data || c.data.length === 0) return false;
+        const allValues = c.data.flatMap((row) =>
+          c.series.map((s) => Number(row[s])).filter((n) => !isNaN(n))
+        );
+        if (allValues.length === 0) return false;
+        const zeroRatio = allValues.filter((v) => v === 0).length / allValues.length;
+        return zeroRatio > 0.8; // >80% zeros = likely parsing failure
+      });
+
+      // Check body text overflow on chart layouts
+      const bodyOverflowSlides = filteredSlides.filter((s: any) => {
+        const lid = s.layoutId ?? s.layout_id;
+        const body = s.body ?? "";
+        const chartLayoutsQA = ["chart-split", "title-chart", "evidence-grid"];
+        return chartLayoutsQA.includes(lid) && body.length > 250;
+      });
+
       const qaChecks = [
         { name: "pptx_non_empty", passed: pptxBuffer.length > 0, detail: `${pptxBuffer.length} bytes` },
         { name: "slide_count_positive", passed: filteredSlides.length > 0, detail: `${filteredSlides.length} slides` },
         { name: "pptx_valid_zip", passed: hasValidPptxHeader },
         { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
         { name: "no_empty_slides", passed: noEmptySlides, detail: remainingEmptySlides.length > 0 ? `${remainingEmptySlides.length} empty content slide(s)` : "all slides have content" },
+        { name: "no_topic_label_titles", passed: topicLabelTitles.length === 0, detail: topicLabelTitles.length > 0 ? `${topicLabelTitles.length} slides have topic-label titles: ${topicLabelTitles.map((s: any) => `"${(s.title ?? "").slice(0, 40)}"`).join(", ")}` : "all titles are insights" },
+        { name: "no_zero_value_charts", passed: zeroValueCharts.length === 0, detail: zeroValueCharts.length > 0 ? `${zeroValueCharts.length} charts have >80% zero values (possible parsing failure)` : "all chart data looks valid" },
+        { name: "no_body_overflow", passed: bodyOverflowSlides.length === 0, detail: bodyOverflowSlides.length > 0 ? `${bodyOverflowSlides.length} slides have body text >250 chars on chart layouts` : "all body text within limits" },
       ];
 
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
@@ -4288,9 +4345,17 @@ export const basquioExport = inngest.createFunction(
         }
 
         // Extract brand tokens for PDF visual parity with PPTX
+        // CRITICAL: Use explicit Slate defaults when no template — ensures PDF matches PPTX default
         const brandTokens = templateProfile?.brandTokens as Record<string, unknown> | undefined;
-        const pdfPalette = brandTokens?.palette as Record<string, string> | undefined;
-        const pdfTypo = brandTokens?.typography as Record<string, string> | undefined;
+        const SLATE_PALETTE_DEFAULTS: Record<string, string> = {
+          accent: "E8A84C", background: "0A090D", surface: "13121A", text: "F2F0EB",
+          muted: "A09FA6", border: "272630", positive: "4CC9A0", negative: "E8636F", coverBg: "0A090D",
+        };
+        const SLATE_TYPO_DEFAULTS: Record<string, string> = {
+          headingFont: "Georgia", bodyFont: "Arial",
+        };
+        const pdfPalette = (brandTokens?.palette as Record<string, string> | undefined) ?? SLATE_PALETTE_DEFAULTS;
+        const pdfTypo = (brandTokens?.typography as Record<string, string> | undefined) ?? SLATE_TYPO_DEFAULTS;
 
         const pdfResult = await renderV2PdfArtifact({
           slides: filteredSlides.map((s) => {
