@@ -2239,7 +2239,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
 
     // Persist cost telemetry to deck_runs (best-effort — don't crash if column missing)
     try {
-      await fetch(
+      const telemetryRes = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}`,
         {
           method: "PATCH",
@@ -2264,8 +2264,11 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
           }),
         },
       );
+      if (!telemetryRes.ok) {
+        console.warn(`[basquio-v2] Failed to persist cost telemetry: ${telemetryRes.status} ${telemetryRes.statusText}`);
+      }
     } catch (e) {
-      console.warn("Failed to persist cost telemetry:", e);
+      console.warn("[basquio-v2] Failed to persist cost telemetry:", e);
     }
 
     return { runId, artifacts, costSummary };
@@ -3090,21 +3093,35 @@ Return a V1DeckPlan with slides and charts.`,
           }
 
           // ─── NIQ EXHIBIT FAMILY MATCH (deterministic, $0) ───
-          // Find the best NIQ-safe exhibit family and apply its constraints
-          const availableMeasureNames = planned.dataSpec?.measures?.map((m: string) => m.toLowerCase()) ?? [];
+          // Find the best NIQ-safe exhibit family and apply its full contract:
+          // chartType override, maxCategories, sortRule, highlightRule
+          const availableMeasureNames = planned.dataSpec?.measures ?? [];
           const exhibitFamily = findBestExhibitFamily(questionType, availableMeasureNames);
+          let familyHighlightRule: string | undefined;
           if (exhibitFamily.family) {
-            // Apply family's max categories constraint
-            if (grouped.categories.length > exhibitFamily.family.maxCategories && exhibitFamily.family.maxCategories > 0) {
-              const excess = grouped.categories.length - exhibitFamily.family.maxCategories;
-              console.warn(`[basquio-author] Chart ${planned.chartId}: NIQ exhibit family "${exhibitFamily.family.id}" caps at ${exhibitFamily.family.maxCategories} categories, trimming ${excess}`);
-              grouped.categories = grouped.categories.slice(0, exhibitFamily.family.maxCategories);
-              for (const s of grouped.series) {
-                s.values = s.values.slice(0, exhibitFamily.family.maxCategories);
+            const fam = exhibitFamily.family;
+
+            // 1. Override chart type for high-confidence matches
+            if (exhibitFamily.confidence === "high" && fam.chartType !== "none") {
+              const familyChartType = fam.chartType as string;
+              if (familyChartType !== exhibitResult.chartType) {
+                console.warn(`[basquio-author] Chart ${planned.chartId}: NIQ family "${fam.id}" overrides ${exhibitResult.chartType} → ${familyChartType} (high confidence)`);
+                exhibitResult.chartType = familyChartType;
               }
             }
-            // Apply family's sort rule
-            if (exhibitFamily.family.sortRule === "desc" && grouped.series.length > 0) {
+
+            // 2. Apply max categories constraint
+            if (grouped.categories.length > fam.maxCategories && fam.maxCategories > 0) {
+              const excess = grouped.categories.length - fam.maxCategories;
+              console.warn(`[basquio-author] Chart ${planned.chartId}: NIQ family "${fam.id}" caps at ${fam.maxCategories} categories, trimming ${excess}`);
+              grouped.categories = grouped.categories.slice(0, fam.maxCategories);
+              for (const s of grouped.series) {
+                s.values = s.values.slice(0, fam.maxCategories);
+              }
+            }
+
+            // 3. Apply sort rule
+            if (fam.sortRule === "desc" && grouped.series.length > 0) {
               const indices = grouped.series[0].values
                 .map((v, i) => ({ v, i }))
                 .sort((a, b) => b.v - a.v)
@@ -3114,6 +3131,9 @@ Return a V1DeckPlan with slides and charts.`,
                 s.values = indices.map((i) => s.values[i]);
               }
             }
+
+            // 4. Record highlight rule for use during chart persistence
+            familyHighlightRule = fam.highlightRule;
           }
 
           // ─── EXHIBIT PREFLIGHT (deterministic validation, $0) ───
@@ -3177,9 +3197,12 @@ Return a V1DeckPlan with slides and charts.`,
           })();
 
           // Build chart data structure and persist
+          // Apply NIQ family highlight rule: focal_amber → highlight focal entity
           const highlightCategories = planned.dataSpec.highlightCategory
             ? [planned.dataSpec.highlightCategory]
-            : [];
+            : (familyHighlightRule === "focal_amber" && validatedPlan.focalEntity)
+              ? [validatedPlan.focalEntity]
+              : [];
 
           const chartResult = await persistChart(runId, {
             chartType: exhibitResult.chartType, // Enforced chart type

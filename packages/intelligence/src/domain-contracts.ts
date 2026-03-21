@@ -392,8 +392,66 @@ export const NIQ_EXHIBIT_FAMILIES: NiqExhibitFamily[] = [
   },
 ];
 
+// ─── MEASURE NORMALIZATION ───────────────────────────────────────
+// Maps any column name form (raw Italian, canonical English, snake_case ID)
+// to a set of snake_case measure IDs for exhibit family matching.
+// This is the bridge between what the data has and what families require.
+
+const MEASURE_NORMALIZE_MAP: Array<{ pattern: RegExp; ids: string[] }> = [
+  // Sales value
+  { pattern: /sales.?value|v\.?\s*valore|revenue|turnover/i, ids: ["sales_value"] },
+  { pattern: /sales.?value.*py|v\.?\s*valore.*anno\s*prec|sales.?value.*prior/i, ids: ["sales_value_py"] },
+  // Sales volume
+  { pattern: /sales.?volume|v\.?\s*\(all\)|volume.*cy/i, ids: ["sales_volume"] },
+  { pattern: /sales.?volume.*py|v\.?\s*\(all\).*anno\s*prec/i, ids: ["sales_volume_py"] },
+  // Sales units
+  { pattern: /sales.?units|v\.?\s*confezioni|packs/i, ids: ["sales_units"] },
+  // Share
+  { pattern: /value.?share|quota.*val/i, ids: ["value_share"] },
+  { pattern: /share.?change|var\.?\s*ass.*quota/i, ids: ["share_change"] },
+  // Price
+  { pattern: /avg.?price|prezzo.?medio|average.?price/i, ids: ["avg_price"] },
+  { pattern: /price.?index|idx.*pr/i, ids: ["price_index"] },
+  // Distribution
+  { pattern: /weighted.?dist|distr\.?\s*pond/i, ids: ["weighted_distribution"] },
+  { pattern: /numeric.?dist|distr\.?\s*num/i, ids: ["numeric_distribution"] },
+  // ROS / Velocity
+  { pattern: /rate.?of.?sales|ros|rotazioni|velocity/i, ids: ["ros_value"] },
+  // Promotion
+  { pattern: /promo.*value|promo.*sales|any.?promo.*val/i, ids: ["promo_value"] },
+  { pattern: /baseline.*value|baseline.*sales|no.?promo.*val/i, ids: ["baseline_value"] },
+  { pattern: /promo.*intensity|promo.*int.*idx/i, ids: ["promo_intensity"] },
+  // Growth / Change
+  { pattern: /growth|var\.?\s*%|change.*%|yoy/i, ids: ["growth_pct"] },
+];
+
+/**
+ * Normalize a list of column names (any form) to snake_case measure IDs.
+ * Accepts: raw Italian ("V. Valore"), canonical English ("Sales Value (CY)"),
+ * or already-normalized snake_case ("sales_value").
+ * Deterministic, $0 cost.
+ */
+function normalizeMeasureIds(columnNames: string[]): Set<string> {
+  const ids = new Set<string>();
+  for (const col of columnNames) {
+    const lower = col.toLowerCase().trim();
+    // Direct match (already snake_case)
+    if (/^[a-z_]+$/.test(lower)) {
+      ids.add(lower);
+    }
+    // Pattern match
+    for (const { pattern, ids: matchIds } of MEASURE_NORMALIZE_MAP) {
+      if (pattern.test(col)) {
+        for (const id of matchIds) ids.add(id);
+      }
+    }
+  }
+  return ids;
+}
+
 /**
  * Find the best NIQ exhibit family for a given question type and available data.
+ * Accepts column names in any form: raw Italian, canonical English, or snake_case.
  * Returns the family and whether it's a confident match.
  * Deterministic, $0 cost.
  */
@@ -401,7 +459,7 @@ export function findBestExhibitFamily(
   questionType: QuestionType,
   availableMeasures: string[],
 ): { family: NiqExhibitFamily | null; confidence: "high" | "medium" | "low" } {
-  const measureSet = new Set(availableMeasures.map(m => m.toLowerCase()));
+  const normalizedIds = normalizeMeasureIds(availableMeasures);
 
   const candidates = NIQ_EXHIBIT_FAMILIES.filter(f =>
     f.questionTypes.includes(questionType)
@@ -409,9 +467,9 @@ export function findBestExhibitFamily(
 
   if (candidates.length === 0) return { family: null, confidence: "low" };
 
-  // Score by how many required measures are available
+  // Score by how many required measures (snake_case) are in the normalized set
   const scored = candidates.map(f => {
-    const matched = f.requiredMeasures.filter(m => measureSet.has(m)).length;
+    const matched = f.requiredMeasures.filter(m => normalizedIds.has(m)).length;
     const total = f.requiredMeasures.length;
     const score = total === 0 ? 1 : matched / total;
     return { family: f, score };
