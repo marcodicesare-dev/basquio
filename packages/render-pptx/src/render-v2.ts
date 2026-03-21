@@ -686,12 +686,9 @@ function renderTitle(
     w: region.w,
     h: region.h,
     fontFace: tokens.typography.headingFont,
-    fontSize: isCover
-      ? tokens.typography.coverTitleSize
-      : discreteTitleSize(processed, tokens.typography.titleSize),
+    fontSize: discreteTitleSize(processed, isCover ? tokens.typography.coverTitleSize : tokens.typography.titleSize),
     bold: true,
     color: norm(tokens.palette.ink), // ink is F2F0EB (near-white) — works on both cover and content slides
-    ...(isCover ? { fit: "shrink" as const } : {}),
     breakLine: false,
     margin: 0,
     lineSpacingMultiple: 1.1,
@@ -1324,13 +1321,12 @@ function renderCoverSlide(
     w: SLIDE_W - 3.0,
     h: 1.6,
     fontFace: tokens.typography.headingFont,
-    fontSize: tokens.typography.coverTitleSize,
+    fontSize: discreteTitleSize(s.title, tokens.typography.coverTitleSize),
     bold: true,
     color: norm(tokens.palette.ink),
     align: "center",
     valign: "middle",
     lineSpacingMultiple: 1.08,
-    fit: "shrink" as const,
   });
 
   // Subtitle: sans, centered, muted (JSX: DM Sans 16px textSec)

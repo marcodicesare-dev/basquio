@@ -415,20 +415,90 @@ export function renderV2ChartSvg(
         };
       });
 
-  // Waterfall: recolor bars green/red based on value sign
+  // Waterfall: true bridge chart with invisible base bars
   if (chart.chartType === "waterfall" && echartsSeries.length > 0) {
     const positive = theme.chartPalette[1]?.startsWith("#") ? theme.chartPalette[1] : `#${theme.chartPalette[1] ?? "4CC9A0"}`;
     const negative = theme.chartPalette[4]?.startsWith("#") ? theme.chartPalette[4] : `#${theme.chartPalette[4] ?? "E8636F"}`;
     const total = palette[0]; // Amber for totals (first/last)
-    const data = echartsSeries[0].data;
-    if (Array.isArray(data)) {
-      echartsSeries[0].data = data.map((v: number | { value: number }, i: number) => {
-        const val = typeof v === "number" ? v : (v?.value ?? 0);
-        const isTotal = i === 0 || i === data.length - 1;
-        return {
-          value: val,
-          itemStyle: { color: isTotal ? total : (val >= 0 ? positive : negative) },
-        };
+    const rawData = echartsSeries[0].data;
+    if (Array.isArray(rawData)) {
+      const values = rawData.map((v: number | { value: number }) =>
+        typeof v === "number" ? v : (v?.value ?? 0));
+      // Build invisible base series + visible delta series
+      const baseData: Array<number | { value: number; itemStyle: { color: string } }> = [];
+      const deltaData: Array<{ value: number; itemStyle: { color: string; borderRadius: number[] } }> = [];
+      let cumulative = 0;
+      for (let j = 0; j < values.length; j++) {
+        const val = values[j];
+        const isTotal = j === 0 || j === values.length - 1;
+        if (isTotal) {
+          // Total bars start from zero
+          baseData.push({ value: 0, itemStyle: { color: "transparent" } });
+          deltaData.push({ value: val, itemStyle: { color: total, borderRadius: [4, 4, 0, 0] } });
+          cumulative = val;
+        } else {
+          // Delta bars float above cumulative
+          const base = val >= 0 ? cumulative : cumulative + val;
+          baseData.push({ value: Math.max(0, base), itemStyle: { color: "transparent" } });
+          deltaData.push({
+            value: Math.abs(val),
+            itemStyle: {
+              color: val >= 0 ? positive : negative,
+              borderRadius: val >= 0 ? [4, 4, 0, 0] : [0, 0, 4, 4],
+            },
+          });
+          cumulative += val;
+        }
+      }
+      // Replace single series with stacked base + delta
+      echartsSeries.length = 0;
+      echartsSeries.push(
+        { type: "bar", stack: "waterfall", data: baseData, barMaxWidth: 44, itemStyle: { color: "transparent" }, emphasis: { itemStyle: { color: "transparent" } } },
+        {
+          type: "bar", stack: "waterfall", data: deltaData, barMaxWidth: 44,
+          label: {
+            show: true, position: "top", color: muted, fontFamily: theme.bodyFont, fontSize: 10, fontWeight: "bold",
+            formatter: (params: { dataIndex: number }) => {
+              const v = values[params.dataIndex];
+              const sign = v >= 0 ? "+" : "";
+              return `${sign}${formatValue(v)}`;
+            },
+          },
+        },
+      );
+    }
+  }
+
+  // Pareto: sorted bars + cumulative % line overlay
+  if (chart.chartType === "pareto" && echartsSeries.length > 0) {
+    const rawData = echartsSeries[0].data;
+    if (Array.isArray(rawData)) {
+      const values = rawData.map((v: number | { value: number }) =>
+        typeof v === "number" ? v : (v?.value ?? 0));
+      // Compute cumulative %
+      const total = values.reduce((s, v) => s + Math.abs(v), 0);
+      let cum = 0;
+      const cumPct = values.map(v => { cum += Math.abs(v); return total > 0 ? (cum / total) * 100 : 0; });
+      // Bar series (already sorted by planner)
+      echartsSeries[0].label = {
+        show: true, position: "top", color: muted, fontFamily: theme.bodyFont, fontSize: 9,
+        formatter: (params: { value: number | number[] }) => {
+          const val = Array.isArray(params.value) ? params.value[1] : params.value;
+          return formatValue(val);
+        },
+      };
+      // Add cumulative % line on secondary y-axis
+      echartsSeries.push({
+        type: "line", yAxisIndex: 1, data: cumPct, symbol: "circle", symbolSize: 4,
+        lineStyle: { color: muted, width: 1.5, type: "dashed" },
+        itemStyle: { color: muted },
+        label: {
+          show: true, position: "top", color: dim, fontFamily: theme.bodyFont, fontSize: 8,
+          formatter: (params: { value: number | number[] }) => {
+            const val = Array.isArray(params.value) ? params.value[1] : params.value;
+            return `${val.toFixed(0)}%`;
+          },
+        },
       });
     }
   }
@@ -506,7 +576,7 @@ export function renderV2ChartSvg(
     } : undefined,
     grid: isPie ? undefined : {
       top: topMargin,
-      right: 24,
+      right: chart.chartType === "pareto" ? 48 : 24,
       bottom: chart.sourceNote ? 32 : 20,
       left: 16,
       containLabel: true,
@@ -551,7 +621,20 @@ export function renderV2ChartSvg(
         },
         axisTick: { show: false },
       },
-      yAxis: {
+      yAxis: chart.chartType === "pareto" ? [
+        {
+          type: "value",
+          axisLine: { show: false },
+          axisLabel: { color: muted, fontFamily: theme.bodyFont, fontSize: 9, formatter: (v: number) => formatValue(v) },
+          splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
+        },
+        {
+          type: "value", min: 0, max: 100,
+          axisLine: { show: false },
+          axisLabel: { color: dim, fontFamily: theme.bodyFont, fontSize: 8, formatter: (v: number) => `${v}%` },
+          splitLine: { show: false },
+        },
+      ] : {
         type: "value",
         axisLine: { show: false },
         axisLabel: {

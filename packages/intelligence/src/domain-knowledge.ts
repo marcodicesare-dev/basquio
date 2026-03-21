@@ -164,6 +164,17 @@ export function scoreDomainKnowledgePacks(args: {
 const STAGE_PAYLOADS: Record<DomainKnowledgeStage, string> = {
   analyst: `## FMCG/CPG ANALYST INTELLIGENCE (NIQ StoryMasters)
 
+### MANDATORY FIRST STEPS (before any analysis)
+1. List all files and sheets to understand the data landscape
+2. Sample rows from the main data sheet to see column names and values
+3. IMMEDIATELY compute ALL applicable derivatives using compute_derived:
+   - If CY + PY columns exist: compute growth_rate for each
+   - If brand + total columns exist: compute share for each brand
+   - If value + units columns exist: compute per_unit price
+   - If value + volume columns exist: compute per_unit price
+   - If brand prices exist: compute index vs category average
+   Do NOT skip this step. These derivatives are the foundation of every finding.
+
 Frame the work around the TRUE COMMERCIAL QUESTION, not a generic summary.
 Classify every finding as: connection (confirms hypothesis), contradiction (challenges assumptions), or curiosity (unexpected signal).
 
