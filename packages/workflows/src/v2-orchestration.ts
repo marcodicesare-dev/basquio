@@ -3598,18 +3598,24 @@ Return a V1DeckPlan with slides and charts.`,
       validatedPlan.targetSlideCount = trimmed.length;
       console.warn(`[basquio-author] Guaranteed tier: trimmed to ${trimmed.length} slides`);
     } else if (fallbackTier === "safe") {
-      // Remove slides whose charts failed — don't waste author tokens on chartless chart-layouts
-      const safeSlides = validatedPlan.slides.filter(s => {
-        if (!s.chartId) return true;
+      // Convert slides with failed charts to text-only layouts instead of deleting them.
+      // Deleting 8 of 12 slides produces a garbage 4-slide deck. Converting preserves
+      // the narrative structure and lets the author fill with text-driven arguments.
+      let convertedCount = 0;
+      for (const s of validatedPlan.slides) {
+        if (!s.chartId) continue;
         const result = chartBuildResult.chartResults.find(r => r.plannedId === s.chartId);
-        return result?.success ?? false;
-      });
-      const removedCount = validatedPlan.slides.length - safeSlides.length;
-      if (removedCount > 0) {
-        safeSlides.forEach((s, i) => { s.position = i + 1; });
-        validatedPlan.slides = safeSlides;
-        validatedPlan.targetSlideCount = safeSlides.length;
-        console.warn(`[basquio-author] Safe tier: removed ${removedCount} failed-chart slides, ${safeSlides.length} remain`);
+        if (!result?.success) {
+          // Convert chart-dependent layout to text-only
+          const textLayout = s.role === "recommendation" || s.role === "synthesis" ? "summary" : "title-body";
+          console.warn(`[basquio-author] Safe tier: slide ${s.position} "${s.layout}" → "${textLayout}" (chart ${s.chartId} failed)`);
+          s.layout = textLayout;
+          s.chartId = "";
+          convertedCount++;
+        }
+      }
+      if (convertedCount > 0) {
+        console.warn(`[basquio-author] Safe tier: converted ${convertedCount} failed-chart slides to text layouts, all ${validatedPlan.slides.length} slides preserved`);
       }
     }
 
@@ -4024,9 +4030,14 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
             let finalTitle = (arcSlide?.title != null && arcSlide.title.length > 0)
               ? arcSlide.title
               : slideOutput.title;
-            const finalKicker = (arcSlide?.kicker != null && arcSlide.kicker.length > 0)
+            let finalKicker = (arcSlide?.kicker != null && arcSlide.kicker.length > 0)
               ? arcSlide.kicker
               : slideOutput.kicker;
+
+            // Cover slides MUST NOT have a kicker — it steals visual space from the title
+            if (slideSpec.role === "cover" && finalKicker) {
+              finalKicker = "";
+            }
 
             // --- Title quality gate: non-cover content titles MUST contain a number ---
             // Cover is exempted because its title can be the deck's main claim.
@@ -4198,7 +4209,9 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
                     tone: sanitizedCalloutTone,
                   }
                 : undefined,
-              evidenceIds: slideOutput.evidenceIds,
+              evidenceIds: slideOutput.evidenceIds?.length > 0
+                ? slideOutput.evidenceIds
+                : slideSpec.evidenceRequired ?? [],
               speakerNotes: sanitizedNotes || undefined,
               pageIntent: slideSpec.role,
               governingThought: slideSpec.governingThought,
