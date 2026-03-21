@@ -160,8 +160,10 @@ export function validateDeckContract(slides: Array<{
   }
 
   const lastSlide = slides[slides.length - 1];
-  if (slides.length > 2 && lastSlide && !["summary", "recommendation", "title-body"].includes(lastSlide.layoutId)) {
-    violations.push({ rule: "no_summary", message: "Last slide should be summary or recommendation" });
+  // Accept summary, title-body, or title-bullets as valid closing layouts.
+  // "recommendation" is a slide role, not a layout — it maps to "summary" or "title-body" at render time.
+  if (slides.length > 2 && lastSlide && !["summary", "title-body", "title-bullets"].includes(lastSlide.layoutId)) {
+    violations.push({ rule: "no_summary", message: "Last slide should be summary or recommendation layout" });
   }
 
   const layoutCounts: Record<string, number> = {};

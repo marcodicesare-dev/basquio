@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, detectDiagnosticMotifs, lintSlideText, lintDeckText, validateSlideContract, validateDeckContract, routeQuestion, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, detectDiagnosticMotifs, lintSlideText, lintDeckText, validateSlideContract, validateDeckContract, routeQuestion, getRequiredDerivatives, validateSlideEvidence, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact, renderPdfFromSceneGraph, type V2PdfChart } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -4233,6 +4233,30 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
         }
       }
 
+      // ─── EVIDENCE VALIDATION (semantic layer gate) ──────────────
+      // Check that analytical slides cite evidence their claims require.
+      // Uses the question routes persisted from the understand phase.
+      try {
+        const analysisWp = await loadWorkingPaper<{ questionRoutes?: Array<{ requiredEvidence: string[] }> }>(runId, "analysis_result");
+        const requiredEvidence = analysisWp?.questionRoutes?.flatMap(r => r.requiredEvidence) ?? [];
+        if (requiredEvidence.length > 0) {
+          const allEvidenceIds = slides.flatMap(s => s.evidenceIds ?? []);
+          for (const slide of slides) {
+            if (["cover", "section-divider"].includes(slide.layoutId ?? "")) continue;
+            const slideEvidence = slide.evidenceIds ?? [];
+            const result = validateSlideEvidence(slide.title ?? "", requiredEvidence, slideEvidence);
+            if (!result.valid && result.coverage < 0.5) {
+              issues.push({ severity: "minor", claim: `[EVIDENCE] Slide ${slide.position}: low evidence coverage (${Math.round(result.coverage * 100)}%), missing: ${result.missing.slice(0, 3).join(", ")}`, slidePosition: slide.position });
+            }
+          }
+          // Deck-level: check overall evidence coverage
+          const deckResult = validateSlideEvidence("deck", requiredEvidence, allEvidenceIds);
+          if (!deckResult.valid && deckResult.coverage < 0.5) {
+            issues.push({ severity: "major", claim: `[EVIDENCE] Deck-level evidence coverage: ${Math.round(deckResult.coverage * 100)}%. Missing: ${deckResult.missing.slice(0, 5).join(", ")}` });
+          }
+        }
+      } catch { /* analysis working paper may not exist in all paths */ }
+
       return issues;
     }) as Array<{ severity: "critical" | "major" | "minor"; claim: string; slidePosition?: number }>;
 
@@ -4705,22 +4729,50 @@ export const basquioCritiqueRevise = inngest.createFunction(
       });
       runningCostUsd += reviseResult.stepCostUsd ?? 0;
 
-      // After revision, re-evaluate quality to determine publish grade.
-      // Always deliver, but grade determines what gets published:
-      //   GREEN: full deck, all gates passed
-      //   YELLOW: full deck with known issues (major but not critical)
-      //   RED: dignified minimum (critical writing/contract violations remain)
+      // After revision, RE-RUN quality checks on the repaired slides.
+      // Using stale pre-revision gateResult would grade from old failures.
       const totalCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
-      const gr = gateResult as { criticalCount?: number; majorCount?: number; issues?: Array<{ severity: string; claim: string }> };
-      const hasRemainingCritical = (gr.criticalCount ?? 0) > 0;
-      const hasRemainingMajor = (gr.majorCount ?? 0) > 0;
-      const publishGrade = hasRemainingCritical ? "red" : hasRemainingMajor ? "yellow" : "green";
+      const postRevisionSlides = await getSlides(runId);
+      const postRevisionCharts = await getV2ChartRows(runId);
+
+      // Re-run writing linter on repaired slides
+      const postLintInputs = postRevisionSlides.map((s) => ({
+        position: s.position,
+        role: s.layoutId === "cover" ? "cover" : s.layoutId === "exec-summary" ? "exec-summary" : "content",
+        layoutId: s.layoutId ?? "title-body",
+        title: s.title ?? "",
+        body: s.body ?? undefined,
+        bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+        callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+        metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+      }));
+      const postLintResult = lintDeckText(postLintInputs);
+      const postCritical = postLintResult.slideResults.flatMap(r => r.result.violations).filter(v => v.severity === "critical").length
+        + postLintResult.deckViolations.filter(v => v.severity === "critical").length;
+      const postMajor = postLintResult.slideResults.flatMap(r => r.result.violations).filter(v => v.severity === "major").length
+        + postLintResult.deckViolations.filter(v => v.severity === "major").length;
+
+      // Re-run rendering contract
+      const postDeckContract = validateDeckContract(
+        postRevisionSlides.map(s => ({ layoutId: s.layoutId ?? "title-body", chartType: postRevisionCharts.find(c => c.id === s.chartId)?.chartType }))
+      );
+      const contractMajor = postDeckContract.violations.length;
+
+      const finalCritical = postCritical;
+      const finalMajor = postMajor + contractMajor;
+      const publishGrade = finalCritical > 0 ? "red" : finalMajor > 0 ? "yellow" : "green";
       await updateDeliveryStatus(runId, publishGrade === "green" ? "reviewed" : "degraded");
-      console.info(`[basquio-critique] Publish grade: ${publishGrade} (${gr.criticalCount ?? 0} critical, ${gr.majorCount ?? 0} major issues after revision)`);
+      console.info(`[basquio-critique] Post-revision publish grade: ${publishGrade} (${finalCritical} critical, ${finalMajor} major)`);
+
+      const postIssues = [
+        ...postLintResult.slideResults.flatMap(r => r.result.violations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] Slide ${r.position}: ${v.message}` }))),
+        ...postLintResult.deckViolations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] ${v.message}` })),
+        ...postDeckContract.violations.map(v => ({ severity: "major" as const, claim: `[CONTRACT] ${v.message}` })),
+      ];
       return {
-        hasCriticalOrMajor: hasRemainingCritical || hasRemainingMajor,
+        hasCriticalOrMajor: finalCritical > 0 || finalMajor > 0,
         degradedDelivery: publishGrade === "red",
-        degradedIssues: (gr.issues ?? []).filter(i => i.severity === "critical" || i.severity === "major").map(i => ({ severity: i.severity, claim: i.claim })),
+        degradedIssues: postIssues,
         estimatedCostUsd: totalCostUsd,
         publishGrade,
       };
