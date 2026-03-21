@@ -2419,17 +2419,24 @@ export const basquioUnderstand = inngest.createFunction(
 
       tracker.endPhase();
 
-      // Persist working papers
+      // Persist working papers — analysis_result is CRITICAL (author depends on it)
+      // Secondary papers (clarified_brief, storyline_plan, run_intent) are best-effort
       try {
         if (result.clarifiedBrief) await persistWorkingPaper(runId, "clarified_brief", result.clarifiedBrief);
+      } catch (e) { console.warn("[understand] Failed to persist clarified_brief (non-fatal):", e); }
+      try {
         if (result.storylinePlan) await persistWorkingPaper(runId, "storyline_plan", result.storylinePlan);
-        await persistWorkingPaper(runId, "analysis_result", {
-          analysis: result.analysis,
-          clarifiedBrief: result.clarifiedBrief,
-          storylinePlan: result.storylinePlan,
-        });
+      } catch (e) { console.warn("[understand] Failed to persist storyline_plan (non-fatal):", e); }
 
-        // Persist RunIntent — the single source of truth for "what are we building"
+      // analysis_result MUST succeed — without it, author crashes with NonRetriableError
+      await persistWorkingPaper(runId, "analysis_result", {
+        analysis: result.analysis,
+        clarifiedBrief: result.clarifiedBrief,
+        storylinePlan: result.storylinePlan,
+      });
+
+      // Persist RunIntent (best-effort)
+      try {
         const runIntent = {
           analysisMode: result.analysis?.analysisMode ?? "deep_analysis",
           requestedSlideCount: result.clarifiedBrief?.requestedSlideCount ?? null,
@@ -2449,9 +2456,7 @@ export const basquioUnderstand = inngest.createFunction(
           })),
         };
         await persistWorkingPaper(runId, "run_intent", runIntent);
-      } catch (error) {
-        console.error("[understand] Failed to persist working papers:", error);
-      }
+      } catch (e) { console.warn("[understand] Failed to persist run_intent (non-fatal):", e); }
 
       return {
         analysis: result.analysis,
@@ -4842,14 +4847,14 @@ export const basquioExport = inngest.createFunction(
       };
 
       const manifestRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/artifact_manifests_v2`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/artifact_manifests_v2?on_conflict=run_id`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
             Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-            Prefer: "return=minimal",
+            Prefer: "return=minimal,resolution=merge-duplicates",
           },
           body: JSON.stringify(manifest),
         },

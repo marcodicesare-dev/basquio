@@ -1113,6 +1113,7 @@ function renderChartElement(
   region: R,
   tokens: BrandTokens,
   exportMode: ExportMode = "powerpoint-native",
+  slideTitle?: string,
 ): void {
   if (chart.chartType === "table") {
     renderTable(slide, chart, region, tokens);
@@ -1140,9 +1141,16 @@ function renderChartElement(
 
   const strategy = selectChartRenderStrategy(effectiveChartType, exportMode);
 
+  // Suppress chart title when it duplicates the slide title (common LLM failure mode)
+  const chartTitleNorm = (chart.title ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const slideTitleNorm = (slideTitle ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const chartTitleIsDuplicate = chartTitleNorm.length > 0 && slideTitleNorm.length > 0 &&
+    (chartTitleNorm === slideTitleNorm || slideTitleNorm.includes(chartTitleNorm) || chartTitleNorm.includes(slideTitleNorm));
+  const showChartTitle = !chartTitleIsDuplicate && Boolean(chart.title);
+
   // For native: render chart title externally (above the chart object)
   // For shape-built: shape-chart renders its own title, so skip external title
-  if (strategy === "native") {
+  if (strategy === "native" && showChartTitle) {
     slide.addText(chart.title, {
       x: region.x,
       y: region.y,
@@ -1155,11 +1163,14 @@ function renderChartElement(
     });
   }
 
+  // Reclaim title space when chart title is suppressed (duplicate of slide title)
+  const titleOffset = (strategy === "native" && showChartTitle) ? 0.25 : 0;
+  const titleReduction = (strategy === "native" && showChartTitle) ? 0.3 : 0;
   const chartRegion = {
     x: region.x,
-    y: strategy === "shape-built" ? region.y : region.y + 0.25,
+    y: strategy === "shape-built" ? region.y : region.y + titleOffset,
     w: region.w,
-    h: strategy === "shape-built" ? region.h : region.h - 0.3,
+    h: strategy === "shape-built" ? region.h : region.h - titleReduction,
   };
 
   // Reserve space for source note if present
@@ -1200,7 +1211,7 @@ function renderChartElement(
 
     const fullFrame = { x: region.x, y: region.y, w: region.w, h: region.h };
     renderShapeChart(slide, effectiveChartType, shapeData, fullFrame, shapeTokens, {
-      title: chart.title,
+      title: showChartTitle ? chart.title : undefined,
       sourceNote: chart.sourceNote,
       unit: chart.unit,
       highlightCategories: chart.style?.highlightCategories,
@@ -1390,7 +1401,7 @@ function renderContentSlide(
 
     case "title-chart": {
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
       }
       // First-class callout
       if (s.callout && regions.callout) {
@@ -1404,7 +1415,7 @@ function renderContentSlide(
       // Chart on left, table on right
       if (chart) {
         if (regions.chart) {
-          renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
+          renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
         }
         // Table with same data on right
         if (regions.table) {
@@ -1442,7 +1453,7 @@ function renderContentSlide(
       }
       // Chart on left
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
       }
       // Body/bullets on right
       if (regions.body) {
@@ -1470,7 +1481,7 @@ function renderContentSlide(
       }
       // Chart support for exec-summary (JSX: metrics on top, chart below)
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
       } else if (layoutId === "exec-summary" && s.bullets && s.bullets.length > 0 && regions.bullets) {
         // Fallback to bullets if no chart
         renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch);
@@ -1575,7 +1586,7 @@ function renderContentSlide(
         const adjustedChart = chartYOffset > 0
           ? { ...regions.chart, y: regions.chart.y + chartYOffset, h: regions.chart.h - chartYOffset }
           : regions.chart;
-        renderChartElement(slide, pptx, chart, adjustedChart, tokens, exportMode);
+        renderChartElement(slide, pptx, chart, adjustedChart, tokens, exportMode, s.title);
       }
       // Second chart area: use bullets or body
       if (regions.chart2) {
@@ -1598,7 +1609,7 @@ function renderContentSlide(
     case "summary": {
       // Chart on left if available (recommendation slides — chart-split style)
       if (chart && regions.chart) {
-        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode);
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title);
       }
       // Metrics if available
       if (s.metrics && s.metrics.length > 0 && regions.metrics) {
@@ -1636,7 +1647,7 @@ function renderContentSlide(
       // Fallback: chart if available, else body/bullets
       if (chart) {
         const chartRegion = regions.chart || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
-        renderChartElement(slide, pptx, chart, chartRegion, tokens, exportMode);
+        renderChartElement(slide, pptx, chart, chartRegion, tokens, exportMode, s.title);
       } else if (s.body && regions.body) {
         renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       } else if (s.bullets && s.bullets.length > 0) {
