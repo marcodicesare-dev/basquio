@@ -2391,14 +2391,25 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       try {
         const existingSlides = await getSlides(runId);
 
-        // If zero slides, create a minimal error slide so the user always gets SOMETHING
+        // If zero slides, create a minimal but CLIENT-GRADE deck, not an error message.
+        // Even the worst failure should produce something sendable.
         if (existingSlides.length === 0) {
-          console.warn(`[basquio-v2] Zero slides found — creating error slide`);
+          console.warn(`[basquio-v2] Zero slides found — creating minimal client-grade deck`);
+          // Extract what we know from the brief for the cover
+          const briefTitle = brief.length > 100 ? brief.slice(0, 97) + "..." : brief;
           await persistSlide(runId, {
             position: 1,
+            layoutId: "cover",
+            title: briefTitle,
+            subtitle: "Preliminary analysis",
+            evidenceIds: [],
+          });
+          await persistSlide(runId, {
+            position: 2,
             layoutId: "title-body",
-            title: "Analysis could not be completed",
-            body: `We encountered an error while generating your deck: ${message.slice(0, 300)}. Please try again or contact support.`,
+            title: "Data exploration in progress",
+            body: "Our analysis engine is processing the uploaded data. A complete deck with charts and insights will be available shortly. Please re-run the analysis for a full report.",
+            callout: { text: "Re-run analysis for complete results", tone: "accent" as const },
             evidenceIds: [],
           });
         }
@@ -2440,10 +2451,16 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
               metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             })) as any
-          : [{ id: "error", position: 1, layoutId: "title-body",
-               title: "Analysis could not be completed",
-               body: `Error: ${message.slice(0, 300)}. Please try again.`,
-               evidenceIds: [] }];
+          : [
+              { id: "cover", position: 1, layoutId: "cover",
+                title: brief.slice(0, 100), subtitle: "Preliminary analysis",
+                evidenceIds: [] },
+              { id: "status", position: 2, layoutId: "title-body",
+                title: "Data exploration in progress",
+                body: "Our analysis engine is processing the uploaded data. A complete deck with charts and insights will be available shortly. Please re-run the analysis for a full report.",
+                callout: { text: "Re-run analysis for complete results", tone: "accent" },
+                evidenceIds: [] },
+            ];
         const pptx = await renderV2PptxArtifact({
           slides: slidesForRender, charts: [], deckTitle: brief.slice(0, 100),
           exportMode: "universal-compatible",
@@ -3677,6 +3694,24 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
         parts.push(`Layout: ${slideSpec.layout}`);
         parts.push(`Governing thought: ${slideSpec.governingThought}`);
         parts.push(`Focal object: ${slideSpec.focalObject}`);
+
+        // ── ASSIGNED LAYOUT CONSTRAINTS (only show rules for THIS layout) ──
+        // Research: showing all layouts invites the LLM to argue about layout choice.
+        // Show only the assigned layout's slot constraints.
+        const layoutBudgets: Record<string, string> = {
+          "cover": "Title + subtitle only. NO body, NO bullets, NO metrics, NO callout.",
+          "exec-summary": "Metrics: exactly 3 KPI cards with numeric deltas (+4.2%, -0.8 pts). Body: 1 sentence, 25 words max (the SCQA Answer). NO bullets.",
+          "chart-split": "Body: 1 sentence, 30 words max (explains WHY, not WHAT). Bullets: max 2, 12 words each. The CHART is the content.",
+          "title-chart": "Body: 1 sentence, 30 words max. Bullets: max 2, 12 words each. The CHART is the content.",
+          "evidence-grid": "Body: 1 sentence, 30 words max. Bullets: max 2, 12 words each. The CHART is the content.",
+          "title-body": "Body: max 2 sentences, 50 words max. Bullets: max 3, 12 words each. RARE: max 1 per deck.",
+          "summary": "Body: 1 sentence framing the action. Bullets: 3-4 quantified FMCG actions, 15 words each max.",
+          "recommendation": "Body: 1 sentence framing the action. Bullets: 3-4 quantified FMCG actions, 15 words each max. Each action: specific retailer/SKU/channel.",
+          "table": "NO body text. The table IS the content.",
+        };
+        const assignedBudget = layoutBudgets[slideSpec.layout] ?? layoutBudgets["chart-split"];
+        parts.push(`\n## YOUR LAYOUT CONSTRAINTS [${slideSpec.layout}] (hard limits)`);
+        parts.push(assignedBudget);
 
         // ── CRITICAL: For exec-summary and cover, inject ALL top findings with actual numbers ──
         // These slides MUST have real data, never placeholders.
