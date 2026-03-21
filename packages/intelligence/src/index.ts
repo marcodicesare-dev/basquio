@@ -82,3 +82,48 @@ export {
   type ColumnRegistryEntry,
   type ResolvedColumn,
 } from "./column-registry";
+
+// ─── WRITING LINTER (deterministic text quality validation) ───────
+export {
+  lintSlideText,
+  lintDeckText,
+  type SlideTextInput,
+  type LintResult,
+  type LintViolation,
+  type DeckLintResult,
+} from "./writing-linter";
+
+// ─── FMCG SEMANTIC LAYER (executable domain logic) ────────────────
+export {
+  routeQuestion,
+  getRequiredDerivatives,
+  validateSlideEvidence,
+  getLeversForRoute,
+  DERIVED_METRICS,
+  QUESTION_ROUTES,
+  RECOMMENDATION_LEVERS,
+  type QuestionRoute,
+  type DerivedMetricProgram,
+  type RecommendationLever,
+  type FmcgDomain,
+  type FmcgMeasure,
+} from "./fmcg-semantic-layer";
+
+// ─── RENDERING CONTRACT (constrained compatibility surface) ───────
+export {
+  SUPPORTED_LAYOUTS,
+  SAFE_CHART_TYPES,
+  IMAGE_ONLY_CHART_TYPES,
+  OOXML_RULES,
+  SAFE_FONTS,
+  validateSlideContract,
+  validateDeckContract,
+  coerceToSafeChartType,
+  isSupportedLayout,
+  isSafeChartType,
+  isImageOnlyChartType,
+  requiresImageRender,
+  type SupportedLayout,
+  type SafeChartType,
+  type ContractViolation,
+} from "./rendering-contract";

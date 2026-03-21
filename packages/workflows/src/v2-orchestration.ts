@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, detectDiagnosticMotifs, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, detectDiagnosticMotifs, lintSlideText, lintDeckText, validateSlideContract, validateDeckContract, routeQuestion, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact, renderPdfFromSceneGraph, type V2PdfChart } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -2577,11 +2577,18 @@ export const basquioUnderstand = inngest.createFunction(
         if (result.storylinePlan) await persistWorkingPaper(runId, "storyline_plan", result.storylinePlan);
       } catch (e) { console.warn("[understand] Failed to persist storyline_plan (non-fatal):", e); }
 
+      // Route the question through the FMCG semantic layer (deterministic, $0)
+      const questionRoutes = routeQuestion(brief);
+      if (questionRoutes.length > 0) {
+        console.info(`[understand] Question routed: ${questionRoutes.map(r => r.id).join(", ")} (domain: ${questionRoutes[0].domain})`);
+      }
+
       // analysis_result MUST succeed — without it, author crashes with NonRetriableError
       await persistWorkingPaper(runId, "analysis_result", {
         analysis: result.analysis,
         clarifiedBrief: result.clarifiedBrief,
         storylinePlan: result.storylinePlan,
+        questionRoutes: questionRoutes.slice(0, 3).map(r => ({ id: r.id, name: r.name, domain: r.domain, requiredEvidence: r.requiredEvidence, diagnosticMotifs: r.diagnosticMotifs, recommendationLevers: r.recommendationLevers })),
       });
 
       // Persist RunIntent (best-effort)
@@ -4172,6 +4179,58 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
           issues.push({ severity: "major", claim: `Duplicate slide position: ${slide.position}` });
         }
         positions.add(slide.position);
+      }
+
+      // ─── WRITING LINTER (executable text quality gate) ──────────
+      const lintInputs = slides.map((s) => ({
+        position: s.position,
+        role: s.layoutId === "cover" ? "cover" : s.layoutId === "exec-summary" ? "exec-summary" : "content",
+        layoutId: s.layoutId ?? "title-body",
+        title: s.title ?? "",
+        body: s.body ?? undefined,
+        bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+        callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+        metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+        speakerNotes: s.speakerNotes ?? undefined,
+      }));
+      const deckLintResult = lintDeckText(lintInputs);
+      for (const sr of deckLintResult.slideResults) {
+        for (const v of sr.result.violations) {
+          issues.push({
+            severity: v.severity,
+            claim: `[LINT] Slide ${sr.position} ${v.field}: ${v.message}`,
+            slidePosition: sr.position,
+          });
+        }
+      }
+      for (const v of deckLintResult.deckViolations) {
+        issues.push({ severity: v.severity, claim: `[LINT] Deck-level: ${v.message}` });
+      }
+      if (!deckLintResult.passed) {
+        console.warn(`[basquio-critique] Writing linter FAILED: ${deckLintResult.slideResults.filter(r => !r.result.passed).length} slides have critical violations`);
+      }
+
+      // ─── RENDERING CONTRACT (compatibility gate) ────────────────
+      const deckContractResult = validateDeckContract(
+        slides.map(s => ({ layoutId: s.layoutId ?? "title-body", chartType: charts.find(c => c.id === s.chartId)?.chartType }))
+      );
+      for (const v of deckContractResult.violations) {
+        issues.push({ severity: "major", claim: `[CONTRACT] ${v.message}` });
+      }
+      for (const slide of slides) {
+        const chart = charts.find(c => c.id === slide.chartId);
+        const slideContractResult = validateSlideContract({
+          layoutId: slide.layoutId ?? "title-body",
+          chartType: chart?.chartType,
+          title: slide.title,
+          body: slide.body ?? undefined,
+          bullets: Array.isArray(slide.bullets) ? slide.bullets : undefined,
+          metrics: slide.metrics ? (typeof slide.metrics === "string" ? JSON.parse(slide.metrics) : slide.metrics) : undefined,
+          callout: slide.callout ? (typeof slide.callout === "string" ? JSON.parse(slide.callout) : slide.callout) : undefined,
+        });
+        for (const v of slideContractResult.violations) {
+          issues.push({ severity: "major", claim: `[CONTRACT] Slide ${slide.position}: ${v.message}`, slidePosition: slide.position });
+        }
       }
 
       return issues;
