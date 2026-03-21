@@ -315,9 +315,15 @@ export function renderV2ChartSvg(
   const echartsSeries: any[] = isPie
     ? [{
         type: "pie" as const,
-        radius: chart.chartType === "doughnut" ? ["40%", "70%"] : "65%",
-        center: ["50%", suppressTitle ? "50%" : "55%"],
-        data: chart.data.map((row, i) => ({
+        radius: chart.chartType === "doughnut" ? ["52%", "78%"] : ["0%", "70%"],
+        center: ["50%", suppressTitle ? "50%" : "54%"],
+        padAngle: chart.chartType === "doughnut" ? 2 : 0,
+        itemStyle: {
+          borderColor: bg,
+          borderWidth: chart.chartType === "doughnut" ? 3 : 1,
+          borderRadius: chart.chartType === "doughnut" ? 4 : 0,
+        },
+        data: chart.data.slice(0, 8).map((row, i) => ({ // Max 8 slices
           name: String(row[chart.xAxis] ?? `Item ${i}`),
           value: Number(row[chart.yAxis] ?? row[seriesNames[0]] ?? 0),
           itemStyle: { color: palette[i % palette.length] },
@@ -325,11 +331,14 @@ export function renderV2ChartSvg(
         label: {
           color: ink,
           fontFamily: theme.bodyFont,
-          fontSize: 11,
-          formatter: isPercentage ? "{b}: {d}%" : "{b}: {c}",
+          fontSize: 12,
+          fontWeight: "bold" as const,
+          formatter: (params: { name: string; percent: number; value: number }) =>
+            isPercentage ? `${params.name}\n${params.percent.toFixed(1)}%` : `${params.name}\n${formatValue(params.value)}`,
+          lineHeight: 16,
         },
-        labelLine: { lineStyle: { color: dim } },
-        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.3)" } },
+        labelLine: { lineStyle: { color: dim, width: 1 }, length: 12, length2: 16 },
+        emphasis: { itemStyle: { shadowBlur: 12, shadowColor: "rgba(0,0,0,0.4)" }, scaleSize: 4 },
       }]
     : seriesNames.map((name, seriesIdx) => {
         const data = chart.data.map(row => {
@@ -356,16 +365,44 @@ export function renderV2ChartSvg(
             : data,
           stack: isStacked ? "total" : undefined,
           smooth: chart.chartType === "line" || chart.chartType === "area" ? 0.3 : undefined,
-          areaStyle: chart.chartType === "area" ? { opacity: 0.15 } : undefined,
+          areaStyle: chart.chartType === "area" ? {
+            opacity: 0.2,
+            color: {
+              type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: `${palette[seriesIdx % palette.length]}40` },
+                { offset: 1, color: `${palette[seriesIdx % palette.length]}05` },
+              ],
+            } as unknown as string,
+          } : undefined,
           itemStyle: {
             color: palette[seriesIdx % palette.length],
             borderRadius: echartsType === "bar" ? (isHorizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]) : 0,
           },
-          lineStyle: echartsType === "line" ? { width: 2.5, color: palette[seriesIdx % palette.length] } : undefined,
-          barMaxWidth: 48,
-          label: chart.style.showValues ? {
+          lineStyle: echartsType === "line" ? {
+            width: seriesIdx === 0 ? 2.5 : 1.8,
+            color: palette[seriesIdx % palette.length],
+            type: seriesIdx === 0 ? "solid" : seriesIdx === 1 ? "dashed" : [4, 3] as unknown as string,
+          } : undefined,
+          symbolSize: echartsType === "line" ? (seriesIdx === 0 ? 5 : 0) : undefined,
+          symbol: echartsType === "line" ? (seriesIdx === 0 ? "circle" : "none") : undefined,
+          barMaxWidth: 44,
+          barGap: "20%",
+          // Always show value labels on bars for consulting-grade readability
+          label: echartsType === "bar" ? {
             show: true,
             position: isHorizontal ? "right" : "top",
+            color: muted,
+            fontFamily: theme.bodyFont,
+            fontSize: 10,
+            fontWeight: "bold" as const,
+            formatter: (params: { value: number | number[] }) => {
+              const val = Array.isArray(params.value) ? params.value[1] : params.value;
+              return formatValue(val);
+            },
+          } : (chart.style.showValues ? {
+            show: true,
+            position: "top" as const,
             color: muted,
             fontFamily: theme.bodyFont,
             fontSize: 9,
@@ -373,10 +410,28 @@ export function renderV2ChartSvg(
               const val = Array.isArray(params.value) ? params.value[1] : params.value;
               return formatValue(val);
             },
-          } : undefined,
+          } : undefined),
           emphasis: { focus: seriesNames.length > 1 ? "series" : "self" as const },
         };
       });
+
+  // Waterfall: recolor bars green/red based on value sign
+  if (chart.chartType === "waterfall" && echartsSeries.length > 0) {
+    const positive = theme.chartPalette[1]?.startsWith("#") ? theme.chartPalette[1] : `#${theme.chartPalette[1] ?? "4CC9A0"}`;
+    const negative = theme.chartPalette[4]?.startsWith("#") ? theme.chartPalette[4] : `#${theme.chartPalette[4] ?? "E8636F"}`;
+    const total = palette[0]; // Amber for totals (first/last)
+    const data = echartsSeries[0].data;
+    if (Array.isArray(data)) {
+      echartsSeries[0].data = data.map((v: number | { value: number }, i: number) => {
+        const val = typeof v === "number" ? v : (v?.value ?? 0);
+        const isTotal = i === 0 || i === data.length - 1;
+        return {
+          value: val,
+          itemStyle: { color: isTotal ? total : (val >= 0 ? positive : negative) },
+        };
+      });
+    }
+  }
 
   // Benchmark reference line
   const markLine = chart.benchmarkValue != null ? {
@@ -466,7 +521,7 @@ export function renderV2ChartSvg(
           fontSize: 10,
           formatter: (v: number) => formatValue(v),
         },
-        splitLine: { lineStyle: { color: border, opacity: 0.3 } },
+        splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
       },
       yAxis: {
         type: "category",
@@ -505,7 +560,7 @@ export function renderV2ChartSvg(
           fontSize: 9,
           formatter: (v: number) => formatValue(v),
         },
-        splitLine: { lineStyle: { color: border, opacity: 0.3 } },
+        splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
       },
     }),
     series: echartsSeries,
