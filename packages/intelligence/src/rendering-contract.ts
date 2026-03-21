@@ -80,7 +80,7 @@ export const OOXML_RULES = {
     "comparison": 30,
     "recommendation": 30,
   } as Record<string, number>,
-  maxTitleWords: 16,
+  maxTitleWords: 22,
   maxCalloutWords: 25,
 } as const;
 

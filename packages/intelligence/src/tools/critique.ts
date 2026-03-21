@@ -112,7 +112,14 @@ export function createCheckNumericTool(ctx: CritiqueToolContext) {
     }),
     async execute({ slideId }) {
       const slides = await ctx.getSlides();
-      const slide = slides.find((s) => s.id === slideId);
+      // Accept UUID, position number, or "Slide N" text
+      let slide = slides.find((s) => s.id === slideId);
+      if (!slide) {
+        const posMatch = slideId.match(/(\d+)/);
+        if (posMatch) {
+          slide = slides.find((s) => s.position === parseInt(posMatch[1], 10));
+        }
+      }
 
       if (!slide) {
         return { error: `Slide not found: ${slideId}`, assertions: [] };

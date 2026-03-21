@@ -100,7 +100,7 @@ export async function runCriticAgent(input: CriticAgentInput): Promise<CritiqueR
 
   const slides = await input.getSlides();
   const slidesSummary = slides
-    .map((s) => `Slide ${s.position} [${s.layoutId}]: "${s.title}" — ${s.body?.slice(0, 100) ?? "(no body)"}${s.chartId ? " [has chart]" : ""}${s.metrics?.length ? ` [${s.metrics.length} metrics]` : ""}${s.speakerNotes ? " [has notes]" : ""} [evidence: ${s.evidenceIds.join(", ") || "none"}]`)
+    .map((s) => `Slide ${s.position} (id: ${s.id}) [${s.layoutId}]: "${s.title}" — ${s.body?.slice(0, 100) ?? "(no body)"}${s.chartId ? " [has chart]" : ""}${s.metrics?.length ? ` [${s.metrics.length} metrics]` : ""}${s.speakerNotes ? " [has notes]" : ""} [evidence: ${s.evidenceIds.join(", ") || "none"}]`)
     .join("\n");
 
   const titleReadThrough = slides
@@ -122,7 +122,7 @@ ${slidesSummary}
 PROCESS (follow this order):
 1. Call audit_deck_structure FIRST — this runs deterministic checks and catches sparse slides, missing notes, missing evidence, chart coverage.
 2. Then use verify_claim to check every factual assertion in the deck.
-3. Use check_numeric on every slide to audit numbers.
+3. Use check_numeric on every slide to audit numbers. IMPORTANT: pass the actual slide UUID (the "id:" value shown in parentheses above), NOT "Slide 1" or position text.
 4. Use compare_to_brief to identify gaps vs the original brief.
 
 Be adversarial — find what's wrong, not what's right. Every wrong number you catch saves the team from embarrassment in front of an executive.`,

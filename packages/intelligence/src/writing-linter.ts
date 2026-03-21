@@ -156,9 +156,10 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
       }
     }
 
-    // Title too long
-    if (wordCount(slide.title) > 16) {
-      violations.push({ rule: "title_too_long", severity: "minor", field: "title", message: `Title has ${wordCount(slide.title)} words (max 16)` });
+    // Title too long (Italian titles are structurally longer — allow 22 words)
+    const maxTitleWords = 22;
+    if (wordCount(slide.title) > maxTitleWords) {
+      violations.push({ rule: "title_too_long", severity: "minor", field: "title", message: `Title has ${wordCount(slide.title)} words (max ${maxTitleWords})` });
     }
 
     // Passive voice in title
@@ -268,11 +269,11 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
         violations.push({ rule: "placeholder_metric", severity: "critical", field: `metrics[${i}].value`, message: "Placeholder metric value", value: m.value });
       }
       // Share without denominator
-      if (/^\d+\.?\d*\s*%$/.test(m.value.trim()) && !/of\s|del\s|su\s/i.test(m.label)) {
+      if (/^\d+[.,]?\d*\s*%$/.test(m.value.trim()) && !/of\s|del\s|su\s/i.test(m.label)) {
         violations.push({ rule: "share_no_denominator", severity: "major", field: `metrics[${i}]`, message: `Percentage "${m.value}" without denominator in label "${m.label}"` });
       }
-      // Non-numeric delta
-      if (m.delta && !/^([+-]?\d+\.?\d*\s*(%|pts|pp|p\.p\.|M|K|€|£|\$|mln|bln|bn)|flat|stable|—|n\/a|)$/i.test(m.delta.trim())) {
+      // Non-numeric delta (supports Italian comma decimals and trailing context like "YoY", "vs mercato")
+      if (m.delta && !/^([+-]?\d+[.,]?\d*\s*(%|pts|pp|p\.p\.|M|K|€|£|\$|mln|mld|bln|bn|pz)(\s+\S+(\s+\S+)?)?|flat|stable|—|n\/a|)$/i.test(m.delta.trim())) {
         violations.push({ rule: "non_numeric_delta", severity: "major", field: `metrics[${i}].delta`, message: `Delta is not numeric: "${m.delta}"`, value: m.delta });
       }
     }

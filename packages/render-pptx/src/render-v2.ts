@@ -1815,6 +1815,8 @@ export async function renderV2PptxArtifact(
   for (const slideData of sortedSlides) {
     const isCover = slideData.layoutId === "cover";
     const slide = pptx.addSlide({ masterName: isCover ? "BASQUIO_COVER" : "BASQUIO_MASTER" });
+    // Explicit per-slide background — Google Slides often ignores slide master backgrounds
+    slide.background = { fill: norm(isCover ? tokens.palette.coverBg : tokens.palette.surface) };
 
     if (isCover) {
       renderCoverSlide(slide, pptx, slideData, tokens);
