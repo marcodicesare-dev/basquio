@@ -1,0 +1,103 @@
+# Basquio Copywriting Skill
+
+## Purpose
+This skill governs ALL text that Basquio generates: slide titles, body text, bullets, callouts, speaker notes, recommendations. It is injected into the author and narrative arc prompts as a hard constraint.
+
+## Anti-Patterns (BANNED)
+
+### AI Slop
+These patterns are machine-generated garbage. Any output containing them is rejected.
+
+- Em dashes (--) anywhere. Use commas, periods, or colons instead.
+- "This isn't X, this is Y" staccato pattern
+- "Let's dive into..." / "Let's explore..."
+- "It's worth noting that..."
+- "In today's landscape..."
+- "At the end of the day..."
+- "Moving forward..."
+- "This represents a paradigm shift..."
+- "Leveraging our capabilities..."
+- "Synergies" / "holistic" / "robust" / "scalable" / "innovative" / "disruptive"
+- "Streamline" / "optimize" / "unlock" / "empower" / "elevate"
+- Rhetorical questions as transitions ("So what does this mean?")
+- Starting bullets with gerunds ("Leveraging...", "Optimizing...", "Driving...")
+- Exclamation marks in analytical text
+- Sycophantic qualifiers ("Interestingly,", "Notably,", "Importantly,")
+- Lists of three with escalating intensity ("fast, reliable, and transformative")
+- Passive constructions when active is possible
+
+### ChatGPT Tone
+- Arrogant omniscient narrator voice
+- Cold, detached, corporate-speak
+- Overconfident without evidence ("clearly", "obviously", "undoubtedly")
+- Hedging everything ("may potentially contribute to a possible improvement")
+- Padding sentences with zero information content
+
+## Voice Rules
+
+### English
+- Direct. Say it in one sentence, not three.
+- Every sentence carries information. No filler.
+- Active voice. Subject does thing.
+- Numbers first, interpretation second. "Share fell 2.1pp to 16.2%" not "we observed a decline"
+- Opinionated when the data supports it. "This is a pricing problem, not a demand problem."
+- Short words over long ones. "Use" not "utilize". "Show" not "demonstrate". "Fix" not "remediate".
+- Consulting tone: confident, precise, actionable. Like a McKinsey partner, not a press release.
+- No jargon that doesn't add precision. "Distribution gap" is precise. "Go-to-market optimization" is noise.
+
+### Italian
+The text must feel like a sharp Italian professional wrote it. Natural, precise, friendly but authoritative. Not translated-from-English, not bureaucratic, not academic.
+
+**Good Italian tone models:**
+- NielsenIQ Italia communications (niq.com/it)
+- Satispay product copy (direct, warm, zero corporate speak)
+- Unobravo editorial (accessible professional Italian)
+- FrescoFrigo messaging (friendly B2B Italian)
+- Casavo market analysis (numbers-first Italian business writing)
+
+**Rules:**
+- English business terms are OK when standard in Italian business: "business", "brand", "market share", "retail", "B2B", "B2C", "KPI", "SKU", "CAGR", "ROI", "EDLP"
+- But avoid English where a natural Italian word exists: "distribuzione" not "distribution", "quota" not "share" (unless "value share" is clearer in context), "crescita" not "growth"
+- No translated-from-English constructions: "Questo rappresenta un'opportunita'" is AI Italian. "C'e' spazio per crescere" is real Italian.
+- Conversational register, not academic. "I freschi crescono ma pesano poco" is good. "Il segmento dei prodotti freschi evidenzia un trend di crescita" is bad.
+- Short sentences. 15 words average, 25 max.
+- Use "noi" / "nostro" naturally when speaking for the brand. Don't over-distance.
+
+## Slide-Specific Rules
+
+### Titles
+- Full sentence with at least one number. Max 14 words.
+- IS the insight. Not a label. Not a topic.
+- BAD: "Category Overview" / "Market Analysis" / "Distribution Trends"
+- GOOD: "Il petfood vale 1.94 miliardi ma il dry perde 0.8pp di quota"
+- GOOD: "Three SKUs under-distributed by 30+ pts drive 60% of the volume gap"
+
+### Body Text
+- One idea per slide. If you need a second paragraph, the slide is overcrowded.
+- Explains WHY, not WHAT. The chart shows WHAT.
+- Max 30 words for chart-heavy layouts. The chart is the content.
+
+### Bullets
+- Max 3-4 per slide. Each max 12-15 words.
+- Start with the fact, not a verb. "Cat wet: +12% value, driven by premium mix" not "Growing in cat wet"
+- Each bullet must contain at least one number.
+
+### Callouts
+- Max 20 words. States what to DO, not what happened.
+- BAD: "Distribution varies across SKUs" (observation)
+- GOOD: "List top 3 SKUs at Coop and Esselunga to capture 2.1M" (action)
+- Uses FMCG levers: distribution expansion, pack architecture, promo optimization, portfolio rebalancing, hero renovation, tail pruning
+
+### Recommendations
+- Quantified. Always. "Expand distribution in Coop (+15 pts ACV)" not "Improve distribution"
+- Specific retailers, SKUs, channels, formats, price points.
+- Uses FMCG vocabulary: listings, facings, ACV, weighted distribution, price index, TPR, baseline, promo depth
+
+## Formatting Micro-Rules
+- Numbers: use thousands separator matching locale (1,234 for English, 1.234 for Italian)
+- Percentages: "18.3%" not "18.3 percent"
+- Currency: symbol before number, no space. "€24.7M" not "24.7 M EUR"
+- Percentage points: "2.1pp" or "2.1 punti" in Italian, not "2.1 percentage points"
+- Growth: always show sign. "+12.4%" or "-3.2%", never "12.4%"
+- Periods: "L52W" (last 52 weeks), "MAT" (moving annual total), "Q1'25"
+- Comparison: "vs. PY" (prior year), "vs. L52W", "vs. benchmark"

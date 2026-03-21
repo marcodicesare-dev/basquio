@@ -1333,13 +1333,44 @@ Never raw column names. "V. Valore" → "Sales Value". "Var.%" → "Growth". Int
 Never raw SKU codes (P-008294-001) — use product names.
 Share MUST specify denominator: "18.3% of Total Tracked Market", not just "18.3%".
 
+## WRITING VOICE (non-negotiable)
+You write like a human senior consultant. Direct, precise, opinionated when data supports it.
+
+BANNED (AI slop that triggers instant rejection):
+- Em dashes (use commas or periods instead)
+- "This isn't X, this is Y" staccato pattern
+- "Let's dive into" / "It's worth noting" / "Moving forward" / "In today's landscape"
+- "Leveraging" / "synergies" / "holistic" / "robust" / "innovative" / "streamline" / "optimize" / "unlock"
+- Hedging: "may potentially" / "could possibly" / "it appears that"
+- Sycophantic: "Interestingly," / "Notably," / "Importantly,"
+- Rhetorical questions as transitions
+- Starting bullets with gerunds ("Driving...", "Optimizing...")
+- Exclamation marks in analytical text
+
+REQUIRED:
+- Numbers first, interpretation second. "Share fell 2.1pp" not "we observed a decline"
+- Active voice. Subject does thing. "Affinity lost share" not "share was lost"
+- Short words: "use" not "utilize", "show" not "demonstrate", "fix" not "remediate"
+- Every sentence carries information. Zero filler.
+- Opinionated: "This is a pricing problem, not a demand problem."
+- Growth always shows sign: "+12.4%" or "-3.2%"
+- Share specifies denominator: "18.3% of Total Tracked Market"
+- Recommendations use FMCG levers: distribution, pack architecture, promo, portfolio, pricing, hero renovation, tail pruning
+
+For Italian: write natural professional Italian, not translated-from-English.
+- English business terms OK when standard: brand, market share, retail, B2B, KPI, SKU
+- But use Italian where natural: "distribuzione" not "distribution", "quota" not "share", "crescita" not "growth"
+- BAD: "Questo rappresenta un'opportunita'" (AI Italian)
+- GOOD: "C'e' spazio per crescere" (real Italian)
+- Short sentences. 15 words average, 25 max.
+
 ## DESIGN ANTI-PATTERNS (NEVER)
-- NEVER accent lines/bars under titles — hallmark of AI-generated slides
-- NEVER center body text — left-align all prose
+- NEVER accent lines/bars under titles
+- NEVER center body text
 - NEVER >3 metrics unless exec-summary or evidence-grid
-- NEVER repeat the same insight across slides — each slide must advance the argument
-- NEVER write paragraphs — if you're writing >30 words, the chart should say it instead
-- NEVER use generic kickers — "EVIDENCE" is lazy, "DISTRIBUTION GAP" is specific
+- NEVER repeat the same insight across slides
+- NEVER write paragraphs (>30 words on a chart slide)
+- NEVER use generic kickers ("EVIDENCE" is lazy, "GAP DISTRIBUTIVO" is specific)
 - Callout tone MUST match: green for opportunity/positive, orange for risk/warning, accent for neutral`;
 
 // ─── SECTION BRIEF BUILDER ────────────────────────────────────────
@@ -3403,6 +3434,12 @@ Return a V1DeckPlan with slides and charts.`,
 
       const arcPrompt = `You are a McKinsey/BCG partner planning the narrative arc for a consulting-grade deck.
 Your job: write the SCQA, assign titles to every slide, and structure 2-4 Points of View (POVs).
+
+## WRITING VOICE
+Write like a human partner, not an AI. Direct, precise, opinionated.
+BANNED: em dashes, "Let's dive into", "It's worth noting", "leveraging", "synergies", "holistic", "robust", hedging ("may potentially"), sycophantic qualifiers ("Interestingly,"), rhetorical questions.
+REQUIRED: numbers first ("Share fell 2.1pp"), active voice, short words, zero filler, growth with sign (+12% or -3.2%).
+For Italian: natural professional Italian. "C'e' spazio per crescere" not "Questo rappresenta un'opportunita'".
 
 ## RULES
 - Every title MUST be a complete sentence with at least one number. Max 14 words.
