@@ -1898,7 +1898,7 @@ async function fixPptxChartCompatibility(pptxBuffer: Buffer): Promise<Buffer> {
       [/typeface="Calibri"/g, 'typeface="Arial"'],
       [/typeface="Calibri Light"/g, 'typeface="Arial"'],
       [/typeface="Aptos"/g, 'typeface="Arial"'],
-      [/typeface="Aptos Display"/g, 'typeface="Georgia"'],
+      [/typeface="Aptos Display"/g, 'typeface="Arial"'],
       [/typeface="Aptos Narrow"/g, 'typeface="Arial Narrow"'],
     ];
 

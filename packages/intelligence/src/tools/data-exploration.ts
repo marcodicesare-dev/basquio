@@ -44,15 +44,15 @@ export function createListFilesTool(ctx: ToolContext) {
     description: "List all files in the evidence workspace with metadata: name, type, sheets, row counts, column counts.",
     inputSchema: z.object({}),
     async execute() {
-      const inventory = ctx.workspace.fileInventory.map((file) => ({
+      const inventory = (ctx.workspace.fileInventory ?? []).filter(Boolean).map((file) => ({
         id: file.id,
         fileName: file.fileName,
         kind: file.kind,
         role: file.role,
-        sheets: file.sheets.map((s) => ({
-          name: s.name,
-          rowCount: s.rowCount,
-          columnCount: s.columnCount,
+        sheets: (file.sheets ?? []).filter(Boolean).map((s) => ({
+          name: s?.name ?? "unknown",
+          rowCount: s?.rowCount ?? 0,
+          columnCount: s?.columnCount ?? 0,
         })),
         hasTextContent: Boolean(file.textContent),
       }));
@@ -83,19 +83,20 @@ export function createDescribeTableTool(ctx: ToolContext) {
         return { error: `File not found: ${file}`, columns: [] };
       }
 
+      const sheets = (fileEntry.sheets ?? []).filter(Boolean);
       const targetSheet = sheet
-        ? fileEntry.sheets.find((s) => s.name === sheet)
-        : fileEntry.sheets[0];
+        ? sheets.find((s) => s?.name === sheet)
+        : sheets[0];
 
       if (!targetSheet) {
         return {
           error: sheet ? `Sheet not found: ${sheet}` : "No sheets in file",
-          availableSheets: fileEntry.sheets.map((s) => s.name),
+          availableSheets: sheets.map((s) => s?.name ?? "unknown"),
           columns: [],
         };
       }
 
-      const columns = targetSheet.columns.map((col) => ({
+      const columns = (targetSheet.columns ?? []).filter(Boolean).map((col) => ({
         name: col.name,
         type: col.inferredType,
         role: col.role,
@@ -749,12 +750,13 @@ function resolveSheetKey(
   file: string,
   sheet?: string,
 ): string | null {
-  const fileEntry = workspace.fileInventory.find((f) => f.fileName === file || f.id === file);
+  const fileEntry = (workspace.fileInventory ?? []).find((f) => f.fileName === file || f.id === file);
   if (!fileEntry) return null;
 
+  const sheets = (fileEntry.sheets ?? []).filter(Boolean);
   const targetSheet = sheet
-    ? fileEntry.sheets.find((s) => s.name === sheet)
-    : fileEntry.sheets[0];
+    ? sheets.find((s) => s?.name === sheet)
+    : sheets[0];
 
   if (!targetSheet) return null;
 

@@ -5,7 +5,7 @@ import { critiqueReportOutputSchema, type CritiqueReportOutput, type EvidenceWor
 import { buildDomainKnowledgeContext } from "../domain-knowledge";
 
 // ─── STRATEGIC CRITIC AGENT ──────────────────────────────────────
-// Model: Claude Opus 4.6 (strategic/narrative reasoning is Claude's strength)
+// Model: Claude Sonnet 4.6 (strategic/narrative reasoning at 5x lower cost than Opus)
 // Purpose: Partner-level review — "would I present this to a C-suite executive?"
 // No tools — one structured output call reviewing the full deck metadata.
 
@@ -73,7 +73,7 @@ Rate severity:
 - minor: Wording improvements, density issues, minor layout concerns`;
 
 export async function runStrategicCriticAgent(input: StrategicCriticInput): Promise<CritiqueReportOutput> {
-  const model = anthropic("claude-opus-4-6");
+  const model = anthropic("claude-sonnet-4-6");
   const domainKnowledgeContext = buildDomainKnowledgeContext({
     workspace: input.workspace,
     brief: input.brief,

@@ -72,7 +72,7 @@ export function createAuthorAgent(input: AuthorAgentInput) {
   };
 
   const provider = input.providerOverride ?? "anthropic";
-  const modelId = input.modelOverride ?? "claude-opus-4-6";
+  const modelId = input.modelOverride ?? "claude-sonnet-4-6";
   const model = provider === "anthropic" ? anthropic(modelId) : openai(modelId);
   const domainKnowledgeContext = buildDomainKnowledgeContext({
     workspace: input.workspace,

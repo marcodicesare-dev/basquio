@@ -113,6 +113,7 @@ function deSlop(text: string): string {
   // Banned phrases (case-insensitive, whole-word-ish)
   const BANNED = [
     /\blet'?s dive into\b/gi,
+    /\blet'?s explore\b/gi,
     /\bit'?s worth noting\b/gi,
     /\bmoving forward\b/gi,
     /\bin today'?s landscape\b/gi,
@@ -131,10 +132,32 @@ function deSlop(text: string): string {
     /\bscalable\b/gi,
     /\bgame[- ]?chang(er|ing)\b/gi,
     /\bcutting[- ]?edge\b/gi,
+    /\butilize\b/gi,
+    /\bdemonstrate\b/gi,
+    /\bremediate\b/gi,
+    /\bfacilitate\b/gi,
+    /\bimpactful\b/gi,
+    /\bactionable\s+insights?\b/gi,
+    /\bgo-to-market\s+optimization\b/gi,
+    /\btransformative\b/gi,
   ];
   for (const rx of BANNED) {
     t = t.replace(rx, "");
   }
+
+  // ChatGPT staccato pattern: "This isn't X, this is Y" / "This isn't about X, it's about Y"
+  t = t.replace(/\bthis\s+isn'?t\s+(?:about\s+)?[\w\s]+,\s*(?:this\s+)?(?:it'?s|is)\s+(?:about\s+)?/gi, "");
+
+  // Rhetorical questions as transitions ("So what does this mean?" / "What can we learn?")
+  t = t.replace(/\b(?:so\s+)?what\s+does\s+this\s+(?:mean|tell\s+us|imply)\??\s*/gi, "");
+  t = t.replace(/\bwhat\s+can\s+we\s+(?:learn|take\s+away)\s+(?:from\s+this)?\??\s*/gi, "");
+
+  // Overconfident without evidence
+  t = t.replace(/\b(clearly|obviously|undoubtedly|without\s+a\s+doubt),?\s*/gi, "");
+
+  // Escalating triple lists ("fast, reliable, and transformative")
+  // We can't catch all triples, but catch the telltale "and [adjective]" after two commas
+  // This is too aggressive as a regex — skip for now, handle in prompt
 
   // Hedging phrases
   t = t.replace(/\bmay potentially\b/gi, "may");
@@ -142,16 +165,19 @@ function deSlop(text: string): string {
   t = t.replace(/\bit appears that\b/gi, "");
   t = t.replace(/\bit seems that\b/gi, "");
   t = t.replace(/\bwe observed that\b/gi, "");
+  t = t.replace(/\bit is important to note that\b/gi, "");
+  t = t.replace(/\bit should be noted that\b/gi, "");
+  t = t.replace(/\bthis suggests that\b/gi, "");
 
   // Sycophantic openers (strip word + comma)
-  t = t.replace(/^(Interestingly|Notably|Importantly|Remarkably|Significantly|Crucially),?\s*/i, "");
+  t = t.replace(/^(Interestingly|Notably|Importantly|Remarkably|Significantly|Crucially|Furthermore|Moreover|Additionally),?\s*/i, "");
 
   // Exclamation marks in analytical text → periods
   t = t.replace(/!/g, ".");
 
   // Strip gerund-starting bullets (in a bullet context, this is "Driving...", "Optimizing...")
   // We only strip the gerund prefix, keep the content
-  t = t.replace(/^(Driving|Optimizing|Leveraging|Enabling|Fostering|Spearheading|Pioneering|Championing)\s+/i, "");
+  t = t.replace(/^(Driving|Optimizing|Leveraging|Enabling|Fostering|Spearheading|Pioneering|Championing|Transforming|Delivering|Accelerating|Unlocking)\s+/i, "");
 
   // Clean up double spaces, double commas, leading/trailing commas
   t = t.replace(/,\s*,/g, ",");
@@ -3200,9 +3226,26 @@ Return a V1DeckPlan with slides and charts.`,
           // Apply filter (registry-aware: handles GROCERY vs Grocery, V. Valore vs V.Valore, etc.)
           let filtered = v1ApplyFilter(rows, planned.dataSpec.filter, sheetRegistry);
           if (filtered.length === 0 && planned.dataSpec.filter && planned.dataSpec.filter !== "none") {
-            // Filter returned 0 rows — fall back to unfiltered data rather than failing
-            console.warn(`[basquio-author] Chart ${planned.chartId}: filter "${planned.dataSpec.filter}" returned 0 rows. Falling back to unfiltered data (${rows.length} rows).`);
-            filtered = rows;
+            // Step 1: Try substring match on filter value (e.g., "GROCERY" matching "TOTAL GROCERY")
+            const filterMatch = planned.dataSpec.filter.match(/=\s*['"]?(.+?)['"]?\s*$/);
+            if (filterMatch) {
+              const targetValue = filterMatch[1].toLowerCase();
+              const partialFiltered = rows.filter(row =>
+                Object.values(row).some(v =>
+                  String(v ?? "").toLowerCase().includes(targetValue)
+                )
+              );
+              if (partialFiltered.length >= 2) {
+                filtered = partialFiltered;
+                console.warn(`[basquio-author] Chart ${planned.chartId}: exact filter failed, partial match found ${partialFiltered.length} rows`);
+              }
+            }
+
+            // Step 2: Fall back to unfiltered but respect dataSpec.limit
+            if (filtered.length === 0) {
+              console.warn(`[basquio-author] Chart ${planned.chartId}: filter "${planned.dataSpec.filter}" returned 0 rows. Falling back to unfiltered data (${rows.length} rows).`);
+              filtered = rows;
+            }
           }
           if (filtered.length === 0) {
             chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows in sheet ${planned.dataSpec.sheetKey} (even unfiltered)` });
@@ -3211,6 +3254,16 @@ Return a V1DeckPlan with slides and charts.`,
 
           // Group by dimensions, aggregate measures
           const grouped = v1GroupAndAggregate(filtered, planned.dataSpec);
+
+          // ─── MINIMUM CATEGORY CHECK ───
+          // Charts with < 2 categories are meaningless (1 bar, 1 line point).
+          // Tables, funnels, and waterfall/bridge can be meaningful with 1 category.
+          const SINGLE_CATEGORY_OK = ["table", "funnel", "waterfall", "kpi_card"];
+          if (grouped.categories.length < 2 && !SINGLE_CATEGORY_OK.includes(planned.chartType)) {
+            console.warn(`[basquio-author] Chart ${planned.chartId}: only ${grouped.categories.length} category after filtering — chart would be meaningless. Skipping.`);
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `Only ${grouped.categories.length} category — chart would be meaningless` });
+            continue;
+          }
 
           // ─── EXHIBIT ENFORCEMENT (deterministic, $0) ───
           // Override chart type if it's wrong for the analytical question
@@ -3855,9 +3908,15 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
               : slideSpec.layout;
 
             // --- Title: locked from narrative arc, never from LLM ---
+            // Use != null + length check (not JS falsy ||) to prevent empty arc titles
+            // from falling through to LLM-generated topic labels
             const arcSlide = arcSlideMap.get(slideSpec.position);
-            let finalTitle = arcSlide?.title || slideOutput.title;
-            const finalKicker = arcSlide?.kicker || slideOutput.kicker;
+            let finalTitle = (arcSlide?.title != null && arcSlide.title.length > 0)
+              ? arcSlide.title
+              : slideOutput.title;
+            const finalKicker = (arcSlide?.kicker != null && arcSlide.kicker.length > 0)
+              ? arcSlide.kicker
+              : slideOutput.kicker;
 
             // --- Title quality gate: non-cover content titles MUST contain a number ---
             // Cover is exempted because its title can be the deck's main claim.
@@ -3948,7 +4007,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
                   ? "—"  // Em dash = graceful "no data" instead of fake placeholder
                   : m.value,
                 // Force numeric delta or empty string — no descriptive text
-                delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim())
+                delta: m.delta && /^([+-]?\d+\.?\d*\s*(%|pts|pp|p\.p\.|M|K|€|£|\$|mln|bln|bn)|flat|stable|—|n\/a)$/i.test(m.delta.trim())
                   ? m.delta.trim()
                   : "",
               }));
@@ -4234,7 +4293,7 @@ Fix the issues while maintaining the governing thought.`,
                 value: /[XN?_]{1,3}\s*(mln|bln|%|pp|pts|k|m|b)/i.test(m.value) || m.value.trim() === "X" || m.value.trim() === "N/A"
                   ? "—"
                   : m.value,
-                delta: m.delta && /^[+-]?\d|flat|stable|—/i.test(m.delta.trim()) ? m.delta.trim() : "",
+                delta: m.delta && /^([+-]?\d+\.?\d*\s*(%|pts|pp|p\.p\.|M|K|€|£|\$|mln|bln|bn)|flat|stable|—|n\/a)$/i.test(m.delta.trim()) ? m.delta.trim() : "",
               }));
             }
 
@@ -4430,8 +4489,8 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       // Budget-aware critic selection:
       // - Always run factual (GPT-5.4, ~$0.10-0.15)
-      // - Only run strategic (Opus, ~$0.30-0.50) if budget allows
-      const canAffordStrategic = remainingBudget() > 0.40;
+      // - Only run strategic (Sonnet, ~$0.05-0.08) if budget allows
+      const canAffordStrategic = remainingBudget() > 0.10;
 
       const factualPromise = runCriticAgent({
         workspace,
@@ -4463,15 +4522,15 @@ export const basquioCritiqueRevise = inngest.createFunction(
         : Promise.resolve({ issues: [] as never[], overallAssessment: "Skipped — budget conservation", verdict: "pass" as const, narrativeScore: 0 });
 
       if (!canAffordStrategic) {
-        console.warn(`[basquio-critique] Skipping strategic (Opus) critic — only $${remainingBudget().toFixed(2)} remaining`);
+        console.warn(`[basquio-critique] Skipping strategic (Sonnet) critic — only $${remainingBudget().toFixed(2)} remaining`);
       }
 
       const [factual, strategic] = await Promise.all([factualPromise, strategicPromise]);
 
-      // Factual critic defaults to gpt-5.4 (cross-model), strategic uses claude-opus-4-6
+      // Factual critic defaults to gpt-5.4 (cross-model), strategic uses claude-sonnet-4-6
       const stepCostUsd =
         computeStepCost(factualTokens, "gpt-5.4") +
-        (canAffordStrategic ? computeStepCost(strategicTokens, "claude-opus-4-6") : 0);
+        (canAffordStrategic ? computeStepCost(strategicTokens, "claude-sonnet-4-6") : 0);
 
       return { factual, strategic, stepCostUsd };
     });
@@ -4891,13 +4950,56 @@ export const basquioExport = inngest.createFunction(
       // ── END PRE-UPLOAD QA ─────────────────────────────────────
       const finalDegraded = degradedDelivery || !qaPassed;
 
-      // Upload PPTX (always — even degraded, user should still get something)
+      // ── DIGNIFIED MINIMUM CHECK ─────────────────────────────
+      // If too many metrics are placeholder em-dashes, the deck is garbage.
+      // Ship a 2-slide dignified minimum instead of 12 slides of nonsense.
+      let pptxToUpload = pptxBuffer;
+      const allMetrics = filteredSlides.flatMap((s: { metrics?: unknown }) => {
+        const m = s.metrics;
+        if (!m) return [];
+        const arr = typeof m === "string" ? JSON.parse(m) : m;
+        return Array.isArray(arr) ? arr : [];
+      });
+      const placeholderMetricCount = allMetrics.filter((m: { value?: string }) => m.value === "—" || m.value === "---").length;
+      const placeholderRatio = allMetrics.length > 0 ? placeholderMetricCount / allMetrics.length : 0;
+
+      if (finalDegraded && placeholderRatio > 0.5 && allMetrics.length >= 4) {
+        console.warn(`[basquio-export] ${Math.round(placeholderRatio * 100)}% of metrics are placeholders (${placeholderMetricCount}/${allMetrics.length}). Shipping dignified minimum instead of degraded deck.`);
+        // Re-render with just cover + status slide
+        const coverTitle = filteredSlides[0]?.title ?? (deckTitle || "Analysis").slice(0, 100);
+        const dignifiedSlides = [
+          { id: "cover", position: 1, layoutId: "cover", title: coverTitle, subtitle: "Preliminary analysis",
+            kicker: undefined, body: undefined, bullets: undefined, chartId: undefined, metrics: undefined,
+            callout: undefined, highlightCategories: undefined, evidenceIds: [] as string[] },
+          { id: "status", position: 2, layoutId: "title-body", title: "Full analysis in progress",
+            body: "Our analysis engine is processing the uploaded data. A complete deck with charts and insights will be available shortly. Please re-run the analysis for a full report.",
+            kicker: undefined, bullets: undefined, chartId: undefined, metrics: undefined,
+            callout: { text: "Re-run analysis for complete results", tone: "accent" }, highlightCategories: undefined,
+            subtitle: undefined, evidenceIds: [] as string[] },
+        ];
+        try {
+          const dignifiedArtifact = await renderV2PptxArtifact({
+            slides: dignifiedSlides as any, charts: [],
+            deckTitle: deckTitle || "Basquio Analysis",
+            brandTokens: templateProfile?.brandTokens as Record<string, unknown> | undefined,
+            exportMode,
+          });
+          const dignifiedBuffer = Buffer.isBuffer(dignifiedArtifact.buffer)
+            ? dignifiedArtifact.buffer
+            : Buffer.from((dignifiedArtifact.buffer as { data: number[] }).data);
+          pptxToUpload = dignifiedBuffer;
+        } catch (e) {
+          console.warn("[basquio-export] Failed to render dignified minimum, uploading original degraded deck:", e);
+        }
+      }
+
+      // Upload PPTX (always — dignified minimum or full deck)
       await uploadToStorage({
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
         serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
         bucket: "artifacts",
         storagePath: pptxPath,
-        body: pptxBuffer,
+        body: pptxToUpload,
         contentType: pptxArtifact.mimeType,
       });
 
