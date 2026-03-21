@@ -140,15 +140,13 @@ const DEFAULT_TOKENS: BrandTokens = {
     calloutOrange: "E8A84C",
   },
   typography: {
-    // Font strategy: Use universally-available safe fonts.
-    // Playfair Display / DM Sans / JetBrains Mono are the JSX v2 spec targets,
-    // but PptxGenJS cannot embed fonts. If client has Google Fonts installed,
-    // they can swap via Find & Replace in PowerPoint. Georgia/Arial/Courier New
-    // are visually close and render correctly on every platform.
-    // See: .context/march21-full-audit-and-roadmap.md → Font Strategy
-    headingFont: "Georgia",      // Serif — safe fallback for Playfair Display
-    bodyFont: "Arial",           // Sans — safe fallback for DM Sans
-    monoFont: "Courier New",     // Mono — safe fallback for JetBrains Mono
+    // Font strategy: Arial ONLY for maximum cross-platform compatibility.
+    // Georgia renders differently across PowerPoint, Google Slides, and Keynote.
+    // Arial is the ONE font guaranteed pixel-identical everywhere.
+    // PptxGenJS cannot embed fonts — so we must use universally-installed fonts.
+    headingFont: "Arial",        // Sans — universal, identical on all platforms
+    bodyFont: "Arial",           // Sans — universal, identical on all platforms
+    monoFont: "Courier New",     // Mono — universal, identical on all platforms
     coverTitleSize: 40,          // JSX: 56px → scaled for PPTX
     titleSize: 22,               // JSX: 24px → action titles
     subtitleSize: 14,            // JSX: 12px body → slightly larger for PPTX readability
@@ -216,7 +214,7 @@ const BOWER_TOKENS: BrandTokens = {
     calloutOrange: "D97706",
   },
   typography: {
-    headingFont: "Georgia",  // Serif heading = consulting classic (safe on all platforms)
+    headingFont: "Arial",    // All-Arial for cross-platform pixel consistency
     bodyFont: "Arial",
     monoFont: "Courier New",
     coverTitleSize: 36,

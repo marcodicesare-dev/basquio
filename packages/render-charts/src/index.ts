@@ -290,6 +290,9 @@ export function renderV2ChartSvg(
   const isPie = chart.chartType === "pie" || chart.chartType === "doughnut";
   const isHorizontal = chart.chartType === "horizontal_bar";
   const isStacked = chart.chartType === "stacked_bar" || chart.chartType === "stacked_bar_100";
+  const isBubble = chart.chartType === "bubble";
+  const isRadar = chart.chartType === "radar";
+  const isCombo = chart.chartType === "combo";
 
   // Build series data
   const seriesNames = chart.series.length > 0
@@ -302,12 +305,35 @@ export function renderV2ChartSvg(
     chart.title.toLowerCase().includes("share") ||
     chart.title.toLowerCase().includes("quota");
 
-  // Format numbers based on unit/intent
+  // Format numbers based on unit/intent — consulting-grade: no trailing .0, compact, precise
   const formatValue = (v: number): string => {
-    if (isPercentage) return `${v.toFixed(1)}%`;
-    if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-    if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
-    return v.toFixed(v % 1 === 0 ? 0 : 1);
+    if (isPercentage) {
+      // 12.0% → "12%", 12.3% → "12.3%"
+      return v % 1 === 0 ? `${v.toFixed(0)}%` : `${v.toFixed(1)}%`;
+    }
+    if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
+    if (Math.abs(v) >= 1_000_000) {
+      const m = v / 1_000_000;
+      return m % 1 === 0 ? `${m.toFixed(0)}M` : `${m.toFixed(1)}M`;
+    }
+    if (Math.abs(v) >= 10_000) return `${(v / 1_000).toFixed(0)}K`;
+    if (Math.abs(v) >= 1_000) {
+      const k = v / 1_000;
+      return k % 1 === 0 ? `${k.toFixed(0)}K` : `${k.toFixed(1)}K`;
+    }
+    return v % 1 === 0 ? v.toFixed(0) : v.toFixed(1);
+  };
+
+  // Abbreviate long category labels for x-axis readability
+  const abbreviateLabel = (label: string, maxLen = 16): string => {
+    if (label.length <= maxLen) return label;
+    // Try splitting on common separators and abbreviating
+    const parts = label.split(/[\s/,]+/);
+    if (parts.length > 2) {
+      // Keep first word + abbreviated rest
+      return parts.map((p, i) => i === 0 ? p : (p.length > 4 ? p.slice(0, 3) + "." : p)).join(" ");
+    }
+    return label.slice(0, maxLen - 1) + "\u2026"; // ellipsis
   };
 
   // Build ECharts series
@@ -414,6 +440,83 @@ export function renderV2ChartSvg(
           emphasis: { focus: seriesNames.length > 1 ? "series" : "self" as const },
         };
       });
+
+  // Bubble: scatter with variable size (3rd dimension)
+  if (isBubble && echartsSeries.length > 0) {
+    const bubbleSeries = seriesNames.length >= 2 ? seriesNames : [seriesNames[0], seriesNames[0]];
+    const xKey = bubbleSeries[0];
+    const yKey = bubbleSeries.length > 1 ? bubbleSeries[1] : bubbleSeries[0];
+    const sizeKey = bubbleSeries.length > 2 ? bubbleSeries[2] : bubbleSeries[0];
+    const maxSize = Math.max(...chart.data.map(r => Math.abs(Number(r[sizeKey]) || 0)));
+    echartsSeries.length = 0;
+    echartsSeries.push({
+      type: "scatter",
+      data: chart.data.map((row, i) => {
+        const x = Number(row[xKey]) || 0;
+        const y = Number(row[yKey]) || 0;
+        const size = Number(row[sizeKey]) || 0;
+        return {
+          value: [x, y],
+          symbolSize: maxSize > 0 ? Math.max(8, (Math.abs(size) / maxSize) * 60) : 20,
+          itemStyle: { color: palette[i % palette.length], opacity: 0.8 },
+          label: {
+            show: true,
+            formatter: () => String(row[chart.xAxis] ?? ""),
+            position: "top" as const,
+            color: muted,
+            fontFamily: theme.bodyFont,
+            fontSize: 9,
+          },
+        };
+      }),
+    });
+  }
+
+  // Radar: polygon chart for multi-dimensional comparison
+  if (isRadar) {
+    const radarDimensions = seriesNames.length > 0 ? seriesNames : categories;
+    const radarMax = radarDimensions.map(dim =>
+      Math.max(...chart.data.map(r => Math.abs(Number(r[dim]) || 0))) * 1.2
+    );
+    echartsSeries.length = 0;
+    const radarData = chart.data.slice(0, 4).map((row, i) => ({
+      name: String(row[chart.xAxis] ?? `Series ${i + 1}`),
+      value: radarDimensions.map(dim => Number(row[dim]) || 0),
+      lineStyle: { color: palette[i % palette.length], width: 2 },
+      areaStyle: { color: palette[i % palette.length], opacity: 0.15 },
+      itemStyle: { color: palette[i % palette.length] },
+    }));
+    echartsSeries.push({
+      type: "radar",
+      data: radarData,
+      symbol: "circle",
+      symbolSize: 5,
+    });
+    // Radar config applied after option construction (see below)
+  }
+
+  // Combo: first series as bar, remaining as line (common in FMCG for value + growth overlay)
+  if (isCombo && echartsSeries.length >= 2) {
+    // First series = bars, rest = lines on secondary y-axis
+    echartsSeries[0].type = "bar";
+    echartsSeries[0].barMaxWidth = 44;
+    echartsSeries[0].itemStyle = {
+      color: palette[0],
+      borderRadius: [4, 4, 0, 0],
+    };
+    for (let i = 1; i < echartsSeries.length; i++) {
+      echartsSeries[i].type = "line";
+      echartsSeries[i].yAxisIndex = 1;
+      echartsSeries[i].smooth = 0.3;
+      echartsSeries[i].lineStyle = {
+        width: 2,
+        color: palette[i % palette.length],
+        type: i === 1 ? "solid" : "dashed",
+      };
+      echartsSeries[i].symbolSize = 5;
+      echartsSeries[i].symbol = "circle";
+    }
+  }
 
   // Waterfall: true bridge chart with invisible base bars
   if (chart.chartType === "waterfall" && echartsSeries.length > 0) {
@@ -563,7 +666,8 @@ export function renderV2ChartSvg(
     height,
   });
 
-  const option: Record<string, unknown> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const option: Record<string, any> = {
     backgroundColor: bg,
     animation: false,
     ...titleConfig,
@@ -574,14 +678,14 @@ export function renderV2ChartSvg(
       itemWidth: 12,
       itemHeight: 8,
     } : undefined,
-    grid: isPie ? undefined : {
+    grid: (isPie || isRadar) ? undefined : {
       top: topMargin,
-      right: chart.chartType === "pareto" ? 48 : 24,
+      right: (chart.chartType === "pareto" || isCombo) ? 48 : 24,
       bottom: chart.sourceNote ? 32 : 20,
       left: 16,
       containLabel: true,
     },
-    ...(isPie ? {} : isHorizontal ? {
+    ...((isPie || isRadar) ? {} : isHorizontal ? {
       xAxis: {
         type: "value",
         axisLine: { lineStyle: { color: border } },
@@ -609,19 +713,48 @@ export function renderV2ChartSvg(
     } : {
       xAxis: {
         type: "category",
-        data: categories,
+        data: categories.length > 8
+          ? categories.map(c => abbreviateLabel(c, 12))
+          : categories.map(c => abbreviateLabel(c, 20)),
         axisLine: { lineStyle: { color: border } },
         axisLabel: {
           color: muted,
           fontFamily: theme.bodyFont,
-          fontSize: 10,
-          width: 100,
-          overflow: "truncate",
-          rotate: categories.length > 8 ? 30 : 0,
+          fontSize: categories.length > 10 ? 9 : 10,
+          width: 140,
+          overflow: "break",
+          // Rotate when many categories OR long labels (common in Italian/FMCG data)
+          rotate: categories.length > 6 ? (categories.length > 12 ? 45 : 30) : 0,
+          interval: 0, // Show ALL labels — never skip
         },
         axisTick: { show: false },
       },
-      yAxis: chart.chartType === "pareto" ? [
+      yAxis: isCombo ? [
+        {
+          type: "value",
+          axisLine: { show: false },
+          axisLabel: { color: muted, fontFamily: theme.bodyFont, fontSize: 10, formatter: (v: number) => formatValue(v) },
+          splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
+        },
+        {
+          type: "value",
+          axisLine: { show: false },
+          axisLabel: { color: dim, fontFamily: theme.bodyFont, fontSize: 9, formatter: (v: number) => `${v.toFixed(1)}%` },
+          splitLine: { show: false },
+        },
+      ] : chart.chartType === "stacked_bar_100" ? {
+        type: "value",
+        min: 0,
+        max: 100,
+        axisLine: { show: false },
+        axisLabel: {
+          color: muted,
+          fontFamily: theme.bodyFont,
+          fontSize: 10,
+          formatter: (v: number) => `${v}%`,
+        },
+        splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
+      } : chart.chartType === "pareto" ? [
         {
           type: "value",
           axisLine: { show: false },
@@ -640,7 +773,7 @@ export function renderV2ChartSvg(
         axisLabel: {
           color: muted,
           fontFamily: theme.bodyFont,
-          fontSize: 9,
+          fontSize: 10,
           formatter: (v: number) => formatValue(v),
         },
         splitLine: { lineStyle: { color: border, opacity: 0.35, type: "dashed" } },
@@ -649,6 +782,28 @@ export function renderV2ChartSvg(
     series: echartsSeries,
     ...sourceConfig,
   };
+
+  // Radar: add radar-specific config (must be after option construction)
+  if (isRadar) {
+    const radarDimensions = seriesNames.length > 0 ? seriesNames : categories;
+    const radarMax = radarDimensions.map(dim =>
+      Math.max(...chart.data.map(r => Math.abs(Number(r[dim]) || 0))) * 1.2
+    );
+    option.radar = {
+      indicator: radarDimensions.map((dim, i) => ({
+        name: abbreviateLabel(dim, 14),
+        max: radarMax[i],
+      })),
+      shape: "polygon",
+      splitArea: { areaStyle: { color: ["transparent", `${border}15`] } },
+      splitLine: { lineStyle: { color: border, opacity: 0.4 } },
+      axisLine: { lineStyle: { color: border, opacity: 0.4 } },
+      axisName: { color: muted, fontFamily: theme.bodyFont, fontSize: 10 },
+    };
+    // Remove xAxis/yAxis for radar
+    delete option.xAxis;
+    delete option.yAxis;
+  }
 
   instance.setOption(option);
   const svg = instance.renderToSVGString();
@@ -665,16 +820,21 @@ function mapV2ChartType(chartType: string): string {
     case "stacked_bar":
     case "stacked_bar_100":
     case "waterfall":
+    case "combo":
       return "bar";
     case "line":
     case "area":
       return "line";
     case "scatter":
+    case "bubble":
       return "scatter";
     case "pie":
     case "doughnut":
       return "pie";
+    case "radar":
+      return "radar";
     default:
+      console.warn(`[basquio-chart] Unknown chart type "${chartType}", falling back to bar`);
       return "bar";
   }
 }
