@@ -72,8 +72,12 @@ export function createVerifyClaimTool(ctx: CritiqueToolContext) {
               confidence = verified ? 1.0 : 0.5;
             }
           } else {
-            verified = true;
-            confidence = 0.8;
+            // Evidence exists but no expected value to compare — NOT verified.
+            // The critic must provide an expectedValue to confirm the claim.
+            // Marking this as verified would be a hallucination channel.
+            verified = false;
+            confidence = 0.3;
+            discrepancy = "Evidence exists but no expectedValue was provided to verify against. Claim is unverified.";
           }
         } else {
           discrepancy = `Evidence ref ${params.evidenceId} not found in notebook`;

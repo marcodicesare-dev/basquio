@@ -2583,12 +2583,32 @@ export const basquioUnderstand = inngest.createFunction(
         console.info(`[understand] Question routed: ${questionRoutes.map(r => r.id).join(", ")} (domain: ${questionRoutes[0].domain})`);
       }
 
+      // Compute available derived metrics from the actual data columns
+      const availableColumns: string[] = [];
+      for (const file of workspace?.fileInventory ?? []) {
+        for (const sheet of (file as { sheets?: Array<{ columns?: Array<{ name?: string }> }> }).sheets ?? []) {
+          for (const col of sheet?.columns ?? []) {
+            if (col?.name) availableColumns.push(col.name);
+          }
+        }
+      }
+      const routeDerivatives: Record<string, string[]> = {};
+      for (const route of questionRoutes.slice(0, 3)) {
+        const derivs = getRequiredDerivatives(route, availableColumns);
+        if (derivs.length > 0) {
+          routeDerivatives[route.id] = derivs.map(d => d.id);
+          console.info(`[understand] Route "${route.id}" → ${derivs.length} computable derivatives: ${derivs.map(d => d.id).join(", ")}`);
+        }
+      }
+
       // analysis_result MUST succeed — without it, author crashes with NonRetriableError
       await persistWorkingPaper(runId, "analysis_result", {
         analysis: result.analysis,
         clarifiedBrief: result.clarifiedBrief,
         storylinePlan: result.storylinePlan,
         questionRoutes: questionRoutes.slice(0, 3).map(r => ({ id: r.id, name: r.name, domain: r.domain, requiredEvidence: r.requiredEvidence, diagnosticMotifs: r.diagnosticMotifs, recommendationLevers: r.recommendationLevers })),
+        computableDerivatives: routeDerivatives,
+        availableColumns: availableColumns.slice(0, 100),
       });
 
       // Persist RunIntent (best-effort)
@@ -4752,14 +4772,44 @@ export const basquioCritiqueRevise = inngest.createFunction(
       const postMajor = postLintResult.slideResults.flatMap(r => r.result.violations).filter(v => v.severity === "major").length
         + postLintResult.deckViolations.filter(v => v.severity === "major").length;
 
-      // Re-run rendering contract
+      // Re-run per-slide rendering contract
+      let postSlideContractViolations = 0;
+      for (const s of postRevisionSlides) {
+        const chart = postRevisionCharts.find(c => c.id === s.chartId);
+        const scr = validateSlideContract({
+          layoutId: s.layoutId ?? "title-body",
+          chartType: chart?.chartType,
+          title: s.title,
+          body: s.body ?? undefined,
+          bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+          metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+          callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+        });
+        postSlideContractViolations += scr.violations.length;
+      }
+
+      // Re-run deck-level rendering contract
       const postDeckContract = validateDeckContract(
         postRevisionSlides.map(s => ({ layoutId: s.layoutId ?? "title-body", chartType: postRevisionCharts.find(c => c.id === s.chartId)?.chartType }))
       );
-      const contractMajor = postDeckContract.violations.length;
+      const contractMajor = postDeckContract.violations.length + postSlideContractViolations;
+
+      // Re-run evidence validation
+      let postEvidenceMajor = 0;
+      try {
+        const analysisWp = await loadWorkingPaper<{ questionRoutes?: Array<{ requiredEvidence: string[] }> }>(runId, "analysis_result");
+        const requiredEvidence = analysisWp?.questionRoutes?.flatMap(r => r.requiredEvidence) ?? [];
+        if (requiredEvidence.length > 0) {
+          const allEvidenceIds = postRevisionSlides.flatMap(s => s.evidenceIds ?? []);
+          const deckResult = validateSlideEvidence("deck", requiredEvidence, allEvidenceIds);
+          if (!deckResult.valid && deckResult.coverage < 0.5) {
+            postEvidenceMajor = 1;
+          }
+        }
+      } catch { /* analysis working paper may not exist */ }
 
       const finalCritical = postCritical;
-      const finalMajor = postMajor + contractMajor;
+      const finalMajor = postMajor + contractMajor + postEvidenceMajor;
       const publishGrade = finalCritical > 0 ? "red" : finalMajor > 0 ? "yellow" : "green";
       await updateDeliveryStatus(runId, publishGrade === "green" ? "reviewed" : "degraded");
       console.info(`[basquio-critique] Post-revision publish grade: ${publishGrade} (${finalCritical} critical, ${finalMajor} major)`);
