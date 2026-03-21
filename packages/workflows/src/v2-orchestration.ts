@@ -786,7 +786,7 @@ function buildDataIntelligence(workspace: EvidenceWorkspace | null): string | nu
     for (const sheet of file.sheets ?? []) {
       if (!sheet?.columns) continue;
       for (const col of sheet.columns) {
-        if (col) allColumns.push(col as typeof allColumns[0]);
+        if (col?.name) allColumns.push(col as typeof allColumns[0]);
       }
     }
   }
@@ -2139,6 +2139,18 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
         storylinePlan: null,
         clarifiedBrief: null,
       };
+      // CRITICAL: persist the fallback analysis so the author child can find it.
+      // Without this, author crashes with "Analysis result not found".
+      try {
+        await persistWorkingPaper(runId, "analysis_result", {
+          analysis: analystResult.analysis,
+          clarifiedBrief: analystResult.clarifiedBrief,
+          storylinePlan: analystResult.storylinePlan,
+        });
+      } catch (e) {
+        console.error("[basquio-v2] Failed to persist fallback analysis_result:", e);
+        // If we can't even write the fallback, the run is truly unrecoverable
+      }
     }
 
     // ─── STEP 2.5+3+4: PLAN + AUTHOR + POLISH (child function) ────

@@ -113,18 +113,22 @@ function collectCueMatches(haystack: string, cues: string[]) {
 }
 
 function collectWorkspaceText(workspace: EvidenceWorkspace) {
-  const inventory = workspace.fileInventory.flatMap((file) => {
-    const sheetBits = file.sheets.flatMap((sheet) => [
-      sheet.name,
-      ...sheet.columns.map((column) => column.name),
-    ]);
+  const inventory = (workspace.fileInventory ?? []).flatMap((file) => {
+    if (!file) return [];
+    const sheetBits = (file.sheets ?? []).flatMap((sheet) => {
+      if (!sheet) return [];
+      return [
+        sheet.name,
+        ...(sheet.columns ?? []).map((column) => column?.name).filter(Boolean),
+      ];
+    });
 
     return [
       file.fileName,
       file.kind,
       file.role,
       file.mediaType,
-      ...file.warnings,
+      ...(file.warnings ?? []),
       ...sheetBits,
     ];
   });
