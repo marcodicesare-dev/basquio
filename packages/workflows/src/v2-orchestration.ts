@@ -4711,9 +4711,9 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       const [factual, strategic] = await Promise.all([factualPromise, strategicPromise]);
 
-      // Factual critic defaults to gpt-5.4 (cross-model), strategic uses claude-sonnet-4-6
+      // Factual critic uses gpt-5.4-mini (cross-model), strategic uses claude-sonnet-4-6
       const stepCostUsd =
-        computeStepCost(factualTokens, "gpt-5.4") +
+        computeStepCost(factualTokens, "gpt-5.4-mini") +
         (canAffordStrategic ? computeStepCost(strategicTokens, "claude-sonnet-4-6") : 0);
 
       return { factual, strategic, stepCostUsd };

@@ -51,7 +51,7 @@ export function createCriticAgent(input: CriticAgentInput) {
   // Cross-model: use opposite provider from the author
   const authorProvider = input.authorProvider ?? "anthropic";
   const criticProvider = authorProvider === "anthropic" ? "openai" : "anthropic";
-  const modelId = input.modelOverride ?? (criticProvider === "openai" ? "gpt-5.4" : "claude-opus-4-6");
+  const modelId = input.modelOverride ?? (criticProvider === "openai" ? "gpt-5.4-mini" : "claude-haiku-4-5");
   const model = criticProvider === "openai" ? openai(modelId) : anthropic(modelId);
   const domainKnowledgeContext = buildDomainKnowledgeContext({
     workspace: input.workspace,

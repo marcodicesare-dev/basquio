@@ -131,7 +131,7 @@ ${domainKnowledgeContext ? `\n\n${domainKnowledgeContext}` : ""}`,
       compute_derived: createComputeDerivedTool(ctx),
       read_support_doc: createReadSupportDocTool(ctx),
     },
-    stopWhen: stepCountIs(30),
+    stopWhen: stepCountIs(20),
     output: Output.object({ schema: analysisReportSchema }),
     onStepFinish: input.onStepFinish,
   });
