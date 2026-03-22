@@ -43,7 +43,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@discordjs/opus"
+      "@discordjs/opus",
+      "@resvg/resvg-js"
     ]
   }
 }

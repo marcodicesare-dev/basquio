@@ -1814,26 +1814,22 @@ export async function renderV2PptxArtifact(
     if (s.chartId) chartSlideMap.set(s.chartId, s.title);
   }
 
-  // Initialize resvg WASM once — this is the WASM build that works everywhere
-  // (Vercel serverless, Edge, local). No native binaries, no node-gyp, no webpack issues.
-  // Same engine @vercel/og uses internally for OG image generation.
-  // Load resvg WASM for SVG→PNG rasterization.
-  // Uses @resvg/resvg-wasm (pure WASM, no native binaries).
-  // webpack asyncWebAssembly experiment is enabled in next.config.ts.
-  // serverExternalPackages includes @resvg/resvg-wasm to prevent bundling through transpilePackages.
-  let ResvgClass: (new (svg: string, opts: Record<string, unknown>) => { render: () => { asPng: () => Uint8Array } }) | null = null;
+  // SVG→PNG rasterization using @resvg/resvg-js (native Node.js binding).
+  // The module name is constructed at runtime to prevent webpack from following
+  // the import chain and trying to bundle the native .node binary.
+  // This runs in Inngest serverless functions where native modules are available.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ResvgClass: any = null;
   try {
-    const resvgWasm = await import(/* webpackIgnore: true */ "@resvg/resvg-wasm");
-    try {
-      const wasmPath = require.resolve(/* webpackIgnore: true */ "@resvg/resvg-wasm/index_bg.wasm");
-      const { readFileSync } = await import(/* webpackIgnore: true */ "fs");
-      await resvgWasm.initWasm(readFileSync(wasmPath));
-    } catch {
-      // Already initialized — ignore
-    }
-    ResvgClass = resvgWasm.Resvg;
-  } catch (wasmErr) {
-    console.warn("[render-v2] Failed to load @resvg/resvg-wasm:", wasmErr);
+    // Runtime-constructed module name — invisible to webpack static analysis.
+    // Using new Function() to create a dynamic import that webpack cannot trace.
+    // This is necessary because transpilePackages causes webpack to follow the
+    // entire dependency tree of workspace packages.
+    const modName = ["@resvg", "resvg-js"].join("/");
+    const resvgMod = await (new Function("m", "return import(m)")(modName));
+    ResvgClass = resvgMod.Resvg;
+  } catch (resvgErr) {
+    console.warn("[render-v2] Failed to load @resvg/resvg-js:", resvgErr);
   }
 
   for (const chart of input.charts) {

@@ -4,18 +4,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../.."),
-  serverExternalPackages: ["sharp", "@resvg/resvg-wasm"],
-  webpack: (config, { isServer }) => {
-    // Enable WebAssembly support for @resvg/resvg-wasm
-    // The error message from webpack literally says to do this.
-    if (isServer) {
-      config.experiments = {
-        ...config.experiments,
-        asyncWebAssembly: true,
-      };
-    }
-    return config;
-  },
+  serverExternalPackages: ["sharp", "@resvg/resvg-js"],
   outputFileTracingExcludes: {
     "/*": [
       ".next/cache/**/*",

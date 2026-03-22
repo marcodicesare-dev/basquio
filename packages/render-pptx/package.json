@@ -10,7 +10,7 @@
     "@basquio/render-charts": "workspace:*",
     "@basquio/scene-graph": "workspace:*",
     "@basquio/types": "workspace:*",
-    "@resvg/resvg-wasm": "^2.6.2",
+    "@resvg/resvg-js": "^2.6.2",
     "jszip": "^3.10.1",
     "pptx-automizer": "^0.8.1",
     "pptxgenjs": "^3.12.0"
