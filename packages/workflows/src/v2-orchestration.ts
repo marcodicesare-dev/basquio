@@ -3225,7 +3225,9 @@ ALL text output (slide titles, kickers, chart titles, chart subtitles, governing
    CRITICAL: Filter values MUST match EXACT values from the [values: ...] list shown in the data sheets section.
    NEVER guess filter values from filenames. If a column's values are ["Totale Italia", "Ipermercati"], you CANNOT filter by "Discount".
    When in doubt, use "none" as the filter — the chart will show all data, which is better than 0 rows.
-6. Every analytical slide (positions 3 to N-1) MUST have a chartId. Only cover and final summary may have chartId="".
+6. Every analytical slide (positions 3 to N-1) MUST have a chartId. Only cover may have chartId="".
+   The FINAL summary/recommendation slide SHOULD have a chart (waterfall showing scenario impact, or grouped_bar comparing base vs recovery).
+   If the brief requests "scenarios" or "plan", the scenario slide MUST have a chart showing quantified projections.
 7. Prefer horizontal_bar for rankings, line for trends, stacked_bar for composition, pie only for ≤5 categories.
 8. Set highlightCategory to the focal entity name for emphasis on every chart.
 9. Sort "desc" for rankings, "asc" for smallest-first, "none" for time series.
@@ -3493,7 +3495,8 @@ Return a V1DeckPlan with slides and charts.`,
                         .slice(0, 3)
                         .map((s) => s.cat);
                     })()
-                  : [];
+                  // Default: always highlight the focal entity if available
+                  : validatedPlan.focalEntity ? [validatedPlan.focalEntity] : [];
 
           const chartResult = await persistChart(runId, {
             chartType: exhibitResult.chartType, // Enforced chart type
@@ -4038,33 +4041,46 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
               console.warn(`[basquio-author] Cover title has no number — quality degraded: "${finalTitle.slice(0, 60)}"`);
             }
 
-            // --- Body: hard word/char limits per layout ---
-            const BODY_LIMITS: Record<string, number> = {
+            // --- Body: hard WORD limits per layout (not character-based) ---
+            const BODY_WORD_LIMITS: Record<string, number> = {
               "cover": 0,
-              "exec-summary": 150,  // ~25 words
-              "chart-split": 180,   // ~30 words
-              "title-chart": 180,
-              "evidence-grid": 180,
-              "title-body": 300,    // ~50 words
-              "summary": 180,
-              "recommendation": 180,
+              "exec-summary": 25,
+              "chart-split": 30,
+              "title-chart": 30,
+              "evidence-grid": 30,
+              "title-body": 50,
+              "title-bullets": 0,  // bullets handle their own content
+              "summary": 30,
+              "recommendation": 30,
               "table": 0,
-              "comparison": 180,
+              "comparison": 30,
             };
-            const bodyLimit = BODY_LIMITS[effectiveLayout] ?? 200;
+            const bodyWordLimit = BODY_WORD_LIMITS[effectiveLayout] ?? 40;
             let sanitizedBody = slideOutput.body || "";
-            if (bodyLimit === 0) {
+            if (bodyWordLimit === 0) {
               sanitizedBody = "";
-            } else if (sanitizedBody.length > bodyLimit) {
-              // Truncate to last complete sentence within limit
-              const truncated = sanitizedBody.slice(0, bodyLimit);
+            } else {
+              const bodyWords = sanitizedBody.split(/\s+/);
+              if (bodyWords.length > bodyWordLimit) {
+                sanitizedBody = bodyWords.slice(0, bodyWordLimit).join(" ");
+                // Try to end at a sentence boundary
+                const lastPeriod = sanitizedBody.lastIndexOf(". ");
+                if (lastPeriod > sanitizedBody.length * 0.5) {
+                  sanitizedBody = sanitizedBody.slice(0, lastPeriod + 1);
+                }
+              }
+            }
+            // Legacy char-based truncation removed — word limits are authoritative
+            const _bodyLimitLegacy = 0; // keep variable to avoid breaking downstream refs
+            if (false) { // DEAD CODE — keeping structure for diff readability
+              const truncated = sanitizedBody.slice(0, 200);
               const lastSentenceEnd = Math.max(
                 truncated.lastIndexOf(". "),
                 truncated.lastIndexOf(".)"),
                 truncated.lastIndexOf("? "),
                 truncated.lastIndexOf("! "),
               );
-              sanitizedBody = lastSentenceEnd > bodyLimit * 0.4
+              sanitizedBody = lastSentenceEnd > 200 * 0.4
                 ? truncated.slice(0, lastSentenceEnd + 1).trim()
                 : truncated.trim();
             }
@@ -4191,12 +4207,15 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
                     delta: m.delta || undefined,
                   }))
                 : undefined,
-              callout: sanitizedCalloutText
-                ? {
-                    text: sanitizedCalloutText,
-                    tone: sanitizedCalloutTone,
-                  }
-                : undefined,
+              callout: (() => {
+                // Callout is REQUIRED on every content slide. If the LLM didn't generate one,
+                // derive it from the governing thought or slide title.
+                const calloutText = sanitizedCalloutText
+                  || slideSpec.governingThought
+                  || (slideSpec.role !== "cover" ? finalTitle : "");
+                if (!calloutText) return undefined;
+                return { text: calloutText, tone: sanitizedCalloutTone };
+              })(),
               evidenceIds: slideOutput.evidenceIds?.length > 0
                 ? slideOutput.evidenceIds
                 : slideSpec.evidenceRequired ?? [],

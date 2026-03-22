@@ -187,26 +187,28 @@ export function buildDeckSceneGraph(
   };
 
   const palette: Record<string, string> = {
-    text: tokens.palette?.text ?? "#111827",
+    text: tokens.palette?.text ?? "#1A1A2E",
     background: tokens.palette?.background ?? "#FFFFFF",
-    surface: tokens.palette?.surface ?? "#F8FAFC",
-    accent: tokens.palette?.accent ?? "#0F4C81",
-    accentMuted: tokens.palette?.accentMuted ?? "#DCEAF7",
+    surface: tokens.palette?.surface ?? "#F9FAFB",
+    accent: tokens.palette?.accent ?? "#1F2937",
+    accentMuted: tokens.palette?.accentMuted ?? "#F3F4F6",
     border: tokens.palette?.border ?? "#D1D5DB",
-    calloutGreen: "#16A34A",
-    calloutOrange: "#EA580C",
+    coverBg: (tokens.palette as Record<string, string>)?.coverBg ?? "#1F2937",
+    calloutGreen: (tokens.palette as Record<string, string>)?.calloutGreen ?? "#059669",
+    calloutOrange: (tokens.palette as Record<string, string>)?.calloutOrange ?? "#D97706",
   };
 
   const ctx: LayoutContext = { typography, palette };
 
   const slideScenes: SlideScene[] = slides.map((slide) => {
     const nodes = layoutSlideContent(slide, ctx);
+    const isCover = slide.layoutId === "cover";
     return {
       slideId: slide.id,
       position: slide.position,
       width: SLIDE_W,
       height: SLIDE_H,
-      background: palette.background,
+      background: isCover ? palette.coverBg : palette.background,
       nodes,
       speakerNotes: slide.speakerNotes ?? undefined,
     };
