@@ -1829,7 +1829,7 @@ export async function renderV2PptxArtifact(
       // Sharp crashes on Vercel (pnpm 10 blocks build scripts, native binaries missing).
       // Resvg has pre-compiled .node binaries — no node-gyp, no postinstall, works everywhere.
       // Same engine Vercel uses internally for @vercel/og image generation.
-      const { Resvg } = await import("@resvg/resvg-js");
+      const { Resvg } = await import(/* webpackIgnore: true */ "@resvg/resvg-js");
       const resvg = new Resvg(svg, {
         fitTo: { mode: "width" as const, value: 1920 },
         font: { loadSystemFonts: true },
