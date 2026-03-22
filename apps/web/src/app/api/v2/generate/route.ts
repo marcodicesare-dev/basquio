@@ -40,10 +40,17 @@ export async function POST(request: Request) {
     const runId = randomUUID();
 
     // Upload source files to storage and create source_file records
+    // Detect PPTX template files (user uploads their corporate template alongside data files)
     const sourceFileIds: string[] = [];
+    let templateFileId: string | undefined;
     for (const file of files) {
       const fileId = randomUUID();
       const kind = inferSourceFileKind(file.name);
+      // Any uploaded PPTX is treated as a design template (colors, fonts, layout).
+      // Data files are CSV/XLSX. Users upload PPTX specifically for branding.
+      if (kind === "pptx" && !templateFileId) {
+        templateFileId = fileId;
+      }
       const storagePath = `${workspace.organizationId}/${workspace.projectId}/${fileId}/${file.name}`;
       const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -141,6 +148,7 @@ export async function POST(request: Request) {
         sourceFileIds,
         brief: [brief, objective, thesis].filter(Boolean).join("\n\n"),
         templateProfileId: templateProfileId ?? undefined,
+        templateFileId,
       },
     });
 
