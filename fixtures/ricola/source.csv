@@ -1,0 +1,13 @@
+period,canale,brand,pack_format,valore_vendite,pezzi,prezzo_medio,quota_valore
+2025-Q1,Ipermercati,Ricola,Busta,91000,68000,1.34,14.2
+2025-Q1,Supermercati,Ricola,Busta,118000,89200,1.32,16.9
+2025-Q1,Farmacia,Ricola,Astuccio,56400,33100,1.70,12.4
+2025-Q1,Tradizionale,Ricola,Astuccio,48300,28700,1.68,9.6
+2025-Q2,Ipermercati,Ricola,Busta,88700,67600,1.31,13.5
+2025-Q2,Supermercati,Ricola,Busta,116200,90100,1.29,16.2
+2025-Q2,Farmacia,Ricola,Astuccio,55100,33400,1.65,11.8
+2025-Q2,Tradizionale,Ricola,Astuccio,46900,28900,1.62,9.1
+2025-Q3,Ipermercati,Ricola,Busta,87200,67100,1.30,13.1
+2025-Q3,Supermercati,Ricola,Busta,114400,90800,1.26,15.7
+2025-Q3,Farmacia,Ricola,Astuccio,54600,33800,1.61,11.3
+2025-Q3,Tradizionale,Ricola,Astuccio,45700,29200,1.57,8.8

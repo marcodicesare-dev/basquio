@@ -1,0 +1,17 @@
+month,channel,brand,segment,sales_value,sales_units,avg_price,share
+2025-01,Hypermarkets,Affinity,Dog Dry,125000,82000,1.52,18.1
+2025-01,Supermarkets,Affinity,Dog Dry,146000,98000,1.49,19.4
+2025-01,Discount,Affinity,Dog Dry,76000,59000,1.29,11.8
+2025-01,Pet Specialist,Affinity,Cat Wet,118000,64000,1.84,16.7
+2025-02,Hypermarkets,Affinity,Dog Dry,129000,83500,1.54,18.6
+2025-02,Supermarkets,Affinity,Dog Dry,151000,99500,1.52,19.8
+2025-02,Discount,Affinity,Dog Dry,73500,57500,1.28,11.1
+2025-02,Pet Specialist,Affinity,Cat Wet,123500,66200,1.87,17.2
+2025-03,Hypermarkets,Affinity,Dog Dry,132500,84200,1.57,18.9
+2025-03,Supermarkets,Affinity,Dog Dry,157000,101400,1.55,20.2
+2025-03,Discount,Affinity,Dog Dry,72100,56800,1.27,10.7
+2025-03,Pet Specialist,Affinity,Cat Wet,128200,67500,1.90,17.6
+2025-04,Hypermarkets,Affinity,Dog Dry,134800,85000,1.59,19.0
+2025-04,Supermarkets,Affinity,Dog Dry,162400,104300,1.56,20.8
+2025-04,Discount,Affinity,Dog Dry,71300,56100,1.27,10.5
+2025-04,Pet Specialist,Affinity,Cat Wet,130900,68400,1.91,17.9

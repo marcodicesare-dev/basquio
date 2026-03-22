@@ -756,6 +756,7 @@ export type V2PdfChart = {
   series: string[];
   unit?: string;
   sourceNote?: string;
+  imageUrl?: string;
 };
 
 export type V2PdfSlide = {
@@ -1335,12 +1336,15 @@ function renderSceneNodeHtml(
     case "chart_placeholder": {
       const chart = node.chartId ? charts.get(node.chartId) : undefined;
       if (!chart) return `<div style="${pos}"></div>`;
-      const accent = palette.accent ?? "2563EB";
-      const text = palette.text ?? "111827";
-      const muted = palette.accentMuted ?? "999";
-      const border = palette.border ?? "DDD";
-      return `<div style="${pos}">${renderSvgChart(chart, accent.replace("#", ""), text.replace("#", ""), muted.replace("#", ""), border.replace("#", ""))}</div>`;
+      if (chart.imageUrl) {
+        return `<div style="${pos}"><img src="${escHtml(chart.imageUrl)}" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>`;
+      }
+      return `<div style="${pos}display:flex;align-items:center;justify-content:center;border:1px dashed ${palette.border ?? "#DDD"};color:${palette.text ?? "#111"};font-size:10pt;">Chart unavailable</div>`;
     }
+
+    case "image":
+      if (!node.imageUrl) return `<div style="${pos}"></div>`;
+      return `<div style="${pos}"><img src="${escHtml(node.imageUrl)}" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>`;
 
     case "callout": {
       const toneColor = node.calloutTone === "green" ? (palette.positive ?? "#16A34A")

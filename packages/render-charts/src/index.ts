@@ -2,6 +2,8 @@ import * as echarts from "echarts";
 
 import type { ChartSpec } from "@basquio/types";
 
+export { rasterizeSvgToPng } from "./rasterize";
+
 type ChartRenderTheme = {
   background?: string;
   surface?: string;

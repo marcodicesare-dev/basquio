@@ -1,10 +1,9 @@
 import PptxGenJS from "pptxgenjs";
 
+import type { DeckSceneGraph, SceneNode } from "@basquio/scene-graph";
 import { getLayoutRegions, SLIDE_W, SLIDE_H, type LayoutRegions, type R } from "@basquio/scene-graph/layout-regions";
 import { getArchetypeOrDefault } from "@basquio/scene-graph/slot-archetypes";
 import { resolveChartArchetype, type ChartRenderingRules } from "@basquio/scene-graph/chart-design-system";
-import { renderShapeChart, type ShapeChartTokens } from "./shape-charts";
-import { renderV2ChartSvg, type V2ChartImageTheme } from "@basquio/render-charts";
 import type { BinaryArtifact } from "@basquio/types";
 
 // ─── HELPERS ────────────────────────────────────────────────────
@@ -57,6 +56,9 @@ export type V2ChartRow = {
   benchmarkLabel?: string;
   benchmarkValue?: number;
   sourceNote?: string;
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
 };
 
 export type ExportMode = "powerpoint-native" | "universal-compatible";
@@ -65,9 +67,11 @@ export type RenderV2PptxInput = {
   deckTitle: string;
   slides: V2SlideRow[];
   charts: V2ChartRow[];
+  sceneGraph?: DeckSceneGraph;
   brandTokens?: Partial<BrandTokens>;
   templateName?: string;
   exportMode?: ExportMode;
+  chartImages?: Map<string, Buffer>;
 };
 
 // ─── CONSULTING-GRADE DESIGN SYSTEM ─────────────────────────────
@@ -318,10 +322,18 @@ function resolveTokens(partial?: Partial<BrandTokens>, templateName?: string): B
   // near-white text invisible on the default white canvas.
   const base = (templateName && TEMPLATE_MAP[templateName.toLowerCase()]) || BOWER_TOKENS;
   if (!partial) return base;
+  const rawPalette = partial.palette as (Partial<BrandTokens["palette"]> & Record<string, string | undefined>) | undefined;
+  const normalizedPalette = partial.palette
+    ? {
+        ...partial.palette,
+        ...(rawPalette?.ink ? {} : rawPalette?.text ? { ink: rawPalette.text } : {}),
+        ...(rawPalette?.bg ? {} : rawPalette?.background ? { bg: rawPalette.background } : {}),
+      }
+    : undefined;
   return {
-    palette: { ...base.palette, ...(partial.palette as Partial<BrandTokens["palette"]>) },
+    palette: { ...base.palette, ...(normalizedPalette as Partial<BrandTokens["palette"]>) },
     typography: { ...base.typography, ...(partial.typography as Partial<BrandTokens["typography"]>) },
-    chartPalette: partial.chartPalette ?? base.chartPalette,
+    chartPalette: partial.chartPalette?.length ? partial.chartPalette : base.chartPalette,
   };
 }
 
@@ -1185,131 +1197,248 @@ function renderChartElement(
     return;
   }
 
-  // ── FALLBACK: shape-built or native chart (when image rendering failed) ──
-
-  const built = buildChartData(chart, tokens);
-  if (!built) {
-    // Render a "no data" placeholder instead of blank space
-    slide.addText("Chart data unavailable", {
-      x: region.x,
-      y: region.y + 0.3,
-      w: region.w,
-      h: region.h - 0.3,
-      fontSize: 10,
-      color: tokens.palette.muted,
-      align: "center",
-      valign: "middle",
-      fontFace: tokens.typography.bodyFont,
-    });
-    return;
-  }
-
-  const { chartData, opts, effectiveChartType } = built;
-
-  const strategy = selectChartRenderStrategy(effectiveChartType, exportMode);
-
-  // Suppress chart title when it duplicates the slide title (common LLM failure mode)
-  const chartTitleNorm = (chart.title ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const slideTitleNorm = (slideTitle ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const chartTitleIsDuplicate = chartTitleNorm.length > 0 && slideTitleNorm.length > 0 &&
-    (chartTitleNorm === slideTitleNorm || slideTitleNorm.includes(chartTitleNorm) || chartTitleNorm.includes(slideTitleNorm));
-  const showChartTitle = !chartTitleIsDuplicate && Boolean(chart.title);
-
-  // For native: render chart title externally (above the chart object)
-  // For shape-built: shape-chart renders its own title, so skip external title
-  if (strategy === "native" && showChartTitle) {
-    slide.addText(chart.title, {
-      x: region.x,
-      y: region.y,
-      w: region.w,
-      h: 0.22,
-      fontFace: tokens.typography.bodyFont,
-      fontSize: tokens.typography.chartTitleSize,
-      bold: true,
-      color: norm(tokens.palette.ink),
-    });
-  }
-
-  // Reclaim title space when chart title is suppressed (duplicate of slide title)
-  const titleOffset = (strategy === "native" && showChartTitle) ? 0.25 : 0;
-  const titleReduction = (strategy === "native" && showChartTitle) ? 0.3 : 0;
-  const chartRegion = {
+  slide.addText("Chart unavailable", {
     x: region.x,
-    y: strategy === "shape-built" ? region.y : region.y + titleOffset,
+    y: region.y + 0.3,
     w: region.w,
-    h: strategy === "shape-built" ? region.h : region.h - titleReduction,
-  };
+    h: region.h - 0.3,
+    fontSize: 10,
+    color: tokens.palette.muted,
+    align: "center",
+    valign: "middle",
+    fontFace: tokens.typography.bodyFont,
+  });
+}
 
-  // Reserve space for source note if present
-  const hasSource = Boolean(chart.sourceNote);
-  const actualChartH = hasSource ? chartRegion.h - 0.2 : chartRegion.h;
+function dataUriToBase64(uri: string): string | null {
+  const match = uri.match(/^data:[^;]+;base64,(.+)$/);
+  return match?.[1] ?? null;
+}
 
-  if (strategy === "shape-built") {
-    // Shape-built charts for cross-app compatibility (Google Slides, Keynote)
-    const shapeTokens: ShapeChartTokens = {
-      accent: norm(tokens.palette.accent),
-      ink: norm(tokens.palette.ink),
-      muted: norm(tokens.palette.muted),
-      surface: norm(tokens.palette.surface ?? "13121A"),
-      chartPalette: (tokens.chartPalette ?? []).map(norm),
-      bodyFont: tokens.typography.bodyFont,
-      headingFont: tokens.typography.headingFont,
-    };
+function toneToFillColor(tokens: BrandTokens, tone?: "accent" | "green" | "orange"): string {
+  if (tone === "green") return norm(tokens.palette.calloutGreen);
+  if (tone === "orange") return norm(tokens.palette.calloutOrange);
+  return norm(tokens.palette.accent);
+}
 
-    // Build shape-chart data from raw chart rows
-    const shapeData = {
-      labels: chart.data.map((row) => String(row[chart.xAxis] ?? "")),
-      datasets: chart.series.length > 0
-        ? chart.series.map((colName) => ({
-            label: colName,
-            data: chart.data.map((row) => {
-              const v = row[colName];
-              return typeof v === "number" ? v : parseFloat(String(v)) || 0;
-            }),
-          }))
-        : [{
-            label: chart.yAxis || chart.title,
-            data: chart.data.map((row) => {
-              const v = row[chart.yAxis];
-              return typeof v === "number" ? v : parseFloat(String(v)) || 0;
-            }),
-          }],
-    };
+function renderSceneGraphNode(
+  slide: PptxGenJS.Slide,
+  node: SceneNode,
+  tokens: BrandTokens,
+  chartImageMap?: Map<string, Buffer>,
+): void {
+  const frame = node.frame;
+  const fontFace = node.style?.fontFamily ?? tokens.typography.bodyFont;
+  const fontSize = node.style?.fontSize ?? tokens.typography.bodySize;
+  const bold = node.style?.fontWeight === "bold";
+  const color = norm((node.style?.color ?? tokens.palette.ink).replace("#", ""));
+  const align = node.style?.align ?? "left";
+  const valign = node.style?.valign ?? "top";
 
-    const fullFrame = { x: region.x, y: region.y, w: region.w, h: region.h };
-    renderShapeChart(slide, effectiveChartType, shapeData, fullFrame, shapeTokens, {
-      title: showChartTitle ? chart.title : undefined,
-      sourceNote: chart.sourceNote,
-      unit: chart.unit,
-      highlightCategories: chart.style?.highlightCategories,
-    });
-  } else {
-    // PowerPoint Native: editable OOXML charts (best experience in PowerPoint)
-    slide.addChart(
-      mapPptxChartType(pptx, effectiveChartType),
-      chartData as unknown as PptxGenJS.OptsChartData[],
-      {
-        x: chartRegion.x,
-        y: chartRegion.y,
-        w: chartRegion.w,
-        h: actualChartH,
-        ...opts,
-      } as PptxGenJS.IChartOpts,
-    );
+  switch (node.kind) {
+    case "title":
+    case "subtitle":
+    case "kicker":
+    case "body":
+    case "recommendation":
+    case "text":
+      if (!node.content) return;
+      slide.addText(node.content, {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+        fontFace,
+        fontSize,
+        bold,
+        color,
+        align,
+        valign,
+        margin: 0,
+        breakLine: true,
+      });
+      return;
+
+    case "bullet_list":
+      if (!node.items?.length) return;
+      slide.addText(
+        node.items.map((item) => ({
+          text: item,
+          options: {
+            bullet: { indent: 12 },
+            breakLine: true,
+            fontFace,
+            fontSize,
+            color,
+          },
+        })),
+        {
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+          margin: 0,
+          valign,
+        },
+      );
+      return;
+
+    case "metric_card": {
+      const metrics = node.metrics ?? [];
+      if (!metrics.length) return;
+      const cardW = frame.w / metrics.length;
+      metrics.forEach((metric, index) => {
+        const x = frame.x + cardW * index;
+        slide.addShape(PptxGenJS.ShapeType.rect, {
+          x,
+          y: frame.y,
+          w: cardW - 0.06,
+          h: frame.h,
+          fill: { color: norm(tokens.palette.surface) },
+          line: { color: norm(tokens.palette.border), width: 1 },
+        });
+        slide.addText(metric.label, {
+          x: x + 0.08,
+          y: frame.y + 0.06,
+          w: cardW - 0.18,
+          h: 0.18,
+          fontFace: tokens.typography.bodyFont,
+          fontSize: tokens.typography.kpiLabelSize,
+          bold: true,
+          color: norm(tokens.palette.muted),
+          margin: 0,
+        });
+        slide.addText(metric.value, {
+          x: x + 0.08,
+          y: frame.y + 0.24,
+          w: cardW - 0.18,
+          h: 0.34,
+          fontFace: tokens.typography.headingFont,
+          fontSize: tokens.typography.kpiValueSize,
+          bold: true,
+          color: norm(tokens.palette.accent),
+          margin: 0,
+        });
+        if (metric.delta) {
+          slide.addText(metric.delta, {
+            x: x + 0.08,
+            y: frame.y + frame.h - 0.2,
+            w: cardW - 0.18,
+            h: 0.14,
+            fontFace: tokens.typography.bodyFont,
+            fontSize: tokens.typography.bodySize - 1,
+            bold: true,
+            color: metric.delta.startsWith("-") ? norm(tokens.palette.negative) : norm(tokens.palette.positive),
+            margin: 0,
+          });
+        }
+      });
+      return;
+    }
+
+    case "callout":
+      slide.addShape(PptxGenJS.ShapeType.rect, {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+        fill: { color: toneToFillColor(tokens, node.calloutTone), transparency: 90 },
+        line: { color: toneToFillColor(tokens, node.calloutTone), width: 1.5 },
+      });
+      if (node.content) {
+        slide.addText(node.content, {
+          x: frame.x + 0.08,
+          y: frame.y + 0.04,
+          w: frame.w - 0.16,
+          h: frame.h - 0.08,
+          fontFace: tokens.typography.bodyFont,
+          fontSize: tokens.typography.bodySize,
+          bold: true,
+          color: norm(tokens.palette.ink),
+          margin: 0,
+          valign: "middle",
+        });
+      }
+      return;
+
+    case "shape":
+    case "divider":
+      slide.addShape(PptxGenJS.ShapeType.rect, {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: Math.max(frame.h, 0.01),
+        fill: { color: norm((node.fill ?? tokens.palette.border).replace("#", "")) },
+        line: { color: norm((node.stroke ?? node.fill ?? tokens.palette.border).replace("#", "")), width: node.strokeWidth ?? 0.5 },
+      });
+      return;
+
+    case "image": {
+      const imageBase64 = node.imageUrl ? dataUriToBase64(node.imageUrl) : null;
+      if (!imageBase64) return;
+      slide.addImage({
+        data: `image/png;base64,${imageBase64}`,
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+      });
+      return;
+    }
+
+    case "chart_placeholder": {
+      if (!node.chartId) return;
+      const chartImage = chartImageMap?.get(node.chartId);
+      if (!chartImage) return;
+      slide.addImage({
+        data: `image/png;base64,${chartImage.toString("base64")}`,
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+      });
+      return;
+    }
+
+    case "table":
+      if (!node.tableData || !slide.addTable) return;
+      slide.addTable(
+        [
+          node.tableData.headers.map((cell) => ({ text: cell })),
+          ...node.tableData.rows.map((row) => row.map((cell) => ({ text: cell }))),
+        ],
+        {
+          x: frame.x,
+          y: frame.y,
+          w: frame.w,
+          h: frame.h,
+          fontFace,
+          fontSize,
+          border: { type: "solid", color: norm(tokens.palette.border), pt: 1 },
+          fill: { color: norm(tokens.palette.surface) },
+          color,
+          margin: 4,
+        },
+      );
+      return;
+
+    default:
+      return;
   }
+}
 
-  // Source note below chart — clamped to never overlap footer (max y = 6.6")
-  if (chart.sourceNote) {
-    const sourceY = Math.min(chartRegion.y + actualChartH + 0.02, 6.6);
-    slide.addText(`Source: ${chart.sourceNote}`, {
-      x: chartRegion.x,
-      y: sourceY,
-      w: chartRegion.w,
-      h: 0.16,
-      fontSize: tokens.typography.sourceSize,
-      fontFace: tokens.typography.monoFont,
-      color: norm(tokens.palette.muted),
-    });
+function renderSceneGraphSlide(
+  slide: PptxGenJS.Slide,
+  sceneSlide: DeckSceneGraph["slides"][number],
+  tokens: BrandTokens,
+  chartImageMap?: Map<string, Buffer>,
+): void {
+  slide.background = { fill: norm((sceneSlide.background ?? tokens.palette.surface).replace("#", "")) };
+  for (const node of sceneSlide.nodes) {
+    renderSceneGraphNode(slide, node, tokens, chartImageMap);
+  }
+  if (sceneSlide.speakerNotes) {
+    slide.addNotes(processNewlines(sceneSlide.speakerNotes));
   }
 }
 
@@ -1792,86 +1921,33 @@ export async function renderV2PptxArtifact(
     chartsMap.set(chart.id, chart);
   }
 
-  // ── Pre-render all charts to PNG images (pixel-perfect, universal compatibility) ──
-  // Charts are rendered as high-res images via ECharts SSR + sharp.
-  // Text remains editable OOXML. Charts are pixel-perfect images.
-  const chartImageMap = new Map<string, Buffer>();
-  const chartTheme: V2ChartImageTheme = {
-    background: tokens.palette.surface,
-    cardBg: tokens.palette.card,
-    ink: tokens.palette.ink,
-    muted: tokens.palette.muted,
-    dim: tokens.palette.dim,
-    border: tokens.palette.border,
-    chartPalette: tokens.chartPalette,
-    headingFont: tokens.typography.headingFont,
-    bodyFont: tokens.typography.bodyFont,
-  };
+  const chartImageMap = input.chartImages ?? new Map<string, Buffer>();
 
-  // Find which charts duplicate their slide's title (for suppression)
-  const chartSlideMap = new Map<string, string>(); // chartId → slideTitle
-  for (const s of input.slides) {
-    if (s.chartId) chartSlideMap.set(s.chartId, s.title);
-  }
-
-  // SVG→PNG rasterization using @resvg/resvg-js (native Node.js binding).
-  // The module name is constructed at runtime to prevent webpack from following
-  // the import chain and trying to bundle the native .node binary.
-  // This runs in Inngest serverless functions where native modules are available.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let ResvgClass: any = null;
-  try {
-    // Runtime-constructed module name — invisible to webpack static analysis.
-    // Using new Function() to create a dynamic import that webpack cannot trace.
-    // This is necessary because transpilePackages causes webpack to follow the
-    // entire dependency tree of workspace packages.
-    const modName = ["@resvg", "resvg-js"].join("/");
-    const resvgMod = await (new Function("m", "return import(m)")(modName));
-    ResvgClass = resvgMod.Resvg;
-  } catch (resvgErr) {
-    console.warn("[render-v2] Failed to load @resvg/resvg-js:", resvgErr);
-  }
-
-  for (const chart of input.charts) {
-    if (chart.chartType === "table") continue; // Tables stay as OOXML
-    if (!ResvgClass) break; // WASM not available — all charts will be native shapes
-    try {
-      const slideTitle = chartSlideMap.get(chart.id);
-      const titleNorm = (chart.title ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const slideTitleNorm = (slideTitle ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const suppressTitle = titleNorm.length > 0 && slideTitleNorm.length > 0 &&
-        (titleNorm === slideTitleNorm || slideTitleNorm.includes(titleNorm) || titleNorm.includes(slideTitleNorm));
-
-      // Render at 2x resolution for retina-quality images
-      const svg = renderV2ChartSvg(chart, chartTheme, 1920, 1080, suppressTitle);
-      const resvg = new ResvgClass(svg, {
-        fitTo: { mode: "width" as const, value: 1920 },
-      });
-      const pngData = resvg.render();
-      const pngBuffer = Buffer.from(pngData.asPng());
-      chartImageMap.set(chart.id, pngBuffer);
-    } catch (err) {
-      console.warn(`[render-v2] Chart image render failed for ${chart.id}, falling back to shape:`, err);
+  if (input.sceneGraph) {
+    for (const sceneSlide of input.sceneGraph.slides) {
+      const isCover = sceneSlide.position === 1 || sceneSlide.background === input.sceneGraph.brandTokens.palette.coverBg;
+      const slide = pptx.addSlide({ masterName: isCover ? "BASQUIO_COVER" : "BASQUIO_MASTER" });
+      renderSceneGraphSlide(slide, sceneSlide, tokens, chartImageMap);
     }
-  }
+  } else {
+    const sortedSlides = [...input.slides].sort((a, b) => a.position - b.position);
 
-  const sortedSlides = [...input.slides].sort((a, b) => a.position - b.position);
+    for (const slideData of sortedSlides) {
+      const isCover = slideData.layoutId === "cover";
+      const slide = pptx.addSlide({ masterName: isCover ? "BASQUIO_COVER" : "BASQUIO_MASTER" });
+      // Explicit per-slide background — Google Slides often ignores slide master backgrounds
+      slide.background = { fill: norm(isCover ? tokens.palette.coverBg : tokens.palette.surface) };
 
-  for (const slideData of sortedSlides) {
-    const isCover = slideData.layoutId === "cover";
-    const slide = pptx.addSlide({ masterName: isCover ? "BASQUIO_COVER" : "BASQUIO_MASTER" });
-    // Explicit per-slide background — Google Slides often ignores slide master backgrounds
-    slide.background = { fill: norm(isCover ? tokens.palette.coverBg : tokens.palette.surface) };
+      if (isCover) {
+        renderCoverSlide(slide, pptx, slideData, tokens);
+      } else {
+        renderContentSlide(slide, pptx, slideData, chartsMap, tokens, input.exportMode ?? "universal-compatible", chartImageMap);
+      }
 
-    if (isCover) {
-      renderCoverSlide(slide, pptx, slideData, tokens);
-    } else {
-      renderContentSlide(slide, pptx, slideData, chartsMap, tokens, input.exportMode ?? "universal-compatible", chartImageMap);
-    }
-
-    // Speaker notes for cover
-    if (isCover && slideData.speakerNotes) {
-      slide.addNotes(processNewlines(slideData.speakerNotes));
+      // Speaker notes for cover
+      if (isCover && slideData.speakerNotes) {
+        slide.addNotes(processNewlines(slideData.speakerNotes));
+      }
     }
   }
 

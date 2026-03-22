@@ -70,6 +70,7 @@ export async function GET(
     createdAt: run.created_at,
     updatedAt: run.updated_at,
     completedAt: run.completed_at,
+    costTelemetry: run.cost_telemetry ?? null,
     artifacts,
   });
 }

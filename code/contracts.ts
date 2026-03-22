@@ -617,6 +617,7 @@ export const templateBrandTokensSchema = z.object({
       cardRadius: z.number().default(0.12),
     })
     .default({}),
+  chartPalette: z.array(z.string()).default([]),
   logo: z
     .object({
       wordmarkPath: z.string().optional(),

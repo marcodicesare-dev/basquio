@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "qa": "pnpm qa:basquio",
     "qa:basquio": "tsx scripts/qa-context.ts",
+    "test:run": "tsx scripts/test-run.ts",
     "demo:generate": "tsx scripts/run-demo-generation.ts",
     "inngest:check": "tsx scripts/check-inngest.ts",
     "workflow:dev": "pnpm --filter @basquio/workflows workflow:dev",

@@ -7,6 +7,7 @@ import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgen
 import { renderPdfArtifact, renderV2PdfArtifact, renderPdfFromSceneGraph, type V2PdfChart } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
+import { renderV2ChartSvg, rasterizeSvgToPng, type V2ChartImageTheme } from "@basquio/render-charts";
 import { buildDeckSceneGraph, auditSlideScene, type DeckSceneGraph } from "@basquio/scene-graph";
 import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/template-engine";
 import {
@@ -29,6 +30,7 @@ import {
   type V1DeckPlan,
   type V1NarrativeArc,
   type V1PlannedChart,
+  templateProfileSchema,
   type V1SlideOutput,
 } from "@basquio/types";
 
@@ -37,7 +39,7 @@ import {
   uploadToStorage,
 } from "./supabase";
 
-import { UsageTracker, checkCostBudget, logPhaseEvent } from "./observability";
+import { UsageTracker, checkCostBudget, estimateCost, logPhaseEvent } from "./observability";
 
 // ─── SHARED CALLBACK TYPES ───────────────────────────────────────
 
@@ -87,6 +89,9 @@ type ChartInput = {
   yAxis?: string;
   series?: string[];
   style?: { colors?: string[]; showLegend?: boolean; showValues?: boolean; highlightCategories?: string[] };
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
 };
 
 // Use the shared Inngest client (avoids circular import with ./index)
@@ -506,6 +511,9 @@ async function persistChart(runId: string, chart: {
   benchmarkLabel?: string;
   benchmarkValue?: number;
   sourceNote?: string;
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
 }) {
   const id = crypto.randomUUID();
 
@@ -534,6 +542,9 @@ async function persistChart(runId: string, chart: {
         benchmark_label: chart.benchmarkLabel ?? null,
         benchmark_value: chart.benchmarkValue ?? null,
         source_note: chart.sourceNote ?? null,
+        thumbnail_url: chart.thumbnailUrl ?? null,
+        width: chart.width ?? null,
+        height: chart.height ?? null,
       }),
     },
   );
@@ -543,7 +554,7 @@ async function persistChart(runId: string, chart: {
     throw new Error(`Failed to persist chart ${id} for run ${runId}: ${response.status} ${response.statusText} — ${errorBody}`);
   }
 
-  return { chartId: id, thumbnailUrl: undefined, width: 800, height: 500 };
+  return { chartId: id, thumbnailUrl: chart.thumbnailUrl, width: chart.width ?? 0, height: chart.height ?? 0 };
 }
 
 async function getChartMeta(chartId: string): Promise<{ chartType: string; categoryCount: number; seriesCount: number; rowCount?: number; colCount?: number } | null> {
@@ -700,6 +711,9 @@ async function getV2ChartRows(runId: string): Promise<V2ChartRow[]> {
     benchmarkLabel: (r.benchmark_label as string) ?? undefined,
     benchmarkValue: r.benchmark_value != null ? Number(r.benchmark_value) : undefined,
     sourceNote: (r.source_note as string) ?? undefined,
+    thumbnailUrl: (r.thumbnail_url as string) ?? undefined,
+    width: r.width != null ? Number(r.width) : undefined,
+    height: r.height != null ? Number(r.height) : undefined,
   }));
 }
 
@@ -1013,6 +1027,225 @@ async function loadWorkspaceFromDb(runId: string): Promise<EvidenceWorkspace | n
     templateProfile: row.template_profile as EvidenceWorkspace["templateProfile"],
     sheetData: {},
   } as EvidenceWorkspace;
+}
+
+type PlannerSheetColumn = {
+  name: string;
+  inferredType: string;
+  role: string;
+  sampleValues: string[];
+  uniqueCount: number;
+};
+
+type PlannerSheetInventory = {
+  sheetKey: string;
+  fileName: string;
+  sheetName: string;
+  rowCount: number;
+  columns: PlannerSheetColumn[];
+};
+
+type FilterClause = {
+  column: string;
+  operator: string;
+  value: string;
+};
+
+function normalizeLookupKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function findClosestColumnName(target: string, columns: PlannerSheetColumn[]): string | null {
+  const normalizedTarget = normalizeLookupKey(target);
+  const exact = columns.find((column) => normalizeLookupKey(column.name) === normalizedTarget);
+  if (exact) return exact.name;
+  const partial = columns.find((column) => {
+    const normalized = normalizeLookupKey(column.name);
+    return normalized.includes(normalizedTarget) || normalizedTarget.includes(normalized);
+  });
+  return partial?.name ?? null;
+}
+
+function parseFilterClauses(filter: string): FilterClause[] {
+  if (!filter || filter === "none") return [];
+  return filter
+    .split(/\s+AND\s+/i)
+    .map((clause) => clause.trim())
+    .map((clause) => {
+      const match = clause.match(/^(.+?)\s*(=|!=|>=|<=|>|<|contains)\s*(.+)$/i);
+      if (!match) return null;
+      return {
+        column: match[1].trim(),
+        operator: match[2].trim(),
+        value: match[3].trim().replace(/^['"]|['"]$/g, ""),
+      };
+    })
+    .filter((value): value is FilterClause => Boolean(value));
+}
+
+function validateChartDataSpecAgainstInventory(chart: V1PlannedChart, sheetInventory: PlannerSheetInventory[]): string[] {
+  const corrections: string[] = [];
+  const sheet = sheetInventory.find((entry) => entry.sheetKey === chart.dataSpec.sheetKey);
+  if (!sheet) return corrections;
+
+  chart.dataSpec.dimensions = chart.dataSpec.dimensions.map((dimension) => {
+    const match = findClosestColumnName(dimension, sheet.columns);
+    if (match && match !== dimension) corrections.push(`dimension "${dimension}" -> "${match}"`);
+    return match ?? dimension;
+  });
+
+  chart.dataSpec.measures = chart.dataSpec.measures.map((measure) => {
+    const match = findClosestColumnName(measure, sheet.columns);
+    if (match && match !== measure) corrections.push(`measure "${measure}" -> "${match}"`);
+    return match ?? measure;
+  });
+
+  const validColumns = new Set(sheet.columns.map((column) => normalizeLookupKey(column.name)));
+  const invalidDimension = chart.dataSpec.dimensions.find((dimension) => !validColumns.has(normalizeLookupKey(dimension)));
+  const invalidMeasure = chart.dataSpec.measures.find((measure) => !validColumns.has(normalizeLookupKey(measure)));
+  if (invalidDimension || invalidMeasure) {
+    corrections.push(`unresolved columns on ${chart.chartId}`);
+  }
+
+  const filterClauses = parseFilterClauses(chart.dataSpec.filter);
+  if (filterClauses.length > 0) {
+    let filterIsValid = true;
+    for (const clause of filterClauses) {
+      const column = sheet.columns.find((candidate) => normalizeLookupKey(candidate.name) === normalizeLookupKey(clause.column))
+        ?? sheet.columns.find((candidate) => normalizeLookupKey(candidate.name).includes(normalizeLookupKey(clause.column)));
+      if (!column) {
+        filterIsValid = false;
+        corrections.push(`filter column "${clause.column}" not found -> none`);
+        break;
+      }
+      if (["=", "!=", "contains"].includes(clause.operator)) {
+        const knownValues = new Set((column.sampleValues ?? []).map((value) => String(value).toLowerCase()));
+        const valuesAreComplete = knownValues.size > 0 && (column.uniqueCount ?? 0) <= knownValues.size;
+        if (valuesAreComplete && !knownValues.has(clause.value.toLowerCase())) {
+          filterIsValid = false;
+          corrections.push(`filter value "${clause.value}" not found in "${column.name}" -> none`);
+          break;
+        }
+      }
+    }
+    if (!filterIsValid) {
+      chart.dataSpec.filter = "none";
+    }
+  }
+
+  return corrections;
+}
+
+function formatSheetInventoryForPrompt(sheetInventory: PlannerSheetInventory[]): string {
+  if (sheetInventory.length === 0) return "";
+  return `\n\n## Available data sheets\nIMPORTANT: Copy the sheetKey EXACTLY as shown (before the pipe). Do NOT invent keys.\n${
+    sheetInventory.map((sheet) => {
+      const columnsText = sheet.columns.map((column) => {
+        const sampleStr = ["dimension", "segment", "time"].includes(column.role)
+          ? ` [values: ${column.sampleValues.slice(0, 10).map((value) => `"${value}"`).join(", ")}${column.uniqueCount > 10 ? `, ... (${column.uniqueCount} unique)` : ""}]`
+          : "";
+        return `${column.name} (${column.inferredType}, ${column.role}${sampleStr})`;
+      }).join(", ");
+      return `- sheetKey="${sheet.sheetKey}" | file: ${sheet.fileName}, sheet: ${sheet.sheetName}, ${sheet.rowCount} rows | columns: ${columnsText}`;
+    }).join("\n")
+  }`;
+}
+
+function resolveChartTheme(templateProfile?: TemplateProfile | null): V2ChartImageTheme {
+  const palette = templateProfile?.brandTokens?.palette;
+  const typography = templateProfile?.brandTokens?.typography;
+  const chartPalette = templateProfile?.brandTokens?.chartPalette;
+  return {
+    background: palette?.background ?? "#F9FAFB",
+    cardBg: palette?.surface ?? "#F9FAFB",
+    ink: palette?.text ?? "#1A1A2E",
+    muted: palette?.muted ?? "#6B7280",
+    dim: palette?.accentMuted ?? "#9CA3AF",
+    border: palette?.border ?? "#D1D5DB",
+    chartPalette: chartPalette?.length ? chartPalette : ["#2563EB", "#F59E0B", "#059669", "#DC2626", "#7C3AED", "#0891B2"],
+    headingFont: typography?.headingFont ?? "Arial",
+    bodyFont: typography?.bodyFont ?? "Arial",
+  };
+}
+
+function buildChartStorageRef(runId: string, chartId: string): { bucket: string; storagePath: string; ref: string } {
+  const bucket = "artifacts";
+  const storagePath = `${runId}/charts/${chartId}.png`;
+  return {
+    bucket,
+    storagePath,
+    ref: `storage://${bucket}/${storagePath}`,
+  };
+}
+
+function parseStorageRef(ref: string | undefined): { bucket: string; storagePath: string } | null {
+  if (!ref) return null;
+  const match = ref.match(/^storage:\/\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  return { bucket: match[1], storagePath: match[2] };
+}
+
+async function updateChartImageAsset(runId: string, chartId: string, asset: { thumbnailUrl: string; width: number; height: number }) {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_spec_v2_charts?id=eq.${chartId}&run_id=eq.${runId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        thumbnail_url: asset.thumbnailUrl,
+        width: asset.width,
+        height: asset.height,
+      }),
+    },
+  );
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(`Failed to update chart asset ${chartId}: ${response.status} ${response.statusText} — ${errorBody}`);
+  }
+}
+
+async function loadChartImageBuffers(charts: Array<{ id: string; thumbnailUrl?: string }>): Promise<Map<string, Buffer>> {
+  const images = new Map<string, Buffer>();
+  for (const chart of charts) {
+    const storageRef = parseStorageRef(chart.thumbnailUrl);
+    if (!storageRef) continue;
+    try {
+      const buffer = await downloadFromStorage({
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        bucket: storageRef.bucket,
+        storagePath: storageRef.storagePath,
+      });
+      images.set(chart.id, buffer);
+    } catch (error) {
+      console.warn(`[chart-assets] Failed to load image for ${chart.id}:`, error);
+    }
+  }
+  return images;
+}
+
+function injectChartImagesIntoSceneGraph(sceneGraph: DeckSceneGraph, chartImageMap: Map<string, Buffer>): DeckSceneGraph {
+  return {
+    ...sceneGraph,
+    slides: sceneGraph.slides.map((slide) => ({
+      ...slide,
+      nodes: slide.nodes.map((node) => {
+        if (node.kind !== "chart_placeholder" || !node.chartId) return node;
+        const image = chartImageMap.get(node.chartId);
+        if (!image) return node;
+        return {
+          ...node,
+          kind: "image" as const,
+          imageUrl: `data:image/png;base64,${image.toString("base64")}`,
+        };
+      }),
+    })),
+  };
 }
 
 function createLoadSheetRows(runId: string) {
@@ -2324,7 +2557,14 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     // ─── STEP 2.5+3+4: PLAN + AUTHOR + POLISH (child function) ────
     // Entire plan → author → polish block runs in a child function with
     // its own 25min timeout. Isolates the most token-heavy phase.
-    let authorResult: { deckSummary: string; slideCount: number; chartCount: number; estimatedCostUsd?: number };
+    let authorResult: {
+      deckSummary: string;
+      slideCount: number;
+      chartCount: number;
+      estimatedCostUsd?: number;
+      tokenUsage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; callCount?: number };
+      costLedger?: Array<{ step: string; model: string; inputTokens: number; outputTokens: number; costUsd: number }>;
+    };
     try {
       authorResult = await step.invoke("author-polish", {
         function: basquioAuthor,
@@ -2346,7 +2586,14 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     // Dead code removed — see basquioAuthor for the implementation.
 
     // ─── STEP 4+5: CRITIQUE + REVISE (invoked as child function) ───
-    let critiqueReviseResult: { hasCriticalOrMajor: boolean; degradedDelivery: boolean; degradedIssues: Array<{ severity: string; claim: string }> };
+    let critiqueReviseResult: {
+      hasCriticalOrMajor: boolean;
+      degradedDelivery: boolean;
+      degradedIssues: Array<{ severity: string; claim: string }>;
+      estimatedCostUsd?: number;
+      publishGrade?: "green" | "yellow" | "red";
+      phaseBreakdown?: Array<{ phase: "critique" | "revise"; model: string; costUsd: number }>;
+    };
     try {
       critiqueReviseResult = await step.invoke("critique-revise", {
         function: basquioCritiqueRevise,
@@ -2355,7 +2602,14 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       }) as typeof critiqueReviseResult;
     } catch (error) {
       console.error(`[basquio-v2] Critique-revise failed, skipping:`, error);
-      critiqueReviseResult = { hasCriticalOrMajor: false, degradedDelivery: true, degradedIssues: [{ severity: "major", claim: "Quality review skipped due to error" }] };
+      critiqueReviseResult = {
+        hasCriticalOrMajor: false,
+        degradedDelivery: true,
+        degradedIssues: [{ severity: "major", claim: "Quality review skipped due to error" }],
+        estimatedCostUsd: 0,
+        publishGrade: "red",
+        phaseBreakdown: [],
+      };
     }
 
     let { hasCriticalOrMajor, degradedDelivery, degradedIssues } = critiqueReviseResult;
@@ -2378,7 +2632,15 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
         sourceFileIds,
       },
       timeout: "15m",
-    });
+    }) as {
+      pptxBytes: number;
+      pdfBytes: number;
+      slideCount: number;
+      qaPassed: boolean;
+      qaTier?: "green" | "yellow" | "red";
+      qaFailures?: string[];
+      exportMode: string;
+    };
 
     // Export child function handles: source coverage, PPTX render, QA, manifest, status update.
 
@@ -2386,16 +2648,23 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
     const costSummary = tracker.getSummary(runId);
     // Understand returns costSummary with totalUsage from analyst agent (GPT-5.4: $2.50/$15 per MTok)
     const understandReturn = analystResult as Record<string, unknown>;
-    const understandSummary = understandReturn?.costSummary as { estimatedCostUsd?: number; totalUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number } } | undefined;
+    const understandSummary = understandReturn?.costSummary as {
+      estimatedCostUsd?: number;
+      totalUsage?: { totalTokens?: number; inputTokens?: number; outputTokens?: number };
+      phases?: Array<Record<string, unknown>>;
+    } | undefined;
     const understandCost = understandSummary?.estimatedCostUsd ?? 0;
     const understandTokens = understandSummary?.totalUsage ?? {};
     // Author returns estimatedCostUsd + tokenUsage from actual generateObject calls
     const authorReturn = authorResult as Record<string, unknown>;
     const authorCost = (authorReturn?.estimatedCostUsd as number) ?? 0;
-    const authorTokens = (authorReturn?.tokenUsage as { inputTokens?: number; outputTokens?: number; totalTokens?: number }) ?? {};
+    const authorTokens = (authorReturn?.tokenUsage as { inputTokens?: number; outputTokens?: number; totalTokens?: number; callCount?: number }) ?? {};
     // Critique-revise returns estimatedCostUsd (from LLM critic agents)
     const critiqueReturn = critiqueReviseResult as Record<string, unknown>;
     const critiqueCost = (critiqueReturn?.estimatedCostUsd as number) ?? 0;
+    const critiquePhaseBreakdown = Array.isArray(critiqueReviseResult.phaseBreakdown)
+      ? critiqueReviseResult.phaseBreakdown
+      : [];
     // Aggregate: understand + author + critique/revise
     costSummary.estimatedCostUsd = Math.round((understandCost + authorCost + critiqueCost) * 1000) / 1000;
     costSummary.durationMs = Date.now() - runStartMs;
@@ -2404,6 +2673,60 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
       inputTokens: (understandTokens.inputTokens ?? 0) + (authorTokens.inputTokens ?? 0),
       outputTokens: (understandTokens.outputTokens ?? 0) + (authorTokens.outputTokens ?? 0),
     };
+    const persistedPhases = [
+      ...((Array.isArray(understandSummary?.phases) ? understandSummary.phases : []).map((phase: Record<string, unknown>) => {
+        const typedPhase = phase as {
+          modelId?: string;
+          usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+        };
+        return {
+          ...phase,
+          estimatedCostUsd: typedPhase.modelId
+            ? estimateCost(typedPhase.modelId, {
+                inputTokens: typedPhase.usage?.inputTokens ?? 0,
+                outputTokens: typedPhase.usage?.outputTokens ?? 0,
+                totalTokens: typedPhase.usage?.totalTokens ?? 0,
+              })
+            : understandCost,
+        };
+      })),
+      {
+        phase: "author",
+        steps: authorTokens.callCount ?? (authorResult.costLedger?.length ?? 0),
+        usage: {
+          totalTokens: authorTokens.totalTokens ?? 0,
+          inputTokens: authorTokens.inputTokens ?? 0,
+          outputTokens: authorTokens.outputTokens ?? 0,
+        },
+        toolCalls: 0,
+        durationMs: 0,
+        modelId: "claude-sonnet-4-6",
+        provider: "anthropic",
+        estimatedCostUsd: authorCost,
+      },
+      ...critiquePhaseBreakdown.map((phase) => ({
+        phase: phase.phase,
+        steps: 1,
+        usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 },
+        toolCalls: 0,
+        durationMs: 0,
+        modelId: phase.model,
+        provider: phase.model.startsWith("claude-") ? "anthropic" : "openai",
+        estimatedCostUsd: phase.costUsd,
+      })),
+      {
+        phase: "export",
+        steps: 1,
+        usage: { totalTokens: 0, inputTokens: 0, outputTokens: 0 },
+        toolCalls: 0,
+        durationMs: 0,
+        modelId: "deterministic",
+        provider: "system",
+        estimatedCostUsd: 0,
+        qaTier: artifacts.qaTier ?? null,
+      },
+    ];
+    costSummary.phases = persistedPhases as typeof costSummary.phases;
     const budgetCheck = checkCostBudget(costSummary);
 
     logPhaseEvent(runId, "complete", "job_finished", {
@@ -2436,13 +2759,18 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
               outputTokens: costSummary.totalUsage.outputTokens,
               estimatedCostUsd: costSummary.estimatedCostUsd,
               durationMs: costSummary.durationMs,
-              phases: costSummary.phases,
+              phases: persistedPhases,
               budgetExceeded: budgetCheck.exceeded,
-              // Per-step cost breakdown: author phase (plan, narrative-arc, per-slide, repair) + critique + export
+              // Per-step cost breakdown across the v2 pipeline.
               stepBreakdown: [
+                { step: "understand", model: "gpt-5.4", costUsd: Math.round(understandCost * 1000) / 1000 },
                 ...((authorReturn?.costLedger as Array<{ step: string; model: string; costUsd: number }>) ?? []),
-                // Add critique phase as a single step entry for complete coverage
-                ...(critiqueCost > 0 ? [{ step: "critique", model: "claude-sonnet-4-6", costUsd: Math.round(critiqueCost * 1000) / 1000 }] : []),
+                ...critiquePhaseBreakdown.map((phase) => ({
+                  step: phase.phase,
+                  model: phase.model,
+                  costUsd: Math.round(phase.costUsd * 1000) / 1000,
+                })),
+                { step: "export", model: "deterministic", costUsd: 0 },
               ],
             },
           }),
@@ -2698,7 +3026,12 @@ export const basquioUnderstand = inngest.createFunction(
  * Deterministic plan validation — $0 cost, runs after LLM plan generation.
  * Enforces structural rules that the LLM doesn't reliably follow.
  */
-function validateAndFixPlan(plan: V1DeckPlan, analysisFindings?: Array<{ title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }>, recommendedChartTypes?: Array<{ findingIndex: number; chartType: string; rationale: string }>): V1DeckPlan {
+function validateAndFixPlan(
+  plan: V1DeckPlan,
+  analysisFindings?: Array<{ title: string; claim: string; evidenceRefIds: string[]; businessImplication: string }>,
+  recommendedChartTypes?: Array<{ findingIndex: number; chartType: string; rationale: string }>,
+  sheetInventory: PlannerSheetInventory[] = [],
+): V1DeckPlan {
   const slides = [...plan.slides].sort((a, b) => a.position - b.position);
   const charts = [...plan.charts];
   const chartIds = new Set(charts.map(c => c.chartId));
@@ -2915,6 +3248,10 @@ function validateAndFixPlan(plan: V1DeckPlan, analysisFindings?: Array<{ title: 
   ];
 
   for (const chart of dedupedCharts) {
+    const dataSpecCorrections = validateChartDataSpecAgainstInventory(chart, sheetInventory);
+    if (dataSpecCorrections.length > 0) {
+      console.warn(`[validateAndFixPlan] ${chart.chartId}: ${dataSpecCorrections.join("; ")}`);
+    }
     const textToMatch = `${chart.title ?? ""} ${chart.intent ?? ""}`.trim();
     if (!textToMatch) continue;
     for (const rule of EXHIBIT_RULES) {
@@ -2995,9 +3332,55 @@ export const basquioAuthor = inngest.createFunction(
       costLedger.push({ step: stepLabel ?? "unknown", model: modelId, inputTokens: inp, outputTokens: out, costUsd: stepCost });
     }
 
-    const HARD_BUDGET_USD = 1.0;
+    const HARD_BUDGET_USD = 3.5;
     function isOverBudget(): boolean { return exactCostUsd >= HARD_BUDGET_USD; }
     function remainingBudget(): number { return Math.max(0, HARD_BUDGET_USD - exactCostUsd); }
+    function trimPlanForBudget(
+      plan: V1DeckPlan,
+      chartResults: Array<{ plannedId: string; success: boolean }>,
+      slidesToRemove: number,
+    ): number {
+      if (slidesToRemove <= 0 || plan.slides.length <= 5) return 0;
+      const protectedPositions = new Set([1, 2, plan.slides.length]);
+      const removable = plan.slides
+        .filter((slide) => !protectedPositions.has(slide.position))
+        .map((slide) => {
+          const chartResult = slide.chartId ? chartResults.find((result) => result.plannedId === slide.chartId) : undefined;
+          const failedChart = Boolean(slide.chartId) && !chartResult?.success;
+          const noChart = !slide.chartId;
+          const score = (failedChart ? 0 : noChart ? 1 : 2) * 1000 + (100 - slide.position);
+          return { slide, score };
+        })
+        .sort((a, b) => a.score - b.score);
+
+      const removedSlides = removable.slice(0, slidesToRemove).map((entry) => entry.slide);
+      if (removedSlides.length === 0) return 0;
+      const removedPositions = new Set(removedSlides.map((slide) => slide.position));
+      plan.slides = plan.slides
+        .filter((slide) => !removedPositions.has(slide.position))
+        .map((slide, index) => ({ ...slide, position: index + 1 }));
+      const remainingChartIds = new Set(plan.slides.map((slide) => slide.chartId).filter(Boolean));
+      plan.charts = plan.charts.filter((chart) => remainingChartIds.has(chart.chartId));
+      plan.targetSlideCount = plan.slides.length;
+      return removedSlides.length;
+    }
+
+    const authorWorkspace = await loadWorkspaceFromDb(runId);
+    const plannerSheetInventory: PlannerSheetInventory[] = authorWorkspace?.fileInventory?.flatMap((file) =>
+      (file.sheets ?? []).filter(Boolean).map((sheet) => ({
+        sheetKey: `${file.id}:${sheet?.name ?? "unknown"}`,
+        fileName: file.fileName ?? "unknown",
+        sheetName: sheet?.name ?? "unknown",
+        rowCount: sheet?.rowCount ?? 0,
+        columns: (sheet?.columns ?? []).filter(Boolean).map((column) => ({
+          name: column?.name ?? "?",
+          inferredType: column?.inferredType ?? "?",
+          role: column?.role ?? "?",
+          sampleValues: (column?.sampleValues ?? []).slice(0, 10),
+          uniqueCount: column?.uniqueCount ?? 0,
+        })),
+      })),
+    ) ?? [];
 
     // Clear stale slides/charts from any previous execution
     await step.run("clear-stale-data", async () => {
@@ -3047,26 +3430,8 @@ export const basquioAuthor = inngest.createFunction(
       const targetSlides = Math.min(requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 12), 12);
 
       // Build workspace sheet inventory for the planner to reference
-      const workspace = await loadWorkspaceFromDb(runId);
-      const sheetInventory = workspace?.fileInventory?.flatMap((f) =>
-        (f.sheets ?? []).filter(Boolean).map((s) => ({
-          sheetKey: `${f.id}:${s?.name ?? "unknown"}`,
-          fileName: f.fileName ?? "unknown",
-          sheetName: s?.name ?? "unknown",
-          rowCount: s?.rowCount ?? 0,
-          columns: (s?.columns ?? []).filter(Boolean).map((c) => {
-            const name = c?.name ?? "?";
-            const type = c?.inferredType ?? "?";
-            const role = c?.role ?? "?";
-            const samples = (c?.sampleValues ?? []).slice(0, 5);
-            // Show sample values for dimensions so the planner knows valid filter values
-            const sampleStr = role === "dimension" || role === "segment" || role === "time"
-              ? ` [values: ${samples.map(v => `"${v}"`).join(", ")}${(c?.uniqueCount ?? 0) > 5 ? `, ... (${c?.uniqueCount} unique)` : ""}]`
-              : "";
-            return `${name} (${type}, ${role}${sampleStr})`;
-          }).join(", "),
-        })),
-      ) ?? [];
+      const workspace = authorWorkspace;
+      const sheetInventory: PlannerSheetInventory[] = plannerSheetInventory;
 
       const findingsSummary = analysis.topFindings
         .map((f, i) => `${i + 1}. [${f.title}] ${f.claim} (confidence: ${f.confidence}, evidence: [${f.evidenceRefIds.join(", ")}]) → ${f.businessImplication}`)
@@ -3086,9 +3451,7 @@ export const basquioAuthor = inngest.createFunction(
         }
       }
 
-      const sheetInventoryText = sheetInventory.length > 0
-        ? `\n\n## Available data sheets\nIMPORTANT: Copy the sheetKey EXACTLY as shown (before the pipe). Do NOT invent keys.\n${sheetInventory.map((s) => `- sheetKey="${s.sheetKey}" | file: ${s.fileName}, sheet: ${s.sheetName}, ${s.rowCount} rows | columns: ${s.columns}`).join("\n")}`
-        : "";
+      const sheetInventoryText = formatSheetInventoryForPrompt(sheetInventory);
 
       // ─── DETERMINISTIC DATA INTELLIGENCE ($0 cost) ─────────────
       // Detect: currency, period structure, dimension/measure roles, hierarchy
@@ -3111,8 +3474,8 @@ export const basquioAuthor = inngest.createFunction(
       const niqExhibitRecommendations = (analysis.topFindings ?? []).map((finding, idx) => {
         const qType = inferQuestionType(finding.claim);
         // Collect available measure names from all sheets
-        const allMeasures = sheetInventory.flatMap(s =>
-          s.columns.split(", ").filter(c => c.includes("measure")).map(c => c.split(" (")[0].toLowerCase())
+        const allMeasures = sheetInventory.flatMap((sheet) =>
+          sheet.columns.filter((column) => column.role === "measure").map((column) => column.name.toLowerCase())
         );
         const match = findBestExhibitFamily(qType, allMeasures);
         return match.family
@@ -3277,12 +3640,15 @@ Return a V1DeckPlan with slides and charts.`,
       v1Plan,
       analysisForValidation?.analysis?.topFindings,
       analysisForValidation?.analysis?.recommendedChartTypes,
+      plannerSheetInventory,
     );
 
     // ─── STEP 2: BUILD CHARTS (deterministic, ZERO LLM) ──────────────
     const chartBuildResult = await step.run("build-charts", async () => {
       await emitRunEvent(runId, "author", "charts_build_started");
       const loadRows = createLoadSheetRows(runId);
+      const workspace = await loadWorkspaceFromDb(runId);
+      const chartTheme = resolveChartTheme(workspace?.templateProfile ?? null);
       const chartResults: Array<{ chartId: string; plannedId: string; success: boolean; error?: string }> = [];
       const chartFamilyMap: Record<string, { familyId: string; titlePattern: string; calloutPattern: string; highlightRule: string }> = {};
 
@@ -3311,29 +3677,12 @@ Return a V1DeckPlan with slides and charts.`,
           // Apply filter (registry-aware: handles GROCERY vs Grocery, V. Valore vs V.Valore, etc.)
           let filtered = v1ApplyFilter(rows, planned.dataSpec.filter, sheetRegistry);
           if (filtered.length === 0 && planned.dataSpec.filter && planned.dataSpec.filter !== "none") {
-            // Step 1: Try substring match on filter value (e.g., "GROCERY" matching "TOTAL GROCERY")
-            const filterMatch = planned.dataSpec.filter.match(/=\s*['"]?(.+?)['"]?\s*$/);
-            if (filterMatch) {
-              const targetValue = filterMatch[1].toLowerCase();
-              const partialFiltered = rows.filter(row =>
-                Object.values(row).some(v =>
-                  String(v ?? "").toLowerCase().includes(targetValue)
-                )
-              );
-              if (partialFiltered.length >= 2) {
-                filtered = partialFiltered;
-                console.warn(`[basquio-author] Chart ${planned.chartId}: exact filter failed, partial match found ${partialFiltered.length} rows`);
-              }
-            }
-
-            // Step 2: Fall back to unfiltered but respect dataSpec.limit
-            if (filtered.length === 0) {
-              console.warn(`[basquio-author] Chart ${planned.chartId}: filter "${planned.dataSpec.filter}" returned 0 rows. Falling back to unfiltered data (${rows.length} rows).`);
-              filtered = rows;
-            }
+            console.warn(`[basquio-author] Chart ${planned.chartId}: filter "${planned.dataSpec.filter}" returned 0 rows. Skipping chart rather than showing incorrect data.`);
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `Filter "${planned.dataSpec.filter}" returned 0 rows` });
+            continue;
           }
           if (filtered.length === 0) {
-            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows in sheet ${planned.dataSpec.sheetKey} (even unfiltered)` });
+            chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `No rows in sheet ${planned.dataSpec.sheetKey}` });
             continue;
           }
 
@@ -3515,6 +3864,50 @@ Return a V1DeckPlan with slides and charts.`,
             sourceNote: planned.sourceNote,
           });
 
+          if (exhibitResult.chartType !== "table") {
+            try {
+              const svg = renderV2ChartSvg({
+                id: chartResult.chartId,
+                chartType: exhibitResult.chartType,
+                title: planned.title,
+                data: cleanedData,
+                xAxis: cleanXAxis,
+                yAxis: cleanSeries[0] ?? "",
+                series: cleanSeries,
+                style: {
+                  colors: undefined,
+                  showLegend: grouped.series.length > 1,
+                  showValues: true,
+                  highlightCategories,
+                },
+                intent: planned.intent,
+                unit: inferredUnit,
+                sourceNote: planned.sourceNote,
+              }, chartTheme, 1920, 1080, false);
+              const pngBuffer = await rasterizeSvgToPng({
+                svg,
+                width: 1920,
+                height: 1080,
+              });
+              const chartAsset = buildChartStorageRef(runId, chartResult.chartId);
+              await uploadToStorage({
+                supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                bucket: chartAsset.bucket,
+                storagePath: chartAsset.storagePath,
+                body: pngBuffer,
+                contentType: "image/png",
+              });
+              await updateChartImageAsset(runId, chartResult.chartId, {
+                thumbnailUrl: chartAsset.ref,
+                width: 1920,
+                height: 1080,
+              });
+            } catch (assetError) {
+              console.warn(`[basquio-author] Chart ${planned.chartId}: PNG asset generation failed`, assetError);
+            }
+          }
+
           chartResults.push({ chartId: chartResult.chartId, plannedId: planned.chartId, success: true });
         } catch (chartError) {
           console.error(`[basquio-author] Chart ${planned.chartId} build failed:`, chartError);
@@ -3610,6 +4003,18 @@ Return a V1DeckPlan with slides and charts.`,
         console.warn(`[basquio-author] Safe tier: converted ${convertedCount} failed-chart slides to text layouts, all ${validatedPlan.slides.length} slides preserved`);
       }
     }
+
+    const postPlanRemainingBudget = remainingBudget();
+    const economyAuthorMode = postPlanRemainingBudget < 1.5;
+    if (economyAuthorMode) {
+      const removedSlides = trimPlanForBudget(validatedPlan, chartBuildResult.chartResults, 2);
+      console.warn(
+        `[basquio-author] Economy mode enabled: $${postPlanRemainingBudget.toFixed(2)} remaining after plan/chart-build. ` +
+        `Narrative + slide authoring downgrade to Haiku${removedSlides > 0 ? `, removed ${removedSlides} low-priority slides` : ""}.`,
+      );
+    }
+    const narrativeArcModelId = economyAuthorMode ? "claude-haiku-4-5" : "claude-sonnet-4-6";
+    const narrativeArcModel = economyAuthorMode ? anthropic("claude-haiku-4-5") : anthropic("claude-sonnet-4-6");
 
     // ─── STEP 2.5: NARRATIVE ARC (one Sonnet call for cross-slide coherence) ─
     const narrativeArc = await step.run("narrative-arc", async () => {
@@ -3708,7 +4113,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
 
       // Narrative arc is the #1 intelligence feature (~$0.04). Retry once on transient errors.
       const generateArc = () => generateObject({
-        model: anthropic("claude-sonnet-4-6"),
+        model: narrativeArcModel,
         schema: v1NarrativeArcSchema,
         prompt: arcPrompt,
       });
@@ -3725,7 +4130,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
             throw firstErr;
           }
         }
-        addUsage(arcResult.usage, "claude-sonnet-4-6", "narrative-arc");
+        addUsage(arcResult.usage, narrativeArcModelId, "narrative-arc");
         console.warn(`[basquio-author] Narrative arc: ${arcResult.object.povs.length} POVs, SCQA answer: "${arcResult.object.answer.slice(0, 80)}..."`);
         return arcResult.object;
       } catch (err) {
@@ -3974,8 +4379,8 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
             // Sacred slides still get Sonnet when budget allows for better prose quality
             const isSacred = ["cover", "exec-summary", "summary", "recommendation"].includes(slideSpec.role);
             const budgetPct = 1 - (remainingBudget() / HARD_BUDGET_USD);
-            const forceHaiku = budgetPct >= 0.70;
-            const canAffordSonnet = !forceHaiku && remainingBudget() > 0.30;
+            const forceHaiku = economyAuthorMode || budgetPct >= 0.70;
+            const canAffordSonnet = !economyAuthorMode && !forceHaiku && remainingBudget() > 0.30;
             const model = (isSacred && canAffordSonnet) ? anthropic("claude-sonnet-4-6") : anthropic("claude-haiku-4-5");
             const modelId = (isSacred && canAffordSonnet) ? "claude-sonnet-4-6" : "claude-haiku-4-5";
 
@@ -4635,7 +5040,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
     };
 
     // Budget tracking: total budget is $1, parent already spent some
-    const HARD_BUDGET_USD = 1.0;
+    const HARD_BUDGET_USD = 3.5;
     const parentSpend = parentCostUsd ?? 0;
     function remainingBudget(): number { return Math.max(0, HARD_BUDGET_USD - parentSpend); }
 
@@ -4798,18 +5203,40 @@ export const basquioCritiqueRevise = inngest.createFunction(
       if (!hasCriticalOrMajor) {
         await updateDeliveryStatus(runId, "reviewed");
         await emitRunEvent(runId, "critique", "phase_completed");
-        return { hasCriticalOrMajor: false, needsRevise: false, issues: allIssues, estimatedCostUsd: critiqueCostUsd };
+        return {
+          hasCriticalOrMajor: false,
+          needsRevise: false,
+          issues: allIssues,
+          estimatedCostUsd: critiqueCostUsd,
+          phaseBreakdown: [{ phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: critiqueCostUsd }],
+        };
       }
 
       // Only revise for critical issues — major issues are acceptable for delivery
       if (criticalCount === 0) {
         await updateDeliveryStatus(runId, "reviewed");
         await emitRunEvent(runId, "critique", "phase_completed");
-        return { hasCriticalOrMajor: true, needsRevise: false, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: critiqueCostUsd };
+        return {
+          hasCriticalOrMajor: true,
+          needsRevise: false,
+          issues: allIssues,
+          criticalCount,
+          majorCount,
+          estimatedCostUsd: critiqueCostUsd,
+          phaseBreakdown: [{ phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: critiqueCostUsd }],
+        };
       }
 
       await emitRunEvent(runId, "critique", "phase_completed");
-      return { hasCriticalOrMajor: true, needsRevise: true, issues: allIssues, criticalCount, majorCount, estimatedCostUsd: critiqueCostUsd };
+      return {
+        hasCriticalOrMajor: true,
+        needsRevise: true,
+        issues: allIssues,
+        criticalCount,
+        majorCount,
+        estimatedCostUsd: critiqueCostUsd,
+        phaseBreakdown: [{ phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: critiqueCostUsd }],
+      };
     });
 
     // ─── REVISE (targeted section-level repair) ────────────────────
@@ -4955,6 +5382,10 @@ export const basquioCritiqueRevise = inngest.createFunction(
         degradedIssues: postIssues,
         estimatedCostUsd: totalCostUsd,
         publishGrade,
+        phaseBreakdown: [
+          { phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: gateResult.estimatedCostUsd ?? 0 },
+          { phase: "revise" as const, model: "claude-sonnet-4-6", costUsd: reviseResult.stepCostUsd ?? 0 },
+        ],
       };
     }
 
@@ -4974,6 +5405,9 @@ export const basquioCritiqueRevise = inngest.createFunction(
       degradedIssues: (gr2.issues ?? []).filter(i => i.severity === "critical" || i.severity === "major").map(i => ({ severity: i.severity, claim: i.claim })),
       estimatedCostUsd: finalCostUsd,
       publishGrade,
+      phaseBreakdown: (gateResult.phaseBreakdown as Array<{ phase: "critique" | "revise"; model: string; costUsd: number }> | undefined) ?? [
+        { phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: finalCostUsd },
+      ],
     };
   },
 );
@@ -5116,7 +5550,7 @@ export const basquioExport = inngest.createFunction(
       }
 
       // Load template profile via raw fetch
-      let templateProfile: Record<string, unknown> | null = null;
+      let templateProfile: TemplateProfile | null = null;
       try {
         const runRes = await fetch(
           `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs?id=eq.${runId}&select=template_profile_id`,
@@ -5128,10 +5562,39 @@ export const basquioExport = inngest.createFunction(
             `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/template_profiles?id=eq.${runRows[0].template_profile_id}&select=template_profile`,
             { headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}` } },
           );
-          const profRows = await profRes.json() as Array<{ template_profile: Record<string, unknown> }>;
-          if (profRows[0]?.template_profile) templateProfile = profRows[0].template_profile;
+          const profRows = await profRes.json() as Array<{ template_profile: unknown }>;
+          if (profRows[0]?.template_profile) templateProfile = templateProfileSchema.parse(profRows[0].template_profile);
         }
-      } catch { /* use default */ }
+      } catch (error) {
+        console.warn("[basquio-export] Failed to load template profile, falling back to defaults:", error);
+      }
+
+      const chartImageMap = await loadChartImageBuffers(v2ChartRows);
+      const slidesForSceneGraph = filteredSlides.map((s: any) => ({
+        ...s,
+        id: s.id ?? `slide-${s.position}`,
+        layoutId: s.layoutId ?? s.layout_id ?? "title-body",
+        title: s.title ?? "",
+        evidenceIds: s.evidenceIds ?? [],
+        runId: s.runId ?? s.run_id ?? runId,
+        qaStatus: s.qaStatus ?? s.qa_status ?? "pending",
+        revision: s.revision ?? 1,
+        metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+        callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+      }));
+      const baseSceneGraph = buildDeckSceneGraph(
+        slidesForSceneGraph as any,
+        templateProfile ?? createSystemTemplateProfile(),
+        v2ChartRows.map((c: V2ChartRow) => ({
+          id: c.id,
+          chartType: String(c.chartType ?? "bar"),
+          title: String(c.title ?? ""),
+          intent: c.intent as string | undefined,
+          unit: c.unit as string | undefined,
+          sourceNote: c.sourceNote as string | undefined,
+        })),
+      );
+      const sceneGraph = injectChartImagesIntoSceneGraph(baseSceneGraph, chartImageMap);
 
       // Render PPTX (using filteredSlides — empty slides already removed)
       const pptxArtifact = await renderV2PptxArtifact({
@@ -5151,9 +5614,11 @@ export const basquioExport = inngest.createFunction(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         })) as any,
         charts: v2ChartRows,
+        sceneGraph,
         deckTitle: deckTitle || "Basquio Analysis",
         brandTokens: templateProfile?.brandTokens as Record<string, unknown> | undefined,
         exportMode,
+        chartImages: chartImageMap,
       });
 
       // Prepare PPTX buffer for QA + upload
@@ -5180,6 +5645,8 @@ export const basquioExport = inngest.createFunction(
         ? (chartLayoutSlides.length - chartlessSlides.length) / chartLayoutSlides.length
         : 1;
       const chartCoverageOk = chartCoverageRatio >= 0.7;
+      const imageBackedCharts = v2ChartRows.filter((chart) => chart.thumbnailUrl && chartImageMap.has(chart.id));
+      const imageCoverageRatio = v2ChartRows.length > 0 ? imageBackedCharts.length / v2ChartRows.length : 1;
 
       // Empty slides should not exist after filtering, but verify
       const remainingEmptySlides = filteredSlides.filter((s: any) => {
@@ -5250,6 +5717,7 @@ export const basquioExport = inngest.createFunction(
         { name: "slide_count_positive", passed: filteredSlides.length > 0, detail: `${filteredSlides.length} slides` },
         { name: "pptx_valid_zip", passed: hasValidPptxHeader },
         { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
+        { name: "chart_image_coverage", passed: imageCoverageRatio > 0, detail: `${imageBackedCharts.length}/${v2ChartRows.length} charts have stored PNG assets` },
         { name: "no_empty_slides", passed: noEmptySlides, detail: remainingEmptySlides.length > 0 ? `${remainingEmptySlides.length} empty content slide(s)` : "all slides have content" },
         { name: "no_topic_label_titles", passed: topicLabelTitles.length === 0, detail: topicLabelTitles.length > 0 ? `${topicLabelTitles.length} slides have topic-label titles: ${topicLabelTitles.map((s: any) => `"${(s.title ?? "").slice(0, 40)}"`).join(", ")}` : "all titles are insights" },
         { name: "no_zero_value_charts", passed: zeroValueCharts.length === 0, detail: zeroValueCharts.length > 0 ? `${zeroValueCharts.length} charts have >80% zero values (possible parsing failure)` : "all chart data looks valid" },
@@ -5259,11 +5727,15 @@ export const basquioExport = inngest.createFunction(
       ];
 
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
-      const qaPassed = qaStructuralPassed && !degradedDelivery;
+      const qaFailures = qaChecks.filter((c) => !c.passed).map((c) => c.name);
+      const qaTier: "green" | "yellow" | "red" =
+        (!hasValidPptxHeader || filteredSlides.length === 0 || (v2ChartRows.length > 0 && imageCoverageRatio === 0) || chartCoverageRatio < 0.5)
+          ? "red"
+          : (qaStructuralPassed && !degradedDelivery ? "green" : "yellow");
+      const qaPassed = qaTier === "green";
 
       if (!qaPassed) {
-        const failedChecks = qaChecks.filter((c) => !c.passed).map((c) => c.name);
-        console.warn(`[basquio-export] PRE-UPLOAD QA: passed=${qaPassed}, degraded=${degradedDelivery}, failed=[${failedChecks.join(", ")}], chartCoverage=${Math.round(chartCoverageRatio * 100)}%`);
+        console.warn(`[basquio-export] PRE-UPLOAD QA: tier=${qaTier}, degraded=${degradedDelivery}, failed=[${qaFailures.join(", ")}], chartCoverage=${Math.round(chartCoverageRatio * 100)}%`);
         await updateDeliveryStatus(runId, "degraded");
       }
       // ── END PRE-UPLOAD QA ─────────────────────────────────────
@@ -5292,7 +5764,8 @@ export const basquioExport = inngest.createFunction(
 
       const useDignifiedMinimum = finalDegraded && (
         (placeholderRatio > 0.5 && allMetrics.length >= 4) ||
-        rawPlaceholderSlides.length > 0
+        rawPlaceholderSlides.length > 0 ||
+        (qaTier === "red" && v2ChartRows.length > 0 && imageCoverageRatio === 0)
       );
 
       // When using dignified minimum, replace filteredSlides and charts for ALL downstream paths
@@ -5355,6 +5828,7 @@ export const basquioExport = inngest.createFunction(
         // Build chart lookup map for PDF (same data as PPTX — uses chartsForExport for consistency)
         const chartsMap = new Map<string, V2PdfChart>();
         for (const c of chartsForExport) {
+          const imageBuffer = chartImageMap.get(c.id);
           chartsMap.set(c.id, {
             chartType: String(c.chartType ?? "bar"),
             title: String(c.title ?? ""),
@@ -5364,24 +5838,25 @@ export const basquioExport = inngest.createFunction(
             series: Array.isArray(c.series) ? c.series as string[] : [],
             unit: c.unit as string | undefined,
             sourceNote: c.sourceNote as string | undefined,
+            imageUrl: imageBuffer ? `data:image/png;base64,${imageBuffer.toString("base64")}` : undefined,
           });
         }
 
-        // Build scene graph from the SAME slide data as PPTX — uses slidesForExport for consistency
-        const pdfSceneGraph = buildDeckSceneGraph(
-          slidesForExport.map((s: any) => ({
-            ...s,
-            id: s.id ?? `slide-${s.position}`,
-            layoutId: s.layoutId ?? s.layout_id ?? "title-body",
-            title: s.title ?? "",
-            evidenceIds: s.evidenceIds ?? [],
-            runId: s.runId ?? s.run_id ?? runId,
-            qaStatus: s.qaStatus ?? s.qa_status ?? "pending",
-            revision: s.revision ?? 1,
-            metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
-            callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
-          })),
-          templateProfile ?? { brandTokens: null } as any,
+        const pdfSlidesForSceneGraph = slidesForExport.map((s: any) => ({
+          ...s,
+          id: s.id ?? `slide-${s.position}`,
+          layoutId: s.layoutId ?? s.layout_id ?? "title-body",
+          title: s.title ?? "",
+          evidenceIds: s.evidenceIds ?? [],
+          runId: s.runId ?? s.run_id ?? runId,
+          qaStatus: s.qaStatus ?? s.qa_status ?? "pending",
+          revision: s.revision ?? 1,
+          metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
+          callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
+        }));
+        const pdfBaseSceneGraph = buildDeckSceneGraph(
+          pdfSlidesForSceneGraph as any,
+          templateProfile ?? createSystemTemplateProfile(),
           chartsForExport.map((c: V2ChartRow) => ({
             id: c.id,
             chartType: String(c.chartType ?? "bar"),
@@ -5391,6 +5866,7 @@ export const basquioExport = inngest.createFunction(
             sourceNote: c.sourceNote as string | undefined,
           })),
         );
+        const pdfSceneGraph = injectChartImagesIntoSceneGraph(pdfBaseSceneGraph, chartImageMap);
 
         // Scene-graph-based PDF (preferred — guaranteed visual parity with PPTX)
         const pdfResult = await renderPdfFromSceneGraph({
@@ -5440,11 +5916,13 @@ export const basquioExport = inngest.createFunction(
         page_count: slidesForExport.length,
         qa_passed: qaPassed,
         qa_report: {
+          tier: qaTier,
           checks: qaChecks,
-          delivery_status: qaPassed ? "reviewed" : "degraded",
+          delivery_status: qaTier === "green" ? "reviewed" : "degraded",
           chartCoverage: { total: chartLayoutSlides.length, linked: chartLayoutSlides.length - chartlessSlides.length, ratio: chartCoverageRatio },
+          imageCoverage: { total: v2ChartRows.length, rendered: imageBackedCharts.length, ratio: imageCoverageRatio },
           ...(degradedDelivery ? { unresolvedIssues: degradedIssues } : {}),
-          ...(!qaStructuralPassed ? { qaFailures: qaChecks.filter((c) => !c.passed).map((c) => c.name) } : {}),
+          ...(qaFailures.length > 0 ? { qaFailures } : {}),
           sceneGraphAudit: {
             totalWarnings: totalSceneWarnings,
             overflowSlides: overflowSlides.map(a => ({ position: a.position, details: a.overflowDetails })),
@@ -5495,6 +5973,8 @@ export const basquioExport = inngest.createFunction(
         pdfBytes: pdfArtifactEntry?.fileBytes ?? 0,
         slideCount: slidesForExport.length,
         qaPassed,
+        qaTier,
+        qaFailures,
         exportMode,
       };
     });

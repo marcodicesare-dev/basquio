@@ -54,7 +54,7 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
           ...credentials,
           table: "artifact_manifests_v2",
           query: {
-            select: "run_id,slide_count,page_count,qa_passed,artifacts",
+            select: "run_id,slide_count,page_count,qa_passed,qa_report,artifacts",
             run_id: `in.(${completedIds.join(",")})`,
           },
         });
@@ -440,6 +440,7 @@ type V2DeckRunRow = {
   completed_at: string | null;
   failure_message: string | null;
   source_file_ids: string[] | null;
+  cost_telemetry?: Record<string, unknown> | null;
 };
 
 type V2ArtifactManifestRow = {
@@ -447,6 +448,7 @@ type V2ArtifactManifestRow = {
   slide_count: number;
   page_count: number;
   qa_passed: boolean;
+  qa_report?: Record<string, unknown> | null;
   artifacts: Array<{ kind: string; fileName: string; mimeType: string; storagePath: string; storageBucket: string; fileBytes: number; checksumSha256?: string }>;
 };
 
@@ -460,7 +462,7 @@ async function listV2DeckRuns(
       ...credentials,
       table: "deck_runs",
       query: {
-        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids",
+        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids,cost_telemetry",
         requested_by: `eq.${viewerId}`,
         order: "created_at.desc",
         limit: String(limit),

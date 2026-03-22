@@ -1,0 +1,3 @@
+Create an Italian-language executive deck on Ricola candy performance.
+Compare channel performance, isolate where price and mix are under pressure, and explain what should happen next.
+Do not invent filters or channels that are not in the dataset.
