@@ -1176,9 +1176,9 @@ function inferChartFamily(insight: InsightSpec, dimensionKey: string, rowCount: 
     return "waterfall" as const;
   }
 
-  // Correlation → scatter
+  // Correlation → grouped_bar (scatter/bubble/quadrant are NOT supported)
   if (suggestion.includes("scatter") || suggestion.includes("correlation") || suggestion.includes("bubble") || suggestion.includes("quadrant")) {
-    return "scatter" as const;
+    return "grouped_bar" as const;
   }
 
   // Composition → pie/doughnut
@@ -1191,29 +1191,29 @@ function inferChartFamily(insight: InsightSpec, dimensionKey: string, rowCount: 
     return "stacked-bar" as const;
   }
 
-  // Matrix / heatmap
+  // Matrix / heatmap → table (NOT supported as chart)
   if (suggestion.includes("heatmap") || suggestion.includes("heat") || suggestion.includes("matrix") || suggestion.includes("scorecard")) {
-    return "heatmap" as const;
+    return "table" as const;
   }
 
-  // Health / radar
+  // Health / radar → bar (NOT supported)
   if (suggestion.includes("radar") || suggestion.includes("spider") || suggestion.includes("health") || suggestion.includes("diagnostic")) {
-    return "radar" as const;
+    return "bar" as const;
   }
 
-  // Funnel
+  // Funnel → horizontal_bar (NOT supported)
   if (suggestion.includes("funnel") || suggestion.includes("conversion") || suggestion.includes("pipeline")) {
-    return "funnel" as const;
+    return "horizontal_bar" as const;
   }
 
-  // Marimekko / market sizing
+  // Marimekko → stacked_bar_100 (NOT supported)
   if (suggestion.includes("mekko") || suggestion.includes("marimekko") || suggestion.includes("market size")) {
-    return "marimekko" as const;
+    return "stacked_bar_100" as const;
   }
 
-  // Timeline / roadmap
+  // Timeline → horizontal_bar (NOT supported)
   if (suggestion.includes("timeline") || suggestion.includes("roadmap") || suggestion.includes("gantt") || suggestion.includes("phase")) {
-    return "timeline" as const;
+    return "horizontal_bar" as const;
   }
 
   // Dense data → table
