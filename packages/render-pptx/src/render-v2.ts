@@ -1289,7 +1289,7 @@ function renderSceneGraphNode(
       const cardW = frame.w / metrics.length;
       metrics.forEach((metric, index) => {
         const x = frame.x + cardW * index;
-        slide.addShape(PptxGenJS.ShapeType.rect, {
+        slide.addShape("rect" as PptxGenJS.ShapeType, {
           x,
           y: frame.y,
           w: cardW - 0.06,
@@ -1337,7 +1337,7 @@ function renderSceneGraphNode(
     }
 
     case "callout":
-      slide.addShape(PptxGenJS.ShapeType.rect, {
+      slide.addShape("rect" as PptxGenJS.ShapeType, {
         x: frame.x,
         y: frame.y,
         w: frame.w,
@@ -1363,7 +1363,7 @@ function renderSceneGraphNode(
 
     case "shape":
     case "divider":
-      slide.addShape(PptxGenJS.ShapeType.rect, {
+      slide.addShape("rect" as PptxGenJS.ShapeType, {
         x: frame.x,
         y: frame.y,
         w: frame.w,

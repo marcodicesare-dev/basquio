@@ -2873,7 +2873,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
           serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
           bucket: "artifacts", storagePath: `${runId}/deck.pptx`, body: buf, contentType: pptx.mimeType,
         });
-        await updateRunStatus(runId, "completed", "export", {
+        await updateRunStatus(runId, "failed", "export", {
           failure_message: `Last-resort export: ${message.slice(0, 500)}`,
         });
         await updateDeliveryStatus(runId, "degraded");

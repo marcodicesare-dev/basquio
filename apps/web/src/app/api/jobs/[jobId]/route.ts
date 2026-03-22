@@ -230,13 +230,41 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     } catch {
       // Manifest not available yet
     }
+
+    // Fallback: if no manifest but slides exist, derive count from slide rows
+    if (!summary) {
+      try {
+        const slideRows = await fetchRestRows<{ id: string }>({
+          supabaseUrl: supabaseUrl!,
+          serviceKey: serviceKey!,
+          table: "deck_spec_v2_slides",
+          query: {
+            select: "id",
+            run_id: `eq.${jobId}`,
+            limit: "50",
+          },
+        });
+        if (slideRows.length > 0) {
+          summary = {
+            slideCount: slideRows.length,
+            pageCount: 0,
+            qaPassed: false,
+            artifacts: [
+              { kind: "pptx", fileName: "deck.pptx", fileBytes: 0, downloadUrl: `/api/artifacts/${jobId}/pptx` },
+            ],
+          };
+        }
+      } catch {
+        // Slides not available
+      }
+    }
   }
 
   return {
     jobId,
     pipelineVersion: "v2" as const,
     status: run.status as "queued" | "running" | "completed" | "failed",
-    artifactsReady: Boolean(run.completed_at) || run.status === "completed",
+    artifactsReady: Boolean(summary && Array.isArray(summary.artifacts) && (summary.artifacts as unknown[]).length > 0),
     createdAt,
     updatedAt: run.updated_at ?? undefined,
     currentStage: currentPhase ?? V2_PHASES[0],
