@@ -816,15 +816,24 @@ function renderBullets(
   region: R,
   tokens: BrandTokens,
   maxBulletsOverride?: number,
+  speakerNotesOverflow?: string[],
 ): void {
   const maxBullets = maxBulletsOverride ?? 4;
   const MAX_BULLET_WORDS = 20;
+  // Capture dropped bullets to speaker notes
+  if (bullets.length > maxBullets && speakerNotesOverflow) {
+    speakerNotesOverflow.push(`[Overflow bullets]: ${bullets.slice(maxBullets).join(" | ")}`);
+  }
   const textProps: PptxGenJS.TextProps[] = bullets.slice(0, maxBullets).map((b) => {
     const cleaned = b.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
     const words = cleaned.split(/\s+/);
-    const truncated = words.length > MAX_BULLET_WORDS
-      ? words.slice(0, MAX_BULLET_WORDS).join(" ") + "\u2026"
-      : cleaned;
+    let truncated = cleaned;
+    if (words.length > MAX_BULLET_WORDS) {
+      truncated = words.slice(0, MAX_BULLET_WORDS).join(" ") + "\u2026";
+      if (speakerNotesOverflow) {
+        speakerNotesOverflow.push(`[Truncated bullet]: ${cleaned}`);
+      }
+    }
     return {
       text: processNewlines(truncated),
       options: {
@@ -1047,6 +1056,7 @@ function renderCallout(
   region: R,
   tokens: BrandTokens,
   variant: "green" | "orange" | "accent" = "accent",
+  speakerNotesOverflow?: string[],
 ): void {
   const accentMap: Record<string, string> = {
     green: tokens.palette.calloutGreen,
@@ -1082,6 +1092,9 @@ function renderCallout(
   let cleanText = text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
   const calloutWords = cleanText.split(/\s+/);
   if (calloutWords.length > MAX_CALLOUT_WORDS) {
+    if (speakerNotesOverflow) {
+      speakerNotesOverflow.push(`[Truncated callout]: ${cleanText}`);
+    }
     cleanText = calloutWords.slice(0, MAX_CALLOUT_WORDS).join(" ") + "\u2026";
   }
   slide.addText(processNewlines(cleanText), {
@@ -1461,7 +1474,7 @@ function renderContentSlide(
       }
       // First-class callout
       if (s.callout && regions.callout) {
-        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent", notesOverflow);
       }
       break;
     }
@@ -1477,7 +1490,7 @@ function renderContentSlide(
       if (hasTextContent) {
         if (s.bullets && s.bullets.length > 0) {
           const bulletRegion = regions.bullets || regions.body;
-          if (bulletRegion) renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch);
+          if (bulletRegion) renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch, notesOverflow);
         } else if (s.body && regions.body) {
           renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
         }
@@ -1488,11 +1501,11 @@ function renderContentSlide(
       // First-class callout (if provided), else derive from body/bullet
       if (regions.callout) {
         if (s.callout) {
-          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent", notesOverflow);
         } else if (s.body || (s.bullets && s.bullets.length > 0)) {
           const calloutText = s.body || s.bullets?.[0] || "";
           if (calloutText) {
-            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "accent");
+            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "accent", notesOverflow);
           }
         }
       }
@@ -1515,7 +1528,7 @@ function renderContentSlide(
       // Body/bullets on right
       if (regions.body) {
         if (s.bullets && s.bullets.length > 0) {
-          renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch);
+          renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch, notesOverflow);
         } else if (s.body) {
           renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
         }
@@ -1523,9 +1536,9 @@ function renderContentSlide(
       // First-class callout at bottom, else fallback
       if (regions.callout) {
         if (s.callout) {
-          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green");
+          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green", notesOverflow);
         } else if (s.body && s.bullets && s.bullets.length > 0) {
-          renderCallout(slide, pptx, s.body, regions.callout, tokens, "green");
+          renderCallout(slide, pptx, s.body, regions.callout, tokens, "green", notesOverflow);
         }
       }
       break;
@@ -1541,18 +1554,18 @@ function renderContentSlide(
         renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
       } else if (layoutId === "exec-summary" && s.bullets && s.bullets.length > 0 && regions.bullets) {
         // Fallback to bullets if no chart
-        renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch);
+        renderBullets(slide, s.bullets, regions.bullets, tokens, maxBulletsFromArch, notesOverflow);
       } else if (s.body && regions.body) {
         renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
       } else if (s.bullets && s.bullets.length > 0) {
         const fallbackRegion = regions.bullets || regions.body;
         if (fallbackRegion) {
-          renderBullets(slide, s.bullets, fallbackRegion, tokens, maxBulletsFromArch);
+          renderBullets(slide, s.bullets, fallbackRegion, tokens, maxBulletsFromArch, notesOverflow);
         }
       }
       // First-class callout
       if (s.callout && regions.callout) {
-        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent", notesOverflow);
       }
       break;
     }
@@ -1560,7 +1573,7 @@ function renderContentSlide(
     case "title-body":
     case "title-bullets": {
       if (s.bullets && s.bullets.length > 0 && regions.body) {
-        renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch);
+        renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch, notesOverflow);
       }
       if (s.body && regions.body) {
         const bodyY = s.bullets?.length ? regions.body.y + Math.min(s.bullets.length * 0.3, 1.5) : regions.body.y;
@@ -1571,7 +1584,7 @@ function renderContentSlide(
       }
       // First-class callout
       if (s.callout && regions.callout) {
-        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent", notesOverflow);
       }
       break;
     }
@@ -1651,14 +1664,14 @@ function renderContentSlide(
           ? { ...regions.chart2, y: regions.chart2.y + chartYOffset, h: regions.chart2.h - chartYOffset }
           : regions.chart2;
         if (s.bullets && s.bullets.length > 0) {
-          renderBullets(slide, s.bullets, adjusted2, tokens, maxBulletsFromArch);
+          renderBullets(slide, s.bullets, adjusted2, tokens, maxBulletsFromArch, notesOverflow);
         } else if (s.body) {
           renderBody(slide, s.body, adjusted2, tokens, notesOverflow, bodyMaxWords);
         }
       }
       // Callout
       if (s.callout && regions.callout) {
-        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent");
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent", notesOverflow);
       }
       break;
     }
@@ -1684,16 +1697,16 @@ function renderContentSlide(
         const bulletRegion = (!chart || !regions.chart)
           ? { ...regions.bullets, x: regions.body?.x ?? 0.6, w: regions.callout?.w ?? regions.bullets.w + 4 }
           : regions.bullets;
-        renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch);
+        renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch, notesOverflow);
       }
       // Callout
       if (regions.callout) {
         if (s.callout) {
-          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green");
+          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green", notesOverflow);
         } else {
           const calloutText = s.bullets && s.bullets.length > 0 ? s.bullets.join(" | ") : s.body || "";
           if (calloutText && (!s.body || (s.bullets && s.bullets.length > 0))) {
-            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "green");
+            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "green", notesOverflow);
           }
         }
       }
@@ -1710,7 +1723,7 @@ function renderContentSlide(
       } else if (s.bullets && s.bullets.length > 0) {
         const bulletRegion =
           regions.bullets || regions.body || { x: 0.55, y: 0.85, w: 8.9, h: 3.8 };
-        renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch);
+        renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch, notesOverflow);
       }
       break;
     }
