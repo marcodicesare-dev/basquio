@@ -1817,14 +1817,17 @@ export async function renderV2PptxArtifact(
   // Initialize resvg WASM once — this is the WASM build that works everywhere
   // (Vercel serverless, Edge, local). No native binaries, no node-gyp, no webpack issues.
   // Same engine @vercel/og uses internally for OG image generation.
-  let ResvgClass: typeof import("@resvg/resvg-wasm").Resvg | null = null;
+  // Load resvg WASM for SVG→PNG rasterization.
+  // Uses @resvg/resvg-wasm (pure WASM, no native binaries).
+  // webpack asyncWebAssembly experiment is enabled in next.config.ts.
+  // serverExternalPackages includes @resvg/resvg-wasm to prevent bundling through transpilePackages.
+  let ResvgClass: (new (svg: string, opts: Record<string, unknown>) => { render: () => { asPng: () => Uint8Array } }) | null = null;
   try {
-    const resvgWasm = await import("@resvg/resvg-wasm");
-    // initWasm must be called exactly once. If already initialized, it throws — that's fine.
+    const resvgWasm = await import(/* webpackIgnore: true */ "@resvg/resvg-wasm");
     try {
-      const wasmPath = require.resolve("@resvg/resvg-wasm/index_bg.wasm");
-      const fs = await import("fs");
-      await resvgWasm.initWasm(fs.readFileSync(wasmPath));
+      const wasmPath = require.resolve(/* webpackIgnore: true */ "@resvg/resvg-wasm/index_bg.wasm");
+      const { readFileSync } = await import(/* webpackIgnore: true */ "fs");
+      await resvgWasm.initWasm(readFileSync(wasmPath));
     } catch {
       // Already initialized — ignore
     }
