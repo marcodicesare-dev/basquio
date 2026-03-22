@@ -3145,11 +3145,7 @@ Every analytical content slide (positions 3 through N-1) MUST have a chart with 
 | scatter | Distribution vs velocity, two-variable correlation | 2 measures as x/y axes |
 | doughnut | Simple share split (max 5 categories) | 1 dimension, 1 measure |
 | pie | Simple share split (max 4 categories) | 1 dimension, 1 measure |
-| heatmap | Cross-tabulation, performance matrix | 2 dimensions, 1 measure |
-| marimekko | Portfolio analysis — segment size × mix simultaneously | 1 dimension, width + height measures |
-| pareto | Concentration analysis (top N = X% of total) | 1 dimension, 1 measure, sorted desc |
-| funnel | Sequential conversion/loss stages | Sequential stages, 1 measure |
-| radar | Multi-attribute comparison (brand scorecard) | 1 entity, 5-8 attributes |
+| pareto | Concentration analysis (top N = X% of total) — rendered as bar sorted desc with cumulative line | 1 dimension, 1 measure, sorted desc |
 | table | Dense data requiring exact numbers (price lists, SKU detail) | Multiple columns, too dense for chart |
 
 Choose chart types by ANALYTICAL QUESTION, not data availability:
@@ -3159,7 +3155,7 @@ Choose chart types by ANALYTICAL QUESTION, not data availability:
 - "What's growing/declining?" → horizontal_bar (sorted by growth rate)
 - "Who dominates?" → doughnut or pareto (concentration)
 - "What are the top N items?" → horizontal_bar with humanized labels
-- "How does performance vary across two dimensions?" → heatmap or scatter
+- "How does performance vary across two dimensions?" → scatter
 - "What changed and why?" → waterfall (bridge chart)
 - "What's the portfolio structure?" → marimekko (size × mix)
 - "How concentrated is revenue?" → pareto (cumulative %)
@@ -3177,6 +3173,12 @@ NEVER use pie/doughnut with >5 categories — use horizontal_bar instead.
 - Use "chart-split" for chart + narrative explanation
 - Use "title-chart" for full-width chart evidence slides
 - The deck MUST use at least 3 different layout types across analytical slides
+
+## CHART DATA ACCURACY (critical)
+- The chart MUST show the EXACT metric mentioned in the slide title. If the title says "prezzo medio per confezione €1,58 vs €1,99", the chart yAxis MUST be the average price column, NOT total sales value.
+- ALWAYS check: does the yAxis column contain the values that match the slide's claim? If not, find the correct column.
+- For derived metrics (averages, shares, indices), use the column that contains the PRE-COMPUTED value from the data, not raw totals.
+- When comparing two entities (Discount vs Totale Italia), use a filter to select each entity's data, not all data mixed together.
 
 ## DESIGN ANTI-PATTERNS (never do these)
 - NEVER create text-only analytical slides — every insight needs a chart
@@ -3415,7 +3417,7 @@ Return a V1DeckPlan with slides and charts.`,
 
           // 2. Too many categories for the chart type (unreadable)
           const catCount = grouped.categories.length;
-          if (catCount > 20 && !["table", "heatmap"].includes(exhibitResult.chartType)) {
+          if (catCount > 20 && !["table"].includes(exhibitResult.chartType)) {
             // Truncate to top 12 by first measure value
             const pairs = grouped.categories.map((c, i) => ({ cat: c, val: grouped.series[0]?.values[i] ?? 0 }));
             pairs.sort((a, b) => Math.abs(b.val) - Math.abs(a.val));

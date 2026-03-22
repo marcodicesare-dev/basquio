@@ -227,7 +227,9 @@ const BOWER_TOKENS: BrandTokens = {
     kpiValueSize: 44,
     kpiLabelSize: 10,
   },
-  chartPalette: ["1F2937", "2563EB", "059669", "DC2626", "7C3AED", "D97706", "0891B2", "6B7280"],
+  // Chart palette: lead with vibrant blue + teal for Discount/TI comparisons.
+  // Dark authority gray moves to position 6 (rarely used in 2-series charts).
+  chartPalette: ["2563EB", "F59E0B", "059669", "DC2626", "7C3AED", "1F2937", "0891B2", "6B7280"],
 };
 
 // ─── "SIGNAL" HOUSE TEMPLATE — Data-Heavy ───────────────────────
@@ -1328,24 +1330,9 @@ function renderCoverSlide(
     fill: { color: norm(tokens.palette.accent), transparency: 92 },
   });
 
-  // Kicker pill: monospace, small, with subtle border (JSX: Pill component)
-  if (s.kicker) {
-    const kickerY = SLIDE_H / 2 - 1.8;
-    slide.addText(s.kicker.toUpperCase(), {
-      x: SLIDE_W / 2 - 1.5,
-      y: kickerY,
-      w: 3.0,
-      h: 0.28,
-      fontSize: 9,
-      fontFace: tokens.typography.monoFont,
-      color: norm(tokens.palette.accent),
-      bold: true,
-      charSpacing: 1.5,
-      align: "center",
-      valign: "middle",
-      line: { color: norm(tokens.palette.accent), pt: 0.5, transparency: 70 },
-    });
-  }
+  // Cover slides NEVER have a kicker — removed entirely.
+  // The orchestration clears it (finalKicker = "" for cover) but the LLM
+  // sometimes generates one anyway. Defense in depth: don't render it.
 
   // Title: serif, centered, large (JSX: Playfair Display 56px)
   // Cover uses WHITE text because cover background is always dark (coverBg).
@@ -1838,14 +1825,17 @@ export async function renderV2PptxArtifact(
 
       // Render at 2x resolution for retina-quality images
       const svg = renderV2ChartSvg(chart, chartTheme, 1920, 1080, suppressTitle);
-      // Dynamic import: sharp has native binaries that fail at Next.js build time
-      // if imported statically. Dynamic import defers loading to runtime.
-      const sharpModule = await import("sharp");
-      const sharpFn = sharpModule.default;
-      const pngBuffer = await sharpFn(Buffer.from(svg))
-        .resize(1920, 1080)
-        .png({ quality: 95 })
-        .toBuffer();
+      // Use @resvg/resvg-js for SVG→PNG rasterization.
+      // Sharp crashes on Vercel (pnpm 10 blocks build scripts, native binaries missing).
+      // Resvg has pre-compiled .node binaries — no node-gyp, no postinstall, works everywhere.
+      // Same engine Vercel uses internally for @vercel/og image generation.
+      const { Resvg } = await import("@resvg/resvg-js");
+      const resvg = new Resvg(svg, {
+        fitTo: { mode: "width" as const, value: 1920 },
+        font: { loadSystemFonts: true },
+      });
+      const pngData = resvg.render();
+      const pngBuffer = Buffer.from(pngData.asPng());
       chartImageMap.set(chart.id, pngBuffer);
     } catch (err) {
       console.warn(`[render-v2] Chart image render failed for ${chart.id}, falling back to shape:`, err);
