@@ -43,10 +43,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@discordjs/opus",
-      "sharp",
-      "@img/sharp-linux-x64",
-      "@img/sharp-libvips-linux-x64"
+      "@discordjs/opus"
     ]
   }
 }

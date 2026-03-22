@@ -3157,10 +3157,12 @@ Choose chart types by ANALYTICAL QUESTION, not data availability:
 - "What are the top N items?" → horizontal_bar with humanized labels
 - "How does performance vary across two dimensions?" → scatter
 - "What changed and why?" → waterfall (bridge chart)
-- "What's the portfolio structure?" → marimekko (size × mix)
-- "How concentrated is revenue?" → pareto (cumulative %)
-- "How does the brand score on multiple attributes?" → radar
-- "What's the conversion funnel?" → funnel
+- "What's the portfolio structure?" → scatter (size on x-axis, mix on y-axis)
+- "How concentrated is revenue?" → horizontal_bar sorted desc (Pareto-style)
+- "How does the brand score on multiple attributes?" → horizontal_bar (one bar per attribute)
+- "What's the conversion funnel?" → horizontal_bar sorted by stage size
+
+NEVER use these chart types (they are NOT supported): heatmap, marimekko, matrix, quadrant, radar, funnel, timeline. Use horizontal_bar or scatter instead.
 
 NEVER use line unless there are 4+ time periods in sequence.
 NEVER use line for categorical comparisons.
@@ -3338,7 +3340,7 @@ Return a V1DeckPlan with slides and charts.`,
           // ─── MINIMUM CATEGORY CHECK ───
           // Charts with < 2 categories are meaningless (1 bar, 1 line point).
           // Tables, funnels, and waterfall/bridge can be meaningful with 1 category.
-          const SINGLE_CATEGORY_OK = ["table", "funnel", "waterfall", "kpi_card"];
+          const SINGLE_CATEGORY_OK = ["table", "waterfall", "kpi_card"];
           if (grouped.categories.length < 2 && !SINGLE_CATEGORY_OK.includes(planned.chartType)) {
             console.warn(`[basquio-author] Chart ${planned.chartId}: only ${grouped.categories.length} category after filtering — chart would be meaningless. Skipping.`);
             chartResults.push({ chartId: "", plannedId: planned.chartId, success: false, error: `Only ${grouped.categories.length} category — chart would be meaningless` });
