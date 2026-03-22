@@ -310,7 +310,11 @@ const TEMPLATE_MAP: Record<string, BrandTokens> = {
 };
 
 function resolveTokens(partial?: Partial<BrandTokens>, templateName?: string): BrandTokens {
-  const base = (templateName && TEMPLATE_MAP[templateName.toLowerCase()]) || DEFAULT_TOKENS;
+  // Default to BOWER (light, consulting-grade) not SLATE (dark).
+  // Dark themes don't survive PPTX export: Google Slides, Keynote, and many
+  // PowerPoint versions strip or ignore custom slide backgrounds, leaving
+  // near-white text invisible on the default white canvas.
+  const base = (templateName && TEMPLATE_MAP[templateName.toLowerCase()]) || BOWER_TOKENS;
   if (!partial) return base;
   return {
     palette: { ...base.palette, ...(partial.palette as Partial<BrandTokens["palette"]>) },
@@ -498,7 +502,12 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     effectiveChartType = "stacked_bar";
   }
 
-  const labels = chart.data.map((row) => String(row[chart.xAxis] ?? ""));
+  // Truncate long category labels to prevent overlap in PPTX charts
+  const MAX_LABEL_LEN = 25;
+  const labels = chart.data.map((row) => {
+    const raw = String(row[chart.xAxis] ?? "");
+    return raw.length > MAX_LABEL_LEN ? raw.slice(0, MAX_LABEL_LEN - 1) + "\u2026" : raw;
+  });
   const basePalette = chart.style.colors?.map(norm) ?? tokens.chartPalette.map(norm);
 
   // Highlight-bar coloring: if highlightCategories specified, color focal bars with accent,
@@ -545,11 +554,13 @@ function buildChartData(chart: V2ChartRow, tokens: BrandTokens): {
     legendFontFace: tokens.typography.bodyFont,
 
     showCatAxisTitle: rules.categoryAxisTitle !== "none",
-    catAxisLabelColor: norm(tokens.palette.ink),
-    catAxisLabelFontSize: 9,
+    catAxisLabelColor: norm(tokens.palette.muted),
+    catAxisLabelFontSize: 8,
     catAxisLabelFontFace: tokens.typography.bodyFont,
     catAxisLineShow: true,
     catAxisLineColor: norm(tokens.palette.border),
+    // Rotate labels when categories have long names (common in Italian FMCG data)
+    catAxisLabelRotate: chart.data.length > 4 ? 45 : 0,
 
     showValAxisTitle: rules.showValueAxis && rules.valueAxisTitle !== "none",
     valAxisTitle: chart.unit ?? "",
@@ -1311,6 +1322,10 @@ function renderCoverSlide(
   }
 
   // Title: serif, centered, large (JSX: Playfair Display 56px)
+  // Cover uses WHITE text because cover background is always dark (coverBg).
+  // This works whether the background renders (dark bg + white text) or not
+  // (white bg + fallback). Content slides use ink (dark text on light bg).
+  const coverTextColor = "FFFFFF";
   const titleY = SLIDE_H / 2 - 1.2;
   slide.addText(processNewlines(s.title), {
     x: 1.5,
@@ -1320,7 +1335,7 @@ function renderCoverSlide(
     fontFace: tokens.typography.headingFont,
     fontSize: discreteTitleSize(s.title, tokens.typography.coverTitleSize),
     bold: true,
-    color: norm(tokens.palette.ink),
+    color: coverTextColor,
     align: "center",
     valign: "middle",
     lineSpacingMultiple: 1.08,
@@ -1335,7 +1350,7 @@ function renderCoverSlide(
       h: 0.8,
       fontFace: tokens.typography.bodyFont,
       fontSize: 14,
-      color: norm(tokens.palette.muted),
+      color: "D1D5DB", // Light gray on dark cover bg
       align: "center",
       valign: "top",
       lineSpacingMultiple: 1.5,

@@ -691,16 +691,20 @@ function inferLayoutMode(
 function resolveTheme(templateProfile: TemplateProfile) {
   const brandTokens = templateProfile.brandTokens;
 
+  // Default to BOWER light theme (matches PPTX renderer).
+  // Dark theme fallbacks are broken: PDF viewers render them correctly but
+  // the PPTX counterpart doesn't survive Google Slides/Keynote, creating
+  // a jarring mismatch between PDF and PPTX outputs.
   return {
-    text: brandTokens?.palette.text ?? templateProfile.colors[0] ?? "#F2F0EB",
-    accent: brandTokens?.palette.accent ?? templateProfile.colors[1] ?? "#E8A84C",
-    highlight: brandTokens?.palette.highlight ?? templateProfile.colors[2] ?? "#E8A84C",
-    background: brandTokens?.palette.background ?? templateProfile.colors[3] ?? "#0A090D",
-    surface: brandTokens?.palette.surface ?? templateProfile.colors[4] ?? "#13121A",
-    border: brandTokens?.palette.border ?? templateProfile.colors[5] ?? "#272630",
-    accentMuted: brandTokens?.palette.accentMuted ?? "#2D2618",
-    mutedText: "#6B6A72",
-    headingFont: brandTokens?.typography.headingFont ?? templateProfile.fonts[0] ?? "Georgia",
+    text: brandTokens?.palette.text ?? templateProfile.colors[0] ?? "#1A1A2E",
+    accent: brandTokens?.palette.accent ?? templateProfile.colors[1] ?? "#1F2937",
+    highlight: brandTokens?.palette.highlight ?? templateProfile.colors[2] ?? "#1F2937",
+    background: brandTokens?.palette.background ?? templateProfile.colors[3] ?? "#FFFFFF",
+    surface: brandTokens?.palette.surface ?? templateProfile.colors[4] ?? "#F9FAFB",
+    border: brandTokens?.palette.border ?? templateProfile.colors[5] ?? "#D1D5DB",
+    accentMuted: brandTokens?.palette.accentMuted ?? "#F3F4F6",
+    mutedText: "#6B7280",
+    headingFont: brandTokens?.typography.headingFont ?? templateProfile.fonts[0] ?? "Arial",
     bodyFont: brandTokens?.typography.bodyFont ?? templateProfile.fonts[1] ?? templateProfile.fonts[0] ?? "Arial",
     pageX: brandTokens?.spacing.pageX ?? 0.6,
     pageY: brandTokens?.spacing.pageY ?? 0.5,
