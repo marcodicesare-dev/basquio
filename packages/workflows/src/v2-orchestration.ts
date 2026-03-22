@@ -2908,10 +2908,10 @@ function validateAndFixPlan(plan: V1DeckPlan, analysisFindings?: Array<{ title: 
     { questionPattern: /trend|over\s*time|evolution|trajectory|monthly|weekly|quarterly/i,
       forbiddenCharts: ["pie", "doughnut"],
       fallback: "line" },
-    // Distribution vs velocity → scatter
+    // Distribution vs velocity → grouped_bar
     { questionPattern: /distribut.*veloc|velocity.*distribut|dist.*ros|ros.*dist/i,
       forbiddenCharts: ["line", "pie"],
-      fallback: "scatter" },
+      fallback: "grouped_bar" },
   ];
 
   for (const chart of dedupedCharts) {
@@ -3142,7 +3142,7 @@ Every analytical content slide (positions 3 through N-1) MUST have a chart with 
 | waterfall | Bridge/decomposition — what drove the change | Sequential items showing +/- contributions |
 | line | Time trend with 4+ sequential periods | 1 time dimension, 1-3 measures |
 | area | Time trend emphasizing cumulative volume | 1 time dimension, 1-2 measures |
-| scatter | Distribution vs velocity, two-variable correlation | 2 measures as x/y axes |
+| grouped_bar | Comparison of multiple measures across categories | 2+ measures per category |
 | doughnut | Simple share split (max 5 categories) | 1 dimension, 1 measure |
 | pie | Simple share split (max 4 categories) | 1 dimension, 1 measure |
 | pareto | Concentration analysis (top N = X% of total) — rendered as bar sorted desc with cumulative line | 1 dimension, 1 measure, sorted desc |
@@ -3155,14 +3155,15 @@ Choose chart types by ANALYTICAL QUESTION, not data availability:
 - "What's growing/declining?" → horizontal_bar (sorted by growth rate)
 - "Who dominates?" → doughnut or pareto (concentration)
 - "What are the top N items?" → horizontal_bar with humanized labels
-- "How does performance vary across two dimensions?" → scatter
+- "How does performance vary across two dimensions?" → grouped_bar (side-by-side comparison)
 - "What changed and why?" → waterfall (bridge chart)
-- "What's the portfolio structure?" → scatter (size on x-axis, mix on y-axis)
+- "What's the portfolio structure?" → stacked_bar (composition breakdown)
 - "How concentrated is revenue?" → horizontal_bar sorted desc (Pareto-style)
 - "How does the brand score on multiple attributes?" → horizontal_bar (one bar per attribute)
 - "What's the conversion funnel?" → horizontal_bar sorted by stage size
 
-NEVER use these chart types (they are NOT supported): heatmap, marimekko, matrix, quadrant, radar, funnel, timeline. Use horizontal_bar or scatter instead.
+NEVER use these chart types (they are NOT supported and render badly): scatter, heatmap, marimekko, matrix, quadrant, radar, funnel, timeline, bubble, combo.
+Use horizontal_bar, grouped_bar, or stacked_bar instead — they are always readable.
 
 NEVER use line unless there are 4+ time periods in sequence.
 NEVER use line for categorical comparisons.
