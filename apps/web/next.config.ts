@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../.."),
-  serverExternalPackages: [],
+  serverExternalPackages: ["@resvg/resvg-js", "sharp"],
   outputFileTracingExcludes: {
     "/*": [
       ".next/cache/**/*",
