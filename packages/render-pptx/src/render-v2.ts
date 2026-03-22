@@ -1814,8 +1814,28 @@ export async function renderV2PptxArtifact(
     if (s.chartId) chartSlideMap.set(s.chartId, s.title);
   }
 
-  await Promise.all(input.charts.map(async (chart) => {
-    if (chart.chartType === "table") return; // Tables stay as OOXML
+  // Initialize resvg WASM once — this is the WASM build that works everywhere
+  // (Vercel serverless, Edge, local). No native binaries, no node-gyp, no webpack issues.
+  // Same engine @vercel/og uses internally for OG image generation.
+  let ResvgClass: typeof import("@resvg/resvg-wasm").Resvg | null = null;
+  try {
+    const resvgWasm = await import("@resvg/resvg-wasm");
+    // initWasm must be called exactly once. If already initialized, it throws — that's fine.
+    try {
+      const wasmPath = require.resolve("@resvg/resvg-wasm/index_bg.wasm");
+      const fs = await import("fs");
+      await resvgWasm.initWasm(fs.readFileSync(wasmPath));
+    } catch {
+      // Already initialized — ignore
+    }
+    ResvgClass = resvgWasm.Resvg;
+  } catch (wasmErr) {
+    console.warn("[render-v2] Failed to load @resvg/resvg-wasm:", wasmErr);
+  }
+
+  for (const chart of input.charts) {
+    if (chart.chartType === "table") continue; // Tables stay as OOXML
+    if (!ResvgClass) break; // WASM not available — all charts will be native shapes
     try {
       const slideTitle = chartSlideMap.get(chart.id);
       const titleNorm = (chart.title ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1825,14 +1845,8 @@ export async function renderV2PptxArtifact(
 
       // Render at 2x resolution for retina-quality images
       const svg = renderV2ChartSvg(chart, chartTheme, 1920, 1080, suppressTitle);
-      // Use @resvg/resvg-js for SVG→PNG rasterization.
-      // Sharp crashes on Vercel (pnpm 10 blocks build scripts, native binaries missing).
-      // Resvg has pre-compiled .node binaries — no node-gyp, no postinstall, works everywhere.
-      // Same engine Vercel uses internally for @vercel/og image generation.
-      const { Resvg } = await import(/* webpackIgnore: true */ "@resvg/resvg-js");
-      const resvg = new Resvg(svg, {
+      const resvg = new ResvgClass(svg, {
         fitTo: { mode: "width" as const, value: 1920 },
-        font: { loadSystemFonts: true },
       });
       const pngData = resvg.render();
       const pngBuffer = Buffer.from(pngData.asPng());
@@ -1840,7 +1854,7 @@ export async function renderV2PptxArtifact(
     } catch (err) {
       console.warn(`[render-v2] Chart image render failed for ${chart.id}, falling back to shape:`, err);
     }
-  }));
+  }
 
   const sortedSlides = [...input.slides].sort((a, b) => a.position - b.position);
 
