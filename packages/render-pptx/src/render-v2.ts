@@ -1455,21 +1455,22 @@ function renderContentSlide(
 
     case "chart-split":
     case "two-column": {
-      // Chart on left, table on right
-      if (chart) {
-        if (regions.chart) {
-          renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
-        }
-        // Table with same data on right
-        if (regions.table) {
-          renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
-        }
+      // Chart on left
+      if (chart && regions.chart) {
+        renderChartElement(slide, pptx, chart, regions.chart, tokens, exportMode, s.title, chartImageMap);
       }
-      // Body text in right column
-      if (s.body && regions.body) {
-        renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
-      } else if (s.bullets && s.bullets.length > 0 && regions.body) {
-        renderBullets(slide, s.bullets, regions.body, tokens, maxBulletsFromArch);
+      // Right column: body/bullets text OR data table (never both — that causes overlap)
+      const hasTextContent = (s.body && s.body.length > 0) || (s.bullets && s.bullets.length > 0);
+      if (hasTextContent) {
+        if (s.bullets && s.bullets.length > 0) {
+          const bulletRegion = regions.bullets || regions.body;
+          if (bulletRegion) renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch);
+        } else if (s.body && regions.body) {
+          renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
+        }
+      } else if (chart && regions.table) {
+        // Only show data table when there's no text content
+        renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
       }
       // First-class callout (if provided), else derive from body/bullet
       if (regions.callout) {

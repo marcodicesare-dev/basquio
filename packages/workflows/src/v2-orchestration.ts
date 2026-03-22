@@ -3210,6 +3210,7 @@ Focal brands: ${clarifiedBrief?.focalBrands?.join(", ") ?? "(detect from data)"}
 
 ## Language
 ${clarifiedBrief?.language ?? "en"}
+ALL text output (slide titles, kickers, chart titles, chart subtitles, governing thoughts, recommendations) MUST be in this language. NEVER mix languages.
 
 ## CRITICAL RULES
 1. Exactly ${targetSlides} slides. Max 10 charts. Max 1 chart per slide.

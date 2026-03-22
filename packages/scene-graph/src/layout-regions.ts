@@ -87,11 +87,11 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        metrics: { x: ml, y: 1.8, w: cw, h: 1.6 },
-        chart: { x: ml, y: 3.6, w: 7.5, h: 2.8 },
-        body: { x: ml, y: 3.6, w: 7.5, h: 2.4 },
-        bullets: { x: ml, y: 3.6, w: 7.5, h: 2.4 },
-        callout: { x: 8.4, y: 3.6, w: 4.333, h: 2.4 },
+        metrics: { x: ml, y: 1.8, w: cw, h: 1.2 },
+        chart: { x: ml, y: 3.2, w: 6.8, h: 2.8 },           // narrower, gap before callout
+        body: { x: ml, y: 3.2, w: 6.8, h: 2.4 },
+        bullets: { x: ml, y: 3.2, w: 6.8, h: 2.4 },
+        callout: { x: 7.8, y: 3.2, w: 4.933, h: 2.4 },      // starts after chart gap
       };
 
     case "title-chart":
@@ -107,20 +107,22 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        chart: { x: ml, y: 1.5, w: 6.8, h: 4.8 },            // slightly narrower for breathing room
-        body: { x: 7.6, y: 1.5, w: 5.133, h: 3.5 },          // wider body (was 4.733), less dense
-        table: { x: 7.6, y: 1.5, w: 5.133, h: 3.5 },         // table same region as body
-        callout: { x: 7.6, y: 5.2, w: 5.133, h: 1.0 },       // moved up from 5.5
+        chart: { x: ml, y: 1.75, w: 6.2, h: 4.25 },          // narrower (6.2 not 6.8) — room for data labels
+        body: { x: 7.1, y: 1.75, w: 5.633, h: 3.0 },         // starts at 7.1 with 0.3" gap from chart
+        table: { x: 7.1, y: 1.75, w: 5.633, h: 3.0 },        // table same region as body
+        bullets: { x: 7.1, y: 1.75, w: 5.633, h: 3.0 },      // bullets region for chart-split
+        callout: { x: 7.1, y: 5.0, w: 5.633, h: 0.65 },      // taller callout, safe from footer
       };
 
     case "evidence-grid":
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
         title: { x: ml, y: 0.8, w: cw, h: 0.7 },
-        metrics: { x: ml, y: 1.5, w: cw, h: 1.3 },
-        chart: { x: ml, y: 3.0, w: 7.2, h: 3.2 },
-        body: { x: 7.5, y: 3.0, w: 5.233, h: 2.0 },          // wider body
-        callout: { x: 7.5, y: 5.2, w: 5.233, h: 0.9 },       // moved up
+        metrics: { x: ml, y: 1.5, w: cw, h: 1.2 },
+        chart: { x: ml, y: 2.9, w: 6.2, h: 3.0 },            // narrower for label room
+        body: { x: 7.1, y: 2.9, w: 5.633, h: 2.0 },          // gap from chart
+        bullets: { x: 7.1, y: 2.9, w: 5.633, h: 2.0 },       // bullets region
+        callout: { x: 7.1, y: 5.1, w: 5.633, h: 0.65 },      // taller
       };
 
     case "comparison":
