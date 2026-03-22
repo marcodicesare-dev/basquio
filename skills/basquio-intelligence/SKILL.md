@@ -20,6 +20,10 @@ Make the intelligence layer trustworthy, evidence-backed, and reusable.
 - stories must move from general to specific
 - the report brief must materially influence the story
 - file-role understanding matters when the input is a package, not one sheet
+- planner-authored dataset references are not trustworthy identifiers; use canonical handles or resolver-backed references for charts and evidence
+- deck language is a hard output constraint; mixed-language slides are a quality failure, not a copy edit
+- NIQ/FMCG vocabulary is not enough; recommendations must be traceable to the exact evidence and levers surfaced in the package
+- do not hide weak evidence behind polished fallback copy
 
 ## Required Outputs
 

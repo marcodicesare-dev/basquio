@@ -74,6 +74,19 @@ Initial domain bias:
 - Supabase REST queries in runtime code must stay compatible with the migrated schema; production log review is the source of truth when local assumptions drift.
 - status polling and recovery logic must handle both stale queued runs and stale running-with-zero-checkpoint runs.
 
+## Production Incident Memory: March 21-22, 2026
+
+- The March 21 run `10669fc3-917b-4a4e-84cf-a3ae07493839` did not fail because the analyst could not reason. It failed because the planner emitted a hallucinated chart sheet key (`→` separators plus duplicated filename), all 10 charts loaded zero rows, and the author fell into guaranteed fallback mode.
+- LLM-authored chart bindings are not trustworthy identifiers. Chart programs must bind through canonical dataset handles or normalized resolver logic, never raw freeform sheet-key strings authored by the planner.
+- The March 22 run `4daa609e-0284-40f3-9146-0d5836dac7b4` proved the chart-binding fix was not enough. The run achieved `chartCoverage=100%`, but every image-chart render failed at runtime because `sharp` could not load on Vercel Linux, so the renderer silently fell back to shape-built charts.
+- The intended export contract is pixel-perfect chart screenshots first, with text remaining editable. If the screenshot path is unavailable in production, that is a P0 rendering incident, not a harmless fallback.
+- Scene-graph overflow and collision findings are real artifact failures, not cosmetic warnings. The March 22 deck shipped with `scene_no_overflow` and `scene_no_collisions` failing, and the resulting PPTX was visibly not agency-grade.
+- PPTX and PDF are still not trustworthy if they do not share one identical visual contract. Simplified scene-graph defaults or token remapping in the PDF path can create a different product, even when both artifacts came from the same slide plan.
+- A reduced or degraded deck is acceptable only when it is explicitly truthful. A full consulting-style deck must not ship after total chart-program collapse, screenshot-path collapse, or layout-integrity failure.
+- Mixed-language output remains a real intelligence-quality defect. The deck language must be enforced as a hard authoring constraint, not a soft prompt hint.
+- Production telemetry must be read end to end. Phase-local cost summaries can understate total run cost; the final job-finished event is the authoritative run cost.
+- When production behavior and code claims disagree, trust the exported logs, artifact screenshots, and downloaded deck before trusting any self-report in commit messages.
+
 ## Design Memory
 
 - Basquio UI should feel like an executive reporting product, not a generic SaaS admin shell.

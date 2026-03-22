@@ -818,18 +818,26 @@ function renderBullets(
   maxBulletsOverride?: number,
 ): void {
   const maxBullets = maxBulletsOverride ?? 4;
-  const textProps: PptxGenJS.TextProps[] = bullets.slice(0, maxBullets).map((b) => ({
-    text: processNewlines(b.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1")),
-    options: {
-      bullet: { indent: 12 },
-      fontSize: tokens.typography.bulletSize,
-      fontFace: tokens.typography.bodyFont,
-      color: norm(tokens.palette.ink),
-      breakLine: true,
-      paraSpaceBefore: 2,
-      paraSpaceAfter: 4,
-    },
-  }));
+  const MAX_BULLET_WORDS = 20;
+  const textProps: PptxGenJS.TextProps[] = bullets.slice(0, maxBullets).map((b) => {
+    const cleaned = b.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+    const words = cleaned.split(/\s+/);
+    const truncated = words.length > MAX_BULLET_WORDS
+      ? words.slice(0, MAX_BULLET_WORDS).join(" ") + "\u2026"
+      : cleaned;
+    return {
+      text: processNewlines(truncated),
+      options: {
+        bullet: { indent: 12 },
+        fontSize: tokens.typography.bulletSize,
+        fontFace: tokens.typography.bodyFont,
+        color: norm(tokens.palette.ink),
+        breakLine: true,
+        paraSpaceBefore: 2,
+        paraSpaceAfter: 4,
+      },
+    };
+  });
 
   slide.addText(textProps, {
     x: region.x,
@@ -1069,8 +1077,13 @@ function renderCallout(
     fill: { color: norm(accentColor) },
   });
 
-  // Text: bold, ink color, strip markdown markers
-  const cleanText = text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+  // Text: bold, ink color, strip markdown markers, cap at 25 words
+  const MAX_CALLOUT_WORDS = 25;
+  let cleanText = text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+  const calloutWords = cleanText.split(/\s+/);
+  if (calloutWords.length > MAX_CALLOUT_WORDS) {
+    cleanText = calloutWords.slice(0, MAX_CALLOUT_WORDS).join(" ") + "\u2026";
+  }
   slide.addText(processNewlines(cleanText), {
     x: region.x + 0.16,
     y: region.y + 0.08,
