@@ -25,15 +25,18 @@ Implication:
 Decision:
 
 - the `understand` phase must accept the analysis plan either as attached `basquio_analysis.json` or as valid JSON returned in the final assistant message
+- the `understand` phase should use structured JSON output as its primary response contract instead of relying on prompt-only formatting
 
 Why:
 
 - the production run `8b4bdbee-77c0-44cf-98d9-32f6712df930` failed because the worker hard-required a file attachment even though Claude can validly return the analysis as message text after code execution
+- the next run `f1e72aa6-eb1e-4262-9dc4-3ed05494c677` failed because prompt-only text still allowed Claude to end on prose without emitting the actual JSON object
 
 Implication:
 
 - analysis extraction now prefers the file when present but falls back to parsing assistant text JSON
 - the prompt contract for `understand` treats message JSON as the required output and file attachment as optional convenience
+- the live `understand` request now uses structured output with an explicit JSON schema so this stage is governed by API-level structure, not only prompt wording
 ### Direct deck engine visual contract tightened
 
 Decision:

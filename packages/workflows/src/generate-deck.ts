@@ -173,6 +173,74 @@ const ANALYSIS_JSON_SHAPE = {
   ],
 } as const;
 
+const ANALYSIS_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    language: { type: "string" },
+    thesis: { type: "string" },
+    executiveSummary: { type: "string" },
+    slidePlan: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          position: { type: "integer" },
+          layoutId: { type: "string" },
+          slideArchetype: { type: "string" },
+          title: { type: "string" },
+          subtitle: { type: "string" },
+          body: { type: "string" },
+          bullets: {
+            type: "array",
+            items: { type: "string" },
+          },
+          metrics: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                label: { type: "string" },
+                value: { type: "string" },
+                delta: { type: "string" },
+              },
+              required: ["label", "value"],
+            },
+          },
+          callout: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              text: { type: "string" },
+              tone: { type: "string", enum: ["accent", "green", "orange"] },
+            },
+            required: ["text"],
+          },
+          evidenceIds: {
+            type: "array",
+            items: { type: "string" },
+          },
+          chart: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              id: { type: "string" },
+              chartType: { type: "string" },
+              title: { type: "string" },
+              sourceNote: { type: "string" },
+            },
+            required: ["id", "chartType", "title"],
+          },
+        },
+        required: ["position", "layoutId", "slideArchetype", "title"],
+      },
+    },
+  },
+  required: ["language", "thesis", "executiveSummary", "slidePlan"],
+} as const;
+
 export async function generateDeckRun(runId: string) {
   const config = resolveConfig();
   const client = new Anthropic({
@@ -276,6 +344,12 @@ export async function generateDeckRun(runId: string) {
         system: systemPrompt,
         messages: [understandMessage],
         tools: CLAUDE_TOOLS,
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: ANALYSIS_OUTPUT_SCHEMA,
+          },
+        },
       },
     });
 
@@ -285,6 +359,12 @@ export async function generateDeckRun(runId: string) {
       maxTokens: 4_096,
       messages: [understandMessage],
       tools: CLAUDE_TOOLS,
+      outputConfig: {
+        format: {
+          type: "json_schema",
+          schema: ANALYSIS_OUTPUT_SCHEMA,
+        },
+      },
     });
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
     assertDeckSpendWithinBudget(spentUsd);
@@ -813,7 +893,7 @@ function buildUnderstandMessage(
       text: [
         "Analyze the uploaded evidence package and create a machine-readable analysis plan for a consulting-grade deck.",
         "",
-        "Write a file named exactly `basquio_analysis.json` containing valid JSON with this shape:",
+        "Return only valid JSON matching this shape:",
         JSON.stringify(ANALYSIS_JSON_SHAPE, null, 2),
         "",
         `Brief: ${JSON.stringify(run.brief ?? {}, null, 2)}`,
@@ -833,7 +913,7 @@ function buildUnderstandMessage(
         "- Every title must be an insight.",
         "- Prefer concrete numbers in titles when the data supports them.",
         "- Do not emit mixed-language output.",
-        "- Return the final analysis as valid JSON in your final assistant message.",
+        "- The final assistant message must be valid JSON only, with no prose before or after it.",
         "- Also save the same JSON as a file named exactly `basquio_analysis.json` and attach it if convenient, but the message JSON is the required output contract.",
       ].join("\n"),
     },
@@ -945,6 +1025,7 @@ async function runClaudeLoop(input: {
   messages: Anthropic.Beta.BetaMessageParam[];
   tools: Anthropic.Beta.BetaToolUnion[];
   container?: Anthropic.Beta.BetaContainerParams;
+  outputConfig?: Anthropic.Beta.BetaOutputConfig;
 }) {
   const baseMessages = [...input.messages];
   let messages = [...baseMessages];
@@ -968,6 +1049,7 @@ async function runClaudeLoop(input: {
       container: currentContainer,
       messages,
       tools: input.tools,
+      output_config: input.outputConfig,
     });
 
     finalMessage = message;
