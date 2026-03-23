@@ -19,6 +19,21 @@ Implication:
 - file-backed understand/author/revise/visual-QA phases may skip token counting without skipping budget discipline
 - actual per-phase usage must be enforced against the hard deck budget after each model response
 - future budget logic must distinguish inline-countable requests from file-backed requests explicitly
+
+### Understand phase must not depend on analysis file attachment
+
+Decision:
+
+- the `understand` phase must accept the analysis plan either as attached `basquio_analysis.json` or as valid JSON returned in the final assistant message
+
+Why:
+
+- the production run `8b4bdbee-77c0-44cf-98d9-32f6712df930` failed because the worker hard-required a file attachment even though Claude can validly return the analysis as message text after code execution
+
+Implication:
+
+- analysis extraction now prefers the file when present but falls back to parsing assistant text JSON
+- the prompt contract for `understand` treats message JSON as the required output and file attachment as optional convenience
 ### Direct deck engine visual contract tightened
 
 Decision:

@@ -293,8 +293,7 @@ export async function generateDeckRun(runId: string) {
 
     const containerId = understandResponse.containerId;
     const understandFiles = await downloadGeneratedFiles(client, understandResponse.fileIds);
-    const analysisFile = requireGeneratedFile(understandFiles, "basquio_analysis.json");
-    const analysis = analysisSchema.parse(JSON.parse(analysisFile.buffer.toString("utf8")));
+    const analysis = parseAnalysisResponse(understandResponse.message, understandFiles);
     const understandThread = understandResponse.thread;
     await upsertWorkingPaper(config, runId, "analysis_result", analysis);
     await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
@@ -834,7 +833,8 @@ function buildUnderstandMessage(
         "- Every title must be an insight.",
         "- Prefer concrete numbers in titles when the data supports them.",
         "- Do not emit mixed-language output.",
-        "- Save the JSON file and attach it in your final assistant message as a container_upload block.",
+        "- Return the final analysis as valid JSON in your final assistant message.",
+        "- Also save the same JSON as a file named exactly `basquio_analysis.json` and attach it if convenient, but the message JSON is the required output contract.",
       ].join("\n"),
     },
   ];
@@ -1049,6 +1049,61 @@ function requireGeneratedFile(files: GeneratedFile[], fileName: string) {
   const suffix = files.find((file) => file.fileName.endsWith(fileName));
   if (suffix) return suffix;
   throw new Error(`Claude did not generate required file ${fileName}.`);
+}
+
+function parseAnalysisResponse(
+  message: Anthropic.Beta.BetaMessage,
+  files: GeneratedFile[],
+) {
+  const analysisFile = findGeneratedFile(files, "basquio_analysis.json");
+  if (analysisFile) {
+    return analysisSchema.parse(JSON.parse(analysisFile.buffer.toString("utf8")));
+  }
+
+  const text = extractResponseText(message.content);
+  if (!text) {
+    throw new Error(
+      `Claude did not return analysis JSON or attach basquio_analysis.json. Content blocks: ${
+        message.content.map((block) => block.type).join(", ") || "none"
+      }.`,
+    );
+  }
+
+  try {
+    return analysisSchema.parse(JSON.parse(extractFirstJsonObject(text)));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Invalid analysis JSON.";
+    throw new Error(
+      `Claude did not generate a parseable analysis response. ${reason} Response preview: ${text.slice(0, 800)}`,
+    );
+  }
+}
+
+function findGeneratedFile(files: GeneratedFile[], fileName: string) {
+  return files.find((file) => file.fileName === fileName || file.fileName.endsWith(fileName)) ?? null;
+}
+
+function extractResponseText(blocks: Anthropic.Beta.BetaContentBlock[]) {
+  return blocks
+    .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+}
+
+function extractFirstJsonObject(text: string) {
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error("Response did not contain a JSON object.");
+  }
+
+  return text.slice(firstBrace, lastBrace + 1);
 }
 
 async function persistDeckSpec(

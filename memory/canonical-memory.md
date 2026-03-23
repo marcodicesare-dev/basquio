@@ -81,6 +81,7 @@ Initial domain bias:
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
 - A concrete rendered-page QA path now exists: upload the generated `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
 - Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks. File-backed phases need post-response budget enforcement from actual usage instead of preflight token counting.
+- The `understand` phase must not hard-depend on `basquio_analysis.json` being attached as a file. Claude may return the analysis as JSON text in the final assistant message, and the worker must accept that as valid output.
 
 ## Production Incident Memory: March 21-22, 2026
 
