@@ -6,6 +6,7 @@ import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
+import { enforceExhibit, inferQuestionType, routeQuestion } from "@basquio/intelligence";
 import { listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
 import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/template-engine";
 import type { TemplateProfile } from "@basquio/types";
@@ -262,7 +263,8 @@ export async function generateDeckRun(runId: string) {
     currentPhase = "understand";
     await markPhase(config, runId, currentPhase);
 
-    const understandMessage = buildUnderstandMessage(run, uploadedEvidence, uploadedTemplate);
+    const questionRoutes = routeQuestion(buildBriefText(run));
+    const understandMessage = buildUnderstandMessage(run, uploadedEvidence, uploadedTemplate, questionRoutes);
     await recordToolCall(config, runId, "understand", "code_execution", {
       model: MODEL,
       tools: ["web_fetch"],
@@ -310,6 +312,7 @@ export async function generateDeckRun(runId: string) {
     phaseTelemetry.understand = buildPhaseTelemetry(MODEL, understandResponse);
 
     const analysis = parseStructuredAnalysisResponse(understandResponse.message);
+    enforceAnalysisExhibitRules(analysis);
     await upsertWorkingPaper(config, runId, "analysis_result", analysis);
     await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
     await completePhase(config, runId, "understand", {
@@ -843,8 +846,12 @@ function buildUnderstandMessage(
   run: RunRow,
   uploadedEvidence: Array<{ id: string; filename: string }>,
   uploadedTemplate: { id: string; filename: string } | null,
+  questionRoutes: Array<{ id: string; name: string; diagnosticMotifs: string[]; recommendationLevers: string[] }>,
 ) {
   const briefSummary = buildGenerationBrief(run);
+  const routeContext = questionRoutes.length > 0
+    ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
+    : "";
   const content: Anthropic.Beta.BetaContentBlockParam[] = [
     ...uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })),
     ...(uploadedTemplate ? [{ type: "container_upload" as const, file_id: uploadedTemplate.id }] : []),
@@ -860,6 +867,7 @@ function buildUnderstandMessage(
         "- Frame the analysis around the TRUE commercial question, not a generic summary. Classify each finding as connection, contradiction, or curiosity.",
         "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
         "- Choose exhibit types per the exhibit selection rules. NEVER use a line chart for 2-period CY vs PY data.",
+        ...(routeContext ? [routeContext] : []),
         "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         "- Plan a consulting-grade deck between 8 and 12 slides unless the brief strongly requires fewer or the evidence clearly needs more.",
@@ -1129,6 +1137,30 @@ function buildGenerationBrief(run: RunRow) {
     `Business context: ${run.business_context || "Unspecified"}`,
     `Structured brief: ${JSON.stringify(briefRecord, null, 2)}`,
   ].join("\n");
+}
+
+function buildBriefText(run: RunRow) {
+  return [run.objective, run.thesis, run.business_context, run.stakes, run.client]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Deterministic exhibit enforcement: override wrong chart types in the analysis
+ * before passing to the author phase. $0 LLM cost.
+ */
+function enforceAnalysisExhibitRules(analysis: z.infer<typeof analysisSchema>) {
+  for (const slide of analysis.slidePlan) {
+    if (!slide.chart) continue;
+
+    const questionType = inferQuestionType(slide.title);
+    const periodCount = /trend|over time|weekly|monthly|quarter/i.test(slide.title) ? 5 : 2;
+    const result = enforceExhibit(questionType, slide.chart.chartType, periodCount);
+
+    if (result.wasOverridden) {
+      slide.chart.chartType = result.chartType;
+    }
+  }
 }
 
 
