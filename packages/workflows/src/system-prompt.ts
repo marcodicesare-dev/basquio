@@ -6,10 +6,8 @@ import { describeAllArchetypesForPrompt } from "@basquio/scene-graph/slot-archet
 import type { TemplateProfile } from "@basquio/types";
 
 const KNOWLEDGE_PACK_FILES = [
-  "docs/domain-knowledge/niq-master-knowledge-graph.md",
-  "docs/deck-grammar-v1.md",
+  "docs/domain-knowledge/niq-analyst-playbook.md",
   "docs/direct-deck-design-spec.md",
-  "rules/canonical-rules.md",
 ] as const;
 
 let knowledgePackPromise: Promise<string> | null = null;
