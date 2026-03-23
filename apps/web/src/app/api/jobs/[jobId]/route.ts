@@ -110,6 +110,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     normalize: 15,
     understand: 90,
     author: 180,
+    render: 120,
     critique: 60,
     revise: 60,
     export: 30,

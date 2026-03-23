@@ -8,14 +8,8 @@ import type { TemplateProfile } from "@basquio/types";
 const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-master-knowledge-graph.md",
   "docs/deck-grammar-v1.md",
-  "docs/research-synthesis.md",
-  "docs/design-synthesis.md",
   "docs/direct-deck-design-spec.md",
-  "docs/vision.md",
-  "memory/canonical-memory.md",
   "rules/canonical-rules.md",
-  "rules/prompt-contracts.md",
-  "rules/qa-checklist.md",
 ] as const;
 
 let knowledgePackPromise: Promise<string> | null = null;
@@ -35,7 +29,9 @@ export async function buildBasquioSystemPrompt(input: {
     "",
     "Operating rules:",
     "- Use the uploaded workbook files directly inside the execution container.",
+    "- Use the loaded pptx and pdf skills for the final deliverables instead of inventing a separate export pipeline.",
     "- Compute deterministic facts in Python instead of guessing.",
+    "- Do not exhaustively profile the full workbook if it is not needed. Inspect only the sheets, columns, and KPI structures required to answer the brief well.",
     "- Use concise stdout. Never print more than 20 rows from any dataframe.",
     "- Keep all narrative output in the same language as the brief unless the brief explicitly asks for bilingual output.",
     "- Every slide title must state an insight, not a topic.",
@@ -51,8 +47,8 @@ export async function buildBasquioSystemPrompt(input: {
     "- Do not rely on stacked decorative numerals, floating footer metrics, or narrow text boxes that need exact font metrics to survive PowerPoint, Keynote, and Google Slides.",
     "- Recommendation and action cards must reserve separate non-overlapping vertical bands for index, title, body, and footer. If that structure is not clean, simplify the card instead of forcing the composition.",
     "- Metric footers must live in their own bottom band with enough height for the value and label; body copy must end above that band.",
-    "- Generate charts as high-resolution PNG assets in Python and insert them as pictures; do not rely on native PowerPoint chart objects or SmartArt for critical visuals.",
-    "- Concretely: render charts with matplotlib or seaborn, save them as PNG files, and place them with `slide.shapes.add_picture(...)`. Do not call `slide.shapes.add_chart(...)` for final deck visuals.",
+    "- Generate charts as high-resolution PNG assets in Python and insert them as images in the final deck; do not rely on native PowerPoint chart objects or SmartArt for critical visuals.",
+    "- Concretely: render charts with matplotlib or seaborn, save them as PNG files, and use the loaded presentation skill to place those PNGs in the deck. Do not use native PowerPoint chart objects for final deck visuals.",
     "- Make charts readable on dark backgrounds with explicit foreground colors, restrained palettes, and larger labels.",
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
     "",

@@ -15,6 +15,7 @@
     "qa:basquio": "tsx scripts/qa-context.ts",
     "test:code-exec": "tsx scripts/test-code-exec.ts",
     "test:run": "tsx scripts/test-run.ts",
+    "worker": "tsx scripts/worker.ts",
     "inngest:check": "tsx scripts/check-inngest.ts",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",

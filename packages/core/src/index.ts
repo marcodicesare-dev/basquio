@@ -9,7 +9,7 @@ export const BASQUIO_PHASES = [
   "normalize",
   "understand",
   "author",
-  "polish",
+  "render",
   "critique",
   "revise",
   "export",

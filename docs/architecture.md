@@ -7,9 +7,28 @@
 Basquio keeps deterministic ingest, template interpretation, domain analytics, storage, and progress persistence. The primary deck-generation path is no longer a scene-graph and renderer pipeline. The primary path is a single Claude code-execution worker that:
 
 - reads uploaded evidence files directly in the sandbox
-- reuses a persistent container across analysis, authoring, and one repair turn
+- loads the `pptx` and `pdf` skills on the initial generation call
+- performs analysis and deck creation in one file-backed generation turn instead of a separate prompt-stuffed understand step
+- reuses the same persistent container for one repair turn when QA requests revision
 - generates the final PPTX and PDF artifacts directly
 - persists only durable run state, working papers, artifact manifests, and QA outcomes back into Supabase
+
+Execution surface:
+
+- Vercel request handlers create `deck_runs` rows and upload input files
+- a long-running Railway worker polls Supabase for queued runs and calls `generateDeckRun(runId)`
+- Supabase is the queue, heartbeat, and progress source of truth
+- Vercel no longer hosts the long-running execution route for deck generation
+- the worker must refresh `deck_runs.updated_at` while a run is in flight and periodically requeue stale `running` runs after crashes
+- Anthropic client timeouts for the durable worker should be materially longer than Vercel request ceilings; the worker must not keep the old 15-minute request timeout if real deck generation exceeds it
+
+Important direct-path constraints:
+
+- uploaded evidence should reach Claude through `container_upload`, not through prompt-side dataset inventories
+- the user message should stay brief-first and artifact-oriented; workbook inspection happens inside code execution
+- the live direct-worker phase spine is `normalize -> author -> critique -> revise -> export`
+- rendered-page QA remains a second cheap model call on the generated PDF
+- the worker should rely on documented Anthropic skill contracts, not undocumented assumptions about the skill internals
 
 The main quality lesson from the reset is that direct generation still needs strong structure around it. The model should be constrained by explicit slide archetypes, viewer-safe layout rules, artifact QA, and eventually rendered-page judging plus candidate ranking. Prompting for "taste" alone is not a reliable quality architecture.
 

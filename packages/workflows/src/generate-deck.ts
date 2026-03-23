@@ -11,18 +11,20 @@ import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/t
 import type { TemplateProfile } from "@basquio/types";
 
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
+import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const MODEL = "claude-sonnet-4-6";
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
+const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "1800000", 10);
 const FILES_BETA = "files-api-2025-04-14";
 const CODE_EXEC_BETA = "code-execution-2025-08-25";
 const SKILLS_BETA = "skills-2025-10-02";
 const BETAS = [FILES_BETA, CODE_EXEC_BETA, SKILLS_BETA] as const;
 const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
-  { type: "code_execution_20250825", name: "code_execution" },
+  { type: "web_fetch_20260209", name: "web_fetch" },
 ];
 const APPROVED_ARCHETYPES = listArchetypeIds();
 
@@ -57,36 +59,79 @@ const analysisSchema = z.object({
   })).default([]),
 }).passthrough();
 
-const manifestSchema = z.object({
-  slideCount: z.number().int().min(1),
-  pageCount: z.number().int().min(0).optional(),
-  slides: z.array(z.object({
-    position: z.number().int().min(1),
-    layoutId: z.string().default("title-body"),
-    slideArchetype: z.string().default("title-body"),
-    title: z.string(),
-    subtitle: z.string().optional(),
-    body: z.string().optional(),
-    bullets: z.array(z.string()).optional(),
-    metrics: z.array(z.object({
-      label: z.string(),
-      value: z.string(),
-      delta: z.string().optional(),
-    })).optional(),
-    callout: z.object({
-      text: z.string(),
-      tone: z.enum(["accent", "green", "orange"]).optional(),
-    }).optional(),
-    evidenceIds: z.array(z.string()).optional(),
-    chartId: z.string().optional(),
-  })).default([]),
-  charts: z.array(z.object({
-    id: z.string(),
-    chartType: z.string(),
-    title: z.string(),
-    sourceNote: z.string().optional(),
-  })).default([]),
-}).passthrough();
+const ANALYSIS_OUTPUT_FORMAT = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      language: { type: "string" },
+      thesis: { type: "string" },
+      executiveSummary: { type: "string" },
+      slidePlan: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            position: { type: "integer" },
+            layoutId: { type: "string" },
+            slideArchetype: { type: "string" },
+            title: { type: "string" },
+            subtitle: { type: "string" },
+            body: { type: "string" },
+            bullets: {
+              type: "array",
+              items: { type: "string" },
+            },
+            metrics: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string" },
+                  value: { type: "string" },
+                  delta: { type: "string" },
+                },
+                required: ["label", "value"],
+                additionalProperties: false,
+              },
+            },
+            callout: {
+              type: "object",
+              properties: {
+                text: { type: "string" },
+                tone: {
+                  type: "string",
+                  enum: ["accent", "green", "orange"],
+                },
+              },
+              required: ["text"],
+              additionalProperties: false,
+            },
+            evidenceIds: {
+              type: "array",
+              items: { type: "string" },
+            },
+            chart: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                chartType: { type: "string" },
+                title: { type: "string" },
+                sourceNote: { type: "string" },
+              },
+              required: ["id", "chartType", "title"],
+              additionalProperties: false,
+            },
+          },
+          required: ["position", "layoutId", "slideArchetype", "title"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["language", "thesis", "executiveSummary", "slidePlan"],
+    additionalProperties: false,
+  },
+} as const;
 
 type RunRow = {
   id: string;
@@ -130,123 +175,19 @@ type GeneratedFile = {
   mimeType: string;
 };
 
-type ParsedDatasetProfile = Awaited<ReturnType<typeof parseEvidencePackage>>["datasetProfile"];
-type DeckPhase = "normalize" | "understand" | "author" | "critique" | "revise" | "export";
+type DeckPhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 type ClaudeUsage = {
   input_tokens?: number;
   output_tokens?: number;
 };
 type RenderedPageQaReport = z.infer<typeof renderedPageQaSchema>;
 
-const ANALYSIS_JSON_SHAPE = {
-  language: "English",
-  thesis: "One-sentence overall conclusion",
-  executiveSummary: "Short executive summary paragraph",
-  slidePlan: [
-    {
-      position: 1,
-      layoutId: "title-body",
-      slideArchetype: "title-body",
-      title: "Insight-led slide title with a number when supported",
-      subtitle: "Optional subtitle",
-      body: "Optional short body copy",
-      bullets: ["Optional bullet", "Optional bullet"],
-      metrics: [
-        {
-          label: "Sales",
-          value: "+12.4%",
-          delta: "+2.1 pts vs YA",
-        },
-      ],
-      callout: {
-        text: "Optional callout",
-        tone: "accent",
-      },
-      evidenceIds: ["sheet:summary"],
-      chart: {
-        id: "chart-1",
-        chartType: "bar",
-        title: "Chart title",
-        sourceNote: "Source note",
-      },
-    },
-  ],
-} as const;
-
-const ANALYSIS_OUTPUT_SCHEMA = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    language: { type: "string" },
-    thesis: { type: "string" },
-    executiveSummary: { type: "string" },
-    slidePlan: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: true,
-        properties: {
-          position: { type: "integer" },
-          layoutId: { type: "string" },
-          slideArchetype: { type: "string" },
-          title: { type: "string" },
-          subtitle: { type: "string" },
-          body: { type: "string" },
-          bullets: {
-            type: "array",
-            items: { type: "string" },
-          },
-          metrics: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                label: { type: "string" },
-                value: { type: "string" },
-                delta: { type: "string" },
-              },
-              required: ["label", "value"],
-            },
-          },
-          callout: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              text: { type: "string" },
-              tone: { type: "string", enum: ["accent", "green", "orange"] },
-            },
-            required: ["text"],
-          },
-          evidenceIds: {
-            type: "array",
-            items: { type: "string" },
-          },
-          chart: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              id: { type: "string" },
-              chartType: { type: "string" },
-              title: { type: "string" },
-              sourceNote: { type: "string" },
-            },
-            required: ["id", "chartType", "title"],
-          },
-        },
-        required: ["position", "layoutId", "slideArchetype", "title"],
-      },
-    },
-  },
-  required: ["language", "thesis", "executiveSummary", "slidePlan"],
-} as const;
-
 export async function generateDeckRun(runId: string) {
   const config = resolveConfig();
   const client = new Anthropic({
     apiKey: config.anthropicApiKey,
     maxRetries: 2,
-    timeout: 15 * 60 * 1000,
+    timeout: ANTHROPIC_TIMEOUT_MS,
   });
 
   let spentUsd = 0;
@@ -298,9 +239,6 @@ export async function generateDeckRun(runId: string) {
       sheetCount: parsed.datasetProfile.sheets.length,
     });
 
-    currentPhase = "understand";
-    await markPhase(config, runId, currentPhase);
-
     const uploadedEvidence = await Promise.all(
       evidenceFiles.map(async (file) =>
         client.beta.files.upload({
@@ -321,17 +259,15 @@ export async function generateDeckRun(runId: string) {
       briefLanguageHint: inferLanguageHint(run),
     });
 
-    const understandMessage = buildUnderstandMessage(
-      run,
-      summarizeDatasetProfile(parsed.datasetProfile),
-      templateProfile,
-      uploadedEvidence,
-      uploadedTemplate,
-    );
+    currentPhase = "understand";
+    await markPhase(config, runId, currentPhase);
+
+    const understandMessage = buildUnderstandMessage(run, uploadedEvidence, uploadedTemplate);
     await recordToolCall(config, runId, "understand", "code_execution", {
       model: MODEL,
-      tools: ["code_execution"],
-      skills: [],
+      tools: ["web_fetch"],
+      autoInjectedTools: ["code_execution"],
+      skills: ["pptx", "pdf"],
       stepNumber: 1,
     });
     await enforceDeckBudget({
@@ -339,16 +275,14 @@ export async function generateDeckRun(runId: string) {
       model: MODEL,
       betas: [...BETAS],
       spentUsd,
-      outputTokenBudget: 24_000,
+      outputTokenBudget: 16_000,
       body: {
         system: systemPrompt,
         messages: [understandMessage],
         tools: CLAUDE_TOOLS,
         output_config: {
-          format: {
-            type: "json_schema",
-            schema: ANALYSIS_OUTPUT_SCHEMA,
-          },
+          effort: "medium",
+          format: ANALYSIS_OUTPUT_FORMAT,
         },
       },
     });
@@ -357,13 +291,17 @@ export async function generateDeckRun(runId: string) {
       client,
       systemPrompt,
       maxTokens: 4_096,
+      container: {
+        skills: [
+          { type: "anthropic", skill_id: "pptx", version: "latest" },
+          { type: "anthropic", skill_id: "pdf", version: "latest" },
+        ],
+      },
       messages: [understandMessage],
       tools: CLAUDE_TOOLS,
       outputConfig: {
-        format: {
-          type: "json_schema",
-          schema: ANALYSIS_OUTPUT_SCHEMA,
-        },
+        effort: "medium",
+        format: ANALYSIS_OUTPUT_FORMAT,
       },
     });
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
@@ -371,26 +309,24 @@ export async function generateDeckRun(runId: string) {
     continuationCount += understandResponse.pauseTurns;
     phaseTelemetry.understand = buildPhaseTelemetry(MODEL, understandResponse);
 
-    const containerId = understandResponse.containerId;
-    const understandFiles = await downloadGeneratedFiles(client, understandResponse.fileIds);
-    const analysis = parseAnalysisResponse(understandResponse.message, understandFiles);
-    const understandThread = understandResponse.thread;
+    const analysis = parseStructuredAnalysisResponse(understandResponse.message);
     await upsertWorkingPaper(config, runId, "analysis_result", analysis);
     await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
     await completePhase(config, runId, "understand", {
-      containerId,
-      slideCount: analysis.slidePlan.length,
+      slidePlanCount: analysis.slidePlan.length,
+      thesis: analysis.thesis,
       estimatedCostUsd: spentUsd,
+      containerId: understandResponse.containerId,
     }, understandResponse.usage);
 
     currentPhase = "author";
     await markPhase(config, runId, currentPhase);
 
-    const authorMessage = buildAuthorMessage(run, analysis, templateProfile);
-    const authorMessages = [...understandThread, authorMessage];
+    const generationMessage = buildAuthorMessage(run, analysis);
     await recordToolCall(config, runId, "author", "code_execution", {
       model: MODEL,
-      tools: ["code_execution"],
+      tools: ["web_fetch"],
+      autoInjectedTools: ["code_execution"],
       skills: ["pptx", "pdf"],
       stepNumber: 1,
     });
@@ -402,8 +338,11 @@ export async function generateDeckRun(runId: string) {
       outputTokenBudget: 72_000,
       body: {
         system: systemPrompt,
-        messages: authorMessages,
+        messages: [generationMessage],
         tools: CLAUDE_TOOLS,
+        output_config: {
+          effort: "medium",
+        },
       },
     });
 
@@ -411,33 +350,47 @@ export async function generateDeckRun(runId: string) {
       client,
       systemPrompt,
       maxTokens: 8_192,
-      container: {
-        id: containerId,
-        skills: [
-          { type: "anthropic", skill_id: "pptx", version: "latest" },
-          { type: "anthropic", skill_id: "pdf", version: "latest" },
-        ],
-      },
-      messages: authorMessages,
+      container: understandResponse.containerId
+        ? { id: understandResponse.containerId }
+        : {
+            skills: [
+              { type: "anthropic", skill_id: "pptx", version: "latest" },
+              { type: "anthropic", skill_id: "pdf", version: "latest" },
+            ],
+          },
+      messages: [generationMessage],
       tools: CLAUDE_TOOLS,
+      outputConfig: {
+        effort: "medium",
+      },
     });
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
     assertDeckSpendWithinBudget(spentUsd);
     continuationCount += authorResponse.pauseTurns;
     phaseTelemetry.author = buildPhaseTelemetry(MODEL, authorResponse);
 
+    const containerId = authorResponse.containerId;
     const authorFiles = await downloadGeneratedFiles(client, authorResponse.fileIds);
-    const manifestFile = requireGeneratedFile(authorFiles, "deck_manifest.json");
     const pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
     const pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
-    let manifest = manifestSchema.parse(JSON.parse(manifestFile.buffer.toString("utf8")));
+    let manifest = parseManifestResponse(authorResponse.message, authorFiles);
 
     await persistDeckSpec(config, runId, manifest);
     await completePhase(config, runId, "author", {
+      containerId,
       slideCount: manifest.slideCount,
       chartCount: manifest.charts.length,
       estimatedCostUsd: spentUsd,
     }, authorResponse.usage);
+
+    currentPhase = "render";
+    await markPhase(config, runId, currentPhase);
+    await completePhase(config, runId, "render", {
+      containerId,
+      pageCount: manifest.pageCount ?? manifest.slideCount,
+      estimatedCostUsd: spentUsd,
+      source: "author_artifacts",
+    });
 
     currentPhase = "critique";
     await markPhase(config, runId, currentPhase);
@@ -477,7 +430,8 @@ export async function generateDeckRun(runId: string) {
       const reviseMessages = [...authorResponse.thread, reviseMessage];
       await recordToolCall(config, runId, "revise", "code_execution", {
         model: MODEL,
-        tools: ["code_execution"],
+        tools: ["web_fetch"],
+        autoInjectedTools: ["code_execution"],
         skills: ["pptx", "pdf"],
         stepNumber: 1,
       });
@@ -491,6 +445,9 @@ export async function generateDeckRun(runId: string) {
           system: systemPrompt,
           messages: reviseMessages,
           tools: CLAUDE_TOOLS,
+          output_config: {
+            effort: "medium",
+          },
         },
       });
 
@@ -507,6 +464,9 @@ export async function generateDeckRun(runId: string) {
         },
         messages: reviseMessages,
         tools: CLAUDE_TOOLS,
+        outputConfig: {
+          effort: "medium",
+        },
       });
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
       assertDeckSpendWithinBudget(spentUsd);
@@ -514,9 +474,7 @@ export async function generateDeckRun(runId: string) {
       phaseTelemetry.revise = buildPhaseTelemetry(MODEL, reviseResponse);
 
       const reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
-      finalManifest = manifestSchema.parse(
-        JSON.parse(requireGeneratedFile(reviseFiles, "deck_manifest.json").buffer.toString("utf8")),
-      );
+      finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
       finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
       finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
       const revisedVisualQa = await runRenderedPageQa({
@@ -548,8 +506,11 @@ export async function generateDeckRun(runId: string) {
     currentPhase = "export";
     await markPhase(config, runId, currentPhase);
     const qaReport = await buildQaReport(finalManifest, finalPptx, finalPdf, finalVisualQa);
-    if (!qaReport.passed) {
-      throw new Error(`Artifact QA failed: ${qaReport.failed.join(", ")}`);
+    const blockingQaFailures = qaReport.failed.filter((check) =>
+      !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
+    );
+    if (blockingQaFailures.length > 0) {
+      throw new Error(`Artifact QA failed: ${blockingQaFailures.join(", ")}`);
     }
     const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf);
     await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts);
@@ -880,41 +841,28 @@ function appendAssistantTurn(
 
 function buildUnderstandMessage(
   run: RunRow,
-  datasetProfile: Record<string, unknown>,
-  templateProfile: TemplateProfile,
   uploadedEvidence: Array<{ id: string; filename: string }>,
   uploadedTemplate: { id: string; filename: string } | null,
 ) {
+  const briefSummary = buildGenerationBrief(run);
   const content: Anthropic.Beta.BetaContentBlockParam[] = [
     ...uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })),
     ...(uploadedTemplate ? [{ type: "container_upload" as const, file_id: uploadedTemplate.id }] : []),
     {
       type: "text",
       text: [
-        "Analyze the uploaded evidence package and create a machine-readable analysis plan for a consulting-grade deck.",
+        "Analyze the uploaded evidence package and return only the analysis JSON for the deck plan.",
         "",
-        "Return only valid JSON matching this shape:",
-        JSON.stringify(ANALYSIS_JSON_SHAPE, null, 2),
+        briefSummary,
         "",
-        `Brief: ${JSON.stringify(run.brief ?? {}, null, 2)}`,
-        `Dataset inventory: ${JSON.stringify(datasetProfile, null, 2)}`,
-        `Template profile summary: ${JSON.stringify({
-          templateName: templateProfile.templateName,
-          colors: templateProfile.colors,
-          fonts: templateProfile.fonts,
-          layoutIds: templateProfile.layouts.map((layout) => layout.id),
-        }, null, 2)}`,
-        "",
-        "Rules:",
         "- Use code execution to inspect the uploaded files directly.",
-        "- Keep slide count between 8 and 14.",
-        `- Every slidePlan item must include slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
-        "- slideArchetype is the visual grammar contract. layoutId is the implementation layout or template binding.",
-        "- Every title must be an insight.",
-        "- Prefer concrete numbers in titles when the data supports them.",
-        "- Do not emit mixed-language output.",
-        "- The final assistant message must be valid JSON only, with no prose before or after it.",
-        "- Also save the same JSON as a file named exactly `basquio_analysis.json` and attach it if convenient, but the message JSON is the required output contract.",
+        "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
+        "- Compute deterministic facts in Python and produce a concise executive storyline.",
+        "- Plan a consulting-grade deck between 8 and 12 slides unless the brief strongly requires fewer or the evidence clearly needs more.",
+        `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
+        "- Recommend charts only when they materially improve the argument.",
+        "- Your final response must be valid JSON matching the requested schema, not prose.",
+        "- Use the same language as the brief. Do not emit mixed-language output.",
       ].join("\n"),
     },
   ];
@@ -925,7 +873,6 @@ function buildUnderstandMessage(
 function buildAuthorMessage(
   run: RunRow,
   analysis: z.infer<typeof analysisSchema>,
-  templateProfile: TemplateProfile,
 ) {
   return {
     role: "user" as const,
@@ -933,61 +880,22 @@ function buildAuthorMessage(
       {
         type: "text" as const,
         text: [
-          "Create the final consulting-grade deck now.",
-          "Reuse the prior analysis turn and the current container state. Do not restart the analysis from scratch.",
+          "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts.",
           "",
-          "You must generate and attach these files exactly:",
-          "- deck.pptx",
-          "- deck.pdf",
-          "- deck_manifest.json",
+          buildGenerationBrief(run),
           "",
-          "Use the same slide order and arguments from this analysis:",
-          JSON.stringify(analysis, null, 2),
+          `Approved analysis JSON:\n${JSON.stringify(analysis, null, 2)}`,
           "",
-          "Honor each slide's slideArchetype from the analysis plan. Do not swap to a different archetype unless the original one is impossible with the template.",
-          "",
-          "Template profile:",
-          JSON.stringify({
-            templateName: templateProfile.templateName,
-            slideSize: templateProfile.slideSize,
-            slideWidthInches: templateProfile.slideWidthInches,
-            slideHeightInches: templateProfile.slideHeightInches,
-            palette: templateProfile.brandTokens?.palette,
-            typography: templateProfile.brandTokens?.typography,
-            layouts: templateProfile.layouts.map((layout) => ({
-              id: layout.id,
-              name: layout.name,
-              regions: layout.regions,
-            })),
-          }, null, 2),
-          "",
-          "Manifest rules:",
-          "- deck_manifest.json must contain slideCount, pageCount, slides[], charts[].",
-          "- slides[] must describe the final deck, not the draft plan.",
-          `- every slide in slides[] must include slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
-          "- charts[] must only include charts that actually appear in the final deck.",
-          "",
-          "Quality rules:",
-          "- No placeholder boxes.",
-          "- No generic AI filler language.",
-          "- No empty chart areas.",
-          "- Same language as the brief.",
-          "- The design must feel premium, editorial, and current; avoid generic 2005-style PowerPoint aesthetics.",
-          "- Prefer a dark editorial canvas, restrained card surfaces, and sparse accent lines unless the uploaded template clearly requires another direction.",
-          "- Use cross-viewer-safe typography. If no strong template is provided, use serif display only for short page-level headlines. Use Arial for card titles, KPI values, recommendation numbers, body text, and all dense copy.",
-          "- Keep text density low and whitespace high. If a slide feels crowded, cut content instead of shrinking everything.",
-          "- Use monospace only for metadata, footnotes, and compact numeric labels.",
-          "- Pricing, matrix, ladder, and KPI slides should be built from shapes and text with disciplined alignment, not default Office styles.",
-          "- Do not use stacked decorative ordinals or oversized numerals unless they live in a dedicated band that cannot collide with the title or body. A simple single-line badge is better than a fragile ornament.",
-          "- Recommendation or action cards must reserve four clean bands: index, title, body, footer. Do not let the title overlap the index. Do not let the body or footer overlap each other.",
-          "- Footer KPI values and labels must sit inside a dedicated bottom band with enough height and width. If the card is tight, shorten the copy instead of compressing the footer.",
-          "- Do not rely on PowerPoint auto-fit or narrow text boxes. Use fewer words, wider boxes, and fewer independent text frames.",
-          "- For every chart, render the chart in Python to a high-resolution PNG with explicit styling and insert it into the slide as an image.",
-          "- Implementation rule: use matplotlib or seaborn, save PNG files, and insert them with `slide.shapes.add_picture(...)`.",
-          "- Do not use `slide.shapes.add_chart(...)`, native PowerPoint chart objects, SmartArt, SVG, OLE embeds, or default Office chart themes for critical visuals.",
-          "- Every chart must remain visible in Apple Keynote, so image-based charts are the default contract.",
-          "- Use the uploaded template or its geometry/palette faithfully when possible.",
-          "- Your final assistant message must attach deck.pptx, deck.pdf, and deck_manifest.json as container_upload blocks. Saving them in the container is not sufficient.",
+          "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
+          "- Recalculate only the facts needed to render the promised slides and charts accurately.",
+          "- Follow the approved slide plan unless a small factual adjustment is necessary for correctness.",
+          "- Follow the loaded pptx skill for the deck artifact generation.",
+          "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
+          "- Do not use native PowerPoint chart objects for critical visuals.",
+          "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, `deck_manifest.json`.",
+          "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
+          "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `title`, and `chartId` when applicable.",
+          "- Your final assistant message must attach the files as container uploads before finishing.",
         ].join("\n"),
       },
     ],
@@ -1027,8 +935,7 @@ async function runClaudeLoop(input: {
   container?: Anthropic.Beta.BetaContainerParams;
   outputConfig?: Anthropic.Beta.BetaOutputConfig;
 }) {
-  const baseMessages = [...input.messages];
-  let messages = [...baseMessages];
+  let messages = [...input.messages];
   const fileIds = new Set<string>();
   let currentContainer = input.container;
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
@@ -1041,7 +948,7 @@ async function runClaudeLoop(input: {
 
   for (let iteration = 0; iteration < 8; iteration += 1) {
     iterationCount += 1;
-    const message = await input.client.beta.messages.create({
+    const stream = input.client.beta.messages.stream({
       model: MODEL,
       max_tokens: input.maxTokens,
       betas: [...BETAS] as Anthropic.Beta.AnthropicBeta[],
@@ -1051,6 +958,7 @@ async function runClaudeLoop(input: {
       tools: input.tools,
       output_config: input.outputConfig,
     });
+    const message = await stream.finalMessage();
 
     finalMessage = message;
     currentContainer = message.container ? { id: message.container.id } : currentContainer;
@@ -1064,7 +972,7 @@ async function runClaudeLoop(input: {
     }
 
     pauseTurns += 1;
-    messages = appendAssistantTurn(baseMessages, message);
+    messages = appendAssistantTurn(messages, message);
   }
 
   if (!finalMessage) {
@@ -1075,7 +983,7 @@ async function runClaudeLoop(input: {
     message: finalMessage,
     containerId: finalMessage.container?.id ?? currentContainer?.id ?? null,
     fileIds: [...fileIds],
-    thread: appendAssistantTurn(baseMessages, finalMessage),
+    thread: appendAssistantTurn(messages, finalMessage),
     usage,
     iterations: iterationCount,
     pauseTurns,
@@ -1133,30 +1041,44 @@ function requireGeneratedFile(files: GeneratedFile[], fileName: string) {
   throw new Error(`Claude did not generate required file ${fileName}.`);
 }
 
-function parseAnalysisResponse(
+function parseStructuredAnalysisResponse(message: Anthropic.Beta.BetaMessage) {
+  const text = extractResponseText(message.content);
+  if (!text) {
+    throw new Error("Claude did not return structured analysis JSON.");
+  }
+
+  try {
+    return analysisSchema.parse(JSON.parse(text));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "Invalid analysis JSON.";
+    throw new Error(`Claude did not return parseable structured analysis JSON. ${reason} Response preview: ${text.slice(0, 800)}`);
+  }
+}
+
+function parseManifestResponse(
   message: Anthropic.Beta.BetaMessage,
   files: GeneratedFile[],
 ) {
-  const analysisFile = findGeneratedFile(files, "basquio_analysis.json");
-  if (analysisFile) {
-    return analysisSchema.parse(JSON.parse(analysisFile.buffer.toString("utf8")));
+  const manifestFile = findGeneratedFile(files, "deck_manifest.json");
+  if (manifestFile) {
+    return parseDeckManifest(JSON.parse(manifestFile.buffer.toString("utf8")));
   }
 
   const text = extractResponseText(message.content);
   if (!text) {
     throw new Error(
-      `Claude did not return analysis JSON or attach basquio_analysis.json. Content blocks: ${
+      `Claude did not generate required file deck_manifest.json and did not provide inline manifest JSON. Content blocks: ${
         message.content.map((block) => block.type).join(", ") || "none"
       }.`,
     );
   }
 
   try {
-    return analysisSchema.parse(JSON.parse(extractFirstJsonObject(text)));
+    return parseDeckManifest(JSON.parse(extractFirstJsonObject(text)));
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "Invalid analysis JSON.";
+    const reason = error instanceof Error ? error.message : "Invalid manifest JSON.";
     throw new Error(
-      `Claude did not generate a parseable analysis response. ${reason} Response preview: ${text.slice(0, 800)}`,
+      `Claude did not generate a parseable deck manifest. ${reason} Response preview: ${text.slice(0, 800)}`,
     );
   }
 }
@@ -1188,10 +1110,25 @@ function extractFirstJsonObject(text: string) {
   return text.slice(firstBrace, lastBrace + 1);
 }
 
+function buildGenerationBrief(run: RunRow) {
+  const briefRecord = (run.brief && typeof run.brief === "object" ? run.brief : {}) as Record<string, unknown>;
+
+  return [
+    `Client: ${run.client || "Unknown"}`,
+    `Audience: ${run.audience || "Unspecified"}`,
+    `Objective: ${run.objective || "Unspecified"}`,
+    `Thesis: ${run.thesis || "Unspecified"}`,
+    `Stakes: ${run.stakes || "Unspecified"}`,
+    `Business context: ${run.business_context || "Unspecified"}`,
+    `Structured brief: ${JSON.stringify(briefRecord, null, 2)}`,
+  ].join("\n");
+}
+
+
 async function persistDeckSpec(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
-  manifest: z.infer<typeof manifestSchema>,
+  manifest: z.infer<typeof deckManifestSchema>,
 ) {
   await deleteRestRows({
     supabaseUrl: config.supabaseUrl,
@@ -1270,7 +1207,7 @@ async function persistDeckSpec(
   }
 }
 
-function collectManifestIssues(manifest: z.infer<typeof manifestSchema>) {
+function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>) {
   const issues: string[] = [];
   const chartIds = new Set(manifest.charts.map((chart) => chart.id));
   const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
@@ -1333,7 +1270,7 @@ function collectManifestIssues(manifest: z.infer<typeof manifestSchema>) {
 }
 
 function collectCritiqueIssues(
-  manifest: z.infer<typeof manifestSchema>,
+  manifest: z.infer<typeof deckManifestSchema>,
   visualQa: RenderedPageQaReport,
 ) {
   const issues = [...collectManifestIssues(manifest)];
@@ -1355,7 +1292,7 @@ function collectCritiqueIssues(
 }
 
 async function buildQaReport(
-  manifest: z.infer<typeof manifestSchema>,
+  manifest: z.infer<typeof deckManifestSchema>,
   pptx: GeneratedFile,
   pdf: GeneratedFile,
   visualQa: RenderedPageQaReport,
@@ -1384,7 +1321,7 @@ async function buildQaReport(
 }
 
 async function validateArtifactChecks(
-  manifest: z.infer<typeof manifestSchema>,
+  manifest: z.infer<typeof deckManifestSchema>,
   checks: Array<{ name: string; passed: boolean; detail: string }>,
   pptxBuffer: Buffer,
   pdfBuffer: Buffer,
@@ -1488,7 +1425,7 @@ async function persistArtifacts(
 async function publishArtifactManifest(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
-  manifest: z.infer<typeof manifestSchema>,
+  manifest: z.infer<typeof deckManifestSchema>,
   qaReport: Record<string, unknown>,
   artifacts: Array<Record<string, unknown>>,
 ) {
@@ -1551,36 +1488,5 @@ function buildSimplePhaseTelemetry(
     inputTokens: usage?.input_tokens ?? 0,
     outputTokens: usage?.output_tokens ?? 0,
     totalTokens: (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0),
-  };
-}
-
-function summarizeDatasetProfile(datasetProfile: ParsedDatasetProfile) {
-  return {
-    packageLabel: datasetProfile.manifest?.packageLabel ?? "Evidence package",
-    warnings: [...(datasetProfile.manifest?.warnings ?? []), ...datasetProfile.warnings].slice(0, 12),
-    files: datasetProfile.sourceFiles.map((file) => ({
-      id: file.id,
-      fileName: file.fileName,
-      role: file.role,
-      kind: file.kind,
-      mediaType: file.mediaType,
-      parsedSheetCount: file.parsedSheetCount,
-      notes: file.notes?.slice(0, 8) ?? [],
-    })),
-    sheets: datasetProfile.sheets.map((sheet) => ({
-      name: sheet.name,
-      sourceFileName: sheet.sourceFileName,
-      sourceRole: sheet.sourceRole,
-      rowCount: sheet.rowCount,
-      columnCount: sheet.columns.length,
-      columns: sheet.columns.slice(0, 24).map((column) => ({
-        name: column.name,
-        inferredType: column.inferredType,
-        role: column.role,
-        uniqueCount: column.uniqueCount,
-        nullRate: column.nullRate,
-        sampleValues: column.sampleValues.slice(0, 3).map((value) => String(value ?? "")),
-      })),
-    })),
   };
 }

@@ -71,24 +71,29 @@ Use signed URLs for delivery, not public buckets, for generated decks and upload
 
 For larger uploads, use signed resumable uploads against Supabase Storage and keep one-shot signed uploads for smaller files.
 
-## Inngest
+## Durable Execution
 
-### Steps
+### Railway worker
 
-Use `step.run()` boundaries for every durable phase that should not be recomputed after downstream failure.
+The current Basquio generation path should run on a long-lived worker process, not inside a request/response handler.
+
+Basquio implication:
+
+- Vercel should enqueue `deck_runs` and return immediately
+- Railway should poll Supabase for `status = "queued"` runs and claim them atomically
+- the worker must heartbeat `deck_runs.updated_at` while a long Claude call is in flight
+- stale-running runs must be re-queued on a recurring interval, not only at startup
+- Anthropic client timeouts in the worker must exceed real workbook runtime instead of inheriting old route-era ceilings
+
+### Inngest historical guidance
+
+If Basquio reintroduces a multi-step orchestrator in the future, these constraints still apply.
 
 Inngest documents that:
 
 - successful steps are memoized
 - failing steps retry independently
 - step IDs are the identity used for memoization across function versions
-
-Basquio implication:
-
-- keep user-facing stage names stable
-- keep internal execution IDs unique per attempt so Inngest can memoize correctly without collapsing revision attempts together
-- do not rename step IDs casually
-- keep parse, analyze, insight, story, slide, render, and storage as separate steps
 
 ### Retries
 
@@ -117,6 +122,7 @@ When Basquio supports multiple organizations and heavier workloads:
 - add org-scoped concurrency controls
 - add throttling for expensive render steps
 - consider separating template analysis from generation fan-out
+- if a worker pool replaces the single worker, preserve atomic claim semantics and heartbeat-based stale-run recovery
 
 ## Browserless
 

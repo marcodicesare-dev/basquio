@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { NextResponse, after } from "next/server";
-
-import { dispatchPersistedGenerationExecution } from "@/lib/generation-requests";
+import { NextResponse } from "next/server";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
@@ -142,31 +140,6 @@ export async function POST(request: Request) {
       const errorText = await deckRunResponse.text().catch(() => "Unknown error");
       return NextResponse.json({ error: `Failed to create run record: ${errorText}` }, { status: 500 });
     }
-
-    after(async () => {
-      const dispatched = await dispatchPersistedGenerationExecution(runId, request);
-
-      if (!dispatched) {
-        await fetch(
-          `${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`,
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: serviceKey,
-              Authorization: `Bearer ${serviceKey}`,
-              Prefer: "return=minimal",
-            },
-            body: JSON.stringify({
-              status: "failed",
-              failure_phase: "normalize",
-              failure_message: "Failed to dispatch deck generation worker.",
-              updated_at: new Date().toISOString(),
-            }),
-          },
-        ).catch(() => {});
-      }
-    });
 
     return NextResponse.json(
       {

@@ -1,11 +1,16 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import JSZip from "jszip";
 import pdfParse from "pdf-parse";
 
+import { createSystemTemplateProfile } from "@basquio/template-engine";
+
+import { parseDeckManifest } from "../packages/workflows/src/deck-manifest";
+import { buildBasquioSystemPrompt } from "../packages/workflows/src/system-prompt";
 import { runRenderedPageQa } from "../packages/workflows/src/rendered-page-qa";
+import { loadBasquioScriptEnv } from "./load-app-env";
 
 const MODEL = "claude-sonnet-4-6";
 const BETAS = [
@@ -13,6 +18,10 @@ const BETAS = [
   "code-execution-2025-08-25",
   "skills-2025-10-02",
 ] as const;
+
+loadBasquioScriptEnv();
+
+const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "1800000", 10);
 
 async function main() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -23,31 +32,23 @@ async function main() {
   const client = new Anthropic({
     apiKey,
     maxRetries: 1,
-    timeout: 15 * 60 * 1000,
+    timeout: ANTHROPIC_TIMEOUT_MS,
   });
 
-  const csvBuffer = buildFixtureCsv();
+  const options = parseArgs(process.argv.slice(2));
+  const uploadedInput = await loadInputFile(options.file);
   const uploaded = await client.beta.files.upload({
-    file: await toFile(csvBuffer, "smoke-input.csv"),
+    file: await toFile(uploadedInput.buffer, uploadedInput.fileName),
     betas: [...BETAS],
   });
 
-  const system = [
-    "You are testing Basquio's Claude code-execution deck path.",
-    "Use code execution plus the PPTX and PDF skills to create one small but real PowerPoint deck and matching PDF.",
-    "The deck must be concise, visually clean, and based only on the uploaded CSV.",
-    "Use a premium dark editorial visual style with sparse accents and restrained card surfaces.",
-    "For cross-viewer safety, use serif only for a short page headline if needed. Use Arial for all card titles, body copy, KPI numerals, recommendation numbers, and footer labels.",
-    "Do not use stacked decorative ordinals, narrow title boxes, or floating footer metrics that depend on exact font metrics.",
-    "Recommendation cards must reserve separate non-overlapping bands for index, title, body, and footer.",
-    "If you create a chart, render it with matplotlib or seaborn to a PNG file and insert it with slide.shapes.add_picture(...).",
-    "Do not use slide.shapes.add_chart(...) or any native PowerPoint chart object.",
-    "Save the files as exactly `test-deck.pptx` and `test-deck.pdf` and attach both in your final assistant message as container_upload blocks before finishing.",
-    "Do not print large tables to stdout.",
-  ].join("\n");
+  const system = await buildBasquioSystemPrompt({
+    templateProfile: createSystemTemplateProfile(),
+    briefLanguageHint: inferLanguageHint(options.brief),
+  });
 
   const tools: Anthropic.Beta.BetaToolUnion[] = [
-    { type: "code_execution_20250825", name: "code_execution" },
+    { type: "web_fetch_20260209", name: "web_fetch" },
   ];
 
   const initialMessage = {
@@ -57,20 +58,23 @@ async function main() {
       {
         type: "text" as const,
         text: [
-          "Read the uploaded CSV and create a 3-slide PPTX deck.",
-          "Slide 1: title and one-sentence takeaway.",
-          "Slide 2: two recommendation cards supported by the numbers. Each card must use a simple single-line index badge, a short title, a short body, and a dedicated footer KPI band with no overlap.",
-          "Slide 3: a simple chart or table summarising sales by category.",
-          "If you use a chart on slide 3, it must be a PNG image generated in Python and inserted into the PPTX as a picture.",
-          "Use the pptx and pdf skills and save the final files as `test-deck.pptx` and `test-deck.pdf`.",
-          "Your final assistant message must attach both files as container_upload blocks.",
+          options.brief,
+          "",
+          "Analyze the uploaded evidence file directly inside code execution and create the final consulting-grade deck in one run.",
+          "Use the loaded pptx and pdf skills for the final artifacts.",
+          "Charts must be rendered to PNG assets in Python and embedded as images in the final deck.",
+          "Do not use native PowerPoint chart objects for critical visuals.",
+          "Generate and attach these files exactly:",
+          "- test-deck.pptx",
+          "- test-deck.pdf",
+          "- deck_manifest.json",
+          "You may also attach basquio_analysis.json if useful.",
         ].join("\n"),
       },
     ],
   };
 
-  const baseMessages: Anthropic.Beta.BetaMessageParam[] = [initialMessage];
-  let messages: Anthropic.Beta.BetaMessageParam[] = [...baseMessages];
+  let messages: Anthropic.Beta.BetaMessageParam[] = [initialMessage];
   let container: Anthropic.Beta.BetaContainerParams | undefined = {
     skills: [
       { type: "anthropic", skill_id: "pptx", version: "latest" },
@@ -83,15 +87,19 @@ async function main() {
   let totalOutputTokens = 0;
 
   for (let iteration = 0; iteration < 8; iteration += 1) {
-    const response: Anthropic.Beta.BetaMessage = await client.beta.messages.create({
+    const stream = client.beta.messages.stream({
       model: MODEL,
-      max_tokens: 4_096,
+      max_tokens: 8_192,
       betas: [...BETAS],
       system,
       messages,
       container,
       tools,
+      output_config: {
+        effort: "medium",
+      },
     });
+    const response: Anthropic.Beta.BetaMessage = await stream.finalMessage();
 
     finalMessage = response;
     container = response.container ? { id: response.container.id } : container;
@@ -106,13 +114,7 @@ async function main() {
       break;
     }
 
-    messages = [
-      ...baseMessages,
-      {
-        role: "assistant",
-        content: response.content as Anthropic.Beta.BetaContentBlockParam[],
-      },
-    ];
+    messages = appendAssistantTurn(messages, response);
   }
 
   if (!finalMessage) {
@@ -122,6 +124,7 @@ async function main() {
   const generated = await downloadGeneratedFiles(client, [...fileIds]);
   const pptx = generated.find((file) => file.fileName === "test-deck.pptx" || file.fileName.endsWith("/test-deck.pptx"));
   const pdf = generated.find((file) => file.fileName === "test-deck.pdf" || file.fileName.endsWith("/test-deck.pdf"));
+  const manifestFile = generated.find((file) => file.fileName === "deck_manifest.json" || file.fileName.endsWith("/deck_manifest.json"));
   if (!pptx) {
     throw new Error(
       `Claude did not attach test-deck.pptx. Attached files: ${generated.map((file) => file.fileName).join(", ") || "none"}. ` +
@@ -134,6 +137,13 @@ async function main() {
       `Content blocks: ${finalMessage.content.map((block) => block.type).join(", ") || "none"}.`,
     );
   }
+  if (!manifestFile) {
+    throw new Error(
+      `Claude did not attach deck_manifest.json. Attached files: ${generated.map((file) => file.fileName).join(", ") || "none"}.`,
+    );
+  }
+
+  const manifest = parseDeckManifest(JSON.parse(manifestFile.buffer.toString("utf8")));
 
   const verification = await verifyPptx(pptx.buffer);
   if (!verification.valid) {
@@ -151,14 +161,7 @@ async function main() {
   const visualQa = await runRenderedPageQa({
     client,
     pdf: pdf.buffer,
-    manifest: {
-      slideCount: verification.slideCount,
-      slides: [
-        { position: 1, title: "Title slide", layoutId: "cover", slideArchetype: "cover" },
-        { position: 2, title: "Recommendations", layoutId: "title-body", slideArchetype: "recommendation-cards" },
-        { position: 3, title: "Sales by category", layoutId: "title-chart", slideArchetype: "title-chart" },
-      ],
-    },
+    manifest,
     betas: ["files-api-2025-04-14"],
   });
 
@@ -170,12 +173,15 @@ async function main() {
   await mkdir(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, "test-deck.pptx");
   const pdfPath = path.join(outputDir, "test-deck.pdf");
+  const manifestPath = path.join(outputDir, "deck_manifest.json");
   await writeFile(outputPath, pptx.buffer);
   await writeFile(pdfPath, pdf.buffer);
+  await writeFile(manifestPath, manifestFile.buffer);
 
   console.log(JSON.stringify({
     outputPath,
     pdfPath,
+    manifestPath,
     slideXmlCount: verification.slideCount,
     chartXmlCount: verification.chartXmlCount,
     mediaCount: verification.mediaCount,
@@ -201,6 +207,60 @@ function buildFixtureCsv() {
     ].join("\n"),
     "utf8",
   );
+}
+
+async function loadInputFile(filePath: string | null) {
+  if (!filePath) {
+    return {
+      buffer: buildFixtureCsv(),
+      fileName: "smoke-input.csv",
+    };
+  }
+
+  return {
+    buffer: await readFile(filePath),
+    fileName: path.basename(filePath),
+  };
+}
+
+function appendAssistantTurn(
+  messages: Anthropic.Beta.BetaMessageParam[],
+  message: Anthropic.Beta.BetaMessage,
+): Anthropic.Beta.BetaMessageParam[] {
+  return [
+    ...messages,
+    {
+      role: "assistant",
+      content: message.content as Anthropic.Beta.BetaContentBlockParam[],
+    },
+  ];
+}
+
+function inferLanguageHint(brief: string) {
+  return /\b(il|lo|la|gli|dei|delle|massimo|slide|chiari|famiglie|soluzioni|scenari|grafico)\b/i.test(brief)
+    ? "Italian"
+    : "English";
+}
+
+function parseArgs(argv: string[]) {
+  let file: string | null = null;
+  let brief =
+    "Create a 3-slide consulting-grade deck from the uploaded data with one strong takeaway, one recommendation-card slide, and one visual evidence slide.";
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--file") {
+      file = argv[index + 1] ?? null;
+      index += 1;
+      continue;
+    }
+    if (arg === "--brief") {
+      brief = argv[index + 1] ?? brief;
+      index += 1;
+    }
+  }
+
+  return { file, brief };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {

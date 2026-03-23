@@ -1,6 +1,89 @@
 # Decision Log
 
-## March 23, 2026
+## March 23, 2026 (evening) — V6 Architecture Reset
+
+### Kill the understand/author split — single-turn generation
+
+Decision:
+- The deck generation call must be a SINGLE Claude API call, not a two-step understand+author split.
+- Claude reads the uploaded file via code execution, analyzes it, and generates the PPTX in one pass.
+
+Why:
+- The V5 understand+author split used 890K input tokens on a 3-slide smoke test ($2.67 in input alone).
+- Each `pause_turn` continuation re-sends the full message history including accumulated server_tool_use blocks.
+- A real Discount Excel file timed out on the understand phase alone.
+- `container_upload` files cost 0 input tokens, so the file data is not the cost driver — conversation accumulation is.
+
+Implication:
+- `generate-deck.ts` must collapse to one `runClaudeLoop` call for generation.
+- No separate understand phase. No dataset inventory in the prompt.
+- The user message contains only: brief + "analyze the uploaded file and create a deck."
+- Expected cost should drop materially from the split-path baseline, but the exact deck COGS must be validated from live usage telemetry rather than assumed from prompt theory.
+
+### Include web_fetch tool for free code execution compute
+
+Decision:
+- Always include `{ type: "web_fetch_20260209", name: "web_fetch" }` in the tools array.
+- When Skills already auto-inject code execution, do not also register another named `code_execution` tool that collides with the injected tool name.
+
+Why:
+- Anthropic pricing docs: "Code execution is free when used with web search or web fetch."
+- Without it, container time is billed at $0.05/hour with a 5-minute minimum.
+
+### Let the PPTX skill drive rendering
+
+Decision:
+- Do not instruct Claude to use a separate hardcoded presentation library contract when the PPTX skill is loaded.
+- Let the skill own final presentation generation while Python focuses on analysis and chart-image creation.
+
+Why:
+- Public Anthropic docs confirm the `pptx` skill exists and is intended for creating and editing presentations, but they do not require Basquio to depend on an undocumented internal implementation detail.
+- Hardcoding a different presentation library contract in the prompt creates conflicting guidance and makes the worker less resilient to skill evolution.
+
+### Do NOT add user "Continue" messages on pause_turn
+
+Decision:
+- When handling `pause_turn`, append the assistant response and re-send. Do NOT add a user message saying "Continue."
+
+Why:
+- SDK docs explicitly say: "Do NOT add an extra user message like 'Continue.' — the API detects the trailing server_tool_use block and knows to resume automatically."
+
+### Move long-running execution off Vercel request routes
+
+Decision:
+- Vercel request handlers should only enqueue `deck_runs`.
+- A long-running Railway worker should poll Supabase for queued runs and execute `generateDeckRun(runId)`.
+
+Why:
+- Real workbook generation takes longer than the practical Vercel request ceiling.
+- The direct Claude deck engine is the right quality architecture, but it still needs a durable host.
+- Supabase already persists run state, heartbeat timestamps, progress, and artifact records, so it can serve as the queue/state layer without reintroducing the old orchestration maze.
+
+Implication:
+- The `/api/jobs/[jobId]/execute` Vercel route is retired.
+- `/api/generate` and `/api/v2/generate` should create queued runs and return immediately.
+- Railway hosts the polling worker and stale-run recovery loop.
+
+### Finish the durable worker, not just the route cutover
+
+Decision:
+- The Railway worker must load the same app env locally, run stale-run recovery on a recurring interval, heartbeat active runs, and use a materially longer Anthropic client timeout than the old 15-minute route-era default.
+- The shared live phase contract must match the real direct-worker spine: `normalize`, `author`, `critique`, `revise`, `export`.
+
+Why:
+- A worker that only recovers stale runs once at startup can still strand interrupted runs forever after a fast restart.
+- A worker without heartbeats makes long Claude calls look dead in Supabase for too long and weakens stale-run detection.
+- Keeping the Anthropic client timeout at 15 minutes simply recreates the same failure class on a different host.
+
+Implication:
+- `scripts/worker.ts` should load `apps/web/.env.local` for local parity, refresh `updated_at` while a run is in flight, and rerun stale recovery on a timer.
+- `generateDeckRun()` and the smoke harness should use a longer configurable Anthropic timeout via `BASQUIO_ANTHROPIC_TIMEOUT_MS`.
+- Pre-finalization `delivery_status` should stay on the canonical `draft` state, not invent a route-era transitional label.
+- `BASQUIO_PHASES` and the current progress UI should no longer advertise legacy `understand` / `polish` phases for the direct worker, even if broader legacy contracts remain in the repo for historical orchestration code.
+
+---
+
+## March 23, 2026 (morning)
 
 ### Files API references must not go through Anthropic token counting
 

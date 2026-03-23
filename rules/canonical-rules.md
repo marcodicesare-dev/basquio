@@ -35,10 +35,13 @@
 
 - Use a durable async execution surface for long-running deck jobs.
 - Inngest is no longer required when a single code-execution worker owns the full run end to end.
+- The preferred durable surface for the current Basquio direct deck engine is a long-running worker process, not a Vercel route handler with request-time limits.
 - Use checkpoint-resume patterns or durable event persistence for long jobs.
 - Never assume one synchronous request should do all work.
 - Long-running runs must expose visible progress state with stage detail and time signals.
 - Queued jobs must be reconstructable from persisted request state keyed by `jobId`.
+- `deck_runs.status = "queued"` in Supabase is a valid queue contract when a single worker claims runs atomically and updates heartbeat timestamps.
+- The durable worker must run recurring stale-run recovery and keep `deck_runs.updated_at` fresh while a run is in flight.
 - Production runtime code must not depend on gitignored workspace-only `.context` files.
 - Large or ambiguous decks are allowed to take more revision attempts than simple ones.
 - Every LLM-assisted stage must emit auditable trace metadata.
@@ -47,10 +50,22 @@
 ## Rendering Rules
 
 - Prefer direct PPTX generation inside the Claude code-execution sandbox as the primary export path.
+- When the PPTX skill is loaded, let the skill own final presentation generation instead of hardcoding a separate presentation library contract in the prompt.
 - Use deterministic server-side conversion or model-authored PDF generation as the PDF path.
 - Use `pdf-lib` only for post-processing when needed.
 - For direct deck generation, default to a premium editorial visual language instead of generic Office styling when the template is weakly specified, but keep dense card text on cross-viewer-safe fonts and reserved non-overlapping layout bands.
 - Charts that matter to the argument must be embedded as image assets in the PPTX when Basquio needs one visually consistent deliverable across PowerPoint, Keynote, and Google Slides.
+- Claude responds to hard geometry rules and forbidden patterns, NOT taste adjectives. Write design constraints as banned compositions and required band structures, not as "make it beautiful."
+
+## Token Cost Rules (CRITICAL — learned March 23, 2026)
+
+- `container_upload` files cost 0 input tokens. NEVER duplicate file data in the message text.
+- Each `pause_turn` continuation re-sends the FULL message history as input tokens. Minimize continuations.
+- Include `web_fetch_20260209` in the tools array for free code execution compute.
+- If the loaded Anthropic Skills auto-inject code execution, do not also register a second named `code_execution` tool that collides with the injected one.
+- The generation call should be a SINGLE turn, not an understand/author split. Multi-turn accumulates tool output and multiplies costs.
+- The single-turn file-backed path should be materially cheaper than the split understand/author path. Confirm real cost with live usage telemetry instead of assuming a fixed deck price from prompt theory alone.
+- If a smoke test uses > 50K input tokens before meaningful deck output, the prompt or continuation pattern is wrong.
 
 ## Data Rules
 

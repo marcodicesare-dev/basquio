@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
 import { interpretTemplateSource } from "@basquio/template-engine";
 import type { GenerationRequest } from "@basquio/types";
 
-import { dispatchPersistedGenerationExecution } from "@/lib/generation-requests";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -42,7 +41,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      ...(await queueGeneration(generationRequest, viewer.user, workspace, request)),
+      ...(await queueGeneration(generationRequest, viewer.user, workspace)),
     }, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed.";
@@ -54,7 +53,6 @@ async function queueGeneration(
   generationRequest: QueuedGenerationRequest,
   viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
   workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
-  request: Request,
 ) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -225,28 +223,6 @@ async function queueGeneration(
     const errorText = await deckRunResponse.text().catch(() => "Unknown error");
     throw new Error(`Failed to create deck_runs record: ${errorText}`);
   }
-
-  after(async () => {
-    const dispatched = await dispatchPersistedGenerationExecution(runId, request);
-
-    if (!dispatched) {
-      await fetch(`${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`,
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          status: "failed",
-          failure_phase: "normalize",
-          failure_message: "Failed to dispatch deck generation worker.",
-          updated_at: new Date().toISOString(),
-        }),
-      }).catch(() => {});
-    }
-  });
 
   return {
     jobId: runId,

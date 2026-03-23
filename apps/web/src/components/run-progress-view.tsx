@@ -55,6 +55,7 @@ const PHASE_TO_USER_STEP: Record<string, number> = {
   normalize: 0,
   understand: 1,
   author: 2,
+  render: 2,
   polish: 2,
   critique: 2,
   revise: 2,

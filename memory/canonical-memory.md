@@ -79,10 +79,19 @@ Initial domain bias:
 - The strongest quality controls for the current direct deck path are archetype contracts, negative rules, artifact QA, and rendered-page review rather than open-ended styling instructions.
 - High token spend in code-execution runs is often driven by repeated `pause_turn` continuation with growing container history, not only by the initial prompt size.
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
+- The primary direct-worker generation pattern should be one file-backed Claude generation turn that loads the `pptx` and `pdf` skills from the start, not a prompt-stuffed `understand` call followed by a separate `author` call.
+- The current direct-worker phase list is `normalize`, `author`, `critique`, `revise`, `export`. Old `understand` and `polish` phases are historical and should not be shown as active phases in the live progress contract.
+- `container_upload` evidence files should be read inside code execution, not summarized back into the prompt as dataset inventory or column dumps.
+- The correct production execution surface for long Basquio deck runs is a durable worker, not a Vercel request. Vercel should enqueue `deck_runs`; a Railway worker should claim and execute them.
+- Supabase-backed `deck_runs.status = "queued"` is the current queue contract. A separate queue system is unnecessary while one worker claims runs atomically and stale-running runs are re-queued.
+- The durable worker must run recurring stale-run recovery, not only startup recovery; otherwise a fast restart after a crash can leave interrupted runs stuck forever.
+- The durable worker should heartbeat `deck_runs.updated_at` while a Claude call is in flight so the database reflects live execution rather than only phase boundaries.
+- Moving generation off Vercel is not sufficient if the Anthropic client timeout remains at 15 minutes. The durable worker timeout budget must exceed real workbook generation time.
 - A concrete rendered-page QA path now exists: upload the generated `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
 - Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks. File-backed phases need post-response budget enforcement from actual usage instead of preflight token counting.
-- The `understand` phase must not hard-depend on `basquio_analysis.json` being attached as a file. Claude may return the analysis as JSON text in the final assistant message, and the worker must accept that as valid output.
-- The `understand` phase should use structured JSON output with an explicit schema as the primary contract. Prompt-only "return JSON" instructions are not reliable enough for a resilient production analysis stage.
+- The final direct-deck generation contract should require `deck.pptx`, `deck.pdf`, and `deck_manifest.json`. `basquio_analysis.json` is optional audit output, not a blocking transport requirement.
+- When the `pptx` skill is loaded, Basquio should rely on the documented skill contract itself rather than assuming an undocumented internal presentation library implementation.
+- In the current Anthropic API behavior, loading Skills can auto-inject the code-execution tool. Do not explicitly register another named `code_execution` tool alongside those Skills if the API reports a tool-name conflict.
 
 ## Production Incident Memory: March 21-22, 2026
 

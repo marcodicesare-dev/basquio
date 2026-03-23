@@ -181,6 +181,27 @@ export const generationEngineSchema = z.enum([
   "claude-code-execution",
 ]);
 
+export const executionSurfaceSchema = z.enum([
+  "vercel-route",
+  "railway-worker",
+]);
+
+export const directDeckArtifactContractSchema = z.object({
+  generationPattern: z.literal("single-turn"),
+  requiredArtifacts: z.tuple([
+    z.literal("deck.pptx"),
+    z.literal("deck.pdf"),
+    z.literal("deck_manifest.json"),
+  ]),
+  optionalArtifacts: z.array(z.literal("basquio_analysis.json")).default(["basquio_analysis.json"]),
+  requiredSkills: z.tuple([
+    z.literal("pptx"),
+    z.literal("pdf"),
+  ]),
+  chartArtifactMode: z.literal("raster-screenshot"),
+  executionSurface: executionSurfaceSchema.default("railway-worker"),
+});
+
 export const deckExecutionPhaseSchema = z.enum([
   "normalize",
   "understand",

@@ -57,7 +57,10 @@ const requiredFiles = [
   "supabase/migrations/20260314160000_initial_basquio_schema.sql",
   "scripts/test-run.ts",
   "scripts/test-code-exec.ts",
+  "scripts/load-app-env.ts",
+  "scripts/worker.ts",
   "scripts/check-inngest.ts",
+  "railway.toml",
 ];
 
 const contentChecks: Array<{ file: string; needles: string[] }> = [
@@ -159,7 +162,7 @@ async function assertWorkspaceScripts() {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as {
     scripts?: Record<string, string>;
   };
-  const requiredScripts = ["dev", "typecheck", "lint", "qa:basquio", "test:code-exec", "test:run"];
+  const requiredScripts = ["dev", "typecheck", "lint", "qa:basquio", "test:code-exec", "test:run", "worker"];
   const requiredOperationalScripts = ["inngest:check"];
 
   for (const scriptName of requiredScripts) {
@@ -269,7 +272,6 @@ async function assertRuntimeSchemaCompatibility() {
   }
 
   const filesToScan = [
-    "apps/web/src/lib/generation-requests.ts",
     "apps/web/src/lib/run-status.ts",
     "apps/web/src/lib/job-runs.ts",
     "apps/web/src/lib/viewer-workspace.ts",
