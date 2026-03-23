@@ -10,14 +10,15 @@
 
 ## Architecture Rules
 
-- LLMs produce contracts, not final document syntax.
+- LLMs may generate final deck syntax when they do so inside a controlled execution sandbox with deterministic ingest, explicit budget guards, and durable artifact QA.
 - Package-level file understanding must happen before trustworthy analytics planning when multiple files are uploaded.
 - Deterministic analytics must run from explicit `ExecutableMetricSpec[]`.
 - Multi-file joins must support explicit left-key and right-key contracts instead of same-name-only assumptions.
-- `ReportOutline` must exist before `SlideSpec[]` planning.
-- Slide count, sectioning, and layout selection must be plan-driven, not fixed-spine hard-coding.
-- `ChartSpec` must not depend on React component props.
-- PPTX and PDF must render from the same `SlideSpec[]`.
+- `SlideSpec[]` remains a valid intermediate planning contract when Basquio needs one, but it is no longer the only permissible path to final PPTX/PDF generation.
+- Slide count, sectioning, and layout selection must still be evidence-driven, not fixed-spine hard-coding.
+- `ChartSpec` remains the canonical chart-planning contract even when the direct deck engine decides to render a chart with Python instead of a custom renderer.
+- If Basquio uses a direct code-execution deck engine, the deck agent must remain accountable for the final PPTX and PDF artifacts.
+- Template geometry, palette, and typography must still come from `TemplateProfile`, even when the final PPTX is generated directly by Claude.
 - Template and brand interpretation must flow through `TemplateProfile`.
 - `.pptx` parsing must materially preserve layout, placeholder, placeholder-frame, theme, and source-origin constraints.
 - Preview libraries are not allowed to become export architecture by accident.
@@ -32,21 +33,24 @@
 
 ## Workflow Rules
 
-- Use Inngest by default for greenfield Basquio orchestration.
-- Use checkpoint-resume patterns for long jobs.
+- Use a durable async execution surface for long-running deck jobs.
+- Inngest is no longer required when a single code-execution worker owns the full run end to end.
+- Use checkpoint-resume patterns or durable event persistence for long jobs.
 - Never assume one synchronous request should do all work.
 - Long-running runs must expose visible progress state with stage detail and time signals.
 - Queued jobs must be reconstructable from persisted request state keyed by `jobId`.
+- Production runtime code must not depend on gitignored workspace-only `.context` files.
 - Large or ambiguous decks are allowed to take more revision attempts than simple ones.
 - Every LLM-assisted stage must emit auditable trace metadata.
 - Status recovery must handle stale queued runs and stale running runs that still have zero durable checkpoints.
 
 ## Rendering Rules
 
-- Prefer native editable PPT charts for standard chart families.
-- Prefer ECharts SSR SVG for advanced charts and export-grade visuals.
-- Use Browserless for PDF generation by default.
-- Use `pdf-lib` only for post-processing.
+- Prefer direct PPTX generation inside the Claude code-execution sandbox as the primary export path.
+- Use deterministic server-side conversion or model-authored PDF generation as the PDF path.
+- Use `pdf-lib` only for post-processing when needed.
+- For direct deck generation, default to a premium editorial visual language instead of generic Office styling when the template is weakly specified, but keep dense card text on cross-viewer-safe fonts and reserved non-overlapping layout bands.
+- Charts that matter to the argument must be embedded as image assets in the PPTX when Basquio needs one visually consistent deliverable across PowerPoint, Keynote, and Google Slides.
 
 ## Data Rules
 

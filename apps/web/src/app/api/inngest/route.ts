@@ -1,12 +1,15 @@
-import { serve } from "inngest/next";
-
-import { inngest, basquioV2Generation, basquioExport, basquioUnderstand, basquioAuthor, basquioCritiqueRevise } from "@basquio/workflows";
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 800; // Vercel Pro + Fluid Compute supports up to 800s
+export const maxDuration = 60;
 
-export const { GET, POST, PUT } = serve({
-  client: inngest,
-  functions: [basquioV2Generation, basquioExport, basquioUnderstand, basquioAuthor, basquioCritiqueRevise],
-  streaming: "allow",
-});
+function retired() {
+  return NextResponse.json(
+    { error: "The Inngest generation endpoint has been retired. Basquio now runs deck generation through the direct code-execution worker." },
+    { status: 410 },
+  );
+}
+
+export const GET = retired;
+export const POST = retired;
+export const PUT = retired;

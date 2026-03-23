@@ -22,7 +22,7 @@ This synthesis merges:
 
 - Loamly already has a proven checkpoint-resume job pattern with QStash self-chaining.
 - Basquio should explicitly optimize for FMCG and market-insight storytelling first.
-- PptxGenJS native charts are valuable because editable charts are a real B2B advantage.
+- cross-viewer compatibility matters more than editable chart XML when the output must survive PowerPoint, Keynote, and Google Slides without visual drift.
 - template theme extraction from `.pptx` should inspect the underlying package structure rather than relying on visual inference only.
 
 ## Corrections Applied During Merge
@@ -43,8 +43,8 @@ The other agent first suggested `chartjs-node-canvas`, then correctly backed awa
 Merged outcome:
 
 - do not make `chartjs-node-canvas` the default backend
-- standard charts: prefer editable native PPT charts
-- advanced charts and PDF visuals: prefer ECharts SSR SVG
+- direct deck charts: prefer screenshot assets embedded into the PPTX
+- advanced custom renderer visuals: prefer export-native SVG/raster generation rather than Office-native chart XML
 
 ### Workflow
 

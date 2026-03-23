@@ -158,6 +158,27 @@ export function RunProgressView(input: {
     );
   }
 
+  if (snapshot.status === "completed" && !snapshot.artifactsReady) {
+    return (
+      <div style={styles.fullPage}>
+        <div style={styles.center}>
+          <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.5rem" }}>
+            Generation finished, but artifacts are unavailable
+          </h1>
+          <p style={{ color: "#A09FA6", fontSize: "1.05rem", maxWidth: 520, marginBottom: "1.5rem" }}>
+            The run completed without a published artifact manifest. This deck should not be treated as ready.
+          </p>
+          {snapshot.failureMessage && (
+            <p style={{ fontSize: "0.8rem", color: "#6B6A72", fontFamily: "monospace", maxWidth: 500, wordBreak: "break-word", marginBottom: "1.5rem" }}>
+              {snapshot.failureMessage}
+            </p>
+          )}
+          <Link href="/jobs/new" style={styles.primaryButton}>Start a new run</Link>
+        </div>
+      </div>
+    );
+  }
+
   // ─── FAILED STATE ────────────────────────────────────────────
   if (snapshot.status === "failed") {
     return (

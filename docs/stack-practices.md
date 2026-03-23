@@ -245,15 +245,14 @@ Basquio implication:
 
 ## PptxGenJS
 
-Use PptxGenJS when Basquio needs greenfield slide creation with editable native charts.
+Use PptxGenJS when Basquio needs greenfield slide creation of text, shapes, and images.
 
 Best fit:
 
-- standard business charts
 - deterministic text/table placement
 - decks built from canonical slide objects
 
-Do not force advanced chart types into native PPT charts when the result is misleading or brittle.
+Do not treat native editable charts as the export contract for Basquio client deliverables. Embed chart screenshots instead when the deck must survive PowerPoint, Keynote, and Google Slides consistently.
 
 ## pptx-automizer
 

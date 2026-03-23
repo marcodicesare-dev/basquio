@@ -8,7 +8,7 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 export const metadata: Metadata = {
   title: "How It Works | Basquio",
   description:
-    "See exactly what happens to your files: four stages from upload to a review-ready PowerPoint and PDF with every claim verified.",
+    "See exactly what happens to your files: four stages from upload to a review-ready PowerPoint and PDF grounded in deterministic analysis and artifact QA.",
 };
 
 export default function HowItWorksPage() {
@@ -21,10 +21,10 @@ export default function HowItWorksPage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">How it works</p>
-              <h1>Four stages. Under five minutes.</h1>
+              <h1>Four stages. One accountable deck engine.</h1>
               <p className="page-copy">
                 You upload one evidence package: the CSVs, spreadsheets, PDFs, briefs, and brand files behind a single
-                reporting cycle. Basquio reads every file, computes the numbers, shapes the story, verifies the claims,
+                reporting cycle. Basquio reads every file, computes the numbers, shapes the story, checks the artifacts,
                 and delivers a deck you can present.
               </p>
             </div>
@@ -45,11 +45,11 @@ export default function HowItWorksPage() {
       <section className="panel dark-panel">
         <div className="stack">
           <p className="section-label light">What makes Basquio different</p>
-          <h2>Every claim is verified before delivery.</h2>
+          <h2>Every deck is checked before delivery.</h2>
           <p className="muted">
-            After the narrative is built, a separate AI model checks every number, chart label, and
-            written claim against the source data. Issues are flagged and corrected before you see the
-            output.
+            Basquio combines deterministic analysis, template-aware deck generation, and artifact QA before
+            anything is published. Broken exports and mismatched artifact metadata are blocked instead of being
+            silently shipped.
           </p>
         </div>
         <ul className="clean-list">

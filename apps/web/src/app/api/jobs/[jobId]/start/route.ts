@@ -1,12 +1,7 @@
-import { NextResponse } from "next/server";
+import { POST as executePost } from "../execute/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 800;
 
-// V1 start route — removed. All generation runs through v2 agentic pipeline via Inngest.
-export async function POST() {
-  return NextResponse.json(
-    { error: "This endpoint has been retired. Use the v2 generation pipeline." },
-    { status: 410 },
-  );
-}
+export const POST = executePost;

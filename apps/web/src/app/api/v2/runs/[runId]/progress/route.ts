@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { BASQUIO_PHASES } from "@basquio/core";
 
 import { getViewerState } from "@/lib/supabase/auth";
 
@@ -8,7 +9,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 // Event-sourced progress endpoint.
-// Returns real tool-call events from deck_run_events, not synthetic stage weights.
+// Returns persisted run events from deck_run_events. Tool-call detail is only present when the worker emits it.
 
 export async function GET(
   request: Request,
@@ -70,7 +71,7 @@ export async function GET(
 
   const events = eventsResponse.ok ? await eventsResponse.json() : [];
 
-  const phases = ["normalize", "understand", "author", "critique", "revise", "export"];
+  const phases = [...BASQUIO_PHASES];
   const completedPhases = events
     .filter((e: { event_type: string }) => e.event_type === "phase_completed")
     .map((e: { phase: string }) => e.phase);

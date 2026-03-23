@@ -1,5 +1,20 @@
 # Basquio Architecture
 
+## March 22, 2026 Reset
+
+` .context/architecture-v4-code-execution.md ` is now the canonical architecture direction.
+
+Basquio keeps deterministic ingest, template interpretation, domain analytics, storage, and progress persistence. The primary deck-generation path is no longer a scene-graph and renderer pipeline. The primary path is a single Claude code-execution worker that:
+
+- reads uploaded evidence files directly in the sandbox
+- reuses a persistent container across analysis, authoring, and one repair turn
+- generates the final PPTX and PDF artifacts directly
+- persists only durable run state, working papers, artifact manifests, and QA outcomes back into Supabase
+
+The main quality lesson from the reset is that direct generation still needs strong structure around it. The model should be constrained by explicit slide archetypes, viewer-safe layout rules, artifact QA, and eventually rendered-page judging plus candidate ranking. Prompting for "taste" alone is not a reliable quality architecture.
+
+The remainder of this document is historical context from the pre-reset architecture and should not be treated as the shipping target when it conflicts with the approved v4 code-execution architecture.
+
 ## Merged Research Outcome
 
 This architecture merges:
@@ -112,8 +127,8 @@ Use:
 
 Merged decision:
 
-- use native PptxGenJS charts for standard chart families when editability in PowerPoint matters
-- use embedded images only when the chart type exceeds native PPT chart capabilities
+- for the current direct code-execution export path, use screenshot chart assets as the default chart contract
+- embed the same chart image assets into PPTX and PDF so the visual survives PowerPoint, Keynote, and Google Slides consistently
 
 ### PDF
 
@@ -134,12 +149,13 @@ Reason:
 
 Use a dual strategy:
 
-1. Standard editable PPT chart families via PptxGenJS
-2. Advanced export-native visuals via Apache ECharts SVG SSR
+1. Direct deck engine: raster chart screenshots embedded into PPTX and PDF
+2. Historical/custom renderer path: Apache ECharts SVG SSR or equivalent export-native visuals
 
 Policy:
 
 - `ChartSpec` is canonical
+- for the direct code-execution path, `ChartSpec` should resolve to screenshot assets rather than native Office chart XML
 - React chart libraries do not define the data contract
 - `Recharts`, `Nivo`, `Tremor`, and `visx` can be used for app previews only
 

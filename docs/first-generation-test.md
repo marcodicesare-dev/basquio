@@ -1,6 +1,9 @@
 # First Generation Test
 
-Basquio now has a real evidence-package generation path in the web app, plus the deterministic local demo flow.
+Basquio now has a real evidence-package generation path in the web app plus two code-execution-era verification commands:
+
+- `pnpm test:code-exec` for a direct Claude smoke test that must return both PPTX and PDF
+- `pnpm test:run --run-id <uuid>` for inspecting a persisted production-style run from Supabase
 
 ## App Path
 
@@ -25,42 +28,42 @@ Current intended test path:
 - generate both `.pptx` and `.pdf`
 - download them from `/artifacts`
 
-## Command
+## Code Execution Smoke
 
 ```bash
-pnpm demo:generate
+pnpm test:code-exec
 ```
 
-## Output
-
-The script writes a deterministic demo run under:
+This requires `ANTHROPIC_API_KEY` and writes:
 
 ```bash
-Basquio/output/demo-local/
+Basquio/test-output/code-exec-smoke/test-deck.pptx
+Basquio/test-output/code-exec-smoke/test-deck.pdf
 ```
 
-Files produced:
+## Persisted Run Inspection
 
-- `demo-input.xlsx`
-- `basquio-deck.pptx`
-- `basquio-deck.pdf`
-- `job-summary.json`
-- `demo-summary.json`
+```bash
+pnpm test:run --run-id <uuid>
+```
 
-## What The Demo Covers
+This requires `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` and writes:
 
-- workbook creation
-- evidence-package parsing and manifest inference
-- dataset profiling
-- deterministic analysis
-- evidence-backed insight generation
-- story planning
-- report outline planning
-- slide planning
-- PPTX render
-- PDF render
+```bash
+Basquio/test-output/run-<run-id-prefix>/
+```
+
+Files produced when available:
+
+- `deck.pptx`
+- `deck.pdf`
+- `manifest.json`
+- `plan.json`
+- `analysis.json`
+- `charts/*.png`
 
 ## Notes
 
-- if `BROWSERLESS_TOKEN` is missing, the PDF renderer falls back to a placeholder PDF so the pipeline still completes
-- the app path is now the main internal test flow for multi-file evidence-package upload; the demo command remains the fastest deterministic regression check
+- the app path is the primary end-to-end product path
+- `pnpm test:code-exec` proves the Anthropic Files API + code execution + skills round-trip
+- `pnpm test:run --run-id` inspects persisted run truth and should be preferred over legacy local fixture harnesses

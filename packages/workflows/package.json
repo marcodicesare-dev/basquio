@@ -3,14 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "exports": {
-    ".": "./src/index.ts"
-  },
-  "scripts": {
-    "workflow:dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
+    ".": "./src/index.ts",
+    "./generate-deck": "./src/generate-deck.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.41",
     "@ai-sdk/openai": "^3.0.41",
+    "@anthropic-ai/sdk": "^0.78.0",
     "@basquio/core": "workspace:*",
     "@basquio/data-ingest": "workspace:*",
     "@basquio/intelligence": "workspace:*",

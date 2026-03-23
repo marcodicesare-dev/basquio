@@ -13,10 +13,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "qa": "pnpm qa:basquio",
     "qa:basquio": "tsx scripts/qa-context.ts",
+    "test:code-exec": "tsx scripts/test-code-exec.ts",
     "test:run": "tsx scripts/test-run.ts",
-    "demo:generate": "tsx scripts/run-demo-generation.ts",
     "inngest:check": "tsx scripts/check-inngest.ts",
-    "workflow:dev": "pnpm --filter @basquio/workflows workflow:dev",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",
@@ -34,6 +33,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@types/node": "^22.16.3",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.6",

@@ -25,9 +25,17 @@
 
 ## Chart QA
 
-- standard chart families remain editable in PPTX where intended
-- advanced charts render deterministically through export-safe paths
+- charts in the direct deck path are embedded as raster screenshots, not native Office chart XML
+- PPTX packages with charts must not contain `ppt/charts/*.xml`
+- PPTX packages with charts must contain raster media assets under `ppt/media/`
+- the same chart image asset should drive PPTX and PDF output
 - no preview-only dependency blocks export
+
+## Layout QA
+
+- recommendation and action cards must not depend on stacked decorative numerals or floating footer metrics that can drift across viewers
+- dense card text should use cross-viewer-safe fonts unless a customer template explicitly overrides them
+- card layouts must reserve separate non-overlapping bands for title, body, and footer content
 
 ## Release Gate
 

@@ -55,7 +55,8 @@ const requiredFiles = [
   "supabase/config.toml",
   "supabase/README.md",
   "supabase/migrations/20260314160000_initial_basquio_schema.sql",
-  "scripts/run-demo-generation.ts",
+  "scripts/test-run.ts",
+  "scripts/test-code-exec.ts",
   "scripts/check-inngest.ts",
 ];
 
@@ -102,7 +103,7 @@ const contentChecks: Array<{ file: string; needles: string[] }> = [
   },
   {
     file: "packages/workflows/src/index.ts",
-    needles: ["intake and profiling", "render pptx", "artifact qa and delivery"],
+    needles: ["generateDeckRun"],
   },
   {
     file: "supabase/migrations/20260314160000_initial_basquio_schema.sql",
@@ -158,7 +159,7 @@ async function assertWorkspaceScripts() {
   const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as {
     scripts?: Record<string, string>;
   };
-  const requiredScripts = ["dev", "typecheck", "lint", "qa:basquio", "workflow:dev", "demo:generate"];
+  const requiredScripts = ["dev", "typecheck", "lint", "qa:basquio", "test:code-exec", "test:run"];
   const requiredOperationalScripts = ["inngest:check"];
 
   for (const scriptName of requiredScripts) {

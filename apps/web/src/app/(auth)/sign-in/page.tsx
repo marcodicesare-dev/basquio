@@ -30,15 +30,15 @@ export default async function SignInPage({
       <section className="panel auth-intro-panel stack-lg">
         <div className="stack">
           <p className="section-label">Basquio</p>
-          <h1>Your next report is 5 minutes away.</h1>
+          <h1>Your next report starts with one evidence package.</h1>
           <p className="muted">
             Upload your data, describe the brief, and get back a branded PPTX + PDF with every number traced to source.
           </p>
         </div>
         <div className="auth-value-props stack">
           <div className="auth-value-prop">
-            <strong>Under 5 minutes</strong>
-            <span className="muted">From upload to finished deck</span>
+            <strong>Async progress</strong>
+            <span className="muted">Follow each phase from upload to finished deck</span>
           </div>
           <div className="auth-value-prop">
             <strong>Traceable evidence</strong>

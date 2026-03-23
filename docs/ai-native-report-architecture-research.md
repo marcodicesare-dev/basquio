@@ -532,7 +532,7 @@ Output:
 
 Renderer policy:
 
-- PPTX path should prefer native editable charts for standard families
+- PPTX path should prefer screenshot chart assets for charts that must survive PowerPoint, Google Slides, and Keynote without visual drift
 - advanced visuals should use ECharts SVG SSR
 - PDF path should render from an export-controlled HTML layer via Browserless
 

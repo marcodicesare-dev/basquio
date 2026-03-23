@@ -13,21 +13,27 @@
 - `TemplateProfile` is the canonical output of template and brand interpretation.
 - `TemplateProfile` must preserve slide dimensions and placeholder-region geometry when a PPTX template is provided.
 - `TemplateProfile` must preserve source-slide exemplars for each usable PPTX layout when a customer template is provided.
-- `SlideSpec[]` should carry template-region bindings when a template layout exposes usable placeholder geometry.
 - `.pptx` is the only first-class editable template input in v1.
 - structured brand token files are a first-class style-system input.
 - `.pdf` is a style reference in v1.
 - `ExecutableMetricSpec[]` is a required planning contract before deterministic analytics execution.
 - explicit left-key and right-key join contracts are required when metrics span related files.
-- `ReportOutline` is a required planning step before `SlideSpec[]`.
-- slide count and section structure must be plan-driven, not fixed-spine hard-coding.
-- The AI must output structured contracts, not freestyle final slides.
-- `ChartSpec` is canonical and must stay independent from preview UI libraries.
-- PPTX and PDF must come from the same `SlideSpec[]`.
-- Browserless is the default PDF render path.
+- slide count and section structure must be evidence-driven, not fixed-spine hard-coding.
+- The primary export path is Claude code execution, not a fragmented scene-graph renderer stack.
+- Claude may generate final deck syntax directly, but only after deterministic ingest, template interpretation, and explicit budget enforcement.
+- PPTX and PDF must still come from one accountable deck-generation pass and one durable artifact manifest.
+- Production runtime prompt inputs must come from tracked repository files, never workspace-only `.context` files.
+- Direct deck generation should default to a premium dark editorial slide language with restrained card surfaces, sparse accents, and disciplined whitespace unless the uploaded template clearly overrides it.
+- In the direct code-execution path, serif display should be limited to short page-level headlines when no strong template is provided; dense slide text and card internals should use Arial-class safe fonts to reduce cross-viewer layout drift.
+- Charts in the direct code-execution path should be rendered as raster image assets and embedded into the PPTX when Basquio needs one visually consistent deliverable across PowerPoint, Keynote, and Google Slides.
+- Claude responds much more reliably to explicit slide geometry, forbidden layout patterns, and implementation constraints than to abstract taste language alone.
+- Basquio should not ask Claude to "design a deck" from scratch on every slide; it should ask Claude to choose and fill from a small set of elite slide grammars with hard density and spacing limits.
+- The direct deck path should reuse the existing slot-archetype library as its grammar source instead of maintaining a second inconsistent set of slide layouts.
+- Generic smoke tests are weak signals. Stress tests should target specific historical failure classes such as recommendation-card overlap, footer collisions, or chart visibility drift.
+- Prompt-only improvements can raise the floor, but `10/10` output requires rendered-page evaluation, candidate ranking, and hard publish vetoes on weak slides.
 - Supabase is the default app database, auth, and storage layer.
-- Inngest is the default greenfield workflow runtime.
-- QStash self-chaining is the proven inherited fallback pattern from Loamly.
+- Inngest is no longer the primary deck-generation runtime.
+- Durable database-backed run state and internal execution dispatch are the current workflow contract.
 
 ## Product Scope Memory
 
@@ -45,9 +51,6 @@ Initial domain bias:
 
 ## Technical Memory
 
-- Standard charts should prefer native editable PPT charts when possible.
-- Advanced charts should prefer ECharts SVG SSR.
-- Raster output is a fallback, not the canonical chart format.
 - Package semantics interpretation runs before deterministic analytics execution for multi-file evidence packages.
 - Deterministic analytics run from explicit executable metric plans.
 - multi-file relationships must support semantically matched keys even when column names differ.
@@ -69,10 +72,14 @@ Initial domain bias:
 - users should see stage-level progress, elapsed time, and estimated remaining time while generation is running.
 - queued runs should persist a reconstructable generation request envelope keyed by `jobId`.
 - large browser uploads should use signed resumable transport, while smaller uploads can continue to use signed single-shot transport.
-- Inngest execution IDs should stay distinct from the user-facing canonical stage names shown in progress UI.
+- run execution must be restartable from durable database state without depending on in-memory request context.
 - cross-provider model fallback must be explicit and opt-in; strict structured outputs are the default contract for planning stages.
 - Supabase REST queries in runtime code must stay compatible with the migrated schema; production log review is the source of truth when local assumptions drift.
 - status polling and recovery logic must handle both stale queued runs and stale running-with-zero-checkpoint runs.
+- The strongest quality controls for the current direct deck path are archetype contracts, negative rules, artifact QA, and rendered-page review rather than open-ended styling instructions.
+- High token spend in code-execution runs is often driven by repeated `pause_turn` continuation with growing container history, not only by the initial prompt size.
+- Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
+- A concrete rendered-page QA path now exists: upload the generated `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
 
 ## Production Incident Memory: March 21-22, 2026
 

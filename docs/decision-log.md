@@ -1,5 +1,74 @@
 # Decision Log
 
+## March 23, 2026
+
+### Direct deck engine visual contract tightened
+
+Decision:
+
+- the direct Claude code-execution deck engine should target a premium dark editorial slide language by default when the uploaded template does not strongly override the look
+- the direct deck engine should render charts to raster image assets and embed those images into the PPTX instead of relying on native PowerPoint chart objects whenever one visually consistent deck must survive PowerPoint, Keynote, and Google Slides
+
+Why:
+
+- the earlier prompt contract produced generic Office-style deck aesthetics that did not meet the required consulting-grade bar
+- native PPT chart objects are a compatibility risk for Apple Keynote, while raster chart embeds preserve the intended visual output across viewers
+
+Implication:
+
+- prompt knowledge now includes an explicit direct-deck design spec
+- artifact QA now fails decks that declare charts but do not include raster chart media or that still contain native PPT chart XML
+
+### Direct deck typography and card layout safety tightened
+
+Decision:
+
+- the direct code-execution path should favor cross-viewer-safe fonts for dense slide text and card internals even when the overall visual direction is editorial
+- recommendation and action cards should use reserved non-overlapping bands for index, title, body, and footer instead of fragile ornamental compositions
+
+Why:
+
+- recent real exports showed stacked recommendation ordinals and footer KPI collisions after import between different PPTX viewers
+- the product needs fewer visually ambitious but brittle card patterns and more layouts that survive PowerPoint, Keynote, and Google Slides predictably
+
+Implication:
+
+- prompt rules and design spec now explicitly forbid narrow stacked numeral ornaments and floating footer metrics in the default direct deck path
+- smoke verification now stresses a recommendation-card slide instead of only a generic chart deck
+
+### `10/10` quality path requires grammar, judging, and ranking
+
+Decision:
+
+- Basquio should evolve from open-ended deck prompting toward a constrained deck-grammar system with rendered-page evaluation and candidate ranking
+
+Why:
+
+- recent prompt improvements showed that Claude follows explicit geometry and forbidden-pattern rules much better than abstract style language
+- the remaining gap to consulting-grade consistency is not raw rendering anymore; it is selection, rejection, and deck-level editorial judgment
+
+Implication:
+
+- the next architecture step is not "bigger prompt"
+- the next step is a small set of elite slide archetypes, slide-level variant generation, rendered-page judging, and hard publish vetoes on weak decks
+
+### Direct deck path now reuses slot archetypes and PDF visual judging
+
+Decision:
+
+- the direct Claude code-execution path should reuse the existing slot-archetype library as its grammar source
+- rendered-page QA should use the generated `deck.pdf` as a Claude document input instead of relying on native server-side PDF rasterization dependencies in production
+
+Why:
+
+- the archetype library already contains the repo's best explicit layout budgets and should not be duplicated
+- PDF document judging is concrete, production-safe, and avoids relying on platform-specific image-rendering binaries in the live worker
+
+Implication:
+
+- `slideArchetype` is now part of the direct analysis and manifest contract
+- visual QA is now a real worker step over the rendered artifact, not only a future plan item
+
 ## Accepted
 
 ### Intelligence-first architecture
@@ -188,6 +257,23 @@ Accepted because:
 
 - it already fits the operational shape of the product
 - no alternative currently solves a sharper problem
+
+### Claude code execution as the primary deck engine
+
+Accepted because:
+
+- the previous planner plus charts plus scene-graph plus renderer stack split accountability across too many layers
+- the model needs to see and repair the artifact it is creating, not emit disconnected intermediate contracts and hope downstream renderers stay faithful
+- Claude code execution plus the PPTX skill lets Basquio keep deterministic ingest and domain logic while collapsing final-authoring responsibility into one accountable worker
+- Supabase-backed run state, working papers, artifact manifests, and QA remain durable without requiring Inngest as the primary generation path
+
+### Tracked prompt knowledge only for production runtime
+
+Accepted because:
+
+- production deployments cannot rely on gitignored workspace-only `.context` files
+- the code-execution deck worker needs deterministic, versioned prompt inputs that exist in every deployed environment
+- runtime prompt sources should be auditable in git alongside the code that depends on them
 
 ## Rejected
 

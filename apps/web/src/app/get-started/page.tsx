@@ -97,9 +97,9 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">Timeline</p>
-            <h2>Under 5 minutes from upload to download.</h2>
+            <h2>Track the run from upload to download.</h2>
             <p className="muted">
-              Upload your files, fill in the brief, and Basquio generates both deliverables. Most reports complete in 2–5 minutes.
+              Upload your files, fill in the brief, and Basquio generates both deliverables while you follow the run state end to end.
             </p>
           </div>
         </article>

@@ -1,17 +1,24 @@
 import { randomUUID } from "node:crypto";
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
-import { GenerationValidationError, inngest } from "@basquio/workflows";
 import { interpretTemplateSource } from "@basquio/template-engine";
 import type { GenerationRequest } from "@basquio/types";
 
+import { dispatchPersistedGenerationExecution } from "@/lib/generation-requests";
+import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
+import { uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
+import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+type QueuedGenerationRequest = GenerationRequest & {
+  templateProfileId?: string | null;
+};
 
 export async function POST(request: Request) {
   try {
@@ -35,29 +42,19 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      ...(await queueGeneration(generationRequest, viewer.user, workspace)),
+      ...(await queueGeneration(generationRequest, viewer.user, workspace, request)),
     }, { status: 202 });
   } catch (error) {
-    if (error instanceof GenerationValidationError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          status: "needs_input",
-          issues: error.validationReport.issues,
-        },
-        { status: 422 },
-      );
-    }
-
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 async function queueGeneration(
-  generationRequest: GenerationRequest,
+  generationRequest: QueuedGenerationRequest,
   viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
   workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
+  request: Request,
 ) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -68,38 +65,126 @@ async function queueGeneration(
 
   const runId = randomUUID();
   const sourceFileIds: string[] = [];
+  let styleSourceFileId: string | null = null;
+  const queuedInputs = [
+    ...generationRequest.sourceFiles.map((file) => ({ file, isStyle: false })),
+    ...(generationRequest.styleFile ? [{ file: generationRequest.styleFile, isStyle: true }] : []),
+  ];
 
-  if (generationRequest.sourceFiles.length > 0) {
-    const sourceFileRows = generationRequest.sourceFiles.map((f) => {
-      const fileId = randomUUID();
-      sourceFileIds.push(fileId);
-      return {
-        id: fileId,
-        organization_id: workspace.organizationRowId,
-        project_id: workspace.projectRowId,
-        uploaded_by: viewer.id,
-        kind: f.kind ?? inferSourceFileKind(f.fileName),
-        file_name: f.fileName,
-        storage_bucket: f.storageBucket ?? "source-files",
-        storage_path: f.storagePath ?? "",
-        file_bytes: f.fileBytes ?? 0,
-      };
+  if (queuedInputs.length === 0) {
+    throw new Error("At least one input file is required.");
+  }
+
+  const sourceFileRows = [];
+  for (const { file, isStyle } of queuedInputs) {
+    const fileId = randomUUID();
+    const storageBucket = file.storageBucket ?? "source-files";
+    const storagePath = file.storagePath ?? `${workspace.organizationId}/${workspace.projectId}/${fileId}/${file.fileName}`;
+    const kind = normalizePersistedSourceFileKind(file.kind ?? null, file.fileName);
+
+    if (file.base64) {
+      await uploadToStorage({
+        supabaseUrl,
+        serviceKey,
+        bucket: storageBucket,
+        storagePath,
+        body: Buffer.from(file.base64, "base64"),
+        contentType: file.mediaType ?? "application/octet-stream",
+      });
+    } else if (!file.storagePath || !file.storageBucket) {
+      throw new Error(`Input file ${file.fileName} is missing both inline content and storage metadata.`);
+    }
+
+    sourceFileIds.push(fileId);
+    if (isStyle) {
+      styleSourceFileId = fileId;
+    }
+    sourceFileRows.push({
+      id: fileId,
+      organization_id: workspace.organizationRowId,
+      project_id: workspace.projectRowId,
+      uploaded_by: viewer.id,
+      kind,
+      file_name: file.fileName,
+      storage_bucket: storageBucket,
+      storage_path: storagePath,
+      file_bytes: file.fileBytes ?? 0,
     });
+  }
 
-    const insertResponse = await fetch(`${supabaseUrl}/rest/v1/source_files`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify(sourceFileRows),
-    });
+  const insertResponse = await fetch(`${supabaseUrl}/rest/v1/source_files`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(sourceFileRows),
+  });
 
-    if (!insertResponse.ok) {
-      const errorText = await insertResponse.text().catch(() => "Unknown error");
-      throw new Error(`Failed to create source_files records: ${errorText}`);
+  if (!insertResponse.ok) {
+    const errorText = await insertResponse.text().catch(() => "Unknown error");
+    throw new Error(`Failed to create source_files records: ${errorText}`);
+  }
+
+  // Use saved template if provided, otherwise interpret uploaded style file
+  let templateProfileId = await resolveOwnedTemplateProfileId({
+    supabaseUrl,
+    serviceKey,
+    organizationId: workspace.organizationRowId,
+    templateProfileId: ((generationRequest as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
+  });
+  if (!templateProfileId && generationRequest.styleFile) {
+    try {
+      const sf = generationRequest.styleFile;
+      const tpId = randomUUID();
+
+      // Get file content: either from base64 or download from Storage
+      let base64 = sf.base64;
+      if (!base64 && sf.storagePath && sf.storageBucket) {
+        const dlResponse = await fetch(
+          `${supabaseUrl}/storage/v1/object/${sf.storageBucket}/${sf.storagePath}`,
+          { headers: { Authorization: `Bearer ${serviceKey}` } },
+        );
+        if (dlResponse.ok) {
+          const buf = Buffer.from(await dlResponse.arrayBuffer());
+          base64 = buf.toString("base64");
+        }
+      }
+
+      if (base64) {
+        const profile = await interpretTemplateSource({
+          id: tpId,
+          sourceFile: {
+            fileName: sf.fileName,
+            base64,
+            mediaType: sf.mediaType ?? "application/octet-stream",
+          },
+          fileName: sf.fileName,
+        });
+
+        await fetch(`${supabaseUrl}/rest/v1/template_profiles`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            id: tpId,
+            organization_id: workspace.organizationRowId,
+            source_file_id: styleSourceFileId,
+            source_type: profile.sourceType ?? "pptx",
+            template_profile: profile,
+          }),
+        });
+
+        templateProfileId = tpId;
+      }
+    } catch {
+      // Template interpretation is best-effort — proceed without it
     }
   }
 
@@ -131,6 +216,7 @@ async function queueGeneration(
       thesis: generationRequest.brief.thesis,
       stakes: generationRequest.brief.stakes,
       source_file_ids: sourceFileIds,
+      template_profile_id: templateProfileId ?? null,
       status: "queued",
     }),
   });
@@ -140,79 +226,26 @@ async function queueGeneration(
     throw new Error(`Failed to create deck_runs record: ${errorText}`);
   }
 
-  // Use saved template if provided, otherwise interpret uploaded style file
-  let templateProfileId: string | undefined = (generationRequest as Record<string, unknown>).templateProfileId as string | undefined;
-  if (!templateProfileId && generationRequest.styleFile) {
-    try {
-      const sf = generationRequest.styleFile;
-      const tpId = randomUUID();
+  after(async () => {
+    const dispatched = await dispatchPersistedGenerationExecution(runId, request);
 
-      // Get file content: either from base64 or download from Storage
-      let base64 = sf.base64;
-      if (!base64 && sf.storagePath && sf.storageBucket) {
-        const dlResponse = await fetch(
-          `${supabaseUrl}/storage/v1/object/${sf.storageBucket}/${sf.storagePath}`,
-          { headers: { Authorization: `Bearer ${serviceKey}` } },
-        );
-        if (dlResponse.ok) {
-          const buf = Buffer.from(await dlResponse.arrayBuffer());
-          base64 = buf.toString("base64");
-        }
-      }
-
-      if (base64) {
-        const profile = await interpretTemplateSource({
-          id: tpId,
-          sourceFile: {
-            fileName: sf.fileName,
-            base64,
-            mediaType: sf.mediaType ?? "application/octet-stream",
-          },
-          fileName: sf.fileName,
-        });
-
-        // Persist template profile
-        await fetch(`${supabaseUrl}/rest/v1/template_profiles`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify({
-            id: tpId,
-            organization_id: workspace.organizationRowId,
-            source_type: profile.sourceType ?? "pptx",
-            template_profile: profile,
-          }),
-        });
-
-        templateProfileId = tpId;
-      }
-    } catch {
-      // Template interpretation is best-effort — proceed without it
+    if (!dispatched) {
+      await fetch(`${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          status: "failed",
+          failure_phase: "normalize",
+          failure_message: "Failed to dispatch deck generation worker.",
+          updated_at: new Date().toISOString(),
+        }),
+      }).catch(() => {});
     }
-  }
-
-  await inngest.send({
-    name: "basquio/v2.generation.requested",
-    data: {
-      runId,
-      organizationId: workspace.organizationId,
-      projectId: workspace.projectId,
-      sourceFileIds,
-      templateProfileId,
-      exportMode: generationRequest.exportMode ?? "powerpoint-native",
-      brief: [
-        generationRequest.brief.client ? `Client: ${generationRequest.brief.client}` : "",
-        generationRequest.brief.audience ? `Audience: ${generationRequest.brief.audience}` : "",
-        generationRequest.brief.businessContext,
-        generationRequest.brief.objective ? `Objective: ${generationRequest.brief.objective}` : "",
-        generationRequest.brief.thesis,
-        generationRequest.brief.stakes ? `Stakes: ${generationRequest.brief.stakes}` : "",
-      ].filter(Boolean).join("\n\n"),
-    },
   });
 
   return {
@@ -227,7 +260,7 @@ async function queueGeneration(
 async function parseGenerationRequest(
   request: Request,
   workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
-): Promise<GenerationRequest> {
+): Promise<QueuedGenerationRequest> {
   const contentType = request.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
@@ -247,12 +280,14 @@ async function parseGenerationRequest(
       objective: brief.objective,
       thesis: brief.thesis,
       stakes: brief.stakes,
+      templateProfileId: ((payload as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
     };
   }
 
   const formData = await request.formData();
   const evidenceFiles = formData.getAll("evidenceFiles").filter((value): value is File => value instanceof File && value.size > 0);
   const brandFile = formData.get("brandFile");
+  const templateProfileId = String(formData.get("templateProfileId") ?? "") || null;
   const jobId = createJobId();
   const brief = buildBrief({
     businessContext: String(formData.get("businessContext") ?? ""),
@@ -295,6 +330,7 @@ async function parseGenerationRequest(
     objective: brief.objective,
     thesis: brief.thesis,
     stakes: brief.stakes,
+    templateProfileId,
   };
 }
 

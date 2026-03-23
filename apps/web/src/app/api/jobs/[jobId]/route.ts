@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { BASQUIO_PHASES } from "@basquio/core";
 
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
@@ -7,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const V2_PHASES = ["normalize", "understand", "author", "critique", "revise", "export"] as const;
+const V2_PHASES = BASQUIO_PHASES;
 
 type DeckRunRow = {
   id: string;
@@ -188,10 +189,10 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
 
   const currentDetail = lastToolCall?.tool_name
     ? `Tool: ${lastToolCall.tool_name} (${currentPhase ?? ""})`
-    : run.status === "completed"
-      ? "Artifacts are ready."
-      : run.status === "failed"
+    : run.status === "failed"
         ? run.failure_message ?? "Run failed."
+        : run.status === "completed"
+          ? "Generation finished. Checking artifact availability."
         : `Running ${currentPhase ?? "pipeline"}...`;
 
   // Fetch artifact manifest if completed
@@ -249,9 +250,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
             slideCount: slideRows.length,
             pageCount: 0,
             qaPassed: false,
-            artifacts: [
-              { kind: "pptx", fileName: "deck.pptx", fileBytes: 0, downloadUrl: `/api/artifacts/${jobId}/pptx` },
-            ],
+            artifacts: [],
           };
         }
       } catch {

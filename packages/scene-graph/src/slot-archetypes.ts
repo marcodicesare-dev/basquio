@@ -317,6 +317,49 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
     },
   },
 
+  "recommendation-cards": {
+    id: "recommendation-cards",
+    label: "Recommendation Cards",
+    description: "Two disciplined action cards with reserved bands for index, title, body, and footer",
+    slots: {
+      kicker: {
+        kind: "kicker",
+        frame: { x: 0.45, y: 0.12, w: 9.1, h: 0.18 },
+        maxChars: 40,
+        fontRange: [8, 10],
+      },
+      title: {
+        kind: "title",
+        frame: { x: 0.45, y: 0.32, w: 9.1, h: 0.52 },
+        maxChars: 110,
+        required: true,
+        fontRange: [16, 20],
+      },
+      body: {
+        kind: "body",
+        frame: { x: 0.45, y: 0.92, w: 9.1, h: 2.65 },
+        maxWords: 70,
+        maxChars: 420,
+        required: true,
+        fontRange: [10, 12],
+      },
+      metrics: {
+        kind: "metrics",
+        frame: { x: 0.45, y: 3.72, w: 9.1, h: 0.78 },
+        minMetrics: 2,
+        maxMetrics: 2,
+        required: true,
+      },
+      callout: {
+        kind: "callout",
+        frame: { x: 0.45, y: 4.58, w: 9.1, h: 0.28 },
+        maxWords: 14,
+        maxChars: 90,
+        fontRange: [9, 11],
+      },
+    },
+  },
+
   "title-body": {
     id: "title-body",
     label: "Title + Body",

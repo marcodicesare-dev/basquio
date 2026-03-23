@@ -176,6 +176,21 @@ export const stageTraceSchema = z.object({
   generatedAt: z.string(),
 });
 
+export const generationEngineSchema = z.enum([
+  "structured-pipeline",
+  "claude-code-execution",
+]);
+
+export const deckExecutionPhaseSchema = z.enum([
+  "normalize",
+  "understand",
+  "author",
+  "polish",
+  "critique",
+  "revise",
+  "export",
+]);
+
 export const pipelineStageSchema = z.enum([
   "intake and profiling",
   "package semantics inference",
@@ -467,6 +482,7 @@ export const chartSpecSchema = z.object({
     "grouped-bar",
   ]),
   editableInPptx: z.boolean().default(false),
+  artifactMode: z.enum(["raster-screenshot"]).default("raster-screenshot"),
   categories: z.array(z.string()).default([]),
   series: z.array(
     z.object({
@@ -543,6 +559,7 @@ export const slideSpecSchema = z.object({
   eyebrow: z.string().optional(),
   emphasis: z.enum(["cover", "section", "content"]).default("content"),
   layoutId: z.string(),
+  slideArchetype: z.string().default("title-body"),
   title: z.string(),
   subtitle: z.string().optional(),
   blocks: z.array(slideBlockSchema).min(1),
@@ -601,7 +618,7 @@ export const templateBrandTokensSchema = z.object({
     .default({}),
   typography: z
     .object({
-      headingFont: z.string().default("Georgia"),
+      headingFont: z.string().default("Arial"),
       bodyFont: z.string().default("Arial"),
       monoFont: z.string().default("Courier New"),
       titleSize: z.number().default(24),

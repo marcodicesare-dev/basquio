@@ -13,7 +13,7 @@ type PublicSiteFooterCtaProps = {
 export function PublicSiteFooterCta({
   eyebrow = "Ready to try it?",
   title = "Your first report is free.",
-  copy = "Upload one evidence package and see the output in under 5 minutes. No credit card required.",
+  copy = "Upload one evidence package and get a tracked report run with PPTX and PDF output. No credit card required.",
   primaryLabel = "Try free →",
   primaryHref = "/jobs/new",
   secondaryLabel = "See how it works",

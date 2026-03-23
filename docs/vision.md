@@ -28,7 +28,7 @@ Outputs:
 
 - editable `.pptx`
 - polished `.pdf`
-- both from the same canonical story and slide spec
+- both from the same canonical evidence interpretation and deck intent
 - a report-grade narrative that explains what happened, why it matters, and what the audience should do next
 
 ## Target User
@@ -61,16 +61,23 @@ The moat is:
 
 ## Non-Negotiable Principle
 
-The AI does not generate final slides directly.
+The AI must be accountable for final deck quality, not just intermediate planning objects.
 
-The AI produces structured planning objects on top of deterministic analysis:
+Basquio still requires deterministic ingest, evidence grounding, template interpretation, and budget guards, but the current primary path allows Claude to generate the final PPTX and PDF inside a controlled execution sandbox when that produces better report quality than a fragmented renderer stack.
 
-- `DatasetProfile`
-- `InsightSpec[]`
-- `StorySpec`
-- `SlideSpec[]`
+## Quality Principle
 
-Renderers then deterministically produce PPTX and PDF from those contracts.
+Beautiful output cannot depend on vague "make it elegant" prompting.
+
+Basquio should win by combining:
+
+- a small number of proven consulting-grade slide grammars
+- evidence-backed content filling
+- viewer-safe implementation constraints
+- rendered-page evaluation
+- candidate ranking and rejection of weak variants
+
+The system should be optimized to refuse brittle or mediocre slides, not merely to produce a complete deck.
 
 ## Immediate Product Direction
 

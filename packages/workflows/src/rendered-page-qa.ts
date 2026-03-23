@@ -1,0 +1,165 @@
+import Anthropic, { toFile } from "@anthropic-ai/sdk";
+import { z } from "zod";
+
+export const renderedPageQaIssueSchema = z.object({
+  slidePosition: z.number().int().min(1),
+  severity: z.enum(["critical", "major", "minor"]),
+  code: z.string(),
+  description: z.string(),
+  fix: z.string(),
+});
+
+export const renderedPageQaSchema = z.object({
+  overallStatus: z.enum(["green", "yellow", "red"]),
+  score: z.number().min(0).max(10),
+  summary: z.string(),
+  deckNeedsRevision: z.boolean(),
+  issues: z.array(renderedPageQaIssueSchema).default([]),
+  strongestSlides: z.array(z.number().int().min(1)).default([]),
+  weakestSlides: z.array(z.number().int().min(1)).default([]),
+});
+
+type JudgeManifest = {
+  slideCount: number;
+  slides: Array<{
+    position: number;
+    title: string;
+    layoutId: string;
+    slideArchetype?: string | null;
+  }>;
+};
+
+export async function runRenderedPageQa(input: {
+  client: Anthropic;
+  pdf: Buffer;
+  manifest: JudgeManifest;
+  betas: readonly string[];
+  model?: "claude-sonnet-4-6" | "claude-haiku-4-5";
+  maxTokens?: number;
+}) {
+  const pdfFile = await input.client.beta.files.upload({
+    file: await toFile(input.pdf, "deck.pdf", { type: "application/pdf" }),
+    betas: [...input.betas],
+  });
+
+  const prompt = buildRenderedPageQaPrompt(input.manifest);
+  const messages: Anthropic.Beta.BetaMessageParam[] = [
+    {
+      role: "user",
+      content: [
+        {
+          type: "document",
+          source: {
+            type: "file",
+            file_id: pdfFile.id,
+          },
+          title: "deck.pdf",
+        },
+        {
+          type: "text",
+          text: prompt,
+        },
+      ],
+    },
+  ];
+
+  const response = await input.client.beta.messages.create({
+    model: input.model ?? "claude-haiku-4-5",
+    max_tokens: input.maxTokens ?? 1_200,
+    betas: [...input.betas] as Anthropic.Beta.AnthropicBeta[],
+    messages,
+  });
+
+  const text = extractResponseText(response.content);
+  const json = extractFirstJsonObject(text);
+  const report = renderedPageQaSchema.parse(JSON.parse(json));
+
+  return {
+    report,
+    usage: response.usage ?? null,
+    promptBody: {
+      messages,
+    },
+  };
+}
+
+function buildRenderedPageQaPrompt(manifest: JudgeManifest) {
+  return [
+    "Review the uploaded PDF as a rendered deck artifact.",
+    "Judge visual quality, layout integrity, and consulting-grade polish from the rendered pages themselves.",
+    "Do not judge whether the business analysis is correct. Judge the artifact that a client or executive would see.",
+    "",
+    "Focus on these failure modes:",
+    "- text overlap",
+    "- footer collisions",
+    "- broken recommendation cards",
+    "- weak visual hierarchy",
+    "- unreadable charts",
+    "- ugly dead space",
+    "- generic dashboard sludge",
+    "- cards or labels that depend on fragile line wrapping",
+    "",
+    "Deck manifest summary:",
+    JSON.stringify({
+      slideCount: manifest.slideCount,
+      slides: manifest.slides.map((slide) => ({
+        position: slide.position,
+        title: slide.title,
+        layoutId: slide.layoutId,
+        slideArchetype: slide.slideArchetype ?? slide.layoutId,
+      })),
+    }, null, 2),
+    "",
+    "Return ONLY valid JSON with this exact shape:",
+    JSON.stringify({
+      overallStatus: "green",
+      score: 8.5,
+      summary: "Short overall quality summary.",
+      deckNeedsRevision: false,
+      issues: [
+        {
+          slidePosition: 2,
+          severity: "major",
+          code: "footer_overlap",
+          description: "Footer KPI collides with body copy.",
+          fix: "Reserve a dedicated footer band and shorten the body copy.",
+        },
+      ],
+      strongestSlides: [1, 3],
+      weakestSlides: [2],
+    }, null, 2),
+    "",
+    "Scoring guidance:",
+    "- green = ready to ship visually",
+    "- yellow = usable but still visibly flawed",
+    "- red = not shippable",
+    "",
+    "Revision policy:",
+    "- set deckNeedsRevision=true if any critical issue exists",
+    "- set deckNeedsRevision=true if there are 2 or more major issues",
+    "- keep issues concise and concrete",
+  ].join("\n");
+}
+
+function extractResponseText(blocks: Anthropic.Beta.BetaContentBlock[]) {
+  return blocks
+    .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+}
+
+function extractFirstJsonObject(text: string) {
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new Error(`Rendered-page QA did not return JSON. Response: ${text.slice(0, 500)}`);
+  }
+
+  return text.slice(firstBrace, lastBrace + 1);
+}

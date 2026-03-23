@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 
-import { inferSourceFileKind } from "@basquio/core";
-import { inngest } from "@basquio/workflows";
-
+import { dispatchPersistedGenerationExecution } from "@/lib/generation-requests";
+import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { getViewerState } from "@/lib/supabase/auth";
+import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
@@ -13,6 +13,12 @@ export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceKey) {
+      return NextResponse.json({ error: "Supabase credentials are required." }, { status: 500 });
+    }
+
     const viewer = await getViewerState();
     if (!viewer.user) {
       return NextResponse.json({ error: "Authentication required." }, { status: 401 });
@@ -31,7 +37,12 @@ export async function POST(request: Request) {
     const objective = formData.get("objective") as string ?? "";
     const thesis = formData.get("thesis") as string ?? "";
     const stakes = formData.get("stakes") as string ?? "";
-    const templateProfileId = formData.get("templateProfileId") as string | null;
+    const templateProfileId = await resolveOwnedTemplateProfileId({
+      supabaseUrl,
+      serviceKey,
+      organizationId: workspace.organizationRowId,
+      templateProfileId: formData.get("templateProfileId") as string | null,
+    });
 
     if (files.length === 0) {
       return NextResponse.json({ error: "At least one source file is required." }, { status: 400 });
@@ -42,25 +53,19 @@ export async function POST(request: Request) {
     // Upload source files to storage and create source_file records
     // Detect PPTX template files (user uploads their corporate template alongside data files)
     const sourceFileIds: string[] = [];
-    let templateFileId: string | undefined;
     for (const file of files) {
       const fileId = randomUUID();
-      const kind = inferSourceFileKind(file.name);
-      // Any uploaded PPTX is treated as a design template (colors, fonts, layout).
-      // Data files are CSV/XLSX. Users upload PPTX specifically for branding.
-      if (kind === "pptx" && !templateFileId) {
-        templateFileId = fileId;
-      }
+      const kind = normalizePersistedSourceFileKind(null, file.name);
       const storagePath = `${workspace.organizationId}/${workspace.projectId}/${fileId}/${file.name}`;
       const buffer = Buffer.from(await file.arrayBuffer());
 
       // Upload to storage
       const uploadResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/source-files/${storagePath}`,
+        `${supabaseUrl}/storage/v1/object/source-files/${storagePath}`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            Authorization: `Bearer ${serviceKey}`,
             "Content-Type": file.type || "application/octet-stream",
           },
           body: buffer,
@@ -73,19 +78,19 @@ export async function POST(request: Request) {
 
       // Create source_file record
       const sfResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/source_files`,
+        `${supabaseUrl}/rest/v1/source_files`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
             Prefer: "return=minimal",
           },
           body: JSON.stringify({
             id: fileId,
-            organization_id: workspace.organizationId,
-            project_id: workspace.projectId,
+            organization_id: workspace.organizationRowId,
+            project_id: workspace.projectRowId,
             uploaded_by: viewer.user.id,
             kind,
             file_name: file.name,
@@ -105,19 +110,19 @@ export async function POST(request: Request) {
 
     // Create deck_run record
     const deckRunResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/deck_runs`,
+      `${supabaseUrl}/rest/v1/deck_runs`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
           Prefer: "return=minimal",
         },
         body: JSON.stringify({
           id: runId,
-          organization_id: workspace.organizationId,
-          project_id: workspace.projectId,
+          organization_id: workspace.organizationRowId,
+          project_id: workspace.projectRowId,
           requested_by: viewer.user.id,
           brief: { businessContext: brief, client, audience, objective, thesis, stakes },
           business_context: brief,
@@ -138,18 +143,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Failed to create run record: ${errorText}` }, { status: 500 });
     }
 
-    // Dispatch Inngest event
-    await inngest.send({
-      name: "basquio/v2.generation.requested",
-      data: {
-        runId,
-        organizationId: workspace.organizationId,
-        projectId: workspace.projectId,
-        sourceFileIds,
-        brief: [brief, objective, thesis].filter(Boolean).join("\n\n"),
-        templateProfileId: templateProfileId ?? undefined,
-        templateFileId,
-      },
+    after(async () => {
+      const dispatched = await dispatchPersistedGenerationExecution(runId, request);
+
+      if (!dispatched) {
+        await fetch(
+          `${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: serviceKey,
+              Authorization: `Bearer ${serviceKey}`,
+              Prefer: "return=minimal",
+            },
+            body: JSON.stringify({
+              status: "failed",
+              failure_phase: "normalize",
+              failure_message: "Failed to dispatch deck generation worker.",
+              updated_at: new Date().toISOString(),
+            }),
+          },
+        ).catch(() => {});
+      }
     });
 
     return NextResponse.json(

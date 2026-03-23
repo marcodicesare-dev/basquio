@@ -301,6 +301,23 @@ async function listDurableArtifactRecords(jobId: string, viewerId?: string) {
   const credentials = getSupabaseCredentials();
 
   if (credentials) {
+    if (viewerId) {
+      const ownedRuns = await fetchRestRows<{ id: string }>({
+        ...credentials,
+        table: "deck_runs",
+        query: {
+          select: "id",
+          id: `eq.${jobId}`,
+          requested_by: `eq.${viewerId}`,
+          limit: "1",
+        },
+      }).catch(() => []);
+
+      if (!ownedRuns[0]?.id) {
+        return [];
+      }
+    }
+
     // Try v2 artifact_manifests_v2 first (canonical for new pipeline)
     try {
       const v2Manifests = await fetchRestRows<{

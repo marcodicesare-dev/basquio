@@ -7,6 +7,9 @@
 - keep model roles narrow
 - include evidence references whenever an output makes a claim
 - reject output that does not match schema
+- for the direct deck engine, charts are screenshots by default, not native Office chart objects
+- do not promise cross-viewer compatibility from editable chart XML; require raster chart embeds for PowerPoint, Keynote, and Google Slides consistency
+- for the direct deck engine, dense card text and recommendation layouts must prefer cross-viewer-safe typography and reserved non-overlapping bands over fragile ornamental composition
 
 ## Model Roles
 
@@ -93,6 +96,11 @@ Must decide:
 - block structure
 - chart recommendation
 - note content
+
+Chart policy:
+
+- when a slide needs a chart, the planned chart artifact mode is `raster-screenshot`
+- screenshot charts must be styled inside the generation environment and embedded as images in the final PPTX
 
 ### Template Interpreter
 

@@ -89,29 +89,6 @@ export async function getGenerationJobState(jobId: string): Promise<JobRow | nul
   }
 }
 
-export async function dispatchPersistedGenerationJob(jobId: string, request?: Request) {
-  const baseUrl = resolveBaseUrl(request);
-  const internalDispatchToken = getInternalDispatchToken();
-  if (!baseUrl) {
-    return false;
-  }
-
-  try {
-    const response = await fetch(new URL(`/api/jobs/${jobId}/start`, baseUrl), {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(internalDispatchToken ? { "x-basquio-internal-token": internalDispatchToken } : {}),
-      },
-      body: JSON.stringify({ jobId }),
-      cache: "no-store",
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 export async function dispatchPersistedGenerationExecution(jobId: string, request?: Request) {
   const baseUrl = resolveBaseUrl(request);
   const internalDispatchToken = getInternalDispatchToken();
@@ -129,7 +106,7 @@ export async function dispatchPersistedGenerationExecution(jobId: string, reques
       body: JSON.stringify({ jobId }),
       cache: "no-store",
     });
-    return response.ok;
+    return ![400, 401, 403, 404].includes(response.status);
   } catch {
     return false;
   }

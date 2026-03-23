@@ -82,7 +82,6 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [brandFile, setBrandFile] = useState<File | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [exportMode, setExportMode] = useState<"powerpoint-native" | "universal-compatible">("powerpoint-native");
   const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
   const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
   const [brief, setBrief] = useState<BriefFields>({
@@ -163,7 +162,6 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
           sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
           styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
           templateProfileId: selectedTemplateId ?? undefined,
-          exportMode,
           brief,
           businessContext: brief.businessContext,
           client: brief.client,
@@ -524,7 +522,7 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
               <article className="review-card stack">
                 <p className="artifact-kind">Output</p>
                 <p className="muted" style={{ fontSize: "0.9rem" }}>
-                  PPTX + PDF — works in PowerPoint, Google Slides, and Keynote.
+                  PPTX + PDF — charts render as locked visuals for consistent PowerPoint, Google Slides, and Keynote output.
                 </p>
               </article>
             </div>

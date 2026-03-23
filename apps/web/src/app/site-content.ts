@@ -1,4 +1,4 @@
-export const heroSignals = ["Under 5 minutes", "Traceable numbers", "Branded PPTX + PDF"] as const;
+export const heroSignals = ["Tracked progress", "Traceable numbers", "Branded PPTX + PDF"] as const;
 
 
 export const evidencePackageInputs = [
@@ -51,7 +51,7 @@ export const detailedComparisonRows = [
     basquio: "Yes",
   },
   {
-    label: "Automated cross-model claim verification",
+    label: "Deterministic analysis plus artifact QA",
     genericAi: "No",
     slideGenerators: "No",
     basquio: "Yes",
@@ -277,5 +277,3 @@ export const personas = [
     secondaryLabel: "See how to get started",
   },
 ] as const;
-
-
