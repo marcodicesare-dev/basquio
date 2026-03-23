@@ -80,6 +80,7 @@ Initial domain bias:
 - High token spend in code-execution runs is often driven by repeated `pause_turn` continuation with growing container history, not only by the initial prompt size.
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
 - A concrete rendered-page QA path now exists: upload the generated `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
+- Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks. File-backed phases need post-response budget enforcement from actual usage instead of preflight token counting.
 
 ## Production Incident Memory: March 21-22, 2026
 

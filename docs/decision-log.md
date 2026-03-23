@@ -2,6 +2,23 @@
 
 ## March 23, 2026
 
+### Files API references must not go through Anthropic token counting
+
+Decision:
+
+- preflight budget checks must not call Anthropic `countTokens` on requests that contain Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks
+- file-backed phases should use conservative preflight gating plus hard post-response spend enforcement from actual usage instead
+
+Why:
+
+- the production run `bfab7641-1e6b-4366-a6a0-8d86f3534e23` crashed because the worker called the token-counting endpoint on a file-backed request
+- Anthropic accepts those file references in the Messages API, but rejects them in the token-counting endpoint with `invalid_request_error: File sources are not supported in the token counting endpoint.`
+
+Implication:
+
+- file-backed understand/author/revise/visual-QA phases may skip token counting without skipping budget discipline
+- actual per-phase usage must be enforced against the hard deck budget after each model response
+- future budget logic must distinguish inline-countable requests from file-backed requests explicitly
 ### Direct deck engine visual contract tightened
 
 Decision:

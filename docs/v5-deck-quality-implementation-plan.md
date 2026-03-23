@@ -213,6 +213,7 @@ Instrumentation:
 - cost per candidate
 - total pause-turn count
 - total container-turn count
+- inline-only requests may use Anthropic `countTokens`, but file-backed phases using Files API refs or `container_upload` must rely on actual-response usage because the token-counting endpoint rejects those sources
 
 Deliverables:
 

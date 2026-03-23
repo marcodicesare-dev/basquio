@@ -10,7 +10,7 @@ import { listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/
 import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/template-engine";
 import type { TemplateProfile } from "@basquio/types";
 
-import { enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
+import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
@@ -287,6 +287,7 @@ export async function generateDeckRun(runId: string) {
       tools: CLAUDE_TOOLS,
     });
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
+    assertDeckSpendWithinBudget(spentUsd);
     continuationCount += understandResponse.pauseTurns;
     phaseTelemetry.understand = buildPhaseTelemetry(MODEL, understandResponse);
 
@@ -342,6 +343,7 @@ export async function generateDeckRun(runId: string) {
       tools: CLAUDE_TOOLS,
     });
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
+    assertDeckSpendWithinBudget(spentUsd);
     continuationCount += authorResponse.pauseTurns;
     phaseTelemetry.author = buildPhaseTelemetry(MODEL, authorResponse);
 
@@ -368,6 +370,7 @@ export async function generateDeckRun(runId: string) {
       model: VISUAL_QA_MODEL,
     });
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
+    assertDeckSpendWithinBudget(spentUsd);
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
     await upsertWorkingPaper(config, runId, "visual_qa_author", initialVisualQa.report);
     const critiqueIssues = collectCritiqueIssues(manifest, initialVisualQa.report);
@@ -427,6 +430,7 @@ export async function generateDeckRun(runId: string) {
         tools: CLAUDE_TOOLS,
       });
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
+      assertDeckSpendWithinBudget(spentUsd);
       continuationCount += reviseResponse.pauseTurns;
       phaseTelemetry.revise = buildPhaseTelemetry(MODEL, reviseResponse);
 
@@ -444,6 +448,7 @@ export async function generateDeckRun(runId: string) {
         model: VISUAL_QA_MODEL,
       });
       spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
+      assertDeckSpendWithinBudget(spentUsd);
       phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
       finalVisualQa = revisedVisualQa.report;
       await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
