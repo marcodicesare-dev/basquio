@@ -148,12 +148,22 @@ export async function refundCredit(
     return; // No debit found — nothing to refund
   }
 
-  await insertRow(config, "credit_ledger", {
-    user_id: config.userId,
-    amount: refundAmount,
-    reason: "refund",
-    reference_id: config.runId,
-  });
+  try {
+    await insertRow(config, "credit_ledger", {
+      user_id: config.userId,
+      amount: refundAmount,
+      reason: "refund",
+      reference_id: config.runId,
+    });
+  } catch (error) {
+    // Unique constraint on (reference_id WHERE reason='refund') prevents double-refund.
+    // If this is a duplicate, it's safe to ignore.
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("unique") || message.includes("duplicate")) {
+      return;
+    }
+    throw error;
+  }
 }
 
 // ─── IDEMPOTENCY ─────────────────────────────────────────────

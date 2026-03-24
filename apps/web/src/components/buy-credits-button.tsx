@@ -27,7 +27,7 @@ export function BuyCreditsButton({ packId, label, highlighted }: BuyCreditsButto
 
       if (response.status === 401) {
         // Not signed in — redirect to sign-in with return URL
-        router.push(`/sign-in?redirect=${encodeURIComponent(`/pricing?buy=${packId}`)}`);
+        router.push(`/sign-in?next=${encodeURIComponent(`/pricing?buy=${packId}`)}`);
         return;
       }
 
