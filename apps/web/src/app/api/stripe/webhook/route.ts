@@ -40,6 +40,14 @@ export async function POST(request: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
+
+    // Only grant credits when payment is confirmed.
+    // Protects against async payment methods that complete later.
+    if (session.payment_status !== "paid") {
+      console.log(`[stripe-webhook] session ${session.id} payment_status=${session.payment_status}, skipping`);
+      return NextResponse.json({ received: true });
+    }
+
     const userId = session.metadata?.user_id;
     const packId = session.metadata?.pack_id as CreditPackId | undefined;
     const paymentIntentId =

@@ -21,6 +21,14 @@ create table if not exists public.credit_ledger (
 create index if not exists idx_credit_ledger_user
   on public.credit_ledger(user_id, created_at desc);
 
+-- Unique index for idempotent free-tier grants (one per user)
+create unique index if not exists idx_credit_ledger_free_tier_unique
+  on public.credit_ledger(user_id) where reason = 'free_tier';
+
+-- Unique index for idempotent purchase grants (one per payment_intent)
+create unique index if not exists idx_credit_ledger_purchase_unique
+  on public.credit_ledger(reference_id) where reason = 'purchase_pack';
+
 -- ─── BALANCE VIEW ────────────────────────────────────────────────
 -- Fast balance check: SELECT balance FROM credit_balances WHERE user_id = $1
 create or replace view public.credit_balances as
@@ -70,27 +78,22 @@ $$;
 -- ─── GRANT FREE TIER CREDITS ────────────────────────────────────
 -- Grants 6 free credits (enough for one 3-slide deck) only once per user.
 -- Returns true if granted, false if already used.
+-- Uses INSERT ... ON CONFLICT with the unique partial index to guarantee
+-- atomicity under concurrent requests — no read-then-write race.
 create or replace function public.grant_free_tier_credit(
   p_user_id uuid
 ) returns boolean
 language plpgsql
 security definer
 as $$
-declare
-  v_existing integer;
 begin
-  select count(*) into v_existing
-  from public.credit_ledger
-  where user_id = p_user_id and reason = 'free_tier';
-
-  if v_existing > 0 then
-    return false;
-  end if;
-
   insert into public.credit_ledger (user_id, amount, reason)
-  values (p_user_id, 6, 'free_tier');
+  values (p_user_id, 6, 'free_tier')
+  on conflict (user_id) where reason = 'free_tier'
+  do nothing;
 
-  return true;
+  -- xmax = 0 means the row was actually inserted (not skipped by ON CONFLICT)
+  return found;
 end;
 $$;
 

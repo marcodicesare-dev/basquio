@@ -49,6 +49,11 @@ export async function POST(request: Request) {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
 
+    // Generate the canonical run ID upfront so the debit and deck_run
+    // share the same reference_id. The worker refunds by deck_run.id,
+    // so the debit must use the same value.
+    const runId = randomUUID();
+
     if (billingEnabled && supabaseUrl && serviceKey) {
       const targetSlideCount = ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10;
       const creditsNeeded = calculateRunCredits(targetSlideCount);
@@ -59,23 +64,26 @@ export async function POST(request: Request) {
         supabaseUrl,
         serviceKey,
         userId: viewer.user.id,
-        runId: generationRequest.jobId,
+        runId,
         slideCount: targetSlideCount,
       });
 
-      // debited is null when the credit_ledger table doesn't exist yet.
-      // In that case, allow the run (graceful degradation).
-      if (debited === false) {
+      // When billing is enabled, fail closed on any error.
+      // debited === null means the RPC failed (not "table missing").
+      if (debited !== true) {
+        const reason = debited === false
+          ? `Not enough credits. This ${targetSlideCount}-slide deck needs ${creditsNeeded} credits.`
+          : "Billing system unavailable. Please try again.";
         return NextResponse.json({
-          error: `Not enough credits. This ${targetSlideCount}-slide deck needs ${creditsNeeded} credits.`,
-          code: "NO_CREDITS",
+          error: reason,
+          code: debited === false ? "NO_CREDITS" : "BILLING_ERROR",
           pricingUrl: "/pricing",
-        }, { status: 402 });
+        }, { status: debited === false ? 402 : 503 });
       }
     }
 
     return NextResponse.json({
-      ...(await queueGeneration(generationRequest, viewer.user, workspace)),
+      ...(await queueGeneration(generationRequest, viewer.user, workspace, runId)),
     }, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed.";
@@ -87,6 +95,7 @@ async function queueGeneration(
   generationRequest: QueuedGenerationRequest,
   viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
   workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
+  runId: string,
 ) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -94,8 +103,6 @@ async function queueGeneration(
   if (!supabaseUrl || !serviceKey) {
     throw new Error("Supabase credentials are required.");
   }
-
-  const runId = randomUUID();
   const sourceFileIds: string[] = [];
   let styleSourceFileId: string | null = null;
   const queuedInputs = [
@@ -299,6 +306,7 @@ async function parseGenerationRequest(
   const evidenceFiles = formData.getAll("evidenceFiles").filter((value): value is File => value instanceof File && value.size > 0);
   const brandFile = formData.get("brandFile");
   const templateProfileId = String(formData.get("templateProfileId") ?? "") || null;
+  const targetSlideCount = Number.parseInt(String(formData.get("targetSlideCount") ?? "10"), 10) || 10;
   const jobId = createJobId();
   const brief = buildBrief({
     businessContext: String(formData.get("businessContext") ?? ""),
@@ -342,7 +350,8 @@ async function parseGenerationRequest(
     thesis: brief.thesis,
     stakes: brief.stakes,
     templateProfileId,
-  };
+    targetSlideCount,
+  } as QueuedGenerationRequest;
 }
 
 function validateGenerationFiles(
