@@ -69,6 +69,7 @@ export async function POST(request: Request) {
     name?: string;
     description?: string;
     runId?: string;
+    reportType?: string;
   };
 
   if (!body.name || !body.runId) {
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
     // Fetch the source run to extract configuration
     const runs = await fetchRestRows<{
       id: string;
+      status: string;
       brief: Record<string, string>;
       template_profile_id: string | null;
       requested_by: string;
@@ -87,7 +89,7 @@ export async function POST(request: Request) {
       serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,brief,template_profile_id,requested_by",
+        select: "id,status,brief,template_profile_id,requested_by",
         id: `eq.${body.runId}`,
         limit: "1",
       },
@@ -102,7 +104,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You can only save recipes from your own runs." }, { status: 403 });
     }
 
-    // Insert recipe
+    if (run.status !== "completed") {
+      return NextResponse.json({ error: "Recipes can only be saved from completed runs." }, { status: 400 });
+    }
+
+    // Get slide count from artifact manifest
+    let slideCount = 10;
+    try {
+      const manifests = await fetchRestRows<{ slide_count: number }>({
+        supabaseUrl,
+        serviceKey,
+        table: "artifact_manifests_v2",
+        query: {
+          select: "slide_count",
+          run_id: `eq.${body.runId}`,
+          limit: "1",
+        },
+      });
+      if (manifests[0]?.slide_count) {
+        slideCount = manifests[0].slide_count;
+      }
+    } catch { /* manifest table may not exist */ }
+
+    // Insert recipe with full configuration
     const response = await fetch(`${supabaseUrl}/rest/v1/recipes`, {
       method: "POST",
       headers: {
@@ -115,8 +139,10 @@ export async function POST(request: Request) {
         user_id: viewer.user.id,
         name: body.name,
         description: body.description ?? null,
+        report_type: body.reportType ?? null,
         brief: run.brief,
         template_profile_id: run.template_profile_id,
+        target_slide_count: slideCount,
         source_run_id: body.runId,
       }),
     });

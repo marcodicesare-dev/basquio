@@ -203,7 +203,9 @@ export function RunProgressView(input: {
             </div>
             <div style={{ padding: "16px", background: "#0D0C14", textAlign: "center" }}>
               <p style={{ color: "#A09FA6", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4 }}>QA STATUS</p>
-              <p style={{ color: "#4CC9A0", fontSize: "1.4rem", fontWeight: 700 }}>Passed</p>
+              <p style={{ color: snapshot.summary?.qaPassed === false ? "#E8636F" : "#4CC9A0", fontSize: "1.4rem", fontWeight: 700 }}>
+                {snapshot.summary?.qaPassed === false ? "Issues found" : snapshot.summary?.qaPassed === true ? "Passed" : "N/A"}
+              </p>
             </div>
           </div>
 

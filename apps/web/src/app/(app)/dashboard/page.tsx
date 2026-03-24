@@ -144,7 +144,7 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
-          <Link className="button" href="/jobs/new">Generate my first deck free</Link>
+          <Link className="button" href="/jobs/new">Try with 6 free credits</Link>
         </section>
       )}
 

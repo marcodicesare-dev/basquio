@@ -256,6 +256,7 @@ async function queueGeneration(
       stakes: generationRequest.brief.stakes,
       source_file_ids: sourceFileIds,
       template_profile_id: templateProfileId ?? null,
+      recipe_id: ((generationRequest as Record<string, unknown>).recipeId as string | undefined) ?? null,
       status: "queued",
     }),
   });

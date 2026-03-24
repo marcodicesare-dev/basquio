@@ -189,6 +189,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
           styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
           templateProfileId: selectedTemplateId ?? undefined,
           targetSlideCount,
+          recipeId: recipePrefill?.id ?? undefined,
           brief,
           businessContext: brief.businessContext,
           client: brief.client,

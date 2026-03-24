@@ -109,7 +109,7 @@ export default function PricingPage() {
       <section className="page-hero">
         <div className="stack" style={{ maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
           <p className="section-label">Pricing</p>
-          <h1>Pay per slide. Your first deck is free.</h1>
+          <h1>Pay per slide. 6 free credits to start.</h1>
           <p className="page-copy">
             Every deck costs {BASE_CREDITS} base credits plus 1 credit per slide.
             Buy credits in packs — the more you buy, the less each slide costs.
@@ -216,7 +216,7 @@ export default function PricingPage() {
 
       <PublicSiteFooterCta
         eyebrow="Ready to try it?"
-        title="Your first report is free."
+        title="6 free credits on signup."
         copy="6 credits on signup — enough for a 3-slide deck. No credit card required."
         primaryLabel="Generate my first deck"
         primaryHref="/jobs/new"

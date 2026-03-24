@@ -100,6 +100,55 @@ async function getRecipePrefill(recipeId: string, userId: string): Promise<Recip
   }
 }
 
+async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefill | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return null;
+
+  try {
+    const rows = await fetchRestRows<{
+      id: string;
+      brief: Record<string, string>;
+      template_profile_id: string | null;
+      requested_by: string;
+    }>({
+      supabaseUrl,
+      serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "id,brief,template_profile_id,requested_by",
+        id: `eq.${runId}`,
+        limit: "1",
+      },
+    });
+
+    const run = rows[0];
+    if (!run || run.requested_by !== userId) return null;
+
+    // Get slide count from manifest
+    let slideCount = 10;
+    try {
+      const manifests = await fetchRestRows<{ slide_count: number }>({
+        supabaseUrl,
+        serviceKey,
+        table: "artifact_manifests_v2",
+        query: { select: "slide_count", run_id: `eq.${runId}`, limit: "1" },
+      });
+      if (manifests[0]?.slide_count) slideCount = manifests[0].slide_count;
+    } catch { /* ok */ }
+
+    return {
+      id: runId,
+      name: "Previous run",
+      brief: run.brief,
+      templateProfileId: run.template_profile_id,
+      targetSlideCount: slideCount,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default async function NewJobPage({
   searchParams,
 }: {
@@ -116,10 +165,24 @@ export default async function NewJobPage({
     ? await getRecipePrefill(recipeId, viewer.user.id)
     : null;
 
+  // Load run prefill if ?from= is present (rerun with changes)
+  const fromRunId = typeof params.from === "string" ? params.from : undefined;
+  let fromRunPrefill: RecipePrefill | null = null;
+  if (fromRunId && !recipePrefill && viewer.user?.id) {
+    fromRunPrefill = await getRunPrefill(fromRunId, viewer.user.id);
+  }
+
+  const activePrefill = recipePrefill ?? fromRunPrefill ?? undefined;
+  const pageTitle = recipePrefill
+    ? `Rerun: ${recipePrefill.name}`
+    : fromRunPrefill
+      ? "Rerun with changes"
+      : "New analysis";
+
   return (
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
-        <h1>{recipePrefill ? `Rerun: ${recipePrefill.name}` : "New analysis"}</h1>
+        <h1>{pageTitle}</h1>
         <Link className="button secondary" href="/artifacts">
           View reports
         </Link>
@@ -127,7 +190,7 @@ export default async function NewJobPage({
 
       <GenerationForm
         savedTemplates={savedTemplates}
-        recipePrefill={recipePrefill ?? undefined}
+        recipePrefill={activePrefill}
       />
     </div>
   );
