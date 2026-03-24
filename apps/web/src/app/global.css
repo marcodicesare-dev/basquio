@@ -24,9 +24,9 @@
   --slate: #6b7280;
   --success: #edf7f1;
   --danger: #fff1ee;
-  --shadow-soft: 0 18px 54px rgba(11, 12, 12, 0.08);
-  --shadow-panel: 0 26px 80px rgba(11, 12, 12, 0.1);
-  --shadow-stage: 0 34px 100px rgba(11, 12, 12, 0.18);
+  --shadow-soft: 0 2px 8px rgba(11, 12, 12, 0.04);
+  --shadow-panel: 0 4px 16px rgba(11, 12, 12, 0.06);
+  --shadow-stage: 0 8px 32px rgba(11, 12, 12, 0.08);
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
@@ -1308,7 +1308,7 @@ textarea {
   border-radius: var(--radius-pill);
   background: var(--blue);
   color: #ffffff;
-  font-weight: 650;
+  font-weight: 700;
   font-size: 0.95rem;
   transition: 160ms ease;
 }
