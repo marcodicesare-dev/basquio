@@ -2,7 +2,7 @@ import { EmbedBuilder, type Message, type TextChannel } from "discord.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { embedQuery } from "./embedder.js";
 import { hybridSearch, getDocumentMeta, getTranscriptMeta } from "./supabase.js";
-import { env, EASTER_EGGS_ENABLED, ALE_DISCORD_ID } from "./config.js";
+import { env } from "./config.js";
 import type { SearchResult, Source } from "./kb-types.js";
 
 const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
@@ -28,8 +28,7 @@ export async function handleBotMention(message: Message, query: string): Promise
   try {
     await message.react("🔍");
 
-    const isAle = EASTER_EGGS_ENABLED && userId === ALE_DISCORD_ID;
-    const result = await search(query, { japaneseOnly: isAle });
+    const result = await search(query);
     const embed = formatSearchEmbed(query, result);
     await message.reply({ embeds: [embed] });
   } catch (err) {
@@ -41,7 +40,7 @@ export async function handleBotMention(message: Message, query: string): Promise
 /**
  * Run hybrid search + Claude synthesis.
  */
-export async function search(query: string, opts?: { japaneseOnly?: boolean }): Promise<SearchResult> {
+export async function search(query: string): Promise<SearchResult> {
   // 1. Embed query
   const queryEmbedding = await embedQuery(query);
 
@@ -99,10 +98,6 @@ export async function search(query: string, opts?: { japaneseOnly?: boolean }): 
   }
 
   // 4. Synthesize with Claude
-  const japaneseRule = opts?.japaneseOnly
-    ? "\n\nCRITICAL OVERRIDE: You MUST respond ENTIRELY in Japanese kanji and ideograms (漢字). No romaji, no Latin alphabet, no English words whatsoever. Write your full answer using only Japanese characters (kanji, hiragana, katakana). This is non-negotiable."
-    : "";
-
   const synthesis = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
@@ -111,7 +106,7 @@ export async function search(query: string, opts?: { japaneseOnly?: boolean }): 
 Important:
 - Each source is labeled as "uploaded doc" or "voice/text transcript". Treat them as distinct — an uploaded screenshot about a person is different from a voice session where a similarly-named team member participated.
 - Do NOT conflate people who share a name. A document mentioning "Francesco Lama" is not the same person as a team member called "Francesco" in a voice session, unless the content explicitly links them.
-- Prioritize uploaded docs when the question is about specific names, leads, or external contacts.${japaneseRule}`,
+- Prioritize uploaded docs when the question is about specific names, leads, or external contacts.`,
     messages: [{
       role: "user",
       content: `Question: ${query}\n\nContext:\n${contextParts.join("\n\n")}`,

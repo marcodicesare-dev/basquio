@@ -32,10 +32,11 @@ const TRIVIAL_PATTERNS = /^(ok|lol|lmao|haha|nice|👍|👎|❤️|😂|🤣|yes
  * Handle an incoming text message in #general.
  */
 export function handleTextMessage(message: Message): void {
-  // Skip bot messages, webhooks, @mentions (handled by searcher), and trivial content
+  // Skip bot messages and webhooks. Note: @Basquio Bot mentions are already
+  // handled in index.ts and never reach here, so we buffer all other messages
+  // including those that @mention teammates (normal conversation).
   if (message.author.bot) return;
   if (message.webhookId) return;
-  if (message.mentions.users.size > 0) return;
   if (message.createdAt < BOT_STARTED_AT) return; // Skip pre-startup messages (deploy dedup)
   if (processedMessageIds.has(message.id)) return; // Already processed
   if (message.content.length < 20 && TRIVIAL_PATTERNS.test(message.content.trim())) return;
