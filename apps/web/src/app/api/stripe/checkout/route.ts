@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 
 import { getViewerState } from "@/lib/supabase/auth";
-import { getStripe, getPriceId, type DeckTier } from "@/lib/stripe";
+import { getStripe, getPriceId, type CreditPackId } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 
+const VALID_PACKS: CreditPackId[] = ["pack_25", "pack_50", "pack_100"];
+
 /**
  * POST /api/stripe/checkout
- * Creates a Stripe Checkout Session for purchasing deck credits.
+ * Creates a Stripe Checkout Session for purchasing a credit pack.
  *
- * Body: { tier: "standard" | "pro" | "pack_5" | "pack_10" }
+ * Body: { packId: "pack_25" | "pack_50" | "pack_100" }
  * Returns: { url: string } — the Stripe Checkout URL to redirect to
  */
 export async function POST(request: Request) {
@@ -19,21 +21,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  const body = (await request.json()) as { tier?: string };
-  const tier = body.tier as DeckTier | undefined;
+  const body = (await request.json()) as { packId?: string };
+  const packId = body.packId as CreditPackId | undefined;
 
-  if (!tier || !["standard", "pro", "pack_5", "pack_10"].includes(tier)) {
-    return NextResponse.json({ error: "Invalid tier. Use: standard, pro, pack_5, or pack_10." }, { status: 400 });
+  if (!packId || !VALID_PACKS.includes(packId)) {
+    return NextResponse.json({ error: "Invalid pack. Use: pack_25, pack_50, or pack_100." }, { status: 400 });
   }
 
   try {
     const stripe = getStripe();
-    const priceId = getPriceId(tier);
+    const priceId = getPriceId(packId);
 
     const origin = request.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://basquio.com";
 
-    // payment_method_types is omitted — Stripe auto-detects available methods
-    // per the 2026-02-25.clover API. See docs.stripe.com/api/checkout/sessions/create
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
@@ -44,9 +44,9 @@ export async function POST(request: Request) {
       ],
       metadata: {
         user_id: viewer.user.id,
-        tier,
+        pack_id: packId,
       },
-      success_url: `${origin}/dashboard?purchase=success&tier=${tier}`,
+      success_url: `${origin}/dashboard?purchase=success&pack=${packId}`,
       cancel_url: `${origin}/pricing?purchase=cancelled`,
       customer_email: viewer.user.email ?? undefined,
     });

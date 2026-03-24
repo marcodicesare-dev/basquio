@@ -2826,3 +2826,33 @@ textarea {
 .report-type-card .muted {
   font-size: 0.82rem;
 }
+
+/* ─── CREDIT EXAMPLES ─────────────────────────────────────────── */
+
+.credit-example-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.credit-example-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--border-inverse);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.credit-example-slides {
+  font-size: 0.82rem;
+  color: var(--text-inverse-soft);
+}
+
+.credit-example-credits {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-inverse);
+  font-variant-numeric: tabular-nums;
+}

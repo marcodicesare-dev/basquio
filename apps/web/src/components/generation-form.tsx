@@ -91,6 +91,8 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
   const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
   const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
+  const [targetSlideCount, setTargetSlideCount] = useState(10);
+  const creditsNeeded = 3 + targetSlideCount; // 3 base + 1 per slide
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: "",
     client: "",
@@ -169,6 +171,7 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
           sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
           styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
           templateProfileId: selectedTemplateId ?? undefined,
+          targetSlideCount,
           brief,
           businessContext: brief.businessContext,
           client: brief.client,
@@ -580,6 +583,27 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
                 ) : (
                   <p className="muted">Clean editorial design with the default locked slide grid.</p>
                 )}
+              </article>
+
+              <article className="review-card stack">
+                <p className="artifact-kind">Deck size</p>
+                <div className="slide-count-selector">
+                  <label className="stack-xs">
+                    <span style={{ fontSize: "0.88rem" }}>{targetSlideCount} slides — {creditsNeeded} credits</span>
+                    <input
+                      type="range"
+                      min={3}
+                      max={20}
+                      value={targetSlideCount}
+                      onChange={(e) => setTargetSlideCount(Number(e.target.value))}
+                      style={{ width: "100%" }}
+                    />
+                    <span className="muted" style={{ fontSize: "0.78rem", display: "flex", justifyContent: "space-between" }}>
+                      <span>3 slides</span>
+                      <span>20 slides</span>
+                    </span>
+                  </label>
+                </div>
               </article>
 
               <article className="review-card stack">

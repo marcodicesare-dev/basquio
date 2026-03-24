@@ -1,8 +1,9 @@
--- Credit ledger for per-deck billing
+-- Credit ledger for per-slide billing
+-- Pricing: 3 base credits + 1 credit per slide. A 10-slide deck costs 13 credits.
 -- Design: append-only ledger with a materialized balance view.
 -- Every credit change is a row: grants (purchase, free tier, refund) and debits (run started).
 -- Balance = SUM(amount) grouped by user.
--- Atomic debit: use a function with SELECT ... FOR UPDATE to prevent double-spend.
+-- Atomic debit: use a function with advisory lock to prevent double-spend.
 
 -- ─── CREDIT LEDGER TABLE ─────────────────────────────────────────
 create table if not exists public.credit_ledger (
@@ -11,7 +12,7 @@ create table if not exists public.credit_ledger (
   amount        integer not null,
   -- positive = grant (purchase, free, refund), negative = debit (run)
   reason        text not null,
-  -- 'free_tier', 'purchase_standard', 'purchase_pro', 'refund', 'run_debit'
+  -- 'free_tier', 'purchase_pack', 'refund', 'run_debit'
   reference_id  text,
   -- stripe payment_intent id, deck_run id, or null
   created_at    timestamptz not null default now()
@@ -66,8 +67,8 @@ begin
 end;
 $$;
 
--- ─── GRANT FREE TIER CREDIT ─────────────────────────────────────
--- Grants 1 free credit only if the user has never received one.
+-- ─── GRANT FREE TIER CREDITS ────────────────────────────────────
+-- Grants 6 free credits (enough for one 3-slide deck) only once per user.
 -- Returns true if granted, false if already used.
 create or replace function public.grant_free_tier_credit(
   p_user_id uuid
@@ -87,7 +88,7 @@ begin
   end if;
 
   insert into public.credit_ledger (user_id, amount, reason)
-  values (p_user_id, 1, 'free_tier');
+  values (p_user_id, 6, 'free_tier');
 
   return true;
 end;

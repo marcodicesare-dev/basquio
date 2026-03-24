@@ -112,7 +112,8 @@ export default function GetStartedPage() {
               No credit card. No commitment. Generate one full report from your own data at zero cost.
             </p>
             <p className="muted">
-              After that: <strong>$10</strong> per Standard deck, <strong>$24</strong> per Pro deck. No subscriptions required.{" "}
+              After that, pay per slide: 3 base credits + 1 per slide. A 10-slide deck costs 13 credits.
+              Credit packs start at <strong>$15 for 25 credits</strong>.{" "}
               <a href="/pricing">See full pricing.</a>
             </p>
           </div>

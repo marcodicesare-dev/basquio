@@ -7,7 +7,7 @@ import { interpretTemplateSource } from "@basquio/template-engine";
 import type { GenerationRequest } from "@basquio/types";
 
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
-import { checkAndDebitCredit, ensureFreeTierCredit } from "@/lib/credits";
+import { checkAndDebitCredit, ensureFreeTierCredit, calculateRunCredits } from "@/lib/credits";
 import { uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
@@ -50,6 +50,9 @@ export async function POST(request: Request) {
     const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
 
     if (billingEnabled && supabaseUrl && serviceKey) {
+      const targetSlideCount = ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10;
+      const creditsNeeded = calculateRunCredits(targetSlideCount);
+
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
 
       const debited = await checkAndDebitCredit({
@@ -57,13 +60,14 @@ export async function POST(request: Request) {
         serviceKey,
         userId: viewer.user.id,
         runId: generationRequest.jobId,
+        slideCount: targetSlideCount,
       });
 
       // debited is null when the credit_ledger table doesn't exist yet.
       // In that case, allow the run (graceful degradation).
       if (debited === false) {
         return NextResponse.json({
-          error: "No credits remaining. Purchase a Standard ($10) or Pro ($24) deck to continue.",
+          error: `Not enough credits. This ${targetSlideCount}-slide deck needs ${creditsNeeded} credits.`,
           code: "NO_CREDITS",
           pricingUrl: "/pricing",
         }, { status: 402 });
@@ -287,7 +291,8 @@ async function parseGenerationRequest(
       thesis: brief.thesis,
       stakes: brief.stakes,
       templateProfileId: ((payload as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
-    };
+      targetSlideCount: ((payload as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
+    } as QueuedGenerationRequest;
   }
 
   const formData = await request.formData();

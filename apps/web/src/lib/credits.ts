@@ -1,9 +1,32 @@
 /**
- * Credit ledger operations for per-deck billing.
+ * Credit ledger operations for per-slide billing.
+ *
+ * Pricing model: 3 base credits + 1 credit per slide.
+ * A 10-slide deck costs 13 credits. A 3-slide deck costs 6 credits.
  *
  * Uses Supabase RPC to call the atomic PostgreSQL functions
  * defined in 20260324100000_credit_ledger.sql.
  */
+
+// ─── CREDIT CALCULATION ──────────────────────────────────────
+
+/** Fixed credits per run (covers understand + QA phases) */
+export const BASE_CREDITS = 3;
+
+/** Credits per slide (covers author + potential revise per slide) */
+export const CREDITS_PER_SLIDE = 1;
+
+/** Free tier grant amount (enough for one 3-slide deck) */
+export const FREE_TIER_CREDITS = 6;
+
+/**
+ * Calculate credits required for a deck run.
+ */
+export function calculateRunCredits(slideCount: number): number {
+  return BASE_CREDITS + (CREDITS_PER_SLIDE * slideCount);
+}
+
+// ─── TYPES ───────────────────────────────────────────────────
 
 type SupabaseConfig = {
   supabaseUrl: string;
@@ -15,6 +38,8 @@ type CreditBalance = {
   freeGrantsCount: number;
   totalRuns: number;
 };
+
+// ─── BALANCE ─────────────────────────────────────────────────
 
 /**
  * Get the current credit balance for a user.
@@ -43,8 +68,11 @@ export async function getCreditBalance(
   };
 }
 
+// ─── GRANTS ──────────────────────────────────────────────────
+
 /**
- * Grant the free tier credit (1 credit) if not already granted.
+ * Grant free tier credits if not already granted.
+ * Grants FREE_TIER_CREDITS (6) — enough for one 3-slide deck.
  * Safe to call multiple times — only grants once.
  */
 export async function ensureFreeTierCredit(
@@ -58,31 +86,13 @@ export async function ensureFreeTierCredit(
 }
 
 /**
- * Attempt to debit 1 credit for a deck run.
- * Returns true if successful, false if insufficient balance.
- * Uses PostgreSQL advisory locks for atomic debit.
- */
-export async function checkAndDebitCredit(
-  config: SupabaseConfig & { userId: string; runId: string },
-): Promise<boolean> {
-  const result = await callRpc<boolean>(config, "debit_credit", {
-    p_user_id: config.userId,
-    p_amount: 1,
-    p_reason: "run_debit",
-    p_reference_id: config.runId,
-  });
-
-  return result ?? false;
-}
-
-/**
  * Grant credits after a successful Stripe payment.
  */
 export async function grantPurchaseCredits(
   config: SupabaseConfig & {
     userId: string;
     amount: number;
-    reason: "purchase_standard" | "purchase_pro" | "purchase_pack";
+    reason: "purchase_pack";
     paymentIntentId: string;
   },
 ): Promise<void> {
@@ -94,6 +104,60 @@ export async function grantPurchaseCredits(
   });
 }
 
+// ─── DEBITS ──────────────────────────────────────────────────
+
+/**
+ * Attempt to debit credits for a deck run based on slide count.
+ * Returns true if successful, false if insufficient balance, null if system unavailable.
+ * Uses PostgreSQL advisory locks for atomic debit.
+ */
+export async function checkAndDebitCredit(
+  config: SupabaseConfig & { userId: string; runId: string; slideCount: number },
+): Promise<boolean | null> {
+  const creditsNeeded = calculateRunCredits(config.slideCount);
+
+  const result = await callRpc<boolean>(config, "debit_credit", {
+    p_user_id: config.userId,
+    p_amount: creditsNeeded,
+    p_reason: "run_debit",
+    p_reference_id: config.runId,
+  });
+
+  return result;
+}
+
+/**
+ * Refund credits for a failed run.
+ * Looks up the original debit amount from the ledger and refunds exactly that.
+ */
+export async function refundCredit(
+  config: SupabaseConfig & { userId: string; runId: string },
+): Promise<void> {
+  // Find the original debit for this run
+  const debits = await queryRest<{ amount: number }>(config, "credit_ledger", {
+    reference_id: `eq.${config.runId}`,
+    reason: "eq.run_debit",
+    select: "amount",
+    limit: "1",
+  });
+
+  // Amount is stored as negative in the debit, so negate it for refund
+  const refundAmount = debits.length > 0 ? Math.abs(debits[0].amount) : 0;
+
+  if (refundAmount === 0) {
+    return; // No debit found — nothing to refund
+  }
+
+  await insertRow(config, "credit_ledger", {
+    user_id: config.userId,
+    amount: refundAmount,
+    reason: "refund",
+    reference_id: config.runId,
+  });
+}
+
+// ─── IDEMPOTENCY ─────────────────────────────────────────────
+
 /**
  * Check if a Stripe payment_intent has already been processed.
  * Used for webhook idempotency — prevents double-crediting on retries.
@@ -103,26 +167,12 @@ export async function checkPaymentAlreadyProcessed(
 ): Promise<boolean> {
   const rows = await queryRest<{ id: string }>(config, "credit_ledger", {
     reference_id: `eq.${config.paymentIntentId}`,
-    reason: "in.(purchase_standard,purchase_pro,purchase_pack)",
+    reason: "eq.purchase_pack",
     select: "id",
     limit: "1",
   });
 
   return rows.length > 0;
-}
-
-/**
- * Refund a credit for a failed run.
- */
-export async function refundCredit(
-  config: SupabaseConfig & { userId: string; runId: string },
-): Promise<void> {
-  await insertRow(config, "credit_ledger", {
-    user_id: config.userId,
-    amount: 1,
-    reason: "refund",
-    reference_id: config.runId,
-  });
 }
 
 // ─── INTERNAL HELPERS ─────────────────────────────────────────
@@ -144,7 +194,6 @@ async function queryRest<T>(
   });
 
   if (!response.ok) {
-    // Table might not exist yet (migration not applied) — return empty
     return [];
   }
 
@@ -169,8 +218,6 @@ async function callRpc<T>(
   });
 
   if (!response.ok) {
-    // Function might not exist yet (migration not applied) — return null
-    // This allows the app to work without the credit system deployed
     return null;
   }
 
@@ -206,7 +253,6 @@ function buildHeaders(serviceKey: string): Headers {
   headers.set("apikey", serviceKey);
   headers.set("Accept", "application/json");
 
-  // Support both JWT-style and secret key auth
   if (serviceKey.split(".").length === 3) {
     headers.set("Authorization", `Bearer ${serviceKey}`);
   }

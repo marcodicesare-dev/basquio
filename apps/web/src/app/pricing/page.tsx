@@ -8,90 +8,75 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 export const metadata: Metadata = {
   title: "Pricing | Basquio",
   description:
-    "Your first deck is free. After that, pay per deck: $10 for Standard, $24 for Pro. No subscriptions required.",
+    "Pay per slide: 3 base credits + 1 per slide. First deck free. Buy credits in packs starting at $15.",
 };
 
-const tiers = [
+const CREDIT_PRICE_DISPLAY = "$0.75";
+const BASE_CREDITS = 3;
+
+const examples = [
+  { slides: 3, credits: 6 },
+  { slides: 5, credits: 8 },
+  { slides: 8, credits: 11 },
+  { slides: 10, credits: 13 },
+  { slides: 15, credits: 18 },
+  { slides: 20, credits: 23 },
+] as const;
+
+const packs = [
   {
-    name: "Free",
-    price: "$0",
-    unit: "first deck",
-    description: "See what Basquio produces from your own data. No credit card.",
-    features: [
-      "1 full deck run",
-      "Up to 10 slides",
-      "PPTX + PDF output",
-      "Basquio Standard template",
-      "No credit card required",
-    ],
-    cta: "Generate my first deck",
-    href: "/jobs/new",
+    name: "Starter",
+    credits: 25,
+    price: "$15",
+    perCredit: "$0.60",
+    enough: "Enough for two 8-slide decks",
     highlighted: false,
+    href: "/jobs/new?pack=25",
   },
   {
     name: "Standard",
-    price: "$10",
-    unit: "per deck",
-    description: "For recurring reviews with a single evidence file and standard template.",
-    features: [
-      "Up to 10 slides",
-      "1 evidence file per run",
-      "Basquio Standard or 1 saved template",
-      "PPTX + PDF output",
-      "1 free rerun within 24 hours",
-      "30-day report history",
-    ],
-    cta: "Buy a Standard deck",
-    href: "/jobs/new?tier=standard",
-    highlighted: false,
+    credits: 50,
+    price: "$25",
+    perCredit: "$0.50",
+    enough: "Enough for four 10-slide decks",
+    highlighted: true,
+    href: "/jobs/new?pack=50",
   },
   {
     name: "Pro",
-    price: "$24",
-    unit: "per deck",
-    description: "For complex analyses with multiple files, custom branding, and richer output.",
-    features: [
-      "Up to 15 slides",
-      "Multiple evidence files",
-      "Custom brand template support",
-      "Richer charts and deeper analysis",
-      "Extended revision budget",
-      "90-day report history",
-      "Report recipes (save and rerun)",
-    ],
-    cta: "Buy a Pro deck",
-    href: "/jobs/new?tier=pro",
-    highlighted: true,
+    credits: 100,
+    price: "$40",
+    perCredit: "$0.40",
+    enough: "Enough for seven 10-slide decks",
+    highlighted: false,
+    href: "/jobs/new?pack=100",
   },
   {
     name: "Team",
+    credits: null,
     price: "Custom",
-    unit: "monthly",
-    description: "Shared workspace, templates, and history for teams that run reports regularly.",
-    features: [
-      "Everything in Pro",
-      "Shared workspace and history",
-      "Team brand template library",
-      "Saved report recipes",
-      "Volume pricing on decks",
-      "Priority generation queue",
-    ],
-    cta: "Contact us",
-    href: "mailto:marco@basquio.com?subject=Basquio%20Team%20plan",
+    perCredit: "Volume",
+    enough: "Shared workspace, templates, team history",
     highlighted: false,
+    href: "mailto:marco@basquio.com?subject=Basquio%20Team%20plan",
   },
 ] as const;
 
 const faqs = [
   {
-    question: "What counts as one deck?",
+    question: "How are credits calculated?",
     answer:
-      "One deck run includes the full pipeline: data analysis, narrative construction, PPTX generation, PDF rendering, and visual QA. If the run fails due to a system error, it does not count.",
+      "Every deck costs 3 base credits (covering data analysis and QA) plus 1 credit per slide. A 10-slide deck costs 13 credits. You choose the slide count in the brief, so you always know the price before generating.",
   },
   {
-    question: "Can I rerun with changes?",
+    question: "What if the run fails?",
     answer:
-      "Standard decks include 1 free rerun within 24 hours. Pro decks have an extended revision budget. You can also start a new run with the same data and a different brief at any time.",
+      "If a run fails due to a system error, your credits are automatically refunded. You only pay for successful decks.",
+  },
+  {
+    question: "Do credits expire?",
+    answer:
+      "Credits do not expire. Use them at your own pace.",
   },
   {
     question: "What file formats do you accept?",
@@ -101,7 +86,7 @@ const faqs = [
   {
     question: "Is my data safe?",
     answer:
-      "Your files are processed during generation and stored encrypted. We never use your data to train models. Source files can be deleted after export on Team plans.",
+      "Your files are processed during generation and stored encrypted. We never use your data to train models.",
   },
   {
     question: "How long does a deck take?",
@@ -109,7 +94,7 @@ const faqs = [
       "Most decks complete in 5 to 10 minutes. Complex multi-file analyses may take up to 15 minutes.",
   },
   {
-    question: "Do you offer annual or enterprise pricing?",
+    question: "Do you offer enterprise pricing?",
     answer:
       "Yes. Contact marco@basquio.com for annual contracts, SSO, data residency, and custom workflows.",
   },
@@ -123,45 +108,83 @@ export default function PricingPage() {
       <section className="page-hero">
         <div className="stack" style={{ maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
           <p className="section-label">Pricing</p>
-          <h1>Your first deck is free. After that, pay per deck.</h1>
+          <h1>Pay per slide. Your first deck is free.</h1>
           <p className="page-copy">
-            No subscriptions. No seat licenses. Generate a consulting-grade deck from your data,
-            download PPTX + PDF, and only pay when the output is ready.
+            Every deck costs {BASE_CREDITS} base credits plus 1 credit per slide.
+            Buy credits in packs — the more you buy, the less each slide costs.
           </p>
         </div>
       </section>
 
+      {/* How credits work */}
+      <section className="cards">
+        <article className="technical-panel stack-lg">
+          <div className="stack">
+            <p className="section-label light">How credits work</p>
+            <h2>{BASE_CREDITS} base + 1 per slide = total credits</h2>
+            <p className="muted" style={{ color: "var(--text-inverse-soft)" }}>
+              The base covers data analysis, narrative construction, and visual QA.
+              Each slide covers chart rendering, copywriting, and layout.
+            </p>
+          </div>
+
+          <div className="credit-example-grid">
+            {examples.map((ex) => (
+              <div key={ex.slides} className="credit-example-cell">
+                <span className="credit-example-slides">{ex.slides} slides</span>
+                <span className="credit-example-credits">{ex.credits} credits</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel stack-lg">
+          <div className="stack">
+            <p className="section-label">First deck free</p>
+            <h2>6 credits on signup. No credit card.</h2>
+            <p className="muted">
+              Enough for one 3-slide deck — or apply them toward a larger deck
+              after purchasing a credit pack.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      {/* Credit packs */}
       <section className="pricing-grid">
-        {tiers.map((tier) => (
+        {packs.map((pack) => (
           <article
-            key={tier.name}
-            className={tier.highlighted ? "panel pricing-card pricing-card-highlighted" : "panel pricing-card"}
+            key={pack.name}
+            className={pack.highlighted ? "panel pricing-card pricing-card-highlighted" : "panel pricing-card"}
           >
             <div className="stack">
-              <p className="pricing-tier-name">{tier.name}</p>
+              <p className="pricing-tier-name">{pack.name}</p>
               <div className="pricing-price-row">
-                <span className="pricing-price">{tier.price}</span>
-                <span className="pricing-unit">{tier.unit}</span>
+                <span className="pricing-price">{pack.price}</span>
+                {pack.credits ? (
+                  <span className="pricing-unit">{pack.credits} credits</span>
+                ) : (
+                  <span className="pricing-unit">monthly</span>
+                )}
               </div>
-              <p className="muted">{tier.description}</p>
+              {pack.credits ? (
+                <p className="muted">{pack.perCredit}/credit. {pack.enough}.</p>
+              ) : (
+                <p className="muted">{pack.enough}.</p>
+              )}
             </div>
 
-            <ul className="pricing-features">
-              {tier.features.map((feature) => (
-                <li key={feature}>{feature}</li>
-              ))}
-            </ul>
-
             <Link
-              className={tier.highlighted ? "button" : "button secondary"}
-              href={tier.href}
+              className={pack.highlighted ? "button" : "button secondary"}
+              href={pack.href}
             >
-              {tier.cta}
+              {pack.name === "Team" ? "Contact us" : `Buy ${pack.credits} credits`}
             </Link>
           </article>
         ))}
       </section>
 
+      {/* FAQ */}
       <section className="cards">
         <article className="technical-panel stack-lg">
           <div className="stack">
@@ -183,7 +206,7 @@ export default function PricingPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to try it?"
         title="Your first report is free."
-        copy="Upload one evidence package and get a full deck with PPTX and PDF output. No credit card required."
+        copy="6 credits on signup — enough for a 3-slide deck. No credit card required."
         primaryLabel="Generate my first deck"
         primaryHref="/jobs/new"
         secondaryLabel="Compare the alternatives"
