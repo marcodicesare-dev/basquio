@@ -2959,6 +2959,65 @@ textarea {
 
 /* ─── CREDIT EXAMPLES ─────────────────────────────────────────── */
 
+/* ─── REPORTS FILTER BAR ───────────────────────────────────────── */
+
+.reports-filter-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.reports-search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.reports-search-input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(26, 106, 255, 0.08);
+}
+
+.reports-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.reports-status-filters {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.reports-status-btn {
+  padding: 8px 14px;
+  border: none;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.reports-status-btn:hover {
+  background: var(--surface);
+  color: var(--text-soft);
+}
+
+.reports-status-btn.active {
+  background: var(--blue);
+  color: white;
+}
+
 /* ─── INLINE PRICING (landing page) ────────────────────────────── */
 
 .pricing-inline-grid {
