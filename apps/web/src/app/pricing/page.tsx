@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
@@ -182,11 +183,13 @@ export default function PricingPage() {
                 Contact us
               </Link>
             ) : (
-              <BuyCreditsButton
-                packId={pack.packId}
-                label={`Buy ${pack.credits} credits`}
-                highlighted={pack.highlighted}
-              />
+              <Suspense fallback={<button className={pack.highlighted ? "button" : "button secondary"} disabled>{`Buy ${pack.credits} credits`}</button>}>
+                <BuyCreditsButton
+                  packId={pack.packId}
+                  label={`Buy ${pack.credits} credits`}
+                  highlighted={pack.highlighted}
+                />
+              </Suspense>
             )}
           </article>
         ))}

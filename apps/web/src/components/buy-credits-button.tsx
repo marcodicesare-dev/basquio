@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 type BuyCreditsButtonProps = {
   packId: string;
@@ -9,35 +9,54 @@ type BuyCreditsButtonProps = {
   highlighted: boolean;
 };
 
+async function startCheckout(packId: string): Promise<{ url?: string; error?: string; status: number }> {
+  const response = await fetch("/api/stripe/checkout", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ packId }),
+  });
+
+  if (response.status === 401) {
+    return { status: 401 };
+  }
+
+  const payload = (await response.json()) as { url?: string; error?: string };
+  return { ...payload, status: response.status };
+}
+
 export function BuyCreditsButton({ packId, label, highlighted }: BuyCreditsButtonProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoResumed = useRef(false);
+
+  // Auto-resume checkout when returning from sign-in with ?buy=pack_id
+  useEffect(() => {
+    const buyParam = searchParams.get("buy");
+    if (buyParam === packId && !autoResumed.current) {
+      autoResumed.current = true;
+      handleClick();
+    }
+  }, [searchParams, packId]);
 
   async function handleClick() {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ packId }),
-      });
+      const result = await startCheckout(packId);
 
-      if (response.status === 401) {
-        // Not signed in — redirect to sign-in with return URL
+      if (result.status === 401) {
         router.push(`/sign-in?next=${encodeURIComponent(`/pricing?buy=${packId}`)}`);
         return;
       }
 
-      const payload = (await response.json()) as { url?: string; error?: string };
-
-      if (!response.ok || !payload.url) {
-        throw new Error(payload.error ?? "Checkout failed.");
+      if (result.status >= 400 || !result.url) {
+        throw new Error(result.error ?? "Checkout failed.");
       }
 
-      window.location.href = payload.url;
+      window.location.href = result.url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setLoading(false);
@@ -52,7 +71,7 @@ export function BuyCreditsButton({ packId, label, highlighted }: BuyCreditsButto
         disabled={loading}
         onClick={handleClick}
       >
-        {loading ? "Redirecting..." : label}
+        {loading ? "Redirecting to checkout..." : label}
       </button>
       {error ? (
         <p style={{ color: "var(--text-muted)", fontSize: "0.78rem", marginTop: 6 }}>{error}</p>
