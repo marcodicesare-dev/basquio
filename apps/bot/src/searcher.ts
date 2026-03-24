@@ -1,7 +1,7 @@
 import { EmbedBuilder, type Message, type TextChannel } from "discord.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { embedQuery } from "./embedder.js";
-import { hybridSearch, getDocumentMeta, getTranscriptMeta, getDocumentChunksByName } from "./supabase.js";
+import { hybridSearch, getDocumentMeta, getTranscriptMeta, listIndexedDocuments, getDocumentChunksById } from "./supabase.js";
 import { env } from "./config.js";
 import type { SearchResult, Source } from "./kb-types.js";
 
@@ -38,70 +38,82 @@ export async function handleBotMention(message: Message, query: string): Promise
 }
 
 /**
- * Try to extract a document name from the query. Strategy:
- * 1. Look for filename-like tokens (contain hyphens + digits, or have file extensions)
- * 2. These naturally appear in queries like "summarize the 24-march-summary doc"
- *    or "in base al 24-march-summary doc il concetto di..."
+ * Use Claude as a fast intent router to decide if the query references
+ * a specific document. Returns the doc ID if so, null otherwise.
+ * This replaces fragile regex — the model understands any language and phrasing.
  */
-function extractDocReference(query: string): string | null {
-  // Split into tokens and find anything that looks like a filename/slug
-  // e.g. "24-march-summary", "Document_Mar_20_2026.md", "q1-report"
-  const tokens = query.split(/\s+/);
-  for (const token of tokens) {
-    // Strip file extension first (before punctuation removal eats the dot)
-    const noExt = token.replace(/\.(md|txt|pdf|doc|docx)$/i, "");
-    const cleaned = noExt.replace(/["""''?,!.:;()]/g, "");
-    // Must have a hyphen or underscore (filename-like), and be 5+ chars
-    if (cleaned.length >= 5 && /[-_]/.test(cleaned) && /[a-zA-Z]/.test(cleaned)) {
-      // Strip trailing "doc", "document", "documento"
-      return cleaned.replace(/[-_]?doc(ument(o)?)?$/i, "").trim();
-    }
+async function resolveDocIntent(query: string): Promise<{ docId: string; filename: string } | null> {
+  const docs = await listIndexedDocuments();
+  if (docs.length === 0) return null;
+
+  const docList = docs.map((d) => `- id="${d.id}" filename="${d.filename}"`).join("\n");
+
+  const response = await anthropic.messages.create({
+    model: "claude-haiku-4",
+    max_tokens: 200,
+    system: `You are an intent classifier. Given a user query and a list of available documents, determine if the user is asking about a SPECIFIC document. If yes, return ONLY the document id. If no specific document is referenced, return "NONE".
+
+Available documents:
+${docList}
+
+Rules:
+- Match by meaning, not exact string. "24-march-summary" matches "24-march-summary.md".
+- "the doc about march 24" or "il documento del 24 marzo" should match if there's a relevant doc.
+- If the user asks a general question without referencing a specific doc, return NONE.
+- Return ONLY the id string or NONE. Nothing else.`,
+    messages: [{ role: "user", content: query }],
+  });
+
+  const result = response.content[0].type === "text" ? response.content[0].text.trim() : "";
+  if (result === "NONE" || !result) return null;
+
+  // Validate the returned ID against our doc list
+  const matched = docs.find((d) => d.id === result);
+  if (!matched) {
+    console.log(`⚠️ Intent classifier returned unknown doc id: ${result}`);
+    return null;
   }
-  return null;
+
+  return matched;
 }
 
 /**
  * Run hybrid search + Claude synthesis.
  */
 export async function search(query: string): Promise<SearchResult> {
-  // 0. Check if user is asking about a specific document — if so, fetch ALL its chunks
-  const docRef = extractDocReference(query);
-  let docFullContext: { filename: string; contextParts: string[]; sources: Source[] } | null = null;
+  // 0. AI intent routing — does the user want a specific document?
+  const docMatch = await resolveDocIntent(query);
 
-  if (docRef) {
-    const docData = await getDocumentChunksByName(docRef);
-    if (docData && docData.chunks.length > 0) {
-      console.log(`📄 Doc query detected: "${docRef}" → ${docData.filename} (${docData.chunks.length} chunks)`);
+  if (docMatch) {
+    const chunks = await getDocumentChunksById(docMatch.docId);
+    if (chunks.length > 0) {
+      console.log(`📄 Doc query resolved: "${docMatch.filename}" (${chunks.length} chunks)`);
       const sources: Source[] = [{
         type: "document",
-        name: docData.filename,
-        snippet: docData.chunks[0]!.content.slice(0, 200),
+        name: docMatch.filename,
+        snippet: chunks[0]!.content.slice(0, 200),
         metadata: {},
       }];
-      const contextParts = docData.chunks.map((c, i) =>
-        `[1] (uploaded doc: ${docData.filename}, chunk ${i + 1}/${docData.chunks.length}) ${c.content}`
+      const contextParts = chunks.map((c, i) =>
+        `[1] (uploaded doc: ${docMatch.filename}, chunk ${i + 1}/${chunks.length}) ${c.content}`
       );
-      docFullContext = { filename: docData.filename, contextParts, sources };
+
+      const synthesis = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2048,
+        system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks, which contain the FULL content of the document "${docMatch.filename}". Be comprehensive — cover all relevant sections. Respond in the same language as the question.`,
+        messages: [{
+          role: "user",
+          content: `Question: ${query}\n\nFull document context:\n${contextParts.join("\n\n")}`,
+        }],
+      });
+
+      const answer = synthesis.content[0].type === "text"
+        ? synthesis.content[0].text
+        : "Could not generate an answer.";
+
+      return { answer, sources, confidence: "high" };
     }
-  }
-
-  // If we got full doc context, skip hybrid search entirely
-  if (docFullContext) {
-    const synthesis = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks, which contain the FULL content of the document "${docFullContext.filename}". Give a comprehensive summary covering all sections. Respond in the same language as the question.`,
-      messages: [{
-        role: "user",
-        content: `Question: ${query}\n\nFull document context:\n${docFullContext.contextParts.join("\n\n")}`,
-      }],
-    });
-
-    const answer = synthesis.content[0].type === "text"
-      ? synthesis.content[0].text
-      : "Could not generate an answer.";
-
-    return { answer, sources: docFullContext.sources, confidence: "high" };
   }
 
   // 1. Embed query

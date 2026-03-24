@@ -362,37 +362,31 @@ export async function getDocumentMeta(docId: string): Promise<{
 }
 
 /**
- * Find a document by fuzzy filename match and return all its chunks in order.
- * Used when user asks to "summarize <doc name>" so we get the full doc, not just
- * the top-10 similarity hits.
+ * List all indexed document filenames (for AI intent classification).
  */
-export async function getDocumentChunksByName(
-  namePart: string,
-): Promise<{ docId: string; filename: string; chunks: Array<{ content: string; metadata: Record<string, unknown> }> } | null> {
+export async function listIndexedDocuments(): Promise<Array<{ id: string; filename: string }>> {
   const db = getClient();
-  // Find document by partial filename match (case insensitive)
-  const { data: docs } = await db
+  const { data } = await db
     .from("knowledge_documents")
     .select("id, filename")
     .eq("status", "indexed")
-    .ilike("filename", `%${namePart}%`)
-    .order("created_at", { ascending: false })
-    .limit(1);
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
 
-  if (!docs || docs.length === 0) return null;
-
-  const doc = docs[0]!;
-  const { data: chunks } = await db
+/**
+ * Fetch all chunks for a specific document by ID, in order.
+ */
+export async function getDocumentChunksById(
+  docId: string,
+): Promise<Array<{ content: string; metadata: Record<string, unknown> }>> {
+  const db = getClient();
+  const { data } = await db
     .from("knowledge_chunks")
     .select("content, metadata")
-    .eq("document_id", doc.id)
+    .eq("document_id", docId)
     .order("chunk_index", { ascending: true });
-
-  return {
-    docId: doc.id,
-    filename: doc.filename,
-    chunks: (chunks ?? []) as Array<{ content: string; metadata: Record<string, unknown> }>,
-  };
+  return (data ?? []) as Array<{ content: string; metadata: Record<string, unknown> }>;
 }
 
 export async function getTranscriptMeta(transcriptId: string): Promise<{
