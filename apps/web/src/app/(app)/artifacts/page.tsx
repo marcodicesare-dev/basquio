@@ -14,7 +14,6 @@ export default async function ArtifactsPage() {
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>Reports</h1>
-        <Link className="button" href="/jobs/new">New report</Link>
       </section>
 
       {runs.length === 0 ? (
@@ -28,7 +27,7 @@ export default async function ArtifactsPage() {
             <h2>No reports yet</h2>
             <p className="muted">Upload your data and Basquio will build your first report.</p>
           </div>
-          <Link className="button" href="/jobs/new">Create your first report</Link>
+          <Link className="button small" href="/jobs/new">Create your first report</Link>
         </section>
       ) : (
         <ReportsList runs={runs} />

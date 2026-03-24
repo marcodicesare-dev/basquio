@@ -4285,3 +4285,320 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── WORKSPACE CONSISTENCY PASS ─────────────────────────────── */
+
+.button {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.button.secondary:hover {
+  border-color: rgba(26, 106, 255, 0.22);
+  background: rgba(26, 106, 255, 0.08);
+  color: var(--blue);
+}
+
+.button.small {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.app-frame .button,
+.auth-card .button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+}
+
+.app-frame .button.small,
+.auth-card .button.small {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.78rem;
+}
+
+.app-frame .button:hover {
+  transform: none;
+  box-shadow: none;
+  filter: brightness(0.98);
+}
+
+.app-frame {
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 24px;
+}
+
+.sidebar {
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.sidebar-brand,
+.sidebar-meta,
+.sidebar-credits-block {
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.sidebar-cta {
+  min-height: 40px;
+}
+
+.sidebar-buy-link {
+  width: 100%;
+}
+
+.nav-link {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  color: rgba(11, 12, 12, 0.7);
+}
+
+.nav-link:hover:not(.active) {
+  border-color: rgba(11, 12, 12, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+}
+
+.nav-link.active,
+.nav-link.active:hover {
+  background: rgba(11, 12, 12, 0.92);
+  border-color: rgba(11, 12, 12, 0.92);
+  color: #ffffff;
+}
+
+.sidebar-bottom-nav {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.workspace-shell {
+  gap: 24px;
+  align-content: start;
+}
+
+.content {
+  gap: 24px;
+}
+
+.workspace-page {
+  gap: 20px;
+}
+
+.workspace-page-head {
+  align-items: flex-end;
+  min-height: 52px;
+}
+
+.workspace-page-head h1 {
+  font-size: clamp(2rem, 3.2vw, 2.8rem);
+  line-height: 0.98;
+}
+
+.workspace-section-head h2 {
+  font-size: 1.1rem;
+}
+
+.presentation-list,
+.recipe-grid,
+.settings-grid {
+  gap: 16px;
+}
+
+.presentation-card,
+.recipe-card,
+.settings-grid > .panel,
+.workspace-board > .panel,
+.billing-stat-card,
+.workspace-empty-card {
+  border-radius: 12px;
+}
+
+.presentation-card,
+.recipe-card,
+.workspace-board > .panel,
+.settings-grid > .panel {
+  padding: 24px;
+}
+
+.presentation-card-head,
+.workspace-section-head {
+  align-items: flex-start;
+}
+
+.reports-filter-bar {
+  gap: 10px;
+}
+
+.reports-search-input {
+  min-height: 40px;
+  padding: 0 14px;
+  border-color: rgba(11, 12, 12, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.reports-status-filters {
+  gap: 6px;
+  padding: 4px;
+  border-color: rgba(11, 12, 12, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: visible;
+}
+
+.reports-status-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(11, 12, 12, 0.62);
+}
+
+.reports-status-btn:hover {
+  background: rgba(11, 12, 12, 0.06);
+  color: var(--text);
+}
+
+.reports-status-btn.active {
+  background: rgba(11, 12, 12, 0.92);
+  color: #ffffff;
+}
+
+.compact-meta-row,
+.download-actions,
+.brand-preview-strip,
+.file-list {
+  gap: 8px;
+}
+
+.download-actions {
+  align-items: center;
+}
+
+.run-pill {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+}
+
+.workspace-empty-card {
+  gap: 18px;
+  min-height: 280px;
+  padding: 32px;
+  align-content: start;
+}
+
+.workspace-empty-card .stack {
+  max-width: 58ch;
+}
+
+.workspace-empty-card .button {
+  align-self: start;
+}
+
+.workspace-empty-card-compact {
+  min-height: 0;
+  padding: 28px 32px;
+  justify-items: center;
+  text-align: center;
+}
+
+.empty-illustration span {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.billing-stats-row {
+  gap: 16px;
+}
+
+.billing-stat-card {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 18px;
+  min-height: 156px;
+  padding: 22px 24px;
+  text-align: left;
+}
+
+.billing-stat-label,
+.billing-stat-value {
+  margin: 0;
+}
+
+.billing-stat-value {
+  font-size: clamp(1.85rem, 3vw, 2.5rem);
+  line-height: 1;
+}
+
+.billing-ledger {
+  border-radius: 12px;
+}
+
+.billing-table th {
+  padding: 14px 18px;
+}
+
+.billing-table td {
+  padding: 14px 18px;
+}
+
+.billing-table-number-head,
+.billing-table-number {
+  text-align: right;
+}
+
+.billing-table-number {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.billing-table-number-positive {
+  color: #15803d;
+}
+
+.brand-preview-strip {
+  gap: 12px;
+}
+
+.brand-preview-swatch {
+  min-width: 96px;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+.workspace-board {
+  align-items: start;
+}
+
+.settings-field {
+  padding: 16px 0;
+}
+
+.sidebar-signout {
+  width: 100%;
+}
+
+@media (max-width: 1080px) {
+  .app-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+  }
+}

@@ -52,7 +52,6 @@ export default async function RecipesPage() {
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>Recipes</h1>
-        <Link className="button" href="/jobs/new">New report</Link>
       </section>
 
       {recipes.length === 0 ? (
@@ -64,7 +63,7 @@ export default async function RecipesPage() {
               Same brief, same template, same slide count — just upload fresh files.
             </p>
           </div>
-          <Link className="button" href="/jobs/new">Generate your first report</Link>
+          <Link className="button small" href="/jobs/new">Generate your first report</Link>
         </section>
       ) : (
         <div className="recipe-grid">
@@ -82,7 +81,7 @@ export default async function RecipesPage() {
                 <span className="run-pill">{3 + recipe.target_slide_count} credits</span>
               </div>
 
-              <Link className="button" href={`/jobs/new?recipe=${recipe.id}`}>
+              <Link className="button small" href={`/jobs/new?recipe=${recipe.id}`}>
                 Run with new data
               </Link>
             </article>

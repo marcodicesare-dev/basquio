@@ -101,7 +101,7 @@ export function AppShell({
               <div className="sidebar-credit-meter">
                 <span className="sidebar-credit-meter-fill" style={{ width: `${creditMeterWidth}%` }} />
               </div>
-              <Link className="button secondary sidebar-buy-link" href="/billing">
+              <Link className="button small secondary sidebar-buy-link" href="/billing">
                 Manage usage
               </Link>
             </>

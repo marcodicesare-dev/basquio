@@ -45,24 +45,24 @@ function formatDate(value: string) {
 
 function RunActions({ run }: { run: V2RunCard }) {
   if (run.status === "running" || run.status === "queued") {
-    return <Link className="button" href={`/jobs/${run.id}`}>View progress</Link>;
+    return <Link className="button small" href={`/jobs/${run.id}`}>View progress</Link>;
   }
   if (run.status === "failed") {
-    return <Link className="button secondary" href={`/jobs/${run.id}`}>View details</Link>;
+    return <Link className="button small secondary" href={`/jobs/${run.id}`}>View details</Link>;
   }
   if (run.artifacts.length > 0) {
     return (
       <>
         {run.artifacts.map((a) => (
-          <a key={a.kind} className="button" href={a.downloadUrl}>
+          <a key={a.kind} className="button small" href={a.downloadUrl}>
             {a.kind.toUpperCase()}
           </a>
         ))}
-        <Link className="button secondary" href={`/jobs/new?from=${run.id}`}>Rerun</Link>
+        <Link className="button small secondary" href={`/jobs/new?from=${run.id}`}>Rerun</Link>
       </>
     );
   }
-  return <Link className="button secondary" href={`/jobs/${run.id}`}>View run</Link>;
+  return <Link className="button small secondary" href={`/jobs/${run.id}`}>View run</Link>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -76,17 +76,16 @@ export default async function DashboardPage() {
   const viewer = await getViewerState();
   const runs = await listV2RunCards(6, viewer.user?.id);
   const recipes = viewer.user?.id ? await listRecipes(viewer.user.id) : [];
+  const isTeamEmail = viewer.user?.email?.endsWith("@basquio.com") ?? false;
 
   // Get credit balance for stats
   let creditBalance = 0;
-  let totalRuns = 0;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (supabaseUrl && serviceKey && viewer.user?.id) {
     await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
     const bal = await getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
     creditBalance = bal.balance;
-    totalRuns = bal.totalRuns;
   }
 
   const completedRuns = runs.filter((r) => r.status === "completed");
@@ -96,14 +95,13 @@ export default async function DashboardPage() {
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>Home</h1>
-        <Link className="button" href="/jobs/new">New report</Link>
       </section>
 
       {/* Stats row */}
       <div className="billing-stats-row">
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">Credits</p>
-          <p className="billing-stat-value">{creditBalance}</p>
+          <p className="billing-stat-label">{isTeamEmail ? "Access" : "Credits"}</p>
+          <p className="billing-stat-value">{isTeamEmail ? "Unlimited" : creditBalance}</p>
         </article>
         <article className="panel billing-stat-card">
           <p className="billing-stat-label">Completed</p>
@@ -120,7 +118,7 @@ export default async function DashboardPage() {
         <section className="stack-lg">
           <div className="workspace-section-head">
             <h2>Saved recipes</h2>
-            <Link className="button secondary" href="/recipes">All recipes</Link>
+            <Link className="button small secondary" href="/recipes">All recipes</Link>
           </div>
           <div className="recipe-grid">
             {recipes.map((recipe) => (
@@ -129,7 +127,7 @@ export default async function DashboardPage() {
                   <p className="artifact-kind">Recipe</p>
                   <h3>{recipe.name}</h3>
                 </div>
-                <Link className="button" href={`/jobs/new?recipe=${recipe.id}`}>
+                <Link className="button small" href={`/jobs/new?recipe=${recipe.id}`}>
                   Run with new data
                 </Link>
               </article>
@@ -143,7 +141,7 @@ export default async function DashboardPage() {
         <section className="stack-lg">
           <div className="workspace-section-head">
             <h2>Recent reports</h2>
-            <Link className="button secondary" href="/artifacts">All reports</Link>
+            <Link className="button small secondary" href="/artifacts">All reports</Link>
           </div>
           <div className="presentation-list">
             {runs.map((run) => (
@@ -172,7 +170,7 @@ export default async function DashboardPage() {
             <h2>Generate your first report</h2>
             <p className="muted">Upload your evidence files, write a brief, and Basquio builds a consulting-grade PPTX + PDF.</p>
           </div>
-          <Link className="button" href="/jobs/new">New report</Link>
+          <Link className="button small" href="/jobs/new">Create a report</Link>
         </section>
       )}
     </div>

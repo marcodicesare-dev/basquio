@@ -22,26 +22,26 @@ function StatusBadge({ status }: { status: string }) {
 
 function RunActions({ run }: { run: V2RunCard }) {
   if (run.status === "running" || run.status === "queued") {
-    return <Link className="button" href={`/jobs/${run.id}`}>View progress</Link>;
+    return <Link className="button small" href={`/jobs/${run.id}`}>View progress</Link>;
   }
   if (run.status === "failed") {
-    return <Link className="button secondary" href={`/jobs/${run.id}`}>View details</Link>;
+    return <Link className="button small secondary" href={`/jobs/${run.id}`}>View details</Link>;
   }
   if (run.artifacts.length > 0) {
     return (
       <>
         {run.artifacts.map((a) => (
-          <a key={a.kind} className="button" href={a.downloadUrl}>
+          <a key={a.kind} className="button small" href={a.downloadUrl}>
             Download {a.kind.toUpperCase()}
           </a>
         ))}
-        <Link className="button secondary" href={`/jobs/new?from=${run.id}`}>
+        <Link className="button small secondary" href={`/jobs/new?from=${run.id}`}>
           Rerun
         </Link>
       </>
     );
   }
-  return <Link className="button secondary" href={`/jobs/${run.id}`}>View run</Link>;
+  return <Link className="button small secondary" href={`/jobs/${run.id}`}>View run</Link>;
 }
 
 type FilterState = {
@@ -89,7 +89,7 @@ export function ReportsList({ runs }: { runs: V2RunCard[] }) {
       </div>
 
       {filteredRuns.length === 0 ? (
-        <div className="panel" style={{ padding: 40, textAlign: "center" }}>
+        <div className="panel workspace-empty-card workspace-empty-card-compact">
           <p className="muted">
             {filters.search || filters.status !== "all"
               ? "No reports match your filters."

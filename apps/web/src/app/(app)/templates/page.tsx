@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { createSystemTemplateProfile } from "@basquio/template-engine";
 
 import { getViewerState } from "@/lib/supabase/auth";
@@ -74,14 +72,9 @@ export default async function TemplatesPage() {
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>Brand system</h1>
-
-        <Link className="button" href="/jobs/new">
-          New report
-        </Link>
       </section>
 
       <section className="workspace-board">
-        {/* Default Basquio template — always shown */}
         <article className="panel stack-xl">
           <div className="stack">
             <div className="row split">
@@ -113,50 +106,6 @@ export default async function TemplatesPage() {
           </div>
         </article>
 
-        {/* Saved custom templates from the org */}
-        {savedTemplates.length > 0 ? (
-          <>
-            <div className="workspace-section-head">
-              <h2>Your uploaded templates</h2>
-            </div>
-
-            <div className="presentation-list">
-              {savedTemplates.map((t) => {
-                const profile = t.template_profile;
-                const colors = profile.colors ?? [];
-                const templateName = profile.templateName || sourceTypeLabel(t.source_type);
-                const headingFont = profile.brandTokens?.typography?.headingFont;
-
-                return (
-                  <article key={t.id} className="panel presentation-card">
-                    <div className="stack">
-                      <p className="artifact-kind">{sourceTypeLabel(t.source_type)}</p>
-                      <h3>{templateName}</h3>
-                    </div>
-
-                    {colors.length > 0 ? (
-                      <div className="brand-preview-strip">
-                        {colors.slice(0, 4).map((color) => (
-                          <div key={color} className="brand-preview-swatch">
-                            <span className="swatch-color" style={{ backgroundColor: color }} />
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    <div className="compact-meta-row">
-                      {headingFont ? <span className="run-pill">{headingFont}</span> : null}
-                      <span className="run-pill">{formatDate(t.created_at)}</span>
-                      <span className="run-pill">ID: {t.id.slice(-8)}</span>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-
-        {/* How templates work — always visible */}
         <article className="panel stack">
           <h3>How templates work</h3>
           <div className="stack-xs">
@@ -175,6 +124,48 @@ export default async function TemplatesPage() {
           </div>
         </article>
       </section>
+
+      {savedTemplates.length > 0 ? (
+        <section className="stack-lg">
+          <div className="workspace-section-head">
+            <h2>Your uploaded templates</h2>
+          </div>
+
+          <div className="presentation-list">
+            {savedTemplates.map((t) => {
+              const profile = t.template_profile;
+              const colors = profile.colors ?? [];
+              const templateName = profile.templateName || sourceTypeLabel(t.source_type);
+              const headingFont = profile.brandTokens?.typography?.headingFont;
+
+              return (
+                <article key={t.id} className="panel presentation-card">
+                  <div className="stack">
+                    <p className="artifact-kind">{sourceTypeLabel(t.source_type)}</p>
+                    <h3>{templateName}</h3>
+                  </div>
+
+                  {colors.length > 0 ? (
+                    <div className="brand-preview-strip">
+                      {colors.slice(0, 4).map((color) => (
+                        <div key={color} className="brand-preview-swatch">
+                          <span className="swatch-color" style={{ backgroundColor: color }} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="compact-meta-row">
+                    {headingFont ? <span className="run-pill">{headingFont}</span> : null}
+                    <span className="run-pill">{formatDate(t.created_at)}</span>
+                    <span className="run-pill">ID: {t.id.slice(-8)}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

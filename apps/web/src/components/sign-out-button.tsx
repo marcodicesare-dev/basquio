@@ -30,7 +30,7 @@ export function SignOutButton() {
   }
 
   return (
-    <button className="button secondary sidebar-signout" type="button" onClick={handleClick} disabled={isPending}>
+    <button className="button small secondary sidebar-signout" type="button" onClick={handleClick} disabled={isPending}>
       {isPending ? "Signing out..." : "Sign out"}
     </button>
   );

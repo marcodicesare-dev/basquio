@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { GenerationForm } from "@/components/generation-form";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
@@ -187,9 +185,6 @@ export default async function NewJobPage({
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>{pageTitle}</h1>
-        <Link className="button secondary" href="/artifacts">
-          View reports
-        </Link>
       </section>
 
       <GenerationForm

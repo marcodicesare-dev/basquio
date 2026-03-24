@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { getViewerState } from "@/lib/supabase/auth";
 import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
 import { fetchRestRows } from "@/lib/supabase/admin";
@@ -58,6 +56,7 @@ async function getLedgerHistory(userId: string): Promise<LedgerEntry[]> {
 
 export default async function BillingPage() {
   const viewer = await getViewerState();
+  const isTeamEmail = viewer.user?.email?.endsWith("@basquio.com") ?? false;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -81,13 +80,12 @@ export default async function BillingPage() {
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>Billing & Usage</h1>
-        <Link className="button" href="/pricing">Buy credits</Link>
       </section>
 
       <div className="billing-stats-row">
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">Credits remaining</p>
-          <p className="billing-stat-value">{balance}</p>
+          <p className="billing-stat-label">{isTeamEmail ? "Access" : "Credits remaining"}</p>
+          <p className="billing-stat-value">{isTeamEmail ? "Unlimited" : balance}</p>
         </article>
         <article className="panel billing-stat-card">
           <p className="billing-stat-label">Runs started</p>
@@ -103,7 +101,7 @@ export default async function BillingPage() {
         <h2>Credit history</h2>
 
         {ledger.length === 0 ? (
-          <div className="panel" style={{ padding: 32, textAlign: "center" }}>
+          <div className="panel workspace-empty-card workspace-empty-card-compact">
             <p className="muted">No credit activity yet.</p>
           </div>
         ) : (
@@ -113,7 +111,7 @@ export default async function BillingPage() {
                 <tr>
                   <th>Date</th>
                   <th>Activity</th>
-                  <th style={{ textAlign: "right" }}>Credits</th>
+                  <th className="billing-table-number-head">Credits</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,7 +119,7 @@ export default async function BillingPage() {
                   <tr key={entry.id}>
                     <td className="muted">{formatDate(entry.created_at)}</td>
                     <td>{reasonLabel(entry.reason)}</td>
-                    <td style={{ textAlign: "right", fontWeight: 600, color: entry.amount > 0 ? "#16a34a" : "var(--text)" }}>
+                    <td className={entry.amount > 0 ? "billing-table-number billing-table-number-positive" : "billing-table-number"}>
                       {entry.amount > 0 ? "+" : ""}{entry.amount}
                     </td>
                   </tr>

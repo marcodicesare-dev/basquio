@@ -1,5 +1,4 @@
 import { getViewerState } from "@/lib/supabase/auth";
-import { SignOutButton } from "@/components/sign-out-button";
 
 export const dynamic = "force-dynamic";
 
@@ -47,20 +46,6 @@ export default async function SettingsPage() {
               Report artifacts (PPTX, PDF) are retained until you delete them.
               Credit history is kept for billing records.
             </p>
-          </div>
-        </article>
-
-        <article className="panel stack-lg">
-          <div className="stack">
-            <p className="artifact-kind">Session</p>
-            <h2>Sign out</h2>
-          </div>
-
-          <div className="stack">
-            <p className="muted">
-              Signed in as {email}.
-            </p>
-            <SignOutButton />
           </div>
         </article>
       </section>
