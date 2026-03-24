@@ -38,9 +38,16 @@ function RunActions({ run }: { run: V2RunCard }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "running" || status === "queued") return <span className="run-pill">Generating...</span>;
-  if (status === "failed") return <span className="run-pill">Failed</span>;
+  if (status === "running" || status === "queued") return <span className="run-pill run-pill-active">Generating...</span>;
+  if (status === "failed") return <span className="run-pill run-pill-failed">Failed</span>;
+  if (status === "completed") return <span className="run-pill run-pill-ready">Ready</span>;
   return null;
+}
+
+function CostBadge({ run }: { run: V2RunCard }) {
+  if (!run.costUsd) return null;
+  const credits = 3 + run.slideCount;
+  return <span className="run-pill">{credits} credits</span>;
 }
 
 export default async function DashboardPage() {
@@ -74,6 +81,7 @@ export default async function DashboardPage() {
             <span className="run-pill">{formatDate(latestRun.createdAt)}</span>
             <span className="run-pill">{latestRun.sourceFileName}</span>
             {latestRun.slideCount > 0 ? <span className="run-pill">{latestRun.slideCount} slides</span> : null}
+            <CostBadge run={latestRun} />
             <StatusBadge status={latestRun.status} />
           </div>
         </section>
@@ -132,6 +140,7 @@ export default async function DashboardPage() {
                 <div className="compact-meta-row">
                   <span className="run-pill">{formatDate(run.createdAt)}</span>
                   {run.slideCount > 0 ? <span className="run-pill">{run.slideCount} slides</span> : null}
+                  <CostBadge run={run} />
                   <StatusBadge status={run.status} />
                 </div>
               </article>

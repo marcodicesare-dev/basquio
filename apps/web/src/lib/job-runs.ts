@@ -25,6 +25,8 @@ export type V2RunCard = {
   slideCount: number;
   createdAt: string;
   artifacts: Array<{ kind: string; downloadUrl: string }>;
+  costUsd: number | null;
+  qaTier: string | null;
 };
 
 export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2RunCard[]> {
@@ -36,7 +38,7 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
       ...credentials,
       table: "deck_runs",
       query: {
-        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids",
+        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids,cost_telemetry",
         requested_by: `eq.${viewerId}`,
         order: "created_at.desc",
         limit: String(limit),
@@ -118,6 +120,12 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
           kind: a.kind,
           downloadUrl: `/api/artifacts/${run.id}/${a.kind}`,
         })),
+        costUsd: (run as Record<string, unknown>).cost_telemetry
+          ? ((run as Record<string, unknown>).cost_telemetry as { estimatedCostUsd?: number })?.estimatedCostUsd ?? null
+          : null,
+        qaTier: (run as Record<string, unknown>).cost_telemetry
+          ? ((run as Record<string, unknown>).cost_telemetry as { qaTier?: string })?.qaTier ?? null
+          : null,
       };
     });
   } catch {
