@@ -240,6 +240,12 @@ The hero headline **"Two weeks of analysis. Delivered in hours."** — this stay
 - "6 free credits to start" (internal mechanics exposed to users)
 - "Enough for a 3-slide executive brief" (actively deterring)
 
+### Team access rule
+- All @basquio.com emails get **unlimited credits** — billing is bypassed entirely
+- The sidebar shows "Unlimited" instead of a credit number
+- This is already implemented in generate/route.ts and layout.tsx
+- Do NOT remove or modify this behavior
+
 ### What the next agent must NOT do
 
 - Add more pages or routes (we have enough)

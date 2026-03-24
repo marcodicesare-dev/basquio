@@ -54,7 +54,10 @@ export async function POST(request: Request) {
     // so the debit must use the same value.
     const runId = randomUUID();
 
-    if (billingEnabled && supabaseUrl && serviceKey) {
+    // Team emails get unlimited usage — skip billing entirely
+    const isTeamEmail = viewer.user.email?.endsWith("@basquio.com") ?? false;
+
+    if (billingEnabled && supabaseUrl && serviceKey && !isTeamEmail) {
       const targetSlideCount = ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10;
       const creditsNeeded = calculateRunCredits(targetSlideCount);
 

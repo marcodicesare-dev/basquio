@@ -58,15 +58,23 @@ export function AppShell({
           ))}
         </nav>
 
-        <div className="sidebar-credits-block">
-          <div className="sidebar-credits-row">
-            <span className="sidebar-credits-number">{creditBalance}</span>
-            <span className="sidebar-credits-label">credits</span>
+        {creditBalance === -1 ? (
+          <div className="sidebar-credits-block">
+            <div className="sidebar-credits-row">
+              <span className="sidebar-credits-label">Unlimited</span>
+            </div>
           </div>
-          <Link className="button secondary sidebar-buy-link" href="/billing">
-            Buy credits
-          </Link>
-        </div>
+        ) : (
+          <div className="sidebar-credits-block">
+            <div className="sidebar-credits-row">
+              <span className="sidebar-credits-number">{creditBalance}</span>
+              <span className="sidebar-credits-label">credits</span>
+            </div>
+            <Link className="button secondary sidebar-buy-link" href="/billing">
+              Buy credits
+            </Link>
+          </div>
+        )}
 
         <nav className="nav stack sidebar-bottom-nav" aria-label="Account">
           {bottomNav.map((item) => (

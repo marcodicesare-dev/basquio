@@ -26,15 +26,18 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     redirect(buildSignInPath(currentPath));
   }
 
+  // Team emails (@basquio.com) get unlimited usage
+  const isTeamEmail = viewer.user.email?.endsWith("@basquio.com") ?? false;
+
   // Fetch credit balance for sidebar display
   let creditBalance = 0;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (supabaseUrl && serviceKey) {
+  if (supabaseUrl && serviceKey && !isTeamEmail) {
     await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
     const balance = await getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
     creditBalance = balance.balance;
   }
 
-  return <AppShell viewer={viewer} creditBalance={creditBalance}>{children}</AppShell>;
+  return <AppShell viewer={viewer} creditBalance={isTeamEmail ? -1 : creditBalance}>{children}</AppShell>;
 }
