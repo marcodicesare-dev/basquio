@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -19,7 +20,10 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
   }
 
   if (!viewer.user) {
-    redirect(buildSignInPath("/dashboard"));
+    // Preserve the current path so sign-in redirects back here, not /dashboard
+    const headersList = await headers();
+    const currentPath = headersList.get("x-next-url") ?? headersList.get("x-invoke-path") ?? "/dashboard";
+    redirect(buildSignInPath(currentPath));
   }
 
   // Fetch credit balance for sidebar display

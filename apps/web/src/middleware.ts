@@ -4,7 +4,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 import { sanitizeNextPath } from "@/lib/supabase/auth";
 
-const protectedPagePrefixes = ["/dashboard", "/jobs", "/templates", "/artifacts"];
+const protectedPagePrefixes = ["/dashboard", "/jobs", "/templates", "/artifacts", "/billing", "/settings", "/recipes"];
 const protectedApiPaths = ["/api/generate", "/api/uploads/prepare"];
 
 export async function middleware(request: NextRequest) {
@@ -76,5 +76,5 @@ function isProtectedPage(pathname: string) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/jobs/:path*", "/templates/:path*", "/artifacts/:path*", "/api/generate", "/api/uploads/prepare", "/sign-in"],
+  matcher: ["/dashboard/:path*", "/jobs/:path*", "/templates/:path*", "/artifacts/:path*", "/billing/:path*", "/settings/:path*", "/recipes/:path*", "/api/generate", "/api/uploads/prepare", "/sign-in"],
 };
