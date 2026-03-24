@@ -138,7 +138,7 @@ export default function HomePage() {
         <div className="hero-main">
           <div className="stack-xl">
             <div className="stack">
-              <p className="section-label light">Evidence-to-executive reporting</p>
+              <p className="section-label light">Beautiful Intelligence.</p>
               <h1>Two weeks of analysis. Delivered in hours.</h1>
               <p className="hero-subtitle">
                 Upload your data. Get back a finished analysis — actionable insights, compelling narrative, and a presentation you&apos;d put your name on.

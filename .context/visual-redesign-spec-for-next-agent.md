@@ -210,11 +210,43 @@ These are code-level bugs that need fixing regardless of visual direction. Most 
 5. **Fix the 3 remaining code bugs** (file removal, template mutual exclusion, input clearing).
 6. **Visually verify every change in the browser** before committing. Screenshot each page. If it doesn't look good, don't ship it.
 
+## COPY VOICE RULES (CRITICAL)
+
+The brand tagline is **"Beautiful Intelligence."** — this is sacred, do not change it.
+
+The hero headline **"Two weeks of analysis. Delivered in hours."** — this stays exactly as is.
+
+### Copy must be:
+- **Human-crafted.** Talks to humans, friendly, non-arrogant, brilliant. Like a smart colleague, not a brochure.
+- **Simple.** A 12-year-old should understand what the product does. No jargon.
+- **YC-style clarity.** Say what it does in plain words. No staccato AI patterns.
+- **Opinionated with taste.** Every word earns its place. If a sentence doesn't add value, delete it.
+
+### Copy must NOT be:
+- AI slop staccato patterns ("Streamline your workflow. Leverage your data. Transform insights.")
+- Jargon nobody uses in real life ("evidence-to-executive reporting", "deterministic analysis pipeline")
+- Arrogant or self-congratulatory ("the most powerful", "revolutionary", "game-changing")
+- Generic SaaS copy that could describe any product
+- Em dashes used as sentence connectors
+
+### Examples of good copy (already in the product):
+- "Two weeks of analysis. Delivered in hours." (hero — clear, human, specific)
+- "Beautiful Intelligence." (tagline — evocative, memorable, distinctive)
+- "Upload your data. Get back a finished analysis." (subhead — says what it does)
+- "Story by AI. Math by code." (proof point — clever, concise)
+
+### Examples of bad copy (that was incorrectly introduced):
+- "Evidence-to-executive reporting" (jargon, nobody talks like this)
+- "6 free credits to start" (internal mechanics exposed to users)
+- "Enough for a 3-slide executive brief" (actively deterring)
+
 ### What the next agent must NOT do
 
 - Add more pages or routes (we have enough)
 - Touch the generation pipeline
-- Change the copy voice (Marco likes the current headlines)
+- Change the hero headline or tagline (Marco wrote them, they stay)
+- Rewrite copy in AI-slop staccato style
 - Add animations or transitions
 - Switch to Tailwind or any other CSS framework
 - Add new npm dependencies unless absolutely necessary
+- Use words like "leverage", "streamline", "empower", "transform", "elevate"
