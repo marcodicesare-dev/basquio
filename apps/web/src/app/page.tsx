@@ -162,49 +162,42 @@ export default function HomePage() {
         </div>
 
         <div className="hero-artifact-stack">
-          <article className="artifact-window hero-artifact-window">
-            <div className="artifact-window-top">
-              <span className="artifact-window-pill">Sample report</span>
-              <span className="artifact-window-meta">Category performance review</span>
+          <div className="hero-slide-gallery">
+            <div className="hero-slide-card hero-slide-card-back-2">
+              <Image
+                src="/showcase/slide-showcase-recommendations.svg"
+                alt="Strategic recommendations slide with three action levers"
+                width={480}
+                height={270}
+                priority
+              />
             </div>
-
-            <div className="hero-slide-preview">
-              <div className="slide-header">
-                <p className="artifact-kind">Slide 04</p>
-                <Image src="/brand/svg/icon/basquio-icon-amber.svg" alt="" width={24} height={18} aria-hidden />
-              </div>
-
-              <div className="stack">
-                <h2>Premium segment outperforms by 3.2x in tracked channels.</h2>
-                <p className="slide-note">
-                  Value share gains accelerate in mass and club while total category growth decelerates to +1.4% MAT.
-                </p>
-              </div>
-
-              <div className="hero-chart" aria-hidden>
-                <div className="hero-chart-bars">
-                  <span style={{ height: "36%" }} />
-                  <span style={{ height: "52%" }} />
-                  <span style={{ height: "68%" }} />
-                  <span className="accent" style={{ height: "92%" }} />
-                </div>
-                <div className="hero-chart-callout">
-                  <strong>+4.7 pts</strong>
-                  <span>value share, L52W</span>
-                </div>
-              </div>
-
-              <div className="artifact-evidence-row">
-                <span className="artifact-chip">PPTX</span>
-                <span className="artifact-chip">PDF</span>
-                <span className="artifact-chip subtle">Evidence linked</span>
-              </div>
+            <div className="hero-slide-card hero-slide-card-back">
+              <Image
+                src="/showcase/slide-showcase-chart.svg"
+                alt="Market structure chart comparing Cat vs Dog segments"
+                width={480}
+                height={270}
+                priority
+              />
             </div>
-          </article>
+            <div className="hero-slide-card hero-slide-card-front">
+              <Image
+                src="/showcase/slide-showcase-executive.svg"
+                alt="Executive overview slide showing market size and growth metrics"
+                width={480}
+                height={270}
+                priority
+              />
+            </div>
+          </div>
 
           <div className="hero-output-caption">
-            <p className="artifact-kind">Deliverables</p>
-            <p>One analysis. Two deliverables.</p>
+            <div className="artifact-evidence-row">
+              <span className="artifact-chip">PPTX</span>
+              <span className="artifact-chip">PDF</span>
+              <span className="artifact-chip subtle">11 slides from real data</span>
+            </div>
           </div>
         </div>
       </section>

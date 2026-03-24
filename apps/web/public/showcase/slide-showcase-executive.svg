@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540">
+  <defs>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- Slide frame -->
+  <rect width="960" height="540" fill="#ffffff" filter="url(#shadow)"/>
+
+  <!-- Top accent bar -->
+  <rect width="960" height="4" fill="#1a6aff"/>
+
+  <!-- Section label -->
+  <text x="56" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1.5" fill="#94A3B8" text-transform="uppercase">EXECUTIVE OVERVIEW</text>
+
+  <!-- Title -->
+  <text x="56" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">A 2.23B Market Flat in Value, Down in Volume</text>
+  <text x="56" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">Affinity Beats the Trend at +2.6%</text>
+
+  <!-- 4 metric cards row -->
+  <!-- Card 1: Total Market -->
+  <rect x="56" y="150" width="200" height="120" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
+  <text x="76" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">TOTAL MARKET VALUE</text>
+  <text x="76" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#0b0c0c" letter-spacing="-1">2.23B</text>
+  <text x="76" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#94A3B8">-0.4% vs PY</text>
+
+  <!-- Card 2: Cat Segment -->
+  <rect x="276" y="150" width="200" height="120" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
+  <text x="296" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">CAT SEGMENT</text>
+  <text x="296" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#1a6aff" letter-spacing="-1">1.38B</text>
+  <text x="296" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+1.0% vs PY</text>
+
+  <!-- Card 3: Dog Segment -->
+  <rect x="496" y="150" width="200" height="120" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
+  <text x="516" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">DOG SEGMENT</text>
+  <text x="516" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#0b0c0c" letter-spacing="-1">833M</text>
+  <text x="516" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#ef4444">-2.5% vs PY</text>
+
+  <!-- Card 4: Affinity -->
+  <rect x="716" y="150" width="200" height="120" rx="0" fill="#0b0c0c"/>
+  <text x="736" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">AFFINITY PERFORMANCE</text>
+  <text x="736" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#ffffff" letter-spacing="-1">105.2M</text>
+  <text x="736" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+2.6% vs PY</text>
+
+  <!-- Body text block -->
+  <text x="56" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#5d656b" line-height="1.6">
+    <tspan x="56" dy="0">The Italian petfood market reached 2.23B in 2025, virtually flat in value (-0.4%) and</tspan>
+    <tspan x="56" dy="20">meaningfully down in volume (-1.9%), confirming a post-inflation price-mix dynamic.</tspan>
+    <tspan x="56" dy="20">Cat outperforms Dog across every metric. Private Label at 34.8% is declining -2.9%,</tspan>
+    <tspan x="56" dy="20">creating a structural opening for credentialed branded players.</tspan>
+  </text>
+
+  <!-- Key finding callout -->
+  <rect x="56" y="400" width="848" height="60" rx="0" fill="#f0f7ff" stroke="#1a6aff" stroke-width="1" stroke-opacity="0.3"/>
+  <text x="76" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#1a6aff">KEY FINDING</text>
+  <text x="76" y="442" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0b0c0c">Affinity outgrows the market by 3pp but 95% of that gain sits in one brand in one segment. ULTIMA Cat is the engine.</text>
+
+  <!-- Source footer -->
+  <text x="56" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">Source: NielsenIQ RMS IT All Banners 2025</text>
+
+  <!-- Page number -->
+  <text x="916" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8" text-anchor="end">02</text>
+</svg>

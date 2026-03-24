@@ -346,6 +346,45 @@ textarea {
   gap: 18px;
 }
 
+.hero-slide-gallery {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/10;
+  perspective: 1200px;
+}
+
+.hero-slide-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(11, 12, 12, 0.15);
+  transition: transform 400ms ease, opacity 400ms ease;
+}
+
+.hero-slide-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-slide-card-front {
+  z-index: 3;
+  transform: translateY(0) scale(1);
+}
+
+.hero-slide-card-back {
+  z-index: 2;
+  transform: translateY(-12px) translateX(14px) scale(0.96);
+  opacity: 0.85;
+}
+
+.hero-slide-card-back-2 {
+  z-index: 1;
+  transform: translateY(-24px) translateX(28px) scale(0.92);
+  opacity: 0.65;
+}
+
 .hero-proof-strip,
 .artifact-evidence-row,
 .logo-strip {
