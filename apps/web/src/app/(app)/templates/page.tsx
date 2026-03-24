@@ -73,7 +73,7 @@ export default async function TemplatesPage() {
   return (
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
-        <h1>Templates</h1>
+        <h1>Brand system</h1>
 
         <Link className="button" href="/jobs/new">
           New report
