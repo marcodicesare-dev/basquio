@@ -12,8 +12,8 @@ type PublicSiteFooterCtaProps = {
 
 export function PublicSiteFooterCta({
   eyebrow = "Ready to try it?",
-  title = "6 free credits on signup.",
-  copy = "Enough for a 3-slide executive brief from your own data. No credit card required.",
+  title = "Your first report is free.",
+  copy = "Upload your data and see the output before you buy. No credit card required.",
   primaryLabel = "Try free →",
   primaryHref = "/jobs/new",
   secondaryLabel = "See how it works",

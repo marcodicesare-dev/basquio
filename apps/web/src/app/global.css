@@ -350,8 +350,13 @@ textarea {
 }
 
 .marketing-hero {
-  grid-template-columns: minmax(0, 1.02fr) minmax(320px, 0.98fr);
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  align-items: center;
+  gap: 40px;
+}
+
+.marketing-hero h1 {
+  font-size: clamp(2.4rem, 5vw, 3.8rem);
 }
 
 .landing-shell .technical-panel,
@@ -367,16 +372,17 @@ textarea {
 .hero-slide-gallery {
   position: relative;
   width: 100%;
+  max-width: 480px;
   aspect-ratio: 16/10;
-  perspective: 1200px;
+  margin: 0 auto;
 }
 
 .hero-slide-card {
   position: absolute;
   inset: 0;
-  border-radius: 0;
+  border-radius: 2px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(11, 12, 12, 0.15);
+  box-shadow: 0 4px 20px rgba(11, 12, 12, 0.18);
   transition: transform 400ms ease, opacity 400ms ease;
 }
 
@@ -2821,6 +2827,24 @@ textarea {
   box-shadow: 0 0 0 1px var(--blue), var(--shadow-panel);
 }
 
+.pricing-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pricing-badge {
+  display: inline-flex;
+  padding: 3px 10px;
+  background: var(--blue);
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 2px;
+}
+
 .pricing-tier-name {
   font-size: 0.84rem;
   font-weight: 600;
@@ -3110,4 +3134,110 @@ textarea {
   font-weight: 700;
   color: var(--text-inverse);
   font-variant-numeric: tabular-nums;
+}
+
+/* ─── BILLING PAGE ─────────────────────────────────────────────── */
+
+.billing-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.billing-stat-card {
+  padding: 24px;
+  text-align: center;
+}
+
+.billing-stat-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.billing-stat-value {
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-ledger {
+  padding: 0;
+  overflow: hidden;
+}
+
+.billing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.billing-table th {
+  text-align: left;
+  padding: 14px 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.billing-table td {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.billing-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ─── SETTINGS PAGE ────────────────────────────────────────────── */
+
+.settings-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-field:last-child {
+  border-bottom: none;
+}
+
+.settings-field-label {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.settings-field-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ─── SIDEBAR BOTTOM NAV ──────────────────────────────────────── */
+
+.sidebar-bottom-nav {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: auto;
+}
+
+@media (max-width: 1080px) {
+  .billing-stats-row {
+    grid-template-columns: 1fr;
+  }
 }
