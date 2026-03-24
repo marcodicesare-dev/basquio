@@ -1,35 +1,40 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { publicNavLinks } from "@/app/site-content";
-
 export function PublicSiteFooter() {
   return (
     <footer className="site-footer">
-      <div className="site-footer-brand stack">
-        <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={168} height={27} />
-        <p className="muted">Executive-grade reporting from structured data.</p>
-        <p className="muted">
-          Contact:{" "}
-          <a href="mailto:marco@basquio.com">
-            marco@basquio.com
-          </a>
-        </p>
-      </div>
+      <div className="site-footer-grid">
+        <div className="site-footer-brand stack">
+          <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={168} height={27} />
+          <p className="muted">Evidence-to-executive reporting.</p>
+        </div>
 
-      <div className="site-footer-links">
-        {publicNavLinks.map((link) => (
-          <Link key={link.href} href={link.href}>
-            {link.label}
-          </Link>
-        ))}
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/terms">Terms</Link>
-        <Link href="/sign-in">Sign in</Link>
+        <div className="site-footer-column">
+          <p className="site-footer-column-title">Product</p>
+          <Link href="/#pipeline">How it works</Link>
+          <Link href="/pricing">Pricing</Link>
+          <Link href="/compare">Compare</Link>
+          <Link href="/jobs/new">Try free</Link>
+        </div>
+
+        <div className="site-footer-column">
+          <p className="site-footer-column-title">Resources</p>
+          <Link href="/get-started">Get started</Link>
+          <Link href="/how-it-works">Full pipeline</Link>
+          <Link href="/about">About</Link>
+          <a href="mailto:marco@basquio.com">Contact</a>
+        </div>
+
+        <div className="site-footer-column">
+          <p className="site-footer-column-title">Legal</p>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/terms">Terms</Link>
+          <Link href="/sign-in">Sign in</Link>
+        </div>
       </div>
 
       <div className="site-footer-meta">
-        <p>Built by Marco Di Cesare in Zurich.</p>
         <p>© 2026 Basquio</p>
       </div>
     </footer>

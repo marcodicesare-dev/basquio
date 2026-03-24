@@ -1234,16 +1234,45 @@ textarea {
 }
 
 .site-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
+  display: grid;
+  gap: 32px;
   padding: 0 4px 12px;
+}
+
+.site-footer-grid {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(3, 1fr);
+  gap: 32px;
 }
 
 .site-footer-brand {
   max-width: 24rem;
+}
+
+.site-footer-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--text-soft);
+}
+
+.site-footer-column a {
+  color: var(--text-soft);
+  text-decoration: none;
+}
+
+.site-footer-column a:hover {
+  color: var(--text);
+}
+
+.site-footer-column-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
 }
 
 .site-footer-links {
@@ -1256,9 +1285,15 @@ textarea {
 .site-footer-meta {
   display: grid;
   gap: 4px;
-  justify-items: end;
   color: var(--text-muted);
-  text-align: right;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .site-footer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .site-footer-meta p {
