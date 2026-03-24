@@ -106,25 +106,25 @@ const homepagePipeline = [
     stage: "01",
     title: "Upload one evidence package",
     detail: "CSVs, spreadsheets, briefs, and brand files from one reporting cycle.",
-    time: "~30 sec",
+    time: "Step 1",
   },
   {
     stage: "02",
     title: "Compute what matters",
     detail: "Structure the data, run the math, rank the signals worth presenting.",
-    time: "~60 sec",
+    time: "Step 2",
   },
   {
     stage: "03",
     title: "Build the narrative",
     detail: "Shape the story for your audience with every claim traced to source.",
-    time: "~90 sec",
+    time: "Step 3",
   },
   {
     stage: "04",
     title: "Deliver both formats",
     detail: "An editable PPTX and a polished PDF from the same analysis.",
-    time: "~30 sec",
+    time: "Step 4",
   },
 ];
 
@@ -222,8 +222,8 @@ export default function HomePage() {
               <span className="stat-label">years in CPG reporting</span>
             </div>
             <div className="stat-block">
-              <span className="stat-number">&lt;5 min</span>
-              <span className="stat-label">average generation time</span>
+              <span className="stat-number">5-15 min</span>
+              <span className="stat-label">typical generation time</span>
             </div>
             <div className="stat-block">
               <span className="stat-number">2</span>
@@ -275,8 +275,8 @@ export default function HomePage() {
             </div>
             <div className="showcase-feature-list">
               <div className="showcase-feature">
-                <strong>Native charts</strong>
-                <p className="muted">Every chart is a real editable PowerPoint chart object, not an image.</p>
+                <strong>Professional charts</strong>
+                <p className="muted">High-resolution charts rendered from your data and embedded as locked visuals for consistent display.</p>
               </div>
               <div className="showcase-feature">
                 <strong>Speaker notes</strong>

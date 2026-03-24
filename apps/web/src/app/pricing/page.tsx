@@ -10,7 +10,7 @@ import { BuyCreditsButton } from "@/components/buy-credits-button";
 export const metadata: Metadata = {
   title: "Pricing | Basquio",
   description:
-    "Pay per slide: 3 base credits + 1 per slide. First deck free. Buy credits in packs starting at $15.",
+    "Pay per slide: 3 base credits + 1 per slide. 6 free credits on signup. Buy credit packs starting at $15.",
 };
 
 const BASE_CREDITS = 3;

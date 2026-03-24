@@ -107,9 +107,9 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">Pricing</p>
-            <h2>Your first report is free.</h2>
+            <h2>6 free credits on signup.</h2>
             <p className="muted">
-              No credit card. No commitment. Generate one full report from your own data at zero cost.
+              No credit card. No commitment. Enough for one 3-slide executive brief from your own data.
             </p>
             <p className="muted">
               After that, pay per slide: 3 base credits + 1 per slide. A 10-slide deck costs 13 credits.

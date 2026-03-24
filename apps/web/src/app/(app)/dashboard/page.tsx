@@ -80,8 +80,8 @@ export default async function DashboardPage() {
       ) : (
         <section className="panel workspace-empty-card onboarding-card">
           <div className="stack">
-            <h2>Your first report is free</h2>
-            <p className="muted">Upload your data, pick a report type, and Basquio builds a consulting-grade deck in minutes.</p>
+            <h2>6 free credits to start</h2>
+            <p className="muted">Enough for one 3-slide executive brief. Upload your data, pick a report type, and see the output before you buy.</p>
           </div>
           <div className="onboarding-steps">
             <div className="onboarding-step">
