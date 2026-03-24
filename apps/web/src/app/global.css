@@ -2031,11 +2031,28 @@ textarea {
 
 .file-chip {
   display: inline-grid;
-  gap: 2px;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.8);
+}
+
+.file-chip-type {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  background: var(--blue);
+  color: white;
+  font-size: 0.64rem;
+  font-weight: 700;
+  font-family: var(--font-jetbrains-mono), monospace;
+  letter-spacing: 0.05em;
+  border-radius: 2px;
+  line-height: 1.4;
 }
 
 .file-chip small {

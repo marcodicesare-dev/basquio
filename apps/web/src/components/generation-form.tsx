@@ -391,10 +391,14 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
                   <div className="file-list">
                     {evidenceFiles.map((file) => (
                       <div key={`${file.name}-${file.size}`} className="file-chip">
+                        <span className="file-chip-type">{inferFileType(file.name)}</span>
                         <span>{file.name}</span>
                         <small>{formatFileSize(file.size)}</small>
                       </div>
                     ))}
+                    <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
+                      {evidenceFiles.length} file{evidenceFiles.length === 1 ? "" : "s"} · {formatFileSize(evidenceFiles.reduce((sum, f) => sum + f.size, 0))} total
+                    </p>
                   </div>
                 ) : null}
               </div>
@@ -695,6 +699,27 @@ function validateSubmission(
   if (!brief.businessContext || !brief.audience || !brief.objective) {
     throw new Error("Add the business context, audience, and objective before generating.");
   }
+}
+
+function inferFileType(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    csv: "CSV",
+    xlsx: "XLSX",
+    xls: "XLS",
+    pdf: "PDF",
+    pptx: "PPTX",
+    json: "JSON",
+    css: "CSS",
+    txt: "TXT",
+    md: "TXT",
+    doc: "DOC",
+    docx: "DOCX",
+    png: "IMG",
+    jpg: "IMG",
+    jpeg: "IMG",
+  };
+  return map[ext] ?? "FILE";
 }
 
 function formatFileSize(bytes: number) {
