@@ -38,20 +38,23 @@ export async function handleBotMention(message: Message, query: string): Promise
 }
 
 /**
- * Try to extract a document name from a query like "summarize the 24-march-summary doc"
- * or "riassumi il documento 24-march-summary". Returns null if no doc reference found.
+ * Try to extract a document name from the query. Strategy:
+ * 1. Look for filename-like tokens (contain hyphens + digits, or have file extensions)
+ * 2. These naturally appear in queries like "summarize the 24-march-summary doc"
+ *    or "in base al 24-march-summary doc il concetto di..."
  */
 function extractDocReference(query: string): string | null {
-  // Match patterns like "summarize X doc", "summary of X", "riassumi X", "documento X"
-  const patterns = [
-    /(?:summarize|summary|summarise|riassumi|riassunto|resumi)\s+(?:the\s+|il\s+|del\s+|di\s+)?(?:doc(?:ument(?:o)?)?(?:\s+called)?\s+)?(.+?)(?:\s+doc(?:ument(?:o)?)?)?$/i,
-    /(?:doc(?:ument(?:o)?)?|file)\s+(?:called\s+)?["']?([^"']+)["']?/i,
-  ];
-  for (const pat of patterns) {
-    const m = query.match(pat);
-    if (m?.[1]) {
-      // Clean up: remove trailing "doc/document", trim
-      return m[1].replace(/\s+doc(ument(o)?)?$/i, "").trim();
+  // Split into tokens and find anything that looks like a filename/slug
+  // e.g. "24-march-summary", "Document_Mar_20_2026.md", "q1-report"
+  const tokens = query.split(/\s+/);
+  for (const token of tokens) {
+    // Strip file extension first (before punctuation removal eats the dot)
+    const noExt = token.replace(/\.(md|txt|pdf|doc|docx)$/i, "");
+    const cleaned = noExt.replace(/["""''?,!.:;()]/g, "");
+    // Must have a hyphen or underscore (filename-like), and be 5+ chars
+    if (cleaned.length >= 5 && /[-_]/.test(cleaned) && /[a-zA-Z]/.test(cleaned)) {
+      // Strip trailing "doc", "document", "documento"
+      return cleaned.replace(/[-_]?doc(ument(o)?)?$/i, "").trim();
     }
   }
   return null;
