@@ -1,7 +1,7 @@
 import { EmbedBuilder, type Message, type TextChannel } from "discord.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { embedQuery } from "./embedder.js";
-import { hybridSearch, getDocumentMeta, getTranscriptMeta } from "./supabase.js";
+import { hybridSearch, getDocumentMeta, getTranscriptMeta, getDocumentChunksByName } from "./supabase.js";
 import { env } from "./config.js";
 import type { SearchResult, Source } from "./kb-types.js";
 
@@ -38,14 +38,74 @@ export async function handleBotMention(message: Message, query: string): Promise
 }
 
 /**
+ * Try to extract a document name from a query like "summarize the 24-march-summary doc"
+ * or "riassumi il documento 24-march-summary". Returns null if no doc reference found.
+ */
+function extractDocReference(query: string): string | null {
+  // Match patterns like "summarize X doc", "summary of X", "riassumi X", "documento X"
+  const patterns = [
+    /(?:summarize|summary|summarise|riassumi|riassunto|resumi)\s+(?:the\s+|il\s+|del\s+|di\s+)?(?:doc(?:ument(?:o)?)?(?:\s+called)?\s+)?(.+?)(?:\s+doc(?:ument(?:o)?)?)?$/i,
+    /(?:doc(?:ument(?:o)?)?|file)\s+(?:called\s+)?["']?([^"']+)["']?/i,
+  ];
+  for (const pat of patterns) {
+    const m = query.match(pat);
+    if (m?.[1]) {
+      // Clean up: remove trailing "doc/document", trim
+      return m[1].replace(/\s+doc(ument(o)?)?$/i, "").trim();
+    }
+  }
+  return null;
+}
+
+/**
  * Run hybrid search + Claude synthesis.
  */
 export async function search(query: string): Promise<SearchResult> {
+  // 0. Check if user is asking about a specific document — if so, fetch ALL its chunks
+  const docRef = extractDocReference(query);
+  let docFullContext: { filename: string; contextParts: string[]; sources: Source[] } | null = null;
+
+  if (docRef) {
+    const docData = await getDocumentChunksByName(docRef);
+    if (docData && docData.chunks.length > 0) {
+      console.log(`📄 Doc query detected: "${docRef}" → ${docData.filename} (${docData.chunks.length} chunks)`);
+      const sources: Source[] = [{
+        type: "document",
+        name: docData.filename,
+        snippet: docData.chunks[0]!.content.slice(0, 200),
+        metadata: {},
+      }];
+      const contextParts = docData.chunks.map((c, i) =>
+        `[1] (uploaded doc: ${docData.filename}, chunk ${i + 1}/${docData.chunks.length}) ${c.content}`
+      );
+      docFullContext = { filename: docData.filename, contextParts, sources };
+    }
+  }
+
+  // If we got full doc context, skip hybrid search entirely
+  if (docFullContext) {
+    const synthesis = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks, which contain the FULL content of the document "${docFullContext.filename}". Give a comprehensive summary covering all sections. Respond in the same language as the question.`,
+      messages: [{
+        role: "user",
+        content: `Question: ${query}\n\nFull document context:\n${docFullContext.contextParts.join("\n\n")}`,
+      }],
+    });
+
+    const answer = synthesis.content[0].type === "text"
+      ? synthesis.content[0].text
+      : "Could not generate an answer.";
+
+    return { answer, sources: docFullContext.sources, confidence: "high" };
+  }
+
   // 1. Embed query
   const queryEmbedding = await embedQuery(query);
 
-  // 2. Hybrid search
-  const chunks = await hybridSearch(query, queryEmbedding, 10);
+  // 2. Hybrid search (bump to 15 for better coverage)
+  const chunks = await hybridSearch(query, queryEmbedding, 15);
 
   if (chunks.length === 0) {
     return {
@@ -101,7 +161,7 @@ export async function search(query: string): Promise<SearchResult> {
   const synthesis = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
-    system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks. Cite sources by [number]. If the context doesn't contain enough info, say so — never make things up. Keep answers concise (2-5 sentences) unless the question demands detail.
+    system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks. Cite sources by [number]. If the context doesn't contain enough info, say so — never make things up. Keep answers concise (2-5 sentences) unless the question demands detail. IMPORTANT: Respond in the same language as the question (e.g. Italian question → Italian answer).
 
 Important:
 - Each source is labeled as "uploaded doc" or "voice/text transcript". Treat them as distinct — an uploaded screenshot about a person is different from a voice session where a similarly-named team member participated.
