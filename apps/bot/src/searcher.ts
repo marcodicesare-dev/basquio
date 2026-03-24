@@ -49,7 +49,7 @@ async function resolveDocIntent(query: string): Promise<{ docId: string; filenam
   const docList = docs.map((d) => `- id="${d.id}" filename="${d.filename}"`).join("\n");
 
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4",
+    model: "claude-haiku-4-5",
     max_tokens: 200,
     system: `You are an intent classifier. Given a user query and a list of available documents, determine if the user is asking about a SPECIFIC document. If yes, return ONLY the document id. If no specific document is referenced, return "NONE".
 
