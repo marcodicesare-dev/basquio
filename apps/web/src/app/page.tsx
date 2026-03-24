@@ -119,10 +119,10 @@ export default function HomePage() {
         <div className="hero-artifact-column">
           <div className="hero-artifact-frame">
             <Image
-              src="/showcase/hero-affinity-market-structure.png"
+              src="/showcase/slide-chart@2x.png"
               alt="Basquio market structure slide with a category bar chart based on Affinity pet care data"
-              width={1920}
-              height={1080}
+              width={960}
+              height={540}
               priority
             />
           </div>

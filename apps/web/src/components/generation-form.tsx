@@ -437,7 +437,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                 {evidenceFiles.length > 0 ? (
                   <div className="file-list">
                     {evidenceFiles.map((file) => (
-                      <div key={`${file.name}-${file.size}`} className="file-chip">
+                      <div key={`${file.name}-${file.size}-${file.lastModified}`} className="file-chip">
                         <span className="file-chip-type">{inferFileType(file.name)}</span>
                         <span>{file.name}</span>
                         <small>{formatFileSize(file.size)}</small>

@@ -4248,4 +4248,40 @@ textarea {
   .pricing-hero-copy h1 {
     max-width: none;
   }
+
+  .landing-nav-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .landing-nav-brand-row,
+  .landing-nav-actions {
+    width: 100%;
+  }
+
+  .landing-nav-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .public-nav-links {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .public-nav-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .public-nav-link {
+    min-height: 40px;
+    font-size: 0.82rem;
+  }
+
+  .landing-nav-actions {
+    grid-template-columns: 1fr;
+  }
 }
