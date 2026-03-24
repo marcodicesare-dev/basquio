@@ -2942,6 +2942,52 @@ textarea {
 
 /* ─── CREDIT EXAMPLES ─────────────────────────────────────────── */
 
+/* ─── INLINE PRICING (landing page) ────────────────────────────── */
+
+.pricing-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pricing-inline-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  text-align: center;
+}
+
+.pricing-inline-card-highlighted {
+  border-color: var(--blue);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+.pricing-inline-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.pricing-inline-price {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .pricing-inline-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .credit-example-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));

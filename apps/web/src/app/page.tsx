@@ -233,8 +233,8 @@ export default function HomePage() {
             <p className="section-label light">How it works</p>
             <h2>From evidence package to executive deck in four steps.</h2>
           </div>
-          <Link className="button secondary inverted" href="/how-it-works">
-            See the full pipeline
+          <Link className="button secondary inverted" href="/jobs/new">
+            Try it now
           </Link>
         </div>
 
@@ -330,20 +330,57 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Personas ── */}
+      {/* ── Use cases ── */}
       <section className="panel persona-panel">
         <div className="stack">
-          <p className="section-label">Who it&apos;s for</p>
-          <h2>Choose the reporting workflow that matches your team.</h2>
+          <p className="section-label">Use cases</p>
+          <h2>One engine. Four workflows.</h2>
         </div>
 
         <div className="persona-grid">
           {personas.map((persona) => (
-            <Link key={persona.slug} className="persona-card" href={`/for/${persona.slug}`}>
+            <div key={persona.slug} className="persona-card">
               <span className="artifact-kind">{persona.title}</span>
               <span>{persona.summary}</span>
-            </Link>
+              <span className="muted" style={{ fontSize: "0.82rem" }}>{persona.challenge}</span>
+            </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── Inline pricing ── */}
+      <section className="panel stack-xl" id="pricing">
+        <div className="stack" style={{ maxWidth: 540 }}>
+          <p className="section-label">Pricing</p>
+          <h2>Pay per slide. 6 free credits to start.</h2>
+          <p className="muted">
+            Every deck costs 3 base credits + 1 per slide. A 10-slide deck costs 13 credits.
+            Credits never expire. Buy in packs — the more you buy, the less each slide costs.
+          </p>
+        </div>
+
+        <div className="pricing-inline-grid">
+          <div className="pricing-inline-card">
+            <p className="pricing-inline-name">Starter</p>
+            <p className="pricing-inline-price">$15</p>
+            <p className="muted">25 credits · $0.60/credit</p>
+          </div>
+          <div className="pricing-inline-card pricing-inline-card-highlighted">
+            <p className="pricing-inline-name">Standard</p>
+            <p className="pricing-inline-price">$25</p>
+            <p className="muted">50 credits · $0.50/credit</p>
+          </div>
+          <div className="pricing-inline-card">
+            <p className="pricing-inline-name">Pro</p>
+            <p className="pricing-inline-price">$40</p>
+            <p className="muted">100 credits · $0.40/credit</p>
+          </div>
+        </div>
+
+        <div className="row" style={{ justifyContent: "center" }}>
+          <Link className="button" href="/pricing">
+            See full pricing
+          </Link>
         </div>
       </section>
 
