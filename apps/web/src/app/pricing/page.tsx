@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
+import { BuyCreditsButton } from "@/components/buy-credits-button";
 
 export const metadata: Metadata = {
   title: "Pricing | Basquio",
@@ -11,7 +12,6 @@ export const metadata: Metadata = {
     "Pay per slide: 3 base credits + 1 per slide. First deck free. Buy credits in packs starting at $15.",
 };
 
-const CREDIT_PRICE_DISPLAY = "$0.75";
 const BASE_CREDITS = 3;
 
 const examples = [
@@ -31,7 +31,7 @@ const packs = [
     perCredit: "$0.60",
     enough: "Enough for two 8-slide decks",
     highlighted: false,
-    href: "/jobs/new?pack=25",
+    packId: "pack_25",
   },
   {
     name: "Standard",
@@ -40,7 +40,7 @@ const packs = [
     perCredit: "$0.50",
     enough: "Enough for four 10-slide decks",
     highlighted: true,
-    href: "/jobs/new?pack=50",
+    packId: "pack_50",
   },
   {
     name: "Pro",
@@ -49,7 +49,7 @@ const packs = [
     perCredit: "$0.40",
     enough: "Enough for seven 10-slide decks",
     highlighted: false,
-    href: "/jobs/new?pack=100",
+    packId: "pack_100",
   },
   {
     name: "Team",
@@ -174,12 +174,20 @@ export default function PricingPage() {
               )}
             </div>
 
-            <Link
-              className={pack.highlighted ? "button" : "button secondary"}
-              href={pack.href}
-            >
-              {pack.name === "Team" ? "Contact us" : `Buy ${pack.credits} credits`}
-            </Link>
+            {pack.name === "Team" ? (
+              <Link
+                className="button secondary"
+                href="mailto:marco@basquio.com?subject=Basquio%20Team%20plan"
+              >
+                Contact us
+              </Link>
+            ) : (
+              <BuyCreditsButton
+                packId={pack.packId}
+                label={`Buy ${pack.credits} credits`}
+                highlighted={pack.highlighted}
+              />
+            )}
           </article>
         ))}
       </section>
