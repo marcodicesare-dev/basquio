@@ -38,24 +38,40 @@ export async function handleBotMention(message: Message, query: string): Promise
 }
 
 /**
- * Try to extract a document name from the query. Strategy:
- * 1. Look for filename-like tokens (contain hyphens + digits, or have file extensions)
- * 2. These naturally appear in queries like "summarize the 24-march-summary doc"
- *    or "in base al 24-march-summary doc il concetto di..."
+ * Use Claude as a fast intent router to decide if the query references
+ * a specific document. Returns the doc ID if so, null otherwise.
+ * This replaces fragile regex — the model understands any language and phrasing.
  */
-function extractDocReference(query: string): string | null {
-  // Split into tokens and find anything that looks like a filename/slug
-  // e.g. "24-march-summary", "Document_Mar_20_2026.md", "q1-report"
-  const tokens = query.split(/\s+/);
-  for (const token of tokens) {
-    // Strip file extension first (before punctuation removal eats the dot)
-    const noExt = token.replace(/\.(md|txt|pdf|doc|docx)$/i, "");
-    const cleaned = noExt.replace(/["""''?,!.:;()]/g, "");
-    // Must have a hyphen or underscore (filename-like), and be 5+ chars
-    if (cleaned.length >= 5 && /[-_]/.test(cleaned) && /[a-zA-Z]/.test(cleaned)) {
-      // Strip trailing "doc", "document", "documento"
-      return cleaned.replace(/[-_]?doc(ument(o)?)?$/i, "").trim();
-    }
+async function resolveDocIntent(query: string): Promise<{ docId: string; filename: string } | null> {
+  const docs = await listIndexedDocuments();
+  if (docs.length === 0) return null;
+
+  const docList = docs.map((d) => `- id="${d.id}" filename="${d.filename}"`).join("\n");
+
+  const response = await anthropic.messages.create({
+    model: "claude-haiku-4",
+    max_tokens: 200,
+    system: `You are an intent classifier. Given a user query and a list of available documents, determine if the user is asking about a SPECIFIC document. If yes, return ONLY the document id. If no specific document is referenced, return "NONE".
+
+Available documents:
+${docList}
+
+Rules:
+- Match by meaning, not exact string. "24-march-summary" matches "24-march-summary.md".
+- "the doc about march 24" or "il documento del 24 marzo" should match if there's a relevant doc.
+- If the user asks a general question without referencing a specific doc, return NONE.
+- Return ONLY the id string or NONE. Nothing else.`,
+    messages: [{ role: "user", content: query }],
+  });
+
+  const result = response.content[0].type === "text" ? response.content[0].text.trim() : "";
+  if (result === "NONE" || !result) return null;
+
+  // Validate the returned ID against our doc list
+  const matched = docs.find((d) => d.id === result);
+  if (!matched) {
+    console.log(`⚠️ Intent classifier returned unknown doc id: ${result}`);
+    return null;
   }
 
   return matched;
