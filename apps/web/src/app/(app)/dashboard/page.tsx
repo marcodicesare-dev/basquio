@@ -106,8 +106,8 @@ export default async function DashboardPage() {
           <p className="billing-stat-value">{creditBalance}</p>
         </article>
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">Reports</p>
-          <p className="billing-stat-value">{totalRuns}</p>
+          <p className="billing-stat-label">Completed</p>
+          <p className="billing-stat-value">{completedRuns.length}</p>
         </article>
         <article className="panel billing-stat-card">
           <p className="billing-stat-label">Slides</p>

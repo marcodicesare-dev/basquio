@@ -90,11 +90,11 @@ export default async function BillingPage() {
           <p className="billing-stat-value">{balance}</p>
         </article>
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">Reports generated</p>
+          <p className="billing-stat-label">Runs started</p>
           <p className="billing-stat-value">{totalRuns}</p>
         </article>
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">Credits used</p>
+          <p className="billing-stat-label">Credits spent</p>
           <p className="billing-stat-value">{totalSpent}</p>
         </article>
       </div>

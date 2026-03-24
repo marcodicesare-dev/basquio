@@ -27,7 +27,7 @@ export default async function SettingsPage() {
             </div>
             <div className="settings-field">
               <span className="settings-field-label">Authentication</span>
-              <span className="settings-field-value">Email + password</span>
+              <span className="settings-field-value">Email + password, Google</span>
             </div>
           </div>
         </article>

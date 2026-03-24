@@ -41,7 +41,7 @@ export function AppShell({
     <div className="app-frame">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <Link href="/" className="brand-lockup" aria-label="Basquio home">
+          <Link href="/dashboard" className="brand-lockup" aria-label="Basquio home">
             <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={178} height={30} priority />
           </Link>
         </div>
