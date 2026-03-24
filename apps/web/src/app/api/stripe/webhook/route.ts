@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { grantPurchaseCredits } from "@/lib/credits";
+import { grantPurchaseCredits, checkPaymentAlreadyProcessed } from "@/lib/credits";
 import { getStripe, DECK_PRODUCTS, type DeckTier } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -77,6 +77,19 @@ export async function POST(request: Request) {
     }
 
     try {
+      // Idempotency: check if this payment_intent was already processed.
+      // Stripe retries webhooks on non-2xx, so this prevents double-crediting.
+      const alreadyProcessed = await checkPaymentAlreadyProcessed({
+        supabaseUrl,
+        serviceKey,
+        paymentIntentId,
+      });
+
+      if (alreadyProcessed) {
+        console.log(`[stripe-webhook] already processed pi=${paymentIntentId}, skipping`);
+        return NextResponse.json({ received: true });
+      }
+
       await grantPurchaseCredits({
         supabaseUrl,
         serviceKey,

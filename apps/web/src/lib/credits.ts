@@ -95,6 +95,23 @@ export async function grantPurchaseCredits(
 }
 
 /**
+ * Check if a Stripe payment_intent has already been processed.
+ * Used for webhook idempotency — prevents double-crediting on retries.
+ */
+export async function checkPaymentAlreadyProcessed(
+  config: SupabaseConfig & { paymentIntentId: string },
+): Promise<boolean> {
+  const rows = await queryRest<{ id: string }>(config, "credit_ledger", {
+    reference_id: `eq.${config.paymentIntentId}`,
+    reason: "in.(purchase_standard,purchase_pro,purchase_pack)",
+    select: "id",
+    limit: "1",
+  });
+
+  return rows.length > 0;
+}
+
+/**
  * Refund a credit for a failed run.
  */
 export async function refundCredit(

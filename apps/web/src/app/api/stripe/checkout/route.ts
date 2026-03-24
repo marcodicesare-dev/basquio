@@ -32,9 +32,10 @@ export async function POST(request: Request) {
 
     const origin = request.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://basquio.com";
 
+    // payment_method_types is omitted — Stripe auto-detects available methods
+    // per the 2026-02-25.clover API. See docs.stripe.com/api/checkout/sessions/create
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
       line_items: [
         {
           price: priceId,
