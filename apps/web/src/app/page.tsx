@@ -165,8 +165,8 @@ export default function HomePage() {
           <div className="hero-slide-gallery">
             <div className="hero-slide-card hero-slide-card-back-2">
               <Image
-                src="/showcase/slide-showcase-recommendations.svg"
-                alt="Strategic recommendations slide with three action levers"
+                src="/showcase/slide-recommendations.png"
+                alt="Strategic recommendations slide"
                 width={480}
                 height={270}
                 priority
@@ -174,8 +174,8 @@ export default function HomePage() {
             </div>
             <div className="hero-slide-card hero-slide-card-back">
               <Image
-                src="/showcase/slide-showcase-chart.svg"
-                alt="Market structure chart comparing Cat vs Dog segments"
+                src="/showcase/slide-chart.png"
+                alt="Market structure chart"
                 width={480}
                 height={270}
                 priority
@@ -183,8 +183,8 @@ export default function HomePage() {
             </div>
             <div className="hero-slide-card hero-slide-card-front">
               <Image
-                src="/showcase/slide-showcase-executive.svg"
-                alt="Executive overview slide showing market size and growth metrics"
+                src="/showcase/slide-executive.png"
+                alt="Executive overview with market metrics"
                 width={480}
                 height={270}
                 priority
