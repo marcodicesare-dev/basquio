@@ -71,9 +71,19 @@ export function RunProgressView(input: {
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [missingPollCount, setMissingPollCount] = useState(0);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   // Monotonic progress: never goes backward
   const maxProgressRef = useRef(2);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
+
+  // Fetch credit balance when run completes
+  useEffect(() => {
+    if (snapshot?.status !== "completed") return;
+    fetch("/api/credits", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => setCreditBalance(data.balance ?? null))
+      .catch(() => {});
+  }, [snapshot?.status]);
 
   // Polling
   useEffect(() => {
@@ -146,6 +156,27 @@ export function RunProgressView(input: {
             {slideCount} slides · {creditsCost} credits · {elapsedMin}m {elapsedSec}s
           </p>
 
+          {/* Inline PDF preview */}
+          <div style={{
+            width: "100%",
+            borderRadius: 4,
+            overflow: "hidden",
+            border: "1px solid rgba(255,255,255,0.08)",
+            marginBottom: "1.5rem",
+            background: "#1a1a24",
+          }}>
+            <object
+              data={`/api/artifacts/${snapshot.jobId}/pdf#toolbar=0&navpanes=0`}
+              type="application/pdf"
+              style={{ width: "100%", height: 420, display: "block" }}
+            >
+              <p style={{ padding: "2rem", color: "#A09FA6", textAlign: "center", fontSize: "0.88rem" }}>
+                PDF preview not available in this browser.{" "}
+                <a href={`/api/artifacts/${snapshot.jobId}/pdf`} style={{ color: "#E8A84C" }}>Download instead</a>
+              </p>
+            </object>
+          </div>
+
           {/* Download actions */}
           <div style={{ display: "flex", gap: "1rem", marginBottom: "2rem" }}>
             <a href={`/api/artifacts/${snapshot.jobId}/pptx`} style={styles.primaryButton}>
@@ -173,7 +204,7 @@ export function RunProgressView(input: {
           </div>
 
           {/* Actions */}
-          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", justifyContent: "center" }}>
+          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", justifyContent: "center", marginBottom: creditBalance !== null && creditBalance <= 0 ? "2rem" : 0 }}>
             <Link href={`/jobs/new?from=${snapshot.jobId}`} style={{ color: "#E8A84C", fontSize: "0.92rem", fontWeight: 600 }}>
               Rerun with changes
             </Link>
@@ -184,6 +215,37 @@ export function RunProgressView(input: {
               Dashboard
             </Link>
           </div>
+
+          {/* Upgrade prompt when credits are exhausted */}
+          {creditBalance !== null && creditBalance <= 0 ? (
+            <div style={{
+              width: "100%",
+              padding: "20px 24px",
+              background: "rgba(232, 168, 76, 0.08)",
+              border: "1px solid rgba(232, 168, 76, 0.2)",
+              borderRadius: 4,
+              textAlign: "center",
+            }}>
+              <p style={{ color: "#F2F0EB", fontSize: "0.95rem", fontWeight: 600, marginBottom: 4 }}>
+                You used all your free credits
+              </p>
+              <p style={{ color: "#A09FA6", fontSize: "0.84rem", marginBottom: 16 }}>
+                Buy a credit pack to generate your next deck. 25 credits for $15.
+              </p>
+              <Link href="/pricing" style={{
+                display: "inline-block",
+                padding: "10px 24px",
+                background: "#E8A84C",
+                color: "#0A090D",
+                fontWeight: 700,
+                fontSize: "0.88rem",
+                borderRadius: 4,
+                textDecoration: "none",
+              }}>
+                Buy credits
+              </Link>
+            </div>
+          ) : null}
         </div>
       </div>
     );
