@@ -2653,3 +2653,176 @@ textarea {
 .onboarding-step .muted {
   font-size: 0.82rem;
 }
+
+/* ─── PRICING PAGE ────────────────────────────────────────────── */
+
+.pricing-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .pricing-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pricing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 30px;
+}
+
+.pricing-card .button {
+  margin-top: auto;
+  text-align: center;
+}
+
+.pricing-card-highlighted {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue), var(--shadow-panel);
+}
+
+.pricing-tier-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.pricing-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.pricing-price {
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.pricing-unit {
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+.pricing-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.pricing-features li {
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  padding-left: 20px;
+  position: relative;
+}
+
+.pricing-features li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  opacity: 0.5;
+}
+
+.pricing-card-highlighted .pricing-features li::before {
+  opacity: 1;
+}
+
+/* ─── FAQ ──────────────────────────────────────────────────────── */
+
+.faq-list {
+  display: grid;
+  gap: 2px;
+}
+
+.faq-item {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border-inverse);
+}
+
+.faq-item:last-child {
+  border-bottom: none;
+}
+
+.faq-item summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-inverse);
+  list-style: none;
+}
+
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-item[open] summary {
+  margin-bottom: 8px;
+}
+
+.faq-item .muted {
+  color: var(--text-inverse-soft);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+/* ─── REPORT TYPE PRESETS ─────────────────────────────────────── */
+
+.report-type-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.report-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.report-type-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.report-type-card.selected {
+  border-color: var(--blue);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+.report-type-card strong {
+  font-size: 0.92rem;
+}
+
+.report-type-card .muted {
+  font-size: 0.82rem;
+}

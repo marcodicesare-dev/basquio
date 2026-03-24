@@ -151,9 +151,17 @@ export function RunProgressView(input: {
             </a>
           </div>
 
-          <Link href="/jobs/new" style={{ color: "#E8A84C", fontSize: "0.95rem", marginTop: "2rem", display: "block" }}>
-            Generate another deck →
-          </Link>
+          <div style={{ display: "flex", gap: "1.5rem", marginTop: "2rem", flexWrap: "wrap", justifyContent: "center" }}>
+            <Link href="/jobs/new" style={{ color: "#E8A84C", fontSize: "0.92rem" }}>
+              New report
+            </Link>
+            <Link href={`/jobs/new?from=${snapshot.jobId}`} style={{ color: "#A09FA6", fontSize: "0.92rem" }}>
+              Rerun with changes
+            </Link>
+            <Link href="/dashboard" style={{ color: "#A09FA6", fontSize: "0.92rem" }}>
+              Dashboard
+            </Link>
+          </div>
         </div>
       </div>
     );

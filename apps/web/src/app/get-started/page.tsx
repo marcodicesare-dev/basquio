@@ -112,7 +112,8 @@ export default function GetStartedPage() {
               No credit card. No commitment. Generate one full report from your own data at zero cost.
             </p>
             <p className="muted">
-              After your first report, pricing scales with usage. Contact us at <a href="mailto:marco@basquio.com">marco@basquio.com</a> to discuss team plans.
+              After that: <strong>$10</strong> per Standard deck, <strong>$24</strong> per Pro deck. No subscriptions required.{" "}
+              <a href="/pricing">See full pricing.</a>
             </p>
           </div>
         </article>

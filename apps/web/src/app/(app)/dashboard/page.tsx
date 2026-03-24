@@ -28,6 +28,9 @@ function RunActions({ run }: { run: V2RunCard }) {
             Download {a.kind.toUpperCase()}
           </a>
         ))}
+        <Link className="button secondary" href={`/jobs/new?from=${run.id}`}>
+          Rerun
+        </Link>
       </>
     );
   }
@@ -77,33 +80,33 @@ export default async function DashboardPage() {
       ) : (
         <section className="panel workspace-empty-card onboarding-card">
           <div className="stack">
-            <h2>Create your first report</h2>
-            <p className="muted">Upload your data, describe the brief, and Basquio builds a consulting-grade deck.</p>
+            <h2>Your first report is free</h2>
+            <p className="muted">Upload your data, pick a report type, and Basquio builds a consulting-grade deck in minutes.</p>
           </div>
           <div className="onboarding-steps">
             <div className="onboarding-step">
               <span className="onboarding-step-number">1</span>
               <div className="stack-xs">
-                <strong>Your data files</strong>
-                <p className="muted">CSVs, spreadsheets, PDFs, or any structured evidence.</p>
+                <strong>Pick a report type</strong>
+                <p className="muted">Category review, growth diagnosis, channel performance, or custom.</p>
               </div>
             </div>
             <div className="onboarding-step">
               <span className="onboarding-step-number">2</span>
               <div className="stack-xs">
-                <strong>A short brief</strong>
-                <p className="muted">Who&apos;s the audience? What decision should the deck support?</p>
+                <strong>Upload your data</strong>
+                <p className="muted">CSVs, spreadsheets, and supporting documents. NielsenIQ and Circana exports work out of the box.</p>
               </div>
             </div>
             <div className="onboarding-step">
               <span className="onboarding-step-number">3</span>
               <div className="stack-xs">
-                <strong>Brand template (optional)</strong>
-                <p className="muted">Upload a PPTX template and Basquio matches your brand automatically.</p>
+                <strong>Get PPTX + PDF</strong>
+                <p className="muted">Download an editable deck and a polished PDF from the same analysis.</p>
               </div>
             </div>
           </div>
-          <Link className="button" href="/jobs/new">Start your first report</Link>
+          <Link className="button" href="/jobs/new">Generate my first deck free</Link>
         </section>
       )}
 

@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import * as tus from "tus-js-client";
 
+import { reportTypePresets } from "@/app/site-content";
+
 type GenerationStartResponse = {
   jobId: string;
   status: "queued";
@@ -46,16 +48,20 @@ type BriefFields = {
 
 const steps = [
   {
+    id: "report-type",
+    title: "1. Report type",
+  },
+  {
     id: "upload",
-    title: "1. Upload your files",
+    title: "2. Upload your files",
   },
   {
     id: "brief",
-    title: "2. Describe the brief",
+    title: "3. Describe the brief",
   },
   {
     id: "review",
-    title: "3. Review & generate",
+    title: "4. Review & generate",
   },
 ] as const;
 
@@ -84,6 +90,7 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
   const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
+  const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: "",
     client: "",
@@ -174,6 +181,12 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
 
       const payload = await readGenerationPayload(response);
 
+      if (response.status === 402) {
+        // No credits — redirect to pricing
+        router.push((payload as { pricingUrl?: string }).pricingUrl ?? "/pricing");
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(payload.error ?? "Generation failed.");
       }
@@ -186,13 +199,35 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
     }
   }
 
+  function selectReportType(presetId: string) {
+    setSelectedReportType(presetId);
+    const preset = reportTypePresets.find((p) => p.id === presetId);
+    if (preset && preset.id !== "custom") {
+      setBrief((current) => ({
+        ...current,
+        businessContext: current.businessContext || preset.briefTemplate,
+        audience: current.audience || preset.audience,
+        objective: current.objective || preset.title,
+      }));
+    }
+    setError(null);
+    setCurrentStep(1);
+  }
+
   function goToNextStep() {
-    if (currentStep === 0 && evidenceFiles.length === 0) {
+    if (currentStep === 0) {
+      // Report type step — skip to upload even without selection
+      setError(null);
+      setCurrentStep(1);
+      return;
+    }
+
+    if (currentStep === 1 && evidenceFiles.length === 0) {
       setError("Add at least one data file before continuing.");
       return;
     }
 
-    if (currentStep === 1) {
+    if (currentStep === 2) {
       if (!brief.businessContext || !brief.audience || !brief.objective) {
         setError("Add the business context, audience, and objective before continuing.");
         return;
@@ -290,6 +325,34 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
           <section className="step-panel stack-lg">
             <div className="stack-xs">
               <p className="section-label">Step 1</p>
+              <h2>What kind of report?</h2>
+              <p className="muted">Choose a preset to pre-fill the brief, or start from scratch.</p>
+            </div>
+
+            <div className="report-type-grid">
+              {reportTypePresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={selectedReportType === preset.id ? "report-type-card selected" : "report-type-card"}
+                  onClick={() => selectReportType(preset.id)}
+                >
+                  <strong>{preset.title}</strong>
+                  {preset.id !== "custom" ? (
+                    <span className="muted">{preset.audience}</span>
+                  ) : (
+                    <span className="muted">Write your own brief from scratch</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {currentStep === 1 ? (
+          <section className="step-panel stack-lg">
+            <div className="stack-xs">
+              <p className="section-label">Step 2</p>
               <h2>Upload your data</h2>
             </div>
 
@@ -405,10 +468,10 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
           </section>
         ) : null}
 
-        {currentStep === 1 ? (
+        {currentStep === 2 ? (
           <section className="step-panel stack-lg">
             <div className="stack-xs">
-              <p className="section-label">Step 2</p>
+              <p className="section-label">Step 3</p>
               <h2>Describe the brief</h2>
             </div>
 
@@ -484,10 +547,10 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
           </section>
         ) : null}
 
-        {currentStep === 2 ? (
+        {currentStep === 3 ? (
           <section className="step-panel stack-lg">
             <div className="stack-xs">
-              <p className="section-label">Step 3</p>
+              <p className="section-label">Step 4</p>
               <h2>Review and generate</h2>
             </div>
 

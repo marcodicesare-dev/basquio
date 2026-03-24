@@ -7,6 +7,7 @@ import { interpretTemplateSource } from "@basquio/template-engine";
 import type { GenerationRequest } from "@basquio/types";
 
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
+import { checkAndDebitCredit, ensureFreeTierCredit } from "@/lib/credits";
 import { uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
@@ -38,6 +39,35 @@ export async function POST(request: Request) {
 
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+
+    // ─── CREDIT CHECK ──────────────────────────────────────────
+    // Only enforce credits when STRIPE_SECRET_KEY is configured.
+    // This allows the app to work without billing during development
+    // and prevents blocking users if the credit migration hasn't been applied.
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
+
+    if (billingEnabled && supabaseUrl && serviceKey) {
+      await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
+
+      const debited = await checkAndDebitCredit({
+        supabaseUrl,
+        serviceKey,
+        userId: viewer.user.id,
+        runId: generationRequest.jobId,
+      });
+
+      // debited is null when the credit_ledger table doesn't exist yet.
+      // In that case, allow the run (graceful degradation).
+      if (debited === false) {
+        return NextResponse.json({
+          error: "No credits remaining. Purchase a Standard ($10) or Pro ($24) deck to continue.",
+          code: "NO_CREDITS",
+          pricingUrl: "/pricing",
+        }, { status: 402 });
+      }
     }
 
     return NextResponse.json({

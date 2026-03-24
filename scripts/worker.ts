@@ -1,6 +1,7 @@
 import { generateDeckRun } from "../packages/workflows/src/generate-deck";
 import { fetchRestRows, patchRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
+import { refundCredit } from "../apps/web/src/lib/credits";
 
 loadBasquioScriptEnv();
 
@@ -43,6 +44,31 @@ async function main() {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           console.error(`[basquio-worker] run ${runId} failed: ${message}`);
+
+          // Refund the credit on system failure so the user can retry
+          // Only attempts refund when billing is configured
+          if (process.env.STRIPE_SECRET_KEY) {
+            try {
+              const run = await fetchRestRows<{ requested_by: string }>({
+                supabaseUrl: config.supabaseUrl,
+                serviceKey: config.serviceKey,
+                table: "deck_runs",
+                query: { select: "requested_by", id: `eq.${runId}`, limit: "1" },
+              });
+              if (run[0]?.requested_by) {
+                await refundCredit({
+                  supabaseUrl: config.supabaseUrl,
+                  serviceKey: config.serviceKey,
+                  userId: run[0].requested_by,
+                  runId,
+                });
+                console.log(`[basquio-worker] refunded credit for failed run ${runId}`);
+              }
+            } catch (refundError) {
+              const refundMsg = refundError instanceof Error ? refundError.message : String(refundError);
+              console.error(`[basquio-worker] credit refund failed for ${runId}: ${refundMsg}`);
+            }
+          }
         } finally {
           stopHeartbeat();
         }

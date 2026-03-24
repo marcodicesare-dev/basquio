@@ -1,5 +1,38 @@
 export const heroSignals = ["Tracked progress", "Traceable numbers", "Branded PPTX + PDF"] as const;
 
+export const reportTypePresets = [
+  {
+    id: "category-review",
+    title: "Category / brand review",
+    briefTemplate: "Analyze category and brand performance. Identify share shifts, growth drivers, and risks. Recommend actions for the next quarter.",
+    audience: "Leadership team",
+  },
+  {
+    id: "growth-diagnosis",
+    title: "Tell leadership why growth slowed",
+    briefTemplate: "Diagnose the root causes of recent growth deceleration. Separate volume, price, and mix effects. Identify which segments and brands are driving the slowdown.",
+    audience: "Leadership team",
+  },
+  {
+    id: "channel-performance",
+    title: "Summarize channel performance",
+    briefTemplate: "Compare performance across retail channels and banners. Highlight distribution gaps, pricing differences, and share of shelf opportunities.",
+    audience: "Trade marketing",
+  },
+  {
+    id: "competitive-landscape",
+    title: "Map the competitive landscape",
+    briefTemplate: "Analyze competitive dynamics: who is gaining and losing share, at what price points, and in which segments. Identify threats and white space opportunities.",
+    audience: "Strategy team",
+  },
+  {
+    id: "custom",
+    title: "Custom brief",
+    briefTemplate: "",
+    audience: "",
+  },
+] as const;
+
 
 export const evidencePackageInputs = [
   "CSVs and spreadsheets",
@@ -149,6 +182,10 @@ export const publicNavLinks = [
   {
     href: "/about",
     label: "About",
+  },
+  {
+    href: "/pricing",
+    label: "Pricing",
   },
   {
     href: "/get-started",
