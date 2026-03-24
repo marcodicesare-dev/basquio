@@ -168,28 +168,20 @@ export const howItWorksChecks = [
 
 export const publicNavLinks = [
   {
-    href: "/how-it-works",
+    href: "/#pipeline",
     label: "How it works",
+  },
+  {
+    href: "/#pricing",
+    label: "Pricing",
   },
   {
     href: "/compare",
     label: "Compare",
   },
   {
-    href: "/for",
-    label: "Who it's for",
-  },
-  {
     href: "/about",
     label: "About",
-  },
-  {
-    href: "/pricing",
-    label: "Pricing",
-  },
-  {
-    href: "/get-started",
-    label: "Get started",
   },
 ] as const;
 
