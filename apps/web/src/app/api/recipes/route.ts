@@ -139,7 +139,7 @@ export async function POST(request: Request) {
         user_id: viewer.user.id,
         name: body.name,
         description: body.description ?? null,
-        report_type: body.reportType ?? null,
+        report_type: body.reportType ?? "custom",
         brief: run.brief,
         template_profile_id: run.template_profile_id,
         target_slide_count: slideCount,

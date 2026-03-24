@@ -141,7 +141,7 @@ export default function PricingPage() {
 
         <article className="panel stack-lg">
           <div className="stack">
-            <p className="section-label">First deck free</p>
+            <p className="section-label">Free credits</p>
             <h2>6 credits on signup. No credit card.</h2>
             <p className="muted">
               Enough for one 3-slide deck — or apply them toward a larger deck

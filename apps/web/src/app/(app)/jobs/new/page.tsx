@@ -16,6 +16,8 @@ type SavedTemplateOption = {
 type RecipePrefill = {
   id: string;
   name: string;
+  /** Only set when this prefill comes from a saved recipe, not a prior run */
+  recipeId: string | null;
   brief: {
     businessContext?: string;
     client?: string;
@@ -90,6 +92,7 @@ async function getRecipePrefill(recipeId: string, userId: string): Promise<Recip
 
     return {
       id: recipe.id,
+      recipeId: recipe.id,
       name: recipe.name,
       brief: recipe.brief,
       templateProfileId: recipe.template_profile_id,
@@ -139,6 +142,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
 
     return {
       id: runId,
+      recipeId: null,
       name: "Previous run",
       brief: run.brief,
       templateProfileId: run.template_profile_id,

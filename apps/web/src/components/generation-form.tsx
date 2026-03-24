@@ -74,6 +74,8 @@ type SavedTemplateOption = {
 
 type RecipePrefill = {
   id: string;
+  /** Only set when prefill comes from a saved recipe, not a prior run */
+  recipeId: string | null;
   name: string;
   brief: {
     businessContext?: string;
@@ -189,7 +191,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
           styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
           templateProfileId: selectedTemplateId ?? undefined,
           targetSlideCount,
-          recipeId: recipePrefill?.id ?? undefined,
+          recipeId: recipePrefill?.recipeId ?? undefined,
           brief,
           businessContext: brief.businessContext,
           client: brief.client,

@@ -300,6 +300,7 @@ async function parseGenerationRequest(
       stakes: brief.stakes,
       templateProfileId: ((payload as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
       targetSlideCount: ((payload as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
+      recipeId: ((payload as Record<string, unknown>).recipeId as string | undefined) ?? null,
     } as QueuedGenerationRequest;
   }
 
@@ -352,6 +353,7 @@ async function parseGenerationRequest(
     stakes: brief.stakes,
     templateProfileId,
     targetSlideCount,
+    recipeId: String(formData.get("recipeId") ?? "") || null,
   } as QueuedGenerationRequest;
 }
 
