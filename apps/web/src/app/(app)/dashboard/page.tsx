@@ -2,8 +2,37 @@ import Link from "next/link";
 
 import { getViewerState } from "@/lib/supabase/auth";
 import { listV2RunCards, type V2RunCard } from "@/lib/job-runs";
+import { fetchRestRows } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+
+type Recipe = {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+};
+
+async function listRecipes(userId: string): Promise<Recipe[]> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return [];
+  try {
+    return await fetchRestRows<Recipe>({
+      supabaseUrl,
+      serviceKey,
+      table: "recipes",
+      query: {
+        select: "id,name,description,created_at",
+        user_id: `eq.${userId}`,
+        order: "created_at.desc",
+        limit: "5",
+      },
+    });
+  } catch {
+    return [];
+  }
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
@@ -53,6 +82,7 @@ function CostBadge({ run }: { run: V2RunCard }) {
 export default async function DashboardPage() {
   const viewer = await getViewerState();
   const runs = await listV2RunCards(8, viewer.user?.id);
+  const recipes = viewer.user?.id ? await listRecipes(viewer.user.id) : [];
   const latestRun = runs[0] ?? null;
   const recentRuns = latestRun ? runs.slice(1, 5) : [];
 
@@ -117,6 +147,28 @@ export default async function DashboardPage() {
           <Link className="button" href="/jobs/new">Generate my first deck free</Link>
         </section>
       )}
+
+      {recipes.length > 0 ? (
+        <section className="stack-lg">
+          <div className="workspace-section-head">
+            <h2>Saved recipes</h2>
+          </div>
+          <div className="recipe-grid">
+            {recipes.map((recipe) => (
+              <article key={recipe.id} className="panel recipe-card">
+                <div className="stack-xs">
+                  <p className="artifact-kind">Recipe</p>
+                  <h3>{recipe.name}</h3>
+                  {recipe.description ? <p className="muted">{recipe.description}</p> : null}
+                </div>
+                <Link className="button" href={`/jobs/new?recipe=${recipe.id}`}>
+                  Run with new data
+                </Link>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {recentRuns.length > 0 ? (
         <section className="stack-lg">

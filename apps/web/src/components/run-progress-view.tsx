@@ -72,6 +72,10 @@ export function RunProgressView(input: {
   const [error, setError] = useState<string | null>(null);
   const [missingPollCount, setMissingPollCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [showSaveRecipe, setShowSaveRecipe] = useState(false);
+  const [recipeName, setRecipeName] = useState("");
+  const [recipeSaved, setRecipeSaved] = useState(false);
+  const [recipeSaving, setRecipeSaving] = useState(false);
   // Monotonic progress: never goes backward
   const maxProgressRef = useRef(2);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
@@ -215,6 +219,62 @@ export function RunProgressView(input: {
               Dashboard
             </Link>
           </div>
+
+          {/* Save as recipe */}
+          {!recipeSaved && !showSaveRecipe ? (
+            <button
+              type="button"
+              onClick={() => setShowSaveRecipe(true)}
+              style={{ background: "none", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, padding: "10px 20px", color: "#A09FA6", fontSize: "0.84rem", cursor: "pointer", width: "100%", marginBottom: "1rem" }}
+            >
+              Save as recipe — rerun this report type next month
+            </button>
+          ) : null}
+
+          {showSaveRecipe && !recipeSaved ? (
+            <div style={{ width: "100%", padding: "16px 20px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, marginBottom: "1rem" }}>
+              <p style={{ color: "#F2F0EB", fontSize: "0.88rem", fontWeight: 600, marginBottom: 10 }}>Name this recipe</p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={recipeName}
+                  onChange={(e) => setRecipeName(e.target.value)}
+                  placeholder="Monthly Pet Care Review"
+                  style={{ flex: 1, padding: "8px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, color: "#F2F0EB", fontSize: "0.88rem" }}
+                />
+                <button
+                  type="button"
+                  disabled={!recipeName.trim() || recipeSaving}
+                  onClick={async () => {
+                    setRecipeSaving(true);
+                    try {
+                      const res = await fetch("/api/recipes", {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ name: recipeName.trim(), runId: snapshot.jobId }),
+                      });
+                      if (res.ok) {
+                        setRecipeSaved(true);
+                        setShowSaveRecipe(false);
+                      }
+                    } catch { /* ignore */ }
+                    setRecipeSaving(false);
+                  }}
+                  style={{ padding: "8px 16px", background: "#E8A84C", color: "#0A090D", fontWeight: 700, fontSize: "0.84rem", borderRadius: 4, border: "none", cursor: "pointer", opacity: !recipeName.trim() || recipeSaving ? 0.5 : 1 }}
+                >
+                  {recipeSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {recipeSaved ? (
+            <div style={{ width: "100%", padding: "12px 20px", background: "rgba(76, 201, 160, 0.08)", border: "1px solid rgba(76, 201, 160, 0.2)", borderRadius: 4, textAlign: "center", marginBottom: "1rem" }}>
+              <p style={{ color: "#4CC9A0", fontSize: "0.88rem", fontWeight: 600 }}>
+                Recipe saved. Find it on your dashboard to rerun next month.
+              </p>
+            </div>
+          ) : null}
 
           {/* Upgrade prompt when credits are exhausted */}
           {creditBalance !== null && creditBalance <= 0 ? (

@@ -2959,6 +2959,26 @@ textarea {
 
 /* ─── CREDIT EXAMPLES ─────────────────────────────────────────── */
 
+/* ─── RECIPE CARDS ─────────────────────────────────────────────── */
+
+.recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.recipe-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px;
+}
+
+.recipe-card h3 {
+  font-size: 0.94rem;
+}
+
 /* ─── REPORTS FILTER BAR ───────────────────────────────────────── */
 
 .reports-filter-bar {
