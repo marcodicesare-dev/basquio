@@ -590,21 +590,24 @@ export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
               </article>
 
               <article className="review-card stack">
-                <p className="artifact-kind">Deck size</p>
+                <p className="artifact-kind">Deck size and cost</p>
                 <div className="slide-count-selector">
                   <label className="stack-xs">
-                    <span style={{ fontSize: "0.88rem" }}>{targetSlideCount} slides — {creditsNeeded} credits</span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <span style={{ fontSize: "1.1rem", fontWeight: 700 }}>{targetSlideCount} slides</span>
+                      <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--blue)" }}>{creditsNeeded} credits</span>
+                    </div>
                     <input
                       type="range"
                       min={3}
                       max={20}
                       value={targetSlideCount}
                       onChange={(e) => setTargetSlideCount(Number(e.target.value))}
-                      style={{ width: "100%" }}
+                      style={{ width: "100%", accentColor: "var(--blue)" }}
                     />
                     <span className="muted" style={{ fontSize: "0.78rem", display: "flex", justifyContent: "space-between" }}>
-                      <span>3 slides</span>
-                      <span>20 slides</span>
+                      <span>3 slides (6 cr)</span>
+                      <span>20 slides (23 cr)</span>
                     </span>
                   </label>
                 </div>
