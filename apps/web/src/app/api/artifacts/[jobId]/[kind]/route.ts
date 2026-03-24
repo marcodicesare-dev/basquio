@@ -10,11 +10,13 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ jobId: string; kind: string }> },
 ) {
   const { jobId, kind } = await params;
   const viewer = await getViewerState();
+  const requestUrl = new URL(request.url);
+  const contentDisposition = requestUrl.searchParams.get("disposition") === "inline" ? "inline" : "attachment";
 
   if (!viewer.user) {
     return new Response("Authentication required.", { status: 401 });
@@ -45,7 +47,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": artifact.mimeType,
-        "Content-Disposition": `attachment; filename="${artifact.fileName}"`,
+        "Content-Disposition": `${contentDisposition}; filename="${artifact.fileName}"`,
         "Cache-Control": "no-store",
       },
     });

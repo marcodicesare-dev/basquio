@@ -148,167 +148,175 @@ export function RunProgressView(input: {
     const creditsCost = 3 + slideCount;
     const elapsedMin = Math.floor(snapshot.elapsedSeconds / 60);
     const elapsedSec = snapshot.elapsedSeconds % 60;
+    const pdfDownloadHref = `/api/artifacts/${snapshot.jobId}/pdf`;
+    const pdfPreviewHref = `${pdfDownloadHref}?disposition=inline#toolbar=0&navpanes=0&view=FitH`;
+    const pptxDownloadHref = `/api/artifacts/${snapshot.jobId}/pptx`;
 
     return (
-      <div style={styles.fullPage}>
-        <div style={{ ...styles.center, maxWidth: 720 }}>
-          <div style={{ marginBottom: "0.5rem" }}><Check size={40} weight="bold" color="#4CC9A0" /></div>
-          <h1 style={{ fontSize: "1.8rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.25rem" }}>
-            Your deck is ready
-          </h1>
-          <p style={{ color: "#A09FA6", fontSize: "0.95rem", marginBottom: "2rem" }}>
-            {slideCount} slides · {creditsCost} credits · {elapsedMin}m {elapsedSec}s
-          </p>
-
-          {/* Inline PDF preview */}
-          <div style={{
-            width: "100%",
-            borderRadius: 4,
-            overflow: "hidden",
-            border: "1px solid rgba(255,255,255,0.08)",
-            marginBottom: "1.5rem",
-            background: "#1a1a24",
-          }}>
-            <object
-              data={`/api/artifacts/${snapshot.jobId}/pdf#toolbar=0&navpanes=0`}
-              type="application/pdf"
-              style={{ width: "100%", height: 420, display: "block" }}
-            >
-              <p style={{ padding: "2rem", color: "#A09FA6", textAlign: "center", fontSize: "0.88rem" }}>
-                PDF preview not available in this browser.{" "}
-                <a href={`/api/artifacts/${snapshot.jobId}/pdf`} style={{ color: "#E8A84C" }}>Download instead</a>
+      <div className="page-shell job-result-page">
+        <section className="panel job-result-hero">
+          <div className="stack-lg job-result-copy">
+            <div className="stack">
+              <span className="job-result-check" aria-hidden>
+                <Check size={18} weight="bold" />
+              </span>
+              <p className="artifact-kind">Export complete</p>
+              <h1>Your deck is ready</h1>
+              <p className="muted">
+                {slideCount} slides · {creditsCost} credits · {elapsedMin}m {elapsedSec}s
               </p>
+            </div>
+
+            <div className="job-result-actions">
+              <a className="button" href={pptxDownloadHref}>
+                Download PPTX
+              </a>
+              <a className="button secondary" href={pdfDownloadHref}>
+                Download PDF
+              </a>
+              <a className="button small secondary" href={pdfPreviewHref} target="_blank" rel="noreferrer">
+                Open preview
+              </a>
+            </div>
+
+            <div className="compact-meta-row">
+              <span className="run-pill">Editable in PowerPoint</span>
+              <span className="run-pill">PDF preview embedded below</span>
+              {snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">QA passed</span> : null}
+              {snapshot.summary?.qaPassed === false ? <span className="run-pill run-pill-failed">QA issues found</span> : null}
+            </div>
+          </div>
+
+          <div className="job-result-preview-shell">
+            <object
+              className="job-result-preview-frame"
+              data={pdfPreviewHref}
+              type="application/pdf"
+              aria-label="Deck PDF preview"
+            >
+              <div className="panel workspace-empty-card workspace-empty-card-compact">
+                <p className="muted">PDF preview is not available in this browser.</p>
+                <div className="job-result-links">
+                  <a className="button small secondary" href={pdfPreviewHref} target="_blank" rel="noreferrer">
+                    Open preview
+                  </a>
+                  <a className="button small secondary" href={pdfDownloadHref}>
+                    Download PDF
+                  </a>
+                </div>
+              </div>
             </object>
           </div>
+        </section>
 
-          {/* Download actions */}
-          <div style={{ display: "flex", gap: "1rem", marginBottom: "2rem" }}>
-            <a href={`/api/artifacts/${snapshot.jobId}/pptx`} style={styles.primaryButton}>
-              Download PPTX
-            </a>
-            <a href={`/api/artifacts/${snapshot.jobId}/pdf`} style={styles.secondaryButton}>
-              Download PDF
-            </a>
+        <div className="billing-stats-row">
+          <article className="panel billing-stat-card">
+            <p className="billing-stat-label">Slides</p>
+            <p className="billing-stat-value">{slideCount}</p>
+          </article>
+          <article className="panel billing-stat-card">
+            <p className="billing-stat-label">Credits used</p>
+            <p className="billing-stat-value">{creditsCost}</p>
+          </article>
+          <article className="panel billing-stat-card">
+            <p className="billing-stat-label">QA status</p>
+            <p className={`billing-stat-value job-result-qa ${snapshot.summary?.qaPassed === false ? "job-result-qa-failed" : "job-result-qa-passed"}`}>
+              {snapshot.summary?.qaPassed === false ? "Issues found" : snapshot.summary?.qaPassed === true ? "Passed" : "N/A"}
+            </p>
+          </article>
+        </div>
+
+        <section className="panel stack-lg">
+          <div className="workspace-section-head">
+            <h2>Next step</h2>
           </div>
-
-          {/* Run details grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden", width: "100%", marginBottom: "2rem" }}>
-            <div style={{ padding: "16px", background: "#0D0C14", textAlign: "center" }}>
-              <p style={{ color: "#A09FA6", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4 }}>SLIDES</p>
-              <p style={{ color: "#F2F0EB", fontSize: "1.4rem", fontWeight: 700 }}>{slideCount}</p>
-            </div>
-            <div style={{ padding: "16px", background: "#0D0C14", textAlign: "center" }}>
-              <p style={{ color: "#A09FA6", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4 }}>CREDITS USED</p>
-              <p style={{ color: "#F2F0EB", fontSize: "1.4rem", fontWeight: 700 }}>{creditsCost}</p>
-            </div>
-            <div style={{ padding: "16px", background: "#0D0C14", textAlign: "center" }}>
-              <p style={{ color: "#A09FA6", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4 }}>QA STATUS</p>
-              <p style={{ color: snapshot.summary?.qaPassed === false ? "#E8636F" : "#4CC9A0", fontSize: "1.4rem", fontWeight: 700 }}>
-                {snapshot.summary?.qaPassed === false ? "Issues found" : snapshot.summary?.qaPassed === true ? "Passed" : "N/A"}
-              </p>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", justifyContent: "center", marginBottom: creditBalance !== null && creditBalance <= 0 ? "2rem" : 0 }}>
-            <Link href={`/jobs/new?from=${snapshot.jobId}`} style={{ color: "#E8A84C", fontSize: "0.92rem", fontWeight: 600 }}>
+          <div className="job-result-links">
+            <Link className="button small secondary" href={`/jobs/new?from=${snapshot.jobId}`}>
               Rerun with changes
             </Link>
-            <Link href="/jobs/new" style={{ color: "#A09FA6", fontSize: "0.92rem" }}>
+            <Link className="button small secondary" href="/jobs/new">
               New report
             </Link>
-            <Link href="/dashboard" style={{ color: "#A09FA6", fontSize: "0.92rem" }}>
+            <Link className="button small secondary" href="/dashboard">
               Dashboard
             </Link>
           </div>
+        </section>
 
-          {/* Save as recipe */}
+        <section className="panel stack-lg">
+          <div className="stack-xs">
+            <p className="artifact-kind">Recipe</p>
+            <h2>Reuse this setup later</h2>
+            <p className="muted">
+              Save this report configuration and rerun it next month with fresh source files.
+            </p>
+          </div>
+
           {!recipeSaved && !showSaveRecipe ? (
             <button
+              className="button small secondary job-result-recipe-toggle"
               type="button"
               onClick={() => setShowSaveRecipe(true)}
-              style={{ background: "none", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, padding: "10px 20px", color: "#A09FA6", fontSize: "0.84rem", cursor: "pointer", width: "100%", marginBottom: "1rem" }}
             >
-              Save as recipe — rerun this report type next month
+              Save as recipe
             </button>
           ) : null}
 
           {showSaveRecipe && !recipeSaved ? (
-            <div style={{ width: "100%", padding: "16px 20px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, marginBottom: "1rem" }}>
-              <p style={{ color: "#F2F0EB", fontSize: "0.88rem", fontWeight: 600, marginBottom: 10 }}>Name this recipe</p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="text"
-                  value={recipeName}
-                  onChange={(e) => setRecipeName(e.target.value)}
-                  placeholder="Monthly Pet Care Review"
-                  style={{ flex: 1, padding: "8px 12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4, color: "#F2F0EB", fontSize: "0.88rem" }}
-                />
-                <button
-                  type="button"
-                  disabled={!recipeName.trim() || recipeSaving}
-                  onClick={async () => {
-                    setRecipeSaving(true);
-                    try {
-                      const res = await fetch("/api/recipes", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ name: recipeName.trim(), runId: snapshot.jobId }),
-                      });
-                      if (res.ok) {
-                        setRecipeSaved(true);
-                        setShowSaveRecipe(false);
-                      }
-                    } catch { /* ignore */ }
-                    setRecipeSaving(false);
-                  }}
-                  style={{ padding: "8px 16px", background: "#E8A84C", color: "#0A090D", fontWeight: 700, fontSize: "0.84rem", borderRadius: 4, border: "none", cursor: "pointer", opacity: !recipeName.trim() || recipeSaving ? 0.5 : 1 }}
-                >
-                  {recipeSaving ? "Saving..." : "Save"}
-                </button>
-              </div>
+            <div className="job-result-recipe-form">
+              <input
+                className="job-result-recipe-input"
+                type="text"
+                value={recipeName}
+                onChange={(e) => setRecipeName(e.target.value)}
+                placeholder="Monthly Pet Care Review"
+              />
+              <button
+                className="button small"
+                type="button"
+                disabled={!recipeName.trim() || recipeSaving}
+                onClick={async () => {
+                  setRecipeSaving(true);
+                  try {
+                    const res = await fetch("/api/recipes", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ name: recipeName.trim(), runId: snapshot.jobId }),
+                    });
+                    if (res.ok) {
+                      setRecipeSaved(true);
+                      setShowSaveRecipe(false);
+                    }
+                  } catch { /* ignore */ }
+                  setRecipeSaving(false);
+                }}
+              >
+                {recipeSaving ? "Saving..." : "Save recipe"}
+              </button>
             </div>
           ) : null}
 
           {recipeSaved ? (
-            <div style={{ width: "100%", padding: "12px 20px", background: "rgba(76, 201, 160, 0.08)", border: "1px solid rgba(76, 201, 160, 0.2)", borderRadius: 4, textAlign: "center", marginBottom: "1rem" }}>
-              <p style={{ color: "#4CC9A0", fontSize: "0.88rem", fontWeight: 600 }}>
-                Recipe saved. Find it on your dashboard to rerun next month.
-              </p>
+            <div className="success-panel job-result-feedback">
+              <p>Recipe saved. Find it on your dashboard to rerun next month.</p>
             </div>
           ) : null}
+        </section>
 
-          {/* Upgrade prompt when credits are exhausted */}
-          {creditBalance !== null && creditBalance <= 0 ? (
-            <div style={{
-              width: "100%",
-              padding: "20px 24px",
-              background: "rgba(232, 168, 76, 0.08)",
-              border: "1px solid rgba(232, 168, 76, 0.2)",
-              borderRadius: 4,
-              textAlign: "center",
-            }}>
-              <p style={{ color: "#F2F0EB", fontSize: "0.95rem", fontWeight: 600, marginBottom: 4 }}>
-                You used all your free credits
+        {creditBalance !== null && creditBalance <= 0 ? (
+          <section className="panel job-result-upgrade">
+            <div className="stack-xs">
+              <p className="artifact-kind">Credits exhausted</p>
+              <h2>You used all your free credits</h2>
+              <p className="muted">
+                See pricing to keep generating reports or move this workflow into a team workspace.
               </p>
-              <p style={{ color: "#A09FA6", fontSize: "0.84rem", marginBottom: 16 }}>
-                See pricing to keep generating reports or move the workflow into a team workspace.
-              </p>
-              <Link href="/pricing" style={{
-                display: "inline-block",
-                padding: "10px 24px",
-                background: "#E8A84C",
-                color: "#0A090D",
-                fontWeight: 700,
-                fontSize: "0.88rem",
-                borderRadius: 4,
-                textDecoration: "none",
-              }}>
-                See pricing
-              </Link>
             </div>
-          ) : null}
-        </div>
+            <Link className="button" href="/pricing">
+              See pricing
+            </Link>
+          </section>
+        ) : null}
       </div>
     );
   }
