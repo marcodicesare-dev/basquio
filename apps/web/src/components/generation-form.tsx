@@ -72,35 +72,52 @@ type SavedTemplateOption = {
   colors: string[];
 };
 
-type GenerationFormProps = {
-  savedTemplates?: SavedTemplateOption[];
+type RecipePrefill = {
+  id: string;
+  name: string;
+  brief: {
+    businessContext?: string;
+    client?: string;
+    audience?: string;
+    objective?: string;
+    thesis?: string;
+    stakes?: string;
+  };
+  templateProfileId: string | null;
+  targetSlideCount: number;
 };
 
-export function GenerationForm({ savedTemplates = [] }: GenerationFormProps) {
+type GenerationFormProps = {
+  savedTemplates?: SavedTemplateOption[];
+  recipePrefill?: RecipePrefill;
+};
+
+export function GenerationForm({ savedTemplates = [], recipePrefill }: GenerationFormProps) {
   const router = useRouter();
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const brandInputRef = useRef<HTMLInputElement>(null);
-  const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
   const [isDraggingBrand, setIsDraggingBrand] = useState(false);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [brandFile, setBrandFile] = useState<File | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(recipePrefill?.templateProfileId ?? null);
   const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
   const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
-  const [targetSlideCount, setTargetSlideCount] = useState(10);
+  const [targetSlideCount, setTargetSlideCount] = useState(recipePrefill?.targetSlideCount ?? 10);
   const creditsNeeded = 3 + targetSlideCount; // 3 base + 1 per slide
   const [brief, setBrief] = useState<BriefFields>({
-    businessContext: "",
-    client: "",
-    audience: "",
-    objective: "",
-    thesis: "",
-    stakes: "",
+    businessContext: recipePrefill?.brief.businessContext ?? "",
+    client: recipePrefill?.brief.client ?? "",
+    audience: recipePrefill?.brief.audience ?? "",
+    objective: recipePrefill?.brief.objective ?? "",
+    thesis: recipePrefill?.brief.thesis ?? "",
+    stakes: recipePrefill?.brief.stakes ?? "",
   });
+  // When loading from a recipe, skip to the upload step
+  const [currentStep, setCurrentStep] = useState(recipePrefill ? 1 : 0);
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
