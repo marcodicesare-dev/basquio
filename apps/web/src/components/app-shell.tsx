@@ -11,23 +11,31 @@ import type { ViewerState } from "@/lib/supabase/auth";
 const navigation = [
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "Home",
   },
   {
     href: "/jobs/new",
     label: "New report",
   },
   {
-    href: "/templates",
-    label: "Brand system",
-  },
-  {
     href: "/artifacts",
     label: "Reports",
   },
+  {
+    href: "/templates",
+    label: "Brand system",
+  },
 ] as const;
 
-export function AppShell({ viewer, children }: { viewer: ViewerState; children: ReactNode }) {
+export function AppShell({
+  viewer,
+  creditBalance,
+  children,
+}: {
+  viewer: ViewerState;
+  creditBalance: number;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
   const userEmail = viewer.user?.email ?? "";
 
@@ -38,7 +46,6 @@ export function AppShell({ viewer, children }: { viewer: ViewerState; children: 
           <Link href="/" className="brand-lockup" aria-label="Basquio home">
             <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={178} height={30} priority />
           </Link>
-          <p className="muted">Beautiful Intelligence.</p>
         </div>
 
         <Link className="button sidebar-cta" href="/jobs/new">
@@ -57,9 +64,18 @@ export function AppShell({ viewer, children }: { viewer: ViewerState; children: 
           })}
         </nav>
 
+        <div className="sidebar-credits-block">
+          <div className="sidebar-credits-row">
+            <span className="sidebar-credits-number">{creditBalance}</span>
+            <span className="sidebar-credits-label">credits</span>
+          </div>
+          <Link className="button secondary sidebar-buy-link" href="/pricing">
+            Buy credits
+          </Link>
+        </div>
+
         {userEmail ? (
           <div className="stack sidebar-meta">
-            <p className="muted">Signed in as</p>
             <p className="sidebar-user-email">{userEmail}</p>
             <SignOutButton />
           </div>

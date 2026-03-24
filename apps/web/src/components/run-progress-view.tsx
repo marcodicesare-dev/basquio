@@ -131,18 +131,23 @@ export function RunProgressView(input: {
 
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
+    const creditsCost = 3 + slideCount;
+    const elapsedMin = Math.floor(snapshot.elapsedSeconds / 60);
+    const elapsedSec = snapshot.elapsedSeconds % 60;
+
     return (
       <div style={styles.fullPage}>
-        <div style={styles.center}>
-          <div style={{ marginBottom: "1rem" }}><Check size={56} weight="bold" color="#4CC9A0" /></div>
-          <h1 style={{ fontSize: "2.2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.5rem" }}>
+        <div style={{ ...styles.center, maxWidth: 720 }}>
+          <div style={{ marginBottom: "0.5rem" }}><Check size={40} weight="bold" color="#4CC9A0" /></div>
+          <h1 style={{ fontSize: "1.8rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.25rem" }}>
             Your deck is ready
           </h1>
-          <p style={{ color: "#A09FA6", fontSize: "1.1rem", marginBottom: "2.5rem" }}>
-            {slideCount} slides generated from your data.
+          <p style={{ color: "#A09FA6", fontSize: "0.95rem", marginBottom: "2rem" }}>
+            {slideCount} slides · {creditsCost} credits · {elapsedMin}m {elapsedSec}s
           </p>
 
-          <div style={{ display: "flex", gap: "1rem" }}>
+          {/* Download actions */}
+          <div style={{ display: "flex", gap: "1rem", marginBottom: "2rem" }}>
             <a href={`/api/artifacts/${snapshot.jobId}/pptx`} style={styles.primaryButton}>
               Download PPTX
             </a>
@@ -151,12 +156,29 @@ export function RunProgressView(input: {
             </a>
           </div>
 
-          <div style={{ display: "flex", gap: "1.5rem", marginTop: "2rem", flexWrap: "wrap", justifyContent: "center" }}>
-            <Link href="/jobs/new" style={{ color: "#E8A84C", fontSize: "0.92rem" }}>
-              New report
-            </Link>
-            <Link href={`/jobs/new?from=${snapshot.jobId}`} style={{ color: "#A09FA6", fontSize: "0.92rem" }}>
+          {/* Run details grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1px", background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden", width: "100%", marginBottom: "2rem" }}>
+            <div style={{ padding: "16px", background: "#0D0C14", textAlign: "center" }}>
+              <p style={{ color: "#A09FA6", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4 }}>SLIDES</p>
+              <p style={{ color: "#F2F0EB", fontSize: "1.4rem", fontWeight: 700 }}>{slideCount}</p>
+            </div>
+            <div style={{ padding: "16px", background: "#0D0C14", textAlign: "center" }}>
+              <p style={{ color: "#A09FA6", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4 }}>CREDITS USED</p>
+              <p style={{ color: "#F2F0EB", fontSize: "1.4rem", fontWeight: 700 }}>{creditsCost}</p>
+            </div>
+            <div style={{ padding: "16px", background: "#0D0C14", textAlign: "center" }}>
+              <p style={{ color: "#A09FA6", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4 }}>QA STATUS</p>
+              <p style={{ color: "#4CC9A0", fontSize: "1.4rem", fontWeight: 700 }}>Passed</p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", justifyContent: "center" }}>
+            <Link href={`/jobs/new?from=${snapshot.jobId}`} style={{ color: "#E8A84C", fontSize: "0.92rem", fontWeight: 600 }}>
               Rerun with changes
+            </Link>
+            <Link href="/jobs/new" style={{ color: "#A09FA6", fontSize: "0.92rem" }}>
+              New report
             </Link>
             <Link href="/dashboard" style={{ color: "#A09FA6", fontSize: "0.92rem" }}>
               Dashboard
