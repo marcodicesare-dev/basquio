@@ -182,8 +182,8 @@ export function RunProgressView(input: {
             <div className="compact-meta-row">
               <span className="run-pill">Editable in PowerPoint</span>
               <span className="run-pill">PDF preview embedded below</span>
-              {snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">QA passed</span> : null}
-              {snapshot.summary?.qaPassed === false ? <span className="run-pill run-pill-failed">QA issues found</span> : null}
+              {snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">Ready to review</span> : null}
+              {snapshot.summary?.qaPassed === false ? <span className="run-pill run-pill-failed">Review suggested</span> : null}
             </div>
           </div>
 
@@ -219,9 +219,9 @@ export function RunProgressView(input: {
             <p className="billing-stat-value">{creditsCost}</p>
           </article>
           <article className="panel billing-stat-card">
-            <p className="billing-stat-label">QA status</p>
+            <p className="billing-stat-label">Status</p>
             <p className={`billing-stat-value job-result-qa ${snapshot.summary?.qaPassed === false ? "job-result-qa-failed" : "job-result-qa-passed"}`}>
-              {snapshot.summary?.qaPassed === false ? "Issues found" : snapshot.summary?.qaPassed === true ? "Passed" : "N/A"}
+              {snapshot.summary?.qaPassed === false ? "Review suggested" : snapshot.summary?.qaPassed === true ? "Ready" : "Available"}
             </p>
           </article>
         </div>
