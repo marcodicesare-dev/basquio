@@ -31,7 +31,7 @@ export function PublicSiteNav() {
           Sign in
         </Link>
         <Link className="button" href="/jobs/new">
-          Try free →
+          Try it with your data
         </Link>
       </div>
     </section>

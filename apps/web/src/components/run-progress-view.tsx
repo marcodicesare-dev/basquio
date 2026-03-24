@@ -292,7 +292,7 @@ export function RunProgressView(input: {
                 You used all your free credits
               </p>
               <p style={{ color: "#A09FA6", fontSize: "0.84rem", marginBottom: 16 }}>
-                Buy a credit pack to generate your next deck. 25 credits for $15.
+                See pricing to keep generating reports or move the workflow into a team workspace.
               </p>
               <Link href="/pricing" style={{
                 display: "inline-block",
@@ -304,7 +304,7 @@ export function RunProgressView(input: {
                 borderRadius: 4,
                 textDecoration: "none",
               }}>
-                Buy credits
+                See pricing
               </Link>
             </div>
           ) : null}

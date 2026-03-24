@@ -1,25 +1,35 @@
 "use client";
 
+import {
+  CreditCard,
+  Files,
+  Gear,
+  House,
+  Palette,
+  Plus,
+  Repeat,
+} from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { Icon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/sign-out-button";
 import type { ViewerState } from "@/lib/supabase/auth";
 
-const mainNav = [
-  { href: "/dashboard", label: "Home" },
-  { href: "/jobs/new", label: "New report" },
-  { href: "/artifacts", label: "Reports" },
-  { href: "/recipes", label: "Recipes" },
-  { href: "/templates", label: "Brand system" },
-] as const;
+const mainNav: ReadonlyArray<{ href: string; label: string; icon: Icon }> = [
+  { href: "/dashboard", label: "Home", icon: House },
+  { href: "/jobs/new", label: "New report", icon: Plus },
+  { href: "/artifacts", label: "Reports", icon: Files },
+  { href: "/recipes", label: "Recipes", icon: Repeat },
+  { href: "/templates", label: "Brand system", icon: Palette },
+];
 
-const bottomNav = [
-  { href: "/billing", label: "Billing & Usage" },
-  { href: "/settings", label: "Settings" },
-] as const;
+const bottomNav: ReadonlyArray<{ href: string; label: string; icon: Icon }> = [
+  { href: "/billing", label: "Billing & Usage", icon: CreditCard },
+  { href: "/settings", label: "Settings", icon: Gear },
+];
 
 export function AppShell({
   viewer,
@@ -32,6 +42,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const userEmail = viewer.user?.email ?? "";
+  const creditMeterWidth = creditBalance === -1 ? 100 : Math.max(0, Math.min(100, (creditBalance / 25) * 100));
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
@@ -51,37 +62,64 @@ export function AppShell({
         </Link>
 
         <nav className="nav stack" aria-label="Workspace">
-          {mainNav.map((item) => (
-            <Link key={item.href} className={isActive(item.href) ? "nav-link active" : "nav-link"} href={item.href}>
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {mainNav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.href} className={isActive(item.href) ? "nav-link active" : "nav-link"} href={item.href}>
+                <span className="nav-link-icon" aria-hidden>
+                  <Icon size={18} weight={isActive(item.href) ? "fill" : "regular"} />
+                </span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
 
-        {creditBalance === -1 ? (
-          <div className="sidebar-credits-block">
-            <div className="sidebar-credits-row">
-              <span className="sidebar-credits-label">Unlimited</span>
-            </div>
+        <div className="sidebar-credits-block">
+          <div className="sidebar-credits-head">
+            <span className="sidebar-credits-kicker">Usage</span>
+            <span className="sidebar-credits-caption">
+              {creditBalance === -1 ? "Team access" : "Visible after each run"}
+            </span>
           </div>
-        ) : (
-          <div className="sidebar-credits-block">
-            <div className="sidebar-credits-row">
-              <span className="sidebar-credits-number">{creditBalance}</span>
-              <span className="sidebar-credits-label">credits</span>
-            </div>
-            <Link className="button secondary sidebar-buy-link" href="/billing">
-              Buy credits
-            </Link>
-          </div>
-        )}
+
+          {creditBalance === -1 ? (
+            <>
+              <div className="sidebar-credits-row">
+                <span className="sidebar-credits-number">Unlimited</span>
+              </div>
+              <div className="sidebar-credit-meter">
+                <span className="sidebar-credit-meter-fill" style={{ width: "100%" }} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="sidebar-credits-row">
+                <span className="sidebar-credits-number">{creditBalance}</span>
+                <span className="sidebar-credits-label">credits left</span>
+              </div>
+              <div className="sidebar-credit-meter">
+                <span className="sidebar-credit-meter-fill" style={{ width: `${creditMeterWidth}%` }} />
+              </div>
+              <Link className="button secondary sidebar-buy-link" href="/billing">
+                Manage usage
+              </Link>
+            </>
+          )}
+        </div>
 
         <nav className="nav stack sidebar-bottom-nav" aria-label="Account">
-          {bottomNav.map((item) => (
-            <Link key={item.href} className={isActive(item.href) ? "nav-link active" : "nav-link"} href={item.href}>
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {bottomNav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.href} className={isActive(item.href) ? "nav-link active" : "nav-link"} href={item.href}>
+                <span className="nav-link-icon" aria-hidden>
+                  <Icon size={18} weight={isActive(item.href) ? "fill" : "regular"} />
+                </span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
 
         {userEmail ? (

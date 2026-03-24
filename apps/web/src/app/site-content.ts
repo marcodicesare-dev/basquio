@@ -1,4 +1,4 @@
-export const heroSignals = ["Tracked progress", "Traceable numbers", "Branded PPTX + PDF"] as const;
+export const heroSignals = ["Story by AI. Math by code.", "Traceable numbers", "Branded PPTX + PDF"] as const;
 
 export const reportTypePresets = [
   {

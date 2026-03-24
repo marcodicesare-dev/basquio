@@ -285,7 +285,34 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
 
   function updateBrandFile(file: File | null) {
     setBrandFile(file);
+    if (file) {
+      setSelectedTemplateId(null);
+    }
     syncInputFiles(brandInputRef.current, file ? [file] : []);
+    if (!file && brandInputRef.current) {
+      brandInputRef.current.value = "";
+    }
+    setError(null);
+  }
+
+  function removeEvidenceFile(fileToRemove: File) {
+    setEvidenceFiles((current) => {
+      const filtered = current.filter((file) => makeFileKey(file) !== makeFileKey(fileToRemove));
+      syncInputFiles(evidenceInputRef.current, filtered);
+      return filtered;
+    });
+    setError(null);
+  }
+
+  function handleTemplateSelection(templateId: string | null) {
+    setSelectedTemplateId(templateId);
+    if (brandFile) {
+      setBrandFile(null);
+      syncInputFiles(brandInputRef.current, []);
+      if (brandInputRef.current) {
+        brandInputRef.current.value = "";
+      }
+    }
     setError(null);
   }
 
@@ -414,6 +441,13 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                         <span className="file-chip-type">{inferFileType(file.name)}</span>
                         <span>{file.name}</span>
                         <small>{formatFileSize(file.size)}</small>
+                        <button
+                          type="button"
+                          className="file-chip-remove"
+                          onClick={() => removeEvidenceFile(file)}
+                        >
+                          Remove
+                        </button>
                       </div>
                     ))}
                     <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
@@ -453,7 +487,9 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                   <div className="file-chip">
                     <span>{brandFile.name}</span>
                     <small>{formatFileSize(brandFile.size)}</small>
-                    <button type="button" className="file-chip-remove" onClick={() => setBrandFile(null)}>Remove</button>
+                    <button type="button" className="file-chip-remove" onClick={() => updateBrandFile(null)}>
+                      Remove
+                    </button>
                   </div>
                 ) : null}
 
@@ -464,7 +500,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                       <button
                         type="button"
                         className={selectedTemplateId === null ? "template-option selected" : "template-option"}
-                        onClick={() => setSelectedTemplateId(null)}
+                        onClick={() => handleTemplateSelection(null)}
                       >
                         <span className="template-option-name">Basquio Standard</span>
                         <span className="template-option-type">Default</span>
@@ -474,7 +510,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                           key={t.id}
                           type="button"
                           className={selectedTemplateId === t.id ? "template-option selected" : "template-option"}
-                          onClick={() => setSelectedTemplateId(t.id)}
+                          onClick={() => handleTemplateSelection(t.id)}
                         >
                           <span className="template-option-name">{t.name}</span>
                           <span className="template-option-type">{t.sourceType}</span>
@@ -591,6 +627,13 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                       <div key={`${file.name}-${file.size}-${file.lastModified}`} className="file-chip">
                         <span>{file.name}</span>
                         <small>{formatFileSize(file.size)}</small>
+                        <button
+                          type="button"
+                          className="file-chip-remove"
+                          onClick={() => removeEvidenceFile(file)}
+                        >
+                          Remove
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -679,6 +722,10 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
 function syncInputFiles(input: HTMLInputElement | null, files: File[]) {
   if (!input) {
     return;
+  }
+
+  if (files.length === 0) {
+    input.value = "";
   }
 
   const dataTransfer = new DataTransfer();

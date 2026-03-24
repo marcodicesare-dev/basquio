@@ -107,13 +107,12 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">Pricing</p>
-            <h2>6 free credits on signup.</h2>
+            <h2>Your first standard report is free.</h2>
             <p className="muted">
-              No credit card. No commitment. Enough for one 3-slide executive brief from your own data.
+              No card needed. Start with live data, review the first draft, and decide from there whether the workflow should repeat.
             </p>
             <p className="muted">
-              After that, pay per slide: 3 base credits + 1 per slide. A 10-slide deck costs 13 credits.
-              Credit packs start at <strong>$15 for 25 credits</strong>.{" "}
+              Standard reports are $10, Pro reports are $24, and team workspaces start at $149 per month.{" "}
               <a href="/pricing">See full pricing.</a>
             </p>
           </div>
