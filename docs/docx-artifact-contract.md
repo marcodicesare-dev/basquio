@@ -10,6 +10,9 @@ DOCX is not a shallow appendix.
 
 It is a narrative artifact generated from the same evidence-backed reasoning as the PPTX and PDF, but written for readers who need deeper explanation.
 
+In v1, it is intentionally text-first.
+Do not embed charts or try to mirror the slide visuals inside Word.
+
 ## Core Rule
 
 The DOCX must be derived from the same canonical business story as the deck.
@@ -43,6 +46,7 @@ Required behavior:
 
 The deck is concise by design.
 The DOCX should be more explanatory, but still sharp and evidence-led.
+The DOCX should stay cheap and reliable to generate, so narrative clarity matters more than layout ambition.
 
 ## Consistency Rules
 
@@ -68,6 +72,13 @@ A strong DOCX should usually include:
 - recommendations with what, why, and how
 - optional appendix material when useful
 
+In v1, the artifact should stay text-first:
+
+- no embedded charts
+- no screenshot dumps
+- no attempt to recreate slide layouts inside Word
+- no decorative heavy formatting that makes generation brittle
+
 This is a report artifact, not a collection of slide bullets pasted into Word.
 
 ## Explicitly Forbidden
@@ -79,6 +90,8 @@ Do not implement DOCX by:
 - dumping raw bullets into headings
 - weakening the reasoning depth relative to the deck
 - using a separate copywriting standard from the deck path
+- embedding slide chart screenshots into the Word report
+- making DOCX generation depend on fragile chart or layout recreation
 
 ## Artifact Contract
 

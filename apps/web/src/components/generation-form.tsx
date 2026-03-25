@@ -679,7 +679,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
               <article className="review-card stack">
                 <p className="artifact-kind">Output</p>
                 <p className="muted" style={{ fontSize: "0.9rem" }}>
-                  PPTX + PDF + DOCX — charts render as locked visuals for consistent slides, and the DOCX expands the same story into a deeper written report.
+                  PPTX + PDF + DOCX — charts stay locked in the slide outputs, and the DOCX is a text-first narrative report with no charts for easier reuse.
                 </p>
               </article>
             </div>

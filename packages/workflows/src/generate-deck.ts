@@ -20,6 +20,7 @@ import type { TemplateProfile } from "@basquio/types";
 
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
+import { buildNarrativeDocx } from "./docx-report";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
@@ -400,7 +401,6 @@ export async function generateDeckRun(runId: string) {
     const authorFiles = await downloadGeneratedFiles(client, authorResponse.fileIds);
     const pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
     const pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
-    const docxFile = requireGeneratedFile(authorFiles, "report.docx");
     let manifest = parseManifestResponse(authorResponse.message, authorFiles);
 
     await persistDeckSpec(config, runId, manifest);
@@ -448,7 +448,6 @@ export async function generateDeckRun(runId: string) {
 
     let finalPptx = pptxFile;
     let finalPdf = pdfFile;
-    let finalDocx = docxFile;
     let finalManifest = manifest;
     let finalVisualQa = initialVisualQa.report;
 
@@ -506,7 +505,6 @@ export async function generateDeckRun(runId: string) {
       finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
       finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
       finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
-      finalDocx = requireGeneratedFile(reviseFiles, "report.docx");
       const revisedVisualQa = await runRenderedPageQa({
         client,
         pdf: finalPdf.buffer,
@@ -535,6 +533,11 @@ export async function generateDeckRun(runId: string) {
 
     currentPhase = "export";
     await markPhase(config, runId, currentPhase);
+    const finalDocx = await buildNarrativeDocx({
+      run,
+      analysis,
+      manifest: finalManifest,
+    });
     const qaReport = await buildQaReport(
       finalManifest,
       finalPptx,
@@ -960,11 +963,7 @@ function buildAuthorMessage(
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
           "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify all recommendations with FMCG levers.",
-          "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, `report.docx`, `deck_manifest.json`.",
-          "- `report.docx` must be a real narrative report written from the same evidence and recommendations as the deck.",
-          "- The DOCX must explain what happened, why it matters, and how to act in more depth than the slides while staying perfectly consistent with them.",
-          "- Do not turn the DOCX into a slide dump, appendix dump, or reverse-converted deck transcript.",
-          "- Produce a valid Word `.docx` file. Use `python-docx` if it is available in the container; otherwise generate a correct OOXML zip with `word/document.xml` and related package files.",
+          "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, and `deck_manifest.json`.",
           "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
           "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `title`, and `chartId` when applicable.",
           "- Your final assistant message must attach the files as container uploads before finishing.",
@@ -981,7 +980,7 @@ function buildReviseMessage(issues: string[]) {
       {
         type: "text" as const,
         text: [
-          "Repair the generated deck and regenerate deck.pptx, deck.pdf, report.docx, and deck_manifest.json.",
+          "Repair the generated deck and regenerate deck.pptx, deck.pdf, and deck_manifest.json.",
           "Reuse the existing container state and the prior authoring context. Do not start a new draft from scratch unless necessary to fix the issues.",
           "Fix these issues:",
           ...issues.map((issue) => `- ${issue}`),
@@ -995,9 +994,7 @@ function buildReviseMessage(issues: string[]) {
           "Fix malformed numeric annotations such as duplicated plus signs or inconsistent pp notation.",
           "For action cards, reserve separate non-overlapping bands for index, title, body, and footer.",
           "Keep charts as image-based embeds that remain visible in Keynote.",
-          "Keep report.docx perfectly aligned with the repaired deck claims and deepen the reasoning rather than shortening it to bullets.",
-          "Regenerate report.docx as a valid Word document, not a renamed text file.",
-          "Your final assistant message must attach deck.pptx, deck.pdf, report.docx, and deck_manifest.json as container_upload blocks.",
+          "Your final assistant message must attach deck.pptx, deck.pdf, and deck_manifest.json as container_upload blocks.",
         ].join("\n"),
       },
     ],
@@ -1516,9 +1513,20 @@ async function validateArtifactChecks(
     const zip = await JSZip.loadAsync(docxBuffer);
     const documentXml = zip.file("word/document.xml");
     const contentTypes = zip.file("[Content_Types].xml");
+    const documentText = documentXml ? await documentXml.async("string") : "";
+    const visibleTextLength = documentText
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .length;
     const extraChecks = [
       { name: "docx_document_xml", passed: Boolean(documentXml), detail: "word/document.xml exists" },
       { name: "docx_content_types_xml", passed: Boolean(contentTypes), detail: "[Content_Types].xml exists" },
+      {
+        name: "docx_text_content_present",
+        passed: visibleTextLength >= 160,
+        detail: `${visibleTextLength} visible chars`,
+      },
     ];
     allChecks.push(...extraChecks);
     allFailed.push(...extraChecks.filter((check) => !check.passed).map((check) => check.name));

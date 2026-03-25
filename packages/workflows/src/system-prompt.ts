@@ -9,7 +9,6 @@ const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-analyst-playbook.md",
   "docs/domain-knowledge/basquio-copywriting-skill.md",
   "docs/direct-deck-design-spec.md",
-  "docs/docx-artifact-contract.md",
 ] as const;
 
 let knowledgePackPromise: Promise<string> | null = null;
@@ -54,9 +53,6 @@ export async function buildBasquioSystemPrompt(input: {
     "- For sparse or skewed data, change the slide grammar instead of inflating a weak chart. One dominant bar with tiny tails should not sit in a giant hero frame.",
     "- Numeric labels must be mechanically clean: positives use one plus sign, negatives use one minus sign, and percentage-point labels use formats like +0.09pp.",
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
-    "- If a DOCX report artifact is requested, write it from the same evidence-backed reasoning as the deck, but with deeper explanation of what happened, why it matters, and how the recommendation should be executed.",
-    "- A DOCX artifact is a narrative report, not a slide dump, not a PDF reverse-conversion, and not a shallow appendix.",
-    "",
     "Deck grammar:",
     deckGrammar,
     "",
