@@ -365,7 +365,7 @@ function validateGenerationFiles(
   styleFile?: GenerationRequest["styleFile"],
 ) {
   if (sourceFiles.length === 0) {
-    return "Upload at least one data file (CSV, XLSX, PPTX, PDF, image, or document) to start a generation run.";
+    return "Upload at least one CSV, XLSX, or XLS data file to start a generation run.";
   }
 
   const unsupportedEvidenceFile = sourceFiles.find((file) => inferSourceFileKind(file.fileName) === "unknown");
@@ -374,8 +374,11 @@ function validateGenerationFiles(
     return `Unsupported file type for ${unsupportedEvidenceFile.fileName}. Basquio accepts CSV/XLSX/XLS plus text, doc, PDF, PPTX, JSON, or CSS support files.`;
   }
 
-  // Any evidence file type is valid — CSV, XLSX, PPTX, PDF, images, etc.
-  // No requirement for tabular data specifically.
+  const hasWorkbookEvidence = sourceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook");
+
+  if (!hasWorkbookEvidence) {
+    return "Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence. Keep PPTX, PDF, images, and documents as support material or template input.";
+  }
 
   if (styleFile && !["brand-tokens", "pptx", "pdf"].includes(inferSourceFileKind(styleFile.fileName))) {
     return "Brand input must be a JSON/CSS token file, a PPTX template, or a PDF style reference.";

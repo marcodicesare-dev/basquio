@@ -26,6 +26,16 @@ type Summary = {
   pageCount?: number;
   qaPassed?: boolean;
   templateDiagnostics?: TemplateDiagnostics;
+  brief?: {
+    businessContext?: string;
+    client?: string;
+    audience?: string;
+    objective?: string;
+    thesis?: string;
+    stakes?: string;
+  };
+  inputs?: Array<{ id?: string; kind: string; fileName: string }>;
+  failureGuidance?: string[];
 };
 
 type Step = {
@@ -57,6 +67,7 @@ export type RunProgressSnapshot = {
   templateDiagnostics?: TemplateDiagnostics;
   failureMessage?: string;
   toolCallCount?: number;
+  runHealth?: "healthy" | "stale";
 };
 
 // ─── USER-FACING PHASE MAP ─────────────────────────────────────
@@ -374,6 +385,10 @@ export function RunProgressView(input: {
 
   // ─── FAILED STATE ────────────────────────────────────────────
   if (snapshot.status === "failed") {
+    const failedInputs = snapshot.summary?.inputs ?? [];
+    const failedBrief = snapshot.summary?.brief;
+    const failureGuidance = snapshot.summary?.failureGuidance ?? [];
+
     return (
       <div style={styles.fullPage}>
         <div style={styles.center}>
@@ -388,6 +403,59 @@ export function RunProgressView(input: {
               {snapshot.failureMessage}
             </p>
           )}
+          <div style={{ width: "100%", maxWidth: 560, textAlign: "left", marginBottom: "1.5rem" }}>
+            <p style={{ color: "#F2F0EB", fontWeight: 600, marginBottom: "0.4rem" }}>
+              Failed during: {snapshot.currentStageLabel ?? snapshot.currentStage}
+            </p>
+            {failedInputs.length > 0 ? (
+              <div style={{ marginBottom: "1rem" }}>
+                <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
+                  Uploaded files
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
+                  {failedInputs.map((file) => (
+                    <span
+                      key={`${file.kind}-${file.fileName}`}
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        borderRadius: 999,
+                        padding: "0.35rem 0.65rem",
+                        color: "#D7D3CD",
+                        fontSize: "0.86rem",
+                      }}
+                    >
+                      {file.fileName} ({file.kind})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {failedBrief?.businessContext || failedBrief?.audience || failedBrief?.objective ? (
+              <div style={{ marginBottom: "1rem" }}>
+                <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
+                  Brief
+                </p>
+                {failedBrief?.businessContext ? (
+                  <p style={{ color: "#D7D3CD", marginBottom: "0.35rem" }}>{failedBrief.businessContext}</p>
+                ) : null}
+                <p style={{ color: "#A09FA6", fontSize: "0.92rem", marginBottom: 0 }}>
+                  Audience: {failedBrief?.audience || "n/a"} · Objective: {failedBrief?.objective || "n/a"}
+                </p>
+              </div>
+            ) : null}
+            {failureGuidance.length > 0 ? (
+              <div>
+                <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
+                  Retry guidance
+                </p>
+                <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "#D7D3CD" }}>
+                  {failureGuidance.map((hint) => (
+                    <li key={hint} style={{ marginBottom: "0.35rem" }}>{hint}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
           <Link href="/jobs/new" style={styles.primaryButton}>Try again</Link>
         </div>
       </div>
@@ -398,6 +466,7 @@ export function RunProgressView(input: {
   const elapsed = snapshot.elapsedSeconds;
   const etaText = formatEta(snapshot);
   const templateSummary = describeTemplateDiagnostics(snapshot.templateDiagnostics);
+  const staleWarning = snapshot.runHealth === "stale";
 
   return (
     <div style={styles.fullPage}>
@@ -422,6 +491,23 @@ export function RunProgressView(input: {
         <p style={{ color: "#A09FA6", fontSize: "1.05rem", marginBottom: "2.5rem", zIndex: 1 }}>
           {snapshot.currentStageLabel ?? USER_STEPS[currentUserStepIdx]?.label ?? "Working..."}
         </p>
+        {staleWarning ? (
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              marginBottom: "1.5rem",
+              padding: "0.9rem 1rem",
+              borderRadius: 18,
+              border: "1px solid rgba(255,196,87,0.35)",
+              background: "rgba(255,196,87,0.08)",
+              color: "#F2F0EB",
+              zIndex: 1,
+            }}
+          >
+            This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically.
+          </div>
+        ) : null}
 
         {/* Progress bar — full width, monotonic display of the model-based estimate */}
         <div style={{ width: "100%", maxWidth: 480, marginBottom: "2.5rem", zIndex: 1 }}>

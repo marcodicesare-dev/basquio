@@ -46,6 +46,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "At least one source file is required." }, { status: 400 });
     }
 
+    const hasWorkbookEvidence = files.some((file) => {
+      const kind = normalizePersistedSourceFileKind(null, file.name);
+      return kind === "workbook";
+    });
+
+    if (!hasWorkbookEvidence) {
+      return NextResponse.json(
+        {
+          error: "Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence. Use PPTX, PDF, images, and documents only as support material or template input.",
+        },
+        { status: 400 },
+      );
+    }
+
     const runId = randomUUID();
 
     // Upload source files to storage and create source_file records

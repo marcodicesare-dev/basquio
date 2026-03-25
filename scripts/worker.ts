@@ -6,8 +6,8 @@ import { refundCredit } from "../apps/web/src/lib/credits";
 loadBasquioScriptEnv();
 
 const POLL_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_POLL_INTERVAL_MS ?? "5000", 10);
-const STALE_RUN_MINUTES = Number.parseInt(process.env.BASQUIO_WORKER_STALE_MINUTES ?? "30", 10);
-const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBEAT_INTERVAL_MS ?? "60000", 10);
+const STALE_RUN_MINUTES = Number.parseInt(process.env.BASQUIO_WORKER_STALE_MINUTES ?? "5", 10);
+const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBEAT_INTERVAL_MS ?? "30000", 10);
 const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
 
 type QueuedRunRow = {
@@ -16,23 +16,57 @@ type QueuedRunRow = {
 
 async function main() {
   const config = resolveConfig();
-  let lastRecoveryAt = 0;
+  let shuttingDown = false;
+  let activeRunId: string | null = null;
+  let recoveryInFlight = false;
+
+  const requestShutdown = (signal: string) => {
+    if (shuttingDown) {
+      return;
+    }
+
+    shuttingDown = true;
+    console.warn(`[basquio-worker] received ${signal}; draining before shutdown`);
+
+    if (!activeRunId) {
+      process.exit(0);
+    }
+  };
+
+  process.on("SIGTERM", () => requestShutdown("SIGTERM"));
+  process.on("SIGINT", () => requestShutdown("SIGINT"));
 
   console.log("[basquio-worker] starting");
   await recoverStaleRuns(config);
-  lastRecoveryAt = Date.now();
+
+  const recoveryTimer = setInterval(() => {
+    if (recoveryInFlight) {
+      return;
+    }
+
+    recoveryInFlight = true;
+    void recoverStaleRuns(config)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[basquio-worker] recovery loop error: ${message}`);
+      })
+      .finally(() => {
+        recoveryInFlight = false;
+      });
+  }, RECOVERY_INTERVAL_MS);
+  recoveryTimer.unref?.();
 
   for (;;) {
-    try {
-      if (Date.now() - lastRecoveryAt >= RECOVERY_INTERVAL_MS) {
-        await recoverStaleRuns(config);
-        lastRecoveryAt = Date.now();
-      }
+    if (shuttingDown) {
+      break;
+    }
 
+    try {
       const runId = await claimNextQueuedRun(config);
 
       if (runId) {
         const startedAt = Date.now();
+        activeRunId = runId;
         console.log(`[basquio-worker] claimed run ${runId}`);
         const stopHeartbeat = startHeartbeat(config, runId);
 
@@ -71,6 +105,7 @@ async function main() {
           }
         } finally {
           stopHeartbeat();
+          activeRunId = null;
         }
       }
     } catch (error) {
@@ -78,8 +113,15 @@ async function main() {
       console.error(`[basquio-worker] poll loop error: ${message}`);
     }
 
+    if (shuttingDown) {
+      break;
+    }
+
     await sleep(POLL_INTERVAL_MS);
   }
+
+  clearInterval(recoveryTimer);
+  console.log("[basquio-worker] shutdown complete");
 }
 
 function resolveConfig() {

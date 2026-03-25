@@ -421,7 +421,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                     +
                   </span>
                   <span className="dropzone-title">Drop data files here</span>
-                  <span className="dropzone-copy">CSV, Excel, and supporting documents</span>
+                  <span className="dropzone-copy">At least one CSV/XLSX/XLS file, plus optional support docs</span>
                 </button>
 
                 <input
@@ -644,7 +644,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                 <p className="artifact-kind">Design template</p>
                 <p>{templateLabel}</p>
                 {brandFile ? (
-                  <p className="muted">Your colors and fonts will be extracted and used to guide the locked slide grid.</p>
+                  <p className="muted">Your template will guide colors, fonts, and layout interpretation while the data still comes from CSV/XLSX/XLS evidence.</p>
                 ) : selectedTemplate ? (
                   <p className="muted">Saved template selected. Colors, fonts, and style cues will guide the locked slide grid.</p>
                 ) : (
@@ -766,9 +766,17 @@ function validateSubmission(
     throw new Error("Add at least one data file before generating.");
   }
 
+  if (!evidenceFiles.some((file) => isWorkbookFile(file.name))) {
+    throw new Error("Add at least one CSV, XLSX, or XLS file as primary evidence. Keep PPTX, PDF, and docs as support material or template input.");
+  }
+
   if (!brief.businessContext || !brief.audience || !brief.objective) {
     throw new Error("Add the business context, audience, and objective before generating.");
   }
+}
+
+function isWorkbookFile(fileName: string) {
+  return /\.(csv|xlsx|xls)$/i.test(fileName);
 }
 
 function inferFileType(fileName: string): string {

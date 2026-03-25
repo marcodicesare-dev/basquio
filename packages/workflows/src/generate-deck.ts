@@ -260,6 +260,12 @@ export async function generateDeckRun(runId: string) {
       templateProfile,
       templateDiagnostics,
     });
+
+    const evidenceValidationError = validateAnalyticalEvidence(parsed);
+    if (evidenceValidationError) {
+      throw new Error(evidenceValidationError);
+    }
+
     await completePhase(config, runId, "normalize", {
       fileCount: parsed.datasetProfile.sourceFiles.length,
       sheetCount: parsed.datasetProfile.sheets.length,
@@ -934,6 +940,23 @@ function buildUnderstandMessage(
   ];
 
   return { role: "user" as const, content };
+}
+
+function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {
+  if (parsed.datasetProfile.sheets.length > 0) {
+    return null;
+  }
+
+  const evidenceKinds = new Set(parsed.datasetProfile.sourceFiles.map((file) => file.kind));
+  if (evidenceKinds.size === 0) {
+    return "Basquio could not find any usable evidence files for this run.";
+  }
+
+  if (!evidenceKinds.has("workbook")) {
+    return "Basquio could not find readable analytical data in the uploaded evidence. For now, add at least one CSV, XLSX, or XLS file as primary evidence and keep PPTX, PDF, images, and documents as support material or template input.";
+  }
+
+  return "Basquio could not read analytical tables from the uploaded evidence. Check that the CSV/XLSX/XLS files contain readable tabular data and retry.";
 }
 
 function buildAuthorMessage(

@@ -25,6 +25,13 @@ type DeckRunRow = {
   created_at: string;
   updated_at: string | null;
   completed_at: string | null;
+  brief: Record<string, unknown> | null;
+  business_context: string;
+  client: string;
+  audience: string;
+  objective: string;
+  thesis: string;
+  stakes: string;
   template_profile_id: string | null;
   source_file_ids: string[];
   template_diagnostics: Record<string, unknown> | null;
@@ -49,6 +56,12 @@ type ArtifactManifestRow = {
   page_count: number;
   qa_passed: boolean;
   artifacts: Array<{ kind: string; fileName: string; fileBytes: number; storagePath: string }>;
+};
+
+type SourceFileSummaryRow = {
+  id: string;
+  kind: string;
+  file_name: string;
 };
 
 type PhaseEstimate = {
@@ -110,6 +123,7 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
     completedDetail: "Downloads published.",
   },
 };
+const STALE_RUN_UI_SECONDS = Number.parseInt(process.env.BASQUIO_RUN_STALE_UI_SECONDS ?? "180", 10);
 
 export async function GET(
   _request: Request,
@@ -133,7 +147,7 @@ export async function GET(
   }
 
   return NextResponse.json(snapshot, {
-    status: snapshot.status === "completed" ? 200 : 202,
+    status: snapshot.status === "running" || snapshot.status === "queued" ? 202 : 200,
   });
 }
 
@@ -150,7 +164,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,template_profile_id,source_file_ids,template_diagnostics",
+      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,brief,business_context,client,audience,objective,thesis,stakes,template_profile_id,source_file_ids,template_diagnostics",
       id: `eq.${jobId}`,
       requested_by: `eq.${viewerId}`,
       limit: "1",
@@ -162,6 +176,10 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   }
 
   const run = runs[0];
+  const needsInputSummary = run.status === "failed" || run.status === "completed" || Boolean(run.completed_at);
+  const sourceFiles = needsInputSummary
+    ? await loadSourceFileSummaries(supabaseUrl, serviceKey, run.source_file_ids)
+    : [];
 
   const events = await fetchRestRows<DeckRunEventRow>({
     supabaseUrl,
@@ -199,11 +217,14 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const toolCalls = summaryEvents.filter((e) => e.event_type === "tool_call");
   const now = Date.now();
   const createdAtMs = new Date(run.created_at).getTime();
+  const updatedAtMs = run.updated_at ? new Date(run.updated_at).getTime() : createdAtMs;
   const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
   const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
   const templateDiagnostics = await resolveTemplateDiagnostics(supabaseUrl, serviceKey, run);
-  const progressModel = buildProgressModel(run, currentPhase, completedPhases, now);
+  const isStale = run.status === "running" && now - updatedAtMs > STALE_RUN_UI_SECONDS * 1000;
+  const progressClockMs = isStale ? updatedAtMs : now;
+  const progressModel = buildProgressModel(run, currentPhase, completedPhases, progressClockMs);
   const estimatedRemaining = estimateRemainingSeconds(currentPhase, completedPhases, progressModel.elapsedInPhaseSeconds);
 
   let progressPercent: number;
@@ -249,14 +270,37 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
 
   const currentDetail = lastToolCall?.tool_name
     ? `${phaseMeta.activeDetail} Tool in use: ${lastToolCall.tool_name}.`
+    : isStale
+      ? "This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically."
     : run.status === "failed"
         ? run.failure_message ?? "Run failed."
         : run.status === "completed"
           ? "Generation finished. Checking artifact availability."
         : phaseMeta.activeDetail;
 
+  const runBrief = {
+    businessContext: typeof run.brief?.businessContext === "string" ? run.brief.businessContext : run.business_context,
+    client: typeof run.brief?.client === "string" ? run.brief.client : run.client,
+    audience: typeof run.brief?.audience === "string" ? run.brief.audience : run.audience,
+    objective: typeof run.brief?.objective === "string" ? run.brief.objective : run.objective,
+    thesis: typeof run.brief?.thesis === "string" ? run.brief.thesis : run.thesis,
+    stakes: typeof run.brief?.stakes === "string" ? run.brief.stakes : run.stakes,
+  };
+  const failureGuidance = buildFailureGuidance(run, sourceFiles, isStale);
+
   // Fetch artifact manifest if completed
-  let summary: Record<string, unknown> | null = null;
+  let summary: Record<string, unknown> | null = needsInputSummary
+    ? {
+        brief: runBrief,
+        inputs: sourceFiles.map((file) => ({
+          id: file.id,
+          kind: file.kind,
+          fileName: file.file_name,
+        })),
+        templateDiagnostics,
+        failureGuidance,
+      }
+    : null;
   if (run.status === "completed" || run.completed_at) {
     try {
       const manifests = await fetchRestRows<ArtifactManifestRow>({
@@ -272,10 +316,10 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       if (manifests.length > 0) {
         const m = manifests[0];
         summary = {
+          ...summary,
           slideCount: m.slide_count,
           pageCount: m.page_count,
           qaPassed: m.qa_passed,
-          templateDiagnostics,
           artifacts: m.artifacts.map((a) => ({
             kind: a.kind,
             fileName: a.fileName,
@@ -289,7 +333,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     }
 
     // Fallback: if no manifest but slides exist, derive count from slide rows
-    if (!summary) {
+    if (!summary || typeof summary.slideCount !== "number") {
       try {
         const slideRows = await fetchRestRows<{ id: string }>({
           supabaseUrl: supabaseUrl!,
@@ -303,11 +347,11 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
         });
         if (slideRows.length > 0) {
           summary = {
+            ...(summary ?? {}),
             slideCount: slideRows.length,
             pageCount: 0,
-            qaPassed: false,
-            templateDiagnostics,
-            artifacts: [],
+            qaPassed: typeof summary?.qaPassed === "boolean" ? summary.qaPassed : false,
+            artifacts: Array.isArray(summary?.artifacts) ? summary.artifacts : [],
           };
         }
       } catch {
@@ -337,7 +381,63 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     templateDiagnostics,
     failureMessage: run.failure_message ?? undefined,
     toolCallCount: toolCalls.length,
+    runHealth: isStale ? "stale" : "healthy",
   };
+}
+
+async function loadSourceFileSummaries(
+  supabaseUrl: string,
+  serviceKey: string,
+  sourceFileIds: string[],
+) {
+  const rows = await Promise.all(
+    sourceFileIds.map(async (id) => {
+      const files = await fetchRestRows<SourceFileSummaryRow>({
+        supabaseUrl,
+        serviceKey,
+        table: "source_files",
+        query: {
+          select: "id,kind,file_name",
+          id: `eq.${id}`,
+          limit: "1",
+        },
+      }).catch(() => []);
+
+      return files[0] ?? null;
+    }),
+  );
+
+  return rows.filter((row): row is SourceFileSummaryRow => Boolean(row));
+}
+
+function buildFailureGuidance(
+  run: DeckRunRow,
+  sourceFiles: SourceFileSummaryRow[],
+  isStale: boolean,
+) {
+  const guidance: string[] = [];
+  const hasWorkbookEvidence = sourceFiles.some((file) => file.kind === "workbook");
+
+  if (isStale) {
+    guidance.push("This run stopped heartbeating and looks stalled. Basquio should requeue stale runs automatically within a few minutes.");
+    guidance.push("Changing tabs did not cause this. If it does not recover, restart the run.");
+    return guidance;
+  }
+
+  if (!hasWorkbookEvidence) {
+    guidance.push("Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence.");
+    guidance.push("Keep PPTX, PDF, images, and documents as support material or template input.");
+  }
+
+  if ((run.failure_message ?? "").includes("deck.pptx")) {
+    guidance.push("The run got through planning but failed while producing the final deck artifacts.");
+  }
+
+  if (guidance.length === 0 && run.status === "failed") {
+    guidance.push("Retry with the same workbook and template if this looks transient. If it repeats, remove optional support files and keep only the core workbook plus template.");
+  }
+
+  return guidance;
 }
 
 async function resolveTemplateDiagnostics(
