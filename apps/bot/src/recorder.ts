@@ -97,7 +97,7 @@ export async function startRecording(channel: VoiceBasedChannel): Promise<void> 
       break; // success
     } catch (err) {
       console.error(`❌ Voice connection attempt ${attempt}/${MAX_RETRIES} failed:`, err);
-      connection.destroy();
+      try { connection?.destroy(); } catch { /* already destroyed */ }
       connection = null;
       if (attempt === MAX_RETRIES) {
         throw new Error(`Voice connection timed out after ${MAX_RETRIES} attempts`);
@@ -121,7 +121,7 @@ export async function startRecording(channel: VoiceBasedChannel): Promise<void> 
     } catch {
       console.error("❌ Auto-reconnect failed, destroying connection");
       await flushAllStreams();
-      connection.destroy();
+      try { connection?.destroy(); } catch { /* already destroyed */ }
       connection = null;
     }
   });
