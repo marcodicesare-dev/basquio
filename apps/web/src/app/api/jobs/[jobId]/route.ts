@@ -198,8 +198,10 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const currentPhaseIndex = currentPhase ? V2_PHASES.indexOf(currentPhase as typeof V2_PHASES[number]) : -1;
   const toolCalls = summaryEvents.filter((e) => e.event_type === "tool_call");
   const now = Date.now();
-  const createdAt = run.created_at;
-  const elapsedSeconds = Math.max(1, Math.round((now - new Date(createdAt).getTime()) / 1000));
+  const createdAtMs = new Date(run.created_at).getTime();
+  const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
+  const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
+  const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
   const templateDiagnostics = await resolveTemplateDiagnostics(supabaseUrl, serviceKey, run);
   const progressModel = buildProgressModel(run, currentPhase, completedPhases, now);
   const estimatedRemaining = estimateRemainingSeconds(currentPhase, completedPhases, progressModel.elapsedInPhaseSeconds);
@@ -319,7 +321,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     pipelineVersion: "v2" as const,
     status: run.status as "queued" | "running" | "completed" | "failed",
     artifactsReady: Boolean(summary && Array.isArray(summary.artifacts) && (summary.artifacts as unknown[]).length > 0),
-    createdAt,
+    createdAt: run.created_at,
     updatedAt: run.updated_at ?? undefined,
     currentStage: currentPhase ?? V2_PHASES[0],
     currentStageLabel: phaseMeta.label,

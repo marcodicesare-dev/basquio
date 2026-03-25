@@ -24,6 +24,7 @@ type DeckRunRow = {
   phase_started_at: string | null;
   failure_message: string | null;
   created_at: string;
+  completed_at: string | null;
   template_profile_id: string | null;
   source_file_ids: string[];
   template_diagnostics: Record<string, unknown> | null;
@@ -126,7 +127,7 @@ export async function GET(
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,current_phase,phase_started_at,failure_message,created_at,template_profile_id,source_file_ids,template_diagnostics",
+      select: "id,status,current_phase,phase_started_at,failure_message,created_at,completed_at,template_profile_id,source_file_ids,template_diagnostics",
       id: `eq.${runId}`,
       requested_by: `eq.${viewer.user.id}`,
       limit: "1",
@@ -179,7 +180,10 @@ export async function GET(
   const toolCalls = summaryEvents.filter((e) => e.event_type === "tool_call");
   const lastToolCall = toolCalls.length > 0 ? toolCalls[toolCalls.length - 1] : null;
   const now = Date.now();
-  const elapsedSeconds = Math.max(1, Math.round((now - new Date(run.created_at).getTime()) / 1000));
+  const createdAtMs = new Date(run.created_at).getTime();
+  const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
+  const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
+  const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
   const progressModel = buildProgressModel(run, currentPhase, completedPhaseSet, now);
   const estimatedRemaining = estimateRemainingSeconds(
     currentPhase,
