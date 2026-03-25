@@ -7,6 +7,7 @@ import { AuthGate } from "@/components/auth-gate";
 import { buildSignInPath } from "@/lib/supabase/auth";
 import { getViewerState } from "@/lib/supabase/auth";
 import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
+import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 
 export default async function AuthenticatedLayout({ children }: { children: ReactNode }) {
   const viewer = await getViewerState();
@@ -26,18 +27,17 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     redirect(buildSignInPath(currentPath));
   }
 
-  // Team emails (@basquio.com) get unlimited usage
-  const isTeamEmail = viewer.user.email?.endsWith("@basquio.com") ?? false;
+  const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
 
   // Fetch credit balance for sidebar display
   let creditBalance = 0;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (supabaseUrl && serviceKey && !isTeamEmail) {
+  if (supabaseUrl && serviceKey && !hasUnlimitedUsage) {
     await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
     const balance = await getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
     creditBalance = balance.balance;
   }
 
-  return <AppShell viewer={viewer} creditBalance={isTeamEmail ? -1 : creditBalance}>{children}</AppShell>;
+  return <AppShell viewer={viewer} creditBalance={hasUnlimitedUsage ? -1 : creditBalance}>{children}</AppShell>;
 }

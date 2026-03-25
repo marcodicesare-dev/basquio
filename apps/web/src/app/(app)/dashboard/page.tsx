@@ -4,6 +4,7 @@ import { getViewerState } from "@/lib/supabase/auth";
 import { listV2RunCards, type V2RunCard } from "@/lib/job-runs";
 import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
 import { fetchRestRows } from "@/lib/supabase/admin";
+import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export default async function DashboardPage() {
   const viewer = await getViewerState();
   const runs = await listV2RunCards(6, viewer.user?.id);
   const recipes = viewer.user?.id ? await listRecipes(viewer.user.id) : [];
-  const isTeamEmail = viewer.user?.email?.endsWith("@basquio.com") ?? false;
+  const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user?.email);
 
   // Get credit balance for stats
   let creditBalance = 0;
@@ -100,8 +101,8 @@ export default async function DashboardPage() {
       {/* Stats row */}
       <div className="billing-stats-row">
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">{isTeamEmail ? "Access" : "Credits"}</p>
-          <p className="billing-stat-value">{isTeamEmail ? "Unlimited" : creditBalance}</p>
+          <p className="billing-stat-label">{hasUnlimitedUsage ? "Access" : "Credits"}</p>
+          <p className="billing-stat-value">{hasUnlimitedUsage ? "Unlimited" : creditBalance}</p>
         </article>
         <article className="panel billing-stat-card">
           <p className="billing-stat-label">Completed</p>

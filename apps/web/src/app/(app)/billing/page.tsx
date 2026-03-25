@@ -1,6 +1,7 @@
 import { getViewerState } from "@/lib/supabase/auth";
 import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
 import { fetchRestRows } from "@/lib/supabase/admin";
+import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ async function getLedgerHistory(userId: string): Promise<LedgerEntry[]> {
 
 export default async function BillingPage() {
   const viewer = await getViewerState();
-  const isTeamEmail = viewer.user?.email?.endsWith("@basquio.com") ?? false;
+  const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user?.email);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -84,8 +85,8 @@ export default async function BillingPage() {
 
       <div className="billing-stats-row">
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">{isTeamEmail ? "Access" : "Credits remaining"}</p>
-          <p className="billing-stat-value">{isTeamEmail ? "Unlimited" : balance}</p>
+          <p className="billing-stat-label">{hasUnlimitedUsage ? "Access" : "Credits remaining"}</p>
+          <p className="billing-stat-value">{hasUnlimitedUsage ? "Unlimited" : balance}</p>
         </article>
         <article className="panel billing-stat-card">
           <p className="billing-stat-label">Runs started</p>

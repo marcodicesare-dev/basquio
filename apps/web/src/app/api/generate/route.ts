@@ -11,6 +11,7 @@ import { checkAndDebitCredit, ensureFreeTierCredit, calculateRunCredits } from "
 import { uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
+import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
@@ -54,10 +55,9 @@ export async function POST(request: Request) {
     // so the debit must use the same value.
     const runId = randomUUID();
 
-    // Team emails get unlimited usage — skip billing entirely
-    const isTeamEmail = viewer.user.email?.endsWith("@basquio.com") ?? false;
+    const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
 
-    if (billingEnabled && supabaseUrl && serviceKey && !isTeamEmail) {
+    if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
       const targetSlideCount = ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10;
       const creditsNeeded = calculateRunCredits(targetSlideCount);
 
