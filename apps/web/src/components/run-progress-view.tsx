@@ -3,7 +3,17 @@
 import { Check, File, MagnifyingGlass, PaintBrush, Package } from "@phosphor-icons/react";
 import Link from "next/link";
 import Script from "next/script";
+import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
+
+type TemplateDiagnostics = {
+  status: "not_provided" | "parsed_successfully" | "partially_applied" | "fallback_default";
+  source: "system_default" | "saved_profile" | "uploaded_file";
+  effect: "layout_and_theme" | "theme_only" | "none";
+  reason: string;
+  templateName: string | null;
+  warnings: string[];
+};
 
 type Summary = {
   jobId?: string;
@@ -15,6 +25,7 @@ type Summary = {
   slideCount?: number;
   pageCount?: number;
   qaPassed?: boolean;
+  templateDiagnostics?: TemplateDiagnostics;
 };
 
 type Step = {
@@ -33,12 +44,17 @@ export type RunProgressSnapshot = {
   createdAt: string;
   updatedAt?: string;
   currentStage: string;
+  currentStageLabel?: string;
   currentDetail: string;
   progressPercent: number;
   elapsedSeconds: number;
   estimatedRemainingSeconds: number | null;
+  estimatedRemainingLowSeconds?: number | null;
+  estimatedRemainingHighSeconds?: number | null;
+  estimatedRemainingConfidence?: "high" | "medium" | "low";
   steps: Step[];
   summary: Summary | null;
+  templateDiagnostics?: TemplateDiagnostics;
   failureMessage?: string;
   toolCallCount?: number;
 };
@@ -48,17 +64,17 @@ const USER_STEPS = [
   { id: "read", label: "Reading your files", Icon: File },
   { id: "analyze", label: "Finding the story", Icon: MagnifyingGlass },
   { id: "design", label: "Designing the deck", Icon: PaintBrush },
-  { id: "export", label: "Preparing downloads", Icon: Package },
+  { id: "export", label: "Reviewing and exporting", Icon: Package },
 ] as const;
 
 const PHASE_TO_USER_STEP: Record<string, number> = {
   normalize: 0,
   understand: 1,
   author: 2,
-  render: 2,
-  polish: 2,
-  critique: 2,
-  revise: 2,
+  render: 3,
+  polish: 3,
+  critique: 3,
+  revise: 3,
   export: 3,
 };
 
@@ -151,6 +167,9 @@ export function RunProgressView(input: {
     const pdfDownloadHref = `/api/artifacts/${snapshot.jobId}/pdf`;
     const pdfPreviewHref = `${pdfDownloadHref}?disposition=inline#toolbar=0&navpanes=0&view=FitH`;
     const pptxDownloadHref = `/api/artifacts/${snapshot.jobId}/pptx`;
+    const templateSummary = describeTemplateDiagnostics(
+      snapshot.summary?.templateDiagnostics ?? snapshot.templateDiagnostics,
+    );
 
     return (
       <div className="page-shell job-result-page">
@@ -184,7 +203,11 @@ export function RunProgressView(input: {
               <span className="run-pill">PDF preview embedded below</span>
               {snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">Ready to review</span> : null}
               {snapshot.summary?.qaPassed === false ? <span className="run-pill run-pill-failed">Review suggested</span> : null}
+              <span className="run-pill">{templateSummary.badge}</span>
             </div>
+            <p className="muted" style={{ marginTop: "0.85rem", maxWidth: 560 }}>
+              {templateSummary.detail}
+            </p>
           </div>
 
           <div className="job-result-preview-shell">
@@ -366,6 +389,8 @@ export function RunProgressView(input: {
 
   // ─── IN-PROGRESS STATE ───────────────────────────────────────
   const elapsed = snapshot.elapsedSeconds;
+  const etaText = formatEta(snapshot);
+  const templateSummary = describeTemplateDiagnostics(snapshot.templateDiagnostics);
 
   return (
     <div style={styles.fullPage}>
@@ -388,7 +413,7 @@ export function RunProgressView(input: {
           Building your deck
         </h1>
         <p style={{ color: "#A09FA6", fontSize: "1.05rem", marginBottom: "2.5rem", zIndex: 1 }}>
-          {USER_STEPS[currentUserStepIdx]?.label ?? "Working..."}
+          {snapshot.currentStageLabel ?? USER_STEPS[currentUserStepIdx]?.label ?? "Working..."}
         </p>
 
         {/* Progress bar — full width, smooth, never goes backward */}
@@ -404,6 +429,17 @@ export function RunProgressView(input: {
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem" }}>
             <span style={{ color: "#6B6A72", fontSize: "0.8rem" }}>{formatTime(elapsed)} elapsed</span>
             <span style={{ color: "#A09FA6", fontSize: "0.8rem", fontWeight: 600 }}>{displayPercent}%</span>
+          </div>
+          <div style={{ marginTop: "0.9rem", textAlign: "left" }}>
+            <p style={{ color: "#F2F0EB", fontSize: "0.92rem", margin: 0 }}>
+              {snapshot.currentDetail}
+            </p>
+            <p style={{ color: "#A09FA6", fontSize: "0.8rem", margin: "0.45rem 0 0" }}>
+              {etaText}
+            </p>
+            <p style={{ color: "#6B6A72", fontSize: "0.78rem", margin: "0.45rem 0 0" }}>
+              {templateSummary.detail}
+            </p>
           </div>
         </div>
 
@@ -530,7 +566,7 @@ const styles = {
     fontSize: "1rem",
     borderRadius: 4,
     textDecoration: "none",
-  } as React.CSSProperties,
+  } as CSSProperties,
   secondaryButton: {
     display: "inline-block",
     padding: "0.85rem 2.5rem",
@@ -541,7 +577,7 @@ const styles = {
     borderRadius: 4,
     border: "1px solid rgba(255,255,255,0.2)",
     textDecoration: "none",
-  } as React.CSSProperties,
+  } as CSSProperties,
 } as const;
 
 // ─── HELPERS ───────────────────────────────────────────────────
@@ -551,4 +587,55 @@ function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+function formatEta(snapshot: RunProgressSnapshot) {
+  if (snapshot.status === "completed") return "Finished.";
+  if (snapshot.estimatedRemainingSeconds === null) return "Estimating time remaining...";
+  if (snapshot.estimatedRemainingConfidence === "low") return "Timing is variable right now. Estimating...";
+  if (
+    typeof snapshot.estimatedRemainingLowSeconds === "number" &&
+    typeof snapshot.estimatedRemainingHighSeconds === "number" &&
+    snapshot.estimatedRemainingHighSeconds > snapshot.estimatedRemainingLowSeconds
+  ) {
+    return `About ${formatEtaRange(snapshot.estimatedRemainingLowSeconds, snapshot.estimatedRemainingHighSeconds)} left.`;
+  }
+  return `About ${formatTime(snapshot.estimatedRemainingSeconds)} left.`;
+}
+
+function formatEtaRange(lowSeconds: number, highSeconds: number) {
+  if (highSeconds < 60) {
+    return `${lowSeconds}s-${highSeconds}s`;
+  }
+  const lowMinutes = Math.max(1, Math.round(lowSeconds / 60));
+  const highMinutes = Math.max(lowMinutes, Math.round(highSeconds / 60));
+  return `${lowMinutes}-${highMinutes} min`;
+}
+
+function describeTemplateDiagnostics(template: TemplateDiagnostics | null | undefined) {
+  if (!template || template.status === "not_provided") {
+    return {
+      badge: "No template attached",
+      detail: "Using the Basquio house style because this run did not include a template or brand file.",
+    };
+  }
+
+  if (template.status === "fallback_default") {
+    return {
+      badge: "Template fallback",
+      detail: `${template.templateName ?? "Uploaded template"} could not be applied cleanly, so Basquio fell back to the system style. ${template.warnings[0] ?? ""}`.trim(),
+    };
+  }
+
+  if (template.status === "partially_applied") {
+    return {
+      badge: "Template partially applied",
+      detail: `${template.templateName ?? "Template"} influenced ${template.effect === "theme_only" ? "theme tokens only" : "part of the layout system"}. ${template.warnings[0] ?? ""}`.trim(),
+    };
+  }
+
+  return {
+    badge: template.source === "saved_profile" ? "Saved template applied" : "Uploaded template applied",
+    detail: `${template.templateName ?? "Template"} is shaping ${template.effect === "layout_and_theme" ? "layout and theme" : "theme"} for this run.`,
+  };
 }

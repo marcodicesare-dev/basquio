@@ -26,7 +26,7 @@ Important direct-path constraints:
 
 - uploaded evidence should reach Claude through `container_upload`, not through prompt-side dataset inventories
 - the user message should stay brief-first and artifact-oriented; workbook inspection happens inside code execution
-- the live direct-worker phase spine is `normalize -> author -> critique -> revise -> export`
+- the live persisted worker phase spine is `normalize -> understand -> author -> render -> critique -> revise -> export`
 - rendered-page QA remains a second cheap model call on the generated PDF
 - the worker should rely on documented Anthropic skill contracts, not undocumented assumptions about the skill internals
 

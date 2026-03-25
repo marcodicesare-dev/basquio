@@ -78,6 +78,13 @@ If an uploaded template provides a stronger palette, preserve that template. Oth
 - use solid amber / teal / blue accents with limited palette variety
 - do not use rainbow palettes
 - do not use 3D charts, SmartArt, or Microsoft Office default chart themes
+- never stretch a rendered chart to fill a mismatched picture box; render the chart at the target slot aspect ratio or place it with contain/pad behavior
+- treat chart aspect ratios as editorial choices:
+  - wide landscape only for dense rankings, time series, or multi-series comparisons that genuinely need width
+  - squarer or narrower compositions for sparse charts, dominant-leader rankings, and low-signal category share slides
+- if one bar dominates and the rest are near zero, do not waste a full hero chart band on microscopic tails; switch to a commentary-led composition or a split layout
+- if a chart would leave a giant dead frame, use a different slide grammar instead of scaling the weak chart larger
+- positive labels must show `+` exactly once, negatives use `-`, and pp labels should render as forms like `+0.09pp` or `-1.2pp` with no doubled signs or mixed conventions
 
 ## PowerPoint / Keynote Compatibility
 

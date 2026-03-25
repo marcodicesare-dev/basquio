@@ -206,6 +206,13 @@ export async function interpretTemplateSource(input: TemplateInput): Promise<Tem
   });
 }
 
+export {
+  buildNoTemplateDiagnostics,
+  buildTemplateDiagnosticsFromProfile,
+  isTemplateDiagnostics,
+  type TemplateDiagnostics,
+} from "./diagnostics";
+
 async function parsePptxTemplate(input: {
   id: string;
   fileName: string;

@@ -152,7 +152,7 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
   "title-chart": {
     id: "title-chart",
     label: "Full-Width Chart",
-    description: "Single chart with title and callout",
+    description: "Single chart with title and callout, only for dense or time-series visuals that can credibly occupy a wide hero frame",
     slots: {
       kicker: {
         kind: "kicker",
@@ -187,7 +187,7 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
   "chart-split": {
     id: "chart-split",
     label: "Chart + Insight",
-    description: "Chart on the left, insight text on the right",
+    description: "Chart on the left, insight text on the right, preferred for sparse rankings, dominant-leader charts, and skewed comparisons",
     slots: {
       kicker: {
         kind: "kicker",
@@ -231,7 +231,7 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
   "evidence-grid": {
     id: "evidence-grid",
     label: "Evidence Grid",
-    description: "Metrics + chart + body for evidence-dense slides",
+    description: "Metrics + chart + body for evidence-dense slides, not for tiny or near-zero charts that need commentary-led treatment",
     slots: {
       kicker: {
         kind: "kicker",
@@ -363,7 +363,7 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
   "title-body": {
     id: "title-body",
     label: "Title + Body",
-    description: "Full-width text slide for synthesis or recommendations",
+    description: "Full-width text slide for synthesis, recommendations, or cases where the chart is too weak to justify a hero slot",
     slots: {
       kicker: {
         kind: "kicker",

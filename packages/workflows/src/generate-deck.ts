@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
 
 import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import JSZip from "jszip";
@@ -8,7 +9,13 @@ import { z } from "zod";
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import { enforceExhibit, inferQuestionType, routeQuestion } from "@basquio/intelligence";
 import { listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
-import { createSystemTemplateProfile, interpretTemplateSource } from "@basquio/template-engine";
+import {
+  buildNoTemplateDiagnostics,
+  buildTemplateDiagnosticsFromProfile,
+  createSystemTemplateProfile,
+  interpretTemplateSource,
+  type TemplateDiagnostics,
+} from "@basquio/template-engine";
 import type { TemplateProfile } from "@basquio/types";
 
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
@@ -148,6 +155,7 @@ type RunRow = {
   stakes: string;
   source_file_ids: string[];
   template_profile_id: string | null;
+  template_diagnostics: Record<string, unknown> | null;
 };
 
 type TemplateProfileRow = {
@@ -228,12 +236,28 @@ export async function generateDeckRun(runId: string) {
           },
         })
       : persistedTemplate?.template_profile ?? createSystemTemplateProfile();
+    const templateDiagnostics: TemplateDiagnostics = templateFile
+      ? buildTemplateDiagnosticsFromProfile({
+          profile: templateProfile,
+          source: "uploaded_file",
+          templateProfileId: run.template_profile_id,
+        })
+      : persistedTemplate
+        ? buildTemplateDiagnosticsFromProfile({
+            profile: templateProfile,
+            source: "saved_profile",
+            templateProfileId: run.template_profile_id,
+          })
+        : buildNoTemplateDiagnostics();
+
+    await persistTemplateDiagnostics(config, runId, templateDiagnostics);
 
     await persistEvidenceWorkspace(config, run, parsed, templateProfile);
     await upsertWorkingPaper(config, runId, "execution_brief", {
       brief: run.brief,
       fileInventory: parsed.datasetProfile.manifest ?? {},
       templateProfile,
+      templateDiagnostics,
     });
     await completePhase(config, runId, "normalize", {
       fileCount: parsed.datasetProfile.sourceFiles.length,
@@ -508,7 +532,7 @@ export async function generateDeckRun(runId: string) {
 
     currentPhase = "export";
     await markPhase(config, runId, currentPhase);
-    const qaReport = await buildQaReport(finalManifest, finalPptx, finalPdf, finalVisualQa);
+    const qaReport = await buildQaReport(finalManifest, finalPptx, finalPdf, finalVisualQa, templateDiagnostics);
     const blockingQaFailures = qaReport.failed.filter((check) =>
       !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
     );
@@ -516,7 +540,7 @@ export async function generateDeckRun(runId: string) {
       throw new Error(`Artifact QA failed: ${blockingQaFailures.join(", ")}`);
     }
     const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf);
-    await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts);
+    await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts, templateDiagnostics);
     await finalizeSuccess(config, runId, spentUsd, qaReport, {
       phases: phaseTelemetry,
       continuationCount,
@@ -552,7 +576,7 @@ async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) 
     serviceKey: config.serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,template_profile_id",
+      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,template_profile_id,template_diagnostics",
       id: `eq.${runId}`,
       limit: "1",
     },
@@ -662,6 +686,23 @@ async function persistEvidenceWorkspace(
         sheet_data: {},
       },
     ],
+  });
+}
+
+async function persistTemplateDiagnostics(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  templateDiagnostics: TemplateDiagnostics,
+) {
+  await patchRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_runs",
+    query: { id: `eq.${runId}` },
+    payload: {
+      template_diagnostics: templateDiagnostics,
+      updated_at: new Date().toISOString(),
+    },
   });
 }
 
@@ -904,6 +945,9 @@ function buildAuthorMessage(
           "- Follow the loaded pptx skill for the deck artifact generation.",
           "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
           "- Do not use native PowerPoint chart objects for critical visuals.",
+          "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
+          "- If a chart is sparse, leader-dominated, or near-zero outside one segment, switch to a split or commentary-led slide instead of forcing a wide chart.",
+          "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
           "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify all recommendations with FMCG levers.",
           "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, `deck_manifest.json`.",
@@ -932,6 +976,9 @@ function buildReviseMessage(issues: string[]) {
           "Apply the copywriting voice rules from the system prompt when rewriting any text: no em dashes, numbers first, active voice, insight titles not topic labels.",
           "Use Arial for all dense text and card internals unless the uploaded template explicitly forces another safe font.",
           "Do not use stacked ordinals, narrow title boxes, or floating footer metrics that can drift across PowerPoint, Keynote, and Google Slides.",
+          "Fix any stretched charts by re-rendering them at the correct slot ratio rather than scaling the old image.",
+          "If a slide has a weak sparse chart or ugly dead space, switch to a more appropriate grammar instead of padding the same layout.",
+          "Fix malformed numeric annotations such as duplicated plus signs or inconsistent pp notation.",
           "For action cards, reserve separate non-overlapping bands for index, title, body, and footer.",
           "Keep charts as image-based embeds that remain visible in Keynote.",
           "Your final assistant message must attach deck.pptx, deck.pdf, and deck_manifest.json as container_upload blocks.",
@@ -1335,6 +1382,7 @@ async function buildQaReport(
   pptx: GeneratedFile,
   pdf: GeneratedFile,
   visualQa: RenderedPageQaReport,
+  templateDiagnostics: TemplateDiagnostics,
 ) {
   const checks = [
     { name: "pptx_present", passed: pptx.buffer.length > 0, detail: `${pptx.buffer.length} bytes` },
@@ -1343,6 +1391,19 @@ async function buildQaReport(
     { name: "titles_present", passed: manifest.slides.every((slide) => slide.title.trim().length > 0), detail: "all slides have titles" },
     { name: "rendered_page_visual_green", passed: visualQa.overallStatus === "green", detail: `visual status=${visualQa.overallStatus}` },
     { name: "rendered_page_visual_no_revision", passed: !visualQa.deckNeedsRevision, detail: visualQa.summary },
+    {
+      name: "template_diagnostics_present",
+      passed: Boolean(templateDiagnostics.status && templateDiagnostics.source && templateDiagnostics.effect),
+      detail: `${templateDiagnostics.source}:${templateDiagnostics.status}:${templateDiagnostics.effect}`,
+    },
+    {
+      name: "rendered_page_numeric_labels_clean",
+      passed: !visualQa.issues.some((issue) => issue.code === "numeric_label_malformed"),
+      detail: visualQa.issues
+        .filter((issue) => issue.code === "numeric_label_malformed")
+        .map((issue) => `slide ${issue.slidePosition}`)
+        .join(", ") || "no malformed numeric labels reported",
+    },
   ];
 
   const zipSignatureValid = pptx.buffer.length >= 4 && pptx.buffer[0] === 0x50 && pptx.buffer[1] === 0x4b;
@@ -1356,7 +1417,11 @@ async function buildQaReport(
     pdf.buffer[3] === 0x46;
   checks.push({ name: "pdf_header_signature", passed: pdfHeaderValid, detail: "pdf starts with %PDF" });
 
-  return await validateArtifactChecks(manifest, checks, pptx.buffer, pdf.buffer);
+  const validated = await validateArtifactChecks(manifest, checks, pptx.buffer, pdf.buffer);
+  return {
+    ...validated,
+    template: templateDiagnostics,
+  };
 }
 
 async function validateArtifactChecks(
@@ -1375,6 +1440,7 @@ async function validateArtifactChecks(
     const slideXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).length;
     const rasterMediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\/.+\.(png|jpe?g)$/i.test(name)).length;
     const nativeChartXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/i.test(name)).length;
+    const aspectMismatchFindings = await collectLargePictureAspectMismatchFindings(zip, manifest);
     const extraChecks = [
       { name: "pptx_presentation_xml", passed: Boolean(presentationXml), detail: "ppt/presentation.xml exists" },
       { name: "pptx_slide_xml_count_matches_manifest", passed: slideXmlCount === manifest.slideCount, detail: `manifest=${manifest.slideCount} xml=${slideXmlCount}` },
@@ -1387,6 +1453,16 @@ async function validateArtifactChecks(
         name: "pptx_no_native_chart_xml",
         passed: nativeChartXmlCount === 0,
         detail: `nativeChartXml=${nativeChartXmlCount}`,
+      },
+      {
+        name: "pptx_large_image_aspect_fit",
+        passed: aspectMismatchFindings.length === 0,
+        detail: aspectMismatchFindings.length === 0
+          ? "no large image aspect mismatches"
+          : aspectMismatchFindings
+              .slice(0, 3)
+              .map((finding) => `slide ${finding.slideNumber} ${finding.target} ${finding.frameRatio.toFixed(2)} vs ${finding.imageRatio.toFixed(2)}`)
+              .join("; "),
       },
     ];
     allChecks.push(...extraChecks);
@@ -1420,6 +1496,170 @@ async function validateArtifactChecks(
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };
+}
+
+type PictureAspectFinding = {
+  slideNumber: number;
+  target: string;
+  frameRatio: number;
+  imageRatio: number;
+  frameAreaSqIn: number;
+};
+
+async function collectLargePictureAspectMismatchFindings(
+  zip: JSZip,
+  manifest: z.infer<typeof deckManifestSchema>,
+): Promise<PictureAspectFinding[]> {
+  const findings: PictureAspectFinding[] = [];
+  const chartSlides = new Set(
+    manifest.slides
+      .filter((slide) => Boolean(slide.chartId))
+      .map((slide) => slide.position),
+  );
+  const slideEntries = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+    .sort((a, b) => extractSlideNumber(a) - extractSlideNumber(b));
+
+  for (const slideEntry of slideEntries) {
+    const slideNumber = extractSlideNumber(slideEntry);
+    if (!chartSlides.has(slideNumber)) {
+      continue;
+    }
+    const slideXml = await zip.file(slideEntry)?.async("string");
+    const relsEntry = slideEntry.replace("slides/", "slides/_rels/") + ".rels";
+    const relsXml = await zip.file(relsEntry)?.async("string");
+
+    if (!slideXml || !relsXml) {
+      continue;
+    }
+
+    const slideFindings = await collectSlidePictureAspectMismatchFindings(
+      zip,
+      slideEntry,
+      slideNumber,
+      slideXml,
+      relsXml,
+    );
+    if (slideFindings.length === 0) {
+      continue;
+    }
+
+    const primaryFinding = slideFindings.reduce((largest, finding) =>
+      finding.frameAreaSqIn > largest.frameAreaSqIn ? finding : largest,
+    );
+    findings.push(primaryFinding);
+  }
+
+  return findings;
+}
+
+async function collectSlidePictureAspectMismatchFindings(
+  zip: JSZip,
+  slideEntry: string,
+  slideNumber: number,
+  slideMarkup: string,
+  relsMarkup: string,
+): Promise<PictureAspectFinding[]> {
+  const findings: PictureAspectFinding[] = [];
+  const relTargets = parseRelationshipTargets(relsMarkup, slideEntry);
+  const pictures = slideMarkup.match(/<p:pic[\s\S]*?<\/p:pic>/g) ?? [];
+
+  for (const picture of pictures) {
+    const embed = picture.match(/<a:blip[^>]*r:embed="([^"]+)"/i)?.[1];
+    const cx = Number.parseInt(picture.match(/<a:ext[^>]*cx="(\d+)"/i)?.[1] ?? "", 10);
+    const cy = Number.parseInt(picture.match(/<a:ext[^>]*cy="(\d+)"/i)?.[1] ?? "", 10);
+    if (!embed || !Number.isFinite(cx) || !Number.isFinite(cy) || cy <= 0) {
+      continue;
+    }
+
+    const target = relTargets.get(embed);
+    if (!target) {
+      continue;
+    }
+
+    const imageBuffer = await zip.file(target)?.async("nodebuffer");
+    if (!imageBuffer) {
+      continue;
+    }
+
+    const imageDimensions = readImageDimensions(imageBuffer);
+    if (!imageDimensions || imageDimensions.height <= 0) {
+      continue;
+    }
+
+    const frameWidthInches = cx / 914400;
+    const frameHeightInches = cy / 914400;
+    const frameAreaSqIn = frameWidthInches * frameHeightInches;
+    if (frameAreaSqIn < 8) {
+      continue;
+    }
+
+    const frameRatio = frameWidthInches / frameHeightInches;
+    const imageRatio = imageDimensions.width / imageDimensions.height;
+    const distortion = Math.abs(frameRatio - imageRatio) / imageRatio;
+
+    if (distortion > 0.12) {
+      findings.push({
+        slideNumber,
+        target,
+        frameRatio,
+        imageRatio,
+        frameAreaSqIn,
+      });
+    }
+  }
+
+  return findings;
+}
+
+function parseRelationshipTargets(relsMarkup: string, slideEntry: string) {
+  const targets = new Map<string, string>();
+  const baseDir = path.posix.dirname(slideEntry);
+
+  for (const match of relsMarkup.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/gi)) {
+    const [, relId, target] = match;
+    targets.set(relId, path.posix.normalize(path.posix.join(baseDir, target)));
+  }
+
+  return targets;
+}
+
+function readImageDimensions(buffer: Buffer | null) {
+  if (!buffer || buffer.length < 24) {
+    return null;
+  }
+
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return {
+      width: buffer.readUInt32BE(16),
+      height: buffer.readUInt32BE(20),
+    };
+  }
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+      const marker = buffer[offset + 1];
+      const blockLength = buffer.readUInt16BE(offset + 2);
+      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+        return {
+          height: buffer.readUInt16BE(offset + 5),
+          width: buffer.readUInt16BE(offset + 7),
+        };
+      }
+      offset += 2 + blockLength;
+    }
+  }
+
+  return null;
+}
+
+function extractSlideNumber(name: string) {
+  return Number.parseInt(name.match(/slide(\d+)\.xml/i)?.[1] ?? "0", 10);
 }
 
 async function persistArtifacts(
@@ -1467,6 +1707,7 @@ async function publishArtifactManifest(
   manifest: z.infer<typeof deckManifestSchema>,
   qaReport: Record<string, unknown>,
   artifacts: Array<Record<string, unknown>>,
+  templateDiagnostics: TemplateDiagnostics,
 ) {
   await upsertRestRows({
     supabaseUrl: config.supabaseUrl,
@@ -1479,7 +1720,10 @@ async function publishArtifactManifest(
         slide_count: manifest.slideCount,
         page_count: manifest.pageCount ?? manifest.slideCount,
         qa_passed: qaReport.tier === "green",
-        qa_report: qaReport,
+        qa_report: {
+          ...qaReport,
+          template: templateDiagnostics,
+        },
         artifacts,
         published_at: new Date().toISOString(),
       },

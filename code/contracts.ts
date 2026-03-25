@@ -206,7 +206,7 @@ export const deckExecutionPhaseSchema = z.enum([
   "normalize",
   "understand",
   "author",
-  "polish",
+  "render",
   "critique",
   "revise",
   "export",

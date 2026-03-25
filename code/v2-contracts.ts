@@ -18,7 +18,7 @@ export const deckRunPhaseSchema = z.enum([
   "normalize",
   "understand",
   "author",
-  "polish",
+  "render",
   "critique",
   "revise",
   "export",

@@ -80,7 +80,8 @@ Initial domain bias:
 - High token spend in code-execution runs is often driven by repeated `pause_turn` continuation with growing container history, not only by the initial prompt size.
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
 - The primary direct-worker generation pattern should be one file-backed Claude generation turn that loads the `pptx` and `pdf` skills from the start, not a prompt-stuffed `understand` call followed by a separate `author` call.
-- The current direct-worker phase list is `normalize`, `author`, `critique`, `revise`, `export`. Old `understand` and `polish` phases are historical and should not be shown as active phases in the live progress contract.
+- The current persisted direct-worker phase list is `normalize`, `understand`, `author`, `render`, `critique`, `revise`, `export`.
+- `polish` is historical and should not appear in live progress or contract schemas.
 - `container_upload` evidence files should be read inside code execution, not summarized back into the prompt as dataset inventory or column dumps.
 - The correct production execution surface for long Basquio deck runs is a durable worker, not a Vercel request. Vercel should enqueue `deck_runs`; a Railway worker should claim and execute them.
 - Supabase-backed `deck_runs.status = "queued"` is the current queue contract. A separate queue system is unnecessary while one worker claims runs atomically and stale-running runs are re-queued.

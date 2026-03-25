@@ -146,7 +146,7 @@ export async function POST(request: Request) {
         runId,
         status: "queued",
         statusUrl: `/api/v2/runs/${runId}`,
-        progressUrl: `/api/v2/runs/${runId}/progress`,
+        progressUrl: `/jobs/${runId}`,
       },
       { status: 202 },
     );
