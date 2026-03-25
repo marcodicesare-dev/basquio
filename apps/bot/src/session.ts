@@ -19,6 +19,10 @@ interface VoiceSession {
 
 let currentSession: VoiceSession | null = null;
 
+// Cooldown after failed voice connection to stop hammering the channel
+let voiceFailedAt: number | null = null;
+const VOICE_COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown after failure
+
 /**
  * Called when someone joins the voice channel.
  */
@@ -29,6 +33,13 @@ export async function handleVoiceJoin(
   const displayName = member.displayName;
 
   if (!currentSession) {
+    // If voice connection failed recently, don't retry yet
+    if (voiceFailedAt && Date.now() - voiceFailedAt < VOICE_COOLDOWN_MS) {
+      const remainingSec = Math.round((VOICE_COOLDOWN_MS - (Date.now() - voiceFailedAt)) / 1000);
+      console.log(`⏸️ Voice cooldown active (${remainingSec}s remaining) — skipping join by ${displayName}`);
+      return;
+    }
+
     // Start new session
     currentSession = {
       startedAt: new Date(),
@@ -39,6 +50,7 @@ export async function handleVoiceJoin(
 
     try {
       await startRecording(channel);
+      voiceFailedAt = null; // Clear cooldown on success
       console.log(`🟢 Session started by ${displayName}`);
 
       // Set up long-session segmenting
@@ -48,6 +60,8 @@ export async function handleVoiceJoin(
       );
     } catch (err) {
       console.error("Failed to start recording:", err);
+      voiceFailedAt = Date.now();
+      console.log(`⏸️ Voice connection failed — cooling down for ${VOICE_COOLDOWN_MS / 1000}s to stop disrupting channel`);
       currentSession = null;
     }
   } else {
