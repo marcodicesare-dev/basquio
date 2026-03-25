@@ -108,7 +108,7 @@ export const detailedComparisonRows = [
     basquio: "Yes",
   },
   {
-    label: "Brand template applied automatically",
+    label: "Brand template interpreted automatically",
     genericAi: "No",
     slideGenerators: "Partial",
     basquio: "Yes",

@@ -167,6 +167,8 @@ export function RunProgressView(input: {
     const pdfDownloadHref = `/api/artifacts/${snapshot.jobId}/pdf`;
     const pdfPreviewHref = `${pdfDownloadHref}?disposition=inline#toolbar=0&navpanes=0&view=FitH`;
     const pptxDownloadHref = `/api/artifacts/${snapshot.jobId}/pptx`;
+    const hasDocxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "docx"));
+    const docxDownloadHref = `/api/artifacts/${snapshot.jobId}/docx`;
     const templateSummary = describeTemplateDiagnostics(
       snapshot.summary?.templateDiagnostics ?? snapshot.templateDiagnostics,
     );
@@ -193,6 +195,11 @@ export function RunProgressView(input: {
               <a className="button secondary" href={pdfDownloadHref}>
                 Download PDF
               </a>
+              {hasDocxArtifact ? (
+                <a className="button secondary" href={docxDownloadHref}>
+                  Download DOCX
+                </a>
+              ) : null}
               <a className="button small secondary" href={pdfPreviewHref} target="_blank" rel="noreferrer">
                 Open preview
               </a>
@@ -416,7 +423,7 @@ export function RunProgressView(input: {
           {snapshot.currentStageLabel ?? USER_STEPS[currentUserStepIdx]?.label ?? "Working..."}
         </p>
 
-        {/* Progress bar — full width, smooth, never goes backward */}
+        {/* Progress bar — full width, monotonic display of the model-based estimate */}
         <div style={{ width: "100%", maxWidth: 480, marginBottom: "2.5rem", zIndex: 1 }}>
           <div style={styles.progressTrack}>
             <div
@@ -592,15 +599,15 @@ function formatTime(seconds: number): string {
 function formatEta(snapshot: RunProgressSnapshot) {
   if (snapshot.status === "completed") return "Finished.";
   if (snapshot.estimatedRemainingSeconds === null) return "Estimating time remaining...";
-  if (snapshot.estimatedRemainingConfidence === "low") return "Timing is variable right now. Estimating...";
+  if (snapshot.estimatedRemainingConfidence === "low") return "Phase-timing estimate only. Timing is variable right now.";
   if (
     typeof snapshot.estimatedRemainingLowSeconds === "number" &&
     typeof snapshot.estimatedRemainingHighSeconds === "number" &&
     snapshot.estimatedRemainingHighSeconds > snapshot.estimatedRemainingLowSeconds
   ) {
-    return `About ${formatEtaRange(snapshot.estimatedRemainingLowSeconds, snapshot.estimatedRemainingHighSeconds)} left.`;
+    return `Estimated ${formatEtaRange(snapshot.estimatedRemainingLowSeconds, snapshot.estimatedRemainingHighSeconds)} left based on the current workflow phase.`;
   }
-  return `About ${formatTime(snapshot.estimatedRemainingSeconds)} left.`;
+  return `Estimated ${formatTime(snapshot.estimatedRemainingSeconds)} left based on the current workflow phase.`;
 }
 
 function formatEtaRange(lowSeconds: number, highSeconds: number) {
@@ -623,19 +630,19 @@ function describeTemplateDiagnostics(template: TemplateDiagnostics | null | unde
   if (template.status === "fallback_default") {
     return {
       badge: "Template fallback",
-      detail: `${template.templateName ?? "Uploaded template"} could not be applied cleanly, so Basquio fell back to the system style. ${template.warnings[0] ?? ""}`.trim(),
+      detail: `${template.templateName ?? "Uploaded template"} could not be parsed cleanly, so Basquio fell back to the system style. ${template.warnings[0] ?? ""}`.trim(),
     };
   }
 
   if (template.status === "partially_applied") {
     return {
-      badge: "Template partially applied",
-      detail: `${template.templateName ?? "Template"} influenced ${template.effect === "theme_only" ? "theme tokens only" : "part of the layout system"}. ${template.warnings[0] ?? ""}`.trim(),
+      badge: "Template guidance partial",
+      detail: `${template.templateName ?? "Template"} provided ${template.effect === "theme_only" ? "theme guidance only" : "partial layout guidance"}. This reflects template interpretation status, not a final fidelity score. ${template.warnings[0] ?? ""}`.trim(),
     };
   }
 
   return {
-    badge: template.source === "saved_profile" ? "Saved template applied" : "Uploaded template applied",
-    detail: `${template.templateName ?? "Template"} is shaping ${template.effect === "layout_and_theme" ? "layout and theme" : "theme"} for this run.`,
+    badge: template.source === "saved_profile" ? "Saved template parsed" : "Uploaded template parsed",
+    detail: `${template.templateName ?? "Template"} parsed cleanly and is available to guide ${template.effect === "layout_and_theme" ? "layout and theme choices" : "theme choices"} for this run. This reflects template interpretation status, not a final fidelity score.`,
   };
 }

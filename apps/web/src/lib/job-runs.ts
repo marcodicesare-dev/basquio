@@ -572,7 +572,7 @@ async function listV2DeckRuns(
       const artifacts = (manifest?.artifacts ?? []).map((a) => ({
         id: `${run.id}-${a.kind}`,
         jobId: run.id,
-        kind: a.kind as "pptx" | "pdf",
+        kind: a.kind as ArtifactRecord["kind"],
         fileName: a.fileName,
         mimeType: a.mimeType,
         storagePath: a.storagePath,

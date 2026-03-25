@@ -22,7 +22,7 @@ export async function GET(
     return new Response("Authentication required.", { status: 401 });
   }
 
-  if (kind !== "pptx" && kind !== "pdf") {
+  if (kind !== "pptx" && kind !== "pdf" && kind !== "docx") {
     return new Response("Unsupported artifact kind.", { status: 400 });
   }
 
@@ -73,7 +73,7 @@ async function readSupabaseArtifact(storagePath: string) {
   });
 }
 
-async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf", viewerId: string) {
+async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf" | "docx", viewerId: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

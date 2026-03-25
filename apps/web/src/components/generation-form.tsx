@@ -644,9 +644,9 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                 <p className="artifact-kind">Design template</p>
                 <p>{templateLabel}</p>
                 {brandFile ? (
-                  <p className="muted">Your colors and fonts will be extracted and applied to the locked slide grid.</p>
+                  <p className="muted">Your colors and fonts will be extracted and used to guide the locked slide grid.</p>
                 ) : selectedTemplate ? (
-                  <p className="muted">Saved template applied. Colors, fonts, and style locked to the slide grid.</p>
+                  <p className="muted">Saved template selected. Colors, fonts, and style cues will guide the locked slide grid.</p>
                 ) : (
                   <p className="muted">Clean editorial design with the default locked slide grid.</p>
                 )}
@@ -679,7 +679,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
               <article className="review-card stack">
                 <p className="artifact-kind">Output</p>
                 <p className="muted" style={{ fontSize: "0.9rem" }}>
-                  PPTX + PDF — charts render as locked visuals for consistent PowerPoint, Google Slides, and Keynote output.
+                  PPTX + PDF + DOCX — charts render as locked visuals for consistent slides, and the DOCX expands the same story into a deeper written report.
                 </p>
               </article>
             </div>
