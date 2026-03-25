@@ -39,9 +39,22 @@ type NarrativeAnalysis = {
 
 type ReportSection = {
   heading: string;
-  paragraphs: string[];
   level: 1 | 2;
+  blocks: ReportBlock[];
 };
+
+type ReportBlock =
+  | {
+    kind: "paragraph";
+    text: string;
+    style?: "Body" | "Meta";
+  }
+  | {
+    kind: "table";
+    title?: string;
+    headers: [string, string, string];
+    rows: Array<[string, string, string]>;
+  };
 
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -70,15 +83,12 @@ export async function buildNarrativeDocx(input: {
     {
       heading: labels.executiveSummary,
       level: 1,
-      paragraphs: compactParagraphs([
-        firstNonEmpty(input.analysis.executiveSummary, input.analysis.thesis),
-        buildReportMethodParagraph(labels),
-      ]),
+      blocks: buildExecutiveSummaryBlocks(input, labels),
     },
     {
       heading: labels.context,
       level: 1,
-      paragraphs: compactParagraphs([
+      blocks: paragraphBlocks([
         buildContextParagraph(input.run, labels),
         buildAudienceParagraph(input.run, labels),
         buildStakesParagraph(input.run, labels),
@@ -87,15 +97,15 @@ export async function buildNarrativeDocx(input: {
     {
       heading: labels.findings,
       level: 1,
-      paragraphs: [],
+      blocks: paragraphBlocks([labels.findingsIntro]),
     },
     ...findingSlides.map((slide) => {
       const fallbackSlide = analysisSlidesByPosition.get(slide.position);
       const mergedSlide = mergeSlideNarrative(slide, fallbackSlide);
       return {
         heading: mergedSlide.title,
-      level: 2 as const,
-        paragraphs: buildSlideParagraphs(mergedSlide, labels),
+        level: 2 as const,
+        blocks: buildSlideBlocks(mergedSlide, labels),
       };
     }),
   ];
@@ -104,15 +114,22 @@ export async function buildNarrativeDocx(input: {
     sections.push({
       heading: labels.recommendations,
       level: 1,
-      paragraphs: recommendationSlides.map((slide) => buildRecommendationParagraph(slide, labels)),
+      blocks: paragraphBlocks([labels.recommendationsIntro]),
     });
+    sections.push(
+      ...recommendationSlides.map((slide) => ({
+        heading: slide.title,
+        level: 2 as const,
+        blocks: buildRecommendationBlocks(slide, labels),
+      })),
+    );
   }
 
   if (evidenceNotes.length > 0) {
     sections.push({
       heading: labels.evidenceNotes,
       level: 1,
-      paragraphs: evidenceNotes,
+      blocks: paragraphBlocks(evidenceNotes),
     });
   }
 
@@ -157,7 +174,7 @@ function buildDocumentXml(input: {
     paragraphXml(`${input.labels.generatedOnLabel}: ${formatDate(input.generatedAt)}`, "Meta"),
     ...input.sections.flatMap((section) => [
       paragraphXml(section.heading, section.level === 1 ? "Heading1" : "Heading2"),
-      ...section.paragraphs.map((paragraph) => paragraphXml(paragraph, "Body")),
+      ...section.blocks.map((block) => blockXml(block)),
     ]),
     sectionPropertiesXml(),
   ].join("");
@@ -307,6 +324,61 @@ function paragraphXml(text: string, styleId: string) {
   ].join("");
 }
 
+function blockXml(block: ReportBlock) {
+  if (block.kind === "paragraph") {
+    return paragraphXml(block.text, block.style ?? "Body");
+  }
+
+  const title = block.title ? paragraphXml(block.title, "Meta") : "";
+  return `${title}${tableXml(block.headers, block.rows)}`;
+}
+
+function tableXml(headers: [string, string, string], rows: Array<[string, string, string]>) {
+  const columnWidths = ["4200", "2200", "1800"];
+  const headerRow = tableRowXml(headers, true, columnWidths);
+  const bodyRows = rows.map((row) => tableRowXml(row, false, columnWidths)).join("");
+
+  return [
+    "<w:tbl>",
+    '<w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>',
+    '<w:top w:val="single" w:sz="8" w:space="0" w:color="D1D5DB"/>',
+    '<w:left w:val="single" w:sz="8" w:space="0" w:color="D1D5DB"/>',
+    '<w:bottom w:val="single" w:sz="8" w:space="0" w:color="D1D5DB"/>',
+    '<w:right w:val="single" w:sz="8" w:space="0" w:color="D1D5DB"/>',
+    '<w:insideH w:val="single" w:sz="6" w:space="0" w:color="E5E7EB"/>',
+    '<w:insideV w:val="single" w:sz="6" w:space="0" w:color="E5E7EB"/>',
+    "</w:tblBorders></w:tblPr>",
+    `<w:tblGrid>${columnWidths.map((width) => `<w:gridCol w:w="${width}"/>`).join("")}</w:tblGrid>`,
+    headerRow,
+    bodyRows,
+    "</w:tbl>",
+  ].join("");
+}
+
+function tableRowXml(cells: [string, string, string], header: boolean, widths: string[]) {
+  return `<w:tr>${cells.map((cell, index) => tableCellXml(cell, widths[index] ?? "2400", header)).join("")}</w:tr>`;
+}
+
+function tableCellXml(text: string, width: string, header: boolean) {
+  const run = header
+    ? '<w:rPr><w:b/><w:color w:val="111827"/><w:sz w:val="20"/></w:rPr>'
+    : '<w:rPr><w:color w:val="1F2933"/><w:sz w:val="20"/></w:rPr>';
+  const shading = header ? '<w:shd w:val="clear" w:color="auto" w:fill="F9FAFB"/>' : "";
+
+  return [
+    "<w:tc>",
+    `<w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${shading}<w:tcMar><w:top w:w="90" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tcMar></w:tcPr>`,
+    "<w:p>",
+    '<w:pPr><w:spacing w:after="40"/></w:pPr>',
+    "<w:r>",
+    run,
+    `<w:t xml:space="preserve">${escapeXml(text || " ")}</w:t>`,
+    "</w:r>",
+    "</w:p>",
+    "</w:tc>",
+  ].join("");
+}
+
 function sectionPropertiesXml() {
   return [
     "<w:sectPr>",
@@ -316,31 +388,80 @@ function sectionPropertiesXml() {
   ].join("");
 }
 
-function buildSlideParagraphs(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
-  return compactParagraphs([
-    slide.subtitle,
-    slide.body,
-    slide.metrics && slide.metrics.length > 0
-      ? `${labels.keyNumbers}: ${slide.metrics.map(formatMetric).join("; ")}.`
-      : "",
-    ...(slide.bullets ?? []).map((bullet) => normalizeParagraph(bullet)),
-    slide.callout?.text ? `${labels.implication}: ${normalizeParagraph(slide.callout.text)}` : "",
+function buildExecutiveSummaryBlocks(
+  input: {
+    run: NarrativeRunContext;
+    analysis: NarrativeAnalysis;
+    manifest: DeckManifest;
+  },
+  labels: ReturnType<typeof getLabels>,
+) {
+  const keyFindingTitles = input.manifest.slides
+    .filter((slide) => slide.position > 1)
+    .slice(0, 3)
+    .map((slide) => normalizeSentence(slide.title));
+
+  const bridgeParagraph = keyFindingTitles.length > 0
+    ? `${labels.summaryBridgeIntro} ${joinHumanList(keyFindingTitles, labels)}.`
+    : "";
+
+  return paragraphBlocks([
+    firstNonEmpty(input.analysis.executiveSummary, input.analysis.thesis),
+    bridgeParagraph,
+    buildReportMethodParagraph(labels),
   ]);
 }
 
-function buildRecommendationParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
-  const fragments = compactParagraphs([
-    slide.body,
-    slide.metrics && slide.metrics.length > 0
-      ? `${labels.keyNumbers}: ${slide.metrics.map(formatMetric).join("; ")}.`
-      : "",
-    ...(slide.bullets ?? []).slice(0, 3),
-    slide.callout?.text,
-  ]);
-  const detail = fragments.join(" ");
-  return detail
-    ? `${slide.title}. ${detail}`
-    : slide.title;
+function buildSlideBlocks(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
+  const blocks: ReportBlock[] = [];
+  const lead = buildLeadParagraph(slide, labels);
+  if (lead) {
+    blocks.push({ kind: "paragraph", text: lead });
+  }
+
+  const metricTable = buildMetricTable(slide, labels);
+  if (metricTable) {
+    blocks.push(metricTable);
+  }
+
+  const commentary = buildCommentaryParagraph(slide, labels);
+  if (commentary) {
+    blocks.push({ kind: "paragraph", text: commentary });
+  }
+
+  if (slide.callout?.text) {
+    blocks.push({
+      kind: "paragraph",
+      text: `${labels.implicationLabel}: ${normalizeSentence(slide.callout.text)}.`,
+    });
+  }
+
+  return dedupeBlocks(blocks);
+}
+
+function buildRecommendationBlocks(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
+  const blocks: ReportBlock[] = [];
+  const lead = buildRecommendationLeadParagraph(slide, labels);
+  if (lead) {
+    blocks.push({ kind: "paragraph", text: lead });
+  }
+
+  const metricTable = buildMetricTable(slide, labels);
+  if (metricTable) {
+    blocks.push(metricTable);
+  }
+
+  const why = buildRecommendationWhyParagraph(slide, labels);
+  if (why) {
+    blocks.push({ kind: "paragraph", text: why });
+  }
+
+  const how = buildRecommendationHowParagraph(slide, labels);
+  if (how) {
+    blocks.push({ kind: "paragraph", text: how });
+  }
+
+  return dedupeBlocks(blocks);
 }
 
 function mergeSlideNarrative(primary: NarrativeSlide, fallback?: NarrativeSlide) {
@@ -380,6 +501,102 @@ function buildStakesParagraph(run: NarrativeRunContext, labels: ReturnType<typeo
 
 function buildReportMethodParagraph(labels: ReturnType<typeof getLabels>) {
   return labels.methodParagraph;
+}
+
+function buildLeadParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
+  const title = normalizeSentence(slide.title);
+  const body = firstNonEmpty(slide.body);
+  const subtitle = firstNonEmpty(slide.subtitle);
+
+  if (body) {
+    return `${title}. ${normalizeSentence(body)}.`;
+  }
+
+  if (subtitle) {
+    return `${title}. ${normalizeSentence(subtitle)}.`;
+  }
+
+  const bulletSummary = summarizeBullets(slide.bullets, labels);
+  if (bulletSummary) {
+    return `${title}. ${bulletSummary}.`;
+  }
+
+  return `${title}.`;
+}
+
+function buildCommentaryParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
+  const bulletSummary = summarizeBullets(slide.bullets, labels);
+  if (bulletSummary) {
+    return `${labels.readingLabel}: ${bulletSummary}.`;
+  }
+
+  if (slide.metrics && slide.metrics.length > 0 && slide.chartId) {
+    return labels.metricTableBridge;
+  }
+
+  return "";
+}
+
+function buildRecommendationLeadParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
+  const title = normalizeSentence(slide.title);
+  const callout = firstNonEmpty(slide.callout?.text);
+  const body = firstNonEmpty(slide.body);
+
+  if (callout) {
+    return `${title}. ${labels.whatToDoLabel}: ${normalizeSentence(callout)}.`;
+  }
+
+  if (body) {
+    return `${title}. ${normalizeSentence(body)}.`;
+  }
+
+  return `${title}.`;
+}
+
+function buildRecommendationWhyParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
+  const sources = compactParagraphs([
+    firstNonEmpty(slide.body),
+    slide.metrics && slide.metrics.length > 0 ? buildMetricSentence(slide.metrics, labels) : "",
+  ]);
+
+  if (sources.length === 0) {
+    return "";
+  }
+
+  return `${labels.whyItMattersLabel}: ${sources.join(" ")}`;
+}
+
+function buildRecommendationHowParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
+  const bulletSummary = summarizeBullets(slide.bullets, labels);
+  if (!bulletSummary) {
+    return "";
+  }
+  return `${labels.howToActLabel}: ${bulletSummary}.`;
+}
+
+function buildMetricTable(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>): ReportBlock | null {
+  if (!slide.metrics || slide.metrics.length < 2) {
+    return null;
+  }
+
+  return {
+    kind: "table",
+    title: labels.metricTableTitle,
+    headers: [labels.metricColumnLabel, labels.valueColumnLabel, labels.changeColumnLabel],
+    rows: slide.metrics.map((metric) => [
+      normalizeSentence(metric.label),
+      metric.value,
+      metric.delta ?? labels.notAvailable,
+    ]),
+  };
+}
+
+function buildMetricSentence(metrics: NarrativeMetric[], labels: ReturnType<typeof getLabels>) {
+  const leadMetrics = metrics.slice(0, 3).map(formatMetric);
+  if (leadMetrics.length === 0) {
+    return "";
+  }
+  return `${labels.keyNumbers}: ${leadMetrics.join("; ")}.`;
 }
 
 function collectEvidenceNotes(manifest: DeckManifest) {
@@ -438,6 +655,27 @@ function formatMetric(metric: NarrativeMetric) {
   return parts.join(" ");
 }
 
+function summarizeBullets(bullets: string[] | undefined, labels: ReturnType<typeof getLabels>) {
+  if (!bullets || bullets.length === 0) {
+    return "";
+  }
+
+  const cleaned = bullets
+    .map((bullet) => normalizeSentence(bullet))
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (cleaned.length === 0) {
+    return "";
+  }
+
+  if (cleaned.length === 1) {
+    return cleaned[0];
+  }
+
+  return `${labels.pointsIntro} ${cleaned.join("; ")}`;
+}
+
 function compactParagraphs(values: Array<string | undefined | null | false>) {
   const seen = new Set<string>();
   const paragraphs: string[] = [];
@@ -456,6 +694,45 @@ function compactParagraphs(values: Array<string | undefined | null | false>) {
 
 function normalizeParagraph(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeSentence(value: string) {
+  const normalized = normalizeParagraph(value).replace(/[.;:,]+$/g, "");
+  return normalized;
+}
+
+function paragraphBlocks(values: Array<string | undefined | null | false>) {
+  return compactParagraphs(values).map((text) => ({
+    kind: "paragraph" as const,
+    text,
+  }));
+}
+
+function dedupeBlocks(blocks: ReportBlock[]) {
+  const seen = new Set<string>();
+  return blocks.filter((block) => {
+    const key = block.kind === "paragraph"
+      ? `p:${block.text.toLowerCase()}`
+      : `t:${JSON.stringify(block.rows).toLowerCase()}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function joinHumanList(values: string[], labels: ReturnType<typeof getLabels>) {
+  if (values.length === 0) {
+    return "";
+  }
+  if (values.length === 1) {
+    return values[0] ?? "";
+  }
+  if (values.length === 2) {
+    return `${values[0]} ${labels.andWord} ${values[1]}`;
+  }
+  return `${values.slice(0, -1).join(", ")}, ${labels.andWord} ${values.at(-1)}`;
 }
 
 function firstNonEmpty(...values: Array<string | undefined | null>) {
@@ -491,10 +768,28 @@ function getLabels(languageHint?: string) {
       executiveSummary: "Sintesi esecutiva",
       context: "Domanda di business e contesto",
       findings: "Evidenze chiave",
+      findingsIntro:
+        "Di seguito sviluppiamo le evidenze principali in modo piu discorsivo, con i numeri raccolti in tabelle compatte quando servono.",
       recommendations: "Azioni consigliate",
+      recommendationsIntro:
+        "Le priorita finali mantengono la stessa direzione del deck, ma qui sono spiegate in modo piu operativo.",
       evidenceNotes: "Note sulle evidenze",
       keyNumbers: "Numeri chiave",
-      implication: "Implicazione",
+      implicationLabel: "Implicazione",
+      readingLabel: "In pratica",
+      whatToDoLabel: "Cosa fare",
+      whyItMattersLabel: "Perche conta",
+      howToActLabel: "Come muoversi",
+      pointsIntro: "In concreto",
+      summaryBridgeIntro: "Nel complesso, il lavoro converge su tre messaggi",
+      metricTableTitle: "Tabella di sintesi",
+      metricColumnLabel: "Indicatore",
+      valueColumnLabel: "Valore",
+      changeColumnLabel: "Variazione",
+      notAvailable: "n.d.",
+      metricTableBridge:
+        "La tabella sotto raccoglie i numeri da tenere a riferimento, mentre l'interpretazione resta nel testo.",
+      andWord: "e",
       unknownValue: "Non specificato",
       methodParagraph:
         "Questo documento espande in forma narrativa lo stesso ragionamento evidence-based del deck. E intenzionalmente text-first, senza grafici, per facilitarne riuso, commento e passaggio in altri workflow AI.",
@@ -515,10 +810,28 @@ function getLabels(languageHint?: string) {
     executiveSummary: "Executive Summary",
     context: "Business Question and Context",
     findings: "Detailed Findings",
+    findingsIntro:
+      "The sections below explain each key finding in plain language, while compact tables keep the core numbers readable.",
     recommendations: "Recommended Actions",
+    recommendationsIntro:
+      "The final priorities stay aligned with the deck, but this report explains the rationale and execution more clearly.",
     evidenceNotes: "Evidence Notes",
     keyNumbers: "Key numbers",
-    implication: "Implication",
+    implicationLabel: "Implication",
+    readingLabel: "What this means",
+    whatToDoLabel: "What to do",
+    whyItMattersLabel: "Why it matters",
+    howToActLabel: "How to act",
+    pointsIntro: "Specifically",
+    summaryBridgeIntro: "Taken together, the work points to three clear messages",
+    metricTableTitle: "Key metrics",
+    metricColumnLabel: "Metric",
+    valueColumnLabel: "Value",
+    changeColumnLabel: "Change",
+    notAvailable: "n/a",
+    metricTableBridge:
+      "The table below keeps the key numbers readable, while the text explains the business meaning.",
+    andWord: "and",
     unknownValue: "Unspecified",
     methodParagraph:
       "This document expands the same evidence-backed story as the deck in a text-first format. It intentionally excludes charts so it is easier to share, review, and reuse in downstream AI workflows.",

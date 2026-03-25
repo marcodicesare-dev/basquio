@@ -47,6 +47,8 @@ Required behavior:
 The deck is concise by design.
 The DOCX should be more explanatory, but still sharp and evidence-led.
 The DOCX should stay cheap and reliable to generate, so narrative clarity matters more than layout ambition.
+When a section is dense with numbers, prefer a compact table plus a short explanation over a paragraph made only of figures.
+The tone should feel client-ready in both English and Italian: direct, natural, commercial, and easy to reuse.
 
 ## Consistency Rules
 
@@ -76,6 +78,7 @@ In v1, the artifact should stay text-first:
 
 - no embedded charts
 - no screenshot dumps
+- compact tables are allowed when they improve readability
 - no attempt to recreate slide layouts inside Word
 - no decorative heavy formatting that makes generation brittle
 
