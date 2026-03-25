@@ -24,6 +24,7 @@ type DeckRunRow = {
   phase_started_at: string | null;
   failure_message: string | null;
   created_at: string;
+  updated_at: string | null;
   completed_at: string | null;
   template_profile_id: string | null;
   source_file_ids: string[];
@@ -87,6 +88,7 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
     activeDetail: "Publishing the PPTX and PDF downloads.",
   },
 };
+const STALE_RUN_UI_SECONDS = Number.parseInt(process.env.BASQUIO_RUN_STALE_UI_SECONDS ?? "180", 10);
 
 // Event-sourced progress endpoint.
 // Returns persisted run events from deck_run_events. Tool-call detail is only present when the worker emits it.
@@ -127,7 +129,7 @@ export async function GET(
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,current_phase,phase_started_at,failure_message,created_at,completed_at,template_profile_id,source_file_ids,template_diagnostics",
+      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,template_profile_id,source_file_ids,template_diagnostics",
       id: `eq.${runId}`,
       requested_by: `eq.${viewer.user.id}`,
       limit: "1",
@@ -181,10 +183,13 @@ export async function GET(
   const lastToolCall = toolCalls.length > 0 ? toolCalls[toolCalls.length - 1] : null;
   const now = Date.now();
   const createdAtMs = new Date(run.created_at).getTime();
+  const updatedAtMs = run.updated_at ? new Date(run.updated_at).getTime() : createdAtMs;
   const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
   const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
-  const progressModel = buildProgressModel(run, currentPhase, completedPhaseSet, now);
+  const isStale = run.status === "running" && now - updatedAtMs > STALE_RUN_UI_SECONDS * 1000;
+  const progressClockMs = isStale ? updatedAtMs : now;
+  const progressModel = buildProgressModel(run, currentPhase, completedPhaseSet, progressClockMs);
   const estimatedRemaining = estimateRemainingSeconds(
     currentPhase,
     completedPhaseSet,
@@ -201,6 +206,8 @@ export async function GET(
 
   const currentDetail = lastToolCall?.tool_name
     ? `${phaseMeta.activeDetail} Tool in use: ${lastToolCall.tool_name}.`
+    : isStale
+      ? "This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically."
     : run.status === "failed"
       ? run.failure_message ?? "Run failed."
       : run.status === "completed"
@@ -211,6 +218,7 @@ export async function GET(
     runId: run.id,
     status: run.status,
     currentPhase: currentPhase ?? null,
+    runHealth: isStale ? "stale" : "healthy",
     currentStageLabel: phaseMeta.label,
     currentDetail,
     progressPct,

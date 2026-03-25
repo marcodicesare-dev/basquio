@@ -246,7 +246,12 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
     }
 
     if (currentStep === 1 && evidenceFiles.length === 0) {
-      setError("Add at least one data file before continuing.");
+      setError("Add at least one CSV, XLSX, or XLS file before continuing.");
+      return;
+    }
+
+    if (currentStep === 1 && !evidenceFiles.some((file) => isWorkbookFile(file.name))) {
+      setError("Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence before you continue.");
       return;
     }
 
@@ -403,7 +408,8 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
           <section className="step-panel stack-lg">
             <div className="stack-xs">
               <p className="section-label">Step 2</p>
-              <h2>Upload your data</h2>
+              <h2>Upload your evidence</h2>
+              <p className="muted">Start with a CSV, XLSX, or XLS workbook. You can add support docs in the same batch, but workbook evidence is required.</p>
             </div>
 
             <div className="step-grid">
@@ -420,8 +426,8 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                   <span className="dropzone-icon" aria-hidden>
                     +
                   </span>
-                  <span className="dropzone-title">Drop data files here</span>
-                  <span className="dropzone-copy">At least one CSV/XLSX/XLS file, plus optional support docs</span>
+                  <span className="dropzone-title">Drop workbook evidence here</span>
+                  <span className="dropzone-copy">Required: CSV/XLSX/XLS. Optional in the same batch: PPTX, PDF, DOCX, text, JSON, CSS, or images as support material.</span>
                 </button>
 
                 <input
@@ -450,9 +456,14 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                         </button>
                       </div>
                     ))}
-                    <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
+                  <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
                       {evidenceFiles.length} file{evidenceFiles.length === 1 ? "" : "s"} · {formatFileSize(evidenceFiles.reduce((sum, f) => sum + f.size, 0))} total
+                  </p>
+                  {!evidenceFiles.some((file) => isWorkbookFile(file.name)) ? (
+                    <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4, color: "var(--danger)" }}>
+                      Add at least one CSV, XLSX, or XLS file. Support docs alone will be rejected.
                     </p>
+                  ) : null}
                   </div>
                 ) : null}
               </div>
@@ -619,8 +630,9 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
 
             <div className="review-grid">
               <article className="review-card stack">
-                <p className="artifact-kind">Data</p>
+                <p className="artifact-kind">Evidence</p>
                 <p>{evidenceFiles.length > 0 ? `${evidenceFiles.length} file${evidenceFiles.length === 1 ? "" : "s"}` : "No files added yet"}</p>
+                <p className="muted">Required: at least one CSV/XLSX/XLS workbook. Support docs are optional.</p>
                 {evidenceFiles.length > 0 ? (
                   <div className="file-list">
                     {evidenceFiles.map((file) => (
