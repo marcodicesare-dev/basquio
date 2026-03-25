@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 const trustStats = [
-  { value: "10+ years", label: "in NielsenIQ-grade reporting" },
+  { value: "Operator-built", label: "by teams who make recurring review decks" },
   { value: "PPTX + PDF", label: "from the same run" },
   { value: "5-15 min", label: "for a finished first draft" },
 ] as const;
@@ -53,7 +53,7 @@ const outputBullets = [
   },
   {
     title: "Your template when you need it",
-    copy: "Upload a saved brand system or PPTX and Basquio carries it through the output.",
+    copy: "Upload a saved brand system or PPTX and Basquio interprets it into the output without exposing your internal files on the public site.",
   },
 ] as const;
 
@@ -61,7 +61,7 @@ const pricingSnapshot = [
   {
     name: "Individual",
     price: "$10",
-    unit: "per standard report",
+    unit: "per report*",
     copy: "Start with one report at a time. Your first standard report is free.",
     highlight: false,
   },
@@ -119,8 +119,8 @@ export default function HomePage() {
         <div className="hero-artifact-column">
           <div className="hero-artifact-frame">
             <Image
-              src="/showcase/slide-chart@2x.png"
-              alt="Basquio market structure slide with a category bar chart based on Affinity pet care data"
+              src="/showcase/slide-showcase-chart.svg"
+              alt="Basquio market structure slide with a sanitized category bar chart and no client brand names"
               width={960}
               height={540}
               priority
@@ -129,11 +129,11 @@ export default function HomePage() {
 
           <div className="hero-artifact-meta">
             <div className="artifact-evidence-row">
-              <span className="artifact-chip">Actual Basquio output</span>
-              <span className="artifact-chip">Affinity pet care review</span>
+              <span className="artifact-chip">Sanitized Basquio output</span>
+              <span className="artifact-chip">Category review example</span>
               <span className="artifact-chip subtle">PPTX + PDF</span>
             </div>
-            <p>Real FMCG numbers, one clean slide, and a point of view you can build on.</p>
+            <p>Sanitized FMCG-style numbers, one clean slide, and a point of view you can build on.</p>
           </div>
         </div>
       </section>
@@ -143,7 +143,7 @@ export default function HomePage() {
           <p className="section-label">Trust</p>
           <h2>Built by people who know how category reviews get made.</h2>
           <p className="muted">
-            Basquio comes from the world of NielsenIQ decks, client reviews, and recurring reporting cycles. It is built for teams that need a real first draft, not a toy.
+            Basquio comes from the world of recurring retail reviews, analyst decks, and client reporting cycles. It is built for teams that need a real first draft, not a toy.
           </p>
         </div>
 
@@ -177,15 +177,15 @@ export default function HomePage() {
       <section className="home-output-proof" id="output">
         <div className="home-output-visual">
           <Image
-            src="/showcase/slide-executive@2x.png"
-            alt="Basquio executive overview slide showing market, cat, dog, and Affinity performance"
+            src="/showcase/slide-showcase-executive.svg"
+            alt="Basquio executive overview slide showing sanitized market and segment performance"
             width={960}
             height={540}
           />
           <div className="artifact-evidence-row">
             <span className="artifact-chip strong">Executive overview</span>
             <span className="artifact-chip">€2.23B market</span>
-            <span className="artifact-chip">Affinity +2.6%</span>
+            <span className="artifact-chip">Leading brand +2.6%</span>
           </div>
         </div>
 
@@ -219,7 +219,7 @@ export default function HomePage() {
         <div className="pricing-snapshot-head">
           <div className="stack">
             <p className="section-label">Pricing</p>
-            <h2>Start free. Pick the buying model that fits the team.</h2>
+            <h2>Start free. Pick the model that fits your team.</h2>
           </div>
           <Link className="button secondary" href="/pricing">
             See full pricing
@@ -239,6 +239,9 @@ export default function HomePage() {
             </article>
           ))}
         </div>
+        <p className="pricing-snapshot-note">
+          * Credits and report type are calculated from scope, slide count, and workflow complexity.
+        </p>
       </section>
 
       <PublicSiteFooterCta

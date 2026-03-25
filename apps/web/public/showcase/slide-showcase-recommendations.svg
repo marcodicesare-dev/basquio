@@ -26,26 +26,26 @@
   <text x="106" y="185" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">MOVE NOW</text>
   <!-- Card title -->
   <text x="76" y="218" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Enter Cat Snacks</text>
-  <text x="76" y="236" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Under ULTIMA</text>
+  <text x="76" y="236" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Under the lead brand</text>
   <!-- Body -->
   <text x="76" y="264" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5d656b">
     <tspan x="76" dy="0">Cat Snacks 85M at +3.7% is</tspan>
     <tspan x="76" dy="16">the fastest-growing segment.</tspan>
-    <tspan x="76" dy="16">Affinity has 2,859 today.</tspan>
-    <tspan x="76" dy="16">CATISFACTIONS (+12.6%) is</tspan>
+    <tspan x="76" dy="16">The current range is too small.</tspan>
+    <tspan x="76" dy="16">The segment leader (+12.6%) is</tspan>
     <tspan x="76" dy="16">compounding its lead every</tspan>
-    <tspan x="76" dy="16">quarter Affinity delays.</tspan>
+    <tspan x="76" dy="16">quarter the portfolio delays.</tspan>
   </text>
   <!-- Metric badge -->
   <rect x="76" y="400" width="230" height="36" rx="0" fill="#0b0c0c"/>
   <text x="191" y="423" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">4.3M YEAR 1 TARGET</text>
 
-  <!-- Card 2: TRAINER -->
+  <!-- Card 2: Core dog brand -->
   <rect x="346" y="150" width="270" height="300" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
   <circle cx="372" cy="180" r="16" fill="#f0cc27"/>
   <text x="372" y="185" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700" fill="#0b0c0c" text-anchor="middle">2</text>
   <text x="396" y="185" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">RESTRUCTURE</text>
-  <text x="366" y="218" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Restructure TRAINER</text>
+  <text x="366" y="218" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Restructure the core</text>
   <text x="366" y="236" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">for Dog</text>
   <text x="366" y="264" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5d656b">
     <tspan x="366" dy="0">378 SKUs averaging 13K/year.</tspan>
@@ -58,17 +58,17 @@
   <rect x="366" y="400" width="230" height="36" rx="0" fill="#0b0c0c"/>
   <text x="481" y="423" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">4.9M REVENUE STABILISED</text>
 
-  <!-- Card 3: ULTIMA Cat Wet -->
+  <!-- Card 3: Premium cat wet -->
   <rect x="636" y="150" width="270" height="300" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
   <circle cx="662" cy="180" r="16" fill="#22c55e"/>
   <text x="662" y="185" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
   <text x="686" y="185" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">ACCELERATE</text>
-  <text x="656" y="218" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Accelerate ULTIMA</text>
+  <text x="656" y="218" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Accelerate premium</text>
   <text x="656" y="236" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#0b0c0c">Cat Wet Premium</text>
   <text x="656" y="264" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5d656b">
-    <tspan x="656" dy="0">SHEBA is growing +10.7% on</tspan>
+    <tspan x="656" dy="0">The premium leader is growing +10.7% on</tspan>
     <tspan x="656" dy="16">a 70M base by premiumizing.</tspan>
-    <tspan x="656" dy="16">ULTIMA at 6.9% share and</tspan>
+    <tspan x="656" dy="16">The current brand at 6.9% share and</tspan>
     <tspan x="656" dy="16">+5.4% growth has momentum.</tspan>
     <tspan x="656" dy="16">Extend into premium wet and</tspan>
     <tspan x="656" dy="16">multi-portion formats.</tspan>
@@ -78,9 +78,9 @@
 
   <!-- Bottom callout -->
   <rect x="56" y="466" width="848" height="40" rx="0" fill="#f0f7ff" stroke="#1a6aff" stroke-width="1" stroke-opacity="0.3"/>
-  <text x="76" y="491" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Move on Cat Snacks before CATISFACTIONS consolidates its 26.9% share lead. The window is now, not in 18 months.</text>
+  <text x="76" y="491" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Move on Cat Snacks before the segment leader consolidates its share lead. The window is now, not in 18 months.</text>
 
   <!-- Source -->
-  <text x="56" y="528" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">Source: NielsenIQ RMS IT All Banners 2025</text>
+  <text x="56" y="528" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">Source: sanitized retail panel sample 2025</text>
   <text x="916" y="528" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8" text-anchor="end">10</text>
 </svg>

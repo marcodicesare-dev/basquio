@@ -15,7 +15,7 @@ const tiers = [
   {
     name: "Individual",
     price: "$10",
-    unit: "per standard report",
+    unit: "per report*",
     description: "The simple way to try Basquio on live work without buying a subscription first.",
     highlight: false,
     badge: null,
@@ -108,6 +108,9 @@ export default function PricingPage() {
           <h1>Start free. Pay per report. Add the team when it becomes routine.</h1>
           <p className="page-copy">
             Basquio is easy to try on real work. Your first standard report is free. After that, buy individual reports or set up a shared workspace for the team.
+          </p>
+          <p className="pricing-footnote">
+            * Basquio calculates credits and report type from scope, slide count, and workflow complexity.
           </p>
         </div>
       </section>

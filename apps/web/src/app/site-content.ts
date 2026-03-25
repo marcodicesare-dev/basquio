@@ -1,4 +1,4 @@
-export const heroSignals = ["Story by AI. Math by code.", "Traceable numbers", "Branded PPTX + PDF"] as const;
+export const heroSignals = ["Story by AI. Math by code.", "Private workspace by default", "Branded PPTX + PDF"] as const;
 
 export const reportTypePresets = [
   {
@@ -35,7 +35,7 @@ export const reportTypePresets = [
 
 
 export const evidencePackageInputs = [
-  "CSVs and spreadsheets",
+  "At least one CSV or spreadsheet as primary evidence",
   "Support PDFs and notes",
   "Report brief",
   "Brand tokens or template",
@@ -44,7 +44,7 @@ export const evidencePackageInputs = [
 export const gettingStartedSteps = [
   {
     title: "Bring one reporting cycle",
-    detail: "Upload the CSVs, spreadsheets, PDFs, and brand files behind one review.",
+    detail: "Upload the workbook evidence behind one review, then add any PDFs, notes, or brand files that help the draft land faster.",
   },
   {
     title: "Write the brief",
@@ -134,7 +134,7 @@ export const howItWorksPhases = [
     title: "Upload one evidence package",
     time: "Step 1",
     copy:
-      "Bring the CSVs, spreadsheets, PDFs, briefs, and brand files behind one reporting cycle. Basquio treats them as one package instead of one disconnected upload at a time.",
+      "Bring the workbook evidence behind one reporting cycle, then add PDFs, briefs, and brand files as supporting context. Basquio treats them as one package instead of one disconnected upload at a time.",
   },
   {
     stage: "02",

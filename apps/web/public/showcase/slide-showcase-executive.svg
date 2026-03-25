@@ -16,7 +16,7 @@
 
   <!-- Title -->
   <text x="56" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">A 2.23B Market Flat in Value, Down in Volume</text>
-  <text x="56" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">Affinity Beats the Trend at +2.6%</text>
+  <text x="56" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">Leading Brand Beats the Trend at +2.6%</text>
 
   <!-- 4 metric cards row -->
   <!-- Card 1: Total Market -->
@@ -37,9 +37,9 @@
   <text x="516" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#0b0c0c" letter-spacing="-1">833M</text>
   <text x="516" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#ef4444">-2.5% vs PY</text>
 
-  <!-- Card 4: Affinity -->
+  <!-- Card 4: Leading brand -->
   <rect x="716" y="150" width="200" height="120" rx="0" fill="#0b0c0c"/>
-  <text x="736" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">AFFINITY PERFORMANCE</text>
+  <text x="736" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">LEADING BRAND</text>
   <text x="736" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#ffffff" letter-spacing="-1">105.2M</text>
   <text x="736" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+2.6% vs PY</text>
 
@@ -54,10 +54,10 @@
   <!-- Key finding callout -->
   <rect x="56" y="400" width="848" height="60" rx="0" fill="#f0f7ff" stroke="#1a6aff" stroke-width="1" stroke-opacity="0.3"/>
   <text x="76" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#1a6aff">KEY FINDING</text>
-  <text x="76" y="442" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0b0c0c">Affinity outgrows the market by 3pp but 95% of that gain sits in one brand in one segment. ULTIMA Cat is the engine.</text>
+  <text x="76" y="442" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0b0c0c">The leading brand outgrows the market by 3pp, with almost all of that gain coming from one premium cat segment.</text>
 
   <!-- Source footer -->
-  <text x="56" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">Source: NielsenIQ RMS IT All Banners 2025</text>
+  <text x="56" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">Source: sanitized retail panel sample 2025</text>
 
   <!-- Page number -->
   <text x="916" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8" text-anchor="end">02</text>

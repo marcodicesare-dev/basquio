@@ -115,6 +115,9 @@ export default function GetStartedPage() {
               Standard reports are $10, Pro reports are $24, and team workspaces start at $149 per month.{" "}
               <a href="/pricing">See full pricing.</a>
             </p>
+            <p className="muted">
+              Credits and report type depend on slide count, scope, and workflow complexity.
+            </p>
           </div>
         </article>
       </section>

@@ -536,6 +536,24 @@ export function RunProgressView(input: {
           </div>
         </div>
 
+        <div style={styles.leaveRunCard}>
+          <p style={styles.leaveRunEyebrow}>Need to step away?</p>
+          <p style={styles.leaveRunCopy}>
+            This run keeps going in your workspace even if you leave this page. You can come back from Reports or Dashboard later.
+          </p>
+          <div style={styles.leaveRunActions}>
+            <Link href="/artifacts" style={styles.leaveRunButton}>
+              See reports
+            </Link>
+            <Link href="/dashboard" style={styles.leaveRunButton}>
+              Back to dashboard
+            </Link>
+            <Link href="/" style={styles.leaveRunButton}>
+              Visit website
+            </Link>
+          </div>
+        </div>
+
         {/* Steps — minimal, horizontal */}
         <div style={{ display: "flex", gap: "2rem", zIndex: 1, marginBottom: "2rem" }}>
           {USER_STEPS.map((step, idx) => {
@@ -670,6 +688,51 @@ const styles = {
     borderRadius: 4,
     border: "1px solid rgba(255,255,255,0.2)",
     textDecoration: "none",
+  } as CSSProperties,
+  leaveRunCard: {
+    width: "100%",
+    maxWidth: 560,
+    marginBottom: "2rem",
+    padding: "1rem 1.1rem",
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.04)",
+    zIndex: 1,
+    textAlign: "left",
+  } as CSSProperties,
+  leaveRunEyebrow: {
+    margin: 0,
+    color: "#F2F0EB",
+    fontSize: "0.82rem",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+  } as CSSProperties,
+  leaveRunCopy: {
+    margin: "0.55rem 0 0",
+    color: "#A09FA6",
+    fontSize: "0.9rem",
+    lineHeight: 1.5,
+  } as CSSProperties,
+  leaveRunActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "0.65rem",
+    marginTop: "0.95rem",
+  } as CSSProperties,
+  leaveRunButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "38px",
+    padding: "0 0.95rem",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.14)",
+    color: "#F2F0EB",
+    background: "rgba(255,255,255,0.04)",
+    textDecoration: "none",
+    fontSize: "0.88rem",
+    fontWeight: 600,
   } as CSSProperties,
 } as const;
 

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowSquareOut,
   CreditCard,
   Files,
   Gear,
@@ -19,7 +20,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import type { ViewerState } from "@/lib/supabase/auth";
 
 const mainNav: ReadonlyArray<{ href: string; label: string; icon: Icon }> = [
-  { href: "/dashboard", label: "Home", icon: House },
+  { href: "/dashboard", label: "Dashboard", icon: House },
   { href: "/jobs/new", label: "New report", icon: Plus },
   { href: "/artifacts", label: "Reports", icon: Files },
   { href: "/recipes", label: "Recipes", icon: Repeat },
@@ -27,6 +28,7 @@ const mainNav: ReadonlyArray<{ href: string; label: string; icon: Icon }> = [
 ];
 
 const bottomNav: ReadonlyArray<{ href: string; label: string; icon: Icon }> = [
+  { href: "/", label: "Website", icon: ArrowSquareOut },
   { href: "/billing", label: "Billing & Usage", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Gear },
 ];
@@ -52,9 +54,10 @@ export function AppShell({
     <div className="app-frame">
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <Link href="/dashboard" className="brand-lockup" aria-label="Basquio home">
+          <Link href="/" className="brand-lockup" aria-label="Basquio website">
             <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={178} height={30} priority />
           </Link>
+          <p className="sidebar-brand-note">Open the public Basquio site without leaving your workspace.</p>
         </div>
 
         <Link className="button sidebar-cta" href="/jobs/new">

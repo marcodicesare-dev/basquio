@@ -4006,7 +4006,11 @@ textarea {
 }
 
 .pricing-snapshot-head {
-  max-width: 36rem;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  max-width: none;
 }
 
 .pricing-snapshot-grid {
@@ -4044,6 +4048,19 @@ textarea {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.88rem;
+}
+
+.pricing-snapshot-note,
+.pricing-footnote,
+.sidebar-brand-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.pricing-snapshot-note {
+  max-width: 44rem;
 }
 
 .pricing-page {
@@ -4140,6 +4157,11 @@ textarea {
   background: rgba(255, 255, 255, 0.58);
 }
 
+.sidebar-brand {
+  display: grid;
+  gap: 10px;
+}
+
 .sidebar-cta {
   min-height: 46px;
 }
@@ -4225,6 +4247,10 @@ textarea {
 
   .hero-artifact-frame {
     transform: none;
+  }
+
+  .pricing-snapshot-head {
+    align-items: start;
   }
 }
 
