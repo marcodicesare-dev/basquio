@@ -39,6 +39,7 @@ type DeckRunRow = {
   latest_attempt_id: string | null;
   latest_attempt_number: number;
   cost_telemetry: Record<string, unknown> | null;
+  notify_on_complete: boolean;
 };
 
 type DeckRunEventRow = {
@@ -68,6 +69,16 @@ type SourceFileSummaryRow = {
   id: string;
   kind: string;
   file_name: string;
+};
+
+type AttemptCostSummaryRow = {
+  id: string;
+  attempt_number: number;
+  status: string;
+  failure_phase: string | null;
+  cost_telemetry: Record<string, unknown> | null;
+  started_at: string | null;
+  completed_at: string | null;
 };
 
 type PhaseEstimate = {
@@ -102,29 +113,29 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
   },
   render: {
     expectedSeconds: 20,
-    stepIndex: 3,
-    label: "Reviewing and exporting",
+    stepIndex: 2,
+    label: "Designing the deck",
     activeDetail: "Collecting the generated deck artifacts.",
     completedDetail: "Artifacts collected.",
   },
   critique: {
     expectedSeconds: 45,
     stepIndex: 3,
-    label: "Reviewing and exporting",
+    label: "Reviewing and polishing",
     activeDetail: "Reviewing the rendered pages for layout and chart issues.",
     completedDetail: "Rendered pages reviewed.",
   },
   revise: {
     expectedSeconds: 480,
     stepIndex: 3,
-    label: "Reviewing and exporting",
+    label: "Reviewing and polishing",
     activeDetail: "Repairing weak slides, chart fit, and formatting problems.",
     completedDetail: "Deck repaired.",
   },
   export: {
     expectedSeconds: 30,
-    stepIndex: 3,
-    label: "Reviewing and exporting",
+    stepIndex: 4,
+    label: "Exporting",
     activeDetail: "Publishing the PPTX and PDF downloads.",
     completedDetail: "Downloads published.",
   },
@@ -170,7 +181,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,brief,business_context,client,audience,objective,thesis,stakes,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,cost_telemetry",
+      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,brief,business_context,client,audience,objective,thesis,stakes,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,cost_telemetry,notify_on_complete",
       id: `eq.${jobId}`,
       requested_by: `eq.${viewerId}`,
       limit: "1",
@@ -369,6 +380,33 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     }
   }
 
+  let attemptSummaries: Array<Record<string, unknown>> = [];
+  if (run.status === "completed" || run.status === "failed") {
+    const attemptRows = await fetchRestRows<AttemptCostSummaryRow>({
+      supabaseUrl: supabaseUrl!,
+      serviceKey: serviceKey!,
+      table: "deck_run_attempts",
+      query: {
+        select: "id,attempt_number,status,failure_phase,cost_telemetry,started_at,completed_at",
+        run_id: `eq.${jobId}`,
+        order: "attempt_number.asc",
+        limit: "10",
+      },
+    }).catch(() => []);
+
+    attemptSummaries = attemptRows.map((row) => ({
+      id: row.id,
+      attemptNumber: row.attempt_number,
+      status: row.status,
+      failurePhase: row.failure_phase,
+      estimatedCostUsd: typeof row.cost_telemetry?.estimatedCostUsd === "number"
+        ? row.cost_telemetry.estimatedCostUsd
+        : null,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+    }));
+  }
+
   return {
     jobId,
     attemptNumber: run.latest_attempt_number ?? 1,
@@ -391,6 +429,8 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     summary,
     templateDiagnostics,
     costTelemetry: run.cost_telemetry,
+    attemptSummaries: attemptSummaries.length > 0 ? attemptSummaries : undefined,
+    notifyOnComplete: run.notify_on_complete,
     failureMessage: run.failure_message ?? undefined,
     toolCallCount: toolCalls.length,
     runHealth: isStale ? "stale" : "healthy",

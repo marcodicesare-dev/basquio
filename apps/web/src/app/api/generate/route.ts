@@ -36,7 +36,9 @@ export async function POST(request: Request) {
     }
 
     const generationRequest = await parseGenerationRequest(request, workspace);
-    const validationError = validateGenerationFiles(generationRequest.sourceFiles, generationRequest.styleFile);
+    const existingSourceFileIds = (generationRequest as Record<string, unknown>).existingSourceFileIds as string[] | undefined;
+    const hasExistingFiles = (existingSourceFileIds?.length ?? 0) > 0;
+    const validationError = validateGenerationFiles(generationRequest.sourceFiles, generationRequest.styleFile, hasExistingFiles);
 
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
@@ -108,12 +110,19 @@ async function queueGeneration(
   }
   const sourceFileIds: string[] = [];
   let styleSourceFileId: string | null = null;
+
+  // Support reusing source files from a previous run
+  const existingSourceFileIds = (generationRequest as Record<string, unknown>).existingSourceFileIds as string[] | undefined;
+  if (existingSourceFileIds?.length) {
+    sourceFileIds.push(...existingSourceFileIds);
+  }
+
   const queuedInputs = [
     ...generationRequest.sourceFiles.map((file) => ({ file, isStyle: false })),
     ...(generationRequest.styleFile ? [{ file: generationRequest.styleFile, isStyle: true }] : []),
   ];
 
-  if (queuedInputs.length === 0) {
+  if (queuedInputs.length === 0 && sourceFileIds.length === 0) {
     throw new Error("At least one input file is required.");
   }
 
@@ -418,6 +427,7 @@ async function parseGenerationRequest(
       templateProfileId: ((payload as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
       targetSlideCount: ((payload as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
       recipeId: ((payload as Record<string, unknown>).recipeId as string | undefined) ?? null,
+      existingSourceFileIds: ((payload as Record<string, unknown>).existingSourceFileIds as string[] | undefined) ?? undefined,
     } as QueuedGenerationRequest;
   }
 
@@ -477,8 +487,9 @@ async function parseGenerationRequest(
 function validateGenerationFiles(
   sourceFiles: Array<NonNullable<GenerationRequest["sourceFiles"]>[number]>,
   styleFile?: GenerationRequest["styleFile"],
+  hasExistingFiles = false,
 ) {
-  if (sourceFiles.length === 0) {
+  if (sourceFiles.length === 0 && !hasExistingFiles) {
     return "Upload at least one CSV, XLSX, or XLS data file to start a generation run.";
   }
 
@@ -488,10 +499,13 @@ function validateGenerationFiles(
     return `Unsupported file type for ${unsupportedEvidenceFile.fileName}. Basquio accepts CSV/XLSX/XLS plus text, doc, PDF, PPTX, JSON, or CSS support files.`;
   }
 
-  const hasWorkbookEvidence = sourceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook");
+  // When reusing existing files, skip the workbook check for new uploads
+  if (sourceFiles.length > 0) {
+    const hasWorkbookEvidence = sourceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook");
 
-  if (!hasWorkbookEvidence) {
-    return "Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence. Keep PPTX, PDF, images, and documents as support material or template input.";
+    if (!hasWorkbookEvidence) {
+      return "Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence. Keep PPTX, PDF, images, and documents as support material or template input.";
+    }
   }
 
   if (styleFile && !["brand-tokens", "pptx", "pdf"].includes(inferSourceFileKind(styleFile.fileName))) {

@@ -26,6 +26,14 @@ type RecipePrefill = {
   };
   templateProfileId: string | null;
   targetSlideCount: number;
+  sourceFiles?: Array<{
+    id: string;
+    kind: string;
+    fileName: string;
+    storageBucket: string;
+    storagePath: string;
+    fileBytes: number;
+  }>;
 };
 
 async function getSavedTemplates(organizationId: string): Promise<SavedTemplateOption[]> {
@@ -112,12 +120,13 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       brief: Record<string, string>;
       template_profile_id: string | null;
       requested_by: string;
+      source_file_ids: string[];
     }>({
       supabaseUrl,
       serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,brief,template_profile_id,requested_by",
+        select: "id,brief,template_profile_id,requested_by,source_file_ids",
         id: `eq.${runId}`,
         limit: "1",
       },
@@ -138,6 +147,36 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       if (manifests[0]?.slide_count) slideCount = manifests[0].slide_count;
     } catch { /* ok */ }
 
+    // Get source files from previous run for reuse
+    let sourceFiles: RecipePrefill["sourceFiles"] = [];
+    try {
+      const sfRows = await fetchRestRows<{
+        id: string;
+        kind: string;
+        file_name: string;
+        storage_bucket: string;
+        storage_path: string;
+        file_bytes: number;
+      }>({
+        supabaseUrl,
+        serviceKey,
+        table: "source_files",
+        query: {
+          select: "id,kind,file_name,storage_bucket,storage_path,file_bytes",
+          id: `in.(${(run.source_file_ids ?? []).join(",")})`,
+          limit: "20",
+        },
+      });
+      sourceFiles = sfRows.map((sf) => ({
+        id: sf.id,
+        kind: sf.kind,
+        fileName: sf.file_name,
+        storageBucket: sf.storage_bucket,
+        storagePath: sf.storage_path,
+        fileBytes: sf.file_bytes ?? 0,
+      }));
+    } catch { /* ok */ }
+
     return {
       id: runId,
       recipeId: null,
@@ -145,6 +184,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       brief: run.brief,
       templateProfileId: run.template_profile_id,
       targetSlideCount: slideCount,
+      sourceFiles,
     };
   } catch {
     return null;

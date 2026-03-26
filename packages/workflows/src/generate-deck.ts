@@ -23,6 +23,7 @@ import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import { buildNarrativeDocx } from "./docx-report";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { buildBasquioSystemPrompt } from "./system-prompt";
+import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const MODEL = "claude-sonnet-4-6";
@@ -745,6 +746,16 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       qaTier: qaReport.tier,
       visualQa: finalVisualQa,
     });
+
+    // Best-effort completion email (never blocks or throws)
+    const resendApiKey = process.env.RESEND_API_KEY ?? "";
+    if (resendApiKey) {
+      await notifyRunCompletionIfRequested(
+        { supabaseUrl: config.supabaseUrl, serviceKey: config.serviceKey, resendApiKey },
+        run,
+        { runId, slideCount: finalManifest.slideCount, qaTier: String(qaReport.tier ?? "unknown") },
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Deck generation failed.";
     const run = await loadRun(config, runId).catch(() => null);

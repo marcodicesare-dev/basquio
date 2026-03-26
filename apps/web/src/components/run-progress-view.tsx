@@ -68,6 +68,7 @@ export type RunProgressSnapshot = {
   failureMessage?: string;
   toolCallCount?: number;
   runHealth?: "healthy" | "stale";
+  notifyOnComplete?: boolean;
 };
 
 // ─── USER-FACING PHASE MAP ─────────────────────────────────────
@@ -75,18 +76,19 @@ const USER_STEPS = [
   { id: "read", label: "Reading your files", Icon: File },
   { id: "analyze", label: "Finding the story", Icon: MagnifyingGlass },
   { id: "design", label: "Designing the deck", Icon: PaintBrush },
-  { id: "export", label: "Reviewing and exporting", Icon: Package },
+  { id: "review", label: "Reviewing and polishing", Icon: MagnifyingGlass },
+  { id: "export", label: "Exporting", Icon: Package },
 ] as const;
 
 const PHASE_TO_USER_STEP: Record<string, number> = {
   normalize: 0,
   understand: 1,
   author: 2,
-  render: 3,
+  render: 2,
   polish: 3,
   critique: 3,
   revise: 3,
-  export: 3,
+  export: 4,
 };
 
 // ─── COMPONENT ─────────────────────────────────────────────────
@@ -103,6 +105,7 @@ export function RunProgressView(input: {
   const [recipeName, setRecipeName] = useState("");
   const [recipeSaved, setRecipeSaved] = useState(false);
   const [recipeSaving, setRecipeSaving] = useState(false);
+  const [notifyRequested, setNotifyRequested] = useState(input.initialSnapshot?.notifyOnComplete ?? false);
   // Monotonic progress: never goes backward
   const maxProgressRef = useRef(2);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
@@ -210,7 +213,11 @@ export function RunProgressView(input: {
                 <a className="button secondary" href={docxDownloadHref}>
                   Download DOCX
                 </a>
-              ) : null}
+              ) : (
+                <span className="muted" style={{ fontSize: "0.82rem" }}>
+                  DOCX was not generated for this run.
+                </span>
+              )}
               <a className="button small secondary" href={pdfPreviewHref} target="_blank" rel="noreferrer">
                 Open preview
               </a>
@@ -456,7 +463,7 @@ export function RunProgressView(input: {
               </div>
             ) : null}
           </div>
-          <Link href="/jobs/new" style={styles.primaryButton}>Try again</Link>
+          <Link href={`/jobs/new?from=${snapshot.jobId}`} style={styles.primaryButton}>Try again</Link>
         </div>
       </div>
     );
@@ -541,6 +548,30 @@ export function RunProgressView(input: {
           <p style={styles.leaveRunCopy}>
             This run keeps going in your workspace even if you leave this page. You can come back from Reports or Dashboard later.
           </p>
+          <div style={{ marginTop: "0.75rem" }}>
+            {!notifyRequested ? (
+              <button
+                style={{
+                  ...styles.leaveRunButton,
+                  cursor: "pointer",
+                  background: "rgba(232,168,76,0.12)",
+                  border: "1px solid rgba(232,168,76,0.3)",
+                  color: "#E8A84C",
+                }}
+                type="button"
+                onClick={async () => {
+                  try {
+                    await fetch(`/api/jobs/${input.jobId}/notify`, { method: "POST" });
+                    setNotifyRequested(true);
+                  } catch { /* ignore */ }
+                }}
+              >
+                Email me when it&apos;s ready
+              </button>
+            ) : (
+              <p style={styles.leaveRunCopy}>We&apos;ll email you when this run finishes.</p>
+            )}
+          </div>
           <div style={styles.leaveRunActions}>
             <Link href="/artifacts" style={styles.leaveRunButton}>
               See reports

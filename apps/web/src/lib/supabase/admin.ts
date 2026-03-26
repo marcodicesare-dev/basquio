@@ -192,6 +192,42 @@ export async function fetchRestRows<T>(input: {
   return (await response.json()) as T[];
 }
 
+export async function patchRestRows<T>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  table: string;
+  query: Record<string, string>;
+  payload: Record<string, unknown>;
+  select?: string;
+}) {
+  const url = new URL(`/rest/v1/${input.table}`, input.supabaseUrl);
+
+  for (const [key, value] of Object.entries(input.query)) {
+    url.searchParams.set(key, value);
+  }
+
+  if (input.select) {
+    url.searchParams.set("select", input.select);
+  }
+
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: buildServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    }),
+    body: JSON.stringify(input.payload),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to update ${input.table}.`));
+  }
+
+  return (await response.json()) as T[];
+}
+
 export async function deleteRestRows(input: {
   supabaseUrl: string;
   serviceKey: string;

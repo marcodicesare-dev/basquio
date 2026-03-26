@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { generateDeckRun } from "../packages/workflows/src/generate-deck";
-import { fetchRestRows, patchRestRows } from "../packages/workflows/src/supabase";
+import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
 import { refundCredit } from "../apps/web/src/lib/credits";
 
@@ -173,18 +174,52 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
 
   const now = new Date().toISOString();
   for (const attempt of staleAttempts) {
+    const newAttemptId = randomUUID();
+    const newAttemptNumber = attempt.attempt_number + 1;
+
+    // 1. Mark the stale attempt as failed
     await patchRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_run_attempts",
       query: { id: `eq.${attempt.id}`, status: "eq.running" },
       payload: {
-        status: "queued",
-        failure_message: null,
-        failure_phase: null,
+        status: "failed",
+        failure_phase: "stale_timeout",
+        failure_message: "Run timed out and was automatically recovered.",
         updated_at: now,
       },
     }).catch(() => []);
+
+    // 2. Create a new superseding attempt
+    await upsertRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      onConflict: "id",
+      rows: [{
+        id: newAttemptId,
+        run_id: attempt.run_id,
+        attempt_number: newAttemptNumber,
+        status: "queued",
+        recovery_reason: "stale_timeout",
+        created_at: now,
+        updated_at: now,
+      }],
+    }).catch(() => []);
+
+    // 3. Link old attempt to the new one
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: { id: `eq.${attempt.id}` },
+      payload: {
+        superseded_by_attempt_id: newAttemptId,
+      },
+    }).catch(() => []);
+
+    // 4. Update the parent run to point at the new attempt
     await patchRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
@@ -192,21 +227,19 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
       query: { id: `eq.${attempt.run_id}`, active_attempt_id: `eq.${attempt.id}` },
       payload: {
         status: "queued",
-        current_phase: null,
-        phase_started_at: null,
         failure_message: null,
         failure_phase: null,
         delivery_status: "draft",
         updated_at: now,
-        active_attempt_id: attempt.id,
-        latest_attempt_id: attempt.id,
-        latest_attempt_number: attempt.attempt_number,
+        active_attempt_id: newAttemptId,
+        latest_attempt_id: newAttemptId,
+        latest_attempt_number: newAttemptNumber,
       },
     }).catch(() => []);
   }
 
   if (staleAttempts.length > 0) {
-    console.log(`[basquio-worker] re-queued ${staleAttempts.length} stale attempts`);
+    console.log(`[basquio-worker] recovered ${staleAttempts.length} stale attempts with new superseding attempts`);
   }
 }
 

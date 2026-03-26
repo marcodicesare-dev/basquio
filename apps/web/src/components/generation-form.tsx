@@ -87,6 +87,14 @@ type RecipePrefill = {
   };
   templateProfileId: string | null;
   targetSlideCount: number;
+  sourceFiles?: Array<{
+    id: string;
+    kind: string;
+    fileName: string;
+    storageBucket: string;
+    storagePath: string;
+    fileBytes: number;
+  }>;
 };
 
 type GenerationFormProps = {
@@ -102,6 +110,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
   const [error, setError] = useState<string | null>(null);
   const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
   const [isDraggingBrand, setIsDraggingBrand] = useState(false);
+  const [prefillSourceFiles] = useState(recipePrefill?.sourceFiles ?? []);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [brandFile, setBrandFile] = useState<File | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(recipePrefill?.templateProfileId ?? null);
@@ -140,7 +149,40 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
     setError(null);
 
     try {
-      validateSubmission(evidenceFiles, brief);
+      validateSubmission(evidenceFiles, brief, prefillSourceFiles.length);
+
+      // If reusing files from a prior run, skip upload and reference existing source files directly
+      if (prefillSourceFiles.length > 0 && evidenceFiles.length === 0) {
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            organizationId: "local-org",
+            projectId: "local-project",
+            existingSourceFileIds: prefillSourceFiles.map((sf) => sf.id),
+            templateProfileId: selectedTemplateId ?? undefined,
+            targetSlideCount,
+            recipeId: recipePrefill?.recipeId ?? undefined,
+            brief,
+            businessContext: brief.businessContext,
+            client: brief.client,
+            audience: brief.audience,
+            objective: brief.objective,
+            thesis: brief.thesis,
+            stakes: brief.stakes,
+          }),
+        });
+        const payload = await readGenerationPayload(response);
+        if (response.status === 402) {
+          router.push((payload as { pricingUrl?: string }).pricingUrl ?? "/pricing");
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Generation failed.");
+        }
+        router.push(payload.progressUrl);
+        return;
+      }
 
       const prepareResponse = await fetch("/api/uploads/prepare", {
         method: "POST",
@@ -245,12 +287,12 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
       return;
     }
 
-    if (currentStep === 1 && evidenceFiles.length === 0) {
+    if (currentStep === 1 && evidenceFiles.length === 0 && prefillSourceFiles.length === 0) {
       setError("Add at least one CSV, XLSX, or XLS file before continuing.");
       return;
     }
 
-    if (currentStep === 1 && !evidenceFiles.some((file) => isWorkbookFile(file.name))) {
+    if (currentStep === 1 && evidenceFiles.length > 0 && !evidenceFiles.some((file) => isWorkbookFile(file.name))) {
       setError("Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence before you continue.");
       return;
     }
@@ -439,6 +481,33 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                   multiple
                   onChange={handleEvidenceInputChange}
                 />
+
+                {prefillSourceFiles.length > 0 && evidenceFiles.length === 0 ? (
+                  <div className="file-list">
+                    <p className="muted" style={{ fontSize: "0.82rem", marginBottom: "0.5rem" }}>
+                      Files from your previous run (will be reused):
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                      {prefillSourceFiles.map((sf) => (
+                        <span
+                          key={sf.id}
+                          style={{
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 999,
+                            padding: "0.3rem 0.6rem",
+                            color: "#D7D3CD",
+                            fontSize: "0.82rem",
+                          }}
+                        >
+                          {sf.fileName}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
+                      {prefillSourceFiles.length} file{prefillSourceFiles.length === 1 ? "" : "s"} · {formatFileSize(prefillSourceFiles.reduce((sum, f) => sum + f.fileBytes, 0))} total. Drop new files above to replace them.
+                    </p>
+                  </div>
+                ) : null}
 
                 {evidenceFiles.length > 0 ? (
                   <div className="file-list">
@@ -631,7 +700,11 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
             <div className="review-grid">
               <article className="review-card stack">
                 <p className="artifact-kind">Evidence</p>
-                <p>{evidenceFiles.length > 0 ? `${evidenceFiles.length} file${evidenceFiles.length === 1 ? "" : "s"}` : "No files added yet"}</p>
+                <p>{evidenceFiles.length > 0
+                  ? `${evidenceFiles.length} file${evidenceFiles.length === 1 ? "" : "s"}`
+                  : prefillSourceFiles.length > 0
+                    ? `${prefillSourceFiles.length} file${prefillSourceFiles.length === 1 ? "" : "s"} (reused from previous run)`
+                    : "No files added yet"}</p>
                 <p className="muted">Required: at least one CSV/XLSX/XLS workbook. Support docs are optional.</p>
                 {evidenceFiles.length > 0 ? (
                   <div className="file-list">
@@ -646,6 +719,15 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
                         >
                           Remove
                         </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : prefillSourceFiles.length > 0 ? (
+                  <div className="file-list">
+                    {prefillSourceFiles.map((sf) => (
+                      <div key={sf.id} className="file-chip">
+                        <span>{sf.fileName}</span>
+                        <small>{formatFileSize(sf.fileBytes)}</small>
                       </div>
                     ))}
                   </div>
@@ -773,12 +855,13 @@ function makeFileKey(file: File) {
 function validateSubmission(
   evidenceFiles: File[],
   brief: BriefFields,
+  prefillSourceFileCount = 0,
 ) {
-  if (evidenceFiles.length === 0) {
+  if (evidenceFiles.length === 0 && prefillSourceFileCount === 0) {
     throw new Error("Add at least one data file before generating.");
   }
 
-  if (!evidenceFiles.some((file) => isWorkbookFile(file.name))) {
+  if (evidenceFiles.length > 0 && !evidenceFiles.some((file) => isWorkbookFile(file.name))) {
     throw new Error("Add at least one CSV, XLSX, or XLS file as primary evidence. Keep PPTX, PDF, and docs as support material or template input.");
   }
 
