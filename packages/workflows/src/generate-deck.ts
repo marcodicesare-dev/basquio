@@ -28,6 +28,7 @@ import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upse
 
 const MODEL = "claude-sonnet-4-6";
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
+const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "1800000", 10);
 const FILES_BETA = "files-api-2025-04-14";
 const CODE_EXEC_BETA = "code-execution-2025-08-25";
@@ -174,6 +175,12 @@ type RunAttemptRow = {
   anthropic_request_ids: unknown;
 };
 
+type WorkingPaperRow = {
+  paper_type: string;
+  content: Record<string, unknown> | null;
+  version: number;
+};
+
 type AttemptCostRow = {
   id: string;
   attempt_number: number;
@@ -225,6 +232,9 @@ type ClaudeRequestUsage = {
   stopReason: string | null;
 };
 type RenderedPageQaReport = z.infer<typeof renderedPageQaSchema>;
+type MutableNumberRef = {
+  value: number;
+};
 
 export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<AttemptContext>) {
   const config = resolveConfig();
@@ -327,77 +337,105 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       briefLanguageHint: inferLanguageHint(run),
     });
 
-    currentPhase = "understand";
-    await markPhase(config, runId, attempt, currentPhase);
+    const recoveredAnalysis = attempt.recoveryReason === "stale_timeout"
+      ? await loadRecoveredAnalysis(config, runId)
+      : null;
 
-    const questionRoutes = routeQuestion(buildBriefText(run));
-    const understandMessage = buildUnderstandMessage(run, uploadedEvidence, uploadedTemplate, questionRoutes);
-    await recordToolCall(config, runId, attempt, "understand", "code_execution", {
-      model: MODEL,
-      tools: ["web_fetch"],
-      autoInjectedTools: ["code_execution"],
-      skills: ["pptx", "pdf"],
-      stepNumber: 1,
-    });
-    await enforceDeckBudget({
-      client,
-      model: MODEL,
-      betas: [...BETAS],
-      spentUsd,
-      outputTokenBudget: 16_000,
-      body: {
-        system: systemPrompt,
+    let analysis: z.infer<typeof analysisSchema>;
+    let baseContainerId: string | null = null;
+
+    if (recoveredAnalysis) {
+      analysis = recoveredAnalysis;
+      phaseTelemetry.understandRecovery = {
+        source: "working_paper",
+        recoveryReason: attempt.recoveryReason,
+        slidePlanCount: analysis.slidePlan.length,
+      };
+      await markPhase(config, runId, attempt, "understand");
+      await completePhase(config, runId, attempt, "understand", {
+        slidePlanCount: analysis.slidePlan.length,
+        thesis: analysis.thesis,
+        estimatedCostUsd: spentUsd,
+        source: "reused_from_previous_attempt",
+      });
+    } else {
+      currentPhase = "understand";
+      await markPhase(config, runId, attempt, currentPhase);
+
+      const questionRoutes = routeQuestion(buildBriefText(run));
+      const understandMessage = buildUnderstandMessage(run, uploadedEvidence, uploadedTemplate, questionRoutes);
+      await recordToolCall(config, runId, attempt, "understand", "code_execution", {
+        model: MODEL,
+        tools: ["web_fetch"],
+        autoInjectedTools: ["code_execution"],
+        skills: ["pptx", "pdf"],
+        stepNumber: 1,
+      });
+      await enforceDeckBudget({
+        client,
+        model: MODEL,
+        betas: [...BETAS],
+        spentUsd,
+        outputTokenBudget: 16_000,
+        body: {
+          system: systemPrompt,
+          messages: [understandMessage],
+          tools: CLAUDE_TOOLS,
+          output_config: {
+            effort: "medium",
+            format: ANALYSIS_OUTPUT_FORMAT,
+          },
+        },
+      });
+
+      const understandResponse = await runClaudeLoop({
+        client,
+        systemPrompt,
+        maxTokens: 4_096,
+        container: {
+          skills: [
+            { type: "anthropic", skill_id: "pptx", version: "latest" },
+            { type: "anthropic", skill_id: "pdf", version: "latest" },
+          ],
+        },
         messages: [understandMessage],
         tools: CLAUDE_TOOLS,
-        output_config: {
+        outputConfig: {
           effort: "medium",
           format: ANALYSIS_OUTPUT_FORMAT,
         },
-      },
-    });
+      });
+      spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
+      assertDeckSpendWithinBudget(spentUsd);
+      continuationCount += understandResponse.pauseTurns;
+      phaseTelemetry.understand = buildPhaseTelemetry(MODEL, {
+        ...understandResponse,
+        requestIds: understandResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+      });
+      await persistRequestUsage(config, runId, attempt, "understand", "phase_generation", MODEL, understandResponse.requests);
+      rememberRequestIds(anthropicRequestIds, understandResponse.requests);
 
-    const understandResponse = await runClaudeLoop({
-      client,
-      systemPrompt,
-      maxTokens: 4_096,
-      container: {
-        skills: [
-          { type: "anthropic", skill_id: "pptx", version: "latest" },
-          { type: "anthropic", skill_id: "pdf", version: "latest" },
-        ],
-      },
-      messages: [understandMessage],
-      tools: CLAUDE_TOOLS,
-      outputConfig: {
-        effort: "medium",
-        format: ANALYSIS_OUTPUT_FORMAT,
-      },
-    });
-    spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
-    assertDeckSpendWithinBudget(spentUsd);
-    continuationCount += understandResponse.pauseTurns;
-    phaseTelemetry.understand = buildPhaseTelemetry(MODEL, {
-      ...understandResponse,
-      requestIds: understandResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
-    });
-    await persistRequestUsage(config, runId, attempt, "understand", "phase_generation", MODEL, understandResponse.requests);
-    rememberRequestIds(anthropicRequestIds, understandResponse.requests);
-
-    const analysis = parseStructuredAnalysisResponse(understandResponse.message);
-    enforceAnalysisExhibitRules(analysis);
-    await upsertWorkingPaper(config, runId, "analysis_result", analysis);
-    await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
-    await completePhase(config, runId, attempt, "understand", {
-      slidePlanCount: analysis.slidePlan.length,
-      thesis: analysis.thesis,
-      estimatedCostUsd: spentUsd,
-      containerId: understandResponse.containerId,
-    }, understandResponse.usage);
+      analysis = parseStructuredAnalysisResponse(understandResponse.message);
+      baseContainerId = understandResponse.containerId;
+      enforceAnalysisExhibitRules(analysis);
+      await upsertWorkingPaper(config, runId, "analysis_result", analysis);
+      await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
+      await completePhase(config, runId, attempt, "understand", {
+        slidePlanCount: analysis.slidePlan.length,
+        thesis: analysis.thesis,
+        estimatedCostUsd: spentUsd,
+        containerId: understandResponse.containerId,
+      }, understandResponse.usage);
+    }
 
     currentPhase = "author";
     await markPhase(config, runId, attempt, currentPhase);
 
-    const generationMessage = buildAuthorMessage(run, analysis);
+    const generationMessage = buildAuthorMessage(
+      run,
+      analysis,
+      !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
+    );
     await recordToolCall(config, runId, attempt, "author", "code_execution", {
       model: MODEL,
       tools: ["web_fetch"],
@@ -425,8 +463,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       client,
       systemPrompt,
       maxTokens: 8_192,
-      container: understandResponse.containerId
-        ? { id: understandResponse.containerId }
+      container: baseContainerId
+        ? { id: baseContainerId }
         : {
             skills: [
               { type: "anthropic", skill_id: "pptx", version: "latest" },
@@ -454,14 +492,14 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       systemPrompt,
       baseResponse: authorResponse,
       phaseLabel: "author",
-      requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
-      tools: CLAUDE_TOOLS,
-      containerFallback: understandResponse.containerId
-        ? { id: understandResponse.containerId }
-        : {
-            skills: [
-              { type: "anthropic", skill_id: "pptx", version: "latest" },
-              { type: "anthropic", skill_id: "pdf", version: "latest" },
+        requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
+        tools: CLAUDE_TOOLS,
+        containerFallback: baseContainerId
+          ? { id: baseContainerId }
+          : {
+              skills: [
+                { type: "anthropic", skill_id: "pptx", version: "latest" },
+                { type: "anthropic", skill_id: "pdf", version: "latest" },
             ],
           },
     });
@@ -488,6 +526,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
     const pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
     let manifest = parseManifestResponse(authorResponse.message, authorFiles);
+    let latestResponse = authorResponse;
+    let latestContainerId = authorResponse.containerId ?? containerId ?? baseContainerId;
 
     await persistDeckSpec(config, runId, manifest);
     await completePhase(config, runId, attempt, "author", {
@@ -647,6 +687,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         output_tokens: (reviseResponse.usage.output_tokens ?? 0) + (reviseRecovery.usage.output_tokens ?? 0),
       };
       reviseResponse = reviseRecovery.response;
+      latestResponse = reviseResponse;
+      latestContainerId = reviseResponse.containerId ?? latestContainerId;
       const reviseFiles = reviseRecovery.files;
       finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
       finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
@@ -700,12 +742,31 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
     currentPhase = "export";
     await markPhase(config, runId, attempt, currentPhase);
-    const finalDocx = await buildNarrativeDocx({
+    finalVisualQa = await strengthenFinalVisualQa({
+      client,
+      pdf: finalPdf.buffer,
+      manifest: finalManifest,
+      currentReport: finalVisualQa,
+      runId,
+      attempt,
+      config,
+      spentUsdRef: {
+        get value() {
+          return spentUsd;
+        },
+        set value(value: number) {
+          spentUsd = value;
+        },
+      },
+      anthropicRequestIds,
+      phaseTelemetry,
+    });
+    let finalDocx = await buildNarrativeDocx({
       run,
       analysis,
       manifest: finalManifest,
     });
-    const qaReport = await buildQaReport(
+    let qaReport = await buildQaReport(
       finalManifest,
       finalPptx,
       finalPdf,
@@ -713,25 +774,80 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       finalVisualQa,
       templateDiagnostics,
     );
-    const softPptxFailures = new Set([
-      "pptx_chart_media_present",
-      "pptx_large_image_aspect_fit",
-    ]);
-    const renderedDeckLooksGood =
-      finalVisualQa.overallStatus === "green" && !finalVisualQa.deckNeedsRevision;
-    const blockingQaFailures = qaReport.failed.filter((check) => {
-      if (["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check)) {
-        return false;
+    const repairableQaFailures = qaReport.failed.filter((check) =>
+      ["pptx_chart_media_present", "pptx_large_image_aspect_fit"].includes(check),
+    );
+    const blockingQaFailures = qaReport.failed.filter((check) =>
+      !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
+    );
+
+    if (repairableQaFailures.length > 0 && latestContainerId && blockingQaFailures.every((check) => repairableQaFailures.includes(check))) {
+      const repairedArtifacts = await repairArtifactsFromQa({
+        client,
+        systemPrompt,
+        latestResponse,
+        latestContainerId,
+        qaFailures: repairableQaFailures,
+        tools: CLAUDE_TOOLS,
+      });
+      if ((repairedArtifacts.usage.input_tokens ?? 0) > 0 || (repairedArtifacts.usage.output_tokens ?? 0) > 0) {
+        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, repairedArtifacts.usage));
+        assertDeckSpendWithinBudget(spentUsd);
+        continuationCount += repairedArtifacts.pauseTurns;
+        phaseTelemetry.exportArtifactRepair = buildPhaseTelemetry(MODEL, {
+          usage: repairedArtifacts.usage,
+          iterations: repairedArtifacts.iterations,
+          pauseTurns: repairedArtifacts.pauseTurns,
+          requestIds: repairedArtifacts.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+        });
+        await persistRequestUsage(config, runId, attempt, "export", "artifact_repair", MODEL, repairedArtifacts.requests);
+        rememberRequestIds(anthropicRequestIds, repairedArtifacts.requests);
       }
 
-      if (renderedDeckLooksGood && softPptxFailures.has(check)) {
-        return false;
-      }
+      latestResponse = repairedArtifacts;
+      latestContainerId = repairedArtifacts.containerId ?? latestContainerId;
+      finalManifest = parseManifestResponse(repairedArtifacts.message, repairedArtifacts.files);
+      finalPptx = requireGeneratedFile(repairedArtifacts.files, "deck.pptx");
+      finalPdf = requireGeneratedFile(repairedArtifacts.files, "deck.pdf");
+      finalVisualQa = await strengthenFinalVisualQa({
+        client,
+        pdf: finalPdf.buffer,
+        manifest: finalManifest,
+        currentReport: finalVisualQa,
+        runId,
+        attempt,
+        config,
+        spentUsdRef: {
+          get value() {
+            return spentUsd;
+          },
+          set value(value: number) {
+            spentUsd = value;
+          },
+        },
+        anthropicRequestIds,
+        phaseTelemetry,
+      });
+      finalDocx = await buildNarrativeDocx({
+        run,
+        analysis,
+        manifest: finalManifest,
+      });
+      qaReport = await buildQaReport(
+        finalManifest,
+        finalPptx,
+        finalPdf,
+        finalDocx,
+        finalVisualQa,
+        templateDiagnostics,
+      );
+    }
 
-      return true;
-    });
-    if (blockingQaFailures.length > 0) {
-      throw new Error(`Artifact QA failed: ${blockingQaFailures.join(", ")}`);
+    const finalBlockingQaFailures = qaReport.failed.filter((check) =>
+      !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
+    );
+    if (finalBlockingQaFailures.length > 0) {
+      throw new Error(`Artifact QA failed: ${finalBlockingQaFailures.join(", ")}`);
     }
     const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx);
     await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts, templateDiagnostics);
@@ -934,6 +1050,37 @@ async function loadTemplateProfileRow(
   return rows[0] ?? null;
 }
 
+async function loadRecoveredAnalysis(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+) {
+  const rows = await fetchRestRows<WorkingPaperRow>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "working_papers",
+    query: {
+      select: "paper_type,content,version",
+      run_id: `eq.${runId}`,
+      paper_type: "eq.analysis_result",
+      order: "version.desc",
+      limit: "1",
+    },
+  }).catch(() => []);
+
+  const content = rows[0]?.content;
+  if (!content) {
+    return null;
+  }
+
+  try {
+    const parsed = analysisSchema.parse(content);
+    enforceAnalysisExhibitRules(parsed);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 async function persistEvidenceWorkspace(
   config: ReturnType<typeof resolveConfig>,
   run: RunRow,
@@ -1088,6 +1235,57 @@ async function completePhase(
     },
   }).catch(() => {});
   await insertEvent(config, runId, attempt, phase, "phase_completed", payload, usage);
+}
+
+async function strengthenFinalVisualQa(input: {
+  client: Anthropic;
+  pdf: Buffer;
+  manifest: z.infer<typeof deckManifestSchema>;
+  currentReport: RenderedPageQaReport;
+  runId: string;
+  attempt: AttemptContext;
+  config: ReturnType<typeof resolveConfig>;
+  spentUsdRef: MutableNumberRef;
+  anthropicRequestIds: Set<string>;
+  phaseTelemetry: Record<string, unknown>;
+}) {
+  if (input.currentReport.overallStatus !== "green" || input.currentReport.deckNeedsRevision) {
+    return input.currentReport;
+  }
+
+  const finalVisualQa = await runRenderedPageQa({
+    client: input.client,
+    pdf: input.pdf,
+    manifest: input.manifest,
+    betas: [FILES_BETA],
+    model: FINAL_VISUAL_QA_MODEL,
+    maxTokens: 1_600,
+  });
+  input.spentUsdRef.value = roundUsd(input.spentUsdRef.value + usageToCost(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage));
+  assertDeckSpendWithinBudget(input.spentUsdRef.value);
+  input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
+  await persistRequestUsage(input.config, input.runId, input.attempt, "export", "rendered_page_qa_final", FINAL_VISUAL_QA_MODEL, [{
+    requestId: finalVisualQa.requestId,
+    startedAt: finalVisualQa.startedAt,
+    completedAt: finalVisualQa.completedAt,
+    usage: {
+      input_tokens: finalVisualQa.usage?.input_tokens ?? 0,
+      output_tokens: finalVisualQa.usage?.output_tokens ?? 0,
+    },
+    stopReason: "end_turn",
+  }]);
+  rememberRequestIds(input.anthropicRequestIds, [{
+    requestId: finalVisualQa.requestId,
+    startedAt: finalVisualQa.startedAt,
+    completedAt: finalVisualQa.completedAt,
+    usage: {
+      input_tokens: finalVisualQa.usage?.input_tokens ?? 0,
+      output_tokens: finalVisualQa.usage?.output_tokens ?? 0,
+    },
+    stopReason: "end_turn",
+  }]);
+
+  return finalVisualQa.report;
 }
 
 async function finalizeSuccess(
@@ -1358,6 +1556,8 @@ function buildUnderstandMessage(
         "- Use code execution to inspect the uploaded files directly.",
         "- Follow the NIQ Analyst Playbook from the system prompt: recognize Italian column names, compute ALL applicable derivatives (growth, share, price index, mix gap) before forming findings, and detect diagnostic motifs.",
         "- Frame the analysis around the TRUE commercial question, not a generic summary. Classify each finding as connection, contradiction, or curiosity.",
+        "- Recommendations must be traceable to the data in this run. Do not invent geographies, channels, or opportunities that are not directly supported by the evidence.",
+        "- If the brief is about promotions, benchmark the focal brand against key competitors and call out what others are doing, not only what the focal brand is doing.",
         "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
         "- Choose exhibit types per the exhibit selection rules. NEVER use a line chart for 2-period CY vs PY data.",
         ...(routeContext ? [routeContext] : []),
@@ -1395,10 +1595,16 @@ function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvide
 function buildAuthorMessage(
   run: RunRow,
   analysis: z.infer<typeof analysisSchema>,
+  files?: {
+    uploadedEvidence: Array<{ id: string; filename: string }>;
+    uploadedTemplate: { id: string; filename: string } | null;
+  },
 ) {
   return {
     role: "user" as const,
     content: [
+      ...(files?.uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })) ?? []),
+      ...(files?.uploadedTemplate ? [{ type: "container_upload" as const, file_id: files.uploadedTemplate.id }] : []),
       {
         type: "text" as const,
         text: [
@@ -1417,6 +1623,9 @@ function buildAuthorMessage(
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
           "- If a chart is sparse, leader-dominated, or near-zero outside one segment, switch to a split or commentary-led slide instead of forcing a wide chart.",
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
+          "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
+          "- If a slide promises a comparison set with an explicit count such as 4 provinces, 3 channels, or 5 segments, cover all of them explicitly or change the claim.",
+          "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
           "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify all recommendations with FMCG levers.",
           "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, and `deck_manifest.json`.",
@@ -1448,6 +1657,8 @@ function buildReviseMessage(issues: string[]) {
           "Fix any stretched charts by re-rendering them at the correct slot ratio rather than scaling the old image.",
           "If a slide has a weak sparse chart or ugly dead space, switch to a more appropriate grammar instead of padding the same layout.",
           "Fix malformed numeric annotations such as duplicated plus signs or inconsistent pp notation.",
+          "Fix any claim-exhibit mismatch where the title or commentary says a metric is growing but the visual only shows current level.",
+          "Fix any comparison slide that promises a full set of entities but only covers a subset in the commentary.",
           "For action cards, reserve separate non-overlapping bands for index, title, body, and footer.",
           "Keep charts as image-based embeds that remain visible in Keynote.",
           "Your final assistant message must attach deck.pptx, deck.pdf, and deck_manifest.json as container_upload blocks.",
@@ -1608,6 +1819,54 @@ async function recoverMissingArtifacts(input: {
   }
 
   return { response, files, usage, pauseTurns, iterations, requests };
+}
+
+function buildArtifactRepairMessage(qaFailures: string[]) {
+  return {
+    role: "user" as const,
+    content: [
+      {
+        type: "text" as const,
+        text: [
+          "The generated deck artifacts failed export validation.",
+          "Regenerate the deck artifacts cleanly in the current container state.",
+          "Fix these artifact QA failures:",
+          ...qaFailures.map((failure) => `- ${failure}`),
+          "",
+          "Requirements:",
+          "- Regenerate deck.pptx, deck.pdf, and deck_manifest.json.",
+          "- Keep the same business story unless a small factual correction is necessary.",
+          "- Ensure every chart is embedded as raster media in the PPTX and survives opening in PowerPoint without repair warnings.",
+          "- Ensure chart image frames match the underlying image aspect ratio; do not stretch a chart to fill a wider box.",
+          "- If a slide layout is causing a stretched chart, change the slide grammar instead of scaling the image.",
+          "- Attach the regenerated files as real container uploads before finishing.",
+        ].join("\n"),
+      },
+    ],
+  };
+}
+
+async function repairArtifactsFromQa(input: {
+  client: Anthropic;
+  systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
+  latestResponse: Awaited<ReturnType<typeof runClaudeLoop>>;
+  latestContainerId: string;
+  qaFailures: string[];
+  tools: Anthropic.Beta.BetaToolUnion[];
+}) {
+  const response = await runClaudeLoop({
+    client: input.client,
+    systemPrompt: input.systemPrompt,
+    maxTokens: 4_096,
+    container: { id: input.latestContainerId },
+    messages: [...input.latestResponse.thread, buildArtifactRepairMessage(input.qaFailures)],
+    tools: input.tools,
+    outputConfig: {
+      effort: "medium",
+    },
+  });
+  const files = await downloadGeneratedFiles(input.client, response.fileIds);
+  return { ...response, files };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {
@@ -1884,6 +2143,17 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>) {
   ) {
     issues.push("At least one metric-bearing slide title is too long for a clean recommendation-card layout.");
   }
+  for (const slide of manifest.slides) {
+    const countClaimIssue = detectExplicitCoverageMismatch(slide);
+    if (countClaimIssue) {
+      issues.push(`Slide ${slide.position} ${countClaimIssue}`);
+    }
+    const chart = slide.chartId ? chartById.get(slide.chartId) : null;
+    const claimExhibitIssue = detectClaimExhibitMismatch(slide, chart?.title ?? "");
+    if (claimExhibitIssue) {
+      issues.push(`Slide ${slide.position} ${claimExhibitIssue}`);
+    }
+  }
   if (new Set(manifest.slides.map((slide) => slide.title)).size !== manifest.slides.length) {
     issues.push("Slide titles are duplicated.");
   }
@@ -1911,6 +2181,58 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>) {
     }
   }
   return issues;
+}
+
+function detectExplicitCoverageMismatch(slide: z.infer<typeof deckManifestSchema>["slides"][number]) {
+  const titleAndSubtitle = `${slide.title} ${slide.subtitle ?? ""}`;
+  const expectedCount = extractExplicitEntityCount(titleAndSubtitle);
+  if (!expectedCount || expectedCount < 3) {
+    return "";
+  }
+
+  const explicitMentions = countExplicitEntityMentions(`${slide.body ?? ""} ${(slide.bullets ?? []).join(" ")}`);
+  if (explicitMentions > 0 && explicitMentions < expectedCount) {
+    return `promises ${expectedCount} entities but only references ${explicitMentions} explicitly in the commentary.`;
+  }
+
+  return "";
+}
+
+function extractExplicitEntityCount(text: string) {
+  const normalized = text.toLowerCase();
+  const numericMatch = normalized.match(/\b([3-9]|10)\s+(province|provinces|regioni|regions|mercati|markets|channel|channels|categorie|categories|segmenti|segments)\b/);
+  if (numericMatch) {
+    return Number.parseInt(numericMatch[1] ?? "0", 10);
+  }
+
+  if (/\bquattro\s+(province|regioni|mercati)\b/.test(normalized)) return 4;
+  if (/\btre\s+(province|regioni|mercati)\b/.test(normalized)) return 3;
+  if (/\bfive\s+(markets|channels|segments)\b/.test(normalized)) return 5;
+  return 0;
+}
+
+function countExplicitEntityMentions(text: string) {
+  return (text.match(/\b[^:]{2,40}:/g) ?? []).length;
+}
+
+function detectClaimExhibitMismatch(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  chartTitle: string,
+) {
+  const copy = `${slide.title} ${slide.subtitle ?? ""} ${slide.body ?? ""} ${(slide.bullets ?? []).join(" ")}`.toLowerCase();
+  const chart = chartTitle.toLowerCase();
+  const claimsDistributionChange =
+    /(distribution|distribuzion)/.test(copy) &&
+    /(grow|grows|grew|increase|expanded|espand|cresc|acceler)/.test(copy);
+  const chartShowsDistributionLevel =
+    /(distribution|distribuzion)/.test(chart) &&
+    !( /(change|delta|variation|variazione|vs|yoy|py|pp)/.test(chart));
+
+  if (claimsDistributionChange && chartShowsDistributionLevel) {
+    return "claims a distribution change, but the linked chart title suggests current distribution level rather than a change metric.";
+  }
+
+  return "";
 }
 
 function collectCritiqueIssues(
@@ -2059,11 +2381,20 @@ async function validateArtifactChecks(
     const documentXml = zip.file("word/document.xml");
     const contentTypes = zip.file("[Content_Types].xml");
     const documentText = documentXml ? await documentXml.async("string") : "";
+    const flattenedText = documentText
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     const visibleTextLength = documentText
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim()
       .length;
+    const hasInternalScaffolding =
+      /evidence-backed story as the deck/i.test(flattenedText) ||
+      /downstream ai workflows/i.test(flattenedText) ||
+      /text-first format/i.test(flattenedText);
+    const hasPlaceholderMetrics = /\bMetric\s+\d+\b/.test(flattenedText);
     const extraChecks = [
       { name: "docx_document_xml", passed: Boolean(documentXml), detail: "word/document.xml exists" },
       { name: "docx_content_types_xml", passed: Boolean(contentTypes), detail: "[Content_Types].xml exists" },
@@ -2071,6 +2402,16 @@ async function validateArtifactChecks(
         name: "docx_text_content_present",
         passed: visibleTextLength >= 160,
         detail: `${visibleTextLength} visible chars`,
+      },
+      {
+        name: "docx_no_internal_scaffolding",
+        passed: !hasInternalScaffolding,
+        detail: hasInternalScaffolding ? "contains internal product scaffolding language" : "no internal scaffolding language",
+      },
+      {
+        name: "docx_no_placeholder_metrics",
+        passed: !hasPlaceholderMetrics,
+        detail: hasPlaceholderMetrics ? "contains placeholder Metric N rows" : "no placeholder metric rows",
       },
     ];
     allChecks.push(...extraChecks);

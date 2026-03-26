@@ -64,7 +64,7 @@ export async function buildNarrativeDocx(input: {
   manifest: DeckManifest;
   generatedAt?: Date;
 }) {
-  const labels = getLabels(input.analysis.language);
+  const labels = getLabels(resolveNarrativeLanguage(input));
   const reportTitle = firstNonEmpty(
     input.manifest.slides[0]?.title,
     input.analysis.thesis,
@@ -408,7 +408,6 @@ function buildExecutiveSummaryBlocks(
   return paragraphBlocks([
     firstNonEmpty(input.analysis.executiveSummary, input.analysis.thesis),
     bridgeParagraph,
-    buildReportMethodParagraph(labels),
   ]);
 }
 
@@ -499,29 +498,24 @@ function buildStakesParagraph(run: NarrativeRunContext, labels: ReturnType<typeo
   return firstNonEmpty(run.stakes) ? `${labels.stakesLabel}: ${run.stakes}.` : "";
 }
 
-function buildReportMethodParagraph(labels: ReturnType<typeof getLabels>) {
-  return labels.methodParagraph;
-}
-
 function buildLeadParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
-  const title = normalizeSentence(slide.title);
   const body = firstNonEmpty(slide.body);
   const subtitle = firstNonEmpty(slide.subtitle);
 
   if (body) {
-    return `${title}. ${normalizeSentence(body)}.`;
+    return `${normalizeSentence(body)}.`;
   }
 
   if (subtitle) {
-    return `${title}. ${normalizeSentence(subtitle)}.`;
+    return `${normalizeSentence(subtitle)}.`;
   }
 
   const bulletSummary = summarizeBullets(slide.bullets, labels);
   if (bulletSummary) {
-    return `${title}. ${bulletSummary}.`;
+    return `${bulletSummary}.`;
   }
 
-  return `${title}.`;
+  return "";
 }
 
 function buildCommentaryParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
@@ -538,19 +532,18 @@ function buildCommentaryParagraph(slide: NarrativeSlide, labels: ReturnType<type
 }
 
 function buildRecommendationLeadParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
-  const title = normalizeSentence(slide.title);
   const callout = firstNonEmpty(slide.callout?.text);
   const body = firstNonEmpty(slide.body);
 
   if (callout) {
-    return `${title}. ${labels.whatToDoLabel}: ${normalizeSentence(callout)}.`;
+    return `${labels.whatToDoLabel}: ${normalizeSentence(callout)}.`;
   }
 
   if (body) {
-    return `${title}. ${normalizeSentence(body)}.`;
+    return `${normalizeSentence(body)}.`;
   }
 
-  return `${title}.`;
+  return "";
 }
 
 function buildRecommendationWhyParagraph(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>) {
@@ -575,7 +568,8 @@ function buildRecommendationHowParagraph(slide: NarrativeSlide, labels: ReturnTy
 }
 
 function buildMetricTable(slide: NarrativeSlide, labels: ReturnType<typeof getLabels>): ReportBlock | null {
-  if (!slide.metrics || slide.metrics.length < 2) {
+  const usableMetrics = sanitizeMetrics(slide.metrics);
+  if (usableMetrics.length < 2) {
     return null;
   }
 
@@ -583,7 +577,7 @@ function buildMetricTable(slide: NarrativeSlide, labels: ReturnType<typeof getLa
     kind: "table",
     title: labels.metricTableTitle,
     headers: [labels.metricColumnLabel, labels.valueColumnLabel, labels.changeColumnLabel],
-    rows: slide.metrics.map((metric) => [
+    rows: usableMetrics.map((metric) => [
       normalizeSentence(metric.label),
       metric.value,
       metric.delta ?? labels.notAvailable,
@@ -592,11 +586,41 @@ function buildMetricTable(slide: NarrativeSlide, labels: ReturnType<typeof getLa
 }
 
 function buildMetricSentence(metrics: NarrativeMetric[], labels: ReturnType<typeof getLabels>) {
-  const leadMetrics = metrics.slice(0, 3).map(formatMetric);
+  const leadMetrics = sanitizeMetrics(metrics).slice(0, 3).map(formatMetric);
   if (leadMetrics.length === 0) {
     return "";
   }
   return `${labels.keyNumbers}: ${leadMetrics.join("; ")}.`;
+}
+
+function sanitizeMetrics(metrics: NarrativeMetric[] | undefined) {
+  if (!metrics) {
+    return [];
+  }
+
+  return metrics
+    .map((metric) => ({
+      ...metric,
+      label: normalizeSentence(metric.label),
+      value: normalizeSentence(metric.value),
+      delta: normalizeSentence(metric.delta ?? ""),
+    }))
+    .filter((metric) => {
+      if (!metric.label || !metric.value) {
+        return false;
+      }
+      if (/^metric\s*\d+$/i.test(metric.label)) {
+        return false;
+      }
+      if (/^(n\/a|n\.d\.|na|-|—)$/i.test(metric.value)) {
+        return false;
+      }
+      return true;
+    })
+    .map((metric) => ({
+      ...metric,
+      delta: metric.delta && /^(n\/a|n\.d\.|na|-|—)$/i.test(metric.delta) ? undefined : metric.delta || undefined,
+    }));
 }
 
 function collectEvidenceNotes(manifest: DeckManifest) {
@@ -737,6 +761,31 @@ function joinHumanList(values: string[], labels: ReturnType<typeof getLabels>) {
 
 function firstNonEmpty(...values: Array<string | undefined | null>) {
   return values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+}
+
+function resolveNarrativeLanguage(input: {
+  run: NarrativeRunContext;
+  analysis: NarrativeAnalysis;
+  manifest: DeckManifest;
+}) {
+  const hint = input.analysis.language ?? "";
+  if (/ital|en/i.test(hint)) {
+    return hint;
+  }
+
+  const sample = [
+    input.run.objective,
+    input.run.business_context,
+    input.run.audience,
+    input.run.thesis,
+    input.analysis.executiveSummary,
+    input.manifest.slides[0]?.title,
+    input.manifest.slides[1]?.title,
+  ].filter(Boolean).join(" ");
+
+  return /[àèéìòù]/i.test(sample) || /\b(il|lo|la|gli|mercato|crescita|paniere|raccomandazioni|contesto)\b/i.test(sample)
+    ? "Italian"
+    : "English";
 }
 
 function escapeXml(value: string) {
