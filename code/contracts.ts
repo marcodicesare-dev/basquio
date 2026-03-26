@@ -213,6 +213,47 @@ export const deckExecutionPhaseSchema = z.enum([
   "export",
 ]);
 
+export const deckRunAttemptStatusSchema = z.enum([
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+  "superseded",
+]);
+
+export const deckRunAttemptSchema = z.object({
+  id: z.string(),
+  runId: z.string(),
+  attemptNumber: z.number().int().min(1),
+  status: deckRunAttemptStatusSchema,
+  recoveryReason: z.string().nullable().default(null),
+  failurePhase: deckExecutionPhaseSchema.nullable().default(null),
+  failureMessage: z.string().nullable().default(null),
+  startedAt: z.string().nullable().default(null),
+  completedAt: z.string().nullable().default(null),
+  supersededByAttemptId: z.string().nullable().default(null),
+  supersedesAttemptId: z.string().nullable().default(null),
+});
+
+export const runRequestUsageSchema = z.object({
+  runId: z.string(),
+  attemptId: z.string(),
+  attemptNumber: z.number().int().min(1),
+  phase: deckExecutionPhaseSchema,
+  requestKind: z.string(),
+  provider: z.literal("anthropic"),
+  model: z.string(),
+  anthropicRequestId: z.string().nullable().default(null),
+  usage: z.object({
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative(),
+  }),
+  startedAt: z.string().nullable().default(null),
+  completedAt: z.string().nullable().default(null),
+});
+
 export const pipelineStageSchema = z.enum([
   "intake and profiling",
   "package semantics inference",

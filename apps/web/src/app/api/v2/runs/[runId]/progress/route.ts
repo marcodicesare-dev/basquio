@@ -29,10 +29,15 @@ type DeckRunRow = {
   template_profile_id: string | null;
   source_file_ids: string[];
   template_diagnostics: Record<string, unknown> | null;
+  active_attempt_id: string | null;
+  latest_attempt_id: string | null;
+  latest_attempt_number: number;
 };
 
 type DeckRunEventRow = {
   id: string;
+  attempt_id: string | null;
+  attempt_number: number | null;
   phase: string | null;
   event_type: string;
   tool_name: string | null;
@@ -129,7 +134,7 @@ export async function GET(
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,template_profile_id,source_file_ids,template_diagnostics",
+      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number",
       id: `eq.${runId}`,
       requested_by: `eq.${viewer.user.id}`,
       limit: "1",
@@ -141,14 +146,16 @@ export async function GET(
   }
 
   const run = runs[0];
+  const attemptId = run.active_attempt_id ?? run.latest_attempt_id;
 
   const events = await fetchRestRows<DeckRunEventRow>({
     supabaseUrl,
     serviceKey,
     table: "deck_run_events",
     query: {
-      select: "id,phase,event_type,tool_name,payload,created_at",
+      select: "id,attempt_id,attempt_number,phase,event_type,tool_name,payload,created_at",
       run_id: `eq.${runId}`,
+      ...(attemptId ? { attempt_id: `eq.${attemptId}` } : {}),
       ...(after ? { created_at: `gt.${after}` } : {}),
       order: "created_at.asc",
       limit: String(limit),
@@ -164,8 +171,9 @@ export async function GET(
     serviceKey,
     table: "deck_run_events",
     query: {
-      select: "id,phase,event_type,tool_name,payload,created_at",
+      select: "id,attempt_id,attempt_number,phase,event_type,tool_name,payload,created_at",
       run_id: `eq.${runId}`,
+      ...(attemptId ? { attempt_id: `eq.${attemptId}` } : {}),
       order: "created_at.asc",
       limit: "500",
     },
@@ -216,6 +224,8 @@ export async function GET(
 
   return NextResponse.json({
     runId: run.id,
+    attemptNumber: run.latest_attempt_number ?? 1,
+    activeAttemptId: attemptId,
     status: run.status,
     currentPhase: currentPhase ?? null,
     runHealth: isStale ? "stale" : "healthy",

@@ -1,5 +1,26 @@
 # Decision Log
 
+## March 26, 2026 — Runtime reliability and cost hardening
+
+Decision:
+- keep `deck_runs` as the stable user-facing job object, but move retry and recovery lineage into explicit `deck_run_attempts`
+- persist Anthropic request ids plus usage in durable `deck_run_request_usage` rows
+- write final `cost_telemetry` on failed attempts, not only on success
+- make the top-level run cost reflect the whole logical run, not only the latest attempt
+- replace ad hoc clone scripts with one official operator retry entry point
+
+Why:
+- March 26 production recovery required manual clone runs, artifact re-pointing, and external Anthropic logs to reconstruct spend
+- failed runs were dropping meaningful cost even after real model usage
+- one user incident could silently become multiple top-level runs, which made dashboard state and operator recovery misleading
+
+Implication:
+- worker claim, heartbeat, and stale recovery should operate on attempts, not only naked run rows
+- `/api/jobs/[jobId]` and the legacy v2 progress route should read event history from the active/latest attempt instead of mixing old failed attempt traces into the live snapshot
+- operators should recover a run with `scripts/retry-run-attempt.ts`, not `.context` clone scripts
+- run-level `cost_telemetry.estimatedCostUsd` should reflect full logical-run spend, while the attempt record keeps the per-attempt cost
+- bounded same-container repair should stay limited to one missing-artifact repair after `author` and one after `revise`
+
 ## March 23, 2026 (evening) — V6 Architecture Reset
 
 ### Kill the understand/author split — single-turn generation

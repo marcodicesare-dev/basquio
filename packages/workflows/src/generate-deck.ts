@@ -157,6 +157,32 @@ type RunRow = {
   source_file_ids: string[];
   template_profile_id: string | null;
   template_diagnostics: Record<string, unknown> | null;
+  active_attempt_id: string | null;
+  latest_attempt_id: string | null;
+  latest_attempt_number: number;
+};
+
+type RunAttemptRow = {
+  id: string;
+  run_id: string;
+  attempt_number: number;
+  status: string;
+  recovery_reason: string | null;
+  failure_phase: string | null;
+  failure_message: string | null;
+  anthropic_request_ids: unknown;
+};
+
+type AttemptCostRow = {
+  id: string;
+  attempt_number: number;
+  cost_telemetry: Record<string, unknown> | null;
+};
+
+type AttemptContext = {
+  id: string;
+  attemptNumber: number;
+  recoveryReason: string | null;
 };
 
 type TemplateProfileRow = {
@@ -190,9 +216,16 @@ type ClaudeUsage = {
   input_tokens?: number;
   output_tokens?: number;
 };
+type ClaudeRequestUsage = {
+  requestId: string | null;
+  startedAt: string;
+  completedAt: string;
+  usage: Required<ClaudeUsage>;
+  stopReason: string | null;
+};
 type RenderedPageQaReport = z.infer<typeof renderedPageQaSchema>;
 
-export async function generateDeckRun(runId: string) {
+export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<AttemptContext>) {
   const config = resolveConfig();
   const client = new Anthropic({
     apiKey: config.anthropicApiKey,
@@ -204,9 +237,11 @@ export async function generateDeckRun(runId: string) {
   let currentPhase: DeckPhase = "normalize";
   const phaseTelemetry: Record<string, unknown> = {};
   let continuationCount = 0;
+  const anthropicRequestIds = new Set<string>();
 
   try {
     const run = await loadRun(config, runId);
+    const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
     const persistedTemplate = await loadTemplateProfileRow(config, run.template_profile_id);
     const templateSourceFileId = persistedTemplate?.source_file_id ?? null;
@@ -216,7 +251,7 @@ export async function generateDeckRun(runId: string) {
     const evidenceFiles = sourceFiles.filter((file) => file.id !== templateFile?.id);
 
     currentPhase = "normalize";
-    await markPhase(config, runId, currentPhase);
+    await markPhase(config, runId, attempt, currentPhase);
 
     const parsed = await parseEvidencePackage({
       datasetId: runId,
@@ -266,7 +301,7 @@ export async function generateDeckRun(runId: string) {
       throw new Error(evidenceValidationError);
     }
 
-    await completePhase(config, runId, "normalize", {
+    await completePhase(config, runId, attempt, "normalize", {
       fileCount: parsed.datasetProfile.sourceFiles.length,
       sheetCount: parsed.datasetProfile.sheets.length,
     });
@@ -292,11 +327,11 @@ export async function generateDeckRun(runId: string) {
     });
 
     currentPhase = "understand";
-    await markPhase(config, runId, currentPhase);
+    await markPhase(config, runId, attempt, currentPhase);
 
     const questionRoutes = routeQuestion(buildBriefText(run));
     const understandMessage = buildUnderstandMessage(run, uploadedEvidence, uploadedTemplate, questionRoutes);
-    await recordToolCall(config, runId, "understand", "code_execution", {
+    await recordToolCall(config, runId, attempt, "understand", "code_execution", {
       model: MODEL,
       tools: ["web_fetch"],
       autoInjectedTools: ["code_execution"],
@@ -340,13 +375,18 @@ export async function generateDeckRun(runId: string) {
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
     assertDeckSpendWithinBudget(spentUsd);
     continuationCount += understandResponse.pauseTurns;
-    phaseTelemetry.understand = buildPhaseTelemetry(MODEL, understandResponse);
+    phaseTelemetry.understand = buildPhaseTelemetry(MODEL, {
+      ...understandResponse,
+      requestIds: understandResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+    });
+    await persistRequestUsage(config, runId, attempt, "understand", "phase_generation", MODEL, understandResponse.requests);
+    rememberRequestIds(anthropicRequestIds, understandResponse.requests);
 
     const analysis = parseStructuredAnalysisResponse(understandResponse.message);
     enforceAnalysisExhibitRules(analysis);
     await upsertWorkingPaper(config, runId, "analysis_result", analysis);
     await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
-    await completePhase(config, runId, "understand", {
+    await completePhase(config, runId, attempt, "understand", {
       slidePlanCount: analysis.slidePlan.length,
       thesis: analysis.thesis,
       estimatedCostUsd: spentUsd,
@@ -354,10 +394,10 @@ export async function generateDeckRun(runId: string) {
     }, understandResponse.usage);
 
     currentPhase = "author";
-    await markPhase(config, runId, currentPhase);
+    await markPhase(config, runId, attempt, currentPhase);
 
     const generationMessage = buildAuthorMessage(run, analysis);
-    await recordToolCall(config, runId, "author", "code_execution", {
+    await recordToolCall(config, runId, attempt, "author", "code_execution", {
       model: MODEL,
       tools: ["web_fetch"],
       autoInjectedTools: ["code_execution"],
@@ -401,7 +441,12 @@ export async function generateDeckRun(runId: string) {
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
     assertDeckSpendWithinBudget(spentUsd);
     continuationCount += authorResponse.pauseTurns;
-    phaseTelemetry.author = buildPhaseTelemetry(MODEL, authorResponse);
+    phaseTelemetry.author = buildPhaseTelemetry(MODEL, {
+      ...authorResponse,
+      requestIds: authorResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+    });
+    await persistRequestUsage(config, runId, attempt, "author", "phase_generation", MODEL, authorResponse.requests);
+    rememberRequestIds(anthropicRequestIds, authorResponse.requests);
 
     const authorRecovery = await recoverMissingArtifacts({
       client,
@@ -427,7 +472,10 @@ export async function generateDeckRun(runId: string) {
         usage: authorRecovery.usage,
         iterations: authorRecovery.iterations,
         pauseTurns: authorRecovery.pauseTurns,
+        requestIds: authorRecovery.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
       });
+      await persistRequestUsage(config, runId, attempt, "author", "missing_artifact_repair", MODEL, authorRecovery.requests);
+      rememberRequestIds(anthropicRequestIds, authorRecovery.requests);
     }
     authorResponse = authorRecovery.response;
     const containerId = authorResponse.containerId;
@@ -437,7 +485,7 @@ export async function generateDeckRun(runId: string) {
     let manifest = parseManifestResponse(authorResponse.message, authorFiles);
 
     await persistDeckSpec(config, runId, manifest);
-    await completePhase(config, runId, "author", {
+    await completePhase(config, runId, attempt, "author", {
       containerId,
       slideCount: manifest.slideCount,
       chartCount: manifest.charts.length,
@@ -445,8 +493,8 @@ export async function generateDeckRun(runId: string) {
     }, authorResponse.usage);
 
     currentPhase = "render";
-    await markPhase(config, runId, currentPhase);
-    await completePhase(config, runId, "render", {
+    await markPhase(config, runId, attempt, currentPhase);
+    await completePhase(config, runId, attempt, "render", {
       containerId,
       pageCount: manifest.pageCount ?? manifest.slideCount,
       estimatedCostUsd: spentUsd,
@@ -454,7 +502,7 @@ export async function generateDeckRun(runId: string) {
     });
 
     currentPhase = "critique";
-    await markPhase(config, runId, currentPhase);
+    await markPhase(config, runId, attempt, currentPhase);
     const initialVisualQa = await runRenderedPageQa({
       client,
       pdf: pdfFile.buffer,
@@ -465,11 +513,32 @@ export async function generateDeckRun(runId: string) {
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
     assertDeckSpendWithinBudget(spentUsd);
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
+    await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, [{
+      requestId: initialVisualQa.requestId,
+      startedAt: initialVisualQa.startedAt,
+      completedAt: initialVisualQa.completedAt,
+      usage: {
+        input_tokens: initialVisualQa.usage?.input_tokens ?? 0,
+        output_tokens: initialVisualQa.usage?.output_tokens ?? 0,
+      },
+      stopReason: "end_turn",
+    }]);
+    rememberRequestIds(anthropicRequestIds, [{
+      requestId: initialVisualQa.requestId,
+      startedAt: initialVisualQa.startedAt,
+      completedAt: initialVisualQa.completedAt,
+      usage: {
+        input_tokens: initialVisualQa.usage?.input_tokens ?? 0,
+        output_tokens: initialVisualQa.usage?.output_tokens ?? 0,
+      },
+      stopReason: "end_turn",
+    }]);
     await upsertWorkingPaper(config, runId, "visual_qa_author", initialVisualQa.report);
     const critiqueIssues = collectCritiqueIssues(manifest, initialVisualQa.report);
     await completePhase(
       config,
       runId,
+      attempt,
       "critique",
       {
         issueCount: critiqueIssues.length,
@@ -486,10 +555,10 @@ export async function generateDeckRun(runId: string) {
 
     if (critiqueIssues.length > 0) {
       currentPhase = "revise";
-      await markPhase(config, runId, currentPhase);
+      await markPhase(config, runId, attempt, currentPhase);
       const reviseMessage = buildReviseMessage(critiqueIssues);
       const reviseMessages = [...authorResponse.thread, reviseMessage];
-      await recordToolCall(config, runId, "revise", "code_execution", {
+      await recordToolCall(config, runId, attempt, "revise", "code_execution", {
         model: MODEL,
         tools: ["web_fetch"],
         autoInjectedTools: ["code_execution"],
@@ -532,7 +601,12 @@ export async function generateDeckRun(runId: string) {
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
       assertDeckSpendWithinBudget(spentUsd);
       continuationCount += reviseResponse.pauseTurns;
-      phaseTelemetry.revise = buildPhaseTelemetry(MODEL, reviseResponse);
+      phaseTelemetry.revise = buildPhaseTelemetry(MODEL, {
+        ...reviseResponse,
+        requestIds: reviseResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+      });
+      await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", MODEL, reviseResponse.requests);
+      rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
 
       const reviseRecovery = await recoverMissingArtifacts({
         client,
@@ -558,7 +632,10 @@ export async function generateDeckRun(runId: string) {
           usage: reviseRecovery.usage,
           iterations: reviseRecovery.iterations,
           pauseTurns: reviseRecovery.pauseTurns,
+          requestIds: reviseRecovery.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
         });
+        await persistRequestUsage(config, runId, attempt, "revise", "missing_artifact_repair", MODEL, reviseRecovery.requests);
+        rememberRequestIds(anthropicRequestIds, reviseRecovery.requests);
       }
       reviseResponse = reviseRecovery.response;
       const reviseFiles = reviseRecovery.files;
@@ -575,12 +652,33 @@ export async function generateDeckRun(runId: string) {
       spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
       assertDeckSpendWithinBudget(spentUsd);
       phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
+      await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, [{
+        requestId: revisedVisualQa.requestId,
+        startedAt: revisedVisualQa.startedAt,
+        completedAt: revisedVisualQa.completedAt,
+        usage: {
+          input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
+          output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
+        },
+        stopReason: "end_turn",
+      }]);
+      rememberRequestIds(anthropicRequestIds, [{
+        requestId: revisedVisualQa.requestId,
+        startedAt: revisedVisualQa.startedAt,
+        completedAt: revisedVisualQa.completedAt,
+        usage: {
+          input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
+          output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
+        },
+        stopReason: "end_turn",
+      }]);
       finalVisualQa = revisedVisualQa.report;
       await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
       await persistDeckSpec(config, runId, finalManifest);
       await completePhase(
         config,
         runId,
+        attempt,
         "revise",
         {
           issueCount: critiqueIssues.length,
@@ -592,7 +690,7 @@ export async function generateDeckRun(runId: string) {
     }
 
     currentPhase = "export";
-    await markPhase(config, runId, currentPhase);
+    await markPhase(config, runId, attempt, currentPhase);
     const finalDocx = await buildNarrativeDocx({
       run,
       analysis,
@@ -628,11 +726,12 @@ export async function generateDeckRun(runId: string) {
     }
     const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx);
     await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts, templateDiagnostics);
-    await finalizeSuccess(config, runId, spentUsd, qaReport, {
+    await finalizeSuccess(config, runId, attempt, spentUsd, qaReport, {
       phases: phaseTelemetry,
       continuationCount,
+      anthropicRequestIds: [...anthropicRequestIds],
     });
-    await completePhase(config, runId, "export", {
+    await completePhase(config, runId, attempt, "export", {
       artifactCount: artifacts.length,
       estimatedCostUsd: spentUsd,
       qaTier: qaReport.tier,
@@ -640,7 +739,14 @@ export async function generateDeckRun(runId: string) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Deck generation failed.";
-    await finalizeFailure(config, runId, currentPhase, message).catch(() => {});
+    const run = await loadRun(config, runId).catch(() => null);
+    const attempt = run ? await resolveAttemptContext(config, run, suppliedAttempt).catch(() => null) : null;
+    await finalizeFailure(config, runId, attempt, currentPhase, message, {
+      phases: phaseTelemetry,
+      continuationCount,
+      anthropicRequestIds: [...anthropicRequestIds],
+      estimatedCostUsd: spentUsd,
+    }).catch(() => {});
     throw error;
   }
 }
@@ -663,7 +769,7 @@ async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) 
     serviceKey: config.serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,template_profile_id,template_diagnostics",
+      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number",
       id: `eq.${runId}`,
       limit: "1",
     },
@@ -671,6 +777,86 @@ async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) 
 
   if (!runs[0]) throw new Error(`Run ${runId} not found.`);
   return runs[0];
+}
+
+async function resolveAttemptContext(
+  config: ReturnType<typeof resolveConfig>,
+  run: RunRow,
+  suppliedAttempt?: Partial<AttemptContext>,
+): Promise<AttemptContext> {
+  if (suppliedAttempt?.id && typeof suppliedAttempt.attemptNumber === "number") {
+    return {
+      id: suppliedAttempt.id,
+      attemptNumber: suppliedAttempt.attemptNumber,
+      recoveryReason: suppliedAttempt.recoveryReason ?? null,
+    };
+  }
+
+  const attemptId = suppliedAttempt?.id ?? run.active_attempt_id ?? run.latest_attempt_id;
+  if (!attemptId) {
+    throw new Error(`Run ${run.id} has no active or latest attempt.`);
+  }
+
+  const attempts = await fetchRestRows<RunAttemptRow>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      select: "id,run_id,attempt_number,status,recovery_reason,failure_phase,failure_message,anthropic_request_ids",
+      id: `eq.${attemptId}`,
+      limit: "1",
+    },
+  });
+
+  if (!attempts[0]) {
+    throw new Error(`Attempt ${attemptId} not found for run ${run.id}.`);
+  }
+
+  return {
+    id: attempts[0].id,
+    attemptNumber: attempts[0].attempt_number,
+    recoveryReason: attempts[0].recovery_reason,
+  };
+}
+
+async function buildRunCostTelemetry(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  attempt: AttemptContext | null,
+  currentAttemptEstimatedCostUsd: number,
+  extraTelemetry: Record<string, unknown>,
+) {
+  const attempts = await fetchRestRows<AttemptCostRow>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      select: "id,attempt_number,cost_telemetry",
+      run_id: `eq.${runId}`,
+      order: "attempt_number.asc",
+      limit: "50",
+    },
+  }).catch(() => []);
+
+  const priorEstimatedCostUsd = attempts
+    .filter((row) => row.id !== attempt?.id)
+    .reduce((sum, row) => {
+      const value = Number(row.cost_telemetry?.estimatedCostUsd ?? 0);
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+
+  return {
+    model: MODEL,
+    ...extraTelemetry,
+    estimatedCostUsd: roundUsd(priorEstimatedCostUsd + currentAttemptEstimatedCostUsd),
+    latestAttemptEstimatedCostUsd: roundUsd(currentAttemptEstimatedCostUsd),
+    attemptNumber: attempt?.attemptNumber ?? null,
+    totalAttemptCount: Math.max(
+      attempt?.attemptNumber ?? 0,
+      ...attempts.map((row) => row.attempt_number),
+      0,
+    ),
+  };
 }
 
 async function loadSourceFiles(
@@ -818,90 +1004,196 @@ async function upsertWorkingPaper(
 async function markPhase(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  attempt: AttemptContext,
   phase: DeckPhase,
 ) {
   const now = new Date().toISOString();
-  await patchRestRows({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "deck_runs",
-    query: { id: `eq.${runId}` },
-    payload: {
-      status: "running",
-      current_phase: phase,
-      phase_started_at: now,
-      updated_at: now,
-      failure_message: null,
-      failure_phase: null,
-    },
-  });
-  await insertEvent(config, runId, phase, "phase_started", {});
+  await Promise.all([
+    patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${runId}` },
+      payload: {
+        status: "running",
+        current_phase: phase,
+        phase_started_at: now,
+        updated_at: now,
+        failure_message: null,
+        failure_phase: null,
+        active_attempt_id: attempt.id,
+        latest_attempt_id: attempt.id,
+        latest_attempt_number: attempt.attemptNumber,
+      },
+    }),
+    patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: { id: `eq.${attempt.id}` },
+      payload: {
+        status: "running",
+        updated_at: now,
+        failure_message: null,
+        failure_phase: null,
+      },
+    }),
+  ]);
+  await insertEvent(config, runId, attempt, phase, "phase_started", {});
 }
 
 async function completePhase(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  attempt: AttemptContext,
   phase: DeckPhase,
   payload: Record<string, unknown>,
   usage?: ClaudeUsage | null,
 ) {
-  await insertEvent(config, runId, phase, "phase_completed", payload, usage);
+  await patchRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_runs",
+    query: { id: `eq.${runId}` },
+    payload: {
+      updated_at: new Date().toISOString(),
+    },
+  });
+  await patchRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: { id: `eq.${attempt.id}` },
+    payload: {
+      updated_at: new Date().toISOString(),
+    },
+  }).catch(() => {});
+  await insertEvent(config, runId, attempt, phase, "phase_completed", payload, usage);
 }
 
 async function finalizeSuccess(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  attempt: AttemptContext,
   estimatedCostUsd: number,
   qaReport: Record<string, unknown>,
   extraTelemetry: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
-  await patchRestRows({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "deck_runs",
-    query: { id: `eq.${runId}` },
-    payload: {
-      status: "completed",
-      current_phase: "export",
-      updated_at: now,
-      completed_at: now,
-      delivery_status: qaReport.tier === "green" ? "reviewed" : "degraded",
-      cost_telemetry: {
-        model: MODEL,
-        estimatedCostUsd,
-        qaTier: qaReport.tier,
-        ...extraTelemetry,
-      },
-    },
+  const attemptCostTelemetry = {
+    model: MODEL,
+    estimatedCostUsd,
+    qaTier: qaReport.tier,
+    attemptNumber: attempt.attemptNumber,
+    ...extraTelemetry,
+  };
+  const runCostTelemetry = await buildRunCostTelemetry(config, runId, attempt, estimatedCostUsd, {
+    qaTier: qaReport.tier,
+    ...extraTelemetry,
   });
+  await Promise.all([
+    patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: { id: `eq.${attempt.id}` },
+      payload: {
+        status: "completed",
+        updated_at: now,
+        completed_at: now,
+        cost_telemetry: attemptCostTelemetry,
+        anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
+      },
+    }),
+    patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${runId}` },
+      payload: {
+        status: "completed",
+        current_phase: "export",
+        updated_at: now,
+        completed_at: now,
+        delivery_status: qaReport.tier === "green" ? "reviewed" : "degraded",
+        cost_telemetry: runCostTelemetry,
+        active_attempt_id: null,
+        latest_attempt_id: attempt.id,
+        latest_attempt_number: attempt.attemptNumber,
+        successful_attempt_id: attempt.id,
+      },
+    }),
+  ]);
 }
 
 async function finalizeFailure(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  attempt: AttemptContext | null,
   failurePhase: DeckPhase,
   failureMessage: string,
+  extraTelemetry: Record<string, unknown>,
 ) {
-  await patchRestRows({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "deck_runs",
-    query: { id: `eq.${runId}` },
-    payload: {
-      status: "failed",
-      failure_message: failureMessage,
-      failure_phase: failurePhase,
-      updated_at: new Date().toISOString(),
-      delivery_status: "failed",
-    },
-  });
-  await insertEvent(config, runId, failurePhase, "error", { message: failureMessage });
+  const now = new Date().toISOString();
+  const attemptCostTelemetry = {
+    model: MODEL,
+    estimatedCostUsd: extraTelemetry.estimatedCostUsd ?? 0,
+    attemptNumber: attempt?.attemptNumber ?? null,
+    ...extraTelemetry,
+  };
+  const runCostTelemetry = await buildRunCostTelemetry(
+    config,
+    runId,
+    attempt,
+    Number(extraTelemetry.estimatedCostUsd ?? 0),
+    extraTelemetry,
+  );
+  const writes: Array<Promise<unknown>> = [
+    patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${runId}` },
+      payload: {
+        status: "failed",
+        failure_message: failureMessage,
+        failure_phase: failurePhase,
+        updated_at: now,
+        delivery_status: "failed",
+        cost_telemetry: runCostTelemetry,
+        active_attempt_id: null,
+      },
+    }),
+  ];
+
+  if (attempt) {
+    writes.push(
+      patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_run_attempts",
+        query: { id: `eq.${attempt.id}` },
+        payload: {
+          status: "failed",
+          failure_phase: failurePhase,
+          failure_message: failureMessage,
+          updated_at: now,
+          completed_at: now,
+          cost_telemetry: attemptCostTelemetry,
+          anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
+        },
+      }),
+    );
+  }
+
+  await Promise.all(writes);
+  await insertEvent(config, runId, attempt, failurePhase, "error", { message: failureMessage });
 }
 
 async function insertEvent(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  attempt: AttemptContext | null,
   phase: DeckPhase,
   eventType: string,
   payload: Record<string, unknown>,
@@ -917,6 +1209,8 @@ async function insertEvent(
       {
         id: randomUUID(),
         run_id: runId,
+        attempt_id: attempt?.id ?? null,
+        attempt_number: attempt?.attemptNumber ?? null,
         phase,
         event_type: eventType,
         tool_name: options?.toolName ?? null,
@@ -938,6 +1232,7 @@ async function insertEvent(
 async function recordToolCall(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  attempt: AttemptContext,
   phase: DeckPhase,
   toolName: string,
   payload: Record<string, unknown>,
@@ -946,6 +1241,7 @@ async function recordToolCall(
   await insertEvent(
     config,
     runId,
+    attempt,
     phase,
     "tool_call",
     payload,
@@ -955,6 +1251,56 @@ async function recordToolCall(
       stepNumber,
     },
   );
+}
+
+async function persistRequestUsage(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  attempt: AttemptContext,
+  phase: DeckPhase,
+  requestKind: string,
+  model: string,
+  requests: ClaudeRequestUsage[],
+) {
+  if (requests.length === 0) {
+    return;
+  }
+
+  await upsertRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_request_usage",
+    onConflict: "id",
+    rows: requests.map((request) => ({
+      id: randomUUID(),
+      run_id: runId,
+      attempt_id: attempt.id,
+      attempt_number: attempt.attemptNumber,
+      phase,
+      request_kind: requestKind,
+      provider: "anthropic",
+      model,
+      anthropic_request_id: request.requestId,
+      usage: {
+        inputTokens: request.usage.input_tokens ?? 0,
+        outputTokens: request.usage.output_tokens ?? 0,
+        totalTokens: (request.usage.input_tokens ?? 0) + (request.usage.output_tokens ?? 0),
+      },
+      started_at: request.startedAt,
+      completed_at: request.completedAt,
+    })),
+  });
+}
+
+function rememberRequestIds(
+  target: Set<string>,
+  requests: Array<{ requestId: string | null; [key: string]: unknown }>,
+) {
+  for (const request of requests) {
+    if (request.requestId) {
+      target.add(request.requestId);
+    }
+  }
 }
 
 function appendAssistantTurn(
@@ -1107,6 +1453,7 @@ async function runClaudeLoop(input: {
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
   let iterationCount = 0;
   let pauseTurns = 0;
+  const requests: ClaudeRequestUsage[] = [];
   const usage: Required<ClaudeUsage> = {
     input_tokens: 0,
     output_tokens: 0,
@@ -1114,6 +1461,7 @@ async function runClaudeLoop(input: {
 
   for (let iteration = 0; iteration < 8; iteration += 1) {
     iterationCount += 1;
+    const startedAt = new Date().toISOString();
     const stream = input.client.beta.messages.stream({
       model: MODEL,
       max_tokens: input.maxTokens,
@@ -1124,12 +1472,24 @@ async function runClaudeLoop(input: {
       tools: input.tools,
       output_config: input.outputConfig,
     });
+    const requestId = stream.request_id ?? null;
     const message = await stream.finalMessage();
+    const completedAt = new Date().toISOString();
 
     finalMessage = message;
     currentContainer = message.container ? { id: message.container.id } : currentContainer;
     usage.input_tokens += message.usage?.input_tokens ?? 0;
     usage.output_tokens += message.usage?.output_tokens ?? 0;
+    requests.push({
+      requestId,
+      startedAt,
+      completedAt,
+      usage: {
+        input_tokens: message.usage?.input_tokens ?? 0,
+        output_tokens: message.usage?.output_tokens ?? 0,
+      },
+      stopReason: message.stop_reason ?? null,
+    });
 
     collectGeneratedFileIds(message.content).forEach((fileId) => fileIds.add(fileId));
 
@@ -1153,6 +1513,7 @@ async function runClaudeLoop(input: {
     usage,
     iterations: iterationCount,
     pauseTurns,
+    requests,
   };
 }
 
@@ -1196,11 +1557,12 @@ async function recoverMissingArtifacts(input: {
   };
   let pauseTurns = 0;
   let iterations = 0;
+  const requests: ClaudeRequestUsage[] = [];
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 1; attempt += 1) {
     const missingFiles = listMissingGeneratedFiles(files, input.requiredFiles);
     if (missingFiles.length === 0) {
-      return { response, files, usage, pauseTurns, iterations };
+      return { response, files, usage, pauseTurns, iterations, requests };
     }
 
     const repairResponse = await runClaudeLoop({
@@ -1221,11 +1583,12 @@ async function recoverMissingArtifacts(input: {
     usage.output_tokens += repairResponse.usage.output_tokens ?? 0;
     pauseTurns += repairResponse.pauseTurns;
     iterations += repairResponse.iterations;
+    requests.push(...repairResponse.requests);
     response = repairResponse;
     files = await downloadGeneratedFiles(input.client, response.fileIds);
   }
 
-  return { response, files, usage, pauseTurns, iterations };
+  return { response, files, usage, pauseTurns, iterations, requests };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {
@@ -1958,7 +2321,7 @@ function inferLanguageHint(run: RunRow) {
 
 function buildPhaseTelemetry(
   model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6",
-  result: { usage: ClaudeUsage; iterations: number; pauseTurns: number },
+  result: { usage: ClaudeUsage; iterations: number; pauseTurns: number; requestIds?: string[] },
 ) {
   return {
     model,
@@ -1968,6 +2331,7 @@ function buildPhaseTelemetry(
     totalTokens: (result.usage.input_tokens ?? 0) + (result.usage.output_tokens ?? 0),
     iterations: result.iterations,
     pauseTurns: result.pauseTurns,
+    anthropicRequestIds: result.requestIds ?? [],
   };
 }
 

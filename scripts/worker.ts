@@ -11,13 +11,15 @@ const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBE
 const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
 
 type QueuedRunRow = {
+  run_id: string;
   id: string;
+  attempt_number: number;
 };
 
 async function main() {
   const config = resolveConfig();
   let shuttingDown = false;
-  let activeRunId: string | null = null;
+  let activeAttempt: QueuedRunRow | null = null;
   let recoveryInFlight = false;
 
   const requestShutdown = (signal: string) => {
@@ -28,7 +30,7 @@ async function main() {
     shuttingDown = true;
     console.warn(`[basquio-worker] received ${signal}; draining before shutdown`);
 
-    if (!activeRunId) {
+    if (!activeAttempt) {
       process.exit(0);
     }
   };
@@ -37,7 +39,7 @@ async function main() {
   process.on("SIGINT", () => requestShutdown("SIGINT"));
 
   console.log("[basquio-worker] starting");
-  await recoverStaleRuns(config);
+  await recoverStaleAttempts(config);
 
   const recoveryTimer = setInterval(() => {
     if (recoveryInFlight) {
@@ -45,7 +47,7 @@ async function main() {
     }
 
     recoveryInFlight = true;
-    void recoverStaleRuns(config)
+    void recoverStaleAttempts(config)
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[basquio-worker] recovery loop error: ${message}`);
@@ -62,22 +64,25 @@ async function main() {
     }
 
     try {
-      const runId = await claimNextQueuedRun(config);
+      const attempt = await claimNextQueuedAttempt(config);
 
-      if (runId) {
+      if (attempt) {
         const startedAt = Date.now();
-        activeRunId = runId;
-        console.log(`[basquio-worker] claimed run ${runId}`);
-        const stopHeartbeat = startHeartbeat(config, runId);
+        activeAttempt = attempt;
+        console.log(`[basquio-worker] claimed run ${attempt.run_id} attempt ${attempt.attempt_number}`);
+        const stopHeartbeat = startHeartbeat(config, attempt);
 
         try {
-          await generateDeckRun(runId);
+          await generateDeckRun(attempt.run_id, {
+            id: attempt.id,
+            attemptNumber: attempt.attempt_number,
+          });
           console.log(
-            `[basquio-worker] completed run ${runId} in ${Math.round((Date.now() - startedAt) / 1000)}s`,
+            `[basquio-worker] completed run ${attempt.run_id} attempt ${attempt.attempt_number} in ${Math.round((Date.now() - startedAt) / 1000)}s`,
           );
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          console.error(`[basquio-worker] run ${runId} failed: ${message}`);
+          console.error(`[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} failed: ${message}`);
 
           // Refund the credit on system failure so the user can retry
           // Only attempts refund when billing is configured
@@ -87,25 +92,25 @@ async function main() {
                 supabaseUrl: config.supabaseUrl,
                 serviceKey: config.serviceKey,
                 table: "deck_runs",
-                query: { select: "requested_by", id: `eq.${runId}`, limit: "1" },
+                query: { select: "requested_by", id: `eq.${attempt.run_id}`, limit: "1" },
               });
               if (run[0]?.requested_by) {
                 await refundCredit({
                   supabaseUrl: config.supabaseUrl,
                   serviceKey: config.serviceKey,
                   userId: run[0].requested_by,
-                  runId,
+                  runId: attempt.run_id,
                 });
-                console.log(`[basquio-worker] refunded credit for failed run ${runId}`);
+                console.log(`[basquio-worker] refunded credit for failed run ${attempt.run_id}`);
               }
             } catch (refundError) {
               const refundMsg = refundError instanceof Error ? refundError.message : String(refundError);
-              console.error(`[basquio-worker] credit refund failed for ${runId}: ${refundMsg}`);
+              console.error(`[basquio-worker] credit refund failed for ${attempt.run_id}: ${refundMsg}`);
             }
           }
         } finally {
           stopHeartbeat();
-          activeRunId = null;
+          activeAttempt = null;
         }
       }
     } catch (error) {
@@ -146,91 +151,181 @@ function resolveConfig() {
   };
 }
 
-async function recoverStaleRuns(config: ReturnType<typeof resolveConfig>) {
+function resolveWorkerDeploymentId() {
+  return process.env.RAILWAY_DEPLOYMENT_ID ?? process.env.RAILWAY_RELEASE_ID ?? process.env.HOSTNAME ?? "local-worker";
+}
+
+async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
   const staleBefore = new Date(Date.now() - STALE_RUN_MINUTES * 60_000).toISOString();
 
-  const recovered = await patchRestRows<{ id: string }>({
+  const staleAttempts = await fetchRestRows<QueuedRunRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
-    table: "deck_runs",
+    table: "deck_run_attempts",
     query: {
+      select: "id,run_id,attempt_number",
       status: "eq.running",
+      superseded_by_attempt_id: "is.null",
       updated_at: `lt.${staleBefore}`,
-    },
-    select: "id",
-    payload: {
-      status: "queued",
-      current_phase: null,
-      phase_started_at: null,
-      failure_message: null,
-      failure_phase: null,
-      delivery_status: "draft",
-      updated_at: new Date().toISOString(),
+      order: "created_at.asc",
     },
   }).catch(() => []);
 
-  if (recovered.length > 0) {
-    console.log(`[basquio-worker] re-queued ${recovered.length} stale runs`);
+  const now = new Date().toISOString();
+  for (const attempt of staleAttempts) {
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: { id: `eq.${attempt.id}`, status: "eq.running" },
+      payload: {
+        status: "queued",
+        failure_message: null,
+        failure_phase: null,
+        updated_at: now,
+      },
+    }).catch(() => []);
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${attempt.run_id}`, active_attempt_id: `eq.${attempt.id}` },
+      payload: {
+        status: "queued",
+        current_phase: null,
+        phase_started_at: null,
+        failure_message: null,
+        failure_phase: null,
+        delivery_status: "draft",
+        updated_at: now,
+        active_attempt_id: attempt.id,
+        latest_attempt_id: attempt.id,
+        latest_attempt_number: attempt.attempt_number,
+      },
+    }).catch(() => []);
+  }
+
+  if (staleAttempts.length > 0) {
+    console.log(`[basquio-worker] re-queued ${staleAttempts.length} stale attempts`);
   }
 }
 
-async function claimNextQueuedRun(config: ReturnType<typeof resolveConfig>) {
-  const queuedRuns = await fetchRestRows<QueuedRunRow>({
+async function claimNextQueuedAttempt(config: ReturnType<typeof resolveConfig>) {
+  const queuedAttempts = await fetchRestRows<QueuedRunRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
-    table: "deck_runs",
+    table: "deck_run_attempts",
     query: {
-      select: "id",
+      select: "id,run_id,attempt_number",
       status: "eq.queued",
+      superseded_by_attempt_id: "is.null",
       order: "created_at.asc",
       limit: "1",
     },
   }).catch(() => []);
 
-  const candidate = queuedRuns[0];
+  const candidate = queuedAttempts[0];
   if (!candidate) {
     return null;
   }
 
-  const claimed = await patchRestRows<{ id: string }>({
+  const now = new Date().toISOString();
+  const claimed = await patchRestRows<QueuedRunRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
-    table: "deck_runs",
+    table: "deck_run_attempts",
     query: {
       id: `eq.${candidate.id}`,
       status: "eq.queued",
     },
-    select: "id",
+    select: "id,run_id,attempt_number",
     payload: {
       status: "running",
-      current_phase: "normalize",
-      phase_started_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      started_at: now,
+      updated_at: now,
+      worker_deployment_id: resolveWorkerDeploymentId(),
       failure_message: null,
       failure_phase: null,
-      delivery_status: "draft",
     },
   }).catch(() => []);
 
-  return claimed[0]?.id ?? null;
-}
+  if (!claimed[0]) {
+    return null;
+  }
 
-function startHeartbeat(config: ReturnType<typeof resolveConfig>, runId: string) {
-  const timer = setInterval(() => {
-    void patchRestRows({
+  try {
+    await patchRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_runs",
       query: {
-        id: `eq.${runId}`,
+        id: `eq.${claimed[0].run_id}`,
+      },
+      payload: {
+        status: "running",
+        current_phase: "normalize",
+        phase_started_at: now,
+        updated_at: now,
+        failure_message: null,
+        failure_phase: null,
+        delivery_status: "draft",
+        active_attempt_id: claimed[0].id,
+        latest_attempt_id: claimed[0].id,
+        latest_attempt_number: claimed[0].attempt_number,
+      },
+    });
+  } catch (error) {
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: {
+        id: `eq.${claimed[0].id}`,
         status: "eq.running",
       },
       payload: {
+        status: "queued",
         updated_at: new Date().toISOString(),
       },
-    }).catch((error) => {
+    }).catch(() => []);
+    throw error;
+  }
+
+  return claimed[0] ?? null;
+}
+
+function startHeartbeat(config: ReturnType<typeof resolveConfig>, attempt: QueuedRunRow) {
+  const timer = setInterval(() => {
+    const now = new Date().toISOString();
+    void Promise.all([
+      patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: {
+          id: `eq.${attempt.run_id}`,
+          status: "eq.running",
+          active_attempt_id: `eq.${attempt.id}`,
+        },
+        payload: {
+          updated_at: now,
+        },
+      }),
+      patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_run_attempts",
+        query: {
+          id: `eq.${attempt.id}`,
+          status: "eq.running",
+        },
+        payload: {
+          updated_at: now,
+        },
+      }),
+    ]).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[basquio-worker] heartbeat failed for ${runId}: ${message}`);
+      console.error(`[basquio-worker] heartbeat failed for ${attempt.run_id} attempt ${attempt.attempt_number}: ${message}`);
     });
   }, HEARTBEAT_INTERVAL_MS);
 

@@ -85,8 +85,10 @@ Initial domain bias:
 - `container_upload` evidence files should be read inside code execution, not summarized back into the prompt as dataset inventory or column dumps.
 - The correct production execution surface for long Basquio deck runs is a durable worker, not a Vercel request. Vercel should enqueue `deck_runs`; a Railway worker should claim and execute them.
 - Supabase-backed `deck_runs.status = "queued"` is the current queue contract. A separate queue system is unnecessary while one worker claims runs atomically and stale-running runs are re-queued.
+- `deck_runs` is the stable user-visible job, but recovery lineage must live in explicit `deck_run_attempts` records so retries do not become confusing top-level clone runs.
 - The durable worker must run recurring stale-run recovery, not only startup recovery; otherwise a fast restart after a crash can leave interrupted runs stuck forever.
 - The durable worker should heartbeat `deck_runs.updated_at` while a Claude call is in flight so the database reflects live execution rather than only phase boundaries.
+- every Anthropic phase request should persist request id, usage, phase, and attempt linkage durably so failed-run cost does not require external log forensics.
 - Moving generation off Vercel is not sufficient if the Anthropic client timeout remains at 15 minutes. The durable worker timeout budget must exceed real workbook generation time.
 - A concrete rendered-page QA path now exists: upload the generated `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
 - Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks. File-backed phases need post-response budget enforcement from actual usage instead of preflight token counting.

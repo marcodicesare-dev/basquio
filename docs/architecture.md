@@ -18,6 +18,7 @@ Execution surface:
 - Vercel request handlers create `deck_runs` rows and upload input files
 - a long-running Railway worker polls Supabase for queued runs and calls `generateDeckRun(runId)`
 - Supabase is the queue, heartbeat, and progress source of truth
+- `deck_runs` is the stable user-facing job record, while `deck_run_attempts` and `deck_run_request_usage` hold recovery lineage plus per-request Anthropic attribution
 - Vercel no longer hosts the long-running execution route for deck generation
 - the worker must refresh `deck_runs.updated_at` while a run is in flight and periodically requeue stale `running` runs after crashes
 - Anthropic client timeouts for the durable worker should be materially longer than Vercel request ceilings; the worker must not keep the old 15-minute request timeout if real deck generation exceeds it
@@ -31,6 +32,7 @@ Important direct-path constraints:
 - rendered-page QA remains a second cheap model call on the generated PDF
 - the worker should rely on documented Anthropic skill contracts, not undocumented assumptions about the skill internals
 - DOCX should share the same knowledge pack and copywriting rules as the deck path while going deeper on what, why, and how
+- failed attempts must still persist cost telemetry, and the top-level run cost must reflect the whole logical run rather than only the last successful attempt
 
 The main quality lesson from the reset is that direct generation still needs strong structure around it. The model should be constrained by explicit slide archetypes, viewer-safe layout rules, artifact QA, and eventually rendered-page judging plus candidate ranking. Prompting for "taste" alone is not a reliable quality architecture.
 

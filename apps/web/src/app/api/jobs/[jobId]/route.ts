@@ -35,10 +35,16 @@ type DeckRunRow = {
   template_profile_id: string | null;
   source_file_ids: string[];
   template_diagnostics: Record<string, unknown> | null;
+  active_attempt_id: string | null;
+  latest_attempt_id: string | null;
+  latest_attempt_number: number;
+  cost_telemetry: Record<string, unknown> | null;
 };
 
 type DeckRunEventRow = {
   id: string;
+  attempt_id: string | null;
+  attempt_number: number | null;
   phase: string | null;
   event_type: string;
   tool_name: string | null;
@@ -164,7 +170,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,brief,business_context,client,audience,objective,thesis,stakes,template_profile_id,source_file_ids,template_diagnostics",
+      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,brief,business_context,client,audience,objective,thesis,stakes,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,cost_telemetry",
       id: `eq.${jobId}`,
       requested_by: `eq.${viewerId}`,
       limit: "1",
@@ -176,6 +182,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   }
 
   const run = runs[0];
+  const attemptId = run.active_attempt_id ?? run.latest_attempt_id;
   const needsInputSummary = run.status === "failed" || run.status === "completed" || Boolean(run.completed_at);
   const sourceFiles = needsInputSummary
     ? await loadSourceFileSummaries(supabaseUrl, serviceKey, run.source_file_ids)
@@ -186,8 +193,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     serviceKey,
     table: "deck_run_events",
     query: {
-      select: "id,phase,event_type,tool_name,payload,created_at",
+      select: "id,attempt_id,attempt_number,phase,event_type,tool_name,payload,created_at",
       run_id: `eq.${jobId}`,
+      ...(attemptId ? { attempt_id: `eq.${attemptId}` } : {}),
       order: "created_at.asc",
       limit: "200",
     },
@@ -198,8 +206,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     serviceKey,
     table: "deck_run_events",
     query: {
-      select: "id,phase,event_type,tool_name,payload,created_at",
+      select: "id,attempt_id,attempt_number,phase,event_type,tool_name,payload,created_at",
       run_id: `eq.${jobId}`,
+      ...(attemptId ? { attempt_id: `eq.${attemptId}` } : {}),
       order: "created_at.asc",
       limit: "500",
     },
@@ -256,7 +265,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     return {
       stage: phase,
       baseStage: phase,
-      attempt: 1,
+      attempt: run.latest_attempt_number ?? 1,
       status,
       detail: lastPhaseToolCall?.tool_name
         ? `Tool: ${lastPhaseToolCall.tool_name}`
@@ -362,6 +371,8 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
 
   return {
     jobId,
+    attemptNumber: run.latest_attempt_number ?? 1,
+    activeAttemptId: attemptId,
     pipelineVersion: "v2" as const,
     status: run.status as "queued" | "running" | "completed" | "failed",
     artifactsReady: Boolean(summary && Array.isArray(summary.artifacts) && (summary.artifacts as unknown[]).length > 0),
@@ -379,6 +390,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     steps,
     summary,
     templateDiagnostics,
+    costTelemetry: run.cost_telemetry,
     failureMessage: run.failure_message ?? undefined,
     toolCallCount: toolCalls.length,
     runHealth: isStale ? "stale" : "healthy",

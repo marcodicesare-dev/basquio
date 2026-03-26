@@ -269,6 +269,70 @@ async function queueGeneration(
     throw new Error(`Failed to create deck_runs record: ${errorText}`);
   }
 
+  const attemptId = randomUUID();
+  try {
+    const attemptResponse = await fetch(`${supabaseUrl}/rest/v1/deck_run_attempts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        id: attemptId,
+        run_id: runId,
+        attempt_number: 1,
+        status: "queued",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+
+    if (!attemptResponse.ok) {
+      const errorText = await attemptResponse.text().catch(() => "Unknown error");
+      throw new Error(`Failed to create deck_run_attempts record: ${errorText}`);
+    }
+
+    const runAttemptPointerResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        active_attempt_id: attemptId,
+        latest_attempt_id: attemptId,
+        latest_attempt_number: 1,
+      }),
+    });
+
+    if (!runAttemptPointerResponse.ok) {
+      const errorText = await runAttemptPointerResponse.text().catch(() => "Unknown error");
+      throw new Error(`Failed to attach initial attempt to deck run: ${errorText}`);
+    }
+  } catch (error) {
+    await fetch(`${supabaseUrl}/rest/v1/deck_run_attempts?id=eq.${attemptId}`, {
+      method: "DELETE",
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=minimal",
+      },
+    }).catch(() => {});
+    await fetch(`${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`, {
+      method: "DELETE",
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=minimal",
+      },
+    }).catch(() => {});
+    throw error;
+  }
+
   return {
     jobId: runId,
     status: "queued",

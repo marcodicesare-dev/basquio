@@ -63,12 +63,14 @@ export async function runRenderedPageQa(input: {
     },
   ];
 
+  const startedAt = new Date().toISOString();
   const response = await input.client.beta.messages.create({
     model: input.model ?? "claude-haiku-4-5",
     max_tokens: input.maxTokens ?? 1_200,
     betas: [...input.betas] as Anthropic.Beta.AnthropicBeta[],
     messages,
   });
+  const completedAt = new Date().toISOString();
 
   const text = extractResponseText(response.content);
   const json = extractFirstJsonObject(text);
@@ -77,6 +79,9 @@ export async function runRenderedPageQa(input: {
   return {
     report,
     usage: response.usage ?? null,
+    requestId: response._request_id ?? null,
+    startedAt,
+    completedAt,
     promptBody: {
       messages,
     },
