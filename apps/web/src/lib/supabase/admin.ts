@@ -192,6 +192,31 @@ export async function fetchRestRows<T>(input: {
   return (await response.json()) as T[];
 }
 
+export async function deleteRestRows(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  table: string;
+  query: Record<string, string>;
+}) {
+  const url = new URL(`/rest/v1/${input.table}`, input.supabaseUrl);
+
+  for (const [key, value] of Object.entries(input.query)) {
+    url.searchParams.set(key, value);
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: buildServiceHeaders(input.serviceKey, {
+      Prefer: "return=minimal",
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to delete from ${input.table}.`));
+  }
+}
+
 export async function upsertRestRows<T>(input: {
   supabaseUrl: string;
   serviceKey: string;
@@ -260,6 +285,25 @@ export async function listStorageObjects(input: {
     created_at?: string;
     metadata?: Record<string, unknown>;
   }>;
+}
+
+export async function removeStorageObjects(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  bucket: string;
+  paths: string[];
+}) {
+  const paths = [...new Set(input.paths.filter(Boolean))];
+  if (paths.length === 0) {
+    return;
+  }
+
+  const supabase = createServiceSupabaseClient(input.supabaseUrl, input.serviceKey);
+  const { error } = await supabase.storage.from(input.bucket).remove(paths);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export function buildResumableUploadUrl(supabaseUrl: string) {

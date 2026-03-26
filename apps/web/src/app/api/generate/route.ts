@@ -8,7 +8,7 @@ import type { GenerationRequest } from "@basquio/types";
 
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { checkAndDebitCredit, ensureFreeTierCredit, calculateRunCredits } from "@/lib/credits";
-import { uploadToStorage } from "@/lib/supabase/admin";
+import { deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
@@ -177,6 +177,7 @@ async function queueGeneration(
     organizationId: workspace.organizationRowId,
     templateProfileId: ((generationRequest as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
   });
+  let createdTemplateProfileId: string | null = null;
   if (!templateProfileId && generationRequest.styleFile) {
     try {
       const sf = generationRequest.styleFile;
@@ -224,53 +225,53 @@ async function queueGeneration(
         });
 
         templateProfileId = tpId;
+        createdTemplateProfileId = tpId;
       }
     } catch {
       // Template interpretation is best-effort — proceed without it
     }
   }
-
-  const deckRunResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify({
-      id: runId,
-      organization_id: workspace.organizationRowId,
-      project_id: workspace.projectRowId,
-      requested_by: viewer.id,
-      brief: {
-        businessContext: generationRequest.brief.businessContext,
+  try {
+    const deckRunResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        id: runId,
+        organization_id: workspace.organizationRowId,
+        project_id: workspace.projectRowId,
+        requested_by: viewer.id,
+        brief: {
+          businessContext: generationRequest.brief.businessContext,
+          client: generationRequest.brief.client,
+          audience: generationRequest.brief.audience,
+          objective: generationRequest.brief.objective,
+          thesis: generationRequest.brief.thesis,
+          stakes: generationRequest.brief.stakes,
+        },
+        business_context: generationRequest.brief.businessContext,
         client: generationRequest.brief.client,
         audience: generationRequest.brief.audience,
         objective: generationRequest.brief.objective,
         thesis: generationRequest.brief.thesis,
         stakes: generationRequest.brief.stakes,
-      },
-      business_context: generationRequest.brief.businessContext,
-      client: generationRequest.brief.client,
-      audience: generationRequest.brief.audience,
-      objective: generationRequest.brief.objective,
-      thesis: generationRequest.brief.thesis,
-      stakes: generationRequest.brief.stakes,
-      source_file_ids: sourceFileIds,
-      template_profile_id: templateProfileId ?? null,
-      recipe_id: ((generationRequest as Record<string, unknown>).recipeId as string | undefined) ?? null,
-      status: "queued",
-    }),
-  });
+        source_file_ids: sourceFileIds,
+        template_profile_id: templateProfileId ?? null,
+        recipe_id: ((generationRequest as Record<string, unknown>).recipeId as string | undefined) ?? null,
+        status: "queued",
+      }),
+    });
 
-  if (!deckRunResponse.ok) {
-    const errorText = await deckRunResponse.text().catch(() => "Unknown error");
-    throw new Error(`Failed to create deck_runs record: ${errorText}`);
-  }
+    if (!deckRunResponse.ok) {
+      const errorText = await deckRunResponse.text().catch(() => "Unknown error");
+      throw new Error(`Failed to create deck_runs record: ${errorText}`);
+    }
 
-  const attemptId = randomUUID();
-  try {
+    const attemptId = randomUUID();
     const attemptResponse = await fetch(`${supabaseUrl}/rest/v1/deck_run_attempts`, {
       method: "POST",
       headers: {
@@ -314,22 +315,17 @@ async function queueGeneration(
       throw new Error(`Failed to attach initial attempt to deck run: ${errorText}`);
     }
   } catch (error) {
-    await fetch(`${supabaseUrl}/rest/v1/deck_run_attempts?id=eq.${attemptId}`, {
-      method: "DELETE",
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=minimal",
-      },
-    }).catch(() => {});
-    await fetch(`${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`, {
-      method: "DELETE",
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=minimal",
-      },
-    }).catch(() => {});
+    await cleanupQueuedGenerationSetup({
+      supabaseUrl,
+      serviceKey,
+      runId,
+      sourceFiles: sourceFileRows.map((row) => ({
+        id: row.id,
+        bucket: row.storage_bucket,
+        storagePath: row.storage_path,
+      })),
+      templateProfileId: createdTemplateProfileId,
+    });
     throw error;
   }
 
@@ -340,6 +336,60 @@ async function queueGeneration(
     progressUrl: `/jobs/${runId}`,
     message: "Basquio accepted the run and started generation.",
   };
+}
+
+async function cleanupQueuedGenerationSetup(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  runId: string;
+  sourceFiles: Array<{ id: string; bucket: string; storagePath: string }>;
+  templateProfileId: string | null;
+}) {
+  const storageByBucket = new Map<string, string[]>();
+  for (const file of input.sourceFiles) {
+    const existing = storageByBucket.get(file.bucket) ?? [];
+    existing.push(file.storagePath);
+    storageByBucket.set(file.bucket, existing);
+  }
+
+  await Promise.all([
+    deleteRestRows({
+      supabaseUrl: input.supabaseUrl,
+      serviceKey: input.serviceKey,
+      table: "deck_run_attempts",
+      query: { run_id: `eq.${input.runId}` },
+    }).catch(() => {}),
+    deleteRestRows({
+      supabaseUrl: input.supabaseUrl,
+      serviceKey: input.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${input.runId}` },
+    }).catch(() => {}),
+    ...(input.templateProfileId ? [
+      deleteRestRows({
+        supabaseUrl: input.supabaseUrl,
+        serviceKey: input.serviceKey,
+        table: "template_profiles",
+        query: { id: `eq.${input.templateProfileId}` },
+      }).catch(() => {}),
+    ] : []),
+    ...(input.sourceFiles.length > 0 ? [
+      deleteRestRows({
+        supabaseUrl: input.supabaseUrl,
+        serviceKey: input.serviceKey,
+        table: "source_files",
+        query: { id: `in.(${input.sourceFiles.map((file) => file.id).join(",")})` },
+      }).catch(() => {}),
+    ] : []),
+    ...[...storageByBucket.entries()].map(([bucket, paths]) => (
+      removeStorageObjects({
+        supabaseUrl: input.supabaseUrl,
+        serviceKey: input.serviceKey,
+        bucket,
+        paths,
+      }).catch(() => {})
+    )),
+  ]);
 }
 
 async function parseGenerationRequest(

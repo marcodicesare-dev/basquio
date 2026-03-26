@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
+import { deleteRestRows, removeStorageObjects } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
@@ -65,6 +66,7 @@ export async function POST(request: Request) {
     // Upload source files to storage and create source_file records
     // Detect PPTX template files (user uploads their corporate template alongside data files)
     const sourceFileIds: string[] = [];
+    const uploadedSourceFiles: Array<{ id: string; bucket: string; storagePath: string }> = [];
     for (const file of files) {
       const fileId = randomUUID();
       const kind = normalizePersistedSourceFileKind(null, file.name);
@@ -118,45 +120,49 @@ export async function POST(request: Request) {
       }
 
       sourceFileIds.push(fileId);
+      uploadedSourceFiles.push({
+        id: fileId,
+        bucket: "source-files",
+        storagePath,
+      });
     }
 
-    // Create deck_run record
-    const deckRunResponse = await fetch(
-      `${supabaseUrl}/rest/v1/deck_runs`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`,
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          id: runId,
-          organization_id: workspace.organizationRowId,
-          project_id: workspace.projectRowId,
-          requested_by: viewer.user.id,
-          brief: { businessContext: brief, client, audience, objective, thesis, stakes },
-          business_context: brief,
-          client,
-          audience,
-          objective,
-          thesis,
-          stakes,
-          source_file_ids: sourceFileIds,
-          template_profile_id: templateProfileId,
-          status: "queued",
-        }),
-      },
-    );
-
-    if (!deckRunResponse.ok) {
-      const errorText = await deckRunResponse.text().catch(() => "Unknown error");
-      return NextResponse.json({ error: `Failed to create run record: ${errorText}` }, { status: 500 });
-    }
-
-    const attemptId = randomUUID();
     try {
+      const deckRunResponse = await fetch(
+        `${supabaseUrl}/rest/v1/deck_runs`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            id: runId,
+            organization_id: workspace.organizationRowId,
+            project_id: workspace.projectRowId,
+            requested_by: viewer.user.id,
+            brief: { businessContext: brief, client, audience, objective, thesis, stakes },
+            business_context: brief,
+            client,
+            audience,
+            objective,
+            thesis,
+            stakes,
+            source_file_ids: sourceFileIds,
+            template_profile_id: templateProfileId,
+            status: "queued",
+          }),
+        },
+      );
+
+      if (!deckRunResponse.ok) {
+        const errorText = await deckRunResponse.text().catch(() => "Unknown error");
+        throw new Error(`Failed to create run record: ${errorText}`);
+      }
+
+      const attemptId = randomUUID();
       const attemptResponse = await fetch(
         `${supabaseUrl}/rest/v1/deck_run_attempts`,
         {
@@ -206,28 +212,12 @@ export async function POST(request: Request) {
         throw new Error(`Failed to attach attempt lineage: ${errorText}`);
       }
     } catch (error) {
-      await fetch(
-        `${supabaseUrl}/rest/v1/deck_run_attempts?id=eq.${attemptId}`,
-        {
-          method: "DELETE",
-          headers: {
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Prefer: "return=minimal",
-          },
-        },
-      ).catch(() => {});
-      await fetch(
-        `${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`,
-        {
-          method: "DELETE",
-          headers: {
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Prefer: "return=minimal",
-          },
-        },
-      ).catch(() => {});
+      await cleanupQueuedV2RunSetup({
+        supabaseUrl,
+        serviceKey,
+        runId,
+        sourceFiles: uploadedSourceFiles,
+      });
       const message = error instanceof Error ? error.message : "Failed to attach attempt lineage.";
       return NextResponse.json({ error: message }, { status: 500 });
     }
@@ -245,4 +235,49 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+async function cleanupQueuedV2RunSetup(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  runId: string;
+  sourceFiles: Array<{ id: string; bucket: string; storagePath: string }>;
+}) {
+  const storageByBucket = new Map<string, string[]>();
+  for (const file of input.sourceFiles) {
+    const existing = storageByBucket.get(file.bucket) ?? [];
+    existing.push(file.storagePath);
+    storageByBucket.set(file.bucket, existing);
+  }
+
+  await Promise.all([
+    deleteRestRows({
+      supabaseUrl: input.supabaseUrl,
+      serviceKey: input.serviceKey,
+      table: "deck_run_attempts",
+      query: { run_id: `eq.${input.runId}` },
+    }).catch(() => {}),
+    deleteRestRows({
+      supabaseUrl: input.supabaseUrl,
+      serviceKey: input.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${input.runId}` },
+    }).catch(() => {}),
+    ...(input.sourceFiles.length > 0 ? [
+      deleteRestRows({
+        supabaseUrl: input.supabaseUrl,
+        serviceKey: input.serviceKey,
+        table: "source_files",
+        query: { id: `in.(${input.sourceFiles.map((file) => file.id).join(",")})` },
+      }).catch(() => {}),
+    ] : []),
+    ...[...storageByBucket.entries()].map(([bucket, paths]) => (
+      removeStorageObjects({
+        supabaseUrl: input.supabaseUrl,
+        serviceKey: input.serviceKey,
+        bucket,
+        paths,
+      }).catch(() => {})
+    )),
+  ]);
 }

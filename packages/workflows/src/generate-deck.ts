@@ -477,6 +477,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       await persistRequestUsage(config, runId, attempt, "author", "missing_artifact_repair", MODEL, authorRecovery.requests);
       rememberRequestIds(anthropicRequestIds, authorRecovery.requests);
     }
+    const authorPhaseUsage = {
+      input_tokens: (authorResponse.usage.input_tokens ?? 0) + (authorRecovery.usage.input_tokens ?? 0),
+      output_tokens: (authorResponse.usage.output_tokens ?? 0) + (authorRecovery.usage.output_tokens ?? 0),
+    };
     authorResponse = authorRecovery.response;
     const containerId = authorResponse.containerId;
     const authorFiles = authorRecovery.files;
@@ -490,7 +494,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       slideCount: manifest.slideCount,
       chartCount: manifest.charts.length,
       estimatedCostUsd: spentUsd,
-    }, authorResponse.usage);
+    }, authorPhaseUsage);
 
     currentPhase = "render";
     await markPhase(config, runId, attempt, currentPhase);
@@ -637,6 +641,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         await persistRequestUsage(config, runId, attempt, "revise", "missing_artifact_repair", MODEL, reviseRecovery.requests);
         rememberRequestIds(anthropicRequestIds, reviseRecovery.requests);
       }
+      const revisePhaseUsage = {
+        input_tokens: (reviseResponse.usage.input_tokens ?? 0) + (reviseRecovery.usage.input_tokens ?? 0),
+        output_tokens: (reviseResponse.usage.output_tokens ?? 0) + (reviseRecovery.usage.output_tokens ?? 0),
+      };
       reviseResponse = reviseRecovery.response;
       const reviseFiles = reviseRecovery.files;
       finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
@@ -685,7 +693,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           estimatedCostUsd: spentUsd,
           visualQa: finalVisualQa,
         },
-        reviseResponse.usage,
+        revisePhaseUsage,
       );
     }
 
