@@ -240,6 +240,25 @@ async function queueGeneration(
       // Template interpretation is best-effort — proceed without it
     }
   }
+  // Resolve account-level notification preference (default: true)
+  let notifyOnComplete = true;
+  try {
+    const prefResponse = await fetch(`${supabaseUrl}/rest/v1/user_preferences?user_id=eq.${viewer.id}&select=notify_on_run_complete&limit=1`, {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+      },
+    });
+    if (prefResponse.ok) {
+      const prefs = await prefResponse.json();
+      if (prefs.length > 0 && typeof prefs[0].notify_on_run_complete === "boolean") {
+        notifyOnComplete = prefs[0].notify_on_run_complete;
+      }
+    }
+  } catch {
+    // Default to true if preference lookup fails
+  }
+
   try {
     const deckRunResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs`, {
       method: "POST",
@@ -271,6 +290,7 @@ async function queueGeneration(
         source_file_ids: sourceFileIds,
         template_profile_id: templateProfileId ?? null,
         recipe_id: ((generationRequest as Record<string, unknown>).recipeId as string | undefined) ?? null,
+        notify_on_complete: notifyOnComplete,
         status: "queued",
       }),
     });

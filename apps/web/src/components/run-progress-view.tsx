@@ -105,10 +105,23 @@ export function RunProgressView(input: {
   const [recipeName, setRecipeName] = useState("");
   const [recipeSaved, setRecipeSaved] = useState(false);
   const [recipeSaving, setRecipeSaving] = useState(false);
-  const [notifyRequested, setNotifyRequested] = useState(input.initialSnapshot?.notifyOnComplete ?? false);
+  const [showCompletionToast, setShowCompletionToast] = useState(false);
+  const prevStatusRef = useRef<string | null>(null);
   // Monotonic progress: never goes backward
   const maxProgressRef = useRef(2);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
+
+  // Detect live completion transition for toast
+  useEffect(() => {
+    if (prevStatusRef.current && prevStatusRef.current !== "completed" && snapshot?.status === "completed") {
+      setShowCompletionToast(true);
+      const timer = setTimeout(() => setShowCompletionToast(false), 8000);
+      return () => clearTimeout(timer);
+    }
+    if (snapshot?.status) {
+      prevStatusRef.current = snapshot.status;
+    }
+  }, [snapshot?.status]);
 
   // Fetch credit balance when run completes
   useEffect(() => {
@@ -189,6 +202,20 @@ export function RunProgressView(input: {
 
     return (
       <div className="page-shell job-result-page">
+        {showCompletionToast && (
+          <div style={{
+            position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)",
+            background: "#1a6aff", color: "#fff", padding: "12px 24px", borderRadius: 12,
+            fontSize: "0.92rem", fontWeight: 600, zIndex: 1000, display: "flex",
+            alignItems: "center", gap: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
+          }}>
+            Your deck is ready.
+            <button type="button" onClick={() => setShowCompletionToast(false)} style={{
+              background: "rgba(255,255,255,0.2)", border: "none", color: "#fff",
+              padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontSize: "0.82rem",
+            }}>Dismiss</button>
+          </div>
+        )}
         <section className="panel job-result-hero">
           <div className="stack-lg job-result-copy">
             <div className="stack">
@@ -549,27 +576,10 @@ export function RunProgressView(input: {
             This run keeps going in your workspace even if you leave this page. You can come back from Reports or Dashboard later.
           </p>
           <div style={{ marginTop: "0.75rem" }}>
-            {!notifyRequested ? (
-              <button
-                style={{
-                  ...styles.leaveRunButton,
-                  cursor: "pointer",
-                  background: "rgba(232,168,76,0.12)",
-                  border: "1px solid rgba(232,168,76,0.3)",
-                  color: "#E8A84C",
-                }}
-                type="button"
-                onClick={async () => {
-                  try {
-                    await fetch(`/api/jobs/${input.jobId}/notify`, { method: "POST" });
-                    setNotifyRequested(true);
-                  } catch { /* ignore */ }
-                }}
-              >
-                Email me when it&apos;s ready
-              </button>
+            {snapshot.notifyOnComplete !== false ? (
+              <p style={styles.leaveRunCopy}>We&apos;ll email you when the report is ready.</p>
             ) : (
-              <p style={styles.leaveRunCopy}>We&apos;ll email you when this run finishes.</p>
+              <p style={styles.leaveRunCopy}>Email notifications are off. Turn them on in Settings.</p>
             )}
           </div>
           <div style={styles.leaveRunActions}>

@@ -127,6 +127,25 @@ export async function POST(request: Request) {
       });
     }
 
+    // Resolve account-level notification preference (default: true)
+    let notifyOnComplete = true;
+    try {
+      const prefResponse = await fetch(`${supabaseUrl}/rest/v1/user_preferences?user_id=eq.${viewer.user.id}&select=notify_on_run_complete&limit=1`, {
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+        },
+      });
+      if (prefResponse.ok) {
+        const prefs = await prefResponse.json();
+        if (prefs.length > 0 && typeof prefs[0].notify_on_run_complete === "boolean") {
+          notifyOnComplete = prefs[0].notify_on_run_complete;
+        }
+      }
+    } catch {
+      // Default to true if preference lookup fails
+    }
+
     try {
       const deckRunResponse = await fetch(
         `${supabaseUrl}/rest/v1/deck_runs`,
@@ -152,6 +171,7 @@ export async function POST(request: Request) {
             stakes,
             source_file_ids: sourceFileIds,
             template_profile_id: templateProfileId,
+            notify_on_complete: notifyOnComplete,
             status: "queued",
           }),
         },

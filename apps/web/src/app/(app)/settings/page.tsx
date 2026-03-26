@@ -1,3 +1,4 @@
+import { NotificationSettings } from "@/components/notification-settings";
 import { getViewerState } from "@/lib/supabase/auth";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,13 @@ export default async function SettingsPage() {
               Credit history is kept for billing records.
             </p>
           </div>
+        </article>
+        <article className="panel stack-lg">
+          <div className="stack">
+            <p className="artifact-kind">Notifications</p>
+            <h2>Email</h2>
+          </div>
+          <NotificationSettings />
         </article>
       </section>
     </div>

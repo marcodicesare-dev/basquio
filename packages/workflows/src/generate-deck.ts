@@ -753,7 +753,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       await notifyRunCompletionIfRequested(
         { supabaseUrl: config.supabaseUrl, serviceKey: config.serviceKey, resendApiKey },
         run,
-        { runId, slideCount: finalManifest.slideCount, qaTier: String(qaReport.tier ?? "unknown") },
+        { runId, slideCount: finalManifest.slideCount },
       );
     }
   } catch (error) {

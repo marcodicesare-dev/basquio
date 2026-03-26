@@ -1,4 +1,4 @@
-import { fetchRestRows } from "./supabase";
+import { fetchRestRows, patchRestRows } from "./supabase";
 
 type NotifyConfig = {
   supabaseUrl: string;
@@ -9,11 +9,11 @@ type NotifyConfig = {
 type CompletionContext = {
   runId: string;
   slideCount: number;
-  qaTier: string;
 };
 
 /**
  * Check notify_on_complete preference and send a completion email if requested.
+ * Idempotent: skips if completion_email_sent_at is already set.
  * Best-effort: failures are logged but never propagate to the caller.
  */
 export async function notifyRunCompletionIfRequested(
@@ -25,19 +25,20 @@ export async function notifyRunCompletionIfRequested(
     if (!config.resendApiKey) return;
     if (!run.requested_by) return;
 
-    // Check the preference on the run
-    const rows = await fetchRestRows<{ notify_on_complete: boolean }>({
+    // Check preference + idempotency in one query
+    const rows = await fetchRestRows<{ notify_on_complete: boolean; completion_email_sent_at: string | null }>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_runs",
       query: {
-        select: "notify_on_complete",
+        select: "notify_on_complete,completion_email_sent_at",
         id: `eq.${run.id}`,
         limit: "1",
       },
     });
 
     if (!rows[0]?.notify_on_complete) return;
+    if (rows[0].completion_email_sent_at) return;
 
     // Resolve the user's email from Supabase Auth admin API
     const email = await resolveUserEmail(config, run.requested_by);
@@ -47,7 +48,15 @@ export async function notifyRunCompletionIfRequested(
       to: email,
       runId: context.runId,
       slideCount: context.slideCount,
-      qaTier: context.qaTier,
+    });
+
+    // Mark as sent (idempotency guard)
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${run.id}` },
+      payload: { completion_email_sent_at: new Date().toISOString() },
     });
   } catch (error) {
     console.warn(`[basquio] completion email failed (non-fatal):`, error);
@@ -80,11 +89,9 @@ async function sendCompletionEmail(
     to: string;
     runId: string;
     slideCount: number;
-    qaTier: string;
   },
 ) {
   const progressUrl = `https://basquio.com/jobs/${params.runId}`;
-  const qaLabel = params.qaTier === "green" ? "Ready to review" : "Review suggested";
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -93,10 +100,10 @@ async function sendCompletionEmail(
       Authorization: `Bearer ${resendApiKey}`,
     },
     body: JSON.stringify({
-      from: "Veronica from Basquio <veronica@basquio.com>",
+      from: "Basquio <reports@basquio.com>",
       to: [params.to],
-      subject: `Your ${params.slideCount}-slide deck is ready`,
-      html: buildCompletionHtml(params.slideCount, qaLabel, progressUrl),
+      subject: "Your deck is ready",
+      html: buildCompletionHtml(params.slideCount, progressUrl),
     }),
   });
 
@@ -108,7 +115,6 @@ async function sendCompletionEmail(
 
 function buildCompletionHtml(
   slideCount: number,
-  qaLabel: string,
   progressUrl: string,
 ) {
   return `<body style="background-color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 40px 20px;">
@@ -117,7 +123,7 @@ function buildCompletionHtml(
       <td>
         <p style="color: #94A3B8; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; margin: 0 0 16px 0; text-transform: uppercase;">DECK READY</p>
         <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-mono.png" alt="Basquio" width="100" height="auto" style="display: block; margin-bottom: 32px;">
-        <p style="color: #0b0c0c; font-size: 14px; line-height: 24px; margin: 0 0 20px 0;">Your ${slideCount}-slide deck is finished. ${qaLabel}.</p>
+        <p style="color: #0b0c0c; font-size: 14px; line-height: 24px; margin: 0 0 20px 0;">Your ${slideCount}-slide deck is ready. Download the PPTX to edit or share the PDF.</p>
         <table cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
           <tr>
             <td>
@@ -125,7 +131,6 @@ function buildCompletionHtml(
             </td>
           </tr>
         </table>
-        <p style="color: #94A3B8; font-size: 13px; line-height: 20px; margin: 0;">Download the PPTX to edit, or share the PDF directly.</p>
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top: 1px solid #E2E8F0; margin-top: 32px; padding-top: 24px;">
           <tr>
             <td style="vertical-align: middle;">
