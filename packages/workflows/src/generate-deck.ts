@@ -873,7 +873,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       );
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Deck generation failed.";
+    const rawMessage = error instanceof Error ? error.message : "Deck generation failed.";
+    const message = sanitizeFailureMessage(rawMessage);
     const run = await loadRun(config, runId).catch(() => null);
     const attempt = run ? await resolveAttemptContext(config, run, suppliedAttempt).catch(() => null) : null;
     await finalizeFailure(config, runId, attempt, currentPhase, message, {
@@ -1520,15 +1521,59 @@ function rememberRequestIds(
   }
 }
 
+function sanitizeFailureMessage(raw: string): string {
+  // Strip Cloudflare/HTML error pages to a readable summary
+  if (raw.includes("<!DOCTYPE") || raw.includes("<html")) {
+    const statusMatch = raw.match(/(\d{3})\s*:\s*([^<]+)/i) ?? raw.match(/Error code (\d{3})/);
+    if (statusMatch) {
+      return `Upstream error ${statusMatch[1]}. The request failed due to a temporary infrastructure issue. Retry should work.`;
+    }
+    return "Upstream infrastructure error. The request failed due to a temporary issue. Retry should work.";
+  }
+  // Truncate very long Anthropic API errors
+  if (raw.length > 500) {
+    return raw.slice(0, 500);
+  }
+  return raw;
+}
+
 function appendAssistantTurn(
   messages: Anthropic.Beta.BetaMessageParam[],
   message: Anthropic.Beta.BetaMessage,
 ): Anthropic.Beta.BetaMessageParam[] {
+  // Strip orphaned tool_use blocks that lack a matching tool_result in the same message.
+  // This happens when code execution is interrupted during a pause_turn — the assistant
+  // message contains the tool_use but the API never appended the tool_result.
+  const content = message.content as Anthropic.Beta.BetaContentBlockParam[];
+  const resultToolIds = new Set<string>();
+  for (const block of content) {
+    const b = block as unknown as Record<string, unknown>;
+    if (
+      typeof b.type === "string" &&
+      b.type.endsWith("_tool_result") &&
+      typeof b.tool_use_id === "string"
+    ) {
+      resultToolIds.add(b.tool_use_id);
+    }
+  }
+  const safeContent = content.filter((block) => {
+    const b = block as unknown as Record<string, unknown>;
+    if (
+      typeof b.type === "string" &&
+      b.type.endsWith("_tool_use") &&
+      typeof b.id === "string" &&
+      !resultToolIds.has(b.id)
+    ) {
+      return false;
+    }
+    return true;
+  });
+
   return [
     ...messages,
     {
       role: "assistant",
-      content: message.content as Anthropic.Beta.BetaContentBlockParam[],
+      content: safeContent.length > 0 ? safeContent : content,
     },
   ];
 }
@@ -1692,7 +1737,9 @@ async function runClaudeLoop(input: {
   for (let iteration = 0; iteration < 8; iteration += 1) {
     iterationCount += 1;
     const startedAt = new Date().toISOString();
-    const stream = input.client.beta.messages.stream({
+    let message: Anthropic.Beta.BetaMessage;
+    let requestId: string | null = null;
+    const streamBody = {
       model: MODEL,
       max_tokens: input.maxTokens,
       betas: [...BETAS] as Anthropic.Beta.AnthropicBeta[],
@@ -1701,9 +1748,24 @@ async function runClaudeLoop(input: {
       messages,
       tools: input.tools,
       output_config: input.outputConfig,
-    });
-    const requestId = stream.request_id ?? null;
-    const message = await stream.finalMessage();
+    };
+    try {
+      const stream = input.client.beta.messages.stream(streamBody);
+      requestId = stream.request_id ?? null;
+      message = await stream.finalMessage();
+    } catch (streamError) {
+      // Retry once on empty-stream / connection errors (BUG-3)
+      const isEmptyStream = streamError instanceof Error &&
+        (streamError.message.includes("stream ended") || streamError.message.includes("did not return"));
+      if (isEmptyStream && iteration === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const retryStream = input.client.beta.messages.stream(streamBody);
+        requestId = retryStream.request_id ?? null;
+        message = await retryStream.finalMessage();
+      } else {
+        throw streamError;
+      }
+    }
     const completedAt = new Date().toISOString();
 
     finalMessage = message;
