@@ -380,7 +380,7 @@ export async function generateDeckRun(runId: string) {
       },
     });
 
-    const authorResponse = await runClaudeLoop({
+    let authorResponse = await runClaudeLoop({
       client,
       systemPrompt,
       maxTokens: 8_192,
@@ -403,8 +403,35 @@ export async function generateDeckRun(runId: string) {
     continuationCount += authorResponse.pauseTurns;
     phaseTelemetry.author = buildPhaseTelemetry(MODEL, authorResponse);
 
+    const authorRecovery = await recoverMissingArtifacts({
+      client,
+      systemPrompt,
+      baseResponse: authorResponse,
+      phaseLabel: "author",
+      requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
+      tools: CLAUDE_TOOLS,
+      containerFallback: understandResponse.containerId
+        ? { id: understandResponse.containerId }
+        : {
+            skills: [
+              { type: "anthropic", skill_id: "pptx", version: "latest" },
+              { type: "anthropic", skill_id: "pdf", version: "latest" },
+            ],
+          },
+    });
+    if ((authorRecovery.usage.input_tokens ?? 0) > 0 || (authorRecovery.usage.output_tokens ?? 0) > 0) {
+      spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorRecovery.usage));
+      assertDeckSpendWithinBudget(spentUsd);
+      continuationCount += authorRecovery.pauseTurns;
+      phaseTelemetry.authorArtifactRecovery = buildPhaseTelemetry(MODEL, {
+        usage: authorRecovery.usage,
+        iterations: authorRecovery.iterations,
+        pauseTurns: authorRecovery.pauseTurns,
+      });
+    }
+    authorResponse = authorRecovery.response;
     const containerId = authorResponse.containerId;
-    const authorFiles = await downloadGeneratedFiles(client, authorResponse.fileIds);
+    const authorFiles = authorRecovery.files;
     const pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
     const pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
     let manifest = parseManifestResponse(authorResponse.message, authorFiles);
@@ -485,7 +512,7 @@ export async function generateDeckRun(runId: string) {
         },
       });
 
-      const reviseResponse = await runClaudeLoop({
+      let reviseResponse = await runClaudeLoop({
         client,
         systemPrompt,
         maxTokens: 4_096,
@@ -507,7 +534,34 @@ export async function generateDeckRun(runId: string) {
       continuationCount += reviseResponse.pauseTurns;
       phaseTelemetry.revise = buildPhaseTelemetry(MODEL, reviseResponse);
 
-      const reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
+      const reviseRecovery = await recoverMissingArtifacts({
+        client,
+        systemPrompt,
+        baseResponse: reviseResponse,
+        phaseLabel: "revise",
+        requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
+        tools: CLAUDE_TOOLS,
+        containerFallback: containerId
+          ? { id: containerId }
+          : {
+              skills: [
+                { type: "anthropic", skill_id: "pptx", version: "latest" },
+                { type: "anthropic", skill_id: "pdf", version: "latest" },
+              ],
+            },
+      });
+      if ((reviseRecovery.usage.input_tokens ?? 0) > 0 || (reviseRecovery.usage.output_tokens ?? 0) > 0) {
+        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseRecovery.usage));
+        assertDeckSpendWithinBudget(spentUsd);
+        continuationCount += reviseRecovery.pauseTurns;
+        phaseTelemetry.reviseArtifactRecovery = buildPhaseTelemetry(MODEL, {
+          usage: reviseRecovery.usage,
+          iterations: reviseRecovery.iterations,
+          pauseTurns: reviseRecovery.pauseTurns,
+        });
+      }
+      reviseResponse = reviseRecovery.response;
+      const reviseFiles = reviseRecovery.files;
       finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
       finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
       finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
@@ -552,9 +606,23 @@ export async function generateDeckRun(runId: string) {
       finalVisualQa,
       templateDiagnostics,
     );
-    const blockingQaFailures = qaReport.failed.filter((check) =>
-      !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
-    );
+    const softPptxFailures = new Set([
+      "pptx_chart_media_present",
+      "pptx_large_image_aspect_fit",
+    ]);
+    const renderedDeckLooksGood =
+      finalVisualQa.overallStatus === "green" && !finalVisualQa.deckNeedsRevision;
+    const blockingQaFailures = qaReport.failed.filter((check) => {
+      if (["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check)) {
+        return false;
+      }
+
+      if (renderedDeckLooksGood && softPptxFailures.has(check)) {
+        return false;
+      }
+
+      return true;
+    });
     if (blockingQaFailures.length > 0) {
       throw new Error(`Artifact QA failed: ${blockingQaFailures.join(", ")}`);
     }
@@ -1086,6 +1154,78 @@ async function runClaudeLoop(input: {
     iterations: iterationCount,
     pauseTurns,
   };
+}
+
+function buildMissingArtifactRepairMessage(phaseLabel: "author" | "revise", missingFiles: string[]) {
+  return {
+    role: "user" as const,
+    content: [
+      {
+        type: "text" as const,
+        text: [
+          `The ${phaseLabel} step finished without attaching all required output files.`,
+          `Missing files: ${missingFiles.join(", ")}.`,
+          "Stay in the current container state. Do not restart from scratch.",
+          "Attach the missing files now as real container uploads.",
+          "Required outputs are exactly: deck.pptx, deck.pdf, and deck_manifest.json.",
+          "Your next assistant message must include the missing files before finishing.",
+        ].join("\n"),
+      },
+    ],
+  };
+}
+
+function listMissingGeneratedFiles(files: GeneratedFile[], requiredFiles: string[]) {
+  return requiredFiles.filter((fileName) => !files.some((file) => file.fileName === fileName || file.fileName.endsWith(fileName)));
+}
+
+async function recoverMissingArtifacts(input: {
+  client: Anthropic;
+  systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
+  baseResponse: Awaited<ReturnType<typeof runClaudeLoop>>;
+  phaseLabel: "author" | "revise";
+  requiredFiles: string[];
+  tools: Anthropic.Beta.BetaToolUnion[];
+  containerFallback?: Anthropic.Beta.BetaContainerParams;
+}) {
+  let response = input.baseResponse;
+  let files = await downloadGeneratedFiles(input.client, response.fileIds);
+  const usage: Required<ClaudeUsage> = {
+    input_tokens: 0,
+    output_tokens: 0,
+  };
+  let pauseTurns = 0;
+  let iterations = 0;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const missingFiles = listMissingGeneratedFiles(files, input.requiredFiles);
+    if (missingFiles.length === 0) {
+      return { response, files, usage, pauseTurns, iterations };
+    }
+
+    const repairResponse = await runClaudeLoop({
+      client: input.client,
+      systemPrompt: input.systemPrompt,
+      maxTokens: 4_096,
+      container: response.containerId
+        ? { id: response.containerId }
+        : input.containerFallback,
+      messages: [...response.thread, buildMissingArtifactRepairMessage(input.phaseLabel, missingFiles)],
+      tools: input.tools,
+      outputConfig: {
+        effort: "medium",
+      },
+    });
+
+    usage.input_tokens += repairResponse.usage.input_tokens ?? 0;
+    usage.output_tokens += repairResponse.usage.output_tokens ?? 0;
+    pauseTurns += repairResponse.pauseTurns;
+    iterations += repairResponse.iterations;
+    response = repairResponse;
+    files = await downloadGeneratedFiles(input.client, response.fileIds);
+  }
+
+  return { response, files, usage, pauseTurns, iterations };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {
