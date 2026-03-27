@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { BASQUIO_PHASES } from "@basquio/core";
+import { classifyFailureMessage as classifyFailureMessageShared } from "@basquio/workflows/failure-classifier";
 import {
   buildNoTemplateDiagnostics,
   buildTemplateDiagnosticsFromProfile,
@@ -470,90 +471,11 @@ async function loadSourceFileSummaries(
   return rows.filter((row): row is SourceFileSummaryRow => Boolean(row));
 }
 
-type FailureClassification = {
-  class: "transient_provider" | "unsupported_input" | "export_failure" | "worker_stall" | "budget_exceeded" | "internal_error";
-  headline: string;
-  explanation: string;
-  retryAdvice: string;
-};
-
-function classifyFailure(run: DeckRunRow, isStale: boolean): FailureClassification {
-  const msg = (run.failure_message ?? "").toLowerCase();
-
-  if (isStale) {
-    return {
-      class: "worker_stall",
-      headline: "Run stalled",
-      explanation: "The worker stopped responding during generation.",
-      retryAdvice: "Basquio will try to recover this automatically. If it doesn't resume within a few minutes, start a new run.",
-    };
-  }
-
-  if (
-    msg.includes("upstream error") ||
-    msg.includes("upstream infrastructure") ||
-    msg.includes("connection error") ||
-    msg.includes("overloaded") ||
-    msg.includes("529") ||
-    msg.includes("502") ||
-    msg.includes("503") ||
-    msg.includes("rate limit") ||
-    msg.includes("stream ended") ||
-    msg.includes("did not return")
-  ) {
-    return {
-      class: "transient_provider",
-      headline: "Temporary service issue",
-      explanation: "An upstream service was briefly unavailable.",
-      retryAdvice: "This is usually transient. Retry with the same files — it should work on the next attempt.",
-    };
-  }
-
-  if (
-    msg.includes("no analytical evidence") ||
-    msg.includes("needs at least one") ||
-    msg.includes("unsupported") ||
-    msg.includes("unreadable") ||
-    msg.includes("parse") && msg.includes("evidence")
-  ) {
-    return {
-      class: "unsupported_input",
-      headline: "Input files could not be processed",
-      explanation: "Basquio could not read usable data from the uploaded files.",
-      retryAdvice: "Make sure you include at least one CSV or XLSX workbook with numeric data. Remove corrupted or password-protected files.",
-    };
-  }
-
-  if (
-    msg.includes("artifact qa failed") ||
-    msg.includes("deck.pptx") ||
-    msg.includes("deck.pdf") ||
-    msg.includes("deck_manifest") ||
-    msg.includes("did not generate")
-  ) {
-    return {
-      class: "export_failure",
-      headline: "Deck export failed",
-      explanation: "The analysis completed but the final deck artifacts could not be assembled.",
-      retryAdvice: "Retry with the same files. If it happens again, try simplifying the brief or reducing the number of input files.",
-    };
-  }
-
-  if (msg.includes("budget") || msg.includes("spend") || msg.includes("cost limit")) {
-    return {
-      class: "budget_exceeded",
-      headline: "Generation cost limit reached",
-      explanation: "The run exceeded its cost safety limit.",
-      retryAdvice: "Retry with a simpler brief or fewer input files to reduce generation complexity.",
-    };
-  }
-
-  return {
-    class: "internal_error",
-    headline: "Something went wrong",
-    explanation: "An unexpected error occurred during generation.",
-    retryAdvice: "Retry with the same files. If it keeps happening, try a simpler brief or fewer support files.",
-  };
+// B: Unified failure classification — uses the canonical classifier from the workflow layer
+function classifyFailure(run: DeckRunRow, isStale: boolean) {
+  // Dynamic import would be cleaner, but this is a Next.js API route —
+  // inline the call to the shared classifier
+  return classifyFailureMessageShared(run.failure_message ?? "", isStale);
 }
 
 function buildFailureGuidance(

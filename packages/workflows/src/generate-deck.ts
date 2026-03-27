@@ -22,6 +22,7 @@ import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost }
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import { buildNarrativeDocx } from "./docx-report";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
+import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
@@ -954,7 +955,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : "Deck generation failed.";
     const message = sanitizeFailureMessage(rawMessage);
-    const failureClass = isTransientProviderError(error) ? "transient_provider" : "permanent";
+    const failureClass = classifyRuntimeError(error);
     const run = await loadRun(config, runId).catch(() => null);
     const attempt = run ? await resolveAttemptContext(config, run, suppliedAttempt).catch(() => null) : null;
     await finalizeFailure(config, runId, attempt, currentPhase, message, {
@@ -1850,32 +1851,7 @@ function buildReviseMessage(issues: string[]) {
 
 const TRANSIENT_RETRY_DELAYS_MS = [3_000, 8_000, 20_000] as const;
 
-export function isTransientProviderError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  const name = error.name?.toLowerCase() ?? "";
-
-  // Anthropic overloaded / rate limit
-  if (msg.includes("overloaded") || msg.includes("overloaded_error")) return true;
-  if (msg.includes("rate_limit") || msg.includes("rate limit")) return true;
-
-  // HTTP status codes
-  if (/\b(429|529|502|503|504)\b/.test(msg)) return true;
-
-  // Stream / connection failures
-  if (msg.includes("stream ended") || msg.includes("did not return")) return true;
-  if (msg.includes("connection") && (msg.includes("reset") || msg.includes("refused") || msg.includes("closed"))) return true;
-  if (msg.includes("econnreset") || msg.includes("econnrefused") || msg.includes("etimedout")) return true;
-  if (name.includes("fetcherror") || name.includes("aborterror")) return true;
-
-  // Anthropic SDK error types
-  if ("status" in error) {
-    const status = (error as { status?: number }).status;
-    if (status && [429, 502, 503, 504, 529].includes(status)) return true;
-  }
-
-  return false;
-}
+// isTransientProviderError is now imported from ./failure-classifier
 
 async function runClaudeLoop(input: {
   client: Anthropic;

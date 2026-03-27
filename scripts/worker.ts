@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { generateDeckRun, isTransientProviderError } from "../packages/workflows/src/generate-deck";
+import { generateDeckRun } from "../packages/workflows/src/generate-deck";
+import { isTransientProviderError } from "../packages/workflows/src/failure-classifier";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
