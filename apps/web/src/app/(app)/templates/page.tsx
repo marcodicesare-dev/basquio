@@ -3,6 +3,7 @@ import { createSystemTemplateProfile } from "@basquio/template-engine";
 import { TemplateCard, TemplateImportBox } from "@/components/template-library";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
+import { resolveViewerOrgId } from "@/lib/viewer-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ async function loadTemplateData(orgId: string) {
 export default async function TemplatesPage() {
   const viewer = await getViewerState();
   const systemTemplate = createSystemTemplateProfile();
-  const orgId = (viewer.user as { user_metadata?: { organization_id?: string } } | undefined)?.user_metadata?.organization_id;
+  const orgId = viewer.user ? await resolveViewerOrgId(viewer.user.id) : null;
   const { templates, defaultTemplateId } = orgId
     ? await loadTemplateData(orgId)
     : { templates: [], defaultTemplateId: null };

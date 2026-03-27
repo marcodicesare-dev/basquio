@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
+import { resolveViewerOrgId } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export async function GET() {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  const orgId = (viewer.user as { user_metadata?: { organization_id?: string } }).user_metadata?.organization_id;
+  const orgId = await resolveViewerOrgId(viewer.user.id);
   if (!orgId) {
     return NextResponse.json({ templates: [], defaultTemplateId: null });
   }

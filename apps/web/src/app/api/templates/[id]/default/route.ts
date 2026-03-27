@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
+import { resolveViewerOrgId } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid template ID." }, { status: 400 });
   }
 
-  const orgId = (viewer.user as { user_metadata?: { organization_id?: string } }).user_metadata?.organization_id;
+  const orgId = await resolveViewerOrgId(viewer.user.id);
   if (!orgId) {
     return NextResponse.json({ error: "No organization found." }, { status: 400 });
   }

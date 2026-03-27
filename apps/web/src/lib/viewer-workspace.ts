@@ -1,4 +1,4 @@
-import { upsertRestRows } from "@/lib/supabase/admin";
+import { fetchRestRows, upsertRestRows } from "@/lib/supabase/admin";
 import type { ViewerState } from "@/lib/supabase/auth";
 
 const DEFAULT_PROJECT_SLUG = "default-workspace";
@@ -80,6 +80,29 @@ export async function ensureViewerWorkspace(user: NonNullable<ViewerState["user"
     organizationRowId: organizations[0].id,
     projectRowId: projects[0].id,
   };
+}
+
+/**
+ * Resolve the organization row ID for the current viewer.
+ * Looks up org membership by user ID. Returns null if not found.
+ */
+export async function resolveViewerOrgId(userId: string): Promise<string | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return null;
+
+  const memberships = await fetchRestRows<{ organization_id: string }>({
+    supabaseUrl,
+    serviceKey,
+    table: "organization_memberships",
+    query: {
+      select: "organization_id",
+      user_id: `eq.${userId}`,
+      limit: "1",
+    },
+  }).catch(() => []);
+
+  return memberships[0]?.organization_id ?? null;
 }
 
 function buildOrganizationSlug(userId: string) {

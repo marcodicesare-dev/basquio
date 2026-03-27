@@ -1,6 +1,7 @@
 import { GenerationForm } from "@/components/generation-form";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
+import { resolveViewerOrgId } from "@/lib/viewer-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -242,7 +243,7 @@ export default async function NewJobPage({
 }) {
   const viewer = await getViewerState();
   const params = await searchParams;
-  const orgId = (viewer.user as { user_metadata?: { organization_id?: string } } | undefined)?.user_metadata?.organization_id;
+  const orgId = viewer.user ? await resolveViewerOrgId(viewer.user.id) : null;
   const [savedTemplates, defaultTemplateId] = orgId
     ? await Promise.all([getSavedTemplates(orgId), getDefaultTemplateId(orgId)])
     : [[], null];
