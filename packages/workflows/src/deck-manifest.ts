@@ -28,6 +28,9 @@ export const deckManifestSchema = z.object({
     chartType: z.string(),
     title: z.string(),
     sourceNote: z.string().optional(),
+    categoryCount: z.number().int().min(0).optional(),
+    categories: z.array(z.string()).optional(),
+    seriesCount: z.number().int().min(0).optional(),
   })).default([]),
 }).passthrough();
 
@@ -104,6 +107,9 @@ function normalizeChart(input: unknown, index: number) {
       "bar",
     title: readString(record.title) ?? `Chart ${index + 1}`,
     sourceNote: readString(record.sourceNote) ?? readString(record.source_note),
+    categoryCount: readNumber(record.categoryCount) ?? readNumber(record.category_count),
+    categories: readStringArray(record.categories),
+    seriesCount: readNumber(record.seriesCount) ?? readNumber(record.series_count),
   };
 }
 
