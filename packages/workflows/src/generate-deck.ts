@@ -255,13 +255,18 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const run = await loadRun(config, runId);
     const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
-    const persistedTemplate = await loadTemplateProfileRow(config, run.template_profile_id);
+    // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
+    const isTemplateFallback = attempt.recoveryReason === "template_fallback";
+    const persistedTemplate = isTemplateFallback ? null : await loadTemplateProfileRow(config, run.template_profile_id);
     const templateSourceFileId = persistedTemplate?.source_file_id ?? null;
-    const templateFile =
-      sourceFiles.find((file) => file.id === templateSourceFileId) ??
-      sourceFiles.find((file) => file.kind === "pptx" || file.kind === "brand-tokens");
+    const templateFile = isTemplateFallback
+      ? undefined
+      : (sourceFiles.find((file) => file.id === templateSourceFileId) ??
+         sourceFiles.find((file) => file.kind === "pptx" || file.kind === "brand-tokens"));
     const evidenceFiles = sourceFiles.filter((file) => file.id !== templateFile?.id);
-    templateMode = templateFile || persistedTemplate ? "workspace_template" : "basquio_standard";
+    templateMode = isTemplateFallback
+      ? "template_fallback"
+      : (templateFile || persistedTemplate ? "workspace_template" : "basquio_standard");
 
     currentPhase = "normalize";
     await markPhase(config, runId, attempt, currentPhase);
@@ -1563,6 +1568,20 @@ async function persistRequestUsage(
   if (requests.length === 0) {
     return;
   }
+
+  // G: Remove the "started" sentinel row now that we have real usage data.
+  // The sentinel was inserted by persistRequestStart() before the Claude call.
+  await deleteRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_request_usage",
+    query: {
+      attempt_id: `eq.${attempt.id}`,
+      phase: `eq.${phase}`,
+      request_kind: `eq.${requestKind}`,
+      anthropic_request_id: "is.null",
+    },
+  }).catch(() => {});
 
   await upsertRestRows({
     supabaseUrl: config.supabaseUrl,

@@ -22,6 +22,7 @@ async function main() {
   const config = resolveConfig();
   let shuttingDown = false;
   let activeAttempt: QueuedRunRow | null = null;
+  let lastActiveAttempt: QueuedRunRow | null = null; // preserved for shutdown requeue
   let recoveryInFlight = false;
 
   const requestShutdown = (signal: string) => {
@@ -155,11 +156,77 @@ async function main() {
               await refundCreditSafe(config, attempt.run_id);
             }
           } else {
-            // Non-transient error or retry budget exhausted — refund credit
-            await refundCreditSafe(config, attempt.run_id);
+            // E: Template fallback — if this is a template-backed run on attempt 1,
+            // try one more attempt without the template before giving up
+            const runForFallback = await fetchRestRows<{ template_profile_id: string | null }>({
+              supabaseUrl: config.supabaseUrl,
+              serviceKey: config.serviceKey,
+              table: "deck_runs",
+              query: { select: "template_profile_id", id: `eq.${attempt.run_id}`, limit: "1" },
+            }).catch(() => []);
+            const isTemplateBacked = Boolean(runForFallback[0]?.template_profile_id);
+            const canFallback = isTemplateBacked && attempt.attempt_number === 1;
+
+            if (canFallback) {
+              try {
+                const newAttemptId = randomUUID();
+                const now = new Date().toISOString();
+
+                await patchRestRows({
+                  supabaseUrl: config.supabaseUrl,
+                  serviceKey: config.serviceKey,
+                  table: "deck_run_attempts",
+                  query: { id: `eq.${attempt.id}` },
+                  payload: { superseded_by_attempt_id: newAttemptId, updated_at: now },
+                }).catch(() => []);
+
+                await upsertRestRows({
+                  supabaseUrl: config.supabaseUrl,
+                  serviceKey: config.serviceKey,
+                  table: "deck_run_attempts",
+                  onConflict: "id",
+                  rows: [{
+                    id: newAttemptId,
+                    run_id: attempt.run_id,
+                    attempt_number: 2,
+                    status: "queued",
+                    recovery_reason: "template_fallback",
+                    created_at: now,
+                    updated_at: now,
+                  }],
+                });
+
+                await patchRestRows({
+                  supabaseUrl: config.supabaseUrl,
+                  serviceKey: config.serviceKey,
+                  table: "deck_runs",
+                  query: { id: `eq.${attempt.run_id}` },
+                  payload: {
+                    status: "queued",
+                    failure_message: null,
+                    failure_phase: null,
+                    delivery_status: "draft",
+                    updated_at: now,
+                    active_attempt_id: newAttemptId,
+                    latest_attempt_id: newAttemptId,
+                    latest_attempt_number: 2,
+                  },
+                });
+
+                console.log(`[basquio-worker] template-backed run ${attempt.run_id} failed — created template_fallback attempt`);
+              } catch (fallbackError) {
+                const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+                console.error(`[basquio-worker] template fallback failed for ${attempt.run_id}: ${fallbackMsg}`);
+                await refundCreditSafe(config, attempt.run_id);
+              }
+            } else {
+              // Non-transient, non-template or budget exhausted — refund credit
+              await refundCreditSafe(config, attempt.run_id);
+            }
           }
         } finally {
           stopHeartbeat();
+          lastActiveAttempt = activeAttempt;
           activeAttempt = null;
         }
       }
@@ -183,14 +250,17 @@ async function main() {
   clearInterval(recoveryTimer);
 
   // I: Worker deploy safety — requeue the active attempt on graceful shutdown
-  // so it is not orphaned and will be picked up by the next worker instance
-  if (activeAttempt) {
-    console.log(`[basquio-worker] requeueing in-flight attempt ${activeAttempt.id} for run ${activeAttempt.run_id}`);
+  // so it is not orphaned and will be picked up by the next worker instance.
+  // Use lastActiveAttempt because activeAttempt is nulled in the finally block
+  // before the loop exits.
+  const attemptToRequeue = activeAttempt ?? lastActiveAttempt;
+  if (attemptToRequeue && shuttingDown) {
+    console.log(`[basquio-worker] requeueing in-flight attempt ${attemptToRequeue.id} for run ${attemptToRequeue.run_id}`);
     await patchRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_run_attempts",
-      query: { id: `eq.${activeAttempt.id}`, status: "eq.running" },
+      query: { id: `eq.${attemptToRequeue.id}`, status: "eq.running" },
       payload: {
         status: "queued",
         updated_at: new Date().toISOString(),
@@ -202,7 +272,7 @@ async function main() {
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_runs",
-      query: { id: `eq.${activeAttempt.run_id}`, status: "eq.running" },
+      query: { id: `eq.${attemptToRequeue.run_id}`, status: "eq.running" },
       payload: {
         status: "queued",
         updated_at: new Date().toISOString(),
