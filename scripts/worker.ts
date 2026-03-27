@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { generateDeckRun } from "../packages/workflows/src/generate-deck";
+import { generateDeckRun, isTransientProviderError } from "../packages/workflows/src/generate-deck";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
@@ -86,29 +86,75 @@ async function main() {
           const message = error instanceof Error ? error.message : String(error);
           console.error(`[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} failed: ${message}`);
 
-          // Refund the credit on system failure so the user can retry
-          // Only attempts refund when billing is configured
-          if (process.env.STRIPE_SECRET_KEY) {
+          // Layer 2: automatic superseding attempt for transient provider failures
+          const isTransient = isTransientProviderError(error);
+          const MAX_TRANSIENT_ATTEMPTS = 3;
+
+          if (isTransient && attempt.attempt_number < MAX_TRANSIENT_ATTEMPTS) {
             try {
-              const run = await fetchRestRows<{ requested_by: string }>({
+              const newAttemptId = randomUUID();
+              const newAttemptNumber = attempt.attempt_number + 1;
+              const now = new Date().toISOString();
+
+              // Mark current attempt as failed-transient
+              await patchRestRows({
+                supabaseUrl: config.supabaseUrl,
+                serviceKey: config.serviceKey,
+                table: "deck_run_attempts",
+                query: { id: `eq.${attempt.id}` },
+                payload: {
+                  superseded_by_attempt_id: newAttemptId,
+                  updated_at: now,
+                },
+              }).catch(() => []);
+
+              // Create superseding attempt
+              await upsertRestRows({
+                supabaseUrl: config.supabaseUrl,
+                serviceKey: config.serviceKey,
+                table: "deck_run_attempts",
+                onConflict: "id",
+                rows: [{
+                  id: newAttemptId,
+                  run_id: attempt.run_id,
+                  attempt_number: newAttemptNumber,
+                  status: "queued",
+                  recovery_reason: "transient_provider_retry",
+                  created_at: now,
+                  updated_at: now,
+                }],
+              });
+
+              // Requeue the parent run
+              await patchRestRows({
                 supabaseUrl: config.supabaseUrl,
                 serviceKey: config.serviceKey,
                 table: "deck_runs",
-                query: { select: "requested_by", id: `eq.${attempt.run_id}`, limit: "1" },
+                query: { id: `eq.${attempt.run_id}` },
+                payload: {
+                  status: "queued",
+                  failure_message: null,
+                  failure_phase: null,
+                  delivery_status: "draft",
+                  updated_at: now,
+                  active_attempt_id: newAttemptId,
+                  latest_attempt_id: newAttemptId,
+                  latest_attempt_number: newAttemptNumber,
+                },
               });
-              if (run[0]?.requested_by) {
-                await refundCredit({
-                  supabaseUrl: config.supabaseUrl,
-                  serviceKey: config.serviceKey,
-                  userId: run[0].requested_by,
-                  runId: attempt.run_id,
-                });
-                console.log(`[basquio-worker] refunded credit for failed run ${attempt.run_id}`);
-              }
-            } catch (refundError) {
-              const refundMsg = refundError instanceof Error ? refundError.message : String(refundError);
-              console.error(`[basquio-worker] credit refund failed for ${attempt.run_id}: ${refundMsg}`);
+
+              console.log(
+                `[basquio-worker] transient failure on run ${attempt.run_id} — created superseding attempt ${newAttemptNumber}/${MAX_TRANSIENT_ATTEMPTS}`,
+              );
+            } catch (recoveryError) {
+              const recoveryMsg = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
+              console.error(`[basquio-worker] failed to create superseding attempt for ${attempt.run_id}: ${recoveryMsg}`);
+              // Fall through to credit refund
+              await refundCreditSafe(config, attempt.run_id);
             }
+          } else {
+            // Non-transient error or retry budget exhausted — refund credit
+            await refundCreditSafe(config, attempt.run_id);
           }
         } finally {
           stopHeartbeat();
@@ -444,6 +490,30 @@ async function processTemplateImportJobs(config: ReturnType<typeof resolveConfig
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[basquio-worker] template import poll error: ${message}`);
+  }
+}
+
+async function refundCreditSafe(config: ReturnType<typeof resolveConfig>, runId: string) {
+  if (!process.env.STRIPE_SECRET_KEY) return;
+  try {
+    const run = await fetchRestRows<{ requested_by: string }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { select: "requested_by", id: `eq.${runId}`, limit: "1" },
+    });
+    if (run[0]?.requested_by) {
+      await refundCredit({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        userId: run[0].requested_by,
+        runId,
+      });
+      console.log(`[basquio-worker] refunded credit for failed run ${runId}`);
+    }
+  } catch (refundError) {
+    const refundMsg = refundError instanceof Error ? refundError.message : String(refundError);
+    console.error(`[basquio-worker] credit refund failed for ${runId}: ${refundMsg}`);
   }
 }
 

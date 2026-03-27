@@ -337,7 +337,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       briefLanguageHint: inferLanguageHint(run),
     });
 
-    const recoveredAnalysis = attempt.recoveryReason === "stale_timeout"
+    const recoveredAnalysis = (attempt.recoveryReason === "stale_timeout" || attempt.recoveryReason === "transient_provider_retry")
       ? await loadRecoveredAnalysis(config, runId)
       : null;
 
@@ -875,6 +875,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : "Deck generation failed.";
     const message = sanitizeFailureMessage(rawMessage);
+    const failureClass = isTransientProviderError(error) ? "transient_provider" : "permanent";
     const run = await loadRun(config, runId).catch(() => null);
     const attempt = run ? await resolveAttemptContext(config, run, suppliedAttempt).catch(() => null) : null;
     await finalizeFailure(config, runId, attempt, currentPhase, message, {
@@ -882,6 +883,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       continuationCount,
       anthropicRequestIds: [...anthropicRequestIds],
       estimatedCostUsd: spentUsd,
+      failureClass,
+      requestCount: anthropicRequestIds.size,
+      costIncomplete: spentUsd === 0 && anthropicRequestIds.size > 0,
     }).catch(() => {});
     throw error;
   }
@@ -1714,6 +1718,37 @@ function buildReviseMessage(issues: string[]) {
   };
 }
 
+// ─── TRANSIENT ERROR CLASSIFICATION ──────────────────────────
+
+const TRANSIENT_RETRY_DELAYS_MS = [3_000, 8_000, 20_000] as const;
+
+export function isTransientProviderError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  const name = error.name?.toLowerCase() ?? "";
+
+  // Anthropic overloaded / rate limit
+  if (msg.includes("overloaded") || msg.includes("overloaded_error")) return true;
+  if (msg.includes("rate_limit") || msg.includes("rate limit")) return true;
+
+  // HTTP status codes
+  if (/\b(429|529|502|503|504)\b/.test(msg)) return true;
+
+  // Stream / connection failures
+  if (msg.includes("stream ended") || msg.includes("did not return")) return true;
+  if (msg.includes("connection") && (msg.includes("reset") || msg.includes("refused") || msg.includes("closed"))) return true;
+  if (msg.includes("econnreset") || msg.includes("econnrefused") || msg.includes("etimedout")) return true;
+  if (name.includes("fetcherror") || name.includes("aborterror")) return true;
+
+  // Anthropic SDK error types
+  if ("status" in error) {
+    const status = (error as { status?: number }).status;
+    if (status && [429, 502, 503, 504, 529].includes(status)) return true;
+  }
+
+  return false;
+}
+
 async function runClaudeLoop(input: {
   client: Anthropic;
   systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
@@ -1750,48 +1785,68 @@ async function runClaudeLoop(input: {
       tools: input.tools,
       output_config: input.outputConfig,
     };
-    try {
-      const stream = input.client.beta.messages.stream(streamBody);
-      requestId = stream.request_id ?? null;
-      message = await stream.finalMessage();
-    } catch (streamError) {
-      // Retry once on empty-stream / connection errors (BUG-3)
-      const isEmptyStream = streamError instanceof Error &&
-        (streamError.message.includes("stream ended") || streamError.message.includes("did not return"));
-      if (isEmptyStream && iteration === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        const retryStream = input.client.beta.messages.stream(streamBody);
-        requestId = retryStream.request_id ?? null;
-        message = await retryStream.finalMessage();
-      } else {
+
+    // Bounded transient retry with exponential backoff + jitter
+    let lastTransientError: Error | null = null;
+    for (let retry = 0; retry <= TRANSIENT_RETRY_DELAYS_MS.length; retry += 1) {
+      try {
+        const stream = input.client.beta.messages.stream(streamBody);
+        requestId = stream.request_id ?? null;
+        message = await stream.finalMessage();
+        lastTransientError = null;
+        break;
+      } catch (streamError) {
+        requestId = null;
+        if (isTransientProviderError(streamError) && retry < TRANSIENT_RETRY_DELAYS_MS.length) {
+          lastTransientError = streamError instanceof Error ? streamError : new Error(String(streamError));
+          const baseDelay = TRANSIENT_RETRY_DELAYS_MS[retry];
+          const jitter = Math.round(Math.random() * baseDelay * 0.3);
+          console.warn(
+            `[runClaudeLoop] transient error (retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}): ${lastTransientError.message.slice(0, 200)}. Waiting ${baseDelay + jitter}ms...`,
+          );
+          // Record the failed request for telemetry even though it didn't complete
+          requests.push({
+            requestId: null,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            usage: { input_tokens: 0, output_tokens: 0 },
+            stopReason: `transient_retry_${retry + 1}`,
+          });
+          await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
+          continue;
+        }
         throw streamError;
       }
     }
+    if (lastTransientError) {
+      throw lastTransientError;
+    }
+
     const completedAt = new Date().toISOString();
 
-    finalMessage = message;
-    currentContainer = message.container ? { id: message.container.id } : currentContainer;
-    usage.input_tokens += message.usage?.input_tokens ?? 0;
-    usage.output_tokens += message.usage?.output_tokens ?? 0;
+    finalMessage = message!;
+    currentContainer = finalMessage.container ? { id: finalMessage.container.id } : currentContainer;
+    usage.input_tokens += finalMessage.usage?.input_tokens ?? 0;
+    usage.output_tokens += finalMessage.usage?.output_tokens ?? 0;
     requests.push({
       requestId,
       startedAt,
       completedAt,
       usage: {
-        input_tokens: message.usage?.input_tokens ?? 0,
-        output_tokens: message.usage?.output_tokens ?? 0,
+        input_tokens: finalMessage.usage?.input_tokens ?? 0,
+        output_tokens: finalMessage.usage?.output_tokens ?? 0,
       },
-      stopReason: message.stop_reason ?? null,
+      stopReason: finalMessage.stop_reason ?? null,
     });
 
-    collectGeneratedFileIds(message.content).forEach((fileId) => fileIds.add(fileId));
+    collectGeneratedFileIds(finalMessage.content).forEach((fileId) => fileIds.add(fileId));
 
-    if (message.stop_reason !== "pause_turn") {
+    if (finalMessage.stop_reason !== "pause_turn") {
       break;
     }
 
     pauseTurns += 1;
-    messages = appendAssistantTurn(messages, message);
+    messages = appendAssistantTurn(messages, finalMessage);
   }
 
   if (!finalMessage) {

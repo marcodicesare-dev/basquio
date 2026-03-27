@@ -288,10 +288,13 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     };
   });
 
+  const isTransientRecovery = run.status === "queued" && run.latest_attempt_number > 1;
   const currentDetail = lastToolCall?.tool_name
     ? `${phaseMeta.activeDetail} Tool in use: ${lastToolCall.tool_name}.`
     : isStale
       ? "This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically."
+    : isTransientRecovery
+      ? `Retrying automatically after a temporary service issue. Attempt ${run.latest_attempt_number}.`
     : run.status === "failed"
         ? run.failure_message ?? "Run failed."
         : run.status === "completed"
@@ -415,7 +418,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     attemptNumber: run.latest_attempt_number ?? 1,
     activeAttemptId: attemptId,
     pipelineVersion: "v2" as const,
-    status: run.status as "queued" | "running" | "completed" | "failed",
+    status: (isTransientRecovery ? "running" : run.status) as "queued" | "running" | "completed" | "failed",
     artifactsReady: Boolean(summary && Array.isArray(summary.artifacts) && (summary.artifacts as unknown[]).length > 0),
     createdAt: run.created_at,
     updatedAt: run.updated_at ?? undefined,
@@ -437,7 +440,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     failureMessage: run.failure_message ?? undefined,
     failureClassification,
     toolCallCount: toolCalls.length,
-    runHealth: isStale ? "stale" : "healthy",
+    runHealth: isStale ? "stale" : isTransientRecovery ? "recovering" : "healthy",
   };
 }
 

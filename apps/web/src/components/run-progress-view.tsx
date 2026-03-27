@@ -75,7 +75,7 @@ export type RunProgressSnapshot = {
   failureMessage?: string;
   failureClassification?: FailureClassification;
   toolCallCount?: number;
-  runHealth?: "healthy" | "stale";
+  runHealth?: "healthy" | "stale" | "recovering";
   notifyOnComplete?: boolean;
 };
 
@@ -503,6 +503,7 @@ export function RunProgressView(input: {
   const etaText = formatEta(snapshot);
   const templateSummary = describeTemplateDiagnostics(snapshot.templateDiagnostics);
   const staleWarning = snapshot.runHealth === "stale";
+  const recoveringWarning = snapshot.runHealth === "recovering";
 
   return (
     <div style={styles.fullPage}>
@@ -542,6 +543,23 @@ export function RunProgressView(input: {
             }}
           >
             This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically.
+          </div>
+        ) : null}
+        {recoveringWarning ? (
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              marginBottom: "1.5rem",
+              padding: "0.9rem 1rem",
+              borderRadius: 18,
+              border: "1px solid rgba(26,106,255,0.35)",
+              background: "rgba(26,106,255,0.08)",
+              color: "#F2F0EB",
+              zIndex: 1,
+            }}
+          >
+            Retrying automatically after a temporary service issue. You don&apos;t need to restart the run.
           </div>
         ) : null}
 
