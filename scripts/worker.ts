@@ -22,8 +22,7 @@ type QueuedRunRow = {
 async function main() {
   const config = resolveConfig();
   let shuttingDown = false;
-  let activeAttempt: QueuedRunRow | null = null;
-  let lastActiveAttempt: QueuedRunRow | null = null; // preserved for shutdown requeue
+  const activeRuns = new Map<string, { attempt: QueuedRunRow; stopHeartbeat: () => void }>();
   let recoveryInFlight = false;
 
   const requestShutdown = (signal: string) => {
@@ -32,9 +31,9 @@ async function main() {
     }
 
     shuttingDown = true;
-    console.warn(`[basquio-worker] received ${signal}; draining before shutdown`);
+    console.warn(`[basquio-worker] received ${signal}; draining ${activeRuns.size} active runs before shutdown`);
 
-    if (!activeAttempt) {
+    if (activeRuns.size === 0) {
       process.exit(0);
     }
   };
@@ -42,7 +41,7 @@ async function main() {
   process.on("SIGTERM", () => requestShutdown("SIGTERM"));
   process.on("SIGINT", () => requestShutdown("SIGINT"));
 
-  console.log("[basquio-worker] starting");
+  console.log("[basquio-worker] starting (concurrent mode)");
   await recoverStaleAttempts(config);
 
   const recoveryTimer = setInterval(() => {
@@ -68,171 +67,34 @@ async function main() {
     }
 
     try {
+      // Claim ALL queued attempts — no artificial concurrency limit.
+      // Each run is I/O-bound (waiting on Claude API), so the worker can handle
+      // as many concurrent runs as there are queued.
       const attempt = await claimNextQueuedAttempt(config);
 
       if (attempt) {
-        const startedAt = Date.now();
-        activeAttempt = attempt;
-        console.log(`[basquio-worker] claimed run ${attempt.run_id} attempt ${attempt.attempt_number}`);
-        const stopHeartbeat = startHeartbeat(config, attempt);
-
-        try {
-          await generateDeckRun(attempt.run_id, {
-            id: attempt.id,
-            attemptNumber: attempt.attempt_number,
-          });
-          console.log(
-            `[basquio-worker] completed run ${attempt.run_id} attempt ${attempt.attempt_number} in ${Math.round((Date.now() - startedAt) / 1000)}s`,
-          );
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} failed: ${message}`);
-
-          // Layer 2: automatic superseding attempt for transient provider failures
-          // Layer E: template fallback — if a template-backed run fails, allow one fallback attempt
-          const isTransient = isTransientProviderError(error);
-          const MAX_TRANSIENT_ATTEMPTS = 3;
-          const shouldAutoRecover = isTransient && attempt.attempt_number < MAX_TRANSIENT_ATTEMPTS;
-
-          if (shouldAutoRecover) {
-            try {
-              const newAttemptId = randomUUID();
-              const newAttemptNumber = attempt.attempt_number + 1;
-              const now = new Date().toISOString();
-
-              // Mark current attempt as failed-transient
-              await patchRestRows({
-                supabaseUrl: config.supabaseUrl,
-                serviceKey: config.serviceKey,
-                table: "deck_run_attempts",
-                query: { id: `eq.${attempt.id}` },
-                payload: {
-                  superseded_by_attempt_id: newAttemptId,
-                  updated_at: now,
-                },
-              }).catch(() => []);
-
-              // Create superseding attempt
-              await upsertRestRows({
-                supabaseUrl: config.supabaseUrl,
-                serviceKey: config.serviceKey,
-                table: "deck_run_attempts",
-                onConflict: "id",
-                rows: [{
-                  id: newAttemptId,
-                  run_id: attempt.run_id,
-                  attempt_number: newAttemptNumber,
-                  status: "queued",
-                  recovery_reason: "transient_provider_retry",
-                  created_at: now,
-                  updated_at: now,
-                }],
-              });
-
-              // Requeue the parent run
-              await patchRestRows({
-                supabaseUrl: config.supabaseUrl,
-                serviceKey: config.serviceKey,
-                table: "deck_runs",
-                query: { id: `eq.${attempt.run_id}` },
-                payload: {
-                  status: "queued",
-                  failure_message: null,
-                  failure_phase: null,
-                  delivery_status: "draft",
-                  updated_at: now,
-                  active_attempt_id: newAttemptId,
-                  latest_attempt_id: newAttemptId,
-                  latest_attempt_number: newAttemptNumber,
-                },
-              });
-
-              console.log(
-                `[basquio-worker] transient failure on run ${attempt.run_id} — created superseding attempt ${newAttemptNumber}/${MAX_TRANSIENT_ATTEMPTS}`,
-              );
-            } catch (recoveryError) {
-              const recoveryMsg = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
-              console.error(`[basquio-worker] failed to create superseding attempt for ${attempt.run_id}: ${recoveryMsg}`);
-              // Fall through to credit refund
-              await refundCreditSafe(config, attempt.run_id);
-            }
-          } else {
-            // E: Template fallback — only trigger when failure is plausibly template-related.
-            // Template interpretation happens in normalize/understand. Failures in author/critique/
-            // revise/export are not template-caused and should not silently switch to Basquio Standard.
-            const runForFallback = await fetchRestRows<{ template_profile_id: string | null; failure_phase: string | null }>({
-              supabaseUrl: config.supabaseUrl,
-              serviceKey: config.serviceKey,
-              table: "deck_runs",
-              query: { select: "template_profile_id,failure_phase", id: `eq.${attempt.run_id}`, limit: "1" },
-            }).catch(() => []);
-            const isTemplateBacked = Boolean(runForFallback[0]?.template_profile_id);
-            const failurePhase = runForFallback[0]?.failure_phase ?? "";
-            const isTemplateRelatedPhase = ["normalize", "understand"].includes(failurePhase);
-            const canFallback = isTemplateBacked && attempt.attempt_number === 1 && isTemplateRelatedPhase;
-
-            if (canFallback) {
-              try {
-                const newAttemptId = randomUUID();
-                const now = new Date().toISOString();
-
-                await patchRestRows({
-                  supabaseUrl: config.supabaseUrl,
-                  serviceKey: config.serviceKey,
-                  table: "deck_run_attempts",
-                  query: { id: `eq.${attempt.id}` },
-                  payload: { superseded_by_attempt_id: newAttemptId, updated_at: now },
-                }).catch(() => []);
-
-                await upsertRestRows({
-                  supabaseUrl: config.supabaseUrl,
-                  serviceKey: config.serviceKey,
-                  table: "deck_run_attempts",
-                  onConflict: "id",
-                  rows: [{
-                    id: newAttemptId,
-                    run_id: attempt.run_id,
-                    attempt_number: 2,
-                    status: "queued",
-                    recovery_reason: "template_fallback",
-                    created_at: now,
-                    updated_at: now,
-                  }],
-                });
-
-                await patchRestRows({
-                  supabaseUrl: config.supabaseUrl,
-                  serviceKey: config.serviceKey,
-                  table: "deck_runs",
-                  query: { id: `eq.${attempt.run_id}` },
-                  payload: {
-                    status: "queued",
-                    failure_message: null,
-                    failure_phase: null,
-                    delivery_status: "draft",
-                    updated_at: now,
-                    active_attempt_id: newAttemptId,
-                    latest_attempt_id: newAttemptId,
-                    latest_attempt_number: 2,
-                  },
-                });
-
-                console.log(`[basquio-worker] template-backed run ${attempt.run_id} failed — created template_fallback attempt`);
-              } catch (fallbackError) {
-                const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-                console.error(`[basquio-worker] template fallback failed for ${attempt.run_id}: ${fallbackMsg}`);
-                await refundCreditSafe(config, attempt.run_id);
-              }
-            } else {
-              // Non-transient, non-template or budget exhausted — refund credit
-              await refundCreditSafe(config, attempt.run_id);
-            }
-          }
-        } finally {
-          stopHeartbeat();
-          lastActiveAttempt = activeAttempt;
-          activeAttempt = null;
+        // Skip if we're already running this run (e.g. duplicate claim race)
+        if (activeRuns.has(attempt.run_id)) {
+          continue;
         }
+
+        const startedAt = Date.now();
+        console.log(`[basquio-worker] claimed run ${attempt.run_id} attempt ${attempt.attempt_number} (${activeRuns.size + 1} concurrent)`);
+        const stopHeartbeat = startHeartbeat(config, attempt);
+        activeRuns.set(attempt.run_id, { attempt, stopHeartbeat });
+
+        // Fire and forget — do NOT await. The poll loop continues immediately
+        // to claim the next queued run.
+        void processRun(config, attempt, startedAt, stopHeartbeat).finally(() => {
+          activeRuns.delete(attempt.run_id);
+          if (shuttingDown && activeRuns.size === 0) {
+            console.log("[basquio-worker] all runs drained, shutting down");
+            process.exit(0);
+          }
+        });
+
+        // Don't sleep — immediately check for more queued runs
+        continue;
       }
 
       // Process queued template import jobs (lightweight, no heartbeat needed)
@@ -253,38 +115,202 @@ async function main() {
 
   clearInterval(recoveryTimer);
 
-  // I: Worker deploy safety — requeue the active attempt on graceful shutdown
-  // so it is not orphaned and will be picked up by the next worker instance.
-  // Use lastActiveAttempt because activeAttempt is nulled in the finally block
-  // before the loop exits.
-  const attemptToRequeue = activeAttempt ?? lastActiveAttempt;
-  if (attemptToRequeue && shuttingDown) {
-    console.log(`[basquio-worker] requeueing in-flight attempt ${attemptToRequeue.id} for run ${attemptToRequeue.run_id}`);
-    await patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      query: { id: `eq.${attemptToRequeue.id}`, status: "eq.running" },
-      payload: {
-        status: "queued",
-        updated_at: new Date().toISOString(),
-      },
-    }).catch((error) => {
-      console.error(`[basquio-worker] failed to requeue attempt: ${error instanceof Error ? error.message : String(error)}`);
-    });
-    await patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_runs",
-      query: { id: `eq.${attemptToRequeue.run_id}`, status: "eq.running" },
-      payload: {
-        status: "queued",
-        updated_at: new Date().toISOString(),
-      },
-    }).catch(() => {});
+  // Wait for all active runs to drain on shutdown
+  if (activeRuns.size > 0) {
+    console.log(`[basquio-worker] waiting for ${activeRuns.size} active runs to drain...`);
+    // Requeue all active attempts so the next worker instance picks them up
+    for (const [runId, { attempt, stopHeartbeat }] of activeRuns) {
+      stopHeartbeat();
+      console.log(`[basquio-worker] requeueing in-flight attempt ${attempt.id} for run ${runId}`);
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_run_attempts",
+        query: { id: `eq.${attempt.id}`, status: "eq.running" },
+        payload: {
+          status: "queued",
+          updated_at: new Date().toISOString(),
+        },
+      }).catch((error) => {
+        console.error(`[basquio-worker] failed to requeue attempt: ${error instanceof Error ? error.message : String(error)}`);
+      });
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: { id: `eq.${runId}`, status: "eq.running" },
+        payload: {
+          status: "queued",
+          updated_at: new Date().toISOString(),
+        },
+      }).catch(() => {});
+    }
   }
 
   console.log("[basquio-worker] shutdown complete");
+}
+
+async function processRun(
+  config: ReturnType<typeof resolveConfig>,
+  attempt: QueuedRunRow,
+  startedAt: number,
+  stopHeartbeat: () => void,
+) {
+  try {
+    await generateDeckRun(attempt.run_id, {
+      id: attempt.id,
+      attemptNumber: attempt.attempt_number,
+    });
+    console.log(
+      `[basquio-worker] completed run ${attempt.run_id} attempt ${attempt.attempt_number} in ${Math.round((Date.now() - startedAt) / 1000)}s`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} failed: ${message}`);
+
+    // Layer 2: automatic superseding attempt for transient provider failures
+    // Layer E: template fallback — if a template-backed run fails, allow one fallback attempt
+    const isTransient = isTransientProviderError(error);
+    const MAX_TRANSIENT_ATTEMPTS = 3;
+    const shouldAutoRecover = isTransient && attempt.attempt_number < MAX_TRANSIENT_ATTEMPTS;
+
+    if (shouldAutoRecover) {
+      try {
+        const newAttemptId = randomUUID();
+        const newAttemptNumber = attempt.attempt_number + 1;
+        const now = new Date().toISOString();
+
+        // Mark current attempt as failed-transient
+        await patchRestRows({
+          supabaseUrl: config.supabaseUrl,
+          serviceKey: config.serviceKey,
+          table: "deck_run_attempts",
+          query: { id: `eq.${attempt.id}` },
+          payload: {
+            superseded_by_attempt_id: newAttemptId,
+            updated_at: now,
+          },
+        }).catch(() => []);
+
+        // Create superseding attempt
+        await upsertRestRows({
+          supabaseUrl: config.supabaseUrl,
+          serviceKey: config.serviceKey,
+          table: "deck_run_attempts",
+          onConflict: "id",
+          rows: [{
+            id: newAttemptId,
+            run_id: attempt.run_id,
+            attempt_number: newAttemptNumber,
+            status: "queued",
+            recovery_reason: "transient_provider_retry",
+            created_at: now,
+            updated_at: now,
+          }],
+        });
+
+        // Requeue the parent run
+        await patchRestRows({
+          supabaseUrl: config.supabaseUrl,
+          serviceKey: config.serviceKey,
+          table: "deck_runs",
+          query: { id: `eq.${attempt.run_id}` },
+          payload: {
+            status: "queued",
+            failure_message: null,
+            failure_phase: null,
+            delivery_status: "draft",
+            updated_at: now,
+            active_attempt_id: newAttemptId,
+            latest_attempt_id: newAttemptId,
+            latest_attempt_number: newAttemptNumber,
+          },
+        });
+
+        console.log(
+          `[basquio-worker] transient failure on run ${attempt.run_id} — created superseding attempt ${newAttemptNumber}/${MAX_TRANSIENT_ATTEMPTS}`,
+        );
+      } catch (recoveryError) {
+        const recoveryMsg = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
+        console.error(`[basquio-worker] failed to create superseding attempt for ${attempt.run_id}: ${recoveryMsg}`);
+        // Fall through to credit refund
+        await refundCreditSafe(config, attempt.run_id);
+      }
+    } else {
+      // E: Template fallback — only trigger when failure is plausibly template-related.
+      // Template interpretation happens in normalize/understand. Failures in author/critique/
+      // revise/export are not template-caused and should not silently switch to Basquio Standard.
+      const runForFallback = await fetchRestRows<{ template_profile_id: string | null; failure_phase: string | null }>({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: { select: "template_profile_id,failure_phase", id: `eq.${attempt.run_id}`, limit: "1" },
+      }).catch(() => []);
+      const isTemplateBacked = Boolean(runForFallback[0]?.template_profile_id);
+      const failurePhase = runForFallback[0]?.failure_phase ?? "";
+      const isTemplateRelatedPhase = ["normalize", "understand"].includes(failurePhase);
+      const canFallback = isTemplateBacked && attempt.attempt_number === 1 && isTemplateRelatedPhase;
+
+      if (canFallback) {
+        try {
+          const newAttemptId = randomUUID();
+          const now = new Date().toISOString();
+
+          await patchRestRows({
+            supabaseUrl: config.supabaseUrl,
+            serviceKey: config.serviceKey,
+            table: "deck_run_attempts",
+            query: { id: `eq.${attempt.id}` },
+            payload: { superseded_by_attempt_id: newAttemptId, updated_at: now },
+          }).catch(() => []);
+
+          await upsertRestRows({
+            supabaseUrl: config.supabaseUrl,
+            serviceKey: config.serviceKey,
+            table: "deck_run_attempts",
+            onConflict: "id",
+            rows: [{
+              id: newAttemptId,
+              run_id: attempt.run_id,
+              attempt_number: 2,
+              status: "queued",
+              recovery_reason: "template_fallback",
+              created_at: now,
+              updated_at: now,
+            }],
+          });
+
+          await patchRestRows({
+            supabaseUrl: config.supabaseUrl,
+            serviceKey: config.serviceKey,
+            table: "deck_runs",
+            query: { id: `eq.${attempt.run_id}` },
+            payload: {
+              status: "queued",
+              failure_message: null,
+              failure_phase: null,
+              delivery_status: "draft",
+              updated_at: now,
+              active_attempt_id: newAttemptId,
+              latest_attempt_id: newAttemptId,
+              latest_attempt_number: 2,
+            },
+          });
+
+          console.log(`[basquio-worker] template-backed run ${attempt.run_id} failed — created template_fallback attempt`);
+        } catch (fallbackError) {
+          const fallbackMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          console.error(`[basquio-worker] template fallback failed for ${attempt.run_id}: ${fallbackMsg}`);
+          await refundCreditSafe(config, attempt.run_id);
+        }
+      } else {
+        // Non-transient, non-template or budget exhausted — refund credit
+        await refundCreditSafe(config, attempt.run_id);
+      }
+    }
+  } finally {
+    stopHeartbeat();
+  }
 }
 
 function resolveConfig() {
