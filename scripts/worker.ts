@@ -157,16 +157,19 @@ async function main() {
               await refundCreditSafe(config, attempt.run_id);
             }
           } else {
-            // E: Template fallback — if this is a template-backed run on attempt 1,
-            // try one more attempt without the template before giving up
-            const runForFallback = await fetchRestRows<{ template_profile_id: string | null }>({
+            // E: Template fallback — only trigger when failure is plausibly template-related.
+            // Template interpretation happens in normalize/understand. Failures in author/critique/
+            // revise/export are not template-caused and should not silently switch to Basquio Standard.
+            const runForFallback = await fetchRestRows<{ template_profile_id: string | null; failure_phase: string | null }>({
               supabaseUrl: config.supabaseUrl,
               serviceKey: config.serviceKey,
               table: "deck_runs",
-              query: { select: "template_profile_id", id: `eq.${attempt.run_id}`, limit: "1" },
+              query: { select: "template_profile_id,failure_phase", id: `eq.${attempt.run_id}`, limit: "1" },
             }).catch(() => []);
             const isTemplateBacked = Boolean(runForFallback[0]?.template_profile_id);
-            const canFallback = isTemplateBacked && attempt.attempt_number === 1;
+            const failurePhase = runForFallback[0]?.failure_phase ?? "";
+            const isTemplateRelatedPhase = ["normalize", "understand"].includes(failurePhase);
+            const canFallback = isTemplateBacked && attempt.attempt_number === 1 && isTemplateRelatedPhase;
 
             if (canFallback) {
               try {

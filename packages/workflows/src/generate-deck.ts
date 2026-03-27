@@ -415,6 +415,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           effort: "medium",
           format: ANALYSIS_OUTPUT_FORMAT,
         },
+        onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "understand", MODEL),
       });
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
       assertDeckSpendWithinBudget(spentUsd);
@@ -510,6 +511,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       outputConfig: {
         effort: "medium",
       },
+      onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
     });
     spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
     assertDeckSpendWithinBudget(spentUsd);
@@ -677,6 +679,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         outputConfig: {
           effort: "medium",
         },
+        onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
       });
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
       assertDeckSpendWithinBudget(spentUsd);
@@ -1851,7 +1854,43 @@ function buildReviseMessage(issues: string[]) {
 
 const TRANSIENT_RETRY_DELAYS_MS = [3_000, 8_000, 20_000] as const;
 
-// isTransientProviderError is now imported from ./failure-classifier
+// isTransientProviderError and classifyRuntimeError are imported from ./failure-classifier
+
+function buildRequestRecordCallback(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  attempt: AttemptContext,
+  phase: DeckPhase,
+  model: string,
+) {
+  return async (record: ClaudeRequestUsage) => {
+    await upsertRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_request_usage",
+      onConflict: "id",
+      rows: [{
+        id: randomUUID(),
+        run_id: runId,
+        attempt_id: attempt.id,
+        attempt_number: attempt.attemptNumber,
+        phase,
+        request_kind: "request_record",
+        provider: "anthropic",
+        model,
+        anthropic_request_id: record.requestId,
+        usage: {
+          inputTokens: record.usage.input_tokens ?? 0,
+          outputTokens: record.usage.output_tokens ?? 0,
+          totalTokens: (record.usage.input_tokens ?? 0) + (record.usage.output_tokens ?? 0),
+          status: record.stopReason?.startsWith("transient_retry") ? "failed_transient" : "completed",
+        },
+        started_at: record.startedAt,
+        completed_at: record.completedAt,
+      }],
+    });
+  };
+}
 
 async function runClaudeLoop(input: {
   client: Anthropic;
@@ -1861,6 +1900,8 @@ async function runClaudeLoop(input: {
   tools: Anthropic.Beta.BetaToolUnion[];
   container?: Anthropic.Beta.BetaContainerParams;
   outputConfig?: Anthropic.Beta.BetaOutputConfig;
+  /** Optional: persist each retry-level request record immediately for telemetry truth */
+  onRequestRecord?: (record: ClaudeRequestUsage) => Promise<void>;
 }) {
   let messages = [...input.messages];
   const fileIds = new Set<string>();
@@ -1909,13 +1950,18 @@ async function runClaudeLoop(input: {
             `[runClaudeLoop] transient error (retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}): ${lastTransientError.message.slice(0, 200)}. Waiting ${baseDelay + jitter}ms...`,
           );
           // Record the failed request for telemetry even though it didn't complete
-          requests.push({
+          const retryRecord: ClaudeRequestUsage = {
             requestId: null,
             startedAt,
             completedAt: new Date().toISOString(),
             usage: { input_tokens: 0, output_tokens: 0 },
             stopReason: `transient_retry_${retry + 1}`,
-          });
+          };
+          requests.push(retryRecord);
+          // Persist immediately so this record survives even if the phase dies
+          if (input.onRequestRecord) {
+            await input.onRequestRecord(retryRecord).catch(() => {});
+          }
           await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
           continue;
         }
@@ -1932,7 +1978,7 @@ async function runClaudeLoop(input: {
     currentContainer = finalMessage.container ? { id: finalMessage.container.id } : currentContainer;
     usage.input_tokens += finalMessage.usage?.input_tokens ?? 0;
     usage.output_tokens += finalMessage.usage?.output_tokens ?? 0;
-    requests.push({
+    const completedRecord: ClaudeRequestUsage = {
       requestId,
       startedAt,
       completedAt,
@@ -1941,7 +1987,11 @@ async function runClaudeLoop(input: {
         output_tokens: finalMessage.usage?.output_tokens ?? 0,
       },
       stopReason: finalMessage.stop_reason ?? null,
-    });
+    };
+    requests.push(completedRecord);
+    if (input.onRequestRecord) {
+      await input.onRequestRecord(completedRecord).catch(() => {});
+    }
 
     collectGeneratedFileIds(finalMessage.content).forEach((fileId) => fileIds.add(fileId));
 
