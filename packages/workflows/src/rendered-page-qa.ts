@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const renderedPageQaIssueSchema = z.object({
   slidePosition: z.number().int().min(1),
-  severity: z.enum(["critical", "major", "minor"]),
+  severity: z.enum(["critical", "major", "minor", "info"]),
   code: z.string(),
   description: z.string(),
   fix: z.string(),
@@ -74,7 +74,15 @@ export async function runRenderedPageQa(input: {
 
   const text = extractResponseText(response.content);
   const json = extractFirstJsonObject(text);
-  const report = renderedPageQaSchema.parse(JSON.parse(json));
+  const parsed = JSON.parse(json);
+
+  // Lenient parse: strip issues with unsupported severity instead of crashing the run
+  if (Array.isArray(parsed.issues)) {
+    parsed.issues = parsed.issues.filter((issue: Record<string, unknown>) =>
+      typeof issue.severity === "string" && ["critical", "major", "minor", "info"].includes(issue.severity),
+    );
+  }
+  const report = renderedPageQaSchema.parse(parsed);
 
   return {
     report,

@@ -415,7 +415,29 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       await persistRequestUsage(config, runId, attempt, "understand", "phase_generation", MODEL, understandResponse.requests);
       rememberRequestIds(anthropicRequestIds, understandResponse.requests);
 
-      analysis = parseStructuredAnalysisResponse(understandResponse.message);
+      // Structured-output hardening: bounded repair for understand analysis JSON
+      try {
+        analysis = parseStructuredAnalysisResponse(understandResponse.message);
+      } catch (parseError) {
+        const parseMsg = parseError instanceof Error ? parseError.message : String(parseError);
+        console.warn(`[generateDeckRun] understand analysis JSON malformed, attempting repair: ${parseMsg.slice(0, 200)}`);
+        phaseTelemetry.understandParseRepair = { firstAttemptError: parseMsg.slice(0, 500) };
+
+        // Attempt deterministic JSON repair: try to fix truncated JSON
+        const rawText = extractResponseText(understandResponse.message.content);
+        const repaired = attemptJsonRepair(rawText);
+        if (repaired) {
+          try {
+            analysis = analysisSchema.parse(JSON.parse(repaired));
+            phaseTelemetry.understandParseRepair = { ...phaseTelemetry.understandParseRepair as Record<string, unknown>, repairSucceeded: true };
+          } catch {
+            // Repair failed — re-throw original
+            throw parseError;
+          }
+        } else {
+          throw parseError;
+        }
+      }
       baseContainerId = understandResponse.containerId;
       enforceAnalysisExhibitRules(analysis);
       await upsertWorkingPaper(config, runId, "analysis_result", analysis);
@@ -1425,6 +1447,7 @@ async function finalizeFailure(
         failure_message: failureMessage,
         failure_phase: failurePhase,
         updated_at: now,
+        completed_at: null,
         delivery_status: "failed",
         cost_telemetry: runCostTelemetry,
         active_attempt_id: null,
@@ -2102,7 +2125,17 @@ function parseManifestResponse(
 ) {
   const manifestFile = findGeneratedFile(files, "deck_manifest.json");
   if (manifestFile) {
-    return parseDeckManifest(JSON.parse(manifestFile.buffer.toString("utf8")));
+    const raw = manifestFile.buffer.toString("utf8");
+    try {
+      return parseDeckManifest(JSON.parse(raw));
+    } catch {
+      // Try deterministic repair on malformed manifest file
+      const repaired = attemptJsonRepair(raw);
+      if (repaired) {
+        return parseDeckManifest(JSON.parse(repaired));
+      }
+      throw new Error(`deck_manifest.json is malformed and could not be repaired.`);
+    }
   }
 
   const text = extractResponseText(message.content);
@@ -2117,6 +2150,13 @@ function parseManifestResponse(
   try {
     return parseDeckManifest(JSON.parse(extractFirstJsonObject(text)));
   } catch (error) {
+    // Try deterministic repair on inline manifest JSON
+    const repaired = attemptJsonRepair(text);
+    if (repaired) {
+      try {
+        return parseDeckManifest(JSON.parse(repaired));
+      } catch { /* fall through to error */ }
+    }
     const reason = error instanceof Error ? error.message : "Invalid manifest JSON.";
     throw new Error(
       `Claude did not generate a parseable deck manifest. ${reason} Response preview: ${text.slice(0, 800)}`,
@@ -2149,6 +2189,76 @@ function extractFirstJsonObject(text: string) {
   }
 
   return text.slice(firstBrace, lastBrace + 1);
+}
+
+/**
+ * Attempt deterministic JSON repair for truncated/malformed structured output.
+ * Handles common failure modes: unclosed strings, missing closing brackets/braces,
+ * trailing commas, and truncated arrays.
+ */
+function attemptJsonRepair(raw: string): string | null {
+  if (!raw || raw.length < 10) return null;
+
+  // Extract the JSON portion
+  let json: string;
+  try {
+    json = extractFirstJsonObject(raw);
+  } catch {
+    // No JSON-like content found
+    const firstBrace = raw.indexOf("{");
+    if (firstBrace === -1) return null;
+    json = raw.slice(firstBrace);
+  }
+
+  // Try parsing as-is first
+  try {
+    JSON.parse(json);
+    return json;
+  } catch {
+    // Continue with repair
+  }
+
+  // Repair pass: close unclosed structures
+  let repaired = json;
+
+  // Remove trailing comma before closing bracket/brace
+  repaired = repaired.replace(/,\s*$/, "");
+
+  // Close unclosed strings (odd number of unescaped quotes)
+  const unescapedQuotes = (repaired.match(/(?<!\\)"/g) ?? []).length;
+  if (unescapedQuotes % 2 !== 0) {
+    repaired += '"';
+  }
+
+  // Count open brackets and braces, close them
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i];
+    if (ch === '"' && (i === 0 || repaired[i - 1] !== "\\")) {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") openBraces++;
+    else if (ch === "}") openBraces--;
+    else if (ch === "[") openBrackets++;
+    else if (ch === "]") openBrackets--;
+  }
+
+  // Remove trailing comma before adding closers
+  repaired = repaired.replace(/,\s*$/, "");
+
+  for (let i = 0; i < openBrackets; i++) repaired += "]";
+  for (let i = 0; i < openBraces; i++) repaired += "}";
+
+  try {
+    JSON.parse(repaired);
+    return repaired;
+  } catch {
+    return null;
+  }
 }
 
 function buildGenerationBrief(run: RunRow) {
