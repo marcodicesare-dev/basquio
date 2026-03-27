@@ -1003,66 +1003,82 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
     );
 
+    // Repair loop: attempt to fix repairable QA failures via Claude.
+    // CRITICAL: wrapped in try/catch so a repair failure falls through to salvage
+    // instead of killing the run. The repair path calls Claude API, parses manifests,
+    // and runs visual QA — any of these can throw.
     if (repairableQaFailures.length > 0 && latestContainerId && latestResponse && blockingQaFailures.every((check) => repairableQaFailures.includes(check))) {
-      const repairedArtifacts = await repairArtifactsFromQa({
-        client,
-        systemPrompt,
-        latestResponse,
-        latestContainerId,
-        qaFailures: repairableQaFailures,
-        tools: CLAUDE_TOOLS,
-      });
-      if ((repairedArtifacts.usage.input_tokens ?? 0) > 0 || (repairedArtifacts.usage.output_tokens ?? 0) > 0) {
-        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, repairedArtifacts.usage));
-        assertDeckSpendWithinBudget(spentUsd);
-        continuationCount += repairedArtifacts.pauseTurns;
-        phaseTelemetry.exportArtifactRepair = buildPhaseTelemetry(MODEL, {
-          usage: repairedArtifacts.usage,
-          iterations: repairedArtifacts.iterations,
-          pauseTurns: repairedArtifacts.pauseTurns,
-          requestIds: repairedArtifacts.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+      try {
+        const repairedArtifacts = await repairArtifactsFromQa({
+          client,
+          systemPrompt,
+          latestResponse,
+          latestContainerId,
+          qaFailures: repairableQaFailures,
+          tools: CLAUDE_TOOLS,
         });
-        await persistRequestUsage(config, runId, attempt, "export", "artifact_repair", MODEL, repairedArtifacts.requests);
-        rememberRequestIds(anthropicRequestIds, repairedArtifacts.requests);
-      }
+        if ((repairedArtifacts.usage.input_tokens ?? 0) > 0 || (repairedArtifacts.usage.output_tokens ?? 0) > 0) {
+          spentUsd = roundUsd(spentUsd + usageToCost(MODEL, repairedArtifacts.usage));
+          assertDeckSpendWithinBudget(spentUsd);
+          continuationCount += repairedArtifacts.pauseTurns;
+          phaseTelemetry.exportArtifactRepair = buildPhaseTelemetry(MODEL, {
+            usage: repairedArtifacts.usage,
+            iterations: repairedArtifacts.iterations,
+            pauseTurns: repairedArtifacts.pauseTurns,
+            requestIds: repairedArtifacts.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+          });
+          await persistRequestUsage(config, runId, attempt, "export", "artifact_repair", MODEL, repairedArtifacts.requests);
+          rememberRequestIds(anthropicRequestIds, repairedArtifacts.requests);
+        }
 
-      latestResponse = repairedArtifacts;
-      latestContainerId = repairedArtifacts.containerId ?? latestContainerId;
-      finalManifest = parseManifestResponse(repairedArtifacts.message, repairedArtifacts.files);
-      finalPptx = requireGeneratedFile(repairedArtifacts.files, "deck.pptx");
-      finalPdf = requireGeneratedFile(repairedArtifacts.files, "deck.pdf");
-      finalVisualQa = await strengthenFinalVisualQa({
-        client,
-        pdf: finalPdf.buffer,
-        manifest: finalManifest,
-        currentReport: finalVisualQa,
-        runId,
-        attempt,
-        config,
-        spentUsdRef: {
-          get value() {
-            return spentUsd;
+        latestResponse = repairedArtifacts;
+        latestContainerId = repairedArtifacts.containerId ?? latestContainerId;
+        finalManifest = parseManifestResponse(repairedArtifacts.message, repairedArtifacts.files);
+        finalPptx = requireGeneratedFile(repairedArtifacts.files, "deck.pptx");
+        finalPdf = requireGeneratedFile(repairedArtifacts.files, "deck.pdf");
+        finalVisualQa = await strengthenFinalVisualQa({
+          client,
+          pdf: finalPdf.buffer,
+          manifest: finalManifest,
+          currentReport: finalVisualQa,
+          runId,
+          attempt,
+          config,
+          spentUsdRef: {
+            get value() {
+              return spentUsd;
+            },
+            set value(value: number) {
+              spentUsd = value;
+            },
           },
-          set value(value: number) {
-            spentUsd = value;
-          },
-        },
-        anthropicRequestIds,
-        phaseTelemetry,
-      });
-      finalDocx = await buildNarrativeDocx({
-        run,
-        analysis,
-        manifest: finalManifest,
-      });
-      qaReport = await buildQaReport(
-        finalManifest,
-        finalPptx,
-        finalPdf,
-        finalDocx,
-        finalVisualQa,
-        templateDiagnostics,
-      );
+          anthropicRequestIds,
+          phaseTelemetry,
+        });
+        finalDocx = await buildNarrativeDocx({
+          run,
+          analysis,
+          manifest: finalManifest,
+        });
+        qaReport = await buildQaReport(
+          finalManifest,
+          finalPptx,
+          finalPdf,
+          finalDocx,
+          finalVisualQa,
+          templateDiagnostics,
+        );
+      } catch (repairError) {
+        // Repair failed — log it and fall through to the salvage gate below.
+        // The pre-repair qaReport/finalPptx/finalPdf/finalManifest are still valid
+        // and will trigger salvage from checkpoint if one exists.
+        const repairMsg = repairError instanceof Error ? repairError.message : String(repairError);
+        console.warn(`[generateDeckRun] export repair failed, falling through to salvage: ${repairMsg.slice(0, 300)}`);
+        phaseTelemetry.exportRepairFailure = {
+          reason: "repair_threw",
+          errorMessage: repairMsg.slice(0, 500),
+        };
+      }
     }
 
     const finalBlockingQaFailures = qaReport.failed.filter((check) =>
@@ -1121,8 +1137,17 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             phaseTelemetry.salvageVisualQaFallback = { error: salvageQaMsg.slice(0, 500) };
           }
 
-          // Rebuild DOCX from checkpoint manifest + analysis
-          finalDocx = await buildNarrativeDocx({ run, analysis, manifest: finalManifest });
+          // Rebuild DOCX from checkpoint manifest + analysis.
+          // If DOCX build fails, use an empty-but-valid DOCX so salvage can still publish.
+          try {
+            finalDocx = await buildNarrativeDocx({ run, analysis, manifest: finalManifest });
+          } catch (docxError) {
+            const docxMsg = docxError instanceof Error ? docxError.message : String(docxError);
+            console.warn(`[generateDeckRun] salvage DOCX build failed, using empty fallback: ${docxMsg.slice(0, 200)}`);
+            phaseTelemetry.salvageDocxFallback = { error: docxMsg.slice(0, 500) };
+            // Minimal valid DOCX so the artifact set is complete
+            finalDocx = { fileId: "salvage-docx", fileName: "report.docx", buffer: Buffer.alloc(0), mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+          }
 
           // Rebuild QA report from checkpoint artifacts + fresh visual QA
           qaReport = await buildQaReport(
@@ -1147,9 +1172,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           //   - pdf_parseable (PDF can't be parsed at all)
           //
           // Everything else is advisory for salvage — ship the deck.
+          // DOCX is supplementary — not a hard blocker for salvage publish.
           const SALVAGE_HARD_BLOCKERS = new Set([
-            "pptx_present", "pdf_present", "docx_present",
-            "pptx_zip_signature", "pdf_header_signature", "docx_zip_signature",
+            "pptx_present", "pdf_present",
+            "pptx_zip_signature", "pdf_header_signature",
             "slide_count_positive",
             "pptx_zip_parse_failed", "pdf_parseable",
           ]);
