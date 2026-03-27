@@ -249,6 +249,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
   const phaseTelemetry: Record<string, unknown> = {};
   let continuationCount = 0;
   const anthropicRequestIds = new Set<string>();
+  let templateMode: "basquio_standard" | "workspace_template" | "template_fallback" = "basquio_standard";
 
   try {
     const run = await loadRun(config, runId);
@@ -260,6 +261,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       sourceFiles.find((file) => file.id === templateSourceFileId) ??
       sourceFiles.find((file) => file.kind === "pptx" || file.kind === "brand-tokens");
     const evidenceFiles = sourceFiles.filter((file) => file.id !== templateFile?.id);
+    templateMode = templateFile || persistedTemplate ? "workspace_template" : "basquio_standard";
 
     currentPhase = "normalize";
     await markPhase(config, runId, attempt, currentPhase);
@@ -388,6 +390,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         },
       });
 
+      // G: persist request-start telemetry before calling Claude
+      await persistRequestStart(config, runId, attempt, "understand", "phase_generation", MODEL);
+
       const understandResponse = await runClaudeLoop({
         client,
         systemPrompt,
@@ -481,6 +486,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       },
     });
 
+    await persistRequestStart(config, runId, attempt, "author", "phase_generation", MODEL);
     let authorResponse = await runClaudeLoop({
       client,
       systemPrompt,
@@ -648,6 +654,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         },
       });
 
+      await persistRequestStart(config, runId, attempt, "revise", "phase_generation", MODEL);
       let reviseResponse = await runClaudeLoop({
         client,
         systemPrompt,
@@ -921,6 +928,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       phases: phaseTelemetry,
       continuationCount,
       anthropicRequestIds: [...anthropicRequestIds],
+      templateMode,
     });
     await completePhase(config, runId, attempt, "export", {
       artifactCount: artifacts.length,
@@ -950,6 +958,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       anthropicRequestIds: [...anthropicRequestIds],
       estimatedCostUsd: spentUsd,
       failureClass,
+      templateMode,
       requestCount: anthropicRequestIds.size,
       costIncomplete: spentUsd === 0 && anthropicRequestIds.size > 0,
     }).catch(() => {});
@@ -1579,6 +1588,39 @@ async function persistRequestUsage(
       completed_at: request.completedAt,
     })),
   });
+}
+
+async function persistRequestStart(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  attempt: AttemptContext,
+  phase: DeckPhase,
+  requestKind: string,
+  model: string,
+) {
+  const requestRecordId = randomUUID();
+  const startedAt = new Date().toISOString();
+  await upsertRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_request_usage",
+    onConflict: "id",
+    rows: [{
+      id: requestRecordId,
+      run_id: runId,
+      attempt_id: attempt.id,
+      attempt_number: attempt.attemptNumber,
+      phase,
+      request_kind: requestKind,
+      provider: "anthropic",
+      model,
+      anthropic_request_id: null,
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, status: "started" },
+      started_at: startedAt,
+      completed_at: null,
+    }],
+  }).catch(() => {});
+  return { requestRecordId, startedAt };
 }
 
 function rememberRequestIds(

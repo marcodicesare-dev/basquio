@@ -87,10 +87,12 @@ async function main() {
           console.error(`[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} failed: ${message}`);
 
           // Layer 2: automatic superseding attempt for transient provider failures
+          // Layer E: template fallback — if a template-backed run fails, allow one fallback attempt
           const isTransient = isTransientProviderError(error);
           const MAX_TRANSIENT_ATTEMPTS = 3;
+          const shouldAutoRecover = isTransient && attempt.attempt_number < MAX_TRANSIENT_ATTEMPTS;
 
-          if (isTransient && attempt.attempt_number < MAX_TRANSIENT_ATTEMPTS) {
+          if (shouldAutoRecover) {
             try {
               const newAttemptId = randomUUID();
               const newAttemptNumber = attempt.attempt_number + 1;
@@ -179,6 +181,35 @@ async function main() {
   }
 
   clearInterval(recoveryTimer);
+
+  // I: Worker deploy safety — requeue the active attempt on graceful shutdown
+  // so it is not orphaned and will be picked up by the next worker instance
+  if (activeAttempt) {
+    console.log(`[basquio-worker] requeueing in-flight attempt ${activeAttempt.id} for run ${activeAttempt.run_id}`);
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: { id: `eq.${activeAttempt.id}`, status: "eq.running" },
+      payload: {
+        status: "queued",
+        updated_at: new Date().toISOString(),
+      },
+    }).catch((error) => {
+      console.error(`[basquio-worker] failed to requeue attempt: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${activeAttempt.run_id}`, status: "eq.running" },
+      payload: {
+        status: "queued",
+        updated_at: new Date().toISOString(),
+      },
+    }).catch(() => {});
+  }
+
   console.log("[basquio-worker] shutdown complete");
 }
 

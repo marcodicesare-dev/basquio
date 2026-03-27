@@ -441,6 +441,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     failureClassification,
     toolCallCount: toolCalls.length,
     runHealth: isStale ? "stale" : isTransientRecovery ? "recovering" : "healthy",
+    templateMode: (run.cost_telemetry as Record<string, unknown>)?.templateMode ?? null,
   };
 }
 
