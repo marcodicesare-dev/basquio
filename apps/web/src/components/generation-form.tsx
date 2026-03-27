@@ -530,25 +530,35 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
 
               <div className="stack">
                 <div className="stack-xs">
-                  <p className="section-label">Template</p>
-                  <div className="template-picker">
+                  <p className="section-label">Which template should this report use?</p>
+                  <div className="template-picker" role="radiogroup" aria-label="Template selection">
                     {defaultTemplateId && defaultTemplateName ? (
                       <button
                         type="button"
+                        role="radio"
+                        aria-checked={selectedTemplateId === defaultTemplateId}
                         className={selectedTemplateId === defaultTemplateId ? "template-option selected" : "template-option"}
                         onClick={() => handleTemplateSelection(defaultTemplateId)}
                       >
-                        <span className="template-option-name">{defaultTemplateName}</span>
-                        <span className="template-option-type">Workspace default</span>
+                        <span className="template-radio-dot" aria-hidden />
+                        <span className="template-option-content">
+                          <span className="template-option-name">{defaultTemplateName}</span>
+                          <span className="template-option-type">Workspace default — used automatically across your workspace</span>
+                        </span>
                       </button>
                     ) : null}
                     <button
                       type="button"
+                      role="radio"
+                      aria-checked={selectedTemplateId === null}
                       className={selectedTemplateId === null ? "template-option selected" : "template-option"}
                       onClick={() => handleTemplateSelection(null)}
                     >
-                      <span className="template-option-name">Basquio Standard</span>
-                      <span className="template-option-type">{defaultTemplateId ? "Built-in" : "Default"}</span>
+                      <span className="template-radio-dot" aria-hidden />
+                      <span className="template-option-content">
+                        <span className="template-option-name">Basquio Standard</span>
+                        <span className="template-option-type">Use Basquio&apos;s built-in style for this report</span>
+                      </span>
                     </button>
                     {savedTemplates
                       .filter((t) => t.id !== defaultTemplateId)
@@ -556,22 +566,30 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                       <button
                         key={t.id}
                         type="button"
+                        role="radio"
+                        aria-checked={selectedTemplateId === t.id}
                         className={selectedTemplateId === t.id ? "template-option selected" : "template-option"}
                         onClick={() => handleTemplateSelection(t.id)}
                       >
-                        <span className="template-option-name">{t.name}</span>
-                        <span className="template-option-type">{t.sourceType}</span>
-                        {t.colors.length > 0 ? (
-                          <span className="template-option-colors">
-                            {t.colors.map((c) => (
-                              <span key={c} className="mini-swatch" style={{ backgroundColor: c }} />
-                            ))}
-                          </span>
-                        ) : null}
+                        <span className="template-radio-dot" aria-hidden />
+                        <span className="template-option-content">
+                          <span className="template-option-name">{t.name}</span>
+                          <span className="template-option-type">Use only for this report</span>
+                          {t.colors.length > 0 ? (
+                            <span className="template-option-colors">
+                              {t.colors.map((c) => (
+                                <span key={c} className="mini-swatch" style={{ backgroundColor: c }} />
+                              ))}
+                            </span>
+                          ) : null}
+                        </span>
                       </button>
                     ))}
                   </div>
-                  <a href="/templates" className="muted" style={{ fontSize: "0.82rem", textDecoration: "underline" }}>
+                  <p className="template-selection-summary">
+                    This report will use: <strong>{templateLabel}</strong>
+                  </p>
+                  <a href="/templates" className="button small secondary" style={{ alignSelf: "flex-start" }}>
                     Import a new template
                   </a>
                 </div>

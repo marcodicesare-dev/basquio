@@ -2070,6 +2070,105 @@ textarea {
   border: 0;
 }
 
+/* ─── Template picker (radio-group selector) ─── */
+
+.template-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.template-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.template-option:hover {
+  border-color: rgba(26, 106, 255, 0.3);
+  background: rgba(26, 106, 255, 0.04);
+}
+
+.template-option:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.template-option.selected {
+  border-color: var(--blue);
+  background: rgba(26, 106, 255, 0.06);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+.template-radio-dot {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.template-option.selected .template-radio-dot {
+  border-color: var(--blue);
+  background: var(--blue);
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.template-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.template-option-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.template-option-type {
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+
+.template-option-colors {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.mini-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.template-selection-summary {
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  margin: 4px 0 0;
+}
+
+.template-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  align-items: center;
+}
+
 .file-chip {
   display: inline-grid;
   grid-template-columns: auto 1fr auto;

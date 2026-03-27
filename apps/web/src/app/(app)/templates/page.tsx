@@ -1,6 +1,6 @@
 import { createSystemTemplateProfile } from "@basquio/template-engine";
 
-import { TemplateCard, TemplateImportBox } from "@/components/template-library";
+import { ActiveDefaultCard, TemplateCard, TemplateImportBox } from "@/components/template-library";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { resolveViewerOrgId } from "@/lib/viewer-workspace";
@@ -91,6 +91,8 @@ export default async function TemplatesPage() {
     updatedAt: t.updated_at,
   }));
 
+  const defaultItem = templateItems.find((t) => t.isDefault) ?? null;
+
   return (
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
@@ -98,57 +100,17 @@ export default async function TemplatesPage() {
       </section>
 
       <section className="workspace-board">
-        {/* Workspace default */}
-        <article className="panel stack-xl">
-          <div className="stack">
-            <div className="row split">
-              <div className="stack-xs">
-                <p className="artifact-kind">Workspace default</p>
-                <h2>{hasCustomDefault && defaultTemplate
-                  ? (defaultTemplate.name || defaultTemplate.template_profile?.templateName || "Custom template")
-                  : "Basquio Standard"}</h2>
-              </div>
-              <span className="run-pill run-pill-ready">
-                {hasCustomDefault && defaultTemplate?.status === "processing" ? "Processing" : "Active"}
-              </span>
-            </div>
-            <p className="muted">
-              {hasCustomDefault
-                ? "This template is used automatically on every new report. Change it below or switch back to Basquio Standard."
-                : "Clean editorial design with accent colors. Used automatically when no custom template is selected."}
-            </p>
-          </div>
+        {/* A. Active workspace default */}
+        <ActiveDefaultCard
+          defaultTemplate={defaultItem}
+          hasCustomDefault={hasCustomDefault}
+        />
 
-          <div className="brand-preview-strip">
-            {(hasCustomDefault && defaultTemplate
-              ? ((defaultTemplate.preview_payload?.colors ?? defaultTemplate.template_profile?.colors ?? []) as string[]).slice(0, 6)
-              : systemTemplate.colors.slice(0, 6)
-            ).map((color) => (
-              <div key={color} className="brand-preview-swatch">
-                <span className="swatch-color" style={{ backgroundColor: color }} />
-                <span>{color}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="compact-meta-row">
-            <span className="run-pill">
-              {hasCustomDefault && defaultTemplate
-                ? (((defaultTemplate.preview_payload as Record<string, unknown>)?.headingFont as string) ?? defaultTemplate.template_profile?.fonts?.[0] ?? "System fonts")
-                : (systemTemplate.fonts?.[0] ?? "System fonts")}
-            </span>
-            <span className="run-pill">16:9 widescreen</span>
-            <span className="run-pill">
-              {hasCustomDefault ? "Custom" : "Basquio Standard"}
-            </span>
-          </div>
-        </article>
-
-        {/* Import new template */}
+        {/* B. Import new template */}
         <TemplateImportBox />
       </section>
 
-      {/* Empty state */}
+      {/* C. Saved templates library */}
       {templateItems.length === 0 ? (
         <section className="panel stack">
           <div className="stack-xs">
@@ -160,7 +122,6 @@ export default async function TemplatesPage() {
         </section>
       ) : null}
 
-      {/* Saved templates list */}
       {templateItems.length > 0 ? (
         <section className="stack-lg">
           <div className="workspace-section-head">
