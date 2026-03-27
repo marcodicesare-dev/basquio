@@ -55,6 +55,7 @@ type FailureClassification = {
 
 export type RunProgressSnapshot = {
   jobId: string;
+  attemptNumber?: number;
   pipelineVersion?: "v2";
   status: "queued" | "running" | "completed" | "failed" | "needs_input";
   artifactsReady: boolean;
@@ -115,8 +116,6 @@ export function RunProgressView(input: {
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [showCompletionToast, setShowCompletionToast] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
-  // Monotonic progress: never goes backward
-  const maxProgressRef = useRef(2);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
   // Detect live completion transition for toast
@@ -189,10 +188,7 @@ export function RunProgressView(input: {
   const slideCount = snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0;
   const currentUserStepIdx = PHASE_TO_USER_STEP[snapshot.currentStage] ?? 0;
 
-  // Monotonic progress — only goes up
-  const rawPercent = snapshot.status === "completed" ? 100 : snapshot.progressPercent;
-  if (rawPercent > maxProgressRef.current) maxProgressRef.current = rawPercent;
-  const displayPercent = snapshot.status === "completed" ? 100 : maxProgressRef.current;
+  const displayPercent = snapshot.status === "completed" ? 100 : snapshot.progressPercent;
 
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
@@ -528,6 +524,11 @@ export function RunProgressView(input: {
         <p style={{ color: "#A09FA6", fontSize: "1.05rem", marginBottom: "2.5rem", zIndex: 1 }}>
           {snapshot.currentStageLabel ?? USER_STEPS[currentUserStepIdx]?.label ?? "Working..."}
         </p>
+        {typeof snapshot.attemptNumber === "number" && snapshot.attemptNumber > 1 ? (
+          <p style={{ color: "#6B6A72", fontSize: "0.82rem", marginTop: "-1.8rem", marginBottom: "1.8rem", zIndex: 1 }}>
+            Recovery attempt {snapshot.attemptNumber}
+          </p>
+        ) : null}
         {staleWarning ? (
           <div
             style={{

@@ -594,26 +594,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
     assertDeckSpendWithinBudget(spentUsd);
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
-    await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, [{
-      requestId: initialVisualQa.requestId,
-      startedAt: initialVisualQa.startedAt,
-      completedAt: initialVisualQa.completedAt,
-      usage: {
-        input_tokens: initialVisualQa.usage?.input_tokens ?? 0,
-        output_tokens: initialVisualQa.usage?.output_tokens ?? 0,
-      },
-      stopReason: "end_turn",
-    }]);
-    rememberRequestIds(anthropicRequestIds, [{
-      requestId: initialVisualQa.requestId,
-      startedAt: initialVisualQa.startedAt,
-      completedAt: initialVisualQa.completedAt,
-      usage: {
-        input_tokens: initialVisualQa.usage?.input_tokens ?? 0,
-        output_tokens: initialVisualQa.usage?.output_tokens ?? 0,
-      },
-      stopReason: "end_turn",
-    }]);
+    await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, initialVisualQa.requests);
+    rememberRequestIds(anthropicRequestIds, initialVisualQa.requests);
     await upsertWorkingPaper(config, runId, "visual_qa_author", initialVisualQa.report);
     const critiqueIssues = collectCritiqueIssues(manifest, initialVisualQa.report);
     await completePhase(
@@ -782,26 +764,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
         assertDeckSpendWithinBudget(spentUsd);
         phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
-        await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, [{
-          requestId: revisedVisualQa.requestId,
-          startedAt: revisedVisualQa.startedAt,
-          completedAt: revisedVisualQa.completedAt,
-          usage: {
-            input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
-            output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
-          },
-          stopReason: "end_turn",
-        }]);
-        rememberRequestIds(anthropicRequestIds, [{
-          requestId: revisedVisualQa.requestId,
-          startedAt: revisedVisualQa.startedAt,
-          completedAt: revisedVisualQa.completedAt,
-          usage: {
-            input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
-            output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
-          },
-          stopReason: "end_turn",
-        }]);
+        await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
+        rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
         finalVisualQa = revisedVisualQa.report;
         await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
         await persistDeckSpec(config, runId, finalManifest);
@@ -1342,39 +1306,37 @@ async function strengthenFinalVisualQa(input: {
     return input.currentReport;
   }
 
-  const finalVisualQa = await runRenderedPageQa({
-    client: input.client,
-    pdf: input.pdf,
-    manifest: input.manifest,
-    betas: [FILES_BETA],
-    model: FINAL_VISUAL_QA_MODEL,
-    maxTokens: 1_600,
-  });
-  input.spentUsdRef.value = roundUsd(input.spentUsdRef.value + usageToCost(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage));
-  assertDeckSpendWithinBudget(input.spentUsdRef.value);
-  input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
-  await persistRequestUsage(input.config, input.runId, input.attempt, "export", "rendered_page_qa_final", FINAL_VISUAL_QA_MODEL, [{
-    requestId: finalVisualQa.requestId,
-    startedAt: finalVisualQa.startedAt,
-    completedAt: finalVisualQa.completedAt,
-    usage: {
-      input_tokens: finalVisualQa.usage?.input_tokens ?? 0,
-      output_tokens: finalVisualQa.usage?.output_tokens ?? 0,
-    },
-    stopReason: "end_turn",
-  }]);
-  rememberRequestIds(input.anthropicRequestIds, [{
-    requestId: finalVisualQa.requestId,
-    startedAt: finalVisualQa.startedAt,
-    completedAt: finalVisualQa.completedAt,
-    usage: {
-      input_tokens: finalVisualQa.usage?.input_tokens ?? 0,
-      output_tokens: finalVisualQa.usage?.output_tokens ?? 0,
-    },
-    stopReason: "end_turn",
-  }]);
-
-  return finalVisualQa.report;
+  try {
+    const finalVisualQa = await runRenderedPageQa({
+      client: input.client,
+      pdf: input.pdf,
+      manifest: input.manifest,
+      betas: [FILES_BETA],
+      model: FINAL_VISUAL_QA_MODEL,
+      maxTokens: 1_600,
+    });
+    input.spentUsdRef.value = roundUsd(input.spentUsdRef.value + usageToCost(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage));
+    assertDeckSpendWithinBudget(input.spentUsdRef.value);
+    input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
+    await persistRequestUsage(
+      input.config,
+      input.runId,
+      input.attempt,
+      "export",
+      "rendered_page_qa_final",
+      FINAL_VISUAL_QA_MODEL,
+      finalVisualQa.requests,
+    );
+    rememberRequestIds(input.anthropicRequestIds, finalVisualQa.requests);
+    return finalVisualQa.report;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    input.phaseTelemetry.visualQaFinalFallback = {
+      fallback: "reuse_prior_green_report",
+      errorMessage: message.slice(0, 500),
+    };
+    return input.currentReport;
+  }
 }
 
 async function finalizeSuccess(

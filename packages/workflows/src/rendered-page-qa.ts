@@ -63,33 +63,86 @@ export async function runRenderedPageQa(input: {
     },
   ];
 
-  const startedAt = new Date().toISOString();
-  const response = await input.client.beta.messages.create({
-    model: input.model ?? "claude-haiku-4-5",
-    max_tokens: input.maxTokens ?? 1_200,
-    betas: [...input.betas] as Anthropic.Beta.AnthropicBeta[],
-    messages,
-  });
-  const completedAt = new Date().toISOString();
+  const requests: Array<{
+    requestId: string | null;
+    startedAt: string;
+    completedAt: string;
+    usage: { input_tokens: number; output_tokens: number };
+    stopReason: string | null;
+  }> = [];
 
-  const text = extractResponseText(response.content);
-  const json = extractFirstJsonObject(text);
-  const parsed = JSON.parse(json);
+  const executeQaRequest = async (requestMessages: Anthropic.Beta.BetaMessageParam[]) => {
+    const startedAt = new Date().toISOString();
+    const response = await input.client.beta.messages.create({
+      model: input.model ?? "claude-haiku-4-5",
+      max_tokens: input.maxTokens ?? 1_200,
+      betas: [...input.betas] as Anthropic.Beta.AnthropicBeta[],
+      messages: requestMessages,
+    });
+    const completedAt = new Date().toISOString();
+    requests.push({
+      requestId: response._request_id ?? null,
+      startedAt,
+      completedAt,
+      usage: {
+        input_tokens: response.usage?.input_tokens ?? 0,
+        output_tokens: response.usage?.output_tokens ?? 0,
+      },
+      stopReason: response.stop_reason ?? null,
+    });
+    return response;
+  };
 
-  // Lenient parse: strip issues with unsupported severity instead of crashing the run
-  if (Array.isArray(parsed.issues)) {
-    parsed.issues = parsed.issues.filter((issue: Record<string, unknown>) =>
-      typeof issue.severity === "string" && ["critical", "major", "minor", "info"].includes(issue.severity),
-    );
+  let response = await executeQaRequest(messages);
+  let report: z.infer<typeof renderedPageQaSchema>;
+
+  try {
+    report = parseRenderedPageQaResponse(extractResponseText(response.content));
+  } catch (firstError) {
+    const retryResponse = await executeQaRequest([
+      ...messages,
+      {
+        role: "assistant",
+        content: response.content as Anthropic.Beta.BetaContentBlockParam[],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: [
+              "Your previous reply was not valid JSON matching the requested schema.",
+              "Return ONLY valid JSON with the exact schema. No markdown fence. No explanation.",
+            ].join("\n"),
+          },
+        ],
+      },
+    ]);
+    response = retryResponse;
+    try {
+      report = parseRenderedPageQaResponse(extractResponseText(retryResponse.content));
+    } catch (retryError) {
+      const firstReason = firstError instanceof Error ? firstError.message : String(firstError);
+      const retryReason = retryError instanceof Error ? retryError.message : String(retryError);
+      throw new Error(`Rendered-page QA returned invalid JSON after repair retry. First error: ${firstReason}. Retry error: ${retryReason}`);
+    }
   }
-  const report = renderedPageQaSchema.parse(parsed);
+
+  const aggregateUsage = requests.reduce(
+    (sum, request) => ({
+      input_tokens: (sum.input_tokens ?? 0) + (request.usage.input_tokens ?? 0),
+      output_tokens: (sum.output_tokens ?? 0) + (request.usage.output_tokens ?? 0),
+    }),
+    { input_tokens: 0, output_tokens: 0 },
+  );
 
   return {
     report,
-    usage: response.usage ?? null,
+    usage: aggregateUsage,
     requestId: response._request_id ?? null,
-    startedAt,
-    completedAt,
+    startedAt: requests[0]?.startedAt ?? new Date().toISOString(),
+    completedAt: requests[requests.length - 1]?.completedAt ?? new Date().toISOString(),
+    requests,
     promptBody: {
       messages,
     },
@@ -195,4 +248,75 @@ function extractFirstJsonObject(text: string) {
   }
 
   return text.slice(firstBrace, lastBrace + 1);
+}
+
+function parseRenderedPageQaResponse(text: string) {
+  const json = extractFirstJsonObject(text);
+  let parsed: Record<string, unknown>;
+
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    const repaired = attemptJsonRepair(json);
+    if (!repaired) {
+      throw new Error(`Rendered-page QA did not return parseable JSON. Response: ${text.slice(0, 500)}`);
+    }
+    parsed = JSON.parse(repaired);
+  }
+
+  if (Array.isArray(parsed.issues)) {
+    parsed.issues = parsed.issues.filter((issue: Record<string, unknown>) =>
+      typeof issue.severity === "string" && ["critical", "major", "minor", "info"].includes(issue.severity),
+    );
+  }
+
+  return renderedPageQaSchema.parse(parsed);
+}
+
+function attemptJsonRepair(raw: string) {
+  let repaired = raw.trim();
+  if (!repaired) {
+    return null;
+  }
+
+  repaired = repaired.replace(/,\s*$/, "");
+  const unescapedQuotes = (repaired.match(/(?<!\\)"/g) ?? []).length;
+  if (unescapedQuotes % 2 !== 0) {
+    repaired += "\"";
+  }
+
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+
+  for (let index = 0; index < repaired.length; index += 1) {
+    const char = repaired[index];
+    if (char === "\"" && (index === 0 || repaired[index - 1] !== "\\")) {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "{") {
+      openBraces += 1;
+    } else if (char === "}") {
+      openBraces -= 1;
+    } else if (char === "[") {
+      openBrackets += 1;
+    } else if (char === "]") {
+      openBrackets -= 1;
+    }
+  }
+
+  repaired = repaired.replace(/,\s*$/, "");
+  for (let count = 0; count < openBrackets; count += 1) repaired += "]";
+  for (let count = 0; count < openBraces; count += 1) repaired += "}";
+
+  try {
+    JSON.parse(repaired);
+    return repaired;
+  } catch {
+    return null;
+  }
 }

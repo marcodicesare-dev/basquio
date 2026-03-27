@@ -334,12 +334,14 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
     const newAttemptId = randomUUID();
     const newAttemptNumber = attempt.attempt_number + 1;
 
-    // 1. Mark the stale attempt as failed
-    await patchRestRows({
+    // 1. Mark the stale attempt as failed. If another worker already recovered it,
+    // do not create a duplicate superseding attempt.
+    const markedStale = await patchRestRows<{ id: string }>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_run_attempts",
-      query: { id: `eq.${attempt.id}`, status: "eq.running" },
+      query: { id: `eq.${attempt.id}`, status: "eq.running", superseded_by_attempt_id: "is.null" },
+      select: "id",
       payload: {
         status: "failed",
         failure_phase: "stale_timeout",
@@ -347,6 +349,9 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
         updated_at: now,
       },
     }).catch(() => []);
+    if (!markedStale[0]) {
+      continue;
+    }
 
     // 2. Create a new superseding attempt
     await upsertRestRows({
@@ -416,6 +421,43 @@ async function claimNextQueuedAttempt(config: ReturnType<typeof resolveConfig>) 
 
   const candidate = queuedAttempts[0];
   if (!candidate) {
+    return null;
+  }
+
+  const parentRun = await fetchRestRows<{
+    id: string;
+    active_attempt_id: string | null;
+    latest_attempt_id: string | null;
+    status: string;
+  }>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_runs",
+    query: {
+      select: "id,active_attempt_id,latest_attempt_id,status",
+      id: `eq.${candidate.run_id}`,
+      limit: "1",
+    },
+  }).catch(() => []);
+
+  const runRow = parentRun[0];
+  const stillReferenced = runRow && (runRow.active_attempt_id === candidate.id || runRow.latest_attempt_id === candidate.id);
+  if (!stillReferenced) {
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: {
+        id: `eq.${candidate.id}`,
+        status: "eq.queued",
+      },
+      payload: {
+        status: "failed",
+        failure_phase: "queue_integrity",
+        failure_message: "Queued attempt no longer referenced by parent run.",
+        updated_at: new Date().toISOString(),
+      },
+    }).catch(() => []);
     return null;
   }
 

@@ -9,6 +9,7 @@ import {
 
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
+import { buildPhaseProgressModel, estimateRemainingSecondsForPhase } from "@/lib/run-progress";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -197,12 +198,19 @@ export async function GET(
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
   const isStale = run.status === "running" && now - updatedAtMs > STALE_RUN_UI_SECONDS * 1000;
   const progressClockMs = isStale ? updatedAtMs : now;
-  const progressModel = buildProgressModel(run, currentPhase, completedPhaseSet, progressClockMs);
-  const estimatedRemaining = estimateRemainingSeconds(
+  const progressModel = buildPhaseProgressModel({
+    phases: V2_PHASES,
     currentPhase,
-    completedPhaseSet,
-    progressModel.elapsedInPhaseSeconds,
-  );
+    completedPhases: completedPhaseSet,
+    phaseStartedAt: run.phase_started_at,
+    nowMs: progressClockMs,
+  });
+  const estimatedRemaining = estimateRemainingSecondsForPhase({
+    phases: V2_PHASES,
+    currentPhase,
+    completedPhases: completedPhaseSet,
+    elapsedInPhaseSeconds: progressModel.elapsedInPhaseSeconds,
+  });
   const templateDiagnostics = await resolveTemplateDiagnostics(supabaseUrl, serviceKey, run);
   const phaseMeta = PHASE_ESTIMATES[currentPhase ?? V2_PHASES[0]] ?? PHASE_ESTIMATES.normalize;
 
@@ -210,7 +218,7 @@ export async function GET(
     ? 100
     : run.status === "failed"
       ? Math.max(2, Math.round((completedPhaseSet.size / phases.length) * 100))
-      : Math.max(2, Math.min(99, Math.round(progressModel.progressPercent)));
+      : Math.max(2, Math.min(96, Math.round(progressModel.progressPercent)));
 
   const currentDetail = lastToolCall?.tool_name
     ? `${phaseMeta.activeDetail} Tool in use: ${lastToolCall.tool_name}.`
@@ -311,92 +319,4 @@ async function resolveTemplateDiagnostics(
       : "saved_profile",
     templateProfileId: run.template_profile_id,
   });
-}
-
-function buildProgressModel(
-  run: DeckRunRow,
-  currentPhase: string | undefined,
-  completedPhases: Set<string>,
-  now: number,
-) {
-  const totalExpectedSeconds = V2_PHASES.reduce(
-    (sum, phase) => sum + (PHASE_ESTIMATES[phase]?.expectedSeconds ?? 0),
-    0,
-  );
-  const completedSeconds = V2_PHASES
-    .filter((phase) => completedPhases.has(phase))
-    .reduce((sum, phase) => sum + (PHASE_ESTIMATES[phase]?.expectedSeconds ?? 0), 0);
-  const currentExpectedSeconds = PHASE_ESTIMATES[currentPhase ?? ""]?.expectedSeconds ?? 0;
-  const phaseStartedAt = run.phase_started_at ? new Date(run.phase_started_at).getTime() : null;
-  const elapsedInPhaseSeconds = phaseStartedAt
-    ? Math.max(1, Math.round((now - phaseStartedAt) / 1000))
-    : 0;
-  const phaseFraction = currentExpectedSeconds > 0
-    ? estimatePhaseFraction(elapsedInPhaseSeconds, currentExpectedSeconds)
-    : 0;
-
-  return {
-    elapsedInPhaseSeconds,
-    progressPercent:
-      ((completedSeconds + currentExpectedSeconds * phaseFraction) / Math.max(totalExpectedSeconds, 1)) * 100,
-  };
-}
-
-function estimatePhaseFraction(elapsedSeconds: number, expectedSeconds: number) {
-  if (expectedSeconds <= 0) {
-    return 0;
-  }
-
-  const ratio = elapsedSeconds / expectedSeconds;
-  if (ratio <= 0.75) {
-    return ratio * 0.8;
-  }
-  if (ratio <= 1) {
-    return 0.6 + ((ratio - 0.75) / 0.25) * 0.22;
-  }
-
-  const overtime = (elapsedSeconds - expectedSeconds) / Math.max(expectedSeconds * 0.75, 60);
-  return 0.82 + Math.min(0.14, 0.14 * (1 - Math.exp(-overtime)));
-}
-
-function estimateRemainingSeconds(
-  currentPhase: string | undefined,
-  completedPhases: Set<string>,
-  elapsedInPhaseSeconds: number,
-) {
-  const remainingAfterCurrent = V2_PHASES
-    .filter((phase) => phase !== currentPhase && !completedPhases.has(phase))
-    .reduce((sum, phase) => sum + (PHASE_ESTIMATES[phase]?.expectedSeconds ?? 0), 0);
-  const currentExpected = PHASE_ESTIMATES[currentPhase ?? ""]?.expectedSeconds ?? 0;
-
-  if (!currentPhase || currentExpected <= 0) {
-    return {
-      midpointSeconds: remainingAfterCurrent,
-      lowSeconds: Math.round(remainingAfterCurrent * 0.8),
-      highSeconds: Math.round(remainingAfterCurrent * 1.25),
-      confidence: "low" as const,
-    };
-  }
-
-  if (elapsedInPhaseSeconds <= currentExpected * 1.1) {
-    const currentRemaining = Math.max(
-      30,
-      Math.round(currentExpected - Math.min(elapsedInPhaseSeconds, currentExpected)),
-    );
-    const midpointSeconds = currentRemaining + remainingAfterCurrent;
-    return {
-      midpointSeconds,
-      lowSeconds: Math.max(30, Math.round(midpointSeconds * 0.7)),
-      highSeconds: Math.round(midpointSeconds * 1.35),
-      confidence: elapsedInPhaseSeconds < currentExpected * 0.4 ? "medium" as const : "high" as const,
-    };
-  }
-
-  const midpointSeconds = Math.max(90, Math.round(currentExpected * 0.45)) + remainingAfterCurrent;
-  return {
-    midpointSeconds,
-    lowSeconds: Math.max(60, Math.round(midpointSeconds * 0.8)),
-    highSeconds: Math.round(midpointSeconds * 1.8),
-    confidence: "low" as const,
-  };
 }
