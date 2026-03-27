@@ -653,23 +653,42 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", MODEL, reviseResponse.requests);
       rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
 
-      const reviseRecovery = await recoverMissingArtifacts({
-        client,
-        systemPrompt,
-        baseResponse: reviseResponse,
-        phaseLabel: "revise",
-        requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
-        tools: CLAUDE_TOOLS,
-        containerFallback: containerId
-          ? { id: containerId }
-          : {
-              skills: [
-                { type: "anthropic", skill_id: "pptx", version: "latest" },
-                { type: "anthropic", skill_id: "pdf", version: "latest" },
-              ],
-            },
-      });
-      if ((reviseRecovery.usage.input_tokens ?? 0) > 0 || (reviseRecovery.usage.output_tokens ?? 0) > 0) {
+      let reviseRecovery: Awaited<ReturnType<typeof recoverMissingArtifacts>> | null = null;
+      try {
+        reviseRecovery = await recoverMissingArtifacts({
+          client,
+          systemPrompt,
+          baseResponse: reviseResponse,
+          phaseLabel: "revise",
+          requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
+          tools: CLAUDE_TOOLS,
+          containerFallback: containerId
+            ? { id: containerId }
+            : {
+                skills: [
+                  { type: "anthropic", skill_id: "pptx", version: "latest" },
+                  { type: "anthropic", skill_id: "pdf", version: "latest" },
+                ],
+              },
+        });
+      } catch (reviseRecoveryError) {
+        // If revise artifact recovery itself fails, salvage pre-revise artifacts
+        const recoveryMsg = reviseRecoveryError instanceof Error ? reviseRecoveryError.message : String(reviseRecoveryError);
+        console.warn(`[generateDeckRun] revise artifact recovery failed, salvaging pre-revise artifacts: ${recoveryMsg.slice(0, 300)}`);
+        phaseTelemetry.reviseSalvage = {
+          reason: "revise_artifact_recovery_failure",
+          errorMessage: recoveryMsg.slice(0, 500),
+          fallbackSource: "author_phase_artifacts",
+        };
+        await completePhase(config, runId, attempt, "revise", {
+          issueCount: critiqueIssues.length,
+          estimatedCostUsd: spentUsd,
+          salvaged: true,
+          salvageReason: "revise_artifact_recovery_failure",
+        }, reviseResponse.usage);
+        // finalPptx, finalPdf, finalManifest remain from author phase
+      }
+      if (reviseRecovery && ((reviseRecovery.usage.input_tokens ?? 0) > 0 || (reviseRecovery.usage.output_tokens ?? 0) > 0)) {
         spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseRecovery.usage));
         assertDeckSpendWithinBudget(spentUsd);
         continuationCount += reviseRecovery.pauseTurns;
@@ -683,49 +702,73 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         rememberRequestIds(anthropicRequestIds, reviseRecovery.requests);
       }
       const revisePhaseUsage = {
-        input_tokens: (reviseResponse.usage.input_tokens ?? 0) + (reviseRecovery.usage.input_tokens ?? 0),
-        output_tokens: (reviseResponse.usage.output_tokens ?? 0) + (reviseRecovery.usage.output_tokens ?? 0),
+        input_tokens: (reviseResponse.usage.input_tokens ?? 0) + (reviseRecovery?.usage.input_tokens ?? 0),
+        output_tokens: (reviseResponse.usage.output_tokens ?? 0) + (reviseRecovery?.usage.output_tokens ?? 0),
       };
-      reviseResponse = reviseRecovery.response;
-      latestResponse = reviseResponse;
-      latestContainerId = reviseResponse.containerId ?? latestContainerId;
-      const reviseFiles = reviseRecovery.files;
-      finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
-      finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
-      finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
-      const revisedVisualQa = await runRenderedPageQa({
-        client,
-        pdf: finalPdf.buffer,
-        manifest: finalManifest,
-        betas: [FILES_BETA],
-        model: VISUAL_QA_MODEL,
-      });
-      spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-      assertDeckSpendWithinBudget(spentUsd);
-      phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
-      await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, [{
-        requestId: revisedVisualQa.requestId,
-        startedAt: revisedVisualQa.startedAt,
-        completedAt: revisedVisualQa.completedAt,
-        usage: {
-          input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
-          output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
-        },
-        stopReason: "end_turn",
-      }]);
-      rememberRequestIds(anthropicRequestIds, [{
-        requestId: revisedVisualQa.requestId,
-        startedAt: revisedVisualQa.startedAt,
-        completedAt: revisedVisualQa.completedAt,
-        usage: {
-          input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
-          output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
-        },
-        stopReason: "end_turn",
-      }]);
-      finalVisualQa = revisedVisualQa.report;
-      await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
-      await persistDeckSpec(config, runId, finalManifest);
+
+      if (reviseRecovery) {
+        reviseResponse = reviseRecovery.response;
+        latestResponse = reviseResponse;
+        latestContainerId = reviseResponse.containerId ?? latestContainerId;
+      }
+      const reviseFiles = reviseRecovery?.files ?? [];
+
+      // Layer 3: structured-output repair — if revise manifest/artifacts are malformed,
+      // fall back to the pre-revise (author-phase) artifacts instead of killing the run.
+      // The author output already passed critique, so it is a valid deliverable.
+      let reviseSalvaged = false;
+      try {
+        finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
+        finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
+        finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
+      } catch (reviseParseError) {
+        const parseMsg = reviseParseError instanceof Error ? reviseParseError.message : String(reviseParseError);
+        console.warn(`[generateDeckRun] revise output malformed, salvaging pre-revise artifacts: ${parseMsg.slice(0, 300)}`);
+        phaseTelemetry.reviseSalvage = {
+          reason: "revise_parse_failure",
+          errorMessage: parseMsg.slice(0, 500),
+          fallbackSource: "author_phase_artifacts",
+        };
+        // Keep finalPptx, finalPdf, finalManifest from the author phase — they are still valid
+        reviseSalvaged = true;
+      }
+
+      if (!reviseSalvaged) {
+        const revisedVisualQa = await runRenderedPageQa({
+          client,
+          pdf: finalPdf.buffer,
+          manifest: finalManifest,
+          betas: [FILES_BETA],
+          model: VISUAL_QA_MODEL,
+        });
+        spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
+        assertDeckSpendWithinBudget(spentUsd);
+        phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
+        await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, [{
+          requestId: revisedVisualQa.requestId,
+          startedAt: revisedVisualQa.startedAt,
+          completedAt: revisedVisualQa.completedAt,
+          usage: {
+            input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
+            output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
+          },
+          stopReason: "end_turn",
+        }]);
+        rememberRequestIds(anthropicRequestIds, [{
+          requestId: revisedVisualQa.requestId,
+          startedAt: revisedVisualQa.startedAt,
+          completedAt: revisedVisualQa.completedAt,
+          usage: {
+            input_tokens: revisedVisualQa.usage?.input_tokens ?? 0,
+            output_tokens: revisedVisualQa.usage?.output_tokens ?? 0,
+          },
+          stopReason: "end_turn",
+        }]);
+        finalVisualQa = revisedVisualQa.report;
+        await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
+        await persistDeckSpec(config, runId, finalManifest);
+      }
+
       await completePhase(
         config,
         runId,
@@ -735,6 +778,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           issueCount: critiqueIssues.length,
           estimatedCostUsd: spentUsd,
           visualQa: finalVisualQa,
+          salvaged: reviseSalvaged,
         },
         revisePhaseUsage,
       );
