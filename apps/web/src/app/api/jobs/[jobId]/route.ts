@@ -124,7 +124,7 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
     expectedSeconds: 45,
     stepIndex: 3,
     label: "Reviewing and polishing",
-    activeDetail: "Reviewing the rendered pages for layout and chart issues.",
+    activeDetail: "Draft complete. Running visual review.",
     completedDetail: "Rendered pages reviewed.",
   },
   revise: {
@@ -138,7 +138,7 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
     expectedSeconds: 30,
     stepIndex: 4,
     label: "Exporting",
-    activeDetail: "Publishing the PPTX and PDF downloads.",
+    activeDetail: "Deck repaired. Final export checks in progress.",
     completedDetail: "Downloads published.",
   },
 };
@@ -455,6 +455,16 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     toolCallCount: toolCalls.length,
     runHealth: isStale ? "stale" : isTransientRecovery ? "recovering" : "healthy",
     templateMode: (run.cost_telemetry as Record<string, unknown>)?.templateMode ?? null,
+    // H3: Surface template fallback truth — if the successful attempt used template_fallback,
+    // the API must say so without requiring DB forensics.
+    templateFallbackUsed: attemptSummaries.some((a) => a.status === "completed" && (a as Record<string, unknown>).recoveryReason === "template_fallback")
+      || (run.cost_telemetry as Record<string, unknown>)?.templateMode === "template_fallback",
+    // A5: Surface checkpoint/salvage truth — operators can see whether a run
+    // completed normally, from checkpoint salvage, or after retry-from-checkpoint.
+    deliveryMode: run.status === "completed"
+      ? ((run.cost_telemetry as Record<string, unknown>)?.salvaged ? "salvaged" : "pristine")
+      : null,
+    salvageCheckpointPhase: (run.cost_telemetry as Record<string, unknown>)?.salvageCheckpointPhase ?? null,
   };
 }
 

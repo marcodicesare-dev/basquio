@@ -316,6 +316,7 @@ function resolveWorkerDeploymentId() {
 async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
   const staleBefore = new Date(Date.now() - STALE_RUN_MINUTES * 60_000).toISOString();
 
+  // D1: Recover stale running attempts (existing behavior)
   const staleAttempts = await fetchRestRows<QueuedRunRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
@@ -328,6 +329,84 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
       order: "created_at.asc",
     },
   }).catch(() => []);
+
+  // D1: Also recover stale queued attempts (new — stranded queued work)
+  const staleQueuedBefore = new Date(Date.now() - STALE_RUN_MINUTES * 2 * 60_000).toISOString();
+  const staleQueuedAttempts = await fetchRestRows<QueuedRunRow>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      select: "id,run_id,attempt_number",
+      status: "eq.queued",
+      superseded_by_attempt_id: "is.null",
+      updated_at: `lt.${staleQueuedBefore}`,
+      order: "created_at.asc",
+    },
+  }).catch(() => []);
+
+  // For stale queued attempts, verify the parent run still references them.
+  // If so, re-stamp updated_at so the main poll loop picks them up.
+  // If the parent run has moved on, mark them as failed.
+  for (const attempt of staleQueuedAttempts) {
+    const parentRun = await fetchRestRows<{
+      id: string;
+      active_attempt_id: string | null;
+      latest_attempt_id: string | null;
+      status: string;
+    }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "id,active_attempt_id,latest_attempt_id,status",
+        id: `eq.${attempt.run_id}`,
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    const runRow = parentRun[0];
+    const stillReferenced = runRow && (runRow.active_attempt_id === attempt.id || runRow.latest_attempt_id === attempt.id);
+    const now = new Date().toISOString();
+
+    if (stillReferenced && (runRow.status === "queued" || runRow.status === "running")) {
+      // Re-stamp so poll loop picks it up
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_run_attempts",
+        query: { id: `eq.${attempt.id}`, status: "eq.queued" },
+        payload: { updated_at: now },
+      }).catch(() => []);
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: { id: `eq.${attempt.run_id}` },
+        payload: { status: "queued", updated_at: now },
+      }).catch(() => []);
+      console.log(`[basquio-worker] re-stamped stale queued attempt ${attempt.id} for run ${attempt.run_id}`);
+    } else {
+      // Orphaned or parent moved on — mark as failed
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_run_attempts",
+        query: { id: `eq.${attempt.id}`, status: "eq.queued" },
+        payload: {
+          status: "failed",
+          failure_phase: "queue_integrity",
+          failure_message: "Stale queued attempt no longer referenced by parent run.",
+          updated_at: now,
+        },
+      }).catch(() => []);
+      console.log(`[basquio-worker] marked orphaned stale queued attempt ${attempt.id} as failed`);
+    }
+  }
+
+  if (staleQueuedAttempts.length > 0) {
+    console.log(`[basquio-worker] processed ${staleQueuedAttempts.length} stale queued attempts`);
+  }
 
   const now = new Date().toISOString();
   for (const attempt of staleAttempts) {

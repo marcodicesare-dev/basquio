@@ -81,7 +81,7 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
   critique: {
     expectedSeconds: 45,
     label: "Reviewing and exporting",
-    activeDetail: "Reviewing the rendered pages for layout and chart issues.",
+    activeDetail: "Draft complete. Running visual review.",
   },
   revise: {
     expectedSeconds: 480,
@@ -91,7 +91,7 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
   export: {
     expectedSeconds: 30,
     label: "Reviewing and exporting",
-    activeDetail: "Publishing the PPTX and PDF downloads.",
+    activeDetail: "Deck repaired. Final export checks in progress.",
   },
 };
 const STALE_RUN_UI_SECONDS = Number.parseInt(process.env.BASQUIO_RUN_STALE_UI_SECONDS ?? "180", 10);

@@ -12,8 +12,11 @@ export type FailureClass =
   | "transient_provider"
   | "transient_network"
   | "structured_output_invalid"
+  | "analysis_json_invalid"
+  | "manifest_json_invalid"
+  | "rendered_page_qa_invalid"
+  | "artifact_repair_invalid"
   | "missing_required_artifact"
-  | "qa_schema_invalid"
   | "export_build_failure"
   | "worker_interruption"
   | "unsupported_input"
@@ -34,6 +37,10 @@ export type FailureClassification = {
 export function classifyRuntimeError(error: unknown): FailureClass {
   if (isTransientProviderError(error)) return "transient_provider";
   if (isTransientNetworkError(error)) return "transient_network";
+  if (isAnalysisJsonError(error)) return "analysis_json_invalid";
+  if (isManifestJsonError(error)) return "manifest_json_invalid";
+  if (isRenderedPageQaError(error)) return "rendered_page_qa_invalid";
+  if (isArtifactRepairError(error)) return "artifact_repair_invalid";
   if (isStructuredOutputError(error)) return "structured_output_invalid";
   if (isMissingArtifactError(error)) return "missing_required_artifact";
   if (isBudgetError(error)) return "budget_exceeded";
@@ -74,6 +81,37 @@ export function classifyFailureMessage(message: string, isStale = false): Failur
       headline: "Input files could not be processed",
       explanation: "Basquio could not read usable data from the uploaded files.",
       retryAdvice: "Make sure you include at least one CSV or XLSX workbook with numeric data. Remove corrupted or password-protected files.",
+    };
+  }
+
+  // F2: Split structured-output failures into specific sub-types
+  if (matchesAnalysisJsonFailure(msg)) {
+    return {
+      class: "analysis_json_invalid",
+      retryable: true,
+      headline: "Analysis output was malformed",
+      explanation: "The model returned invalid analysis JSON during the planning phase.",
+      retryAdvice: "Retry with the same files. If it keeps happening, try simplifying the brief.",
+    };
+  }
+
+  if (matchesManifestJsonFailure(msg)) {
+    return {
+      class: "manifest_json_invalid",
+      retryable: true,
+      headline: "Deck manifest was malformed",
+      explanation: "The model returned an invalid deck manifest during generation.",
+      retryAdvice: "Retry with the same files. If it keeps happening, try simplifying the brief.",
+    };
+  }
+
+  if (matchesRenderedPageQaFailure(msg)) {
+    return {
+      class: "rendered_page_qa_invalid",
+      retryable: true,
+      headline: "Visual review failed",
+      explanation: "The visual quality review returned an unreadable response.",
+      retryAdvice: "Retry with the same files. The deck was likely generated but could not be reviewed.",
     };
   }
 
@@ -150,7 +188,31 @@ export function isTransientProviderError(error: unknown): boolean {
   return false;
 }
 
-// ─── Internal matchers ──────────────────────────────────────
+// ─── Internal runtime error matchers ────────────────────────
+
+function isAnalysisJsonError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes("structured analysis") || (msg.includes("analysis json") && (msg.includes("parse") || msg.includes("invalid")));
+}
+
+function isManifestJsonError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes("deck_manifest") && (msg.includes("malformed") || msg.includes("parse"));
+}
+
+function isRenderedPageQaError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes("rendered-page qa") && (msg.includes("invalid json") || msg.includes("repair retry"));
+}
+
+function isArtifactRepairError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes("artifact qa failed") || (msg.includes("artifact") && msg.includes("repair") && msg.includes("failed"));
+}
 
 function isTransientNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -197,9 +259,22 @@ function matchesUnsupportedInput(msg: string): boolean {
     (msg.includes("parse") && msg.includes("evidence"));
 }
 
+function matchesAnalysisJsonFailure(msg: string): boolean {
+  return msg.includes("structured analysis") ||
+    (msg.includes("analysis json") && (msg.includes("parse") || msg.includes("invalid")));
+}
+
+function matchesManifestJsonFailure(msg: string): boolean {
+  return msg.includes("deck_manifest") && (msg.includes("malformed") || msg.includes("parseable") || msg.includes("parse"));
+}
+
+function matchesRenderedPageQaFailure(msg: string): boolean {
+  return msg.includes("rendered-page qa") && (msg.includes("invalid json") || msg.includes("repair retry"));
+}
+
 function matchesStructuredOutput(msg: string): boolean {
   return (msg.includes("json") && (msg.includes("parse") || msg.includes("position") || msg.includes("unexpected"))) ||
-    msg.includes("structured analysis") || msg.includes("parseable");
+    msg.includes("parseable");
 }
 
 function matchesMissingArtifact(msg: string): boolean {
