@@ -248,6 +248,34 @@ async function queueGeneration(
       // Workspace default resolution is best-effort
     }
   }
+
+  // Template fidelity: when a saved workspace template is selected, include the
+  // original imported PPTX source_file on the run. The worker can then upload
+  // the real template binary into the authoring container instead of relying
+  // only on the reduced TemplateProfile tokens.
+  if (templateProfileId) {
+    try {
+      const templateResponse = await fetch(
+        `${supabaseUrl}/rest/v1/template_profiles?id=eq.${templateProfileId}&select=source_file_id,status&limit=1`,
+        {
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+          },
+        },
+      );
+      if (templateResponse.ok) {
+        const templateRows = await templateResponse.json();
+        const templateSourceFileId = templateRows[0]?.source_file_id as string | undefined;
+        if (templateSourceFileId && !sourceFileIds.includes(templateSourceFileId)) {
+          sourceFileIds.push(templateSourceFileId);
+        }
+      }
+    } catch {
+      // Best-effort only. Runs can still proceed with the parsed template profile.
+    }
+  }
+
   // Resolve account-level notification preference (default: true)
   let notifyOnComplete = true;
   try {

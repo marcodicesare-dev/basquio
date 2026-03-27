@@ -279,9 +279,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const isTemplateFallback = attempt.recoveryReason === "template_fallback";
     const persistedTemplate = isTemplateFallback ? null : await loadTemplateProfileRow(config, run.template_profile_id);
     const templateSourceFileId = persistedTemplate?.source_file_id ?? null;
+    const persistedTemplateFile = !isTemplateFallback && templateSourceFileId
+      ? (sourceFiles.find((file) => file.id === templateSourceFileId) ??
+         await loadSourceFile(config, templateSourceFileId))
+      : undefined;
     const templateFile = isTemplateFallback
       ? undefined
-      : (sourceFiles.find((file) => file.id === templateSourceFileId) ??
+      : (persistedTemplateFile ??
          sourceFiles.find((file) => file.kind === "pptx" || file.kind === "brand-tokens"));
     const evidenceFiles = sourceFiles.filter((file) => file.id !== templateFile?.id);
     templateMode = isTemplateFallback
@@ -1397,6 +1401,14 @@ async function loadSourceFiles(
   );
 }
 
+async function loadSourceFile(
+  config: ReturnType<typeof resolveConfig>,
+  sourceFileId: string,
+) {
+  const files = await loadSourceFiles(config, [sourceFileId]);
+  return files[0];
+}
+
 async function loadTemplateProfileRow(
   config: ReturnType<typeof resolveConfig>,
   templateProfileId: string | null,
@@ -2190,6 +2202,13 @@ function buildAuthorMessage(
           "- Recalculate only the facts needed to render the promised slides and charts accurately.",
           "- Follow the approved slide plan unless a small factual adjustment is necessary for correctness.",
           "- Follow the loaded pptx skill for the deck artifact generation.",
+          ...(files?.uploadedTemplate
+            ? [
+                `- A client PPTX template is uploaded in the container as ${files.uploadedTemplate.filename}. Use that actual template file as the visual source of truth, not just the summarized template tokens.`,
+                "- Preserve the client's master background treatment and embedded logo/wordmark assets wherever the template already provides them.",
+                "- Do not replace a light client template with Basquio dark styling.",
+              ]
+            : []),
           "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
           "- Do not use native PowerPoint chart objects for critical visuals.",
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
@@ -2222,6 +2241,7 @@ function buildReviseMessage(issues: string[]) {
         text: [
           "Repair the generated deck and regenerate deck.pptx, deck.pdf, and deck_manifest.json.",
           "Reuse the existing container state and the prior authoring context. Do not start a new draft from scratch unless necessary to fix the issues.",
+          "If a client PPTX template is present in the container, continue using it as the visual source of truth. Do not drift back to Basquio dark/editorial styling during repair.",
           "Fix these issues:",
           ...issues.map((issue) => `- ${issue}`),
           "",
