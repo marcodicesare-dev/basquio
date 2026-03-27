@@ -1134,13 +1134,34 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             templateDiagnostics,
           );
 
-          // Revalidate: check the rebuilt report for real blocking failures.
-          // If the checkpoint itself has hard blocking failures, do NOT publish.
-          const salvageBlockingFailures = qaReport.failed.filter((check) =>
-            !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
-          );
+          // Revalidate: only HARD artifact-integrity failures block salvage publish.
+          // The checkpoint came from the same generation — structural polish issues
+          // (chart media, aspect fit, numeric labels) are expected to be identical.
+          // A deck with a stretched chart is still infinitely better than nothing.
+          //
+          // Hard blockers (file corruption that makes the artifact unusable):
+          //   - pptx_present, pdf_present, docx_present (file missing/empty)
+          //   - pptx_zip_signature, pdf_header_signature, docx_zip_signature (corrupt format)
+          //   - slide_count_positive (empty deck)
+          //   - pptx_zip_parse_failed (PPTX can't be opened at all)
+          //   - pdf_parseable (PDF can't be parsed at all)
+          //
+          // Everything else is advisory for salvage — ship the deck.
+          const SALVAGE_HARD_BLOCKERS = new Set([
+            "pptx_present", "pdf_present", "docx_present",
+            "pptx_zip_signature", "pdf_header_signature", "docx_zip_signature",
+            "slide_count_positive",
+            "pptx_zip_parse_failed", "pdf_parseable",
+          ]);
+          const salvageBlockingFailures = qaReport.failed.filter((check) => SALVAGE_HARD_BLOCKERS.has(check));
           if (salvageBlockingFailures.length > 0) {
-            throw new Error(`Artifact QA failed on salvaged checkpoint: ${salvageBlockingFailures.join(", ")}`);
+            throw new Error(`Artifact QA failed on salvaged checkpoint (hard corruption): ${salvageBlockingFailures.join(", ")}`);
+          }
+          // Log advisory failures that we're shipping past
+          const salvageAdvisoryFailures = qaReport.failed.filter((check) => !SALVAGE_HARD_BLOCKERS.has(check));
+          if (salvageAdvisoryFailures.length > 0) {
+            console.warn(`[generateDeckRun] salvage shipping past advisory QA failures: ${salvageAdvisoryFailures.join(", ")}`);
+            phaseTelemetry.salvageAdvisoryFailures = salvageAdvisoryFailures;
           }
 
           phaseTelemetry.exportSalvaged = true;

@@ -282,7 +282,9 @@ function matchesMissingArtifact(msg: string): boolean {
 }
 
 function matchesExportFailure(msg: string): boolean {
-  return msg.includes("artifact qa failed") || msg.includes("deck.pptx") || msg.includes("deck.pdf") || msg.includes("deck_manifest");
+  // Only match actual export/QA failures, not missing-artifact patterns which have their own class
+  return msg.includes("artifact qa failed") ||
+    (msg.includes("export") && (msg.includes("failed") || msg.includes("error")));
 }
 
 function matchesBudget(msg: string): boolean {
