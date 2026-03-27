@@ -106,20 +106,22 @@ type GenerationFormProps = {
 export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, recipePrefill }: GenerationFormProps) {
   const router = useRouter();
   const evidenceInputRef = useRef<HTMLInputElement>(null);
-  const brandInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
-  const [isDraggingBrand, setIsDraggingBrand] = useState(false);
   const [prefillSourceFiles] = useState(recipePrefill?.sourceFiles ?? []);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
-  const [brandFile, setBrandFile] = useState<File | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
-    recipePrefill?.templateProfileId ?? defaultTemplateId ?? null,
-  );
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(() => {
+    const prefillId = recipePrefill?.templateProfileId ?? defaultTemplateId ?? null;
+    // Only use a prefilled template ID if it actually exists in the ready template list
+    if (prefillId && savedTemplates.some((t) => t.id === prefillId)) {
+      return prefillId;
+    }
+    return null;
+  });
   const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
   const defaultTemplateName = savedTemplates.find((t) => t.id === defaultTemplateId)?.name;
-  const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
+  const templateLabel = selectedTemplate ? selectedTemplate.name : "Basquio Standard";
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
   const [targetSlideCount, setTargetSlideCount] = useState(recipePrefill?.targetSlideCount ?? 10);
   const creditsNeeded = 3 + targetSlideCount; // 3 base + 1 per slide
@@ -308,28 +310,12 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
     evidenceInputRef.current?.click();
   }
 
-  function openBrandPicker() {
-    brandInputRef.current?.click();
-  }
-
   function updateEvidenceFiles(files: File[]) {
     setEvidenceFiles((current) => {
       const merged = mergeFiles(current, files);
       syncInputFiles(evidenceInputRef.current, merged);
       return merged;
     });
-    setError(null);
-  }
-
-  function updateBrandFile(file: File | null) {
-    setBrandFile(file);
-    if (file) {
-      setSelectedTemplateId(null);
-    }
-    syncInputFiles(brandInputRef.current, file ? [file] : []);
-    if (!file && brandInputRef.current) {
-      brandInputRef.current.value = "";
-    }
     setError(null);
   }
 
@@ -344,22 +330,11 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
 
   function handleTemplateSelection(templateId: string | null) {
     setSelectedTemplateId(templateId);
-    if (brandFile) {
-      setBrandFile(null);
-      syncInputFiles(brandInputRef.current, []);
-      if (brandInputRef.current) {
-        brandInputRef.current.value = "";
-      }
-    }
     setError(null);
   }
 
   function handleEvidenceInputChange(event: React.ChangeEvent<HTMLInputElement>) {
     updateEvidenceFiles(Array.from(event.target.files ?? []));
-  }
-
-  function handleBrandInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    updateBrandFile(event.target.files?.[0] ?? null);
   }
 
   function updateBriefField(field: keyof BriefFields, value: string) {
@@ -370,21 +345,10 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
     setError(null);
   }
 
-  function handleDrop(
-    event: React.DragEvent<HTMLElement>,
-    kind: "evidence" | "brand",
-  ) {
+  function handleDrop(event: React.DragEvent<HTMLElement>) {
     event.preventDefault();
-    const files = Array.from(event.dataTransfer.files ?? []);
-
-    if (kind === "evidence") {
-      setIsDraggingEvidence(false);
-      updateEvidenceFiles(files);
-      return;
-    }
-
-    setIsDraggingBrand(false);
-    updateBrandFile(files[0] ?? null);
+    setIsDraggingEvidence(false);
+    updateEvidenceFiles(Array.from(event.dataTransfer.files ?? []));
   }
 
   return (
@@ -454,7 +418,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                   onDragEnter={() => setIsDraggingEvidence(true)}
                   onDragLeave={() => setIsDraggingEvidence(false)}
                   onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => handleDrop(event, "evidence")}
+                  onDrop={handleDrop}
                 >
                   <span className="dropzone-icon" aria-hidden>
                     +

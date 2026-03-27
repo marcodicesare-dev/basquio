@@ -38,13 +38,13 @@ export async function POST(
     Authorization: `Bearer ${serviceKey}`,
   };
 
-  // Verify ownership
-  const templates = await fetchRestRows<{ id: string }>({
+  // Verify ownership and get source_file_id for cleanup
+  const templates = await fetchRestRows<{ id: string; source_file_id: string | null }>({
     supabaseUrl,
     serviceKey,
     table: "template_profiles",
     query: {
-      select: "id",
+      select: "id,source_file_id",
       id: `eq.${id}`,
       organization_id: `eq.${orgId}`,
       limit: "1",
@@ -53,6 +53,8 @@ export async function POST(
   if (!templates[0]) {
     return NextResponse.json({ error: "Template not found." }, { status: 404 });
   }
+
+  const sourceFileId = templates[0].source_file_id;
 
   // If this template is the current default, clear the default first
   const settings = await fetchRestRows<{ default_template_profile_id: string | null }>({
@@ -78,11 +80,46 @@ export async function POST(
     });
   }
 
+  // Delete import job rows for this template (best-effort)
+  await fetch(`${supabaseUrl}/rest/v1/template_import_jobs?template_profile_id=eq.${id}`, {
+    method: "DELETE",
+    headers,
+  }).catch(() => {});
+
   // Delete the template profile
   await fetch(`${supabaseUrl}/rest/v1/template_profiles?id=eq.${id}`, {
     method: "DELETE",
     headers,
   });
+
+  // Clean up source file and storage object (best-effort)
+  if (sourceFileId) {
+    const sourceFiles = await fetchRestRows<{ storage_bucket: string; storage_path: string }>({
+      supabaseUrl,
+      serviceKey,
+      table: "source_files",
+      query: {
+        select: "storage_bucket,storage_path",
+        id: `eq.${sourceFileId}`,
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    const sf = sourceFiles[0];
+    if (sf) {
+      // Delete storage object
+      await fetch(`${supabaseUrl}/storage/v1/object/${sf.storage_bucket}/${sf.storage_path}`, {
+        method: "DELETE",
+        headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      }).catch(() => {});
+    }
+
+    // Delete source file row
+    await fetch(`${supabaseUrl}/rest/v1/source_files?id=eq.${sourceFileId}`, {
+      method: "DELETE",
+      headers,
+    }).catch(() => {});
+  }
 
   return NextResponse.json({ ok: true });
 }
