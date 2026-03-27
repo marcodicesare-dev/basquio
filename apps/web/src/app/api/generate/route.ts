@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
-import { interpretTemplateSource } from "@basquio/template-engine";
 import type { GenerationRequest } from "@basquio/types";
 
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
@@ -16,6 +15,12 @@ import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+class TemplateNotImportedError extends Error {
+  constructor() {
+    super("Import your template from the Templates page first, then select it here. Use Basquio Standard for this run in the meantime.");
+  }
+}
 
 type QueuedGenerationRequest = GenerationRequest & {
   templateProfileId?: string | null;
@@ -91,6 +96,9 @@ export async function POST(request: Request) {
       ...(await queueGeneration(generationRequest, viewer.user, workspace, runId)),
     }, { status: 202 });
   } catch (error) {
+    if (error instanceof TemplateNotImportedError) {
+      return NextResponse.json({ error: error.message, code: "TEMPLATE_NOT_IMPORTED" }, { status: 400 });
+    }
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -179,65 +187,65 @@ async function queueGeneration(
     throw new Error(`Failed to create source_files records: ${errorText}`);
   }
 
-  // Use saved template if provided, otherwise interpret uploaded style file
+  // Resolve template: saved profile ID, workspace default, or Basquio Standard
   let templateProfileId = await resolveOwnedTemplateProfileId({
     supabaseUrl,
     serviceKey,
     organizationId: workspace.organizationRowId,
     templateProfileId: ((generationRequest as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
   });
-  let createdTemplateProfileId: string | null = null;
-  if (!templateProfileId && generationRequest.styleFile) {
-    try {
-      const sf = generationRequest.styleFile;
-      const tpId = randomUUID();
+  const createdTemplateProfileId: string | null = null;
 
-      // Get file content: either from base64 or download from Storage
-      let base64 = sf.base64;
-      if (!base64 && sf.storagePath && sf.storageBucket) {
-        const dlResponse = await fetch(
-          `${supabaseUrl}/storage/v1/object/${sf.storageBucket}/${sf.storagePath}`,
-          { headers: { Authorization: `Bearer ${serviceKey}` } },
-        );
-        if (dlResponse.ok) {
-          const buf = Buffer.from(await dlResponse.arrayBuffer());
-          base64 = buf.toString("base64");
+  // Verify the resolved template is actually ready (not processing or failed)
+  if (templateProfileId) {
+    try {
+      const tpCheck = await fetch(
+        `${supabaseUrl}/rest/v1/template_profiles?id=eq.${templateProfileId}&select=status&limit=1`,
+        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+      );
+      if (tpCheck.ok) {
+        const rows = await tpCheck.json();
+        const status = rows[0]?.status;
+        if (status && status !== "ready") {
+          // Template is not ready — fall through to workspace default or Basquio Standard
+          templateProfileId = null;
         }
       }
+    } catch {
+      // Check failed — proceed with the template anyway
+    }
+  }
 
-      if (base64) {
-        const profile = await interpretTemplateSource({
-          id: tpId,
-          sourceFile: {
-            fileName: sf.fileName,
-            base64,
-            mediaType: sf.mediaType ?? "application/octet-stream",
-          },
-          fileName: sf.fileName,
-        });
+  // Reject inline style file interpretation — templates must be imported first
+  if (!templateProfileId && generationRequest.styleFile) {
+    throw new TemplateNotImportedError();
+  }
 
-        await fetch(`${supabaseUrl}/rest/v1/template_profiles`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify({
-            id: tpId,
-            organization_id: workspace.organizationRowId,
-            source_file_id: styleSourceFileId,
-            source_type: profile.sourceType ?? "pptx",
-            template_profile: profile,
-          }),
-        });
-
-        templateProfileId = tpId;
-        createdTemplateProfileId = tpId;
+  // If no explicit template, try workspace default
+  if (!templateProfileId) {
+    try {
+      const defaultSettings = await fetch(
+        `${supabaseUrl}/rest/v1/organization_template_settings?organization_id=eq.${workspace.organizationRowId}&select=default_template_profile_id&limit=1`,
+        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+      );
+      if (defaultSettings.ok) {
+        const rows = await defaultSettings.json();
+        if (rows[0]?.default_template_profile_id) {
+          // Verify the default template is ready
+          const tpCheck = await fetch(
+            `${supabaseUrl}/rest/v1/template_profiles?id=eq.${rows[0].default_template_profile_id}&status=eq.ready&select=id&limit=1`,
+            { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+          );
+          if (tpCheck.ok) {
+            const tpRows = await tpCheck.json();
+            if (tpRows[0]) {
+              templateProfileId = tpRows[0].id;
+            }
+          }
+        }
       }
     } catch {
-      // Template interpretation is best-effort — proceed without it
+      // Workspace default resolution is best-effort
     }
   }
   // Resolve account-level notification preference (default: true)

@@ -99,10 +99,11 @@ type RecipePrefill = {
 
 type GenerationFormProps = {
   savedTemplates?: SavedTemplateOption[];
+  defaultTemplateId?: string | null;
   recipePrefill?: RecipePrefill;
 };
 
-export function GenerationForm({ savedTemplates = [], recipePrefill }: GenerationFormProps) {
+export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, recipePrefill }: GenerationFormProps) {
   const router = useRouter();
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const brandInputRef = useRef<HTMLInputElement>(null);
@@ -113,8 +114,11 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
   const [prefillSourceFiles] = useState(recipePrefill?.sourceFiles ?? []);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [brandFile, setBrandFile] = useState<File | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(recipePrefill?.templateProfileId ?? null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    recipePrefill?.templateProfileId ?? defaultTemplateId ?? null,
+  );
   const selectedTemplate = savedTemplates.find((t) => t.id === selectedTemplateId) ?? null;
+  const defaultTemplateName = savedTemplates.find((t) => t.id === defaultTemplateId)?.name;
   const templateLabel = selectedTemplate ? selectedTemplate.name : brandFile ? brandFile.name : "Basquio Standard";
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
   const [targetSlideCount, setTargetSlideCount] = useState(recipePrefill?.targetSlideCount ?? 10);
@@ -197,14 +201,6 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
             mediaType: file.type || "application/octet-stream",
             sizeBytes: file.size,
           })),
-          brandFile:
-            brandFile instanceof File && brandFile.size > 0
-              ? {
-                  fileName: brandFile.name,
-                  mediaType: brandFile.type || "application/octet-stream",
-                  sizeBytes: brandFile.size,
-                }
-              : undefined,
         }),
       });
 
@@ -216,10 +212,6 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
 
       await uploadPreparedFiles(evidenceFiles, preparePayload.evidenceUploads);
 
-      if (brandFile instanceof File && brandFile.size > 0 && preparePayload.brandUpload) {
-        await uploadPreparedFile(brandFile, preparePayload.brandUpload);
-      }
-
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
@@ -230,7 +222,6 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
           organizationId: preparePayload.organizationId,
           projectId: preparePayload.projectId,
           sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
-          styleFile: preparePayload.brandUpload ? stripUploadTransportFields(preparePayload.brandUpload) : undefined,
           templateProfileId: selectedTemplateId ?? undefined,
           targetSlideCount,
           recipeId: recipePrefill?.recipeId ?? undefined,
@@ -538,74 +529,52 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
               </div>
 
               <div className="stack">
-                <button
-                  className={isDraggingBrand ? "dropzone dropzone-active" : "dropzone dropzone-secondary"}
-                  type="button"
-                  onClick={openBrandPicker}
-                  onDragEnter={() => setIsDraggingBrand(true)}
-                  onDragLeave={() => setIsDraggingBrand(false)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => handleDrop(event, "brand")}
-                >
-                  <span className="dropzone-icon" aria-hidden>
-                    +
-                  </span>
-                  <span className="dropzone-title">Add a template</span>
-                  <span className="dropzone-copy">Optional PPTX, JSON, CSS, or PDF reference</span>
-                </button>
-
-                <input
-                  ref={brandInputRef}
-                  className="sr-only-input"
-                  name="brandFile"
-                  type="file"
-                  accept=".json,.css,.pptx,.pdf"
-                  onChange={handleBrandInputChange}
-                />
-
-                {brandFile ? (
-                  <div className="file-chip">
-                    <span>{brandFile.name}</span>
-                    <small>{formatFileSize(brandFile.size)}</small>
-                    <button type="button" className="file-chip-remove" onClick={() => updateBrandFile(null)}>
-                      Remove
-                    </button>
-                  </div>
-                ) : null}
-
-                {savedTemplates.length > 0 && !brandFile ? (
-                  <div className="stack-xs">
-                    <p className="muted">Or use a saved template:</p>
-                    <div className="template-picker">
+                <div className="stack-xs">
+                  <p className="section-label">Template</p>
+                  <div className="template-picker">
+                    {defaultTemplateId && defaultTemplateName ? (
                       <button
                         type="button"
-                        className={selectedTemplateId === null ? "template-option selected" : "template-option"}
-                        onClick={() => handleTemplateSelection(null)}
+                        className={selectedTemplateId === defaultTemplateId ? "template-option selected" : "template-option"}
+                        onClick={() => handleTemplateSelection(defaultTemplateId)}
                       >
-                        <span className="template-option-name">Basquio Standard</span>
-                        <span className="template-option-type">Default</span>
+                        <span className="template-option-name">{defaultTemplateName}</span>
+                        <span className="template-option-type">Workspace default</span>
                       </button>
-                      {savedTemplates.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          className={selectedTemplateId === t.id ? "template-option selected" : "template-option"}
-                          onClick={() => handleTemplateSelection(t.id)}
-                        >
-                          <span className="template-option-name">{t.name}</span>
-                          <span className="template-option-type">{t.sourceType}</span>
-                          {t.colors.length > 0 ? (
-                            <span className="template-option-colors">
-                              {t.colors.map((c) => (
-                                <span key={c} className="mini-swatch" style={{ backgroundColor: c }} />
-                              ))}
-                            </span>
-                          ) : null}
-                        </button>
-                      ))}
-                    </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={selectedTemplateId === null ? "template-option selected" : "template-option"}
+                      onClick={() => handleTemplateSelection(null)}
+                    >
+                      <span className="template-option-name">Basquio Standard</span>
+                      <span className="template-option-type">{defaultTemplateId ? "Built-in" : "Default"}</span>
+                    </button>
+                    {savedTemplates
+                      .filter((t) => t.id !== defaultTemplateId)
+                      .map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={selectedTemplateId === t.id ? "template-option selected" : "template-option"}
+                        onClick={() => handleTemplateSelection(t.id)}
+                      >
+                        <span className="template-option-name">{t.name}</span>
+                        <span className="template-option-type">{t.sourceType}</span>
+                        {t.colors.length > 0 ? (
+                          <span className="template-option-colors">
+                            {t.colors.map((c) => (
+                              <span key={c} className="mini-swatch" style={{ backgroundColor: c }} />
+                            ))}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
                   </div>
-                ) : null}
+                  <a href="/templates" className="muted" style={{ fontSize: "0.82rem", textDecoration: "underline" }}>
+                    Import a new template
+                  </a>
+                </div>
               </div>
             </div>
           </section>
@@ -737,9 +706,7 @@ export function GenerationForm({ savedTemplates = [], recipePrefill }: Generatio
               <article className="review-card stack">
                 <p className="artifact-kind">Design template</p>
                 <p>{templateLabel}</p>
-                {brandFile ? (
-                  <p className="muted">Your template will guide colors, fonts, and layout interpretation while the data still comes from CSV/XLSX/XLS evidence.</p>
-                ) : selectedTemplate ? (
+                {selectedTemplate ? (
                   <p className="muted">Saved template selected. Colors, fonts, and style cues will guide the locked slide grid.</p>
                 ) : (
                   <p className="muted">Clean editorial design with the default locked slide grid.</p>

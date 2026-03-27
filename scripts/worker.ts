@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { generateDeckRun } from "../packages/workflows/src/generate-deck";
+import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
 import { refundCredit } from "../apps/web/src/lib/credits";
@@ -113,6 +114,11 @@ async function main() {
           stopHeartbeat();
           activeAttempt = null;
         }
+      }
+
+      // Process queued template import jobs (lightweight, no heartbeat needed)
+      if (!shuttingDown) {
+        await processTemplateImportJobs(config);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -365,6 +371,80 @@ function startHeartbeat(config: ReturnType<typeof resolveConfig>, attempt: Queue
   timer.unref?.();
 
   return () => clearInterval(timer);
+}
+
+async function processTemplateImportJobs(config: ReturnType<typeof resolveConfig>) {
+  try {
+    // Recover stale running imports (stuck > 5 minutes)
+    const staleBefore = new Date(Date.now() - 5 * 60_000).toISOString();
+    const staleImports = await fetchRestRows<{ id: string; template_profile_id: string | null }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "template_import_jobs",
+      query: {
+        select: "id,template_profile_id",
+        status: "eq.running",
+        updated_at: `lt.${staleBefore}`,
+        limit: "5",
+      },
+    }).catch(() => []);
+
+    for (const stale of staleImports) {
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "template_import_jobs",
+        query: { id: `eq.${stale.id}`, status: "eq.running" },
+        payload: {
+          status: "queued",
+          updated_at: new Date().toISOString(),
+        },
+      }).catch(() => []);
+      console.log(`[basquio-worker] recovered stale template import ${stale.id}`);
+    }
+
+    // Process queued imports
+    const queued = await fetchRestRows<{ id: string }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "template_import_jobs",
+      query: {
+        select: "id",
+        status: "eq.queued",
+        order: "created_at.asc",
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    for (const job of queued) {
+      // Claim the job atomically
+      const claimed = await patchRestRows<{ id: string }>({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "template_import_jobs",
+        query: { id: `eq.${job.id}`, status: "eq.queued" },
+        select: "id",
+        payload: {
+          status: "running",
+          updated_at: new Date().toISOString(),
+        },
+      }).catch(() => []);
+
+      if (!claimed[0]) continue;
+
+      console.log(`[basquio-worker] processing template import ${job.id}`);
+      try {
+        await runTemplateImportJob(job.id, config);
+        console.log(`[basquio-worker] template import ${job.id} completed`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[basquio-worker] template import ${job.id} failed: ${message}`);
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[basquio-worker] template import poll error: ${message}`);
+  }
 }
 
 function sleep(ms: number) {

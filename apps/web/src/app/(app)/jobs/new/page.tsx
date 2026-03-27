@@ -36,6 +36,10 @@ type RecipePrefill = {
   }>;
 };
 
+type DefaultSettingsRow = {
+  default_template_profile_id: string | null;
+};
+
 async function getSavedTemplates(organizationId: string): Promise<SavedTemplateOption[]> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -44,15 +48,18 @@ async function getSavedTemplates(organizationId: string): Promise<SavedTemplateO
   try {
     const rows = await fetchRestRows<{
       id: string;
+      name: string | null;
       source_type: string;
+      status: string;
       template_profile: { templateName?: string; colors?: string[] };
     }>({
       supabaseUrl,
       serviceKey,
       table: "template_profiles",
       query: {
-        select: "id,source_type,template_profile",
+        select: "id,name,source_type,status,template_profile",
         organization_id: `eq.${organizationId}`,
+        status: "eq.ready",
         order: "created_at.desc",
         limit: "10",
       },
@@ -60,12 +67,49 @@ async function getSavedTemplates(organizationId: string): Promise<SavedTemplateO
 
     return rows.map((r) => ({
       id: r.id,
-      name: r.template_profile?.templateName || `Custom ${r.source_type}`,
+      name: r.name || r.template_profile?.templateName || `Custom ${r.source_type}`,
       sourceType: r.source_type,
       colors: r.template_profile?.colors?.slice(0, 4) ?? [],
     }));
   } catch {
     return [];
+  }
+}
+
+async function getDefaultTemplateId(organizationId: string): Promise<string | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return null;
+
+  try {
+    const rows = await fetchRestRows<DefaultSettingsRow>({
+      supabaseUrl,
+      serviceKey,
+      table: "organization_template_settings",
+      query: {
+        select: "default_template_profile_id",
+        organization_id: `eq.${organizationId}`,
+        limit: "1",
+      },
+    });
+    const candidateId = rows[0]?.default_template_profile_id;
+    if (!candidateId) return null;
+
+    // Verify the default template is actually ready
+    const readyCheck = await fetchRestRows<{ id: string }>({
+      supabaseUrl,
+      serviceKey,
+      table: "template_profiles",
+      query: {
+        select: "id",
+        id: `eq.${candidateId}`,
+        status: "eq.ready",
+        limit: "1",
+      },
+    });
+    return readyCheck[0]?.id ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -199,7 +243,9 @@ export default async function NewJobPage({
   const viewer = await getViewerState();
   const params = await searchParams;
   const orgId = (viewer.user as { user_metadata?: { organization_id?: string } } | undefined)?.user_metadata?.organization_id;
-  const savedTemplates = orgId ? await getSavedTemplates(orgId) : [];
+  const [savedTemplates, defaultTemplateId] = orgId
+    ? await Promise.all([getSavedTemplates(orgId), getDefaultTemplateId(orgId)])
+    : [[], null];
 
   // Load recipe prefill if ?recipe= is present
   const recipeId = typeof params.recipe === "string" ? params.recipe : undefined;
@@ -229,6 +275,7 @@ export default async function NewJobPage({
 
       <GenerationForm
         savedTemplates={savedTemplates}
+        defaultTemplateId={defaultTemplateId}
         recipePrefill={activePrefill}
       />
     </div>

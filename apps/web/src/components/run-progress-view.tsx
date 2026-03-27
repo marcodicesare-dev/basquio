@@ -46,6 +46,13 @@ type Step = {
   detail: string;
 };
 
+type FailureClassification = {
+  class: string;
+  headline: string;
+  explanation: string;
+  retryAdvice: string;
+};
+
 export type RunProgressSnapshot = {
   jobId: string;
   pipelineVersion?: "v2";
@@ -66,6 +73,7 @@ export type RunProgressSnapshot = {
   summary: Summary | null;
   templateDiagnostics?: TemplateDiagnostics;
   failureMessage?: string;
+  failureClassification?: FailureClassification;
   toolCallCount?: number;
   runHealth?: "healthy" | "stale";
   notifyOnComplete?: boolean;
@@ -421,22 +429,20 @@ export function RunProgressView(input: {
   if (snapshot.status === "failed") {
     const failedInputs = snapshot.summary?.inputs ?? [];
     const failedBrief = snapshot.summary?.brief;
-    const failureGuidance = snapshot.summary?.failureGuidance ?? [];
+    const fc = snapshot.failureClassification;
+    const headline = fc?.headline ?? "Something went wrong";
+    const explanation = fc?.explanation ?? "We hit an issue generating your deck.";
+    const retryAdvice = fc?.retryAdvice ?? "Try again — it won't cost extra.";
 
     return (
       <div style={styles.fullPage}>
         <div style={styles.center}>
           <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.5rem" }}>
-            Something went wrong
+            {headline}
           </h1>
           <p style={{ color: "#A09FA6", fontSize: "1.05rem", maxWidth: 480, marginBottom: "1.5rem" }}>
-            We hit an issue generating your deck. Try again — it won&apos;t cost extra.
+            {explanation}
           </p>
-          {snapshot.failureMessage && (
-            <p style={{ fontSize: "0.8rem", color: "#6B6A72", fontFamily: "monospace", maxWidth: 500, wordBreak: "break-word", marginBottom: "1.5rem" }}>
-              {snapshot.failureMessage}
-            </p>
-          )}
           <div style={{ width: "100%", maxWidth: 560, textAlign: "left", marginBottom: "1.5rem" }}>
             <p style={{ color: "#F2F0EB", fontWeight: 600, marginBottom: "0.4rem" }}>
               Failed during: {snapshot.currentStageLabel ?? snapshot.currentStage}
@@ -477,18 +483,14 @@ export function RunProgressView(input: {
                 </p>
               </div>
             ) : null}
-            {failureGuidance.length > 0 ? (
-              <div>
-                <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
-                  Retry guidance
-                </p>
-                <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "#D7D3CD" }}>
-                  {failureGuidance.map((hint) => (
-                    <li key={hint} style={{ marginBottom: "0.35rem" }}>{hint}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+            <div style={{ marginBottom: "1rem" }}>
+              <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
+                What to do
+              </p>
+              <p style={{ color: "#D7D3CD", fontSize: "0.92rem", margin: 0 }}>
+                {retryAdvice}
+              </p>
+            </div>
           </div>
           <Link href={`/jobs/new?from=${snapshot.jobId}`} style={styles.primaryButton}>Try again</Link>
         </div>

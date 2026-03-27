@@ -775,7 +775,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       templateDiagnostics,
     );
     const repairableQaFailures = qaReport.failed.filter((check) =>
-      ["pptx_chart_media_present", "pptx_large_image_aspect_fit"].includes(check),
+      ["pptx_chart_media_present", "pptx_large_image_aspect_fit", "pptx_structural_integrity"].includes(check),
     );
     const blockingQaFailures = qaReport.failed.filter((check) =>
       !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
@@ -1666,6 +1666,7 @@ function buildAuthorMessage(
           "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
           "- Do not use native PowerPoint chart objects for critical visuals.",
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
+          "- Before rendering any chart, check category label lengths: if average > 12 chars or count > 8, use horizontal bars or aggregate. Always call plt.tight_layout() before savefig().",
           "- If a chart is sparse, leader-dominated, or near-zero outside one segment, switch to a split or commentary-led slide instead of forcing a wide chart.",
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
@@ -2385,12 +2386,18 @@ async function validateArtifactChecks(
   try {
     const zip = await JSZip.loadAsync(pptxBuffer);
     const presentationXml = zip.file("ppt/presentation.xml");
+    const contentTypesXml = zip.file("[Content_Types].xml");
     const slideXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).length;
     const rasterMediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\/.+\.(png|jpe?g)$/i.test(name)).length;
     const nativeChartXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/i.test(name)).length;
     const aspectMismatchFindings = await collectLargePictureAspectMismatchFindings(zip, manifest);
+
+    // Structural integrity checks that cause PowerPoint repair dialog
+    const structuralFindings = await validatePptxStructuralIntegrity(zip);
+
     const extraChecks = [
       { name: "pptx_presentation_xml", passed: Boolean(presentationXml), detail: "ppt/presentation.xml exists" },
+      { name: "pptx_content_types_xml", passed: Boolean(contentTypesXml), detail: "[Content_Types].xml exists" },
       { name: "pptx_slide_xml_count_matches_manifest", passed: slideXmlCount === manifest.slideCount, detail: `manifest=${manifest.slideCount} xml=${slideXmlCount}` },
       {
         name: "pptx_chart_media_present",
@@ -2411,6 +2418,13 @@ async function validateArtifactChecks(
               .slice(0, 3)
               .map((finding) => `slide ${finding.slideNumber} ${finding.target} ${finding.frameRatio.toFixed(2)} vs ${finding.imageRatio.toFixed(2)}`)
               .join("; "),
+      },
+      {
+        name: "pptx_structural_integrity",
+        passed: structuralFindings.length === 0,
+        detail: structuralFindings.length === 0
+          ? "no structural integrity issues"
+          : structuralFindings.slice(0, 5).join("; "),
       },
     ];
     allChecks.push(...extraChecks);
@@ -2489,6 +2503,87 @@ async function validateArtifactChecks(
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };
+}
+
+/**
+ * Validate PPTX structural integrity to catch corruption that triggers
+ * the PowerPoint repair dialog. Checks:
+ * - [Content_Types].xml references match actual parts
+ * - Slide relationship files exist for each slide
+ * - No duplicate relationship IDs within a .rels file
+ * - All media referenced by slides exist in the zip
+ * - presentation.xml.rels exists and references all slides
+ */
+async function validatePptxStructuralIntegrity(zip: JSZip): Promise<string[]> {
+  const findings: string[] = [];
+
+  // 1. Check [Content_Types].xml exists and references are consistent
+  const contentTypesFile = zip.file("[Content_Types].xml");
+  if (!contentTypesFile) {
+    findings.push("Missing [Content_Types].xml");
+    return findings;
+  }
+  const contentTypesXml = await contentTypesFile.async("string");
+
+  // 2. Check presentation.xml.rels exists
+  const presRelsFile = zip.file("ppt/_rels/presentation.xml.rels");
+  if (!presRelsFile) {
+    findings.push("Missing ppt/_rels/presentation.xml.rels");
+    return findings;
+  }
+  const presRelsXml = await presRelsFile.async("string");
+
+  // 3. Verify all slides referenced in presentation.xml.rels exist
+  const slideRefs = [...presRelsXml.matchAll(/Target="(slides\/slide\d+\.xml)"/gi)];
+  for (const match of slideRefs) {
+    const slidePath = `ppt/${match[1]}`;
+    if (!zip.file(slidePath)) {
+      findings.push(`presentation.xml.rels references ${match[1]} but file is missing`);
+    }
+  }
+
+  // 4. Check each slide has a matching .rels file and no duplicate rIds
+  const slideFiles = Object.keys(zip.files).filter((name) =>
+    /^ppt\/slides\/slide\d+\.xml$/i.test(name),
+  );
+  for (const slidePath of slideFiles) {
+    const relsPath = slidePath.replace("slides/", "slides/_rels/") + ".rels";
+    const relsFile = zip.file(relsPath);
+    if (!relsFile) {
+      findings.push(`Missing relationship file for ${slidePath.replace("ppt/", "")}`);
+      continue;
+    }
+
+    const relsXml = await relsFile.async("string");
+    const relIds = [...relsXml.matchAll(/Id="([^"]+)"/gi)].map((m) => m[1]);
+    const uniqueIds = new Set(relIds);
+    if (uniqueIds.size < relIds.length) {
+      findings.push(`Duplicate relationship IDs in ${relsPath.replace("ppt/", "")}`);
+    }
+
+    // Verify referenced media files exist
+    const mediaRefs = [...relsXml.matchAll(/Target="([^"]*media\/[^"]+)"/gi)];
+    for (const mediaMatch of mediaRefs) {
+      const mediaTarget = mediaMatch[1].startsWith("../")
+        ? `ppt/${mediaMatch[1].slice(3)}`
+        : `ppt/slides/${mediaMatch[1]}`;
+      const normalizedPath = mediaTarget.replace(/\/\.\.\//g, "/").replace(/\/[^/]+\/\.\.\//g, "/");
+      if (!zip.file(normalizedPath) && !zip.file(mediaTarget)) {
+        findings.push(`${slidePath.replace("ppt/", "")} references missing media: ${mediaMatch[1]}`);
+      }
+    }
+  }
+
+  // 5. Check PartName entries in [Content_Types].xml reference existing parts
+  const overrideParts = [...contentTypesXml.matchAll(/PartName="\/([^"]+)"/gi)];
+  for (const match of overrideParts) {
+    const partPath = match[1];
+    if (!zip.file(partPath)) {
+      findings.push(`[Content_Types].xml references missing part: /${partPath}`);
+    }
+  }
+
+  return findings;
 }
 
 type PictureAspectFinding = {

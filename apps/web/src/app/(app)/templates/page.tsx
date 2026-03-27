@@ -1,17 +1,23 @@
 import { createSystemTemplateProfile } from "@basquio/template-engine";
 
+import { TemplateCard, TemplateImportBox } from "@/components/template-library";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-type SavedTemplate = {
+type TemplateRow = {
   id: string;
+  name: string | null;
   source_type: string;
+  status: string;
+  failure_message: string | null;
+  layout_count: number | null;
+  preview_payload: Record<string, unknown>;
   created_at: string;
+  updated_at: string;
   template_profile: {
     templateName?: string;
-    sourceType?: string;
     colors?: string[];
     fonts?: string[];
     brandTokens?: {
@@ -20,78 +26,103 @@ type SavedTemplate = {
   };
 };
 
-async function listSavedTemplates(organizationId: string): Promise<SavedTemplate[]> {
+type DefaultSettingsRow = {
+  default_template_profile_id: string | null;
+};
+
+async function loadTemplateData(orgId: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) return [];
+  if (!supabaseUrl || !serviceKey) return { templates: [], defaultTemplateId: null };
 
-  try {
-    return await fetchRestRows<SavedTemplate>({
+  const [templates, settings] = await Promise.all([
+    fetchRestRows<TemplateRow>({
       supabaseUrl,
       serviceKey,
       table: "template_profiles",
       query: {
-        select: "id,source_type,created_at,template_profile",
-        organization_id: `eq.${organizationId}`,
+        select: "id,name,source_type,status,failure_message,layout_count,preview_payload,created_at,updated_at,template_profile",
+        organization_id: `eq.${orgId}`,
         order: "created_at.desc",
-        limit: "20",
+        limit: "50",
       },
-    });
-  } catch {
-    return [];
-  }
-}
+    }).catch(() => []),
+    fetchRestRows<DefaultSettingsRow>({
+      supabaseUrl,
+      serviceKey,
+      table: "organization_template_settings",
+      query: {
+        select: "default_template_profile_id",
+        organization_id: `eq.${orgId}`,
+        limit: "1",
+      },
+    }).catch(() => []),
+  ]);
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
-
-function sourceTypeLabel(sourceType: string) {
-  switch (sourceType) {
-    case "pptx": return "PowerPoint template";
-    case "brand-tokens": return "Brand tokens (JSON/CSS)";
-    case "pdf-style-reference": return "PDF style reference";
-    case "system": return "Basquio default";
-    default: return "Custom template";
-  }
+  return {
+    templates,
+    defaultTemplateId: settings[0]?.default_template_profile_id ?? null,
+  };
 }
 
 export default async function TemplatesPage() {
   const viewer = await getViewerState();
   const systemTemplate = createSystemTemplateProfile();
-
-  // Fetch saved custom templates for the org
   const orgId = (viewer.user as { user_metadata?: { organization_id?: string } } | undefined)?.user_metadata?.organization_id;
-  const savedTemplates = orgId ? await listSavedTemplates(orgId) : [];
+  const { templates, defaultTemplateId } = orgId
+    ? await loadTemplateData(orgId)
+    : { templates: [], defaultTemplateId: null };
+
+  const hasCustomDefault = defaultTemplateId !== null;
+  const defaultTemplate = templates.find((t) => t.id === defaultTemplateId);
+
+  const templateItems = templates.map((t) => ({
+    id: t.id,
+    name: t.name || t.template_profile?.templateName || `Custom ${t.source_type}`,
+    sourceType: t.source_type,
+    status: t.status ?? "ready",
+    failureMessage: t.failure_message,
+    colors: ((t.preview_payload?.colors ?? t.template_profile?.colors ?? []) as string[]).slice(0, 6),
+    fonts: ((t.preview_payload?.fonts ?? t.template_profile?.fonts ?? []) as string[]).slice(0, 4),
+    headingFont: ((t.preview_payload as Record<string, unknown>)?.headingFont as string) ?? t.template_profile?.brandTokens?.typography?.headingFont ?? null,
+    isDefault: t.id === defaultTemplateId,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+  }));
 
   return (
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
-        <h1>Brand system</h1>
+        <h1>Templates</h1>
       </section>
 
       <section className="workspace-board">
+        {/* Workspace default */}
         <article className="panel stack-xl">
           <div className="stack">
             <div className="row split">
               <div className="stack-xs">
-                <p className="artifact-kind">Default template</p>
-                <h2>Basquio Standard</h2>
+                <p className="artifact-kind">Workspace default</p>
+                <h2>{hasCustomDefault && defaultTemplate
+                  ? (defaultTemplate.name || defaultTemplate.template_profile?.templateName || "Custom template")
+                  : "Basquio Standard"}</h2>
               </div>
-              <span className="run-pill">Active</span>
+              <span className="run-pill run-pill-ready">
+                {hasCustomDefault && defaultTemplate?.status === "processing" ? "Processing" : "Active"}
+              </span>
             </div>
             <p className="muted">
-              Clean editorial design with accent colors. Used automatically when no custom template is uploaded.
-              To use a custom template, upload a PPTX, JSON, or CSS file when creating a new report.
+              {hasCustomDefault
+                ? "This template is used automatically on every new report. Change it below or switch back to Basquio Standard."
+                : "Clean editorial design with accent colors. Used automatically when no custom template is selected."}
             </p>
           </div>
 
           <div className="brand-preview-strip">
-            {systemTemplate.colors.slice(0, 6).map((color) => (
+            {(hasCustomDefault && defaultTemplate
+              ? ((defaultTemplate.preview_payload?.colors ?? defaultTemplate.template_profile?.colors ?? []) as string[]).slice(0, 6)
+              : systemTemplate.colors.slice(0, 6)
+            ).map((color) => (
               <div key={color} className="brand-preview-swatch">
                 <span className="swatch-color" style={{ backgroundColor: color }} />
                 <span>{color}</span>
@@ -100,69 +131,45 @@ export default async function TemplatesPage() {
           </div>
 
           <div className="compact-meta-row">
-            <span className="run-pill">{systemTemplate.fonts?.[0] ?? "System fonts"}</span>
+            <span className="run-pill">
+              {hasCustomDefault && defaultTemplate
+                ? (((defaultTemplate.preview_payload as Record<string, unknown>)?.headingFont as string) ?? defaultTemplate.template_profile?.fonts?.[0] ?? "System fonts")
+                : (systemTemplate.fonts?.[0] ?? "System fonts")}
+            </span>
             <span className="run-pill">16:9 widescreen</span>
-            <span className="run-pill">12 slide layouts</span>
+            <span className="run-pill">
+              {hasCustomDefault ? "Custom" : "Basquio Standard"}
+            </span>
           </div>
         </article>
 
-        <article className="panel stack">
-          <h3>How templates work</h3>
-          <div className="stack-xs">
-            <p className="muted">
-              When you create a new report, you can optionally upload a PowerPoint template (.pptx),
-              brand tokens file (.json or .css), or a PDF style reference.
-            </p>
-            <p className="muted">
-              Basquio extracts your colors, fonts, and style tokens and applies them to the locked slide grid.
-              The grid ensures every slide is clean and non-overlapping regardless of content density.
-            </p>
-            <p className="muted">
-              If no template is uploaded, the Basquio Standard design is used automatically.
-              Every template maps onto the same locked archetype library — only colors, fonts, and chrome change.
-            </p>
-          </div>
-        </article>
+        {/* Import new template */}
+        <TemplateImportBox />
       </section>
 
-      {savedTemplates.length > 0 ? (
+      {/* Empty state */}
+      {templateItems.length === 0 ? (
+        <section className="panel stack">
+          <div className="stack-xs">
+            <h3>No custom templates yet</h3>
+            <p className="muted">
+              Want your own corporate style on every report? Import a PowerPoint template once and set it as your workspace default.
+            </p>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Saved templates list */}
+      {templateItems.length > 0 ? (
         <section className="stack-lg">
           <div className="workspace-section-head">
-            <h2>Your uploaded templates</h2>
+            <h2>Saved templates</h2>
           </div>
 
           <div className="presentation-list">
-            {savedTemplates.map((t) => {
-              const profile = t.template_profile;
-              const colors = profile.colors ?? [];
-              const templateName = profile.templateName || sourceTypeLabel(t.source_type);
-              const headingFont = profile.brandTokens?.typography?.headingFont;
-
-              return (
-                <article key={t.id} className="panel presentation-card">
-                  <div className="stack">
-                    <p className="artifact-kind">{sourceTypeLabel(t.source_type)}</p>
-                    <h3>{templateName}</h3>
-                  </div>
-
-                  {colors.length > 0 ? (
-                    <div className="brand-preview-strip">
-                      {colors.slice(0, 4).map((color) => (
-                        <div key={color} className="brand-preview-swatch">
-                          <span className="swatch-color" style={{ backgroundColor: color }} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="compact-meta-row">
-                    {headingFont ? <span className="run-pill">{headingFont}</span> : null}
-                    <span className="run-pill">{formatDate(t.created_at)}</span>
-                    <span className="run-pill">ID: {t.id.slice(-8)}</span>
-                  </div>
-                </article>
-              );
-            })}
+            {templateItems.map((t) => (
+              <TemplateCard key={t.id} template={t} />
+            ))}
           </div>
         </section>
       ) : null}
