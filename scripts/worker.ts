@@ -12,6 +12,8 @@ const POLL_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_POLL_INTERVA
 const STALE_RUN_MINUTES = Number.parseInt(process.env.BASQUIO_WORKER_STALE_MINUTES ?? "5", 10);
 const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBEAT_INTERVAL_MS ?? "30000", 10);
 const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
+const MAX_CONCURRENT_RUNS = Math.max(1, Number.parseInt(process.env.BASQUIO_WORKER_MAX_CONCURRENCY ?? "2", 10));
+const SHUTDOWN_DRAIN_TIMEOUT_MS = Math.max(1_000, Number.parseInt(process.env.BASQUIO_WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS ?? "25000", 10));
 
 type QueuedRunRow = {
   run_id: string;
@@ -19,10 +21,16 @@ type QueuedRunRow = {
   attempt_number: number;
 };
 
+type ActiveRunState = {
+  attempt: QueuedRunRow;
+  promise: Promise<void>;
+  stopHeartbeat: () => void;
+};
+
 async function main() {
   const config = resolveConfig();
   let shuttingDown = false;
-  const activeRuns = new Map<string, { attempt: QueuedRunRow; stopHeartbeat: () => void }>();
+  const activeRuns = new Map<string, ActiveRunState>();
   let recoveryInFlight = false;
 
   const requestShutdown = (signal: string) => {
@@ -31,17 +39,13 @@ async function main() {
     }
 
     shuttingDown = true;
-    console.warn(`[basquio-worker] received ${signal}; draining ${activeRuns.size} active runs before shutdown`);
-
-    if (activeRuns.size === 0) {
-      process.exit(0);
-    }
+    console.warn(`[basquio-worker] received ${signal}; stopping claims and draining ${activeRuns.size} active runs`);
   };
 
   process.on("SIGTERM", () => requestShutdown("SIGTERM"));
   process.on("SIGINT", () => requestShutdown("SIGINT"));
 
-  console.log("[basquio-worker] starting (concurrent mode)");
+  console.log(`[basquio-worker] starting (max concurrency ${MAX_CONCURRENT_RUNS})`);
   await recoverStaleAttempts(config);
 
   const recoveryTimer = setInterval(() => {
@@ -67,38 +71,29 @@ async function main() {
     }
 
     try {
-      // Claim ALL queued attempts — no artificial concurrency limit.
-      // Each run is I/O-bound (waiting on Claude API), so the worker can handle
-      // as many concurrent runs as there are queued.
-      const attempt = await claimNextQueuedAttempt(config);
-
-      if (attempt) {
-        // Skip if we're already running this run (e.g. duplicate claim race)
-        if (activeRuns.has(attempt.run_id)) {
-          continue;
+      let claimedRun = false;
+      while (!shuttingDown && activeRuns.size < MAX_CONCURRENT_RUNS) {
+        const attempt = await claimNextQueuedAttempt(config, new Set(activeRuns.keys()));
+        if (!attempt) {
+          break;
         }
 
+        claimedRun = true;
         const startedAt = Date.now();
-        console.log(`[basquio-worker] claimed run ${attempt.run_id} attempt ${attempt.attempt_number} (${activeRuns.size + 1} concurrent)`);
+        console.log(
+          `[basquio-worker] claimed run ${attempt.run_id} attempt ${attempt.attempt_number} (${activeRuns.size + 1}/${MAX_CONCURRENT_RUNS})`,
+        );
         const stopHeartbeat = startHeartbeat(config, attempt);
-        activeRuns.set(attempt.run_id, { attempt, stopHeartbeat });
-
-        // Fire and forget — do NOT await. The poll loop continues immediately
-        // to claim the next queued run.
-        void processRun(config, attempt, startedAt, stopHeartbeat).finally(() => {
-          activeRuns.delete(attempt.run_id);
-          if (shuttingDown && activeRuns.size === 0) {
-            console.log("[basquio-worker] all runs drained, shutting down");
-            process.exit(0);
-          }
-        });
-
-        // Don't sleep — immediately check for more queued runs
-        continue;
+        const promise = processRun(config, attempt, startedAt)
+          .finally(() => {
+            stopHeartbeat();
+            activeRuns.delete(attempt.run_id);
+          });
+        activeRuns.set(attempt.run_id, { attempt, promise, stopHeartbeat });
       }
 
       // Process queued template import jobs (lightweight, no heartbeat needed)
-      if (!shuttingDown) {
+      if (!shuttingDown && !claimedRun) {
         await processTemplateImportJobs(config);
       }
     } catch (error) {
@@ -115,10 +110,16 @@ async function main() {
 
   clearInterval(recoveryTimer);
 
-  // Wait for all active runs to drain on shutdown
   if (activeRuns.size > 0) {
-    console.log(`[basquio-worker] waiting for ${activeRuns.size} active runs to drain...`);
-    // Requeue all active attempts so the next worker instance picks them up
+    console.log(`[basquio-worker] waiting up to ${SHUTDOWN_DRAIN_TIMEOUT_MS}ms for ${activeRuns.size} active runs to finish`);
+    await Promise.race([
+      Promise.allSettled([...activeRuns.values()].map((entry) => entry.promise)),
+      sleep(SHUTDOWN_DRAIN_TIMEOUT_MS),
+    ]);
+  }
+
+  if (activeRuns.size > 0) {
+    console.warn(`[basquio-worker] shutdown drain timed out; requeueing ${activeRuns.size} in-flight attempts`);
     for (const [runId, { attempt, stopHeartbeat }] of activeRuns) {
       stopHeartbeat();
       console.log(`[basquio-worker] requeueing in-flight attempt ${attempt.id} for run ${runId}`);
@@ -154,7 +155,6 @@ async function processRun(
   config: ReturnType<typeof resolveConfig>,
   attempt: QueuedRunRow,
   startedAt: number,
-  stopHeartbeat: () => void,
 ) {
   try {
     await generateDeckRun(attempt.run_id, {
@@ -308,8 +308,6 @@ async function processRun(
         await refundCreditSafe(config, attempt.run_id);
       }
     }
-  } finally {
-    stopHeartbeat();
   }
 }
 
@@ -510,7 +508,10 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
   }
 }
 
-async function claimNextQueuedAttempt(config: ReturnType<typeof resolveConfig>) {
+async function claimNextQueuedAttempt(
+  config: ReturnType<typeof resolveConfig>,
+  excludedRunIds: ReadonlySet<string> = new Set(),
+) {
   const queuedAttempts = await fetchRestRows<QueuedRunRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
@@ -520,35 +521,54 @@ async function claimNextQueuedAttempt(config: ReturnType<typeof resolveConfig>) 
       status: "eq.queued",
       superseded_by_attempt_id: "is.null",
       order: "created_at.asc",
-      limit: "1",
+      limit: "25",
     },
   }).catch(() => []);
 
-  const candidate = queuedAttempts[0];
-  if (!candidate) {
-    return null;
-  }
+  for (const candidate of queuedAttempts) {
+    if (excludedRunIds.has(candidate.run_id)) {
+      continue;
+    }
 
-  const parentRun = await fetchRestRows<{
-    id: string;
-    active_attempt_id: string | null;
-    latest_attempt_id: string | null;
-    status: string;
-  }>({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "deck_runs",
-    query: {
-      select: "id,active_attempt_id,latest_attempt_id,status",
-      id: `eq.${candidate.run_id}`,
-      limit: "1",
-    },
-  }).catch(() => []);
+    const parentRun = await fetchRestRows<{
+      id: string;
+      active_attempt_id: string | null;
+      latest_attempt_id: string | null;
+      status: string;
+    }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "id,active_attempt_id,latest_attempt_id,status",
+        id: `eq.${candidate.run_id}`,
+        limit: "1",
+      },
+    }).catch(() => []);
 
-  const runRow = parentRun[0];
-  const stillReferenced = runRow && (runRow.active_attempt_id === candidate.id || runRow.latest_attempt_id === candidate.id);
-  if (!stillReferenced) {
-    await patchRestRows({
+    const runRow = parentRun[0];
+    const stillReferenced = runRow && (runRow.active_attempt_id === candidate.id || runRow.latest_attempt_id === candidate.id);
+    if (!stillReferenced) {
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_run_attempts",
+        query: {
+          id: `eq.${candidate.id}`,
+          status: "eq.queued",
+        },
+        payload: {
+          status: "failed",
+          failure_phase: "queue_integrity",
+          failure_message: "Queued attempt no longer referenced by parent run.",
+          updated_at: new Date().toISOString(),
+        },
+      }).catch(() => []);
+      continue;
+    }
+
+    const now = new Date().toISOString();
+    const claimed = await patchRestRows<QueuedRunRow>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_run_attempts",
@@ -556,79 +576,63 @@ async function claimNextQueuedAttempt(config: ReturnType<typeof resolveConfig>) 
         id: `eq.${candidate.id}`,
         status: "eq.queued",
       },
-      payload: {
-        status: "failed",
-        failure_phase: "queue_integrity",
-        failure_message: "Queued attempt no longer referenced by parent run.",
-        updated_at: new Date().toISOString(),
-      },
-    }).catch(() => []);
-    return null;
-  }
-
-  const now = new Date().toISOString();
-  const claimed = await patchRestRows<QueuedRunRow>({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "deck_run_attempts",
-    query: {
-      id: `eq.${candidate.id}`,
-      status: "eq.queued",
-    },
-    select: "id,run_id,attempt_number",
-    payload: {
-      status: "running",
-      started_at: now,
-      updated_at: now,
-      worker_deployment_id: resolveWorkerDeploymentId(),
-      failure_message: null,
-      failure_phase: null,
-    },
-  }).catch(() => []);
-
-  if (!claimed[0]) {
-    return null;
-  }
-
-  try {
-    await patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_runs",
-      query: {
-        id: `eq.${claimed[0].run_id}`,
-      },
+      select: "id,run_id,attempt_number",
       payload: {
         status: "running",
-        current_phase: "normalize",
-        phase_started_at: now,
+        started_at: now,
         updated_at: now,
+        worker_deployment_id: resolveWorkerDeploymentId(),
         failure_message: null,
         failure_phase: null,
-        delivery_status: "draft",
-        active_attempt_id: claimed[0].id,
-        latest_attempt_id: claimed[0].id,
-        latest_attempt_number: claimed[0].attempt_number,
-      },
-    });
-  } catch (error) {
-    await patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      query: {
-        id: `eq.${claimed[0].id}`,
-        status: "eq.running",
-      },
-      payload: {
-        status: "queued",
-        updated_at: new Date().toISOString(),
       },
     }).catch(() => []);
-    throw error;
+
+    if (!claimed[0]) {
+      continue;
+    }
+
+    try {
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: {
+          id: `eq.${claimed[0].run_id}`,
+        },
+        payload: {
+          status: "running",
+          current_phase: "normalize",
+          phase_started_at: now,
+          updated_at: now,
+          failure_message: null,
+          failure_phase: null,
+          delivery_status: "draft",
+          active_attempt_id: claimed[0].id,
+          latest_attempt_id: claimed[0].id,
+          latest_attempt_number: claimed[0].attempt_number,
+        },
+      });
+    } catch (error) {
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_run_attempts",
+        query: {
+          id: `eq.${claimed[0].id}`,
+          status: "eq.running",
+        },
+        payload: {
+          status: "queued",
+          updated_at: new Date().toISOString(),
+        },
+      }).catch(() => []);
+      throw error;
+    }
+
+    return claimed[0] ?? null;
   }
 
-  return claimed[0] ?? null;
+  return null;
 }
 
 function startHeartbeat(config: ReturnType<typeof resolveConfig>, attempt: QueuedRunRow) {

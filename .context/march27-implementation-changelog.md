@@ -51,3 +51,9 @@ Verification: `pnpm qa:basquio` passed; `npx tsc --noEmit` passed.
 Before: local `/api/v2/generate` verification was blocked by a stale local `SUPABASE_SERVICE_ROLE_KEY`, so the route failed during source-file upload before the worker ever saw the run.
 After: with the corrected local key, a terminal-authenticated `/api/v2/generate` request returned `202` and queued run `74e906b0-16fa-4266-a09e-17fccf0f0265` successfully through the real V2 path.
 Verification: the controlled V2 run was claimed by the worker, then failed in `understand` with `failure_message = "request ended without sending any chunks"`, `failure_phase = "understand"`, `continuationCount = 0`, `requestCount = 0`, and `estimatedCostUsd = 0`. This isolates the remaining blocker to an Anthropic zero-chunk/provider response during understand, not the V2 API, auth, storage, or worker queue path.
+
+## Worker concurrency and shutdown hardening
+
+Before: the worker had first been changed from sequential execution to unbounded fire-and-forget concurrency, but that version could immediately requeue still-running attempts during shutdown and could also claim duplicate attempts for a run already active in the same process.
+After: the worker now uses bounded configurable concurrency (`BASQUIO_WORKER_MAX_CONCURRENCY`, default `2`), skips already-active run IDs before claiming, and on shutdown waits up to a drain timeout before requeueing only the still-running attempts.
+Verification: `npx tsc --noEmit` passed; `pnpm qa:basquio` passed.
