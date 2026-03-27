@@ -168,7 +168,7 @@ function buildDocumentXml(input: {
 }) {
   const body = [
     paragraphXml(input.title, "Title"),
-    paragraphXml(`${input.labels.preparedFor}: ${firstNonEmpty(input.run.client, input.labels.unknownValue)}`, "Subtitle"),
+    paragraphXml(`${input.labels.preparedFor}: ${firstNonEmpty(input.run.client, extractClientHint(input.run.business_context), input.labels.unknownValue)}`, "Subtitle"),
     paragraphXml(`${input.labels.objectiveLabel}: ${firstNonEmpty(input.run.objective, input.labels.unknownValue)}`, "Meta"),
     paragraphXml(`${input.labels.audienceLabel}: ${firstNonEmpty(input.run.audience, input.labels.unknownValue)}`, "Meta"),
     paragraphXml(`${input.labels.generatedOnLabel}: ${formatDate(input.generatedAt)}`, "Meta"),
@@ -761,6 +761,20 @@ function joinHumanList(values: string[], labels: ReturnType<typeof getLabels>) {
 
 function firstNonEmpty(...values: Array<string | undefined | null>) {
   return values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+}
+
+/**
+ * Try to extract a client/company name from the business context text.
+ * Looks for patterns like "for felfel.ch" or "felfel.ch's" or "felfel.ch has".
+ */
+function extractClientHint(context: string | undefined | null): string | undefined {
+  if (!context) return undefined;
+  // Match "for <name>" at the start or "X's" possessive pattern
+  const forMatch = context.match(/\bfor\s+([A-Za-z0-9][A-Za-z0-9._-]+(?:\.[a-z]{2,})?)[\s,]/i);
+  if (forMatch?.[1]) return forMatch[1];
+  const possessiveMatch = context.match(/\b([A-Za-z0-9][A-Za-z0-9._-]+(?:\.[a-z]{2,})?)'s\b/i);
+  if (possessiveMatch?.[1]) return possessiveMatch[1];
+  return undefined;
 }
 
 function resolveNarrativeLanguage(input: {

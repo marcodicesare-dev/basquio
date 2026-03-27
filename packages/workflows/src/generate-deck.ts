@@ -2186,7 +2186,9 @@ function buildAuthorMessage(
           "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
           "- Do not use native PowerPoint chart objects for critical visuals.",
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
-          "- Before rendering any chart, check category label lengths: if average > 12 chars or count > 8, use horizontal bars or aggregate. Always call plt.tight_layout() before savefig().",
+          "- Before rendering any chart, check category label lengths: if average > 12 chars or count > 8, use horizontal bars or aggregate.",
+          "- For charts with source notes: add plt.subplots_adjust(bottom=0.15) BEFORE plt.tight_layout() so the source text does not collide with axis labels. Always call plt.tight_layout() before savefig().",
+          "- For horizontal bar charts with end-of-bar value labels: set xlim right padding to at least 8% beyond the max value so labels are not clipped at the figure edge.",
           "- If a chart is sparse, leader-dominated, or near-zero outside one segment, switch to a split or commentary-led slide instead of forcing a wide chart.",
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
@@ -2221,6 +2223,10 @@ function buildReviseMessage(issues: string[]) {
           "Use Arial for all dense text and card internals unless the uploaded template explicitly forces another safe font.",
           "Do not use stacked ordinals, narrow title boxes, or floating footer metrics that can drift across PowerPoint, Keynote, and Google Slides.",
           "Fix any stretched charts by re-rendering them at the correct slot ratio rather than scaling the old image.",
+          "Fix any chart where the source note text collides with axis labels by adding plt.subplots_adjust(bottom=0.15) before plt.tight_layout().",
+          "Fix any chart where end-of-bar value labels are clipped at the right edge by adding xlim padding.",
+          "Fix any slide where title text overflows the right margin by shortening the title to fit on one line.",
+          "Fix any side-panel card where body text overflows the card boundary by shortening the text to 3 lines max.",
           "If a slide has a weak sparse chart or ugly dead space, switch to a more appropriate grammar instead of padding the same layout.",
           "Fix malformed numeric annotations such as duplicated plus signs or inconsistent pp notation.",
           "Fix any claim-exhibit mismatch where the title or commentary says a metric is growing but the visual only shows current level.",
@@ -2894,6 +2900,12 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>) {
     })
   ) {
     issues.push("At least one metric-bearing slide title is too long for a clean recommendation-card layout.");
+  }
+  // Title overflow detection: titles > 75 chars will likely clip at the right edge
+  for (const slide of manifest.slides) {
+    if (slide.title.length > 75) {
+      issues.push(`Slide ${slide.position} title is ${slide.title.length} characters and will overflow the right margin. Shorten to under 75 characters.`);
+    }
   }
   for (const slide of manifest.slides) {
     const countClaimIssue = detectExplicitCoverageMismatch(slide);
