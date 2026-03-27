@@ -1143,10 +1143,17 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             finalDocx = await buildNarrativeDocx({ run, analysis, manifest: finalManifest });
           } catch (docxError) {
             const docxMsg = docxError instanceof Error ? docxError.message : String(docxError);
-            console.warn(`[generateDeckRun] salvage DOCX build failed, using empty fallback: ${docxMsg.slice(0, 200)}`);
+            console.warn(`[generateDeckRun] salvage DOCX build failed, using stub fallback: ${docxMsg.slice(0, 200)}`);
             phaseTelemetry.salvageDocxFallback = { error: docxMsg.slice(0, 500) };
-            // Minimal valid DOCX so the artifact set is complete
-            finalDocx = { fileId: "salvage-docx", fileName: "report.docx", buffer: Buffer.alloc(0), mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+            // Build a minimal valid DOCX stub (valid zip with document.xml) so the
+            // artifact set is complete. A zero-byte buffer is not a valid DOCX.
+            const stubZip = new JSZip();
+            stubZip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+            stubZip.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+            stubZip.file("word/_rels/document.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
+            stubZip.file("word/document.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Narrative report could not be generated for this salvaged run. The deck artifacts (PPTX and PDF) are available.</w:t></w:r></w:p></w:body></w:document>');
+            const stubBuffer = await stubZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+            finalDocx = { fileId: "salvage-docx-stub", fileName: "report.docx", buffer: stubBuffer, mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
           }
 
           // Rebuild QA report from checkpoint artifacts + fresh visual QA

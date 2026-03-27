@@ -60,6 +60,7 @@ type RunRow = {
   latest_attempt_id: string | null;
   latest_attempt_number: number;
   status: string;
+  cost_telemetry: Record<string, unknown> | null;
 };
 
 async function main() {
@@ -71,7 +72,7 @@ async function main() {
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,status",
+      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,status,cost_telemetry",
       id: `eq.${runId}`,
       limit: "1",
     },
@@ -232,7 +233,7 @@ async function main() {
       failure_phase: null,
       active_attempt_id: null,
       cost_telemetry: {
-        ...(run as Record<string, unknown>).cost_telemetry as Record<string, unknown> ?? {},
+        ...run.cost_telemetry ?? {},
         rescuedFromCheckpoint: true,
         checkpointPhase: checkpoint.phase,
         salvaged: true,
