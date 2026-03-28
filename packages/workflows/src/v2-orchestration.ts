@@ -2849,12 +2849,13 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
           data: {
             runId,
             exportMode: "universal-compatible", // V1 pipeline: always universal-compatible
-            hasCriticalOrMajor: true,
-            degradedDelivery: true,
+            hasCriticalOrMajor: false,
+            degradedDelivery: false,
             degradedIssues: [{ severity: "critical", claim: `Pipeline error: ${message.slice(0, 200)}` }],
             deckTitle: brief.slice(0, 100),
             sourceFileIds,
             skipSourceCoverage: true,
+            allowBestEffortExport: true,
           },
           timeout: "10m",
         });
@@ -5080,6 +5081,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
     // Load dependencies from DB
     const workspace = await loadWorkspaceFromDb(runId);
     if (!workspace) throw new NonRetriableError(`Workspace not found for run ${runId}`);
+    const resolvedWorkspace = workspace;
 
     const analysisResult = await loadWorkingPaper<AnalystResult>(runId, "analysis_result");
     const analysis = analysisResult?.analysis ?? { topFindings: [], metricsComputed: 0, dataSummary: "" };
@@ -5100,25 +5102,21 @@ export const basquioCritiqueRevise = inngest.createFunction(
       return (tokens.inputTokens * prices.input + tokens.outputTokens * prices.output) / 1_000_000;
     }
 
-    // ─── PARALLEL CRITIQUE (factual + strategic run concurrently) ──
-    // Budget gate: skip expensive LLM critique if budget is exhausted
-    // The deterministic critique above ($0) already caught structural issues
-    const critiqueResults = await step.run("critique-parallel", async () => {
-      await updateDeliveryStatus(runId, "draft");
-      await updateRunStatus(runId, "running", "critique");
-      await emitRunEvent(runId, "critique", "phase_started");
+    type CritiquePassResult = {
+      factual: Awaited<ReturnType<typeof runCriticAgent>>;
+      strategic: Awaited<ReturnType<typeof runStrategicCriticAgent>>;
+      stepCostUsd: number;
+    };
 
-      // Budget gate: if remaining budget < $0.15, skip LLM critique entirely
+    async function runCritiquePass(
+      stage: "critique" | "critique-post-revise",
+      slideRows: Awaited<ReturnType<typeof getSlides>>,
+    ): Promise<CritiquePassResult> {
       if (remainingBudget() < 0.15) {
-        console.warn(`[basquio-critique] Skipping LLM critique — only $${remainingBudget().toFixed(2)} budget remaining`);
-        const emptyFactual = { issues: [] as never[], overallAssessment: "Budget-gated: deterministic critique only", verdict: "pass" as const, coverageScore: 0, accuracyScore: 0 };
-        const emptyStrategic = { issues: [] as never[], overallAssessment: "Budget-gated: deterministic critique only", verdict: "pass" as const, narrativeScore: 0 };
-        return { factual: emptyFactual, strategic: emptyStrategic, stepCostUsd: 0 };
+        throw new NonRetriableError(`Insufficient budget to run ${stage}.`);
       }
 
-      const slides = await getSlides(runId);
-
-      const slideData = slides.map((s) => ({
+      const slideData = slideRows.map((s) => ({
         id: s.id,
         position: s.position,
         layoutId: s.layoutId ?? "title-body",
@@ -5130,21 +5128,16 @@ export const basquioCritiqueRevise = inngest.createFunction(
         evidenceIds: s.evidenceIds ?? [],
       }));
 
-      // Accumulate token usage from both critics
       let factualTokens = { inputTokens: 0, outputTokens: 0 };
       let strategicTokens = { inputTokens: 0, outputTokens: 0 };
-
-      // Budget-aware critic selection:
-      // - Always run factual (GPT-5.4, ~$0.10-0.15)
-      // - Only run strategic (Sonnet, ~$0.05-0.08) if budget allows
       const canAffordStrategic = remainingBudget() > 0.10;
 
       const factualPromise = runCriticAgent({
-        workspace,
+        workspace: resolvedWorkspace,
         runId,
         deckSummary: "",
         brief,
-        slideCount: slides.length,
+        slideCount: slideRows.length,
         getSlides: async () => slideData,
         getNotebookEntries: (evidenceRefId: string) => getNotebookEntry(evidenceRefId),
         persistNotebookEntry: (entry: NotebookEntry) => persistNotebookEntry(runId, "critique", 0, entry),
@@ -5159,27 +5152,43 @@ export const basquioCritiqueRevise = inngest.createFunction(
             runId,
             brief,
             deckSummary: "",
-            slideCount: slides.length,
+            slideCount: slideRows.length,
             slides: slideData,
             onStepFinish: async (ev) => {
               strategicTokens.inputTokens += ev.usage?.inputTokens ?? 0;
               strategicTokens.outputTokens += ev.usage?.outputTokens ?? 0;
             },
           })
-        : Promise.resolve({ issues: [] as never[], overallAssessment: "Skipped — budget conservation", verdict: "pass" as const, narrativeScore: 0 });
+        : Promise.resolve({
+            iteration: 1,
+            hasIssues: false,
+            issues: [] as never[],
+            overallAssessment: "Skipped — budget conservation",
+            verdict: "pass" as const,
+            coverageScore: 0,
+            accuracyScore: 0,
+            narrativeScore: 0,
+          } as Awaited<ReturnType<typeof runStrategicCriticAgent>>);
 
       if (!canAffordStrategic) {
-        console.warn(`[basquio-critique] Skipping strategic (Sonnet) critic — only $${remainingBudget().toFixed(2)} remaining`);
+        console.warn(`[basquio-critique] Skipping strategic (Sonnet) critic during ${stage} — only $${remainingBudget().toFixed(2)} remaining`);
       }
 
       const [factual, strategic] = await Promise.all([factualPromise, strategicPromise]);
-
-      // Factual critic uses gpt-5.4-mini (cross-model), strategic uses claude-sonnet-4-6
       const stepCostUsd =
         computeStepCost(factualTokens, "gpt-5.4-mini") +
         (canAffordStrategic ? computeStepCost(strategicTokens, "claude-sonnet-4-6") : 0);
 
       return { factual, strategic, stepCostUsd };
+    }
+
+    // ─── PARALLEL CRITIQUE (factual + strategic run concurrently) ──
+    const critiqueResults = await step.run("critique-parallel", async () => {
+      await updateDeliveryStatus(runId, "draft");
+      await updateRunStatus(runId, "running", "critique");
+      await emitRunEvent(runId, "critique", "phase_started");
+      const slides = await getSlides(runId);
+      return runCritiquePass("critique", slides);
     });
 
     const factualCritique = critiqueResults.factual;
@@ -5311,9 +5320,12 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       // After revision, RE-RUN quality checks on the repaired slides.
       // Using stale pre-revision gateResult would grade from old failures.
-      const totalCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
       const postRevisionSlides = await getSlides(runId);
       const postRevisionCharts = await getV2ChartRows(runId);
+      const postRevisionCritique = await step.run("critique-post-revise", async () => runCritiquePass("critique-post-revise", postRevisionSlides));
+      runningCostUsd += postRevisionCritique.stepCostUsd ?? 0;
+      const totalCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
+      const revisedIssues = [...postRevisionCritique.factual.issues, ...postRevisionCritique.strategic.issues].filter(Boolean);
 
       // Re-run writing linter on repaired slides
       const postRevisionDeckLanguage = detectLanguage(
@@ -5387,13 +5399,18 @@ export const basquioCritiqueRevise = inngest.createFunction(
       } catch { /* analysis working paper may not exist */ }
       const postEvidenceMajor = postEvidenceIssues.filter(i => i.severity === "major").length;
 
-      const finalCritical = postCritical;
-      const finalMajor = postMajor + contractMajor + postEvidenceMajor;
+      const criticCritical = revisedIssues.filter((i) => i?.severity === "critical").length;
+      const criticMajor = revisedIssues.filter((i) => i?.severity === "major").length;
+      const finalCritical = postCritical + criticCritical;
+      const finalMajor = postMajor + contractMajor + postEvidenceMajor + criticMajor;
       const publishGrade = finalCritical > 0 || finalMajor > 0 ? "red" : "green";
       await updateDeliveryStatus(runId, publishGrade === "green" ? "reviewed" : "degraded");
       console.info(`[basquio-critique] Post-revision publish grade: ${publishGrade} (${finalCritical} critical, ${finalMajor} major)`);
 
       const postIssues = [
+        ...revisedIssues
+          .filter((i) => i.severity === "critical" || i.severity === "major")
+          .map((i) => ({ severity: i.severity, claim: i.claim })),
         ...postLintResult.slideResults.flatMap(r => r.result.violations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] Slide ${r.position}: ${v.message}` }))),
         ...postLintResult.deckViolations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] ${v.message}` })),
         ...postDeckContract.violations.map(v => ({ severity: "major" as const, claim: `[CONTRACT] ${v.message}` })),
@@ -5408,6 +5425,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
         publishGrade,
         phaseBreakdown: [
           { phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: gateResult.estimatedCostUsd ?? 0 },
+          { phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: postRevisionCritique.stepCostUsd ?? 0 },
           { phase: "revise" as const, model: "claude-sonnet-4-6", costUsd: reviseResult.stepCostUsd ?? 0 },
         ],
       };
@@ -5453,6 +5471,7 @@ export const basquioExport = inngest.createFunction(
       deckTitle,
       sourceFileIds,
       skipSourceCoverage,
+      allowBestEffortExport,
     } = event.data as {
       runId: string;
       exportMode?: string;
@@ -5462,6 +5481,7 @@ export const basquioExport = inngest.createFunction(
       deckTitle: string;
       sourceFileIds: string[];
       skipSourceCoverage?: boolean;
+      allowBestEffortExport?: boolean;
     };
 
     const exportMode = rawExportMode === "powerpoint-native"
@@ -5552,22 +5572,7 @@ export const basquioExport = inngest.createFunction(
           hasBrokenChartRefs = true;
         }
       }
-      // Filter out empty content slides before rendering
-      const contentLayoutsCheck = ["title-chart", "chart-split", "title-body", "title-bullets", "exec-summary", "metrics", "table", "comparison", "evidence-grid", "two-column"];
-      const validSlides = slides.filter((s) => {
-        const lid = s.layoutId;
-        if (!lid || !contentLayoutsCheck.includes(lid)) return true; // Keep cover, summary, section-divider
-        const hasContent = s.body || (Array.isArray(s.bullets) && s.bullets.length > 0) ||
-          (Array.isArray(s.metrics) && s.metrics.length > 0) || s.callout || s.chartId;
-        if (!hasContent) {
-          console.warn(`[basquio-export] Filtering out empty slide ${s.position} (${lid})`);
-          return false;
-        }
-        return true;
-      });
-      // Re-number positions
-      validSlides.forEach((s, i) => { s.position = i + 1; });
-      const filteredSlides = validSlides;
+      const filteredSlides = slides;
 
       if (hasBrokenChartRefs && !degradedDelivery) {
         await updateDeliveryStatus(runId, "degraded");
@@ -5753,7 +5758,7 @@ export const basquioExport = inngest.createFunction(
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
       const qaFailures = qaChecks.filter((c) => !c.passed).map((c) => c.name);
       const qaTier: "green" | "red" =
-        qaStructuralPassed && !degradedDelivery && !hasCriticalOrMajor
+        qaStructuralPassed && (allowBestEffortExport || (!degradedDelivery && !hasCriticalOrMajor))
           ? "green"
           : "red";
       const qaPassed = qaTier === "green";

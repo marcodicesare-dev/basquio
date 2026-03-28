@@ -417,10 +417,20 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const isHardArtifactCorruption = CHECKPOINT_INELIGIBLE_PATTERNS.some((p) => priorMsgLower.includes(p));
     const isCheckpointEligible = (isCheckpointEligibleByPhase || isCheckpointEligibleByReason) && !isHardArtifactCorruption;
 
-    const checkpointHasPublishProof = Boolean(existingCheckpoint?.resumeReady);
-    const canResumeFromCheckpoint = checkpointArtifacts && existingCheckpoint && recoveredAnalysis
-      && attempt.attemptNumber > 1 && isCheckpointEligible && checkpointHasPublishProof;
-    let publishFromCheckpoint: ArtifactCheckpoint | null = canResumeFromCheckpoint && existingCheckpoint
+    const canResumeFromCheckpoint = Boolean(
+      checkpointArtifacts &&
+      existingCheckpoint &&
+      recoveredAnalysis &&
+      attempt.attemptNumber > 1 &&
+      isCheckpointEligible,
+    );
+    const canSkipToExportFromCheckpoint = Boolean(canResumeFromCheckpoint && existingCheckpoint?.resumeReady);
+    const canResumeFromAuthorCheckpoint = Boolean(
+      canResumeFromCheckpoint &&
+      existingCheckpoint?.phase === "author" &&
+      !existingCheckpoint.resumeReady,
+    );
+    let publishFromCheckpoint: ArtifactCheckpoint | null = canSkipToExportFromCheckpoint && existingCheckpoint
       ? existingCheckpoint
       : null;
 
@@ -432,7 +442,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     let latestContainerId: string | null = null;
     let baseContainerId: string | null = null;
 
-    if (canResumeFromCheckpoint) {
+    if (canSkipToExportFromCheckpoint && existingCheckpoint) {
       // Checkpoint recovery — skip ALL generation phases through export.
       // The checkpoint IS the deck we're going to try to publish.
       // We do NOT run critique/revise from a checkpoint because:
@@ -465,6 +475,27 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           estimatedCostUsd: spentUsd,
           source: wasCompleted ? "recovered_from_checkpoint" : "checkpoint_skipped",
           checkpointPhase: existingCheckpoint.phase,
+        });
+      }
+    } else if (canResumeFromAuthorCheckpoint && existingCheckpoint) {
+      console.log(`[generateDeckRun] recovering from author checkpoint for run ${runId}`);
+      pptxFile = checkpointArtifacts!.pptx;
+      pdfFile = checkpointArtifacts!.pdf;
+      manifest = checkpointArtifacts!.manifest;
+      analysis = recoveredAnalysis;
+      phaseTelemetry.checkpointRecovery = {
+        source: "artifact_checkpoint",
+        phase: existingCheckpoint!.phase,
+        recoveryReason: attempt.recoveryReason,
+        attemptNumber: attempt.attemptNumber,
+        mode: "resume_from_author",
+      };
+      for (const phase of ["understand", "author"] as const) {
+        await markPhase(config, runId, attempt, phase);
+        await completePhase(config, runId, attempt, phase, {
+          estimatedCostUsd: spentUsd,
+          source: "recovered_from_checkpoint",
+          checkpointPhase: existingCheckpoint!.phase,
         });
       }
     } else {
@@ -608,6 +639,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           containerId,
           source: "merged_into_author",
         });
+        await markPhase(config, runId, attempt, "author");
       }
       pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
       pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
@@ -652,7 +684,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     let finalManifest = manifest;
     let finalVisualQa: RenderedPageQaReport;
 
-    if (!canResumeFromCheckpoint) {
+    if (!canSkipToExportFromCheckpoint) {
     currentPhase = "render";
     await markPhase(config, runId, attempt, currentPhase);
     await completePhase(config, runId, attempt, "render", {
@@ -1419,7 +1451,7 @@ async function assertAttemptStillOwnsRun(
         id: `eq.${runId}`,
         limit: "1",
       },
-    }).catch(() => []),
+    }),
     fetchRestRows<{ superseded_by_attempt_id: string | null }>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
@@ -1429,7 +1461,7 @@ async function assertAttemptStillOwnsRun(
         id: `eq.${attempt.id}`,
         limit: "1",
       },
-    }).catch(() => []),
+    }),
   ]);
 
   const run = runs[0];
@@ -2096,7 +2128,7 @@ async function finalizeSuccess(
       p_artifacts: artifacts,
       p_published_at: now,
     },
-  }).catch(() => []);
+  });
 
   if (!publishRows[0]?.published) {
     throw new AttemptOwnershipLostError(runId, attempt.id);
@@ -2186,7 +2218,12 @@ async function finalizeFailure(
 
   await Promise.all(writes);
   await insertEvent(config, runId, attempt, failurePhase, "error", { message: failureMessage });
-  if (ownsRun) {
+  const failureClass = String(extraTelemetry.failureClass ?? "");
+  const shouldSuppressRefund =
+    attempt !== null &&
+    attempt.attemptNumber < 3 &&
+    (failureClass === "transient_provider" || failureClass === "transient_network");
+  if (ownsRun && !shouldSuppressRefund) {
     await callRpc<Array<{ refunded: boolean; amount: number }>>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,

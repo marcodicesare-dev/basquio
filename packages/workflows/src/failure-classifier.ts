@@ -58,7 +58,7 @@ export function classifyFailureMessage(message: string, isStale = false): Failur
       retryable: true,
       headline: "Run stalled",
       explanation: "The worker stopped responding during generation.",
-      retryAdvice: "Basquio will try to recover this automatically. If it doesn't resume within a few minutes, start a new run.",
+      retryAdvice: "Basquio will try to recover this automatically after the stale-run timeout window. If it still does not resume, start a new run.",
     };
   }
 
@@ -204,7 +204,9 @@ export function isTransientProviderError(error: unknown): boolean {
 function isAnalysisJsonError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
-  return msg.includes("structured analysis") || (msg.includes("analysis json") && (msg.includes("parse") || msg.includes("invalid")));
+  return msg.includes("structured analysis") ||
+    msg.includes("analysis_result.json") ||
+    (msg.includes("analysis json") && (msg.includes("parse") || msg.includes("invalid") || msg.includes("malformed")));
 }
 
 function isManifestJsonError(error: unknown): boolean {
@@ -290,7 +292,8 @@ function matchesUnsupportedInput(msg: string): boolean {
 
 function matchesAnalysisJsonFailure(msg: string): boolean {
   return msg.includes("structured analysis") ||
-    (msg.includes("analysis json") && (msg.includes("parse") || msg.includes("invalid")));
+    msg.includes("analysis_result.json") ||
+    (msg.includes("analysis json") && (msg.includes("parse") || msg.includes("invalid") || msg.includes("malformed")));
 }
 
 function matchesManifestJsonFailure(msg: string): boolean {
@@ -307,7 +310,12 @@ function matchesStructuredOutput(msg: string): boolean {
 }
 
 function matchesMissingArtifact(msg: string): boolean {
-  return msg.includes("did not generate") && (msg.includes("deck.pptx") || msg.includes("deck.pdf") || msg.includes("deck_manifest"));
+  return msg.includes("did not generate") && (
+    msg.includes("deck.pptx") ||
+    msg.includes("deck.pdf") ||
+    msg.includes("deck_manifest") ||
+    msg.includes("analysis_result.json")
+  );
 }
 
 function matchesExportFailure(msg: string): boolean {
