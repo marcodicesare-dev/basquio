@@ -36,14 +36,15 @@ const CODE_EXEC_BETA = "code-execution-2026-01-20";
 const SKILLS_BETA = "skills-2025-10-02";
 const BETAS = [FILES_BETA, CODE_EXEC_BETA, SKILLS_BETA] as const;
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
-const PHASE_TIMEOUTS_MS = {
+const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number> = {
+  normalize: 120_000,
   understand: 120_000,
   author: 300_000,
   revise: 240_000,
-  render: 240_000,
+  render: 120_000,
   critique: 90_000,
   export: 120_000,
-} as const;
+};
 const MAX_PAUSE_TURNS_PER_PHASE = {
   understand: 3,
   author: 3,
@@ -567,7 +568,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         recoveredAnalysisForSplit ? analysis : null,
         !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
         questionRoutes,
-        recoveredAnalysisForSplit ? buildChartSlotConstraintMessage(analysis) : undefined,
+        recoveredAnalysisForSplit && analysis ? buildChartSlotConstraintMessage(analysis) : undefined,
       );
       await recordToolCall(config, runId, attempt, "author", "code_execution", {
         model: MODEL,
@@ -1802,7 +1803,7 @@ async function touchAttemptProgress(
         config,
         runId,
         attempt,
-        phase,
+        phase as DeckPhase,
         "meaningful_progress",
         {
           phase,
@@ -2683,7 +2684,10 @@ async function runClaudeLoop(input: {
 
       generatedFileIds.forEach((fileId) => fileIds.add(fileId));
       if (input.onMeaningfulProgress && (generatedFileIds.length > 0 || (finalMessage.usage?.output_tokens ?? 0) > 0 || (finalMessage.usage?.input_tokens ?? 0) > 0)) {
-        void input.onMeaningfulProgress().catch(() => {});
+        const progressResult = input.onMeaningfulProgress();
+        if (progressResult && typeof (progressResult as Promise<unknown>).catch === "function") {
+          void (progressResult as Promise<unknown>).catch(() => {});
+        }
       }
 
       if (finalMessage.stop_reason !== "pause_turn") {
