@@ -33,7 +33,7 @@ import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested } from "./notify-completion";
-import { callRpc, deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
+import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const MODEL = "claude-sonnet-4-6";
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
@@ -73,6 +73,7 @@ const CIRCUIT_BREAKER_OPEN_MS = 60_000;
 const CIRCUIT_BREAKER_WINDOW_MS = 5 * 60_000;
 const CIRCUIT_BREAKER_CLEANUP_MS = 10 * 60_000;
 const PROGRESS_MEANINGFUL_STALL_MS = 8 * 60_000;
+const SUPABASE_RPC_TIMEOUT_MS = 30_000;
 type CircuitState = {
   failures: number[];
   openUntil: number | null;
@@ -1847,6 +1848,7 @@ async function strengthenFinalVisualQa(input: {
     input.spentUsdRef.value = roundUsd(input.spentUsdRef.value + usageToCost(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage));
     assertDeckSpendWithinBudget(input.spentUsdRef.value);
     input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
+    await upsertWorkingPaper(input.config, input.runId, "visual_qa_final", finalVisualQa.report).catch(() => {});
     await persistRequestUsage(
       input.config,
       input.runId,
@@ -1857,6 +1859,17 @@ async function strengthenFinalVisualQa(input: {
       finalVisualQa.requests,
     );
     rememberRequestIds(input.anthropicRequestIds, finalVisualQa.requests);
+    const hasBlockingIssues = finalVisualQa.report.issues.some((issue) => issue.severity === "major" || issue.severity === "critical");
+    if (!hasBlockingIssues && (finalVisualQa.report.overallStatus !== "green" || finalVisualQa.report.deckNeedsRevision)) {
+      input.phaseTelemetry.visualQaFinalDowngradeIgnored = {
+        reason: "non_blocking_final_qa_downgrade",
+        reusedScore: input.currentReport.score,
+        finalStatus: finalVisualQa.report.overallStatus,
+        finalDeckNeedsRevision: finalVisualQa.report.deckNeedsRevision,
+        issueCount: finalVisualQa.report.issues.length,
+      };
+      return input.currentReport;
+    }
     return finalVisualQa.report;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1891,12 +1904,10 @@ async function finalizeSuccess(
     qaTier: qaReport.tier,
     ...extraTelemetry,
   });
-  const publishRows = await callRpc<Array<{ published: boolean }>>({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    functionName: "complete_deck_run_attempt",
-    params: {
-      p_run_id: runId,
+  const publishRows = await callWorkflowRpc<Array<{ published: boolean }>>(config, {
+      functionName: "complete_deck_run_attempt",
+      params: {
+        p_run_id: runId,
       p_attempt_id: attempt.id,
       p_attempt_number: attempt.attemptNumber,
       p_completed_at: now,
@@ -2011,9 +2022,7 @@ async function finalizeFailure(
     (failureClass === "transient_provider" || failureClass === "transient_network");
   if (ownsRun && !shouldSuppressRefund) {
     try {
-      await callRpc<Array<{ refunded: boolean; amount: number }>>({
-        supabaseUrl: config.supabaseUrl,
-        serviceKey: config.serviceKey,
+      await callWorkflowRpc<Array<{ refunded: boolean; amount: number }>>(config, {
         functionName: "refund_run_credit",
         params: {
           p_run_id: runId,
@@ -3818,8 +3827,8 @@ function summarizeLintResult(lint: ReturnType<typeof lintManifest>) {
 function validateManifestContract(manifest: z.infer<typeof deckManifestSchema>) {
   const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
   const result = validateDeckContract(
-    manifest.slides.map((slide) => ({
-      layoutId: slide.layoutId ?? "title-body",
+    manifest.slides.map((slide, index) => ({
+      layoutId: normalizeManifestLayoutIdForContract(slide, index, manifest.slides.length),
       chartType: slide.chartId ? chartById.get(slide.chartId)?.chartType : undefined,
     })),
   );
@@ -3828,6 +3837,102 @@ function validateManifestContract(manifest: z.infer<typeof deckManifestSchema>) 
     result,
     actionableIssues: result.violations.map((violation) => `Deck contract issue: ${violation.message}`),
   };
+}
+
+function normalizeManifestLayoutIdForContract(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  index: number,
+  slideCount: number,
+) {
+  const archetype = normalizeLayoutAlias(slide.slideArchetype);
+  if (archetype === "cover") {
+    return "cover";
+  }
+  if (archetype === "recommendation-cards") {
+    return index === slideCount - 1 ? "summary" : "title-body";
+  }
+  if (archetype && archetype !== "unknown") {
+    return archetype;
+  }
+
+  const layout = normalizeLayoutAlias(slide.layoutId);
+  if (layout === "exec-summary" && index === slideCount - 1) {
+    return "summary";
+  }
+  if (layout && layout !== "unknown") {
+    return layout;
+  }
+
+  return slide.layoutId ?? "title-body";
+}
+
+function normalizeLayoutAlias(raw: string | undefined) {
+  if (!raw) {
+    return "unknown";
+  }
+
+  const normalized = raw.trim().toLowerCase().replace(/[_-]+/g, " ");
+  if (normalized === "cover" || normalized.includes("cover") || normalized.includes("title slide")) {
+    return "cover";
+  }
+  if (normalized === "exec summary" || normalized === "exec-summary" || normalized.includes("section header") || normalized.includes("overview")) {
+    return "exec-summary";
+  }
+  if (normalized === "summary" || normalized.includes("summary") || normalized.includes("closing") || normalized.includes("takeaway")) {
+    return "summary";
+  }
+  if (normalized === "recommendation cards" || normalized === "recommendation-cards" || normalized.includes("recommendation")) {
+    return "recommendation-cards";
+  }
+  if (normalized === "title body" || normalized === "title-body" || normalized.includes("title and content") || normalized.includes("title, content")) {
+    return "title-body";
+  }
+  if (normalized === "title bullets" || normalized === "title-bullets" || normalized.includes("bullet") || normalized.includes("list")) {
+    return "title-bullets";
+  }
+  if (normalized === "two column" || normalized === "two-column" || normalized.includes("two content") || normalized.includes("comparison")) {
+    return "two-column";
+  }
+  if (normalized === "title chart" || normalized === "title-chart" || normalized.includes("title only") || normalized.includes("chart")) {
+    return "title-chart";
+  }
+  return "unknown";
+}
+
+async function callWorkflowRpc<T>(
+  config: ReturnType<typeof resolveConfig>,
+  input: {
+    functionName: string;
+    params?: Record<string, unknown>;
+  },
+) {
+  const url = new URL(`/rest/v1/rpc/${input.functionName}`, config.supabaseUrl);
+  const headers = new Headers({
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    apikey: config.serviceKey,
+  });
+
+  if (config.serviceKey.split(".").length === 3 && !config.serviceKey.startsWith("sb_secret_")) {
+    headers.set("Authorization", `Bearer ${config.serviceKey}`);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(input.params ?? {}),
+    signal: AbortSignal.timeout(SUPABASE_RPC_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Unable to execute RPC ${input.functionName}: ${await response.text()}`);
+  }
+
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  return (await response.json()) as T;
 }
 
 function summarizeDeckContractResult(contract: ReturnType<typeof validateManifestContract>) {
