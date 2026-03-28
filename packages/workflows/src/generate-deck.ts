@@ -57,8 +57,11 @@ const MAX_PAUSE_TURNS_PER_PHASE = {
 const REQUEST_WATCHDOG_BY_PHASE_MS: Record<ClaudePhase, number> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  author: 300_000,
-  revise: 240_000,
+  // Author/revise code-execution turns can legitimately run for 10-20+ minutes.
+  // Keep the request watchdog aligned to the full phase budget until we have a
+  // true idle/activity watchdog instead of a wall-clock timeout.
+  author: PHASE_TIMEOUTS_MS.author,
+  revise: PHASE_TIMEOUTS_MS.revise,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
