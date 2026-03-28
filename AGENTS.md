@@ -40,3 +40,4 @@ Do not reduce the product goal to "upload CSV, get random deck."
 - `skills/basquio-intelligence/SKILL.md`
 - `skills/basquio-rendering/SKILL.md`
 - `skills/basquio-stack-context/SKILL.md`
+- `skills/basquio-runtime-forensics/SKILL.md`

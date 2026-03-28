@@ -46,6 +46,8 @@
 - Large or ambiguous decks are allowed to take more revision attempts than simple ones.
 - Every LLM-assisted stage must emit auditable trace metadata.
 - Status recovery must handle stale queued runs and stale running runs that still have zero durable checkpoints.
+- When production behavior and repo assumptions diverge, trust exported runtime evidence before changing timeouts, model config, or recovery policy.
+- Separate failure classes by run and attempt. Do not let one expensive failure narrative overwrite a different root cause from another run.
 
 ## Rendering Rules
 
@@ -82,3 +84,5 @@
 - Contract changes require a matching memory update.
 - Run `pnpm qa:basquio` after every context change.
 - Supabase-backed runtime queries must be validated against the migration-defined schema before release.
+- Historical audits or briefs that become non-canonical must be marked as archival at the top and redirected to the current truth source.
+- Do not promote forward-looking SDK features or research claims to canonical runtime guidance without live validation.

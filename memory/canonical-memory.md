@@ -98,6 +98,12 @@ Initial domain bias:
 - DOCX must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
 - When the `pptx` skill is loaded, Basquio should rely on the documented skill contract itself rather than assuming an undocumented internal presentation library implementation.
 - In the current Anthropic API behavior, loading Skills can auto-inject the code-execution tool. Do not explicitly register another named `code_execution` tool alongside those Skills if the API reports a tool-name conflict.
+- The March 27-28 failure cluster was primarily a runtime-truth mismatch problem: speculative docs and forward-looking fixes diverged from live provider/runtime behavior faster than the code was revalidated.
+- The canonical March 28 forensic truth source is `memory/march28-48h-forensic-learnings.md`.
+- Current production Anthropic contract is `code_execution_20250825` with beta `code-execution-2025-08-25`; treat `code_execution_20260120` as non-canonical until live-validated.
+- Current production critique and export judges are both `claude-sonnet-4-6`; do not reintroduce a weaker critique judge followed by a stricter export-only judge.
+- Current production `author` / `revise` local watchdogs are disabled; stale recovery must respect active in-flight requests and meaningful progress rather than pure phase age.
+- PPTX publish validation should trust the `presentation.xml` slide list over orphaned zip slide parts, and chart-image aspect checks must not treat normal chart-canvas padding as distortion.
 
 ## Production Incident Memory: March 21-22, 2026
 

@@ -10,7 +10,7 @@ Single Claude API call with code execution, running on Railway + Vercel + Supaba
 2. **API queues** `deck_run` with `status="queued"` in Supabase
 3. **Railway worker** polls Supabase, claims queued runs, calls `generateDeckRun()`
 4. **Claude code execution** — reads data with pandas, analyzes, generates PPTX via PPTX skill (PptxGenJS), generates PDF
-5. **Visual QA** — uploads rendered PDF to Haiku, gets structured quality report
+5. **Visual QA** — uploads rendered PDF to Sonnet for the critique/export gate
 6. **Publish** — uploads artifacts to Supabase Storage, publishes manifest
 
 Key properties:
@@ -30,7 +30,7 @@ pnpm worker            # run Railway worker locally
 pnpm test:code-exec    # smoke test against Claude API
 ```
 
-After pushing to main, Vercel auto-deploys. Railway auto-deploys from the same repo.
+After pushing to main, Vercel auto-deploys. Railway worker deploys must be done manually from a clean `HEAD` snapshot.
 
 ## Key rules
 
@@ -86,10 +86,15 @@ Migrations: `supabase/migrations/`
 - `code_execution_20260120` does NOT exist server-side as of March 28. The SDK has forward types.
 
 ### Phase timeouts
-- Author: 25 min (merged understand+author with code execution takes 10-20 min)
-- Revise: 15 min
-- DO NOT reduce author below 20 min. The last successful run took 20 min for author.
-- Before setting ANY timeout: query last 5 successful runs for actual phase duration. Set to 2x p95.
+- Current production truth: local `author` and `revise` watchdog timeouts are disabled.
+- The Anthropic client timeout is currently `60m`.
+- Stale recovery must look at active in-flight requests plus meaningful progress, not raw wall-clock age of the phase.
+- Before setting ANY local watchdog again: query recent successful runs and prove the watchdog does not kill healthy long code-execution turns.
+
+### Visual QA alignment
+- The judge that blocks publish must also shape revise.
+- Current production truth: critique and final export both use `claude-sonnet-4-6`.
+- Do not reintroduce a weaker critique judge followed by a stricter export-only judge.
 
 ### Schema parsing
 - Claude's output shape varies. Use `.passthrough()` on Zod objects for LLM output.
@@ -105,7 +110,8 @@ Migrations: `supabase/migrations/`
 - No "fix" commit without identifying which prior commit introduced the regression
 
 ## Memory & learnings
-Read `memory/MEMORY.md` for the full index. Critical files:
-- `memory/feedback_code_exec_architecture.md` — hard-won rules from 10 days of failures
-- `memory/project_odyssey_march14_23.md` — complete engineering history, every mistake documented
-- `memory/project_v6_architecture.md` — current architecture spec
+Read `memory/MEMORY.md` for the current index. Critical files:
+- `memory/canonical-memory.md` — canonical product, runtime, and process truth
+- `memory/march28-48h-forensic-learnings.md` — March 27-28 forensic truth source for what actually failed and what is now canonical
+- `rules/canonical-rules.md` — execution contract and anti-drift rules
+- `packages/workflows/src/anthropic-execution-contract.ts` — canonical Anthropic tool/beta/skill contract
