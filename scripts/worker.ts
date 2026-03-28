@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { generateDeckRun } from "../packages/workflows/src/generate-deck";
+import { AttemptOwnershipLostError, generateDeckRun } from "../packages/workflows/src/generate-deck";
 import { classifyRuntimeError } from "../packages/workflows/src/failure-classifier";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
-import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
+import { callRpc, fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
 import { refundCredit } from "../apps/web/src/lib/credits";
 
@@ -14,6 +14,7 @@ const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBE
 const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
 const MAX_CONCURRENT_RUNS = Math.max(1, Number.parseInt(process.env.BASQUIO_WORKER_MAX_CONCURRENCY ?? "2", 10));
 const SHUTDOWN_DRAIN_TIMEOUT_MS = Math.max(1_000, Number.parseInt(process.env.BASQUIO_WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS ?? "25000", 10));
+const SHUTDOWN_RECOVERY_REASON = "worker_shutdown";
 
 type QueuedRunRow = {
   run_id: string;
@@ -111,6 +112,11 @@ async function main() {
   clearInterval(recoveryTimer);
 
   if (activeRuns.size > 0) {
+    console.warn(`[basquio-worker] handing off ${activeRuns.size} active runs before shutdown`);
+    await handoffActiveRuns(config, activeRuns);
+  }
+
+  if (activeRuns.size > 0) {
     console.log(`[basquio-worker] waiting up to ${SHUTDOWN_DRAIN_TIMEOUT_MS}ms for ${activeRuns.size} active runs to finish`);
     await Promise.race([
       Promise.allSettled([...activeRuns.values()].map((entry) => entry.promise)),
@@ -119,32 +125,12 @@ async function main() {
   }
 
   if (activeRuns.size > 0) {
-    console.warn(`[basquio-worker] shutdown drain timed out; requeueing ${activeRuns.size} in-flight attempts`);
+    console.warn(`[basquio-worker] shutdown drain timed out; leaving ${activeRuns.size} in-flight attempts for stale recovery`);
     for (const [runId, { attempt, stopHeartbeat }] of activeRuns) {
       stopHeartbeat();
-      console.log(`[basquio-worker] requeueing in-flight attempt ${attempt.id} for run ${runId}`);
-      await patchRestRows({
-        supabaseUrl: config.supabaseUrl,
-        serviceKey: config.serviceKey,
-        table: "deck_run_attempts",
-        query: { id: `eq.${attempt.id}`, status: "eq.running" },
-        payload: {
-          status: "queued",
-          updated_at: new Date().toISOString(),
-        },
-      }).catch((error) => {
-        console.error(`[basquio-worker] failed to requeue attempt: ${error instanceof Error ? error.message : String(error)}`);
-      });
-      await patchRestRows({
-        supabaseUrl: config.supabaseUrl,
-        serviceKey: config.serviceKey,
-        table: "deck_runs",
-        query: { id: `eq.${runId}`, status: "eq.running" },
-        payload: {
-          status: "queued",
-          updated_at: new Date().toISOString(),
-        },
-      }).catch(() => {});
+      console.warn(
+        `[basquio-worker] did not requeue attempt ${attempt.id} for run ${runId}; duplicate execution is worse than waiting for stale recovery`,
+      );
     }
   }
 
@@ -165,6 +151,12 @@ async function processRun(
       `[basquio-worker] completed run ${attempt.run_id} attempt ${attempt.attempt_number} in ${Math.round((Date.now() - startedAt) / 1000)}s`,
     );
   } catch (error) {
+    if (error instanceof AttemptOwnershipLostError) {
+      console.warn(
+        `[basquio-worker] attempt ${attempt.id} for run ${attempt.run_id} lost ownership to a newer attempt; stopping old worker path`,
+      );
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} failed: ${message}`);
 
@@ -185,52 +177,22 @@ async function processRun(
           ? "transient_network_retry"
           : "transient_provider_retry";
 
-        // Mark current attempt as failed-transient
-        await patchRestRows({
+        const recoveryRows = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
           supabaseUrl: config.supabaseUrl,
           serviceKey: config.serviceKey,
-          table: "deck_run_attempts",
-          query: { id: `eq.${attempt.id}` },
-          payload: {
-            superseded_by_attempt_id: newAttemptId,
-            updated_at: now,
-          },
-        }).catch(() => []);
-
-        // Create superseding attempt
-        await upsertRestRows({
-          supabaseUrl: config.supabaseUrl,
-          serviceKey: config.serviceKey,
-          table: "deck_run_attempts",
-          onConflict: "id",
-          rows: [{
-            id: newAttemptId,
-            run_id: attempt.run_id,
-            attempt_number: newAttemptNumber,
-            status: "queued",
-            recovery_reason: recoveryReason,
-            created_at: now,
-            updated_at: now,
-          }],
-        });
-
-        // Requeue the parent run
-        await patchRestRows({
-          supabaseUrl: config.supabaseUrl,
-          serviceKey: config.serviceKey,
-          table: "deck_runs",
-          query: { id: `eq.${attempt.run_id}` },
-          payload: {
-            status: "queued",
-            failure_message: null,
-            failure_phase: null,
-            delivery_status: "draft",
-            updated_at: now,
-            active_attempt_id: newAttemptId,
-            latest_attempt_id: newAttemptId,
-            latest_attempt_number: newAttemptNumber,
+          functionName: "recover_deck_run_attempt",
+          params: {
+            p_run_id: attempt.run_id,
+            p_old_attempt_id: attempt.id,
+            p_new_attempt_id: newAttemptId,
+            p_new_attempt_number: newAttemptNumber,
+            p_recovery_reason: recoveryReason,
+            p_now: now,
           },
         });
+        if (!recoveryRows[0]) {
+          throw new Error("superseding attempt was not created");
+        }
 
         console.log(
           `[basquio-worker] ${failureClass} on run ${attempt.run_id} — created superseding attempt ${newAttemptNumber}/${MAX_TRANSIENT_ATTEMPTS}`,
@@ -261,46 +223,22 @@ async function processRun(
           const newAttemptId = randomUUID();
           const now = new Date().toISOString();
 
-          await patchRestRows({
+          const fallbackRows = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
             supabaseUrl: config.supabaseUrl,
             serviceKey: config.serviceKey,
-            table: "deck_run_attempts",
-            query: { id: `eq.${attempt.id}` },
-            payload: { superseded_by_attempt_id: newAttemptId, updated_at: now },
-          }).catch(() => []);
-
-          await upsertRestRows({
-            supabaseUrl: config.supabaseUrl,
-            serviceKey: config.serviceKey,
-            table: "deck_run_attempts",
-            onConflict: "id",
-            rows: [{
-              id: newAttemptId,
-              run_id: attempt.run_id,
-              attempt_number: 2,
-              status: "queued",
-              recovery_reason: "template_fallback",
-              created_at: now,
-              updated_at: now,
-            }],
-          });
-
-          await patchRestRows({
-            supabaseUrl: config.supabaseUrl,
-            serviceKey: config.serviceKey,
-            table: "deck_runs",
-            query: { id: `eq.${attempt.run_id}` },
-            payload: {
-              status: "queued",
-              failure_message: null,
-              failure_phase: null,
-              delivery_status: "draft",
-              updated_at: now,
-              active_attempt_id: newAttemptId,
-              latest_attempt_id: newAttemptId,
-              latest_attempt_number: 2,
+            functionName: "recover_deck_run_attempt",
+            params: {
+              p_run_id: attempt.run_id,
+              p_old_attempt_id: attempt.id,
+              p_new_attempt_id: newAttemptId,
+              p_new_attempt_number: 2,
+              p_recovery_reason: "template_fallback",
+              p_now: now,
             },
           });
+          if (!fallbackRows[0]) {
+            throw new Error("template fallback attempt was not created");
+          }
 
           console.log(`[basquio-worker] template-backed run ${attempt.run_id} failed — created template_fallback attempt`);
         } catch (fallbackError) {
@@ -313,6 +251,57 @@ async function processRun(
         await refundCreditSafe(config, attempt.run_id);
       }
     }
+  }
+}
+
+async function handoffActiveRuns(
+  config: ReturnType<typeof resolveConfig>,
+  activeRuns: ReadonlyMap<string, ActiveRunState>,
+) {
+  const handedOffRunIds: string[] = [];
+
+  for (const [runId, { attempt, stopHeartbeat }] of activeRuns) {
+    stopHeartbeat();
+    const now = new Date().toISOString();
+
+    try {
+      const recoveryRows = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        functionName: "recover_deck_run_attempt",
+        params: {
+          p_run_id: runId,
+          p_old_attempt_id: attempt.id,
+          p_new_attempt_id: randomUUID(),
+          p_new_attempt_number: attempt.attempt_number + 1,
+          p_recovery_reason: SHUTDOWN_RECOVERY_REASON,
+          p_now: now,
+          p_expected_old_status: "running",
+          p_old_status_override: "failed",
+          p_failure_phase: SHUTDOWN_RECOVERY_REASON,
+          p_failure_message: "Worker shutdown interrupted the run; Basquio automatically requeued it.",
+        },
+      });
+
+      if (recoveryRows[0]) {
+        handedOffRunIds.push(runId);
+        console.warn(
+          `[basquio-worker] handed off run ${runId} to attempt ${recoveryRows[0].attempt_number} before shutdown`,
+        );
+        continue;
+      }
+    } catch (error) {
+      console.error(
+        `[basquio-worker] shutdown handoff failed for ${runId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    console.warn(
+      `[basquio-worker] leaving run ${runId} on active attempt ${attempt.id}; stale recovery will supersede it after shutdown if direct handoff could not be recorded`,
+    );
+  }
+
+  if (handedOffRunIds.length > 0) {
+    console.log(`[basquio-worker] shutdown handoff queued superseding attempts for: ${handedOffRunIds.join(", ")}`);
   }
 }
 
@@ -438,78 +427,46 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
   }
 
   const now = new Date().toISOString();
+  const recoveredRunIds: string[] = [];
+  const recoveryFailures: string[] = [];
   for (const attempt of staleAttempts) {
     const newAttemptId = randomUUID();
     const newAttemptNumber = attempt.attempt_number + 1;
 
-    // 1. Mark the stale attempt as failed. If another worker already recovered it,
-    // do not create a duplicate superseding attempt.
-    const markedStale = await patchRestRows<{ id: string }>({
+    const recovered = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      query: { id: `eq.${attempt.id}`, status: "eq.running", superseded_by_attempt_id: "is.null" },
-      select: "id",
-      payload: {
-        status: "failed",
-        failure_phase: "stale_timeout",
-        failure_message: "Run timed out and was automatically recovered.",
-        updated_at: now,
+      functionName: "recover_deck_run_attempt",
+      params: {
+        p_run_id: attempt.run_id,
+        p_old_attempt_id: attempt.id,
+        p_new_attempt_id: newAttemptId,
+        p_new_attempt_number: newAttemptNumber,
+        p_recovery_reason: "stale_timeout",
+        p_now: now,
+        p_expected_old_status: "running",
+        p_old_status_override: "failed",
+        p_failure_phase: "stale_timeout",
+        p_failure_message: "Run timed out and was automatically recovered.",
       },
-    }).catch(() => []);
-    if (!markedStale[0]) {
+    }).catch((error) => {
+      recoveryFailures.push(`${attempt.run_id}: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    });
+    if (!recovered[0]) {
+      recoveryFailures.push(`${attempt.run_id}: no superseding attempt created`);
       continue;
     }
-
-    // 2. Create a new superseding attempt
-    await upsertRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      onConflict: "id",
-      rows: [{
-        id: newAttemptId,
-        run_id: attempt.run_id,
-        attempt_number: newAttemptNumber,
-        status: "queued",
-        recovery_reason: "stale_timeout",
-        created_at: now,
-        updated_at: now,
-      }],
-    }).catch(() => []);
-
-    // 3. Link old attempt to the new one
-    await patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      query: { id: `eq.${attempt.id}` },
-      payload: {
-        superseded_by_attempt_id: newAttemptId,
-      },
-    }).catch(() => []);
-
-    // 4. Update the parent run to point at the new attempt
-    await patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_runs",
-      query: { id: `eq.${attempt.run_id}`, active_attempt_id: `eq.${attempt.id}` },
-      payload: {
-        status: "queued",
-        failure_message: null,
-        failure_phase: null,
-        delivery_status: "draft",
-        updated_at: now,
-        active_attempt_id: newAttemptId,
-        latest_attempt_id: newAttemptId,
-        latest_attempt_number: newAttemptNumber,
-      },
-    }).catch(() => []);
+    recoveredRunIds.push(attempt.run_id);
   }
 
-  if (staleAttempts.length > 0) {
-    console.log(`[basquio-worker] recovered ${staleAttempts.length} stale attempts with new superseding attempts`);
+  if (recoveredRunIds.length > 0) {
+    console.log(
+      `[basquio-worker] recovered ${recoveredRunIds.length} stale attempts with new superseding attempts: ${recoveredRunIds.join(", ")}`,
+    );
+  }
+  if (recoveryFailures.length > 0) {
+    console.warn(`[basquio-worker] stale recovery failures: ${recoveryFailures.join(" | ")}`);
   }
 }
 
@@ -573,65 +530,19 @@ async function claimNextQueuedAttempt(
     }
 
     const now = new Date().toISOString();
-    const claimed = await patchRestRows<QueuedRunRow>({
+    const claimed = await callRpc<Array<QueuedRunRow>>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      query: {
-        id: `eq.${candidate.id}`,
-        status: "eq.queued",
-      },
-      select: "id,run_id,attempt_number",
-      payload: {
-        status: "running",
-        started_at: now,
-        updated_at: now,
-        worker_deployment_id: resolveWorkerDeploymentId(),
-        failure_message: null,
-        failure_phase: null,
+      functionName: "claim_deck_run_attempt",
+      params: {
+        p_attempt_id: candidate.id,
+        p_started_at: now,
+        p_worker_deployment_id: resolveWorkerDeploymentId(),
       },
     }).catch(() => []);
 
     if (!claimed[0]) {
       continue;
-    }
-
-    try {
-      await patchRestRows({
-        supabaseUrl: config.supabaseUrl,
-        serviceKey: config.serviceKey,
-        table: "deck_runs",
-        query: {
-          id: `eq.${claimed[0].run_id}`,
-        },
-        payload: {
-          status: "running",
-          current_phase: "normalize",
-          phase_started_at: now,
-          updated_at: now,
-          failure_message: null,
-          failure_phase: null,
-          delivery_status: "draft",
-          active_attempt_id: claimed[0].id,
-          latest_attempt_id: claimed[0].id,
-          latest_attempt_number: claimed[0].attempt_number,
-        },
-      });
-    } catch (error) {
-      await patchRestRows({
-        supabaseUrl: config.supabaseUrl,
-        serviceKey: config.serviceKey,
-        table: "deck_run_attempts",
-        query: {
-          id: `eq.${claimed[0].id}`,
-          status: "eq.running",
-        },
-        payload: {
-          status: "queued",
-          updated_at: new Date().toISOString(),
-        },
-      }).catch(() => []);
-      throw error;
     }
 
     return claimed[0] ?? null;
@@ -755,7 +666,6 @@ async function processTemplateImportJobs(config: ReturnType<typeof resolveConfig
 }
 
 async function refundCreditSafe(config: ReturnType<typeof resolveConfig>, runId: string) {
-  if (!process.env.STRIPE_SECRET_KEY) return;
   try {
     const run = await fetchRestRows<{ requested_by: string }>({
       supabaseUrl: config.supabaseUrl,
@@ -764,13 +674,19 @@ async function refundCreditSafe(config: ReturnType<typeof resolveConfig>, runId:
       query: { select: "requested_by", id: `eq.${runId}`, limit: "1" },
     });
     if (run[0]?.requested_by) {
-      await refundCredit({
+      const result = await refundCredit({
         supabaseUrl: config.supabaseUrl,
         serviceKey: config.serviceKey,
         userId: run[0].requested_by,
         runId,
       });
-      console.log(`[basquio-worker] refunded credit for failed run ${runId}`);
+      if (result.status === "refunded") {
+        console.log(`[basquio-worker] refunded ${result.amount} credits for failed run ${runId}`);
+      } else if (result.status === "already_refunded") {
+        console.log(`[basquio-worker] refund already exists for failed run ${runId}`);
+      } else {
+        console.error(`[basquio-worker] refund lookup found no debit for failed run ${runId}`);
+      }
     }
   } catch (refundError) {
     const refundMsg = refundError instanceof Error ? refundError.message : String(refundError);

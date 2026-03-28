@@ -25,7 +25,7 @@ import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested } from "./notify-completion";
-import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
+import { callRpc, deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const MODEL = "claude-sonnet-4-6";
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
@@ -245,6 +245,9 @@ type ArtifactCheckpoint = {
   savedAt: string;
   attemptId: string;
   attemptNumber: number;
+  resumeReady: boolean;
+  visualQaStatus?: "green" | "yellow" | "red";
+  deckNeedsRevision?: boolean;
 };
 type ClaudeUsage = {
   input_tokens?: number;
@@ -271,6 +274,13 @@ type PublishedArtifact = {
   fileBytes: number;
   checksumSha256: string;
 };
+
+export class AttemptOwnershipLostError extends Error {
+  constructor(runId: string, attemptId: string) {
+    super(`Run ${runId} is no longer owned by attempt ${attemptId}.`);
+    this.name = "AttemptOwnershipLostError";
+  }
+}
 
 export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<AttemptContext>) {
   const config = resolveConfig();
@@ -405,7 +415,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     ]);
     const CHECKPOINT_ELIGIBLE_RECOVERY_REASONS: ReadonlySet<string> = new Set([
       "stale_timeout", "transient_provider_retry",
-      "transient_network_retry",
+      "transient_network_retry", "worker_shutdown",
     ]);
     // Failure messages that indicate hard artifact corruption — checkpoint
     // resume would just re-publish a corrupt deck. Must replay instead.
@@ -454,8 +464,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const isHardArtifactCorruption = CHECKPOINT_INELIGIBLE_PATTERNS.some((p) => priorMsgLower.includes(p));
     const isCheckpointEligible = (isCheckpointEligibleByPhase || isCheckpointEligibleByReason) && !isHardArtifactCorruption;
 
+    const checkpointHasPublishProof = Boolean(existingCheckpoint?.resumeReady);
     const canResumeFromCheckpoint = checkpointArtifacts && existingCheckpoint && recoveredAnalysis
-      && attempt.attemptNumber > 1 && isCheckpointEligible;
+      && attempt.attemptNumber > 1 && isCheckpointEligible && checkpointHasPublishProof;
     let publishFromCheckpoint: ArtifactCheckpoint | null = canResumeFromCheckpoint && existingCheckpoint
       ? existingCheckpoint
       : null;
@@ -730,6 +741,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       phaseTelemetry.authorLint = summarizeLintResult(lintManifest(manifest));
       phaseTelemetry.authorContract = summarizeDeckContractResult(validateManifestContract(manifest));
 
+      await assertAttemptStillOwnsRun(config, runId, attempt);
       await persistDeckSpec(config, runId, manifest);
       await completePhase(config, runId, attempt, "author", {
         containerId,
@@ -739,7 +751,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }, authorPhaseUsage);
 
       // A1: Persist durable artifact checkpoint after author success
-      await persistArtifactCheckpoint(config, runId, attempt, "author", pptxFile, pdfFile, manifest).catch((checkpointError) => {
+      await assertAttemptStillOwnsRun(config, runId, attempt);
+      await persistArtifactCheckpoint(config, runId, attempt, "author", pptxFile, pdfFile, manifest, {
+        resumeReady: true,
+      }).catch((checkpointError) => {
         console.warn(`[generateDeckRun] failed to persist author checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
       });
     }
@@ -785,6 +800,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         ...((phaseTelemetry.authorContract as { actionableIssues?: string[] } | undefined)?.actionableIssues ?? []),
       ],
     );
+    const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
     await completePhase(
       config,
       runId,
@@ -792,6 +808,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       "critique",
       {
         issueCount: critiqueIssues.length,
+        blockingIssueCount: blockingCritiqueIssues.length,
         issues: critiqueIssues,
         visualQa: initialVisualQa.report,
       },
@@ -803,7 +820,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     finalManifest = manifest;
     finalVisualQa = initialVisualQa.report;
 
-    if (critiqueIssues.length > 0 && latestResponse) {
+    const shouldRunRevise = latestResponse !== null && (
+      initialVisualQa.report.overallStatus !== "green" ||
+      initialVisualQa.report.deckNeedsRevision ||
+      blockingCritiqueIssues.length > 0
+    );
+
+    if (shouldRunRevise && latestResponse) {
       try {
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
@@ -968,6 +991,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
           finalVisualQa = revisedVisualQa.report;
           await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
+          await assertAttemptStillOwnsRun(config, runId, attempt);
           await persistDeckSpec(config, runId, finalManifest);
         }
 
@@ -986,7 +1010,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         );
 
         // B1: Persist pre-export checkpoint after revise success
-        await persistArtifactCheckpoint(config, runId, attempt, "revise", finalPptx, finalPdf, finalManifest).catch((checkpointError) => {
+        await assertAttemptStillOwnsRun(config, runId, attempt);
+        await persistArtifactCheckpoint(config, runId, attempt, "revise", finalPptx, finalPdf, finalManifest, {
+          resumeReady: true,
+          visualQaStatus: finalVisualQa.overallStatus,
+          deckNeedsRevision: finalVisualQa.deckNeedsRevision,
+        }).catch((checkpointError) => {
           console.warn(`[generateDeckRun] failed to persist revise checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
         });
       } catch (revisePhaseError) {
@@ -1066,15 +1095,17 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       const repairableQaFailures = qaReport.failed.filter((check) =>
         ["pptx_chart_media_present", "pptx_large_image_aspect_fit", "pptx_structural_integrity"].includes(check),
       );
-      const blockingQaFailures = qaReport.failed.filter((check) =>
-        !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
-      );
+      const initialQualityGate = collectPublishGateFailures({
+        qaReport,
+        lint: lintManifest(finalManifest),
+        contract: validateManifestContract(finalManifest),
+      });
 
       // Repair loop: attempt to fix repairable QA failures via Claude.
       // CRITICAL: wrapped in try/catch so a repair failure falls through to salvage
       // instead of killing the run. The repair path calls Claude API, parses manifests,
       // and runs visual QA — any of these can throw.
-      if (repairableQaFailures.length > 0 && latestContainerId && latestResponse && blockingQaFailures.every((check) => repairableQaFailures.includes(check))) {
+      if (repairableQaFailures.length > 0 && latestContainerId && latestResponse && initialQualityGate.blockingFailures.every((check) => repairableQaFailures.includes(check))) {
         try {
           const repairedArtifacts = await repairArtifactsFromQa({
             client,
@@ -1083,6 +1114,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             latestContainerId,
             qaFailures: repairableQaFailures,
             tools: CLAUDE_TOOLS,
+            currentSpentUsd: spentUsd,
           });
           if ((repairedArtifacts.usage.input_tokens ?? 0) > 0 || (repairedArtifacts.usage.output_tokens ?? 0) > 0) {
             spentUsd = roundUsd(spentUsd + usageToCost(MODEL, repairedArtifacts.usage));
@@ -1146,19 +1178,21 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         }
       }
 
-      const finalBlockingQaFailures = qaReport.failed.filter((check) =>
-        !["rendered_page_visual_green", "rendered_page_visual_no_revision"].includes(check),
-      );
-      if (finalBlockingQaFailures.length > 0) {
+      const finalQualityGate = collectPublishGateFailures({
+        qaReport,
+        lint: lintManifest(finalManifest),
+        contract: validateManifestContract(finalManifest),
+      });
+      if (finalQualityGate.blockingFailures.length > 0) {
         const salvageCheckpoint = await loadArtifactCheckpoint(config, runId);
         if (salvageCheckpoint) {
           const salvageArtifacts = await loadCheckpointArtifacts(config, salvageCheckpoint);
           if (salvageArtifacts) {
-            console.warn(`[generateDeckRun] export QA failed but salvaging from ${salvageCheckpoint.phase} checkpoint: ${finalBlockingQaFailures.join(", ")}`);
+            console.warn(`[generateDeckRun] export publish gate failed but salvaging from ${salvageCheckpoint.phase} checkpoint: ${finalQualityGate.blockingFailures.join(", ")}`);
             phaseTelemetry.exportQaSalvage = {
               reason: "qa_failed_salvaged_from_checkpoint",
               checkpointPhase: salvageCheckpoint.phase,
-              failedChecks: finalBlockingQaFailures,
+              failedChecks: finalQualityGate.blockingFailures,
             };
             finalPptx = salvageArtifacts.pptx;
             finalPdf = salvageArtifacts.pdf;
@@ -1209,58 +1243,53 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               finalVisualQa,
               templateDiagnostics,
             );
-
-            const SALVAGE_HARD_BLOCKERS = new Set([
-              "pptx_present", "pdf_present",
-              "pptx_zip_signature", "pdf_header_signature",
-              "slide_count_positive",
-              "pptx_zip_parse_failed", "pdf_parseable",
-            ]);
-            const salvageBlockingFailures = qaReport.failed.filter((check) => SALVAGE_HARD_BLOCKERS.has(check));
+            const salvageQualityGate = collectPublishGateFailures({
+              qaReport,
+              lint: lintManifest(finalManifest),
+              contract: validateManifestContract(finalManifest),
+            });
+            const salvageBlockingFailures = salvageQualityGate.blockingFailures;
             if (salvageBlockingFailures.length > 0) {
-              throw new Error(`Artifact QA failed on salvaged checkpoint (hard corruption): ${salvageBlockingFailures.join(", ")}`);
-            }
-            const salvageAdvisoryFailures = qaReport.failed.filter((check) => !SALVAGE_HARD_BLOCKERS.has(check));
-            if (salvageAdvisoryFailures.length > 0) {
-              console.warn(`[generateDeckRun] salvage shipping past advisory QA failures: ${salvageAdvisoryFailures.join(", ")}`);
-              phaseTelemetry.salvageAdvisoryFailures = salvageAdvisoryFailures;
+              throw new Error(`Artifact publish gate failed on salvaged checkpoint: ${salvageBlockingFailures.join(", ")}`);
             }
 
             phaseTelemetry.exportSalvaged = true;
             phaseTelemetry.exportSalvageCheckpointPhase = salvageCheckpoint.phase;
             publishFromCheckpoint = salvageCheckpoint;
           } else if (finalPptx.buffer.length > 0 && finalPdf.buffer.length > 0) {
-            console.warn("[generateDeckRun] checkpoint salvage unavailable, publishing in-memory artifacts as last resort");
+            console.warn("[generateDeckRun] checkpoint salvage unavailable, shipping in-memory artifacts as last resort");
             phaseTelemetry.exportLastResort = {
               reason: "checkpoint_unusable_with_in_memory_artifacts",
-              failedChecks: finalBlockingQaFailures,
+              failedChecks: finalQualityGate.blockingFailures,
             };
             phaseTelemetry.exportSalvaged = true;
           } else {
-            throw new Error(`Artifact QA failed: ${finalBlockingQaFailures.join(", ")}`);
+            throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
           }
         } else if (finalPptx.buffer.length > 0 && finalPdf.buffer.length > 0) {
-          console.warn("[generateDeckRun] no checkpoint but in-memory artifacts exist, publishing as last resort");
+          console.warn("[generateDeckRun] no checkpoint but in-memory artifacts exist, shipping as last resort");
           phaseTelemetry.exportLastResort = {
             reason: "no_checkpoint_with_in_memory_artifacts",
-            failedChecks: finalBlockingQaFailures,
+            failedChecks: finalQualityGate.blockingFailures,
           };
           phaseTelemetry.exportSalvaged = true;
         } else {
-          throw new Error(`Artifact QA failed: ${finalBlockingQaFailures.join(", ")}`);
+          throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
         }
       }
 
       finalDocx ??= await buildStubDocx("Narrative report could not be generated for this run. The deck PPTX and PDF are available.");
-      phaseTelemetry.finalLint = summarizeLintResult(lintManifest(finalManifest));
-      phaseTelemetry.finalContract = summarizeDeckContractResult(validateManifestContract(finalManifest));
+      const finalLint = lintManifest(finalManifest);
+      const finalContract = validateManifestContract(finalManifest);
+      phaseTelemetry.finalLint = summarizeLintResult(finalLint);
+      phaseTelemetry.finalContract = summarizeDeckContractResult(finalContract);
       const isSalvagedExport = Boolean(phaseTelemetry.exportSalvaged);
-      const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx, {
+      await assertAttemptStillOwnsRun(config, runId, attempt);
+      const artifacts = await persistArtifacts(config, run, attempt, finalPptx, finalPdf, finalDocx, {
         checkpoint: publishFromCheckpoint,
         allowDocxFailure: Boolean(publishFromCheckpoint),
       });
-      await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts, templateDiagnostics);
-      await finalizeSuccess(config, runId, attempt, spentUsd, qaReport, {
+      await finalizeSuccess(config, runId, attempt, spentUsd, finalManifest, qaReport, artifacts, templateDiagnostics, {
         phases: phaseTelemetry,
         continuationCount,
         anthropicRequestIds: [...anthropicRequestIds],
@@ -1338,12 +1367,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
       phaseTelemetry.finalLint = summarizeLintResult(lintManifest(finalManifest));
       phaseTelemetry.finalContract = summarizeDeckContractResult(validateManifestContract(finalManifest));
-      const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx, {
+      await assertAttemptStillOwnsRun(config, runId, attempt);
+      const artifacts = await persistArtifacts(config, run, attempt, finalPptx, finalPdf, finalDocx, {
         checkpoint: publishFromCheckpoint,
         allowDocxFailure: true,
       });
-      await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts, templateDiagnostics);
-      await finalizeSuccess(config, runId, attempt, spentUsd, qaReport, {
+      await finalizeSuccess(config, runId, attempt, spentUsd, finalManifest, qaReport, artifacts, templateDiagnostics, {
         phases: phaseTelemetry,
         continuationCount,
         anthropicRequestIds: [...anthropicRequestIds],
@@ -1370,6 +1399,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
     }
   } catch (error) {
+    if (error instanceof AttemptOwnershipLostError) {
+      console.warn(`[generateDeckRun] ${error.message} Skipping finalization for superseded attempt.`);
+      throw error;
+    }
     const rawMessage = error instanceof Error ? error.message : "Deck generation failed.";
     const message = sanitizeFailureMessage(rawMessage);
     const failureClass = classifyRuntimeError(error);
@@ -1415,6 +1448,45 @@ async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) 
 
   if (!runs[0]) throw new Error(`Run ${runId} not found.`);
   return runs[0];
+}
+
+async function assertAttemptStillOwnsRun(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  attempt: AttemptContext,
+) {
+  const [runs, attempts] = await Promise.all([
+    fetchRestRows<{ active_attempt_id: string | null; status: string }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "active_attempt_id,status",
+        id: `eq.${runId}`,
+        limit: "1",
+      },
+    }).catch(() => []),
+    fetchRestRows<{ superseded_by_attempt_id: string | null }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: {
+        select: "superseded_by_attempt_id",
+        id: `eq.${attempt.id}`,
+        limit: "1",
+      },
+    }).catch(() => []),
+  ]);
+
+  const run = runs[0];
+  const attemptRow = attempts[0];
+  const ownershipLost = !run
+    || run.active_attempt_id !== attempt.id
+    || attemptRow?.superseded_by_attempt_id !== null;
+
+  if (ownershipLost) {
+    throw new AttemptOwnershipLostError(runId, attempt.id);
+  }
 }
 
 async function resolveAttemptContext(
@@ -1666,20 +1738,55 @@ async function upsertWorkingPaper(
   paperType: string,
   content: Record<string, unknown>,
 ) {
-  await upsertRestRows({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "working_papers",
-    onConflict: "run_id,paper_type,version",
-    rows: [
-      {
-        run_id: runId,
-        paper_type: paperType,
-        content,
-        version: 1,
+  await appendWorkingPaperVersion(config, runId, paperType, content);
+}
+
+async function appendWorkingPaperVersion(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  paperType: string,
+  content: Record<string, unknown>,
+) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const latestRows = await fetchRestRows<{ version: number }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "working_papers",
+      query: {
+        select: "version",
+        run_id: `eq.${runId}`,
+        paper_type: `eq.${paperType}`,
+        order: "version.desc",
+        limit: "1",
       },
-    ],
-  });
+    }).catch(() => []);
+    const nextVersion = (latestRows[0]?.version ?? 0) + 1;
+
+    try {
+      await upsertRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "working_papers",
+        onConflict: "run_id,paper_type,version",
+        rows: [
+          {
+            run_id: runId,
+            paper_type: paperType,
+            content,
+            version: nextVersion,
+          },
+        ],
+      });
+      return nextVersion;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.toLowerCase().includes("duplicate")) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error(`Failed to append working paper version for ${paperType}.`);
 }
 
 async function persistArtifactCheckpoint(
@@ -1690,10 +1797,16 @@ async function persistArtifactCheckpoint(
   pptx: GeneratedFile,
   pdf: GeneratedFile,
   manifest: Record<string, unknown>,
+  metadata?: {
+    resumeReady?: boolean;
+    visualQaStatus?: "green" | "yellow" | "red";
+    deckNeedsRevision?: boolean;
+  },
 ) {
   const timestamp = new Date().toISOString();
-  const pptxPath = `deck-runs/${runId}/checkpoints/${phase}_deck.pptx`;
-  const pdfPath = `deck-runs/${runId}/checkpoints/${phase}_deck.pdf`;
+  const checkpointKey = `${attempt.attemptNumber}-${attempt.id}-${phase}`;
+  const pptxPath = `deck-runs/${runId}/checkpoints/${checkpointKey}/deck.pptx`;
+  const pdfPath = `deck-runs/${runId}/checkpoints/${checkpointKey}/deck.pdf`;
 
   // Both uploads must succeed before we write the checkpoint record.
   // A dangling record pointing to missing files is worse than no checkpoint.
@@ -1730,6 +1843,9 @@ async function persistArtifactCheckpoint(
     savedAt: timestamp,
     attemptId: attempt.id,
     attemptNumber: attempt.attemptNumber,
+    resumeReady: metadata?.resumeReady ?? false,
+    visualQaStatus: metadata?.visualQaStatus,
+    deckNeedsRevision: metadata?.deckNeedsRevision,
   };
 
   await upsertWorkingPaper(config, runId, "artifact_checkpoint", checkpoint);
@@ -1854,7 +1970,10 @@ async function markPhase(
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_runs",
-      query: { id: `eq.${runId}` },
+      query: {
+        id: `eq.${runId}`,
+        active_attempt_id: `eq.${attempt.id}`,
+      },
       payload: {
         status: "running",
         current_phase: phase,
@@ -1895,7 +2014,10 @@ async function completePhase(
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
     table: "deck_runs",
-    query: { id: `eq.${runId}` },
+    query: {
+      id: `eq.${runId}`,
+      active_attempt_id: `eq.${attempt.id}`,
+    },
     payload: {
       updated_at: new Date().toISOString(),
     },
@@ -1966,7 +2088,10 @@ async function finalizeSuccess(
   runId: string,
   attempt: AttemptContext,
   estimatedCostUsd: number,
+  manifest: z.infer<typeof deckManifestSchema>,
   qaReport: Record<string, unknown>,
+  artifacts: Array<Record<string, unknown>>,
+  templateDiagnostics: TemplateDiagnostics,
   extraTelemetry: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
@@ -1981,41 +2106,34 @@ async function finalizeSuccess(
     qaTier: qaReport.tier,
     ...extraTelemetry,
   });
-  await Promise.all([
-    patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      query: { id: `eq.${attempt.id}` },
-      payload: {
-        status: "completed",
-        updated_at: now,
-        completed_at: now,
-        cost_telemetry: attemptCostTelemetry,
-        anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
+  const publishRows = await callRpc<Array<{ published: boolean }>>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    functionName: "complete_deck_run_attempt",
+    params: {
+      p_run_id: runId,
+      p_attempt_id: attempt.id,
+      p_attempt_number: attempt.attemptNumber,
+      p_completed_at: now,
+      p_delivery_status: extraTelemetry.salvaged ? "salvaged" : qaReport.tier === "green" ? "reviewed" : "degraded",
+      p_attempt_cost_telemetry: attemptCostTelemetry,
+      p_run_cost_telemetry: runCostTelemetry,
+      p_anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
+      p_slide_count: manifest.slideCount,
+      p_page_count: manifest.pageCount ?? manifest.slideCount,
+      p_qa_passed: qaReport.tier === "green",
+      p_qa_report: {
+        ...qaReport,
+        template: templateDiagnostics,
       },
-    }),
-    patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_runs",
-      query: { id: `eq.${runId}` },
-      payload: {
-        status: "completed",
-        current_phase: "export",
-        updated_at: now,
-        completed_at: now,
-        // B4: Salvaged runs get explicit "salvaged" delivery_status,
-        // normal runs use QA tier. Never hide salvage behind "reviewed".
-        delivery_status: extraTelemetry.salvaged ? "salvaged" : qaReport.tier === "green" ? "reviewed" : "degraded",
-        cost_telemetry: runCostTelemetry,
-        active_attempt_id: null,
-        latest_attempt_id: attempt.id,
-        latest_attempt_number: attempt.attemptNumber,
-        successful_attempt_id: attempt.id,
-      },
-    }),
-  ]);
+      p_artifacts: artifacts,
+      p_published_at: now,
+    },
+  }).catch(() => []);
+
+  if (!publishRows[0]?.published) {
+    throw new AttemptOwnershipLostError(runId, attempt.id);
+  }
 }
 
 async function finalizeFailure(
@@ -2026,6 +2144,18 @@ async function finalizeFailure(
   failureMessage: string,
   extraTelemetry: Record<string, unknown>,
 ) {
+  const ownsRun = attempt
+    ? await fetchRestRows<{ active_attempt_id: string | null }>({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: {
+          select: "active_attempt_id",
+          id: `eq.${runId}`,
+          limit: "1",
+        },
+      }).then((rows) => rows[0]?.active_attempt_id === attempt.id).catch(() => false)
+    : true;
   const now = new Date().toISOString();
   const attemptCostTelemetry = {
     model: MODEL,
@@ -2041,11 +2171,16 @@ async function finalizeFailure(
     extraTelemetry,
   );
   const writes: Array<Promise<unknown>> = [
-    patchRestRows({
+    ...(ownsRun ? [patchRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_runs",
-      query: { id: `eq.${runId}` },
+      query: attempt
+        ? {
+            id: `eq.${runId}`,
+            active_attempt_id: `eq.${attempt.id}`,
+          }
+        : { id: `eq.${runId}` },
       payload: {
         status: "failed",
         failure_message: failureMessage,
@@ -2056,7 +2191,7 @@ async function finalizeFailure(
         cost_telemetry: runCostTelemetry,
         active_attempt_id: null,
       },
-    }),
+    })] : []),
   ];
 
   if (attempt) {
@@ -2065,7 +2200,10 @@ async function finalizeFailure(
         supabaseUrl: config.supabaseUrl,
         serviceKey: config.serviceKey,
         table: "deck_run_attempts",
-        query: { id: `eq.${attempt.id}` },
+        query: {
+          id: `eq.${attempt.id}`,
+          superseded_by_attempt_id: "is.null",
+        },
         payload: {
           status: "failed",
           failure_phase: failurePhase,
@@ -2081,6 +2219,16 @@ async function finalizeFailure(
 
   await Promise.all(writes);
   await insertEvent(config, runId, attempt, failurePhase, "error", { message: failureMessage });
+  if (ownsRun) {
+    await callRpc<Array<{ refunded: boolean; amount: number }>>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      functionName: "refund_run_credit",
+      params: {
+        p_run_id: runId,
+      },
+    }).catch(() => []);
+  }
 }
 
 async function insertEvent(
@@ -2762,6 +2910,7 @@ async function repairArtifactsFromQa(input: {
   latestContainerId: string;
   qaFailures: string[];
   tools: Anthropic.Beta.BetaToolUnion[];
+  currentSpentUsd: number;
 }) {
   const response = await runClaudeLoop({
     client: input.client,
@@ -2770,6 +2919,7 @@ async function repairArtifactsFromQa(input: {
     container: { id: input.latestContainerId },
     messages: [...input.latestResponse.thread, buildArtifactRepairMessage(input.qaFailures)],
     tools: input.tools,
+    currentSpentUsd: input.currentSpentUsd,
     outputConfig: {
       effort: "medium",
     },
@@ -3337,6 +3487,24 @@ function summarizeDeckContractResult(contract: ReturnType<typeof validateManifes
   };
 }
 
+function collectPublishGateFailures(input: {
+  qaReport: Awaited<ReturnType<typeof buildQaReport>>;
+  lint: ReturnType<typeof lintManifest>;
+  contract: ReturnType<typeof validateManifestContract>;
+}) {
+  const blockingFailures = [
+    ...input.qaReport.failed,
+    ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
+    ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
+  ];
+
+  return {
+    blockingFailures: [...new Set(blockingFailures)],
+    lintSummary: summarizeLintResult(input.lint),
+    contractSummary: summarizeDeckContractResult(input.contract),
+  };
+}
+
 function collectCritiqueIssues(
   manifest: z.infer<typeof deckManifestSchema>,
   visualQa: RenderedPageQaReport,
@@ -3360,6 +3528,11 @@ function collectCritiqueIssues(
   issues.push(...lintIssues);
 
   return issues;
+}
+
+function isAdvisoryCritiqueIssue(issue: string) {
+  const normalized = issue.toLowerCase();
+  return normalized.includes("title is") && normalized.includes("overflow the right margin");
 }
 
 async function buildQaReport(
@@ -3795,6 +3968,7 @@ function extractSlideNumber(name: string) {
 async function persistArtifacts(
   config: ReturnType<typeof resolveConfig>,
   run: RunRow,
+  attempt: AttemptContext,
   pptx: GeneratedFile,
   pdf: GeneratedFile,
   docx: GeneratedFile,
@@ -3823,13 +3997,14 @@ async function persistArtifacts(
       }),
     );
   } else {
+    const publishPrefix = `${run.id}/attempts/${attempt.attemptNumber}-${attempt.id}`;
     const coreItems = [
       { kind: "pptx", fileName: "deck.pptx", mimeType: pptx.mimeType || "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: pptx.buffer },
       { kind: "pdf", fileName: "deck.pdf", mimeType: pdf.mimeType || "application/pdf", buffer: pdf.buffer },
     ] as const;
 
     for (const item of coreItems) {
-      const storagePath = `${run.id}/${item.fileName}`;
+      const storagePath = `${publishPrefix}/${item.fileName}`;
       await uploadToStorage({
         supabaseUrl: config.supabaseUrl,
         serviceKey: config.serviceKey,
@@ -3850,7 +4025,7 @@ async function persistArtifacts(
   }
 
   const docxMimeType = docx.mimeType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const docxStoragePath = `${run.id}/report.docx`;
+  const docxStoragePath = `${run.id}/attempts/${attempt.attemptNumber}-${attempt.id}/report.docx`;
   try {
     await uploadToStorage({
       supabaseUrl: config.supabaseUrl,
@@ -3895,36 +4070,6 @@ function buildPublishedArtifact(input: {
     fileBytes: input.buffer.length,
     checksumSha256: createHash("sha256").update(input.buffer).digest("hex"),
   };
-}
-
-async function publishArtifactManifest(
-  config: ReturnType<typeof resolveConfig>,
-  runId: string,
-  manifest: z.infer<typeof deckManifestSchema>,
-  qaReport: Record<string, unknown>,
-  artifacts: Array<Record<string, unknown>>,
-  templateDiagnostics: TemplateDiagnostics,
-) {
-  await upsertRestRows({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "artifact_manifests_v2",
-    onConflict: "run_id",
-    rows: [
-      {
-        run_id: runId,
-        slide_count: manifest.slideCount,
-        page_count: manifest.pageCount ?? manifest.slideCount,
-        qa_passed: qaReport.tier === "green",
-        qa_report: {
-          ...qaReport,
-          template: templateDiagnostics,
-        },
-        artifacts,
-        published_at: new Date().toISOString(),
-      },
-    ],
-  });
 }
 
 function inferLanguageHint(run: RunRow) {
