@@ -55,6 +55,13 @@ type DeckRunEventRow = {
   created_at: string;
 };
 
+type DeckRunAttemptHealthRow = {
+  id: string;
+  status: string;
+  updated_at: string | null;
+  last_meaningful_event_at: string | null;
+};
+
 type TemplateProfileRow = {
   source_file_id: string | null;
   template_profile: Parameters<typeof buildTemplateDiagnosticsFromProfile>[0]["profile"];
@@ -78,6 +85,7 @@ type AttemptCostSummaryRow = {
   attempt_number: number;
   status: string;
   failure_phase: string | null;
+  recovery_reason: string | null;
   cost_telemetry: Record<string, unknown> | null;
   started_at: string | null;
   completed_at: string | null;
@@ -142,7 +150,11 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
     completedDetail: "Downloads published.",
   },
 };
-const STALE_RUN_UI_SECONDS = Number.parseInt(process.env.BASQUIO_RUN_STALE_UI_SECONDS ?? "180", 10);
+const WORKER_STALE_RUN_SECONDS = Number.parseInt(process.env.BASQUIO_WORKER_STALE_MINUTES ?? "8", 10) * 60;
+const STALE_RUN_UI_SECONDS = Number.parseInt(
+  process.env.BASQUIO_RUN_STALE_UI_SECONDS ?? String(Math.min(180, WORKER_STALE_RUN_SECONDS)),
+  10,
+);
 
 export async function GET(
   _request: Request,
@@ -244,8 +256,24 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
   const templateDiagnostics = await resolveTemplateDiagnostics(supabaseUrl, serviceKey, run);
-  const isStale = run.status === "running" && now - updatedAtMs > STALE_RUN_UI_SECONDS * 1000;
-  const progressClockMs = isStale ? updatedAtMs : now;
+  const attemptProgressRows = attemptId
+    ? await fetchRestRows<DeckRunAttemptHealthRow>({
+      supabaseUrl,
+      serviceKey,
+      table: "deck_run_attempts",
+      query: {
+        select: "id,status,updated_at,last_meaningful_event_at",
+        id: `eq.${attemptId}`,
+        limit: "1",
+      },
+    }).catch(() => [])
+    : [];
+  const attemptProgressRow = attemptProgressRows[0] ?? null;
+  const meaningfulProgressAt = attemptProgressRow?.last_meaningful_event_at ?? attemptProgressRow?.updated_at ?? run.updated_at;
+  const meaningfulProgressAtMs = meaningfulProgressAt ? new Date(meaningfulProgressAt).getTime() : updatedAtMs;
+  const heartbeatLate = run.status === "running" && now - meaningfulProgressAtMs > STALE_RUN_UI_SECONDS * 1000;
+  const recoveryEligibleStale = run.status === "running" && now - meaningfulProgressAtMs > WORKER_STALE_RUN_SECONDS * 1000;
+  const progressClockMs = heartbeatLate ? meaningfulProgressAtMs : now;
   const progressModel = buildPhaseProgressModel({
     phases: V2_PHASES,
     currentPhase,
@@ -304,8 +332,10 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const isTransientRecovery = run.status === "queued" && run.latest_attempt_number > 1;
   const currentDetail = lastToolCall?.tool_name
     ? `${phaseMeta.activeDetail} Tool in use: ${lastToolCall.tool_name}.`
-    : isStale
+    : recoveryEligibleStale
       ? "This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically."
+    : heartbeatLate
+      ? `This run has not heartbeated recently. Automatic recovery starts after ${Math.round(WORKER_STALE_RUN_SECONDS / 60)} minutes without progress.`
     : isTransientRecovery
       ? `Retrying automatically after a temporary service issue. Attempt ${run.latest_attempt_number}.`
     : run.status === "failed"
@@ -322,9 +352,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     thesis: typeof run.brief?.thesis === "string" ? run.brief.thesis : run.thesis,
     stakes: typeof run.brief?.stakes === "string" ? run.brief.stakes : run.stakes,
   };
-  const failureGuidance = buildFailureGuidance(run, sourceFiles, isStale);
-  const failureClassification = run.status === "failed" || isStale
-    ? classifyFailure(run, isStale)
+  const failureGuidance = buildFailureGuidance(run, sourceFiles, recoveryEligibleStale);
+  const failureClassification = run.status === "failed" || recoveryEligibleStale
+    ? classifyFailure(run, recoveryEligibleStale)
     : undefined;
 
   // Fetch artifact manifest if completed
@@ -406,7 +436,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       serviceKey: serviceKey!,
       table: "deck_run_attempts",
       query: {
-        select: "id,attempt_number,status,failure_phase,cost_telemetry,started_at,completed_at",
+        select: "id,attempt_number,status,failure_phase,recovery_reason,cost_telemetry,started_at,completed_at",
         run_id: `eq.${jobId}`,
         order: "attempt_number.asc",
         limit: "10",
@@ -418,6 +448,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       attemptNumber: row.attempt_number,
       status: row.status,
       failurePhase: row.failure_phase,
+      recoveryReason: row.recovery_reason,
       estimatedCostUsd: typeof row.cost_telemetry?.estimatedCostUsd === "number"
         ? row.cost_telemetry.estimatedCostUsd
         : null,
@@ -453,18 +484,8 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     failureMessage: run.failure_message ?? undefined,
     failureClassification,
     toolCallCount: toolCalls.length,
-    runHealth: isStale ? "stale" : isTransientRecovery ? "recovering" : "healthy",
+    runHealth: recoveryEligibleStale ? "stale" : isTransientRecovery ? "recovering" : heartbeatLate ? "late_heartbeat" : "healthy",
     templateMode: (run.cost_telemetry as Record<string, unknown>)?.templateMode ?? null,
-    // H3: Surface template fallback truth — if the successful attempt used template_fallback,
-    // the API must say so without requiring DB forensics.
-    templateFallbackUsed: attemptSummaries.some((a) => a.status === "completed" && (a as Record<string, unknown>).recoveryReason === "template_fallback")
-      || (run.cost_telemetry as Record<string, unknown>)?.templateMode === "template_fallback",
-    // A5: Surface checkpoint/salvage truth — operators can see whether a run
-    // completed normally, from checkpoint salvage, or after retry-from-checkpoint.
-    deliveryMode: run.status === "completed"
-      ? ((run.cost_telemetry as Record<string, unknown>)?.salvaged ? "salvaged" : "pristine")
-      : null,
-    salvageCheckpointPhase: (run.cost_telemetry as Record<string, unknown>)?.salvageCheckpointPhase ?? null,
   };
 }
 
@@ -509,7 +530,7 @@ function buildFailureGuidance(
   const hasWorkbookEvidence = sourceFiles.some((file) => file.kind === "workbook");
 
   if (isStale) {
-    guidance.push("This run stopped heartbeating and looks stalled. Basquio should requeue stale runs automatically within a few minutes.");
+    guidance.push(`This run stopped heartbeating and looks stalled. Basquio should requeue stale runs automatically after about ${Math.round(WORKER_STALE_RUN_SECONDS / 60)} minutes without progress.`);
     guidance.push("Changing tabs did not cause this. If it does not recover, restart the run.");
     return guidance;
   }

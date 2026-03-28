@@ -10,6 +10,10 @@ loadBasquioScriptEnv();
 
 const POLL_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_POLL_INTERVAL_MS ?? "5000", 10);
 const STALE_RUN_MINUTES = Number.parseInt(process.env.BASQUIO_WORKER_STALE_MINUTES ?? "5", 10);
+const STALE_ATTEMPT_MEANINGFUL_MINUTES = Number.parseInt(
+  process.env.BASQUIO_ATTEMPT_MEANINGFUL_STALE_MINUTES ?? "8",
+  10,
+);
 const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBEAT_INTERVAL_MS ?? "30000", 10);
 const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
 const MAX_CONCURRENT_RUNS = Math.max(1, Number.parseInt(process.env.BASQUIO_WORKER_MAX_CONCURRENCY ?? "2", 10));
@@ -396,10 +400,10 @@ async function readWorkerError(response: Response, fallback: string) {
 }
 
 async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
-  const staleBefore = new Date(Date.now() - STALE_RUN_MINUTES * 60_000).toISOString();
+  const staleMeaningfulBefore = new Date(Date.now() - STALE_ATTEMPT_MEANINGFUL_MINUTES * 60_000).toISOString();
 
-  // D1: Recover stale running attempts (existing behavior)
-  const staleAttempts = await fetchRestRows<QueuedRunRow>({
+  // D1: Recover stale running attempts (meaningful progress stalled)
+  const staleAttemptsByMeaningfulProgress = await fetchRestRows<QueuedRunRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
     table: "deck_run_attempts",
@@ -407,10 +411,33 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
       select: "id,run_id,attempt_number",
       status: "eq.running",
       superseded_by_attempt_id: "is.null",
-      updated_at: `lt.${staleBefore}`,
+      last_meaningful_event_at: `lt.${staleMeaningfulBefore}`,
       order: "created_at.asc",
     },
   }).catch(() => []);
+
+  const staleAttemptsWithoutMeaningful = await fetchRestRows<QueuedRunRow>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      select: "id,run_id,attempt_number",
+      status: "eq.running",
+      superseded_by_attempt_id: "is.null",
+      last_meaningful_event_at: "is.null",
+      updated_at: `lt.${staleMeaningfulBefore}`,
+      order: "created_at.asc",
+    },
+  }).catch(() => []);
+
+  const staleAttemptIds = new Set<string>(staleAttemptsByMeaningfulProgress.map((attempt) => attempt.id));
+  const staleAttempts = [...staleAttemptsByMeaningfulProgress];
+  for (const attempt of staleAttemptsWithoutMeaningful) {
+    if (!staleAttemptIds.has(attempt.id)) {
+      staleAttemptIds.add(attempt.id);
+      staleAttempts.push(attempt);
+    }
+  }
 
   // D1: Also recover stale queued attempts (new — stranded queued work)
   const staleQueuedBefore = new Date(Date.now() - STALE_RUN_MINUTES * 2 * 60_000).toISOString();

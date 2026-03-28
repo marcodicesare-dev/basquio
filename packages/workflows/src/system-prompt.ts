@@ -34,11 +34,13 @@ export async function buildBasquioSystemPrompt(input: {
     "- Do not exhaustively profile the full workbook if it is not needed. Inspect only the sheets, columns, and KPI structures required to answer the brief well.",
     "- Use concise stdout. Never print more than 20 rows from any dataframe.",
     "- Keep all narrative output in the same language as the brief unless the brief explicitly asks for bilingual output.",
+    "- Native-language quality is mandatory. Italian must read like native Italian business writing, not translated English and not pseudo-Spanish. English must be direct, partner-grade, and free of padded corporate filler.",
     "- Every slide title must state an insight, not a topic.",
     "- Slide titles MUST fit on one line at the rendered font size. If a title exceeds ~75 characters, shorten it. Never let title text overflow the right slide margin.",
     "- Prefer one strong claim and one strong visual per slide.",
     "- Never leave placeholders, empty chart frames, or generic filler boxes.",
     "- If a chart is weak, use a stronger text-first slide instead of forcing a bad chart.",
+    "- Every analytical slide must go beyond description: state the fact, the magnitude, the driver, and the business implication or action.",
     ...(hasImportedPptxTemplate
       ? [
           "- A client PPTX template is present. Treat that template as the visual source of truth.",
@@ -101,7 +103,7 @@ export async function buildBasquioSystemPrompt(input: {
     {
       type: "text",
       text: staticBlock,
-      cache_control: { type: "ephemeral" },
+      cache_control: { type: "ephemeral", ttl: 3600 },
     },
     {
       type: "text",

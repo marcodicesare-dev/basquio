@@ -32,19 +32,46 @@ const VISUAL_QA_MODEL = "claude-haiku-4-5";
 const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "1800000", 10);
 const FILES_BETA = "files-api-2025-04-14";
-const CODE_EXEC_BETA = "code-execution-2025-08-25";
+const CODE_EXEC_BETA = "code-execution-2026-01-20";
 const SKILLS_BETA = "skills-2025-10-02";
 const BETAS = [FILES_BETA, CODE_EXEC_BETA, SKILLS_BETA] as const;
+type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS = {
-  understand: 5 * 60_000,
-  author: 12 * 60_000,
-  revise: 8 * 60_000,
+  understand: 120_000,
+  author: 300_000,
+  revise: 240_000,
+  render: 240_000,
+  critique: 90_000,
+  export: 120_000,
 } as const;
+const MAX_PAUSE_TURNS_PER_PHASE = {
+  understand: 3,
+  author: 3,
+  revise: 3,
+  render: 0,
+  critique: 0,
+  export: 0,
+} as const;
+const REQUEST_WATCHDOG_BY_PHASE_MS = {
+  ...PHASE_TIMEOUTS_MS,
+} as const;
+const REQUEST_WATCHDOG_DEFAULT_MS = 240_000;
+const CIRCUIT_BREAKER_MAX_FAILURES = 3;
+const CIRCUIT_BREAKER_OPEN_MS = 60_000;
+const CIRCUIT_BREAKER_WINDOW_MS = 5 * 60_000;
+const CIRCUIT_BREAKER_CLEANUP_MS = 10 * 60_000;
+const PROGRESS_MEANINGFUL_STALL_MS = 8 * 60_000;
+type CircuitState = {
+  failures: number[];
+  openUntil: number | null;
+};
+let lastCircuitBreakerCleanupAt = 0;
 const CONTINUATION_MIN_REMAINING_BUDGET_USD = 0.5;
 const STREAM_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_STREAM_REQUEST_WATCHDOG_MS ?? "240000", 10);
 const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
   { type: "web_fetch_20260209", name: "web_fetch" },
 ];
+const CIRCUIT_BREAKER_STATES = new Map<string, CircuitState>();
 const APPROVED_ARCHETYPES = listArchetypeIds();
 
 const analysisSchema = z.object({
@@ -117,6 +144,7 @@ type RunAttemptRow = {
   recovery_reason: string | null;
   failure_phase: string | null;
   failure_message: string | null;
+  last_meaningful_event_at: string | null;
   anthropic_request_ids: unknown;
 };
 
@@ -539,6 +567,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         recoveredAnalysisForSplit ? analysis : null,
         !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
         questionRoutes,
+        recoveredAnalysisForSplit ? buildChartSlotConstraintMessage(analysis) : undefined,
       );
       await recordToolCall(config, runId, attempt, "author", "code_execution", {
         model: MODEL,
@@ -566,7 +595,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         client,
         systemPrompt,
         maxTokens: 8_192,
-        maxPauseTurns: 5,
+        phaseLabel: "author",
+        circuitKey: `${run.id}:${attempt.id}:author`,
+        onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
+        maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
         phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
         currentSpentUsd: spentUsd,
         container: baseContainerId
@@ -582,6 +614,14 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         outputConfig: { effort: "medium" },
         onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
       });
+      const authorFiles = await downloadGeneratedFiles(client, authorResponse.fileIds);
+      requireGeneratedFiles(
+        authorFiles,
+        recoveredAnalysisForSplit
+        ? ["deck.pptx", "deck.pdf", "deck_manifest.json"]
+        : ["analysis_result.json", "deck.pptx", "deck.pdf", "deck_manifest.json"],
+        "author",
+      );
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
       assertDeckSpendWithinBudget(spentUsd);
       continuationCount += authorResponse.pauseTurns;
@@ -591,47 +631,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       });
       await persistRequestUsage(config, runId, attempt, "author", "phase_generation", MODEL, authorResponse.requests);
       rememberRequestIds(anthropicRequestIds, authorResponse.requests);
-
-      const authorRecovery = await recoverMissingArtifacts({
-        client,
-        systemPrompt,
-        baseResponse: authorResponse,
-        phaseLabel: "author",
-        phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
-        currentSpentUsd: spentUsd,
-        requiredFiles: recoveredAnalysisForSplit
-          ? ["deck.pptx", "deck.pdf", "deck_manifest.json"]
-          : ["analysis_result.json", "deck.pptx", "deck.pdf", "deck_manifest.json"],
-        tools: CLAUDE_TOOLS,
-        containerFallback: baseContainerId
-          ? { id: baseContainerId }
-          : {
-              skills: [
-                { type: "anthropic", skill_id: "pptx", version: "latest" },
-                { type: "anthropic", skill_id: "pdf", version: "latest" },
-              ],
-            },
-      });
-      if ((authorRecovery.usage.input_tokens ?? 0) > 0 || (authorRecovery.usage.output_tokens ?? 0) > 0) {
-        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorRecovery.usage));
-        assertDeckSpendWithinBudget(spentUsd);
-        continuationCount += authorRecovery.pauseTurns;
-        phaseTelemetry.authorArtifactRecovery = buildPhaseTelemetry(MODEL, {
-          usage: authorRecovery.usage,
-          iterations: authorRecovery.iterations,
-          pauseTurns: authorRecovery.pauseTurns,
-          requestIds: authorRecovery.requests.map((r) => r.requestId).filter((id): id is string => Boolean(id)),
-        });
-        await persistRequestUsage(config, runId, attempt, "author", "missing_artifact_repair", MODEL, authorRecovery.requests);
-        rememberRequestIds(anthropicRequestIds, authorRecovery.requests);
-      }
       const authorPhaseUsage = {
-        input_tokens: (authorResponse.usage.input_tokens ?? 0) + (authorRecovery.usage.input_tokens ?? 0),
-        output_tokens: (authorResponse.usage.output_tokens ?? 0) + (authorRecovery.usage.output_tokens ?? 0),
+        input_tokens: authorResponse.usage.input_tokens ?? 0,
+        output_tokens: authorResponse.usage.output_tokens ?? 0,
       };
-      authorResponse = authorRecovery.response;
       const containerId = authorResponse.containerId;
-      const authorFiles = authorRecovery.files;
       if (!recoveredAnalysisForSplit) {
         analysis = parseGeneratedAnalysisResponse(authorResponse.message, authorFiles);
         enforceAnalysisExhibitRules(analysis);
@@ -734,6 +738,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
     const critiqueLint = lintManifest(manifest);
     const critiqueContract = validateManifestContract(manifest);
+    const hasManifestActionableIssues = critiqueLint.actionableIssues.length > 0 || critiqueContract.actionableIssues.length > 0;
+    const hasBlockingCritiqueIssues = blockingCritiqueIssues.length > 0;
     const critiqueCheckpointProof = buildCheckpointProof({
       authorComplete: true,
       critiqueComplete: true,
@@ -775,10 +781,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     finalManifest = manifest;
     finalVisualQa = initialVisualQa.report;
 
-    const shouldRunRevise = latestResponse !== null && (
-      initialVisualQa.report.overallStatus !== "green" ||
-      initialVisualQa.report.deckNeedsRevision ||
-      blockingCritiqueIssues.length > 0
+    const shouldRunRevise = latestResponse !== null && !(
+      initialVisualQa.report.overallStatus === "green" &&
+      initialVisualQa.report.score >= 8 &&
+      !initialVisualQa.report.deckNeedsRevision &&
+      !hasManifestActionableIssues &&
+      !hasBlockingCritiqueIssues
     );
 
     if (shouldRunRevise && latestResponse) {
@@ -815,7 +823,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           client,
           systemPrompt,
           maxTokens: 4_096,
-          maxPauseTurns: 4,
+          phaseLabel: "revise",
+          circuitKey: `${run.id}:${attempt.id}:revise`,
+          onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
+          maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.revise,
           phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
           currentSpentUsd: spentUsd,
           container: latestContainerId
@@ -848,107 +859,37 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         });
         await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", MODEL, reviseResponse.requests);
         rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
+        const reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
+        requireGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"], "revise");
+        finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
+        finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
+        finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
+        latestResponse = reviseResponse;
+        latestContainerId = reviseResponse.containerId ?? latestContainerId;
 
-        let reviseRecovery: Awaited<ReturnType<typeof recoverMissingArtifacts>> | null = null;
-        try {
-          reviseRecovery = await recoverMissingArtifacts({
-            client,
-            systemPrompt,
-            baseResponse: reviseResponse,
-            phaseLabel: "revise",
-            phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
-            currentSpentUsd: spentUsd,
-            requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
-            tools: CLAUDE_TOOLS,
-            containerFallback: latestContainerId
-              ? { id: latestContainerId }
-              : {
-                  skills: [
-                    { type: "anthropic", skill_id: "pptx", version: "latest" },
-                    { type: "anthropic", skill_id: "pdf", version: "latest" },
-                  ],
-                },
-          });
-        } catch (reviseRecoveryError) {
-          // If revise artifact recovery itself fails, salvage pre-revise artifacts
-          const recoveryMsg = reviseRecoveryError instanceof Error ? reviseRecoveryError.message : String(reviseRecoveryError);
-          console.warn(`[generateDeckRun] revise artifact recovery failed, salvaging pre-revise artifacts: ${recoveryMsg.slice(0, 300)}`);
-          phaseTelemetry.reviseSalvage = {
-            reason: "revise_artifact_recovery_failure",
-            errorMessage: recoveryMsg.slice(0, 500),
-            fallbackSource: "author_phase_artifacts",
-          };
-          await completePhase(config, runId, attempt, "revise", {
-            issueCount: critiqueIssues.length,
-            estimatedCostUsd: spentUsd,
-            salvaged: true,
-            salvageReason: "revise_artifact_recovery_failure",
-          }, reviseResponse.usage);
-          // finalPptx, finalPdf, finalManifest remain from author phase
-        }
-        if (reviseRecovery && ((reviseRecovery.usage.input_tokens ?? 0) > 0 || (reviseRecovery.usage.output_tokens ?? 0) > 0)) {
-          spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseRecovery.usage));
-          assertDeckSpendWithinBudget(spentUsd);
-          continuationCount += reviseRecovery.pauseTurns;
-          phaseTelemetry.reviseArtifactRecovery = buildPhaseTelemetry(MODEL, {
-            usage: reviseRecovery.usage,
-            iterations: reviseRecovery.iterations,
-            pauseTurns: reviseRecovery.pauseTurns,
-            requestIds: reviseRecovery.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
-          });
-          await persistRequestUsage(config, runId, attempt, "revise", "missing_artifact_repair", MODEL, reviseRecovery.requests);
-          rememberRequestIds(anthropicRequestIds, reviseRecovery.requests);
-        }
+      const revisedVisualQa = await runRenderedPageQa({
+        client,
+        pdf: finalPdf.buffer,
+        manifest: finalManifest,
+        betas: [FILES_BETA],
+        model: VISUAL_QA_MODEL,
+      });
+      spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
+      assertDeckSpendWithinBudget(spentUsd);
+      phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
+      await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
+      rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
+      if ((revisedVisualQa.usage.input_tokens ?? 0) + (revisedVisualQa.usage.output_tokens ?? 0) > 0) {
+        await touchAttemptProgress(config, runId, attempt, "revise");
+      }
+      finalVisualQa = revisedVisualQa.report;
+        await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
+        await assertAttemptStillOwnsRun(config, runId, attempt);
+        await persistDeckSpec(config, runId, finalManifest);
         const revisePhaseUsage = {
-          input_tokens: (reviseResponse.usage.input_tokens ?? 0) + (reviseRecovery?.usage.input_tokens ?? 0),
-          output_tokens: (reviseResponse.usage.output_tokens ?? 0) + (reviseRecovery?.usage.output_tokens ?? 0),
+          input_tokens: reviseResponse.usage.input_tokens ?? 0,
+          output_tokens: reviseResponse.usage.output_tokens ?? 0,
         };
-
-        if (reviseRecovery) {
-          reviseResponse = reviseRecovery.response;
-          latestResponse = reviseResponse;
-          latestContainerId = reviseResponse.containerId ?? latestContainerId;
-        }
-        const reviseFiles = reviseRecovery?.files ?? [];
-
-        // Layer 3: structured-output repair — if revise manifest/artifacts are malformed,
-        // fall back to the pre-revise (author-phase) artifacts instead of killing the run.
-        // The author output already passed critique, so it is a valid deliverable.
-        let reviseSalvaged = false;
-        try {
-          finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
-          finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
-          finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
-        } catch (reviseParseError) {
-          const parseMsg = reviseParseError instanceof Error ? reviseParseError.message : String(reviseParseError);
-          console.warn(`[generateDeckRun] revise output malformed, salvaging pre-revise artifacts: ${parseMsg.slice(0, 300)}`);
-          phaseTelemetry.reviseSalvage = {
-            reason: "revise_parse_failure",
-            errorMessage: parseMsg.slice(0, 500),
-            fallbackSource: "author_phase_artifacts",
-          };
-          // Keep finalPptx, finalPdf, finalManifest from the author phase — they are still valid
-          reviseSalvaged = true;
-        }
-
-        if (!reviseSalvaged) {
-          const revisedVisualQa = await runRenderedPageQa({
-            client,
-            pdf: finalPdf.buffer,
-            manifest: finalManifest,
-            betas: [FILES_BETA],
-            model: VISUAL_QA_MODEL,
-          });
-          spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-          assertDeckSpendWithinBudget(spentUsd);
-          phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
-          await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
-          rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
-          finalVisualQa = revisedVisualQa.report;
-          await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
-          await assertAttemptStillOwnsRun(config, runId, attempt);
-          await persistDeckSpec(config, runId, finalManifest);
-        }
 
         await completePhase(
           config,
@@ -959,7 +900,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             issueCount: critiqueIssues.length,
             estimatedCostUsd: spentUsd,
             visualQa: finalVisualQa,
-            salvaged: reviseSalvaged,
           },
           revisePhaseUsage,
         );
@@ -991,16 +931,14 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         });
       } catch (revisePhaseError) {
         const revisePhaseMessage = revisePhaseError instanceof Error ? revisePhaseError.message : String(revisePhaseError);
-        console.warn(`[generateDeckRun] revise phase failed entirely, falling back to author artifacts: ${revisePhaseMessage.slice(0, 300)}`);
-        phaseTelemetry.revisePhaseFallback = {
-          reason: "revise_phase_threw",
+        console.warn(`[generateDeckRun] revise phase failed entirely: ${revisePhaseMessage.slice(0, 300)}`);
+        phaseTelemetry.revisePhaseFailure = {
+          reason: "revise_phase_failed",
           errorMessage: revisePhaseMessage.slice(0, 500),
-          fallbackSource: "author_phase_artifacts",
         };
         await completePhase(config, runId, attempt, "revise", {
           estimatedCostUsd: spentUsd,
-          salvaged: true,
-          salvageReason: "revise_phase_threw",
+          error: revisePhaseMessage.slice(0, 500),
         }).catch(() => {});
       }
     }
@@ -1068,9 +1006,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         templateDiagnostics,
         run.target_slide_count,
       );
-      const repairableQaFailures = qaReport.failed.filter((check) =>
-        ["pptx_chart_media_present", "pptx_large_image_aspect_fit", "pptx_structural_integrity"].includes(check),
-      );
       const initialLint = lintManifest(finalManifest);
       const initialContract = validateManifestContract(finalManifest);
       const initialQualityGate = collectPublishGateFailures({
@@ -1085,87 +1020,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         visualQa: finalVisualQa,
         artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
       });
-
-      // Repair loop: attempt to fix repairable QA failures via Claude.
-      // CRITICAL: wrapped in try/catch so a repair failure falls through to salvage
-      // instead of killing the run. The repair path calls Claude API, parses manifests,
-      // and runs visual QA — any of these can throw.
-      if (repairableQaFailures.length > 0 && latestContainerId && latestResponse && initialQualityGate.blockingFailures.every((check) => repairableQaFailures.includes(check))) {
-        try {
-          const repairedArtifacts = await repairArtifactsFromQa({
-            client,
-            systemPrompt,
-            latestResponse,
-            latestContainerId,
-            qaFailures: repairableQaFailures,
-            tools: CLAUDE_TOOLS,
-            currentSpentUsd: spentUsd,
-          });
-          if ((repairedArtifacts.usage.input_tokens ?? 0) > 0 || (repairedArtifacts.usage.output_tokens ?? 0) > 0) {
-            spentUsd = roundUsd(spentUsd + usageToCost(MODEL, repairedArtifacts.usage));
-            assertDeckSpendWithinBudget(spentUsd);
-            continuationCount += repairedArtifacts.pauseTurns;
-            phaseTelemetry.exportArtifactRepair = buildPhaseTelemetry(MODEL, {
-              usage: repairedArtifacts.usage,
-              iterations: repairedArtifacts.iterations,
-              pauseTurns: repairedArtifacts.pauseTurns,
-              requestIds: repairedArtifacts.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
-            });
-            await persistRequestUsage(config, runId, attempt, "export", "artifact_repair", MODEL, repairedArtifacts.requests);
-            rememberRequestIds(anthropicRequestIds, repairedArtifacts.requests);
-          }
-
-          latestResponse = repairedArtifacts;
-          latestContainerId = repairedArtifacts.containerId ?? latestContainerId;
-          finalManifest = parseManifestResponse(repairedArtifacts.message, repairedArtifacts.files);
-          finalPptx = requireGeneratedFile(repairedArtifacts.files, "deck.pptx");
-          finalPdf = requireGeneratedFile(repairedArtifacts.files, "deck.pdf");
-          finalVisualQa = await strengthenFinalVisualQa({
-            client,
-            pdf: finalPdf.buffer,
-            manifest: finalManifest,
-            currentReport: finalVisualQa,
-            runId,
-            attempt,
-            config,
-            spentUsdRef: {
-              get value() {
-                return spentUsd;
-              },
-              set value(value: number) {
-                spentUsd = value;
-              },
-            },
-            anthropicRequestIds,
-            phaseTelemetry,
-          });
-          if (!analysis) {
-            throw new Error("Analysis unavailable before export repair.");
-          }
-          finalDocx = await buildNarrativeDocx({
-            run,
-            analysis,
-            manifest: finalManifest,
-          });
-          qaReport = await buildQaReport(
-            finalManifest,
-            finalPptx,
-            finalPdf,
-            finalDocx,
-            finalVisualQa,
-            templateDiagnostics,
-            run.target_slide_count,
-          );
-        } catch (repairError) {
-          // Repair failed — log it and fall through to salvage.
-          const repairMsg = repairError instanceof Error ? repairError.message : String(repairError);
-          console.warn(`[generateDeckRun] export repair failed, falling through to salvage: ${repairMsg.slice(0, 300)}`);
-          phaseTelemetry.exportRepairFailure = {
-            reason: "repair_threw",
-            errorMessage: repairMsg.slice(0, 500),
-          };
-        }
-      }
 
       const finalLint = lintManifest(finalManifest);
       const finalContract = validateManifestContract(finalManifest);
@@ -1182,100 +1036,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
       });
       if (finalQualityGate.blockingFailures.length > 0) {
-        const salvageCheckpoint = await loadArtifactCheckpoint(config, runId, { preferResumeReady: true });
-        if (salvageCheckpoint) {
-          const salvageArtifacts = await loadCheckpointArtifacts(config, salvageCheckpoint);
-          if (salvageArtifacts) {
-            console.warn(`[generateDeckRun] export publish gate failed but salvaging from ${salvageCheckpoint.phase} checkpoint: ${finalQualityGate.blockingFailures.join(", ")}`);
-            phaseTelemetry.exportQaSalvage = {
-              reason: "qa_failed_salvaged_from_checkpoint",
-              checkpointPhase: salvageCheckpoint.phase,
-              failedChecks: finalQualityGate.blockingFailures,
-            };
-            finalPptx = salvageArtifacts.pptx;
-            finalPdf = salvageArtifacts.pdf;
-            finalManifest = salvageArtifacts.manifest;
-
-            try {
-              const salvageVisualQa = await runRenderedPageQa({
-                client,
-                pdf: finalPdf.buffer,
-                manifest: finalManifest,
-                betas: [FILES_BETA],
-                model: VISUAL_QA_MODEL,
-              });
-              spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, salvageVisualQa.usage));
-              finalVisualQa = salvageVisualQa.report;
-              phaseTelemetry.salvageVisualQa = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, salvageVisualQa.usage);
-              await persistRequestUsage(config, runId, attempt, "export", "salvage_rendered_page_qa", VISUAL_QA_MODEL, salvageVisualQa.requests);
-              rememberRequestIds(anthropicRequestIds, salvageVisualQa.requests);
-            } catch (salvageQaError) {
-              const salvageQaMsg = salvageQaError instanceof Error ? salvageQaError.message : String(salvageQaError);
-              console.warn(`[generateDeckRun] salvage visual QA failed, using conservative fallback: ${salvageQaMsg.slice(0, 200)}`);
-              finalVisualQa = {
-                overallStatus: "yellow" as const,
-                score: 5,
-                summary: "Visual QA could not be completed on salvaged artifacts. Manual review recommended.",
-                deckNeedsRevision: false,
-                issues: [],
-                strongestSlides: [],
-                weakestSlides: [],
-              };
-              phaseTelemetry.salvageVisualQaFallback = { error: salvageQaMsg.slice(0, 500) };
-            }
-
-            try {
-              if (!analysis) {
-                throw new Error("Analysis unavailable before checkpoint salvage.");
-              }
-              finalDocx = await buildNarrativeDocx({ run, analysis, manifest: finalManifest });
-            } catch (docxError) {
-              const docxMsg = docxError instanceof Error ? docxError.message : String(docxError);
-              console.warn(`[generateDeckRun] salvage DOCX build failed, using stub fallback: ${docxMsg.slice(0, 200)}`);
-              phaseTelemetry.salvageDocxFallback = { error: docxMsg.slice(0, 500) };
-              finalDocx = await buildFallbackNarrativeDocx({
-                message: "Narrative report generation degraded on this salvaged run, so Basquio rebuilt a lighter text-first report from the final deck manifest.",
-                run,
-                analysis,
-                manifest: finalManifest,
-              });
-            }
-
-            qaReport = await buildQaReport(
-              finalManifest,
-              finalPptx,
-              finalPdf,
-              finalDocx,
-              finalVisualQa,
-              templateDiagnostics,
-              run.target_slide_count,
-            );
-            const salvageQualityGate = collectPublishGateFailures({
-              qaReport,
-              lint: lintManifest(finalManifest),
-              contract: validateManifestContract(finalManifest),
-            });
-            const salvageBlockingFailures = salvageQualityGate.blockingFailures;
-            if (salvageBlockingFailures.length > 0) {
-              throw new Error(`Artifact publish gate failed on salvaged checkpoint: ${salvageBlockingFailures.join(", ")}`);
-            }
-            lastPublishDecision = buildPublishDecision({
-              qaReport,
-              lint: lintManifest(finalManifest),
-              contract: validateManifestContract(finalManifest),
-              visualQa: finalVisualQa,
-              artifactSource: "checkpoint",
-            });
-
-            phaseTelemetry.exportSalvaged = true;
-            phaseTelemetry.exportSalvageCheckpointPhase = salvageCheckpoint.phase;
-            publishFromCheckpoint = salvageCheckpoint;
-          } else {
-            throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
-          }
-        } else {
-          throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
-        }
+        throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
       }
 
       finalDocx ??= await buildFallbackNarrativeDocx({
@@ -1287,26 +1048,22 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       phaseTelemetry.finalLint = summarizeLintResult(finalLint);
       phaseTelemetry.finalContract = summarizeDeckContractResult(finalContract);
       phaseTelemetry.publishDecision = lastPublishDecision;
-      const isSalvagedExport = Boolean(phaseTelemetry.exportSalvaged);
       await assertAttemptStillOwnsRun(config, runId, attempt);
       const artifacts = await persistArtifacts(config, run, attempt, finalPptx, finalPdf, finalDocx, {
         checkpoint: publishFromCheckpoint,
-        allowDocxFailure: Boolean(publishFromCheckpoint),
+        allowDocxFailure: false,
       });
       await finalizeSuccess(config, runId, attempt, spentUsd, finalManifest, qaReport, artifacts, templateDiagnostics, {
         phases: phaseTelemetry,
         continuationCount,
         anthropicRequestIds: [...anthropicRequestIds],
         templateMode,
-        salvaged: isSalvagedExport,
-        salvageCheckpointPhase: isSalvagedExport ? (phaseTelemetry.exportSalvageCheckpointPhase ?? null) : null,
       });
       await completePhase(config, runId, attempt, "export", {
         artifactCount: artifacts.length,
         estimatedCostUsd: spentUsd,
         qaTier: qaReport.tier,
         visualQa: finalVisualQa,
-        salvaged: isSalvagedExport,
       });
 
       const resendApiKey = process.env.RESEND_API_KEY ?? "";
@@ -1319,103 +1076,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
     } catch (exportPhaseError) {
       const exportPhaseMessage = exportPhaseError instanceof Error ? exportPhaseError.message : String(exportPhaseError);
-      if (
-        finalPptx.buffer.length === 0 ||
-        finalPdf.buffer.length === 0 ||
-        !lastPublishDecision ||
-        lastPublishDecision.decision !== "publish"
-      ) {
-        throw exportPhaseError;
-      }
-
-      console.warn(`[generateDeckRun] export phase failed after artifacts existed, publishing last-resort salvage: ${exportPhaseMessage.slice(0, 300)}`);
-      phaseTelemetry.exportLastResort = {
-        reason: "export_phase_threw",
-        errorMessage: exportPhaseMessage.slice(0, 500),
-      };
-      phaseTelemetry.exportSalvaged = true;
-      finalVisualQa = {
-        overallStatus: "yellow" as const,
-        score: 5,
-        summary: "Export recovery published the generated artifacts after an export-phase failure. Manual review recommended.",
-        deckNeedsRevision: false,
-        issues: finalVisualQa.issues ?? [],
-        strongestSlides: finalVisualQa.strongestSlides ?? [],
-        weakestSlides: finalVisualQa.weakestSlides ?? [],
-      };
-      try {
-        finalManifest = parseDeckManifest(finalManifest);
-      } catch {
-        finalManifest = await buildSyntheticManifestFromPptx(finalPptx.buffer);
-      }
-      if (!finalDocx || finalDocx.buffer.length === 0) {
-        finalDocx = await buildFallbackNarrativeDocx({
-          message: "Narrative report generation degraded after export recovery, so Basquio rebuilt a lighter text-first report from the recovered deck manifest.",
-          run,
-          analysis,
-          manifest: finalManifest,
-        });
-      }
-      try {
-        qaReport = await buildQaReport(
-          finalManifest,
-          finalPptx,
-          finalPdf,
-          finalDocx,
-          finalVisualQa,
-          templateDiagnostics,
-          run.target_slide_count,
-        );
-      } catch (lastResortQaError) {
-        const lastResortQaMessage = lastResortQaError instanceof Error ? lastResortQaError.message : String(lastResortQaError);
-        phaseTelemetry.exportLastResortQaFallback = {
-          errorMessage: lastResortQaMessage.slice(0, 500),
-        };
-        qaReport = {
-          tier: "red" as const,
-          passed: false,
-          checks: [],
-          failed: ["last_resort_publish"],
-          template: templateDiagnostics,
-        };
-      }
-
-      phaseTelemetry.finalLint = summarizeLintResult(lintManifest(finalManifest));
-      phaseTelemetry.finalContract = summarizeDeckContractResult(validateManifestContract(finalManifest));
-      phaseTelemetry.publishDecision = {
-        ...lastPublishDecision,
-        artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
-      };
-      await assertAttemptStillOwnsRun(config, runId, attempt);
-      const artifacts = await persistArtifacts(config, run, attempt, finalPptx, finalPdf, finalDocx, {
-        checkpoint: publishFromCheckpoint,
-        allowDocxFailure: true,
-      });
-      await finalizeSuccess(config, runId, attempt, spentUsd, finalManifest, qaReport, artifacts, templateDiagnostics, {
-        phases: phaseTelemetry,
-        continuationCount,
-        anthropicRequestIds: [...anthropicRequestIds],
-        templateMode,
-        salvaged: true,
-        salvageCheckpointPhase: phaseTelemetry.exportSalvageCheckpointPhase ?? null,
-      });
-      await completePhase(config, runId, attempt, "export", {
-        artifactCount: artifacts.length,
-        estimatedCostUsd: spentUsd,
-        qaTier: qaReport.tier,
-        visualQa: finalVisualQa,
-        salvaged: true,
-        salvageReason: "export_phase_threw",
-      });
-
-      const resendApiKey = process.env.RESEND_API_KEY ?? "";
-      if (resendApiKey) {
-        await notifyRunCompletionIfRequested(
-          { supabaseUrl: config.supabaseUrl, serviceKey: config.serviceKey, resendApiKey },
-          run,
-          { runId, slideCount: finalManifest.slideCount },
-        );
-      }
+      console.warn(`[generateDeckRun] export phase failed, failing run: ${exportPhaseMessage.slice(0, 300)}`);
+      throw exportPhaseError;
     }
   } catch (error) {
     if (error instanceof AttemptOwnershipLostError) {
@@ -1531,7 +1193,7 @@ async function resolveAttemptContext(
     serviceKey: config.serviceKey,
     table: "deck_run_attempts",
     query: {
-      select: "id,run_id,attempt_number,status,recovery_reason,failure_phase,failure_message,anthropic_request_ids",
+      select: "id,run_id,attempt_number,status,recovery_reason,failure_phase,failure_message,last_meaningful_event_at,anthropic_request_ids",
       id: `eq.${attemptId}`,
       limit: "1",
     },
@@ -2039,6 +1701,8 @@ async function markPhase(
   attempt: AttemptContext,
   phase: DeckPhase,
 ) {
+  await touchAttemptProgress(config, runId, attempt, phase);
+
   const now = new Date().toISOString();
   await Promise.all([
     patchRestRows({
@@ -2069,6 +1733,7 @@ async function markPhase(
       payload: {
         status: "running",
         updated_at: now,
+        last_meaningful_event_at: now,
         failure_message: null,
         failure_phase: null,
       },
@@ -2085,6 +1750,8 @@ async function completePhase(
   payload: Record<string, unknown>,
   usage?: ClaudeUsage | null,
 ) {
+  await touchAttemptProgress(config, runId, attempt, phase);
+
   await patchRestRows({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
@@ -2104,9 +1771,45 @@ async function completePhase(
     query: { id: `eq.${attempt.id}` },
     payload: {
       updated_at: new Date().toISOString(),
+      last_meaningful_event_at: new Date().toISOString(),
     },
   }).catch(() => {});
   await insertEvent(config, runId, attempt, phase, "phase_completed", payload, usage);
+}
+
+async function touchAttemptProgress(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  attempt: AttemptContext,
+  phase?: string,
+) {
+  const now = new Date().toISOString();
+  await Promise.all([
+    patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_attempts",
+      query: {
+        id: `eq.${attempt.id}`,
+      },
+      payload: {
+        updated_at: now,
+        last_meaningful_event_at: now,
+      },
+    }).catch(() => {}),
+    ...(phase === undefined ? [] : [
+      insertEvent(
+        config,
+        runId,
+        attempt,
+        phase,
+        "meaningful_progress",
+        {
+          phase,
+        },
+      ).catch(() => {}),
+    ]),
+  ]);
 }
 
 async function strengthenFinalVisualQa(input: {
@@ -2125,7 +1828,7 @@ async function strengthenFinalVisualQa(input: {
     return input.currentReport;
   }
 
-  if (input.currentReport.score >= 9 && input.currentReport.issues.length === 0) {
+  if (input.currentReport.score >= 8 && input.currentReport.issues.length === 0) {
     input.phaseTelemetry.visualQaFinalSkipped = {
       reason: "haiku_green_high_confidence",
       reusedScore: input.currentReport.score,
@@ -2198,7 +1901,7 @@ async function finalizeSuccess(
       p_attempt_id: attempt.id,
       p_attempt_number: attempt.attemptNumber,
       p_completed_at: now,
-      p_delivery_status: extraTelemetry.salvaged ? "salvaged" : qaReport.tier === "green" ? "reviewed" : "degraded",
+      p_delivery_status: qaReport.tier === "green" ? "reviewed" : "degraded",
       p_attempt_cost_telemetry: attemptCostTelemetry,
       p_run_cost_telemetry: runCostTelemetry,
       p_anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
@@ -2561,6 +2264,7 @@ function buildAuthorMessage(
     uploadedTemplate: { id: string; filename: string } | null;
   },
   questionRoutes: Array<{ id: string; name: string; diagnosticMotifs: string[]; recommendationLevers: string[] }> = [],
+  chartSlotConstraintMessage?: string,
 ) {
   const routeContext = questionRoutes.length > 0
     ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
@@ -2620,6 +2324,7 @@ function buildAuthorMessage(
             : []),
           "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
           "- Do not use native PowerPoint chart objects for critical visuals.",
+          ...(chartSlotConstraintMessage ? [chartSlotConstraintMessage] : []),
           "- Treat the deterministic chart preprocessing guide below as a hard render contract, not as optional style advice.",
           chartPreprocessingGuide,
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
@@ -2740,6 +2445,79 @@ function buildRequestRecordCallback(
   };
 }
 
+function pruneCircuitStates(now: number = Date.now()) {
+  if (now - lastCircuitBreakerCleanupAt < CIRCUIT_BREAKER_CLEANUP_MS) {
+    return;
+  }
+  lastCircuitBreakerCleanupAt = now;
+  for (const [key, state] of CIRCUIT_BREAKER_STATES) {
+    const validFailures = state.failures.filter((ts) => ts >= now - CIRCUIT_BREAKER_WINDOW_MS);
+    if (validFailures.length !== state.failures.length) {
+      state.failures = validFailures;
+    }
+    if (state.openUntil) {
+      if (state.openUntil <= now) {
+        CIRCUIT_BREAKER_STATES.delete(key);
+      }
+      continue;
+    }
+    if (state.failures.length === 0) {
+      CIRCUIT_BREAKER_STATES.delete(key);
+    }
+  }
+}
+
+function getCircuitBreakerState(circuitKey: string): CircuitState {
+  const now = Date.now();
+  pruneCircuitStates(now);
+  let state = CIRCUIT_BREAKER_STATES.get(circuitKey);
+  if (!state) {
+    state = { failures: [], openUntil: null };
+    CIRCUIT_BREAKER_STATES.set(circuitKey, state);
+  }
+  state.failures = state.failures.filter((ts) => ts >= now - CIRCUIT_BREAKER_WINDOW_MS);
+  if (state.openUntil && state.openUntil <= now) {
+    state.openUntil = null;
+    state.failures = [];
+  }
+  return state;
+}
+
+function openCircuit(circuitKey: string, state: CircuitState) {
+  const now = Date.now();
+  state.openUntil = now + CIRCUIT_BREAKER_OPEN_MS;
+  const error = new Error(
+    `circuit breaker open for ${circuitKey}; provider likely unavailable, retry after ${Math.ceil(CIRCUIT_BREAKER_OPEN_MS / 1000)}s (429).`,
+  ) as Error & { status?: number };
+  error.status = 429;
+  throw error;
+}
+
+function recordCircuitFailure(circuitKey: string, state: CircuitState) {
+  const now = Date.now();
+  state.failures.push(now);
+  const recentFailures = state.failures.filter((ts) => ts >= now - CIRCUIT_BREAKER_WINDOW_MS);
+  state.failures = recentFailures;
+  if (recentFailures.length >= CIRCUIT_BREAKER_MAX_FAILURES) {
+    openCircuit(circuitKey, state);
+  }
+}
+
+function assertCircuitClosed(state: CircuitState, circuitKey: string) {
+  if (!state.openUntil) return;
+  const now = Date.now();
+  if (state.openUntil <= now) {
+    state.openUntil = null;
+    state.failures = [];
+    return;
+  }
+  const error = new Error(
+    `circuit breaker open for ${circuitKey}; retry after ${Math.max(1, Math.ceil((state.openUntil - now) / 1000))}s (429).`,
+  ) as Error & { status?: number };
+  error.status = 429;
+  throw error;
+}
+
 async function runClaudeLoop(input: {
   client: Anthropic;
   systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
@@ -2750,10 +2528,13 @@ async function runClaudeLoop(input: {
   outputConfig?: Anthropic.Beta.BetaOutputConfig;
   /** Optional: persist each retry-level request record immediately for telemetry truth */
   onRequestRecord?: (record: ClaudeRequestUsage) => Promise<void>;
+  phaseLabel?: DeckPhase;
+  onMeaningfulProgress?: () => Promise<unknown> | void;
   /** Maximum number of pause_turn continuations before breaking out. Default: unlimited (up to 8 iterations). */
   maxPauseTurns?: number;
   phaseTimeoutMs?: number;
   currentSpentUsd?: number;
+  circuitKey?: string;
 }) {
   let messages = [...input.messages];
   const fileIds = new Set<string>();
@@ -2770,9 +2551,15 @@ async function runClaudeLoop(input: {
   const timeoutHandle = input.phaseTimeoutMs
     ? setTimeout(() => controller?.abort(), input.phaseTimeoutMs)
     : null;
+  const circuitState = input.circuitKey
+    ? getCircuitBreakerState(input.circuitKey)
+    : null;
 
   try {
     for (let iteration = 0; iteration < 8; iteration += 1) {
+      if (circuitState && input.circuitKey) {
+        assertCircuitClosed(circuitState, input.circuitKey);
+      }
       if (input.currentSpentUsd !== undefined) {
         const remainingBudgetUsd = roundUsd(3.5 - input.currentSpentUsd - usageToCost(MODEL, usage));
         if (remainingBudgetUsd < CONTINUATION_MIN_REMAINING_BUDGET_USD) {
@@ -2804,9 +2591,12 @@ async function runClaudeLoop(input: {
       let lastTransientError: Error | null = null;
       for (let retry = 0; retry <= TRANSIENT_RETRY_DELAYS_MS.length; retry += 1) {
         const requestController = new AbortController();
+        const phaseRequestTimeoutMs = input.phaseTimeoutMs
+          ?? (input.phaseLabel ? REQUEST_WATCHDOG_BY_PHASE_MS[input.phaseLabel] : STREAM_REQUEST_WATCHDOG_MS)
+          ?? STREAM_REQUEST_WATCHDOG_MS;
         const requestTimeoutMs = Math.max(
           45_000,
-          Math.min(input.phaseTimeoutMs ?? STREAM_REQUEST_WATCHDOG_MS, STREAM_REQUEST_WATCHDOG_MS),
+          phaseRequestTimeoutMs,
         );
         const requestTimeoutHandle = setTimeout(() => requestController.abort(), requestTimeoutMs);
         try {
@@ -2820,6 +2610,10 @@ async function runClaudeLoop(input: {
           requestId = stream.request_id ?? null;
           message = await stream.finalMessage();
           lastTransientError = null;
+          if (circuitState) {
+            circuitState.failures = [];
+            circuitState.openUntil = null;
+          }
           break;
         } catch (streamError) {
           if (requestController.signal.aborted && !controller?.signal.aborted) {
@@ -2849,6 +2643,13 @@ async function runClaudeLoop(input: {
             await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
             continue;
           }
+          if (isTransientProviderError(streamError)) {
+            if (circuitState && input.circuitKey) {
+              recordCircuitFailure(input.circuitKey, circuitState);
+            }
+          } else if (circuitState) {
+            circuitState.failures = [];
+          }
           throw streamError;
         } finally {
           clearTimeout(requestTimeoutHandle);
@@ -2864,6 +2665,7 @@ async function runClaudeLoop(input: {
       currentContainer = finalMessage.container ? { id: finalMessage.container.id } : currentContainer;
       usage.input_tokens += finalMessage.usage?.input_tokens ?? 0;
       usage.output_tokens += finalMessage.usage?.output_tokens ?? 0;
+      const generatedFileIds = collectGeneratedFileIds(finalMessage.content);
       const completedRecord: ClaudeRequestUsage = {
         requestId,
         startedAt,
@@ -2879,7 +2681,10 @@ async function runClaudeLoop(input: {
         await input.onRequestRecord(completedRecord).catch(() => {});
       }
 
-      collectGeneratedFileIds(finalMessage.content).forEach((fileId) => fileIds.add(fileId));
+      generatedFileIds.forEach((fileId) => fileIds.add(fileId));
+      if (input.onMeaningfulProgress && (generatedFileIds.length > 0 || (finalMessage.usage?.output_tokens ?? 0) > 0 || (finalMessage.usage?.input_tokens ?? 0) > 0)) {
+        void input.onMeaningfulProgress().catch(() => {});
+      }
 
       if (finalMessage.stop_reason !== "pause_turn") {
         break;
@@ -2916,132 +2721,15 @@ async function runClaudeLoop(input: {
   };
 }
 
-function buildMissingArtifactRepairMessage(phaseLabel: "author" | "revise", missingFiles: string[]) {
-  return {
-    role: "user" as const,
-    content: [
-      {
-        type: "text" as const,
-        text: [
-          `The ${phaseLabel} step finished without attaching all required output files.`,
-          `Missing files: ${missingFiles.join(", ")}.`,
-          "Stay in the current container state. Do not restart from scratch.",
-          "Attach the missing files now as real container uploads.",
-          `Required outputs for this step are exactly: ${missingFiles.join(", ")}.`,
-          "Your next assistant message must include the missing files before finishing.",
-        ].join("\n"),
-      },
-    ],
-  };
-}
-
-function listMissingGeneratedFiles(files: GeneratedFile[], requiredFiles: string[]) {
-  return requiredFiles.filter((fileName) => !files.some((file) => file.fileName === fileName || file.fileName.endsWith(fileName)));
-}
-
-async function recoverMissingArtifacts(input: {
-  client: Anthropic;
-  systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
-  baseResponse: Awaited<ReturnType<typeof runClaudeLoop>>;
-  phaseLabel: "author" | "revise";
-  phaseTimeoutMs?: number;
-  currentSpentUsd?: number;
-  requiredFiles: string[];
-  tools: Anthropic.Beta.BetaToolUnion[];
-  containerFallback?: Anthropic.Beta.BetaContainerParams;
-}) {
-  let response = input.baseResponse;
-  let files = await downloadGeneratedFiles(input.client, response.fileIds);
-  const usage: Required<ClaudeUsage> = {
-    input_tokens: 0,
-    output_tokens: 0,
-  };
-  let pauseTurns = 0;
-  let iterations = 0;
-  const requests: ClaudeRequestUsage[] = [];
-
-  for (let attempt = 0; attempt < 1; attempt += 1) {
-    const missingFiles = listMissingGeneratedFiles(files, input.requiredFiles);
-    if (missingFiles.length === 0) {
-      return { response, files, usage, pauseTurns, iterations, requests };
-    }
-
-    const repairResponse = await runClaudeLoop({
-      client: input.client,
-      systemPrompt: input.systemPrompt,
-      maxTokens: 4_096,
-      phaseTimeoutMs: input.phaseTimeoutMs,
-      currentSpentUsd: input.currentSpentUsd,
-      container: response.containerId
-        ? { id: response.containerId }
-        : input.containerFallback,
-      messages: [...response.thread, buildMissingArtifactRepairMessage(input.phaseLabel, missingFiles)],
-      tools: input.tools,
-      outputConfig: {
-        effort: "medium",
-      },
-    });
-
-    usage.input_tokens += repairResponse.usage.input_tokens ?? 0;
-    usage.output_tokens += repairResponse.usage.output_tokens ?? 0;
-    pauseTurns += repairResponse.pauseTurns;
-    iterations += repairResponse.iterations;
-    requests.push(...repairResponse.requests);
-    response = repairResponse;
-    files = await downloadGeneratedFiles(input.client, response.fileIds);
+function requireGeneratedFiles(
+  files: GeneratedFile[],
+  requiredFiles: string[],
+  phase: "author" | "revise" | "checkpoint_export",
+) {
+  const missingFiles = requiredFiles.filter((fileName) => !files.some((file) => file.fileName === fileName || file.fileName.endsWith(fileName)));
+  if (missingFiles.length > 0) {
+    throw new Error(`${phase} phase is missing required output files: ${missingFiles.join(", ")}.`);
   }
-
-  return { response, files, usage, pauseTurns, iterations, requests };
-}
-
-function buildArtifactRepairMessage(qaFailures: string[]) {
-  return {
-    role: "user" as const,
-    content: [
-      {
-        type: "text" as const,
-        text: [
-          "The generated deck artifacts failed export validation.",
-          "Regenerate the deck artifacts cleanly in the current container state.",
-          "Fix these artifact QA failures:",
-          ...qaFailures.map((failure) => `- ${failure}`),
-          "",
-          "Requirements:",
-          "- Regenerate deck.pptx, deck.pdf, and deck_manifest.json.",
-          "- Keep the same business story unless a small factual correction is necessary.",
-          "- Ensure every chart is embedded as raster media in the PPTX and survives opening in PowerPoint without repair warnings.",
-          "- Ensure chart image frames match the underlying image aspect ratio; do not stretch a chart to fill a wider box.",
-          "- If a slide layout is causing a stretched chart, change the slide grammar instead of scaling the image.",
-          "- Attach the regenerated files as real container uploads before finishing.",
-        ].join("\n"),
-      },
-    ],
-  };
-}
-
-async function repairArtifactsFromQa(input: {
-  client: Anthropic;
-  systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
-  latestResponse: Awaited<ReturnType<typeof runClaudeLoop>>;
-  latestContainerId: string;
-  qaFailures: string[];
-  tools: Anthropic.Beta.BetaToolUnion[];
-  currentSpentUsd: number;
-}) {
-  const response = await runClaudeLoop({
-    client: input.client,
-    systemPrompt: input.systemPrompt,
-    maxTokens: 4_096,
-    container: { id: input.latestContainerId },
-    messages: [...input.latestResponse.thread, buildArtifactRepairMessage(input.qaFailures)],
-    tools: input.tools,
-    currentSpentUsd: input.currentSpentUsd,
-    outputConfig: {
-      effort: "medium",
-    },
-  });
-  const files = await downloadGeneratedFiles(input.client, response.fileIds);
-  return { ...response, files };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {
@@ -3358,6 +3046,39 @@ function buildChartPreprocessingGuide() {
       `- ${layoutId}: figureSize=${chartSlot.frame.w.toFixed(2)}x${chartSlot.frame.h.toFixed(2)}in, slotAspectRatio=${aspectRatio}, maxCategories=${chartSlot.maxCategories ?? 12}, preferredOrientation=${preferredOrientation}, allowedChartTypes=${(chartSlot.allowedChartTypes ?? []).join("/") || "any"}.`,
     );
   }
+
+  return lines.join("\n");
+}
+
+function buildChartSlotConstraintMessage(analysis: z.infer<typeof analysisSchema>) {
+  const constrainedSlides = analysis.slidePlan
+    .filter((slide) => slide.chart)
+    .map((slide) => ({
+      position: slide.position,
+      chart: slide.chart,
+      archetype: slide.slideArchetype ?? slide.layoutId,
+    }));
+
+  if (constrainedSlides.length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    "Preserve these chart slot constraints from the prior analysis pass:",
+    ...constrainedSlides.map((slide) => {
+      const chartConstraints = slide.chart;
+      const constraints = [
+        `figureSize=${chartConstraints?.figureSize?.widthInches}x${chartConstraints?.figureSize?.heightInches}in`,
+        `slotAspectRatio=${chartConstraints?.slotAspectRatio}`,
+        `maxCategories=${chartConstraints?.maxCategories}`,
+        `preferredOrientation=${chartConstraints?.preferredOrientation}`,
+        `sort=${chartConstraints?.sort}`,
+        `truncateLabels=${Boolean(chartConstraints?.truncateLabels)}`,
+      ].filter((item) => !item.includes("undefined")).join(", ");
+
+      return `- slide ${slide.position} (${slide.archetype}): ${constraints || "inherit previous chart plan constraints"}`;
+    }),
+  ];
 
   return lines.join("\n");
 }
