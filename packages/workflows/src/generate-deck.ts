@@ -34,7 +34,8 @@ const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEO
 const FILES_BETA = "files-api-2025-04-14";
 const SKILLS_BETA = "skills-2025-10-02";
 const CODE_EXEC_TOOL = "code_execution_20250825";
-const BETAS = [FILES_BETA, SKILLS_BETA, CODE_EXEC_TOOL] as const;
+const CODE_EXEC_BETA = "code-execution-2025-08-25";
+const BETAS = [FILES_BETA, SKILLS_BETA, CODE_EXEC_BETA] as const;
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number> = {
   normalize: 120_000,
