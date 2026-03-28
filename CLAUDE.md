@@ -77,6 +77,33 @@ Railway also needs: `BASQUIO_ANTHROPIC_TIMEOUT_MS=1800000`.
 Project ID: `fxvbvkpzzvrkwvqmecmi`
 Migrations: `supabase/migrations/`
 
+## Hard-won rules (March 27-28, 2026) — DO NOT VIOLATE
+
+### Anthropic execution contract
+- Tool type: `code_execution_20250825` — DO NOT upgrade without smoke test
+- Beta header: `code-execution-2025-08-25` — DO NOT change
+- Canonical config lives in `packages/workflows/src/anthropic-execution-contract.ts`
+- `code_execution_20260120` does NOT exist server-side as of March 28. The SDK has forward types.
+
+### Phase timeouts
+- Author: 25 min (merged understand+author with code execution takes 10-20 min)
+- Revise: 15 min
+- DO NOT reduce author below 20 min. The last successful run took 20 min for author.
+- Before setting ANY timeout: query last 5 successful runs for actual phase duration. Set to 2x p95.
+
+### Schema parsing
+- Claude's output shape varies. Use `.passthrough()` on Zod objects for LLM output.
+- Normalize/coerce fields instead of rejecting. A run that spent $1+ MUST NOT die on parseable-but-differently-shaped JSON.
+
+### SQL functions
+- Always qualify column references in PL/pgSQL (use `table.column`, not bare `column`)
+- FK ordering: INSERT new row BEFORE updating old row's FK reference to it
+
+### Commit discipline
+- Max 3 pipeline commits per day
+- Each commit validated with 1 production run before next commit
+- No "fix" commit without identifying which prior commit introduced the regression
+
 ## Memory & learnings
 Read `memory/MEMORY.md` for the full index. Critical files:
 - `memory/feedback_code_exec_architecture.md` — hard-won rules from 10 days of failures
