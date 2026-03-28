@@ -7,21 +7,22 @@ import pdfParse from "pdf-parse";
 
 import { createSystemTemplateProfile } from "@basquio/template-engine";
 
+import {
+  AUTHORING_OUTPUT_CONFIG,
+  BETAS,
+  buildAuthoringContainer,
+  CLAUDE_TOOLS,
+} from "../packages/workflows/src/anthropic-execution-contract";
 import { parseDeckManifest } from "../packages/workflows/src/deck-manifest";
 import { buildBasquioSystemPrompt } from "../packages/workflows/src/system-prompt";
 import { runRenderedPageQa } from "../packages/workflows/src/rendered-page-qa";
 import { loadBasquioScriptEnv } from "./load-app-env";
 
 const MODEL = "claude-sonnet-4-6";
-const BETAS = [
-  "files-api-2025-04-14",
-  "code-execution-2025-08-25",
-  "skills-2025-10-02",
-] as const;
 
 loadBasquioScriptEnv();
 
-const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "1800000", 10);
+const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
 
 async function main() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -47,10 +48,6 @@ async function main() {
     briefLanguageHint: inferLanguageHint(options.brief),
   });
 
-  const tools: Anthropic.Beta.BetaToolUnion[] = [
-    { type: "web_fetch_20260209", name: "web_fetch" },
-  ];
-
   const initialMessage = {
     role: "user" as const,
     content: [
@@ -75,12 +72,7 @@ async function main() {
   };
 
   let messages: Anthropic.Beta.BetaMessageParam[] = [initialMessage];
-  let container: Anthropic.Beta.BetaContainerParams | undefined = {
-    skills: [
-      { type: "anthropic", skill_id: "pptx", version: "latest" },
-      { type: "anthropic", skill_id: "pdf", version: "latest" },
-    ],
-  };
+  let container: Anthropic.Beta.BetaContainerParams | undefined = buildAuthoringContainer();
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
   const fileIds = new Set<string>();
   let totalInputTokens = 0;
@@ -94,15 +86,13 @@ async function main() {
       system,
       messages,
       container,
-      tools,
-      output_config: {
-        effort: "medium",
-      },
+      tools: CLAUDE_TOOLS,
+      output_config: AUTHORING_OUTPUT_CONFIG,
     });
     const response: Anthropic.Beta.BetaMessage = await stream.finalMessage();
 
     finalMessage = response;
-    container = response.container ? { id: response.container.id } : container;
+    container = response.container ? buildAuthoringContainer(response.container.id) : container;
     totalInputTokens += response.usage?.input_tokens ?? 0;
     totalOutputTokens += response.usage?.output_tokens ?? 0;
 

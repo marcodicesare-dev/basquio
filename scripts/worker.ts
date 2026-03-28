@@ -56,25 +56,6 @@ function getMeaningfulStaleMinutesForPhase(phase: string | null | undefined) {
   }
 }
 
-function getActiveRequestGraceMsForPhase(phase: string | null | undefined) {
-  switch (phase) {
-    case "author":
-      return 40 * 60_000;
-    case "understand":
-      return 10 * 60_000;
-    case "revise":
-      return 20 * 60_000;
-    case "normalize":
-    case "render":
-    case "export":
-      return 120_000;
-    case "critique":
-      return 90_000;
-    default:
-      return 5 * 60_000;
-  }
-}
-
 async function main() {
   const config = resolveConfig();
   let shuttingDown = false;
@@ -510,18 +491,15 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
     }).catch(() => []);
 
     const activeRequest = activePhaseRequests[0];
-    const activeRequestStartedAt = activeRequest ? Date.parse(activeRequest.started_at) : Number.NaN;
-    const activeRequestGraceMs = getActiveRequestGraceMsForPhase(runRow.current_phase);
-    const requestStillWithinPhaseBudget =
-      Number.isFinite(activeRequestStartedAt) && activeRequestStartedAt >= Date.now() - activeRequestGraceMs;
-
-    if (!requestStillWithinPhaseBudget) {
-      staleAttempts.push({
-        id: attempt.id,
-        run_id: attempt.run_id,
-        attempt_number: attempt.attempt_number,
-      });
+    if (activeRequest) {
+      continue;
     }
+
+    staleAttempts.push({
+      id: attempt.id,
+      run_id: attempt.run_id,
+      attempt_number: attempt.attempt_number,
+    });
   }
 
   // D1: Also recover stale queued attempts (new — stranded queued work)

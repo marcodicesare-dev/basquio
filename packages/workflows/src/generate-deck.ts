@@ -18,6 +18,14 @@ import {
 } from "@basquio/template-engine";
 import type { TemplateProfile } from "@basquio/types";
 
+import {
+  AUTHORING_OUTPUT_CONFIG,
+  AUTHORING_TOOL_CALL_SUMMARY,
+  BETAS,
+  buildAuthoringContainer,
+  CLAUDE_TOOLS,
+  FILES_BETA,
+} from "./anthropic-execution-contract";
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import { buildNarrativeDocx } from "./docx-report";
@@ -30,21 +38,14 @@ import { callRpc, deleteRestRows, downloadFromStorage, fetchRestRows, patchRestR
 const MODEL = "claude-sonnet-4-6";
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
 const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
-const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "1800000", 10);
-const FILES_BETA = "files-api-2025-04-14";
-const SKILLS_BETA = "skills-2025-10-02";
-const CODE_EXEC_TOOL = "code_execution_20250825";
-const CODE_EXEC_BETA = "code-execution-2025-08-25";
-const BETAS = [FILES_BETA, SKILLS_BETA, CODE_EXEC_BETA] as const;
+const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
-const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number> = {
+const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  // Francesco-class author turns have now been observed exceeding 25 minutes
-  // under live production load. Keep a wider ceiling until we have reliable
-  // activity-based request watchdogs and checkpointed sub-steps.
-  author: 40 * 60_000,
-  revise: 20 * 60_000,
+  // Long code-execution authoring turns are normal on the main lane.
+  author: null,
+  revise: null,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
@@ -57,14 +58,11 @@ const MAX_PAUSE_TURNS_PER_PHASE = {
   critique: 0,
   export: 0,
 } as const;
-const REQUEST_WATCHDOG_BY_PHASE_MS: Record<ClaudePhase, number> = {
+const REQUEST_WATCHDOG_BY_PHASE_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  // Author/revise code-execution turns can legitimately run for 10-20+ minutes.
-  // Keep the request watchdog aligned to the full phase budget until we have a
-  // true idle/activity watchdog instead of a wall-clock timeout.
-  author: PHASE_TIMEOUTS_MS.author,
-  revise: PHASE_TIMEOUTS_MS.revise,
+  author: null,
+  revise: null,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
@@ -82,9 +80,6 @@ type CircuitState = {
 let lastCircuitBreakerCleanupAt = 0;
 const CONTINUATION_MIN_REMAINING_BUDGET_USD = 0.5;
 const STREAM_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_STREAM_REQUEST_WATCHDOG_MS ?? "240000", 10);
-const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
-  { type: "web_fetch_20260209", name: "web_fetch" },
-];
 const CIRCUIT_BREAKER_STATES = new Map<string, CircuitState>();
 const APPROVED_ARCHETYPES = listArchetypeIds();
 
@@ -104,11 +99,11 @@ const analysisSchema = z.object({
       label: z.string(),
       value: z.string(),
       delta: z.string().optional(),
-    })).optional(),
+    }).passthrough()).optional(),
     callout: z.object({
       text: z.string(),
       tone: z.enum(["accent", "green", "orange"]).optional(),
-    }).optional(),
+    }).passthrough().optional(),
     evidenceIds: z.array(z.string()).optional(),
     chart: z.object({
       id: z.string(),
@@ -121,12 +116,14 @@ const analysisSchema = z.object({
       figureSize: z.object({
         widthInches: z.number().positive(),
         heightInches: z.number().positive(),
-      }).optional(),
+      }).passthrough().optional(),
       sort: z.enum(["desc", "asc", "none"]).optional(),
       truncateLabels: z.boolean().optional(),
-    }).optional(),
-  })).default([]),
+    }).passthrough().optional(),
+  }).passthrough()).default([]),
 }).passthrough();
+
+type AnalysisResult = z.infer<typeof analysisSchema>;
 
 type RunRow = {
   id: string;
@@ -585,9 +582,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       );
       await recordToolCall(config, runId, attempt, "author", "code_execution", {
         model: MODEL,
-        tools: ["web_fetch"],
-        autoInjectedTools: ["code_execution"],
-        skills: ["pptx", "pdf"],
+        tools: [...AUTHORING_TOOL_CALL_SUMMARY.tools],
+        autoInjectedTools: [...AUTHORING_TOOL_CALL_SUMMARY.autoInjectedTools],
+        skills: [...AUTHORING_TOOL_CALL_SUMMARY.skills],
         stepNumber: 1,
       });
       await enforceDeckBudget({
@@ -600,7 +597,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           system: systemPrompt,
           messages: [generationMessage],
           tools: CLAUDE_TOOLS,
-          output_config: { effort: "medium" },
+          output_config: AUTHORING_OUTPUT_CONFIG,
         },
       });
 
@@ -616,25 +613,16 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
         requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
         currentSpentUsd: spentUsd,
-        container: baseContainerId
-          ? { id: baseContainerId }
-          : {
-              skills: [
-                { type: "anthropic", skill_id: "pptx", version: "latest" },
-                { type: "anthropic", skill_id: "pdf", version: "latest" },
-              ],
-            },
+        container: buildAuthoringContainer(baseContainerId),
         messages: [generationMessage],
         tools: CLAUDE_TOOLS,
-        outputConfig: { effort: "medium" },
+        outputConfig: AUTHORING_OUTPUT_CONFIG,
         onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
       });
       const authorFiles = await downloadGeneratedFiles(client, authorResponse.fileIds);
       requireGeneratedFiles(
         authorFiles,
-        recoveredAnalysisForSplit
-        ? ["deck.pptx", "deck.pdf", "deck_manifest.json"]
-        : ["analysis_result.json", "deck.pptx", "deck.pdf", "deck_manifest.json"],
+        ["deck.pptx", "deck.pdf", "deck_manifest.json"],
         "author",
       );
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
@@ -651,8 +639,24 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         output_tokens: authorResponse.usage.output_tokens ?? 0,
       };
       const containerId = authorResponse.containerId;
+      manifest = parseManifestResponse(authorResponse.message, authorFiles);
       if (!recoveredAnalysisForSplit) {
-        analysis = parseGeneratedAnalysisResponse(authorResponse.message, authorFiles);
+        const resolvedAnalysis = resolveAuthorAnalysis({
+          run,
+          message: authorResponse.message,
+          files: authorFiles,
+          manifest,
+        });
+        analysis = resolvedAnalysis.analysis;
+        if (resolvedAnalysis.invalidPayload) {
+          await upsertWorkingPaper(config, runId, "analysis_result_invalid", resolvedAnalysis.invalidPayload).catch((workingPaperError) => {
+            console.warn(`[generateDeckRun] failed to persist invalid analysis payload: ${workingPaperError instanceof Error ? workingPaperError.message : String(workingPaperError)}`);
+          });
+        }
+        if (resolvedAnalysis.recovery) {
+          phaseTelemetry.authorAnalysisRecovery = resolvedAnalysis.recovery;
+          await insertEvent(config, runId, attempt, "author", "analysis_salvaged", resolvedAnalysis.recovery).catch(() => {});
+        }
         enforceAnalysisExhibitRules(analysis);
         applyChartPreprocessingConstraints(analysis);
         await upsertWorkingPaper(config, runId, "analysis_result", analysis);
@@ -675,7 +679,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
       pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
-      manifest = parseManifestResponse(authorResponse.message, authorFiles);
       latestResponse = authorResponse;
       latestContainerId = authorResponse.containerId ?? containerId ?? baseContainerId;
       phaseTelemetry.authorLint = summarizeLintResult(lintManifest(manifest));
@@ -812,9 +815,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         const reviseMessages = [...latestResponse.thread, reviseMessage];
         await recordToolCall(config, runId, attempt, "revise", "code_execution", {
           model: MODEL,
-          tools: ["web_fetch"],
-          autoInjectedTools: ["code_execution"],
-          skills: ["pptx", "pdf"],
+          tools: [...AUTHORING_TOOL_CALL_SUMMARY.tools],
+          autoInjectedTools: [...AUTHORING_TOOL_CALL_SUMMARY.autoInjectedTools],
+          skills: [...AUTHORING_TOOL_CALL_SUMMARY.skills],
           stepNumber: 1,
         });
         await enforceDeckBudget({
@@ -827,9 +830,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             system: systemPrompt,
             messages: reviseMessages,
             tools: CLAUDE_TOOLS,
-            output_config: {
-              effort: "medium",
-            },
+            output_config: AUTHORING_OUTPUT_CONFIG,
           },
         });
 
@@ -845,25 +846,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
           requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
           currentSpentUsd: spentUsd,
-          container: latestContainerId
-            ? {
-                id: latestContainerId,
-                skills: [
-                  { type: "anthropic", skill_id: "pptx", version: "latest" },
-                  { type: "anthropic", skill_id: "pdf", version: "latest" },
-                ],
-              }
-            : {
-                skills: [
-                  { type: "anthropic", skill_id: "pptx", version: "latest" },
-                  { type: "anthropic", skill_id: "pdf", version: "latest" },
-                ],
-              },
+          container: buildAuthoringContainer(latestContainerId),
           messages: reviseMessages,
           tools: CLAUDE_TOOLS,
-          outputConfig: {
-            effort: "medium",
-          },
+          outputConfig: AUTHORING_OUTPUT_CONFIG,
           onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
         });
         spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
@@ -2024,14 +2010,23 @@ async function finalizeFailure(
     attempt.attemptNumber < 3 &&
     (failureClass === "transient_provider" || failureClass === "transient_network");
   if (ownsRun && !shouldSuppressRefund) {
-    await callRpc<Array<{ refunded: boolean; amount: number }>>({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      functionName: "refund_run_credit",
-      params: {
-        p_run_id: runId,
-      },
-    }).catch(() => []);
+    try {
+      await callRpc<Array<{ refunded: boolean; amount: number }>>({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        functionName: "refund_run_credit",
+        params: {
+          p_run_id: runId,
+        },
+      });
+    } catch (refundError) {
+      const refundMessage = refundError instanceof Error ? refundError.message : String(refundError);
+      console.error(`[generateDeckRun] refund_run_credit failed for ${runId}: ${refundMessage}`);
+      await insertEvent(config, runId, attempt, failurePhase, "refund_error", {
+        message: refundMessage,
+        functionName: "refund_run_credit",
+      }).catch(() => {});
+    }
   }
 }
 
@@ -2569,8 +2564,8 @@ async function runClaudeLoop(input: {
   onMeaningfulProgress?: () => Promise<unknown> | void;
   /** Maximum number of pause_turn continuations before breaking out. Default: unlimited (up to 8 iterations). */
   maxPauseTurns?: number;
-  phaseTimeoutMs?: number;
-  requestWatchdogMs?: number;
+  phaseTimeoutMs?: number | null;
+  requestWatchdogMs?: number | null;
   currentSpentUsd?: number;
   circuitKey?: string;
 }) {
@@ -2585,9 +2580,13 @@ async function runClaudeLoop(input: {
     input_tokens: 0,
     output_tokens: 0,
   };
-  const controller = input.phaseTimeoutMs ? new AbortController() : null;
-  const timeoutHandle = input.phaseTimeoutMs
-    ? setTimeout(() => controller?.abort(), input.phaseTimeoutMs)
+  const phaseTimeoutMs =
+    typeof input.phaseTimeoutMs === "number" && input.phaseTimeoutMs > 0
+      ? input.phaseTimeoutMs
+      : null;
+  const controller = phaseTimeoutMs ? new AbortController() : null;
+  const timeoutHandle = phaseTimeoutMs
+    ? setTimeout(() => controller?.abort(), phaseTimeoutMs)
     : null;
   const circuitState = input.circuitKey
     ? getCircuitBreakerState(input.circuitKey)
@@ -2629,14 +2628,19 @@ async function runClaudeLoop(input: {
       let lastTransientError: Error | null = null;
       for (let retry = 0; retry <= TRANSIENT_RETRY_DELAYS_MS.length; retry += 1) {
         const requestController = new AbortController();
-        const phaseRequestTimeoutMs = input.requestWatchdogMs
-          ?? (input.phaseLabel ? REQUEST_WATCHDOG_BY_PHASE_MS[input.phaseLabel] : STREAM_REQUEST_WATCHDOG_MS)
-          ?? STREAM_REQUEST_WATCHDOG_MS;
-        const requestTimeoutMs = Math.max(
-          45_000,
-          phaseRequestTimeoutMs,
-        );
-        const requestTimeoutHandle = setTimeout(() => requestController.abort(), requestTimeoutMs);
+        const configuredRequestWatchdogMs =
+          typeof input.requestWatchdogMs === "number" && input.requestWatchdogMs > 0
+            ? input.requestWatchdogMs
+            : input.requestWatchdogMs === null
+              ? null
+              : (input.phaseLabel ? REQUEST_WATCHDOG_BY_PHASE_MS[input.phaseLabel] : STREAM_REQUEST_WATCHDOG_MS);
+        const requestTimeoutMs =
+          typeof configuredRequestWatchdogMs === "number" && configuredRequestWatchdogMs > 0
+            ? Math.max(45_000, configuredRequestWatchdogMs)
+            : null;
+        const requestTimeoutHandle = requestTimeoutMs
+          ? setTimeout(() => requestController.abort(), requestTimeoutMs)
+          : null;
         try {
           const signal = controller
             ? AbortSignal.any([controller.signal, requestController.signal])
@@ -2656,11 +2660,11 @@ async function runClaudeLoop(input: {
         } catch (streamError) {
           if (controller?.signal.aborted) {
             const phaseTimeoutError = new Error(
-              `Claude ${input.phaseLabel ?? "request"} timed out after ${input.phaseTimeoutMs ?? requestTimeoutMs}ms.`,
+              `Claude ${input.phaseLabel ?? "request"} timed out after ${phaseTimeoutMs ?? requestTimeoutMs ?? 0}ms.`,
             );
             phaseTimeoutError.name = "AbortError";
             streamError = phaseTimeoutError;
-          } else if (requestController.signal.aborted) {
+          } else if (requestTimeoutMs && requestController.signal.aborted) {
             const watchdogError = new Error(`Claude stream watchdog timed out after ${requestTimeoutMs}ms.`);
             watchdogError.name = "AbortError";
             streamError = watchdogError;
@@ -2696,7 +2700,9 @@ async function runClaudeLoop(input: {
           }
           throw streamError;
         } finally {
-          clearTimeout(requestTimeoutHandle);
+          if (requestTimeoutHandle) {
+            clearTimeout(requestTimeoutHandle);
+          }
         }
       }
       if (lastTransientError) {
@@ -2841,11 +2847,11 @@ function parseGeneratedAnalysisResponse(
   if (analysisFile) {
     const raw = analysisFile.buffer.toString("utf8");
     try {
-      return analysisSchema.parse(JSON.parse(raw));
+      return parseAnalysisPayload(JSON.parse(raw));
     } catch {
       const repaired = attemptJsonRepair(raw);
       if (repaired) {
-        return analysisSchema.parse(JSON.parse(repaired));
+        return parseAnalysisPayload(JSON.parse(repaired));
       }
       throw new Error("analysis_result.json is malformed and could not be repaired.");
     }
@@ -2861,11 +2867,303 @@ function parseStructuredAnalysisResponse(message: Anthropic.Beta.BetaMessage) {
   }
 
   try {
-    return analysisSchema.parse(JSON.parse(text));
+    return parseAnalysisPayload(JSON.parse(text));
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Invalid analysis JSON.";
     throw new Error(`Claude did not return parseable structured analysis JSON. ${reason} Response preview: ${text.slice(0, 800)}`);
   }
+}
+
+function resolveAuthorAnalysis(input: {
+  run: RunRow;
+  message: Anthropic.Beta.BetaMessage;
+  files: GeneratedFile[];
+  manifest: z.infer<typeof deckManifestSchema>;
+}): {
+  analysis: AnalysisResult;
+  recovery: Record<string, unknown> | null;
+  invalidPayload: Record<string, unknown> | null;
+} {
+  try {
+    return {
+      analysis: parseGeneratedAnalysisResponse(input.message, input.files),
+      recovery: null,
+      invalidPayload: null,
+    };
+  } catch (analysisError) {
+    const reason = analysisError instanceof Error ? analysisError.message : String(analysisError);
+    const rawPayload = extractRawAnalysisPayload(input.message, input.files);
+    const salvagedAnalysis = synthesizeAnalysisFromManifest(input.run, input.manifest);
+    return {
+      analysis: salvagedAnalysis,
+      recovery: {
+        source: "manifest_salvage",
+        reason,
+        slidePlanCount: salvagedAnalysis.slidePlan.length,
+      },
+      invalidPayload: {
+        source: rawPayload.source,
+        error: reason,
+        rawText: rawPayload.rawText.slice(0, 200_000),
+        salvagedFromManifest: true,
+      },
+    };
+  }
+}
+
+function extractRawAnalysisPayload(
+  message: Anthropic.Beta.BetaMessage,
+  files: GeneratedFile[],
+) {
+  const analysisFile = findGeneratedFile(files, "analysis_result.json");
+  if (analysisFile) {
+    return {
+      source: analysisFile.fileName,
+      rawText: analysisFile.buffer.toString("utf8"),
+    };
+  }
+
+  return {
+    source: "assistant_response_text",
+    rawText: extractResponseText(message.content) ?? "",
+  };
+}
+
+function parseAnalysisPayload(payload: unknown) {
+  return analysisSchema.parse(normalizeAnalysisPayload(payload));
+}
+
+function normalizeAnalysisPayload(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+
+  const normalized = { ...(payload as Record<string, unknown>) };
+  normalized.executiveSummary = normalizeExecutiveSummary(normalized.executiveSummary);
+
+  if (Array.isArray(normalized.slidePlan)) {
+    normalized.slidePlan = normalized.slidePlan
+      .map((slide) => normalizeSlidePlanEntry(slide))
+      .filter((slide): slide is Record<string, unknown> => slide !== null);
+  }
+
+  return normalized;
+}
+
+function normalizeExecutiveSummary(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value == null) {
+    return "";
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => stringifyLooseText(entry))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const prioritized = [
+      stringifyLooseText(record.headline),
+      stringifyLooseText(record.summary),
+      stringifyLooseText(record.text),
+      stringifyLooseText(record.title),
+    ].filter(Boolean);
+    const bullets = Array.isArray(record.bullets)
+      ? record.bullets.map((entry) => stringifyLooseText(entry)).filter(Boolean)
+      : [];
+    const combined = [...prioritized, ...bullets];
+    if (combined.length > 0) {
+      return combined.join(" ").trim();
+    }
+  }
+
+  return stringifyLooseText(value);
+}
+
+function normalizeSlidePlanEntry(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized = { ...(value as Record<string, unknown>) };
+
+  if (typeof normalized.position === "string") {
+    const parsed = Number.parseInt(normalized.position, 10);
+    if (Number.isFinite(parsed)) {
+      normalized.position = parsed;
+    }
+  }
+
+  if (typeof normalized.bullets === "string") {
+    normalized.bullets = [normalized.bullets];
+  }
+
+  if (typeof normalized.callout === "string") {
+    normalized.callout = { text: normalized.callout };
+  }
+
+  if (typeof normalized.evidenceIds === "string") {
+    normalized.evidenceIds = [normalized.evidenceIds];
+  }
+
+  if (Array.isArray(normalized.metrics)) {
+    normalized.metrics = normalized.metrics
+      .map((metric) => normalizeMetricEntry(metric))
+      .filter((metric): metric is Record<string, unknown> => metric !== null);
+  }
+
+  return normalized;
+}
+
+function normalizeMetricEntry(value: unknown): Record<string, unknown> | null {
+  if (typeof value === "string") {
+    return { label: value, value };
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = { ...(value as Record<string, unknown>) };
+  const label = stringifyLooseText(record.label ?? record.name ?? record.title ?? record.metric);
+  const metricValue = stringifyLooseText(record.value ?? record.amount ?? record.result ?? record.number);
+  if (!label && !metricValue) {
+    const firstPair = Object.entries(record).find(([, entry]) => stringifyLooseText(entry));
+    if (firstPair) {
+      return {
+        label: firstPair[0],
+        value: stringifyLooseText(firstPair[1]),
+      };
+    }
+    return null;
+  }
+
+  return {
+    ...record,
+    label: label || metricValue,
+    value: metricValue || label,
+    ...(record.delta != null ? { delta: stringifyLooseText(record.delta) } : {}),
+  };
+}
+
+function stringifyLooseText(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => stringifyLooseText(entry)).filter(Boolean).join(" ").trim();
+  }
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>)
+      .map((entry) => stringifyLooseText(entry))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+  return "";
+}
+
+function synthesizeAnalysisFromManifest(
+  run: RunRow,
+  manifest: z.infer<typeof deckManifestSchema>,
+): AnalysisResult {
+  const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
+  const slidePlan = manifest.slides.map((slide, index) => {
+    const chart = slide.chartId ? chartById.get(slide.chartId) : null;
+    const preferredOrientation = inferPreferredOrientation(chart?.categories);
+    return {
+      position: slide.position ?? index + 1,
+      layoutId: slide.layoutId,
+      slideArchetype: slide.slideArchetype,
+      title: slide.title,
+      ...(slide.subtitle ? { subtitle: slide.subtitle } : {}),
+      ...(slide.body ? { body: slide.body } : {}),
+      ...(slide.bullets ? { bullets: slide.bullets } : {}),
+      ...(slide.metrics ? { metrics: slide.metrics } : {}),
+      ...(slide.callout ? { callout: slide.callout } : {}),
+      ...(slide.evidenceIds ? { evidenceIds: slide.evidenceIds } : {}),
+      ...(chart
+        ? {
+            chart: {
+              id: chart.id,
+              chartType: chart.chartType,
+              title: chart.title,
+              ...(chart.sourceNote ? { sourceNote: chart.sourceNote } : {}),
+              ...(typeof chart.categoryCount === "number" ? { maxCategories: chart.categoryCount } : {}),
+              ...(preferredOrientation ? { preferredOrientation } : {}),
+              ...(shouldTruncateChartLabels(chart.categories) ? { truncateLabels: true } : {}),
+            },
+          }
+        : {}),
+    };
+  });
+  const executiveSummary = buildManifestExecutiveSummary(run, manifest);
+
+  return analysisSchema.parse({
+    language: inferLanguageHint(run),
+    thesis: run.thesis || executiveSummary || manifest.slides[0]?.title || "",
+    executiveSummary,
+    slidePlan,
+  });
+}
+
+function buildManifestExecutiveSummary(
+  run: RunRow,
+  manifest: z.infer<typeof deckManifestSchema>,
+) {
+  const summaryParts = manifest.slides
+    .slice(0, 2)
+    .flatMap((slide) => [
+      slide.title,
+      slide.subtitle,
+      slide.body,
+      slide.callout?.text,
+    ])
+    .map((entry) => stringifyLooseText(entry))
+    .filter(Boolean);
+
+  if (summaryParts.length > 0) {
+    return summaryParts.join(" ").trim();
+  }
+
+  return [
+    run.thesis,
+    run.objective,
+    manifest.slides[0]?.title,
+  ]
+    .map((entry) => stringifyLooseText(entry))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+function inferPreferredOrientation(categories: string[] | undefined) {
+  if (!categories || categories.length === 0) {
+    return undefined;
+  }
+
+  const averageLabelLength = categories.reduce((sum, category) => sum + category.length, 0) / categories.length;
+  return averageLabelLength > 12 || categories.length > 8
+    ? "horizontal"
+    : "vertical";
+}
+
+function shouldTruncateChartLabels(categories: string[] | undefined) {
+  if (!categories || categories.length === 0) {
+    return false;
+  }
+
+  return categories.some((category) => category.length > 18);
 }
 
 function parseManifestResponse(

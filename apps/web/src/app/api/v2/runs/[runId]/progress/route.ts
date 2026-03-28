@@ -46,6 +46,17 @@ type DeckRunEventRow = {
   created_at: string;
 };
 
+type DeckRunAttemptRow = {
+  id: string;
+  updated_at: string | null;
+  last_meaningful_event_at: string | null;
+};
+
+type DeckRunRequestUsageRow = {
+  started_at: string;
+  completed_at: string | null;
+};
+
 type TemplateProfileRow = {
   source_file_id: string | null;
   template_profile: Parameters<typeof buildTemplateDiagnosticsFromProfile>[0]["profile"];
@@ -94,7 +105,11 @@ const PHASE_ESTIMATES: Record<string, PhaseEstimate> = {
     activeDetail: "Deck repaired. Final export checks in progress.",
   },
 };
-const STALE_RUN_UI_SECONDS = Number.parseInt(process.env.BASQUIO_RUN_STALE_UI_SECONDS ?? "180", 10);
+const WORKER_STALE_RUN_SECONDS = Number.parseInt(process.env.BASQUIO_WORKER_STALE_MINUTES ?? "5", 10) * 60;
+const STALE_RUN_UI_SECONDS = Number.parseInt(
+  process.env.BASQUIO_RUN_STALE_UI_SECONDS ?? String(Math.min(180, WORKER_STALE_RUN_SECONDS)),
+  10,
+);
 
 // Event-sourced progress endpoint.
 // Returns persisted run events from deck_run_events. Tool-call detail is only present when the worker emits it.
@@ -149,6 +164,37 @@ export async function GET(
   const run = runs[0];
   const attemptId = run.active_attempt_id ?? run.latest_attempt_id;
 
+  const [attempts, activeRequests] = await Promise.all([
+    attemptId
+      ? fetchRestRows<DeckRunAttemptRow>({
+          supabaseUrl,
+          serviceKey,
+          table: "deck_run_attempts",
+          query: {
+            select: "id,updated_at,last_meaningful_event_at",
+            id: `eq.${attemptId}`,
+            limit: "1",
+          },
+        }).catch(() => [])
+      : Promise.resolve([]),
+    attemptId && run.current_phase
+      ? fetchRestRows<DeckRunRequestUsageRow>({
+          supabaseUrl,
+          serviceKey,
+          table: "deck_run_request_usage",
+          query: {
+            select: "started_at,completed_at",
+            attempt_id: `eq.${attemptId}`,
+            phase: `eq.${run.current_phase}`,
+            request_kind: "eq.phase_generation",
+            completed_at: "is.null",
+            order: "started_at.desc",
+            limit: "1",
+          },
+        }).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+
   const events = await fetchRestRows<DeckRunEventRow>({
     supabaseUrl,
     serviceKey,
@@ -192,12 +238,17 @@ export async function GET(
   const lastToolCall = toolCalls.length > 0 ? toolCalls[toolCalls.length - 1] : null;
   const now = Date.now();
   const createdAtMs = new Date(run.created_at).getTime();
+  const attempt = attempts[0];
   const updatedAtMs = run.updated_at ? new Date(run.updated_at).getTime() : createdAtMs;
+  const attemptUpdatedAtMs = attempt?.updated_at ? new Date(attempt.updated_at).getTime() : updatedAtMs;
+  const activeRequest = activeRequests[0];
+  const hasActiveRequest = run.status === "running" && Boolean(activeRequest);
   const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
   const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
-  const isStale = run.status === "running" && now - updatedAtMs > STALE_RUN_UI_SECONDS * 1000;
-  const progressClockMs = isStale ? updatedAtMs : now;
+  const heartbeatLate = run.status === "running" && now - attemptUpdatedAtMs > STALE_RUN_UI_SECONDS * 1000;
+  const recoveryEligibleStale = run.status === "running" && !hasActiveRequest && now - attemptUpdatedAtMs > WORKER_STALE_RUN_SECONDS * 1000;
+  const progressClockMs = heartbeatLate ? attemptUpdatedAtMs : now;
   const progressModel = buildPhaseProgressModel({
     phases: V2_PHASES,
     currentPhase,
@@ -222,8 +273,10 @@ export async function GET(
 
   const currentDetail = lastToolCall?.tool_name
     ? `${phaseMeta.activeDetail} Tool in use: ${lastToolCall.tool_name}.`
-    : isStale
+    : recoveryEligibleStale
       ? "This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically."
+    : heartbeatLate
+      ? `This run has not heartbeated recently. Automatic recovery starts after ${Math.round(WORKER_STALE_RUN_SECONDS / 60)} minutes without progress.`
     : run.status === "failed"
       ? run.failure_message ?? "Run failed."
       : run.status === "completed"
@@ -236,7 +289,7 @@ export async function GET(
     activeAttemptId: attemptId,
     status: run.status,
     currentPhase: currentPhase ?? null,
-    runHealth: isStale ? "stale" : "healthy",
+    runHealth: recoveryEligibleStale ? "stale" : heartbeatLate ? "late_heartbeat" : "healthy",
     currentStageLabel: phaseMeta.label,
     currentDetail,
     progressPct,
