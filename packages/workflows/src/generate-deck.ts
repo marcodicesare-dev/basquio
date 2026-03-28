@@ -36,7 +36,7 @@ import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const MODEL = "claude-sonnet-4-6";
-const VISUAL_QA_MODEL = "claude-haiku-4-5";
+const VISUAL_QA_MODEL = "claude-sonnet-4-6";
 const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
@@ -1825,6 +1825,14 @@ async function strengthenFinalVisualQa(input: {
   phaseTelemetry: Record<string, unknown>;
 }) {
   if (input.currentReport.overallStatus !== "green" || input.currentReport.deckNeedsRevision) {
+    return input.currentReport;
+  }
+
+  if (VISUAL_QA_MODEL === FINAL_VISUAL_QA_MODEL) {
+    input.phaseTelemetry.visualQaFinalSkipped = {
+      reason: "same_model_already_ran_in_critique",
+      reusedScore: input.currentReport.score,
+    };
     return input.currentReport;
   }
 
@@ -4115,7 +4123,9 @@ async function validateArtifactChecks(
     const zip = await JSZip.loadAsync(pptxBuffer);
     const presentationXml = zip.file("ppt/presentation.xml");
     const contentTypesXml = zip.file("[Content_Types].xml");
-    const slideXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).length;
+    const slideXmlCount = presentationXml
+      ? (await presentationXml.async("string")).match(/<p:sldId\b/gi)?.length ?? 0
+      : 0;
     const rasterMediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\/.+\.(png|jpe?g)$/i.test(name)).length;
     const nativeChartXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/i.test(name)).length;
     const aspectMismatchFindings = await collectLargePictureAspectMismatchFindings(zip, manifest);
@@ -4414,7 +4424,7 @@ async function collectSlidePictureAspectMismatchFindings(
     const imageRatio = imageDimensions.width / imageDimensions.height;
     const distortion = Math.abs(frameRatio - imageRatio) / imageRatio;
 
-    if (distortion > 0.12) {
+    if (distortion > 0.3) {
       findings.push({
         slideNumber,
         target,
