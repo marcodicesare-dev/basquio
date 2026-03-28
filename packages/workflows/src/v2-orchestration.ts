@@ -830,8 +830,9 @@ async function getNotebookEntry(evidenceRefId: string) {
 
 // ─── WORKING PAPERS PERSISTENCE ──────────────────────────────────
 
-async function persistWorkingPaper(runId: string, paperType: string, content: unknown, version = 1) {
+async function persistWorkingPaper(runId: string, paperType: string, content: unknown, version?: number) {
   assertUuid(runId, "runId");
+  const resolvedVersion = version ?? await getNextWorkingPaperVersion(runId, paperType);
   const response = await fetch(
     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/working_papers?on_conflict=run_id,paper_type,version`,
     {
@@ -846,7 +847,7 @@ async function persistWorkingPaper(runId: string, paperType: string, content: un
         run_id: runId,
         paper_type: paperType,
         content,
-        version,
+        version: resolvedVersion,
         updated_at: new Date().toISOString(),
       }),
     },
@@ -855,6 +856,32 @@ async function persistWorkingPaper(runId: string, paperType: string, content: un
     const errorBody = await response.text().catch(() => "");
     throw new Error(`Failed to persist working paper ${paperType}: ${response.status} ${response.statusText} — ${errorBody}`);
   }
+}
+
+async function getNextWorkingPaperVersion(runId: string, paperType: string): Promise<number> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/working_papers?run_id=eq.${runId}&paper_type=eq.${paperType}&select=version&order=version.desc&limit=1`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!response.ok) {
+      return 1;
+    }
+
+    const rows = await response.json() as Array<{ version: number }>;
+    const nextVersion = (rows[0]?.version ?? 0) + 1;
+    if (Number.isInteger(nextVersion) && nextVersion > 0) {
+      return nextVersion;
+    }
+  }
+
+  throw new Error(`Unable to determine next working paper version for ${paperType}.`);
 }
 
 async function loadWorkingPaper<T = unknown>(runId: string, paperType: string): Promise<T | null> {
@@ -4712,11 +4739,17 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
       }
 
       // ─── WRITING LINTER (executable text quality gate) ──────────
+      const deckLanguage = detectLanguage(
+        slides
+          .flatMap((s) => [s.title ?? "", s.body ?? "", ...(Array.isArray(s.bullets) ? s.bullets : []), (s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout).text : s.callout.text) : "")])
+          .join(" "),
+      ) as "it" | "en" | "unknown";
       const lintInputs = slides.map((s) => ({
         position: s.position,
         role: s.layoutId === "cover" ? "cover" : s.layoutId === "exec-summary" ? "exec-summary" : "content",
         layoutId: s.layoutId ?? "title-body",
         title: s.title ?? "",
+        expectedLanguage: deckLanguage,
         body: s.body ?? undefined,
         bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
         callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
@@ -5212,21 +5245,6 @@ export const basquioCritiqueRevise = inngest.createFunction(
         };
       }
 
-      // Only revise for critical issues — major issues are acceptable for delivery
-      if (criticalCount === 0) {
-        await updateDeliveryStatus(runId, "reviewed");
-        await emitRunEvent(runId, "critique", "phase_completed");
-        return {
-          hasCriticalOrMajor: true,
-          needsRevise: false,
-          issues: allIssues,
-          criticalCount,
-          majorCount,
-          estimatedCostUsd: critiqueCostUsd,
-          phaseBreakdown: [{ phase: "critique" as const, model: "claude-sonnet-4-6", costUsd: critiqueCostUsd }],
-        };
-      }
-
       await emitRunEvent(runId, "critique", "phase_completed");
       return {
         hasCriticalOrMajor: true,
@@ -5298,11 +5316,17 @@ export const basquioCritiqueRevise = inngest.createFunction(
       const postRevisionCharts = await getV2ChartRows(runId);
 
       // Re-run writing linter on repaired slides
+      const postRevisionDeckLanguage = detectLanguage(
+        postRevisionSlides
+          .flatMap((s) => [s.title ?? "", s.body ?? "", ...(Array.isArray(s.bullets) ? s.bullets : []), (s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout).text : s.callout.text) : "")])
+          .join(" "),
+      ) as "it" | "en" | "unknown";
       const postLintInputs = postRevisionSlides.map((s) => ({
         position: s.position,
         role: s.layoutId === "cover" ? "cover" : s.layoutId === "exec-summary" ? "exec-summary" : "content",
         layoutId: s.layoutId ?? "title-body",
         title: s.title ?? "",
+        expectedLanguage: postRevisionDeckLanguage,
         body: s.body ?? undefined,
         bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
         callout: s.callout ? (typeof s.callout === "string" ? JSON.parse(s.callout) : s.callout) : undefined,
@@ -5365,7 +5389,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       const finalCritical = postCritical;
       const finalMajor = postMajor + contractMajor + postEvidenceMajor;
-      const publishGrade = finalCritical > 0 ? "red" : finalMajor > 0 ? "yellow" : "green";
+      const publishGrade = finalCritical > 0 || finalMajor > 0 ? "red" : "green";
       await updateDeliveryStatus(runId, publishGrade === "green" ? "reviewed" : "degraded");
       console.info(`[basquio-critique] Post-revision publish grade: ${publishGrade} (${finalCritical} critical, ${finalMajor} major)`);
 
@@ -5378,7 +5402,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
       ];
       return {
         hasCriticalOrMajor: finalCritical > 0 || finalMajor > 0,
-        degradedDelivery: publishGrade === "red",
+        degradedDelivery: publishGrade !== "green",
         degradedIssues: postIssues,
         estimatedCostUsd: totalCostUsd,
         publishGrade,
@@ -5393,7 +5417,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
     const finalCostUsd = Math.round(runningCostUsd * 1000) / 1000 || 0.01;
     const criticalCount = (gateResult as { criticalCount?: number }).criticalCount ?? 0;
     const majorCount = (gateResult as { majorCount?: number }).majorCount ?? 0;
-    const publishGrade = criticalCount > 0 ? "red" : majorCount > 0 ? "yellow" : "green";
+    const publishGrade = criticalCount > 0 || majorCount > 0 ? "red" : "green";
     if (publishGrade !== "green") {
       await updateDeliveryStatus(runId, "degraded");
     }
@@ -5401,7 +5425,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
     console.info(`[basquio-critique] Publish grade: ${publishGrade} (${criticalCount} critical, ${majorCount} major issues)`);
     return {
       hasCriticalOrMajor: criticalCount > 0 || majorCount > 0,
-      degradedDelivery: publishGrade === "red",
+      degradedDelivery: publishGrade !== "green",
       degradedIssues: (gr2.issues ?? []).filter(i => i.severity === "critical" || i.severity === "major").map(i => ({ severity: i.severity, claim: i.claim })),
       estimatedCostUsd: finalCostUsd,
       publishGrade,
@@ -5644,7 +5668,7 @@ export const basquioExport = inngest.createFunction(
       const chartCoverageRatio = chartLayoutSlides.length > 0
         ? (chartLayoutSlides.length - chartlessSlides.length) / chartLayoutSlides.length
         : 1;
-      const chartCoverageOk = chartCoverageRatio >= 0.7;
+      const chartCoverageOk = chartCoverageRatio === 1;
       const imageBackedCharts = v2ChartRows.filter((chart) => chart.thumbnailUrl && chartImageMap.has(chart.id));
       const imageCoverageRatio = v2ChartRows.length > 0 ? imageBackedCharts.length / v2ChartRows.length : 1;
 
@@ -5717,7 +5741,7 @@ export const basquioExport = inngest.createFunction(
         { name: "slide_count_positive", passed: filteredSlides.length > 0, detail: `${filteredSlides.length} slides` },
         { name: "pptx_valid_zip", passed: hasValidPptxHeader },
         { name: "chart_coverage", passed: chartCoverageOk, detail: `${chartLayoutSlides.length - chartlessSlides.length}/${chartLayoutSlides.length} chart-layout slides have valid charts (${Math.round(chartCoverageRatio * 100)}%)` },
-        { name: "chart_image_coverage", passed: imageCoverageRatio > 0, detail: `${imageBackedCharts.length}/${v2ChartRows.length} charts have stored PNG assets` },
+        { name: "chart_image_coverage", passed: imageCoverageRatio === 1, detail: `${imageBackedCharts.length}/${v2ChartRows.length} charts have stored PNG assets` },
         { name: "no_empty_slides", passed: noEmptySlides, detail: remainingEmptySlides.length > 0 ? `${remainingEmptySlides.length} empty content slide(s)` : "all slides have content" },
         { name: "no_topic_label_titles", passed: topicLabelTitles.length === 0, detail: topicLabelTitles.length > 0 ? `${topicLabelTitles.length} slides have topic-label titles: ${topicLabelTitles.map((s: any) => `"${(s.title ?? "").slice(0, 40)}"`).join(", ")}` : "all titles are insights" },
         { name: "no_zero_value_charts", passed: zeroValueCharts.length === 0, detail: zeroValueCharts.length > 0 ? `${zeroValueCharts.length} charts have >80% zero values (possible parsing failure)` : "all chart data looks valid" },
@@ -5728,22 +5752,20 @@ export const basquioExport = inngest.createFunction(
 
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
       const qaFailures = qaChecks.filter((c) => !c.passed).map((c) => c.name);
-      const qaTier: "green" | "yellow" | "red" =
-        (!hasValidPptxHeader || filteredSlides.length === 0 || (v2ChartRows.length > 0 && imageCoverageRatio === 0) || chartCoverageRatio < 0.5)
-          ? "red"
-          : (qaStructuralPassed && !degradedDelivery ? "green" : "yellow");
+      const qaTier: "green" | "red" =
+        qaStructuralPassed && !degradedDelivery && !hasCriticalOrMajor
+          ? "green"
+          : "red";
       const qaPassed = qaTier === "green";
 
       if (!qaPassed) {
         console.warn(`[basquio-export] PRE-UPLOAD QA: tier=${qaTier}, degraded=${degradedDelivery}, failed=[${qaFailures.join(", ")}], chartCoverage=${Math.round(chartCoverageRatio * 100)}%`);
         await updateDeliveryStatus(runId, "degraded");
+        throw new NonRetriableError(
+          `V2 export publish gate failed: ${qaFailures.join(", ") || "unresolved critique blockers"}`,
+        );
       }
       // ── END PRE-UPLOAD QA ─────────────────────────────────────
-      const finalDegraded = degradedDelivery || !qaPassed;
-
-      // ── DIGNIFIED MINIMUM CHECK ─────────────────────────────
-      // If too many metrics are placeholder em-dashes, the deck is garbage.
-      // Ship a 2-slide dignified minimum instead of 12 slides of nonsense.
       let pptxToUpload = pptxBuffer;
       const allMetrics = filteredSlides.flatMap((s: { metrics?: unknown }) => {
         const m = s.metrics;
@@ -5762,54 +5784,16 @@ export const basquioExport = inngest.createFunction(
         return metricsArr.some((m: { value?: string }) => m.value && RAW_PLACEHOLDER.test(m.value));
       });
 
-      const useDignifiedMinimum = finalDegraded && (
-        (placeholderRatio > 0.5 && allMetrics.length >= 4) ||
-        rawPlaceholderSlides.length > 0 ||
-        (qaTier === "red" && v2ChartRows.length > 0 && imageCoverageRatio === 0)
-      );
-
       // When using dignified minimum, replace filteredSlides and charts for ALL downstream paths
       // (PPTX, PDF, and manifest must all be consistent)
       let slidesForExport = filteredSlides;
       let chartsForExport = v2ChartRows;
 
-      if (useDignifiedMinimum) {
+      if ((placeholderRatio > 0.5 && allMetrics.length >= 4) || rawPlaceholderSlides.length > 0) {
         const reason = rawPlaceholderSlides.length > 0
           ? `${rawPlaceholderSlides.length} slides have raw placeholder metrics`
           : `${Math.round(placeholderRatio * 100)}% of metrics are placeholders (${placeholderMetricCount}/${allMetrics.length})`;
-        console.warn(`[basquio-export] ${reason}. Shipping dignified minimum instead of degraded deck.`);
-
-        const coverTitle = filteredSlides[0]?.title ?? (deckTitle || "Analysis").slice(0, 100);
-        slidesForExport = [
-          { id: "cover", position: 1, layoutId: "cover", title: coverTitle, subtitle: "Preliminary analysis",
-            kicker: undefined, body: undefined, bullets: undefined, chartId: undefined, metrics: undefined,
-            callout: undefined, highlightCategories: undefined, evidenceIds: [] as string[] },
-          { id: "status", position: 2, layoutId: "title-body", title: "Full analysis in progress",
-            body: "Our analysis engine is processing the uploaded data. A complete deck with charts and insights will be available shortly. Please re-run the analysis for a full report.",
-            kicker: undefined, bullets: undefined, chartId: undefined, metrics: undefined,
-            callout: { text: "Re-run analysis for complete results", tone: "accent" }, highlightCategories: undefined,
-            subtitle: undefined, evidenceIds: [] as string[] },
-        ] as any;
-        chartsForExport = [];
-
-        // Re-render PPTX with dignified minimum
-        try {
-          const dignifiedArtifact = await renderV2PptxArtifact({
-            slides: slidesForExport as any, charts: [],
-            deckTitle: deckTitle || "Basquio Analysis",
-            brandTokens: templateProfile?.brandTokens as Record<string, unknown> | undefined,
-            exportMode,
-          });
-          const dignifiedBuffer = Buffer.isBuffer(dignifiedArtifact.buffer)
-            ? dignifiedArtifact.buffer
-            : Buffer.from((dignifiedArtifact.buffer as { data: number[] }).data);
-          pptxToUpload = dignifiedBuffer;
-        } catch (e) {
-          console.warn("[basquio-export] Failed to render dignified minimum, uploading original degraded deck:", e);
-          // Revert to original slides for consistency
-          slidesForExport = filteredSlides;
-          chartsForExport = v2ChartRows;
-        }
+        throw new NonRetriableError(`V2 export rejected placeholder output: ${reason}`);
       }
 
       // Upload PPTX (always — dignified minimum or full deck)

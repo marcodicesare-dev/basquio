@@ -7,7 +7,7 @@ import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
-import { enforceExhibit, inferQuestionType, lintDeckText, routeQuestion, validateDeckContract, type SlideTextInput } from "@basquio/intelligence";
+import { detectLanguage, enforceExhibit, inferQuestionType, lintDeckText, routeQuestion, validateDeckContract, type SlideTextInput } from "@basquio/intelligence";
 import { listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
 import {
   buildNoTemplateDiagnostics,
@@ -76,80 +76,6 @@ const analysisSchema = z.object({
     }).optional(),
   })).default([]),
 }).passthrough();
-
-const ANALYSIS_OUTPUT_FORMAT = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      language: { type: "string" },
-      thesis: { type: "string" },
-      executiveSummary: { type: "string" },
-      slidePlan: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            position: { type: "integer" },
-            layoutId: { type: "string" },
-            slideArchetype: { type: "string" },
-            title: { type: "string" },
-            subtitle: { type: "string" },
-            body: { type: "string" },
-            bullets: {
-              type: "array",
-              items: { type: "string" },
-            },
-            metrics: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  label: { type: "string" },
-                  value: { type: "string" },
-                  delta: { type: "string" },
-                },
-                required: ["label", "value"],
-                additionalProperties: false,
-              },
-            },
-            callout: {
-              type: "object",
-              properties: {
-                text: { type: "string" },
-                tone: {
-                  type: "string",
-                  enum: ["accent", "green", "orange"],
-                },
-              },
-              required: ["text"],
-              additionalProperties: false,
-            },
-            evidenceIds: {
-              type: "array",
-              items: { type: "string" },
-            },
-            chart: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                chartType: { type: "string" },
-                title: { type: "string" },
-                sourceNote: { type: "string" },
-              },
-              required: ["id", "chartType", "title"],
-              additionalProperties: false,
-            },
-          },
-          required: ["position", "layoutId", "slideArchetype", "title"],
-          additionalProperties: false,
-        },
-      },
-    },
-    required: ["language", "thesis", "executiveSummary", "slidePlan"],
-    additionalProperties: false,
-  },
-} as const;
 
 type RunRow = {
   id: string;
@@ -237,8 +163,18 @@ type DeckPhase = "normalize" | "understand" | "author" | "render" | "critique" |
 //   revise     → improved valid artifact set (working_paper: artifact_checkpoint)
 //   export     → published artifact manifest + delivery state
 
+type ArtifactCheckpointProof = {
+  authorComplete: boolean;
+  critiqueComplete: boolean;
+  reviseComplete: boolean;
+  visualQaGreen: boolean;
+  lintPassed: boolean;
+  contractPassed: boolean;
+  deckNeedsRevision: boolean;
+};
+
 type ArtifactCheckpoint = {
-  phase: "author" | "revise";
+  phase: "author" | "critique" | "revise";
   pptxStoragePath: string;
   pdfStoragePath: string;
   manifestJson: Record<string, unknown>;
@@ -248,10 +184,27 @@ type ArtifactCheckpoint = {
   resumeReady: boolean;
   visualQaStatus?: "green" | "yellow" | "red";
   deckNeedsRevision?: boolean;
+  proof: ArtifactCheckpointProof;
 };
 type ClaudeUsage = {
   input_tokens?: number;
   output_tokens?: number;
+};
+
+type PublishDecision = {
+  decision: "publish" | "fail";
+  hardBlockers: string[];
+  advisories: string[];
+  artifactSource: "fresh_generation" | "checkpoint";
+  visualQa: {
+    overallStatus: "green" | "yellow" | "red";
+    deckNeedsRevision: boolean;
+  };
+  lintPassed: boolean;
+  contractPassed: boolean;
+  chartImageCoveragePct: number | null;
+  sceneOverflowCount: number;
+  sceneCollisionCount: number;
 };
 type ClaudeRequestUsage = {
   requestId: string | null;
@@ -427,7 +380,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       "did not generate required file",
     ];
 
-    const existingCheckpoint = await loadArtifactCheckpoint(config, runId);
+    const existingCheckpoint = await loadArtifactCheckpoint(config, runId, { requireResumeReady: true });
     let checkpointArtifacts = existingCheckpoint ? await loadCheckpointArtifacts(config, existingCheckpoint) : null;
     const recoveredAnalysis = await loadRecoveredAnalysis(config, runId);
 
@@ -471,7 +424,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       ? existingCheckpoint
       : null;
 
-    let analysis: z.infer<typeof analysisSchema>;
+    let analysis: z.infer<typeof analysisSchema> | null = null;
     let pptxFile: GeneratedFile;
     let pdfFile: GeneratedFile;
     let manifest: z.infer<typeof deckManifestSchema>;
@@ -515,11 +468,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         });
       }
     } else {
-      // ─── STANDARD SPLIT PATH ───────────────────────────────────────
-      // Original understand -> author pipeline. No merged path in this pass.
-
       const isRecoveryAttempt = attempt.recoveryReason === "stale_timeout" || attempt.recoveryReason === "transient_provider_retry";
       const recoveredAnalysisForSplit = isRecoveryAttempt ? recoveredAnalysis : null;
+      const questionRoutes = routeQuestion(buildBriefText(run));
 
       if (recoveredAnalysisForSplit) {
         analysis = recoveredAnalysisForSplit;
@@ -535,104 +486,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           estimatedCostUsd: spentUsd,
           source: "reused_from_previous_attempt",
         });
-      } else {
-        currentPhase = "understand";
-        await markPhase(config, runId, attempt, currentPhase);
-
-        const questionRoutes = routeQuestion(buildBriefText(run));
-        const understandMessage = buildUnderstandMessage(run, uploadedEvidence, uploadedTemplate, questionRoutes);
-        await recordToolCall(config, runId, attempt, "understand", "code_execution", {
-          model: MODEL,
-          tools: ["web_fetch"],
-          autoInjectedTools: ["code_execution"],
-          skills: ["pptx", "pdf"],
-          stepNumber: 1,
-        });
-        await enforceDeckBudget({
-          client,
-          model: MODEL,
-          betas: [...BETAS],
-          spentUsd,
-          outputTokenBudget: 16_000,
-          body: {
-            system: systemPrompt,
-            messages: [understandMessage],
-            tools: CLAUDE_TOOLS,
-            output_config: {
-              effort: "medium",
-              format: ANALYSIS_OUTPUT_FORMAT,
-            },
-          },
-        });
-
-        await persistRequestStart(config, runId, attempt, "understand", "phase_generation", MODEL);
-        const understandResponse = await runClaudeLoop({
-          client,
-          systemPrompt,
-          maxTokens: 4_096,
-          phaseTimeoutMs: PHASE_TIMEOUTS_MS.understand,
-          currentSpentUsd: spentUsd,
-          container: {
-            skills: [
-              { type: "anthropic", skill_id: "pptx", version: "latest" },
-              { type: "anthropic", skill_id: "pdf", version: "latest" },
-            ],
-          },
-          messages: [understandMessage],
-          tools: CLAUDE_TOOLS,
-          outputConfig: {
-            effort: "medium",
-            format: ANALYSIS_OUTPUT_FORMAT,
-          },
-          onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "understand", MODEL),
-        });
-        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, understandResponse.usage));
-        assertDeckSpendWithinBudget(spentUsd);
-        continuationCount += understandResponse.pauseTurns;
-        phaseTelemetry.understand = buildPhaseTelemetry(MODEL, {
-          ...understandResponse,
-          requestIds: understandResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
-        });
-        await persistRequestUsage(config, runId, attempt, "understand", "phase_generation", MODEL, understandResponse.requests);
-        rememberRequestIds(anthropicRequestIds, understandResponse.requests);
-
-        // Structured-output hardening: bounded repair for understand analysis JSON
-        try {
-          analysis = parseStructuredAnalysisResponse(understandResponse.message);
-        } catch (parseError) {
-          const parseMsg = parseError instanceof Error ? parseError.message : String(parseError);
-          console.warn(`[generateDeckRun] understand analysis JSON malformed, attempting repair: ${parseMsg.slice(0, 200)}`);
-          phaseTelemetry.understandParseRepair = { firstAttemptError: parseMsg.slice(0, 500) };
-
-          const rawText = extractResponseText(understandResponse.message.content);
-          const repaired = attemptJsonRepair(rawText);
-          if (repaired) {
-            try {
-              analysis = analysisSchema.parse(JSON.parse(repaired));
-              phaseTelemetry.understandParseRepair = { ...phaseTelemetry.understandParseRepair as Record<string, unknown>, repairSucceeded: true };
-            } catch {
-              throw parseError;
-            }
-          } else {
-            throw parseError;
-          }
-        }
-        baseContainerId = understandResponse.containerId;
-        enforceAnalysisExhibitRules(analysis);
-        await upsertWorkingPaper(config, runId, "analysis_result", analysis);
-        await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
-        await upsertWorkingPaper(config, runId, "analysis_checkpoint", {
-          ...analysis,
-          checkpointedAt: new Date().toISOString(),
-        }).catch((checkpointError) => {
-          console.warn(`[generateDeckRun] failed to persist analysis checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
-        });
-        await completePhase(config, runId, attempt, "understand", {
-          slidePlanCount: analysis.slidePlan.length,
-          thesis: analysis.thesis,
-          estimatedCostUsd: spentUsd,
-          containerId: understandResponse.containerId,
-        }, understandResponse.usage);
       }
 
       currentPhase = "author";
@@ -640,8 +493,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
       const generationMessage = buildAuthorMessage(
         run,
-        analysis,
+        recoveredAnalysisForSplit ? analysis : null,
         !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
+        questionRoutes,
       );
       await recordToolCall(config, runId, attempt, "author", "code_execution", {
         model: MODEL,
@@ -702,7 +556,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         phaseLabel: "author",
         phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
         currentSpentUsd: spentUsd,
-        requiredFiles: ["deck.pptx", "deck.pdf", "deck_manifest.json"],
+        requiredFiles: recoveredAnalysisForSplit
+          ? ["deck.pptx", "deck.pdf", "deck_manifest.json"]
+          : ["analysis_result.json", "deck.pptx", "deck.pdf", "deck_manifest.json"],
         tools: CLAUDE_TOOLS,
         containerFallback: baseContainerId
           ? { id: baseContainerId }
@@ -733,6 +589,26 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       authorResponse = authorRecovery.response;
       const containerId = authorResponse.containerId;
       const authorFiles = authorRecovery.files;
+      if (!recoveredAnalysisForSplit) {
+        analysis = parseGeneratedAnalysisResponse(authorResponse.message, authorFiles);
+        enforceAnalysisExhibitRules(analysis);
+        await upsertWorkingPaper(config, runId, "analysis_result", analysis);
+        await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
+        await upsertWorkingPaper(config, runId, "analysis_checkpoint", {
+          ...analysis,
+          checkpointedAt: new Date().toISOString(),
+        }).catch((checkpointError) => {
+          console.warn(`[generateDeckRun] failed to persist analysis checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
+        });
+        await markPhase(config, runId, attempt, "understand");
+        await completePhase(config, runId, attempt, "understand", {
+          slidePlanCount: analysis.slidePlan.length,
+          thesis: analysis.thesis,
+          estimatedCostUsd: spentUsd,
+          containerId,
+          source: "merged_into_author",
+        });
+      }
       pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
       pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
       manifest = parseManifestResponse(authorResponse.message, authorFiles);
@@ -753,7 +629,16 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       // A1: Persist durable artifact checkpoint after author success
       await assertAttemptStillOwnsRun(config, runId, attempt);
       await persistArtifactCheckpoint(config, runId, attempt, "author", pptxFile, pdfFile, manifest, {
-        resumeReady: true,
+        resumeReady: false,
+        proof: {
+          authorComplete: true,
+          critiqueComplete: false,
+          reviseComplete: false,
+          visualQaGreen: false,
+          lintPassed: false,
+          contractPassed: false,
+          deckNeedsRevision: true,
+        },
       }).catch((checkpointError) => {
         console.warn(`[generateDeckRun] failed to persist author checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
       });
@@ -801,6 +686,17 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       ],
     );
     const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
+    const critiqueLint = lintManifest(manifest);
+    const critiqueContract = validateManifestContract(manifest);
+    const critiqueCheckpointProof = buildCheckpointProof({
+      authorComplete: true,
+      critiqueComplete: true,
+      reviseComplete: false,
+      visualQaGreen: initialVisualQa.report.overallStatus === "green",
+      lintPassed: critiqueLint.actionableIssues.length === 0,
+      contractPassed: critiqueContract.actionableIssues.length === 0,
+      deckNeedsRevision: initialVisualQa.report.deckNeedsRevision || blockingCritiqueIssues.length > 0,
+    });
     await completePhase(
       config,
       runId,
@@ -814,6 +710,19 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       },
       initialVisualQa.usage,
     );
+    await assertAttemptStillOwnsRun(config, runId, attempt);
+    await persistArtifactCheckpoint(config, runId, attempt, "critique", pptxFile, pdfFile, manifest, {
+      resumeReady:
+        critiqueCheckpointProof.visualQaGreen &&
+        critiqueCheckpointProof.lintPassed &&
+        critiqueCheckpointProof.contractPassed &&
+        !critiqueCheckpointProof.deckNeedsRevision,
+      visualQaStatus: initialVisualQa.report.overallStatus,
+      deckNeedsRevision: critiqueCheckpointProof.deckNeedsRevision,
+      proof: critiqueCheckpointProof,
+    }).catch((checkpointError) => {
+      console.warn(`[generateDeckRun] failed to persist critique checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
+    });
 
     finalPptx = pptxFile;
     finalPdf = pdfFile;
@@ -1010,11 +919,27 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         );
 
         // B1: Persist pre-export checkpoint after revise success
+        const reviseLint = lintManifest(finalManifest);
+        const reviseContract = validateManifestContract(finalManifest);
+        const reviseCheckpointProof = buildCheckpointProof({
+          authorComplete: true,
+          critiqueComplete: true,
+          reviseComplete: true,
+          visualQaGreen: finalVisualQa.overallStatus === "green",
+          lintPassed: reviseLint.actionableIssues.length === 0,
+          contractPassed: reviseContract.actionableIssues.length === 0,
+          deckNeedsRevision: finalVisualQa.deckNeedsRevision,
+        });
         await assertAttemptStillOwnsRun(config, runId, attempt);
         await persistArtifactCheckpoint(config, runId, attempt, "revise", finalPptx, finalPdf, finalManifest, {
-          resumeReady: true,
+          resumeReady:
+            reviseCheckpointProof.visualQaGreen &&
+            reviseCheckpointProof.lintPassed &&
+            reviseCheckpointProof.contractPassed &&
+            !reviseCheckpointProof.deckNeedsRevision,
           visualQaStatus: finalVisualQa.overallStatus,
           deckNeedsRevision: finalVisualQa.deckNeedsRevision,
+          proof: reviseCheckpointProof,
         }).catch((checkpointError) => {
           console.warn(`[generateDeckRun] failed to persist revise checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
         });
@@ -1059,6 +984,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     await markPhase(config, runId, attempt, currentPhase);
     let finalDocx: GeneratedFile | null = null;
     let qaReport: Awaited<ReturnType<typeof buildQaReport>>;
+    let lastPublishDecision: PublishDecision | null = null;
     try {
       finalVisualQa = await strengthenFinalVisualQa({
         client,
@@ -1079,6 +1005,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         anthropicRequestIds,
         phaseTelemetry,
       });
+      if (!analysis) {
+        throw new Error("Analysis unavailable before export.");
+      }
       finalDocx = await buildNarrativeDocx({
         run,
         analysis,
@@ -1095,10 +1024,19 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       const repairableQaFailures = qaReport.failed.filter((check) =>
         ["pptx_chart_media_present", "pptx_large_image_aspect_fit", "pptx_structural_integrity"].includes(check),
       );
+      const initialLint = lintManifest(finalManifest);
+      const initialContract = validateManifestContract(finalManifest);
       const initialQualityGate = collectPublishGateFailures({
         qaReport,
-        lint: lintManifest(finalManifest),
-        contract: validateManifestContract(finalManifest),
+        lint: initialLint,
+        contract: initialContract,
+      });
+      lastPublishDecision = buildPublishDecision({
+        qaReport,
+        lint: initialLint,
+        contract: initialContract,
+        visualQa: finalVisualQa,
+        artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
       });
 
       // Repair loop: attempt to fix repairable QA failures via Claude.
@@ -1154,6 +1092,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             anthropicRequestIds,
             phaseTelemetry,
           });
+          if (!analysis) {
+            throw new Error("Analysis unavailable before export repair.");
+          }
           finalDocx = await buildNarrativeDocx({
             run,
             analysis,
@@ -1178,13 +1119,22 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         }
       }
 
+      const finalLint = lintManifest(finalManifest);
+      const finalContract = validateManifestContract(finalManifest);
       const finalQualityGate = collectPublishGateFailures({
         qaReport,
-        lint: lintManifest(finalManifest),
-        contract: validateManifestContract(finalManifest),
+        lint: finalLint,
+        contract: finalContract,
+      });
+      lastPublishDecision = buildPublishDecision({
+        qaReport,
+        lint: finalLint,
+        contract: finalContract,
+        visualQa: finalVisualQa,
+        artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
       });
       if (finalQualityGate.blockingFailures.length > 0) {
-        const salvageCheckpoint = await loadArtifactCheckpoint(config, runId);
+        const salvageCheckpoint = await loadArtifactCheckpoint(config, runId, { preferResumeReady: true });
         if (salvageCheckpoint) {
           const salvageArtifacts = await loadCheckpointArtifacts(config, salvageCheckpoint);
           if (salvageArtifacts) {
@@ -1227,6 +1177,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             }
 
             try {
+              if (!analysis) {
+                throw new Error("Analysis unavailable before checkpoint salvage.");
+              }
               finalDocx = await buildNarrativeDocx({ run, analysis, manifest: finalManifest });
             } catch (docxError) {
               const docxMsg = docxError instanceof Error ? docxError.message : String(docxError);
@@ -1252,37 +1205,29 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             if (salvageBlockingFailures.length > 0) {
               throw new Error(`Artifact publish gate failed on salvaged checkpoint: ${salvageBlockingFailures.join(", ")}`);
             }
+            lastPublishDecision = buildPublishDecision({
+              qaReport,
+              lint: lintManifest(finalManifest),
+              contract: validateManifestContract(finalManifest),
+              visualQa: finalVisualQa,
+              artifactSource: "checkpoint",
+            });
 
             phaseTelemetry.exportSalvaged = true;
             phaseTelemetry.exportSalvageCheckpointPhase = salvageCheckpoint.phase;
             publishFromCheckpoint = salvageCheckpoint;
-          } else if (finalPptx.buffer.length > 0 && finalPdf.buffer.length > 0) {
-            console.warn("[generateDeckRun] checkpoint salvage unavailable, shipping in-memory artifacts as last resort");
-            phaseTelemetry.exportLastResort = {
-              reason: "checkpoint_unusable_with_in_memory_artifacts",
-              failedChecks: finalQualityGate.blockingFailures,
-            };
-            phaseTelemetry.exportSalvaged = true;
           } else {
             throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
           }
-        } else if (finalPptx.buffer.length > 0 && finalPdf.buffer.length > 0) {
-          console.warn("[generateDeckRun] no checkpoint but in-memory artifacts exist, shipping as last resort");
-          phaseTelemetry.exportLastResort = {
-            reason: "no_checkpoint_with_in_memory_artifacts",
-            failedChecks: finalQualityGate.blockingFailures,
-          };
-          phaseTelemetry.exportSalvaged = true;
         } else {
           throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
         }
       }
 
       finalDocx ??= await buildStubDocx("Narrative report could not be generated for this run. The deck PPTX and PDF are available.");
-      const finalLint = lintManifest(finalManifest);
-      const finalContract = validateManifestContract(finalManifest);
       phaseTelemetry.finalLint = summarizeLintResult(finalLint);
       phaseTelemetry.finalContract = summarizeDeckContractResult(finalContract);
+      phaseTelemetry.publishDecision = lastPublishDecision;
       const isSalvagedExport = Boolean(phaseTelemetry.exportSalvaged);
       await assertAttemptStillOwnsRun(config, runId, attempt);
       const artifacts = await persistArtifacts(config, run, attempt, finalPptx, finalPdf, finalDocx, {
@@ -1315,7 +1260,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
     } catch (exportPhaseError) {
       const exportPhaseMessage = exportPhaseError instanceof Error ? exportPhaseError.message : String(exportPhaseError);
-      if (finalPptx.buffer.length === 0 || finalPdf.buffer.length === 0) {
+      if (
+        finalPptx.buffer.length === 0 ||
+        finalPdf.buffer.length === 0 ||
+        !lastPublishDecision ||
+        lastPublishDecision.decision !== "publish"
+      ) {
         throw exportPhaseError;
       }
 
@@ -1367,6 +1317,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
       phaseTelemetry.finalLint = summarizeLintResult(lintManifest(finalManifest));
       phaseTelemetry.finalContract = summarizeDeckContractResult(validateManifestContract(finalManifest));
+      phaseTelemetry.publishDecision = {
+        ...lastPublishDecision,
+        artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
+      };
       await assertAttemptStillOwnsRun(config, runId, attempt);
       const artifacts = await persistArtifacts(config, run, attempt, finalPptx, finalPdf, finalDocx, {
         checkpoint: publishFromCheckpoint,
@@ -1793,7 +1747,7 @@ async function persistArtifactCheckpoint(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
   attempt: AttemptContext,
-  phase: "author" | "revise",
+  phase: "author" | "critique" | "revise",
   pptx: GeneratedFile,
   pdf: GeneratedFile,
   manifest: Record<string, unknown>,
@@ -1801,6 +1755,7 @@ async function persistArtifactCheckpoint(
     resumeReady?: boolean;
     visualQaStatus?: "green" | "yellow" | "red";
     deckNeedsRevision?: boolean;
+    proof?: Partial<ArtifactCheckpointProof>;
   },
 ) {
   const timestamp = new Date().toISOString();
@@ -1846,6 +1801,7 @@ async function persistArtifactCheckpoint(
     resumeReady: metadata?.resumeReady ?? false,
     visualQaStatus: metadata?.visualQaStatus,
     deckNeedsRevision: metadata?.deckNeedsRevision,
+    proof: buildCheckpointProof(metadata?.proof),
   };
 
   await upsertWorkingPaper(config, runId, "artifact_checkpoint", checkpoint);
@@ -1855,6 +1811,10 @@ async function persistArtifactCheckpoint(
 async function loadArtifactCheckpoint(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  options: {
+    requireResumeReady?: boolean;
+    preferResumeReady?: boolean;
+  } = {},
 ): Promise<ArtifactCheckpoint | null> {
   const rows = await fetchRestRows<WorkingPaperRow>({
     supabaseUrl: config.supabaseUrl,
@@ -1865,16 +1825,23 @@ async function loadArtifactCheckpoint(
       run_id: `eq.${runId}`,
       paper_type: "eq.artifact_checkpoint",
       order: "version.desc",
-      limit: "1",
+      limit: "20",
     },
   }).catch(() => []);
 
-  const content = rows[0]?.content;
-  if (!content || !content.phase || !content.pptxStoragePath || !content.pdfStoragePath) {
-    return null;
+  const checkpoints = rows
+    .map((row) => normalizeArtifactCheckpoint(row.content))
+    .filter((checkpoint): checkpoint is ArtifactCheckpoint => checkpoint !== null);
+
+  if (options.requireResumeReady) {
+    return checkpoints.find((checkpoint) => checkpoint.resumeReady) ?? null;
   }
 
-  return content as unknown as ArtifactCheckpoint;
+  if (options.preferResumeReady) {
+    return checkpoints.find((checkpoint) => checkpoint.resumeReady) ?? checkpoints[0] ?? null;
+  }
+
+  return checkpoints[0] ?? null;
 }
 
 async function loadCheckpointArtifacts(
@@ -2448,48 +2415,6 @@ function appendAssistantTurn(
   ];
 }
 
-function buildUnderstandMessage(
-  run: RunRow,
-  uploadedEvidence: Array<{ id: string; filename: string }>,
-  uploadedTemplate: { id: string; filename: string } | null,
-  questionRoutes: Array<{ id: string; name: string; diagnosticMotifs: string[]; recommendationLevers: string[] }>,
-) {
-  const briefSummary = buildGenerationBrief(run);
-  const routeContext = questionRoutes.length > 0
-    ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
-    : "";
-  const content: Anthropic.Beta.BetaContentBlockParam[] = [
-    ...uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })),
-    ...(uploadedTemplate ? [{ type: "container_upload" as const, file_id: uploadedTemplate.id }] : []),
-    {
-      type: "text",
-      text: [
-        "Analyze the uploaded evidence package and return only the analysis JSON for the deck plan.",
-        "",
-        briefSummary,
-        "",
-        "- Use code execution to inspect the uploaded files directly.",
-        "- Follow the NIQ Analyst Playbook from the system prompt: recognize Italian column names, compute ALL applicable derivatives (growth, share, price index, mix gap) before forming findings, and detect diagnostic motifs.",
-        "- Frame the analysis around the TRUE commercial question, not a generic summary. Classify each finding as connection, contradiction, or curiosity.",
-        "- Recommendations must be traceable to the data in this run. Do not invent geographies, channels, or opportunities that are not directly supported by the evidence.",
-        "- If the brief is about promotions, benchmark the focal brand against key competitors and call out what others are doing, not only what the focal brand is doing.",
-        "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
-        "- Choose exhibit types per the exhibit selection rules. NEVER use a line chart for 2-period CY vs PY data.",
-        ...(routeContext ? [routeContext] : []),
-        "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
-        "- Compute deterministic facts in Python and produce a concise executive storyline.",
-        "- Plan a consulting-grade deck between 8 and 12 slides unless the brief strongly requires fewer or the evidence clearly needs more.",
-        `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
-        "- Recommend charts only when they materially improve the argument.",
-        "- Your final response must be valid JSON matching the requested schema, not prose.",
-        "- Use the same language as the brief. Do not emit mixed-language output.",
-      ].join("\n"),
-    },
-  ];
-
-  return { role: "user" as const, content };
-}
-
 function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {
   if (parsed.datasetProfile.sheets.length > 0) {
     return null;
@@ -2509,12 +2434,34 @@ function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvide
 
 function buildAuthorMessage(
   run: RunRow,
-  analysis: z.infer<typeof analysisSchema>,
+  analysis: z.infer<typeof analysisSchema> | null,
   files?: {
     uploadedEvidence: Array<{ id: string; filename: string }>;
     uploadedTemplate: { id: string; filename: string } | null;
   },
+  questionRoutes: Array<{ id: string; name: string; diagnosticMotifs: string[]; recommendationLevers: string[] }> = [],
 ) {
+  const routeContext = questionRoutes.length > 0
+    ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
+    : "";
+  const mergedAnalysisInstructions = analysis
+    ? []
+    : [
+        "Analyze the uploaded evidence package first, then generate the final consulting-grade deck artifacts in the same pass.",
+        "- Use code execution to inspect the uploaded files directly and compute the facts you need.",
+        "- Follow the NIQ Analyst Playbook from the system prompt: recognize Italian column names, compute ALL applicable derivatives (growth, share, price index, mix gap) before forming findings, and detect diagnostic motifs.",
+        "- Frame the analysis around the TRUE commercial question, not a generic summary. Classify each finding as connection, contradiction, or curiosity.",
+        "- Recommendations must be traceable to the data in this run. Do not invent geographies, channels, or opportunities that are not directly supported by the evidence.",
+        "- If the brief is about promotions, benchmark the focal brand against key competitors and call out what others are doing, not only what the focal brand is doing.",
+        "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
+        ...(routeContext ? [routeContext] : []),
+        "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
+        "- Compute deterministic facts in Python and produce a concise executive storyline.",
+        "- Plan a consulting-grade deck between 8 and 12 slides unless the brief strongly requires fewer or the evidence clearly needs more.",
+        `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
+        "- Recommend charts only when they materially improve the argument.",
+      ];
+
   return {
     role: "user" as const,
     content: [
@@ -2523,15 +2470,23 @@ function buildAuthorMessage(
       {
         type: "text" as const,
         text: [
-          "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts.",
+          analysis
+            ? "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts."
+            : "Use the evidence files already available in the current container to build a final consulting-grade deck without a separate analysis turn.",
           "",
           buildGenerationBrief(run),
           "",
-          `Approved analysis JSON:\n${JSON.stringify(analysis, null, 2)}`,
-          "",
+          ...(analysis ? [`Approved analysis JSON:\n${JSON.stringify(analysis, null, 2)}`, ""] : mergedAnalysisInstructions),
           "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
-          "- Recalculate only the facts needed to render the promised slides and charts accurately.",
-          "- Follow the approved slide plan unless a small factual adjustment is necessary for correctness.",
+          ...(analysis
+            ? [
+                "- Recalculate only the facts needed to render the promised slides and charts accurately.",
+                "- Follow the approved slide plan unless a small factual adjustment is necessary for correctness.",
+              ]
+            : [
+                "- Build the analysis and slide plan inline, then render the deck from that plan without starting over in a second pass.",
+                "- Keep the analysis concise and execution-oriented. Do not spend tokens on narrative throat-clearing.",
+              ]),
           "- Follow the loaded pptx skill for the deck artifact generation.",
           ...(files?.uploadedTemplate
             ? [
@@ -2552,8 +2507,19 @@ function buildAuthorMessage(
           "- If a slide promises a comparison set with an explicit count such as 4 provinces, 3 channels, or 5 segments, cover all of them explicitly or change the claim.",
           "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
+          "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
+          "- If the brief is English, write direct partner-grade English with no padded corporate phrasing such as 'in order to' or 'going forward'.",
+          "- Every analytical slide must answer four questions: what changed, by how much, why it happened, and what the executive should do. A slide that only restates the chart is unfinished.",
           "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify all recommendations with FMCG levers.",
-          "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, and `deck_manifest.json`.",
+          analysis
+            ? "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, and `deck_manifest.json`."
+            : "- Generate and attach these files exactly: `analysis_result.json`, `deck.pptx`, `deck.pdf`, and `deck_manifest.json`.",
+          ...(analysis
+            ? []
+            : [
+                "- `analysis_result.json` must be valid JSON matching the approved analysis schema with `language`, `thesis`, `executiveSummary`, and `slidePlan[]`.",
+                "- Use the same language as the brief. Do not emit mixed-language output.",
+              ]),
           "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
           "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `title`, and `chartId` when applicable.",
           "- Your final assistant message must attach the files as container uploads before finishing.",
@@ -2578,6 +2544,8 @@ function buildReviseMessage(issues: string[]) {
           "",
           "Do not widen the deck. Improve the weak slides and keep the deck consulting-grade.",
           "Apply the copywriting voice rules from the system prompt when rewriting any text: no em dashes, numbers first, active voice, insight titles not topic labels.",
+          "Keep language native and sharp. In Italian, do not use translated-English or pseudo-Spanish wording such as 'lidera'. In English, remove padded corporate phrasing.",
+          "When revising analytical slides, do not merely soften the prose. Make sure each slide states the fact, the magnitude, the driver, and the implication.",
           "Use Arial for all dense text and card internals unless the uploaded template explicitly forces another safe font.",
           "Do not use stacked ordinals, narrow title boxes, or floating footer metrics that can drift across PowerPoint, Keynote, and Google Slides.",
           "Fix any stretched charts by re-rendering them at the correct slot ratio rather than scaling the old image.",
@@ -2811,7 +2779,7 @@ function buildMissingArtifactRepairMessage(phaseLabel: "author" | "revise", miss
           `Missing files: ${missingFiles.join(", ")}.`,
           "Stay in the current container state. Do not restart from scratch.",
           "Attach the missing files now as real container uploads.",
-          "Required outputs are exactly: deck.pptx, deck.pdf, and deck_manifest.json.",
+          `Required outputs for this step are exactly: ${missingFiles.join(", ")}.`,
           "Your next assistant message must include the missing files before finishing.",
         ].join("\n"),
       },
@@ -2979,6 +2947,27 @@ function requireGeneratedFile(files: GeneratedFile[], fileName: string) {
   throw new Error(`Claude did not generate required file ${fileName}.`);
 }
 
+function parseGeneratedAnalysisResponse(
+  message: Anthropic.Beta.BetaMessage,
+  files: GeneratedFile[],
+) {
+  const analysisFile = findGeneratedFile(files, "analysis_result.json");
+  if (analysisFile) {
+    const raw = analysisFile.buffer.toString("utf8");
+    try {
+      return analysisSchema.parse(JSON.parse(raw));
+    } catch {
+      const repaired = attemptJsonRepair(raw);
+      if (repaired) {
+        return analysisSchema.parse(JSON.parse(repaired));
+      }
+      throw new Error("analysis_result.json is malformed and could not be repaired.");
+    }
+  }
+
+  return parseStructuredAnalysisResponse(message);
+}
+
 function parseStructuredAnalysisResponse(message: Anthropic.Beta.BetaMessage) {
   const text = extractResponseText(message.content);
   if (!text) {
@@ -3040,6 +3029,53 @@ function parseManifestResponse(
 
 function findGeneratedFile(files: GeneratedFile[], fileName: string) {
   return files.find((file) => file.fileName === fileName || file.fileName.endsWith(fileName)) ?? null;
+}
+
+function buildCheckpointProof(
+  partial: Partial<ArtifactCheckpointProof> = {},
+): ArtifactCheckpointProof {
+  return {
+    authorComplete: partial.authorComplete ?? false,
+    critiqueComplete: partial.critiqueComplete ?? false,
+    reviseComplete: partial.reviseComplete ?? false,
+    visualQaGreen: partial.visualQaGreen ?? false,
+    lintPassed: partial.lintPassed ?? false,
+    contractPassed: partial.contractPassed ?? false,
+    deckNeedsRevision: partial.deckNeedsRevision ?? true,
+  };
+}
+
+function normalizeArtifactCheckpoint(content: Record<string, unknown> | null): ArtifactCheckpoint | null {
+  if (!content || !content.phase || !content.pptxStoragePath || !content.pdfStoragePath) {
+    return null;
+  }
+
+  const proofContent = typeof content.proof === "object" && content.proof !== null
+    ? content.proof as Record<string, unknown>
+    : null;
+  const proof = buildCheckpointProof({
+    authorComplete: Boolean(proofContent?.authorComplete ?? (content.phase === "author" || content.phase === "critique" || content.phase === "revise")),
+    critiqueComplete: Boolean(proofContent?.critiqueComplete ?? (content.phase === "critique" || content.phase === "revise")),
+    reviseComplete: Boolean(proofContent?.reviseComplete ?? content.phase === "revise"),
+    visualQaGreen: Boolean(proofContent?.visualQaGreen ?? (content.visualQaStatus === "green")),
+    lintPassed: Boolean(proofContent?.lintPassed ?? content.resumeReady),
+    contractPassed: Boolean(proofContent?.contractPassed ?? content.resumeReady),
+    deckNeedsRevision: Boolean(proofContent?.deckNeedsRevision ?? content.deckNeedsRevision ?? !content.resumeReady),
+  });
+
+  return {
+    phase: content.phase as ArtifactCheckpoint["phase"],
+    pptxStoragePath: String(content.pptxStoragePath),
+    pdfStoragePath: String(content.pdfStoragePath),
+    manifestJson: (content.manifestJson ?? {}) as Record<string, unknown>,
+    savedAt: String(content.savedAt ?? new Date(0).toISOString()),
+    attemptId: String(content.attemptId ?? ""),
+    attemptNumber: Number(content.attemptNumber ?? 0),
+    resumeReady: Boolean(content.resumeReady) && proof.visualQaGreen && proof.lintPassed && proof.contractPassed && !proof.deckNeedsRevision,
+    visualQaStatus: content.visualQaStatus as ArtifactCheckpoint["visualQaStatus"],
+    deckNeedsRevision: Boolean(content.deckNeedsRevision ?? proof.deckNeedsRevision),
+    proof,
+  };
 }
 
 function extractResponseText(blocks: Anthropic.Beta.BetaContentBlock[]) {
@@ -3416,6 +3452,12 @@ function extractTopEntityCount(text: string) {
 }
 
 function manifestToLintInput(manifest: z.infer<typeof deckManifestSchema>): SlideTextInput[] {
+  const deckText = manifest.slides
+    .flatMap((slide) => [slide.title, slide.body, ...(slide.bullets ?? []), slide.callout?.text])
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(" ");
+  const expectedLanguage = (detectLanguage(deckText) as "it" | "en" | "unknown");
+
   return manifest.slides.map((slide, index) => ({
     position: slide.position,
     role: index === 0 || slide.layoutId === "cover"
@@ -3425,6 +3467,7 @@ function manifestToLintInput(manifest: z.infer<typeof deckManifestSchema>): Slid
         : "finding",
     layoutId: slide.layoutId,
     title: slide.title,
+    expectedLanguage,
     body: slide.body,
     bullets: slide.bullets,
     callout: slide.callout ? { text: slide.callout.text, tone: slide.callout.tone } : undefined,
@@ -3502,6 +3545,49 @@ function collectPublishGateFailures(input: {
     blockingFailures: [...new Set(blockingFailures)],
     lintSummary: summarizeLintResult(input.lint),
     contractSummary: summarizeDeckContractResult(input.contract),
+  };
+}
+
+function buildPublishDecision(input: {
+  qaReport: Awaited<ReturnType<typeof buildQaReport>>;
+  lint: ReturnType<typeof lintManifest>;
+  contract: ReturnType<typeof validateManifestContract>;
+  visualQa: RenderedPageQaReport;
+  artifactSource: PublishDecision["artifactSource"];
+}): PublishDecision {
+  const gate = collectPublishGateFailures({
+    qaReport: input.qaReport,
+    lint: input.lint,
+    contract: input.contract,
+  });
+
+  return {
+    decision: gate.blockingFailures.length === 0 ? "publish" : "fail",
+    hardBlockers: gate.blockingFailures,
+    advisories: [
+      ...input.lint.result.deckViolations
+        .filter((issue) => issue.severity === "minor")
+        .map((issue) => issue.message),
+      ...input.lint.result.slideResults.flatMap((slide) =>
+        slide.result.violations
+          .filter((issue) => issue.severity === "minor")
+          .map((issue) => `Slide ${slide.position}: ${issue.message}`),
+      ),
+      ...input.contract.result.violations.map((issue) => issue.message),
+      ...input.visualQa.issues
+        .filter((issue) => issue.severity === "minor")
+        .map((issue) => `Rendered slide ${issue.slidePosition} advisory ${issue.code}: ${issue.description}`),
+    ],
+    artifactSource: input.artifactSource,
+    visualQa: {
+      overallStatus: input.visualQa.overallStatus,
+      deckNeedsRevision: input.visualQa.deckNeedsRevision,
+    },
+    lintPassed: input.lint.actionableIssues.length === 0,
+    contractPassed: input.contract.actionableIssues.length === 0,
+    chartImageCoveragePct: null,
+    sceneOverflowCount: 0,
+    sceneCollisionCount: 0,
   };
 }
 
