@@ -32,9 +32,9 @@ const VISUAL_QA_MODEL = "claude-haiku-4-5";
 const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "1800000", 10);
 const FILES_BETA = "files-api-2025-04-14";
-const CODE_EXEC_BETA = "code-execution-2026-01-20";
 const SKILLS_BETA = "skills-2025-10-02";
-const BETAS = [FILES_BETA, CODE_EXEC_BETA, SKILLS_BETA] as const;
+const CODE_EXEC_TOOL = "code_execution_20260120";
+const BETAS = [FILES_BETA, SKILLS_BETA, CODE_EXEC_TOOL] as const;
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number> = {
   normalize: 120_000,
@@ -70,6 +70,7 @@ let lastCircuitBreakerCleanupAt = 0;
 const CONTINUATION_MIN_REMAINING_BUDGET_USD = 0.5;
 const STREAM_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_STREAM_REQUEST_WATCHDOG_MS ?? "240000", 10);
 const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
+  { type: CODE_EXEC_TOOL, name: "code_execution" },
   { type: "web_fetch_20260209", name: "web_fetch" },
 ];
 const CIRCUIT_BREAKER_STATES = new Map<string, CircuitState>();
