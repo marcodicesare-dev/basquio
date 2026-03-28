@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { generateDeckRun } from "../packages/workflows/src/generate-deck";
-import { isTransientProviderError } from "../packages/workflows/src/failure-classifier";
+import { classifyRuntimeError } from "../packages/workflows/src/failure-classifier";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
@@ -168,17 +168,22 @@ async function processRun(
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} failed: ${message}`);
 
-    // Layer 2: automatic superseding attempt for transient provider failures
+    // Layer 2: automatic superseding attempt for transient provider/network failures
     // Layer E: template fallback — if a template-backed run fails, allow one fallback attempt
-    const isTransient = isTransientProviderError(error);
+    const failureClass = classifyRuntimeError(error);
     const MAX_TRANSIENT_ATTEMPTS = 3;
-    const shouldAutoRecover = isTransient && attempt.attempt_number < MAX_TRANSIENT_ATTEMPTS;
+    const shouldAutoRecover =
+      (failureClass === "transient_provider" || failureClass === "transient_network") &&
+      attempt.attempt_number < MAX_TRANSIENT_ATTEMPTS;
 
     if (shouldAutoRecover) {
       try {
         const newAttemptId = randomUUID();
         const newAttemptNumber = attempt.attempt_number + 1;
         const now = new Date().toISOString();
+        const recoveryReason = failureClass === "transient_network"
+          ? "transient_network_retry"
+          : "transient_provider_retry";
 
         // Mark current attempt as failed-transient
         await patchRestRows({
@@ -203,7 +208,7 @@ async function processRun(
             run_id: attempt.run_id,
             attempt_number: newAttemptNumber,
             status: "queued",
-            recovery_reason: "transient_provider_retry",
+            recovery_reason: recoveryReason,
             created_at: now,
             updated_at: now,
           }],
@@ -228,7 +233,7 @@ async function processRun(
         });
 
         console.log(
-          `[basquio-worker] transient failure on run ${attempt.run_id} — created superseding attempt ${newAttemptNumber}/${MAX_TRANSIENT_ATTEMPTS}`,
+          `[basquio-worker] ${failureClass} on run ${attempt.run_id} — created superseding attempt ${newAttemptNumber}/${MAX_TRANSIENT_ATTEMPTS}`,
         );
       } catch (recoveryError) {
         const recoveryMsg = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);

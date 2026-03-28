@@ -74,6 +74,16 @@ export function classifyFailureMessage(message: string, isStale = false): Failur
     };
   }
 
+  if (matchesTransientNetwork(msg)) {
+    return {
+      class: "transient_network",
+      retryable: true,
+      headline: "Temporary service issue",
+      explanation: "A network or storage request failed before delivery completed.",
+      retryAdvice: "This is usually transient. Retry with the same files — it should work on the next attempt.",
+    };
+  }
+
   if (matchesUnsupportedInput(msg)) {
     return {
       class: "unsupported_input",
@@ -176,6 +186,7 @@ export function isTransientProviderError(error: unknown): boolean {
   if (msg.includes("rate_limit") || msg.includes("rate limit")) return true;
   if (/\b(429|529|502|503|504)\b/.test(msg)) return true;
   if (msg.includes("stream ended") || msg.includes("did not return")) return true;
+  if (msg.includes("request ended without sending any chunks")) return true;
   if (msg.includes("connection") && (msg.includes("reset") || msg.includes("refused") || msg.includes("closed"))) return true;
   if (msg.includes("econnreset") || msg.includes("econnrefused") || msg.includes("etimedout")) return true;
   if (name.includes("fetcherror") || name.includes("aborterror")) return true;
@@ -217,7 +228,13 @@ function isArtifactRepairError(error: unknown): boolean {
 function isTransientNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message.toLowerCase();
-  return msg.includes("econnreset") || msg.includes("econnrefused") || msg.includes("etimedout") || msg.includes("fetch failed");
+  return msg.includes("econnreset") ||
+    msg.includes("econnrefused") ||
+    msg.includes("etimedout") ||
+    msg.includes("fetch failed") ||
+    msg.includes("transient storage") ||
+    msg.includes("storage upload failure") ||
+    msg.includes("storage upstream error");
 }
 
 function isStructuredOutputError(error: unknown): boolean {
@@ -250,7 +267,19 @@ function matchesTransientProvider(msg: string): boolean {
   return msg.includes("upstream error") || msg.includes("upstream infrastructure") ||
     msg.includes("connection error") || msg.includes("overloaded") ||
     msg.includes("529") || msg.includes("502") || msg.includes("503") ||
-    msg.includes("rate limit") || msg.includes("stream ended") || msg.includes("did not return");
+    msg.includes("rate limit") || msg.includes("stream ended") ||
+    msg.includes("did not return") || msg.includes("request ended without sending any chunks");
+}
+
+function matchesTransientNetwork(msg: string): boolean {
+  return msg.includes("econnreset") ||
+    msg.includes("econnrefused") ||
+    msg.includes("etimedout") ||
+    msg.includes("fetch failed") ||
+    msg.includes("aborterror") ||
+    msg.includes("transient storage") ||
+    msg.includes("storage upload failure") ||
+    msg.includes("storage upstream error");
 }
 
 function matchesUnsupportedInput(msg: string): boolean {

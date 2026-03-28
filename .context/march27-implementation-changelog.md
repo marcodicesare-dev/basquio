@@ -57,3 +57,9 @@ Verification: the controlled V2 run was claimed by the worker, then failed in `u
 Before: the worker had first been changed from sequential execution to unbounded fire-and-forget concurrency, but that version could immediately requeue still-running attempts during shutdown and could also claim duplicate attempts for a run already active in the same process.
 After: the worker now uses bounded configurable concurrency (`BASQUIO_WORKER_MAX_CONCURRENCY`, default `2`), skips already-active run IDs before claiming, and on shutdown waits up to a drain timeout before requeueing only the still-running attempts.
 Verification: `npx tsc --noEmit` passed; `pnpm qa:basquio` passed.
+
+## Export publish and transient storage hardening
+
+Before: export salvage still depended on a fresh final artifact upload, so runs could fail after successful checkpoint salvage if Supabase storage rejected the final `artifacts/<runId>/deck.pptx` publish; worker supersession also ignored transient storage/network failures.
+After: checkpoint-backed exports now publish `artifact_manifests_v2` directly against the durable checkpoint storage paths and treat DOCX upload as best-effort during salvage, workflow storage uploads fall back from direct object POST to signed PUT with clearer transient-storage errors, and the worker auto-retries both transient provider and transient network/storage failures (`transient_network_retry` is also checkpoint-resume eligible).
+Verification: `npx tsc --noEmit` passed; `pnpm qa:basquio` passed.

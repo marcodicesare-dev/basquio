@@ -261,6 +261,16 @@ type RenderedPageQaReport = z.infer<typeof renderedPageQaSchema>;
 type MutableNumberRef = {
   value: number;
 };
+type PublishedArtifact = {
+  id: string;
+  kind: "pptx" | "pdf" | "docx";
+  fileName: string;
+  mimeType: string;
+  storageBucket: "artifacts";
+  storagePath: string;
+  fileBytes: number;
+  checksumSha256: string;
+};
 
 export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<AttemptContext>) {
   const config = resolveConfig();
@@ -395,6 +405,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     ]);
     const CHECKPOINT_ELIGIBLE_RECOVERY_REASONS: ReadonlySet<string> = new Set([
       "stale_timeout", "transient_provider_retry",
+      "transient_network_retry",
     ]);
     // Failure messages that indicate hard artifact corruption — checkpoint
     // resume would just re-publish a corrupt deck. Must replay instead.
@@ -445,6 +456,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
     const canResumeFromCheckpoint = checkpointArtifacts && existingCheckpoint && recoveredAnalysis
       && attempt.attemptNumber > 1 && isCheckpointEligible;
+    let publishFromCheckpoint: ArtifactCheckpoint | null = canResumeFromCheckpoint && existingCheckpoint
+      ? existingCheckpoint
+      : null;
 
     let analysis: z.infer<typeof analysisSchema>;
     let pptxFile: GeneratedFile;
@@ -1214,6 +1228,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
             phaseTelemetry.exportSalvaged = true;
             phaseTelemetry.exportSalvageCheckpointPhase = salvageCheckpoint.phase;
+            publishFromCheckpoint = salvageCheckpoint;
           } else if (finalPptx.buffer.length > 0 && finalPdf.buffer.length > 0) {
             console.warn("[generateDeckRun] checkpoint salvage unavailable, publishing in-memory artifacts as last resort");
             phaseTelemetry.exportLastResort = {
@@ -1240,7 +1255,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       phaseTelemetry.finalLint = summarizeLintResult(lintManifest(finalManifest));
       phaseTelemetry.finalContract = summarizeDeckContractResult(validateManifestContract(finalManifest));
       const isSalvagedExport = Boolean(phaseTelemetry.exportSalvaged);
-      const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx);
+      const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx, {
+        checkpoint: publishFromCheckpoint,
+        allowDocxFailure: Boolean(publishFromCheckpoint),
+      });
       await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts, templateDiagnostics);
       await finalizeSuccess(config, runId, attempt, spentUsd, qaReport, {
         phases: phaseTelemetry,
@@ -1320,7 +1338,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
       phaseTelemetry.finalLint = summarizeLintResult(lintManifest(finalManifest));
       phaseTelemetry.finalContract = summarizeDeckContractResult(validateManifestContract(finalManifest));
-      const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx);
+      const artifacts = await persistArtifacts(config, run, finalPptx, finalPdf, finalDocx, {
+        checkpoint: publishFromCheckpoint,
+        allowDocxFailure: true,
+      });
       await publishArtifactManifest(config, runId, finalManifest, qaReport, artifacts, templateDiagnostics);
       await finalizeSuccess(config, runId, attempt, spentUsd, qaReport, {
         phases: phaseTelemetry,
@@ -3777,39 +3798,103 @@ async function persistArtifacts(
   pptx: GeneratedFile,
   pdf: GeneratedFile,
   docx: GeneratedFile,
+  options: {
+    checkpoint?: ArtifactCheckpoint | null;
+    allowDocxFailure?: boolean;
+  } = {},
 ) {
-  const items = [
-    { kind: "pptx", fileName: "deck.pptx", mimeType: pptx.mimeType || "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: pptx.buffer },
-    { kind: "pdf", fileName: "deck.pdf", mimeType: pdf.mimeType || "application/pdf", buffer: pdf.buffer },
-    { kind: "docx", fileName: "report.docx", mimeType: docx.mimeType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: docx.buffer },
-  ] as const;
+  const artifacts: PublishedArtifact[] = [];
 
-  const artifacts = [];
+  if (options.checkpoint) {
+    artifacts.push(
+      buildPublishedArtifact({
+        kind: "pptx",
+        fileName: "deck.pptx",
+        mimeType: pptx.mimeType || "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        buffer: pptx.buffer,
+        storagePath: options.checkpoint.pptxStoragePath,
+      }),
+      buildPublishedArtifact({
+        kind: "pdf",
+        fileName: "deck.pdf",
+        mimeType: pdf.mimeType || "application/pdf",
+        buffer: pdf.buffer,
+        storagePath: options.checkpoint.pdfStoragePath,
+      }),
+    );
+  } else {
+    const coreItems = [
+      { kind: "pptx", fileName: "deck.pptx", mimeType: pptx.mimeType || "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: pptx.buffer },
+      { kind: "pdf", fileName: "deck.pdf", mimeType: pdf.mimeType || "application/pdf", buffer: pdf.buffer },
+    ] as const;
 
-  for (const item of items) {
-    const storagePath = `${run.id}/${item.fileName}`;
+    for (const item of coreItems) {
+      const storagePath = `${run.id}/${item.fileName}`;
+      await uploadToStorage({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        bucket: "artifacts",
+        storagePath,
+        body: item.buffer,
+        contentType: item.mimeType,
+      });
+
+      artifacts.push(buildPublishedArtifact({
+        kind: item.kind,
+        fileName: item.fileName,
+        mimeType: item.mimeType,
+        buffer: item.buffer,
+        storagePath,
+      }));
+    }
+  }
+
+  const docxMimeType = docx.mimeType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const docxStoragePath = `${run.id}/report.docx`;
+  try {
     await uploadToStorage({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       bucket: "artifacts",
-      storagePath,
-      body: item.buffer,
-      contentType: item.mimeType,
+      storagePath: docxStoragePath,
+      body: docx.buffer,
+      contentType: docxMimeType,
     });
-
-    artifacts.push({
-      id: randomUUID(),
-      kind: item.kind,
-      fileName: item.fileName,
-      mimeType: item.mimeType,
-      storageBucket: "artifacts",
-      storagePath,
-      fileBytes: item.buffer.length,
-      checksumSha256: createHash("sha256").update(item.buffer).digest("hex"),
-    });
+    artifacts.push(buildPublishedArtifact({
+      kind: "docx",
+      fileName: "report.docx",
+      mimeType: docxMimeType,
+      buffer: docx.buffer,
+      storagePath: docxStoragePath,
+    }));
+  } catch (error) {
+    if (!options.allowDocxFailure) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[generateDeckRun] docx publish skipped during salvage: ${message.slice(0, 300)}`);
   }
 
   return artifacts;
+}
+
+function buildPublishedArtifact(input: {
+  kind: PublishedArtifact["kind"];
+  fileName: string;
+  mimeType: string;
+  buffer: Buffer;
+  storagePath: string;
+}): PublishedArtifact {
+  return {
+    id: randomUUID(),
+    kind: input.kind,
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    storageBucket: "artifacts",
+    storagePath: input.storagePath,
+    fileBytes: input.buffer.length,
+    checksumSha256: createHash("sha256").update(input.buffer).digest("hex"),
+  };
 }
 
 async function publishArtifactManifest(
