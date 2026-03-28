@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import { detectLanguage, enforceExhibit, inferQuestionType, lintDeckText, routeQuestion, validateDeckContract, type SlideTextInput } from "@basquio/intelligence";
-import { listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
+import { getArchetypeOrDefault, listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
 import {
   buildNoTemplateDiagnostics,
   buildTemplateDiagnosticsFromProfile,
@@ -41,6 +41,7 @@ const PHASE_TIMEOUTS_MS = {
   revise: 8 * 60_000,
 } as const;
 const CONTINUATION_MIN_REMAINING_BUDGET_USD = 0.5;
+const STREAM_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_STREAM_REQUEST_WATCHDOG_MS ?? "240000", 10);
 const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
   { type: "web_fetch_20260209", name: "web_fetch" },
 ];
@@ -73,6 +74,15 @@ const analysisSchema = z.object({
       chartType: z.string(),
       title: z.string(),
       sourceNote: z.string().optional(),
+      maxCategories: z.number().int().min(1).optional(),
+      preferredOrientation: z.enum(["horizontal", "vertical"]).optional(),
+      slotAspectRatio: z.number().positive().optional(),
+      figureSize: z.object({
+        widthInches: z.number().positive(),
+        heightInches: z.number().positive(),
+      }).optional(),
+      sort: z.enum(["desc", "asc", "none"]).optional(),
+      truncateLabels: z.boolean().optional(),
     }).optional(),
   })).default([]),
 }).passthrough();
@@ -506,6 +516,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
       if (recoveredAnalysisForSplit) {
         analysis = recoveredAnalysisForSplit;
+        applyChartPreprocessingConstraints(analysis);
         phaseTelemetry.understandRecovery = {
           source: "working_paper",
           recoveryReason: attempt.recoveryReason,
@@ -624,6 +635,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       if (!recoveredAnalysisForSplit) {
         analysis = parseGeneratedAnalysisResponse(authorResponse.message, authorFiles);
         enforceAnalysisExhibitRules(analysis);
+        applyChartPreprocessingConstraints(analysis);
         await upsertWorkingPaper(config, runId, "analysis_result", analysis);
         await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
         await upsertWorkingPaper(config, runId, "analysis_checkpoint", {
@@ -1221,7 +1233,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               const docxMsg = docxError instanceof Error ? docxError.message : String(docxError);
               console.warn(`[generateDeckRun] salvage DOCX build failed, using stub fallback: ${docxMsg.slice(0, 200)}`);
               phaseTelemetry.salvageDocxFallback = { error: docxMsg.slice(0, 500) };
-              finalDocx = await buildStubDocx("Narrative report could not be generated for this salvaged run. The deck artifacts (PPTX and PDF) are available.");
+              finalDocx = await buildFallbackNarrativeDocx({
+                message: "Narrative report generation degraded on this salvaged run, so Basquio rebuilt a lighter text-first report from the final deck manifest.",
+                run,
+                analysis,
+                manifest: finalManifest,
+              });
             }
 
             qaReport = await buildQaReport(
@@ -1261,7 +1278,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         }
       }
 
-      finalDocx ??= await buildStubDocx("Narrative report could not be generated for this run. The deck PPTX and PDF are available.");
+      finalDocx ??= await buildFallbackNarrativeDocx({
+        message: "Narrative report generation degraded on this run, so Basquio rebuilt a lighter text-first report from the final deck manifest.",
+        run,
+        analysis,
+        manifest: finalManifest,
+      });
       phaseTelemetry.finalLint = summarizeLintResult(finalLint);
       phaseTelemetry.finalContract = summarizeDeckContractResult(finalContract);
       phaseTelemetry.publishDecision = lastPublishDecision;
@@ -1327,7 +1349,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         finalManifest = await buildSyntheticManifestFromPptx(finalPptx.buffer);
       }
       if (!finalDocx || finalDocx.buffer.length === 0) {
-        finalDocx = await buildStubDocx("Narrative report could not be generated because the export phase failed after the deck artifacts were created. The deck PPTX and PDF are available.");
+        finalDocx = await buildFallbackNarrativeDocx({
+          message: "Narrative report generation degraded after export recovery, so Basquio rebuilt a lighter text-first report from the recovered deck manifest.",
+          run,
+          analysis,
+          manifest: finalManifest,
+        });
       }
       try {
         qaReport = await buildQaReport(
@@ -1963,6 +1990,49 @@ async function buildStubDocx(message: string) {
   } satisfies GeneratedFile;
 }
 
+async function buildFallbackNarrativeDocx(input: {
+  message: string;
+  run?: RunRow | null;
+  analysis?: z.infer<typeof analysisSchema> | null;
+  manifest?: z.infer<typeof deckManifestSchema> | null;
+}) {
+  if (input.run && input.manifest) {
+    try {
+      return await buildNarrativeDocx({
+        run: input.run,
+        analysis: input.analysis ?? {
+          language: detectLanguage(`${input.run.objective} ${input.run.thesis} ${input.run.business_context}`),
+          thesis: input.run.thesis || input.manifest.slides[0]?.title || "",
+          executiveSummary: input.message,
+          slidePlan: input.manifest.slides.map((slide) => ({
+            position: slide.position,
+            layoutId: slide.layoutId,
+            slideArchetype: slide.slideArchetype,
+            title: slide.title,
+            subtitle: slide.subtitle,
+            body: slide.body,
+            bullets: slide.bullets,
+            metrics: slide.metrics,
+            callout: slide.callout,
+            chart: slide.chartId
+              ? {
+                  id: slide.chartId,
+                  chartType: input.manifest?.charts.find((chart) => chart.id === slide.chartId)?.chartType ?? "bar",
+                  title: input.manifest?.charts.find((chart) => chart.id === slide.chartId)?.title ?? slide.title,
+                }
+              : undefined,
+          })),
+        },
+        manifest: input.manifest,
+      });
+    } catch (fallbackError) {
+      console.warn(`[generateDeckRun] fallback narrative DOCX build failed, using minimal stub: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+    }
+  }
+
+  return buildStubDocx(input.message);
+}
+
 async function markPhase(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
@@ -2052,6 +2122,14 @@ async function strengthenFinalVisualQa(input: {
   phaseTelemetry: Record<string, unknown>;
 }) {
   if (input.currentReport.overallStatus !== "green" || input.currentReport.deckNeedsRevision) {
+    return input.currentReport;
+  }
+
+  if (input.currentReport.score >= 9 && input.currentReport.issues.length === 0) {
+    input.phaseTelemetry.visualQaFinalSkipped = {
+      reason: "haiku_green_high_confidence",
+      reusedScore: input.currentReport.score,
+    };
     return input.currentReport;
   }
 
@@ -2487,6 +2565,7 @@ function buildAuthorMessage(
   const routeContext = questionRoutes.length > 0
     ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
     : "";
+  const chartPreprocessingGuide = buildChartPreprocessingGuide();
   const mergedAnalysisInstructions = analysis
     ? []
     : [
@@ -2503,6 +2582,7 @@ function buildAuthorMessage(
         `- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`,
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
         "- Recommend charts only when they materially improve the argument.",
+        chartPreprocessingGuide,
       ];
 
   return {
@@ -2540,6 +2620,8 @@ function buildAuthorMessage(
             : []),
           "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
           "- Do not use native PowerPoint chart objects for critical visuals.",
+          "- Treat the deterministic chart preprocessing guide below as a hard render contract, not as optional style advice.",
+          chartPreprocessingGuide,
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
           "- Before rendering any chart, check category label lengths: if average > 12 chars or count > 8, use horizontal bars or aggregate.",
           "- For charts with source notes: add plt.subplots_adjust(bottom=0.15) BEFORE plt.tight_layout() so the source text does not collide with axis labels. Always call plt.tight_layout() before savefig().",
@@ -2563,9 +2645,11 @@ function buildAuthorMessage(
             ? []
             : [
                 "- `analysis_result.json` must be valid JSON matching the approved analysis schema with `language`, `thesis`, `executiveSummary`, and `slidePlan[]`.",
+                "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
                 "- Use the same language as the brief. Do not emit mixed-language output.",
               ]),
           "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
+          "- Each chart in the manifest should include `categoryCount` and `categories[]` when available so Basquio can verify density and label fit.",
           "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `title`, and `chartId` when applicable.",
           "- Your final assistant message must attach the files as container uploads before finishing.",
         ].join("\n"),
@@ -2575,6 +2659,7 @@ function buildAuthorMessage(
 }
 
 function buildReviseMessage(issues: string[]) {
+  const chartPreprocessingGuide = buildChartPreprocessingGuide();
   return {
     role: "user" as const,
     content: [
@@ -2593,6 +2678,8 @@ function buildReviseMessage(issues: string[]) {
           "When revising analytical slides, do not merely soften the prose. Make sure each slide states the fact, the magnitude, the driver, and the implication.",
           "Use Arial for all dense text and card internals unless the uploaded template explicitly forces another safe font.",
           "Do not use stacked ordinals, narrow title boxes, or floating footer metrics that can drift across PowerPoint, Keynote, and Google Slides.",
+          "Re-apply the deterministic chart preprocessing guide when you rebuild any chart.",
+          chartPreprocessingGuide,
           "Fix any stretched charts by re-rendering them at the correct slot ratio rather than scaling the old image.",
           "Fix any chart where the source note text collides with axis labels by adding plt.subplots_adjust(bottom=0.15) before plt.tight_layout().",
           "Fix any chart where end-of-bar value labels are clipped at the right edge by adding xlim padding.",
@@ -2716,16 +2803,30 @@ async function runClaudeLoop(input: {
       // Bounded transient retry with exponential backoff + jitter
       let lastTransientError: Error | null = null;
       for (let retry = 0; retry <= TRANSIENT_RETRY_DELAYS_MS.length; retry += 1) {
+        const requestController = new AbortController();
+        const requestTimeoutMs = Math.max(
+          45_000,
+          Math.min(input.phaseTimeoutMs ?? STREAM_REQUEST_WATCHDOG_MS, STREAM_REQUEST_WATCHDOG_MS),
+        );
+        const requestTimeoutHandle = setTimeout(() => requestController.abort(), requestTimeoutMs);
         try {
+          const signal = controller
+            ? AbortSignal.any([controller.signal, requestController.signal])
+            : requestController.signal;
           const stream = input.client.beta.messages.stream(
             streamBody,
-            controller ? { signal: controller.signal } : undefined,
+            { signal },
           );
           requestId = stream.request_id ?? null;
           message = await stream.finalMessage();
           lastTransientError = null;
           break;
         } catch (streamError) {
+          if (requestController.signal.aborted && !controller?.signal.aborted) {
+            const watchdogError = new Error(`Claude stream watchdog timed out after ${requestTimeoutMs}ms.`);
+            watchdogError.name = "AbortError";
+            streamError = watchdogError;
+          }
           requestId = null;
           if (isTransientProviderError(streamError) && retry < TRANSIENT_RETRY_DELAYS_MS.length) {
             lastTransientError = streamError instanceof Error ? streamError : new Error(String(streamError));
@@ -2749,6 +2850,8 @@ async function runClaudeLoop(input: {
             continue;
           }
           throw streamError;
+        } finally {
+          clearTimeout(requestTimeoutHandle);
         }
       }
       if (lastTransientError) {
@@ -3231,6 +3334,34 @@ function buildGenerationBrief(run: RunRow) {
   ].join("\n");
 }
 
+function buildChartPreprocessingGuide() {
+  const chartLayouts = ["title-chart", "chart-split", "evidence-grid", "comparison"];
+  const lines = [
+    "Deterministic chart preprocessing guide:",
+    "- Compute category_count before rendering every chart.",
+    "- If category_count exceeds the slot limit, aggregate the tail into `Other` or switch to commentary-led treatment instead of cramming the chart.",
+    "- If average category label length is above 12 characters, prefer horizontal orientation unless the chart is a true time series.",
+    "- Figure size must match the slide archetype chart slot. Render at the slot ratio first, then place the image 1:1 without stretch.",
+    "- Use descending sort for rankings, ascending only for deliberate smallest-first comparisons, and `none` for time series.",
+    "- Truncate long labels only after sorting and only when the full label is preserved elsewhere in notes/source data.",
+  ];
+
+  for (const layoutId of chartLayouts) {
+    const archetype = getArchetypeOrDefault(layoutId);
+    const chartSlot = archetype.slots.chart;
+    if (!chartSlot) {
+      continue;
+    }
+    const aspectRatio = Number((chartSlot.frame.w / chartSlot.frame.h).toFixed(2));
+    const preferredOrientation = aspectRatio < 1.7 ? "horizontal" : "vertical";
+    lines.push(
+      `- ${layoutId}: figureSize=${chartSlot.frame.w.toFixed(2)}x${chartSlot.frame.h.toFixed(2)}in, slotAspectRatio=${aspectRatio}, maxCategories=${chartSlot.maxCategories ?? 12}, preferredOrientation=${preferredOrientation}, allowedChartTypes=${(chartSlot.allowedChartTypes ?? []).join("/") || "any"}.`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
 function buildBriefText(run: RunRow) {
   return [run.objective, run.thesis, run.business_context, run.stakes, run.client]
     .filter(Boolean)
@@ -3252,6 +3383,36 @@ function enforceAnalysisExhibitRules(analysis: z.infer<typeof analysisSchema>) {
     if (result.wasOverridden) {
       slide.chart.chartType = result.chartType;
     }
+  }
+}
+
+function applyChartPreprocessingConstraints(analysis: z.infer<typeof analysisSchema>) {
+  for (const slide of analysis.slidePlan) {
+    if (!slide.chart) {
+      continue;
+    }
+
+    const layoutId = slide.slideArchetype || slide.layoutId || "title-chart";
+    const archetype = getArchetypeOrDefault(layoutId);
+    const chartSlot = archetype.slots.chart;
+    if (!chartSlot) {
+      continue;
+    }
+
+    const slotAspectRatio = Number((chartSlot.frame.w / chartSlot.frame.h).toFixed(2));
+    const preferredOrientation = slotAspectRatio < 1.7 ? "horizontal" : "vertical";
+    const chartType = slide.chart.chartType.toLowerCase();
+    const isTimeSeries = chartType === "line" || chartType === "area";
+
+    slide.chart.maxCategories ??= chartSlot.maxCategories ?? 12;
+    slide.chart.slotAspectRatio ??= slotAspectRatio;
+    slide.chart.figureSize ??= {
+      widthInches: Number(chartSlot.frame.w.toFixed(2)),
+      heightInches: Number(chartSlot.frame.h.toFixed(2)),
+    };
+    slide.chart.preferredOrientation ??= isTimeSeries ? "vertical" : preferredOrientation;
+    slide.chart.sort ??= isTimeSeries ? "none" : chartType.includes("horizontal") ? "desc" : "desc";
+    slide.chart.truncateLabels ??= (slide.chart.maxCategories ?? 12) <= 8;
   }
 }
 
@@ -3380,6 +3541,8 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>, req
       issues.push(`Slide ${slide.position} title is ${slide.title.length} characters and will overflow the right margin. Shorten to under 75 characters.`);
     }
   }
+  issues.push(...collectChartSlotConstraintFindings(manifest));
+
   for (const slide of manifest.slides) {
     const countClaimIssue = detectExplicitCoverageMismatch(slide);
     if (countClaimIssue) {
@@ -3418,6 +3581,34 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>, req
     }
   }
   return issues;
+}
+
+function collectChartSlotConstraintFindings(manifest: z.infer<typeof deckManifestSchema>) {
+  const findings: string[] = [];
+  const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
+
+  for (const slide of manifest.slides) {
+    const chart = slide.chartId ? chartById.get(slide.chartId) : null;
+    if (!chart) {
+      continue;
+    }
+
+    const archetype = getArchetypeOrDefault(slide.slideArchetype || slide.layoutId);
+    const chartSlot = archetype.slots.chart;
+    const categoryCount = chart.categoryCount ?? chart.categories?.length;
+    if (chartSlot?.maxCategories && categoryCount && categoryCount > chartSlot.maxCategories) {
+      findings.push(
+        `Slide ${slide.position} chart exposes ${categoryCount} categories but the ${archetype.id} chart slot is capped at ${chartSlot.maxCategories}. Aggregate the tail, switch to horizontal orientation, or change the grammar.`,
+      );
+    }
+    if (categoryCount && categoryCount > 8 && ["bar", "grouped_bar", "stacked_bar", "stacked_bar_100"].includes(chart.chartType)) {
+      findings.push(
+        `Slide ${slide.position} chart uses ${chart.chartType} with ${categoryCount} categories. Prefer horizontal orientation or reduce the category set before publish.`,
+      );
+    }
+  }
+
+  return findings;
 }
 
 function detectExplicitCoverageMismatch(slide: z.infer<typeof deckManifestSchema>["slides"][number]) {
@@ -3680,6 +3871,7 @@ async function buildQaReport(
   templateDiagnostics: TemplateDiagnostics,
   requestedSlideCount?: number,
 ) {
+  const chartSlotConstraintFindings = collectChartSlotConstraintFindings(manifest);
   const checks = [
     { name: "pptx_present", passed: pptx.buffer.length > 0, detail: `${pptx.buffer.length} bytes` },
     { name: "pdf_present", passed: pdf.buffer.length > 0, detail: `${pdf.buffer.length} bytes` },
@@ -3689,6 +3881,11 @@ async function buildQaReport(
       name: "slide_count_matches_requested_target",
       passed: typeof requestedSlideCount !== "number" || manifest.slideCount === requestedSlideCount,
       detail: typeof requestedSlideCount === "number" ? `requested=${requestedSlideCount} manifest=${manifest.slideCount}` : "no requested slide count recorded",
+    },
+    {
+      name: "chart_density_fits_layout_slots",
+      passed: chartSlotConstraintFindings.length === 0,
+      detail: chartSlotConstraintFindings.length === 0 ? "all chart category counts fit their slot budgets" : chartSlotConstraintFindings.slice(0, 3).join("; "),
     },
     { name: "titles_present", passed: manifest.slides.every((slide) => slide.title.trim().length > 0), detail: "all slides have titles" },
     { name: "rendered_page_visual_green", passed: visualQa.overallStatus === "green", detail: `visual status=${visualQa.overallStatus}` },
