@@ -41,11 +41,11 @@ type ActiveRunState = {
 function getMeaningfulStaleMinutesForPhase(phase: string | null | undefined) {
   switch (phase) {
     case "author":
-      return 30;
+      return STALE_ATTEMPT_MEANINGFUL_MINUTES;
     case "understand":
-      return 12;
+      return Math.max(8, STALE_ATTEMPT_MEANINGFUL_MINUTES);
     case "revise":
-      return 18;
+      return STALE_ATTEMPT_MEANINGFUL_MINUTES;
     default:
       return STALE_ATTEMPT_MEANINGFUL_MINUTES;
   }

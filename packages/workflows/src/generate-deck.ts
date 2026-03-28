@@ -1703,8 +1703,6 @@ async function markPhase(
   attempt: AttemptContext,
   phase: DeckPhase,
 ) {
-  await touchAttemptProgress(config, runId, attempt, phase);
-
   const now = new Date().toISOString();
   await Promise.all([
     patchRestRows({
@@ -1735,7 +1733,6 @@ async function markPhase(
       payload: {
         status: "running",
         updated_at: now,
-        last_meaningful_event_at: now,
         failure_message: null,
         failure_phase: null,
       },
@@ -2419,6 +2416,8 @@ function buildRequestRecordCallback(
   model: string,
 ) {
   return async (record: ClaudeRequestUsage) => {
+    const totalTokens = (record.usage.input_tokens ?? 0) + (record.usage.output_tokens ?? 0);
+
     await upsertRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
@@ -2437,13 +2436,17 @@ function buildRequestRecordCallback(
         usage: {
           inputTokens: record.usage.input_tokens ?? 0,
           outputTokens: record.usage.output_tokens ?? 0,
-          totalTokens: (record.usage.input_tokens ?? 0) + (record.usage.output_tokens ?? 0),
+          totalTokens,
           status: record.stopReason?.startsWith("transient_retry") ? "failed_transient" : "completed",
         },
         started_at: record.startedAt,
         completed_at: record.completedAt,
       }],
     });
+
+    if (totalTokens > 0) {
+      await touchAttemptProgress(config, runId, attempt, phase).catch(() => {});
+    }
   };
 }
 

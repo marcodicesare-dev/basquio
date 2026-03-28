@@ -92,7 +92,6 @@ async function main() {
         ...(previousAttempt && (previousAttempt.status === "queued" || previousAttempt.status === "running")
           ? { status: "superseded" }
           : {}),
-        superseded_by_attempt_id: attemptId,
         updated_at: now,
       },
     }).catch(() => {});
@@ -116,6 +115,19 @@ async function main() {
       },
     ],
   });
+
+  if (supersedesAttemptId) {
+    await patchRestRows({
+      supabaseUrl,
+      serviceKey,
+      table: "deck_run_attempts",
+      query: { id: `eq.${supersedesAttemptId}`, superseded_by_attempt_id: "is.null" },
+      payload: {
+        superseded_by_attempt_id: attemptId,
+        updated_at: now,
+      },
+    }).catch(() => {});
+  }
 
   await patchRestRows({
     supabaseUrl,
