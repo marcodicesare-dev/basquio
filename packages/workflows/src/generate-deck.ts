@@ -54,8 +54,14 @@ const MAX_PAUSE_TURNS_PER_PHASE = {
   critique: 0,
   export: 0,
 } as const;
-const REQUEST_WATCHDOG_BY_PHASE_MS = {
-  ...PHASE_TIMEOUTS_MS,
+const REQUEST_WATCHDOG_BY_PHASE_MS: Record<ClaudePhase, number> = {
+  normalize: 120_000,
+  understand: 10 * 60_000,
+  author: 300_000,
+  revise: 240_000,
+  render: 120_000,
+  critique: 90_000,
+  export: 120_000,
 } as const;
 const REQUEST_WATCHDOG_DEFAULT_MS = 240_000;
 const CIRCUIT_BREAKER_MAX_FAILURES = 3;
@@ -602,6 +608,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
         maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
         phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
+        requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
         currentSpentUsd: spentUsd,
         container: baseContainerId
           ? { id: baseContainerId }
@@ -830,6 +837,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
           maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.revise,
           phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
+          requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
           currentSpentUsd: spentUsd,
           container: latestContainerId
             ? {
@@ -2556,6 +2564,7 @@ async function runClaudeLoop(input: {
   /** Maximum number of pause_turn continuations before breaking out. Default: unlimited (up to 8 iterations). */
   maxPauseTurns?: number;
   phaseTimeoutMs?: number;
+  requestWatchdogMs?: number;
   currentSpentUsd?: number;
   circuitKey?: string;
 }) {
@@ -2614,7 +2623,7 @@ async function runClaudeLoop(input: {
       let lastTransientError: Error | null = null;
       for (let retry = 0; retry <= TRANSIENT_RETRY_DELAYS_MS.length; retry += 1) {
         const requestController = new AbortController();
-        const phaseRequestTimeoutMs = input.phaseTimeoutMs
+        const phaseRequestTimeoutMs = input.requestWatchdogMs
           ?? (input.phaseLabel ? REQUEST_WATCHDOG_BY_PHASE_MS[input.phaseLabel] : STREAM_REQUEST_WATCHDOG_MS)
           ?? STREAM_REQUEST_WATCHDOG_MS;
         const requestTimeoutMs = Math.max(
