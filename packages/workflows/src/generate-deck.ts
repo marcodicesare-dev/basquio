@@ -39,9 +39,9 @@ const BETAS = [FILES_BETA, SKILLS_BETA, CODE_EXEC_BETA] as const;
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number> = {
   normalize: 120_000,
-  understand: 120_000,
-  author: 300_000,
-  revise: 240_000,
+  understand: 10 * 60_000,
+  author: 25 * 60_000,
+  revise: 15 * 60_000,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
@@ -71,7 +71,6 @@ let lastCircuitBreakerCleanupAt = 0;
 const CONTINUATION_MIN_REMAINING_BUDGET_USD = 0.5;
 const STREAM_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_STREAM_REQUEST_WATCHDOG_MS ?? "240000", 10);
 const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
-  { type: CODE_EXEC_TOOL, name: CODE_EXEC_TOOL },
   { type: "web_fetch_20260209", name: "web_fetch" },
 ];
 const CIRCUIT_BREAKER_STATES = new Map<string, CircuitState>();
@@ -2619,7 +2618,13 @@ async function runClaudeLoop(input: {
           }
           break;
         } catch (streamError) {
-          if (requestController.signal.aborted && !controller?.signal.aborted) {
+          if (controller?.signal.aborted) {
+            const phaseTimeoutError = new Error(
+              `Claude ${input.phaseLabel ?? "request"} timed out after ${input.phaseTimeoutMs ?? requestTimeoutMs}ms.`,
+            );
+            phaseTimeoutError.name = "AbortError";
+            streamError = phaseTimeoutError;
+          } else if (requestController.signal.aborted) {
             const watchdogError = new Error(`Claude stream watchdog timed out after ${requestTimeoutMs}ms.`);
             watchdogError.name = "AbortError";
             streamError = watchdogError;

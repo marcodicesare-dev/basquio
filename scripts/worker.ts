@@ -27,11 +27,29 @@ type QueuedRunRow = {
   attempt_number: number;
 };
 
+type RunningAttemptRow = QueuedRunRow & {
+  last_meaningful_event_at: string | null;
+  updated_at: string;
+};
+
 type ActiveRunState = {
   attempt: QueuedRunRow;
   promise: Promise<void>;
   stopHeartbeat: () => void;
 };
+
+function getMeaningfulStaleMinutesForPhase(phase: string | null | undefined) {
+  switch (phase) {
+    case "author":
+      return 30;
+    case "understand":
+      return 12;
+    case "revise":
+      return 18;
+    default:
+      return STALE_ATTEMPT_MEANINGFUL_MINUTES;
+  }
+}
 
 async function main() {
   const config = resolveConfig();
@@ -400,42 +418,49 @@ async function readWorkerError(response: Response, fallback: string) {
 }
 
 async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
-  const staleMeaningfulBefore = new Date(Date.now() - STALE_ATTEMPT_MEANINGFUL_MINUTES * 60_000).toISOString();
-
-  // D1: Recover stale running attempts (meaningful progress stalled)
-  const staleAttemptsByMeaningfulProgress = await fetchRestRows<QueuedRunRow>({
+  const runningAttempts = await fetchRestRows<RunningAttemptRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
     table: "deck_run_attempts",
     query: {
-      select: "id,run_id,attempt_number",
+      select: "id,run_id,attempt_number,last_meaningful_event_at,updated_at",
       status: "eq.running",
       superseded_by_attempt_id: "is.null",
-      last_meaningful_event_at: `lt.${staleMeaningfulBefore}`,
       order: "created_at.asc",
     },
   }).catch(() => []);
 
-  const staleAttemptsWithoutMeaningful = await fetchRestRows<QueuedRunRow>({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "deck_run_attempts",
-    query: {
-      select: "id,run_id,attempt_number",
-      status: "eq.running",
-      superseded_by_attempt_id: "is.null",
-      last_meaningful_event_at: "is.null",
-      updated_at: `lt.${staleMeaningfulBefore}`,
-      order: "created_at.asc",
-    },
-  }).catch(() => []);
+  const staleAttempts: QueuedRunRow[] = [];
+  for (const attempt of runningAttempts) {
+    const parentRun = await fetchRestRows<{
+      id: string;
+      current_phase: string | null;
+      active_attempt_id: string | null;
+    }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "id,current_phase,active_attempt_id",
+        id: `eq.${attempt.run_id}`,
+        limit: "1",
+      },
+    }).catch(() => []);
 
-  const staleAttemptIds = new Set<string>(staleAttemptsByMeaningfulProgress.map((attempt) => attempt.id));
-  const staleAttempts = [...staleAttemptsByMeaningfulProgress];
-  for (const attempt of staleAttemptsWithoutMeaningful) {
-    if (!staleAttemptIds.has(attempt.id)) {
-      staleAttemptIds.add(attempt.id);
-      staleAttempts.push(attempt);
+    const runRow = parentRun[0];
+    if (!runRow || runRow.active_attempt_id !== attempt.id) {
+      continue;
+    }
+
+    const staleMinutes = getMeaningfulStaleMinutesForPhase(runRow.current_phase);
+    const staleBefore = Date.now() - staleMinutes * 60_000;
+    const progressAt = Date.parse(attempt.last_meaningful_event_at ?? attempt.updated_at);
+    if (Number.isFinite(progressAt) && progressAt < staleBefore) {
+      staleAttempts.push({
+        id: attempt.id,
+        run_id: attempt.run_id,
+        attempt_number: attempt.attempt_number,
+      });
     }
   }
 

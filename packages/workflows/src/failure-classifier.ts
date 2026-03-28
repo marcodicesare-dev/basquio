@@ -187,6 +187,8 @@ export function isTransientProviderError(error: unknown): boolean {
   if (/\b(429|529|502|503|504)\b/.test(msg)) return true;
   if (msg.includes("stream ended") || msg.includes("did not return")) return true;
   if (msg.includes("request ended without sending any chunks")) return true;
+  if (msg.includes("request was aborted")) return true;
+  if (msg.includes("timed out after") && msg.includes("claude")) return true;
   if (msg.includes("connection") && (msg.includes("reset") || msg.includes("refused") || msg.includes("closed"))) return true;
   if (msg.includes("econnreset") || msg.includes("econnrefused") || msg.includes("etimedout")) return true;
   if (name.includes("fetcherror") || name.includes("aborterror")) return true;
@@ -233,6 +235,7 @@ function isTransientNetworkError(error: unknown): boolean {
   return msg.includes("econnreset") ||
     msg.includes("econnrefused") ||
     msg.includes("etimedout") ||
+    msg.includes("request was aborted") ||
     msg.includes("fetch failed") ||
     msg.includes("transient storage") ||
     msg.includes("storage upload failure") ||
