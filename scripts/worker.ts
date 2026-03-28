@@ -59,11 +59,11 @@ function getMeaningfulStaleMinutesForPhase(phase: string | null | undefined) {
 function getActiveRequestGraceMsForPhase(phase: string | null | undefined) {
   switch (phase) {
     case "author":
-      return 25 * 60_000;
+      return 40 * 60_000;
     case "understand":
       return 10 * 60_000;
     case "revise":
-      return 15 * 60_000;
+      return 20 * 60_000;
     case "normalize":
     case "render":
     case "export":

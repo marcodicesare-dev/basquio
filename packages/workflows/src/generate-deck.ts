@@ -40,8 +40,11 @@ type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique"
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  author: 25 * 60_000,
-  revise: 15 * 60_000,
+  // Francesco-class author turns have now been observed exceeding 25 minutes
+  // under live production load. Keep a wider ceiling until we have reliable
+  // activity-based request watchdogs and checkpointed sub-steps.
+  author: 40 * 60_000,
+  revise: 20 * 60_000,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
