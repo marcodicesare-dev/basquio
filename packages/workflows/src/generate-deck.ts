@@ -2238,6 +2238,24 @@ function appendAssistantTurn(
   ];
 }
 
+function appendPauseTurnContinuation(
+  messages: Anthropic.Beta.BetaMessageParam[],
+  message: Anthropic.Beta.BetaMessage,
+): Anthropic.Beta.BetaMessageParam[] {
+  return [
+    ...appendAssistantTurn(messages, message),
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Please continue from where you left off and finish the same turn using the current container state.",
+        },
+      ],
+    },
+  ];
+}
+
 function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {
   if (parsed.datasetProfile.sheets.length > 0) {
     return null;
@@ -2711,7 +2729,7 @@ async function runClaudeLoop(input: {
         break;
       }
 
-      messages = appendAssistantTurn(messages, finalMessage);
+      messages = appendPauseTurnContinuation(messages, finalMessage);
     }
   } finally {
     if (timeoutHandle) {
@@ -2750,7 +2768,10 @@ function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {
   const fileIds: string[] = [];
 
   for (const block of blocks) {
-    if (block.type === "code_execution_tool_result" && block.content.type === "code_execution_result") {
+    if (
+      block.type === "code_execution_tool_result" &&
+      (block.content.type === "code_execution_result" || block.content.type === "encrypted_code_execution_result")
+    ) {
       for (const output of block.content.content) {
         if (output.file_id) fileIds.push(output.file_id);
       }
