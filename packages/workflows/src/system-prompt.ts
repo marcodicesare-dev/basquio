@@ -103,7 +103,7 @@ export async function buildBasquioSystemPrompt(input: {
     {
       type: "text",
       text: staticBlock,
-      cache_control: { type: "ephemeral", ttl: 3600 },
+      cache_control: { type: "ephemeral", ttl: "1h" },
     },
     {
       type: "text",
