@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AttemptOwnershipLostError, generateDeckRun } from "../packages/workflows/src/generate-deck";
 import { classifyRuntimeError } from "../packages/workflows/src/failure-classifier";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
-import { callRpc, fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
+import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
 import { refundCredit } from "../apps/web/src/lib/credits";
 
@@ -15,6 +15,7 @@ const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY
 const MAX_CONCURRENT_RUNS = Math.max(1, Number.parseInt(process.env.BASQUIO_WORKER_MAX_CONCURRENCY ?? "2", 10));
 const SHUTDOWN_DRAIN_TIMEOUT_MS = Math.max(1_000, Number.parseInt(process.env.BASQUIO_WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS ?? "25000", 10));
 const SHUTDOWN_RECOVERY_REASON = "worker_shutdown";
+const WORKER_RPC_TIMEOUT_MS = 30_000;
 
 type QueuedRunRow = {
   run_id: string;
@@ -177,7 +178,7 @@ async function processRun(
           ? "transient_network_retry"
           : "transient_provider_retry";
 
-        const recoveryRows = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
+        const recoveryRows = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
           supabaseUrl: config.supabaseUrl,
           serviceKey: config.serviceKey,
           functionName: "recover_deck_run_attempt",
@@ -223,7 +224,7 @@ async function processRun(
           const newAttemptId = randomUUID();
           const now = new Date().toISOString();
 
-          const fallbackRows = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
+          const fallbackRows = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
             supabaseUrl: config.supabaseUrl,
             serviceKey: config.serviceKey,
             functionName: "recover_deck_run_attempt",
@@ -265,7 +266,7 @@ async function handoffActiveRuns(
     const now = new Date().toISOString();
 
     try {
-      const recoveryRows = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
+      const recoveryRows = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
         supabaseUrl: config.supabaseUrl,
         serviceKey: config.serviceKey,
         functionName: "recover_deck_run_attempt",
@@ -329,6 +330,69 @@ function resolveConfig() {
 
 function resolveWorkerDeploymentId() {
   return process.env.RAILWAY_DEPLOYMENT_ID ?? process.env.RAILWAY_RELEASE_ID ?? process.env.HOSTNAME ?? "local-worker";
+}
+
+async function callWorkerRpc<T>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  functionName: string;
+  params?: Record<string, unknown>;
+}) {
+  const url = new URL(`/rest/v1/rpc/${input.functionName}`, input.supabaseUrl);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildWorkerServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(input.params ?? {}),
+    signal: AbortSignal.timeout(WORKER_RPC_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readWorkerError(response, `Unable to execute RPC ${input.functionName}.`));
+  }
+
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+function buildWorkerServiceHeaders(serviceKey: string, extraHeaders: Record<string, string> = {}) {
+  const headers = new Headers(extraHeaders);
+  headers.set("apikey", serviceKey);
+
+  if (isJwtLikeKey(serviceKey) && !isSupabaseSecretKey(serviceKey)) {
+    headers.set("Authorization", `Bearer ${serviceKey}`);
+  }
+
+  return headers;
+}
+
+function isSupabaseSecretKey(value: string) {
+  return value.startsWith("sb_secret_");
+}
+
+function isJwtLikeKey(value: string) {
+  return value.split(".").length === 3;
+}
+
+async function readWorkerError(response: Response, fallback: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const payload = (await response.json()) as { error?: string; message?: string };
+      return payload.error ?? payload.message ?? fallback;
+    }
+
+    const text = await response.text();
+    return text || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
@@ -433,7 +497,7 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
     const newAttemptId = randomUUID();
     const newAttemptNumber = attempt.attempt_number + 1;
 
-    const recovered = await callRpc<Array<{ attempt_id: string; attempt_number: number }>>({
+    const recovered = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       functionName: "recover_deck_run_attempt",
@@ -530,7 +594,7 @@ async function claimNextQueuedAttempt(
     }
 
     const now = new Date().toISOString();
-    const claimed = await callRpc<Array<QueuedRunRow>>({
+    const claimed = await callWorkerRpc<Array<QueuedRunRow>>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       functionName: "claim_deck_run_attempt",
