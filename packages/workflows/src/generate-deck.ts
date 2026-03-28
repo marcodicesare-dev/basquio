@@ -71,7 +71,7 @@ let lastCircuitBreakerCleanupAt = 0;
 const CONTINUATION_MIN_REMAINING_BUDGET_USD = 0.5;
 const STREAM_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_STREAM_REQUEST_WATCHDOG_MS ?? "240000", 10);
 const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
-  { type: CODE_EXEC_TOOL, name: "code_execution" },
+  { type: CODE_EXEC_TOOL, name: CODE_EXEC_TOOL },
   { type: "web_fetch_20260209", name: "web_fetch" },
 ];
 const CIRCUIT_BREAKER_STATES = new Map<string, CircuitState>();
