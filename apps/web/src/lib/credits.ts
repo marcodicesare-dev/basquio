@@ -19,11 +19,22 @@ export const CREDITS_PER_SLIDE = 1;
 /** Free tier grant amount (enough for one 3-slide deck) */
 export const FREE_TIER_CREDITS = 6;
 
+export const MIN_TARGET_SLIDES = 1;
+export const MAX_TARGET_SLIDES = 15;
+
 /**
  * Calculate credits required for a deck run.
  */
 export function calculateRunCredits(slideCount: number): number {
-  return BASE_CREDITS + (CREDITS_PER_SLIDE * slideCount);
+  return BASE_CREDITS + (CREDITS_PER_SLIDE * assertValidSlideCount(slideCount));
+}
+
+export function assertValidSlideCount(slideCount: number): number {
+  if (!Number.isInteger(slideCount) || slideCount < MIN_TARGET_SLIDES || slideCount > MAX_TARGET_SLIDES) {
+    throw new Error(`targetSlideCount must be an integer between ${MIN_TARGET_SLIDES} and ${MAX_TARGET_SLIDES}.`);
+  }
+
+  return slideCount;
 }
 
 // ─── TYPES ───────────────────────────────────────────────────
@@ -38,6 +49,11 @@ type CreditBalance = {
   freeGrantsCount: number;
   totalRuns: number;
 };
+
+export type RefundCreditResult =
+  | { status: "refunded"; amount: number }
+  | { status: "already_refunded"; amount: number }
+  | { status: "no_debit_found"; amount: 0 };
 
 // ─── BALANCE ─────────────────────────────────────────────────
 
@@ -132,7 +148,7 @@ export async function checkAndDebitCredit(
  */
 export async function refundCredit(
   config: SupabaseConfig & { userId: string; runId: string },
-): Promise<void> {
+): Promise<RefundCreditResult> {
   // Find the original debit for this run
   const debits = await queryRest<{ amount: number }>(config, "credit_ledger", {
     reference_id: `eq.${config.runId}`,
@@ -145,7 +161,7 @@ export async function refundCredit(
   const refundAmount = debits.length > 0 ? Math.abs(debits[0].amount) : 0;
 
   if (refundAmount === 0) {
-    return; // No debit found — nothing to refund
+    return { status: "no_debit_found", amount: 0 };
   }
 
   try {
@@ -160,10 +176,12 @@ export async function refundCredit(
     // If this is a duplicate, it's safe to ignore.
     const message = error instanceof Error ? error.message : "";
     if (message.includes("unique") || message.includes("duplicate")) {
-      return;
+      return { status: "already_refunded", amount: refundAmount };
     }
     throw error;
   }
+
+  return { status: "refunded", amount: refundAmount };
 }
 
 // ─── IDEMPOTENCY ─────────────────────────────────────────────
@@ -204,7 +222,8 @@ async function queryRest<T>(
   });
 
   if (!response.ok) {
-    return [];
+    const text = await response.text().catch(() => "Unknown error");
+    throw new Error(`Failed to query ${table}: ${text}`);
   }
 
   return (await response.json()) as T[];
@@ -228,7 +247,8 @@ async function callRpc<T>(
   });
 
   if (!response.ok) {
-    return null;
+    const text = await response.text().catch(() => "Unknown error");
+    throw new Error(`Failed to execute RPC ${functionName}: ${text}`);
   }
 
   return (await response.json()) as T;

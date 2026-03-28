@@ -165,13 +165,14 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       brief: Record<string, string>;
       template_profile_id: string | null;
       requested_by: string;
+      target_slide_count: number | null;
       source_file_ids: string[];
     }>({
       supabaseUrl,
       serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,brief,template_profile_id,requested_by,source_file_ids",
+        select: "id,brief,template_profile_id,requested_by,target_slide_count,source_file_ids",
         id: `eq.${runId}`,
         limit: "1",
       },
@@ -180,8 +181,8 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
     const run = rows[0];
     if (!run || run.requested_by !== userId) return null;
 
-    // Get slide count from manifest
-    let slideCount = 10;
+    // Prefer the requested count stored on the run; fall back to the delivered manifest for older runs.
+    let slideCount = run.target_slide_count ?? 10;
     try {
       const manifests = await fetchRestRows<{ slide_count: number }>({
         supabaseUrl,
@@ -189,7 +190,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
         table: "artifact_manifests_v2",
         query: { select: "slide_count", run_id: `eq.${runId}`, limit: "1" },
       });
-      if (manifests[0]?.slide_count) slideCount = manifests[0].slide_count;
+      if (!run.target_slide_count && manifests[0]?.slide_count) slideCount = manifests[0].slide_count;
     } catch { /* ok */ }
 
     // Get source files from previous run for reuse

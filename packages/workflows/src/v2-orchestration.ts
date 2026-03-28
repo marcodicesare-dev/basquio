@@ -41,6 +41,8 @@ import {
 
 import { UsageTracker, checkCostBudget, estimateCost, logPhaseEvent } from "./observability";
 
+const MAX_TARGET_SLIDES = 15;
+
 // ─── SHARED CALLBACK TYPES ───────────────────────────────────────
 
 type NotebookEntry = {
@@ -3159,8 +3161,8 @@ function validateAndFixPlan(
     last.layout = "summary";
   }
 
-  // ── Rule 4: Cap at 12 slides ──
-  if (slides.length > 12) {
+  // ── Rule 4: Cap at 15 slides ──
+  if (slides.length > MAX_TARGET_SLIDES) {
     // Keep cover, exec-summary, last (recommendation). Remove weakest middle slides.
     const protected_ = new Set([1, 2, slides.length]); // positions to keep
     const removable = slides.filter(s => !protected_.has(s.position));
@@ -3170,7 +3172,7 @@ function validateAndFixPlan(
       const bHasChart = b.chartId ? 1 : 0;
       return aHasChart - bHasChart; // no-chart slides first
     });
-    const toRemove = removable.slice(0, slides.length - 12);
+    const toRemove = removable.slice(0, slides.length - MAX_TARGET_SLIDES);
     const removePositions = new Set(toRemove.map(s => s.position));
     const kept = slides.filter(s => !removePositions.has(s.position));
     // Re-number positions
@@ -3315,7 +3317,7 @@ function validateAndFixPlan(
  * Constraints:
  * - No Opus anywhere
  * - No section-level tool loops
- * - Max 12 slides, max 10 charts, max 1 chart per slide
+ * - Max 15 slides, max 10 charts, max 1 chart per slide
  */
 export const basquioAuthor = inngest.createFunction(
   { id: "basquio-author", retries: 0, timeouts: { finish: "25m" } },
@@ -3446,7 +3448,7 @@ export const basquioAuthor = inngest.createFunction(
       const clarifiedBrief = analysisResult.clarifiedBrief;
       const storylinePlan = analysisResult.storylinePlan;
 
-      // Determine target slide count (capped at 12)
+      // Determine target slide count (requested count is canonical up to the product max)
       const clarifiedSlideCount = clarifiedBrief?.requestedSlideCount ?? null;
       const requestedSlideMatch = brief.match(/(\d+)\s*slide/i)
         ?? brief.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*slide/i);
@@ -3455,7 +3457,9 @@ export const basquioAuthor = inngest.createFunction(
         ? (parseInt(requestedSlideMatch[1], 10) || wordToNum[requestedSlideMatch[1].toLowerCase()] || undefined)
         : undefined;
       const requestedSlides = clarifiedSlideCount ?? parsedCount;
-      const targetSlides = Math.min(requestedSlides ?? Math.min(Math.max(8, analysis.topFindings.length + 4), 12), 12);
+      const targetSlides = requestedSlides
+        ? Math.min(requestedSlides, MAX_TARGET_SLIDES)
+        : Math.min(Math.max(8, analysis.topFindings.length + 4), 12);
 
       // Build workspace sheet inventory for the planner to reference
       const workspace = authorWorkspace;
@@ -3623,7 +3627,7 @@ ALL text output (slide titles, kickers, chart titles, chart subtitles, governing
 7. Prefer horizontal_bar for rankings, line for trends, stacked_bar for composition, pie only for ≤5 categories.
 8. Set highlightCategory to the focal entity name for emphasis on every chart.
 9. Sort "desc" for rankings, "asc" for smallest-first, "none" for time series.
-10. Limit: 8-12 for bar charts, 0 (no limit) for line/time series.
+10. Limit: 8-12 bars for dense bar charts, 0 (no limit) for line/time series.
 
 Return a V1DeckPlan with slides and charts.`,
         });

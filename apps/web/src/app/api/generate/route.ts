@@ -6,8 +6,8 @@ import { inferSourceFileKind } from "@basquio/core";
 import type { GenerationRequest } from "@basquio/types";
 
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
-import { checkAndDebitCredit, ensureFreeTierCredit, calculateRunCredits } from "@/lib/credits";
-import { deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
+import { assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit } from "@/lib/credits";
+import { callRpc, deleteRestRows, fetchRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
@@ -21,6 +21,20 @@ class TemplateNotImportedError extends Error {
     super("Import your template from the Templates page first, then select it here. Use Basquio Standard for this run in the meantime.");
   }
 }
+
+class InsufficientCreditsError extends Error {
+  constructor(readonly creditsNeeded: number, readonly targetSlideCount: number) {
+    super(`Not enough credits. This ${targetSlideCount}-slide deck needs ${creditsNeeded} credits.`);
+  }
+}
+
+class BillingUnavailableError extends Error {
+  constructor() {
+    super("Billing system unavailable. Please try again.");
+  }
+}
+
+class InvalidGenerationRequestError extends Error {}
 
 type QueuedGenerationRequest = GenerationRequest & {
   templateProfileId?: string | null;
@@ -56,46 +70,42 @@ export async function POST(request: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
-
-    // Generate the canonical run ID upfront so the debit and deck_run
-    // share the same reference_id. The worker refunds by deck_run.id,
-    // so the debit must use the same value.
     const runId = randomUUID();
 
     const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
+    const targetSlideCount = requireValidTargetSlideCount(
+      ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
+    );
+    const creditsNeeded = calculateRunCredits(targetSlideCount);
 
     if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
-      const targetSlideCount = ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10;
-      const creditsNeeded = calculateRunCredits(targetSlideCount);
-
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
-
-      const debited = await checkAndDebitCredit({
-        supabaseUrl,
-        serviceKey,
-        userId: viewer.user.id,
-        runId,
-        slideCount: targetSlideCount,
-      });
-
-      // When billing is enabled, fail closed on any error.
-      // debited === null means the RPC failed (not "table missing").
-      if (debited !== true) {
-        const reason = debited === false
-          ? `Not enough credits. This ${targetSlideCount}-slide deck needs ${creditsNeeded} credits.`
-          : "Billing system unavailable. Please try again.";
-        return NextResponse.json({
-          error: reason,
-          code: debited === false ? "NO_CREDITS" : "BILLING_ERROR",
-          pricingUrl: "/pricing",
-        }, { status: debited === false ? 402 : 503 });
-      }
     }
 
     return NextResponse.json({
-      ...(await queueGeneration(generationRequest, viewer.user, workspace, runId)),
+      ...(await queueGeneration(generationRequest, viewer.user, workspace, runId, {
+        chargeCredits: billingEnabled && !hasUnlimitedUsage,
+        creditAmount: creditsNeeded,
+      })),
     }, { status: 202 });
   } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      return NextResponse.json({
+        error: error.message,
+        code: "NO_CREDITS",
+        pricingUrl: "/pricing",
+      }, { status: 402 });
+    }
+    if (error instanceof BillingUnavailableError) {
+      return NextResponse.json({
+        error: error.message,
+        code: "BILLING_ERROR",
+        pricingUrl: "/pricing",
+      }, { status: 503 });
+    }
+    if (error instanceof InvalidGenerationRequestError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (error instanceof TemplateNotImportedError) {
       return NextResponse.json({ error: error.message, code: "TEMPLATE_NOT_IMPORTED" }, { status: 400 });
     }
@@ -109,6 +119,10 @@ async function queueGeneration(
   viewer: NonNullable<Awaited<ReturnType<typeof getViewerState>>["user"]>,
   workspace: NonNullable<Awaited<ReturnType<typeof ensureViewerWorkspace>>>,
   runId: string,
+  billing: {
+    chargeCredits: boolean;
+    creditAmount: number;
+  },
 ) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -116,14 +130,17 @@ async function queueGeneration(
   if (!supabaseUrl || !serviceKey) {
     throw new Error("Supabase credentials are required.");
   }
-  const sourceFileIds: string[] = [];
+  const targetSlideCount = requireValidTargetSlideCount(
+    ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
+  );
+  const sourceFileIds = await resolveValidatedExistingSourceFileIds({
+    supabaseUrl,
+    serviceKey,
+    organizationId: workspace.organizationRowId,
+    projectId: workspace.projectRowId,
+    existingSourceFileIds: ((generationRequest as Record<string, unknown>).existingSourceFileIds as string[] | undefined) ?? [],
+  });
   let styleSourceFileId: string | null = null;
-
-  // Support reusing source files from a previous run
-  const existingSourceFileIds = (generationRequest as Record<string, unknown>).existingSourceFileIds as string[] | undefined;
-  if (existingSourceFileIds?.length) {
-    sourceFileIds.push(...existingSourceFileIds);
-  }
 
   const queuedInputs = [
     ...generationRequest.sourceFiles.map((file) => ({ file, isStyle: false })),
@@ -296,88 +313,60 @@ async function queueGeneration(
   }
 
   try {
-    const deckRunResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        id: runId,
-        organization_id: workspace.organizationRowId,
-        project_id: workspace.projectRowId,
-        requested_by: viewer.id,
-        brief: {
-          businessContext: generationRequest.brief.businessContext,
-          client: generationRequest.brief.client,
-          audience: generationRequest.brief.audience,
-          objective: generationRequest.brief.objective,
-          thesis: generationRequest.brief.thesis,
-          stakes: generationRequest.brief.stakes,
-        },
-        business_context: generationRequest.brief.businessContext,
-        client: generationRequest.brief.client,
-        audience: generationRequest.brief.audience,
-        objective: generationRequest.brief.objective,
-        thesis: generationRequest.brief.thesis,
-        stakes: generationRequest.brief.stakes,
-        source_file_ids: sourceFileIds,
-        template_profile_id: templateProfileId ?? null,
-        recipe_id: ((generationRequest as Record<string, unknown>).recipeId as string | undefined) ?? null,
-        notify_on_complete: notifyOnComplete,
-        status: "queued",
-      }),
-    });
-
-    if (!deckRunResponse.ok) {
-      const errorText = await deckRunResponse.text().catch(() => "Unknown error");
-      throw new Error(`Failed to create deck_runs record: ${errorText}`);
-    }
-
     const attemptId = randomUUID();
-    const attemptResponse = await fetch(`${supabaseUrl}/rest/v1/deck_run_attempts`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        id: attemptId,
-        run_id: runId,
-        attempt_number: 1,
-        status: "queued",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }),
-    });
-
-    if (!attemptResponse.ok) {
-      const errorText = await attemptResponse.text().catch(() => "Unknown error");
-      throw new Error(`Failed to create deck_run_attempts record: ${errorText}`);
-    }
-
-    const runAttemptPointerResponse = await fetch(`${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        active_attempt_id: attemptId,
-        latest_attempt_id: attemptId,
-        latest_attempt_number: 1,
-      }),
-    });
-
-    if (!runAttemptPointerResponse.ok) {
-      const errorText = await runAttemptPointerResponse.text().catch(() => "Unknown error");
-      throw new Error(`Failed to attach initial attempt to deck run: ${errorText}`);
+    try {
+      const enqueueRows = await callRpc<Array<{
+        run_id: string | null;
+        attempt_id: string | null;
+        insufficient_credits: boolean;
+      }>>({
+        supabaseUrl,
+        serviceKey,
+        functionName: "enqueue_deck_run",
+        params: {
+          p_run_id: runId,
+          p_attempt_id: attemptId,
+          p_organization_id: workspace.organizationRowId,
+          p_project_id: workspace.projectRowId,
+          p_requested_by: viewer.id,
+          p_brief: {
+            businessContext: generationRequest.brief.businessContext,
+            client: generationRequest.brief.client,
+            audience: generationRequest.brief.audience,
+            objective: generationRequest.brief.objective,
+            thesis: generationRequest.brief.thesis,
+            stakes: generationRequest.brief.stakes,
+          },
+          p_business_context: generationRequest.brief.businessContext,
+          p_client: generationRequest.brief.client,
+          p_audience: generationRequest.brief.audience,
+          p_objective: generationRequest.brief.objective,
+          p_thesis: generationRequest.brief.thesis,
+          p_stakes: generationRequest.brief.stakes,
+          p_source_file_ids: sourceFileIds,
+          p_target_slide_count: targetSlideCount,
+          p_template_profile_id: templateProfileId ?? null,
+          p_recipe_id: ((generationRequest as Record<string, unknown>).recipeId as string | undefined) ?? null,
+          p_notify_on_complete: notifyOnComplete,
+          p_charge_credits: billing.chargeCredits,
+          p_credit_amount: billing.chargeCredits ? billing.creditAmount : null,
+        },
+      });
+      const enqueueResult = enqueueRows[0];
+      if (!enqueueResult) {
+        throw billing.chargeCredits ? new BillingUnavailableError() : new Error("Run enqueue RPC returned no result.");
+      }
+      if (enqueueResult.insufficient_credits) {
+        throw new InsufficientCreditsError(billing.creditAmount, targetSlideCount);
+      }
+      if (!enqueueResult.run_id || !enqueueResult.attempt_id) {
+        throw new Error("Run enqueue did not return durable run lineage.");
+      }
+    } catch (error) {
+      if (billing.chargeCredits && !(error instanceof InsufficientCreditsError)) {
+        throw new BillingUnavailableError();
+      }
+      throw error;
     }
   } catch (error) {
     await cleanupQueuedGenerationSetup({
@@ -418,12 +407,7 @@ async function cleanupQueuedGenerationSetup(input: {
   }
 
   await Promise.all([
-    deleteRestRows({
-      supabaseUrl: input.supabaseUrl,
-      serviceKey: input.serviceKey,
-      table: "deck_run_attempts",
-      query: { run_id: `eq.${input.runId}` },
-    }).catch(() => {}),
+    deleteRunAttemptRows(input.supabaseUrl, input.serviceKey, input.runId).catch(() => {}),
     deleteRestRows({
       supabaseUrl: input.supabaseUrl,
       serviceKey: input.serviceKey,
@@ -569,6 +553,62 @@ function validateGenerationFiles(
   }
 
   return null;
+}
+
+async function resolveValidatedExistingSourceFileIds(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  organizationId: string;
+  projectId: string;
+  existingSourceFileIds: string[];
+}) {
+  const uniqueIds = [...new Set(input.existingSourceFileIds.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const rows = await fetchRestRows<{ id: string }>({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "source_files",
+    query: {
+      select: "id",
+      organization_id: `eq.${input.organizationId}`,
+      project_id: `eq.${input.projectId}`,
+      id: `in.(${uniqueIds.join(",")})`,
+    },
+  });
+  const ownedIds = new Set(rows.map((row) => row.id));
+
+  if (ownedIds.size !== uniqueIds.length) {
+    throw new InvalidGenerationRequestError("One or more reused source files do not belong to this workspace.");
+  }
+
+  return uniqueIds;
+}
+
+function requireValidTargetSlideCount(targetSlideCount: number) {
+  try {
+    return assertValidSlideCount(targetSlideCount);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid targetSlideCount.";
+    throw new InvalidGenerationRequestError(message);
+  }
+}
+
+async function deleteRunAttemptRows(supabaseUrl: string, serviceKey: string, runId: string) {
+  const url = new URL("/rest/v1/deck_run_attempts", supabaseUrl);
+  url.searchParams.set("run_id", `eq.${runId}`);
+
+  await fetch(url, {
+    method: "DELETE",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      Prefer: "return=minimal",
+    },
+    cache: "no-store",
+  });
 }
 
 function buildBrief(input: Partial<Record<"businessContext" | "client" | "audience" | "objective" | "thesis" | "stakes", string>> & {

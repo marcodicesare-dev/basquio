@@ -83,13 +83,14 @@ export async function POST(request: Request) {
       status: string;
       brief: Record<string, string>;
       template_profile_id: string | null;
+      target_slide_count: number | null;
       requested_by: string;
     }>({
       supabaseUrl,
       serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,status,brief,template_profile_id,requested_by",
+        select: "id,status,brief,template_profile_id,target_slide_count,requested_by",
         id: `eq.${body.runId}`,
         limit: "1",
       },
@@ -108,8 +109,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Recipes can only be saved from completed runs." }, { status: 400 });
     }
 
-    // Get slide count from artifact manifest
-    let slideCount = 10;
+    // Prefer the requested count saved on the run; fall back to the delivered manifest for older runs.
+    let slideCount = run.target_slide_count ?? 10;
     try {
       const manifests = await fetchRestRows<{ slide_count: number }>({
         supabaseUrl,
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
           limit: "1",
         },
       });
-      if (manifests[0]?.slide_count) {
+      if (!run.target_slide_count && manifests[0]?.slide_count) {
         slideCount = manifests[0].slide_count;
       }
     } catch { /* manifest table may not exist */ }

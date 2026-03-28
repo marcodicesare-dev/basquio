@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
+import { assertValidSlideCount } from "@/lib/credits";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
-import { deleteRestRows, removeStorageObjects } from "@/lib/supabase/admin";
+import { callRpc, deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+class InvalidGenerationRequestError extends Error {}
 
 export async function POST(request: Request) {
   try {
@@ -36,6 +39,7 @@ export async function POST(request: Request) {
     const objective = formData.get("objective") as string ?? "";
     const thesis = formData.get("thesis") as string ?? "";
     const stakes = formData.get("stakes") as string ?? "";
+    const targetSlideCount = requireValidTargetSlideCount(Number.parseInt(String(formData.get("targetSlideCount") ?? "10"), 10) || 10);
     const templateProfileId = await resolveOwnedTemplateProfileId({
       supabaseUrl,
       serviceKey,
@@ -73,22 +77,14 @@ export async function POST(request: Request) {
       const storagePath = `${workspace.organizationId}/${workspace.projectId}/${fileId}/${file.name}`;
       const buffer = Buffer.from(await file.arrayBuffer());
 
-      // Upload to storage
-      const uploadResponse = await fetch(
-        `${supabaseUrl}/storage/v1/object/source-files/${storagePath}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${serviceKey}`,
-            "Content-Type": file.type || "application/octet-stream",
-          },
-          body: buffer,
-        },
-      );
-
-      if (!uploadResponse.ok) {
-        return NextResponse.json({ error: `Failed to upload file: ${file.name}` }, { status: 500 });
-      }
+      await uploadToStorage({
+        supabaseUrl,
+        serviceKey,
+        bucket: "source-files",
+        storagePath,
+        body: buffer,
+        contentType: file.type || "application/octet-stream",
+      });
 
       // Create source_file record
       const sfResponse = await fetch(
@@ -116,6 +112,12 @@ export async function POST(request: Request) {
       );
 
       if (!sfResponse.ok) {
+        await removeStorageObjects({
+          supabaseUrl,
+          serviceKey,
+          bucket: "source-files",
+          paths: [storagePath],
+        }).catch(() => {});
         return NextResponse.json({ error: `Failed to register source file: ${file.name}` }, { status: 500 });
       }
 
@@ -147,89 +149,39 @@ export async function POST(request: Request) {
     }
 
     try {
-      const deckRunResponse = await fetch(
-        `${supabaseUrl}/rest/v1/deck_runs`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify({
-            id: runId,
-            organization_id: workspace.organizationRowId,
-            project_id: workspace.projectRowId,
-            requested_by: viewer.user.id,
-            brief: { businessContext: brief, client, audience, objective, thesis, stakes },
-            business_context: brief,
-            client,
-            audience,
-            objective,
-            thesis,
-            stakes,
-            source_file_ids: sourceFileIds,
-            template_profile_id: templateProfileId,
-            notify_on_complete: notifyOnComplete,
-            status: "queued",
-          }),
-        },
-      );
-
-      if (!deckRunResponse.ok) {
-        const errorText = await deckRunResponse.text().catch(() => "Unknown error");
-        throw new Error(`Failed to create run record: ${errorText}`);
-      }
-
       const attemptId = randomUUID();
-      const attemptResponse = await fetch(
-        `${supabaseUrl}/rest/v1/deck_run_attempts`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify({
-            id: attemptId,
-            run_id: runId,
-            attempt_number: 1,
-            status: "queued",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }),
+      const enqueueRows = await callRpc<Array<{
+        run_id: string | null;
+        attempt_id: string | null;
+        insufficient_credits: boolean;
+      }>>({
+        supabaseUrl,
+        serviceKey,
+        functionName: "enqueue_deck_run",
+        params: {
+          p_run_id: runId,
+          p_attempt_id: attemptId,
+          p_organization_id: workspace.organizationRowId,
+          p_project_id: workspace.projectRowId,
+          p_requested_by: viewer.user.id,
+          p_brief: { businessContext: brief, client, audience, objective, thesis, stakes },
+          p_business_context: brief,
+          p_client: client,
+          p_audience: audience,
+          p_objective: objective,
+          p_thesis: thesis,
+          p_stakes: stakes,
+          p_source_file_ids: sourceFileIds,
+          p_target_slide_count: targetSlideCount,
+          p_template_profile_id: templateProfileId,
+          p_notify_on_complete: notifyOnComplete,
+          p_charge_credits: false,
+          p_credit_amount: null,
         },
-      );
-
-      if (!attemptResponse.ok) {
-        const errorText = await attemptResponse.text().catch(() => "Unknown error");
-        throw new Error(`Failed to create attempt record: ${errorText}`);
-      }
-
-      const pointerResponse = await fetch(
-        `${supabaseUrl}/rest/v1/deck_runs?id=eq.${runId}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`,
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify({
-            active_attempt_id: attemptId,
-            latest_attempt_id: attemptId,
-            latest_attempt_number: 1,
-          }),
-        },
-      );
-
-      if (!pointerResponse.ok) {
-        const errorText = await pointerResponse.text().catch(() => "Unknown error");
-        throw new Error(`Failed to attach attempt lineage: ${errorText}`);
+      });
+      const enqueueResult = enqueueRows[0];
+      if (!enqueueResult?.run_id || !enqueueResult?.attempt_id || enqueueResult.insufficient_credits) {
+        throw new Error("Failed to create durable run lineage.");
       }
     } catch (error) {
       await cleanupQueuedV2RunSetup({
@@ -252,8 +204,20 @@ export async function POST(request: Request) {
       { status: 202 },
     );
   } catch (error) {
+    if (error instanceof InvalidGenerationRequestError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+function requireValidTargetSlideCount(targetSlideCount: number) {
+  try {
+    return assertValidSlideCount(targetSlideCount);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid targetSlideCount.";
+    throw new InvalidGenerationRequestError(message);
   }
 }
 
@@ -271,12 +235,7 @@ async function cleanupQueuedV2RunSetup(input: {
   }
 
   await Promise.all([
-    deleteRestRows({
-      supabaseUrl: input.supabaseUrl,
-      serviceKey: input.serviceKey,
-      table: "deck_run_attempts",
-      query: { run_id: `eq.${input.runId}` },
-    }).catch(() => {}),
+    deleteRunAttemptRows(input.supabaseUrl, input.serviceKey, input.runId).catch(() => {}),
     deleteRestRows({
       supabaseUrl: input.supabaseUrl,
       serviceKey: input.serviceKey,
@@ -300,4 +259,19 @@ async function cleanupQueuedV2RunSetup(input: {
       }).catch(() => {})
     )),
   ]);
+}
+
+async function deleteRunAttemptRows(supabaseUrl: string, serviceKey: string, runId: string) {
+  const url = new URL("/rest/v1/deck_run_attempts", supabaseUrl);
+  url.searchParams.set("run_id", `eq.${runId}`);
+
+  await fetch(url, {
+    method: "DELETE",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      Prefer: "return=minimal",
+    },
+    cache: "no-store",
+  });
 }

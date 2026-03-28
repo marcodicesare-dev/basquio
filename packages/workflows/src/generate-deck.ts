@@ -90,6 +90,7 @@ type RunRow = {
   thesis: string;
   stakes: string;
   source_file_ids: string[];
+  target_slide_count: number;
   template_profile_id: string | null;
   template_diagnostics: Record<string, unknown> | null;
   active_attempt_id: string | null;
@@ -716,6 +717,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         ...((phaseTelemetry.authorLint as { actionableIssues?: string[] } | undefined)?.actionableIssues ?? []),
         ...((phaseTelemetry.authorContract as { actionableIssues?: string[] } | undefined)?.actionableIssues ?? []),
       ],
+      run.target_slide_count,
     );
     const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
     const critiqueLint = lintManifest(manifest);
@@ -1052,6 +1054,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         finalDocx,
         finalVisualQa,
         templateDiagnostics,
+        run.target_slide_count,
       );
       const repairableQaFailures = qaReport.failed.filter((check) =>
         ["pptx_chart_media_present", "pptx_large_image_aspect_fit", "pptx_structural_integrity"].includes(check),
@@ -1139,6 +1142,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             finalDocx,
             finalVisualQa,
             templateDiagnostics,
+            run.target_slide_count,
           );
         } catch (repairError) {
           // Repair failed — log it and fall through to salvage.
@@ -1227,6 +1231,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               finalDocx,
               finalVisualQa,
               templateDiagnostics,
+              run.target_slide_count,
             );
             const salvageQualityGate = collectPublishGateFailures({
               qaReport,
@@ -1332,6 +1337,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           finalDocx,
           finalVisualQa,
           templateDiagnostics,
+          run.target_slide_count,
         );
       } catch (lastResortQaError) {
         const lastResortQaMessage = lastResortQaError instanceof Error ? lastResortQaError.message : String(lastResortQaError);
@@ -1426,7 +1432,7 @@ async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) 
     serviceKey: config.serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,failure_phase",
+      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,target_slide_count,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,failure_phase",
       id: `eq.${runId}`,
       limit: "1",
     },
@@ -2494,7 +2500,7 @@ function buildAuthorMessage(
         ...(routeContext ? [routeContext] : []),
         "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
-        "- Plan a consulting-grade deck between 8 and 12 slides unless the brief strongly requires fewer or the evidence clearly needs more.",
+        `- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`,
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
         "- Recommend charts only when they materially improve the argument.",
       ];
@@ -2548,6 +2554,8 @@ function buildAuthorMessage(
           "- If the brief is English, write direct partner-grade English with no padded corporate phrasing such as 'in order to' or 'going forward'.",
           "- Every analytical slide must answer four questions: what changed, by how much, why it happened, and what the executive should do. A slide that only restates the chart is unfinished.",
           "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify all recommendations with FMCG levers.",
+          `- Produce exactly ${run.target_slide_count} slides. Do not widen or compress the deck.`,
+          `- \`deck_manifest.json\` slideCount must equal ${run.target_slide_count}.`,
           analysis
             ? "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, and `deck_manifest.json`."
             : "- Generate and attach these files exactly: `analysis_result.json`, `deck.pptx`, `deck.pdf`, and `deck_manifest.json`.",
@@ -3218,6 +3226,7 @@ function buildGenerationBrief(run: RunRow) {
     `Thesis: ${run.thesis || "Unspecified"}`,
     `Stakes: ${run.stakes || "Unspecified"}`,
     `Business context: ${run.business_context || "Unspecified"}`,
+    `Requested slide count: ${run.target_slide_count}`,
     `Structured brief: ${JSON.stringify(briefRecord, null, 2)}`,
   ].join("\n");
 }
@@ -3329,12 +3338,15 @@ async function persistDeckSpec(
   }
 }
 
-function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>) {
+function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>, requestedSlideCount?: number) {
   const issues: string[] = [];
   const chartIds = new Set(manifest.charts.map((chart) => chart.id));
   const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
   if (manifest.slideCount <= 0) issues.push("Manifest has zero slides.");
   if (manifest.slideCount !== manifest.slides.length) issues.push("Manifest slideCount does not match slides[].");
+  if (typeof requestedSlideCount === "number" && manifest.slideCount !== requestedSlideCount) {
+    issues.push(`Manifest slideCount ${manifest.slideCount} does not match requested targetSlideCount ${requestedSlideCount}.`);
+  }
   if (manifest.slides.some((slide) => /chart unavailable|placeholder/i.test(`${slide.body ?? ""} ${slide.title}`))) {
     issues.push("Deck still contains placeholder or chart-unavailable language.");
   }
@@ -3632,8 +3644,9 @@ function collectCritiqueIssues(
   manifest: z.infer<typeof deckManifestSchema>,
   visualQa: RenderedPageQaReport,
   lintIssues: string[] = [],
+  requestedSlideCount?: number,
 ) {
-  const issues = [...collectManifestIssues(manifest)];
+  const issues = [...collectManifestIssues(manifest, requestedSlideCount)];
 
   for (const visualIssue of visualQa.issues) {
     if (visualIssue.severity === "minor") {
@@ -3665,12 +3678,18 @@ async function buildQaReport(
   docx: GeneratedFile,
   visualQa: RenderedPageQaReport,
   templateDiagnostics: TemplateDiagnostics,
+  requestedSlideCount?: number,
 ) {
   const checks = [
     { name: "pptx_present", passed: pptx.buffer.length > 0, detail: `${pptx.buffer.length} bytes` },
     { name: "pdf_present", passed: pdf.buffer.length > 0, detail: `${pdf.buffer.length} bytes` },
     { name: "docx_present", passed: docx.buffer.length > 0, detail: `${docx.buffer.length} bytes` },
     { name: "slide_count_positive", passed: manifest.slideCount > 0, detail: `${manifest.slideCount} slides` },
+    {
+      name: "slide_count_matches_requested_target",
+      passed: typeof requestedSlideCount !== "number" || manifest.slideCount === requestedSlideCount,
+      detail: typeof requestedSlideCount === "number" ? `requested=${requestedSlideCount} manifest=${manifest.slideCount}` : "no requested slide count recorded",
+    },
     { name: "titles_present", passed: manifest.slides.every((slide) => slide.title.trim().length > 0), detail: "all slides have titles" },
     { name: "rendered_page_visual_green", passed: visualQa.overallStatus === "green", detail: `visual status=${visualQa.overallStatus}` },
     { name: "rendered_page_visual_no_revision", passed: !visualQa.deckNeedsRevision, detail: visualQa.summary },

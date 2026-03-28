@@ -6,6 +6,9 @@ import * as tus from "tus-js-client";
 
 import { reportTypePresets } from "@/app/site-content";
 
+const UI_MIN_TARGET_SLIDES = 3;
+const UI_MAX_TARGET_SLIDES = 15;
+
 type GenerationStartResponse = {
   jobId: string;
   status: "queued";
@@ -123,7 +126,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
   const defaultTemplateName = savedTemplates.find((t) => t.id === defaultTemplateId)?.name;
   const templateLabel = selectedTemplate ? selectedTemplate.name : "Basquio Standard";
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
-  const [targetSlideCount, setTargetSlideCount] = useState(recipePrefill?.targetSlideCount ?? 10);
+  const [targetSlideCount, setTargetSlideCount] = useState(clampTargetSlideCount(recipePrefill?.targetSlideCount ?? 10));
   const creditsNeeded = 3 + targetSlideCount; // 3 base + 1 per slide
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: recipePrefill?.brief.businessContext ?? "",
@@ -705,15 +708,15 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                     </div>
                     <input
                       type="range"
-                      min={3}
-                      max={20}
+                      min={UI_MIN_TARGET_SLIDES}
+                      max={UI_MAX_TARGET_SLIDES}
                       value={targetSlideCount}
-                      onChange={(e) => setTargetSlideCount(Number(e.target.value))}
+                      onChange={(e) => setTargetSlideCount(clampTargetSlideCount(Number(e.target.value)))}
                       style={{ width: "100%", accentColor: "var(--blue)" }}
                     />
                     <span className="muted" style={{ fontSize: "0.78rem", display: "flex", justifyContent: "space-between" }}>
                       <span>3 slides (6 cr)</span>
-                      <span>20 slides (23 cr)</span>
+                      <span>15 slides (18 cr)</span>
                     </span>
                   </label>
                 </div>
@@ -760,6 +763,14 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
       {error ? <div className="panel danger-panel">{error}</div> : null}
     </div>
   );
+}
+
+function clampTargetSlideCount(value: number) {
+  if (!Number.isFinite(value)) {
+    return 10;
+  }
+
+  return Math.min(UI_MAX_TARGET_SLIDES, Math.max(UI_MIN_TARGET_SLIDES, Math.round(value)));
 }
 
 function syncInputFiles(input: HTMLInputElement | null, files: File[]) {
