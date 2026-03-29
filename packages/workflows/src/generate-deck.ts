@@ -1016,24 +1016,80 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       if (!analysis) {
         throw new Error("Analysis unavailable before export.");
       }
-      const narrativeReport = await generateNarrativeReport(client, run, analysis, finalManifest, BETAS);
-      if (narrativeReport?.usage) {
-        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, narrativeReport.usage));
-        assertDeckSpendWithinBudget(spentUsd);
-        phaseTelemetry.docxNarrative = buildSimplePhaseTelemetry(MODEL, narrativeReport.usage);
-      }
-      finalDocx = narrativeReport?.text
-        ? await buildEnrichedDocx({
+      phaseTelemetry.docxNarrative = { attempted: true };
+      try {
+        const narrativeReport = await generateNarrativeReport(client, run, analysis, finalManifest, BETAS);
+        if (narrativeReport?.usage) {
+          spentUsd = roundUsd(spentUsd + usageToCost(MODEL, narrativeReport.usage));
+          assertDeckSpendWithinBudget(spentUsd);
+        }
+
+        if (narrativeReport?.text) {
+          const enrichedDocx = await buildEnrichedDocx({
             run,
             analysis,
             manifest: finalManifest,
             narrativeText: narrativeReport.text,
-          })
-        : await buildNarrativeDocx({
-            run,
-            analysis,
-            manifest: finalManifest,
           });
+          if (enrichedDocx.buffer.length > 10_000) {
+            finalDocx = enrichedDocx;
+            phaseTelemetry.docxNarrative = {
+              attempted: true,
+              succeeded: true,
+              outputBytes: enrichedDocx.buffer.length,
+              ...(narrativeReport.usage
+                ? {
+                    model: MODEL,
+                    inputTokens: narrativeReport.usage.input_tokens ?? 0,
+                    outputTokens: narrativeReport.usage.output_tokens ?? 0,
+                    estimatedCostUsd: usageToCost(MODEL, narrativeReport.usage),
+                  }
+                : {}),
+            };
+          } else {
+            phaseTelemetry.docxNarrative = {
+              attempted: true,
+              succeeded: false,
+              reason: `too_short_${enrichedDocx.buffer.length}_bytes`,
+              ...(narrativeReport.usage
+                ? {
+                    model: MODEL,
+                    inputTokens: narrativeReport.usage.input_tokens ?? 0,
+                    outputTokens: narrativeReport.usage.output_tokens ?? 0,
+                    estimatedCostUsd: usageToCost(MODEL, narrativeReport.usage),
+                  }
+                : {}),
+            };
+          }
+        } else {
+          phaseTelemetry.docxNarrative = {
+            attempted: true,
+            succeeded: false,
+            reason: "returned_null",
+            ...(narrativeReport?.usage
+              ? {
+                  model: MODEL,
+                  inputTokens: narrativeReport.usage.input_tokens ?? 0,
+                  outputTokens: narrativeReport.usage.output_tokens ?? 0,
+                  estimatedCostUsd: usageToCost(MODEL, narrativeReport.usage),
+                }
+              : {}),
+          };
+        }
+      } catch (narrativeError) {
+        const narrativeMessage = narrativeError instanceof Error ? narrativeError.message : String(narrativeError);
+        console.error(`[generateDeckRun] narrative DOCX failed: ${narrativeMessage.slice(0, 300)}`);
+        phaseTelemetry.docxNarrative = {
+          attempted: true,
+          succeeded: false,
+          reason: `threw: ${narrativeMessage.slice(0, 200)}`,
+        };
+      }
+      finalDocx ??= await buildNarrativeDocx({
+        run,
+        analysis,
+        manifest: finalManifest,
+      });
       qaReport = await buildQaReport(
         finalManifest,
         finalPptx,
@@ -1739,16 +1795,9 @@ async function generateNarrativeReport(
   manifest: z.infer<typeof deckManifestSchema>,
   betas: readonly string[],
 ): Promise<{ text: string; usage: ClaudeUsage | null } | null> {
-  try {
-    const slideLanguageSample = manifest.slides.map((slide) => slide.title).join(" ");
-    const outputLanguage = detectLanguage(slideLanguageSample || `${run.objective} ${run.business_context}`);
-    const response = await client.beta.messages.create({
-      model: MODEL,
-      betas: [...betas] as Anthropic.Beta.AnthropicBeta[],
-      max_tokens: 4_096,
-      messages: [{
-        role: "user",
-        content: `Write a consulting-grade narrative report (2,000-3,000 words) for this analysis.
+  const slideLanguageSample = manifest.slides.map((slide) => slide.title).join(" ");
+  const outputLanguage = detectLanguage(slideLanguageSample || `${run.objective} ${run.business_context}`);
+  const prompt = `Write a consulting-grade narrative report (2,000-3,000 words) for this analysis.
 
 Client: ${run.client || "Not specified"}
 Audience: ${run.audience || "Executive stakeholder"}
@@ -1781,28 +1830,32 @@ Rules:
 - Add methodology, caveats, and connective tissue between findings.
 - Recommendations must be more operational than slide callouts: specific actions, timelines, expected impact.
 
-Return only the report text, no JSON wrapper.`,
-      }],
-    });
+Return only the report text, no JSON wrapper.`;
+  console.log(`[generateDeckRun] narrative DOCX prompt preview: ${prompt.replace(/\s+/g, " ").slice(0, 200)}`);
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    betas: [...betas] as Anthropic.Beta.AnthropicBeta[],
+    max_tokens: 4_096,
+    messages: [{
+      role: "user",
+      content: prompt,
+    }],
+  });
 
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
 
-    if (text.length <= 500) {
-      return null;
-    }
-
-    return {
-      text,
-      usage: response.usage ?? null,
-    };
-  } catch (error) {
-    console.warn(`[generateDeckRun] narrative report generation failed: ${error instanceof Error ? error.message : String(error)}`);
+  if (text.length <= 500) {
     return null;
   }
+
+  return {
+    text,
+    usage: response.usage ?? null,
+  };
 }
 
 async function markPhase(
