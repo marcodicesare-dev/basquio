@@ -869,13 +869,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
           currentSpentUsd: spentUsd,
           container: buildAuthoringContainer(latestContainerId),
-          contextManagement: {
-            edits: [{
-              type: "clear_tool_uses_20250919",
-              keep: { type: "tool_uses", value: 2 },
-              clear_at_least: { type: "input_tokens", value: 20_000 },
-            }],
-          },
           messages: reviseMessages,
           tools: CLAUDE_TOOLS,
           outputConfig: AUTHORING_OUTPUT_CONFIG,
