@@ -816,6 +816,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           issues: critiqueIssues,
           manifest,
           currentPdf: pdfFile,
+          visualQa: initialVisualQa.report,
         });
         const reviseMessages = [...latestResponse.thread, reviseMessage];
         await recordToolCall(config, runId, attempt, "revise", "code_execution", {
@@ -2413,9 +2414,16 @@ function buildAuthorMessage(
 function buildReviseSlideScope(
   manifest: z.infer<typeof deckManifestSchema>,
   issues: string[],
+  visualQa?: RenderedPageQaReport,
 ) {
   const targetedPositions = new Set<number>();
   const deckLevelIssues: string[] = [];
+
+  for (const issue of visualQa?.issues ?? []) {
+    if (issue.severity === "major" || issue.severity === "critical") {
+      targetedPositions.add(issue.slidePosition);
+    }
+  }
 
   for (const issue of issues) {
     const matches = [...issue.matchAll(/(?:^|[^a-z])(slide)\s+(\d+)/gi)];
@@ -2455,9 +2463,14 @@ function buildReviseMessage(input: {
   issues: string[];
   manifest: z.infer<typeof deckManifestSchema>;
   currentPdf: GeneratedFile;
+  visualQa: RenderedPageQaReport;
 }) {
   const chartPreprocessingGuide = buildChartPreprocessingGuide();
-  const slideScope = buildReviseSlideScope(input.manifest, input.issues);
+  const slideScope = buildReviseSlideScope(input.manifest, input.issues, input.visualQa);
+  const primaryVisualIssues = input.visualQa.issues.filter((issue) => issue.severity === "major" || issue.severity === "critical");
+  const secondaryIssues = input.issues.filter((issue) => {
+    return !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
+  });
   return {
     role: "user" as const,
     content: [
@@ -2477,6 +2490,7 @@ function buildReviseMessage(input: {
           "The rendered PDF above is the exact current deck. Inspect it before you change anything.",
           "Reuse the existing container state and the prior authoring context. Do not start a new draft from scratch unless necessary to fix the issues.",
           "If a client PPTX template is present in the container, continue using it as the visual source of truth. Do not drift back to Basquio dark/editorial styling during repair.",
+          `Current rendered visual QA score: ${input.visualQa.score}/10 (${input.visualQa.overallStatus}). Improve the rendered visual quality from this baseline.`,
           "",
           slideScope.allowedSlides.length === input.manifest.slides.length
             ? "You may change any slide, but still preserve the storyline and keep edits minimal."
@@ -2494,9 +2508,19 @@ function buildReviseMessage(input: {
               ]
             : []),
           "",
-          "Fix these issues:",
-          ...input.issues.map((issue) => `- ${issue}`),
+          "Primary visible issues to fix from the rendered PDF:",
+          ...(primaryVisualIssues.length > 0
+            ? primaryVisualIssues.map((issue) => `- Slide ${issue.slidePosition} ${issue.code}: ${issue.description}. Fix: ${issue.fix}`)
+            : ["- No major visual issues were supplied; make only the smallest fixes needed."]),
+          ...(secondaryIssues.length > 0
+            ? [
+                "",
+                "Secondary issues to consider only if they can be fixed within the same allowed slides and WITHOUT creating new visual defects:",
+                ...secondaryIssues.map((issue) => `- ${issue}`),
+              ]
+            : []),
           "",
+          "Do not sacrifice visual polish to satisfy deck-wide lint or naming advice.",
           "Do not use a deck-wide rewrite to solve local issues. Target the weak slides and preserve the rest.",
           "Do not widen the deck. Improve the weak slides and keep the deck consulting-grade.",
           "Apply the copywriting voice rules from the system prompt when rewriting any text: no em dashes, numbers first, active voice, insight titles not topic labels.",
