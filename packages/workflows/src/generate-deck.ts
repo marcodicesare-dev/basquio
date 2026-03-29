@@ -8,7 +8,9 @@ import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import { detectLanguage, enforceExhibit, inferQuestionType, lintDeckText, routeQuestion, validateDeckContract, type SlideTextInput } from "@basquio/intelligence";
+import type { ChartSlotType } from "@basquio/scene-graph";
 import { getArchetypeOrDefault, listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
+import { getLayoutRegions } from "@basquio/scene-graph/layout-regions";
 import {
   buildNoTemplateDiagnostics,
   buildTemplateDiagnosticsFromProfile,
@@ -83,6 +85,18 @@ const CONTINUATION_MIN_REMAINING_BUDGET_USD = 0.5;
 const STREAM_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_STREAM_REQUEST_WATCHDOG_MS ?? "240000", 10);
 const CIRCUIT_BREAKER_STATES = new Map<string, CircuitState>();
 const APPROVED_ARCHETYPES = listArchetypeIds();
+const ALL_CHART_TYPES: ChartSlotType[] = [
+  "bar",
+  "stacked_bar",
+  "line",
+  "pie",
+  "doughnut",
+  "waterfall",
+  "scatter",
+  "area",
+  "grouped_bar",
+  "horizontal_bar",
+];
 
 const analysisSchema = z.object({
   language: z.string().default("English"),
@@ -2522,46 +2536,60 @@ function buildPerSlideConstraintBlock(analysis: z.infer<typeof analysisSchema> |
     return undefined;
   }
 
-  const lines: string[] = [
-    "Per-slide spatial constraints (from archetype system — respect these exactly):",
-  ];
+  const lines: string[] = ["Per-slide spatial constraints (from archetype system — respect these exactly):"];
 
   for (const slide of analysis.slidePlan) {
     const layoutId = slide.slideArchetype || slide.layoutId || "title-chart";
     const archetype = getArchetypeOrDefault(layoutId);
-    const parts: string[] = [`  Slide ${slide.position} [${layoutId}]:`];
+    const layoutRegions = getLayoutRegions(layoutId);
+    const slotLines = Object.entries(archetype.slots).map(([slotName, slot]) => {
+      const region = layoutRegions[slotName as keyof typeof layoutRegions];
+      const frame = region ?? slot.frame;
+      const details: string[] = [];
 
-    const titleSlot = archetype.slots.title;
-    if (titleSlot?.maxChars) {
-      parts.push(`    title: max ${titleSlot.maxChars}ch, one line`);
-    }
+      if (slot.kind === "chart") {
+        details.push(`figsize=${frame.w.toFixed(1)}×${frame.h.toFixed(1)}in`);
+        if (slot.maxCategories) {
+          details.push(`max ${slot.maxCategories} categories`);
+        }
+        if (slot.allowedChartTypes?.length) {
+          details.push(`allowed: ${slot.allowedChartTypes.join(", ")}`);
+          const forbiddenChartTypes = ALL_CHART_TYPES.filter((chartType) => !slot.allowedChartTypes?.includes(chartType));
+          if (forbiddenChartTypes.length > 0) {
+            details.push(`forbidden: ${forbiddenChartTypes.join(", ")}`);
+          }
+        }
+      }
 
-    const chartSlot = archetype.slots.chart;
-    if (chartSlot && slide.chart) {
-      parts.push(`    chart: figsize=${chartSlot.frame.w.toFixed(1)}×${chartSlot.frame.h.toFixed(1)}in, max ${chartSlot.maxCategories ?? 12} categories`);
-    }
+      if (slot.kind === "metrics") {
+        details.push(`${slot.minMetrics ?? 1}-${slot.maxMetrics ?? 5} KPI cards`);
+      }
 
-    const bodySlot = archetype.slots.body;
-    if (bodySlot?.maxWords) {
-      parts.push(`    body: max ${bodySlot.maxWords}w in ${bodySlot.frame.w.toFixed(1)}×${bodySlot.frame.h.toFixed(1)}in`);
-    }
+      if (slot.maxChars) {
+        details.push(`max ${slot.maxChars} chars`);
+      }
+      if (slot.maxWords) {
+        details.push(`max ${slot.maxWords} words`);
+      }
+      if (slot.maxBullets) {
+        details.push(`max ${slot.maxBullets} bullets`);
+      }
+      if (slot.fontRange) {
+        details.push(`font ${slot.fontRange[0]}-${slot.fontRange[1]}pt`);
+      }
+      if (slot.required) {
+        details.push("required");
+      }
 
-    const bulletsSlot = archetype.slots.bullets;
-    if (bulletsSlot?.maxBullets) {
-      parts.push(`    bullets: max ${bulletsSlot.maxBullets} bullets`);
-    }
+      return `  ${slotName}: ${details.join(", ")} | frame=(${frame.x.toFixed(2)}, ${frame.y.toFixed(2)}, ${frame.w.toFixed(2)}, ${frame.h.toFixed(2)})`;
+    });
 
-    const metricsSlot = archetype.slots.metrics;
-    if (metricsSlot) {
-      parts.push(`    metrics: ${metricsSlot.minMetrics ?? 1}-${metricsSlot.maxMetrics ?? 5} cards`);
-    }
-
-    const calloutSlot = archetype.slots.callout;
-    if (calloutSlot?.maxChars) {
-      parts.push(`    callout: max ${calloutSlot.maxChars}ch`);
-    }
-
-    lines.push(parts.join("\n"));
+    lines.push(
+      [
+        `Slide ${slide.position} archetype "${layoutId}" (${archetype.label}):`,
+        ...slotLines,
+      ].join("\n"),
+    );
   }
 
   return lines.join("\n");
