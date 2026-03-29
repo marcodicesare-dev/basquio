@@ -580,6 +580,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
         questionRoutes,
         recoveredAnalysisForSplit && analysis ? buildChartSlotConstraintMessage(analysis) : undefined,
+        recoveredAnalysisForSplit && analysis ? buildPerSlideConstraintBlock(analysis) : undefined,
       );
       await recordToolCall(config, runId, attempt, "author", "code_execution", {
         model: MODEL,
@@ -2313,6 +2314,7 @@ function buildAuthorMessage(
   },
   questionRoutes: Array<{ id: string; name: string; diagnosticMotifs: string[]; recommendationLevers: string[] }> = [],
   chartSlotConstraintMessage?: string,
+  perSlideConstraintMessage?: string,
 ) {
   const routeContext = questionRoutes.length > 0
     ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
@@ -2373,6 +2375,7 @@ function buildAuthorMessage(
           "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
           "- Do not use native PowerPoint chart objects for critical visuals.",
           ...(chartSlotConstraintMessage ? [chartSlotConstraintMessage] : []),
+          ...(perSlideConstraintMessage ? [perSlideConstraintMessage] : []),
           "- Treat the deterministic chart preprocessing guide below as a hard render contract, not as optional style advice.",
           chartPreprocessingGuide,
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
@@ -2409,6 +2412,56 @@ function buildAuthorMessage(
       },
     ],
   };
+}
+
+function buildPerSlideConstraintBlock(analysis: z.infer<typeof analysisSchema> | null): string | undefined {
+  if (!analysis?.slidePlan?.length) {
+    return undefined;
+  }
+
+  const lines: string[] = [
+    "Per-slide spatial constraints (from archetype system — respect these exactly):",
+  ];
+
+  for (const slide of analysis.slidePlan) {
+    const layoutId = slide.slideArchetype || slide.layoutId || "title-chart";
+    const archetype = getArchetypeOrDefault(layoutId);
+    const parts: string[] = [`  Slide ${slide.position} [${layoutId}]:`];
+
+    const titleSlot = archetype.slots.title;
+    if (titleSlot?.maxChars) {
+      parts.push(`    title: max ${titleSlot.maxChars}ch, one line`);
+    }
+
+    const chartSlot = archetype.slots.chart;
+    if (chartSlot && slide.chart) {
+      parts.push(`    chart: figsize=${chartSlot.frame.w.toFixed(1)}×${chartSlot.frame.h.toFixed(1)}in, max ${chartSlot.maxCategories ?? 12} categories`);
+    }
+
+    const bodySlot = archetype.slots.body;
+    if (bodySlot?.maxWords) {
+      parts.push(`    body: max ${bodySlot.maxWords}w in ${bodySlot.frame.w.toFixed(1)}×${bodySlot.frame.h.toFixed(1)}in`);
+    }
+
+    const bulletsSlot = archetype.slots.bullets;
+    if (bulletsSlot?.maxBullets) {
+      parts.push(`    bullets: max ${bulletsSlot.maxBullets} bullets`);
+    }
+
+    const metricsSlot = archetype.slots.metrics;
+    if (metricsSlot) {
+      parts.push(`    metrics: ${metricsSlot.minMetrics ?? 1}-${metricsSlot.maxMetrics ?? 5} cards`);
+    }
+
+    const calloutSlot = archetype.slots.callout;
+    if (calloutSlot?.maxChars) {
+      parts.push(`    callout: max ${calloutSlot.maxChars}ch`);
+    }
+
+    lines.push(parts.join("\n"));
+  }
+
+  return lines.join("\n");
 }
 
 function buildReviseSlideScope(

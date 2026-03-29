@@ -360,6 +360,84 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
     },
   },
 
+  "scenario-cards": {
+    id: "scenario-cards",
+    label: "Scenario Cards",
+    description: "Side-by-side scenario or option comparison (2-3 cards) with optional chart left",
+    slots: {
+      kicker: {
+        kind: "kicker",
+        frame: { x: 0.45, y: 0.12, w: 9.1, h: 0.18 },
+        maxChars: 40,
+        fontRange: [8, 10],
+      },
+      title: {
+        kind: "title",
+        frame: { x: 0.45, y: 0.32, w: 9.1, h: 0.52 },
+        maxChars: 120,
+        required: true,
+        fontRange: [16, 20],
+      },
+      chart: {
+        kind: "chart",
+        frame: { x: 0.35, y: 0.92, w: 5.5, h: 3.5 },
+        maxCategories: 8,
+        allowedChartTypes: ["bar", "stacked_bar", "grouped_bar", "horizontal_bar", "line", "waterfall"],
+      },
+      body: {
+        kind: "body",
+        frame: { x: 6.1, y: 0.92, w: 3.5, h: 3.55 },
+        maxWords: 90,
+        maxChars: 540,
+        required: true,
+        fontRange: [10, 12],
+      },
+      callout: {
+        kind: "callout",
+        frame: { x: 0.45, y: 4.55, w: 9.1, h: 0.42 },
+        maxWords: 20,
+        maxChars: 120,
+        fontRange: [10, 12],
+      },
+    },
+  },
+
+  "key-findings": {
+    id: "key-findings",
+    label: "Key Findings",
+    description: "3 equal key-finding cards in a row, each with a colored header, title, and short body",
+    slots: {
+      kicker: {
+        kind: "kicker",
+        frame: { x: 0.45, y: 0.12, w: 9.1, h: 0.18 },
+        maxChars: 40,
+        fontRange: [8, 10],
+      },
+      title: {
+        kind: "title",
+        frame: { x: 0.45, y: 0.32, w: 9.1, h: 0.52 },
+        maxChars: 120,
+        required: true,
+        fontRange: [16, 20],
+      },
+      body: {
+        kind: "body",
+        frame: { x: 0.45, y: 0.92, w: 9.1, h: 3.5 },
+        maxWords: 120,
+        maxChars: 720,
+        required: true,
+        fontRange: [10, 12],
+      },
+      callout: {
+        kind: "callout",
+        frame: { x: 0.45, y: 4.55, w: 9.1, h: 0.42 },
+        maxWords: 20,
+        maxChars: 120,
+        fontRange: [10, 12],
+      },
+    },
+  },
+
   "title-body": {
     id: "title-body",
     label: "Title + Body",
@@ -728,11 +806,39 @@ export function describeAllArchetypesForPrompt(): string {
       if (slot.maxBullets) limits.push(`≤${slot.maxBullets} bullets`);
       if (slot.maxMetrics) limits.push(`${slot.minMetrics ?? 1}-${slot.maxMetrics} cards`);
       if (slot.maxCategories) limits.push(`≤${slot.maxCategories} cats`);
+      if (slot.kind === "chart" && slot.frame) {
+        limits.push(`figsize=${slot.frame.w.toFixed(1)}×${slot.frame.h.toFixed(1)}in`);
+      }
+      if (slot.allowedChartTypes) limits.push(`charts: ${slot.allowedChartTypes.join(", ")}`);
       if (slot.maxTableRows) limits.push(`≤${slot.maxTableRows} rows`);
       lines.push(`  ${slotName}: ${limits.join(", ")}`);
     }
     lines.push("");
   }
+
+  lines.push("=== ARCHETYPE SELECTION RULES ===");
+  lines.push("- cover: opening slide only.");
+  lines.push("- exec-summary: 3-5 KPI cards + one takeaway. Use for the slide right after cover.");
+  lines.push("- title-chart: one chart fills 60%+ of slide. Use when the chart IS the argument.");
+  lines.push("- chart-split: chart left + insight text right. Use when chart needs explanation.");
+  lines.push("- evidence-grid: metrics top + chart left + text right. Use for dense data slides.");
+  lines.push("- comparison: two charts side by side. Use for CY vs PY or brand A vs brand B.");
+  lines.push("- scenario-cards: chart left + 2-3 option/scenario cards stacked right. Use for 'what if' or 'option A vs B'. Each card: max 3 lines body, max 40ch title.");
+  lines.push("- key-findings: 3 equal cards in a row. Use for '3 key takeaways' or '3 priority actions'. Each card: colored header + title + max 4 lines body.");
+  lines.push("- recommendation-cards: body + exactly 2 action cards. Use for final recommendation.");
+  lines.push("- title-body: text-heavy. Use sparingly, max 1 per deck.");
+  lines.push("- title-bullets: bulleted list. Use for agendas or structured lists.");
+  lines.push("- table: data table. Use when detail requires > 6 rows of comparison.");
+  lines.push("- summary: body + bullets + callout. Use for closing/next-steps.");
+  lines.push("");
+  lines.push("=== LAYOUT SAFETY RULES ===");
+  lines.push("- Never place elements outside defined slot regions. If you need a custom composition, choose a different archetype.");
+  lines.push("- Scenario/option cards: max 3 cards stacked vertically in the body slot. Each max 3 lines. If more detail needed, split to 2 slides.");
+  lines.push("- Chart + body layouts (chart-split, evidence-grid): body on RIGHT, chart on LEFT. Never swap.");
+  lines.push("- Right panels: >=0.3in right margin. Text must not touch slide edge.");
+  lines.push("- Callout tone: green = growth/positive, orange = risk/caution, accent = neutral.");
+  lines.push("- Never place >3 KPI/metric cards on any slide except exec-summary.");
+  lines.push("");
 
   return lines.join("\n");
 }

@@ -134,6 +134,23 @@ export function getLayoutRegions(layoutId: string): LayoutRegions {
         callout: { x: ml, y: 6.40, w: 6.0, h: 0.35 },        // moved up from 6.7
       };
 
+    case "scenario-cards":
+      return {
+        kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
+        title: { x: ml, y: 0.8, w: cw, h: 0.7 },
+        chart: { x: ml, y: 1.75, w: 6.2, h: 4.25 },
+        body: { x: 7.1, y: 1.75, w: 5.633, h: 4.25 },
+        callout: { x: ml, y: 6.40, w: 6.0, h: 0.35 },
+      };
+
+    case "key-findings":
+      return {
+        kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
+        title: { x: ml, y: 0.8, w: cw, h: 0.7 },
+        body: { x: ml, y: 1.75, w: cw, h: 4.55 },
+        callout: { x: ml, y: 6.40, w: cw, h: 0.35 },
+      };
+
     case "title-body":
       return {
         kicker: { x: ml, y: 0.5, w: cw, h: 0.25 },
