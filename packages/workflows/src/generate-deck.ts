@@ -758,8 +758,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
     const critiqueLint = lintManifest(manifest);
     const critiqueContract = validateManifestContract(manifest);
-    const hasManifestActionableIssues = critiqueLint.actionableIssues.length > 0 || critiqueContract.actionableIssues.length > 0;
     const hasBlockingCritiqueIssues = blockingCritiqueIssues.length > 0;
+    const hasMajorOrCriticalVisualIssues = initialVisualQa.report.issues.some(
+      (issue) => issue.severity === "major" || issue.severity === "critical",
+    );
     const critiqueCheckpointProof = buildCheckpointProof({
       authorComplete: true,
       critiqueComplete: true,
@@ -802,10 +804,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     finalVisualQa = initialVisualQa.report;
 
     const shouldRunRevise = latestResponse !== null && !(
-      initialVisualQa.report.overallStatus === "green" &&
-      initialVisualQa.report.score >= 8 &&
+      initialVisualQa.report.score >= 7.5 &&
       !initialVisualQa.report.deckNeedsRevision &&
-      !hasManifestActionableIssues &&
+      !hasMajorOrCriticalVisualIssues &&
       !hasBlockingCritiqueIssues
     );
 
