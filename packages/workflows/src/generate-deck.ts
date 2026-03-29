@@ -3957,14 +3957,26 @@ function collectPublishGateFailures(input: {
   lint: ReturnType<typeof lintManifest>;
   contract: ReturnType<typeof validateManifestContract>;
 }) {
-  const blockingFailures = [
-    ...input.qaReport.failed,
+  const hardPublishBlockers = new Set([
+    "pptx_present",
+    "pdf_present",
+    "pptx_zip_signature",
+    "pdf_header_signature",
+    "slide_count_positive",
+    "pptx_zip_parse_failed",
+    "pdf_parseable",
+  ]);
+
+  const blockingFailures = input.qaReport.failed.filter((check) => hardPublishBlockers.has(check));
+  const advisories = [
+    ...input.qaReport.failed.filter((check) => !hardPublishBlockers.has(check)),
     ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
     ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
   ];
 
   return {
     blockingFailures: [...new Set(blockingFailures)],
+    advisories: [...new Set(advisories)],
     lintSummary: summarizeLintResult(input.lint),
     contractSummary: summarizeDeckContractResult(input.contract),
   };
@@ -3987,6 +3999,7 @@ function buildPublishDecision(input: {
     decision: gate.blockingFailures.length === 0 ? "publish" : "fail",
     hardBlockers: gate.blockingFailures,
     advisories: [
+      ...gate.advisories,
       ...input.lint.result.deckViolations
         .filter((issue) => issue.severity === "minor")
         .map((issue) => issue.message),
