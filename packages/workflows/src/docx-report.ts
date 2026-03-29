@@ -58,12 +58,14 @@ type ReportBlock =
 
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export async function buildNarrativeDocx(input: {
+type NarrativeDocxInput = {
   run: NarrativeRunContext;
   analysis: NarrativeAnalysis;
   manifest: DeckManifest;
   generatedAt?: Date;
-}) {
+};
+
+export async function buildNarrativeDocx(input: NarrativeDocxInput) {
   const labels = getLabels(resolveNarrativeLanguage(input));
   const reportTitle = firstNonEmpty(
     input.manifest.slides[0]?.title,
@@ -133,23 +135,59 @@ export async function buildNarrativeDocx(input: {
     });
   }
 
-  const zip = new JSZip();
-  zip.file("[Content_Types].xml", buildContentTypesXml());
-  zip.file("_rels/.rels", buildRootRelationshipsXml());
-  zip.file("docProps/core.xml", buildCorePropsXml(reportTitle, generatedAt));
-  zip.file("docProps/app.xml", buildAppPropsXml());
-  zip.file("word/document.xml", buildDocumentXml({
+  return buildDocxPackage({
     title: reportTitle,
     labels,
     run: input.run,
     generatedAt,
     sections,
+  });
+}
+
+export async function buildEnrichedDocx(input: NarrativeDocxInput & { narrativeText: string }) {
+  const labels = getLabels(resolveNarrativeLanguage(input));
+  const reportTitle = firstNonEmpty(
+    input.manifest.slides[0]?.title,
+    input.analysis.thesis,
+    input.run.objective,
+    labels.defaultTitle,
+  );
+  const generatedAt = input.generatedAt ?? new Date();
+  const sections = buildNarrativeSectionsFromText(input.narrativeText, labels);
+
+  return buildDocxPackage({
+    title: reportTitle,
+    labels,
+    run: input.run,
+    generatedAt,
+    sections,
+  });
+}
+
+async function buildDocxPackage(input: {
+  title: string;
+  labels: ReturnType<typeof getLabels>;
+  run: NarrativeRunContext;
+  generatedAt: Date;
+  sections: ReportSection[];
+}) {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", buildContentTypesXml());
+  zip.file("_rels/.rels", buildRootRelationshipsXml());
+  zip.file("docProps/core.xml", buildCorePropsXml(input.title, input.generatedAt));
+  zip.file("docProps/app.xml", buildAppPropsXml());
+  zip.file("word/document.xml", buildDocumentXml({
+    title: input.title,
+    labels: input.labels,
+    run: input.run,
+    generatedAt: input.generatedAt,
+    sections: input.sections,
   }));
-  zip.file("word/styles.xml", buildStylesXml(labels));
+  zip.file("word/styles.xml", buildStylesXml(input.labels));
   zip.file("word/_rels/document.xml.rels", buildDocumentRelationshipsXml());
 
   return {
-    fileId: `generated-docx-${generatedAt.getTime()}`,
+    fileId: `generated-docx-${input.generatedAt.getTime()}`,
     fileName: "report.docx",
     mimeType: DOCX_MIME_TYPE,
     buffer: await zip.generateAsync({
@@ -157,6 +195,66 @@ export async function buildNarrativeDocx(input: {
       compression: "DEFLATE",
     }),
   };
+}
+
+function buildNarrativeSectionsFromText(text: string, labels: ReturnType<typeof getLabels>): ReportSection[] {
+  const lines = text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const sections: ReportSection[] = [];
+  let currentHeading = labels.executiveSummary;
+  let currentParagraphs: string[] = [];
+
+  const flush = () => {
+    const blocks = paragraphBlocks(currentParagraphs);
+    if (blocks.length === 0) {
+      return;
+    }
+    sections.push({
+      heading: currentHeading,
+      level: 1,
+      blocks,
+    });
+    currentParagraphs = [];
+  };
+
+  for (const line of lines) {
+    const heading = parseNarrativeHeading(line);
+    if (heading) {
+      flush();
+      currentHeading = heading;
+      continue;
+    }
+    currentParagraphs.push(line);
+  }
+
+  flush();
+
+  if (sections.length === 0) {
+    return [{
+      heading: labels.executiveSummary,
+      level: 1,
+      blocks: paragraphBlocks([text]),
+    }];
+  }
+
+  return sections;
+}
+
+function parseNarrativeHeading(line: string) {
+  const numbered = line.match(/^\d+\.\s+(.+)$/);
+  if (numbered?.[1]) {
+    return normalizeSentence(numbered[1]);
+  }
+
+  if (/^[A-ZÀ-ÖØ-Þ0-9 &/:()-]{6,}$/.test(line) && line.includes(" ")) {
+    return normalizeSentence(line);
+  }
+
+  return "";
 }
 
 function buildDocumentXml(input: {

@@ -28,7 +28,7 @@ import {
 } from "./anthropic-execution-contract";
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
-import { buildNarrativeDocx } from "./docx-report";
+import { buildEnrichedDocx, buildNarrativeDocx } from "./docx-report";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
@@ -1009,11 +1009,24 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       if (!analysis) {
         throw new Error("Analysis unavailable before export.");
       }
-      finalDocx = await buildNarrativeDocx({
-        run,
-        analysis,
-        manifest: finalManifest,
-      });
+      const narrativeReport = await generateNarrativeReport(client, run, analysis, finalManifest, BETAS);
+      if (narrativeReport?.usage) {
+        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, narrativeReport.usage));
+        assertDeckSpendWithinBudget(spentUsd);
+        phaseTelemetry.docxNarrative = buildSimplePhaseTelemetry(MODEL, narrativeReport.usage);
+      }
+      finalDocx = narrativeReport?.text
+        ? await buildEnrichedDocx({
+            run,
+            analysis,
+            manifest: finalManifest,
+            narrativeText: narrativeReport.text,
+          })
+        : await buildNarrativeDocx({
+            run,
+            analysis,
+            manifest: finalManifest,
+          });
       qaReport = await buildQaReport(
         finalManifest,
         finalPptx,
@@ -1710,6 +1723,79 @@ async function buildFallbackNarrativeDocx(input: {
   }
 
   return buildStubDocx(input.message);
+}
+
+async function generateNarrativeReport(
+  client: Anthropic,
+  run: RunRow,
+  analysis: z.infer<typeof analysisSchema> | null,
+  manifest: z.infer<typeof deckManifestSchema>,
+  betas: readonly string[],
+): Promise<{ text: string; usage: ClaudeUsage | null } | null> {
+  try {
+    const slideLanguageSample = manifest.slides.map((slide) => slide.title).join(" ");
+    const outputLanguage = detectLanguage(slideLanguageSample || `${run.objective} ${run.business_context}`);
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      betas: [...betas] as Anthropic.Beta.AnthropicBeta[],
+      max_tokens: 4_096,
+      messages: [{
+        role: "user",
+        content: `Write a consulting-grade narrative report (2,000-3,000 words) for this analysis.
+
+Client: ${run.client || "Not specified"}
+Audience: ${run.audience || "Executive stakeholder"}
+Objective: ${run.objective || "Not specified"}
+Business context: ${run.business_context || "Not specified"}
+
+Analysis thesis: ${analysis?.thesis || "Not available"}
+Executive summary: ${analysis?.executiveSummary || "Not available"}
+
+Slide plan:
+${JSON.stringify(manifest.slides.map((slide) => ({
+  position: slide.position,
+  title: slide.title,
+  body: slide.body,
+  bullets: slide.bullets,
+  callout: slide.callout,
+})), null, 2)}
+
+Write these sections:
+1. EXECUTIVE SUMMARY (250-400 words) — the full story in one page. Thesis, 3 key findings, recommended action.
+2. SITUATION & CONTEXT (200-300 words) — market dynamics, why this matters now, stakes.
+3. METHODOLOGY (100-200 words) — what data was analyzed, KPIs computed, time periods, caveats.
+4. DETAILED FINDINGS (150-250 words per finding, cover all slides) — for each finding: the insight, the evidence (specific numbers), the implication, any caveats.
+5. RECOMMENDATIONS (300-500 words) — prioritized actions with rationale, expected impact, sequencing. More operational than slide callouts.
+
+Rules:
+- Write in ${outputLanguage}.
+- Use the same copywriting voice as the slides: numbers first, active voice, no filler.
+- Include analysis that supplements the slides, not just reformulates them.
+- Add methodology, caveats, and connective tissue between findings.
+- Recommendations must be more operational than slide callouts: specific actions, timelines, expected impact.
+
+Return only the report text, no JSON wrapper.`,
+      }],
+    });
+
+    const text = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
+
+    if (text.length <= 500) {
+      return null;
+    }
+
+    return {
+      text,
+      usage: response.usage ?? null,
+    };
+  } catch (error) {
+    console.warn(`[generateDeckRun] narrative report generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 async function markPhase(
