@@ -2428,6 +2428,11 @@ function buildAuthorMessage(
     ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
     : "";
   const chartPreprocessingGuide = buildChartPreprocessingGuide();
+  const analysisDepthInstruction = run.target_slide_count <= 3
+    ? "This is a focused 3-slide executive brief. Analyze only top-line KPIs and 1-2 key insights. Do not profile every sheet or column. Spend minimal code execution time on data exploration."
+    : run.target_slide_count <= 6
+      ? "This is a standard deck. Profile key sheets and identify 4-6 insights. Do not exhaustively analyze every dimension."
+      : "This is a comprehensive deck. Deep-dive the full workbook as needed.";
   const mergedAnalysisInstructions = analysis
     ? []
     : [
@@ -2440,6 +2445,7 @@ function buildAuthorMessage(
         "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
         ...(routeContext ? [routeContext] : []),
         "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
+        `- ${analysisDepthInstruction}`,
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         `- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`,
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
