@@ -854,6 +854,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
           currentSpentUsd: spentUsd,
           container: buildAuthoringContainer(latestContainerId),
+          contextManagement: {
+            edits: [{
+              type: "clear_tool_uses_20250919",
+              keep: { type: "tool_uses", value: 2 },
+              clear_at_least: { type: "input_tokens", value: 20_000 },
+            }],
+          },
           messages: reviseMessages,
           tools: CLAUDE_TOOLS,
           outputConfig: AUTHORING_OUTPUT_CONFIG,
@@ -2723,6 +2730,7 @@ async function runClaudeLoop(input: {
   messages: Anthropic.Beta.BetaMessageParam[];
   tools: Anthropic.Beta.BetaToolUnion[];
   container?: Anthropic.Beta.BetaContainerParams;
+  contextManagement?: Anthropic.Beta.BetaContextManagementConfig | null;
   outputConfig?: Anthropic.Beta.BetaOutputConfig;
   /** Optional: persist each retry-level request record immediately for telemetry truth */
   onRequestRecord?: (record: ClaudeRequestUsage) => Promise<void>;
@@ -2785,6 +2793,7 @@ async function runClaudeLoop(input: {
         betas: [...BETAS] as Anthropic.Beta.AnthropicBeta[],
         system: input.systemPrompt,
         container: currentContainer,
+        context_management: input.contextManagement,
         messages,
         tools: input.tools,
         output_config: input.outputConfig,
