@@ -812,7 +812,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       try {
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
-        const reviseMessage = buildReviseMessage(critiqueIssues);
+        const reviseMessage = buildReviseMessage({
+          issues: critiqueIssues,
+          manifest,
+          currentPdf: pdfFile,
+        });
         const reviseMessages = [...latestResponse.thread, reviseMessage];
         await recordToolCall(config, runId, attempt, "revise", "code_execution", {
           model: MODEL,
@@ -2406,20 +2410,94 @@ function buildAuthorMessage(
   };
 }
 
-function buildReviseMessage(issues: string[]) {
+function buildReviseSlideScope(
+  manifest: z.infer<typeof deckManifestSchema>,
+  issues: string[],
+) {
+  const targetedPositions = new Set<number>();
+  const deckLevelIssues: string[] = [];
+
+  for (const issue of issues) {
+    const matches = [...issue.matchAll(/(?:^|[^a-z])(slide)\s+(\d+)/gi)];
+    if (matches.length === 0) {
+      deckLevelIssues.push(issue);
+      continue;
+    }
+    for (const match of matches) {
+      const position = Number.parseInt(match[2] ?? "", 10);
+      if (Number.isFinite(position) && position >= 1) {
+        targetedPositions.add(position);
+      }
+    }
+  }
+
+  const allSlides = manifest.slides.map((slide) => ({
+    position: slide.position,
+    title: slide.title,
+  }));
+
+  if (targetedPositions.size === 0) {
+    return {
+      allowedSlides: allSlides,
+      preservedSlides: [] as Array<{ position: number; title: string }>,
+      deckLevelIssues,
+    };
+  }
+
+  return {
+    allowedSlides: allSlides.filter((slide) => targetedPositions.has(slide.position)),
+    preservedSlides: allSlides.filter((slide) => !targetedPositions.has(slide.position)),
+    deckLevelIssues,
+  };
+}
+
+function buildReviseMessage(input: {
+  issues: string[];
+  manifest: z.infer<typeof deckManifestSchema>;
+  currentPdf: GeneratedFile;
+}) {
   const chartPreprocessingGuide = buildChartPreprocessingGuide();
+  const slideScope = buildReviseSlideScope(input.manifest, input.issues);
   return {
     role: "user" as const,
     content: [
       {
+        type: "document" as const,
+        source: {
+          type: "base64" as const,
+          media_type: "application/pdf" as const,
+          data: input.currentPdf.buffer.toString("base64"),
+        },
+        title: "Current rendered deck PDF - inspect this exact output before repairing it",
+      },
+      {
         type: "text" as const,
         text: [
           "Repair the generated deck and regenerate deck.pptx, deck.pdf, and deck_manifest.json.",
+          "The rendered PDF above is the exact current deck. Inspect it before you change anything.",
           "Reuse the existing container state and the prior authoring context. Do not start a new draft from scratch unless necessary to fix the issues.",
           "If a client PPTX template is present in the container, continue using it as the visual source of truth. Do not drift back to Basquio dark/editorial styling during repair.",
-          "Fix these issues:",
-          ...issues.map((issue) => `- ${issue}`),
           "",
+          slideScope.allowedSlides.length === input.manifest.slides.length
+            ? "You may change any slide, but still preserve the storyline and keep edits minimal."
+            : `You may change ONLY these slides: ${slideScope.allowedSlides.map((slide) => `${slide.position} (${slide.title})`).join(", ")}.`,
+          ...(slideScope.preservedSlides.length > 0
+            ? [
+                `Do NOT change these slides: ${slideScope.preservedSlides.map((slide) => `${slide.position} (${slide.title})`).join(", ")}.`,
+                "Preserve the analysis, wording, chart data, and layout of untouched slides exactly unless a file-format constraint makes a microscopic non-content adjustment unavoidable.",
+              ]
+            : []),
+          ...(slideScope.deckLevelIssues.length > 0
+            ? [
+                "Deck-level advisories to respect without broad redrafting:",
+                ...slideScope.deckLevelIssues.map((issue) => `- ${issue}`),
+              ]
+            : []),
+          "",
+          "Fix these issues:",
+          ...input.issues.map((issue) => `- ${issue}`),
+          "",
+          "Do not use a deck-wide rewrite to solve local issues. Target the weak slides and preserve the rest.",
           "Do not widen the deck. Improve the weak slides and keep the deck consulting-grade.",
           "Apply the copywriting voice rules from the system prompt when rewriting any text: no em dashes, numbers first, active voice, insight titles not topic labels.",
           "Keep language native and sharp. In Italian, do not use translated-English or pseudo-Spanish wording such as 'lidera'. In English, remove padded corporate phrasing.",
