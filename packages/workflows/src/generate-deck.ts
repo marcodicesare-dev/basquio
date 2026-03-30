@@ -38,8 +38,8 @@ import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const MODEL = "claude-sonnet-4-6";
-const VISUAL_QA_MODEL = "claude-sonnet-4-6";
-const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
+const VISUAL_QA_MODEL = "claude-haiku-4-5";
+const FINAL_VISUAL_QA_MODEL = "claude-haiku-4-5";
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
