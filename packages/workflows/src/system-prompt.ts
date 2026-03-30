@@ -91,6 +91,184 @@ slide.addText("Mix shift toward premium creates pricing headroom - brand should 
   fontSize: 10, fontFace: "Arial", color: "F2F0EB"
 });
 </example>
+
+<example name="perfect_cover_slide">
+// Cover slide using cover archetype
+// Note: use the client name from the brief, never "Non specificato"
+// The cover sets the analytical frame: title = the core finding, subtitle = scope + period
+
+const slide = pptx.addSlide();
+slide.background = { color: "0A090D" };
+
+slide.addShape(pptx.ShapeType.rect, {
+  x: 0, y: 0, w: 0.35, h: 7.5,
+  fill: { color: "1A6AFF" }
+});
+
+slide.addText("Il Discount perde 0.5pp di share confezioni vs Totale Italia nonostante distribuzione stabile", {
+  x: 1.1, y: 2.6, w: 9.0, h: 1.8,
+  fontSize: 28, fontFace: "Arial", color: "F2F0EB", bold: true, breakLine: true
+});
+
+slide.addText("Analisi per Gruppo VeGe | NielsenIQ RMS | L52W a S22/02/26 | Canale Discount vs Totale Italia", {
+  x: 1.1, y: 4.5, w: 8.0, h: 0.6,
+  fontSize: 14, fontFace: "Arial", color: "A09FA6"
+});
+
+const heroMetrics = [
+  { label: "Confezioni Discount", value: "-0.3%", delta: "vs +0.2% TI" },
+  { label: "Valore", value: "+2.1%", delta: "EUR23.2 Mld" },
+  { label: "Gap vs TI", value: "-0.5pp", delta: "confezioni" },
+  { label: "Prezzo/Conf.", value: "+2.4%", delta: "IDX 79 vs TI" },
+];
+// Render at y=5.8, each card w=2.7, h=1.0, spaced across x=1.1 to 10.1.
+
+slide.addText("Basquio | Confidential", {
+  x: 1.1, y: 6.9, w: 5.0, h: 0.3,
+  fontSize: 8, fontFace: "Arial", color: "6B6A72"
+});
+</example>
+
+<example name="perfect_chart_split_slide">
+// Chart-split slide: horizontal bar chart LEFT + structured analysis RIGHT
+// Use this for diagnostic slides where one chart proves a point and the text explains why
+
+const slide = pptx.addSlide();
+
+slide.addText("COMPARTI CRITICI", {
+  x: 0.6, y: 0.5, w: 12.1, h: 0.25,
+  fontSize: 9, fontFace: "Arial", color: "E8A84C", letterSpacing: 1.5, bold: true
+});
+
+slide.addText("8 comparti su 10 perdono velocita: Freddo e Cura Casa guidano il gap a -3.5pp", {
+  x: 0.6, y: 0.8, w: 12.1, h: 0.7,
+  fontSize: 20, fontFace: "Arial", color: "0F172A", bold: true
+});
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+categories = ["Freddo", "Cura Casa", "Cura Persona", "Bevande", "Drogheria", "Pet Care", "Fresco", "Ortofrutta"]
+gaps = [-3.8, -3.5, -2.8, -2.9, -2.8, -2.9, -1.0, +3.1]
+colors = ["#E84C4C" if g < -2 else "#E8A84C" if g < 0 else "#4CC9A0" for g in gaps]
+
+fig, ax = plt.subplots(figsize=(6.2, 4.25))
+bars = ax.barh(categories, gaps, color=colors)
+ax.bar_label(bars, fmt='%+.1fpp', padding=5, fontsize=9)
+ax.axvline(x=0, color="#6B6A72", linewidth=0.5)
+ax.invert_yaxis()
+ax.set_xlabel("Gap confezioni/pdv Discount vs TI (pp)", fontsize=9)
+ax.spines[['top', 'right']].set_visible(False)
+fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W", fontsize=7, color="#6B6A72")
+plt.subplots_adjust(bottom=0.12)
+plt.tight_layout()
+plt.savefig("chart_gaps.png", dpi=200, bbox_inches='tight')
+
+slide.addImage({ path: "chart_gaps.png", x: 0.6, y: 1.75, w: 6.2, h: 4.25 });
+
+slide.addText("Diagnosi: Velocity Problem", {
+  x: 7.1, y: 1.75, w: 5.6, h: 0.4,
+  fontSize: 14, fontFace: "Arial", color: "0F172A", bold: true
+});
+
+slide.addText([
+  "La distribuzione ponderata ACV cresce o e stabile in 8 aree su 10. La mancanza di prodotto a scaffale non e il problema.",
+  "",
+  "Le confezioni vendute per punto vendita scendono su tutte le 10 aree: gli shopper visitano il Discount ma comprano meno unita per visita.",
+  "",
+  "Cause: (1) assortimento ridotto su varianti premium, (2) minor pressione promozionale, (3) migrazione verso altri canali."
+].join("\\n"), {
+  x: 7.1, y: 2.25, w: 5.6, h: 2.5,
+  fontSize: 11, fontFace: "Arial", color: "374151", lineSpacing: 14
+});
+
+slide.addText("Il focus deve essere sull'intensificare la rotazione e ampliare l'offerta premium, non sull'aprire nuovi PDV.", {
+  x: 7.1, y: 5.0, w: 5.6, h: 0.65,
+  fontSize: 10, fontFace: "Arial", color: "F2F0EB",
+  fill: { color: "1A6AFF", transparency: 85 }
+});
+</example>
+
+<example name="perfect_recommendation_cards_slide">
+// Recommendation cards on dark background using recommendation-cards archetype
+// Note: 4 cards, each with colored index badge, title, body, and bottom metric
+
+const slide = pptx.addSlide();
+slide.background = { color: "0A090D" };
+
+slide.addText("RACCOMANDAZIONI", {
+  x: 0.6, y: 0.5, w: 12.1, h: 0.25,
+  fontSize: 9, fontFace: "Arial", color: "E8A84C", letterSpacing: 1.5, bold: true
+});
+
+slide.addText("Quattro azioni concrete per recuperare lo 0.5pp di gap confezioni entro 12 mesi", {
+  x: 0.6, y: 0.8, w: 12.1, h: 0.7,
+  fontSize: 20, fontFace: "Arial", color: "F2F0EB", bold: true
+});
+
+const cards = [
+  {
+    index: "01", color: "4CC9A0",
+    title: "Ribilancia assortimento Birre e Yogurt",
+    body: "Aggiungere min. 2 referenze no/low alcol nei top-banner. Inserire 3 SKU Yogurt Greco/Skyr e 1 Kefir entry-price per PDV.",
+    lever: "Assortimento", impact: "+0.15pp conf", timeline: "3 mesi"
+  },
+  {
+    index: "02", color: "6B8EE8",
+    title: "Ripristina pressione promo su Salumi",
+    body: "Intensita promo scesa da 28.5% a 25.7%. Ripristinare soglie PY con promozioni di ingresso e multipack sui top-seller.",
+    lever: "Promo", impact: "+0.05pp conf", timeline: "2 mesi"
+  },
+  {
+    index: "03", color: "E8A84C",
+    title: "Espandi offerta nelle categorie outperforming",
+    body: "Preparati Bev. Calde (+2.7pp gap), Pane Fresco (+2.2pp), Avicunicolo (+1.6pp): ampliare referenze e migliorare esposizione.",
+    lever: "Portfolio", impact: "+0.08pp conf", timeline: "4 mesi"
+  },
+  {
+    index: "04", color: "9B7AE0",
+    title: "Difendi il price index sulle categorie traffico",
+    body: "Bevande Gassate IDX 70, Acqua IDX 72, Birre IDX 73: bloccare i prezzi quando l'indice supera 80. Lo shopper price-sensitive e il core.",
+    lever: "Pricing", impact: "Difensivo", timeline: "Immediato"
+  }
+];
+
+cards.forEach((card, i) => {
+  const cx = 0.45 + i * 3.05;
+  const cy = 1.5;
+  slide.addShape(pptx.ShapeType.rect, {
+    x: cx, y: cy, w: 2.85, h: 4.5,
+    fill: { color: "16151E" }, line: { color: "272630", width: 0.5 }
+  });
+  slide.addShape(pptx.ShapeType.rect, {
+    x: cx + 0.15, y: cy + 0.2, w: 0.45, h: 0.45,
+    fill: { color: card.color }, rectRadius: 0.05
+  });
+  slide.addText(card.index, {
+    x: cx + 0.15, y: cy + 0.2, w: 0.45, h: 0.45,
+    fontSize: 16, fontFace: "Arial", color: "FFFFFF", bold: true, align: "center", valign: "middle"
+  });
+  slide.addText(card.title, {
+    x: cx + 0.7, y: cy + 0.2, w: 2.0, h: 0.45,
+    fontSize: 13, fontFace: "Arial", color: "F2F0EB", bold: true, valign: "middle"
+  });
+  slide.addText(card.body, {
+    x: cx + 0.15, y: cy + 0.85, w: 2.55, h: 2.5,
+    fontSize: 11, fontFace: "Arial", color: "A09FA6", lineSpacing: 14, valign: "top"
+  });
+  slide.addText("Leva: " + card.lever + " | Impatto: " + card.impact + " | Timeline: " + card.timeline, {
+    x: cx + 0.15, y: cy + 3.8, w: 2.55, h: 0.5,
+    fontSize: 9, fontFace: "Arial", color: "6B6A72", valign: "bottom"
+  });
+});
+
+slide.addText("Con interventi mirati in 90 giorni, il gap di -0.5pp e recuperabile. La distribuzione c'e gia; serve velocita, non copertura.", {
+  x: 0.45, y: 6.3, w: 12.1, h: 0.45,
+  fontSize: 10, fontFace: "Arial", color: "F2F0EB",
+  fill: { color: "1A6AFF", transparency: 85 }
+});
+</example>
 </examples>
 `.trim();
 
