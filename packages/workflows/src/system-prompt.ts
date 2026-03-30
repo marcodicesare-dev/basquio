@@ -93,35 +93,21 @@ slide.addText("Mix shift toward premium creates pricing headroom - brand should 
 </example>
 
 <example name="perfect_cover_slide">
-// Cover slide using cover archetype
-// Note: use the client name from the brief, never "Non specificato"
-// The cover sets the analytical frame: title = the core finding, subtitle = scope + period
+// Cover slide — only title + subtitle. No KPI cards, no accent bars, no extra geometry.
+// Title = one-sentence finding with a number. Subtitle = client + source + period.
 
 const slide = pptx.addSlide();
 slide.background = { color: "0A090D" };
 
-slide.addShape(pptx.ShapeType.rect, {
-  x: 0, y: 0, w: 0.35, h: 7.5,
-  fill: { color: "1A6AFF" }
-});
-
-slide.addText("Il Discount perde 0.5pp di share confezioni vs Totale Italia nonostante distribuzione stabile", {
+slide.addText("Il Discount perde 0.5pp confezioni vs Totale Italia: servono velocita e premium mix", {
   x: 1.1, y: 2.6, w: 9.0, h: 1.8,
-  fontSize: 28, fontFace: "Arial", color: "F2F0EB", bold: true, breakLine: true
+  fontSize: 28, fontFace: "Arial", color: "F2F0EB", bold: true
 });
 
-slide.addText("Analisi per Gruppo VeGe | NielsenIQ RMS | L52W a S22/02/26 | Canale Discount vs Totale Italia", {
+slide.addText("Analisi per Gruppo VeGe | NielsenIQ RMS | L52W a S22/02/26", {
   x: 1.1, y: 4.5, w: 8.0, h: 0.6,
   fontSize: 14, fontFace: "Arial", color: "A09FA6"
 });
-
-const heroMetrics = [
-  { label: "Confezioni Discount", value: "-0.3%", delta: "vs +0.2% TI" },
-  { label: "Valore", value: "+2.1%", delta: "EUR23.2 Mld" },
-  { label: "Gap vs TI", value: "-0.5pp", delta: "confezioni" },
-  { label: "Prezzo/Conf.", value: "+2.4%", delta: "IDX 79 vs TI" },
-];
-// Render at y=5.8, each card w=2.7, h=1.0, spaced across x=1.1 to 10.1.
 
 slide.addText("Basquio | Confidential", {
   x: 1.1, y: 6.9, w: 5.0, h: 0.3,
@@ -295,11 +281,13 @@ export async function buildBasquioSystemPrompt(input: {
     "- Keep all narrative output in the same language as the brief unless the brief explicitly asks for bilingual output.",
     "- Native-language quality is mandatory. Italian must read like native Italian business writing, not translated English and not pseudo-Spanish. English must be direct, partner-grade, and free of padded corporate filler.",
     "- Every slide title must state an insight, not a topic.",
-    "- Slide titles MUST fit on one line at the rendered font size. If a title exceeds ~75 characters, shorten it. Never let title text overflow the right slide margin.",
+    "- Every slide title should include at least one specific number from the data and state a finding, not a topic.",
+    "- Slide titles should fit on one line at the rendered font size. If a title exceeds ~75 characters, shorten it. Never let title text overflow the right slide margin.",
     "- Prefer one strong claim and one strong visual per slide.",
     "- Never leave placeholders, empty chart frames, or generic filler boxes.",
     "- If a chart is weak, use a stronger text-first slide instead of forcing a bad chart.",
     "- Every analytical slide must go beyond description: state the fact, the magnitude, the driver, and the business implication or action.",
+    "- Build all slides in strict sequential order from slide 1 to slide N. Never go back to recreate or overwrite a slide you already added via addSlide(). If you discover an error in an earlier slide, note it and continue forward. The PPTX skill does not support overwriting slides, and re-adding a slide corrupts the file.",
     ...(hasImportedPptxTemplate
       ? [
           "- A client PPTX template is present. Treat that template as the visual source of truth.",
@@ -327,7 +315,7 @@ export async function buildBasquioSystemPrompt(input: {
     "  - The right-side body slot (x=7.1in, y=1.75in, w=5.6in, h=4.25in) holds 2-3 stacked cards.",
     "  - Card 1: y=1.75in, h=1.35in. Card 2: y=3.25in, h=1.35in. Card 3 (optional): y=4.75in, h=0.85in.",
     "  - Each card: colored left border (4px), title max 40ch one line, body max 3 lines / 120ch.",
-    "  - Cards MUST NOT overlap vertically. If 3 cards do not fit, use 2 or split to two slides.",
+    "  - Cards must not overlap vertically. If 3 cards do not fit, use 2 or split to two slides.",
     "- Key-findings card geometry (mandatory when slideArchetype = key-findings):",
     "  - The full-width body slot (x=0.6in, y=1.75in, w=12.1in, h=4.55in) holds 3 equal cards in a row.",
     "  - Card 1: x=0.8in. Card 2: x=4.7in. Card 3: x=8.6in. Each w=3.5in, h=3.8in.",
