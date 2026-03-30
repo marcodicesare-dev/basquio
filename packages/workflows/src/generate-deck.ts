@@ -54,7 +54,7 @@ const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
 };
 const MAX_PAUSE_TURNS_PER_PHASE = {
   understand: 3,
-  author: 3,
+  author: 0,
   revise: 3,
   render: 0,
   critique: 0,
@@ -2715,10 +2715,12 @@ function buildAuthorMessage(
         ...(routeContext ? [routeContext] : []),
         "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
         `- ${analysisDepthInstruction}`,
+        "- Complete ALL work in a single uninterrupted code execution session. Do not end the turn until every required output file is attached as a container upload.",
+        "- If you hit an error while analyzing, charting, or exporting, fix it and continue in the same session rather than ending the turn early.",
         "- Keep code execution output concise: after the initial 2-3 profiling blocks, print only computed values needed for charts and narrative, not full DataFrames.",
         "- After initial profiling, never print more than 5 rows from any dataframe. Compact output means fewer print() calls, not fewer analysis steps.",
         "- Use matplotlib in non-interactive mode (`matplotlib.use('Agg')`, `plt.ioff()`) to suppress GUI/debug rendering output.",
-        "- CRITICAL: You MUST still complete every required file generation step. The mandatory deliverables are analysis_result.json, deck.pptx, deck.pdf, and deck_manifest.json.",
+        "- CRITICAL: You MUST still complete every required file generation step. The mandatory deliverables are analysis_result.json, deck.pptx, deck.pdf, deck_manifest.json, and narrative_report.md.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         `- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`,
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
@@ -2792,8 +2794,8 @@ function buildAuthorMessage(
           `- Produce exactly ${run.target_slide_count} slides. Do not widen or compress the deck.`,
           `- \`deck_manifest.json\` slideCount must equal ${run.target_slide_count}.`,
           analysis
-            ? "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, and `deck_manifest.json`."
-            : "- Generate and attach these files exactly: `analysis_result.json`, `deck.pptx`, `deck.pdf`, and `deck_manifest.json`.",
+            ? "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, `deck_manifest.json`, and `narrative_report.md`."
+            : "- Generate and attach these files exactly: `analysis_result.json`, `deck.pptx`, `deck.pdf`, `deck_manifest.json`, and `narrative_report.md`.",
           ...(analysis
             ? []
             : [
@@ -2801,6 +2803,7 @@ function buildAuthorMessage(
                 "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
                 "- Use the same language as the brief. Do not emit mixed-language output.",
               ]),
+          "- `narrative_report.md` must be a 2000-3000 word consulting-style report with: executive summary; methodology; detailed findings with evidence, implications, and caveats; and operational recommendations with rationale and expected impact.",
           "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
           "- Each chart in the manifest should include `categoryCount` and `categories[]` when available so Basquio can verify density and label fit.",
           "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `title`, and `chartId` when applicable.",
