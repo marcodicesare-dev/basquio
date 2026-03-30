@@ -13,6 +13,87 @@ const KNOWLEDGE_PACK_FILES = [
 
 let knowledgePackPromise: Promise<string> | null = null;
 
+const DECK_EXAMPLES = `
+<examples>
+<example name="perfect_exec_summary_slide">
+// Executive summary slide using exec-summary archetype
+// Note: 4 KPI cards with label + value + delta, plus SCQA body with real sentences
+
+const slide = pptx.addSlide();
+
+slide.addText("EXECUTIVE SUMMARY", {
+  x: 0.45, y: 0.22, w: 9.1, h: 0.18,
+  fontSize: 9, fontFace: "Arial", color: "E8A84C", letterSpacing: 1.5, bold: true
+});
+
+slide.addText("Petfood category grew +8.2% but brand lost 1.4pp share to private label", {
+  x: 0.45, y: 0.32, w: 9.1, h: 0.56,
+  fontSize: 22, fontFace: "Arial", color: "F2F0EB", bold: true
+});
+
+const metrics = [
+  { label: "Category Value", value: "EUR781M", delta: "+8.2% vs PY" },
+  { label: "Brand Share", value: "18.3%", delta: "-1.4pp vs PY" },
+  { label: "Distribution", value: "72% ACV", delta: "+3.2pp vs PY" },
+  { label: "Price Index", value: "112", delta: "+4pts vs PY" },
+];
+// Render each KPI card in a clean row with visible label, value, and delta.
+
+slide.addText([
+  "SITUATION: Italian petfood market reached EUR781M (+8.2%), driven by premium wet segment.",
+  "COMPLICATION: Brand lost 1.4pp share despite +3.2pp distribution gain - a velocity problem, not availability.",
+  "QUESTION: How to convert distribution gains into share recovery before private label locks in switching?",
+  "ANSWER: Shift promo from deep TPR to event-led in top-5 retailers and launch a 150g premium wet SKU."
+].join("\\n\\n"), {
+  x: 0.45, y: 2.35, w: 9.1, h: 1.65,
+  fontSize: 11, fontFace: "Arial", color: "A09FA6", breakLine: false
+});
+
+slide.addText("Action: list top-3 SKUs at Coop and Esselunga to capture EUR2.1M incremental", {
+  x: 0.45, y: 4.15, w: 9.1, h: 0.42,
+  fontSize: 10, fontFace: "Arial", color: "F2F0EB",
+  fill: { color: "1A6AFF", transparency: 85 }
+});
+</example>
+
+<example name="perfect_chart_slide">
+// Chart slide using title-chart archetype
+// Note: chart rendered as PNG at slot dimensions with safe label padding
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(9.25, 3.5))
+categories = ["Premium Wet", "Standard Wet", "Premium Dry", "Standard Dry", "Treats"]
+values = [23.4, 18.7, 15.2, 31.1, 11.6]
+colors = ["#E8A84C" if v == max(values) else "#3A3940" for v in values]
+bars = ax.barh(categories, values, color=colors)
+ax.bar_label(bars, fmt='%.1f%%', padding=5, fontsize=9, color="#A09FA6")
+ax.set_xlim(0, max(values) * 1.15)
+ax.invert_yaxis()
+ax.tick_params(colors="#A09FA6", labelsize=10)
+ax.spines[['top', 'right', 'bottom']].set_visible(False)
+ax.set_facecolor('#0A090D')
+fig.patch.set_facecolor('#0A090D')
+fig.text(0.02, 0.02, "Source: NIQ Total Tracked Market, MAT Q4 2025", fontsize=7, color="#6B6A72")
+plt.subplots_adjust(bottom=0.15)
+plt.tight_layout()
+plt.savefig("chart_1.png", dpi=200, bbox_inches='tight', facecolor='#0A090D')
+
+slide.addText("Standard Dry dominates at 31.1% mix but Premium Wet is fastest growing at +12.4% YoY", {
+  x: 0.45, y: 0.32, w: 9.1, h: 0.52,
+  fontSize: 20, fontFace: "Arial", color: "F2F0EB", bold: true
+});
+slide.addImage({ path: "chart_1.png", x: 0.35, y: 0.92, w: 9.25, h: 3.5 });
+slide.addText("Mix shift toward premium creates pricing headroom - brand should accelerate the 150g launch", {
+  x: 0.45, y: 4.55, w: 9.1, h: 0.42,
+  fontSize: 10, fontFace: "Arial", color: "F2F0EB"
+});
+</example>
+</examples>
+`.trim();
+
 export async function buildBasquioSystemPrompt(input: {
   templateProfile: TemplateProfile;
   briefLanguageHint: string;
@@ -96,6 +177,9 @@ export async function buildBasquioSystemPrompt(input: {
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
     "Deck grammar:",
     deckGrammar,
+    "",
+    "Reference examples (imitate the completeness, slot discipline, and density):",
+    DECK_EXAMPLES,
     "",
     "Knowledge pack:",
     staticKnowledge,

@@ -2656,7 +2656,6 @@ function buildAuthorMessage(
   const routeContext = questionRoutes.length > 0
     ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
     : "";
-  const chartPreprocessingGuide = buildChartPreprocessingGuide();
   const analysisDepthInstruction = run.target_slide_count <= 3
     ? "This is a focused 3-slide executive brief. Analyze only top-line KPIs and 1-2 key insights. Do not profile every sheet or column. Spend minimal code execution time on data exploration."
     : run.target_slide_count <= 6
@@ -2689,8 +2688,7 @@ function buildAuthorMessage(
         "- If a slide is a section divider, it must render a visible title. Never generate an empty section-divider slide; if you cannot populate it, skip that divider and use the slide budget on a substantive slide instead.",
         "- When a slide combines a chart with 2-3 scenario, option, or pathway descriptions, you MUST use the scenario-cards archetype.",
         "- When a slide presents 3 key takeaways or 3 takeaway cards, you MUST use the key-findings archetype.",
-        "- Recommend charts only when they materially improve the argument.",
-        chartPreprocessingGuide,
+        "- Use the system-prompt examples as the visual contract: charts should be PNG-based, slot-sized, and paired with complete narrative copy rather than placeholder labels.",
       ];
 
   return {
@@ -2726,22 +2724,11 @@ function buildAuthorMessage(
                 "- Do not replace a light client template with Basquio dark styling.",
               ]
             : []),
-          "- Generate charts as high-resolution PNG assets in Python and insert them as images.",
-          "- Do not use native PowerPoint chart objects for critical visuals.",
           ...(chartSlotConstraintMessage ? [chartSlotConstraintMessage] : []),
           ...(perSlideConstraintMessage ? [perSlideConstraintMessage] : []),
-          "- Treat the deterministic chart preprocessing guide below as a hard render contract, not as optional style advice.",
-          chartPreprocessingGuide,
-          "- Keep code execution output compact. After the first profiling step, avoid exploratory tables and repeated diagnostics unless they directly support the final deck, but still complete every required file generation step.",
-          "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
-          "- You MUST select and honor one approved archetype per slide. Do not improvise layouts with free-positioned text or shapes outside archetype slots.",
-          "- For scenario or option comparison slides with a chart, you MUST use scenario-cards.",
-          "- For 3 takeaway-card slides, you MUST use key-findings.",
-          "- Never generate an empty section-divider slide. Any divider must have a visible title and subtitle, or it should be omitted.",
-          "- Before rendering any chart, check category label lengths: if average > 12 chars or count > 8, use horizontal bars or aggregate.",
-          "- For charts with source notes: add plt.subplots_adjust(bottom=0.15) BEFORE plt.tight_layout() so the source text does not collide with axis labels. Always call plt.tight_layout() before savefig().",
-          "- For horizontal bar charts with end-of-bar value labels: set xlim right padding to at least 8% beyond the max value so labels are not clipped at the figure edge.",
-          "- If a chart is sparse, leader-dominated, or near-zero outside one segment, switch to a split or commentary-led slide instead of forcing a wide chart.",
+          "- Keep code execution output compact after the first profiling pass, but still complete every required deliverable.",
+          "- Follow the system-prompt examples and per-slide constraints instead of inventing custom layout logic: complete SCQA/body copy, slot-sized PNG charts, and clean recommendation cards.",
+          "- If a chart would overcrowd labels or waste most of its frame, switch to a stronger text-first or split-slide composition instead of forcing the chart.",
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
           "- If a slide promises a comparison set with an explicit count such as 4 provinces, 3 channels, or 5 segments, cover all of them explicitly or change the claim.",
