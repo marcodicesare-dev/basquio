@@ -30,7 +30,7 @@ import {
 } from "./anthropic-execution-contract";
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
-import { buildEnrichedDocx, buildNarrativeDocx, type EnrichedNarrativeSection } from "./docx-report";
+import { buildMarkdownNarrativeDocx, buildNarrativeDocx, type EnrichedNarrativeSection } from "./docx-report";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
@@ -504,9 +504,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     let analysis: z.infer<typeof analysisSchema> | null = null;
     let pptxFile: GeneratedFile;
     let pdfFile: GeneratedFile;
+    let finalNarrativeMarkdown: GeneratedFile | null = null;
     let manifest: z.infer<typeof deckManifestSchema>;
-  let latestResponse: Awaited<ReturnType<typeof runClaudeLoop>> | null = null;
-  let generationMessage: ReturnType<typeof buildAuthorMessage> | null = null;
+    let latestResponse: Awaited<ReturnType<typeof runClaudeLoop>> | null = null;
+    let generationMessage: ReturnType<typeof buildAuthorMessage> | null = null;
     let latestContainerId: string | null = null;
     let baseContainerId: string | null = null;
 
@@ -700,6 +701,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
       pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
+      finalNarrativeMarkdown = findGeneratedFile(authorFiles, "narrative_report.md") ?? null;
       latestResponse = authorResponse;
       latestContainerId = authorResponse.containerId ?? containerId ?? baseContainerId;
       phaseTelemetry.authorLint = summarizeLintResult(lintManifest(manifest));
@@ -901,6 +903,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
         finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
         finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
+        finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
         latestResponse = reviseResponse;
         latestContainerId = reviseResponse.containerId ?? latestContainerId;
 
@@ -1033,69 +1036,26 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       phaseTelemetry.docxNarrative = { attempted: true };
       try {
-        const narrativeReport = await generateNarrativeReport(client, run, analysis, finalManifest);
-        if (narrativeReport?.usage) {
-          spentUsd = roundUsd(spentUsd + usageToCost(MODEL, narrativeReport.usage));
-          assertDeckSpendWithinBudget(spentUsd);
-        }
-
-        if (narrativeReport?.sections?.length) {
-          const enrichedDocx = await buildEnrichedDocx({
+        const markdownText = finalNarrativeMarkdown?.buffer.toString("utf8").trim() ?? "";
+        if (markdownText.length > 0) {
+          finalDocx = await buildMarkdownNarrativeDocx({
             run,
             analysis,
             manifest: finalManifest,
-            narrativeSections: narrativeReport.sections,
-            narrativeText: narrativeReport.text,
+            markdown: markdownText,
           });
-          if (enrichedDocx.buffer.length > 10_000) {
-            finalDocx = enrichedDocx;
-            phaseTelemetry.docxNarrative = {
-              attempted: true,
-              succeeded: true,
-              outputBytes: enrichedDocx.buffer.length,
-              sectionCount: narrativeReport.sections.length,
-              textChars: narrativeReport.text.length,
-              ...(narrativeReport.usage
-                ? {
-                    model: MODEL,
-                    inputTokens: narrativeReport.usage.input_tokens ?? 0,
-                    outputTokens: narrativeReport.usage.output_tokens ?? 0,
-                    estimatedCostUsd: usageToCost(MODEL, narrativeReport.usage),
-                  }
-                : {}),
-            };
-          } else {
-            phaseTelemetry.docxNarrative = {
-              attempted: true,
-              succeeded: false,
-              reason: `too_short_${enrichedDocx.buffer.length}_bytes`,
-              sectionCount: narrativeReport.sections.length,
-              textChars: narrativeReport.text.length,
-              ...(narrativeReport.usage
-                ? {
-                    model: MODEL,
-                    inputTokens: narrativeReport.usage.input_tokens ?? 0,
-                    outputTokens: narrativeReport.usage.output_tokens ?? 0,
-                    estimatedCostUsd: usageToCost(MODEL, narrativeReport.usage),
-                  }
-                : {}),
-            };
-          }
+          phaseTelemetry.docxNarrative = {
+            attempted: true,
+            succeeded: true,
+            source: "narrative_markdown",
+            outputBytes: finalDocx.buffer.length,
+            textChars: markdownText.length,
+          };
         } else {
           phaseTelemetry.docxNarrative = {
             attempted: true,
             succeeded: false,
-            reason: "returned_null",
-            sectionCount: narrativeReport?.sections?.length ?? 0,
-            textChars: narrativeReport?.text?.length ?? 0,
-            ...(narrativeReport?.usage
-              ? {
-                  model: MODEL,
-                  inputTokens: narrativeReport.usage.input_tokens ?? 0,
-                  outputTokens: narrativeReport.usage.output_tokens ?? 0,
-                  estimatedCostUsd: usageToCost(MODEL, narrativeReport.usage),
-                }
-              : {}),
+            reason: "narrative_report_missing",
           };
         }
       } catch (narrativeError) {

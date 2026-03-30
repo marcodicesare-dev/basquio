@@ -179,6 +179,34 @@ export async function buildEnrichedDocx(input: NarrativeDocxInput & {
   });
 }
 
+export async function buildMarkdownNarrativeDocx(input: NarrativeDocxInput & {
+  markdown: string;
+}) {
+  const labels = getLabels(resolveNarrativeLanguage(input));
+  const reportTitle = firstNonEmpty(
+    input.manifest.slides[0]?.title,
+    input.analysis.thesis,
+    input.run.objective,
+    labels.defaultTitle,
+  );
+  const generatedAt = input.generatedAt ?? new Date();
+  const sections = buildSectionsFromMarkdown(input.markdown, labels);
+
+  return buildDocxPackage({
+    title: reportTitle,
+    labels,
+    run: input.run,
+    generatedAt,
+    sections: sections.length > 0
+      ? sections
+      : [{
+          heading: labels.executiveSummary,
+          level: 1,
+          blocks: paragraphBlocks([stripInlineMarkdown(input.markdown)]),
+        }],
+  });
+}
+
 async function buildDocxPackage(input: {
   title: string;
   labels: ReturnType<typeof getLabels>;
@@ -284,6 +312,76 @@ function buildNarrativeSectionsFromText(text: string, labels: ReturnType<typeof 
     }];
   }
 
+  return sections;
+}
+
+function buildSectionsFromMarkdown(markdown: string, labels: ReturnType<typeof getLabels>): ReportSection[] {
+  const lines = markdown
+    .replace(/\r\n/g, "\n")
+    .split("\n");
+
+  const sections: ReportSection[] = [];
+  let currentHeading = labels.executiveSummary;
+  let currentLevel: 1 | 2 = 1;
+  let currentBlocks: ReportBlock[] = [];
+  let paragraphLines: string[] = [];
+
+  const flushParagraph = () => {
+    const paragraph = normalizeParagraph(stripInlineMarkdown(paragraphLines.join(" ")));
+    paragraphLines = [];
+    if (!paragraph) {
+      return;
+    }
+    currentBlocks.push({
+      kind: "paragraph",
+      text: paragraph,
+    });
+  };
+
+  const flushSection = () => {
+    flushParagraph();
+    const blocks = dedupeBlocks(currentBlocks);
+    if (blocks.length === 0) {
+      currentBlocks = [];
+      return;
+    }
+    sections.push({
+      heading: currentHeading,
+      level: currentLevel,
+      blocks,
+    });
+    currentBlocks = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch?.[2]) {
+      flushSection();
+      currentHeading = normalizeSentence(stripInlineMarkdown(headingMatch[2])) || labels.executiveSummary;
+      currentLevel = headingMatch[1].length === 1 ? 1 : 2;
+      continue;
+    }
+
+    const bulletMatch = line.match(/^([-*]|\d+[.)])\s+(.+)$/);
+    if (bulletMatch?.[2]) {
+      flushParagraph();
+      currentBlocks.push({
+        kind: "paragraph",
+        text: `• ${normalizeSentence(stripInlineMarkdown(bulletMatch[2]))}`,
+      });
+      continue;
+    }
+
+    paragraphLines.push(line);
+  }
+
+  flushSection();
   return sections;
 }
 
@@ -903,6 +1001,19 @@ function normalizeParagraph(value: string) {
 function normalizeSentence(value: string) {
   const normalized = normalizeParagraph(value).replace(/[.;:,]+$/g, "");
   return normalized;
+}
+
+function stripInlineMarkdown(value: string) {
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
+    .replace(/^>\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function paragraphBlocks(values: Array<string | undefined | null | false>) {
