@@ -1018,7 +1018,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       phaseTelemetry.docxNarrative = { attempted: true };
       try {
-        const narrativeReport = await generateNarrativeReport(client, run, analysis, finalManifest, BETAS);
+        const narrativeReport = await generateNarrativeReport(client, run, analysis, finalManifest);
         if (narrativeReport?.usage) {
           spentUsd = roundUsd(spentUsd + usageToCost(MODEL, narrativeReport.usage));
           assertDeckSpendWithinBudget(spentUsd);
@@ -1793,7 +1793,6 @@ async function generateNarrativeReport(
   run: RunRow,
   analysis: z.infer<typeof analysisSchema> | null,
   manifest: z.infer<typeof deckManifestSchema>,
-  betas: readonly string[],
 ): Promise<{ text: string; usage: ClaudeUsage | null } | null> {
   const slideLanguageSample = manifest.slides.map((slide) => slide.title).join(" ");
   const outputLanguage = detectLanguage(slideLanguageSample || `${run.objective} ${run.business_context}`);
@@ -1832,9 +1831,8 @@ Rules:
 
 Return only the report text, no JSON wrapper.`;
   console.log(`[generateDeckRun] narrative DOCX prompt preview: ${prompt.replace(/\s+/g, " ").slice(0, 200)}`);
-  const response = await client.beta.messages.create({
+  const response = await client.messages.create({
     model: MODEL,
-    betas: [...betas] as Anthropic.Beta.AnthropicBeta[],
     max_tokens: 4_096,
     messages: [{
       role: "user",
