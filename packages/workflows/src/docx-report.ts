@@ -43,6 +43,12 @@ type ReportSection = {
   blocks: ReportBlock[];
 };
 
+export type EnrichedNarrativeSection = {
+  heading: string;
+  level?: 1 | 2;
+  paragraphs: string[];
+};
+
 type ReportBlock =
   | {
     kind: "paragraph";
@@ -144,7 +150,10 @@ export async function buildNarrativeDocx(input: NarrativeDocxInput) {
   });
 }
 
-export async function buildEnrichedDocx(input: NarrativeDocxInput & { narrativeText: string }) {
+export async function buildEnrichedDocx(input: NarrativeDocxInput & {
+  narrativeText?: string;
+  narrativeSections?: EnrichedNarrativeSection[];
+}) {
   const labels = getLabels(resolveNarrativeLanguage(input));
   const reportTitle = firstNonEmpty(
     input.manifest.slides[0]?.title,
@@ -153,7 +162,13 @@ export async function buildEnrichedDocx(input: NarrativeDocxInput & { narrativeT
     labels.defaultTitle,
   );
   const generatedAt = input.generatedAt ?? new Date();
-  const sections = buildNarrativeSectionsFromText(input.narrativeText, labels);
+  const narrativeSections = buildStructuredNarrativeSections(input.narrativeSections, labels);
+  const sections: ReportSection[] = [
+    ...(narrativeSections.length > 0
+      ? narrativeSections
+      : buildNarrativeSectionsFromText(input.narrativeText ?? "", labels)),
+    ...buildEvidenceAppendixSections(input, labels),
+  ];
 
   return buildDocxPackage({
     title: reportTitle,
@@ -197,7 +212,35 @@ async function buildDocxPackage(input: {
   };
 }
 
+function buildStructuredNarrativeSections(
+  sections: EnrichedNarrativeSection[] | undefined,
+  labels: ReturnType<typeof getLabels>,
+): ReportSection[] {
+  if (!sections || sections.length === 0) {
+    return [];
+  }
+
+  return sections
+    .map((section): ReportSection | null => {
+      const blocks = paragraphBlocks(section.paragraphs);
+      if (blocks.length === 0) {
+        return null;
+      }
+
+      return {
+        heading: normalizeSentence(section.heading) || labels.executiveSummary,
+        level: section.level ?? 1,
+        blocks,
+      };
+    })
+    .filter((section): section is ReportSection => section !== null);
+}
+
 function buildNarrativeSectionsFromText(text: string, labels: ReturnType<typeof getLabels>): ReportSection[] {
+  if (!text.trim()) {
+    return [];
+  }
+
   const lines = text
     .replace(/\r\n/g, "\n")
     .split("\n")
@@ -242,6 +285,45 @@ function buildNarrativeSectionsFromText(text: string, labels: ReturnType<typeof 
   }
 
   return sections;
+}
+
+function buildEvidenceAppendixSections(
+  input: {
+    analysis: NarrativeAnalysis;
+    manifest: DeckManifest;
+  },
+  labels: ReturnType<typeof getLabels>,
+) {
+  const analysisSlidesByPosition = new Map(
+    (input.analysis.slidePlan ?? []).map((slide) => [slide.position, slide]),
+  );
+  const findingSlides = input.manifest.slides.filter((slide) => slide.position > 1);
+  if (findingSlides.length === 0) {
+    return [];
+  }
+
+  const appendixSections: ReportSection[] = [{
+    heading: labels.evidenceNotes,
+    level: 1,
+    blocks: paragraphBlocks([
+      labels.findingsIntro,
+      labels.metricTableBridge,
+    ]),
+  }];
+
+  appendixSections.push(
+    ...findingSlides.map((slide) => {
+      const fallbackSlide = analysisSlidesByPosition.get(slide.position);
+      const mergedSlide = mergeSlideNarrative(slide, fallbackSlide);
+      return {
+        heading: `${slide.position}. ${mergedSlide.title}`,
+        level: 2 as const,
+        blocks: buildSlideBlocks(mergedSlide, labels),
+      };
+    }),
+  );
+
+  return appendixSections;
 }
 
 function parseNarrativeHeading(line: string) {

@@ -30,7 +30,7 @@ import {
 } from "./anthropic-execution-contract";
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
-import { buildEnrichedDocx, buildNarrativeDocx } from "./docx-report";
+import { buildEnrichedDocx, buildNarrativeDocx, type EnrichedNarrativeSection } from "./docx-report";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
@@ -1024,11 +1024,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           assertDeckSpendWithinBudget(spentUsd);
         }
 
-        if (narrativeReport?.text) {
+        if (narrativeReport?.sections?.length) {
           const enrichedDocx = await buildEnrichedDocx({
             run,
             analysis,
             manifest: finalManifest,
+            narrativeSections: narrativeReport.sections,
             narrativeText: narrativeReport.text,
           });
           if (enrichedDocx.buffer.length > 10_000) {
@@ -1037,6 +1038,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               attempted: true,
               succeeded: true,
               outputBytes: enrichedDocx.buffer.length,
+              sectionCount: narrativeReport.sections.length,
+              textChars: narrativeReport.text.length,
               ...(narrativeReport.usage
                 ? {
                     model: MODEL,
@@ -1051,6 +1054,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               attempted: true,
               succeeded: false,
               reason: `too_short_${enrichedDocx.buffer.length}_bytes`,
+              sectionCount: narrativeReport.sections.length,
+              textChars: narrativeReport.text.length,
               ...(narrativeReport.usage
                 ? {
                     model: MODEL,
@@ -1066,6 +1071,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             attempted: true,
             succeeded: false,
             reason: "returned_null",
+            sectionCount: narrativeReport?.sections?.length ?? 0,
+            textChars: narrativeReport?.text?.length ?? 0,
             ...(narrativeReport?.usage
               ? {
                   model: MODEL,
@@ -1793,67 +1800,255 @@ async function generateNarrativeReport(
   run: RunRow,
   analysis: z.infer<typeof analysisSchema> | null,
   manifest: z.infer<typeof deckManifestSchema>,
-): Promise<{ text: string; usage: ClaudeUsage | null } | null> {
-  const slideLanguageSample = manifest.slides.map((slide) => slide.title).join(" ");
-  const outputLanguage = detectLanguage(slideLanguageSample || `${run.objective} ${run.business_context}`);
-  const prompt = `Write a consulting-grade narrative report (2,000-3,000 words) for this analysis.
+): Promise<{ text: string; sections: EnrichedNarrativeSection[]; usage: ClaudeUsage | null } | null> {
+  const outputLanguage = detectLanguage(
+    manifest.slides.map((slide) => slide.title).join(" ") || `${run.objective} ${run.business_context}`,
+  );
+  const sharedContext = buildNarrativeSharedContext(run, analysis, manifest, outputLanguage);
+  const usageTotals: ClaudeUsage = {};
+  const sections: EnrichedNarrativeSection[] = [];
+  const findingSlides = manifest.slides.filter((slide) => slide.position > 1);
 
-Client: ${run.client || "Not specified"}
-Audience: ${run.audience || "Executive stakeholder"}
-Objective: ${run.objective || "Not specified"}
-Business context: ${run.business_context || "Not specified"}
+  sections.push(await generateNarrativeSection(client, {
+    heading: outputLanguage.startsWith("Italian") ? "Sintesi esecutiva" : "Executive Summary",
+    prompt: [
+      sharedContext,
+      buildNarrativeSlideOverview(manifest),
+      "Write the executive summary for the narrative DOCX.",
+      "Target length: 320-420 words across 2-3 paragraphs.",
+      "Cover the thesis, the three most important findings, and the highest-priority action.",
+      "Make the narrative self-sufficient for an executive who does not open the deck.",
+      "Do not use bullets. Do not add a heading.",
+    ].join("\n\n"),
+    maxTokens: 900,
+  }, usageTotals));
 
-Analysis thesis: ${analysis?.thesis || "Not available"}
-Executive summary: ${analysis?.executiveSummary || "Not available"}
+  sections.push(await generateNarrativeSection(client, {
+    heading: outputLanguage.startsWith("Italian") ? "Domanda di business e contesto" : "Business Question and Context",
+    prompt: [
+      sharedContext,
+      "Write the business context section for the narrative DOCX.",
+      "Target length: 220-320 words across 2 paragraphs.",
+      "Explain why this problem matters now, what commercial tension is visible in the evidence, and what is at stake.",
+      "Use the uploaded business context, objective, audience, and stakes explicitly.",
+      "Do not use bullets. Do not add a heading.",
+    ].join("\n\n"),
+    maxTokens: 700,
+  }, usageTotals));
 
-Slide plan:
-${JSON.stringify(manifest.slides.map((slide) => ({
-  position: slide.position,
-  title: slide.title,
-  body: slide.body,
-  bullets: slide.bullets,
-  callout: slide.callout,
-})), null, 2)}
+  sections.push(await generateNarrativeSection(client, {
+    heading: outputLanguage.startsWith("Italian") ? "Metodologia e limiti" : "Methodology and Caveats",
+    prompt: [
+      sharedContext,
+      buildMethodologyContext(manifest),
+      "Write the methodology and caveats section for the narrative DOCX.",
+      "Target length: 180-260 words across 2 paragraphs.",
+      "Describe what evidence was reviewed, how the report combines KPIs and exhibits, and the caveats an executive should keep in mind.",
+      "Be concrete. Mention the number of slides and charts when useful. Do not invent unobserved sources.",
+      "Do not use bullets. Do not add a heading.",
+    ].join("\n\n"),
+    maxTokens: 650,
+  }, usageTotals));
 
-Write these sections:
-1. EXECUTIVE SUMMARY (250-400 words) — the full story in one page. Thesis, 3 key findings, recommended action.
-2. SITUATION & CONTEXT (200-300 words) — market dynamics, why this matters now, stakes.
-3. METHODOLOGY (100-200 words) — what data was analyzed, KPIs computed, time periods, caveats.
-4. DETAILED FINDINGS (150-250 words per finding, cover all slides) — for each finding: the insight, the evidence (specific numbers), the implication, any caveats.
-5. RECOMMENDATIONS (300-500 words) — prioritized actions with rationale, expected impact, sequencing. More operational than slide callouts.
+  for (const slide of findingSlides) {
+    sections.push(await generateNarrativeSection(client, {
+      heading: slide.title,
+      prompt: [
+        sharedContext,
+        buildNarrativeSlideContext(slide, manifest),
+        "Write a detailed finding section for this slide.",
+        "Target length: 180-240 words across 2-3 paragraphs.",
+        "Explain the insight, the evidence, the business implication, and any caveat or condition for action.",
+        "Supplement the slide. Do not merely restate labels or bullets. Keep the same language as the deck.",
+        "Do not use bullets. Do not add a heading.",
+      ].join("\n\n"),
+      maxTokens: 700,
+      fallbackParagraphs: buildSlideFallbackParagraphs(slide, manifest),
+    }, usageTotals));
+  }
 
-Rules:
-- Write in ${outputLanguage}.
-- Use the same copywriting voice as the slides: numbers first, active voice, no filler.
-- Include analysis that supplements the slides, not just reformulates them.
-- Add methodology, caveats, and connective tissue between findings.
-- Recommendations must be more operational than slide callouts: specific actions, timelines, expected impact.
+  sections.push(await generateNarrativeSection(client, {
+    heading: outputLanguage.startsWith("Italian") ? "Azioni consigliate e prossimi passi" : "Recommended Actions and Next Steps",
+    prompt: [
+      sharedContext,
+      buildNarrativeSlideOverview(manifest),
+      "Write the recommendations section for the narrative DOCX.",
+      "Target length: 300-420 words across 3 paragraphs.",
+      "Turn the deck's recommendations into an operating plan: priority order, timing, expected impact, dependencies, and what to monitor next.",
+      "Be more operational than the slide callouts. No bullets. No heading.",
+    ].join("\n\n"),
+    maxTokens: 950,
+  }, usageTotals));
 
-Return only the report text, no JSON wrapper.`;
-  console.log(`[generateDeckRun] narrative DOCX prompt preview: ${prompt.replace(/\s+/g, " ").slice(0, 200)}`);
+  const text = sections
+    .flatMap((section) => [section.heading, ...section.paragraphs, ""])
+    .join("\n")
+    .trim();
+
+  if (text.length <= 1_500) {
+    return null;
+  }
+
+  return {
+    text,
+    sections,
+    usage: usageTotals,
+  };
+}
+
+async function generateNarrativeSection(
+  client: Anthropic,
+  input: {
+    heading: string;
+    prompt: string;
+    maxTokens: number;
+    fallbackParagraphs?: string[];
+  },
+  usageTotals: ClaudeUsage,
+): Promise<EnrichedNarrativeSection> {
+  console.log(`[generateDeckRun] narrative DOCX prompt preview (${input.heading}): ${input.prompt.replace(/\s+/g, " ").slice(0, 200)}`);
+
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 4_096,
+    max_tokens: input.maxTokens,
     messages: [{
       role: "user",
-      content: prompt,
+      content: input.prompt,
     }],
   });
+
+  accumulateClaudeUsage(usageTotals, response.usage ?? null);
 
   const text = response.content
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
     .map((block) => block.text)
     .join("\n")
     .trim();
-
-  if (text.length <= 500) {
-    return null;
-  }
+  const paragraphs = normalizeNarrativeParagraphs(text);
 
   return {
-    text,
-    usage: response.usage ?? null,
+    heading: input.heading,
+    paragraphs: paragraphs.length > 0 ? paragraphs : (input.fallbackParagraphs ?? ["Narrative draft unavailable."]),
   };
+}
+
+function accumulateClaudeUsage(target: ClaudeUsage, usage: ClaudeUsage | null | undefined) {
+  if (!usage) {
+    return;
+  }
+
+  target.input_tokens = (target.input_tokens ?? 0) + (usage.input_tokens ?? 0);
+  target.output_tokens = (target.output_tokens ?? 0) + (usage.output_tokens ?? 0);
+}
+
+function normalizeNarrativeParagraphs(text: string) {
+  const cleaned = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!cleaned) {
+    return [];
+  }
+
+  return cleaned
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter((paragraph) => paragraph.length > 40);
+}
+
+function buildNarrativeSharedContext(
+  run: RunRow,
+  analysis: z.infer<typeof analysisSchema> | null,
+  manifest: z.infer<typeof deckManifestSchema>,
+  outputLanguage: string,
+) {
+  return [
+    "You are writing the narrative DOCX companion for a Basquio executive deck.",
+    `Write in ${outputLanguage}. Match the deck's language and consulting tone.`,
+    "Use active voice, evidence-backed claims, and explicit business implications.",
+    "Avoid filler, generic AI phrasing, and empty transitions.",
+    `Client: ${run.client || "Not specified"}`,
+    `Audience: ${run.audience || "Executive stakeholder"}`,
+    `Objective: ${run.objective || "Not specified"}`,
+    `Thesis: ${analysis?.thesis || run.thesis || "Not specified"}`,
+    `Business context: ${run.business_context || "Not specified"}`,
+    `Stakes: ${run.stakes || "Not specified"}`,
+    `Executive summary draft: ${analysis?.executiveSummary || "Not available"}`,
+    `Deck size: ${manifest.slideCount} slides, ${manifest.charts.length} charts.`,
+  ].join("\n");
+}
+
+function buildNarrativeSlideOverview(manifest: z.infer<typeof deckManifestSchema>) {
+  return `Slide overview:
+${JSON.stringify(manifest.slides.map((slide) => ({
+  position: slide.position,
+  title: slide.title,
+  archetype: slide.slideArchetype,
+  body: slide.body,
+  bullets: slide.bullets,
+  metrics: slide.metrics,
+  callout: slide.callout,
+  chartId: slide.chartId,
+})), null, 2)}`;
+}
+
+function buildMethodologyContext(manifest: z.infer<typeof deckManifestSchema>) {
+  return [
+    `Deck structure: ${manifest.slideCount} slides, ${manifest.charts.length} charts.`,
+    `Chart inventory: ${JSON.stringify(manifest.charts.map((chart) => ({
+      id: chart.id,
+      title: chart.title,
+      chartType: chart.chartType,
+      categoryCount: chart.categoryCount,
+      seriesCount: chart.seriesCount,
+      sourceNote: chart.sourceNote,
+    })), null, 2)}`,
+  ].join("\n");
+}
+
+function buildNarrativeSlideContext(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  manifest: z.infer<typeof deckManifestSchema>,
+) {
+  const chart = slide.chartId
+    ? manifest.charts.find((candidate) => candidate.id === slide.chartId)
+    : null;
+
+  return `Slide detail:
+${JSON.stringify({
+  position: slide.position,
+  title: slide.title,
+  subtitle: slide.subtitle,
+  body: slide.body,
+  bullets: slide.bullets,
+  metrics: slide.metrics,
+  callout: slide.callout,
+  chart,
+}, null, 2)}`;
+}
+
+function buildSlideFallbackParagraphs(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  manifest: z.infer<typeof deckManifestSchema>,
+) {
+  const chart = slide.chartId
+    ? manifest.charts.find((candidate) => candidate.id === slide.chartId)
+    : null;
+  const summaryParts = [
+    slide.body,
+    ...(slide.bullets ?? []),
+    slide.callout?.text,
+    chart ? `${chart.title}${chart.sourceNote ? ` (${chart.sourceNote})` : ""}` : "",
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  const metricsSentence = slide.metrics?.length
+    ? `Key numbers: ${slide.metrics.map((metric) => `${metric.label} ${metric.value}${metric.delta ? ` (${metric.delta})` : ""}`).join("; ")}.`
+    : "";
+
+  return [
+    summaryParts.join(" ").trim(),
+    metricsSentence,
+  ].filter((paragraph) => paragraph.length > 0);
 }
 
 async function markPhase(
