@@ -252,8 +252,10 @@ type ArtifactCheckpoint = {
   proof: ArtifactCheckpointProof;
 };
 type ClaudeUsage = {
-  input_tokens?: number;
-  output_tokens?: number;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
 };
 
 type PublishDecision = {
@@ -275,7 +277,7 @@ type ClaudeRequestUsage = {
   requestId: string | null;
   startedAt: string;
   completedAt: string;
-  usage: Required<ClaudeUsage>;
+  usage: ClaudeUsage;
   stopReason: string | null;
 };
 type RenderedPageQaReport = z.infer<typeof renderedPageQaSchema>;
@@ -503,7 +505,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     let pptxFile: GeneratedFile;
     let pdfFile: GeneratedFile;
     let manifest: z.infer<typeof deckManifestSchema>;
-    let latestResponse: Awaited<ReturnType<typeof runClaudeLoop>> | null = null;
+  let latestResponse: Awaited<ReturnType<typeof runClaudeLoop>> | null = null;
+  let generationMessage: ReturnType<typeof buildAuthorMessage> | null = null;
     let latestContainerId: string | null = null;
     let baseContainerId: string | null = null;
 
@@ -588,7 +591,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       currentPhase = "author";
       await markPhase(config, runId, attempt, currentPhase);
 
-      const generationMessage = buildAuthorMessage(
+      generationMessage = buildAuthorMessage(
         run,
         recoveredAnalysisForSplit ? analysis : null,
         !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
@@ -653,6 +656,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       const authorPhaseUsage = {
         input_tokens: authorResponse.usage.input_tokens ?? 0,
         output_tokens: authorResponse.usage.output_tokens ?? 0,
+        cache_creation_input_tokens: authorResponse.usage.cache_creation_input_tokens ?? 0,
+        cache_read_input_tokens: authorResponse.usage.cache_read_input_tokens ?? 0,
       };
       const containerId = authorResponse.containerId;
       manifest = parseManifestResponse(authorResponse.message, authorFiles);
@@ -834,7 +839,15 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           currentPdf: pdfFile,
           visualQa: initialVisualQa.report,
         });
-        const reviseMessages = [...latestResponse.thread, reviseMessage];
+        const reviseMessages = [
+          ...buildMinimalReviseThread({
+            generationMessage: generationMessage!,
+            run,
+            analysis,
+            manifest,
+          }),
+          reviseMessage,
+        ];
         await recordToolCall(config, runId, attempt, "revise", "code_execution", {
           model: MODEL,
           tools: [...AUTHORING_TOOL_CALL_SUMMARY.tools],
@@ -913,6 +926,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         const revisePhaseUsage = {
           input_tokens: reviseResponse.usage.input_tokens ?? 0,
           output_tokens: reviseResponse.usage.output_tokens ?? 0,
+          cache_creation_input_tokens: reviseResponse.usage.cache_creation_input_tokens ?? 0,
+          cache_read_input_tokens: reviseResponse.usage.cache_read_input_tokens ?? 0,
         };
 
         await completePhase(
@@ -1939,6 +1954,10 @@ function accumulateClaudeUsage(target: ClaudeUsage, usage: ClaudeUsage | null | 
 
   target.input_tokens = (target.input_tokens ?? 0) + (usage.input_tokens ?? 0);
   target.output_tokens = (target.output_tokens ?? 0) + (usage.output_tokens ?? 0);
+  target.cache_creation_input_tokens =
+    (target.cache_creation_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+  target.cache_read_input_tokens =
+    (target.cache_read_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
 }
 
 function normalizeNarrativeParagraphs(text: string) {
@@ -2507,8 +2526,11 @@ async function persistRequestUsage(
       anthropic_request_id: request.requestId,
       usage: {
         inputTokens: request.usage.input_tokens ?? 0,
+        cacheCreationInputTokens: request.usage.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: request.usage.cache_read_input_tokens ?? 0,
         outputTokens: request.usage.output_tokens ?? 0,
-        totalTokens: (request.usage.input_tokens ?? 0) + (request.usage.output_tokens ?? 0),
+        totalInputTokens: billableInputTokens(request.usage),
+        totalTokens: billableInputTokens(request.usage) + (request.usage.output_tokens ?? 0),
       },
       started_at: request.startedAt,
       completed_at: request.completedAt,
@@ -2541,7 +2563,15 @@ async function persistRequestStart(
       provider: "anthropic",
       model,
       anthropic_request_id: null,
-      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, status: "started" },
+      usage: {
+        inputTokens: 0,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        totalInputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        status: "started",
+      },
       started_at: startedAt,
       completed_at: null,
     }],
@@ -2685,6 +2715,9 @@ function buildAuthorMessage(
         ...(routeContext ? [routeContext] : []),
         "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
         `- ${analysisDepthInstruction}`,
+        "- After the initial 2-3 profiling code blocks, suppress DataFrame and Series output. Use variables instead of printing intermediate tables.",
+        "- After initial profiling, never print more than 5 rows from any dataframe. Print only final computed values needed for the narrative and charts.",
+        "- Use matplotlib in non-interactive mode (`matplotlib.use('Agg')`, `plt.ioff()`) and avoid debug rendering output.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         `- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`,
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
@@ -2736,6 +2769,7 @@ function buildAuthorMessage(
           ...(perSlideConstraintMessage ? [perSlideConstraintMessage] : []),
           "- Treat the deterministic chart preprocessing guide below as a hard render contract, not as optional style advice.",
           chartPreprocessingGuide,
+          "- Keep code execution output compact. After the first profiling step, do not print exploratory tables or repeated diagnostics unless they directly support the final deck.",
           "- Match every chart canvas to its target slot aspect ratio. Never stretch chart images in the final deck.",
           "- You MUST select and honor one approved archetype per slide. Do not improvise layouts with free-positioned text or shapes outside archetype slots.",
           "- For scenario or option comparison slides with a chart, you MUST use scenario-cards.",
@@ -2962,6 +2996,47 @@ function buildReviseMessage(input: {
   };
 }
 
+function buildMinimalReviseThread(input: {
+  generationMessage: Anthropic.Beta.BetaMessageParam;
+  run: RunRow;
+  analysis: z.infer<typeof analysisSchema> | null;
+  manifest: z.infer<typeof deckManifestSchema>;
+}) {
+  const compactManifest = input.manifest.slides.map((slide) => ({
+    position: slide.position,
+    title: slide.title,
+    archetype: slide.slideArchetype,
+    chartId: slide.chartId ?? null,
+    metrics: slide.metrics?.slice(0, 3) ?? [],
+    callout: slide.callout?.text ?? null,
+  }));
+
+  const summary = [
+    `I analyzed the uploaded evidence package and generated a ${input.manifest.slideCount}-slide deck in the current container.`,
+    `Client: ${input.run.client || "Not specified"}`,
+    `Audience: ${input.run.audience || "Executive stakeholder"}`,
+    `Objective: ${input.run.objective || "Not specified"}`,
+    `Thesis: ${input.analysis?.thesis || input.run.thesis || "Not specified"}`,
+    `Executive summary: ${input.analysis?.executiveSummary || "Not available"}`,
+    `Manifest summary: ${JSON.stringify(compactManifest, null, 2)}`,
+    "Generated files already present in the container: deck.pptx, deck.pdf, deck_manifest.json.",
+    "Use the rendered PDF and issue list from the next user message to make local repairs without replaying the full authoring transcript.",
+  ].join("\n\n");
+
+  return [
+    input.generationMessage,
+    {
+      role: "assistant" as const,
+      content: [
+        {
+          type: "text" as const,
+          text: summary,
+        },
+      ],
+    },
+  ];
+}
+
 // ─── TRANSIENT ERROR CLASSIFICATION ──────────────────────────
 
 const TRANSIENT_RETRY_DELAYS_MS = [3_000, 8_000, 20_000] as const;
@@ -2976,7 +3051,8 @@ function buildRequestRecordCallback(
   model: string,
 ) {
   return async (record: ClaudeRequestUsage) => {
-    const totalTokens = (record.usage.input_tokens ?? 0) + (record.usage.output_tokens ?? 0);
+    const totalInputTokens = billableInputTokens(record.usage);
+    const totalTokens = totalInputTokens + (record.usage.output_tokens ?? 0);
 
     await upsertRestRows({
       supabaseUrl: config.supabaseUrl,
@@ -2995,6 +3071,9 @@ function buildRequestRecordCallback(
         anthropic_request_id: record.requestId,
         usage: {
           inputTokens: record.usage.input_tokens ?? 0,
+          cacheCreationInputTokens: record.usage.cache_creation_input_tokens ?? 0,
+          cacheReadInputTokens: record.usage.cache_read_input_tokens ?? 0,
+          totalInputTokens,
           outputTokens: record.usage.output_tokens ?? 0,
           totalTokens,
           status: record.stopReason?.startsWith("transient_retry") ? "failed_transient" : "completed",
@@ -3113,6 +3192,8 @@ async function runClaudeLoop(input: {
   const usage: Required<ClaudeUsage> = {
     input_tokens: 0,
     output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
   };
   const phaseTimeoutMs =
     typeof input.phaseTimeoutMs === "number" && input.phaseTimeoutMs > 0
@@ -3216,7 +3297,12 @@ async function runClaudeLoop(input: {
               requestId: null,
               startedAt,
               completedAt: new Date().toISOString(),
-              usage: { input_tokens: 0, output_tokens: 0 },
+              usage: {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+              },
               stopReason: `transient_retry_${retry + 1}`,
             };
             requests.push(retryRecord);
@@ -3248,16 +3334,26 @@ async function runClaudeLoop(input: {
 
       finalMessage = message!;
       currentContainer = finalMessage.container ? { id: finalMessage.container.id } : currentContainer;
-      usage.input_tokens += finalMessage.usage?.input_tokens ?? 0;
-      usage.output_tokens += finalMessage.usage?.output_tokens ?? 0;
+      const finalInputTokens = finalMessage.usage?.input_tokens ?? 0;
+      const finalOutputTokens = finalMessage.usage?.output_tokens ?? 0;
+      const finalCacheCreationInputTokens = finalMessage.usage?.cache_creation_input_tokens ?? 0;
+      const finalCacheReadInputTokens = finalMessage.usage?.cache_read_input_tokens ?? 0;
+      usage.input_tokens = (usage.input_tokens ?? 0) + finalInputTokens;
+      usage.output_tokens = (usage.output_tokens ?? 0) + finalOutputTokens;
+      usage.cache_creation_input_tokens =
+        (usage.cache_creation_input_tokens ?? 0) + finalCacheCreationInputTokens;
+      usage.cache_read_input_tokens =
+        (usage.cache_read_input_tokens ?? 0) + finalCacheReadInputTokens;
       const generatedFileIds = collectGeneratedFileIds(finalMessage.content);
       const completedRecord: ClaudeRequestUsage = {
         requestId,
         startedAt,
         completedAt,
         usage: {
-          input_tokens: finalMessage.usage?.input_tokens ?? 0,
-          output_tokens: finalMessage.usage?.output_tokens ?? 0,
+          input_tokens: finalInputTokens,
+          output_tokens: finalOutputTokens,
+          cache_creation_input_tokens: finalCacheCreationInputTokens,
+          cache_read_input_tokens: finalCacheReadInputTokens,
         },
         stopReason: finalMessage.stop_reason ?? null,
       };
@@ -5141,16 +5237,32 @@ function inferLanguageHint(run: RunRow) {
     : "English";
 }
 
+function billableInputTokens(usage: ClaudeUsage | null | undefined) {
+  return (
+    (usage?.input_tokens ?? 0) +
+    (usage?.cache_creation_input_tokens ?? 0) +
+    (usage?.cache_read_input_tokens ?? 0)
+  );
+}
+
 function buildPhaseTelemetry(
   model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6",
   result: { usage: ClaudeUsage; iterations: number; pauseTurns: number; requestIds?: string[] },
 ) {
+  const inputTokens = result.usage.input_tokens ?? 0;
+  const cacheCreationInputTokens = result.usage.cache_creation_input_tokens ?? 0;
+  const cacheReadInputTokens = result.usage.cache_read_input_tokens ?? 0;
+  const totalInputTokens = billableInputTokens(result.usage);
+  const outputTokens = result.usage.output_tokens ?? 0;
   return {
     model,
     estimatedCostUsd: usageToCost(model, result.usage),
-    inputTokens: result.usage.input_tokens ?? 0,
-    outputTokens: result.usage.output_tokens ?? 0,
-    totalTokens: (result.usage.input_tokens ?? 0) + (result.usage.output_tokens ?? 0),
+    inputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    totalInputTokens,
+    outputTokens,
+    totalTokens: totalInputTokens + outputTokens,
     iterations: result.iterations,
     pauseTurns: result.pauseTurns,
     anthropicRequestIds: result.requestIds ?? [],
@@ -5161,11 +5273,19 @@ function buildSimplePhaseTelemetry(
   model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6",
   usage: ClaudeUsage | null | undefined,
 ) {
+  const inputTokens = usage?.input_tokens ?? 0;
+  const cacheCreationInputTokens = usage?.cache_creation_input_tokens ?? 0;
+  const cacheReadInputTokens = usage?.cache_read_input_tokens ?? 0;
+  const totalInputTokens = billableInputTokens(usage);
+  const outputTokens = usage?.output_tokens ?? 0;
   return {
     model,
     estimatedCostUsd: usageToCost(model, usage),
-    inputTokens: usage?.input_tokens ?? 0,
-    outputTokens: usage?.output_tokens ?? 0,
-    totalTokens: (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0),
+    inputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    totalInputTokens,
+    outputTokens,
+    totalTokens: totalInputTokens + outputTokens,
   };
 }

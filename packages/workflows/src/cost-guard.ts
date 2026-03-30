@@ -74,19 +74,34 @@ export function estimateUsd(
   model: keyof typeof MODEL_PRICING,
   inputTokens: number,
   outputTokens: number,
+  cacheCreationInputTokens: number = 0,
+  cacheReadInputTokens: number = 0,
 ) {
   const pricing = MODEL_PRICING[model];
   return roundUsd(
     (inputTokens / 1_000_000) * pricing.inputUsdPerMTok +
+      (cacheCreationInputTokens / 1_000_000) * pricing.inputUsdPerMTok * 1.25 +
+      (cacheReadInputTokens / 1_000_000) * pricing.inputUsdPerMTok * 0.1 +
       (outputTokens / 1_000_000) * pricing.outputUsdPerMTok,
   );
 }
 
 export function usageToCost(
   model: keyof typeof MODEL_PRICING,
-  usage: { input_tokens?: number; output_tokens?: number } | null | undefined,
+  usage: {
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
+  } | null | undefined,
 ) {
-  return estimateUsd(model, usage?.input_tokens ?? 0, usage?.output_tokens ?? 0);
+  return estimateUsd(
+    model,
+    usage?.input_tokens ?? 0,
+    usage?.output_tokens ?? 0,
+    usage?.cache_creation_input_tokens ?? 0,
+    usage?.cache_read_input_tokens ?? 0,
+  );
 }
 
 export function roundUsd(value: number) {
