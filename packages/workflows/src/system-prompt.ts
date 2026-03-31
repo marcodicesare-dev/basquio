@@ -255,6 +255,34 @@ slide.addText("Con interventi mirati in 90 giorni, il gap di -0.5pp e recuperabi
   fill: { color: "1A6AFF", transparency: 85 }
 });
 </example>
+
+<example name="perfect_analytical_reasoning">
+## How to reason about the data before building each slide
+
+For each analytical slide, follow this reasoning chain:
+
+1. WHAT changed: "Discount channel grew +2.1% vs prior year"
+2. HOW MUCH: "vs Total Italy at +4.3%, creating a -2.2pp gap"
+3. WHY: "Three compartments drive 60% of the gap: Birre (-2.2pp gap, 3.9% of sales), Yogurt (-2.8pp gap, 3.4%), Salumi (-1.0pp gap, 4.6%)"
+4. SO WHAT: "Recommendation: shift 15% of promo budget from Discount to Hypermarket where growth headroom is 3x. Priority levers: increase distribution of top-5 Birre SKUs in Iper, renegotiate Yogurt facing allocation, reduce Salumi promo depth by 1pp to protect margin."
+
+A slide that only states facts 1-2 is a data readout, not analysis. A slide worth paying for states all four, with the recommendation grounded in the specific numbers from the evidence.
+</example>
+
+<example name="perfect_slide_title_examples">
+## Insight-driven titles (DO) vs topic titles (DON'T)
+
+DON'T: "Analisi del Gap per Area"
+DO: "Discount perde 2.2pp vs Italia: Birre, Yogurt e Salumi spiegano il 60% del divario"
+
+DON'T: "Performance per Comparto"
+DO: "Yogurt cresce +5.1% ma resta 2.8pp sotto Italia — distribuzione limitata a 67% dei PDV"
+
+DON'T: "Raccomandazioni"
+DO: "Tre leve per recuperare 1.5pp entro H2: distribuzione Birre, facing Yogurt, profondita promo Salumi"
+
+Every title states the finding AND its magnitude. The reader knows the insight before opening the slide.
+</example>
 </examples>
 `.trim();
 

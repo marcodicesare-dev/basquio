@@ -1,5 +1,24 @@
 # Decision Log
 
+## March 31, 2026 — Ship narrative markdown instead of DOCX
+
+Decision:
+- replace the generated narrative artifact lane from `report.docx` to `narrative_report.md`
+- treat the markdown report as the first-class third artifact beside PPTX and PDF
+- remove the post-hoc DOCX conversion and salvage builders from the direct worker path
+- raise direct-worker budget guards to `pre-flight = $4.50` and `hard = $6.00` so `revise` can actually execute after normal author spend
+
+Why:
+- the highest-quality narrative already existed as `narrative_report.md` inside the author code-execution turn
+- converting that markdown into OOXML added a failure surface without improving the content
+- users explicitly wanted an AI-friendly narrative output that they can reuse downstream
+- the old budget caps were below the observed Sonnet author baseline, which starved `revise` and made the repair loop effectively dead
+
+Implication:
+- artifact contracts, download routes, UI affordances, and QA checks must use `md` / `narrative_report.md`
+- publish validation for the narrative lane should check markdown content quality, not DOCX zip signatures
+- canonical docs and memory should describe narrative markdown as the live narrative artifact lane
+
 ## March 26, 2026 — Runtime reliability and cost hardening
 
 Decision:

@@ -6,8 +6,8 @@ const MODEL_PRICING: Record<string, { inputUsdPerMTok: number; outputUsdPerMTok:
   "claude-opus-4-6": { inputUsdPerMTok: 5, outputUsdPerMTok: 25 },
 };
 
-const PRE_FLIGHT_BUDGET_USD = 2.75;
-const HARD_BUDGET_USD = 3.5;
+const PRE_FLIGHT_BUDGET_USD = 4.5;
+const HARD_BUDGET_USD = 6.0;
 
 export async function enforceDeckBudget(input: {
   client: Anthropic;

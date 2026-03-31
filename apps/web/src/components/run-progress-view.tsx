@@ -76,7 +76,7 @@ export type RunProgressSnapshot = {
   failureMessage?: string;
   failureClassification?: FailureClassification;
   toolCallCount?: number;
-  runHealth?: "healthy" | "stale" | "recovering";
+  runHealth?: "healthy" | "stale" | "recovering" | "late_heartbeat";
   notifyOnComplete?: boolean;
 };
 
@@ -198,8 +198,8 @@ export function RunProgressView(input: {
     const pdfDownloadHref = `/api/artifacts/${snapshot.jobId}/pdf`;
     const pdfPreviewHref = `${pdfDownloadHref}?disposition=inline#toolbar=0&navpanes=0&view=FitH`;
     const pptxDownloadHref = `/api/artifacts/${snapshot.jobId}/pptx`;
-    const hasDocxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "docx"));
-    const docxDownloadHref = `/api/artifacts/${snapshot.jobId}/docx`;
+    const hasMdArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "md"));
+    const mdDownloadHref = `/api/artifacts/${snapshot.jobId}/md`;
     const templateSummary = describeTemplateDiagnostics(
       snapshot.summary?.templateDiagnostics ?? snapshot.templateDiagnostics,
     );
@@ -240,13 +240,13 @@ export function RunProgressView(input: {
               <a className="button secondary" href={pdfDownloadHref}>
                 Download PDF
               </a>
-              {hasDocxArtifact ? (
-                <a className="button secondary" href={docxDownloadHref}>
-                  Download DOCX
+              {hasMdArtifact ? (
+                <a className="button secondary" href={mdDownloadHref}>
+                  Download Report
                 </a>
               ) : (
                 <span className="muted" style={{ fontSize: "0.82rem" }}>
-                  DOCX was not generated for this run.
+                  Narrative report was not generated for this run.
                 </span>
               )}
               <a className="button small secondary" href={pdfPreviewHref} target="_blank" rel="noreferrer">
@@ -500,6 +500,7 @@ export function RunProgressView(input: {
   const templateSummary = describeTemplateDiagnostics(snapshot.templateDiagnostics);
   const staleWarning = snapshot.runHealth === "stale";
   const recoveringWarning = snapshot.runHealth === "recovering";
+  const heartbeatLateWarning = snapshot.runHealth === "late_heartbeat";
 
   return (
     <div style={styles.fullPage}>
@@ -561,6 +562,23 @@ export function RunProgressView(input: {
             }}
           >
             Retrying automatically after a temporary service issue. You don&apos;t need to restart the run.
+          </div>
+        ) : null}
+        {heartbeatLateWarning ? (
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              marginBottom: "1.5rem",
+              padding: "0.9rem 1rem",
+              borderRadius: 18,
+              border: "1px solid rgba(255,196,87,0.22)",
+              background: "rgba(255,196,87,0.05)",
+              color: "#F2F0EB",
+              zIndex: 1,
+            }}
+          >
+            This run has not heartbeated recently. Basquio has not started recovery yet.
           </div>
         ) : null}
 

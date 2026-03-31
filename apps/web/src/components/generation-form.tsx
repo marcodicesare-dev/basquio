@@ -725,7 +725,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
               <article className="review-card stack">
                 <p className="artifact-kind">Output</p>
                 <p className="muted" style={{ fontSize: "0.9rem" }}>
-                  PPTX + PDF + DOCX — charts stay locked in the slide outputs, and the DOCX is a text-first narrative report with no charts for easier reuse.
+                  PPTX + PDF + Report — charts stay locked in the slide outputs, and the report is a text-first markdown narrative with no charts for easier reuse.
                 </p>
               </article>
             </div>

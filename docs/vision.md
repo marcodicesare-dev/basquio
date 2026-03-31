@@ -28,7 +28,7 @@ Outputs:
 
 - editable `.pptx`
 - polished `.pdf`
-- narrative `.docx` report with deeper explanation
+- narrative `.md` report with deeper explanation
 - all from the same canonical evidence interpretation and deck intent
 - a report-grade narrative that explains what happened, why it matters, and what the audience should do next
 

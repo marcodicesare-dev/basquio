@@ -205,6 +205,18 @@ Before planning slides, check which motifs apply. The detected motifs should dri
 
 ## 7. Analytical Recipes
 
+### Materiality thresholds - when a finding is worth a slide
+
+| Signal | Noise | Material | Significant |
+|--------|-------|----------|-------------|
+| Value share change (pp YoY) | abs <0.3pp | abs 0.3-1.0pp | abs >1.0pp |
+| Volume growth (%) | abs <1% | abs 1-5% | abs >5% |
+| Price index vs category | 95-105 | 80-95 or 105-120 | <80 or >120 |
+| SKU efficiency (EUR/SKU) | >EUR50K | EUR20-50K | <EUR20K (rationalize) |
+| Promo intensity (% vol on promo) | <30% | 30-50% | >50% (dependence) |
+
+Lead with findings in the "significant" column. Include "material" findings as supporting evidence. Skip "noise" findings.
+
 ### "How is the category performing?"
 1. Total category Value CY vs PY -> growth %
 2. Split by COMPARTO (segment) -> segment sizes
@@ -319,6 +331,17 @@ Every slide and every POV must pass this:
 
 ### Recommendation Prioritization
 Rank by: Prize x Feasibility x Ease x Time x Fit
+
+<example>
+Worked SCQA calibration:
+
+- Situation: Affinity is a EUR105M supplier in a EUR1.94bn flat Italian petfood market, with 95% of sales through Ultima.
+- Complication: The biggest demand pool, cat wet at EUR781M, is where Ultima has near-zero presence, so the brand is over-indexed in mature dry categories while growth sits elsewhere.
+- Question: How can Affinity rebalance the portfolio to capture cat wet growth while defending the profitable dry base?
+- Answer: Protect cat dry heroes where the top 4 SKUs drive 30% of sales, build cat wet distribution through selective launches, renovate declining heroes, and prune the tail to fund growth.
+
+This is strong SCQA because the tension is specific, quantified, and directly linked to an action path.
+</example>
 
 ---
 

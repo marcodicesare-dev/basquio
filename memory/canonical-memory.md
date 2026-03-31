@@ -93,9 +93,9 @@ Initial domain bias:
 - A concrete rendered-page QA path now exists: upload the generated `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
 - Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks. File-backed phases need post-response budget enforcement from actual usage instead of preflight token counting.
 - The final direct-deck generation contract should require `deck.pptx`, `deck.pdf`, and `deck_manifest.json`. `basquio_analysis.json` is optional audit output, not a blocking transport requirement.
-- `report.docx` is a live artifact in the direct deck path and must be authored from the same canonical narrative and evidence layer as the deck, not reverse-converted from slides or PDF.
-- DOCX in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.
-- DOCX must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
+- `narrative_report.md` is a live artifact in the direct deck path and must be authored from the same canonical narrative and evidence layer as the deck, not reverse-converted from slides or PDF.
+- narrative markdown in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.
+- narrative markdown must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
 - When the `pptx` skill is loaded, Basquio should rely on the documented skill contract itself rather than assuming an undocumented internal presentation library implementation.
 - In the current Anthropic API behavior, loading Skills can auto-inject the code-execution tool. Do not explicitly register another named `code_execution` tool alongside those Skills if the API reports a tool-name conflict.
 - The March 27-28 failure cluster was primarily a runtime-truth mismatch problem: speculative docs and forward-looking fixes diverged from live provider/runtime behavior faster than the code was revalidated.

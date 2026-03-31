@@ -4,7 +4,7 @@
  * This script:
  * 1. Loads the highest checkpoint (revise > author) from working_papers
  * 2. Downloads the checkpoint PPTX and PDF from storage
- * 3. Builds DOCX from the checkpoint manifest + run analysis
+ * 3. Builds narrative markdown from the checkpoint manifest + run analysis
  * 4. Publishes all artifacts to the final storage paths
  * 5. Creates the artifact_manifests_v2 row
  * 6. Marks the run as completed/salvaged
@@ -21,7 +21,6 @@ import {
   uploadToStorage,
 } from "../packages/workflows/src/supabase";
 import { parseDeckManifest } from "../packages/workflows/src/deck-manifest";
-import { buildNarrativeDocx } from "../packages/workflows/src/docx-report";
 
 loadBasquioScriptEnv();
 
@@ -132,7 +131,7 @@ async function main() {
   const manifest = parseDeckManifest(checkpoint.manifestJson as Record<string, unknown>);
   console.log(`  Manifest: ${manifest.slideCount} slides, ${manifest.charts.length} charts`);
 
-  // 5. Load analysis for DOCX
+  // 5. Load analysis for the narrative markdown
   const analysisRows = await fetchRestRows<WorkingPaperRow>({
     supabaseUrl,
     serviceKey,
@@ -148,21 +147,23 @@ async function main() {
 
   const analysis = analysisRows[0]?.content ?? { language: "English", thesis: "", executiveSummary: "", slidePlan: [] };
 
-  // 6. Build DOCX
-  console.log("\nBuilding DOCX...");
-  const docx = await buildNarrativeDocx({
-    run: run as Parameters<typeof buildNarrativeDocx>[0]["run"],
-    analysis: analysis as Parameters<typeof buildNarrativeDocx>[0]["analysis"],
+  // 6. Build narrative markdown
+  console.log("\nBuilding narrative markdown...");
+  const markdown = buildRescueNarrativeMarkdown({
+    run,
+    analysis,
     manifest,
+    checkpointPhase: String(checkpoint.phase ?? "unknown"),
   });
-  console.log(`  DOCX: ${docx.buffer.length} bytes`);
+  const markdownBuffer = Buffer.from(markdown, "utf8");
+  console.log(`  MD:   ${markdownBuffer.length} bytes`);
 
   // 7. Upload final artifacts
   console.log("\nUploading final artifacts...");
   const items = [
     { kind: "pptx", fileName: "deck.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: pptxBuffer },
     { kind: "pdf", fileName: "deck.pdf", mimeType: "application/pdf", buffer: pdfBuffer },
-    { kind: "docx", fileName: "report.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: docx.buffer },
+    { kind: "md", fileName: "narrative_report.md", mimeType: "text/markdown", buffer: markdownBuffer },
   ] as const;
 
   const artifacts = [];
@@ -260,6 +261,42 @@ async function main() {
 
   console.log(`\nDone. Run ${runId} is now completed (salvaged from ${checkpoint.phase} checkpoint).`);
   console.log(`Artifacts: ${artifacts.map((a) => `${a.kind} (${a.fileBytes} bytes)`).join(", ")}`);
+}
+
+function buildRescueNarrativeMarkdown(input: {
+  run: RunRow;
+  analysis: Record<string, unknown>;
+  manifest: ReturnType<typeof parseDeckManifest>;
+  checkpointPhase: string;
+}) {
+  const executiveSummary =
+    typeof input.analysis.executiveSummary === "string" && input.analysis.executiveSummary.trim().length > 0
+      ? input.analysis.executiveSummary.trim()
+      : "This report was salvaged from the latest successful checkpoint. Review the deck for full visual context.";
+
+  const slideTitles = input.manifest.slides
+    .map((slide) => `- Slide ${slide.position}: ${slide.title}`)
+    .join("\n");
+
+  return [
+    `# ${input.run.client || "Basquio Report"}`,
+    "",
+    "## Executive Summary",
+    executiveSummary,
+    "",
+    "## Rescue Context",
+    `This narrative was rebuilt from a ${input.checkpointPhase} checkpoint after the primary publish flow failed.`,
+    `Objective: ${input.run.objective || "Not specified"}`,
+    `Audience: ${input.run.audience || "Not specified"}`,
+    "",
+    "## Deck Structure",
+    slideTitles || "- No slide titles available",
+    "",
+    "## Notes",
+    "Use this markdown as the text-first companion to the salvaged PPTX and PDF artifacts.",
+    "The content is intentionally conservative because it was reconstructed from checkpoint data rather than the final author turn.",
+    "",
+  ].join("\n");
 }
 
 void main().catch((error) => {

@@ -146,10 +146,11 @@ export function scoreDomainKnowledgePacks(args: {
   const negativeMatches = collectCueMatches(`${args.brief} ${workspaceText}`, FMCG_NEGATIVE_CUES);
 
   const score = briefMatches.length * 2 + dataMatches.length - negativeMatches.length * 5;
-  // Stricter activation: need strong signal from BOTH brief AND data, or very strong data signal
   const activated =
     negativeMatches.length === 0 &&
-    ((briefMatches.length >= 2 && dataMatches.length >= 2) || dataMatches.length >= 4);
+    ((briefMatches.length >= 1 && dataMatches.length >= 1) ||
+      briefMatches.length >= 2 ||
+      dataMatches.length >= 3);
 
   return [{
     packId: "niq-storymasters-fmcg",

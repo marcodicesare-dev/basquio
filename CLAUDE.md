@@ -38,7 +38,7 @@ After pushing to main, Vercel auto-deploys. Railway worker deploys must be done 
 - `container_upload` files cost 0 input tokens. NEVER put data summaries in the message text.
 - Each `pause_turn` continuation re-sends FULL message history. Minimize continuations.
 - Include `web_fetch_20260209` in tools for free code execution compute.
-- Expected cost: $0.50-1.70/deck. If > $3.50, the prompt or continuation pattern is wrong.
+- Expected cost: roughly $3+/deck on Sonnet 4.6 with current code execution. If it materially exceeds $6.00, the run is likely off the rails.
 
 ### PPTX skill
 The Anthropic PPTX skill uses PptxGenJS (Node.js). Do NOT instruct Claude to use python-pptx when the skill is loaded. Charts should be rendered as PNG images in Python (matplotlib/seaborn) and embedded in the deck.
@@ -120,11 +120,11 @@ Migrations: `supabase/migrations/`
 - Research (Huang et al. ICLR 2024, ChartIR March 2026) proves: LLM self-correction without new visual information FAILS. The PDF is the new information that makes correction work.
 - Revise should be slide-specific: list which slides to fix, forbid touching the rest.
 
-### DOCX architecture
-- DOCX MUST be generated INSIDE the author code execution turn, NOT as a separate post-hoc API call.
+### Narrative artifact architecture
+- Narrative markdown MUST be generated INSIDE the author code execution turn, NOT as a separate post-hoc API call.
 - Claude already has pandas loaded, analysis done, charts made. Writing a 2000-word narrative from that state is trivial.
 - A separate API call that receives a stripped-down summary will ALWAYS produce shallow output.
-- The author prompt should require `report.docx` (or `narrative.md`) as a mandatory output file alongside deck.pptx, deck.pdf, deck_manifest.json.
+- The author prompt should require `narrative_report.md` as a mandatory output file alongside deck.pptx, deck.pdf, deck_manifest.json.
 - Target: 2000-3000 words with executive summary, methodology, detailed findings with caveats, and operational recommendations.
 
 ### Schema parsing
@@ -151,14 +151,56 @@ Migrations: `supabase/migrations/`
 - No "fix" commit without identifying which prior commit introduced the regression
 - NEVER ship SDK type-level features without verifying the API actually accepts them (context_management, code_execution_20260120 both failed)
 
+### Narrative artifact architecture
+- Narrative markdown MUST be generated INSIDE the author code execution turn, NOT as a separate post-hoc API call.
+- Claude already has pandas loaded, analysis done, charts made. Writing a 2000-word narrative from that state is trivial.
+- A separate API call that receives a stripped-down summary will ALWAYS produce shallow output.
+- The author prompt should require `narrative_report.md` as a mandatory output file alongside deck.pptx, deck.pdf, deck_manifest.json.
+- Target: 2000-3000 words with executive summary, methodology, detailed findings with caveats, and operational recommendations.
+
+### Proven quality levers (ranked by impact, March 30)
+1. **Few-shot examples in system prompt** — 6/10 → 7.4/10 in one commit. THE highest-impact change.
+2. **Per-slide spatial budgets from archetypes** — prevents wrong chart sizes, enforces slot constraints.
+3. **Mandatory archetype selection** — prevents freeform addShape/addText that causes overlaps.
+4. **In-turn narrative markdown generation** (`narrative_report.md`) — 320-word stubs → 1,688-word real reports.
+5. **Revise with rendered PDF** — Claude can SEE what's broken (vs blind text-only critique).
+
+### Cost truth (March 31, verified against Anthropic billing)
+- Cost tracking was broken before `03325fb`, so the old $0.76-$1.53 numbers were undercounted. Real cost has always been about $3+/deck on Sonnet 4.6.
+- Current working assumption: baseline Sonnet cost is around $3.40/deck, not sub-$2.
+- 59% of cost ($2.00) is cache_read_input_tokens from in-turn auto-caching during code execution. This is UNCONTROLLABLE per-request — it happens inside a single API call as code execution rounds accumulate context.
+- 0 pause_turn continuations does NOT reduce cost to $1 because the in-turn cache reads dominate.
+- The same run on Haiku 4.5 would cost ~$1.13. This is the only path to <$1.50/deck without architecture changes.
+- Code execution compute is FREE (web_fetch_20260209 in tools).
+- Budget guards: pre-flight cap = $4.50, hard cap = $6.00. Anything lower starves revise.
+
+### Current production baseline (run 47da3b5e, March 30 evening)
+- Visual quality: 7.4/10 (exec summary 8/10, charts 7-8/10, recommendations 7/10)
+- Narrative artifact quality: 6/10 (1,688 words, real methodology + findings + recommendations, but below 2K target)
+- Cost: $3.42 (Sonnet 4.6, 0 continuations, cache-aware tracking)
+- Reliability: completed, delivery "reviewed", QA passed
+- Time: ~20 min
+- Slide count: 10 (canonical, respected)
+
+### Anthropic prompting best practices (from official docs, March 30)
+- "Show your prompt to a colleague with minimal context. If they'd be confused, Claude will be too."
+- Claude 4.6 defaults to high effort. Set `effort: "medium"` for most workloads to control token usage.
+- Few-shot examples inside `<example>` tags dramatically improve accuracy and consistency. Use 3-5 examples.
+- XML tags reduce misinterpretation. Wrap instructions, context, examples in separate tags.
+- "Be specific about desired output format. If you want above-and-beyond behavior, explicitly request it."
+- For code execution: "Complete ALL work in a single session. Do not end the turn until all required files are attached."
+- Avoid over-prompting that causes overtriggering. "CRITICAL: You MUST" language from older models causes Claude 4.6 to overreact.
+- `max_tokens: 64000` recommended at medium/high effort to give room for thinking + output.
+- Adaptive thinking (`thinking: { type: "adaptive" }`) with `effort: "medium"` replaces extended thinking with budget_tokens.
+
 ### Anti-patterns (proven failures from March 27-30)
 - Adding "hardening" commits that create new crash modes (13 "harden" commits, most introduced regressions)
 - Fixing cost tracking without reducing cost (you see the real bill but it's still $2.50)
-- Post-hoc DOCX generation from stripped context (produces 320-word stubs)
+- Post-hoc narrative generation from stripped context (produces 320-word stubs)
 - Stdout suppression instructions that kill file generation
 - Phase watchdog timeouts below 25 minutes for author
 - context_management API features that don't exist server-side
-- Separate "enriched" DOCX builders that produce worse output than the original
+- Separate "enriched" narrative builders that produce worse output than the original
 
 ## Memory & learnings
 Read `memory/MEMORY.md` for the current index. Critical files:
@@ -172,6 +214,7 @@ Read `memory/MEMORY.md` for the current index. Critical files:
 - The pattern: fix one thing → break another → fix that → break something else.
 - What actually works: V6 code execution + PPTX skill. When Claude gets good constraints AND concrete examples, it produces consulting-grade output.
 - What keeps failing: downstream recovery/hardening/salvage infrastructure that adds complexity without improving the happy path.
+- **March 30 breakthrough (commit fda7621):** Adding 2 few-shot PptxGenJS examples to the system prompt raised visual quality from 6/10 to 7.4/10 in a single commit. This is the first proven quality improvement in 72 hours. The examples fixed: empty SCQA labels, overlapping scenario cards, chart-split layout issues. The architecture (one Claude turn with PPTX skill) is correct — the missing ingredient was showing Claude what good output looks like, not telling it what to avoid.
 - The fundamental insight: make the happy path succeed, don't catch every failure mode.
 - **March 30 breakthrough (commit fda7621):** Adding 2 few-shot PptxGenJS examples to the system prompt raised visual quality from 6/10 to 7.4/10 in a single commit. This is the first proven quality improvement in 72 hours. The examples fixed: empty SCQA labels, overlapping scenario cards, chart-split layout issues. The architecture (one Claude turn with PPTX skill) is correct — the missing ingredient was showing Claude what good output looks like, not telling it what to avoid.
 
@@ -179,19 +222,21 @@ Read `memory/MEMORY.md` for the current index. Critical files:
 1. **Few-shot examples in system prompt** — 6/10 → 7.4/10 in one commit. THE highest-impact change.
 2. **Per-slide spatial budgets from archetypes** — prevents wrong chart sizes, enforces slot constraints.
 3. **Mandatory archetype selection** — prevents freeform addShape/addText that causes overlaps.
-4. **In-turn DOCX generation** (narrative_report.md) — 320-word stubs → 1,688-word real reports.
+4. **In-turn narrative markdown generation** (`narrative_report.md`) — 320-word stubs → 1,688-word real reports.
 5. **Revise with rendered PDF** — Claude can SEE what's broken (vs blind text-only critique).
 
-### Cost truth (March 30, verified against Anthropic billing)
-- Real cost per deck: ~$3.40 on Sonnet 4.6. Pipeline now reports correctly (cache-aware).
+### Cost truth (March 31, verified against Anthropic billing)
+- Cost tracking was broken before `03325fb`, so the old $0.76-$1.53 numbers were undercounted. Real cost has always been about $3+/deck on Sonnet 4.6.
+- Current working assumption: baseline Sonnet cost is around $3.40/deck, not sub-$2.
 - 59% of cost ($2.00) is cache_read_input_tokens from in-turn auto-caching during code execution. This is UNCONTROLLABLE per-request — it happens inside a single API call as code execution rounds accumulate context.
 - 0 pause_turn continuations does NOT reduce cost to $1 because the in-turn cache reads dominate.
 - The same run on Haiku 4.5 would cost ~$1.13. This is the only path to <$1.50/deck without architecture changes.
 - Code execution compute is FREE (web_fetch_20260209 in tools).
+- Budget guards: pre-flight cap = $4.50, hard cap = $6.00. Anything lower starves revise.
 
 ### Current production baseline (run 47da3b5e, March 30 evening)
 - Visual quality: 7.4/10 (exec summary 8/10, charts 7-8/10, recommendations 7/10)
-- DOCX quality: 6/10 (1,688 words, real methodology + findings + recommendations, but below 2K target)
+- Narrative artifact quality: 6/10 (1,688 words, real methodology + findings + recommendations, but below 2K target)
 - Cost: $3.42 (Sonnet 4.6, 0 continuations, cache-aware tracking)
 - Reliability: completed, delivery "reviewed", QA passed
 - Time: ~20 min

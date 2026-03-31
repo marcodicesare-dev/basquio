@@ -30,7 +30,6 @@ import {
 } from "./anthropic-execution-contract";
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
-import { buildMarkdownNarrativeDocx, buildNarrativeDocx, type EnrichedNarrativeSection } from "./docx-report";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
@@ -286,7 +285,7 @@ type MutableNumberRef = {
 };
 type PublishedArtifact = {
   id: string;
-  kind: "pptx" | "pdf" | "docx";
+  kind: "pptx" | "pdf" | "md";
   fileName: string;
   mimeType: string;
   storageBucket: "artifacts";
@@ -875,7 +874,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         let reviseResponse = await runClaudeLoop({
           client,
           systemPrompt,
-          maxTokens: 4_096,
+          maxTokens: 28_000,
           phaseLabel: "revise",
           circuitKey: `${run.id}:${attempt.id}:revise`,
           onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
@@ -1035,43 +1034,36 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         throw new Error("Analysis unavailable before export.");
       }
       phaseTelemetry.docxNarrative = { attempted: true };
-      try {
-        const markdownText = finalNarrativeMarkdown?.buffer.toString("utf8").trim() ?? "";
-        if (markdownText.length > 0) {
-          finalDocx = await buildMarkdownNarrativeDocx({
-            run,
-            analysis,
-            manifest: finalManifest,
-            markdown: markdownText,
-          });
-          phaseTelemetry.docxNarrative = {
-            attempted: true,
-            succeeded: true,
-            source: "narrative_markdown",
-            outputBytes: finalDocx.buffer.length,
-            textChars: markdownText.length,
-          };
-        } else {
-          phaseTelemetry.docxNarrative = {
-            attempted: true,
-            succeeded: false,
-            reason: "narrative_report_missing",
-          };
-        }
-      } catch (narrativeError) {
-        const narrativeMessage = narrativeError instanceof Error ? narrativeError.message : String(narrativeError);
-        console.error(`[generateDeckRun] narrative DOCX failed: ${narrativeMessage.slice(0, 300)}`);
+      const markdownBuffer = finalNarrativeMarkdown?.buffer ?? null;
+      const markdownText = markdownBuffer?.toString("utf8").trim() ?? "";
+      if (markdownBuffer && markdownText.length > 0) {
+        finalDocx = {
+          fileId: "narrative-report-md",
+          fileName: "narrative_report.md",
+          buffer: markdownBuffer,
+          mimeType: "text/markdown",
+        } satisfies GeneratedFile;
+        phaseTelemetry.docxNarrative = {
+          attempted: true,
+          succeeded: true,
+          source: "narrative_markdown_direct",
+          outputBytes: markdownBuffer.length,
+          textChars: markdownText.length,
+        };
+      } else {
+        const stubText = `# ${run.client?.trim() || "Report"}\n\nNarrative report was not generated during this run.\n`;
+        finalDocx = {
+          fileId: "narrative-report-stub",
+          fileName: "narrative_report.md",
+          buffer: Buffer.from(stubText, "utf8"),
+          mimeType: "text/markdown",
+        } satisfies GeneratedFile;
         phaseTelemetry.docxNarrative = {
           attempted: true,
           succeeded: false,
-          reason: `threw: ${narrativeMessage.slice(0, 200)}`,
+          reason: "narrative_report_missing",
         };
       }
-      finalDocx ??= await buildNarrativeDocx({
-        run,
-        analysis,
-        manifest: finalManifest,
-      });
       qaReport = await buildQaReport(
         finalManifest,
         finalPptx,
@@ -1114,12 +1106,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
       }
 
-      finalDocx ??= await buildFallbackNarrativeDocx({
-        message: "Narrative report generation degraded on this run, so Basquio rebuilt a lighter text-first report from the final deck manifest.",
-        run,
-        analysis,
-        manifest: finalManifest,
-      });
+      if (!finalDocx) {
+        throw new Error("Narrative markdown artifact unavailable before publish.");
+      }
       phaseTelemetry.finalLint = summarizeLintResult(finalLint);
       phaseTelemetry.finalContract = summarizeDeckContractResult(finalContract);
       phaseTelemetry.publishDecision = lastPublishDecision;
@@ -1701,333 +1690,6 @@ async function buildSyntheticManifestFromPptx(pptxBuffer: Buffer) {
     })),
     charts: [],
   });
-}
-
-function escapeXml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-async function buildStubDocx(message: string) {
-  const stubZip = new JSZip();
-  stubZip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
-  stubZip.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
-  stubZip.file("word/_rels/document.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
-  stubZip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${escapeXml(message)}</w:t></w:r></w:p></w:body></w:document>`);
-  const buffer = await stubZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
-  return {
-    fileId: "salvage-docx-stub",
-    fileName: "report.docx",
-    buffer,
-    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  } satisfies GeneratedFile;
-}
-
-async function buildFallbackNarrativeDocx(input: {
-  message: string;
-  run?: RunRow | null;
-  analysis?: z.infer<typeof analysisSchema> | null;
-  manifest?: z.infer<typeof deckManifestSchema> | null;
-}) {
-  if (input.run && input.manifest) {
-    try {
-      return await buildNarrativeDocx({
-        run: input.run,
-        analysis: input.analysis ?? {
-          language: detectLanguage(`${input.run.objective} ${input.run.thesis} ${input.run.business_context}`),
-          thesis: input.run.thesis || input.manifest.slides[0]?.title || "",
-          executiveSummary: input.message,
-          slidePlan: input.manifest.slides.map((slide) => ({
-            position: slide.position,
-            layoutId: slide.layoutId,
-            slideArchetype: slide.slideArchetype,
-            title: slide.title,
-            subtitle: slide.subtitle,
-            body: slide.body,
-            bullets: slide.bullets,
-            metrics: slide.metrics,
-            callout: slide.callout,
-            chart: slide.chartId
-              ? {
-                  id: slide.chartId,
-                  chartType: input.manifest?.charts.find((chart) => chart.id === slide.chartId)?.chartType ?? "bar",
-                  title: input.manifest?.charts.find((chart) => chart.id === slide.chartId)?.title ?? slide.title,
-                }
-              : undefined,
-          })),
-        },
-        manifest: input.manifest,
-      });
-    } catch (fallbackError) {
-      console.warn(`[generateDeckRun] fallback narrative DOCX build failed, using minimal stub: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-    }
-  }
-
-  return buildStubDocx(input.message);
-}
-
-async function generateNarrativeReport(
-  client: Anthropic,
-  run: RunRow,
-  analysis: z.infer<typeof analysisSchema> | null,
-  manifest: z.infer<typeof deckManifestSchema>,
-): Promise<{ text: string; sections: EnrichedNarrativeSection[]; usage: ClaudeUsage | null } | null> {
-  const outputLanguage = detectLanguage(
-    manifest.slides.map((slide) => slide.title).join(" ") || `${run.objective} ${run.business_context}`,
-  );
-  const sharedContext = buildNarrativeSharedContext(run, analysis, manifest, outputLanguage);
-  const usageTotals: ClaudeUsage = {};
-  const sections: EnrichedNarrativeSection[] = [];
-  const findingSlides = manifest.slides.filter((slide) => slide.position > 1);
-
-  sections.push(await generateNarrativeSection(client, {
-    heading: outputLanguage.startsWith("Italian") ? "Sintesi esecutiva" : "Executive Summary",
-    prompt: [
-      sharedContext,
-      buildNarrativeSlideOverview(manifest),
-      "Write the executive summary for the narrative DOCX.",
-      "Target length: 320-420 words across 2-3 paragraphs.",
-      "Cover the thesis, the three most important findings, and the highest-priority action.",
-      "Make the narrative self-sufficient for an executive who does not open the deck.",
-      "Do not use bullets. Do not add a heading.",
-    ].join("\n\n"),
-    maxTokens: 900,
-  }, usageTotals));
-
-  sections.push(await generateNarrativeSection(client, {
-    heading: outputLanguage.startsWith("Italian") ? "Domanda di business e contesto" : "Business Question and Context",
-    prompt: [
-      sharedContext,
-      "Write the business context section for the narrative DOCX.",
-      "Target length: 220-320 words across 2 paragraphs.",
-      "Explain why this problem matters now, what commercial tension is visible in the evidence, and what is at stake.",
-      "Use the uploaded business context, objective, audience, and stakes explicitly.",
-      "Do not use bullets. Do not add a heading.",
-    ].join("\n\n"),
-    maxTokens: 700,
-  }, usageTotals));
-
-  sections.push(await generateNarrativeSection(client, {
-    heading: outputLanguage.startsWith("Italian") ? "Metodologia e limiti" : "Methodology and Caveats",
-    prompt: [
-      sharedContext,
-      buildMethodologyContext(manifest),
-      "Write the methodology and caveats section for the narrative DOCX.",
-      "Target length: 180-260 words across 2 paragraphs.",
-      "Describe what evidence was reviewed, how the report combines KPIs and exhibits, and the caveats an executive should keep in mind.",
-      "Be concrete. Mention the number of slides and charts when useful. Do not invent unobserved sources.",
-      "Do not use bullets. Do not add a heading.",
-    ].join("\n\n"),
-    maxTokens: 650,
-  }, usageTotals));
-
-  for (const slide of findingSlides) {
-    sections.push(await generateNarrativeSection(client, {
-      heading: slide.title,
-      prompt: [
-        sharedContext,
-        buildNarrativeSlideContext(slide, manifest),
-        "Write a detailed finding section for this slide.",
-        "Target length: 180-240 words across 2-3 paragraphs.",
-        "Explain the insight, the evidence, the business implication, and any caveat or condition for action.",
-        "Supplement the slide. Do not merely restate labels or bullets. Keep the same language as the deck.",
-        "Do not use bullets. Do not add a heading.",
-      ].join("\n\n"),
-      maxTokens: 700,
-      fallbackParagraphs: buildSlideFallbackParagraphs(slide, manifest),
-    }, usageTotals));
-  }
-
-  sections.push(await generateNarrativeSection(client, {
-    heading: outputLanguage.startsWith("Italian") ? "Azioni consigliate e prossimi passi" : "Recommended Actions and Next Steps",
-    prompt: [
-      sharedContext,
-      buildNarrativeSlideOverview(manifest),
-      "Write the recommendations section for the narrative DOCX.",
-      "Target length: 300-420 words across 3 paragraphs.",
-      "Turn the deck's recommendations into an operating plan: priority order, timing, expected impact, dependencies, and what to monitor next.",
-      "Be more operational than the slide callouts. No bullets. No heading.",
-    ].join("\n\n"),
-    maxTokens: 950,
-  }, usageTotals));
-
-  const text = sections
-    .flatMap((section) => [section.heading, ...section.paragraphs, ""])
-    .join("\n")
-    .trim();
-
-  if (text.length <= 1_500) {
-    return null;
-  }
-
-  return {
-    text,
-    sections,
-    usage: usageTotals,
-  };
-}
-
-async function generateNarrativeSection(
-  client: Anthropic,
-  input: {
-    heading: string;
-    prompt: string;
-    maxTokens: number;
-    fallbackParagraphs?: string[];
-  },
-  usageTotals: ClaudeUsage,
-): Promise<EnrichedNarrativeSection> {
-  console.log(`[generateDeckRun] narrative DOCX prompt preview (${input.heading}): ${input.prompt.replace(/\s+/g, " ").slice(0, 200)}`);
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: input.maxTokens,
-    messages: [{
-      role: "user",
-      content: input.prompt,
-    }],
-  });
-
-  accumulateClaudeUsage(usageTotals, response.usage ?? null);
-
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
-  const paragraphs = normalizeNarrativeParagraphs(text);
-
-  return {
-    heading: input.heading,
-    paragraphs: paragraphs.length > 0 ? paragraphs : (input.fallbackParagraphs ?? ["Narrative draft unavailable."]),
-  };
-}
-
-function accumulateClaudeUsage(target: ClaudeUsage, usage: ClaudeUsage | null | undefined) {
-  if (!usage) {
-    return;
-  }
-
-  target.input_tokens = (target.input_tokens ?? 0) + (usage.input_tokens ?? 0);
-  target.output_tokens = (target.output_tokens ?? 0) + (usage.output_tokens ?? 0);
-  target.cache_creation_input_tokens =
-    (target.cache_creation_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
-  target.cache_read_input_tokens =
-    (target.cache_read_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
-}
-
-function normalizeNarrativeParagraphs(text: string) {
-  const cleaned = text
-    .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  if (!cleaned) {
-    return [];
-  }
-
-  return cleaned
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
-    .filter((paragraph) => paragraph.length > 40);
-}
-
-function buildNarrativeSharedContext(
-  run: RunRow,
-  analysis: z.infer<typeof analysisSchema> | null,
-  manifest: z.infer<typeof deckManifestSchema>,
-  outputLanguage: string,
-) {
-  return [
-    "You are writing the narrative DOCX companion for a Basquio executive deck.",
-    `Write in ${outputLanguage}. Match the deck's language and consulting tone.`,
-    "Use active voice, evidence-backed claims, and explicit business implications.",
-    "Avoid filler, generic AI phrasing, and empty transitions.",
-    `Client: ${run.client || "Not specified"}`,
-    `Audience: ${run.audience || "Executive stakeholder"}`,
-    `Objective: ${run.objective || "Not specified"}`,
-    `Thesis: ${analysis?.thesis || run.thesis || "Not specified"}`,
-    `Business context: ${run.business_context || "Not specified"}`,
-    `Stakes: ${run.stakes || "Not specified"}`,
-    `Executive summary draft: ${analysis?.executiveSummary || "Not available"}`,
-    `Deck size: ${manifest.slideCount} slides, ${manifest.charts.length} charts.`,
-  ].join("\n");
-}
-
-function buildNarrativeSlideOverview(manifest: z.infer<typeof deckManifestSchema>) {
-  return `Slide overview:
-${JSON.stringify(manifest.slides.map((slide) => ({
-  position: slide.position,
-  title: slide.title,
-  archetype: slide.slideArchetype,
-  body: slide.body,
-  bullets: slide.bullets,
-  metrics: slide.metrics,
-  callout: slide.callout,
-  chartId: slide.chartId,
-})), null, 2)}`;
-}
-
-function buildMethodologyContext(manifest: z.infer<typeof deckManifestSchema>) {
-  return [
-    `Deck structure: ${manifest.slideCount} slides, ${manifest.charts.length} charts.`,
-    `Chart inventory: ${JSON.stringify(manifest.charts.map((chart) => ({
-      id: chart.id,
-      title: chart.title,
-      chartType: chart.chartType,
-      categoryCount: chart.categoryCount,
-      seriesCount: chart.seriesCount,
-      sourceNote: chart.sourceNote,
-    })), null, 2)}`,
-  ].join("\n");
-}
-
-function buildNarrativeSlideContext(
-  slide: z.infer<typeof deckManifestSchema>["slides"][number],
-  manifest: z.infer<typeof deckManifestSchema>,
-) {
-  const chart = slide.chartId
-    ? manifest.charts.find((candidate) => candidate.id === slide.chartId)
-    : null;
-
-  return `Slide detail:
-${JSON.stringify({
-  position: slide.position,
-  title: slide.title,
-  subtitle: slide.subtitle,
-  body: slide.body,
-  bullets: slide.bullets,
-  metrics: slide.metrics,
-  callout: slide.callout,
-  chart,
-}, null, 2)}`;
-}
-
-function buildSlideFallbackParagraphs(
-  slide: z.infer<typeof deckManifestSchema>["slides"][number],
-  manifest: z.infer<typeof deckManifestSchema>,
-) {
-  const chart = slide.chartId
-    ? manifest.charts.find((candidate) => candidate.id === slide.chartId)
-    : null;
-  const summaryParts = [
-    slide.body,
-    ...(slide.bullets ?? []),
-    slide.callout?.text,
-    chart ? `${chart.title}${chart.sourceNote ? ` (${chart.sourceNote})` : ""}` : "",
-  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-
-  const metricsSentence = slide.metrics?.length
-    ? `Key numbers: ${slide.metrics.map((metric) => `${metric.label} ${metric.value}${metric.delta ? ` (${metric.delta})` : ""}`).join("; ")}.`
-    : "";
-
-  return [
-    summaryParts.join(" ").trim(),
-    metricsSentence,
-  ].filter((paragraph) => paragraph.length > 0);
 }
 
 async function markPhase(
@@ -4657,7 +4319,7 @@ async function buildQaReport(
   const checks = [
     { name: "pptx_present", passed: pptx.buffer.length > 0, detail: `${pptx.buffer.length} bytes` },
     { name: "pdf_present", passed: pdf.buffer.length > 0, detail: `${pdf.buffer.length} bytes` },
-    { name: "docx_present", passed: docx.buffer.length > 0, detail: `${docx.buffer.length} bytes` },
+    { name: "md_present", passed: docx.buffer.length > 0, detail: `${docx.buffer.length} bytes` },
     { name: "slide_count_positive", passed: manifest.slideCount > 0, detail: `${manifest.slideCount} slides` },
     {
       name: "slide_count_matches_requested_target",
@@ -4698,8 +4360,8 @@ async function buildQaReport(
     pdf.buffer[3] === 0x46;
   checks.push({ name: "pdf_header_signature", passed: pdfHeaderValid, detail: "pdf starts with %PDF" });
 
-  const docxZipSignatureValid = docx.buffer.length >= 4 && docx.buffer[0] === 0x50 && docx.buffer[1] === 0x4b;
-  checks.push({ name: "docx_zip_signature", passed: docxZipSignatureValid, detail: "docx starts with PK" });
+  const mdContentValid = docx.buffer.toString("utf8").trim().length > 50;
+  checks.push({ name: "md_content_present", passed: mdContentValid, detail: "narrative markdown has content" });
 
   const validated = await validateArtifactChecks(manifest, checks, pptx.buffer, pdf.buffer, docx.buffer);
   return {
@@ -4791,39 +4453,28 @@ async function validateArtifactChecks(
   }
 
   try {
-    const zip = await JSZip.loadAsync(docxBuffer);
-    const documentXml = zip.file("word/document.xml");
-    const contentTypes = zip.file("[Content_Types].xml");
-    const documentText = documentXml ? await documentXml.async("string") : "";
-    const flattenedText = documentText
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const visibleTextLength = documentText
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .length;
+    const markdownText = docxBuffer.toString("utf8");
+    const flattenedText = markdownText.replace(/\s+/g, " ").trim();
+    const visibleTextLength = flattenedText.length;
     const hasInternalScaffolding =
       /evidence-backed story as the deck/i.test(flattenedText) ||
       /downstream ai workflows/i.test(flattenedText) ||
       /text-first format/i.test(flattenedText);
     const hasPlaceholderMetrics = /\bMetric\s+\d+\b/.test(flattenedText);
     const extraChecks = [
-      { name: "docx_document_xml", passed: Boolean(documentXml), detail: "word/document.xml exists" },
-      { name: "docx_content_types_xml", passed: Boolean(contentTypes), detail: "[Content_Types].xml exists" },
+      { name: "md_heading_present", passed: /^#\s+\S/m.test(markdownText), detail: "markdown includes a heading" },
       {
-        name: "docx_text_content_present",
+        name: "md_text_content_present",
         passed: visibleTextLength >= 160,
         detail: `${visibleTextLength} visible chars`,
       },
       {
-        name: "docx_no_internal_scaffolding",
+        name: "md_no_internal_scaffolding",
         passed: !hasInternalScaffolding,
         detail: hasInternalScaffolding ? "contains internal product scaffolding language" : "no internal scaffolding language",
       },
       {
-        name: "docx_no_placeholder_metrics",
+        name: "md_no_placeholder_metrics",
         passed: !hasPlaceholderMetrics,
         detail: hasPlaceholderMetrics ? "contains placeholder Metric N rows" : "no placeholder metric rows",
       },
@@ -4831,8 +4482,8 @@ async function validateArtifactChecks(
     allChecks.push(...extraChecks);
     allFailed.push(...extraChecks.filter((check) => !check.passed).map((check) => check.name));
   } catch {
-    allChecks.push({ name: "docx_parseable", passed: false, detail: "docx zip could not be parsed" });
-    allFailed.push("docx_parseable");
+    allChecks.push({ name: "md_parseable", passed: false, detail: "markdown text could not be parsed" });
+    allFailed.push("md_parseable");
   }
 
   return {
@@ -5147,30 +4798,30 @@ async function persistArtifacts(
     }
   }
 
-  const docxMimeType = docx.mimeType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const docxStoragePath = `${run.id}/attempts/${attempt.attemptNumber}-${attempt.id}/report.docx`;
+  const mdMimeType = docx.mimeType || "text/markdown";
+  const mdStoragePath = `${run.id}/attempts/${attempt.attemptNumber}-${attempt.id}/narrative_report.md`;
   try {
     await uploadToStorage({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       bucket: "artifacts",
-      storagePath: docxStoragePath,
+      storagePath: mdStoragePath,
       body: docx.buffer,
-      contentType: docxMimeType,
+      contentType: mdMimeType,
     });
     artifacts.push(buildPublishedArtifact({
-      kind: "docx",
-      fileName: "report.docx",
-      mimeType: docxMimeType,
+      kind: "md",
+      fileName: "narrative_report.md",
+      mimeType: mdMimeType,
       buffer: docx.buffer,
-      storagePath: docxStoragePath,
+      storagePath: mdStoragePath,
     }));
   } catch (error) {
     if (!options.allowDocxFailure) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
-    console.warn(`[generateDeckRun] docx publish skipped during salvage: ${message.slice(0, 300)}`);
+    console.warn(`[generateDeckRun] narrative markdown publish skipped during salvage: ${message.slice(0, 300)}`);
   }
 
   return artifacts;
