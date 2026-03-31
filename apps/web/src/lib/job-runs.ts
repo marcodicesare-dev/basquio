@@ -18,6 +18,8 @@ type ArtifactKind = ArtifactRecord["kind"];
 export type V2RunCard = {
   id: string;
   status: "queued" | "running" | "completed" | "failed";
+  authorModel: string;
+  targetSlideCount: number;
   headline: string;
   client: string;
   objective: string;
@@ -36,9 +38,9 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
   try {
     const runs = await fetchRestRows<V2DeckRunRow>({
       ...credentials,
-      table: "deck_runs",
-      query: {
-        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids,cost_telemetry",
+        table: "deck_runs",
+        query: {
+        select: "id,status,current_phase,delivery_status,author_model,target_slide_count,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids,cost_telemetry",
         requested_by: `eq.${viewerId}`,
         order: "created_at.desc",
         limit: String(limit),
@@ -110,6 +112,8 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
       return {
         id: run.id,
         status: (run.status === "completed" ? "completed" : run.status === "failed" ? "failed" : run.status === "queued" ? "queued" : "running") as V2RunCard["status"],
+        authorModel: run.author_model ?? "claude-sonnet-4-6",
+        targetSlideCount: run.target_slide_count ?? 0,
         headline: coverTitle || (clientName ? `${clientName} — ${objectiveText}` : objectiveText) || "Report",
         client: clientName,
         objective: objectiveText,
@@ -456,6 +460,8 @@ type V2DeckRunRow = {
   status: string;
   current_phase: string;
   delivery_status: string;
+  author_model: string | null;
+  target_slide_count: number | null;
   brief: Record<string, unknown> | null;
   business_context: string | null;
   client: string | null;
@@ -487,7 +493,7 @@ async function listV2DeckRuns(
       ...credentials,
       table: "deck_runs",
       query: {
-        select: "id,status,current_phase,delivery_status,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids,cost_telemetry",
+        select: "id,status,current_phase,delivery_status,author_model,target_slide_count,brief,business_context,client,audience,objective,created_at,completed_at,failure_message,source_file_ids,cost_telemetry",
         requested_by: `eq.${viewerId}`,
         order: "created_at.desc",
         limit: String(limit),

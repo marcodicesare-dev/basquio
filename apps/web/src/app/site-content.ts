@@ -1,4 +1,4 @@
-export const heroSignals = ["Story by AI. Math by code.", "Private workspace by default", "Branded PPTX + PDF"] as const;
+export const heroSignals = ["Story by AI. Math by code.", "Private workspace by default", "Branded PPTX + report + data"] as const;
 
 export const reportTypePresets = [
   {
@@ -52,7 +52,7 @@ export const gettingStartedSteps = [
   },
   {
     title: "Review the first output",
-    detail: "Start from a ready-to-edit PPTX and a polished PDF instead of a blank slide.",
+    detail: "Start from a ready-to-edit PPTX, a polished report, and an audit-ready data workbook instead of a blank slide.",
   },
 ] as const;
 
@@ -96,7 +96,7 @@ export const detailedComparisonRows = [
     basquio: "Yes",
   },
   {
-    label: "PPTX + PDF from one run",
+    label: "PPTX + report + data from one run",
     genericAi: "No",
     slideGenerators: "No",
     basquio: "Yes",

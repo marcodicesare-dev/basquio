@@ -6,6 +6,8 @@ import Script from "next/script";
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
+import { DEFAULT_AUTHOR_MODEL, calculateRunCredits } from "@/lib/credits";
+
 type TemplateDiagnostics = {
   status: "not_provided" | "parsed_successfully" | "partially_applied" | "fallback_default";
   source: "system_default" | "saved_profile" | "uploaded_file";
@@ -55,6 +57,7 @@ type FailureClassification = {
 
 export type RunProgressSnapshot = {
   jobId: string;
+  authorModel?: string;
   attemptNumber?: number;
   pipelineVersion?: "v2";
   status: "queued" | "running" | "completed" | "failed" | "needs_input";
@@ -192,7 +195,8 @@ export function RunProgressView(input: {
 
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
-    const creditsCost = 3 + slideCount;
+    const authorModel = snapshot.authorModel ?? DEFAULT_AUTHOR_MODEL;
+    const creditsCost = calculateRunCredits(slideCount, authorModel);
     const elapsedMin = Math.floor(snapshot.elapsedSeconds / 60);
     const elapsedSec = snapshot.elapsedSeconds % 60;
     const hasPptxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pptx"));
@@ -209,6 +213,9 @@ export function RunProgressView(input: {
     const resultMeta = isReportOnlyResult
       ? `Report + data pack · ${creditsCost} credits · ${elapsedMin}m ${elapsedSec}s`
       : `${slideCount} slides · ${creditsCost} credits · ${elapsedMin}m ${elapsedSec}s`;
+    const capabilityPills = isReportOnlyResult
+      ? ["Markdown report", "Audit-ready Excel workbook"]
+      : ["Editable in PowerPoint", "Report + data workbook included"];
 
     return (
       <div className="page-shell job-result-page">
@@ -262,8 +269,7 @@ export function RunProgressView(input: {
             </div>
 
             <div className="compact-meta-row">
-              <span className="run-pill">Editable in PowerPoint</span>
-              <span className="run-pill">Download PPTX to preview</span>
+              {capabilityPills.map((pill) => <span key={pill} className="run-pill">{pill}</span>)}
               {snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">Ready to review</span> : null}
               {snapshot.summary?.qaPassed === false ? <span className="run-pill run-pill-failed">Review suggested</span> : null}
               <span className="run-pill">{templateSummary.badge}</span>
@@ -277,8 +283,8 @@ export function RunProgressView(input: {
 
         <div className="billing-stats-row">
           <article className="panel billing-stat-card">
-            <p className="billing-stat-label">Slides</p>
-            <p className="billing-stat-value">{slideCount}</p>
+            <p className="billing-stat-label">{isReportOnlyResult ? "Artifacts" : "Slides"}</p>
+            <p className="billing-stat-value">{isReportOnlyResult ? "MD + XLSX" : slideCount}</p>
           </article>
           <article className="panel billing-stat-card">
             <p className="billing-stat-label">Credits used</p>

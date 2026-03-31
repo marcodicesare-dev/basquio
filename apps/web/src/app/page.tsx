@@ -10,12 +10,12 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 export const metadata: Metadata = {
   title: "Basquio | Beautiful Intelligence.",
   description:
-    "Upload your data and get back a finished analysis, with a real story, traceable numbers, and matching PPTX and PDF output.",
+    "Upload your data and get back a finished analysis, with a real story, traceable numbers, and matching PPTX, report, and data workbook output.",
 };
 
 const trustStats = [
   { value: "Operator-built", label: "by teams who make recurring review decks" },
-  { value: "PPTX + PDF", label: "from the same run" },
+  { value: "PPTX + Report + Data", label: "from the same run" },
   { value: "5-15 min", label: "for a finished first draft" },
 ] as const;
 
@@ -131,7 +131,7 @@ export default function HomePage() {
             <div className="artifact-evidence-row">
               <span className="artifact-chip">Sanitized Basquio output</span>
               <span className="artifact-chip">Category review example</span>
-              <span className="artifact-chip subtle">PPTX + PDF</span>
+              <span className="artifact-chip subtle">PPTX + Report + Data</span>
             </div>
             <p>Sanitized FMCG-style numbers, one clean slide, and a point of view you can build on.</p>
           </div>

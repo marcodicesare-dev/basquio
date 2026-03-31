@@ -32,7 +32,7 @@ export default async function SignInPage({
           <p className="section-label">Basquio</p>
           <h1>Your next report starts with one evidence package.</h1>
           <p className="muted">
-            Upload your data, describe the brief, and get back a branded PPTX + PDF with every number traced to source.
+            Upload your data, describe the brief, and get back a branded PPTX, report, and data workbook with every number traced to source.
           </p>
         </div>
         <div className="auth-value-props stack">

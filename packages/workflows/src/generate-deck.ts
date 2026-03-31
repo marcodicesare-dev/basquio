@@ -2704,7 +2704,9 @@ function buildAuthorMessage(
           ? "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: deck_manifest.json, data_tables.xlsx, and narrative_report.md."
           : "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: analysis_result.json, data_tables.xlsx, deck.pptx, deck.pdf, deck_manifest.json, and narrative_report.md.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
-        `- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`,
+        ...(isReportOnly
+          ? ["- This is a report-only run. Do not produce slides or presentation artifacts."]
+          : [`- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`]),
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
         "- Archetype selection is mandatory for every slide. Do not improvise freeform slide compositions outside the approved archetype system.",
         "- Never use addShape/addText with custom coordinates outside defined archetype slots unless an existing client template placeholder requires a microscopic adjustment.",
@@ -2726,8 +2728,12 @@ function buildAuthorMessage(
         type: "text" as const,
         text: [
           analysis
-            ? "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts."
-            : "Use the evidence files already available in the current container to build a final consulting-grade deck without a separate analysis turn.",
+            ? (isReportOnly
+              ? "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade report deliverables."
+              : "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts.")
+            : (isReportOnly
+              ? "Use the evidence files already available in the current container to build the final consulting-grade report deliverables without a separate analysis turn."
+              : "Use the evidence files already available in the current container to build a final consulting-grade deck without a separate analysis turn."),
           "",
           buildGenerationBrief(run),
           "",

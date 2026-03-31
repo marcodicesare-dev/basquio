@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { calculateRunCredits } from "@/lib/credits";
 import type { V2RunCard } from "@/lib/job-runs";
 
 function formatDate(value: string) {
@@ -98,7 +99,10 @@ export function ReportsList({ runs }: { runs: V2RunCard[] }) {
         </div>
       ) : (
         <section className="presentation-list">
-          {filteredRuns.map((run) => (
+          {filteredRuns.map((run) => {
+            const displaySlideCount = run.slideCount > 0 ? run.slideCount : run.targetSlideCount;
+
+            return (
             <article key={run.id} className="panel presentation-card">
               <div className="presentation-card-head">
                 <div className="stack">
@@ -112,12 +116,13 @@ export function ReportsList({ runs }: { runs: V2RunCard[] }) {
               </div>
               <div className="compact-meta-row">
                 <span className="run-pill">{formatDate(run.createdAt)}</span>
-                {run.slideCount > 0 ? <span className="run-pill">{run.slideCount} slides</span> : null}
-                {run.slideCount > 0 ? <span className="run-pill">{3 + run.slideCount} credits</span> : null}
+                {displaySlideCount > 0 ? <span className="run-pill">{displaySlideCount} slides</span> : null}
+                <span className="run-pill">{calculateRunCredits(displaySlideCount, run.authorModel)} credits</span>
                 <StatusBadge status={run.status} />
               </div>
             </article>
-          ))}
+            );
+          })}
         </section>
       )}
     </>

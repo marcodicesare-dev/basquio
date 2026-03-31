@@ -169,7 +169,7 @@ export default async function DashboardPage() {
         <section className="panel workspace-empty-card">
           <div className="stack">
             <h2>Generate your first report</h2>
-            <p className="muted">Upload your evidence files, write a brief, and Basquio builds a consulting-grade PPTX + PDF.</p>
+            <p className="muted">Upload your evidence files, write a brief, and Basquio builds a consulting-grade PPTX, report, and data workbook.</p>
           </div>
           <Link className="button small" href="/jobs/new">Create a report</Link>
         </section>

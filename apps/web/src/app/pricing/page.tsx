@@ -69,7 +69,7 @@ const faqs = [
   {
     question: "What does a standard report include?",
     answer:
-      "A finished first draft with analysis, narrative, charts, and delivery as matching PPTX and PDF files. Standard is built for one evidence package and up to 10 slides.",
+      "A finished first draft with analysis, narrative, charts, and delivery as an editable PPTX, a markdown report, and an audit-ready data workbook. Standard is built for one evidence package and up to 10 slides.",
   },
   {
     question: "When should I choose Pro instead of Standard?",

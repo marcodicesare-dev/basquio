@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { calculateRunCredits } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
 
@@ -11,6 +12,7 @@ type Recipe = {
   description: string | null;
   report_type: string | null;
   target_slide_count: number;
+  author_model: string | null;
   created_at: string;
 };
 
@@ -33,7 +35,7 @@ async function listRecipes(userId: string): Promise<Recipe[]> {
       serviceKey,
       table: "recipes",
       query: {
-        select: "id,name,description,report_type,target_slide_count,created_at",
+        select: "id,name,description,report_type,target_slide_count,author_model,created_at",
         user_id: `eq.${userId}`,
         order: "created_at.desc",
         limit: "20",
@@ -78,7 +80,7 @@ export default async function RecipesPage() {
               <div className="compact-meta-row">
                 <span className="run-pill">{formatDate(recipe.created_at)}</span>
                 <span className="run-pill">{recipe.target_slide_count} slides</span>
-                <span className="run-pill">{3 + recipe.target_slide_count} credits</span>
+                <span className="run-pill">{calculateRunCredits(recipe.target_slide_count, recipe.author_model ?? undefined)} credits</span>
               </div>
 
               <Link className="button small" href={`/jobs/new?recipe=${recipe.id}`}>

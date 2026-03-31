@@ -21,6 +21,7 @@ const V2_PHASES = BASQUIO_PHASES;
 type DeckRunRow = {
   id: string;
   status: string;
+  author_model: string | null;
   current_phase: string | null;
   phase_started_at: string | null;
   failure_message: string | null;
@@ -150,7 +151,7 @@ export async function GET(
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number",
+      select: "id,status,author_model,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number",
       id: `eq.${runId}`,
       requested_by: `eq.${viewer.user.id}`,
       limit: "1",
