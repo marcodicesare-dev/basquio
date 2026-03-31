@@ -19,6 +19,7 @@
     "@basquio/scene-graph": "workspace:*",
     "@basquio/template-engine": "workspace:*",
     "@basquio/types": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2",
     "@supabase/supabase-js": "^2.49.4",
     "ai": "^6.0.116",
     "inngest": "^3.31.0",

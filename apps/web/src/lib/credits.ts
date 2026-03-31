@@ -20,13 +20,22 @@ export const CREDITS_PER_SLIDE = 1;
 export const FREE_TIER_CREDITS = 6;
 
 export const MIN_TARGET_SLIDES = 1;
-export const MAX_TARGET_SLIDES = 15;
+export const MAX_TARGET_SLIDES = 30;
+
+export const DEFAULT_AUTHOR_MODEL = "claude-sonnet-4-6";
+
+export const MODEL_CREDIT_MULTIPLIERS: Record<string, number> = {
+  "claude-haiku-4-5": 0.5,
+  "claude-sonnet-4-6": 1.0,
+  "claude-opus-4-6": 3.0,
+};
 
 /**
  * Calculate credits required for a deck run.
  */
-export function calculateRunCredits(slideCount: number): number {
-  return BASE_CREDITS + (CREDITS_PER_SLIDE * assertValidSlideCount(slideCount));
+export function calculateRunCredits(slideCount: number, model: string = DEFAULT_AUTHOR_MODEL): number {
+  const multiplier = MODEL_CREDIT_MULTIPLIERS[model] ?? 1.0;
+  return Math.ceil((BASE_CREDITS + (CREDITS_PER_SLIDE * assertValidSlideCount(slideCount))) * multiplier);
 }
 
 export function assertValidSlideCount(slideCount: number): number {

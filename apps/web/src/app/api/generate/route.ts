@@ -6,7 +6,7 @@ import { inferSourceFileKind } from "@basquio/core";
 import type { GenerationRequest } from "@basquio/types";
 
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
-import { assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit } from "@/lib/credits";
+import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit } from "@/lib/credits";
 import { callRpc, deleteRestRows, fetchRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
@@ -35,6 +35,12 @@ class BillingUnavailableError extends Error {
 }
 
 class InvalidGenerationRequestError extends Error {}
+
+const AUTHOR_MODELS = new Set([
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
+  "claude-haiku-4-5",
+]);
 
 type QueuedGenerationRequest = GenerationRequest & {
   templateProfileId?: string | null;
@@ -74,9 +80,10 @@ export async function POST(request: Request) {
 
     const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
     const targetSlideCount = requireValidTargetSlideCount(
-      ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
+      generationRequest.targetSlideCount ?? 10,
     );
-    const creditsNeeded = calculateRunCredits(targetSlideCount);
+    const authorModel = requireValidAuthorModel(generationRequest.authorModel ?? DEFAULT_AUTHOR_MODEL);
+    const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
 
     if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
@@ -131,8 +138,9 @@ async function queueGeneration(
     throw new Error("Supabase credentials are required.");
   }
   const targetSlideCount = requireValidTargetSlideCount(
-    ((generationRequest as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
+    generationRequest.targetSlideCount ?? 10,
   );
+  const authorModel = requireValidAuthorModel(generationRequest.authorModel ?? DEFAULT_AUTHOR_MODEL);
   const sourceFileIds = await resolveValidatedExistingSourceFileIds({
     supabaseUrl,
     serviceKey,
@@ -345,8 +353,9 @@ async function queueGeneration(
           p_stakes: generationRequest.brief.stakes,
           p_source_file_ids: sourceFileIds,
           p_target_slide_count: targetSlideCount,
+          p_author_model: authorModel,
           p_template_profile_id: templateProfileId ?? null,
-          p_recipe_id: ((generationRequest as Record<string, unknown>).recipeId as string | undefined) ?? null,
+          p_recipe_id: generationRequest.recipeId ?? null,
           p_notify_on_complete: notifyOnComplete,
           p_charge_credits: billing.chargeCredits,
           p_credit_amount: billing.chargeCredits ? billing.creditAmount : null,
@@ -465,9 +474,10 @@ async function parseGenerationRequest(
       thesis: brief.thesis,
       stakes: brief.stakes,
       templateProfileId: ((payload as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
-      targetSlideCount: ((payload as Record<string, unknown>).targetSlideCount as number | undefined) ?? 10,
-      recipeId: ((payload as Record<string, unknown>).recipeId as string | undefined) ?? null,
-      existingSourceFileIds: ((payload as Record<string, unknown>).existingSourceFileIds as string[] | undefined) ?? undefined,
+      targetSlideCount: payload.targetSlideCount ?? 10,
+      authorModel: payload.authorModel ?? DEFAULT_AUTHOR_MODEL,
+      recipeId: payload.recipeId ?? null,
+      existingSourceFileIds: payload.existingSourceFileIds ?? undefined,
     } as QueuedGenerationRequest;
   }
 
@@ -476,6 +486,7 @@ async function parseGenerationRequest(
   const brandFile = formData.get("brandFile");
   const templateProfileId = String(formData.get("templateProfileId") ?? "") || null;
   const targetSlideCount = Number.parseInt(String(formData.get("targetSlideCount") ?? "10"), 10) || 10;
+  const authorModel = String(formData.get("authorModel") ?? DEFAULT_AUTHOR_MODEL);
   const jobId = createJobId();
   const brief = buildBrief({
     businessContext: String(formData.get("businessContext") ?? ""),
@@ -520,6 +531,7 @@ async function parseGenerationRequest(
     stakes: brief.stakes,
     templateProfileId,
     targetSlideCount,
+    authorModel,
     recipeId: String(formData.get("recipeId") ?? "") || null,
   } as QueuedGenerationRequest;
 }
@@ -530,22 +542,13 @@ function validateGenerationFiles(
   hasExistingFiles = false,
 ) {
   if (sourceFiles.length === 0 && !hasExistingFiles) {
-    return "Upload at least one CSV, XLSX, or XLS data file to start a generation run.";
+    return "Upload at least one supported evidence file to start a generation run.";
   }
 
   const unsupportedEvidenceFile = sourceFiles.find((file) => inferSourceFileKind(file.fileName) === "unknown");
 
   if (unsupportedEvidenceFile) {
     return `Unsupported file type for ${unsupportedEvidenceFile.fileName}. Basquio accepts CSV/XLSX/XLS plus text, doc, PDF, PPTX, JSON, or CSS support files.`;
-  }
-
-  // When reusing existing files, skip the workbook check for new uploads
-  if (sourceFiles.length > 0) {
-    const hasWorkbookEvidence = sourceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook");
-
-    if (!hasWorkbookEvidence) {
-      return "Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence. Keep PPTX, PDF, images, and documents as support material or template input.";
-    }
   }
 
   if (styleFile && !["brand-tokens", "pptx", "pdf"].includes(inferSourceFileKind(styleFile.fileName))) {
@@ -594,6 +597,14 @@ function requireValidTargetSlideCount(targetSlideCount: number) {
     const message = error instanceof Error ? error.message : "Invalid targetSlideCount.";
     throw new InvalidGenerationRequestError(message);
   }
+}
+
+function requireValidAuthorModel(authorModel: string) {
+  if (!AUTHOR_MODELS.has(authorModel)) {
+    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-6, or claude-haiku-4-5.");
+  }
+
+  return authorModel;
 }
 
 async function deleteRunAttemptRows(supabaseUrl: string, serviceKey: string, runId: string) {

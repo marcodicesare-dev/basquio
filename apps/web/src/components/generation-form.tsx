@@ -5,9 +5,33 @@ import { useRef, useState } from "react";
 import * as tus from "tus-js-client";
 
 import { reportTypePresets } from "@/app/site-content";
+import { DEFAULT_AUTHOR_MODEL, MAX_TARGET_SLIDES, calculateRunCredits } from "@/lib/credits";
 
 const UI_MIN_TARGET_SLIDES = 3;
-const UI_MAX_TARGET_SLIDES = 15;
+const UI_MAX_TARGET_SLIDES = MAX_TARGET_SLIDES;
+
+const MODEL_OPTIONS = [
+  {
+    id: "claude-opus-4-6",
+    name: "Opus 4.6",
+    description: "Consulting-grade depth",
+    badge: null,
+  },
+  {
+    id: "claude-sonnet-4-6",
+    name: "Sonnet 4.6",
+    description: "Deep analysis, efficient",
+    badge: "default",
+  },
+  {
+    id: "claude-haiku-4-5",
+    name: "Haiku 4.5",
+    description: "Fast turnaround",
+    badge: null,
+  },
+] as const;
+
+type AuthorModel = (typeof MODEL_OPTIONS)[number]["id"];
 
 type GenerationStartResponse = {
   jobId: string;
@@ -90,6 +114,7 @@ type RecipePrefill = {
   };
   templateProfileId: string | null;
   targetSlideCount: number;
+  authorModel?: AuthorModel;
   sourceFiles?: Array<{
     id: string;
     kind: string;
@@ -127,7 +152,10 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
   const templateLabel = selectedTemplate ? selectedTemplate.name : "Basquio Standard";
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
   const [targetSlideCount, setTargetSlideCount] = useState(clampTargetSlideCount(recipePrefill?.targetSlideCount ?? 10));
-  const creditsNeeded = 3 + targetSlideCount; // 3 base + 1 per slide
+  const [selectedModel, setSelectedModel] = useState<AuthorModel>(
+    (recipePrefill?.authorModel ?? DEFAULT_AUTHOR_MODEL) as AuthorModel,
+  );
+  const creditsNeeded = calculateRunCredits(targetSlideCount, selectedModel);
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: recipePrefill?.brief.businessContext ?? "",
     client: recipePrefill?.brief.client ?? "",
@@ -171,6 +199,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
             existingSourceFileIds: prefillSourceFiles.map((sf) => sf.id),
             templateProfileId: selectedTemplateId ?? undefined,
             targetSlideCount,
+            authorModel: selectedModel,
             recipeId: recipePrefill?.recipeId ?? undefined,
             brief,
             businessContext: brief.businessContext,
@@ -229,6 +258,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
           sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
           templateProfileId: selectedTemplateId ?? undefined,
           targetSlideCount,
+          authorModel: selectedModel,
           recipeId: recipePrefill?.recipeId ?? undefined,
           brief,
           businessContext: brief.businessContext,
@@ -284,12 +314,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
     }
 
     if (currentStep === 1 && evidenceFiles.length === 0 && prefillSourceFiles.length === 0) {
-      setError("Add at least one CSV, XLSX, or XLS file before continuing.");
-      return;
-    }
-
-    if (currentStep === 1 && evidenceFiles.length > 0 && !evidenceFiles.some((file) => isWorkbookFile(file.name))) {
-      setError("Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence before you continue.");
+      setError("Add at least one supported evidence file before continuing.");
       return;
     }
 
@@ -409,7 +434,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
             <div className="stack-xs">
               <p className="section-label">Step 2</p>
               <h2>Upload your evidence</h2>
-              <p className="muted">Start with a CSV, XLSX, or XLS workbook. You can add support docs in the same batch, but workbook evidence is required.</p>
+              <p className="muted">Add data files or presentation evidence. Excel/CSV gives the deepest analysis; PPTX/PDF also work for re-analysis, extraction, and refresh.</p>
             </div>
 
             <div className="step-grid">
@@ -426,8 +451,8 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                   <span className="dropzone-icon" aria-hidden>
                     +
                   </span>
-                  <span className="dropzone-title">Drop workbook evidence here</span>
-                  <span className="dropzone-copy">Required: CSV/XLSX/XLS. Optional in the same batch: PPTX, PDF, DOCX, text, JSON, CSS, or images as support material.</span>
+                  <span className="dropzone-title">Drop evidence files here</span>
+                  <span className="dropzone-copy">Supported: CSV, XLSX, XLS, PPTX, PDF, DOCX, text, JSON, CSS, or images. For the deepest analysis, upload the source Excel too.</span>
                 </button>
 
                 <input
@@ -486,11 +511,6 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                   <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4 }}>
                       {evidenceFiles.length} file{evidenceFiles.length === 1 ? "" : "s"} · {formatFileSize(evidenceFiles.reduce((sum, f) => sum + f.size, 0))} total
                   </p>
-                  {!evidenceFiles.some((file) => isWorkbookFile(file.name)) ? (
-                    <p className="muted" style={{ fontSize: "0.78rem", marginTop: 4, color: "var(--danger)" }}>
-                      Add at least one CSV, XLSX, or XLS file. Support docs alone will be rejected.
-                    </p>
-                  ) : null}
                   </div>
                 ) : null}
               </div>
@@ -659,7 +679,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                   : prefillSourceFiles.length > 0
                     ? `${prefillSourceFiles.length} file${prefillSourceFiles.length === 1 ? "" : "s"} (reused from previous run)`
                     : "No files added yet"}</p>
-                <p className="muted">Required: at least one CSV/XLSX/XLS workbook. Support docs are optional.</p>
+                <p className="muted">Required: at least one supported evidence file. Excel/CSV is best for deep KPI work; PPTX/PDF also work for extraction and restyling.</p>
                 {evidenceFiles.length > 0 ? (
                   <div className="file-list">
                     {evidenceFiles.map((file) => (
@@ -700,6 +720,35 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
 
               <article className="review-card stack">
                 <p className="artifact-kind">Deck size and cost</p>
+                <div className="stack-xs">
+                  <p className="section-label" style={{ marginBottom: 0 }}>Model</p>
+                  <div className="template-picker" role="radiogroup" aria-label="Model selection">
+                    {MODEL_OPTIONS.map((option) => (
+                      <label
+                        key={option.id}
+                        className={selectedModel === option.id ? "template-option selected model-option" : "template-option model-option"}
+                      >
+                        <input
+                          className="sr-only-input"
+                          type="radio"
+                          name="authorModel"
+                          value={option.id}
+                          checked={selectedModel === option.id}
+                          onChange={() => setSelectedModel(option.id)}
+                        />
+                        <span className="template-radio-dot" aria-hidden />
+                        <span className="template-option-content">
+                          <span className="model-option-header">
+                            <span className="template-option-name">{option.name}</span>
+                            {option.badge ? <span className="model-option-badge">{option.badge}</span> : null}
+                          </span>
+                          <span className="template-option-type">{option.description}</span>
+                        </span>
+                        <span className="model-option-credits">{calculateRunCredits(targetSlideCount, option.id)} cr</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div className="slide-count-selector">
                   <label className="stack-xs">
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -716,7 +765,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                     />
                     <span className="muted" style={{ fontSize: "0.78rem", display: "flex", justifyContent: "space-between" }}>
                       <span>3 slides (6 cr)</span>
-                      <span>15 slides (18 cr)</span>
+                      <span>30 slides</span>
                     </span>
                   </label>
                 </div>
@@ -818,20 +867,12 @@ function validateSubmission(
   prefillSourceFileCount = 0,
 ) {
   if (evidenceFiles.length === 0 && prefillSourceFileCount === 0) {
-    throw new Error("Add at least one data file before generating.");
-  }
-
-  if (evidenceFiles.length > 0 && !evidenceFiles.some((file) => isWorkbookFile(file.name))) {
-    throw new Error("Add at least one CSV, XLSX, or XLS file as primary evidence. Keep PPTX, PDF, and docs as support material or template input.");
+    throw new Error("Add at least one supported evidence file before generating.");
   }
 
   if (!brief.businessContext || !brief.audience || !brief.objective) {
     throw new Error("Add the business context, audience, and objective before generating.");
   }
-}
-
-function isWorkbookFile(fileName: string) {
-  return /\.(csv|xlsx|xls)$/i.test(fileName);
 }
 
 function inferFileType(fileName: string): string {

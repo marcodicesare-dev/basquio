@@ -41,7 +41,7 @@ import {
 
 import { UsageTracker, checkCostBudget, estimateCost, logPhaseEvent } from "./observability";
 
-const MAX_TARGET_SLIDES = 15;
+const MAX_TARGET_SLIDES = 30;
 
 // ─── SHARED CALLBACK TYPES ───────────────────────────────────────
 

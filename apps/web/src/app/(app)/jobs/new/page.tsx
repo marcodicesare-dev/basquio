@@ -27,6 +27,7 @@ type RecipePrefill = {
   };
   templateProfileId: string | null;
   targetSlideCount: number;
+  authorModel?: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5";
   sourceFiles?: Array<{
     id: string;
     kind: string;
@@ -126,13 +127,14 @@ async function getRecipePrefill(recipeId: string, userId: string): Promise<Recip
       brief: Record<string, string>;
       template_profile_id: string | null;
       target_slide_count: number;
+      author_model: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5" | null;
       user_id: string;
     }>({
       supabaseUrl,
       serviceKey,
       table: "recipes",
       query: {
-        select: "id,name,brief,template_profile_id,target_slide_count,user_id",
+        select: "id,name,brief,template_profile_id,target_slide_count,author_model,user_id",
         id: `eq.${recipeId}`,
         limit: "1",
       },
@@ -148,6 +150,7 @@ async function getRecipePrefill(recipeId: string, userId: string): Promise<Recip
       brief: recipe.brief,
       templateProfileId: recipe.template_profile_id,
       targetSlideCount: recipe.target_slide_count,
+      authorModel: recipe.author_model ?? "claude-sonnet-4-6",
     };
   } catch {
     return null;
@@ -166,13 +169,14 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       template_profile_id: string | null;
       requested_by: string;
       target_slide_count: number | null;
+      author_model: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5" | null;
       source_file_ids: string[];
     }>({
       supabaseUrl,
       serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,brief,template_profile_id,requested_by,target_slide_count,source_file_ids",
+        select: "id,brief,template_profile_id,requested_by,target_slide_count,author_model,source_file_ids",
         id: `eq.${runId}`,
         limit: "1",
       },
@@ -230,6 +234,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       brief: run.brief,
       templateProfileId: run.template_profile_id,
       targetSlideCount: slideCount,
+      authorModel: run.author_model ?? "claude-sonnet-4-6",
       sourceFiles,
     };
   } catch {

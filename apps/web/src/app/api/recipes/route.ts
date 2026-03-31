@@ -29,6 +29,7 @@ export async function GET() {
       brief: Record<string, string>;
       template_profile_id: string | null;
       target_slide_count: number;
+      author_model: string | null;
       source_run_id: string | null;
       created_at: string;
     }>({
@@ -36,7 +37,7 @@ export async function GET() {
       serviceKey,
       table: "recipes",
       query: {
-        select: "id,name,description,report_type,brief,template_profile_id,target_slide_count,source_run_id,created_at",
+        select: "id,name,description,report_type,brief,template_profile_id,target_slide_count,author_model,source_run_id,created_at",
         user_id: `eq.${viewer.user.id}`,
         order: "created_at.desc",
         limit: "20",
@@ -84,13 +85,14 @@ export async function POST(request: Request) {
       brief: Record<string, string>;
       template_profile_id: string | null;
       target_slide_count: number | null;
+      author_model: string | null;
       requested_by: string;
     }>({
       supabaseUrl,
       serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,status,brief,template_profile_id,target_slide_count,requested_by",
+        select: "id,status,brief,template_profile_id,target_slide_count,author_model,requested_by",
         id: `eq.${body.runId}`,
         limit: "1",
       },
@@ -144,6 +146,7 @@ export async function POST(request: Request) {
         brief: run.brief,
         template_profile_id: run.template_profile_id,
         target_slide_count: slideCount,
+        author_model: run.author_model ?? "claude-sonnet-4-6",
         source_run_id: body.runId,
       }),
     });

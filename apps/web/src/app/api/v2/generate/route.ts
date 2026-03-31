@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
-import { assertValidSlideCount } from "@/lib/credits";
+import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount } from "@/lib/credits";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { callRpc, deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -12,6 +12,12 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 class InvalidGenerationRequestError extends Error {}
+
+const AUTHOR_MODELS = new Set([
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
+  "claude-haiku-4-5",
+]);
 
 export async function POST(request: Request) {
   try {
@@ -40,6 +46,7 @@ export async function POST(request: Request) {
     const thesis = formData.get("thesis") as string ?? "";
     const stakes = formData.get("stakes") as string ?? "";
     const targetSlideCount = requireValidTargetSlideCount(Number.parseInt(String(formData.get("targetSlideCount") ?? "10"), 10) || 10);
+    const authorModel = requireValidAuthorModel(String(formData.get("authorModel") ?? DEFAULT_AUTHOR_MODEL));
     const templateProfileId = await resolveOwnedTemplateProfileId({
       supabaseUrl,
       serviceKey,
@@ -49,20 +56,6 @@ export async function POST(request: Request) {
 
     if (files.length === 0) {
       return NextResponse.json({ error: "At least one source file is required." }, { status: 400 });
-    }
-
-    const hasWorkbookEvidence = files.some((file) => {
-      const kind = normalizePersistedSourceFileKind(null, file.name);
-      return kind === "workbook";
-    });
-
-    if (!hasWorkbookEvidence) {
-      return NextResponse.json(
-        {
-          error: "Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence. Use PPTX, PDF, images, and documents only as support material or template input.",
-        },
-        { status: 400 },
-      );
     }
 
     const runId = randomUUID();
@@ -173,6 +166,7 @@ export async function POST(request: Request) {
           p_stakes: stakes,
           p_source_file_ids: sourceFileIds,
           p_target_slide_count: targetSlideCount,
+          p_author_model: authorModel,
           p_template_profile_id: templateProfileId,
           p_notify_on_complete: notifyOnComplete,
           p_charge_credits: false,
@@ -219,6 +213,14 @@ function requireValidTargetSlideCount(targetSlideCount: number) {
     const message = error instanceof Error ? error.message : "Invalid targetSlideCount.";
     throw new InvalidGenerationRequestError(message);
   }
+}
+
+function requireValidAuthorModel(authorModel: string) {
+  if (!AUTHOR_MODELS.has(authorModel)) {
+    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-6, or claude-haiku-4-5.");
+  }
+
+  return authorModel;
 }
 
 async function cleanupQueuedV2RunSetup(input: {

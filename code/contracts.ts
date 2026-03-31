@@ -13,6 +13,8 @@ export const sourceAssetKindSchema = z.enum([
 export const datasetFileRoleSchema = z.enum([
   "main-fact-table",
   "supporting-fact-table",
+  "evidence-pptx",
+  "evidence-pdf",
   "citations-table",
   "validation-table",
   "methodology-guide",

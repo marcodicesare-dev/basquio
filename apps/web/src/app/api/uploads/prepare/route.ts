@@ -73,17 +73,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const hasWorkbookEvidence = payload.evidenceFiles.some((file) => inferSourceFileKind(file.fileName) === "workbook");
-
-    if (!hasWorkbookEvidence) {
-      return NextResponse.json(
-        {
-          error: "Basquio currently needs at least one CSV, XLSX, or XLS file as primary evidence. Use PPTX, PDF, images, and documents only as support material or template input.",
-        },
-        { status: 400 },
-      );
-    }
-
     if (payload.brandFile) {
       const brandKind = inferSourceFileKind(payload.brandFile.fileName);
 

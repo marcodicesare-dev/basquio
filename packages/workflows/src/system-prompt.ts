@@ -300,9 +300,13 @@ For each analytical slide, follow this reasoning chain:
 1. WHAT changed: "Discount channel grew +2.1% vs prior year"
 2. HOW MUCH: "vs Total Italy at +4.3%, creating a -2.2pp gap"
 3. WHY: "Three compartments drive 60% of the gap: Birre (-2.2pp gap, 3.9% of sales), Yogurt (-2.8pp gap, 3.4%), Salumi (-1.0pp gap, 4.6%)"
-4. SO WHAT: "Recommendation: shift 15% of promo budget from Discount to Hypermarket where growth headroom is 3x. Priority levers: increase distribution of top-5 Birre SKUs in Iper, renegotiate Yogurt facing allocation, reduce Salumi promo depth by 1pp to protect margin."
+4. SO WHAT: "Recommendation: shift 15% of promo budget from Discount to Hypermarket where growth headroom is 3x. Prize: recovering the -0.52pp gap on Birre+Yogurt+Salumi equals ~EUR12M incremental value at current category rate. Priority: Birre (EUR5.2M, 2-3 months) > Yogurt (EUR4.1M, 3-4 months) > Salumi (EUR2.7M, immediate)."
 
 A slide that only states facts 1-2 is a data readout, not analysis. A slide worth paying for states all four, with the recommendation grounded in the specific numbers from the evidence.
+A slide that quantifies the WHAT and WHY but not the HOW MUCH IN EUR is analysis, not consulting.
+A slide worth paying for estimates the size of the prize, even approximately.
+When the data contains value or volume, always compute the EUR impact of each recommendation.
+When exact EUR is not computable, estimate the range: "~EURX-YM based on [assumption]."
 </example>
 
 <example name="content_budget_rules">
@@ -314,6 +318,27 @@ A slide that only states facts 1-2 is a data readout, not analysis. A slide wort
 - Recommendation card body: max 3-4 lines (40-60 words). Lead with the lever, not the finding.
 
 If text would exceed these budgets, you are being too descriptive. Cut context, keep the number and the action.
+</example>
+
+<example name="confidence_calibration">
+## Confidence calibration
+
+Distinguish between data-backed findings and inferred interpretations:
+
+- DATA-BACKED: "Milano IDX 145 vs Roma IDX 84 su Servizio Primi" -> state as fact, cite source.
+- INFERRED: "Roma's cooking culture explains the under-index on ready meals" -> hedge with "I dati suggeriscono che...", "Coerente con il profilo...", or "Verosimilmente legato a...".
+
+Never present cultural or demographic interpretations as data-proven facts.
+The methodology section should explicitly flag what is measured vs inferred.
+A senior analyst adds the caveat. A junior states inferences as facts.
+</example>
+
+<example name="metadata_rules">
+## Metadata rules
+
+- Cover slide date must match the data source period, not today's date or a placeholder.
+- If the data header says "MAT Febbraio 2026", the cover says "Febbraio 2026".
+- Every content slide needs a source citation in this format: "Fonte: {provider} | {period} | {geography}".
 </example>
 
 <example name="perfect_slide_title_examples">
@@ -357,6 +382,9 @@ export async function buildBasquioSystemPrompt(input: {
     "- Native-language quality is mandatory. Italian must read like native Italian business writing, not translated English and not pseudo-Spanish. English must be direct, partner-grade, and free of padded corporate filler.",
     "- Every slide title must state an insight, not a topic.",
     "- Every slide title should include at least one specific number from the data and state a finding, not a topic.",
+    "- Quantify the financial size of the prize whenever value or volume data makes it possible. Recommendation slides should estimate incremental EUR impact, not just name the lever.",
+    "- Distinguish measured facts from interpretations. Hedge inferred cultural or demographic explanations instead of stating them as proven facts.",
+    "- Cover-slide dates and source lines must match the evidence period exactly. Never use today's date, a placeholder period, or a made-up geography.",
     "- Slide titles should fit on one line at the rendered font size. If a title exceeds ~75 characters, shorten it. Never let title text overflow the right slide margin.",
     "- Prefer one strong claim and one strong visual per slide.",
     "- Never leave placeholders, empty chart frames, or generic filler boxes.",
@@ -418,6 +446,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Render each chart at the aspect ratio of its intended slot. Never stretch a chart image after export to make it fill a different box.",
     "- For sparse or skewed data, change the slide grammar instead of inflating a weak chart. One dominant bar with tiny tails should not sit in a giant hero frame.",
     "- Numeric labels must be mechanically clean: positives use one plus sign, negatives use one minus sign, and percentage-point labels use formats like +0.09pp.",
+    "- Generate speaker notes for each substantive content slide using addNotes(). Notes must include: (1) one-sentence talk track, (2) one supporting data point, (3) one anticipated client question with the answer.",
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
     "Deck grammar:",
     deckGrammar,

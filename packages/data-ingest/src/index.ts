@@ -62,6 +62,7 @@ export async function parseEvidencePackage(input: ParseEvidencePackageInput): Pr
         ...file,
         id: file.id ?? `${input.datasetId}-file-${index + 1}`,
         kind: file.kind ?? inferSourceFileKind(file.fileName),
+        allFiles: input.files,
       }),
     ),
   );
@@ -169,9 +170,10 @@ async function parseEvidenceFile(
     mediaType?: string;
     buffer: Buffer;
     kind: ReturnType<typeof inferSourceFileKind>;
+    allFiles?: Array<Pick<ParseEvidenceFileInput, "fileName" | "kind">>;
   },
 ): Promise<NormalizedEvidenceFile & { workbookSheets?: NormalizedSheet[] }> {
-  const role = inferFileRole(input.fileName, input.kind);
+  const role = inferFileRole(input.fileName, input.kind, input.allFiles);
 
   if (input.kind === "workbook") {
     const workbook = read(resolveWorkbookSource(input.fileName, input.buffer), {
@@ -639,19 +641,27 @@ function buildSupportFileWarnings(
   return warnings;
 }
 
-function inferFileRole(fileName: string, kind: ReturnType<typeof inferSourceFileKind>) {
+function inferFileRole(
+  fileName: string,
+  kind: ReturnType<typeof inferSourceFileKind>,
+  allFiles?: Array<Pick<ParseEvidenceFileInput, "fileName" | "kind">>,
+) {
   const normalized = fileName.toLowerCase();
+  const hasWorkbookEvidence = allFiles?.some((file) => {
+    const resolvedKind = file.kind ?? inferSourceFileKind(file.fileName);
+    return resolvedKind === "workbook";
+  }) ?? false;
 
   if (kind === "brand-tokens") {
     return "brand-tokens" as const;
   }
 
   if (kind === "pptx") {
-    return "template-pptx" as const;
+    return hasWorkbookEvidence ? "template-pptx" as const : "evidence-pptx" as const;
   }
 
   if (kind === "pdf") {
-    return "style-reference-pdf" as const;
+    return hasWorkbookEvidence ? "style-reference-pdf" as const : "evidence-pdf" as const;
   }
 
   if (normalized.includes("citation")) {
@@ -1097,7 +1107,9 @@ export async function streamParseFile(input: {
   buffer: Buffer;
   kind: string;
 }): Promise<{ sheets: SheetManifest[]; role: string }> {
-  const role = inferFileRole(input.fileName, input.kind as ReturnType<typeof inferSourceFileKind>);
+  const role = inferFileRole(input.fileName, input.kind as ReturnType<typeof inferSourceFileKind>, [
+    { fileName: input.fileName, kind: input.kind as ReturnType<typeof inferSourceFileKind> },
+  ]);
   const ext = input.fileName.toLowerCase();
 
   if (ext.endsWith(".csv")) {

@@ -22,7 +22,7 @@ const tiers = [
     features: [
       "First standard report free",
       "Standard reports up to 10 slides",
-      "Pro reports up to 15 slides",
+      "Pro reports up to 30 slides",
       "PPTX and PDF from the same run",
       "One rerun within 24 hours",
       "Works with Basquio Standard or one saved template",
@@ -88,7 +88,7 @@ const faqs = [
   {
     question: "What files can I upload?",
     answer:
-      "CSV, XLSX, XLS, PDF, PPTX as template input, and plain text files for notes or brief material.",
+      "CSV, XLSX, XLS, PDF, PPTX, and plain text files. Excel gives the deepest analysis; PPTX and PDF also work for extraction, refresh, and restyling.",
   },
   {
     question: "How does team billing work?",

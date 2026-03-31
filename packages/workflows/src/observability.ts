@@ -51,7 +51,7 @@ const PRICING: Record<string, { input: number; output: number }> = {
 };
 
 export function estimateCost(modelId: string, usage: TokenUsage): number {
-  const pricing = PRICING[modelId] ?? PRICING["gpt-5.4"]; // fallback
+  const pricing = PRICING[modelId] ?? PRICING["claude-sonnet-4-6"];
   return (
     (usage.inputTokens / 1_000_000) * pricing.input +
     (usage.outputTokens / 1_000_000) * pricing.output

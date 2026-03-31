@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getCreditBalance, ensureFreeTierCredit, calculateRunCredits, BASE_CREDITS, CREDITS_PER_SLIDE } from "@/lib/credits";
+import { getCreditBalance, ensureFreeTierCredit, calculateRunCredits, BASE_CREDITS, CREDITS_PER_SLIDE, MAX_TARGET_SLIDES } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 
 export const runtime = "nodejs";
@@ -25,9 +25,10 @@ export async function GET() {
   const balance = await getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
 
   // Calculate what the user can afford
-  const maxSlidesAffordable = balance.balance > BASE_CREDITS
+  const maxSlidesAffordableRaw = balance.balance > BASE_CREDITS
     ? Math.floor((balance.balance - BASE_CREDITS) / CREDITS_PER_SLIDE)
     : 0;
+  const maxSlidesAffordable = Math.min(MAX_TARGET_SLIDES, maxSlidesAffordableRaw);
 
   return NextResponse.json({
     balance: balance.balance,

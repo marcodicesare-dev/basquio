@@ -36,7 +36,13 @@ import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
-const MODEL = "claude-sonnet-4-6";
+const DEFAULT_AUTHOR_MODEL = "claude-sonnet-4-6";
+type AuthorModel = "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5";
+const AUTHOR_MODEL_VALUES = new Set([
+  "claude-sonnet-4-6",
+  "claude-opus-4-6",
+  "claude-haiku-4-5",
+]);
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
 const FINAL_VISUAL_QA_MODEL = "claude-haiku-4-5";
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
@@ -153,6 +159,7 @@ type RunRow = {
   stakes: string;
   source_file_ids: string[];
   target_slide_count: number;
+  author_model: string | null;
   template_profile_id: string | null;
   template_diagnostics: Record<string, unknown> | null;
   active_attempt_id: string | null;
@@ -315,23 +322,32 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
   let continuationCount = 0;
   const anthropicRequestIds = new Set<string>();
   let templateMode: "basquio_standard" | "workspace_template" | "template_fallback" = "basquio_standard";
+  let authorModel: AuthorModel = DEFAULT_AUTHOR_MODEL;
 
   try {
     const run = await loadRun(config, runId);
+    authorModel = normalizeAuthorModel(run.author_model);
+    const MODEL = authorModel;
     const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
     // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
     const isTemplateFallback = attempt.recoveryReason === "template_fallback";
     const persistedTemplate = isTemplateFallback ? null : await loadTemplateProfileRow(config, run.template_profile_id);
     const templateSourceFileId = persistedTemplate?.source_file_id ?? null;
+    const workbookSourceFiles = sourceFiles.filter((file) => file.kind === "workbook");
+    const explicitTemplateFallback = !isTemplateFallback && !persistedTemplate && workbookSourceFiles.length > 0
+      ? (sourceFiles.find((file) => file.kind === "brand-tokens") ??
+         (sourceFiles.filter((file) => file.kind === "pptx").length === 1
+           ? sourceFiles.find((file) => file.kind === "pptx")
+           : undefined))
+      : undefined;
     const persistedTemplateFile = !isTemplateFallback && templateSourceFileId
       ? (sourceFiles.find((file) => file.id === templateSourceFileId) ??
          await loadSourceFile(config, templateSourceFileId))
       : undefined;
     const templateFile = isTemplateFallback
       ? undefined
-      : (persistedTemplateFile ??
-         sourceFiles.find((file) => file.kind === "pptx" || file.kind === "brand-tokens"));
+      : (persistedTemplateFile ?? explicitTemplateFallback);
     const evidenceFiles = sourceFiles.filter((file) => file.id !== templateFile?.id);
     templateMode = isTemplateFallback
       ? "template_fallback"
@@ -594,6 +610,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       generationMessage = buildAuthorMessage(
         run,
         recoveredAnalysisForSplit ? analysis : null,
+        {
+          hasTabularData: parsed.datasetProfile.sheets.length > 0,
+          hasDocumentEvidence: parsed.normalizedWorkbook.files.some((file) =>
+            (file.textContent?.trim().length ?? 0) > 100 || (file.pages?.length ?? 0) > 0),
+        },
         !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
         questionRoutes,
         recoveredAnalysisForSplit && analysis ? buildChartSlotConstraintMessage(analysis) : undefined,
@@ -623,6 +644,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       await persistRequestStart(config, runId, attempt, "author", "phase_generation", MODEL);
       let authorResponse = await runClaudeLoop({
         client,
+        model: MODEL,
         systemPrompt,
         maxTokens: 64_000,
         phaseLabel: "author",
@@ -873,6 +895,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         await persistRequestStart(config, runId, attempt, "revise", "phase_generation", MODEL);
         let reviseResponse = await runClaudeLoop({
           client,
+          model: MODEL,
           systemPrompt,
           maxTokens: 28_000,
           phaseLabel: "revise",
@@ -1064,6 +1087,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           reason: "narrative_report_missing",
         };
       }
+      finalPptx = {
+        ...finalPptx,
+        buffer: await sanitizePptxMedia(finalPptx.buffer),
+      };
       qaReport = await buildQaReport(
         finalManifest,
         finalPptx,
@@ -1117,7 +1144,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         checkpoint: publishFromCheckpoint,
         allowDocxFailure: false,
       });
-      await finalizeSuccess(config, runId, attempt, spentUsd, finalManifest, qaReport, artifacts, templateDiagnostics, {
+      await finalizeSuccess(config, runId, attempt, MODEL, spentUsd, finalManifest, qaReport, artifacts, templateDiagnostics, {
         phases: phaseTelemetry,
         continuationCount,
         anthropicRequestIds: [...anthropicRequestIds],
@@ -1153,7 +1180,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const failureClass = classifyRuntimeError(error);
     const run = await loadRun(config, runId).catch(() => null);
     const attempt = run ? await resolveAttemptContext(config, run, suppliedAttempt).catch(() => null) : null;
-    await finalizeFailure(config, runId, attempt, currentPhase, message, {
+    await finalizeFailure(config, runId, attempt, authorModel, currentPhase, message, {
       phases: phaseTelemetry,
       continuationCount,
       anthropicRequestIds: [...anthropicRequestIds],
@@ -1179,13 +1206,24 @@ function resolveConfig() {
   return { anthropicApiKey, supabaseUrl, serviceKey };
 }
 
+function normalizeAuthorModel(model: string | null | undefined): AuthorModel {
+  switch (model) {
+    case "claude-opus-4-6":
+    case "claude-sonnet-4-6":
+    case "claude-haiku-4-5":
+      return model;
+    default:
+      return DEFAULT_AUTHOR_MODEL;
+  }
+}
+
 async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) {
   const runs = await fetchRestRows<RunRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,target_slide_count,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,failure_phase",
+      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,target_slide_count,author_model,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,failure_phase",
       id: `eq.${runId}`,
       limit: "1",
     },
@@ -1278,6 +1316,7 @@ async function buildRunCostTelemetry(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
   attempt: AttemptContext | null,
+  model: string,
   currentAttemptEstimatedCostUsd: number,
   extraTelemetry: Record<string, unknown>,
 ) {
@@ -1301,7 +1340,7 @@ async function buildRunCostTelemetry(
     }, 0);
 
   return {
-    model: MODEL,
+    model,
     ...extraTelemetry,
     estimatedCostUsd: roundUsd(priorEstimatedCostUsd + currentAttemptEstimatedCostUsd),
     latestAttemptEstimatedCostUsd: roundUsd(currentAttemptEstimatedCostUsd),
@@ -1887,6 +1926,7 @@ async function finalizeSuccess(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
   attempt: AttemptContext,
+  model: string,
   estimatedCostUsd: number,
   manifest: z.infer<typeof deckManifestSchema>,
   qaReport: Record<string, unknown>,
@@ -1896,13 +1936,13 @@ async function finalizeSuccess(
 ) {
   const now = new Date().toISOString();
   const attemptCostTelemetry = {
-    model: MODEL,
+    model,
     estimatedCostUsd,
     qaTier: qaReport.tier,
     attemptNumber: attempt.attemptNumber,
     ...extraTelemetry,
   };
-  const runCostTelemetry = await buildRunCostTelemetry(config, runId, attempt, estimatedCostUsd, {
+  const runCostTelemetry = await buildRunCostTelemetry(config, runId, attempt, model, estimatedCostUsd, {
     qaTier: qaReport.tier,
     ...extraTelemetry,
   });
@@ -1938,6 +1978,7 @@ async function finalizeFailure(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
   attempt: AttemptContext | null,
+  model: string,
   failurePhase: DeckPhase,
   failureMessage: string,
   extraTelemetry: Record<string, unknown>,
@@ -1956,7 +1997,7 @@ async function finalizeFailure(
     : true;
   const now = new Date().toISOString();
   const attemptCostTelemetry = {
-    model: MODEL,
+    model,
     estimatedCostUsd: extraTelemetry.estimatedCostUsd ?? 0,
     attemptNumber: attempt?.attemptNumber ?? null,
     ...extraTelemetry,
@@ -1965,6 +2006,7 @@ async function finalizeFailure(
     config,
     runId,
     attempt,
+    model,
     Number(extraTelemetry.estimatedCostUsd ?? 0),
     extraTelemetry,
   );
@@ -2288,7 +2330,11 @@ function appendPauseTurnContinuation(
 }
 
 function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {
-  if (parsed.datasetProfile.sheets.length > 0) {
+  const hasSheets = parsed.datasetProfile.sheets.length > 0;
+  const hasTextContent = parsed.normalizedWorkbook.files.some((file) =>
+    (file.textContent?.trim().length ?? 0) > 100 || (file.pages?.length ?? 0) > 0);
+
+  if (hasSheets || hasTextContent) {
     return null;
   }
 
@@ -2297,16 +2343,16 @@ function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvide
     return "Basquio could not find any usable evidence files for this run.";
   }
 
-  if (!evidenceKinds.has("workbook")) {
-    return "Basquio could not find readable analytical data in the uploaded evidence. For now, add at least one CSV, XLSX, or XLS file as primary evidence and keep PPTX, PDF, images, and documents as support material or template input.";
-  }
-
-  return "Basquio could not read analytical tables from the uploaded evidence. Check that the CSV/XLSX/XLS files contain readable tabular data and retry.";
+  return "Could not find readable data. Add Excel/CSV for tabular data, or PPTX/PDF with tables and charts.";
 }
 
 function buildAuthorMessage(
   run: RunRow,
   analysis: z.infer<typeof analysisSchema> | null,
+  evidenceMode: {
+    hasTabularData: boolean;
+    hasDocumentEvidence: boolean;
+  },
   files?: {
     uploadedEvidence: Array<{ id: string; filename: string }>;
     uploadedTemplate: { id: string; filename: string } | null;
@@ -2321,13 +2367,21 @@ function buildAuthorMessage(
   const analysisDepthInstruction = run.target_slide_count <= 3
     ? "This is a focused 3-slide executive brief. Analyze only top-line KPIs and 1-2 key insights. Do not profile every sheet or column. Spend minimal code execution time on data exploration."
     : run.target_slide_count <= 6
-      ? "This is a standard deck. Profile key sheets and identify 4-6 insights. Do not exhaustively analyze every dimension."
-      : "This is a comprehensive deck. Deep-dive the full workbook as needed.";
+      ? "This is a concise but complete analysis. Profile key sheets and identify 4-6 insights. Do not exhaustively analyze every dimension."
+      : run.target_slide_count <= 15
+        ? "This is a comprehensive deck with full diagnostic depth. Deep-dive the workbook and supporting evidence as needed."
+        : "This is an extended deep-dive. Dedicate slides to individual compartments, detailed appendix diagnostics, scenario modeling, and methodology where supported by the evidence.";
+  const extractionInstruction = evidenceMode.hasTabularData
+    ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
+    : evidenceMode.hasDocumentEvidence
+      ? "The evidence package is presentation/document-led rather than raw Excel. Extract tables, text, and chart data from the uploaded PPTX/PDF files using python-pptx, zipfile/openpyxl, and pdfplumber before analyzing. Reconstruct the smallest usable dataset needed for the storyline."
+      : "Inspect the uploaded evidence files directly in code execution, recover any readable structure, and use only facts you can verify from the files.";
   const mergedAnalysisInstructions = analysis
     ? []
     : [
         "Analyze the uploaded evidence package first, then generate the final consulting-grade deck artifacts in the same pass.",
         "- Use code execution to inspect the uploaded files directly and compute the facts you need.",
+        `- ${extractionInstruction}`,
         "- Follow the NIQ Analyst Playbook from the system prompt: recognize Italian column names, compute ALL applicable derivatives (growth, share, price index, mix gap) before forming findings, and detect diagnostic motifs.",
         "- Frame the analysis around the TRUE commercial question, not a generic summary. Classify each finding as connection, contradiction, or curiosity.",
         "- Recommendations must be traceable to the data in this run. Do not invent geographies, channels, or opportunities that are not directly supported by the evidence.",
@@ -2799,6 +2853,7 @@ function assertCircuitClosed(state: CircuitState, circuitKey: string) {
 
 async function runClaudeLoop(input: {
   client: Anthropic;
+  model: string;
   systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
   maxTokens: number;
   messages: Anthropic.Beta.BetaMessageParam[];
@@ -2848,7 +2903,7 @@ async function runClaudeLoop(input: {
         assertCircuitClosed(circuitState, input.circuitKey);
       }
       if (input.currentSpentUsd !== undefined) {
-        const remainingBudgetUsd = roundUsd(3.5 - input.currentSpentUsd - usageToCost(MODEL, usage));
+        const remainingBudgetUsd = roundUsd(3.5 - input.currentSpentUsd - usageToCost(input.model, usage));
         if (remainingBudgetUsd < CONTINUATION_MIN_REMAINING_BUDGET_USD) {
           const budgetMessage = `[runClaudeLoop] remaining budget $${remainingBudgetUsd.toFixed(3)} below continuation threshold $${CONTINUATION_MIN_REMAINING_BUDGET_USD.toFixed(2)}.`;
           console.warn(`${budgetMessage} ${finalMessage ? "Breaking before another continuation." : "Aborting phase before request."}`);
@@ -2864,7 +2919,7 @@ async function runClaudeLoop(input: {
       let message: Anthropic.Beta.BetaMessage;
       let requestId: string | null = null;
       const streamBody = {
-        model: MODEL,
+        model: input.model,
         max_tokens: input.maxTokens,
         betas: [...BETAS] as Anthropic.Beta.AnthropicBeta[],
         system: input.systemPrompt,
@@ -4427,6 +4482,7 @@ async function validateArtifactChecks(
       ? (await presentationXml.async("string")).match(/<p:sldId\b/gi)?.length ?? 0
       : 0;
     const rasterMediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\/.+\.(png|jpe?g)$/i.test(name)).length;
+    const vectorMediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\/.+\.(svg|emf|wmf)$/i.test(name)).length;
     const nativeChartXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/i.test(name)).length;
     const aspectMismatchFindings = await collectLargePictureAspectMismatchFindings(zip, manifest);
 
@@ -4441,6 +4497,11 @@ async function validateArtifactChecks(
         name: "pptx_chart_media_present",
         passed: manifest.charts.length === 0 || rasterMediaCount >= manifest.charts.length,
         detail: `charts=${manifest.charts.length} rasterMedia=${rasterMediaCount}`,
+      },
+      {
+        name: "pptx_no_vector_media",
+        passed: vectorMediaCount === 0,
+        detail: `vectorMedia=${vectorMediaCount}`,
       },
       {
         name: "pptx_no_native_chart_xml",
@@ -4530,6 +4591,88 @@ async function validateArtifactChecks(
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };
+}
+
+const TRANSPARENT_PNG_BUFFER = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(pptxBuffer);
+  const mediaFiles = Object.keys(zip.files).filter((name) =>
+    /^ppt\/media\/.+\.(svg|emf|wmf)$/i.test(name),
+  );
+
+  if (mediaFiles.length === 0) {
+    return pptxBuffer;
+  }
+
+  const { Resvg } = await import("@resvg/resvg-js");
+  const rewrittenEntries = new Map<string, string>();
+
+  for (const mediaPath of mediaFiles) {
+    const file = zip.file(mediaPath);
+    if (!file) {
+      continue;
+    }
+
+    const replacementPath = mediaPath.replace(/\.(svg|emf|wmf)$/i, ".png");
+    const extension = mediaPath.split(".").pop()?.toLowerCase();
+    const buffer = await file.async("nodebuffer");
+    let pngBuffer = TRANSPARENT_PNG_BUFFER;
+
+    if (extension === "svg") {
+      try {
+        const svgText = buffer.toString("utf8");
+        const rendered = new Resvg(svgText, {
+          fitTo: { mode: "width", value: 1600 },
+          background: "rgba(0,0,0,0)",
+        }).render();
+        pngBuffer = Buffer.from(rendered.asPng());
+      } catch (error) {
+        console.warn(`[sanitizePptxMedia] failed to rasterize ${mediaPath}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    zip.remove(mediaPath);
+    zip.file(replacementPath, pngBuffer);
+    rewrittenEntries.set(mediaPath.split("/").pop()!, replacementPath.split("/").pop()!);
+  }
+
+  const contentTypesPath = "[Content_Types].xml";
+  const contentTypesFile = zip.file(contentTypesPath);
+  if (contentTypesFile) {
+    let contentTypesXml = await contentTypesFile.async("string");
+    for (const [oldName, newName] of rewrittenEntries) {
+      contentTypesXml = contentTypesXml.replace(new RegExp(oldName.replace(".", "\\."), "g"), newName);
+    }
+    contentTypesXml = contentTypesXml
+      .replace(/ContentType="image\/svg\+xml"/gi, 'ContentType="image/png"')
+      .replace(/ContentType="image\/x-emf"/gi, 'ContentType="image/png"')
+      .replace(/ContentType="image\/x-wmf"/gi, 'ContentType="image/png"');
+    zip.file(contentTypesPath, contentTypesXml);
+  }
+
+  for (const [entry, file] of Object.entries(zip.files)) {
+    if (!entry.endsWith(".rels")) {
+      continue;
+    }
+    let relsXml = await file.async("string");
+    let changed = false;
+    for (const [oldName, newName] of rewrittenEntries) {
+      if (!relsXml.includes(oldName)) {
+        continue;
+      }
+      relsXml = relsXml.replace(new RegExp(oldName.replace(".", "\\."), "g"), newName);
+      changed = true;
+    }
+    if (changed) {
+      zip.file(entry, relsXml);
+    }
+  }
+
+  return Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
 }
 
 /**
