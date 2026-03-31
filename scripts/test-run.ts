@@ -4,6 +4,10 @@ import path from "node:path";
 import JSZip from "jszip";
 import pdfParse from "pdf-parse";
 
+import { loadBasquioScriptEnv } from "./load-app-env";
+
+loadBasquioScriptEnv();
+
 type CliArgs = {
   runId: string;
 };
@@ -69,6 +73,25 @@ function assertCredentials(): { url: string; serviceKey: string } {
 async function countPptxSlides(buffer: Buffer): Promise<number> {
   const zip = await JSZip.loadAsync(buffer);
   return Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name)).length;
+}
+
+async function extractPptxMedia(buffer: Buffer, chartsDir: string): Promise<number> {
+  const zip = await JSZip.loadAsync(buffer);
+  const mediaNames = Object.keys(zip.files)
+    .filter((name) => /^ppt\/media\/.+\.(png|jpe?g)$/i.test(name))
+    .sort((left, right) => left.localeCompare(right));
+
+  for (const [index, name] of mediaNames.entries()) {
+    const file = zip.files[name];
+    if (!file || file.dir) {
+      continue;
+    }
+    const bytes = await file.async("nodebuffer");
+    const ext = path.extname(name).toLowerCase() || ".png";
+    await writeFile(path.join(chartsDir, `pptx-media-${index + 1}${ext}`), bytes);
+  }
+
+  return mediaNames.length;
 }
 
 function parseStorageRef(ref: string): { bucket: string; path: string } {
@@ -213,6 +236,10 @@ async function writePersistedRunOutputs(runId: string, outputDir: string, charts
     } catch {
       // Keep the inspection output honest without failing the entire export snapshot.
     }
+  }
+
+  if (chartPngCount === 0 && charts.length > 0 && pptxBuffer.length > 0) {
+    chartPngCount = Math.min(charts.length, await extractPptxMedia(pptxBuffer, chartsDir));
   }
 
   if (plan) {

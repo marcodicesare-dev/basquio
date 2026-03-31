@@ -3757,6 +3757,19 @@ async function persistDeckSpec(
   runId: string,
   manifest: z.infer<typeof deckManifestSchema>,
 ) {
+  type PersistedChartRow = {
+    id: string;
+    data?: Record<string, unknown>[] | null;
+    x_axis?: string | null;
+    y_axis?: string | null;
+    series?: string[] | null;
+    style?: Record<string, unknown> | null;
+    source_note?: string | null;
+    thumbnail_url?: string | null;
+    width?: number | null;
+    height?: number | null;
+  };
+
   await deleteRestRows({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
@@ -3764,31 +3777,56 @@ async function persistDeckSpec(
     query: { run_id: `eq.${runId}` },
   }).catch(() => {});
 
-  await deleteRestRows({
-    supabaseUrl: config.supabaseUrl,
-    serviceKey: config.serviceKey,
-    table: "deck_spec_v2_charts",
-    query: { run_id: `eq.${runId}` },
-  }).catch(() => {});
+  const existingChartRows = manifest.charts.length > 0
+    ? await fetchRestRows<PersistedChartRow>({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_spec_v2_charts",
+        query: {
+          run_id: `eq.${runId}`,
+          select: "id,data,x_axis,y_axis,series,style,source_note,thumbnail_url,width,height",
+          order: "created_at.asc",
+          limit: "200",
+        },
+      }).catch(() => [])
+    : [];
+
+  const canReuseExistingChartRows =
+    existingChartRows.length === manifest.charts.length &&
+    existingChartRows.some((row) =>
+      (Array.isArray(row.data) && row.data.length > 0) ||
+      (Array.isArray(row.series) && row.series.length > 0) ||
+      Boolean(row.thumbnail_url),
+    );
+
+  if (!canReuseExistingChartRows) {
+    await deleteRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_spec_v2_charts",
+      query: { run_id: `eq.${runId}` },
+    }).catch(() => {});
+  }
 
   const chartIdMap = new Map<string, string>();
-  const chartRows = manifest.charts.map((chart) => {
-    const id = randomUUID();
+  const chartRows = manifest.charts.map((chart, index) => {
+    const existing = canReuseExistingChartRows ? existingChartRows[index] : null;
+    const id = existing?.id ?? randomUUID();
     chartIdMap.set(chart.id, id);
     return {
       id,
       run_id: runId,
       chart_type: chart.chartType,
       title: chart.title,
-      data: [],
-      x_axis: "",
-      y_axis: "",
-      series: [],
-      style: {},
-      source_note: chart.sourceNote ?? null,
-      thumbnail_url: null,
-      width: 0,
-      height: 0,
+      data: existing?.data ?? [],
+      x_axis: existing?.x_axis ?? "",
+      y_axis: existing?.y_axis ?? "",
+      series: existing?.series ?? [],
+      style: existing?.style ?? {},
+      source_note: chart.sourceNote ?? existing?.source_note ?? null,
+      thumbnail_url: existing?.thumbnail_url ?? null,
+      width: existing?.width ?? 0,
+      height: existing?.height ?? 0,
     };
   });
 
