@@ -86,6 +86,20 @@ Migrations: `supabase/migrations/`
 - `code_execution_20260120` does NOT exist server-side as of March 28. The SDK has forward types.
 - `context_management` (clear_tool_uses, compact) was REJECTED by the API on March 29. Do NOT use until Anthropic confirms support.
 
+### Haiku execution contract (March 31, 2026 — 6 failed production runs to discover)
+- **`code_execution` MUST be explicit in the tools array for Haiku.** The beta header only enables the API to accept the tool type. For Sonnet/Opus, `container.skills` implicitly enables code execution. For Haiku with no skills, you MUST pass `{type: "code_execution_20250825", name: "code_execution"}` in `tools`. Without this, `container_upload` blocks are rejected.
+- **Haiku does NOT support `container.skills`.** API rejects with "container: skills can only be used when a code execution tool is enabled". Drop the `skills-2025-10-02` beta and do NOT pass `container.skills` for Haiku.
+- **Haiku container param must be `undefined`, not `{}`.** An empty object `{}` causes the same "skills" error. Omit the field entirely on the first request; use `{id: containerId}` on continuations.
+- **Haiku does NOT support programmatic tool calling.** `web_fetch` needs `allowed_callers: ["direct"]`.
+- **Haiku does NOT support `effort` parameter.** `buildAuthoringOutputConfig()` returns `undefined`.
+- **Haiku gets PptxGenJS via `npm install pptxgenjs`**, not via the PPTX skill. The author prompt includes a conditional fallback instruction.
+- Docs: https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool
+
+### Budget caps (March 31, corrected AGAIN)
+- Pre-flight: $7.00. Hard cap: $10.00. Continuation budget in runClaudeLoop: $10.00.
+- Previous values ($2.75, $3.50, $4.50, $6.00) all killed revise for Opus. The caps must be high enough to only catch genuine runaways, not normal operation.
+- Budget caps have been the #1 source of "revise never runs" since March 28. DO NOT lower them without production evidence.
+
 ### Real cost model (March 30, 2026 — verified against Anthropic pricing docs)
 - Anthropic Usage object has THREE disjoint input token fields: `input_tokens` + `cache_creation_input_tokens` + `cache_read_input_tokens` = total billed input.
 - `input_tokens` EXCLUDES cached tokens. If you only read this field, you undercount by 2x.

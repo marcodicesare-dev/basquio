@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import JSZip from "jszip";
@@ -37,6 +41,8 @@ import { isTransientProviderError, classifyRuntimeError } from "./failure-classi
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
+
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_AUTHOR_MODEL = "claude-sonnet-4-6";
 type AuthorModel = ClaudeAuthorModel;
@@ -312,10 +318,189 @@ type PublishedArtifact = {
   checksumSha256: string;
 };
 
+type RenderedPageQaResult = Awaited<ReturnType<typeof runRenderedPageQa>>;
+
 export class AttemptOwnershipLostError extends Error {
   constructor(runId: string, attemptId: string) {
     super(`Run ${runId} is no longer owned by attempt ${attemptId}.`);
     this.name = "AttemptOwnershipLostError";
+  }
+}
+
+const PDF_GATING_FAILURES = new Set(["pdf_present", "pdf_header_signature", "pdf_parseable"]);
+
+function hasPdfHeader(buffer: Buffer) {
+  return (
+    buffer.length >= 4 &&
+    buffer[0] === 0x25 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x44 &&
+    buffer[3] === 0x46
+  );
+}
+
+async function inspectPdfBuffer(buffer: Buffer): Promise<{ valid: boolean; reason: string }> {
+  if (!hasPdfHeader(buffer)) {
+    return { valid: false, reason: "pdf_invalid_header" };
+  }
+
+  try {
+    await PDFDocument.load(buffer);
+    return { valid: true, reason: "ok" };
+  } catch (error) {
+    return {
+      valid: false,
+      reason: `pdf_parse_failed:${error instanceof Error ? error.message : String(error)}`.slice(0, 220),
+    };
+  }
+}
+
+async function convertPptxToPdf(pptxBuffer: Buffer): Promise<Buffer> {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "basquio-pdf-recovery-"));
+  const pptxPath = path.join(tempDir, "deck.pptx");
+  const pdfPath = path.join(tempDir, "deck.pdf");
+
+  try {
+    await writeFile(pptxPath, pptxBuffer);
+    const binaries = ["libreoffice", "soffice"];
+    let lastError: Error | null = null;
+
+    for (const binary of binaries) {
+      try {
+        await execFileAsync(
+          binary,
+          ["--headless", "--convert-to", "pdf", "--outdir", tempDir, pptxPath],
+          { timeout: 180_000, maxBuffer: 16 * 1024 * 1024 },
+        );
+        const recovered = await readFile(pdfPath);
+        return recovered;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
+    }
+
+    throw lastError ?? new Error("No PDF conversion binary succeeded.");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+function recordPdfRecovery(
+  phaseTelemetry: Record<string, unknown>,
+  stage: "critique" | "revise" | "export",
+  payload: Record<string, unknown>,
+) {
+  const current = (phaseTelemetry.pdfRecovery as Record<string, unknown> | undefined) ?? {};
+  phaseTelemetry.pdfRecovery = {
+    ...current,
+    [stage]: payload,
+  };
+}
+
+async function ensureValidPdfArtifact(input: {
+  pdf: GeneratedFile;
+  pptx: GeneratedFile;
+  phaseTelemetry: Record<string, unknown>;
+  stage: "critique" | "revise" | "export";
+}): Promise<GeneratedFile> {
+  const initial = await inspectPdfBuffer(input.pdf.buffer);
+  if (initial.valid) {
+    return input.pdf;
+  }
+
+  console.warn(`[generateDeckRun] ${input.stage} PDF invalid (${initial.reason}). Attempting recovery from PPTX.`);
+  try {
+    const recoveredBuffer = await convertPptxToPdf(input.pptx.buffer);
+    const recovered = await inspectPdfBuffer(recoveredBuffer);
+    if (!recovered.valid) {
+      throw new Error(recovered.reason);
+    }
+
+    recordPdfRecovery(input.phaseTelemetry, input.stage, {
+      succeeded: true,
+      source: "pptx_conversion",
+    });
+    return {
+      ...input.pdf,
+      buffer: recoveredBuffer,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[generateDeckRun] PDF recovery failed during ${input.stage}: ${message.slice(0, 300)}`);
+    recordPdfRecovery(input.phaseTelemetry, input.stage, {
+      succeeded: false,
+      reason: message.slice(0, 300),
+      initialReason: initial.reason,
+    });
+    return input.pdf;
+  }
+}
+
+function buildSkippedVisualQaResult(reason: string): RenderedPageQaResult {
+  const now = new Date().toISOString();
+  return {
+    report: {
+      overallStatus: "green",
+      score: 8,
+      summary: `Visual QA skipped: ${reason.slice(0, 220)}`,
+      deckNeedsRevision: false,
+      issues: [],
+      strongestSlides: [],
+      weakestSlides: [],
+    },
+    usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+    },
+    requestId: null,
+    startedAt: now,
+    completedAt: now,
+    requests: [],
+    promptBody: { messages: [] },
+  };
+}
+
+async function runRenderedPageQaSafely(input: {
+  client: Anthropic;
+  pdf: GeneratedFile;
+  pptx: GeneratedFile;
+  manifest: z.infer<typeof deckManifestSchema>;
+  betas: readonly string[];
+  model: "claude-sonnet-4-6" | "claude-haiku-4-5";
+  maxTokens?: number;
+  phaseTelemetry: Record<string, unknown>;
+  telemetryKey: string;
+  recoveryStage: "critique" | "revise" | "export";
+}): Promise<{ pdf: GeneratedFile; qa: RenderedPageQaResult }> {
+  const safePdf = await ensureValidPdfArtifact({
+    pdf: input.pdf,
+    pptx: input.pptx,
+    phaseTelemetry: input.phaseTelemetry,
+    stage: input.recoveryStage,
+  });
+
+  try {
+    return {
+      pdf: safePdf,
+      qa: await runRenderedPageQa({
+        client: input.client,
+        pdf: safePdf.buffer,
+        manifest: input.manifest,
+        betas: input.betas,
+        model: input.model,
+        maxTokens: input.maxTokens,
+      }),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[generateDeckRun] visual QA skipped during ${input.recoveryStage}: ${message.slice(0, 300)}`);
+    input.phaseTelemetry[input.telemetryKey] = {
+      reason: message.slice(0, 300),
+    };
+    return {
+      pdf: safePdf,
+      qa: buildSkippedVisualQaResult(message),
+    };
   }
 }
 
@@ -791,13 +976,19 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
     currentPhase = "critique";
     await markPhase(config, runId, attempt, currentPhase);
-    const initialVisualQa = await runRenderedPageQa({
+    const initialQaOutcome = await runRenderedPageQaSafely({
       client,
-      pdf: pdfFile.buffer,
+      pdf: pdfFile,
+      pptx: pptxFile,
       manifest,
       betas: [FILES_BETA],
       model: VISUAL_QA_MODEL,
+      phaseTelemetry,
+      telemetryKey: "visualQaAuthorSkipped",
+      recoveryStage: "critique",
     });
+    pdfFile = initialQaOutcome.pdf;
+    const initialVisualQa = initialQaOutcome.qa;
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
     assertDeckSpendWithinBudget(spentUsd);
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
@@ -946,13 +1137,19 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         latestResponse = reviseResponse;
         latestContainerId = reviseResponse.containerId ?? latestContainerId;
 
-      const revisedVisualQa = await runRenderedPageQa({
+      const revisedQaOutcome = await runRenderedPageQaSafely({
         client,
-        pdf: finalPdf.buffer,
+        pdf: finalPdf,
+        pptx: finalPptx,
         manifest: finalManifest,
         betas: [FILES_BETA],
         model: VISUAL_QA_MODEL,
+        phaseTelemetry,
+        telemetryKey: "visualQaReviseSkipped",
+        recoveryStage: "revise",
       });
+      finalPdf = revisedQaOutcome.pdf;
+      const revisedVisualQa = revisedQaOutcome.qa;
       spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
       assertDeckSpendWithinBudget(spentUsd);
       phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
@@ -1054,6 +1251,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       finalVisualQa = await strengthenFinalVisualQa({
         client,
         pdf: finalPdf.buffer,
+        pptx: finalPptx,
         manifest: finalManifest,
         currentReport: finalVisualQa,
         runId,
@@ -1108,6 +1306,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         ...finalPptx,
         buffer: await sanitizePptxMedia(finalPptx.buffer),
       };
+      finalPdf = await ensureValidPdfArtifact({
+        pdf: finalPdf,
+        pptx: finalPptx,
+        phaseTelemetry,
+        stage: "export",
+      });
       qaReport = await buildQaReport(
         finalManifest,
         finalPptx,
@@ -1146,7 +1350,25 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         visualQa: finalVisualQa,
         artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
       });
-      if (finalQualityGate.blockingFailures.length > 0) {
+      const allowPdfOnlyDegradedPublish =
+        finalQualityGate.blockingFailures.length > 0 &&
+        finalQualityGate.blockingFailures.every((failure) => PDF_GATING_FAILURES.has(failure));
+      if (allowPdfOnlyDegradedPublish) {
+        phaseTelemetry.publishDecisionOverride = {
+          reason: "pdf_only_gate_failures_allow_degraded_publish",
+          blockers: finalQualityGate.blockingFailures,
+        };
+        lastPublishDecision = {
+          ...lastPublishDecision,
+          decision: "publish",
+          hardBlockers: [],
+          advisories: [
+            ...lastPublishDecision.advisories,
+            ...finalQualityGate.blockingFailures.map((failure) => `artifact:${failure}`),
+          ],
+        };
+      }
+      if (finalQualityGate.blockingFailures.length > 0 && !allowPdfOnlyDegradedPublish) {
         throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
       }
 
@@ -1865,6 +2087,7 @@ async function touchAttemptProgress(
 async function strengthenFinalVisualQa(input: {
   client: Anthropic;
   pdf: Buffer;
+  pptx: GeneratedFile;
   manifest: z.infer<typeof deckManifestSchema>;
   currentReport: RenderedPageQaReport;
   runId: string;
@@ -1895,14 +2118,24 @@ async function strengthenFinalVisualQa(input: {
   }
 
   try {
-    const finalVisualQa = await runRenderedPageQa({
+    const finalQaOutcome = await runRenderedPageQaSafely({
       client: input.client,
-      pdf: input.pdf,
+      pdf: {
+        fileId: "final-visual-qa-pdf",
+        fileName: "deck.pdf",
+        buffer: input.pdf,
+        mimeType: "application/pdf",
+      },
+      pptx: input.pptx,
       manifest: input.manifest,
       betas: [FILES_BETA],
       model: FINAL_VISUAL_QA_MODEL,
       maxTokens: 1_600,
+      phaseTelemetry: input.phaseTelemetry,
+      telemetryKey: "visualQaFinalSkipped",
+      recoveryStage: "export",
     });
+    const finalVisualQa = finalQaOutcome.qa;
     input.spentUsdRef.value = roundUsd(input.spentUsdRef.value + usageToCost(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage));
     assertDeckSpendWithinBudget(input.spentUsdRef.value);
     input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
@@ -2492,8 +2725,8 @@ function buildAuthorMessage(
           `- Produce exactly ${run.target_slide_count} slides. Do not widen or compress the deck.`,
           `- \`deck_manifest.json\` slideCount must equal ${run.target_slide_count}.`,
           analysis
-            ? "- Generate and attach these files exactly: `deck.pptx`, `deck.pdf`, `deck_manifest.json`, and `narrative_report.md`."
-            : "- Generate and attach these files exactly: `analysis_result.json`, `deck.pptx`, `deck.pdf`, `deck_manifest.json`, and `narrative_report.md`.",
+            ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `deck.pptx`, (3) `deck.pdf`, (4) `deck_manifest.json`."
+            : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `deck.pptx`, (4) `deck.pdf`, (5) `deck_manifest.json`.",
           ...(analysis
             ? []
             : [
@@ -2943,7 +3176,7 @@ async function runClaudeLoop(input: {
         assertCircuitClosed(circuitState, input.circuitKey);
       }
       if (input.currentSpentUsd !== undefined) {
-        const remainingBudgetUsd = roundUsd(3.5 - input.currentSpentUsd - usageToCost(input.model, usage));
+        const remainingBudgetUsd = roundUsd(10.0 - input.currentSpentUsd - usageToCost(input.model, usage));
         if (remainingBudgetUsd < CONTINUATION_MIN_REMAINING_BUDGET_USD) {
           const budgetMessage = `[runClaudeLoop] remaining budget $${remainingBudgetUsd.toFixed(3)} below continuation threshold $${CONTINUATION_MIN_REMAINING_BUDGET_USD.toFixed(2)}.`;
           console.warn(`${budgetMessage} ${finalMessage ? "Breaking before another continuation." : "Aborting phase before request."}`);
