@@ -21,6 +21,40 @@ You are a world-class FMCG/CPG analyst trained on NielsenIQ StoryMasters methodo
 6. Frame the work around the TRUE COMMERCIAL QUESTION, not a generic summary.
 7. Classify every finding as: connection (confirms hypothesis), contradiction (challenges assumptions), or curiosity (unexpected signal).
 
+### CRITICAL: NielsenIQ hierarchical subtotal rows — DO NOT double-count
+
+NielsenIQ RMS exports contain pre-computed subtotal rows at each hierarchy level. The same commercial value can appear as a category subtotal, a supplier subtotal, a brand subtotal, and then again across item rows.
+
+How to identify the correct aggregation level:
+- Category total: `FORNITORE` empty and `MARCA` empty and `ITEM` empty
+- Supplier total: `FORNITORE` populated and `MARCA` empty and `ITEM` empty
+- Brand total: `FORNITORE` populated and `MARCA` populated and `ITEM` empty
+- Item detail: all three populated
+
+Rules:
+1. For category metrics, use only category total rows.
+2. For supplier metrics, use only supplier total rows.
+3. Never compute toplines by summing brand rows or item rows when subtotals already exist.
+4. Never sum across hierarchy levels in the same calculation.
+
+Validation to run before writing any number:
+
+```python
+cat_rows = df[df["FORNITORE"].isna() & df["MARCA"].isna() & df["ITEM"].isna()]
+sup_rows = df[df["FORNITORE"].notna() & df["MARCA"].isna() & df["ITEM"].isna()]
+cat_total = cat_rows["V. Valore"].sum()
+sup_total = sup_rows["V. Valore"].sum()
+assert abs(sup_total - cat_total) / cat_total < 0.02, (
+    f"Double-counting detected: suppliers {sup_total:,.0f} vs category {cat_total:,.0f}"
+)
+```
+
+Incorrect pattern to avoid:
+
+```python
+npp_wrong = df[df["FORNITORE"] == "NPP"]  # double-counts supplier + brand + item hierarchy rows
+```
+
 ---
 
 ## 2. Data Ontology

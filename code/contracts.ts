@@ -192,8 +192,8 @@ export const directDeckArtifactContractSchema = z.object({
   generationPattern: z.literal("single-turn"),
   requiredArtifacts: z.tuple([
     z.literal("deck.pptx"),
-    z.literal("deck.pdf"),
     z.literal("narrative_report.md"),
+    z.literal("data_tables.xlsx"),
     z.literal("deck_manifest.json"),
   ]),
   optionalArtifacts: z.array(z.literal("basquio_analysis.json")).default(["basquio_analysis.json"]),
@@ -756,7 +756,7 @@ export const templateProfileSchema = z.object({
 
 export const artifactProviderSchema = z.enum(["supabase", "database", "local"]);
 
-export const artifactKindSchema = z.enum(["pptx", "pdf", "md"]);
+export const artifactKindSchema = z.enum(["pptx", "pdf", "md", "xlsx"]);
 
 export const artifactRecordSchema = z.object({
   id: z.string(),

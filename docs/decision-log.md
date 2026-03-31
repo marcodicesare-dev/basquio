@@ -1,5 +1,23 @@
 # Decision Log
 
+## March 31, 2026 — Add audit-ready data workbook and Haiku report tier
+
+Decision:
+- add `data_tables.xlsx` as a first-class durable artifact
+- require every quantitative finding to be traceable to a correctly filtered pandas DataFrame
+- treat Haiku as a report-only tier that publishes markdown + Excel + manifest, not a degraded deck tier
+- keep generated PDFs for internal rendered-page QA, not as a required durable artifact for new successful publishes
+
+Why:
+- the Haiku forensic audit showed that wrong toplines came from systematic double-counting of NielsenIQ hierarchy subtotals, not random hallucination
+- users need an audit trail they can inspect in Excel, not only charts and prose
+- forcing Haiku through PPTX/PDF generation created low-quality deck output and fragile failure modes
+
+Implication:
+- the NIQ playbook and system prompt must explicitly warn about hierarchy subtotal rows and require reconciliation checks before any topline claim
+- `generate-deck.ts` must publish `data_tables.xlsx` for every run
+- report-only runs must skip deck QA stages and ship only the artifacts they can produce honestly
+
 ## March 31, 2026 — Ship narrative markdown instead of DOCX
 
 Decision:

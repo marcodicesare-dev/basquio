@@ -10,7 +10,8 @@ Basquio keeps deterministic ingest, template interpretation, domain analytics, s
 - loads the `pptx` and `pdf` skills on the initial generation call
 - performs analysis and deck creation in one file-backed generation turn instead of a separate prompt-stuffed understand step
 - reuses the same persistent container for one repair turn when QA requests revision
-- generates the final PPTX and PDF artifacts directly
+- generates the final PPTX artifact directly for full-deck tiers
+- always generates `narrative_report.md` and `data_tables.xlsx` from the same analytical pass
 - persists only durable run state, working papers, artifact manifests, and QA outcomes back into Supabase
 
 Execution surface:
@@ -29,9 +30,11 @@ Important direct-path constraints:
 - uploaded evidence should reach Claude through `container_upload`, not through prompt-side dataset inventories
 - the user message should stay brief-first and artifact-oriented; workbook inspection happens inside code execution
 - the live persisted worker phase spine is `normalize -> understand -> author -> render -> critique -> revise -> export`
-- rendered-page QA remains a second cheap model call on the generated PDF
+- rendered-page QA remains a second cheap model call on an internally generated PDF
 - the worker should rely on documented Anthropic skill contracts, not undocumented assumptions about the skill internals
 - narrative markdown should share the same knowledge pack and copywriting rules as the deck path while going deeper on what, why, and how
+- `data_tables.xlsx` must be written from the exact pandas DataFrames used for charts and numeric findings so the workbook becomes the audit trail for every number
+- Haiku is a report-only tier in the direct lane: it publishes `narrative_report.md` + `data_tables.xlsx` + `deck_manifest.json` with `slideCount = 0`
 - failed attempts must still persist cost telemetry, and the top-level run cost must reflect the whole logical run rather than only the last successful attempt
 
 The main quality lesson from the reset is that direct generation still needs strong structure around it. The model should be constrained by explicit slide archetypes, viewer-safe layout rules, artifact QA, and eventually rendered-page judging plus candidate ranking. Prompting for "taste" alone is not a reliable quality architecture.
@@ -44,7 +47,7 @@ This architecture merges:
 
 - repo-grounded Loamly patterns that already work in production
 - the strongest findings from primary-source research on agent workflows, PPTX structure, and durable orchestration
-- the product requirement, clarified on March 14, 2026, that Basquio must ingest an evidence package, a business brief, and a design target, then output executive-grade PPTX and PDF artifacts
+- the product requirement, clarified on March 14, 2026, that Basquio must ingest an evidence package, a business brief, and a design target, then output executive-grade presentation or report artifacts with an auditable data pack
 
 ## Product Shape
 
@@ -133,7 +136,8 @@ Do not promise exact editable reconstruction from PDF in v1.
 Responsibilities:
 
 - produce editable `.pptx`
-- produce branded `.pdf`
+- produce `narrative_report.md`
+- produce `data_tables.xlsx`
 - keep both outputs consistent with the same `SlideSpec[]`
 - preserve customer PPTX masters and layouts when the run includes a PPTX template input
 

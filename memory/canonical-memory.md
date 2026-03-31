@@ -21,7 +21,9 @@
 - slide count and section structure must be evidence-driven, not fixed-spine hard-coding.
 - The primary export path is Claude code execution, not a fragmented scene-graph renderer stack.
 - Claude may generate final deck syntax directly, but only after deterministic ingest, template interpretation, and explicit budget enforcement.
-- PPTX and PDF must still come from one accountable deck-generation pass and one durable artifact manifest.
+- Full-deck tiers must still come from one accountable deck-generation pass and one durable artifact manifest.
+- `data_tables.xlsx` is a first-class Basquio artifact and must be written from the same DataFrames used for charts and reported numbers.
+- Haiku is a report-and-data tier, not a low-quality slide tier.
 - Production runtime prompt inputs must come from tracked repository files, never workspace-only `.context` files.
 - Direct deck generation should default to a premium dark editorial slide language with restrained card surfaces, sparse accents, and disciplined whitespace unless the uploaded template clearly overrides it.
 - In the direct code-execution path, serif display should be limited to short page-level headlines when no strong template is provided; dense slide text and card internals should use Arial-class safe fonts to reduce cross-viewer layout drift.
@@ -43,7 +45,7 @@ Initial user promise:
 - provide context, audience, objective, thesis, and stakes
 - choose template or style direction
 - optionally provide a brand file with design tokens
-- receive editable PPTX and polished PDF
+- receive editable PPTX plus an audit-ready markdown report and data workbook
 
 Initial domain bias:
 
@@ -94,6 +96,7 @@ Initial domain bias:
 - Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks. File-backed phases need post-response budget enforcement from actual usage instead of preflight token counting.
 - The final direct-deck generation contract should require `deck.pptx`, `deck.pdf`, and `deck_manifest.json`. `basquio_analysis.json` is optional audit output, not a blocking transport requirement.
 - `narrative_report.md` is a live artifact in the direct deck path and must be authored from the same canonical narrative and evidence layer as the deck, not reverse-converted from slides or PDF.
+- NielsenIQ-style exports contain hierarchy subtotal traps. Any topline number must reconcile category rows against supplier rows before it is allowed into the artifacts.
 - narrative markdown in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.
 - narrative markdown must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
 - When the `pptx` skill is loaded, Basquio should rely on the documented skill contract itself rather than assuming an undocumented internal presentation library implementation.

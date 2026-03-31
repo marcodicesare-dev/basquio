@@ -14,19 +14,19 @@ const MODEL_OPTIONS = [
   {
     id: "claude-opus-4-6",
     name: "Opus 4.6",
-    description: "Consulting-grade depth",
+    description: "Consulting-grade deck + report",
     badge: null,
   },
   {
     id: "claude-sonnet-4-6",
     name: "Sonnet 4.6",
-    description: "Deep analysis, efficient",
+    description: "Full deck + report",
     badge: "default",
   },
   {
     id: "claude-haiku-4-5",
     name: "Haiku 4.5",
-    description: "Fast turnaround",
+    description: "Report + data only, no slides",
     badge: null,
   },
 ] as const;
@@ -157,7 +157,8 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
       ? (recipePrefill?.authorModel as AuthorModel)
       : DEFAULT_AUTHOR_MODEL,
   );
-  const creditsNeeded = calculateRunCredits(targetSlideCount, selectedModel);
+  const isReportOnlyTier = selectedModel === "claude-haiku-4-5";
+  const creditsNeeded = isReportOnlyTier ? 3 : calculateRunCredits(targetSlideCount, selectedModel);
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: recipePrefill?.brief.businessContext ?? "",
     client: recipePrefill?.brief.client ?? "",
@@ -189,6 +190,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
 
     try {
       validateSubmission(evidenceFiles, brief, prefillSourceFiles.length);
+      const effectiveTargetSlideCount = isReportOnlyTier ? 1 : targetSlideCount;
 
       // If reusing files from a prior run, skip upload and reference existing source files directly
       if (prefillSourceFiles.length > 0 && evidenceFiles.length === 0) {
@@ -200,7 +202,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
             projectId: "local-project",
             existingSourceFileIds: prefillSourceFiles.map((sf) => sf.id),
             templateProfileId: selectedTemplateId ?? undefined,
-            targetSlideCount,
+            targetSlideCount: effectiveTargetSlideCount,
             authorModel: selectedModel,
             recipeId: recipePrefill?.recipeId ?? undefined,
             brief,
@@ -259,7 +261,7 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
           projectId: preparePayload.projectId,
           sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
           templateProfileId: selectedTemplateId ?? undefined,
-          targetSlideCount,
+          targetSlideCount: effectiveTargetSlideCount,
           authorModel: selectedModel,
           recipeId: recipePrefill?.recipeId ?? undefined,
           brief,
@@ -746,37 +748,45 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                           </span>
                           <span className="template-option-type">{option.description}</span>
                         </span>
-                        <span className="model-option-credits">{calculateRunCredits(targetSlideCount, option.id)} cr</span>
+                        <span className="model-option-credits">{option.id === "claude-haiku-4-5" ? "3 cr" : `${calculateRunCredits(targetSlideCount, option.id)} cr`}</span>
                       </label>
                     ))}
                   </div>
                 </div>
-                <div className="slide-count-selector">
-                  <label className="stack-xs">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                      <span style={{ fontSize: "1.1rem", fontWeight: 700 }}>{targetSlideCount} slides</span>
-                      <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--blue)" }}>{creditsNeeded} credits</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={UI_MIN_TARGET_SLIDES}
-                      max={UI_MAX_TARGET_SLIDES}
-                      value={targetSlideCount}
-                      onChange={(e) => setTargetSlideCount(clampTargetSlideCount(Number(e.target.value)))}
-                      style={{ width: "100%", accentColor: "var(--blue)" }}
-                    />
-                    <span className="muted" style={{ fontSize: "0.78rem", display: "flex", justifyContent: "space-between" }}>
-                      <span>3 slides (6 cr)</span>
-                      <span>30 slides</span>
-                    </span>
-                  </label>
-                </div>
+                {!isReportOnlyTier ? (
+                  <div className="slide-count-selector">
+                    <label className="stack-xs">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ fontSize: "1.1rem", fontWeight: 700 }}>{targetSlideCount} slides</span>
+                        <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--blue)" }}>{creditsNeeded} credits</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={UI_MIN_TARGET_SLIDES}
+                        max={UI_MAX_TARGET_SLIDES}
+                        value={targetSlideCount}
+                        onChange={(e) => setTargetSlideCount(clampTargetSlideCount(Number(e.target.value)))}
+                        style={{ width: "100%", accentColor: "var(--blue)" }}
+                      />
+                      <span className="muted" style={{ fontSize: "0.78rem", display: "flex", justifyContent: "space-between" }}>
+                        <span>3 slides (6 cr)</span>
+                        <span>30 slides</span>
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="muted" style={{ fontSize: "0.82rem" }}>
+                    This tier generates an analytical report and data pack. No presentation slides.
+                  </p>
+                )}
               </article>
 
               <article className="review-card stack">
                 <p className="artifact-kind">Output</p>
                 <p className="muted" style={{ fontSize: "0.9rem" }}>
-                  PPTX + PDF + Report — charts stay locked in the slide outputs, and the report is a text-first markdown narrative with no charts for easier reuse.
+                  {isReportOnlyTier
+                    ? "Report + Data — Haiku produces a markdown narrative and Excel data pack for downstream review."
+                    : "PPTX + Report + Data — charts stay locked in the slide output, and the report is a text-first markdown narrative with no charts for easier reuse."}
                 </p>
               </article>
             </div>

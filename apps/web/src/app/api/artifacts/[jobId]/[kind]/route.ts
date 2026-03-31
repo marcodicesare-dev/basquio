@@ -22,14 +22,15 @@ export async function GET(
     return new Response("Authentication required.", { status: 401 });
   }
 
-  if (kind !== "pptx" && kind !== "pdf" && kind !== "md") {
+  if (kind !== "pptx" && kind !== "md" && kind !== "xlsx") {
     return new Response("Unsupported artifact kind.", { status: 400 });
   }
+  const requestedKind = kind as "pptx" | "md" | "xlsx";
 
-  const availability = await getDurableArtifactAvailability(jobId, viewer.user.id, [kind]);
+  const availability = await getDurableArtifactAvailability(jobId, viewer.user.id, [requestedKind]);
   const artifact =
-    availability.artifacts.find((candidate) => candidate.kind === kind) ??
-    (availability.ready ? await getGenerationArtifactRecord(jobId, kind, viewer.user.id) : null);
+    availability.artifacts.find((candidate) => candidate.kind === requestedKind) ??
+    (availability.ready ? await getGenerationArtifactRecord(jobId, requestedKind, viewer.user.id) : null);
 
   if (!artifact) {
     return new Response("Artifact not found.", { status: 404 });
@@ -40,7 +41,7 @@ export async function GET(
       artifact.provider === "supabase"
         ? await readSupabaseArtifact(artifact.storagePath)
         : artifact.provider === "database"
-          ? await readInlineArtifact(jobId, artifact.kind, viewer.user.id)
+          ? await readInlineArtifact(jobId, requestedKind, viewer.user.id)
           : await readLocalArtifactBuffer(artifact);
 
     return new Response(buffer, {
@@ -73,7 +74,7 @@ async function readSupabaseArtifact(storagePath: string) {
   });
 }
 
-async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf" | "md", viewerId: string) {
+async function readInlineArtifact(jobId: string, kind: "pptx" | "md" | "xlsx", viewerId: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

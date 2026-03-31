@@ -34,6 +34,9 @@ export const MODEL_CREDIT_MULTIPLIERS: Record<string, number> = {
  * Calculate credits required for a deck run.
  */
 export function calculateRunCredits(slideCount: number, model: string = DEFAULT_AUTHOR_MODEL): number {
+  if (model === "claude-haiku-4-5") {
+    return 3;
+  }
   const multiplier = MODEL_CREDIT_MULTIPLIERS[model] ?? 1.0;
   return Math.ceil((BASE_CREDITS + (CREDITS_PER_SLIDE * assertValidSlideCount(slideCount))) * multiplier);
 }

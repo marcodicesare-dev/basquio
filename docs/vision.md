@@ -27,10 +27,11 @@ Inputs:
 Outputs:
 
 - editable `.pptx`
-- polished `.pdf`
 - narrative `.md` report with deeper explanation
+- audit-ready `data_tables.xlsx` with the exact analysis tables behind the findings
 - all from the same canonical evidence interpretation and deck intent
 - a report-grade narrative that explains what happened, why it matters, and what the audience should do next
+- Haiku is the report-and-data tier: `narrative_report.md` + `data_tables.xlsx` without presentation output
 
 ## Target User
 
@@ -65,6 +66,7 @@ The moat is:
 The AI must be accountable for final deck quality, not just intermediate planning objects.
 
 Basquio still requires deterministic ingest, evidence grounding, template interpretation, and budget guards, but the current primary path allows Claude to generate the final PPTX and PDF inside a controlled execution sandbox when that produces better report quality than a fragmented renderer stack.
+The generated PDF is an internal QA artifact in the current direct path; the durable user-facing outputs are the PPTX, markdown report, and data workbook.
 
 ## Quality Principle
 

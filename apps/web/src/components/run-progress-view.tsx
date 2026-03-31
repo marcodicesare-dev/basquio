@@ -195,14 +195,20 @@ export function RunProgressView(input: {
     const creditsCost = 3 + slideCount;
     const elapsedMin = Math.floor(snapshot.elapsedSeconds / 60);
     const elapsedSec = snapshot.elapsedSeconds % 60;
-    const pdfDownloadHref = `/api/artifacts/${snapshot.jobId}/pdf`;
-    const pdfPreviewHref = `${pdfDownloadHref}?disposition=inline#toolbar=0&navpanes=0&view=FitH`;
-    const pptxDownloadHref = `/api/artifacts/${snapshot.jobId}/pptx`;
+    const hasPptxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pptx"));
     const hasMdArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "md"));
+    const hasXlsxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "xlsx"));
+    const pptxDownloadHref = `/api/artifacts/${snapshot.jobId}/pptx`;
     const mdDownloadHref = `/api/artifacts/${snapshot.jobId}/md`;
+    const xlsxDownloadHref = `/api/artifacts/${snapshot.jobId}/xlsx`;
     const templateSummary = describeTemplateDiagnostics(
       snapshot.summary?.templateDiagnostics ?? snapshot.templateDiagnostics,
     );
+    const isReportOnlyResult = !hasPptxArtifact && hasMdArtifact && hasXlsxArtifact;
+    const readyLabel = isReportOnlyResult ? "Your report is ready" : "Your deck is ready";
+    const resultMeta = isReportOnlyResult
+      ? `Report + data pack · ${creditsCost} credits · ${elapsedMin}m ${elapsedSec}s`
+      : `${slideCount} slides · ${creditsCost} credits · ${elapsedMin}m ${elapsedSec}s`;
 
     return (
       <div className="page-shell job-result-page">
@@ -213,7 +219,7 @@ export function RunProgressView(input: {
             fontSize: "0.92rem", fontWeight: 600, zIndex: 1000, display: "flex",
             alignItems: "center", gap: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
           }}>
-            Your deck is ready.
+            {readyLabel}
             <button type="button" onClick={() => setShowCompletionToast(false)} style={{
               background: "rgba(255,255,255,0.2)", border: "none", color: "#fff",
               padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontSize: "0.82rem",
@@ -227,19 +233,18 @@ export function RunProgressView(input: {
                 <Check size={18} weight="bold" />
               </span>
               <p className="artifact-kind">Export complete</p>
-              <h1>Your deck is ready</h1>
+              <h1>{readyLabel}</h1>
               <p className="muted">
-                {slideCount} slides · {creditsCost} credits · {elapsedMin}m {elapsedSec}s
+                {resultMeta}
               </p>
             </div>
 
             <div className="job-result-actions">
-              <a className="button" href={pptxDownloadHref}>
-                Download PPTX
-              </a>
-              <a className="button secondary" href={pdfDownloadHref}>
-                Download PDF
-              </a>
+              {hasPptxArtifact ? (
+                <a className="button" href={pptxDownloadHref}>
+                  Download PPTX
+                </a>
+              ) : null}
               {hasMdArtifact ? (
                 <a className="button secondary" href={mdDownloadHref}>
                   Download Report
@@ -249,14 +254,16 @@ export function RunProgressView(input: {
                   Narrative report was not generated for this run.
                 </span>
               )}
-              <a className="button small secondary" href={pdfPreviewHref} target="_blank" rel="noreferrer">
-                Open preview
-              </a>
+              {hasXlsxArtifact ? (
+                <a className="button secondary" href={xlsxDownloadHref}>
+                  Download Data
+                </a>
+              ) : null}
             </div>
 
             <div className="compact-meta-row">
               <span className="run-pill">Editable in PowerPoint</span>
-              <span className="run-pill">PDF preview embedded below</span>
+              <span className="run-pill">Download PPTX to preview</span>
               {snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">Ready to review</span> : null}
               {snapshot.summary?.qaPassed === false ? <span className="run-pill run-pill-failed">Review suggested</span> : null}
               <span className="run-pill">{templateSummary.badge}</span>
@@ -266,26 +273,6 @@ export function RunProgressView(input: {
             </p>
           </div>
 
-          <div className="job-result-preview-shell">
-            <object
-              className="job-result-preview-frame"
-              data={pdfPreviewHref}
-              type="application/pdf"
-              aria-label="Deck PDF preview"
-            >
-              <div className="panel workspace-empty-card workspace-empty-card-compact">
-                <p className="muted">PDF preview is not available in this browser.</p>
-                <div className="job-result-links">
-                  <a className="button small secondary" href={pdfPreviewHref} target="_blank" rel="noreferrer">
-                    Open preview
-                  </a>
-                  <a className="button small secondary" href={pdfDownloadHref}>
-                    Download PDF
-                  </a>
-                </div>
-              </div>
-            </object>
-          </div>
         </section>
 
         <div className="billing-stats-row">

@@ -255,7 +255,7 @@ export async function getGenerationArtifactRecord(
 export async function getDurableArtifactAvailability(
   jobId: string,
   viewerId?: string,
-  expectedKinds: ArtifactKind[] = ["pptx", "pdf"],
+  expectedKinds: ArtifactKind[] = ["pptx", "md", "xlsx"],
 ): Promise<DurableArtifactAvailability> {
   const durableArtifacts = await listDurableArtifactRecords(jobId, viewerId);
   const durableKinds = new Set(durableArtifacts.map((artifact) => artifact.kind));
