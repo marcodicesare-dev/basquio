@@ -166,13 +166,13 @@ slide.addText([
   "Cause: (1) assortimento ridotto su varianti premium, (2) minor pressione promozionale, (3) migrazione verso altri canali."
 ].join("\\n"), {
   x: 7.1, y: 2.25, w: 5.6, h: 2.5,
-  fontSize: 11, fontFace: "Arial", color: "374151", lineSpacing: 14
+  fontSize: 11, fontFace: "Arial", color: "374151", lineSpacing: 14, shrinkText: true
 });
 
 slide.addText("Il focus deve essere sull'intensificare la rotazione e ampliare l'offerta premium, non sull'aprire nuovi PDV.", {
   x: 7.1, y: 5.0, w: 5.6, h: 0.65,
   fontSize: 10, fontFace: "Arial", color: "F2F0EB",
-  fill: { color: "1A6AFF", transparency: 85 }
+  fill: { color: "1A6AFF", transparency: 85 }, shrinkText: true
 });
 </example>
 
@@ -241,7 +241,7 @@ cards.forEach((card, i) => {
   });
   slide.addText(card.body, {
     x: cx + 0.15, y: cy + 0.85, w: 2.55, h: 2.5,
-    fontSize: 11, fontFace: "Arial", color: "A09FA6", lineSpacing: 14, valign: "top"
+    fontSize: 11, fontFace: "Arial", color: "A09FA6", lineSpacing: 14, valign: "top", shrinkText: true
   });
   slide.addText("Leva: " + card.lever + " | Impatto: " + card.impact + " | Timeline: " + card.timeline, {
     x: cx + 0.15, y: cy + 3.8, w: 2.55, h: 0.5,
@@ -256,6 +256,42 @@ slide.addText("Con interventi mirati in 90 giorni, il gap di -0.5pp e recuperabi
 });
 </example>
 
+<example name="perfect_pareto_chart">
+// Pareto chart: bars + cumulative line on secondary axis
+// Use for concentration, contribution, or any "vital few" analysis
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
+
+categories = ["Pasta Ripiena", "Zuppe Pronte", "Primi Riso", "Insalate Pasta", "Piatti Pronti", "Sughi Freschi", "Basi Pizza", "Altre"]
+values = [28.5, 18.2, 14.7, 11.3, 9.8, 7.1, 5.9, 4.5]
+cumulative = np.cumsum(values)
+
+fig, ax1 = plt.subplots(figsize=(8, 4.5))
+colors = ["#2563EB" if c <= 80 else "#94A3B8" for c in cumulative]
+bars = ax1.bar(categories, values, color=colors, width=0.65)
+ax1.bar_label(bars, fmt='%.1f%%', padding=3, fontsize=8, color="#374151")
+ax1.set_ylabel("% Vendite Valore", fontsize=9, color="#6B7280")
+ax1.tick_params(axis='x', rotation=35, labelsize=8)
+
+ax2 = ax1.twinx()
+ax2.plot(categories, cumulative, color="#DC2626", marker='o', markersize=5, linewidth=1.5)
+ax2.axhline(y=80, color="#DC2626", linestyle='--', alpha=0.5, linewidth=0.8)
+ax2.set_ylabel("% Cumulata", fontsize=9, color="#DC2626")
+for i, v in enumerate(cumulative):
+    ax2.annotate(f'{v:.0f}%', (i, v), textcoords="offset points", xytext=(0, 8), fontsize=7, color="#DC2626")
+
+ax1.spines[['top']].set_visible(False)
+ax2.spines[['top']].set_visible(False)
+fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W S22/02/26", fontsize=7, color="#6B6A72")
+plt.tight_layout()
+plt.savefig("pareto_skus.png", dpi=200, bbox_inches='tight')
+
+slide.addImage({ path: "pareto_skus.png", x: 0.6, y: 1.75, w: 7.0, h: 4.25 });
+</example>
+
 <example name="perfect_analytical_reasoning">
 ## How to reason about the data before building each slide
 
@@ -267,6 +303,17 @@ For each analytical slide, follow this reasoning chain:
 4. SO WHAT: "Recommendation: shift 15% of promo budget from Discount to Hypermarket where growth headroom is 3x. Priority levers: increase distribution of top-5 Birre SKUs in Iper, renegotiate Yogurt facing allocation, reduce Salumi promo depth by 1pp to protect margin."
 
 A slide that only states facts 1-2 is a data readout, not analysis. A slide worth paying for states all four, with the recommendation grounded in the specific numbers from the evidence.
+</example>
+
+<example name="content_budget_rules">
+## Content budgets per text zone
+
+- SCQA sections: max 2-3 lines each (40-60 words per section). If longer, restructure as bullet points.
+- Diagnostic bullets on chart-split slides: max 4 bullets, each max 25 words.
+- Callout/action text: max 2 lines (30-40 words). Quantify the action, don't describe the context.
+- Recommendation card body: max 3-4 lines (40-60 words). Lead with the lever, not the finding.
+
+If text would exceed these budgets, you are being too descriptive. Cut context, keep the number and the action.
 </example>
 
 <example name="perfect_slide_title_examples">
@@ -353,6 +400,9 @@ export async function buildBasquioSystemPrompt(input: {
     "- Metric footers must live in their own bottom band with enough height for the value and label; body copy must end above that band.",
     "- Generate charts as high-resolution PNG assets in Python and insert them as images in the final deck; do not rely on native PowerPoint chart objects or SmartArt for critical visuals.",
     "- Concretely: render charts with matplotlib or seaborn, save them as PNG files, and use the loaded presentation skill to place those PNGs in the deck. Do not use native PowerPoint chart objects for final deck visuals.",
+    "- Image format compatibility is critical for PowerPoint. When reusing template assets such as logos, icons, decorative elements, or backgrounds, convert them to PNG before embedding with addImage().",
+    "- Never embed .svg, .emf, or .wmf files directly in the output deck. If the client template contains those formats, rasterize SVG to PNG first (for example with cairosvg.svg2png) and skip EMF/WMF unless you have a safe PNG/JPEG alternative.",
+    "- Only PNG and JPEG are safe cross-viewer image formats for the final PPTX. If a decorative template asset cannot be converted safely, omit it instead of risking a broken file.",
     "- Make charts readable on dark backgrounds with explicit foreground colors, restrained palettes, and larger labels.",
     "- Label collision prevention (apply BEFORE rendering, do not rely on post-hoc QA):",
     "  - When category names exceed 12 characters on average, prefer horizontal bar charts over vertical bar charts.",
