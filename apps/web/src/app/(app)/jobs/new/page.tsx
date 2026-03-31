@@ -27,7 +27,7 @@ type RecipePrefill = {
   };
   templateProfileId: string | null;
   targetSlideCount: number;
-  authorModel?: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5";
+  authorModel?: "claude-sonnet-4-6" | "claude-opus-4-6";
   sourceFiles?: Array<{
     id: string;
     kind: string;
@@ -150,7 +150,7 @@ async function getRecipePrefill(recipeId: string, userId: string): Promise<Recip
       brief: recipe.brief,
       templateProfileId: recipe.template_profile_id,
       targetSlideCount: recipe.target_slide_count,
-      authorModel: recipe.author_model ?? "claude-sonnet-4-6",
+      authorModel: recipe.author_model === "claude-opus-4-6" ? "claude-opus-4-6" : "claude-sonnet-4-6",
     };
   } catch {
     return null;
@@ -234,7 +234,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       brief: run.brief,
       templateProfileId: run.template_profile_id,
       targetSlideCount: slideCount,
-      authorModel: run.author_model ?? "claude-sonnet-4-6",
+      authorModel: run.author_model === "claude-opus-4-6" ? "claude-opus-4-6" : "claude-sonnet-4-6",
       sourceFiles,
     };
   } catch {

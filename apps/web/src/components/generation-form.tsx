@@ -23,12 +23,6 @@ const MODEL_OPTIONS = [
     description: "Deep analysis, efficient",
     badge: "default",
   },
-  {
-    id: "claude-haiku-4-5",
-    name: "Haiku 4.5",
-    description: "Fast turnaround",
-    badge: null,
-  },
 ] as const;
 
 type AuthorModel = (typeof MODEL_OPTIONS)[number]["id"];
@@ -153,7 +147,9 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
   const [targetSlideCount, setTargetSlideCount] = useState(clampTargetSlideCount(recipePrefill?.targetSlideCount ?? 10));
   const [selectedModel, setSelectedModel] = useState<AuthorModel>(
-    (recipePrefill?.authorModel ?? DEFAULT_AUTHOR_MODEL) as AuthorModel,
+    MODEL_OPTIONS.some((option) => option.id === recipePrefill?.authorModel)
+      ? (recipePrefill?.authorModel as AuthorModel)
+      : DEFAULT_AUTHOR_MODEL,
   );
   const creditsNeeded = calculateRunCredits(targetSlideCount, selectedModel);
   const [brief, setBrief] = useState<BriefFields>({

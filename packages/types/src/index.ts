@@ -129,7 +129,7 @@ export const generationRequestSchema = z.object({
   templateProfileId: z.string().nullable().optional(),
   existingSourceFileIds: z.array(z.string()).optional(),
   targetSlideCount: z.number().int().min(1).max(30).default(10),
-  authorModel: z.enum(["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]).default("claude-sonnet-4-6"),
+  authorModel: z.enum(["claude-sonnet-4-6", "claude-opus-4-6"]).default("claude-sonnet-4-6"),
   recipeId: z.string().nullable().optional(),
   brief: reportBriefSchema.default({}),
   sourceFileName: z.string().optional(),

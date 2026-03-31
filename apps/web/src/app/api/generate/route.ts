@@ -39,7 +39,6 @@ class InvalidGenerationRequestError extends Error {}
 const AUTHOR_MODELS = new Set([
   "claude-sonnet-4-6",
   "claude-opus-4-6",
-  "claude-haiku-4-5",
 ]);
 
 type QueuedGenerationRequest = GenerationRequest & {
@@ -601,7 +600,7 @@ function requireValidTargetSlideCount(targetSlideCount: number) {
 
 function requireValidAuthorModel(authorModel: string) {
   if (!AUTHOR_MODELS.has(authorModel)) {
-    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-6, or claude-haiku-4-5.");
+    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6 or claude-opus-4-6.");
   }
 
   return authorModel;
