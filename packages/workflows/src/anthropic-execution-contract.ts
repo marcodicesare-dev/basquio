@@ -14,7 +14,7 @@ export const AUTHORING_TOOL_CALL_SUMMARY = {
 
 export function buildClaudeBetas(model: ClaudeAuthorModel): Anthropic.Beta.AnthropicBeta[] {
   return model === "claude-haiku-4-5"
-    ? [FILES_BETA, CODE_EXEC_BETA]
+    ? [FILES_BETA]
     : [FILES_BETA, SKILLS_BETA, CODE_EXEC_BETA];
 }
 
@@ -29,11 +29,22 @@ export function buildAuthoringToolCallSummary(model: ClaudeAuthorModel) {
 export function buildClaudeTools(
   model: ClaudeAuthorModel = "claude-sonnet-4-6",
 ): Anthropic.Beta.BetaToolUnion[] {
-  return [
+  const tools: Anthropic.Beta.BetaToolUnion[] = [];
+
+  // Haiku: no skills → code_execution must be EXPLICITLY in the tools array.
+  // Sonnet/Opus: skills implicitly enable code_execution via the container.
+  // Docs: https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool
+  if (model === "claude-haiku-4-5") {
+    tools.push({ type: "code_execution_20250825", name: "code_execution" });
+  }
+
+  tools.push(
     model === "claude-haiku-4-5"
       ? { type: "web_fetch_20260209", name: "web_fetch", allowed_callers: ["direct"] }
       : { type: "web_fetch_20260209", name: "web_fetch" },
-  ];
+  );
+
+  return tools;
 }
 
 export const CLAUDE_TOOLS = buildClaudeTools();
