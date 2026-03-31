@@ -11,9 +11,17 @@ export const AUTHORING_TOOL_CALL_SUMMARY = {
   skills: ["pptx", "pdf"] as const,
 };
 
-export const CLAUDE_TOOLS: Anthropic.Beta.BetaToolUnion[] = [
-  { type: "web_fetch_20260209", name: "web_fetch" },
-];
+export function buildClaudeTools(
+  model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6" = "claude-sonnet-4-6",
+): Anthropic.Beta.BetaToolUnion[] {
+  return [
+    model === "claude-haiku-4-5"
+      ? { type: "web_fetch_20260209", name: "web_fetch", allowed_callers: ["direct"] }
+      : { type: "web_fetch_20260209", name: "web_fetch" },
+  ];
+}
+
+export const CLAUDE_TOOLS = buildClaudeTools();
 
 const AUTHORING_SKILLS = [
   { type: "anthropic", skill_id: "pptx", version: "latest" },

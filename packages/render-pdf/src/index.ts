@@ -811,7 +811,7 @@ export async function renderV2PdfArtifact(input: V2PdfInput): Promise<BinaryArti
 }
 
 function buildV2DeckHtml(input: V2PdfInput): string {
-  const accent = input.accentColor ?? input.paletteBg ? "E8A84C" : "2563EB";
+  const accent = input.accentColor ?? (input.paletteBg ? "E8A84C" : "2563EB");
   const coverBg = input.coverBgColor ?? input.paletteBg ?? "0A090D";
   const safeFont = (f: string) => f.replace(/[^a-zA-Z0-9 ,\-]/g, "");
   const headingFont = safeFont(input.headingFont ?? "Arial");
@@ -851,10 +851,22 @@ function buildV2DeckHtml(input: V2PdfInput): string {
       </div>`;
     }
 
-    // Skip empty slides entirely — don't render garbage
+    // Keep structural slide parity with PPTX even when content is sparse.
     const hasContent = s.metrics?.length || s.body || s.bullets?.length || s.callout || s.chart;
     if (!hasContent && s.layoutId !== "summary" && s.layoutId !== "cover" && s.layoutId !== "section-divider") {
-      return ""; // Omit from PDF output
+      return `<div class="slide content">
+        <div class="slide-inner">
+          <div class="slide-header">
+            ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
+            <h2>${escHtml(clean(s.title))}</h2>
+          </div>
+          <div class="callout">
+            <div class="callout-bar" style="background:#${accent}"></div>
+            <div class="callout-text">Summary exhibit.</div>
+          </div>
+          <div class="slide-footer">Basquio | Confidential</div>
+        </div>
+      </div>`;
     }
 
     // Chart (inline SVG)

@@ -28,9 +28,9 @@ The grammar exists to force:
 
 ### `section-divider`
 
-- section break
-- short title, optional subtitle
-- no filler body copy
+- historical section break archetype
+- avoid in normal decks; use the category/header label to signal sections instead
+- reserve only for rare cover-style transitions when the user explicitly asks for them
 
 ### `exec-summary`
 

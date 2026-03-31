@@ -1196,18 +1196,6 @@ function renderChartElement(
     }
     return;
   }
-
-  slide.addText("Chart unavailable", {
-    x: region.x,
-    y: region.y + 0.3,
-    w: region.w,
-    h: region.h - 0.3,
-    fontSize: 10,
-    color: tokens.palette.muted,
-    align: "center",
-    valign: "middle",
-    fontFace: tokens.typography.bodyFont,
-  });
 }
 
 function dataUriToBase64(uri: string): string | null {
@@ -1614,16 +1602,9 @@ function renderContentSlide(
         // Only show data table when there's no text content
         renderTable(slide, chart, regions.table, tokens, tableMaxRows, tableMaxCols);
       }
-      // First-class callout (if provided), else derive from body/bullet
-      if (regions.callout) {
-        if (s.callout) {
-          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent", notesOverflow);
-        } else if (s.body || (s.bullets && s.bullets.length > 0)) {
-          const calloutText = s.body || s.bullets?.[0] || "";
-          if (calloutText) {
-            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "accent", notesOverflow);
-          }
-        }
+      // First-class callout only. Do not invent copy from body/bullets.
+      if (s.callout && regions.callout) {
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "accent", notesOverflow);
       }
       // Metrics at top
       if (s.metrics && s.metrics.length > 0 && regions.metrics) {
@@ -1649,13 +1630,9 @@ function renderContentSlide(
           renderBody(slide, s.body, regions.body, tokens, notesOverflow, bodyMaxWords);
         }
       }
-      // First-class callout at bottom, else fallback
-      if (regions.callout) {
-        if (s.callout) {
-          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green", notesOverflow);
-        } else if (s.body && s.bullets && s.bullets.length > 0) {
-          renderCallout(slide, pptx, s.body, regions.callout, tokens, "green", notesOverflow);
-        }
+      // First-class callout only. Do not invent copy from body/bullets.
+      if (s.callout && regions.callout) {
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green", notesOverflow);
       }
       break;
     }
@@ -1815,16 +1792,9 @@ function renderContentSlide(
           : regions.bullets;
         renderBullets(slide, s.bullets, bulletRegion, tokens, maxBulletsFromArch, notesOverflow);
       }
-      // Callout
-      if (regions.callout) {
-        if (s.callout) {
-          renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green", notesOverflow);
-        } else {
-          const calloutText = s.bullets && s.bullets.length > 0 ? s.bullets.join(" | ") : s.body || "";
-          if (calloutText && (!s.body || (s.bullets && s.bullets.length > 0))) {
-            renderCallout(slide, pptx, calloutText, regions.callout, tokens, "green", notesOverflow);
-          }
-        }
+      // Callout is first-class content; never synthesize it from other fields.
+      if (s.callout && regions.callout) {
+        renderCallout(slide, pptx, s.callout.text, regions.callout, tokens, s.callout.tone ?? "green", notesOverflow);
       }
       break;
     }

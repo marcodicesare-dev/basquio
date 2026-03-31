@@ -518,6 +518,18 @@ export function auditSlideScene(
     if (!isCover && titleWords > 0 && !/\d/.test(slide.title)) warnings.push("Title has no number — not a data-driven action title");
   }
 
+  if (regions.kicker) {
+    const kickerWords = slide.kicker?.split(/\s+/).filter(Boolean).length ?? 0;
+    zones.push({ kind: "kicker", frame: regions.kicker, areaSqIn: regions.kicker.w * regions.kicker.h, filled: kickerWords > 0, fillDetail: `${kickerWords} words` });
+    if (kickerWords > 8) overflowDetails.push(`Kicker ${kickerWords} words (max ~8)`);
+  }
+
+  if (regions.subtitle) {
+    const subtitleWords = slide.subtitle?.split(/\s+/).filter(Boolean).length ?? 0;
+    zones.push({ kind: "subtitle", frame: regions.subtitle, areaSqIn: regions.subtitle.w * regions.subtitle.h, filled: subtitleWords > 0, fillDetail: `${subtitleWords} words` });
+    if (subtitleWords > 22) overflowDetails.push(`Subtitle ${subtitleWords} words (max ~22)`);
+  }
+
   if (regions.metrics) {
     const count = slide.metrics?.length ?? 0;
     zones.push({ kind: "metrics", frame: regions.metrics, areaSqIn: regions.metrics.w * regions.metrics.h, filled: count > 0, fillDetail: `${count} cards` });
@@ -539,6 +551,17 @@ export function auditSlideScene(
     zones.push({ kind: "body", frame: regions.body, areaSqIn: regions.body.w * regions.body.h, filled, fillDetail: bodyWords > 0 ? `${bodyWords} words` : hasBullets ? `${slide.bullets!.length} bullets` : "EMPTY" });
     if (bodyWords > 80) overflowDetails.push(`Body ${bodyWords} words (max 80)`);
     if ((slide.bullets?.length ?? 0) > 5) overflowDetails.push(`${slide.bullets!.length} bullets (max 5)`);
+  }
+
+  if (regions.bullets) {
+    const bulletCount = slide.bullets?.length ?? 0;
+    zones.push({ kind: "bullets", frame: regions.bullets, areaSqIn: regions.bullets.w * regions.bullets.h, filled: bulletCount > 0, fillDetail: `${bulletCount} bullets` });
+    if (bulletCount > 4) overflowDetails.push(`Bullets ${bulletCount} items (max ~4)`);
+  }
+
+  if (regions.table) {
+    const hasTableContent = Boolean(slide.chartId);
+    zones.push({ kind: "table", frame: regions.table, areaSqIn: regions.table.w * regions.table.h, filled: hasTableContent, fillDetail: hasTableContent ? "table/chart data present" : "EMPTY" });
   }
 
   if (regions.callout) {
@@ -611,7 +634,7 @@ export function auditSlideScene(
 
 // ─── DEFAULTS ────────────────────────────────────────────────────
 
-// Slate house template defaults — must match render-v2.ts DEFAULT_TOKENS
+// Light consulting defaults used when no template tokens are available.
 const defaultBrandTokens = {
   palette: {
     text: "#0F172A",       // Slate 900

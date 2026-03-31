@@ -300,6 +300,29 @@ export function renderV2ChartSvg(
   const seriesNames = chart.series.length > 0
     ? chart.series
     : chart.yAxis ? [chart.yAxis] : [];
+  const maxCategoryLength = categories.reduce((max, category) => Math.max(max, category.length), 0);
+  const totalNumericValues = chart.data.flatMap((row) =>
+    seriesNames.map((name) => {
+      const value = row[name];
+      return typeof value === "number" ? value : parseFloat(String(value)) || 0;
+    }),
+  );
+  const maxNumericValue = totalNumericValues.length > 0
+    ? Math.max(...totalNumericValues.map((value) => Math.abs(value)))
+    : 0;
+  const showBarLabels = chart.style.showValues ?? (seriesNames.length === 1 && categories.length <= 8);
+  const horizontalAxisMax = isHorizontal && maxNumericValue > 0
+    ? Math.max(maxNumericValue * 1.12, maxNumericValue + 1)
+    : undefined;
+  const gridLeft = isHorizontal
+    ? Math.min(200, Math.max(60, Math.round(maxCategoryLength * 6.4)))
+    : 20;
+  const gridRight = isHorizontal
+    ? (showBarLabels ? 56 : 28)
+    : (chart.chartType === "pareto" || isCombo ? 48 : 24);
+  const gridBottom = chart.sourceNote
+    ? 36
+    : (!isPie && !isRadar && !isHorizontal && categories.length > 8 ? 42 : 20);
 
   // Detect percentage data for y-axis formatting
   const isPercentage = (chart.unit ?? "").includes("%") ||
@@ -416,9 +439,9 @@ export function renderV2ChartSvg(
           symbol: echartsType === "line" ? (seriesIdx === 0 ? "circle" : "none") : undefined,
           barMaxWidth: 44,
           barGap: "20%",
-          // Always show value labels on bars for consulting-grade readability
+          // Keep value labels only when the chart can carry them cleanly.
           label: echartsType === "bar" ? {
-            show: true,
+            show: showBarLabels,
             position: isHorizontal ? "right" : "top",
             color: muted,
             fontFamily: theme.bodyFont,
@@ -682,15 +705,16 @@ export function renderV2ChartSvg(
     } : undefined,
     grid: (isPie || isRadar) ? undefined : {
       top: topMargin,
-      right: (chart.chartType === "pareto" || isCombo) ? 48 : 24,
-      bottom: chart.sourceNote ? 32 : 20,
-      left: 16,
+      right: gridRight,
+      bottom: gridBottom,
+      left: gridLeft,
       containLabel: true,
     },
     ...((isPie || isRadar) ? {} : (isBubble || chart.chartType === "scatter") ? {
       // Scatter/bubble: both axes must be numeric (value), not categorical
       xAxis: {
         type: "value",
+        max: horizontalAxisMax,
         axisLine: { lineStyle: { color: border } },
         axisLabel: {
           color: muted,
@@ -731,8 +755,9 @@ export function renderV2ChartSvg(
           color: muted,
           fontFamily: theme.bodyFont,
           fontSize: 10,
-          width: 120,
-          overflow: "truncate",
+          width: Math.min(180, Math.max(120, Math.round(maxCategoryLength * 5.8))),
+          overflow: "break",
+          formatter: (value: string) => abbreviateLabel(String(value), maxCategoryLength > 22 ? 18 : 24),
         },
         inverse: true,
       },

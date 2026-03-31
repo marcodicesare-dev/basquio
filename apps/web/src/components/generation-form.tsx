@@ -23,6 +23,12 @@ const MODEL_OPTIONS = [
     description: "Deep analysis, efficient",
     badge: "default",
   },
+  {
+    id: "claude-haiku-4-5",
+    name: "Haiku 4.5",
+    description: "Fast turnaround",
+    badge: null,
+  },
 ] as const;
 
 type AuthorModel = (typeof MODEL_OPTIONS)[number]["id"];

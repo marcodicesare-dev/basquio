@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { auditSlideScene, validateSlotConstraints, describeAllArchetypesForPrompt } from "@basquio/scene-graph";
 import type { EvidenceWorkspace, TemplateProfile } from "@basquio/types";
+import { lintSlideText } from "../writing-linter";
 
 // ─── TOOL CONTEXT ─────────────────────────────────────────────────
 
@@ -379,12 +380,17 @@ export function createBuildChartTool(ctx: AuthoringToolContext) {
 
       // Sort data if requested
       let sortedData = params.data as Record<string, unknown>[];
-      if (params.sort !== "none" && params.series.length > 0) {
+      const resolvedSort = params.sort === "none" &&
+        params.series.length > 0 &&
+        (params.type === "horizontal_bar" || params.intent === "rank")
+        ? "desc"
+        : params.sort;
+      if (resolvedSort !== "none" && params.series.length > 0) {
         const sortKey = params.series[0];
         sortedData = [...sortedData].sort((a, b) => {
           const va = Number(a[sortKey]) || 0;
           const vb = Number(b[sortKey]) || 0;
-          return params.sort === "desc" ? vb - va : va - vb;
+          return resolvedSort === "desc" ? vb - va : va - vb;
         });
       }
 
@@ -566,6 +572,34 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
             hint: `Rewrite this slide in ${ctx.briefLanguage}. The entire deck must be in the same language as the brief.`,
           };
         }
+      }
+
+      const writingLint = lintSlideText({
+        position: params.position,
+        role: params.layout === "cover" ? "cover" : params.layout === "exec-summary" ? "exec-summary" : "finding",
+        layoutId: params.layout,
+        title: params.title,
+        expectedLanguage: (ctx.briefLanguage as "it" | "en" | "unknown" | undefined) ?? "unknown",
+        body: params.body,
+        bullets: params.bullets,
+        callout: params.callout,
+        metrics: params.metrics,
+        speakerNotes: params.speakerNotes,
+      });
+      const blockingWritingViolations = writingLint.violations.filter(
+        (violation) => violation.severity === "critical" || violation.severity === "major",
+      );
+      if (blockingWritingViolations.length > 0) {
+        return {
+          error: "Slide rejected — writing quality does not meet Basquio standards",
+          violations: blockingWritingViolations.map((violation) => ({
+            field: violation.field,
+            rule: violation.rule,
+            severity: violation.severity,
+            message: violation.message,
+          })),
+          hint: "Rewrite the slide in native-quality brief language. Remove AI-slop, translated wording, and generic commentary before retrying.",
+        };
       }
 
       // Look up chart metadata for slot validation (category count, type, table dimensions)

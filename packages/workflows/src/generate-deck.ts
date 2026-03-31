@@ -25,7 +25,7 @@ import {
   BETAS,
   buildAuthoringOutputConfig,
   buildAuthoringContainer,
-  CLAUDE_TOOLS,
+  buildClaudeTools,
   FILES_BETA,
 } from "./anthropic-execution-contract";
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
@@ -45,6 +45,15 @@ const AUTHOR_MODEL_VALUES = new Set([
 ]);
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
 const FINAL_VISUAL_QA_MODEL = "claude-haiku-4-5";
+const HARD_QA_BLOCKERS = new Set([
+  "pptx_present",
+  "pdf_present",
+  "pptx_zip_signature",
+  "pdf_header_signature",
+  "slide_count_positive",
+  "pptx_zip_parse_failed",
+  "pdf_parseable",
+]);
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
@@ -636,7 +645,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         body: {
           system: systemPrompt,
           messages: [generationMessage],
-          tools: CLAUDE_TOOLS,
+          tools: buildClaudeTools(MODEL),
           output_config: buildAuthoringOutputConfig(MODEL),
         },
       });
@@ -656,7 +665,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         currentSpentUsd: spentUsd,
         container: buildAuthoringContainer(baseContainerId),
         messages: [generationMessage],
-        tools: CLAUDE_TOOLS,
+        tools: buildClaudeTools(MODEL),
         outputConfig: buildAuthoringOutputConfig(MODEL),
         onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
       });
@@ -887,7 +896,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             body: {
               system: systemPrompt,
               messages: reviseMessages,
-              tools: CLAUDE_TOOLS,
+              tools: buildClaudeTools(MODEL),
               output_config: buildAuthoringOutputConfig(MODEL),
             },
         });
@@ -907,7 +916,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           currentSpentUsd: spentUsd,
           container: buildAuthoringContainer(latestContainerId),
           messages: reviseMessages,
-          tools: CLAUDE_TOOLS,
+          tools: buildClaudeTools(MODEL),
           outputConfig: buildAuthoringOutputConfig(MODEL),
           onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
         });
@@ -1953,13 +1962,13 @@ async function finalizeSuccess(
       p_attempt_id: attempt.id,
       p_attempt_number: attempt.attemptNumber,
       p_completed_at: now,
-      p_delivery_status: qaReport.tier === "green" ? "reviewed" : "degraded",
+      p_delivery_status: qaReport.tier === "red" ? "degraded" : "reviewed",
       p_attempt_cost_telemetry: attemptCostTelemetry,
       p_run_cost_telemetry: runCostTelemetry,
       p_anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
       p_slide_count: manifest.slideCount,
       p_page_count: manifest.pageCount ?? manifest.slideCount,
-      p_qa_passed: qaReport.tier === "green",
+      p_qa_passed: qaReport.tier !== "red",
       p_qa_report: {
         ...qaReport,
         template: templateDiagnostics,
@@ -2401,7 +2410,7 @@ function buildAuthorMessage(
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
         "- Archetype selection is mandatory for every slide. Do not improvise freeform slide compositions outside the approved archetype system.",
         "- Never use addShape/addText with custom coordinates outside defined archetype slots unless an existing client template placeholder requires a microscopic adjustment.",
-        "- If a slide is a section divider, it must render a visible title. Never generate an empty section-divider slide; if you cannot populate it, skip that divider and use the slide budget on a substantive slide instead.",
+        "- Do not generate section divider slides. Use the slide header/category label to mark sections and spend every content slide on data or analysis.",
         "- When a slide combines a chart with 2-3 scenario, option, or pathway descriptions, use the scenario-cards archetype.",
         "- When a slide presents 3 key takeaways or 3 takeaway cards, use the key-findings archetype.",
         "- Use the system-prompt examples as the visual contract: charts should be PNG-based, slot-sized, and paired with complete narrative copy rather than placeholder labels.",
@@ -4299,19 +4308,9 @@ function collectPublishGateFailures(input: {
   lint: ReturnType<typeof lintManifest>;
   contract: ReturnType<typeof validateManifestContract>;
 }) {
-  const hardPublishBlockers = new Set([
-    "pptx_present",
-    "pdf_present",
-    "pptx_zip_signature",
-    "pdf_header_signature",
-    "slide_count_positive",
-    "pptx_zip_parse_failed",
-    "pdf_parseable",
-  ]);
-
-  const blockingFailures = input.qaReport.failed.filter((check) => hardPublishBlockers.has(check));
+  const blockingFailures = input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check));
   const advisories = [
-    ...input.qaReport.failed.filter((check) => !hardPublishBlockers.has(check)),
+    ...input.qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
     ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
     ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
   ];
@@ -4585,9 +4584,17 @@ async function validateArtifactChecks(
     allFailed.push("md_parseable");
   }
 
+  const blockingFailures = allFailed.filter((check) => HARD_QA_BLOCKERS.has(check));
+  const tier =
+    blockingFailures.length > 0
+      ? "red" as const
+      : allFailed.length > 0
+      ? "yellow" as const
+      : "green" as const;
+
   return {
-    tier: allFailed.length === 0 ? "green" as const : "red" as const,
-    passed: allFailed.length === 0,
+    tier,
+    passed: blockingFailures.length === 0,
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };
@@ -4603,13 +4610,13 @@ async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
   const mediaFiles = Object.keys(zip.files).filter((name) =>
     /^ppt\/media\/.+\.(svg|emf|wmf)$/i.test(name),
   );
-
-  if (mediaFiles.length === 0) {
-    return pptxBuffer;
-  }
-
-  const { Resvg } = await import("@resvg/resvg-js");
   const rewrittenEntries = new Map<string, string>();
+  let changed = false;
+
+  let Resvg: (typeof import("@resvg/resvg-js"))["Resvg"] | null = null;
+  if (mediaFiles.some((name) => name.toLowerCase().endsWith(".svg"))) {
+    ({ Resvg } = await import("@resvg/resvg-js"));
+  }
 
   for (const mediaPath of mediaFiles) {
     const file = zip.file(mediaPath);
@@ -4625,7 +4632,7 @@ async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
     if (extension === "svg") {
       try {
         const svgText = buffer.toString("utf8");
-        const rendered = new Resvg(svgText, {
+        const rendered = new Resvg!(svgText, {
           fitTo: { mode: "width", value: 1600 },
           background: "rgba(0,0,0,0)",
         }).render();
@@ -4638,6 +4645,7 @@ async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
     zip.remove(mediaPath);
     zip.file(replacementPath, pngBuffer);
     rewrittenEntries.set(mediaPath.split("/").pop()!, replacementPath.split("/").pop()!);
+    changed = true;
   }
 
   const contentTypesPath = "[Content_Types].xml";
@@ -4651,6 +4659,18 @@ async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
       .replace(/ContentType="image\/svg\+xml"/gi, 'ContentType="image/png"')
       .replace(/ContentType="image\/x-emf"/gi, 'ContentType="image/png"')
       .replace(/ContentType="image\/x-wmf"/gi, 'ContentType="image/png"');
+    contentTypesXml = contentTypesXml.replace(
+      /<Override\b[^>]*PartName="\/ppt\/slideMasters\/slideMaster\d+\.xml"[^>]*\/>/gi,
+      (overrideTag) => {
+        const partMatch = overrideTag.match(/PartName="\/([^"]+)"/i);
+        const partPath = partMatch?.[1];
+        if (!partPath || zip.file(partPath)) {
+          return overrideTag;
+        }
+        changed = true;
+        return "";
+      },
+    );
     zip.file(contentTypesPath, contentTypesXml);
   }
 
@@ -4659,17 +4679,21 @@ async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
       continue;
     }
     let relsXml = await file.async("string");
-    let changed = false;
+    let relsChanged = false;
     for (const [oldName, newName] of rewrittenEntries) {
       if (!relsXml.includes(oldName)) {
         continue;
       }
       relsXml = relsXml.replace(new RegExp(oldName.replace(".", "\\."), "g"), newName);
-      changed = true;
+      relsChanged = true;
     }
-    if (changed) {
+    if (relsChanged) {
       zip.file(entry, relsXml);
     }
+  }
+
+  if (!changed) {
+    return pptxBuffer;
   }
 
   return Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));

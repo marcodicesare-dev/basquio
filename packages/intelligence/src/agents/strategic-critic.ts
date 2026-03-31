@@ -65,11 +65,17 @@ You are adversarial — find what's wrong, not what's right.
 
 10. SLIDE COUNT: The deck should match the brief's requested slide count (±2). Too many = padded. Too few = incomplete. Severity: major.
 
+11. LANGUAGE INTEGRITY: The deck must read like a native writer in the brief language. Flag translated-sounding Italian, wrong-language intrusions, fake-Italian verbs such as "lidera", or bloated corporate English. Severity: major.
+
+12. ANALYTICAL SHARPNESS: A strong slide moves from fact -> driver -> implication. Flag slides that merely restate the chart, state a number without commercial meaning, or make a recommendation without tying it to the evidence. Severity: major.
+
+13. VISUAL BEAUTY IN CONTEXT: Judge the slide inside its chosen template. Flag generic dashboard sludge, weak hierarchy, awkward dead space, cheap-looking chart treatment, uneven card rhythm, or clear underuse of the available template language. Severity: major.
+
 Be specific. "Slide 5 title 'Revenue Analysis' is a topic label — should state the finding, e.g., 'Revenue declined -3.2% driven by volume loss in Q3'" is useful. "Titles could be better" is not.
 
 Rate severity:
 - critical: Structural failures that make the deck unpresentable (no narrative, all topic labels, zero callouts across the entire deck)
-- major: Missing key strategic elements (topic-label titles, no "so what", missing callouts, unhighlighted focal entity, under-furnished slides, broken narrative flow)
+- major: Missing key strategic elements (topic-label titles, no "so what", missing callouts, unhighlighted focal entity, under-furnished slides, broken narrative flow, non-native language, shallow analysis, visibly cheap-looking slides)
 - minor: Wording improvements, density issues, minor layout concerns`;
 
 export async function runStrategicCriticAgent(input: StrategicCriticInput): Promise<CritiqueReportOutput> {
@@ -132,6 +138,7 @@ SLIDES (${input.slideCount} total):
 ${slidesSummary}
 
 Review every slide against the strategic checklist. Be adversarial — find what needs fixing before this reaches an executive audience.
+Treat native-quality language, analytical sharpness, and visual beauty inside the chosen template as ship criteria, not polish.
 
 For every issue, provide:
 - type: the issue category (narrative_gap, layout_issue, brief_misalignment, or factual_error if you spot an obvious logical error)

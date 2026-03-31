@@ -9,6 +9,7 @@ export type SlideTextInput = {
   role: string;
   layoutId: string;
   title: string;
+  expectedLanguage?: "it" | "en" | "unknown";
   body?: string;
   bullets?: string[];
   callout?: { text: string; tone?: string };
@@ -85,6 +86,31 @@ const AI_ITALIAN_PATTERNS = [
   /\bil\s+segmento\s+dei\s+prodotti\b.*\bevidenzia\b/i,
 ];
 
+const ITALIAN_FALSE_FRIENDS: Array<{ pattern: RegExp; rule: string; message: string }> = [
+  { pattern: /\blidera\b/i, rule: "italian_false_friend_lidera", message: "Non-native Italian false friend detected: use 'guida' or 'e leader', not 'lidera'" },
+  { pattern: /\bperforma\b/i, rule: "italian_false_friend_performa", message: "Non-native Italian verb detected: replace 'performa' with a natural Italian construction" },
+  { pattern: /\boutperforma\b/i, rule: "italian_false_friend_outperforma", message: "Non-native Italian verb detected: replace 'outperforma' with 'supera' or a natural Italian alternative" },
+  { pattern: /\boverindexa\b|\bunderindexa\b/i, rule: "italian_false_friend_indexa", message: "Non-native Italian verb detected: replace pseudo-English index verbs with natural Italian" },
+];
+
+const ENGLISH_CORP_SPEAK: Array<{ pattern: RegExp; rule: string; message: string }> = [
+  { pattern: /\bin order to\b/i, rule: "english_padding_in_order_to", message: "Replace padded English with a direct verb" },
+  { pattern: /\bwith respect to\b/i, rule: "english_padding_with_respect_to", message: "Replace padded English with a direct phrase" },
+  { pattern: /\bgoing forward\b/i, rule: "english_padding_going_forward", message: "Avoid empty forward-looking filler" },
+];
+
+const ANALYTICAL_LAYOUTS = new Set([
+  "exec-summary",
+  "chart-split",
+  "title-chart",
+  "evidence-grid",
+  "comparison",
+  "metrics",
+  "summary",
+]);
+
+const ANALYTICAL_DRIVER_WORDS = /\b(driven?\s+by|led\s+by|because|due\s+to|reflects?|signals?|caused?\s+by|mix|pricing|price|distribution|assortment|promo|promotional|velocity|availability|guidat[oaie]|spint[oaie]|trainat[oaie]|perch[eé]|grazie\s+a|a\s+causa\s+di|riflette|segnala|mix|pricing|distribuzion|assortimento|promo|velocit[aà]|disponibilit[aà])\b/i;
+
 // Italian stop words for language detection
 const ITALIAN_STOPS = /\b(di|il|la|per|che|con|del|nel|alla|sono|una|dei|dal|delle|gli|fra|tra|nel|nella)\b/gi;
 const ENGLISH_STOPS = /\b(the|and|for|with|that|this|from|have|been|will|they|their|about|which|would|these|other|into)\b/gi;
@@ -128,6 +154,59 @@ function isPassiveVoice(title: string): boolean {
   return /\b(was|were|been|being|is|are)\s+(lost|gained|driven|observed|noted|seen|found|affected|impacted|influenced|caused)\b/i.test(title);
 }
 
+function textLanguageViolations(slide: SlideTextInput, text: string, field: string): LintViolation[] {
+  const violations: LintViolation[] = [];
+  if (!text.trim()) {
+    return violations;
+  }
+
+  const detected = detectLanguage(text);
+  if (
+    slide.expectedLanguage &&
+    slide.expectedLanguage !== "unknown" &&
+    detected !== "unknown" &&
+    detected !== slide.expectedLanguage
+  ) {
+    violations.push({
+      rule: "language_mismatch",
+      severity: "major",
+      field,
+      message: `Text appears to be ${detected} but the deck language is ${slide.expectedLanguage}`,
+      value: text.slice(0, 100),
+    });
+  }
+
+  if (slide.expectedLanguage === "it") {
+    for (const entry of ITALIAN_FALSE_FRIENDS) {
+      if (entry.pattern.test(text)) {
+        violations.push({
+          rule: entry.rule,
+          severity: "critical",
+          field,
+          message: entry.message,
+          value: text.match(entry.pattern)?.[0],
+        });
+      }
+    }
+  }
+
+  if (slide.expectedLanguage === "en") {
+    for (const entry of ENGLISH_CORP_SPEAK) {
+      if (entry.pattern.test(text)) {
+        violations.push({
+          rule: entry.rule,
+          severity: "minor",
+          field,
+          message: entry.message,
+          value: text.match(entry.pattern)?.[0],
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
 // ─── SLIDE LINTER ─────────────────────────────────────────────────
 
 export function lintSlideText(slide: SlideTextInput): LintResult {
@@ -166,6 +245,8 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     if (isPassiveVoice(slide.title)) {
       violations.push({ rule: "passive_title", severity: "minor", field: "title", message: "Title uses passive voice", value: slide.title.slice(0, 50) });
     }
+
+    violations.push(...textLanguageViolations(slide, slide.title, "title"));
   }
 
   // ── BODY CHECKS ──
@@ -213,6 +294,21 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
         }
       }
     }
+
+    if (
+      ANALYTICAL_LAYOUTS.has(slide.layoutId) &&
+      !hasNumber(slide.body) &&
+      !ANALYTICAL_DRIVER_WORDS.test(slide.body)
+    ) {
+      violations.push({
+        rule: "body_generic_analysis",
+        severity: "major",
+        field: "body",
+        message: "Analytical body text is too generic — add a number or a clear commercial driver/implication",
+      });
+    }
+
+    violations.push(...textLanguageViolations(slide, slide.body, "body"));
   }
 
   // ── BULLET CHECKS ──
@@ -238,6 +334,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
           violations.push({ rule, severity: "major", field: `bullets[${i}]`, message: `AI slop in bullet: ${rule}` });
         }
       }
+      violations.push(...textLanguageViolations(slide, b, `bullets[${i}]`));
     }
   }
 
@@ -253,10 +350,11 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     }
 
     // Callout should be an action, not observation
-    const ACTION_VERBS = /^(expand|list|shift|grow|launch|increase|reduce|focus|protect|rebalance|renovate|delist|target|invest|build|capture|recover|sustain|optimize|test|pilot|accelerate|renegotiate|prioritize)/i;
+    const ACTION_VERBS = /^(expand|list|shift|grow|launch|increase|reduce|focus|protect|rebalance|renovate|delist|target|invest|build|capture|recover|sustain|optimize|test|pilot|accelerate|renegotiate|prioritize|espand|aument|riduc|focalizz|protegg|ribilanc|rinnov|delist|targett|invest|costru|cattur|recuper|sostien|ottimizz|test|pilota|acceler|rinegoz|prioritizz)/i;
     if (!ACTION_VERBS.test(ct.trim()) && !hasNumber(ct) && slide.role !== "cover" && slide.role !== "exec-summary") {
       violations.push({ rule: "callout_not_action", severity: "major", field: "callout", message: "Callout is an observation, not an action (no verb, no number)", value: ct.slice(0, 50) });
     }
+    violations.push(...textLanguageViolations(slide, ct, "callout"));
   }
 
   // ── METRIC CHECKS ──
@@ -285,6 +383,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     if (EM_DASH.test(slide.speakerNotes)) {
       violations.push({ rule: "em_dash", severity: "minor", field: "speakerNotes", message: "Em dash in speaker notes" });
     }
+    violations.push(...textLanguageViolations(slide, slide.speakerNotes, "speakerNotes"));
   }
 
   const hasCritical = violations.some(v => v.severity === "critical");

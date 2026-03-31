@@ -44,6 +44,8 @@ These patterns are machine-generated garbage. Any output containing them is reje
 - Short words over long ones. "Use" not "utilize". "Show" not "demonstrate". "Fix" not "remediate".
 - Consulting tone: confident, precise, actionable. Like a McKinsey partner, not a press release.
 - No jargon that doesn't add precision. "Distribution gap" is precise. "Go-to-market optimization" is noise.
+- Banned padded English: "in order to", "with respect to", "going forward", "this is because of the fact that"
+- If a sentence could be cut in half without losing meaning, cut it.
 
 ### Italian
 The text must feel like a sharp Italian professional wrote it. Natural, precise, friendly but authoritative. Not translated-from-English, not bureaucratic, not academic.
@@ -59,9 +61,11 @@ The text must feel like a sharp Italian professional wrote it. Natural, precise,
 - English business terms are OK when standard in Italian business: "business", "brand", "market share", "retail", "B2B", "B2C", "KPI", "SKU", "CAGR", "ROI", "EDLP"
 - But avoid English where a natural Italian word exists: "distribuzione" not "distribution", "quota" not "share" (unless "value share" is clearer in context), "crescita" not "growth"
 - No translated-from-English constructions: "Questo rappresenta un'opportunita'" is AI Italian. "C'e' spazio per crescere" is real Italian.
+- No fake-Italian or imported pseudo-verbs: "lidera", "performa", "outperforma", "overindexa", "underindexa"
 - Conversational register, not academic. "I freschi crescono ma pesano poco" is good. "Il segmento dei prodotti freschi evidenzia un trend di crescita" is bad.
 - Short sentences. 15 words average, 25 max.
 - Use "noi" / "nostro" naturally when speaking for the brand. Don't over-distance.
+- If the sentence sounds like translated English or Spanish, rewrite it until it sounds like native Italian.
 
 ## Slide-Specific Rules
 
@@ -76,6 +80,7 @@ The text must feel like a sharp Italian professional wrote it. Natural, precise,
 - One idea per slide. If you need a second paragraph, the slide is overcrowded.
 - Explains WHY, not WHAT. The chart shows WHAT.
 - Max 30 words for chart-heavy layouts. The chart is the content.
+- On analytical slides, body text should add the driver, the implication, or the commercial read. Never just paraphrase the chart.
 
 ### Bullets
 - Max 3-4 per slide. Each max 12-15 words.
@@ -87,6 +92,7 @@ The text must feel like a sharp Italian professional wrote it. Natural, precise,
 - BAD: "Distribution varies across SKUs" (observation)
 - GOOD: "List top 3 SKUs at Coop and Esselunga to capture 2.1M" (action)
 - Uses FMCG levers: distribution expansion, pack architecture, promo optimization, portfolio rebalancing, hero renovation, tail pruning
+- In Italian, prefer natural imperative/action phrasing: "Espandere", "Difendere", "Ridurre", "Ribilanciare", not vague commentary.
 
 ### Recommendations
 - Quantified. Always. "Expand distribution in Coop (+15 pts ACV)" not "Improve distribution"

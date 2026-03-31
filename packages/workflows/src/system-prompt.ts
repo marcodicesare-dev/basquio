@@ -316,6 +316,9 @@ When exact EUR is not computable, estimate the range: "~EURX-YM based on [assump
 - Diagnostic bullets on chart-split slides: max 4 bullets, each max 25 words.
 - Callout/action text: max 2 lines (30-40 words). Quantify the action, don't describe the context.
 - Recommendation card body: max 3-4 lines (40-60 words). Lead with the lever, not the finding.
+- Recommendation cards in a 4-column layout: title max 6 words, body max 4 lines at fontSize 9, footer metrics always visible with fixed space.
+- Recommendation cards: prioritize the action verb, the EUR prize, and the timeline. Cut context and support detail before you cut those three.
+- Recommendation cards: use shrinkText: true on every recommendation-card text box.
 
 If text would exceed these budgets, you are being too descriptive. Cut context, keep the number and the action.
 </example>
@@ -385,6 +388,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Quantify the financial size of the prize whenever value or volume data makes it possible. Recommendation slides should estimate incremental EUR impact, not just name the lever.",
     "- Distinguish measured facts from interpretations. Hedge inferred cultural or demographic explanations instead of stating them as proven facts.",
     "- Cover-slide dates and source lines must match the evidence period exactly. Never use today's date, a placeholder period, or a made-up geography.",
+    "- Every slide must contain data or analysis. Do not spend slide budget on section divider slides that only show a number or title; use the upper-left category label as the section marker instead.",
     "- Slide titles should fit on one line at the rendered font size. If a title exceeds ~75 characters, shorten it. Never let title text overflow the right slide margin.",
     "- Prefer one strong claim and one strong visual per slide.",
     "- Never leave placeholders, empty chart frames, or generic filler boxes.",
@@ -414,6 +418,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Recommendation/action card geometry: body band = x 10px, y 54px, w 210px, h 124px. Max 4 lines, max 120 characters.",
     "- Recommendation/action card geometry: footer metric band = x 10px, y 188px, w 210px, h 36px.",
     "- Recommendation/action card geometry: these bands must never overlap. If content exceeds its band, truncate or simplify instead of shrinking the card margins.",
+    "- Recommendation cards in 4-column layouts: title max 6 words, body max 50 words, and prize/timeline footer metrics must always remain fully visible.",
     "- Scenario/option card geometry (mandatory when slideArchetype = scenario-cards):",
     "  - The right-side body slot (x=7.1in, y=1.75in, w=5.6in, h=4.25in) holds 2-3 stacked cards.",
     "  - Card 1: y=1.75in, h=1.35in. Card 2: y=3.25in, h=1.35in. Card 3 (optional): y=4.75in, h=0.85in.",

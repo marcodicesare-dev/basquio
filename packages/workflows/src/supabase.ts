@@ -211,6 +211,35 @@ export async function patchRestRows<T>(input: {
   return (await response.json()) as T[];
 }
 
+export async function callRpc<T>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  functionName: string;
+  params?: Record<string, unknown>;
+}) {
+  const url = new URL(`/rest/v1/rpc/${input.functionName}`, input.supabaseUrl);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify(input.params ?? {}),
+    signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to execute RPC ${input.functionName}.`));
+  }
+
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  return (await response.json()) as T;
+}
+
 export async function deleteRestRows(input: {
   supabaseUrl: string;
   serviceKey: string;

@@ -11,7 +11,7 @@ import {
   BETAS,
   buildAuthoringOutputConfig,
   buildAuthoringContainer,
-  CLAUDE_TOOLS,
+  buildClaudeTools,
 } from "../packages/workflows/src/anthropic-execution-contract";
 import { parseDeckManifest } from "../packages/workflows/src/deck-manifest";
 import { buildBasquioSystemPrompt } from "../packages/workflows/src/system-prompt";
@@ -86,7 +86,7 @@ async function main() {
       system,
       messages,
       container,
-      tools: CLAUDE_TOOLS,
+      tools: buildClaudeTools(MODEL),
       output_config: buildAuthoringOutputConfig(MODEL),
     });
     const response: Anthropic.Beta.BetaMessage = await stream.finalMessage();

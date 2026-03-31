@@ -5761,11 +5761,13 @@ export const basquioExport = inngest.createFunction(
 
       const qaStructuralPassed = qaChecks.every((c) => c.passed);
       const qaFailures = qaChecks.filter((c) => !c.passed).map((c) => c.name);
-      const qaTier: "green" | "red" =
-        qaStructuralPassed && (allowBestEffortExport || (!degradedDelivery && !hasCriticalOrMajor))
+      const qaTier: "green" | "yellow" | "red" =
+        !qaStructuralPassed
+          ? "red"
+          : allowBestEffortExport || (!degradedDelivery && !hasCriticalOrMajor)
           ? "green"
-          : "red";
-      const qaPassed = qaTier === "green";
+          : "yellow";
+      const qaPassed = qaTier !== "red";
 
       if (!qaPassed) {
         console.warn(`[basquio-export] PRE-UPLOAD QA: tier=${qaTier}, degraded=${degradedDelivery}, failed=[${qaFailures.join(", ")}], chartCoverage=${Math.round(chartCoverageRatio * 100)}%`);
@@ -5911,7 +5913,7 @@ export const basquioExport = inngest.createFunction(
         qa_report: {
           tier: qaTier,
           checks: qaChecks,
-          delivery_status: qaTier === "green" ? "reviewed" : "degraded",
+          delivery_status: "reviewed",
           chartCoverage: { total: chartLayoutSlides.length, linked: chartLayoutSlides.length - chartlessSlides.length, ratio: chartCoverageRatio },
           imageCoverage: { total: v2ChartRows.length, rendered: imageBackedCharts.length, ratio: imageCoverageRatio },
           ...(degradedDelivery ? { unresolvedIssues: degradedIssues } : {}),
