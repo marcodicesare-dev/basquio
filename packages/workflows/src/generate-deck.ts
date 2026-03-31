@@ -21,12 +21,14 @@ import {
 import type { TemplateProfile } from "@basquio/types";
 
 import {
-  AUTHORING_TOOL_CALL_SUMMARY,
   BETAS,
-  buildAuthoringOutputConfig,
   buildAuthoringContainer,
+  buildAuthoringOutputConfig,
+  buildAuthoringToolCallSummary,
+  buildClaudeBetas,
   buildClaudeTools,
   FILES_BETA,
+  type ClaudeAuthorModel,
 } from "./anthropic-execution-contract";
 import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
@@ -37,7 +39,7 @@ import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const DEFAULT_AUTHOR_MODEL = "claude-sonnet-4-6";
-type AuthorModel = "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5";
+type AuthorModel = ClaudeAuthorModel;
 const AUTHOR_MODEL_VALUES = new Set([
   "claude-sonnet-4-6",
   "claude-opus-4-6",
@@ -337,6 +339,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const run = await loadRun(config, runId);
     authorModel = normalizeAuthorModel(run.author_model);
     const MODEL = authorModel;
+    const modelBetas = buildClaudeBetas(MODEL);
+    const toolCallSummary = buildAuthoringToolCallSummary(MODEL);
     const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
     // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
@@ -436,6 +440,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const systemPrompt = await buildBasquioSystemPrompt({
       templateProfile,
       briefLanguageHint: inferLanguageHint(run),
+      authorModel: MODEL,
     });
 
     // ─── CHECKPOINT-BASED RECOVERY ─────────────────────────────────
@@ -618,6 +623,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
       generationMessage = buildAuthorMessage(
         run,
+        MODEL,
         recoveredAnalysisForSplit ? analysis : null,
         {
           hasTabularData: parsed.datasetProfile.sheets.length > 0,
@@ -631,15 +637,15 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       );
       await recordToolCall(config, runId, attempt, "author", "code_execution", {
         model: MODEL,
-        tools: [...AUTHORING_TOOL_CALL_SUMMARY.tools],
-        autoInjectedTools: [...AUTHORING_TOOL_CALL_SUMMARY.autoInjectedTools],
-        skills: [...AUTHORING_TOOL_CALL_SUMMARY.skills],
+        tools: [...toolCallSummary.tools],
+        autoInjectedTools: [...toolCallSummary.autoInjectedTools],
+        skills: [...toolCallSummary.skills],
         stepNumber: 1,
       });
       await enforceDeckBudget({
         client,
         model: MODEL,
-        betas: [...BETAS],
+        betas: [...modelBetas],
         spentUsd,
         outputTokenBudget: 72_000,
         body: {
@@ -663,7 +669,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
         requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
         currentSpentUsd: spentUsd,
-        container: buildAuthoringContainer(baseContainerId),
+        betas: modelBetas,
+        container: buildAuthoringContainer(baseContainerId, MODEL),
         messages: [generationMessage],
         tools: buildClaudeTools(MODEL),
         outputConfig: buildAuthoringOutputConfig(MODEL),
@@ -882,15 +889,15 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         ];
         await recordToolCall(config, runId, attempt, "revise", "code_execution", {
           model: MODEL,
-          tools: [...AUTHORING_TOOL_CALL_SUMMARY.tools],
-          autoInjectedTools: [...AUTHORING_TOOL_CALL_SUMMARY.autoInjectedTools],
-          skills: [...AUTHORING_TOOL_CALL_SUMMARY.skills],
+          tools: [...toolCallSummary.tools],
+          autoInjectedTools: [...toolCallSummary.autoInjectedTools],
+          skills: [...toolCallSummary.skills],
           stepNumber: 1,
         });
         await enforceDeckBudget({
           client,
           model: MODEL,
-          betas: [...BETAS],
+          betas: [...modelBetas],
           spentUsd,
           outputTokenBudget: 28_000,
             body: {
@@ -914,7 +921,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
           requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
           currentSpentUsd: spentUsd,
-          container: buildAuthoringContainer(latestContainerId),
+          betas: modelBetas,
+          container: buildAuthoringContainer(latestContainerId, MODEL),
           messages: reviseMessages,
           tools: buildClaudeTools(MODEL),
           outputConfig: buildAuthoringOutputConfig(MODEL),
@@ -2357,6 +2365,7 @@ function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvide
 
 function buildAuthorMessage(
   run: RunRow,
+  model: AuthorModel,
   analysis: z.infer<typeof analysisSchema> | null,
   evidenceMode: {
     hasTabularData: boolean;
@@ -2411,6 +2420,9 @@ function buildAuthorMessage(
         "- Archetype selection is mandatory for every slide. Do not improvise freeform slide compositions outside the approved archetype system.",
         "- Never use addShape/addText with custom coordinates outside defined archetype slots unless an existing client template placeholder requires a microscopic adjustment.",
         "- Do not generate section divider slides. Use the slide header/category label to mark sections and spend every content slide on data or analysis.",
+        "- Maximum 12 bars per chart. If a grouped bar would exceed that limit, split the exhibit into two slides or use a heatmap, small multiples, or a horizontal alternative.",
+        "- Never rotate x-axis labels. If labels do not fit horizontally, abbreviate them, switch to a horizontal chart, or split the chart.",
+        "- Minimum readable typography: chart axis labels 10, chart data labels 9, diagnostic side text 11, slide body text 11, chart titles 12.",
         "- When a slide combines a chart with 2-3 scenario, option, or pathway descriptions, use the scenario-cards archetype.",
         "- When a slide presents 3 key takeaways or 3 takeaway cards, use the key-findings archetype.",
         "- Use the system-prompt examples as the visual contract: charts should be PNG-based, slot-sized, and paired with complete narrative copy rather than placeholder labels.",
@@ -2430,6 +2442,14 @@ function buildAuthorMessage(
           "",
           buildGenerationBrief(run),
           "",
+          ...(model === "claude-haiku-4-5"
+            ? [
+                "- This run is using Haiku. Do not assume pptx/pdf container skills are preloaded.",
+                "- If PptxGenJS is unavailable, install it first with `npm install pptxgenjs`, then load it with `const pptxgen = require(\"pptxgenjs\");`.",
+                "- If a PDF helper skill is unavailable, still produce `deck.pdf` before finishing by converting the completed `deck.pptx` with local container tooling.",
+                "",
+              ]
+            : []),
           ...(analysis ? [`Approved analysis JSON:\n${JSON.stringify(analysis, null, 2)}`, ""] : mergedAnalysisInstructions),
           "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
           ...(analysis
@@ -2441,7 +2461,13 @@ function buildAuthorMessage(
                 "- Build the analysis and slide plan inline, then render the deck from that plan without starting over in a second pass.",
                 "- Keep the analysis concise and execution-oriented. Do not spend tokens on narrative throat-clearing.",
               ]),
-          "- Follow the loaded pptx skill for the deck artifact generation.",
+          ...(model === "claude-haiku-4-5"
+            ? [
+                "- Use direct code execution for deck generation in this run. Do not rely on unavailable skills.",
+              ]
+            : [
+                "- Follow the loaded pptx skill for the deck artifact generation.",
+              ]),
           ...(files?.uploadedTemplate
             ? [
                 `- A client PPTX template is uploaded in the container as ${files.uploadedTemplate.filename}. Use that actual template file as the visual source of truth, not just the summarized template tokens.`,
@@ -2475,14 +2501,18 @@ function buildAuthorMessage(
                 "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
                 "- Use the same language as the brief. Do not emit mixed-language output.",
               ]),
-          "- `narrative_report.md` must be a 2500-3500 word consulting leave-behind document. This is NOT slide notes - it is the document the client reads after the presentation, and it must stand alone without a presenter.",
+          "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. Target 500-1000 lines and roughly 8000-15000 words.",
           "- Required sections for `narrative_report.md`:",
           "  1. Title page with client name from the brief (NEVER `Non specificato`), objective, date, and data source.",
-          "  2. Executive summary (300-400 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact.",
-          "  3. Methodology (150-200 words): what data was analyzed, which KPIs were computed, time periods, comparison basis, and any data quality caveats.",
-          "  4. Detailed findings (200-300 words EACH, one section per analytical slide): the insight, the evidence with specific numbers, the business implication, and caveats or limitations that did not fit on the slide.",
-          "  5. Recommendations (400-500 words): prioritized actions with FMCG lever, expected impact, timeline, and operational detail.",
-          "  6. Data appendix: source citation, period, channel definition, and metric definitions used.",
+          "  2. Executive summary (300-500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact.",
+          "  3. Methodology: data used, KPIs computed, time periods, comparison basis, data quality caveats, explicit assumptions, and sensitivity ranges.",
+          "  4. Detailed findings (one section per analytical slide, 300-500 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available.",
+          "  5. For every slide with a chart, include a markdown table with the exact numbers the chart visualizes so the report is usable without the PPTX.",
+          "  6. Competitor deep-dive: dedicated section analyzing the main competitors' strategies, relative strengths, and implications for the client.",
+          "  7. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+          "  8. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, top items, distribution by channel, or the closest available evidence).",
+          "  9. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
+          "- Include markdown tables wherever the slide has a chart. The table gives the reader the exact numbers behind the visual.",
           "- Write `narrative_report.md` to McKinsey leave-behind quality, not blog-post quality. Use the same language as the brief.",
           "<example name=\"perfect_narrative_finding_section\">",
           "## Finding 2: Birre, Yogurt e Salumi spiegano la meta del gap ponderato",
@@ -2863,6 +2893,7 @@ function assertCircuitClosed(state: CircuitState, circuitKey: string) {
 async function runClaudeLoop(input: {
   client: Anthropic;
   model: string;
+  betas?: Anthropic.Beta.AnthropicBeta[];
   systemPrompt: string | Array<Anthropic.Beta.BetaTextBlockParam>;
   maxTokens: number;
   messages: Anthropic.Beta.BetaMessageParam[];
@@ -2930,7 +2961,7 @@ async function runClaudeLoop(input: {
       const streamBody = {
         model: input.model,
         max_tokens: input.maxTokens,
-        betas: [...BETAS] as Anthropic.Beta.AnthropicBeta[],
+        betas: (input.betas ?? [...BETAS]) as Anthropic.Beta.AnthropicBeta[],
         system: input.systemPrompt,
         container: currentContainer,
         context_management: input.contextManagement,

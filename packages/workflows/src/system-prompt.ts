@@ -323,6 +323,21 @@ When exact EUR is not computable, estimate the range: "~EURX-YM based on [assump
 If text would exceed these budgets, you are being too descriptive. Cut context, keep the number and the action.
 </example>
 
+<example name="dense_chart_split">
+## When data is too dense for one chart
+
+BAD: 4 brands x 6 channels = 24 bars in one grouped bar chart.
+This creates thin bars, unreadable labels, and weak diagnosis.
+
+GOOD: Split the analysis into two slides:
+- Slide A: Traditional channels (Hyper, Super, Superettes) -> 4 brands x 3 channels = 12 bars
+- Slide B: Growth channels (Discount, SSSDrug, Pet Specialist) -> 4 brands x 3 channels = 12 bars
+
+Each slide then has enough room for readable labels, a larger chart title, and diagnostic text.
+
+Alternative: if the point is cross-tab comparison rather than exact rank ordering, use a heatmap table instead of a grouped bar.
+</example>
+
 <example name="confidence_calibration">
 ## Confidence calibration
 
@@ -364,6 +379,7 @@ Every title states the finding AND its magnitude. The reader knows the insight b
 export async function buildBasquioSystemPrompt(input: {
   templateProfile: TemplateProfile;
   briefLanguageHint: string;
+  authorModel: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6";
 }): Promise<Array<Anthropic.Beta.BetaTextBlockParam>> {
   const staticKnowledge = await loadKnowledgePack();
   const deckGrammar = describeAllArchetypesForPrompt();
@@ -377,7 +393,13 @@ export async function buildBasquioSystemPrompt(input: {
     "",
     "Operating rules:",
     "- Use the uploaded workbook files directly inside the execution container.",
-    "- Use the loaded pptx and pdf skills for the final deliverables instead of inventing a separate export pipeline.",
+    ...(input.authorModel === "claude-haiku-4-5"
+      ? [
+          "- This Haiku run may not have preloaded pptx/pdf skills. Use code execution directly, install `pptxgenjs` if required, and generate the final deliverables inside the container without relying on skills.",
+        ]
+      : [
+          "- Use the loaded pptx and pdf skills for the final deliverables instead of inventing a separate export pipeline.",
+        ]),
     "- Compute deterministic facts in Python instead of guessing.",
     "- Do not exhaustively profile the full workbook if it is not needed. Inspect only the sheets, columns, and KPI structures required to answer the brief well.",
     "- Use concise stdout. Never print more than 20 rows from any dataframe.",
@@ -438,11 +460,15 @@ export async function buildBasquioSystemPrompt(input: {
     "- Only PNG and JPEG are safe cross-viewer image formats for the final PPTX. If a decorative template asset cannot be converted safely, omit it instead of risking a broken file.",
     "- Make charts readable on dark backgrounds with explicit foreground colors, restrained palettes, and larger labels.",
     "- Label collision prevention (apply BEFORE rendering, do not rely on post-hoc QA):",
+    "  - Maximum 12 bars per chart. If a grouped bar would exceed 12 bars, split it into 2 slides or switch to a heatmap, small multiples, or a horizontal alternative.",
+    "  - Never rotate x-axis labels. If labels do not fit horizontally, abbreviate them, switch to a horizontal bar chart, or split the chart.",
+    "  - Minimum font sizes: chart axis labels 10, chart data labels 9, diagnostic chart-side text 11, and slide body text 11.",
+    "  - Chart titles rendered inside matplotlib must use font size 12 or larger.",
+    "  - Chart source citations may go down to font size 8, but no smaller.",
     "  - When category names exceed 12 characters on average, prefer horizontal bar charts over vertical bar charts.",
     "  - When more than 8 categories exist and detail adds no decision value, aggregate the tail into an 'Other' group or show only the top N.",
     "  - Abbreviate or wrap long labels when safe (e.g., 'North America' -> 'N. America'). Never truncate numbers.",
     "  - Increase figure size and margins (plt.subplots(figsize=(...), constrained_layout=True)) when labels are dense.",
-    "  - Rotate x-axis labels 30-45 degrees only when category count is 5-8 and names are moderate length; beyond 8 categories, switch to horizontal bars.",
     "  - Never place external data labels on bar segments narrower than the label text width. Use a legend or annotation line instead.",
     "  - Avoid redundant value callouts when the axis already communicates the same information.",
     "  - Always call plt.tight_layout() or use constrained_layout=True as the final step before savefig().",

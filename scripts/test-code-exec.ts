@@ -46,6 +46,7 @@ async function main() {
   const system = await buildBasquioSystemPrompt({
     templateProfile: createSystemTemplateProfile(),
     briefLanguageHint: inferLanguageHint(options.brief),
+    authorModel: MODEL,
   });
 
   const initialMessage = {
@@ -72,7 +73,7 @@ async function main() {
   };
 
   let messages: Anthropic.Beta.BetaMessageParam[] = [initialMessage];
-  let container: Anthropic.Beta.BetaContainerParams | undefined = buildAuthoringContainer();
+  let container: Anthropic.Beta.BetaContainerParams | undefined = buildAuthoringContainer(undefined, MODEL);
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
   const fileIds = new Set<string>();
   let totalInputTokens = 0;
@@ -92,7 +93,7 @@ async function main() {
     const response: Anthropic.Beta.BetaMessage = await stream.finalMessage();
 
     finalMessage = response;
-    container = response.container ? buildAuthoringContainer(response.container.id) : container;
+    container = response.container ? buildAuthoringContainer(response.container.id, MODEL) : container;
     totalInputTokens += response.usage?.input_tokens ?? 0;
     totalOutputTokens += response.usage?.output_tokens ?? 0;
 
