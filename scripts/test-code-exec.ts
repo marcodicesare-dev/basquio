@@ -8,8 +8,8 @@ import pdfParse from "pdf-parse";
 import { createSystemTemplateProfile } from "@basquio/template-engine";
 
 import {
-  AUTHORING_OUTPUT_CONFIG,
   BETAS,
+  buildAuthoringOutputConfig,
   buildAuthoringContainer,
   CLAUDE_TOOLS,
 } from "../packages/workflows/src/anthropic-execution-contract";
@@ -87,7 +87,7 @@ async function main() {
       messages,
       container,
       tools: CLAUDE_TOOLS,
-      output_config: AUTHORING_OUTPUT_CONFIG,
+      output_config: buildAuthoringOutputConfig(MODEL),
     });
     const response: Anthropic.Beta.BetaMessage = await stream.finalMessage();
 

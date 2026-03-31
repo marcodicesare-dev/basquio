@@ -20,9 +20,17 @@ const AUTHORING_SKILLS = [
   { type: "anthropic", skill_id: "pdf", version: "latest" },
 ] as const;
 
-export const AUTHORING_OUTPUT_CONFIG = {
-  effort: "medium",
-} as const satisfies Anthropic.Beta.BetaOutputConfig;
+export function buildAuthoringOutputConfig(
+  model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6",
+): Anthropic.Beta.BetaOutputConfig | undefined {
+  if (model === "claude-haiku-4-5") {
+    return undefined;
+  }
+
+  return {
+    effort: "medium",
+  } as const satisfies Anthropic.Beta.BetaOutputConfig;
+}
 
 export function buildAuthoringContainer(containerId?: string | null): Anthropic.Beta.BetaContainerParams {
   const skills = AUTHORING_SKILLS.map((skill) => ({ ...skill }));

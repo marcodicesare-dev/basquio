@@ -21,9 +21,9 @@ import {
 import type { TemplateProfile } from "@basquio/types";
 
 import {
-  AUTHORING_OUTPUT_CONFIG,
   AUTHORING_TOOL_CALL_SUMMARY,
   BETAS,
+  buildAuthoringOutputConfig,
   buildAuthoringContainer,
   CLAUDE_TOOLS,
   FILES_BETA,
@@ -637,7 +637,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           system: systemPrompt,
           messages: [generationMessage],
           tools: CLAUDE_TOOLS,
-          output_config: AUTHORING_OUTPUT_CONFIG,
+          output_config: buildAuthoringOutputConfig(MODEL),
         },
       });
 
@@ -657,7 +657,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         container: buildAuthoringContainer(baseContainerId),
         messages: [generationMessage],
         tools: CLAUDE_TOOLS,
-        outputConfig: AUTHORING_OUTPUT_CONFIG,
+        outputConfig: buildAuthoringOutputConfig(MODEL),
         onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
       });
       const authorFiles = await downloadGeneratedFiles(client, authorResponse.fileIds);
@@ -884,12 +884,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           betas: [...BETAS],
           spentUsd,
           outputTokenBudget: 28_000,
-          body: {
-            system: systemPrompt,
-            messages: reviseMessages,
-            tools: CLAUDE_TOOLS,
-            output_config: AUTHORING_OUTPUT_CONFIG,
-          },
+            body: {
+              system: systemPrompt,
+              messages: reviseMessages,
+              tools: CLAUDE_TOOLS,
+              output_config: buildAuthoringOutputConfig(MODEL),
+            },
         });
 
         await persistRequestStart(config, runId, attempt, "revise", "phase_generation", MODEL);
@@ -908,7 +908,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           container: buildAuthoringContainer(latestContainerId),
           messages: reviseMessages,
           tools: CLAUDE_TOOLS,
-          outputConfig: AUTHORING_OUTPUT_CONFIG,
+          outputConfig: buildAuthoringOutputConfig(MODEL),
           onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
         });
         spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
