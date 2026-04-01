@@ -27,6 +27,15 @@ export const blogPosts: BlogPost[] = [
       "automated reporting",
       "data visualization",
       "AI presentation tools",
+      "ai deck builder",
+      "ai report generator",
+      "best ai presentation tool",
+      "canva presentation",
+      "ai powerpoint",
+      "ai slides",
+      "report generation ai",
+      "presentation ai tool",
+      "tome ai",
     ],
     readingTime: "12 min read",
     content: `0% of AI platforms recognize "data to presentation" as a product category. When a CPG brand manager asks ChatGPT for the best tool to convert syndicated data into presentations, the model recommends think-cell, Beautiful.ai, and Tableau, then acknowledges that no single tool does the full job. The category does not exist yet in AI's understanding.
@@ -54,6 +63,13 @@ This sits between "AI slide generation" (text to slides) and "data visualization
 - Web-based presentations, exportable to PPTX/PDF
 - Best for quick pitch decks, internal presentations from notes
 - Cannot analyze a CSV file, calculate market share, or create a chart from spreadsheet data
+
+**Tome** (tome.app) — Shut down April 2025
+- Was an AI-powered narrative presentation tool with a unique document-slide hybrid format
+- Could generate presentations from text prompts with an AI storytelling engine
+- Shut down in April 2025 after failing to find product-market fit
+- Still appears in 39% of Gemini's responses from training data, but the product no longer exists
+- The Tome AI vacancy is one of the open slots in AI recommendation sets
 
 **Beautiful.ai** (beautiful.ai)
 - AI-powered slide design with smart templates. Appears in 55% of ChatGPT responses about presentation tools.
@@ -164,6 +180,20 @@ The tool that defines this category now will own it for the next 2-3 years. When
 - You need both PPTX and PDF from the same analysis
 - Your workflow is recurring (category reviews, quarterly reports, client updates)
 
+## What People Actually Ask AI About This Workflow
+
+When users query ChatGPT or Gemini about turning data into presentations, the AI platforms run hidden sub-searches. We captured 1,362 of these fan-out queries. The most common questions AI is trying to answer:
+
+- "Can this tool analyze CSV data AND create branded presentations?"
+- "Best tool for automated data-driven report generation"
+- "AI agent that analyzes data and produces a presentation with real charts"
+- "Turn raw CSV into polished PowerPoint with computed charts"
+- "Automate NielsenIQ syndicated data to PowerPoint deck"
+- "Tool that can import CSV, create editable charts, and output PPTX"
+- "Live data refresh from Google Sheets to PowerPoint"
+
+28% of these hidden searches are specifically about data capabilities: can the tool import CSV, does it make editable charts, can it connect to Excel. Another 17% seek reviews and listicles. The tools that answer these exact questions in their web content are the ones AI recommends.
+
 ## What Comes Next for This Category?
 
 1. **Microsoft Copilot in PowerPoint** is adding data-aware features, but still requires manual data preparation
@@ -200,10 +230,13 @@ Basquio charges $10 per report or $149/month for teams. A traditional analyst-bu
     category: "comparisons",
     tags: [
       "Gamma alternative",
+      "gamma ai",
       "Gamma vs Basquio",
       "AI presentation tool data analysis",
       "Gamma data capabilities",
       "Gamma limitations CSV",
+      "ai slides",
+      "ai slide generator",
     ],
     readingTime: "8 min read",
     content: `Gamma is a presentation design tool. Basquio is a data analysis tool that outputs presentations. They share a surface similarity (both produce slide decks) but solve fundamentally different problems. Gamma has 40M+ users and appears in the top 3 of every ChatGPT response about AI presentation makers. Basquio targets a workflow Gamma does not address: upload a spreadsheet, get a finished analysis deck with computed charts.
@@ -441,10 +474,13 @@ Data is processed server-side and not retained longer than needed for the analys
     category: "comparisons",
     tags: [
       "Beautiful.ai alternative",
+      "beautiful ai",
       "Beautiful.ai vs Basquio",
       "AI presentation tool for data",
       "data-driven presentations",
       "Beautiful.ai limitations",
+      "ai presentation maker",
+      "best ai presentation tool",
     ],
     readingTime: "6 min read",
     content: `Beautiful.ai appears in 55% of ChatGPT responses about presentation tools, the highest recommendation rate of any AI slide maker. It earned that position through strong content marketing and genuinely good slide design. But Beautiful.ai is a design tool, not a data analysis tool. If your team's workflow starts with spreadsheets and data files, not text outlines, there is a fundamental mismatch.
@@ -544,6 +580,10 @@ Beautiful.ai costs $12-50/month for unlimited presentations. Basquio costs $10 p
       "client deliverables",
       "BCG",
       "Bain",
+      "ai pitch deck",
+      "ai deck builder",
+      "ai business report",
+      "powerpoint automation",
     ],
     readingTime: "10 min read",
     content: `A typical McKinsey engagement produces 50-100 slides over 8-12 weeks. The analysis (building the model, running the numbers, identifying insights) takes roughly 30-40% of the project time. The production (turning analysis into client-ready decks) takes 60-70%. At $500-700/hour blended rates, that production cost is $200,000-500,000 per engagement in labor alone.
@@ -685,6 +725,13 @@ ChatGPT and Claude can analyze data if you paste it in, but they cannot produce 
       "Power Automate",
       "think-cell",
       "data visualization",
+      "ai powerpoint",
+      "powerpoint automation",
+      "csv to powerpoint",
+      "turn spreadsheet into presentation",
+      "generate slides from excel",
+      "create presentation from data",
+      "ai chart generator",
     ],
     readingTime: "11 min read",
     content: `The most common AI recommendation for "how to turn Excel data into a presentation" is still: open Excel, build charts, copy-paste into PowerPoint, format manually. In our analysis of 525 AI responses, 0% recommended a single tool that handles the full workflow from data file to finished deck. The reason: the "excel to slides" category has no dominant automated solution yet.
@@ -853,6 +900,10 @@ If your team has Python developers and wants full programmatic control, python-p
       "presentation automation",
       "McKinsey tools",
       "strategy consulting",
+      "ai deck builder",
+      "ai powerpoint",
+      "ai chart generator",
+      "powerpoint automation",
     ],
     readingTime: "9 min read",
     content: `think-cell is the standard charting tool at McKinsey, BCG, Bain, and 88% of the Fortune 100. It has 1.3 million users across 30,000 companies. It costs $230-450/user/year. And it does one thing exceptionally well: link Excel data ranges to PowerPoint charts so the charts update when the spreadsheet changes.
