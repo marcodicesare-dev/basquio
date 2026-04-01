@@ -5,9 +5,9 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "About Basquio — Built by NielsenIQ Analysts and CPG Brand Managers",
+  title: "About Basquio — Built by Analysts and Brand Managers Who Lived the Problem",
   description:
-    "Basquio was built by NielsenIQ analysts, a Mondelez brand manager, and a Victorinox strategist who spent years building category review decks manually. Now the workflow is automated.",
+    "Basquio was built by market research analysts and brand managers who spent years building category review decks manually. Now the workflow is automated.",
   alternates: { canonical: "https://basquio.com/about" },
 };
 
@@ -21,7 +21,7 @@ export default function AboutPage() {
           <p className="section-label">About</p>
           <h1>Built by the people who used to make these decks by hand.</h1>
           <p className="page-copy">
-            Three NielsenIQ analysts, a Mondelez brand manager, a Victorinox buyer, and one engineer.
+            Market research analysts, CPG brand managers, and one engineer.
             We know what a good category review looks like because we&apos;ve presented hundreds of them.
           </p>
         </div>

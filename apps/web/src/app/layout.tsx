@@ -109,7 +109,7 @@ const jsonLd = {
         "Brand template interpretation",
         "Zero-prompt operation",
         "Audience-aware narrative generation",
-        "NielsenIQ and syndicated data support",
+        "Syndicated and market research data support",
         "Category review deck automation",
       ],
       screenshot: "https://basquio.com/showcase/slide-showcase-chart.svg",
