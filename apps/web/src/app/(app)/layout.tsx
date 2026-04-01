@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
 import { buildSignInPath } from "@/lib/supabase/auth";
 import { getViewerState } from "@/lib/supabase/auth";
+import { bootstrapViewerAccount } from "@/lib/auth-bootstrap";
 import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 
@@ -25,6 +26,12 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     const headersList = await headers();
     const currentPath = headersList.get("x-next-url") ?? headersList.get("x-invoke-path") ?? "/dashboard";
     redirect(buildSignInPath(currentPath));
+  }
+
+  try {
+    await bootstrapViewerAccount(viewer.user);
+  } catch (error) {
+    console.warn("[basquio] viewer bootstrap failed in layout:", error);
   }
 
   const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);

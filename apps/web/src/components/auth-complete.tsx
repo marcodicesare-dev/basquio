@@ -8,6 +8,20 @@ import { buildSignInPath } from "@/lib/supabase/paths";
 
 type CompletionState = "checking" | "done" | "invalid";
 
+async function bootstrapAccountRequest() {
+  const response = await fetch("/api/auth/bootstrap", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "We couldn't finish setting up your workspace.");
+  }
+}
+
 export function AuthComplete({
   configured,
   nextPath,
@@ -103,11 +117,19 @@ export function AuthComplete({
         return;
       }
 
-      window.clearTimeout(fallbackTimer);
-      setStatus("done");
-      setError("");
-      router.replace(nextPath);
-      router.refresh();
+      try {
+        await bootstrapAccountRequest();
+
+        window.clearTimeout(fallbackTimer);
+        setStatus("done");
+        setError("");
+        router.replace(nextPath);
+        router.refresh();
+      } catch (bootstrapError) {
+        window.clearTimeout(fallbackTimer);
+        setStatus("invalid");
+        setError(bootstrapError instanceof Error ? bootstrapError.message : "We couldn't finish setting up your workspace.");
+      }
     };
 
     void complete();
@@ -119,11 +141,26 @@ export function AuthComplete({
         return;
       }
 
-      window.clearTimeout(fallbackTimer);
-      setStatus("done");
-      setError("");
-      router.replace(nextPath);
-      router.refresh();
+      void bootstrapAccountRequest().then(() => {
+        if (!isMounted) {
+          return;
+        }
+
+        window.clearTimeout(fallbackTimer);
+        setStatus("done");
+        setError("");
+        router.replace(nextPath);
+        router.refresh();
+      }).catch((bootstrapError) => {
+        if (!isMounted) {
+          return;
+        }
+
+        window.clearTimeout(fallbackTimer);
+        setStatus("invalid");
+        setError(bootstrapError instanceof Error ? bootstrapError.message : "We couldn't finish setting up your workspace.");
+      });
+      return;
     });
 
     return () => {

@@ -9,6 +9,20 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 type AuthMode = "sign-in" | "sign-up";
 type ExtendedAuthMode = AuthMode | "reset";
 
+async function bootstrapAccountRequest() {
+  const response = await fetch("/api/auth/bootstrap", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(payload?.error ?? "We couldn't finish setting up your workspace.");
+  }
+}
+
 export function AuthForm({
   configured,
   nextPath,
@@ -86,6 +100,8 @@ export function AuthForm({
           throw signInError;
         }
 
+        await bootstrapAccountRequest();
+
         router.replace(nextPath);
         router.refresh();
         return;
@@ -107,6 +123,7 @@ export function AuthForm({
       }
 
       if (data.session) {
+        await bootstrapAccountRequest();
         router.replace(nextPath);
         router.refresh();
         return;
