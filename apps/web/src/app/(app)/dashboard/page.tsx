@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { gettingStartedSteps } from "@/app/site-content";
 import { CreditPackShelf } from "@/components/credit-pack-shelf";
 import { getViewerState } from "@/lib/supabase/auth";
 import { listV2RunCards, type V2RunCard } from "@/lib/job-runs";
@@ -132,42 +131,15 @@ export default async function DashboardPage() {
         </section>
       ) : null}
 
-      <section className="dashboard-onboarding-panel panel">
-        <div className="dashboard-onboarding-grid">
-          <div className="stack">
-            <div className="stack-xs">
-              <p className="section-label">Start clean</p>
-              <h2>Build the first run around one real decision.</h2>
-              <p className="muted">
-                The best Basquio runs start from one reporting cycle and one business question. Upload the working files, write a sharp brief,
-                and let the system compute the numbers before it writes the story.
-              </p>
-            </div>
-            <div className="compose-journey-grid dashboard-onboarding-steps">
-              {gettingStartedSteps.map((step, index) => (
-                <article key={step.title} className="compose-journey-card">
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <strong>{step.title}</strong>
-                  <p>{step.detail}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <aside className="dashboard-onboarding-note">
-            <div className="compose-highlight-card">
-              <p className="artifact-kind">Brief tip</p>
-              <h3>Role + problem + decision beats generic filler.</h3>
-              <p>
-                “VP Commercial for the QBR. Diagnose why share slowed and recommend 3 levers.” will produce a much stronger report than
-                “leadership team, analyze the data”.
-              </p>
-              <Link className="button small" href="/jobs/new">
-                Create a report
-              </Link>
-            </div>
-          </aside>
+      <section className="dashboard-tour-strip panel">
+        <div className="stack-xs">
+          <p className="section-label">New here?</p>
+          <h2>Take the 60-second setup tour.</h2>
+          <p className="muted">It walks through the report flow in the app, one highlight at a time.</p>
         </div>
+        <Link className="button small" href="/jobs/new?tour=1">
+          Start guided setup
+        </Link>
       </section>
 
       {/* Recipes */}
