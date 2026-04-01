@@ -388,6 +388,7 @@ export default async function BlogPostPage({ params }: Props) {
                 alt={illustration.alt}
                 width={illustration.width}
                 height={illustration.height}
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 900px"
                 priority
                 className="blog-hero-image"
               />
