@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      return NextResponse.redirect(new URL(nextPath, redirectOrigin));
+      return NextResponse.redirect(authCompleteUrl);
     }
 
     signInUrl.searchParams.set("error", error.message);
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
         return NextResponse.redirect(resetPasswordUrl);
       }
 
-      return NextResponse.redirect(new URL(nextPath, redirectOrigin));
+      return NextResponse.redirect(authCompleteUrl);
     }
 
     signInUrl.searchParams.set("error", error.message);
