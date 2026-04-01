@@ -142,7 +142,7 @@ textarea {
 
 .page-shell.public-page {
   gap: 56px;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .panel,
@@ -6116,7 +6116,7 @@ textarea {
 
 .pricing-explainer-grid {
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-  align-items: start;
+  align-items: stretch;
 }
 
 .pricing-explainer-panel {
