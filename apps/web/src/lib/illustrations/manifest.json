@@ -1,0 +1,56 @@
+[
+  {
+    "id": "complete-guide-data-to-presentation-tools-2026",
+    "slug": "complete-guide-data-to-presentation-tools-2026",
+    "imagePath": "/illustrations/complete-guide-data-to-presentation-tools-2026.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Editorial illustration showing the landscape of data-to-presentation tools, with spreadsheet forms flowing into a polished presentation deck",
+    "caption": "The data-to-presentation category sits between analytics dashboards and AI slide generators. No single tool owns it yet."
+  },
+  {
+    "id": "basquio-vs-gamma-data-analysis-vs-slide-design",
+    "slug": "basquio-vs-gamma-data-analysis-vs-slide-design",
+    "imagePath": "/illustrations/basquio-vs-gamma-data-analysis-vs-slide-design.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Editorial illustration comparing data analysis and slide design workflows, showing a split composition of numbers and charts versus styled presentation slides",
+    "caption": "Data analysis starts with spreadsheets. Slide design starts with text. Different starting points, different tools."
+  },
+  {
+    "id": "automate-category-review-decks-nielseniq-data",
+    "slug": "automate-category-review-decks-nielseniq-data",
+    "imagePath": "/illustrations/automate-category-review-decks-nielseniq-data.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Editorial illustration of a CPG category review workflow, showing retail data flowing through analysis into a branded presentation deck",
+    "caption": "CPG brand managers spend 20-30 hours per cycle building category review decks from syndicated data. The production phase takes 3-5x longer than the analysis."
+  },
+  {
+    "id": "basquio-vs-beautiful-ai-for-data-teams",
+    "slug": "basquio-vs-beautiful-ai-for-data-teams",
+    "imagePath": "/illustrations/basquio-vs-beautiful-ai-for-data-teams.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Editorial illustration comparing design-first and data-first presentation workflows, showing styled templates alongside computed chart outputs",
+    "caption": "Beautiful.ai excels at design-first presentations. Data teams need a different starting point."
+  },
+  {
+    "id": "ai-for-consultants-data-analysis-to-client-decks",
+    "slug": "ai-for-consultants-data-analysis-to-client-decks",
+    "imagePath": "/illustrations/ai-for-consultants-data-analysis-to-client-decks.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Editorial illustration of a consulting engagement workflow, showing financial models and analysis transforming into client-ready presentation decks",
+    "caption": "Strategy consulting firms spend 60-70% of project time on production. The analysis takes a fraction of the total hours."
+  },
+  {
+    "id": "how-to-turn-excel-data-into-presentation-slides-automatically",
+    "slug": "how-to-turn-excel-data-into-presentation-slides-automatically",
+    "imagePath": "/illustrations/how-to-turn-excel-data-into-presentation-slides-automatically.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Editorial illustration showing six different approaches to converting Excel data into presentation slides, from manual to fully automated",
+    "caption": "Six approaches to the Excel-to-slides workflow, ranging from manual copy-paste to AI-native automation."
+  }
+]

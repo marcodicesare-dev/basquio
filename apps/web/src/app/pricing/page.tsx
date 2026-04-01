@@ -6,9 +6,10 @@ import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "Pricing | Basquio",
+  title: "Pricing — AI Data-to-Presentation Reports from $10",
   description:
-    "Start with your first standard report free, then pay per report or move to a team workspace when the workflow becomes routine.",
+    "First standard report free. Then $10 per report or $149/month for teams. Turn CSV and Excel data into finished analysis decks with real charts and branded PPTX output.",
+  alternates: { canonical: "https://basquio.com/pricing" },
 };
 
 const tiers = [

@@ -180,6 +180,10 @@ export const publicNavLinks = [
     label: "Compare",
   },
   {
+    href: "/blog",
+    label: "Blog",
+  },
+  {
     href: "/about",
     label: "About",
   },

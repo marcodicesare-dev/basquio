@@ -8,9 +8,15 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "Basquio | Beautiful Intelligence.",
+  title: "Basquio — Turn Data into Finished Analysis Decks | AI Data-to-Presentation Tool",
   description:
-    "Upload your data and get back a finished analysis, with a real story, traceable numbers, and matching PPTX, report, and data workbook output.",
+    "Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output. The only AI tool that analyzes data AND builds the presentation.",
+  alternates: { canonical: "https://basquio.com" },
+  openGraph: {
+    title: "Basquio — Turn Data into Finished Analysis Decks",
+    description:
+      "Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output.",
+  },
 };
 
 const trustStats = [

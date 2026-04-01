@@ -22,7 +22,10 @@
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",
     "supabase:reset": "supabase db reset --local",
-    "supabase:lint": "supabase db lint --local"
+    "supabase:lint": "supabase db lint --local",
+    "generate:illustrations": "node scripts/generate-blog-illustrations.mjs",
+    "validate:illustrations": "node scripts/validate-blog-illustrations.mjs",
+    "qa:illustrations": "node scripts/qa-blog-illustrations.mjs"
   },
   "dependencies": {
     "@types/pdf-parse": "^1.1.5",
