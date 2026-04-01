@@ -118,7 +118,7 @@ Credits and report type are calculated from scope, slide count, and workflow com
 
 Basquio is built for teams that produce recurring data-driven decks:
 
-- **Category reviews**: Turn NielsenIQ, Circana, or IRI tracker data into leadership-ready category stories
+- **Category reviews**: Turn syndicated retail data and tracker exports into leadership-ready category stories
 - **Quarterly business reviews**: Synthesize evidence from multiple sources into a decision-ready storyline
 - **Client reporting packs**: Scale recurring agency reporting without rebuilding from scratch each cycle
 - **Competitive analysis**: Map the competitive landscape with computed share positions and trend analysis
@@ -127,7 +127,7 @@ Basquio is built for teams that produce recurring data-driven decks:
 
 ## Team Background
 
-Basquio was built by three NielsenIQ analysts, a Mondelez brand manager, a Victorinox buyer, and one engineer. The team has been on both sides of the table: the analysts who built the category review decks, and the brand teams who received them. The product exists because the team spent years building these decks by hand and automated the workflow they already knew.
+Basquio was built by market research analysts, CPG brand managers, and one engineer. The team has been on both sides of the table: the analysts who built the category review decks, and the brand teams who received them. The product exists because the team spent years building these decks by hand and automated the workflow they already knew.
 
 ## Technical Architecture
 

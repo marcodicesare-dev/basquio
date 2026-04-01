@@ -188,7 +188,7 @@ When users query ChatGPT or Gemini about turning data into presentations, the AI
 - "Best tool for automated data-driven report generation"
 - "AI agent that analyzes data and produces a presentation with real charts"
 - "Turn raw CSV into polished PowerPoint with computed charts"
-- "Automate NielsenIQ syndicated data to PowerPoint deck"
+- "Automate syndicated retail data to PowerPoint deck"
 - "Tool that can import CSV, create editable charts, and output PPTX"
 - "Live data refresh from Google Sheets to PowerPoint"
 
@@ -209,7 +209,7 @@ Upload the files behind your next review, write a one-line brief about who the a
 ## FAQ
 
 **What file formats does Basquio accept?**
-CSV, Excel (.xlsx, .xls), and common spreadsheet formats. NielsenIQ Discover, Circana, and IRI exports work directly.
+CSV, Excel (.xlsx, .xls), and common spreadsheet formats. Syndicated data exports from major market research platforms work directly.
 
 **How long does it take to generate a deck?**
 5-15 minutes for a standard 10-slide category review deck, depending on data complexity.
@@ -331,24 +331,22 @@ Gamma has a free tier with limited features and paid plans from $8-20/month. Bas
 Yes. Many teams use Gamma for quick internal presentations and Basquio for data-heavy reporting workflows. They serve different purposes.`,
   },
   {
-    slug: "automate-category-review-decks-nielseniq-data",
-    title: "How to Automate Category Review Decks from NielsenIQ Data",
+    slug: "automate-category-review-decks-syndicated-data",
+    title: "How to Automate Category Review Decks from Syndicated Data",
     description:
       "CPG brand managers spend 20-30 hours per cycle building category review decks from syndicated data. The automated workflow takes 10-15 minutes and costs $10 per report.",
     publishedAt: "2026-04-01",
     author: "Marco Di Cesare",
     category: "industry",
     tags: [
-      "NielsenIQ",
+      "syndicated data",
       "category review",
       "CPG",
-      "FMCG",
-      "syndicated data",
-      "IRI data",
-      "Circana",
-      "brand management",
+      "consumer goods",
       "retail analytics",
+      "brand management",
       "automated reporting",
+      "market research data",
     ],
     readingTime: "10 min read",
     content: `A CPG category review deck costs $1,200-3,000 in analyst labor per cycle. The analysis takes a few hours. The production (charts, narrative, formatting, brand template) takes 20-30 hours. That production time is 3-5x the analysis time, every single cycle, every single brand.
@@ -359,7 +357,7 @@ The automated workflow produces the same deliverable in 10-15 minutes at $10 per
 
 The typical CPG analyst follows seven steps each cycle:
 
-1. **Pull data** from NielsenIQ Discover, Circana, or IRI Liquid Data as Excel or CSV exports
+1. **Pull data** from your syndicated data provider as Excel or CSV exports
 2. **Clean and pivot** the data in Excel: standardize periods, align hierarchies, compute share and growth metrics
 3. **Identify the story**: what's driving growth, who's gaining share, where are the gaps
 4. **Build charts**: market overview, brand share trends, price/volume decomposition, channel splits
@@ -386,7 +384,7 @@ Each existing tool covers one or two steps. None covers all seven.
 
 ### Step 1: Upload Your Evidence Package
 
-Upload the raw NielsenIQ exports directly. Category performance data (CSV/XLSX), brand-level share and sales data, channel or retailer splits, period-over-period comparisons, any supporting PDFs, notes, or prior decks as context. Everything goes in as one "evidence package."
+Upload the raw syndicated data exports directly. Category performance data (CSV/XLSX), brand-level share and sales data, channel or retailer splits, period-over-period comparisons, any supporting PDFs, notes, or prior decks as context. Everything goes in as one "evidence package."
 
 ### Step 2: Write a One-Line Brief
 
@@ -438,7 +436,7 @@ The ROI is 10-30x per brand per year.
 ## How Do You Get Started?
 
 1. [Create a Basquio account](https://basquio.com/get-started) (first standard report is free)
-2. Upload the NielsenIQ/Circana/IRI exports from your most recent cycle
+2. Upload the syndicated data exports from your most recent cycle
 3. Write a one-line brief about who the deck is for
 4. Review the output and see how much editing the first draft actually needs
 
@@ -447,13 +445,13 @@ The best test is a real package from a real cycle. If the first draft is strong 
 ## FAQ
 
 **What data formats does Basquio accept?**
-CSV, Excel (.xlsx, .xls), and common spreadsheet formats. NielsenIQ Discover exports work directly.
+CSV, Excel (.xlsx, .xls), and common spreadsheet formats. Exports from all major syndicated data providers work directly.
 
 **Can Basquio handle multiple data files?**
 Yes. Upload your entire evidence package, multiple spreadsheets, PDFs, notes, as one submission.
 
-**Does it work with Circana/IRI data too?**
-Yes. Basquio reads the data structure from the files themselves. It works with any provider.
+**Does it work with exports from any data provider?**
+Yes. Basquio reads the data structure from the files themselves. It works with any provider that exports CSV or Excel.
 
 **Can I use my company's PowerPoint template?**
 Yes. Upload your PPTX template and Basquio applies your brand system to the output.
@@ -502,7 +500,7 @@ For marketing teams, sales teams, and anyone making presentations from text cont
 Data teams (analysts, brand managers, consultants working with spreadsheets) hit four specific limitations:
 
 **1. No data file analysis.**
-Beautiful.ai cannot open a CSV file, read an Excel export, or parse spreadsheet data. You cannot upload a NielsenIQ export and get a category review deck. The tool has no data ingestion pipeline.
+Beautiful.ai cannot open a CSV file, read an Excel export, or parse spreadsheet data. You cannot upload a syndicated data export and get a category review deck. The tool has no data ingestion pipeline.
 
 **2. Charts are decorative, not computed.**
 You can create charts in Beautiful.ai by entering data manually, but the tool does not compute metrics from uploaded files. If you need "market share trend from Q1 2024 to Q4 2025 based on this Excel file," you compute it yourself and enter the numbers.
@@ -858,7 +856,7 @@ Yes. The most common combinations:
 
 ## Step-by-Step: The Basquio Workflow
 
-1. Export your data from Excel, NielsenIQ, Circana, or any spreadsheet source as CSV or XLSX
+1. Export your data from Excel, your syndicated data platform, or any spreadsheet source as CSV or XLSX
 2. Go to [basquio.com/get-started](https://basquio.com/get-started) and upload the files
 3. Write a one-line brief: who is the audience, what decision should the deck support
 4. Wait 10-15 minutes for the analysis and deck generation
@@ -974,7 +972,7 @@ When every gridline, every label position, and every animation matters, think-ce
 Basquio fits when the bottleneck is the full production workflow, not just the charts:
 
 **1. You start with data files, not Excel models.**
-NielsenIQ exports, Circana reports, client data dumps in CSV. The analysis has not been done yet. Basquio reads the data, analyzes it, then builds the deck. think-cell cannot do any of this.
+Syndicated data exports, market research reports, client data dumps in CSV. The analysis has not been done yet. Basquio reads the data, analyzes it, then builds the deck. think-cell cannot do any of this.
 
 **2. Volume matters more than perfection.**
 A mid-size consulting firm produces 10-20 analytical decks per month. If each deck takes 20-30 hours of manual production, that is 200-600 hours/month. Basquio compresses each to 15 minutes + 2-4 hours review. Even if the first draft is 80% of think-cell quality, the 90% time savings justifies the trade-off.

@@ -212,7 +212,7 @@ export const personas = [
     ],
     pressureTitle: "The real bottleneck",
     pressureCopy:
-      "You already have the NielsenIQ exports, the share trackers, the campaign results. The bottleneck is turning six spreadsheets into 20 slides that leadership can scan in five minutes.",
+      "You already have the syndicated data exports, the share trackers, the campaign results. The bottleneck is turning six spreadsheets into 20 slides that leadership can scan in five minutes.",
     packageTitle: "What you would upload",
     packageCopy:
       "Sales trackers, share tables, campaign performance CSVs, retailer scorecards, and your team's PowerPoint template.",

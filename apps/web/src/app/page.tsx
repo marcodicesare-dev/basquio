@@ -139,7 +139,7 @@ export default function HomePage() {
               <span className="artifact-chip">Category review example</span>
               <span className="artifact-chip subtle">PPTX + Report + Data</span>
             </div>
-            <p>Sanitized FMCG-style numbers, one clean slide, and a point of view you can build on.</p>
+            <p>Real analysis, one clean slide, and a point of view you can build on.</p>
           </div>
         </div>
       </section>
