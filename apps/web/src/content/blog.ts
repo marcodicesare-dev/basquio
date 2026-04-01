@@ -643,7 +643,7 @@ The analyst uploads the same Excel files they would normally link to think-cell:
 
 ### Step 2: Write the Brief
 
-One to two sentences about the deliverable: "Market entry assessment for [client] in the European pet food category. Audience: VP Strategy. Focus on category growth, competitive dynamics, and white-space opportunities."
+One to two sentences about the deliverable: "Market entry assessment for [client] in the European specialty retail category. Audience: VP Strategy. Focus on category growth, competitive dynamics, and white-space opportunities."
 
 The brief replaces the engagement manager's verbal download that normally starts the production cycle.
 

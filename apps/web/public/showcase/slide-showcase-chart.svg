@@ -10,73 +10,73 @@
   <rect width="960" height="4" fill="#1a6aff"/>
 
   <!-- Section label -->
-  <text x="56" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1.5" fill="#94A3B8">MARKET STRUCTURE</text>
+  <text x="56" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1.5" fill="#94A3B8">SEGMENT PERFORMANCE</text>
 
   <!-- Title -->
-  <text x="56" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">Cat Is the Growth Engine; Dog Is in Structural Decline</text>
+  <text x="56" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">Cloud Infrastructure Leads Growth; On-Prem Contracts</text>
 
-  <!-- Chart area -->
+  <!-- Chart area - horizontal bar chart -->
   <!-- Y-axis labels -->
-  <text x="56" y="160" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Cat Nutrition Wet</text>
-  <text x="56" y="210" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Cat Nutrition Dry</text>
-  <text x="56" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Dog Nutrition Dry</text>
-  <text x="56" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Dog Nutrition Wet</text>
-  <text x="56" y="360" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Cat Snacks/Bev.</text>
-  <text x="56" y="410" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Dog Snacks/Bev.</text>
+  <text x="56" y="160" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Cloud Infrastructure</text>
+  <text x="56" y="210" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Data Platform</text>
+  <text x="56" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Security &amp; Compliance</text>
+  <text x="56" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Developer Tools</text>
+  <text x="56" y="360" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">On-Prem Legacy</text>
+  <text x="56" y="410" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="600" fill="#0b0c0c">Professional Services</text>
 
   <!-- Grid lines -->
   <line x1="220" y1="135" x2="220" y2="430" stroke="#e8e4db" stroke-width="1"/>
   <line x1="220" y1="430" x2="860" y2="430" stroke="#e8e4db" stroke-width="1"/>
 
-  <!-- Bars - Cat Wet: 781M, scale max ~800M, bar width proportional -->
-  <!-- Cat Wet: 781/800 = 97.6% of 640px = 625px -->
-  <rect x="220" y="145" width="625" height="28" rx="0" fill="#1a6aff"/>
-  <text x="855" y="164" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">781M</text>
-  <text x="835" y="164" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#22c55e">+1.4%</text>
+  <!-- Bars -->
+  <!-- Cloud Infrastructure: 1.8B/2B = 90% of 640px = 576px -->
+  <rect x="220" y="145" width="576" height="28" rx="0" fill="#1a6aff"/>
+  <text x="806" y="164" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">$1.8B</text>
+  <text x="811" y="164" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#22c55e">+18.2%</text>
 
-  <!-- Cat Dry: 354/800 = 44.3% = 283px -->
-  <rect x="220" y="195" width="283" height="28" rx="0" fill="#1a6aff" opacity="0.7"/>
-  <text x="513" y="214" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">354M</text>
-  <text x="518" y="214" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">+0.3%</text>
+  <!-- Data Platform: 1.1B/2B = 55% = 352px -->
+  <rect x="220" y="195" width="352" height="28" rx="0" fill="#1a6aff" opacity="0.7"/>
+  <text x="582" y="214" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">$1.1B</text>
+  <text x="587" y="214" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#22c55e">+14.7%</text>
 
-  <!-- Dog Dry: 262/800 = 32.8% = 210px -->
-  <rect x="220" y="245" width="210" height="28" rx="0" fill="#94A3B8"/>
-  <text x="440" y="264" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">262M</text>
-  <text x="445" y="264" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#ef4444">-4.6%</text>
+  <!-- Security: 680M/2B = 34% = 218px -->
+  <rect x="220" y="245" width="218" height="28" rx="0" fill="#1a6aff" opacity="0.5"/>
+  <text x="448" y="264" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">$680M</text>
+  <text x="453" y="264" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#22c55e">+11.3%</text>
 
-  <!-- Dog Wet: 304/800 = 38% = 243px -->
-  <rect x="220" y="295" width="243" height="28" rx="0" fill="#94A3B8" opacity="0.7"/>
-  <text x="473" y="314" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">304M</text>
-  <text x="478" y="314" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#ef4444">-1.2%</text>
+  <!-- Developer Tools: 520M/2B = 26% = 166px -->
+  <rect x="220" y="295" width="166" height="28" rx="0" fill="#94A3B8"/>
+  <text x="396" y="314" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">$520M</text>
+  <text x="401" y="314" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#22c55e">+8.9%</text>
 
-  <!-- Cat Snacks: 85/800 = 10.6% = 68px -->
-  <rect x="220" y="345" width="68" height="28" rx="0" fill="#f0cc27"/>
-  <text x="298" y="364" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">85M</text>
-  <text x="303" y="364" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#22c55e">+3.7%</text>
+  <!-- On-Prem: 380M/2B = 19% = 122px -->
+  <rect x="220" y="345" width="122" height="28" rx="0" fill="#94A3B8" opacity="0.6"/>
+  <text x="352" y="364" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">$380M</text>
+  <text x="357" y="364" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#ef4444">-6.2%</text>
 
-  <!-- Dog Snacks: 156/800 = 19.5% = 125px -->
-  <rect x="220" y="395" width="125" height="28" rx="0" fill="#94A3B8" opacity="0.4"/>
-  <text x="355" y="414" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">156M</text>
-  <text x="360" y="414" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#ef4444">-0.9%</text>
+  <!-- Professional Services: 220M/2B = 11% = 70px -->
+  <rect x="220" y="395" width="70" height="28" rx="0" fill="#94A3B8" opacity="0.4"/>
+  <text x="300" y="414" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="600" fill="#0b0c0c" text-anchor="end">$220M</text>
+  <text x="305" y="414" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#ef4444">-3.1%</text>
 
-  <!-- Legend -->
-  <rect x="220" y="450" width="12" height="12" fill="#1a6aff"/>
-  <text x="238" y="461" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5d656b">Cat segments</text>
-  <rect x="340" y="450" width="12" height="12" fill="#94A3B8"/>
-  <text x="358" y="461" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5d656b">Dog segments</text>
-  <rect x="460" y="450" width="12" height="12" fill="#f0cc27"/>
-  <text x="478" y="461" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5d656b">Growth opportunity</text>
-
-  <!-- Takeaway box -->
-  <rect x="600" y="135" width="260" height="100" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
-  <text x="616" y="158" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#1a6aff">TAKEAWAY</text>
-  <text x="616" y="178" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#0b0c0c">
-    <tspan x="616" dy="0">Cat Wet (781M) alone rivals</tspan>
-    <tspan x="616" dy="17">the entire Dog segment (833M).</tspan>
-    <tspan x="616" dy="17">Cat Snacks +3.7%: fastest</tspan>
+  <!-- Takeaway callout -->
+  <rect x="630" y="135" width="260" height="100" rx="0" fill="#FEF9C3" stroke="#FDE047" stroke-width="1"/>
+  <text x="650" y="160" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="700" letter-spacing="1" fill="#CA8A04">TAKEAWAY</text>
+  <text x="650" y="180" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#0b0c0c">
+    <tspan x="650" dy="0">Cloud + Data account for 62%</tspan>
+    <tspan x="650" dy="16">of total revenue and 81% of</tspan>
+    <tspan x="650" dy="16">net new growth.</tspan>
   </text>
 
-  <!-- Source -->
-  <text x="56" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">Source: sanitized retail panel sample 2025</text>
-  <text x="916" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8" text-anchor="end">03</text>
+  <!-- Legend -->
+  <rect x="220" y="445" width="12" height="12" fill="#1a6aff"/>
+  <text x="238" y="456" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#5d656b">Growth segments</text>
+  <rect x="340" y="445" width="12" height="12" fill="#94A3B8"/>
+  <text x="358" y="456" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#5d656b">Mature segments</text>
+  <rect x="470" y="445" width="12" height="12" fill="#FDE047"/>
+  <text x="488" y="456" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#5d656b">Strategic opportunity</text>
+
+  <!-- Footer -->
+  <text x="56" y="502" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8">Source: Uploaded dataset · Analysis by Basquio</text>
+  <text x="904" y="502" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8" text-anchor="end">03</text>
 </svg>

@@ -126,7 +126,7 @@ export default function HomePage() {
           <div className="hero-artifact-frame">
             <Image
               src="/showcase/slide-showcase-chart.svg"
-              alt="Basquio market structure slide with a sanitized category bar chart and no client brand names"
+              alt="Basquio segment performance slide showing a horizontal bar chart with growth rates computed from uploaded data"
               width={960}
               height={540}
               priority
@@ -135,8 +135,8 @@ export default function HomePage() {
 
           <div className="hero-artifact-meta">
             <div className="artifact-evidence-row">
-              <span className="artifact-chip">Sanitized Basquio output</span>
-              <span className="artifact-chip">Category review example</span>
+              <span className="artifact-chip">Basquio output</span>
+              <span className="artifact-chip">Analysis deck example</span>
               <span className="artifact-chip subtle">PPTX + Report + Data</span>
             </div>
             <p>Real analysis, one clean slide, and a point of view you can build on.</p>
@@ -184,14 +184,14 @@ export default function HomePage() {
         <div className="home-output-visual">
           <Image
             src="/showcase/slide-showcase-executive.svg"
-            alt="Basquio executive overview slide showing sanitized market and segment performance"
+            alt="Basquio executive overview slide showing market size, segment breakdown, and key finding"
             width={960}
             height={540}
           />
           <div className="artifact-evidence-row">
             <span className="artifact-chip strong">Executive overview</span>
-            <span className="artifact-chip">€2.23B market</span>
-            <span className="artifact-chip">Leading brand +2.6%</span>
+            <span className="artifact-chip">$4.7B market</span>
+            <span className="artifact-chip">Enterprise +16.1%</span>
           </div>
         </div>
 
