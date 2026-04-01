@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { getAllPosts } from "@/content/blog";
+import { personas } from "@/app/site-content";
 
 const BASE_URL = "https://basquio.com";
 
@@ -14,6 +15,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
   ];
 
+  const personaPages: MetadataRoute.Sitemap = personas.map((persona) => ({
+    url: `${BASE_URL}/for/${persona.slug}`,
+    lastModified: new Date(),
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+
   const blogPages: MetadataRoute.Sitemap = getAllPosts().map((post) => ({
     url: `${BASE_URL}/blog/${post.slug}`,
     lastModified: new Date(post.updatedAt ?? post.publishedAt),
@@ -21,5 +29,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.8,
   }));
 
-  return [...staticPages, ...blogPages];
+  return [...staticPages, ...personaPages, ...blogPages];
 }

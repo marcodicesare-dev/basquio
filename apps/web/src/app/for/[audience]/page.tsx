@@ -26,8 +26,21 @@ export async function generateMetadata({ params }: PersonaPageProps): Promise<Me
   }
 
   return {
-    title: `${persona.title} | Basquio`,
+    title: `Basquio for ${persona.title}`,
     description: persona.summary,
+    alternates: { canonical: `https://basquio.com/for/${persona.slug}` },
+    openGraph: {
+      type: "website",
+      title: `Basquio for ${persona.title}`,
+      description: persona.summary,
+      images: [{ url: "/brand/png/logo/basquio-logo-dark-bg-4x.png", width: 1200, height: 630, alt: "Basquio" }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `Basquio for ${persona.title}`,
+      description: persona.summary,
+      images: ["/brand/png/logo/basquio-logo-dark-bg-4x.png"],
+    },
   };
 }
 
