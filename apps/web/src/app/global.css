@@ -2624,7 +2624,12 @@ textarea {
   .step-grid,
   .review-grid,
   .signal-grid,
-  .run-card-head {
+  .run-card-head,
+  .compose-intro-grid,
+  .dashboard-onboarding-grid,
+  .brief-composer-layout,
+  .compose-journey-grid,
+  .dashboard-onboarding-steps {
     grid-template-columns: 1fr;
   }
 
@@ -2660,6 +2665,16 @@ textarea {
 
   .workspace-status {
     justify-items: start;
+  }
+
+  .compose-intro-aside,
+  .dashboard-onboarding-note,
+  .brief-coach-panel {
+    position: static;
+  }
+
+  .brief-stage-banner {
+    flex-direction: column;
   }
 }
 
@@ -2871,6 +2886,328 @@ textarea {
   background: rgba(240, 204, 39, 0.14);
   padding: 2px 10px;
   border-radius: var(--radius-pill);
+}
+
+.compose-intro-panel,
+.dashboard-onboarding-panel {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, rgba(26, 106, 255, 0.12), transparent 22rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 247, 252, 0.88));
+}
+
+.compose-intro-grid,
+.dashboard-onboarding-grid,
+.brief-composer-layout {
+  display: grid;
+  gap: 24px;
+}
+
+.compose-intro-grid,
+.dashboard-onboarding-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  align-items: start;
+}
+
+.compose-intro-aside,
+.dashboard-onboarding-note {
+  position: sticky;
+  top: 24px;
+}
+
+.compose-highlight-card,
+.brief-stage-banner,
+.brief-coach-panel,
+.brief-example-card {
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 8px;
+}
+
+.compose-highlight-card {
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(240, 204, 39, 0.16), transparent 18rem),
+    linear-gradient(180deg, rgba(17, 21, 29, 0.96), rgba(10, 12, 16, 0.98));
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-inverse);
+}
+
+.compose-highlight-card p {
+  margin: 0;
+  color: var(--text-inverse-soft);
+}
+
+.compose-highlight-card h3 {
+  margin: 0;
+  color: var(--text-inverse);
+}
+
+.compose-journey-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.compose-journey-card {
+  display: grid;
+  gap: 10px;
+  min-height: 100%;
+  padding: 18px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.compose-journey-card span {
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+
+.compose-journey-card strong,
+.brief-stage-banner h3,
+.brief-coach-head h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  letter-spacing: -0.03em;
+}
+
+.compose-journey-card p,
+.brief-example-card p,
+.brief-review-list p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.dashboard-onboarding-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.brief-composer-layout {
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  align-items: start;
+}
+
+.brief-stage-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.brief-stage-banner-copy p,
+.brief-stage-banner-copy h3 {
+  margin: 0;
+}
+
+.brief-stage-banner-metrics {
+  display: grid;
+  gap: 10px;
+  min-width: 160px;
+}
+
+.brief-stage-banner-metrics div {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: rgba(245, 248, 255, 0.9);
+}
+
+.brief-stage-banner-metrics span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.brief-stage-banner-metrics strong {
+  font-size: 1.08rem;
+  letter-spacing: -0.03em;
+}
+
+.brief-form-grid {
+  align-items: start;
+}
+
+.brief-optional-details {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.brief-optional-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.brief-coach-panel {
+  position: sticky;
+  top: 24px;
+  padding: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(26, 106, 255, 0.12), transparent 18rem),
+    rgba(255, 255, 255, 0.92);
+}
+
+.brief-coach-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brief-score-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.brief-score-strong {
+  background: rgba(34, 165, 89, 0.12);
+  color: #197440;
+}
+
+.brief-score-medium {
+  background: rgba(240, 204, 39, 0.18);
+  color: #725d00;
+}
+
+.brief-score-light {
+  background: rgba(11, 12, 12, 0.08);
+  color: var(--text-soft);
+}
+
+.brief-score-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(11, 12, 12, 0.08);
+  overflow: hidden;
+}
+
+.brief-score-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--blue), rgba(240, 204, 39, 0.92));
+  transition: width 220ms ease;
+}
+
+.brief-warning-list,
+.brief-success-note {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.brief-warning-list p,
+.brief-success-note span,
+.brief-success-note strong {
+  margin: 0;
+}
+
+.brief-warning-list p {
+  color: var(--text-soft);
+}
+
+.brief-success-note strong {
+  color: var(--text);
+}
+
+.brief-coach-block {
+  padding-top: 4px;
+}
+
+.brief-signal-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.brief-signal-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(26, 106, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(26, 106, 255, 0.08);
+  color: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.brief-checklist {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+}
+
+.brief-example-card,
+.brief-review-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.brief-example-card strong,
+.brief-review-list strong {
+  color: var(--text);
+}
+
+@keyframes basquio-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .compose-intro-panel,
+  .dashboard-onboarding-panel,
+  .brief-stage-banner,
+  .brief-coach-panel,
+  .compose-journey-card {
+    animation: basquio-rise 560ms ease both;
+  }
+
+  .compose-journey-card:nth-child(2) {
+    animation-delay: 80ms;
+  }
+
+  .compose-journey-card:nth-child(3) {
+    animation-delay: 140ms;
+  }
 }
 
 @media (max-width: 900px) {

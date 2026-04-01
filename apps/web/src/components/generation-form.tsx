@@ -31,6 +31,49 @@ const MODEL_OPTIONS = [
   },
 ] as const;
 
+const BRIEF_SIGNAL_LIBRARY = [
+  {
+    label: "Share loss diagnosis",
+    keywords: ["share loss", "lost share", "share erosion", "value share", "market share"],
+  },
+  {
+    label: "Pricing and promo tension",
+    keywords: ["price", "pricing", "promo", "promotion", "discount", "gross-to-net", "gtm"],
+  },
+  {
+    label: "Distribution gap",
+    keywords: ["distribution", "availability", "shelf", "retailer", "banner", "channel"],
+  },
+  {
+    label: "Competitive response",
+    keywords: ["competitor", "private label", "rival", "threat", "white space"],
+  },
+  {
+    label: "Portfolio and mix",
+    keywords: ["mix", "portfolio", "segment", "assortment", "hero sku", "sku"],
+  },
+  {
+    label: "Innovation and launch readout",
+    keywords: ["innovation", "launch", "new product", "npd", "trial"],
+  },
+] as const;
+
+const BRIEF_COACHING_POINTS = [
+  "Name the problem with numbers or a timeframe, not just a topic.",
+  "Describe the audience as a role and meeting, not a generic group.",
+  "Write the decision the deck should support: diagnose, recommend, quantify, defend.",
+  "Use thesis and stakes to make the story sharper, not longer.",
+] as const;
+
+const BRIEF_EXAMPLE = {
+  businessContext:
+    "Our pet food brand lost 1.2pp value share in Modern Trade over the last 52 weeks while the category grew +2.2%. Private label gained +3.8pp in the mid-tier segment.",
+  audience: "Category Director + Finance VP at Carrefour",
+  objective: "Identify the root causes of share loss and recommend 3 actions to recover share within 2 quarters.",
+  thesis: "Private label is winning on price-per-kg where our distribution is weakest.",
+  stakes: "We need evidence-backed positions for the annual JBP and shelf-space discussion in 6 weeks.",
+} as const;
+
 type AuthorModel = (typeof MODEL_OPTIONS)[number]["id"];
 
 type GenerationStartResponse = {
@@ -169,6 +212,9 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
   });
   // When loading from a recipe, skip to the upload step
   const [currentStep, setCurrentStep] = useState(recipePrefill ? 1 : 0);
+  const briefReadiness = summarizeBriefReadiness(brief);
+  const briefSignals = inferBriefSignals(brief);
+  const briefWarnings = buildBriefWarnings(brief);
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
@@ -594,76 +640,169 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
             <div className="stack-xs">
               <p className="section-label">Step 3</p>
               <h2>Describe the brief</h2>
+              <p className="muted">This is where Basquio decides what kind of report it is building. A sharper brief produces a sharper narrative, evidence plan, and recommendation set.</p>
             </div>
 
-            <div className="form-grid">
-              <label className="field field-span-2">
-                <span>Business context</span>
-                <textarea
-                  name="businessContext"
-                  value={brief.businessContext}
-                  rows={6}
-                  placeholder="What is happening in the business, and what does your audience need to understand?"
-                  onChange={(event) => updateBriefField("businessContext", event.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span>Audience</span>
-                <input
-                  name="audience"
-                  value={brief.audience}
-                  placeholder="Leadership team, client, or review audience"
-                  onChange={(event) => updateBriefField("audience", event.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span>Objective</span>
-                <input
-                  name="objective"
-                  value={brief.objective}
-                  placeholder="What decision or takeaway should this analysis support?"
-                  onChange={(event) => updateBriefField("objective", event.target.value)}
-                />
-              </label>
-
-              <details className="field-span-2">
-                <summary>Additional context (optional)</summary>
-
-                <div className="form-grid">
-                  <label className="field">
-                    <span>Client</span>
-                    <input
-                      name="client"
-                      value={brief.client}
-                      placeholder="Optional"
-                      onChange={(event) => updateBriefField("client", event.target.value)}
-                    />
-                  </label>
-
-                  <label className="field">
-                    <span>Thesis</span>
-                    <input
-                      name="thesis"
-                      value={brief.thesis}
-                      placeholder="Optional working point of view"
-                      onChange={(event) => updateBriefField("thesis", event.target.value)}
-                    />
-                  </label>
-
-                  <label className="field field-span-2">
-                    <span>Stakes</span>
-                    <textarea
-                      name="stakes"
-                      value={brief.stakes}
-                      rows={4}
-                      placeholder="Optional: why this matters now and what depends on it"
-                      onChange={(event) => updateBriefField("stakes", event.target.value)}
-                    />
-                  </label>
+            <div className="brief-composer-layout">
+              <div className="stack-lg">
+                <div className="brief-stage-banner">
+                  <div className="brief-stage-banner-copy stack-xs">
+                    <p className="section-label">What a strong brief includes</p>
+                    <h3>One business problem. One audience. One decision.</h3>
+                    <p className="muted">Keep it concrete. Numbers, roles, timing, and a point of view help the report land like it was built for a real meeting.</p>
+                  </div>
+                  <div className="brief-stage-banner-metrics">
+                    <div>
+                      <span>Readiness</span>
+                      <strong>{briefReadiness.label}</strong>
+                    </div>
+                    <div>
+                      <span>Signals</span>
+                      <strong>{briefSignals.length}</strong>
+                    </div>
+                  </div>
                 </div>
-              </details>
+
+                <div className="form-grid brief-form-grid">
+                  <label className="field field-span-2">
+                    <span>Business context</span>
+                    <small>What is happening in the business right now? Include numbers, trend shifts, competitors, or timing if you have them.</small>
+                    <textarea
+                      name="businessContext"
+                      value={brief.businessContext}
+                      rows={6}
+                      placeholder="Example: Our brand lost 1.2pp value share in Modern Trade over the last 52 weeks while the category grew +2.2%."
+                      onChange={(event) => updateBriefField("businessContext", event.target.value)}
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Audience</span>
+                    <small>Use a role and context, like “VP Commercial for the QBR” or “Category Director at Tesco”.</small>
+                    <input
+                      name="audience"
+                      value={brief.audience}
+                      placeholder="Role + company or meeting context"
+                      onChange={(event) => updateBriefField("audience", event.target.value)}
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Objective</span>
+                    <small>State the decision this analysis should support: diagnose, recommend, defend, quantify, or compare.</small>
+                    <input
+                      name="objective"
+                      value={brief.objective}
+                      placeholder="Example: Identify the root causes of share loss and recommend 3 actions."
+                      onChange={(event) => updateBriefField("objective", event.target.value)}
+                    />
+                  </label>
+
+                  <details className="field-span-2 brief-optional-details">
+                    <summary>Additional context that sharpens the narrative</summary>
+
+                    <div className="form-grid">
+                      <label className="field">
+                        <span>Client</span>
+                        <small>Useful when the deck is client-facing or brand-specific.</small>
+                        <input
+                          name="client"
+                          value={brief.client}
+                          placeholder="Optional"
+                          onChange={(event) => updateBriefField("client", event.target.value)}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>Thesis</span>
+                        <small>Your working point of view. Basquio can prove it, challenge it, or refine it.</small>
+                        <input
+                          name="thesis"
+                          value={brief.thesis}
+                          placeholder="Optional working point of view"
+                          onChange={(event) => updateBriefField("thesis", event.target.value)}
+                        />
+                      </label>
+
+                      <label className="field field-span-2">
+                        <span>Stakes</span>
+                        <small>Explain why this matters now: budget review, retailer negotiation, board meeting, launch decision.</small>
+                        <textarea
+                          name="stakes"
+                          value={brief.stakes}
+                          rows={4}
+                          placeholder="Optional: what depends on this and when"
+                          onChange={(event) => updateBriefField("stakes", event.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </details>
+                </div>
+              </div>
+
+              <aside className="brief-coach-panel panel">
+                <div className="stack">
+                  <div className="brief-coach-head">
+                    <div className="stack-xs">
+                      <p className="section-label">Live brief coach</p>
+                      <h3>{briefReadiness.label}</h3>
+                    </div>
+                    <span className={`brief-score-pill brief-score-${briefReadiness.tone}`}>{briefReadiness.score}%</span>
+                  </div>
+
+                  <p className="muted">{briefReadiness.copy}</p>
+
+                  <div className="brief-score-track" aria-hidden>
+                    <span style={{ width: `${briefReadiness.score}%` }} />
+                  </div>
+
+                  {briefWarnings.length > 0 ? (
+                    <div className="brief-warning-list">
+                      {briefWarnings.map((warning) => (
+                        <p key={warning}>{warning}</p>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="brief-success-note">
+                      <strong>The structure is there.</strong>
+                      <span>Add thesis and stakes if you want the recommendations to land harder.</span>
+                    </div>
+                  )}
+
+                  <div className="brief-coach-block stack-xs">
+                    <p className="artifact-kind">Likely focus areas</p>
+                    {briefSignals.length > 0 ? (
+                      <div className="brief-signal-list">
+                        {briefSignals.map((signal) => (
+                          <span key={signal} className="brief-signal-chip">{signal}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="muted">Use concrete terms like share loss, pricing, promo, distribution, channel, or competitor to guide the analytical focus.</p>
+                    )}
+                  </div>
+
+                  <div className="brief-coach-block stack-xs">
+                    <p className="artifact-kind">Basquio needs</p>
+                    <ul className="brief-checklist">
+                      {BRIEF_COACHING_POINTS.map((point) => (
+                        <li key={point}>{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="brief-coach-block stack-xs">
+                    <p className="artifact-kind">Strong example</p>
+                    <div className="brief-example-card">
+                      <p><strong>Context</strong> {BRIEF_EXAMPLE.businessContext}</p>
+                      <p><strong>Audience</strong> {BRIEF_EXAMPLE.audience}</p>
+                      <p><strong>Objective</strong> {BRIEF_EXAMPLE.objective}</p>
+                      <p><strong>Thesis</strong> {BRIEF_EXAMPLE.thesis}</p>
+                      <p><strong>Stakes</strong> {BRIEF_EXAMPLE.stakes}</p>
+                    </div>
+                  </div>
+                </div>
+              </aside>
             </div>
           </section>
         ) : null}
@@ -720,6 +859,17 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
                 ) : (
                   <p className="muted">Clean editorial design with the default locked slide grid.</p>
                 )}
+              </article>
+
+              <article className="review-card stack">
+                <p className="artifact-kind">Brief</p>
+                <div className="brief-review-list">
+                  <p><strong>Context</strong> {brief.businessContext || "Add the business context before generating."}</p>
+                  <p><strong>Audience</strong> {brief.audience || "Add the audience."}</p>
+                  <p><strong>Objective</strong> {brief.objective || "Add the decision this report should support."}</p>
+                  {brief.thesis ? <p><strong>Thesis</strong> {brief.thesis}</p> : null}
+                  {brief.stakes ? <p><strong>Stakes</strong> {brief.stakes}</p> : null}
+                </div>
               </article>
 
               <article className="review-card stack">
@@ -832,6 +982,82 @@ function clampTargetSlideCount(value: number) {
   }
 
   return Math.min(UI_MAX_TARGET_SLIDES, Math.max(UI_MIN_TARGET_SLIDES, Math.round(value)));
+}
+
+function summarizeBriefReadiness(brief: BriefFields) {
+  const businessContextWords = countWords(brief.businessContext);
+  const audienceWords = countWords(brief.audience);
+  const objectiveWords = countWords(brief.objective);
+  const score = [
+    brief.businessContext ? 30 : 0,
+    brief.audience ? 20 : 0,
+    brief.objective ? 20 : 0,
+    businessContextWords >= 18 ? 10 : businessContextWords >= 10 ? 6 : 0,
+    audienceWords >= 4 ? 8 : audienceWords >= 2 ? 5 : 0,
+    objectiveWords >= 7 ? 8 : objectiveWords >= 4 ? 5 : 0,
+    brief.thesis ? 7 : 0,
+    brief.stakes ? 7 : 0,
+  ].reduce((sum, value) => sum + value, 0);
+
+  if (score >= 78) {
+    return {
+      label: "Strong brief",
+      score,
+      tone: "strong" as const,
+      copy: "The core ingredients are in place. Basquio should have enough context to build a focused narrative instead of a generic category summary.",
+    };
+  }
+
+  if (score >= 50) {
+    return {
+      label: "Usable brief",
+      score,
+      tone: "medium" as const,
+      copy: "You have the basics. Add more specificity in the business context or objective if you want stronger diagnosis and recommendations.",
+    };
+  }
+
+  return {
+    label: "Thin brief",
+    score,
+    tone: "light" as const,
+    copy: "Right now the form is likely to produce a broad, generic readout. Add concrete business context, a sharper audience, and a decision-led objective.",
+  };
+}
+
+function inferBriefSignals(brief: BriefFields) {
+  const haystack = `${brief.businessContext} ${brief.objective} ${brief.thesis}`.toLowerCase();
+  return BRIEF_SIGNAL_LIBRARY.filter((signal) => signal.keywords.some((keyword) => haystack.includes(keyword))).map(
+    (signal) => signal.label,
+  );
+}
+
+function buildBriefWarnings(brief: BriefFields) {
+  const warnings: string[] = [];
+
+  if (!brief.businessContext) {
+    warnings.push("Add a business context with numbers, trend shifts, or competitive pressure.");
+  } else if (countWords(brief.businessContext) < 12) {
+    warnings.push("Make the business context more concrete. One or two sentences with numbers will help.");
+  }
+
+  if (!brief.audience) {
+    warnings.push("Name the audience as a role, not just a generic leadership group.");
+  } else if (countWords(brief.audience) < 3) {
+    warnings.push("Audience is still broad. Add a role, company, or meeting context.");
+  }
+
+  if (!brief.objective) {
+    warnings.push("Write the decision the report should support.");
+  } else if (!/(diagnose|identify|recommend|compare|quantify|assess|evaluate|defend|explain|recover)/i.test(brief.objective)) {
+    warnings.push("Objective is a bit soft. Use an action verb like diagnose, recommend, compare, or quantify.");
+  }
+
+  return warnings;
+}
+
+function countWords(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
 function syncInputFiles(input: HTMLInputElement | null, files: File[]) {
