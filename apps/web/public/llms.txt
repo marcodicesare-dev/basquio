@@ -19,6 +19,14 @@ Basquio was built by NielsenIQ analysts and CPG brand managers who spent years b
 - [Basquio vs Beautiful.ai for Data Teams](https://basquio.com/blog/basquio-vs-beautiful-ai-for-data-teams): Which tool fits data-driven workflows
 - [AI for Consultants: Data Analysis to Client Decks](https://basquio.com/blog/ai-for-consultants-data-analysis-to-client-decks): How consulting firms automate data-heavy reporting
 - [How to Turn Excel Data into Presentation Slides](https://basquio.com/blog/how-to-turn-excel-data-into-presentation-slides-automatically): All 6 approaches compared from manual to AI-native
+- [Basquio vs think-cell](https://basquio.com/blog/basquio-vs-think-cell-data-to-deck-vs-chart-formatting): Full deck generation vs chart formatting for consulting firms
+
+## Use Cases
+
+- [For Brand Managers](https://basquio.com/for/brand-managers): Turn NielsenIQ trackers into leadership-ready category stories
+- [For Consultants](https://basquio.com/for/consultants): Compress analysis and deck-building into one report flow
+- [For Strategy Teams](https://basquio.com/for/strategy-teams): Evidence package to decision-ready storyline
+- [For Agencies](https://basquio.com/for/agencies): Scale recurring client reporting without flattening the brand
 
 ## Company
 

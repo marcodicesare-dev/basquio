@@ -57,6 +57,9 @@ const SCENES = {
 
   "how-to-turn-excel-data-into-presentation-slides-automatically":
     "Dominant subject: a dramatic ascending pathway or staircase carved into a mountainside, viewed from the side. At the base of the mountain, scattered spreadsheet grids and data tables lie flat on the ground, raw and unprocessed. Each ascending level of the path shows a progressively more sophisticated transformation: the lowest steps show manual hand-carried data, the middle levels show mechanical conveyor systems moving chart elements, and the summit shows a luminous automated process where finished presentation slides float upward into the sky like lanterns, glowing ultramarine blue against the warm amber sunset horizon. The mountain itself is textured with abstract data patterns. The mood is aspiration and progressive automation.",
+
+  "basquio-vs-think-cell-data-to-deck-vs-chart-formatting":
+    "Dominant subject: a split scene. On the left, a master craftsperson's precision workbench seen in close detail: a single exquisite chart is being assembled with jeweler's tools, calipers, fine brushes, and a magnifying loupe. The chart is a beautiful waterfall diagram rendered as an intricate mechanical sculpture, each segment precisely fitted like watchmaking, glowing with warm amber light. On the right, a vast automated production floor stretches into atmospheric depth: raw data sheets enter at one end and emerge as complete finished presentation decks at the other, moving through luminous processing stages that glow ultramarine blue. The contrast is deliberate: handcraft precision on one side, industrial-scale automation on the other. A thin dividing line of light separates the two worlds. Atmospheric mist fills the production floor's depth.",
 };
 
 /* ── Generation Logic ── */

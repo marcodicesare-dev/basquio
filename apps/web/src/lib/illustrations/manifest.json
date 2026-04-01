@@ -52,5 +52,14 @@
     "height": 1024,
     "alt": "Editorial illustration showing six different approaches to converting Excel data into presentation slides, from manual to fully automated",
     "caption": "Six approaches to the Excel-to-slides workflow, ranging from manual copy-paste to AI-native automation."
+  },
+  {
+    "id": "basquio-vs-think-cell-data-to-deck-vs-chart-formatting",
+    "slug": "basquio-vs-think-cell-data-to-deck-vs-chart-formatting",
+    "imagePath": "/illustrations/basquio-vs-think-cell-data-to-deck-vs-chart-formatting.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Editorial illustration comparing precision chart craftsmanship with full-pipeline deck automation, showing a detailed hand-crafted chart tool alongside an automated production line",
+    "caption": "think-cell perfects one step of the workflow. The question is whether chart formatting is the bottleneck or total production time is."
   }
 ]
