@@ -7,58 +7,54 @@
 
   <!-- Slide frame -->
   <rect width="960" height="540" fill="#ffffff" filter="url(#shadow)"/>
-
-  <!-- Top accent bar -->
   <rect width="960" height="4" fill="#1a6aff"/>
 
   <!-- Section label -->
-  <text x="56" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1.5" fill="#94A3B8" text-transform="uppercase">EXECUTIVE OVERVIEW</text>
+  <text x="56" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1.5" fill="#94A3B8">EXECUTIVE OVERVIEW</text>
 
   <!-- Title -->
-  <text x="56" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">A 2.23B Market Flat in Value, Down in Volume</text>
-  <text x="56" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">Leading Brand Beats the Trend at +2.6%</text>
+  <text x="56" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">A $4.7B Market Growing 12% YoY</text>
+  <text x="56" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="700" fill="#0b0c0c" letter-spacing="-0.5">Enterprise Segment Outpaces Mid-Market 2:1</text>
 
-  <!-- 4 metric cards row -->
+  <!-- 4 metric cards -->
   <!-- Card 1: Total Market -->
   <rect x="56" y="150" width="200" height="120" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
-  <text x="76" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">TOTAL MARKET VALUE</text>
-  <text x="76" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#0b0c0c" letter-spacing="-1">2.23B</text>
-  <text x="76" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#94A3B8">-0.4% vs PY</text>
+  <text x="76" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">TOTAL MARKET</text>
+  <text x="76" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#0b0c0c" letter-spacing="-1">$4.7B</text>
+  <text x="76" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+12.3% vs PY</text>
 
-  <!-- Card 2: Cat Segment -->
+  <!-- Card 2: Enterprise -->
   <rect x="276" y="150" width="200" height="120" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
-  <text x="296" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">CAT SEGMENT</text>
-  <text x="296" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#1a6aff" letter-spacing="-1">1.38B</text>
-  <text x="296" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+1.0% vs PY</text>
+  <text x="296" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">ENTERPRISE</text>
+  <text x="296" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#1a6aff" letter-spacing="-1">$2.9B</text>
+  <text x="296" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+16.1% vs PY</text>
 
-  <!-- Card 3: Dog Segment -->
+  <!-- Card 3: Mid-Market -->
   <rect x="496" y="150" width="200" height="120" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
-  <text x="516" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">DOG SEGMENT</text>
-  <text x="516" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#0b0c0c" letter-spacing="-1">833M</text>
-  <text x="516" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#ef4444">-2.5% vs PY</text>
+  <text x="516" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">MID-MARKET</text>
+  <text x="516" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#0b0c0c" letter-spacing="-1">$1.4B</text>
+  <text x="516" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+7.8% vs PY</text>
 
-  <!-- Card 4: Leading brand -->
+  <!-- Card 4: Top Performer -->
   <rect x="716" y="150" width="200" height="120" rx="0" fill="#0b0c0c"/>
-  <text x="736" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">LEADING BRAND</text>
-  <text x="736" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#ffffff" letter-spacing="-1">105.2M</text>
-  <text x="736" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+2.6% vs PY</text>
+  <text x="736" y="182" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" letter-spacing="1" fill="#94A3B8">TOP PERFORMER</text>
+  <text x="736" y="222" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="700" fill="#ffffff" letter-spacing="-1">$412M</text>
+  <text x="736" y="252" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#22c55e">+24.5% vs PY</text>
 
-  <!-- Body text block -->
-  <text x="56" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#5d656b" line-height="1.6">
-    <tspan x="56" dy="0">The Italian petfood market reached 2.23B in 2025, virtually flat in value (-0.4%) and</tspan>
-    <tspan x="56" dy="20">meaningfully down in volume (-1.9%), confirming a post-inflation price-mix dynamic.</tspan>
-    <tspan x="56" dy="20">Cat outperforms Dog across every metric. Private Label at 34.8% is declining -2.9%,</tspan>
-    <tspan x="56" dy="20">creating a structural opening for credentialed branded players.</tspan>
+  <!-- Body text -->
+  <text x="56" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#5d656b">
+    <tspan x="56" dy="0">The market reached $4.7B in 2025, accelerating from 9.1% growth last year to 12.3%</tspan>
+    <tspan x="56" dy="20">this cycle. Enterprise adoption is the primary driver, with organizations above 500</tspan>
+    <tspan x="56" dy="20">employees increasing spend by 16.1%. The mid-market grew at half the rate (7.8%),</tspan>
+    <tspan x="56" dy="20">suggesting the technology is still crossing the chasm in smaller organizations.</tspan>
   </text>
 
-  <!-- Key finding callout -->
-  <rect x="56" y="400" width="848" height="60" rx="0" fill="#f0f7ff" stroke="#1a6aff" stroke-width="1" stroke-opacity="0.3"/>
-  <text x="76" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="700" letter-spacing="1" fill="#1a6aff">KEY FINDING</text>
-  <text x="76" y="442" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0b0c0c">The leading brand outgrows the market by 3pp, with almost all of that gain coming from one premium cat segment.</text>
+  <!-- Key Finding box -->
+  <rect x="56" y="410" width="848" height="60" rx="0" fill="#f8f5ef" stroke="#e8e4db" stroke-width="1"/>
+  <text x="76" y="432" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="700" letter-spacing="1" fill="#1a6aff">KEY FINDING</text>
+  <text x="76" y="454" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#0b0c0c">Enterprise accounts for 62% of market value but 78% of net new growth. Platform consolidation is accelerating.</text>
 
-  <!-- Source footer -->
-  <text x="56" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8">Source: sanitized retail panel sample 2025</text>
-
-  <!-- Page number -->
-  <text x="916" y="510" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94A3B8" text-anchor="end">02</text>
+  <!-- Footer -->
+  <text x="56" y="502" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8">Source: Uploaded dataset · Analysis by Basquio</text>
+  <text x="904" y="502" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94A3B8" text-anchor="end">01</text>
 </svg>
