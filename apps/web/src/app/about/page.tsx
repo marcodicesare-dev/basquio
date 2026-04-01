@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteFooter } from "@/components/public-site-footer";
@@ -43,6 +44,16 @@ export default function AboutPage() {
             </p>
           </div>
         </div>
+      </section>
+
+      <section style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--canvas-2)" }}>
+        <Image
+          src="/illustrations/page-about.png"
+          alt="Atmospheric illustration of a round table with six different chairs suggesting different disciplines, scattered data and reports on the surface, warm light through arched windows"
+          width={1536}
+          height={1024}
+          style={{ width: "100%", height: "auto", display: "block" }}
+        />
       </section>
 
       <section>

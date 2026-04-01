@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 
 import { evidencePackageInputs, howItWorksChecks, howItWorksPhases } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
@@ -42,7 +43,17 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      {/* Verification callout — moved to top */}
+      <section style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--canvas-2)" }}>
+        <Image
+          src="/illustrations/page-how-it-works.png"
+          alt="Atmospheric illustration of a luminous data processing pipeline stretching across a landscape, with raw data entering on one side and finished presentations emerging on the other"
+          width={1536}
+          height={1024}
+          style={{ width: "100%", height: "auto", display: "block" }}
+        />
+      </section>
+
+      {/* Verification callout */}
       <section className="panel dark-panel">
         <div className="stack">
           <p className="section-label light">What makes Basquio different</p>

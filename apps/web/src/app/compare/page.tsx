@@ -1,5 +1,6 @@
 import { Check, Minus, X } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
+import Image from "next/image";
 
 import { detailedComparisonRows } from "@/app/site-content";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
@@ -34,6 +35,16 @@ export default function ComparePage() {
             math, or hands you a branded deck with every claim traced to source. Basquio does.
           </p>
         </div>
+      </section>
+
+      <section style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--canvas-2)" }}>
+        <Image
+          src="/illustrations/page-compare.png"
+          alt="Atmospheric illustration of two plateaus separated by a deep canyon — analytics dashboards on one side, presentation designs on the other, with no bridge between them"
+          width={1536}
+          height={1024}
+          style={{ width: "100%", height: "auto", display: "block" }}
+        />
       </section>
 
       <section className="panel comparison-panel">
