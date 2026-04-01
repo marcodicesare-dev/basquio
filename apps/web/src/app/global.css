@@ -37,6 +37,10 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: clip;
+}
+
 html,
 body {
   margin: 0;
@@ -142,7 +146,10 @@ textarea {
 
 .page-shell.public-page {
   gap: 56px;
-  overflow-x: clip;
+}
+
+.page-shell.public-page > * {
+  min-width: 0;
 }
 
 .panel,
@@ -2727,8 +2734,9 @@ textarea {
   }
 
   .public-nav {
-    position: static;
-    top: auto;
+    position: sticky;
+    top: 8px;
+    z-index: 10;
   }
 
   .landing-nav-brand-row {
@@ -6116,7 +6124,7 @@ textarea {
 
 .pricing-explainer-grid {
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-  align-items: stretch;
+  align-items: start;
 }
 
 .pricing-explainer-panel {
@@ -6664,5 +6672,58 @@ textarea {
   .team-card:hover,
   .footer-social-link:hover {
     transform: none;
+  }
+}
+
+/* ── Mobile pricing & nav fixes ─────────────────────────────── */
+
+/* Mobile nav: collapse into compact bar with hamburger-style layout */
+@media (max-width: 900px) {
+  .public-nav {
+    position: sticky;
+    top: 8px;
+    z-index: 10;
+  }
+}
+
+/* Pricing page: prevent text and card overflow on mobile */
+@media (max-width: 760px) {
+  .pricing-page .pricing-hero h1 {
+    font-size: clamp(1.8rem, 8vw, 2.8rem);
+    word-break: break-word;
+  }
+
+  .pricing-plans-section .pricing-card {
+    padding: 22px 18px 20px;
+  }
+
+  .pricing-plans-section .pricing-card p,
+  .pricing-plans-section .pricing-card .muted {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* Comparison table: allow horizontal scroll */
+  .pricing-comparison-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -18px;
+    padding: 0 18px;
+  }
+
+  .pricing-comparison-panel {
+    overflow: visible;
+  }
+
+  /* Explainer panels should not clip on mobile either */
+  .pricing-explainer-panel,
+  .pricing-formula-panel {
+    overflow: visible;
+  }
+
+  /* Compare page table same fix */
+  .compare-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
