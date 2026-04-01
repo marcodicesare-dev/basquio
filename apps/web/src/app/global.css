@@ -6677,12 +6677,76 @@ textarea {
 
 /* ── Mobile pricing & nav fixes ─────────────────────────────── */
 
-/* Mobile nav: collapse into compact bar with hamburger-style layout */
+/* ── Mobile hamburger nav ── */
+
+.public-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.public-nav-toggle-bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 1px;
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+
+.public-nav-open .public-nav-toggle-bar:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.public-nav-open .public-nav-toggle-bar:nth-child(2) {
+  opacity: 0;
+}
+
+.public-nav-open .public-nav-toggle-bar:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
 @media (max-width: 900px) {
   .public-nav {
     position: sticky;
     top: 8px;
     z-index: 10;
+  }
+
+  .public-nav-toggle {
+    display: flex;
+  }
+
+  .public-nav .public-nav-links,
+  .public-nav .landing-nav-actions {
+    display: none;
+  }
+
+  .public-nav-open .public-nav-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .public-nav-open .landing-nav-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .public-nav-open .landing-nav-actions .button {
+    width: 100%;
   }
 }
 
@@ -6722,7 +6786,7 @@ textarea {
   }
 
   /* Compare page table same fix */
-  .compare-table-wrap {
+  .comparison-table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }

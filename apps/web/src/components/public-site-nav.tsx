@@ -1,11 +1,16 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
 import { publicNavLinks } from "@/app/site-content";
 
 export function PublicSiteNav() {
+  const [open, setOpen] = useState(false);
+
   return (
-    <section className="landing-nav-panel public-nav">
+    <section className={`landing-nav-panel public-nav${open ? " public-nav-open" : ""}`}>
       <div className="row landing-nav-copy landing-nav-brand-row">
         <Link href="/" className="brand-lockup" aria-label="Basquio home">
           <Image
@@ -16,11 +21,22 @@ export function PublicSiteNav() {
             priority
           />
         </Link>
+        <button
+          type="button"
+          className="public-nav-toggle"
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="public-nav-toggle-bar" />
+          <span className="public-nav-toggle-bar" />
+          <span className="public-nav-toggle-bar" />
+        </button>
       </div>
 
       <nav className="public-nav-links" aria-label="Public">
         {publicNavLinks.map((link) => (
-          <Link key={link.href} className="public-nav-link" href={link.href}>
+          <Link key={link.href} className="public-nav-link" href={link.href} onClick={() => setOpen(false)}>
             {link.label}
           </Link>
         ))}
