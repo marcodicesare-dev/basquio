@@ -543,6 +543,15 @@ Rejected because:
 - strong client templates need deterministic recomposition against imported template slides after authoring, not more prompt pressure on Claude's final PPTX
 - Claude remains responsible for analysis, story, chart image generation, markdown, and audit tables, but exact client-template composition is a renderer responsibility
 
+### Manifest-only template recomposition in the current main lane
+
+Temporarily rejected in production because:
+
+- the current manifest only carries titles and chart metadata, not the full rendered slide body content
+- recomposing from manifest metadata preserved some template geometry but destroyed slide content in live runs
+- imported PPTX profiles were also contaminated by Basquio defaults (`coverBg`, logo paths, accent tokens), which made prompt-level template fidelity look worse than it really was
+- until the manifest can carry full rendered content, Basquio must prefer prompt-driven template fidelity with clean extracted palette data over post-hoc slide reconstruction
+
 ## Change Rule
 
 If any accepted decision changes, update all of the following in the same change:

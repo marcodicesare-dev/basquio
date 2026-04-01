@@ -5193,12 +5193,10 @@ function shouldUseExactTemplateMode(input: {
   templateFile?: LoadedSourceFile;
   templateProfile: TemplateProfile;
 }) {
-  return (
-    !input.isReportOnly &&
-    input.templateFile?.kind === "pptx" &&
-    input.templateProfile.sourceType === "pptx" &&
-    input.templateProfile.layouts.some((layout) => typeof layout.sourceSlideNumber === "number")
-  );
+  // Disabled until the manifest can carry full rendered slide content.
+  // Recomposition from manifest metadata preserves template geometry but destroys
+  // slide body content (SCQA, diagnostics, recommendations) in production.
+  return false;
 }
 
 async function recomposeExactTemplateArtifacts(input: {

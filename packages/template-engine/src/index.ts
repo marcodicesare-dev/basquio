@@ -232,7 +232,8 @@ async function parsePptxTemplate(input: {
 
   const slideMetrics = inferSlideMetrics(presentationXml);
   const slideSize = slideMetrics.slideSize ?? input.base.slideSize;
-  const theme = extractTheme(themeXml);
+  const coverBg = await extractCoverBackground(zip);
+  const theme = extractTheme(themeXml, coverBg);
   const layouts = await Promise.all(
     layoutEntries.map(async (entry) =>
       extractLayout(
@@ -264,9 +265,13 @@ async function parsePptxTemplate(input: {
       palette: theme.palette,
       typography: theme.typography,
       chartPalette: theme.chartPalette,
+      logo: {
+        treatment: "template-import",
+      },
     },
     warnings,
     input.fileName,
+    { inheritBrandingDefaults: false },
   );
 
   return {
@@ -342,11 +347,19 @@ function applyBrandTokens(
   extracted: ExtractedBrandTokens,
   warnings: string[],
   templateName?: string,
+  options?: {
+    inheritBrandingDefaults?: boolean;
+  },
 ) {
-  const palette = {
-    ...base.brandTokens?.palette,
-    ...extracted.palette,
-  };
+  const inheritBrandingDefaults = options?.inheritBrandingDefaults ?? true;
+  const palette = inheritBrandingDefaults
+    ? {
+        ...base.brandTokens?.palette,
+        ...extracted.palette,
+      }
+    : {
+        ...(extracted.palette ?? {}),
+      };
   const typography = {
     ...base.brandTokens?.typography,
     ...extracted.typography,
@@ -355,10 +368,14 @@ function applyBrandTokens(
     ...base.brandTokens?.spacing,
     ...extracted.spacing,
   };
-  const logo = {
-    ...base.brandTokens?.logo,
-    ...extracted.logo,
-  };
+  const logo = inheritBrandingDefaults
+    ? {
+        ...base.brandTokens?.logo,
+        ...extracted.logo,
+      }
+    : {
+        ...(extracted.logo ?? {}),
+      };
 
   return {
     ...base,
@@ -391,7 +408,7 @@ function applyBrandTokens(
   };
 }
 
-function extractTheme(raw: string) {
+function extractTheme(raw: string, coverBg?: string) {
   // Extract OOXML theme color scheme properly:
   // Standard order: dk1, lt1, dk2, lt2, accent1, accent2, accent3, accent4, accent5, accent6, hlink, folHlink
   const schemeColors = new Map<string, string>();
@@ -417,17 +434,26 @@ function extractTheme(raw: string) {
   const dk1 = schemeColors.get("dk1") ?? "#1F2937";
   const lt1 = schemeColors.get("lt1") ?? "#FFFFFF";
   const dk2 = schemeColors.get("dk2") ?? "#374151";
+  const lt2 = schemeColors.get("lt2") ?? lt1;
+  const resolvedCoverBg = coverBg ?? lt1;
 
   return {
     themeName: matchFirst(raw, /<a:theme\b[^>]*name="([^"]+)"/i),
     palette: {
       text: dk1,
+      muted: dk2,
       accent: accent1,
       highlight: accent2,
       background: lt1,
-      surface: schemeColors.get("lt2") ?? "#F9FAFB",
+      surface: lt2,
       border: dk2,
       accentMuted: accent3,
+      accentLight: lt2,
+      positive: accent3,
+      negative: accent5,
+      coverBg: resolvedCoverBg,
+      calloutGreen: accent3,
+      calloutOrange: accent4,
     },
     // Chart palette uses all 6 accent colors in order
     chartPalette: [accent1, accent2, accent3, accent4, accent5, accent6],
@@ -439,6 +465,21 @@ function extractTheme(raw: string) {
       bodySize: 12,
     },
   };
+}
+
+async function extractCoverBackground(zip: JSZip) {
+  const slide1Xml = await readZipText(zip, "ppt/slides/slide1.xml");
+  if (!slide1Xml) {
+    return "#FFFFFF";
+  }
+
+  const bgMatch = slide1Xml.match(/<p:bg>[\s\S]*?<a:solidFill>\s*<a:srgbClr val="([0-9A-Fa-f]{6})"/i);
+  if (bgMatch?.[1]) {
+    return `#${bgMatch[1].toUpperCase()}`;
+  }
+
+  // No explicit slide background in OOXML means white in practice for this client template path.
+  return "#FFFFFF";
 }
 
 function inferSlideMetrics(raw: string) {

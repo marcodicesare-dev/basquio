@@ -149,6 +149,12 @@ When production incidents happen:
 3. compare runtime queries against migrations
 4. only then trust or revise the progress UI explanation
 
+Template fidelity lesson:
+
+- imported client PPTX profiles must not inherit Basquio defaults; if `coverBg`, logo paths, or callout colors look like house-style values, the extractor is contaminated
+- the current manifest is not rich enough to rebuild final slides from metadata alone; manifest-only recomposition can preserve geometry while destroying actual slide content
+- until full rendered slide content is carried explicitly, prefer clean prompt palette injection over post-hoc PPTX reconstruction
+
 When architecture changes:
 
 1. update decision log

@@ -11,7 +11,7 @@ Basquio keeps deterministic ingest, template interpretation, domain analytics, s
 - performs analysis and deck creation in one file-backed generation turn instead of a separate prompt-stuffed understand step
 - reuses the same persistent container for one repair turn when QA requests revision
 - generates the final PPTX artifact directly for full-deck tiers
-- when a strong client `.pptx` template is present, treats Claude's PPTX as an interim content draft and then deterministically recomposes the final PPTX against imported template slides via `pptx-automizer`
+- when a strong client `.pptx` template is present, Basquio extracts palette/layout constraints from the imported template and currently keeps Claude as the final PPTX author; deterministic recomposition remains disabled on the main lane until slide manifests can carry full rendered content
 - always generates `narrative_report.md` and `data_tables.xlsx` from the same analytical pass
 - persists only durable run state, working papers, artifact manifests, and QA outcomes back into Supabase
 

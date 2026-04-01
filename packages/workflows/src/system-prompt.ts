@@ -629,7 +629,7 @@ function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
   const highlight = normalizeHex(palette?.highlight, chartPalette[1] ?? "#E8A84C");
   const positive = normalizeHex(palette?.positive, chartPalette[2] ?? "#4CC9A0");
   const negative = normalizeHex(palette?.negative, chartPalette[3] ?? "#E8636F");
-  const background = normalizeHex(palette?.coverBg || palette?.background, "#0A090D");
+  const background = normalizeHex(palette?.coverBg || palette?.background, "#FFFFFF");
   const text = normalizeHex(palette?.text, "#F2F0EB");
   const muted = normalizeHex(palette?.muted, "#A09FA6");
   const surface = normalizeHex(palette?.surface, "#16151E");
