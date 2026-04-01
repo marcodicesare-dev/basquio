@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
@@ -118,23 +119,25 @@ export default function PricingPage() {
       {/* Plans with monthly/annual toggle */}
       <PricingPlans />
 
-      {/* Credit Packs */}
-      <section id="packs" className="pricing-packs-section">
-        <div className="stack" style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          <p className="section-label">Credit packs</p>
-          <p className="muted">Top up anytime. Purchased credits expire after 12 months.</p>
-        </div>
-        <div className="pricing-packs-grid">
-          {creditPacks.map((pack) => (
-            <article key={pack.id} className="panel pricing-pack-card">
-              <p className="pricing-pack-credits">{pack.credits} credits</p>
-              <p className="pricing-pack-price">{pack.price}</p>
-              <p className="muted">{pack.perCredit}/credit</p>
-              <BuyCreditsButton packId={pack.id} label={`Buy ${pack.credits}`} />
-            </article>
-          ))}
-        </div>
-      </section>
+      {/* Credit Packs — BuyCreditsButton uses useSearchParams, needs Suspense */}
+      <Suspense>
+        <section id="packs" className="pricing-packs-section">
+          <div className="stack" style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+            <p className="section-label">Credit packs</p>
+            <p className="muted">Top up anytime. Purchased credits expire after 12 months.</p>
+          </div>
+          <div className="pricing-packs-grid">
+            {creditPacks.map((pack) => (
+              <article key={pack.id} className="panel pricing-pack-card">
+                <p className="pricing-pack-credits">{pack.credits} credits</p>
+                <p className="pricing-pack-price">{pack.price}</p>
+                <p className="muted">{pack.perCredit}/credit</p>
+                <BuyCreditsButton packId={pack.id} label={`Buy ${pack.credits}`} />
+              </article>
+            ))}
+          </div>
+        </section>
+      </Suspense>
 
       {/* FAQ */}
       <section className="cards">

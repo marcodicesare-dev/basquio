@@ -194,11 +194,12 @@ async function handleCreditPackPurchase(
 async function handleSubscriptionChange(
   config: { supabaseUrl: string; serviceKey: string },
   subscription: SubscriptionData,
-  eventId: string,
+  _eventId: string,
 ) {
   const userId = subscription.metadata?.user_id;
   const plan = subscription.metadata?.plan;
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+  void _eventId; // reserved for future use
 
   if (!userId || !plan) {
     console.error("[stripe-webhook] subscription missing metadata", { userId, plan, subId: subscription.id });
@@ -249,7 +250,6 @@ async function handleSubscriptionCanceled(
   subscription: SubscriptionData,
 ) {
   const userId = subscription.metadata?.user_id;
-  const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
   if (!userId) {
     console.error("[stripe-webhook] canceled subscription missing user_id", { subId: subscription.id });
@@ -298,6 +298,7 @@ async function handleInvoicePaid(
     lines?: {
       data: Array<{
         period?: { start: number; end: number };
+        price?: { recurring?: { interval: string } | null } | null;
         proration?: boolean;
       }>;
     };
@@ -318,6 +319,8 @@ async function handleInvoicePaid(
   // Get plan from subscription metadata (try multiple locations)
   let plan = invoice.subscription_details?.metadata?.plan ?? invoice.metadata?.plan;
   let userId = invoice.subscription_details?.metadata?.user_id ?? invoice.metadata?.user_id;
+  let billingInterval: string | null = null;
+
   // Fallback: look up from our subscriptions table if metadata is missing
   if (!plan || !userId) {
     const subId = typeof invoice.subscription === "string" ? invoice.subscription : null;
@@ -325,7 +328,7 @@ async function handleInvoicePaid(
       try {
         const url = new URL("/rest/v1/subscriptions", config.supabaseUrl);
         url.searchParams.set("stripe_subscription_id", `eq.${subId}`);
-        url.searchParams.set("select", "plan,user_id");
+        url.searchParams.set("select", "plan,user_id,billing_interval");
         url.searchParams.set("limit", "1");
         const res = await fetch(url, {
           headers: { apikey: config.serviceKey, Authorization: `Bearer ${config.serviceKey}`, Accept: "application/json" },
@@ -336,6 +339,7 @@ async function handleInvoicePaid(
           if (rows[0]) {
             plan = plan ?? rows[0].plan;
             userId = userId ?? rows[0].user_id;
+            billingInterval = rows[0].billing_interval;
           }
         }
       } catch {
@@ -362,12 +366,15 @@ async function handleInvoicePaid(
     return;
   }
 
-  // Grant one month's worth of credits per invoice.
-  // For monthly subs: Stripe sends invoice.paid every month → 1 grant/month.
-  // For annual subs: Stripe sends invoice.paid once/year. We grant the monthly
-  // allotment here; a scheduled job (Phase 2) will grant the remaining 11 months.
-  // This avoids the lump-sum problem where annual users get 12x credits day one.
-  const creditAmount = planConfig.credits;
+  // Determine if annual from invoice line item or DB fallback
+  const isAnnual =
+    lineItem?.price?.recurring?.interval === "year" ||
+    billingInterval === "annual";
+
+  // Monthly: Stripe sends invoice.paid every month → grant 1 month of credits.
+  // Annual: Stripe sends invoice.paid once/year → grant 12 months of credits upfront.
+  // Customer pays for a year, they must see a full year of credits immediately.
+  const creditAmount = isAnnual ? planConfig.credits * 12 : planConfig.credits;
 
   await grantSubscriptionCredits({
     ...config,
@@ -377,7 +384,7 @@ async function handleInvoicePaid(
     stripeEventId: eventId,
   });
 
-  console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${plan}, event=${eventId})`);
+  console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${plan}, interval=${isAnnual ? "annual" : "monthly"}, event=${eventId})`);
 }
 
 async function handleInvoicePaymentFailed(

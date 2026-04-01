@@ -36,7 +36,14 @@ export function BuyCreditsButton({ packId, label, highlighted }: BuyCreditsButto
     const buyParam = searchParams.get("buy");
     if (buyParam === packId && !autoResumed.current) {
       autoResumed.current = true;
-      handleClick();
+      void startCheckout(packId).then((result) => {
+        if (result.status === 401) {
+          return;
+        }
+        if (result.url) {
+          window.location.href = result.url;
+        }
+      });
     }
   }, [searchParams, packId]);
 
