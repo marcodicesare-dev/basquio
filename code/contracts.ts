@@ -704,9 +704,27 @@ export const templateBrandTokensSchema = z.object({
     .object({
       wordmarkPath: z.string().optional(),
       iconPath: z.string().optional(),
+      imageBase64: z.string().optional(),
+      position: z
+        .object({
+          x: z.number().nonnegative(),
+          y: z.number().nonnegative(),
+          w: z.number().positive(),
+          h: z.number().positive(),
+        })
+        .optional(),
       treatment: z.string().default("default"),
     })
     .default({}),
+  decorativeShapes: z.array(
+    z.object({
+      x: z.number().nonnegative(),
+      y: z.number().nonnegative(),
+      w: z.number().positive(),
+      h: z.number().positive(),
+      fill: z.string(),
+    }),
+  ).default([]),
 });
 
 export const templateProfileSchema = z.object({

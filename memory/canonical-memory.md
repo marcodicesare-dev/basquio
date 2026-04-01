@@ -152,6 +152,7 @@ When production incidents happen:
 Template fidelity lesson:
 
 - imported client PPTX profiles must not inherit Basquio defaults; if `coverBg`, logo paths, or callout colors look like house-style values, the extractor is contaminated
+- imported client PPTX profiles may carry extracted `brandTokens.logo.imageBase64`, `brandTokens.logo.position`, and `brandTokens.decorativeShapes`; those fields are part of the live template-fidelity contract and must not be stripped from the schema
 - the current manifest is not rich enough to rebuild final slides from metadata alone; manifest-only recomposition can preserve geometry while destroying actual slide content
 - until full rendered slide content is carried explicitly, prefer clean prompt palette injection over post-hoc PPTX reconstruction
 

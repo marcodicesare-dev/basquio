@@ -29,6 +29,7 @@ type ExtractedBrandTokens = {
   typography?: Partial<NonNullable<TemplateProfile["brandTokens"]>["typography"]>;
   spacing?: Partial<NonNullable<TemplateProfile["brandTokens"]>["spacing"]>;
   logo?: Partial<NonNullable<TemplateProfile["brandTokens"]>["logo"]>;
+  decorativeShapes?: NonNullable<TemplateProfile["brandTokens"]>["decorativeShapes"];
   chartPalette?: string[];
 };
 
@@ -233,6 +234,8 @@ async function parsePptxTemplate(input: {
   const slideMetrics = inferSlideMetrics(presentationXml);
   const slideSize = slideMetrics.slideSize ?? input.base.slideSize;
   const coverBg = await extractCoverBackground(zip);
+  const coverLogo = await extractCoverLogo(zip, slideMetrics.widthInches ?? input.base.slideWidthInches);
+  const decorativeShapes = await extractDecorativeShapes(zip);
   const theme = extractTheme(themeXml, coverBg);
   const layouts = await Promise.all(
     layoutEntries.map(async (entry) =>
@@ -266,8 +269,10 @@ async function parsePptxTemplate(input: {
       typography: theme.typography,
       chartPalette: theme.chartPalette,
       logo: {
+        ...coverLogo,
         treatment: "template-import",
       },
+      decorativeShapes,
     },
     warnings,
     input.fileName,
@@ -377,6 +382,8 @@ function applyBrandTokens(
         ...(extracted.logo ?? {}),
       };
 
+  const decorativeShapes = extracted.decorativeShapes ?? base.brandTokens?.decorativeShapes ?? [];
+
   return {
     ...base,
     id,
@@ -402,6 +409,7 @@ function applyBrandTokens(
       typography,
       spacing,
       logo,
+      decorativeShapes,
       ...(extracted.chartPalette ? { chartPalette: extracted.chartPalette } : {}),
     },
     warnings,
@@ -480,6 +488,99 @@ async function extractCoverBackground(zip: JSZip) {
 
   // No explicit slide background in OOXML means white in practice for this client template path.
   return "#FFFFFF";
+}
+
+async function extractCoverLogo(zip: JSZip, slideWidthInches: number) {
+  const slide1Xml = await readZipText(zip, "ppt/slides/slide1.xml");
+  const slide1Rels = await readZipText(zip, "ppt/slides/_rels/slide1.xml.rels");
+  if (!slide1Xml || !slide1Rels) {
+    return {};
+  }
+
+  const relationshipTargets = readRelationshipTargets(slide1Rels, "ppt/slides/_rels/slide1.xml.rels");
+  const pictureBlocks = slide1Xml.match(/<p:pic\b[\s\S]*?<\/p:pic>/gim) ?? [];
+
+  for (const block of pictureBlocks) {
+    const relId = matchFirst(block, /<a:blip\b[^>]*r:embed="([^"]+)"/i);
+    const targetPath = relId ? relationshipTargets.get(relId) : undefined;
+    if (!targetPath) {
+      continue;
+    }
+
+    const mediaFile = zip.file(targetPath);
+    if (!mediaFile) {
+      continue;
+    }
+
+    const offMatch = block.match(/<a:off x="(\d+)" y="(\d+)"/i);
+    const extMatch = block.match(/<a:ext cx="(\d+)" cy="(\d+)"/i);
+    if (!offMatch || !extMatch) {
+      continue;
+    }
+
+    const x = emuToInches(Number.parseInt(offMatch[1], 10));
+    const y = emuToInches(Number.parseInt(offMatch[2], 10));
+    const w = emuToInches(Number.parseInt(extMatch[1], 10));
+    const h = emuToInches(Number.parseInt(extMatch[2], 10));
+
+    if (!(y < 3.75 && w > 0.5 && w < 5 && h > 0.15 && h < 2 && w / Math.max(h, 0.1) > 1.5)) {
+      continue;
+    }
+
+    const nearLeft = x < 4;
+    const nearRight = x + w > slideWidthInches - 4;
+    if (!nearLeft && !nearRight) {
+      continue;
+    }
+
+    const data = await mediaFile.async("nodebuffer");
+    if (data.length > 100_000) {
+      continue;
+    }
+
+    const extension = path.extname(targetPath).toLowerCase();
+    const mimeType = extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : "image/png";
+
+    return {
+      imageBase64: `data:${mimeType};base64,${data.toString("base64")}`,
+      position: { x, y, w, h },
+    };
+  }
+
+  return {};
+}
+
+async function extractDecorativeShapes(zip: JSZip) {
+  const slide1Xml = await readZipText(zip, "ppt/slides/slide1.xml");
+  if (!slide1Xml) {
+    return [];
+  }
+
+  const decorativeShapes: NonNullable<TemplateProfile["brandTokens"]>["decorativeShapes"] = [];
+  const shapeBlocks = slide1Xml.match(/<p:sp\b[\s\S]*?<\/p:sp>/gim) ?? [];
+
+  for (const block of shapeBlocks) {
+    const off = block.match(/<a:off x="(\d+)" y="(\d+)"/i);
+    const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"/i);
+    const fill = block.match(/<a:solidFill>\s*<a:srgbClr val="([0-9A-Fa-f]{6})"/i);
+    if (!off || !ext || !fill) {
+      continue;
+    }
+
+    const x = emuToInches(Number.parseInt(off[1], 10));
+    const y = emuToInches(Number.parseInt(off[2], 10));
+    const w = emuToInches(Number.parseInt(ext[1], 10));
+    const h = emuToInches(Number.parseInt(ext[2], 10));
+    const color = `#${fill[1].toUpperCase()}`;
+    const isAccentBar = (h > 3 && w < 2) || (w > 8 && h < 1);
+    if (!isAccentBar) {
+      continue;
+    }
+
+    decorativeShapes.push({ x, y, w, h, fill: color });
+  }
+
+  return decorativeShapes.slice(0, 3);
 }
 
 function inferSlideMetrics(raw: string) {

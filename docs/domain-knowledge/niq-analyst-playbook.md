@@ -258,6 +258,22 @@ Lead with findings in the "significant" column. Include "material" findings as s
 4. Top 5 brands by Value Share -> competitive map
 5. Charts: horizontal_bar (segment sizes), grouped_bar (CY vs PY by segment)
 
+### Competitor analysis must be brand-level, not just supplier-level
+
+When analyzing competitors, ALWAYS break down the top 2-3 brands within each major competitor supplier. Supplier-level aggregates hide critical brand dynamics.
+
+Required for every competitor deep-dive:
+1. Top 3 brands by value within the competitor supplier
+2. Growth rate and share change for each brand
+3. Which brand is the growth engine vs which is declining
+4. Channel-specific brand dynamics: where each brand is strong or weak
+
+Example:
+- "Mars" is not actionable.
+- "Sheba (+9.3%, gaining in Pet Specialist) while Whiskas is flat (+0.2%, losing in Super)" is actionable.
+
+The data always has `MARCA` inside `FORNITORE`. Use it.
+
 ### "How is [Brand] performing?"
 1. Brand Value, Share, Growth
 2. Share by COMPARTO and FAMIGLIA -> portfolio mix

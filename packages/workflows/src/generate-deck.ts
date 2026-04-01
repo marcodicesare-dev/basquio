@@ -2869,7 +2869,14 @@ function buildAuthorMessage(
             ? [
                 "- Two-phase authoring is mandatory for full-deck runs.",
                 "- Phase 1: finish `narrative_report.md` and `data_tables.xlsx` first. Do not start chart rendering, PPTX generation, or PDF generation until the markdown narrative is substantively complete.",
-                "- Narrative gate: before starting `analysis_result.json`, `deck.pptx`, or `deck.pdf`, verify in code that `narrative_report.md` has more than 400 lines. If it does not, expand the executive summary, findings, competitor section, recommendation details, and appendix tables until it does.",
+                "- VERIFICATION: after writing `narrative_report.md`, count its lines in Python before starting `analysis_result.json`, `deck.pptx`, or `deck.pdf`.",
+                "```python",
+                "with open('narrative_report.md', 'r', encoding='utf-8') as f:",
+                "    line_count = sum(1 for _ in f)",
+                "print(f'narrative_report.md: {line_count} lines')",
+                "assert line_count >= 400, f'Narrative too short ({line_count} lines). Extend appendix, competitor analysis, and data tables before Phase 2.'",
+                "```",
+                "- If the assertion fails, expand the executive summary, findings, competitor section, recommendation details, and appendix tables until it passes.",
                 "- Only after the markdown narrative passes the >400-line gate should you start slide, chart, PPTX, and PDF generation.",
               ]
             : []),
@@ -2892,6 +2899,7 @@ function buildAuthorMessage(
           isReportOnly
             ? "  7. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline."
             : "  7. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+          "  7a. For every recommendation include volume impact, EUR value impact, quarterly milestones, required investment/resources, and expected ROI.",
           "  8. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, top items, distribution by channel, or the closest available evidence).",
           "  9. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
           "- Include markdown tables wherever the slide has a chart. The table gives the reader the exact numbers behind the visual.",

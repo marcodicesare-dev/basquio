@@ -112,7 +112,7 @@ slide.addText("Analisi per Gruppo VeGe | NielsenIQ RMS | L52W a S22/02/26", {
   fontSize: 14, fontFace: "Arial", color: "A09FA6"
 });
 
-slide.addText("Basquio | Confidential", {
+slide.addText("Confidential", {
   x: 1.1, y: 6.9, w: 5.0, h: 0.3,
   fontSize: 8, fontFace: "Arial", color: "6B6A72"
 });
@@ -414,6 +414,12 @@ export async function buildBasquioSystemPrompt(input: {
   const hasImportedPptxTemplate = input.templateProfile.sourceType === "pptx";
   const promptPalette = resolvePromptPalette(input.templateProfile);
   const deckExamples = buildDeckExamples(promptPalette);
+  const templateLogoDirective = hasImportedPptxTemplate
+    ? buildTemplateLogoDirective(input.templateProfile)
+    : [];
+  const decorativeShapeDirective = hasImportedPptxTemplate
+    ? buildDecorativeShapeDirectives(input.templateProfile)
+    : [];
   const templatePaletteDirective = hasImportedPptxTemplate
     ? [
         `- CLIENT TEMPLATE COLOR PALETTE: ${promptPalette.chartSequence.join(", ")}.`,
@@ -422,6 +428,9 @@ export async function buildBasquioSystemPrompt(input: {
         "- Do NOT fall back to Basquio default colors (#1A6AFF, #0A090D, #E8A84C) when a client template provides its own palette.",
         `- Template-aware matplotlib color sequence: ${JSON.stringify(promptPalette.chartSequence)}.`,
         "- A rendered deck that visibly uses Basquio house styling instead of the uploaded template is a failure of template fidelity.",
+        "- NEVER write 'Basquio' in any slide footer, header, watermark, or confidentiality notice when a client template is present.",
+        "- Footer text must use the client name from the brief if available or just 'Confidential'. Example: 'NielsenIQ | Confidential' or 'Confidential'.",
+        "- The closing slide must NOT contain Basquio branding. Use the client name and the analysis title instead.",
       ]
     : [];
 
@@ -449,6 +458,9 @@ export async function buildBasquioSystemPrompt(input: {
     "- Every slide title must state an insight, not a topic.",
     "- Every slide title should include at least one specific number from the data and state a finding, not a topic.",
     "- Quantify the financial size of the prize whenever value or volume data makes it possible. Recommendation slides should estimate incremental EUR impact, not just name the lever.",
+    "- Every recommendation must include: the action, volume impact, EUR value impact at current prices, quarterly milestones, required investment/resources, and expected ROI.",
+    "- The recommendation slide and the narrative report must show a sequenced roadmap: Q1 actions, Q2 actions, Q3 actions, and Q4 review.",
+    "- When the brief asks for a growth target such as +10%, include a volume bridge or waterfall that sums to the target and ties each recommendation to a quantified contribution.",
     "- Distinguish measured facts from interpretations. Hedge inferred cultural or demographic explanations instead of stating them as proven facts.",
     "- Cover-slide dates and source lines must match the evidence period exactly. Never use today's date, a placeholder period, or a made-up geography.",
     "- Every slide must contain data or analysis. Do not spend slide budget on section divider slides that only show a number or title; use the upper-left category label as the section marker instead.",
@@ -472,6 +484,8 @@ export async function buildBasquioSystemPrompt(input: {
           "- Default to a premium dark editorial deck style when the template does not strongly override it.",
         ]),
     ...templatePaletteDirective,
+    ...templateLogoDirective,
+    ...decorativeShapeDirective,
     "- Use cross-viewer-safe typography when the template does not force another stack.",
     "- If no strong template is provided, reserve serif display only for short page headlines or cover titles. Use Arial for dense slide text, card titles, KPI numerals, recommendation labels, and all body copy.",
     "- Use restrained sans body copy and monospace micro-labels for metadata and source lines.",
@@ -667,6 +681,27 @@ function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
     negativeNoHash: stripHexPrefix(negative),
     chartSequence: finalChartSequence,
   };
+}
+
+function buildTemplateLogoDirective(templateProfile: TemplateProfile) {
+  const logo = templateProfile.brandTokens?.logo;
+  if (!logo?.imageBase64) {
+    return [];
+  }
+
+  const position = logo.position ?? { x: 0.4, y: 0.3, w: 2.0, h: 0.6 };
+  return [
+    "- CLIENT LOGO: embed the client logo on slide 1 and on the closing/next-steps slide using addImage().",
+    `- Safe logo placement example: slide.addImage({ data: '${logo.imageBase64}', x: ${position.x}, y: ${position.y}, w: ${position.w}, h: ${position.h} });`,
+    "- Keep the logo in its extracted position unless the template clearly requires a small local adjustment.",
+  ];
+}
+
+function buildDecorativeShapeDirectives(templateProfile: TemplateProfile) {
+  const shapes = templateProfile.brandTokens?.decorativeShapes ?? [];
+  return shapes.slice(0, 3).map((shape, index) =>
+    `- Template accent element ${index + 1}: add a rect on every content slide at x ${shape.x.toFixed(2)}, y ${shape.y.toFixed(2)}, w ${shape.w.toFixed(2)}, h ${shape.h.toFixed(2)} with fill ${shape.fill}.`,
+  );
 }
 
 function buildDeckExamples(palette: PromptPalette) {
