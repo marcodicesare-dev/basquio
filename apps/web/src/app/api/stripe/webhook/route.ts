@@ -308,11 +308,22 @@ async function handleInvoicePaid(
   // Only handle subscription invoices (not one-time payments)
   if (!invoice.subscription) return;
 
-  const lineItem = invoice.lines?.data?.[0];
+  const lines = invoice.lines?.data ?? [];
 
-  // Skip proration invoices (plan upgrades/downgrades) — they don't represent a new billing period
-  if (lineItem?.proration) {
-    console.log(`[stripe-webhook] skipping proration invoice ${invoice.id}`);
+  // Find the subscription renewal line item — it has a recurring price and is not a proration.
+  // This is more robust than using data[0], which can be a proration or add-on line.
+  const lineItem = lines.find(
+    (line) => line.price?.recurring && !line.proration,
+  ) ?? lines[0]; // fallback to first line if no recurring non-proration found
+
+  if (!lineItem) {
+    console.log(`[stripe-webhook] invoice ${invoice.id} has no line items, skipping`);
+    return;
+  }
+
+  // Skip if the only lines are prorations (plan switch invoices)
+  if (lines.every((line) => line.proration)) {
+    console.log(`[stripe-webhook] skipping all-proration invoice ${invoice.id}`);
     return;
   }
 
