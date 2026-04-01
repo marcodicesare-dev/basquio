@@ -5405,3 +5405,373 @@ textarea {
   color: var(--text-muted);
   border-top: 1px solid var(--border);
 }
+
+/* ════════════════════════════════════════════════════════
+   VISUAL OVERHAUL — Scroll animations, card upgrades,
+   micro-interactions, section polish
+   ════════════════════════════════════════════════════════ */
+
+/* ── Scroll-triggered entrance animations ── */
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.landing-shell > section,
+.page-shell.public-page > section {
+  animation: fadeInUp 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.landing-shell > section:nth-child(2) { animation-delay: 80ms; }
+.landing-shell > section:nth-child(3) { animation-delay: 160ms; }
+.landing-shell > section:nth-child(4) { animation-delay: 240ms; }
+.landing-shell > section:nth-child(5) { animation-delay: 320ms; }
+.landing-shell > section:nth-child(6) { animation-delay: 400ms; }
+
+/* ── Enhanced card hover states ── */
+
+.home-flow-card,
+.output-bullet,
+.mini-tier-card,
+.pricing-card,
+.compare-card,
+.pipeline-stage {
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 280ms ease,
+              border-color 280ms ease;
+}
+
+.home-flow-card:hover,
+.output-bullet:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(11, 12, 12, 0.08);
+  border-color: rgba(26, 106, 255, 0.18);
+}
+
+.mini-tier-card:hover,
+.pricing-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 40px rgba(11, 12, 12, 0.1);
+}
+
+.pricing-card-highlighted,
+.mini-tier-card.pricing-card-highlighted {
+  position: relative;
+  border-color: var(--blue);
+  box-shadow: 0 8px 32px rgba(26, 106, 255, 0.12);
+}
+
+.pricing-card-highlighted::before {
+  content: "Most popular";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* ── Workflow step numbers — visual upgrade ── */
+
+.home-flow-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), #0052d9);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.88rem;
+  letter-spacing: -0.02em;
+  box-shadow: 0 4px 12px rgba(26, 106, 255, 0.24);
+}
+
+/* ── Hero artifact frame upgrade ── */
+
+.hero-artifact-frame {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(11, 12, 12, 0.15), 0 4px 16px rgba(11, 12, 12, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 400ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 400ms ease;
+}
+
+.hero-artifact-frame:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 28px 70px rgba(11, 12, 12, 0.18), 0 8px 24px rgba(11, 12, 12, 0.1);
+}
+
+.hero-artifact-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ── Section label upgrades ── */
+
+.section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.section-label::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  background: var(--blue);
+  border-radius: 1px;
+}
+
+.section-label.light {
+  color: var(--text-inverse-soft);
+}
+
+.section-label.light::before {
+  background: var(--amber);
+}
+
+/* ── Trust strip upgrade ── */
+
+.trust-stat {
+  position: relative;
+  padding: 20px 24px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.trust-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-panel);
+}
+
+.trust-stat strong {
+  display: block;
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
+  color: var(--blue);
+  margin-bottom: 4px;
+}
+
+/* ── Output proof section upgrade ── */
+
+.home-output-visual {
+  position: relative;
+}
+
+.home-output-visual img {
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 48px rgba(11, 12, 12, 0.12), 0 4px 16px rgba(11, 12, 12, 0.06);
+  border: 1px solid var(--border);
+  transition: transform 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.home-output-visual:hover img {
+  transform: scale(1.015);
+}
+
+/* ── Nav link active state ── */
+
+.public-nav-link {
+  position: relative;
+}
+
+.public-nav-link::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--blue);
+  border-radius: 1px;
+  transition: width 200ms ease, left 200ms ease;
+}
+
+.public-nav-link:hover::after {
+  width: 100%;
+  left: 0;
+}
+
+/* ── Footer social links ── */
+
+.footer-social-links {
+  display: flex;
+  gap: 12px;
+}
+
+.footer-social-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  transition: all 200ms ease;
+}
+
+.footer-social-link:hover {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #ffffff;
+  transform: translateY(-2px);
+}
+
+/* ── Comparison table row hover ── */
+
+.compare-row:hover {
+  background: rgba(26, 106, 255, 0.03);
+}
+
+/* ── Pipeline stage cards ── */
+
+.pipeline-stage {
+  border-left: 3px solid var(--blue);
+}
+
+.pipeline-stage:hover {
+  transform: translateX(4px);
+  border-left-color: var(--amber);
+}
+
+/* ── About page team section ── */
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+}
+
+.team-card {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: center;
+  transition: transform 280ms ease, box-shadow 280ms ease;
+}
+
+.team-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(11, 12, 12, 0.08);
+}
+
+.team-avatar {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--blue), #0052d9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1.2rem;
+}
+
+.team-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.team-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ── Experience badges ── */
+
+.experience-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.experience-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.experience-badge-number {
+  color: var(--blue);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+/* ── FAQ accordion upgrade ── */
+
+.faq-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color 200ms ease;
+}
+
+.faq-item:hover {
+  border-color: rgba(26, 106, 255, 0.2);
+}
+
+/* ── Reduce motion for accessibility ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-shell > section,
+  .page-shell.public-page > section {
+    animation: none;
+  }
+
+  .home-flow-card:hover,
+  .output-bullet:hover,
+  .mini-tier-card:hover,
+  .pricing-card:hover,
+  .hero-artifact-frame:hover,
+  .home-output-visual:hover img,
+  .trust-stat:hover,
+  .team-card:hover,
+  .footer-social-link:hover {
+    transform: none;
+  }
+}
