@@ -61,5 +61,32 @@
     "height": 1024,
     "alt": "Editorial illustration comparing precision chart craftsmanship with full-pipeline deck automation, showing a detailed hand-crafted chart tool alongside an automated production line",
     "caption": "think-cell perfects one step of the workflow. The question is whether chart formatting is the bottleneck or total production time is."
+  },
+  {
+    "id": "page-how-it-works",
+    "slug": "page-how-it-works",
+    "imagePath": "/illustrations/page-how-it-works.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Atmospheric illustration of a luminous data processing pipeline stretching across a landscape, with raw data entering on one side and finished presentations emerging on the other",
+    "caption": "From evidence package to finished report in one automated pipeline."
+  },
+  {
+    "id": "page-about",
+    "slug": "page-about",
+    "imagePath": "/illustrations/page-about.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Atmospheric illustration of a round table with six different chairs suggesting different disciplines, scattered data and reports on the surface, warm light through arched windows",
+    "caption": "Six co-founders, two sides of the table, one shared problem."
+  },
+  {
+    "id": "page-compare",
+    "slug": "page-compare",
+    "imagePath": "/illustrations/page-compare.png",
+    "width": 1536,
+    "height": 1024,
+    "alt": "Atmospheric illustration of two plateaus separated by a deep canyon — analytics dashboards on one side, presentation designs on the other, with no bridge between them",
+    "caption": "The gap between analytics tools and design tools is where Basquio lives."
   }
 ]
