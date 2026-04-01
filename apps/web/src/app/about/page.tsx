@@ -14,16 +14,12 @@ export const metadata: Metadata = {
 
 const teamMembers = [
   { initials: "MD", name: "Marco", role: "CTO & Engineering", background: "Full-stack engineer. Built the pipeline that turns data files into finished decks." },
-  { initials: "AD", name: "Alessandro", role: "Data & Analytics", background: "Market research analyst. Spent years building category review decks from syndicated data." },
-  { initials: "RB", name: "Rossella", role: "Analytics & Insights", background: "Data analyst. Knows exactly what a leadership-ready category story looks like." },
-  { initials: "FM", name: "Francesco", role: "Analytics & Strategy", background: "Research analyst. Built the evidence frameworks that underpin every deck." },
   { initials: "GC", name: "Giulia", role: "Brand Management", background: "Brand manager. The person who receives the deck and presents it in the room." },
   { initials: "VM", name: "Veronica", role: "Strategic Buying", background: "Category buyer. Knows what decisions the deck needs to support." },
 ] as const;
 
 const experienceStats = [
-  { number: "6", label: "co-founders" },
-  { number: "40+", label: "years combined in market research & CPG" },
+  { number: "20+", label: "years combined in market research & CPG" },
   { number: "500+", label: "category review decks built by hand" },
   { number: "1", label: "engineer who said 'never again'" },
 ] as const;
@@ -63,7 +59,7 @@ export default function AboutPage() {
         <div className="stack-xl">
           <div className="stack" style={{ textAlign: "center" }}>
             <p className="section-label" style={{ justifyContent: "center" }}>The team</p>
-            <h2>Market research analysts, brand managers, and one engineer.</h2>
+            <h2>An engineer, a brand manager, and a category buyer.</h2>
           </div>
 
           <div className="team-grid">
