@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { CreditPackShelf } from "@/components/credit-pack-shelf";
 import { getViewerState } from "@/lib/supabase/auth";
 import { getDetailedCreditBalance, ensureFreeTierCredit, getActiveSubscription } from "@/lib/credits";
 import { fetchRestRows } from "@/lib/supabase/admin";
@@ -151,10 +152,15 @@ export default async function BillingPage() {
           <Link className="button secondary" href="/pricing">
             {currentPlan === "free" ? "Upgrade plan" : "Change plan"}
           </Link>
-          <Link className="button secondary" href="/pricing#packs">
-            Buy credits
-          </Link>
         </div>
+      ) : null}
+
+      {!hasUnlimitedUsage ? (
+        <CreditPackShelf
+          tone="app"
+          title="Buy credits inside billing"
+          subtitle="The checkout starts from this account, so purchased credits are attached to the signed-in user automatically."
+        />
       ) : null}
 
       {/* Credit History */}

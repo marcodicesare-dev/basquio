@@ -13,6 +13,7 @@ const plans = [
     annualPrice: "$0",
     unit: "",
     description: "Try Basquio on real work. No credit card required.",
+    bestFor: "Best for validating the workflow on one real reporting cycle.",
     features: [
       "40 free credits (~3 Deck runs)",
       "Basquio branding on output",
@@ -28,6 +29,7 @@ const plans = [
     annualPrice: "$23",
     unit: "/mo",
     description: "For individuals who run 2\u20133 decks a month.",
+    bestFor: "Best for solo operators who need one stable monthly reporting lane.",
     features: [
       "No branding on output",
       "30 credits/month",
@@ -44,6 +46,7 @@ const plans = [
     annualPrice: "$63",
     unit: "/mo",
     description: "For power users running 5\u20138 decks a month.",
+    bestFor: "Best for consultants and recurring client delivery work.",
     features: [
       "No branding on output",
       "100 credits/month",
@@ -62,6 +65,7 @@ const plans = [
     annualPrice: "$119",
     unit: "/mo",
     description: "Shared workspace for teams that run the same reporting motion.",
+    bestFor: "Best for teams with shared templates, pooled usage, and finance ownership.",
     features: [
       "Shared workspace",
       "200 credits/month pool",
@@ -123,6 +127,7 @@ export function PricingPlans() {
                   <p className="pricing-annual-note">{billedNote}</p>
                 ) : null}
                 <p className="muted">{plan.description}</p>
+                <p className="pricing-plan-best-for">{plan.bestFor}</p>
               </div>
 
               <ul className="pricing-features">
@@ -131,16 +136,18 @@ export function PricingPlans() {
                 ))}
               </ul>
 
-              {"plan" in plan.cta ? (
-                <SubscribeButton plan={plan.cta.plan} label={plan.cta.label} highlighted={plan.highlight} interval={interval} />
-              ) : (
-                <Link
-                  className={plan.highlight ? "button" : "button secondary"}
-                  href={plan.cta.href}
-                >
-                  {plan.cta.label}
-                </Link>
-              )}
+              <div className="pricing-card-footer">
+                {"plan" in plan.cta ? (
+                  <SubscribeButton plan={plan.cta.plan} label={plan.cta.label} highlighted={plan.highlight} interval={interval} />
+                ) : (
+                  <Link
+                    className={plan.highlight ? "button" : "button secondary"}
+                    href={plan.cta.href}
+                  >
+                    {plan.cta.label}
+                  </Link>
+                )}
+              </div>
             </article>
           );
         })}

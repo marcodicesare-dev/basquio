@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { CreditPackShelf } from "@/components/credit-pack-shelf";
 import { getViewerState } from "@/lib/supabase/auth";
 import { listV2RunCards, type V2RunCard } from "@/lib/job-runs";
 import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
@@ -105,7 +106,7 @@ export default async function DashboardPage() {
           <p className="billing-stat-value">{hasUnlimitedUsage ? "Unlimited" : creditBalance}</p>
           {!hasUnlimitedUsage ? (
             <div className="dashboard-credit-actions">
-              <Link className="button small secondary" href="/pricing">Buy credits</Link>
+              <Link className="button small secondary" href="/billing">Buy credits</Link>
               <Link className="button small secondary" href="/pricing">Upgrade</Link>
             </div>
           ) : null}
@@ -119,6 +120,16 @@ export default async function DashboardPage() {
           <p className="billing-stat-value">{totalSlides}</p>
         </article>
       </div>
+
+      {!hasUnlimitedUsage ? (
+        <section className="stack-lg">
+          <CreditPackShelf
+            tone="app"
+            title="Top up this account"
+            subtitle="These purchases go straight onto the signed-in account. No detour back to the marketing pricing page."
+          />
+        </section>
+      ) : null}
 
       {/* Recipes */}
       {recipes.length > 0 ? (
