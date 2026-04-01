@@ -376,6 +376,30 @@ Every title states the finding AND its magnitude. The reader knows the insight b
 </examples>
 `.trim();
 
+type PromptPalette = {
+  background: string;
+  backgroundNoHash: string;
+  text: string;
+  textNoHash: string;
+  muted: string;
+  mutedNoHash: string;
+  surface: string;
+  surfaceNoHash: string;
+  border: string;
+  borderNoHash: string;
+  primary: string;
+  primaryNoHash: string;
+  secondary: string;
+  secondaryNoHash: string;
+  highlight: string;
+  highlightNoHash: string;
+  positive: string;
+  positiveNoHash: string;
+  negative: string;
+  negativeNoHash: string;
+  chartSequence: string[];
+};
+
 export async function buildBasquioSystemPrompt(input: {
   templateProfile: TemplateProfile;
   briefLanguageHint: string;
@@ -385,6 +409,18 @@ export async function buildBasquioSystemPrompt(input: {
   const deckGrammar = describeAllArchetypesForPrompt();
   const templateSummary = summarizeTemplateProfile(input.templateProfile);
   const hasImportedPptxTemplate = input.templateProfile.sourceType === "pptx";
+  const promptPalette = resolvePromptPalette(input.templateProfile);
+  const deckExamples = buildDeckExamples(promptPalette);
+  const templatePaletteDirective = hasImportedPptxTemplate
+    ? [
+        `- CLIENT TEMPLATE COLOR PALETTE: ${promptPalette.chartSequence.join(", ")}.`,
+        `- CLIENT TEMPLATE CORE COLORS: background ${promptPalette.background}, primary ${promptPalette.primary}, text ${promptPalette.text}, accent ${promptPalette.highlight}.`,
+        "- Use ONLY the client template palette for fills, borders, callouts, and chart emphasis when a client template is present.",
+        "- Do NOT fall back to Basquio default colors (#1A6AFF, #0A090D, #E8A84C) when a client template provides its own palette.",
+        `- Template-aware matplotlib color sequence: ${JSON.stringify(promptPalette.chartSequence)}.`,
+        "- A rendered deck that visibly uses Basquio house styling instead of the uploaded template is a failure of template fidelity.",
+      ]
+    : [];
 
   const staticBlock = [
     "You are Basquio, a hyperspecialised consulting-grade analyst and deck maker.",
@@ -432,6 +468,7 @@ export async function buildBasquioSystemPrompt(input: {
       : [
           "- Default to a premium dark editorial deck style when the template does not strongly override it.",
         ]),
+    ...templatePaletteDirective,
     "- Use cross-viewer-safe typography when the template does not force another stack.",
     "- If no strong template is provided, reserve serif display only for short page headlines or cover titles. Use Arial for dense slide text, card titles, KPI numerals, recommendation labels, and all body copy.",
     "- Use restrained sans body copy and monospace micro-labels for metadata and source lines.",
@@ -490,7 +527,7 @@ export async function buildBasquioSystemPrompt(input: {
     deckGrammar,
     "",
     "Reference examples (imitate the completeness, slot discipline, and density):",
-    DECK_EXAMPLES,
+    deckExamples,
     "",
     "Knowledge pack:",
     staticKnowledge,
@@ -569,4 +606,104 @@ function summarizeTemplateProfile(templateProfile: TemplateProfile) {
     null,
     2,
   );
+}
+
+function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
+  const palette = templateProfile.brandTokens?.palette;
+  const chartPalette = [
+    ...(templateProfile.brandTokens?.chartPalette ?? []),
+    ...templateProfile.colors,
+    palette?.accent ?? "",
+    palette?.highlight ?? "",
+    palette?.positive ?? "",
+    palette?.negative ?? "",
+  ]
+    .map((value) => normalizeHex(value))
+    .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
+
+  const primary = chartPalette[0] ?? normalizeHex(palette?.accent, "#1A6AFF");
+  const secondary = chartPalette[1] ?? normalizeHex(palette?.highlight, "#6B8EE8");
+  const highlight = normalizeHex(palette?.highlight, chartPalette[1] ?? "#E8A84C");
+  const positive = normalizeHex(palette?.positive, chartPalette[2] ?? "#4CC9A0");
+  const negative = normalizeHex(palette?.negative, chartPalette[3] ?? "#E8636F");
+  const background = normalizeHex(palette?.coverBg || palette?.background, "#0A090D");
+  const text = normalizeHex(palette?.text, "#F2F0EB");
+  const muted = normalizeHex(palette?.muted, "#A09FA6");
+  const surface = normalizeHex(palette?.surface, "#16151E");
+  const border = normalizeHex(palette?.border, "#272630");
+
+  const finalChartSequence = [
+    primary,
+    secondary,
+    highlight,
+    positive,
+    negative,
+    muted,
+  ].filter((value, index, all) => all.indexOf(value) === index);
+
+  return {
+    background,
+    backgroundNoHash: stripHexPrefix(background),
+    text,
+    textNoHash: stripHexPrefix(text),
+    muted,
+    mutedNoHash: stripHexPrefix(muted),
+    surface,
+    surfaceNoHash: stripHexPrefix(surface),
+    border,
+    borderNoHash: stripHexPrefix(border),
+    primary,
+    primaryNoHash: stripHexPrefix(primary),
+    secondary,
+    secondaryNoHash: stripHexPrefix(secondary),
+    highlight,
+    highlightNoHash: stripHexPrefix(highlight),
+    positive,
+    positiveNoHash: stripHexPrefix(positive),
+    negative,
+    negativeNoHash: stripHexPrefix(negative),
+    chartSequence: finalChartSequence,
+  };
+}
+
+function buildDeckExamples(palette: PromptPalette) {
+  const replacements: Array<[RegExp, string]> = [
+    [/#1A6AFF/g, palette.primary],
+    [/\b1A6AFF\b/g, palette.primaryNoHash],
+    [/#0A090D/g, palette.background],
+    [/\b0A090D\b/g, palette.backgroundNoHash],
+    [/\bF2F0EB\b/g, palette.textNoHash],
+    [/#F2F0EB/g, palette.text],
+    [/\bA09FA6\b/g, palette.mutedNoHash],
+    [/#A09FA6/g, palette.muted],
+    [/\bE8A84C\b/g, palette.highlightNoHash],
+    [/#E8A84C/g, palette.highlight],
+    [/\b4CC9A0\b/g, palette.positiveNoHash],
+    [/#4CC9A0/g, palette.positive],
+    [/\bE8636F\b/g, palette.negativeNoHash],
+    [/#E8636F/g, palette.negative],
+    [/\bE84C4C\b/g, palette.negativeNoHash],
+    [/\b16151E\b/g, palette.surfaceNoHash],
+    [/\b272630\b/g, palette.borderNoHash],
+    [/#2563EB/g, palette.chartSequence[0] ?? palette.primary],
+    [/#94A3B8/g, palette.chartSequence[1] ?? palette.muted],
+    [/#DC2626/g, palette.negative],
+    [/\b6B8EE8\b/g, palette.secondaryNoHash],
+    [/\b9B7AE0\b/g, palette.secondaryNoHash],
+  ];
+
+  return replacements.reduce((text, [pattern, value]) => text.replace(pattern, value), DECK_EXAMPLES);
+}
+
+function normalizeHex(value: string | undefined, fallback = "#1A6AFF") {
+  const candidate = (value ?? fallback).trim();
+  if (!candidate) {
+    return fallback;
+  }
+  const hex = candidate.startsWith("#") ? candidate : `#${candidate}`;
+  return `#${hex.slice(1).toUpperCase()}`;
+}
+
+function stripHexPrefix(value: string) {
+  return value.startsWith("#") ? value.slice(1) : value;
 }

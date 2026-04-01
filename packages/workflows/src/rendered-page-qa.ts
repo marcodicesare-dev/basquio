@@ -36,13 +36,18 @@ export async function runRenderedPageQa(input: {
   betas: readonly string[];
   model?: "claude-sonnet-4-6" | "claude-haiku-4-5";
   maxTokens?: number;
+  templateContext?: {
+    templateName?: string;
+    palette?: string[];
+    background?: string | null;
+  };
 }) {
   const pdfFile = await input.client.beta.files.upload({
     file: await toFile(input.pdf, "deck.pdf", { type: "application/pdf" }),
     betas: [...input.betas],
   });
 
-  const prompt = buildRenderedPageQaPrompt(input.manifest);
+  const prompt = buildRenderedPageQaPrompt(input.manifest, input.templateContext);
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
       role: "user",
@@ -149,7 +154,24 @@ export async function runRenderedPageQa(input: {
   };
 }
 
-function buildRenderedPageQaPrompt(manifest: JudgeManifest) {
+function buildRenderedPageQaPrompt(
+  manifest: JudgeManifest,
+  templateContext?: { templateName?: string; palette?: string[]; background?: string | null },
+) {
+  const templateLines = templateContext?.palette && templateContext.palette.length > 0
+    ? [
+        "",
+        "Client template fidelity target:",
+        JSON.stringify({
+          templateName: templateContext.templateName ?? null,
+          palette: templateContext.palette,
+          background: templateContext.background ?? null,
+          forbiddenFallbackDefaults: ["#1A6AFF", "#0A090D", "#E8A84C"],
+        }, null, 2),
+        "- If the rendered deck visibly falls back to Basquio default blue/navy/amber instead of the client palette above, flag `template_fidelity_gap`.",
+      ]
+    : [];
+
   return [
     "Review the uploaded PDF as a rendered deck artifact.",
     "Judge visual quality, layout integrity, consulting-grade polish, and whether the deck feels premium rather than generic from the rendered pages themselves.",
@@ -186,6 +208,7 @@ function buildRenderedPageQaPrompt(manifest: JudgeManifest) {
         slideArchetype: slide.slideArchetype ?? slide.layoutId,
       })),
     }, null, 2),
+    ...templateLines,
     "",
     "Return ONLY valid JSON with this exact shape:",
     JSON.stringify({

@@ -467,6 +467,7 @@ async function runRenderedPageQaSafely(input: {
   pdf: GeneratedFile;
   pptx: GeneratedFile;
   manifest: z.infer<typeof deckManifestSchema>;
+  templateProfile: TemplateProfile;
   betas: readonly string[];
   model: "claude-sonnet-4-6" | "claude-haiku-4-5";
   maxTokens?: number;
@@ -488,6 +489,7 @@ async function runRenderedPageQaSafely(input: {
         client: input.client,
         pdf: safePdf.buffer,
         manifest: input.manifest,
+        templateContext: buildTemplateQaContext(input.templateProfile),
         betas: input.betas,
         model: input.model,
         maxTokens: input.maxTokens,
@@ -999,6 +1001,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       pdf: pdfFile!,
       pptx: pptxFile!,
       manifest,
+      templateProfile,
       betas: [FILES_BETA],
       model: VISUAL_QA_MODEL,
       phaseTelemetry,
@@ -1161,6 +1164,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         pdf: finalPdf,
         pptx: finalPptx,
         manifest: finalManifest,
+        templateProfile,
         betas: [FILES_BETA],
         model: VISUAL_QA_MODEL,
         phaseTelemetry,
@@ -1305,6 +1309,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           },
           anthropicRequestIds,
           phaseTelemetry,
+          templateProfile,
         });
       }
       if (!analysis) {
@@ -2138,6 +2143,7 @@ async function strengthenFinalVisualQa(input: {
   pdf: Buffer;
   pptx: GeneratedFile;
   manifest: z.infer<typeof deckManifestSchema>;
+  templateProfile: TemplateProfile;
   currentReport: RenderedPageQaReport;
   runId: string;
   attempt: AttemptContext;
@@ -2177,6 +2183,7 @@ async function strengthenFinalVisualQa(input: {
       },
       pptx: input.pptx,
       manifest: input.manifest,
+      templateProfile: input.templateProfile,
       betas: [FILES_BETA],
       model: FINAL_VISUAL_QA_MODEL,
       maxTokens: 1_600,
@@ -2742,6 +2749,8 @@ function buildAuthorMessage(
                 "- This run is using Haiku in report-only mode. Do not assume pptx/pdf container skills are preloaded.",
                 "- Do NOT generate deck.pptx or deck.pdf in this run. The required deliverables are narrative_report.md, data_tables.xlsx, and deck_manifest.json with slideCount set to 0.",
                 "- Use Python/pandas as the primary execution path. `data_tables.xlsx` must contain the exact DataFrames behind every quantitative finding.",
+                "- Report-only depth budget is mandatory: Executive Summary minimum 500 words; each Finding section minimum 400 words with at least one markdown table; Competitor Deep-Dive minimum 600 words; Recommendations with sensitivity minimum 800 words; total report target 800-1200 lines and 10000-16000 words.",
+                "- The Data Appendix must include at least 5 markdown tables mirroring the key XLSX sheets so the report is self-sufficient without opening Excel.",
                 "- Correct NielsenIQ subtotal filtering example:",
                 "```python",
                 "supplier_df = df[(df['FORNITORE'].notna()) & (df['MARCA'].isna()) & (df['ITEM'].isna())]",
@@ -2804,10 +2813,10 @@ function buildAuthorMessage(
           ]),
           analysis
             ? (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
               : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck.pptx`, (4) `deck.pdf`, (5) `deck_manifest.json`.")
             : (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
               : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (4) `deck.pptx`, (5) `deck.pdf`, (6) `deck_manifest.json`."),
           ...(analysis
             ? []
@@ -2816,20 +2825,32 @@ function buildAuthorMessage(
                 "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
                 "- Use the same language as the brief. Do not emit mixed-language output.",
               ]),
-          "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. Target 500-1000 lines and roughly 8000-15000 words.",
+          isReportOnly
+            ? "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. For report-only runs target 800-1200 lines and roughly 10000-16000 words."
+            : "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. Target 500-1000 lines and roughly 8000-15000 words.",
           "- Required sections for `narrative_report.md`:",
           "  1. Title page with client name from the brief (NEVER `Non specificato`), objective, date, and data source.",
-          "  2. Executive summary (300-500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact.",
+          isReportOnly
+            ? "  2. Executive summary (minimum 500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact."
+            : "  2. Executive summary (300-500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact.",
           "  3. Methodology: data used, KPIs computed, time periods, comparison basis, data quality caveats, explicit assumptions, and sensitivity ranges.",
-          "  4. Detailed findings (one section per analytical slide, 300-500 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available.",
+          isReportOnly
+            ? "  4. Detailed findings (one section per analytical slide, minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available."
+            : "  4. Detailed findings (one section per analytical slide, 300-500 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available.",
           "  5. For every slide with a chart, include a markdown table with the exact numbers the chart visualizes so the report is usable without the PPTX.",
-          "  6. Competitor deep-dive: dedicated section analyzing the main competitors' strategies, relative strengths, and implications for the client.",
-          "  7. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+          isReportOnly
+            ? "  6. Competitor deep-dive (minimum 600 words): dedicated section analyzing each major competitor's strategy, relative strengths, and implications for the client."
+            : "  6. Competitor deep-dive: dedicated section analyzing the main competitors' strategies, relative strengths, and implications for the client.",
+          isReportOnly
+            ? "  7. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline."
+            : "  7. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
           "  8. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, top items, distribution by channel, or the closest available evidence).",
           "  9. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
           "- Include markdown tables wherever the slide has a chart. The table gives the reader the exact numbers behind the visual.",
           "- Write `narrative_report.md` to McKinsey leave-behind quality, not blog-post quality. Use the same language as the brief.",
-          "- `narrative_report.md` must be at least 500 lines. If it is shorter, extend the appendix and the chart-supporting markdown tables.",
+          isReportOnly
+            ? "- `narrative_report.md` must be at least 800 lines for a report-only run. If it is shorter, extend the appendix, competitor analysis, and chart-supporting markdown tables."
+            : "- `narrative_report.md` must be at least 500 lines. If it is shorter, extend the appendix and the chart-supporting markdown tables.",
           "- `data_tables.xlsx` must contain every pandas DataFrame that supports a chart, table, or numeric finding. Verify supplier-level sums vs category totals before writing it.",
           "<example name=\"data_tables_xlsx_pattern\">",
           "import pandas as pd",
@@ -5563,5 +5584,26 @@ function buildSimplePhaseTelemetry(
     totalInputTokens,
     outputTokens,
     totalTokens: totalInputTokens + outputTokens,
+  };
+}
+
+function buildTemplateQaContext(templateProfile: TemplateProfile) {
+  const palette = [
+    ...(templateProfile.brandTokens?.chartPalette ?? []),
+    templateProfile.brandTokens?.palette.background,
+    templateProfile.brandTokens?.palette.coverBg,
+    templateProfile.brandTokens?.palette.accent,
+    templateProfile.brandTokens?.palette.highlight,
+    ...templateProfile.colors,
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => (value.startsWith("#") ? value.toUpperCase() : `#${value.toUpperCase()}`))
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .slice(0, 8);
+
+  return {
+    templateName: templateProfile.templateName,
+    palette,
+    background: templateProfile.brandTokens?.palette.coverBg ?? templateProfile.brandTokens?.palette.background ?? null,
   };
 }
