@@ -79,7 +79,7 @@ const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
 };
 const MAX_PAUSE_TURNS_PER_PHASE = {
   understand: 3,
-  author: 0,
+  author: 3,
   revise: 3,
   render: 0,
   critique: 0,
@@ -953,7 +953,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         });
         if (recomposedArtifacts) {
           pptxFile = recomposedArtifacts.pptx;
-          pdfFile = recomposedArtifacts.pdf;
+          if (recomposedArtifacts.pdf) {
+            pdfFile = recomposedArtifacts.pdf;
+          }
         }
       }
       latestResponse = authorResponse;
@@ -1189,7 +1191,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           });
           if (recomposedArtifacts) {
             finalPptx = recomposedArtifacts.pptx;
-            finalPdf = recomposedArtifacts.pdf;
+            if (recomposedArtifacts.pdf) {
+              finalPdf = recomposedArtifacts.pdf;
+            }
           }
         }
         latestResponse = reviseResponse;
@@ -2861,6 +2865,14 @@ function buildAuthorMessage(
                 "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
                 "- Use the same language as the brief. Do not emit mixed-language output.",
               ]),
+          ...(!isReportOnly
+            ? [
+                "- Two-phase authoring is mandatory for full-deck runs.",
+                "- Phase 1: finish `narrative_report.md` and `data_tables.xlsx` first. Do not start chart rendering, PPTX generation, or PDF generation until the markdown narrative is substantively complete.",
+                "- Narrative gate: before starting `analysis_result.json`, `deck.pptx`, or `deck.pdf`, verify in code that `narrative_report.md` has more than 400 lines. If it does not, expand the executive summary, findings, competitor section, recommendation details, and appendix tables until it does.",
+                "- Only after the markdown narrative passes the >400-line gate should you start slide, chart, PPTX, and PDF generation.",
+              ]
+            : []),
           isReportOnly
             ? "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. For report-only runs target 800-1200 lines and roughly 10000-16000 words."
             : "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. Target 500-1000 lines and roughly 8000-15000 words.",
@@ -5231,20 +5243,16 @@ async function recomposeExactTemplateArtifacts(input: {
       buffer: artifactBuffer,
       mimeType: artifact.mimeType,
     };
-    const exactPdf: GeneratedFile = {
-      fileId: `${input.stage}-template-preserved-pdf`,
-      fileName: "deck.pdf",
-      buffer: await convertPptxToPdf(exactPptx.buffer),
-      mimeType: "application/pdf",
-    };
     input.phaseTelemetry[telemetryKey] = {
       attempted: true,
       succeeded: true,
       chartImageCount: chartImages.size,
       chartCount: input.manifest.charts.length,
       slideCount: slidePlan.length,
+      pdfRegenerated: false,
+      pdfStrategy: "preserve_existing_pdf",
     };
-    return { pptx: exactPptx, pdf: exactPdf };
+    return { pptx: exactPptx, pdf: null };
   } catch (error) {
     input.phaseTelemetry[telemetryKey] = {
       attempted: true,
