@@ -1,5 +1,4 @@
 import { GenerationForm } from "@/components/generation-form";
-import { gettingStartedSteps } from "@/app/site-content";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { resolveViewerOrgId } from "@/lib/viewer-workspace";
@@ -284,52 +283,20 @@ export default async function NewJobPage({
     : fromRunPrefill
       ? "Rerun with changes"
       : "New analysis";
+  const startTour = typeof params.tour === "string" && params.tour === "1";
 
   return (
     <div className="page-shell workspace-page">
       <section className="workspace-page-head">
         <h1>{pageTitle}</h1>
-      </section>
-
-      <section className="compose-intro-panel panel">
-        <div className="compose-intro-grid">
-          <div className="stack">
-            <div className="stack-xs">
-              <p className="section-label">Report composer</p>
-              <h2>Bring one reporting cycle, not a blank prompt.</h2>
-              <p className="muted">
-                The fastest path is simple: upload the evidence behind one review, write the decision the deck should support,
-                and let Basquio turn it into a finished PPTX, narrative report, and data workbook.
-              </p>
-            </div>
-            <div className="compose-journey-grid">
-              {gettingStartedSteps.map((step, index) => (
-                <article key={step.title} className="compose-journey-card">
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <strong>{step.title}</strong>
-                  <p>{step.detail}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <aside className="compose-intro-aside">
-            <div className="compose-highlight-card">
-              <p className="artifact-kind">Best first run</p>
-              <h3>Keep the first brief tight.</h3>
-              <p>
-                Basquio works best when the brief names one business problem, one audience, and one decision. Think QBR, retailer
-                negotiation, budget review, or growth diagnosis, not “analyze this data”.
-              </p>
-            </div>
-          </aside>
-        </div>
+        <p className="muted">Upload the evidence behind one real review, then guide the story with a sharp brief.</p>
       </section>
 
       <GenerationForm
         savedTemplates={savedTemplates}
         defaultTemplateId={defaultTemplateId}
         recipePrefill={activePrefill}
+        startTour={startTour}
       />
     </div>
   );

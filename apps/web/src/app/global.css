@@ -2643,6 +2643,8 @@ textarea {
   .presentation-card-head,
   .workspace-topbar,
   .landing-nav-panel,
+  .dashboard-tour-strip,
+  .form-tour-bar,
   .form-actions,
   .site-footer {
     flex-direction: column;
@@ -2676,6 +2678,10 @@ textarea {
 
   .brief-stage-banner {
     flex-direction: column;
+  }
+
+  .compact-brief-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2897,6 +2903,125 @@ textarea {
   background: rgba(240, 204, 39, 0.14);
   padding: 2px 10px;
   border-radius: var(--radius-pill);
+}
+
+.dashboard-tour-strip,
+.form-tour-bar,
+.brief-status-strip,
+.compact-brief-grid,
+.brief-inline-feedback,
+.tour-card-actions {
+  display: flex;
+  gap: 14px;
+}
+
+.dashboard-tour-strip,
+.form-tour-bar {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dashboard-tour-strip {
+  padding: 18px 20px;
+}
+
+.form-tour-bar {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.form-tour-bar p,
+.tour-card p,
+.tour-card h3 {
+  margin: 0;
+}
+
+.brief-status-strip {
+  flex-wrap: wrap;
+}
+
+.brief-status-chip {
+  display: grid;
+  gap: 4px;
+  min-width: 160px;
+  padding: 12px 14px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.brief-status-chip span,
+.tour-card-head span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.brief-status-chip strong {
+  font-size: 0.92rem;
+  letter-spacing: -0.02em;
+}
+
+.compact-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.brief-inline-feedback {
+  display: grid;
+  gap: 12px;
+}
+
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(11, 12, 12, 0.46);
+}
+
+.tour-spotlight {
+  position: fixed;
+  z-index: 81;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 9999px rgba(11, 12, 12, 0.46),
+    0 0 0 2px rgba(255, 255, 255, 0.8),
+    0 20px 50px rgba(11, 12, 12, 0.24);
+  pointer-events: none;
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 82;
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 24px 60px rgba(11, 12, 12, 0.22);
+}
+
+.tour-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tour-close-button {
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.tour-card-actions {
+  justify-content: space-between;
 }
 
 .compose-intro-panel,

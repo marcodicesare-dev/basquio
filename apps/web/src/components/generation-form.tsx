@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as tus from "tus-js-client";
 
 import { reportTypePresets } from "@/app/site-content";
@@ -56,13 +56,6 @@ const BRIEF_SIGNAL_LIBRARY = [
     label: "Innovation and launch readout",
     keywords: ["innovation", "launch", "new product", "npd", "trial"],
   },
-] as const;
-
-const BRIEF_COACHING_POINTS = [
-  "Name the problem with numbers or a timeframe, not just a topic.",
-  "Describe the audience as a role and meeting, not a generic group.",
-  "Write the decision the deck should support: diagnose, recommend, quantify, defend.",
-  "Use thesis and stakes to make the story sharper, not longer.",
 ] as const;
 
 const BRIEF_EXAMPLE = {
@@ -172,11 +165,68 @@ type GenerationFormProps = {
   savedTemplates?: SavedTemplateOption[];
   defaultTemplateId?: string | null;
   recipePrefill?: RecipePrefill;
+  startTour?: boolean;
 };
 
-export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, recipePrefill }: GenerationFormProps) {
+type TourRect = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
+
+type TourCardPosition = {
+  top: number;
+  left: number;
+  width: number;
+};
+
+const TOUR_STEPS = [
+  {
+    id: "report-type",
+    formStep: 0,
+    title: "Start with the closest report type.",
+    copy: "This is only a shortcut. Pick the closest shape and keep moving. You can still rewrite everything later.",
+  },
+  {
+    id: "upload",
+    formStep: 1,
+    title: "Drop the files behind one real review.",
+    copy: "Start with the workbook or CSV you already use. Add PDFs or slides only if they add useful context.",
+  },
+  {
+    id: "business-context",
+    formStep: 2,
+    title: "Explain what changed.",
+    copy: "One or two concrete sentences are enough. Numbers, timing, and pressure points beat long generic background.",
+  },
+  {
+    id: "audience-objective",
+    formStep: 2,
+    title: "Name the audience and the decision.",
+    copy: "Say who this is for and what the deck should help decide. That is what sharpens the narrative.",
+  },
+  {
+    id: "review",
+    formStep: 3,
+    title: "Set the depth, then generate.",
+    copy: "Do a quick final pass here, choose the output depth, and launch the run when the brief feels tight.",
+  },
+] as const;
+
+export function GenerationForm({
+  savedTemplates = [],
+  defaultTemplateId = null,
+  recipePrefill,
+  startTour = false,
+}: GenerationFormProps) {
   const router = useRouter();
   const evidenceInputRef = useRef<HTMLInputElement>(null);
+  const reportTypeRef = useRef<HTMLElement | null>(null);
+  const uploadStepRef = useRef<HTMLElement | null>(null);
+  const businessContextRef = useRef<HTMLLabelElement | null>(null);
+  const audienceObjectiveRef = useRef<HTMLDivElement | null>(null);
+  const reviewStepRef = useRef<HTMLElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
@@ -215,9 +265,110 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
   const briefReadiness = summarizeBriefReadiness(brief);
   const briefSignals = inferBriefSignals(brief);
   const briefWarnings = buildBriefWarnings(brief);
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  const [tourIndex, setTourIndex] = useState(0);
+  const [tourRect, setTourRect] = useState<TourRect | null>(null);
+  const [tourCardPosition, setTourCardPosition] = useState<TourCardPosition | null>(null);
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
+
+  function getTourTarget(stepId: (typeof TOUR_STEPS)[number]["id"]) {
+    if (stepId === "report-type") return reportTypeRef.current;
+    if (stepId === "upload") return uploadStepRef.current;
+    if (stepId === "business-context") return businessContextRef.current;
+    if (stepId === "audience-objective") return audienceObjectiveRef.current;
+    if (stepId === "review") return reviewStepRef.current;
+    return null;
+  }
+
+  function closeTour(markSeen = true) {
+    setIsTourOpen(false);
+    setTourRect(null);
+    setTourCardPosition(null);
+
+    if (typeof window !== "undefined" && markSeen) {
+      window.localStorage.setItem("basquio:onboarding-tour-seen", "1");
+    }
+  }
+
+  function openTour(fromIndex = 0) {
+    setTourIndex(fromIndex);
+    setIsTourOpen(true);
+  }
+
+  useEffect(() => {
+    if (recipePrefill || typeof window === "undefined") {
+      return;
+    }
+
+    if (startTour) {
+      openTour(0);
+      return;
+    }
+
+    if (!window.localStorage.getItem("basquio:onboarding-tour-seen")) {
+      openTour(0);
+    }
+  }, [recipePrefill, startTour]);
+
+  useEffect(() => {
+    if (!isTourOpen) {
+      return;
+    }
+
+    const desiredFormStep = TOUR_STEPS[tourIndex].formStep;
+    if (currentStep !== desiredFormStep) {
+      setCurrentStep(desiredFormStep);
+      return;
+    }
+
+    function measureActiveTour() {
+      const activeStep = TOUR_STEPS[tourIndex];
+      const target = getTourTarget(activeStep.id);
+
+      if (!target) {
+        return;
+      }
+
+      const rect = target.getBoundingClientRect();
+      const paddedRect = {
+        top: Math.max(12, rect.top - 10),
+        left: Math.max(12, rect.left - 10),
+        width: rect.width + 20,
+        height: rect.height + 20,
+      };
+      const cardWidth = Math.min(360, window.innerWidth - 32);
+      const showBelow = paddedRect.top + paddedRect.height + 220 < window.innerHeight;
+      const top = showBelow
+        ? Math.min(window.innerHeight - 180, paddedRect.top + paddedRect.height + 16)
+        : Math.max(16, paddedRect.top - 188);
+      const left = Math.min(
+        Math.max(16, paddedRect.left),
+        Math.max(16, window.innerWidth - cardWidth - 16),
+      );
+
+      setTourRect(paddedRect);
+      setTourCardPosition({ top, left, width: cardWidth });
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const target = getTourTarget(TOUR_STEPS[tourIndex].id);
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+      window.setTimeout(measureActiveTour, 180);
+    }, 40);
+
+    const handleReposition = () => measureActiveTour();
+
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [currentStep, isTourOpen, tourIndex]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -432,6 +583,16 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
   return (
     <div className="stack-lg">
       <form className="panel form-shell stack-xl" onSubmit={handleSubmit}>
+        <div className="form-tour-bar">
+          <div className="stack-xs">
+            <p className="section-label">Guided setup</p>
+            <p className="muted">Need a quick walkthrough? We will show one step at a time.</p>
+          </div>
+          <button className="button small secondary" type="button" onClick={() => openTour(0)}>
+            Start tour
+          </button>
+        </div>
+
         <div className="stepper-track" aria-label="Analysis setup steps">
           {steps.map((step, index) => {
             const state =
@@ -452,11 +613,11 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
         </div>
 
         {currentStep === 0 ? (
-          <section className="step-panel stack-lg">
+          <section ref={reportTypeRef} className="step-panel stack-lg">
             <div className="stack-xs">
               <p className="section-label">Step 1</p>
               <h2>What kind of report?</h2>
-              <p className="muted">Choose a preset to pre-fill the brief, or start from scratch.</p>
+              <p className="muted">Choose the closest starting point, or skip it and start from scratch.</p>
             </div>
 
             <div className="report-type-grid">
@@ -480,11 +641,11 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
         ) : null}
 
         {currentStep === 1 ? (
-          <section className="step-panel stack-lg">
+          <section ref={uploadStepRef} className="step-panel stack-lg">
             <div className="stack-xs">
               <p className="section-label">Step 2</p>
               <h2>Upload your evidence</h2>
-              <p className="muted">Add data files or presentation evidence. Excel/CSV gives the deepest analysis; PPTX/PDF also work for re-analysis, extraction, and refresh.</p>
+              <p className="muted">Start with the workbook or CSV behind the review. Add slides or PDFs only if they help the story.</p>
             </div>
 
             <div className="step-grid">
@@ -640,175 +801,136 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
             <div className="stack-xs">
               <p className="section-label">Step 3</p>
               <h2>Describe the brief</h2>
-              <p className="muted">This is where Basquio decides what kind of report it is building. A sharper brief produces a sharper narrative, evidence plan, and recommendation set.</p>
+              <p className="muted">Keep it short and specific. One business problem, one audience, one decision.</p>
             </div>
 
-            <div className="brief-composer-layout">
-              <div className="stack-lg">
-                <div className="brief-stage-banner">
-                  <div className="brief-stage-banner-copy stack-xs">
-                    <p className="section-label">What a strong brief includes</p>
-                    <h3>One business problem. One audience. One decision.</h3>
-                    <p className="muted">Keep it concrete. Numbers, roles, timing, and a point of view help the report land like it was built for a real meeting.</p>
-                  </div>
-                  <div className="brief-stage-banner-metrics">
-                    <div>
-                      <span>Readiness</span>
-                      <strong>{briefReadiness.label}</strong>
-                    </div>
-                    <div>
-                      <span>Signals</span>
-                      <strong>{briefSignals.length}</strong>
-                    </div>
-                  </div>
-                </div>
+            <div className="brief-status-strip">
+              <div className="brief-status-chip">
+                <span>Readiness</span>
+                <strong>{briefReadiness.label}</strong>
+              </div>
+              <div className="brief-status-chip">
+                <span>Signals</span>
+                <strong>{briefSignals.length || "None yet"}</strong>
+              </div>
+              <div className="brief-status-chip">
+                <span>Tip</span>
+                <strong>Use numbers and a decision</strong>
+              </div>
+            </div>
 
-                <div className="form-grid brief-form-grid">
-                  <label className="field field-span-2">
-                    <span>Business context</span>
-                    <small>What is happening in the business right now? Include numbers, trend shifts, competitors, or timing if you have them.</small>
-                    <textarea
-                      name="businessContext"
-                      value={brief.businessContext}
-                      rows={6}
-                      placeholder="Example: Our brand lost 1.2pp value share in Modern Trade over the last 52 weeks while the category grew +2.2%."
-                      onChange={(event) => updateBriefField("businessContext", event.target.value)}
-                    />
-                  </label>
+            <div className="form-grid brief-form-grid">
+              <label ref={businessContextRef} className="field field-span-2">
+                <span>Business context</span>
+                <small>What changed? Use one or two concrete sentences.</small>
+                <textarea
+                  name="businessContext"
+                  value={brief.businessContext}
+                  rows={6}
+                  placeholder="Example: We lost 1.2pp share in Modern Trade over the last 52 weeks while the category grew."
+                  onChange={(event) => updateBriefField("businessContext", event.target.value)}
+                />
+              </label>
 
-                  <label className="field">
-                    <span>Audience</span>
-                    <small>Use a role and context, like “VP Commercial for the QBR” or “Category Director at Tesco”.</small>
-                    <input
-                      name="audience"
-                      value={brief.audience}
-                      placeholder="Role + company or meeting context"
-                      onChange={(event) => updateBriefField("audience", event.target.value)}
-                    />
-                  </label>
+              <div ref={audienceObjectiveRef} className="form-grid field-span-2 compact-brief-grid">
+                <label className="field">
+                  <span>Audience</span>
+                  <small>Role + company or meeting context.</small>
+                  <input
+                    name="audience"
+                    value={brief.audience}
+                    placeholder="VP Commercial for the QBR"
+                    onChange={(event) => updateBriefField("audience", event.target.value)}
+                  />
+                </label>
 
-                  <label className="field">
-                    <span>Objective</span>
-                    <small>State the decision this analysis should support: diagnose, recommend, defend, quantify, or compare.</small>
-                    <input
-                      name="objective"
-                      value={brief.objective}
-                      placeholder="Example: Identify the root causes of share loss and recommend 3 actions."
-                      onChange={(event) => updateBriefField("objective", event.target.value)}
-                    />
-                  </label>
-
-                  <details className="field-span-2 brief-optional-details">
-                    <summary>Additional context that sharpens the narrative</summary>
-
-                    <div className="form-grid">
-                      <label className="field">
-                        <span>Client</span>
-                        <small>Useful when the deck is client-facing or brand-specific.</small>
-                        <input
-                          name="client"
-                          value={brief.client}
-                          placeholder="Optional"
-                          onChange={(event) => updateBriefField("client", event.target.value)}
-                        />
-                      </label>
-
-                      <label className="field">
-                        <span>Thesis</span>
-                        <small>Your working point of view. Basquio can prove it, challenge it, or refine it.</small>
-                        <input
-                          name="thesis"
-                          value={brief.thesis}
-                          placeholder="Optional working point of view"
-                          onChange={(event) => updateBriefField("thesis", event.target.value)}
-                        />
-                      </label>
-
-                      <label className="field field-span-2">
-                        <span>Stakes</span>
-                        <small>Explain why this matters now: budget review, retailer negotiation, board meeting, launch decision.</small>
-                        <textarea
-                          name="stakes"
-                          value={brief.stakes}
-                          rows={4}
-                          placeholder="Optional: what depends on this and when"
-                          onChange={(event) => updateBriefField("stakes", event.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </details>
-                </div>
+                <label className="field">
+                  <span>Objective</span>
+                  <small>What decision should this support?</small>
+                  <input
+                    name="objective"
+                    value={brief.objective}
+                    placeholder="Diagnose the cause and recommend 3 actions"
+                    onChange={(event) => updateBriefField("objective", event.target.value)}
+                  />
+                </label>
               </div>
 
-              <aside className="brief-coach-panel panel">
-                <div className="stack">
-                  <div className="brief-coach-head">
-                    <div className="stack-xs">
-                      <p className="section-label">Live brief coach</p>
-                      <h3>{briefReadiness.label}</h3>
-                    </div>
-                    <span className={`brief-score-pill brief-score-${briefReadiness.tone}`}>{briefReadiness.score}%</span>
-                  </div>
-
-                  <p className="muted">{briefReadiness.copy}</p>
-
-                  <div className="brief-score-track" aria-hidden>
-                    <span style={{ width: `${briefReadiness.score}%` }} />
-                  </div>
-
+              {(briefWarnings.length > 0 || briefSignals.length > 0) ? (
+                <div className="brief-inline-feedback field-span-2">
                   {briefWarnings.length > 0 ? (
                     <div className="brief-warning-list">
                       {briefWarnings.map((warning) => (
                         <p key={warning}>{warning}</p>
                       ))}
                     </div>
-                  ) : (
-                    <div className="brief-success-note">
-                      <strong>The structure is there.</strong>
-                      <span>Add thesis and stakes if you want the recommendations to land harder.</span>
-                    </div>
-                  )}
-
-                  <div className="brief-coach-block stack-xs">
-                    <p className="artifact-kind">Likely focus areas</p>
-                    {briefSignals.length > 0 ? (
-                      <div className="brief-signal-list">
-                        {briefSignals.map((signal) => (
-                          <span key={signal} className="brief-signal-chip">{signal}</span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="muted">Use concrete terms like share loss, pricing, promo, distribution, channel, or competitor to guide the analytical focus.</p>
-                    )}
-                  </div>
-
-                  <div className="brief-coach-block stack-xs">
-                    <p className="artifact-kind">Basquio needs</p>
-                    <ul className="brief-checklist">
-                      {BRIEF_COACHING_POINTS.map((point) => (
-                        <li key={point}>{point}</li>
+                  ) : null}
+                  {briefSignals.length > 0 ? (
+                    <div className="brief-signal-list">
+                      {briefSignals.map((signal) => (
+                        <span key={signal} className="brief-signal-chip">{signal}</span>
                       ))}
-                    </ul>
-                  </div>
-
-                  <div className="brief-coach-block stack-xs">
-                    <p className="artifact-kind">Strong example</p>
-                    <div className="brief-example-card">
-                      <p><strong>Context</strong> {BRIEF_EXAMPLE.businessContext}</p>
-                      <p><strong>Audience</strong> {BRIEF_EXAMPLE.audience}</p>
-                      <p><strong>Objective</strong> {BRIEF_EXAMPLE.objective}</p>
-                      <p><strong>Thesis</strong> {BRIEF_EXAMPLE.thesis}</p>
-                      <p><strong>Stakes</strong> {BRIEF_EXAMPLE.stakes}</p>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
-              </aside>
+              ) : null}
+
+              <details className="field-span-2 brief-optional-details">
+                <summary>Optional: thesis, client, and stakes</summary>
+
+                <div className="form-grid">
+                  <label className="field">
+                    <span>Client</span>
+                    <small>Useful if the deck is client-facing.</small>
+                    <input
+                      name="client"
+                      value={brief.client}
+                      placeholder="Optional"
+                      onChange={(event) => updateBriefField("client", event.target.value)}
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Thesis</span>
+                    <small>Your current point of view.</small>
+                    <input
+                      name="thesis"
+                      value={brief.thesis}
+                      placeholder="Optional working point of view"
+                      onChange={(event) => updateBriefField("thesis", event.target.value)}
+                    />
+                  </label>
+
+                  <label className="field field-span-2">
+                    <span>Stakes</span>
+                    <small>Why does this matter now?</small>
+                    <textarea
+                      name="stakes"
+                      value={brief.stakes}
+                      rows={4}
+                      placeholder="Optional: budget review, retailer negotiation, board meeting..."
+                      onChange={(event) => updateBriefField("stakes", event.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
+
+              <details className="field-span-2 brief-optional-details">
+                <summary>See one strong example</summary>
+                <div className="brief-example-card">
+                  <p><strong>Context</strong> {BRIEF_EXAMPLE.businessContext}</p>
+                  <p><strong>Audience</strong> {BRIEF_EXAMPLE.audience}</p>
+                  <p><strong>Objective</strong> {BRIEF_EXAMPLE.objective}</p>
+                  <p><strong>Thesis</strong> {BRIEF_EXAMPLE.thesis}</p>
+                  <p><strong>Stakes</strong> {BRIEF_EXAMPLE.stakes}</p>
+                </div>
+              </details>
             </div>
           </section>
         ) : null}
 
         {currentStep === 3 ? (
-          <section className="step-panel stack-lg">
+          <section ref={reviewStepRef} className="step-panel stack-lg">
             <div className="stack-xs">
               <p className="section-label">Step 4</p>
               <h2>Review and generate</h2>
@@ -972,6 +1094,65 @@ export function GenerationForm({ savedTemplates = [], defaultTemplateId = null, 
       </form>
 
       {error ? <div className="panel danger-panel">{error}</div> : null}
+
+      {isTourOpen && tourCardPosition ? (
+        <div className="tour-overlay" role="dialog" aria-modal="true" aria-label="Guided setup">
+          {tourRect ? (
+            <div
+              className="tour-spotlight"
+              style={{
+                top: `${tourRect.top}px`,
+                left: `${tourRect.left}px`,
+                width: `${tourRect.width}px`,
+                height: `${tourRect.height}px`,
+              }}
+            />
+          ) : null}
+
+          <div
+            className="tour-card panel"
+            style={{
+              top: `${tourCardPosition.top}px`,
+              left: `${tourCardPosition.left}px`,
+              width: `${tourCardPosition.width}px`,
+            }}
+          >
+            <div className="tour-card-head">
+              <span>{String(tourIndex + 1).padStart(2, "0")} / {String(TOUR_STEPS.length).padStart(2, "0")}</span>
+              <button className="tour-close-button" type="button" onClick={() => closeTour()}>
+                Skip
+              </button>
+            </div>
+            <div className="stack-xs">
+              <h3>{TOUR_STEPS[tourIndex].title}</h3>
+              <p>{TOUR_STEPS[tourIndex].copy}</p>
+            </div>
+            <div className="tour-card-actions">
+              <button
+                className="button small secondary"
+                type="button"
+                onClick={() => setTourIndex((current) => Math.max(0, current - 1))}
+                disabled={tourIndex === 0}
+              >
+                Back
+              </button>
+              <button
+                className="button small"
+                type="button"
+                onClick={() => {
+                  if (tourIndex === TOUR_STEPS.length - 1) {
+                    closeTour();
+                    return;
+                  }
+                  setTourIndex((current) => Math.min(TOUR_STEPS.length - 1, current + 1));
+                }}
+              >
+                {tourIndex === TOUR_STEPS.length - 1 ? "Done" : "Next"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
