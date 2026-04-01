@@ -107,12 +107,12 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">Pricing</p>
-            <h2>Your first standard report is free.</h2>
+            <h2>Start free. Three full runs, no card needed.</h2>
             <p className="muted">
-              No card needed. Start with live data, review the first draft, and decide from there whether the workflow should repeat.
+              Start with live data, review the first draft, and decide from there whether the workflow should repeat.
             </p>
             <p className="muted">
-              Standard reports are $10, Pro reports are $24, and team workspaces start at $149 per month.{" "}
+              Plans start at $29/month with 30 credits. Credit packs available anytime.{" "}
               <a href="/pricing">See full pricing.</a>
             </p>
             <p className="muted">

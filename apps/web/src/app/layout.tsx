@@ -85,10 +85,19 @@ const jsonLd = {
       offers: [
         {
           "@type": "Offer",
-          name: "Individual",
-          price: "10",
+          name: "Starter",
+          price: "29",
           priceCurrency: "USD",
-          description: "Pay per report. First standard report free.",
+          billingIncrement: "P1M",
+          description: "30 credits/month. No branding. Custom template.",
+        },
+        {
+          "@type": "Offer",
+          name: "Pro",
+          price: "79",
+          priceCurrency: "USD",
+          billingIncrement: "P1M",
+          description: "100 credits/month. Priority queue. 5 templates.",
         },
         {
           "@type": "Offer",
@@ -96,7 +105,7 @@ const jsonLd = {
           price: "149",
           priceCurrency: "USD",
           billingIncrement: "P1M",
-          description: "Shared workspace, templates, and history for teams.",
+          description: "Shared workspace, 200 credits/month, 10 templates.",
         },
       ],
       featureList: [

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 type BuyCreditsButtonProps = {
   packId: string;
   label: string;
-  highlighted: boolean;
+  highlighted?: boolean;
 };
 
 async function startCheckout(packId: string): Promise<{ url?: string; error?: string; status: number }> {

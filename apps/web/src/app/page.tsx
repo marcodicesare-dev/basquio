@@ -65,24 +65,31 @@ const outputBullets = [
 
 const pricingSnapshot = [
   {
-    name: "Individual",
-    price: "$10",
-    unit: "per report*",
-    copy: "Start with one report at a time. Your first standard report is free.",
+    name: "Free",
+    price: "$0",
+    unit: "40 free credits",
+    copy: "Enough for ~3 Deck runs. No credit card. See if it fits.",
     highlight: false,
+  },
+  {
+    name: "Starter",
+    price: "$29",
+    unit: "/mo",
+    copy: "30 credits/month. No branding. Custom template slot.",
+    highlight: false,
+  },
+  {
+    name: "Pro",
+    price: "$79",
+    unit: "/mo",
+    copy: "100 credits/month. Priority queue. 5 template slots.",
+    highlight: true,
   },
   {
     name: "Team",
     price: "$149",
-    unit: "per month + usage",
-    copy: "Shared history, shared templates, and a workspace the whole team can use.",
-    highlight: true,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    unit: "annual contract",
-    copy: "Governance, SSO, retention controls, and support for larger rollouts.",
+    unit: "/mo + seats",
+    copy: "Shared workspace. 200 credit pool. 10 template slots.",
     highlight: false,
   },
 ] as const;
