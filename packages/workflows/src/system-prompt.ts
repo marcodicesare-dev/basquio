@@ -9,6 +9,9 @@ const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-analyst-playbook.md",
   "docs/domain-knowledge/basquio-copywriting-skill.md",
   "docs/direct-deck-design-spec.md",
+  "docs/domain-knowledge/fmcg-rgm-consulting-finance-layer.md",
+  "docs/domain-knowledge/kantar-knowledge-graph.md",
+  "docs/domain-knowledge/circana-knowledge-graph.md",
 ] as const;
 
 let knowledgePackPromise: Promise<string> | null = null;
