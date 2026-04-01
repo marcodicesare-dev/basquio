@@ -11,6 +11,7 @@ Basquio keeps deterministic ingest, template interpretation, domain analytics, s
 - performs analysis and deck creation in one file-backed generation turn instead of a separate prompt-stuffed understand step
 - reuses the same persistent container for one repair turn when QA requests revision
 - generates the final PPTX artifact directly for full-deck tiers
+- when a strong client `.pptx` template is present, treats Claude's PPTX as an interim content draft and then deterministically recomposes the final PPTX against imported template slides via `pptx-automizer`
 - always generates `narrative_report.md` and `data_tables.xlsx` from the same analytical pass
 - persists only durable run state, working papers, artifact manifests, and QA outcomes back into Supabase
 
@@ -156,6 +157,7 @@ Merged decision:
 
 - for the current direct code-execution export path, use screenshot chart assets as the default chart contract
 - embed the same chart image assets into PPTX and PDF so the visual survives PowerPoint, Keynote, and Google Slides consistently
+- for strong client PPTX templates, preserve the client's master/layout chrome deterministically after authoring rather than trying to prompt Claude into exact geometry fidelity
 
 ### PDF
 

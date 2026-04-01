@@ -69,6 +69,7 @@ Initial domain bias:
 - Template and brand interpretation must flow through `TemplateProfile`, not renderer-only style hacks.
 - `.pptx` interpretation must materially preserve layout, placeholder, placeholder-frame, theme, and source-origin information.
 - uploaded PPTX runs should instantiate the output deck against imported template slides when usable source-slide exemplars exist.
+- when the client template is strong, Claude's direct PPTX should be treated as an interim content draft and the shipped PPTX/PDF should be recomposed deterministically against the imported template.
 - structured brand token JSON or CSS files are the current file-backed v1 path into `TemplateProfile`.
 - generation is an async workflow with durable stage records, not a synchronous page request.
 - users should see stage-level progress, elapsed time, and estimated remaining time while generation is running.

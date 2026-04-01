@@ -14,6 +14,7 @@ type RenderPptxInput = {
   slidePlan: SlideSpec[];
   charts: ChartSpec[];
   templateProfile: TemplateProfile;
+  chartImages?: Map<string, Buffer>;
   templateFile?: {
     fileName: string;
     base64: string;
@@ -85,6 +86,7 @@ function renderSlide(
   charts: ChartSpec[],
   theme: ReturnType<typeof resolveTheme>,
   templateProfile: TemplateProfile,
+  chartImages?: Map<string, Buffer>,
   options: {
     preserveTemplate: boolean;
   } = { preserveTemplate: false },
@@ -322,7 +324,7 @@ function renderSlide(
     const textFrame = resolveRegionFrame(templateLayout, ["body-right", "evidence-list", "body"], textFallback) ?? textFallback;
 
     if (chart) {
-      renderChart(slide, chart, chartFrame, theme, pptx, options.preserveTemplate);
+      renderChart(slide, chart, chartFrame, theme, pptx, chartImages, options.preserveTemplate);
     } else {
       renderFallbackPanel(slide, chartFrame, "Chart data was not available for this block.", theme, options.preserveTemplate);
     }
@@ -442,6 +444,10 @@ function renderTextPanel(
   isCover: boolean,
   preserveTemplate: boolean,
 ) {
+  if (blocks.length === 0) {
+    return;
+  }
+
   if (!preserveTemplate) {
     slide.addShape("roundRect", {
       x: frame.x,
@@ -472,6 +478,10 @@ function renderBoundTextBlocks(
   isCover: boolean,
   preserveTemplate: boolean,
 ) {
+  if (blocks.length === 0) {
+    return;
+  }
+
   const grouped = new Map<string, { frame: Frame; blocks: SlideSpec["blocks"] }>();
   const unbound: SlideSpec["blocks"] = [];
 
@@ -517,8 +527,30 @@ function renderChart(
   frame: { x: number; y: number; w: number; h: number },
   theme: ReturnType<typeof resolveTheme>,
   pptx: PptxGenJS,
+  chartImages: Map<string, Buffer> | undefined,
   preserveTemplate: boolean,
 ) {
+  const chartImage = chartImages?.get(chart.id);
+  if (chartImage) {
+    slide.addImage({
+      x: frame.x,
+      y: frame.y,
+      w: frame.w,
+      h: frame.h,
+      data: `data:image/png;base64,${chartImage.toString("base64")}`,
+    });
+    return;
+  }
+
+  const hasSeriesData =
+    chart.categories.length > 0 &&
+    chart.series.length > 0 &&
+    chart.series.some((series) => series.values.length > 0);
+  if (!hasSeriesData) {
+    renderFallbackPanel(slide, frame, chart.title || "Chart image was not available for this slide.", theme, preserveTemplate);
+    return;
+  }
+
   const renderMode = selectChartRenderMode(chart);
   if (renderMode === "echarts-svg") {
     if (!preserveTemplate) {
@@ -845,7 +877,7 @@ function canPreserveTemplate(templateProfile: TemplateProfile) {
 }
 
 async function renderTemplatePreservingArtifact(input: RenderPptxInput): Promise<BinaryArtifact> {
-  const theme = resolveTheme(input.templateProfile);
+      const theme = resolveTheme(input.templateProfile);
   const templateBuffer = await sanitizeTemplateForAutomizer(Buffer.from(input.templateFile!.base64, "base64"));
   const rootTemplateBuffer = await createBlankRootTemplate(input.templateProfile, input.deckTitle);
   const workspace = await mkdtemp(path.join(tmpdir(), "basquio-pptx-"));
@@ -886,6 +918,7 @@ async function renderTemplatePreservingArtifact(input: RenderPptxInput): Promise
             input.charts,
             theme,
             input.templateProfile,
+            input.chartImages,
             { preserveTemplate: true },
           );
         });
@@ -975,17 +1008,23 @@ function resolveTemplateSourceSlideNumber(templateProfile: TemplateProfile, layo
 }
 
 function scrubImportedSlideContent(document: Document) {
-  clearTextNodes(document);
+  clearPlaceholderTextNodes(document);
   removeNodes(document, "p:graphicFrame");
   removePictureNodes(document);
 }
 
-function clearTextNodes(document: Document) {
-  const textNodes = Array.from(document.getElementsByTagName("a:t"));
+function clearPlaceholderTextNodes(document: Document) {
+  const shapes = Array.from(document.getElementsByTagName("p:sp"));
 
-  for (const node of textNodes) {
-    while (node.firstChild) {
-      node.removeChild(node.firstChild);
+  for (const shape of shapes) {
+    if (shape.getElementsByTagName("p:ph").length === 0) {
+      continue;
+    }
+    const textNodes = Array.from(shape.getElementsByTagName("a:t"));
+    for (const node of textNodes) {
+      while (node.firstChild) {
+        node.removeChild(node.firstChild);
+      }
     }
   }
 }

@@ -535,6 +535,14 @@ Rejected because:
 
 - Basquio needs HTML/CSS-grade branding flexibility first
 
+### Prompt-only client template fidelity
+
+Rejected because:
+
+- palette and copy guidance alone do not preserve client PPTX cover geometry, footer treatment, or master-slide chrome
+- strong client templates need deterministic recomposition against imported template slides after authoring, not more prompt pressure on Claude's final PPTX
+- Claude remains responsible for analysis, story, chart image generation, markdown, and audit tables, but exact client-template composition is a renderer responsibility
+
 ## Change Rule
 
 If any accepted decision changes, update all of the following in the same change:

@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import { detectLanguage, enforceExhibit, inferQuestionType, lintDeckText, routeQuestion, validateDeckContract, type SlideTextInput } from "@basquio/intelligence";
+import { renderPptxArtifact } from "@basquio/render-pptx";
 import type { ChartSlotType } from "@basquio/scene-graph";
 import { getArchetypeOrDefault, listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
 import { getLayoutRegions } from "@basquio/scene-graph/layout-regions";
@@ -22,7 +23,7 @@ import {
   interpretTemplateSource,
   type TemplateDiagnostics,
 } from "@basquio/template-engine";
-import type { TemplateProfile } from "@basquio/types";
+import type { ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
 
 import {
   BETAS,
@@ -632,6 +633,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       authorModel: MODEL,
     });
     const isReportOnly = MODEL === "claude-haiku-4-5";
+    const useExactTemplateMode = shouldUseExactTemplateMode({
+      isReportOnly,
+      templateFile,
+      templateProfile,
+    });
 
     // ─── CHECKPOINT-BASED RECOVERY ─────────────────────────────────
     // A4: Resume from highest valid checkpoint only when the failure class
@@ -935,6 +941,21 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       finalNarrativeMarkdown = requireGeneratedFile(authorFiles, "narrative_report.md");
       xlsxFile = requireGeneratedFile(authorFiles, "data_tables.xlsx");
+      if (!isReportOnly && useExactTemplateMode && pptxFile) {
+        const recomposedArtifacts = await recomposeExactTemplateArtifacts({
+          stage: "author",
+          run,
+          manifest,
+          interimPptx: pptxFile,
+          templateProfile,
+          templateFile,
+          phaseTelemetry,
+        });
+        if (recomposedArtifacts) {
+          pptxFile = recomposedArtifacts.pptx;
+          pdfFile = recomposedArtifacts.pdf;
+        }
+      }
       latestResponse = authorResponse;
       latestContainerId = authorResponse.containerId ?? containerId ?? baseContainerId;
       if (isReportOnly) {
@@ -1156,6 +1177,21 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
         finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
         xlsxFile = findGeneratedFile(reviseFiles, "data_tables.xlsx") ?? xlsxFile;
+        if (useExactTemplateMode) {
+          const recomposedArtifacts = await recomposeExactTemplateArtifacts({
+            stage: "revise",
+            run,
+            manifest: finalManifest,
+            interimPptx: finalPptx,
+            templateProfile,
+            templateFile,
+            phaseTelemetry,
+          });
+          if (recomposedArtifacts) {
+            finalPptx = recomposedArtifacts.pptx;
+            finalPdf = recomposedArtifacts.pdf;
+          }
+        }
         latestResponse = reviseResponse;
         latestContainerId = reviseResponse.containerId ?? latestContainerId;
 
@@ -5138,6 +5174,365 @@ function buildReportOnlyVisualQa(): RenderedPageQaReport {
     strongestSlides: [],
     weakestSlides: [],
   };
+}
+
+function shouldUseExactTemplateMode(input: {
+  isReportOnly: boolean;
+  templateFile?: LoadedSourceFile;
+  templateProfile: TemplateProfile;
+}) {
+  return (
+    !input.isReportOnly &&
+    input.templateFile?.kind === "pptx" &&
+    input.templateProfile.sourceType === "pptx" &&
+    input.templateProfile.layouts.some((layout) => typeof layout.sourceSlideNumber === "number")
+  );
+}
+
+async function recomposeExactTemplateArtifacts(input: {
+  stage: "author" | "revise";
+  run: RunRow;
+  manifest: z.infer<typeof deckManifestSchema>;
+  interimPptx: GeneratedFile;
+  templateProfile: TemplateProfile;
+  templateFile?: LoadedSourceFile;
+  phaseTelemetry: Record<string, unknown>;
+}) {
+  const telemetryKey = input.stage === "author" ? "exactTemplateAuthor" : "exactTemplateRevise";
+  if (!input.templateFile) {
+    input.phaseTelemetry[telemetryKey] = {
+      attempted: false,
+      reason: "template_file_missing",
+    };
+    return null;
+  }
+
+  try {
+    const slidePlan = buildExactTemplateSlidePlan(input.manifest, input.templateProfile);
+    const chartImages = await extractChartImagesFromPptx(input.interimPptx.buffer, input.manifest);
+    const charts = buildExactTemplateCharts(input.manifest);
+    const artifact = await renderPptxArtifact({
+      deckTitle: input.run.client?.trim() || input.manifest.slides[0]?.title || "Basquio deck",
+      slidePlan,
+      charts,
+      chartImages,
+      templateProfile: input.templateProfile,
+      templateFile: {
+        fileName: input.templateFile.file_name,
+        base64: input.templateFile.buffer.toString("base64"),
+      },
+    });
+    const artifactBuffer = Buffer.isBuffer(artifact.buffer)
+      ? artifact.buffer
+      : Buffer.from(artifact.buffer.data);
+    const exactPptx: GeneratedFile = {
+      fileId: `${input.stage}-template-preserved-pptx`,
+      fileName: "deck.pptx",
+      buffer: artifactBuffer,
+      mimeType: artifact.mimeType,
+    };
+    const exactPdf: GeneratedFile = {
+      fileId: `${input.stage}-template-preserved-pdf`,
+      fileName: "deck.pdf",
+      buffer: await convertPptxToPdf(exactPptx.buffer),
+      mimeType: "application/pdf",
+    };
+    input.phaseTelemetry[telemetryKey] = {
+      attempted: true,
+      succeeded: true,
+      chartImageCount: chartImages.size,
+      chartCount: input.manifest.charts.length,
+      slideCount: slidePlan.length,
+    };
+    return { pptx: exactPptx, pdf: exactPdf };
+  } catch (error) {
+    input.phaseTelemetry[telemetryKey] = {
+      attempted: true,
+      succeeded: false,
+      reason: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+    };
+    return null;
+  }
+}
+
+function buildExactTemplateSlidePlan(
+  manifest: z.infer<typeof deckManifestSchema>,
+  templateProfile: TemplateProfile,
+): SlideSpec[] {
+  return manifest.slides.map((slide, index) => {
+    const blocks: SlideSpec["blocks"] = [];
+
+    for (const metric of slide.metrics ?? []) {
+      blocks.push({
+        kind: "metric",
+        label: metric.label,
+        value: metric.value,
+        content: metric.delta,
+        tone: "default",
+        items: [],
+        evidenceIds: slide.evidenceIds ?? [],
+      });
+    }
+
+    if (slide.chartId) {
+      blocks.push({
+        kind: "chart",
+        chartId: slide.chartId,
+        content: slide.title,
+        items: [],
+        evidenceIds: slide.evidenceIds ?? [],
+        tone: "default",
+      });
+    }
+
+    if (slide.body) {
+      blocks.push({
+        kind: "body",
+        content: slide.body,
+        items: [],
+        evidenceIds: slide.evidenceIds ?? [],
+        tone: "default",
+      });
+    }
+
+    if ((slide.bullets?.length ?? 0) > 0) {
+      blocks.push({
+        kind: slide.chartId ? "evidence-list" : "bullet-list",
+        items: slide.bullets ?? [],
+        evidenceIds: slide.evidenceIds ?? [],
+        tone: "default",
+      });
+    }
+
+    if (slide.callout?.text) {
+      blocks.push({
+        kind: "callout",
+        content: slide.callout.text,
+        items: [],
+        evidenceIds: slide.evidenceIds ?? [],
+        tone: mapManifestCalloutTone(slide.callout.tone),
+      });
+    }
+
+    if (blocks.length === 0) {
+      blocks.push({
+        kind: "body",
+        content: slide.subtitle ?? slide.title,
+        items: [],
+        evidenceIds: slide.evidenceIds ?? [],
+        tone: "default",
+      });
+    }
+
+    const templateLayoutId = selectTemplateLayoutForManifestSlide(slide, index, templateProfile);
+
+    return {
+      id: `slide-${slide.position}`,
+      purpose: slide.title,
+      section: "",
+      emphasis: index === 0 ? "cover" : "content",
+      layoutId: templateLayoutId,
+      slideArchetype: templateLayoutId,
+      title: slide.title,
+      subtitle: slide.subtitle,
+      blocks,
+      claimIds: [],
+      evidenceIds: slide.evidenceIds ?? [],
+      speakerNotes: "",
+      transition: "",
+    };
+  });
+}
+
+function buildExactTemplateCharts(
+  manifest: z.infer<typeof deckManifestSchema>,
+): ChartSpec[] {
+  return manifest.charts.map((chart) => ({
+    id: chart.id,
+    title: chart.title,
+    family: normalizeManifestChartFamily(chart.chartType),
+    editableInPptx: false,
+    artifactMode: "raster-screenshot",
+    categories: chart.categories ?? [],
+    series: [],
+    xKey: undefined,
+    yKeys: [],
+    summary: chart.sourceNote ?? "",
+    annotation: "",
+    evidenceIds: [],
+    bindings: [],
+  }));
+}
+
+function normalizeManifestChartFamily(chartType: string | undefined): ChartSpec["family"] {
+  const normalized = (chartType ?? "bar").trim().toLowerCase().replace(/[_\s]+/g, "-");
+  switch (normalized) {
+    case "line":
+      return "line";
+    case "area":
+      return "area";
+    case "pie":
+      return "pie";
+    case "doughnut":
+    case "donut":
+      return "doughnut";
+    case "waterfall":
+      return "waterfall";
+    case "scatter":
+    case "bubble":
+      return "scatter";
+    case "horizontal-bar":
+    case "horizontal":
+      return "horizontal-bar";
+    case "grouped-bar":
+      return "grouped-bar";
+    case "stacked-bar":
+    case "stacked-bar-100":
+      return "stacked-bar";
+    case "heatmap":
+      return "heatmap";
+    default:
+      return "bar";
+  }
+}
+
+function selectTemplateLayoutForManifestSlide(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  index: number,
+  templateProfile: TemplateProfile,
+) {
+  const candidateLayouts = templateProfile.layouts.filter((layout) => typeof layout.sourceSlideNumber === "number");
+  const pick = (predicate: (layout: TemplateProfile["layouts"][number]) => boolean) =>
+    candidateLayouts.find(predicate)?.id;
+  const exactId = pick((layout) => layout.id === slide.layoutId || layout.id === slide.slideArchetype);
+  if (exactId) {
+    return exactId;
+  }
+  if (index === 0) {
+    return (
+      pick((layout) => layout.id === "cover" || layout.name.toLowerCase().includes("cover")) ??
+      candidateLayouts[0]?.id ??
+      slide.layoutId
+    );
+  }
+  if (slide.chartId && (slide.metrics?.length ?? 0) > 0) {
+    return (
+      pick((layout) => layout.placeholders.includes("metric-strip") && layout.placeholders.includes("chart")) ??
+      pick((layout) => layout.placeholders.includes("chart") && layout.placeholders.includes("evidence-list")) ??
+      candidateLayouts[0]?.id ??
+      slide.layoutId
+    );
+  }
+  if (slide.chartId) {
+    return (
+      pick((layout) => layout.placeholders.includes("chart") && layout.placeholders.includes("body-right")) ??
+      pick((layout) => layout.placeholders.includes("chart")) ??
+      candidateLayouts[0]?.id ??
+      slide.layoutId
+    );
+  }
+  if (slide.callout?.text) {
+    return (
+      pick((layout) => layout.placeholders.includes("callout") && layout.placeholders.includes("body")) ??
+      pick((layout) => layout.placeholders.includes("callout")) ??
+      candidateLayouts[0]?.id ??
+      slide.layoutId
+    );
+  }
+  if ((slide.bullets?.length ?? 0) >= 4) {
+    return (
+      pick((layout) => layout.placeholders.includes("body-left") && layout.placeholders.includes("body-right")) ??
+      pick((layout) => layout.placeholders.includes("body")) ??
+      candidateLayouts[0]?.id ??
+      slide.layoutId
+    );
+  }
+  return (
+    pick((layout) => layout.placeholders.includes("body")) ??
+    candidateLayouts[0]?.id ??
+    slide.layoutId
+  );
+}
+
+function mapManifestCalloutTone(
+  tone: "accent" | "green" | "orange" | undefined,
+): SlideSpec["blocks"][number]["tone"] {
+  switch (tone) {
+    case "green":
+      return "positive";
+    case "orange":
+      return "caution";
+    case "accent":
+    default:
+      return "default";
+  }
+}
+
+async function extractChartImagesFromPptx(
+  pptxBuffer: Buffer,
+  manifest: z.infer<typeof deckManifestSchema>,
+) {
+  const zip = await JSZip.loadAsync(pptxBuffer);
+  const chartImages = new Map<string, Buffer>();
+
+  for (const slide of manifest.slides) {
+    if (!slide.chartId) {
+      continue;
+    }
+
+    const slideEntry = `ppt/slides/slide${slide.position}.xml`;
+    const relsEntry = `ppt/slides/_rels/slide${slide.position}.xml.rels`;
+    const slideXml = await zip.file(slideEntry)?.async("string");
+    const relsXml = await zip.file(relsEntry)?.async("string");
+
+    if (!slideXml || !relsXml) {
+      continue;
+    }
+
+    const relTargets = parseRelationshipTargets(relsXml, slideEntry);
+    const pictures = slideXml.match(/<p:pic[\s\S]*?<\/p:pic>/g) ?? [];
+    let bestCandidate: { target: string; area: number; bytes: number } | null = null;
+
+    for (const picture of pictures) {
+      const relId = picture.match(/<a:blip[^>]*r:embed="([^"]+)"/i)?.[1];
+      const cx = Number.parseInt(picture.match(/<a:ext[^>]*cx="(\d+)"/i)?.[1] ?? "", 10);
+      const cy = Number.parseInt(picture.match(/<a:ext[^>]*cy="(\d+)"/i)?.[1] ?? "", 10);
+      if (!relId || !Number.isFinite(cx) || !Number.isFinite(cy) || cx <= 0 || cy <= 0) {
+        continue;
+      }
+
+      const target = relTargets.get(relId);
+      if (!target || !/^ppt\/media\/.+\.(png|jpe?g)$/i.test(target)) {
+        continue;
+      }
+
+      const buffer = await zip.file(target)?.async("nodebuffer");
+      if (!buffer) {
+        continue;
+      }
+
+      const area = cx * cy;
+      const score = area * 100 + buffer.length;
+      if (!bestCandidate || score > (bestCandidate.area * 100 + bestCandidate.bytes)) {
+        bestCandidate = {
+          target,
+          area,
+          bytes: buffer.length,
+        };
+      }
+    }
+
+    if (!bestCandidate) {
+      continue;
+    }
+
+    const bestBuffer = await zip.file(bestCandidate.target)?.async("nodebuffer");
+    if (bestBuffer) {
+      chartImages.set(slide.chartId, bestBuffer);
+    }
+  }
+
+  return chartImages;
 }
 
 /**
