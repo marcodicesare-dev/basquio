@@ -5234,9 +5234,10 @@ async function recomposeExactTemplateArtifacts(input: {
         base64: input.templateFile.buffer.toString("base64"),
       },
     });
-    const artifactBuffer = Buffer.isBuffer(artifact.buffer)
+    const rawArtifactBuffer = Buffer.isBuffer(artifact.buffer)
       ? artifact.buffer
       : Buffer.from(artifact.buffer.data);
+    const { buffer: artifactBuffer, duplicateMediaCount, duplicateMediaBytes } = await dedupeRecomposedPptx(rawArtifactBuffer);
     const exactPptx: GeneratedFile = {
       fileId: `${input.stage}-template-preserved-pptx`,
       fileName: "deck.pptx",
@@ -5251,6 +5252,10 @@ async function recomposeExactTemplateArtifacts(input: {
       slideCount: slidePlan.length,
       pdfRegenerated: false,
       pdfStrategy: "preserve_existing_pdf",
+      duplicateMediaCount,
+      duplicateMediaBytes,
+      originalPptxBytes: rawArtifactBuffer.byteLength,
+      dedupedPptxBytes: artifactBuffer.byteLength,
     };
     return { pptx: exactPptx, pdf: null };
   } catch (error) {
@@ -5261,6 +5266,75 @@ async function recomposeExactTemplateArtifacts(input: {
     };
     return null;
   }
+}
+
+async function dedupeRecomposedPptx(buffer: Buffer): Promise<{
+  buffer: Buffer;
+  duplicateMediaCount: number;
+  duplicateMediaBytes: number;
+}> {
+  const zip = await JSZip.loadAsync(buffer);
+  const mediaFiles = Object.keys(zip.files).filter((name) => name.startsWith("ppt/media/") && !zip.files[name]?.dir);
+  const seen = new Map<string, string>();
+  const renames = new Map<string, string>();
+  let duplicateMediaBytes = 0;
+
+  for (const mediaPath of mediaFiles) {
+    const file = zip.files[mediaPath];
+    if (!file) {
+      continue;
+    }
+    const data = await file.async("nodebuffer");
+    const hash = createHash("md5").update(data).digest("hex");
+    const canonicalPath = seen.get(hash);
+    if (canonicalPath) {
+      renames.set(mediaPath, canonicalPath);
+      duplicateMediaBytes += data.byteLength;
+      zip.remove(mediaPath);
+      continue;
+    }
+    seen.set(hash, mediaPath);
+  }
+
+  if (renames.size === 0) {
+    return {
+      buffer,
+      duplicateMediaCount: 0,
+      duplicateMediaBytes: 0,
+    };
+  }
+
+  for (const [zipPath, file] of Object.entries(zip.files)) {
+    if (file.dir || !zipPath.endsWith(".rels")) {
+      continue;
+    }
+    let content = await file.async("string");
+    let changed = false;
+    for (const [oldPath, newPath] of renames) {
+      const oldName = oldPath.split("/").pop();
+      const newName = newPath.split("/").pop();
+      if (!oldName || !newName || oldName === newName || !content.includes(oldName)) {
+        continue;
+      }
+      content = content.replaceAll(oldName, newName);
+      changed = true;
+    }
+    if (changed) {
+      zip.file(zipPath, content);
+    }
+  }
+
+  return {
+    buffer: Buffer.from(
+      await zip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      }),
+    ),
+    duplicateMediaCount: renames.size,
+    duplicateMediaBytes,
+  };
 }
 
 function buildExactTemplateSlidePlan(
