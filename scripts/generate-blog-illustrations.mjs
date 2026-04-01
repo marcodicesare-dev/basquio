@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+
+/**
+ * Generate editorial illustrations for Basquio blog posts using OpenAI image generation.
+ *
+ * Usage:
+ *   pnpm generate:illustrations                         # generate all missing
+ *   pnpm generate:illustrations -- --ids=slug1,slug2    # generate specific slugs
+ *   pnpm generate:illustrations -- --force              # regenerate all, even existing
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, "..");
+const MANIFEST_PATH = path.join(ROOT, "apps/web/src/lib/illustrations/manifest.json");
+const OUTPUT_DIR = path.join(ROOT, "apps/web/public/illustrations");
+
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+if (!OPENAI_API_KEY) {
+  console.error("Missing OPENAI_API_KEY environment variable");
+  process.exit(1);
+}
+
+/* ── Basquio Art Direction ── */
+
+const ART_DIRECTION = [
+  "Art direction: atmospheric, dreamy editorial illustration in the style of Every.to or Rocket.new hero images.",
+  "Style: soft painterly digital art with depth. Layered atmospheric perspective. NOT flat design, NOT corporate clip-art, NOT infographic. Think fine-art meets data visualization. Subtle grain or texture overlay for warmth.",
+  "Color palette: warm parchment ivory #F5F1E8 as dominant light tone, deep midnight navy #0B0C0C for depth and contrast, vivid ultramarine blue #1A6AFF as the hero accent color (glows, highlights, focal elements), warm amber gold #F0CC27 used as a small directional spark or highlight, cool slate #6B7280 for midtones and shadows. The overall feeling should be warm-to-cool gradient: warm in the foreground/base, cooler blue tones in the focal subject and depth.",
+  "Composition: cinematic wide aspect ratio (3:2). One clear dominant subject at 60% visual weight. Asymmetric placement. Generous atmospheric negative space (clouds, mist, soft gradients, ambient light). Maximum two supporting elements, subtly placed.",
+  "The subject matter is DATA ANALYTICS AND BUSINESS INTELLIGENCE: spreadsheet grids, bar charts, line charts, pie charts, slide decks, presentation screens, data tables, flowing data streams. These should be rendered as beautiful abstract forms, not literal screenshots. Think of charts and data grids as architectural elements or natural formations.",
+  "Visual mood: contemplative, premium, intelligent, the feeling of turning chaos into clarity. Like looking out over a landscape of information that has been organized into something beautiful and meaningful.",
+  "Absolutely no text, no letters, no words, no numbers, no symbols, no logos, no labels, no UI chrome, no browser windows, no app mockups.",
+  "No cartoon style, no flat vector, no corporate stock illustration, no glossy 3D renders.",
+].join("\n");
+
+/* ── Scene Prompts Per Slug ── */
+
+const SCENES = {
+  "complete-guide-data-to-presentation-tools-2026":
+    "Dominant subject: a vast panoramic landscape where abstract data structures (grid formations, column charts rising like buildings, flowing data streams like rivers) form a terrain. In the center foreground, a luminous presentation slide floats like a portal or monolith, glowing with ultramarine blue light. The landscape on the left is raw and unstructured (scattered data points, tangled grids). The landscape on the right, beyond the portal, is organized and beautiful (clean chart formations, ordered slide sequences). The feeling is standing at the threshold between raw data chaos and structured intelligence. Atmospheric mist and warm amber light on the horizon.",
+
+  "basquio-vs-gamma-data-analysis-vs-slide-design":
+    "Dominant subject: two tall crystalline towers or pillars on opposite sides of the frame, connected by a thin bridge of light. The left tower is built from layers of abstract data grids, spreadsheet cells, and bar chart segments stacked precisely like geological strata, glowing with amber warmth from within. The right tower is built from layered presentation slides, typographic blocks, and design elements, glowing with cool ultramarine blue. Between them, the bridge represents the gap where no single tool connects both worlds. Atmospheric clouds drift between the towers. The scene is viewed from a slight distance, emphasizing the gap.",
+
+  "automate-category-review-decks-nielseniq-data":
+    "Dominant subject: a grand mechanical apparatus or engine, beautifully rendered with warm metallic tones, sitting in a misty workshop space. Raw data flows into the machine from the left as abstract spreadsheet grids and tabular forms, almost like sheets of paper being fed in. From the right side of the machine, finished presentation pages and bound report documents emerge, neatly stacked and glowing with ultramarine highlights. The machine itself has visible gears, conveyor mechanisms, and processing chambers that glow amber where the transformation happens. Subtle grocery retail motifs (abstract shelf shapes, product silhouettes) woven into the input data stream. The mood is industrial craft meeting intelligence.",
+
+  "basquio-vs-beautiful-ai-for-data-teams":
+    "Dominant subject: two workbenches seen from above at a slight angle, sharing the same warm parchment surface but holding different tools. The left bench has a precision instrument set: calipers measuring data points on a grid, a magnifying lens over a spreadsheet, small precise chart forms being assembled. Everything is structured, measured, analytical. The right bench has design tools: broad brushes, color swatches, a canvas with elegantly styled slide layouts being painted. The ultramarine blue light falls on the data side. The amber light falls on the design side. They share the same table surface but the tools and approach are different. Atmospheric depth behind with soft mist.",
+
+  "ai-for-consultants-data-analysis-to-client-decks":
+    "Dominant subject: an expansive boardroom table seen in atmospheric perspective, stretching into misty depth. On the near end of the table, raw analytical materials are spread: abstract financial model grids, market sizing frameworks, competitive positioning maps, all rendered as beautiful layered paper forms with amber highlights. As the eye moves down the table toward the far end, these raw materials progressively transform into polished, organized presentation decks and bound reports, glowing with ultramarine blue. The far end of the table disappears into a luminous mist, suggesting the client meeting beyond. A single fountain pen or strategic compass rests at the transformation point.",
+
+  "how-to-turn-excel-data-into-presentation-slides-automatically":
+    "Dominant subject: a dramatic ascending pathway or staircase carved into a mountainside, viewed from the side. At the base of the mountain, scattered spreadsheet grids and data tables lie flat on the ground, raw and unprocessed. Each ascending level of the path shows a progressively more sophisticated transformation: the lowest steps show manual hand-carried data, the middle levels show mechanical conveyor systems moving chart elements, and the summit shows a luminous automated process where finished presentation slides float upward into the sky like lanterns, glowing ultramarine blue against the warm amber sunset horizon. The mountain itself is textured with abstract data patterns. The mood is aspiration and progressive automation.",
+};
+
+/* ── Generation Logic ── */
+
+async function generateImage(prompt) {
+  const models = ["gpt-image-1"];
+  for (const model of models) {
+    try {
+      console.log("  Trying model: " + model);
+      const res = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + OPENAI_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          n: 1,
+          size: "1536x1024",
+          quality: "high",
+          output_format: "png",
+          background: "opaque",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.warn("  Model " + model + " failed: " + res.status + " " + err);
+        continue;
+      }
+
+      const json = await res.json();
+      return Buffer.from(json.data[0].b64_json, "base64");
+    } catch (err) {
+      console.warn("  Model " + model + " error: " + err.message);
+    }
+  }
+  return null;
+}
+
+function buildPrompt(slug, scene) {
+  return "Create a curated editorial illustration for the Basquio blog article: " + slug + ".\n" + ART_DIRECTION + "\nTopic scene requirement: " + scene;
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const force = args.includes("--force");
+  const idsArg = args.find((a) => a.startsWith("--ids="));
+  const targetIds = idsArg ? idsArg.replace("--ids=", "").split(",") : null;
+
+  const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
+
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  let generated = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const entry of manifest) {
+    if (targetIds && !targetIds.includes(entry.slug)) {
+      skipped++;
+      continue;
+    }
+
+    const outputPath = path.join(ROOT, "apps/web/public", entry.imagePath);
+
+    if (!force && fs.existsSync(outputPath)) {
+      const stat = fs.statSync(outputPath);
+      if (stat.size > 100000) {
+        console.log("  SKIP " + entry.slug + " (" + (stat.size / 1024).toFixed(0) + " KB exists)");
+        skipped++;
+        continue;
+      }
+    }
+
+    const scene = SCENES[entry.slug];
+    if (!scene) {
+      console.warn("  WARN No scene prompt for " + entry.slug + ", skipping");
+      skipped++;
+      continue;
+    }
+
+    console.log("  GENERATING " + entry.slug + "...");
+    const prompt = buildPrompt(entry.slug, scene);
+    const imageBuffer = await generateImage(prompt);
+
+    if (!imageBuffer) {
+      console.error("  FAILED " + entry.slug);
+      failed++;
+      continue;
+    }
+
+    fs.writeFileSync(outputPath, imageBuffer);
+    const sizeMb = (imageBuffer.length / (1024 * 1024)).toFixed(2);
+    console.log("  OK " + entry.slug + " (" + sizeMb + " MB)");
+    generated++;
+  }
+
+  console.log("\nDone: " + generated + " generated, " + skipped + " skipped, " + failed + " failed");
+  if (failed > 0) process.exit(1);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

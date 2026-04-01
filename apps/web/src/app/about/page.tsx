@@ -5,9 +5,10 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "About | Basquio",
+  title: "About Basquio — Built by NielsenIQ Analysts and CPG Brand Managers",
   description:
-    "Built by NielsenIQ analysts, a Mondelez brand manager, a Victorinox buyer, and one engineer.",
+    "Basquio was built by NielsenIQ analysts, a Mondelez brand manager, and a Victorinox strategist who spent years building category review decks manually. Now the workflow is automated.",
+  alternates: { canonical: "https://basquio.com/about" },
 };
 
 export default function AboutPage() {

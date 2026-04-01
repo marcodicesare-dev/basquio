@@ -7,9 +7,10 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "Compare | Basquio",
+  title: "Basquio vs Gamma vs Beautiful.ai vs ChatGPT — Data-to-Presentation Tool Comparison",
   description:
-    "Compare Basquio with generic AI and slide generators on the capabilities that matter when the deck has to survive review.",
+    "Compare Basquio with AI slide generators (Gamma, Beautiful.ai), BI tools (Tableau, Power BI), and general AI (ChatGPT) for turning data files into finished analysis decks.",
+  alternates: { canonical: "https://basquio.com/compare" },
 };
 
 function capabilityIcon(value: string) {
