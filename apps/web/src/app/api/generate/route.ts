@@ -42,6 +42,13 @@ const AUTHOR_MODELS = new Set([
   "claude-haiku-4-5",
 ]);
 
+/** Map UI tier names to internal model names. */
+const TIER_TO_MODEL: Record<string, string> = {
+  memo: "claude-haiku-4-5",
+  deck: "claude-sonnet-4-6",
+  "deep-dive": "claude-opus-4-6",
+};
+
 type QueuedGenerationRequest = GenerationRequest & {
   templateProfileId?: string | null;
 };
@@ -600,11 +607,14 @@ function requireValidTargetSlideCount(targetSlideCount: number) {
 }
 
 function requireValidAuthorModel(authorModel: string) {
-  if (!AUTHOR_MODELS.has(authorModel)) {
-    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-6, or claude-haiku-4-5.");
+  // Accept tier names (memo/deck/deep-dive) and resolve to model names
+  const resolved = TIER_TO_MODEL[authorModel] ?? authorModel;
+
+  if (!AUTHOR_MODELS.has(resolved)) {
+    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5, or a tier name (memo, deck, deep-dive).");
   }
 
-  return authorModel;
+  return resolved;
 }
 
 async function deleteRunAttemptRows(supabaseUrl: string, serviceKey: string, runId: string) {

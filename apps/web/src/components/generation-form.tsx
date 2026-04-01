@@ -13,20 +13,20 @@ const UI_MAX_TARGET_SLIDES = MAX_TARGET_SLIDES;
 const MODEL_OPTIONS = [
   {
     id: "claude-opus-4-6",
-    name: "Opus 4.6",
-    description: "Consulting-grade deck + report",
+    name: "Deep-Dive",
+    description: "Consulting-grade depth. The full treatment.",
     badge: null,
   },
   {
     id: "claude-sonnet-4-6",
-    name: "Sonnet 4.6",
-    description: "Full deck + report",
+    name: "Deck",
+    description: "Full analysis deck with real charts.",
     badge: "default",
   },
   {
     id: "claude-haiku-4-5",
-    name: "Haiku 4.5",
-    description: "Report + data only, no slides",
+    name: "Memo",
+    description: "Data tables + narrative report. No slides.",
     badge: null,
   },
 ] as const;

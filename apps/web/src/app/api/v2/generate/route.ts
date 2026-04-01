@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
-import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount } from "@/lib/credits";
+import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit } from "@/lib/credits";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { callRpc, deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
+import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
@@ -57,6 +58,17 @@ export async function POST(request: Request) {
     if (files.length === 0) {
       return NextResponse.json({ error: "At least one source file is required." }, { status: 400 });
     }
+
+    // ─── CREDIT CHECK (same logic as v1 /api/generate) ───────
+    const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
+    const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
+    const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
+
+    if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
+      await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
+    }
+
+    const chargeCredits = billingEnabled && !hasUnlimitedUsage;
 
     const runId = randomUUID();
 
@@ -169,12 +181,20 @@ export async function POST(request: Request) {
           p_author_model: authorModel,
           p_template_profile_id: templateProfileId,
           p_notify_on_complete: notifyOnComplete,
-          p_charge_credits: false,
-          p_credit_amount: null,
+          p_charge_credits: chargeCredits,
+          p_credit_amount: chargeCredits ? creditsNeeded : null,
         },
       });
       const enqueueResult = enqueueRows[0];
-      if (!enqueueResult?.run_id || !enqueueResult?.attempt_id || enqueueResult.insufficient_credits) {
+      if (enqueueResult?.insufficient_credits) {
+        await cleanupQueuedV2RunSetup({ supabaseUrl, serviceKey, runId, sourceFiles: uploadedSourceFiles });
+        return NextResponse.json({
+          error: `Not enough credits. This ${targetSlideCount}-slide run needs ${creditsNeeded} credits.`,
+          code: "NO_CREDITS",
+          pricingUrl: "/pricing",
+        }, { status: 402 });
+      }
+      if (!enqueueResult?.run_id || !enqueueResult?.attempt_id) {
         throw new Error("Failed to create durable run lineage.");
       }
     } catch (error) {

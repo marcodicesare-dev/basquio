@@ -101,8 +101,14 @@ export default async function DashboardPage() {
       {/* Stats row */}
       <div className="billing-stats-row">
         <article className="panel billing-stat-card">
-          <p className="billing-stat-label">{hasUnlimitedUsage ? "Access" : "Credits"}</p>
+          <p className="billing-stat-label">{hasUnlimitedUsage ? "Access" : "Credits available"}</p>
           <p className="billing-stat-value">{hasUnlimitedUsage ? "Unlimited" : creditBalance}</p>
+          {!hasUnlimitedUsage ? (
+            <div className="dashboard-credit-actions">
+              <Link className="button small secondary" href="/pricing">Buy credits</Link>
+              <Link className="button small secondary" href="/pricing">Upgrade</Link>
+            </div>
+          ) : null}
         </article>
         <article className="panel billing-stat-card">
           <p className="billing-stat-label">Completed</p>

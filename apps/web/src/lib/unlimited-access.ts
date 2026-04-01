@@ -1,5 +1,5 @@
-const UNLIMITED_ACCESS_EMAILS = new Set([
-  "frarobpro@yahoo.it",
+const UNLIMITED_ACCESS_EMAILS = new Set<string>([
+  // Co-founder bypass emails can be added here
 ]);
 
 export function hasUnlimitedAccess(email: string | null | undefined): boolean {

@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 
-import { getCreditBalance, ensureFreeTierCredit, calculateRunCredits, BASE_CREDITS, CREDITS_PER_SLIDE, MAX_TARGET_SLIDES } from "@/lib/credits";
+import {
+  getDetailedCreditBalance,
+  ensureFreeTierCredit,
+  calculateRunCredits,
+  getActiveSubscription,
+  BASE_CREDITS,
+  CREDITS_PER_SLIDE,
+  MAX_TARGET_SLIDES,
+} from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 
 export const runtime = "nodejs";
@@ -19,10 +27,13 @@ export async function GET() {
     return NextResponse.json({ error: "Server configuration error." }, { status: 500 });
   }
 
-  // Ensure the free tier credit exists
-  await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
+  const config = { supabaseUrl, serviceKey, userId: viewer.user.id };
 
-  const balance = await getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
+  // Ensure free tier credit exists
+  await ensureFreeTierCredit(config);
+
+  const balance = await getDetailedCreditBalance(config);
+  const subscription = await getActiveSubscription(config);
 
   // Calculate what the user can afford
   const maxSlidesAffordableRaw = balance.balance > BASE_CREDITS
@@ -34,10 +45,26 @@ export async function GET() {
     balance: balance.balance,
     totalRuns: balance.totalRuns,
     hasUsedFreeTier: balance.freeGrantsCount > 0,
+    // Detailed breakdown
+    subscriptionCredits: balance.subscriptionCredits,
+    purchasedCredits: balance.purchasedCredits,
+    promotionalCredits: balance.promotionalCredits,
+    freeCredits: balance.freeCredits,
+    // Current plan
+    plan: subscription?.plan ?? "free",
+    planStatus: subscription?.status ?? null,
+    planInterval: subscription?.billing_interval ?? null,
+    planPeriodEnd: subscription?.current_period_end ?? null,
+    cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
+    templateSlotsIncluded: subscription?.template_slots_included ?? 0,
+    // Pricing info
     pricing: {
       baseCredits: BASE_CREDITS,
       creditsPerSlide: CREDITS_PER_SLIDE,
       example10Slides: calculateRunCredits(10),
+      memoCredits: calculateRunCredits(10, "claude-haiku-4-5"),
+      deckCredits: calculateRunCredits(10, "claude-sonnet-4-6"),
+      deepDiveCredits: calculateRunCredits(10, "claude-opus-4-6"),
     },
     maxSlidesAffordable,
   });

@@ -1,100 +1,81 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
+import { BuyCreditsButton } from "@/components/buy-credits-button";
+import { PricingPlans } from "@/components/pricing-plans";
 
 export const metadata: Metadata = {
-  title: "Pricing — AI Data-to-Presentation Reports from $10",
+  title: "Pricing — Basquio",
   description:
-    "First standard report free. Then $10 per report or $149/month for teams. Turn CSV and Excel data into finished analysis decks with real charts and branded PPTX output.",
+    "Start free with 40 credits — enough for ~3 Deck runs. Then choose a plan that fits: Starter at $29/mo, Pro at $79/mo, or Team at $149/mo. Turn CSV and Excel data into finished analysis decks.",
   alternates: { canonical: "https://basquio.com/pricing" },
 };
 
-const tiers = [
+const outputTypes = [
   {
-    name: "Individual",
-    price: "$10",
-    unit: "per report*",
-    description: "The simple way to try Basquio on live work without buying a subscription first.",
+    name: "Memo",
+    credits: "3 credits",
+    artifacts: "XLSX + MD",
+    description: "Data tables and narrative report. Fast, no slides.",
+    time: "~2 min",
     highlight: false,
-    badge: null,
-    features: [
-      "First standard report free",
-      "Standard reports up to 10 slides",
-      "Pro reports up to 30 slides",
-      "PPTX and PDF from the same run",
-      "One rerun within 24 hours",
-      "Works with Basquio Standard or one saved template",
-    ],
-    cta: { label: "Try it with your data", href: "/jobs/new" },
   },
   {
-    name: "Team",
-    price: "$149",
-    unit: "per month + usage",
-    description: "For teams that run the same reporting motion every month and need shared history.",
+    name: "Deck",
+    credits: "~13 credits",
+    artifacts: "PPTX + PDF + MD + XLSX",
+    description: "Full analysis deck with real charts and narrative report.",
+    time: "~15 min",
     highlight: true,
-    badge: "Recommended",
-    features: [
-      "Everything in Individual",
-      "Shared workspace for up to 10 people",
-      "Shared report history and templates",
-      "Saved report recipes",
-      "Billing and usage controls",
-      "Priority generation queue",
-    ],
-    cta: { label: "Talk to us", href: "mailto:marco@basquio.com?subject=Basquio%20Team" },
   },
   {
-    name: "Enterprise",
-    price: "Custom",
-    unit: "annual contract",
-    description: "For larger rollouts that need procurement support, governance, and tighter access controls.",
+    name: "Deep-Dive",
+    credits: "~33 credits",
+    artifacts: "PPTX + PDF + MD + XLSX",
+    description: "Consulting-grade depth. The full treatment.",
+    time: "~25 min",
     highlight: false,
-    badge: null,
-    features: [
-      "Everything in Team",
-      "SSO and SAML",
-      "Retention and workspace controls",
-      "Security review and DPA",
-      "Custom workflow setup",
-      "Dedicated support channel",
-    ],
-    cta: { label: "Contact sales", href: "mailto:marco@basquio.com?subject=Basquio%20Enterprise" },
   },
+] as const;
+
+const creditPacks = [
+  { id: "pack_25", credits: 25, price: "$18", perCredit: "$0.72" },
+  { id: "pack_50", credits: 50, price: "$32", perCredit: "$0.64" },
+  { id: "pack_100", credits: 100, price: "$56", perCredit: "$0.56" },
+  { id: "pack_250", credits: 250, price: "$125", perCredit: "$0.50" },
 ] as const;
 
 const faqs = [
   {
-    question: "What does a standard report include?",
+    question: "What do I get with each output type?",
     answer:
-      "A finished first draft with analysis, narrative, charts, and delivery as an editable PPTX, a markdown report, and an audit-ready data workbook. Standard is built for one evidence package and up to 10 slides.",
+      "Memo gives you data tables and a narrative report (XLSX + MD). Deck adds a full presentation with real charts (PPTX + PDF). Deep-Dive is the same artifacts as Deck but with consulting-grade analytical depth.",
   },
   {
-    question: "When should I choose Pro instead of Standard?",
+    question: "How do credits work?",
     answer:
-      "Use Pro when the package is deeper, the slide count needs to go past 10, or the review needs a more involved branded output.",
+      "Memo costs 3 credits flat. Deck costs 3 base + 1 per slide (a 10-slide deck = 13 credits). Deep-Dive costs 3 base + 3 per slide (a 10-slide deck = 33 credits). Plans include monthly credits; you can buy more anytime.",
   },
   {
-    question: "What happens after the free first report?",
+    question: "What happens to unused credits?",
     answer:
-      "You can keep going report by report, or move to a team workspace once the workflow becomes something more than one-off use.",
+      "Subscription credits roll over for 1 month. Purchased credit packs expire after 12 months. Free tier credits never expire.",
   },
   {
     question: "What if a run fails?",
-    answer: "Basquio refunds system failures automatically. You do not lose usage when the platform fails to finish the run.",
+    answer: "Basquio refunds credits automatically for system failures. You never lose credits when the platform fails.",
   },
   {
     question: "What files can I upload?",
     answer:
-      "CSV, XLSX, XLS, PDF, PPTX, and plain text files. Excel gives the deepest analysis; PPTX and PDF also work for extraction, refresh, and restyling.",
+      "CSV, XLSX, XLS, PDF, PPTX, and plain text. Excel gives the deepest analysis; PPTX and PDF also work for extraction and restyling.",
   },
   {
-    question: "How does team billing work?",
+    question: "Can I cancel anytime?",
     answer:
-      "Team workspaces start at $149 per month with shared usage, shared history, and shared templates. Contact us if you need a larger setup.",
+      "Yes. Cancel from the billing page or Stripe portal. Your plan stays active until the end of the billing period. No refunds for partial months.",
   },
 ] as const;
 
@@ -106,50 +87,56 @@ export default function PricingPage() {
       <section className="page-hero pricing-hero">
         <div className="stack pricing-hero-copy">
           <p className="section-label">Pricing</p>
-          <h1>Start free. Pay per report. Add the team when it becomes routine.</h1>
+          <h1>Start free. Scale when it clicks.</h1>
           <p className="page-copy">
-            Basquio is easy to try on real work. Your first standard report is free. After that, buy individual reports or set up a shared workspace for the team.
-          </p>
-          <p className="pricing-footnote">
-            * Basquio calculates credits and report type from scope, slide count, and workflow complexity.
+            40 free credits — enough for ~3 Deck runs. No credit card. See if Basquio fits before you pay anything.
           </p>
         </div>
       </section>
 
-      <section className="pricing-grid pricing-grid-editorial">
-        {tiers.map((tier) => (
-          <article
-            key={tier.name}
-            className={tier.highlight ? "panel pricing-card pricing-card-highlighted" : "panel pricing-card"}
-          >
-            <div className="pricing-card-copy pricing-card-top">
-              <div className="pricing-card-header">
-                <p className="pricing-tier-name">{tier.name}</p>
-                {tier.badge ? <span className="pricing-badge">{tier.badge}</span> : null}
-              </div>
-              <div className="pricing-price-row">
-                <span className="pricing-price">{tier.price}</span>
-                <span className="pricing-unit">{tier.unit}</span>
-              </div>
-              <p className="muted">{tier.description}</p>
-            </div>
-
-            <ul className="pricing-features">
-              {tier.features.map((feature) => (
-                <li key={feature}>{feature}</li>
-              ))}
-            </ul>
-
-            <Link
-              className={tier.highlight ? "button" : "button secondary"}
-              href={tier.cta.href}
+      {/* Output Types */}
+      <section className="pricing-output-types">
+        <p className="section-label" style={{ textAlign: "center", marginBottom: "1rem" }}>Output types</p>
+        <div className="pricing-output-grid">
+          {outputTypes.map((type) => (
+            <article
+              key={type.name}
+              className={type.highlight ? "panel pricing-output-card pricing-output-card-highlighted" : "panel pricing-output-card"}
             >
-              {tier.cta.label}
-            </Link>
-          </article>
-        ))}
+              <div className="pricing-card-top">
+                <p className="pricing-tier-name">{type.name}</p>
+                <p className="pricing-output-credits">{type.credits}</p>
+              </div>
+              <p className="muted">{type.description}</p>
+              <p className="pricing-output-artifacts">{type.artifacts}</p>
+              <p className="pricing-output-time">{type.time}</p>
+            </article>
+          ))}
+        </div>
       </section>
 
+      {/* Plans with monthly/annual toggle */}
+      <PricingPlans />
+
+      {/* Credit Packs */}
+      <section id="packs" className="pricing-packs-section">
+        <div className="stack" style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+          <p className="section-label">Credit packs</p>
+          <p className="muted">Top up anytime. Purchased credits expire after 12 months.</p>
+        </div>
+        <div className="pricing-packs-grid">
+          {creditPacks.map((pack) => (
+            <article key={pack.id} className="panel pricing-pack-card">
+              <p className="pricing-pack-credits">{pack.credits} credits</p>
+              <p className="pricing-pack-price">{pack.price}</p>
+              <p className="muted">{pack.perCredit}/credit</p>
+              <BuyCreditsButton packId={pack.id} label={`Buy ${pack.credits}`} />
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
       <section className="cards">
         <article className="technical-panel stack-lg">
           <div className="stack">
@@ -171,7 +158,7 @@ export default function PricingPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to try it?"
         title="Run the first report on live data."
-        copy="The fastest way to know if Basquio fits the team is to put one real review through it."
+        copy="The fastest way to know if Basquio fits is to put one real review through it."
         primaryLabel="Try it with your data"
         primaryHref="/jobs/new"
         secondaryLabel="Get started"
