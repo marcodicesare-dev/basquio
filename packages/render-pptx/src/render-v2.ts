@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import PptxGenJS from "pptxgenjs";
 
 import type { DeckSceneGraph, SceneNode } from "@basquio/scene-graph";
@@ -15,6 +19,60 @@ function discreteTitleSize(text: string, baseSize: number): number {
   if (len <= 80) return baseSize - 2;
   if (len <= 100) return baseSize - 4;
   return baseSize - 6;
+}
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const BASQUIO_COVER_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png";
+const BASQUIO_FOOTER_ICON_PATH = "apps/web/public/brand/png/icon/2x/basquio-icon-amber@2x.png";
+const brandAssetCache = new Map<string, Promise<string | null>>();
+
+function resolveRepoAssetPath(relativePath: string) {
+  const candidates = [
+    path.resolve(process.cwd(), relativePath),
+    path.resolve(REPO_ROOT, relativePath),
+  ];
+
+  return candidates;
+}
+
+async function loadBrandAssetDataUri(relativePath: string) {
+  const cached = brandAssetCache.get(relativePath);
+  if (cached) {
+    return cached;
+  }
+
+  const loader = (async () => {
+    for (const assetPath of resolveRepoAssetPath(relativePath)) {
+      try {
+        const buffer = await readFile(assetPath);
+        return `image/png;base64,${buffer.toString("base64")}`;
+      } catch {
+        continue;
+      }
+    }
+
+    console.warn(`[render] Brand asset missing: ${relativePath}`);
+    return null;
+  })();
+
+  brandAssetCache.set(relativePath, loader);
+  return loader;
+}
+
+function readPngDimensions(buffer: Buffer) {
+  if (buffer.length < 24) {
+    return null;
+  }
+
+  const pngSignature = "89504e470d0a1a0a";
+  if (buffer.subarray(0, 8).toString("hex") !== pngSignature) {
+    return null;
+  }
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
 }
 
 // ─── V2 INPUT TYPES ──────────────────────────────────────────────
@@ -1173,6 +1231,14 @@ function renderChartElement(
   // This gives pixel-perfect rendering across PowerPoint, Google Slides, and Keynote.
   const chartImage = chartImageMap?.get(chart.id);
   if (chartImage) {
+    const dimensions = readPngDimensions(chartImage);
+    if (dimensions && (dimensions.width < 800 || dimensions.height < 400)) {
+      const slideLabel = slideTitle ? ` on slide "${slideTitle}"` : "";
+      console.warn(
+        `[render] Chart ${chart.id}${slideLabel} is too small: ${dimensions.width}x${dimensions.height}px. Minimum recommended size is 800x400.`,
+      );
+    }
+
     slide.addImage({
       data: `image/png;base64,${chartImage.toString("base64")}`,
       x: region.x,
@@ -1830,6 +1896,10 @@ export async function renderV2PptxArtifact(
   input: RenderV2PptxInput,
 ): Promise<BinaryArtifact> {
   const tokens = resolveTokens(input.brandTokens, input.templateName);
+  const [basquioCoverLogo, basquioFooterIcon] = await Promise.all([
+    loadBrandAssetDataUri(BASQUIO_COVER_LOGO_PATH),
+    loadBrandAssetDataUri(BASQUIO_FOOTER_ICON_PATH),
+  ]);
 
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "BASQUIO_16x9", width: SLIDE_W, height: SLIDE_H });
@@ -1848,7 +1918,19 @@ export async function renderV2PptxArtifact(
   pptx.defineSlideMaster({
     title: "BASQUIO_COVER",
     background: { fill: norm(tokens.palette.coverBg) },
-    objects: [],
+    objects: basquioCoverLogo
+      ? [
+          {
+            image: {
+              x: 0.6,
+              y: 6.6,
+              w: 1.8,
+              h: 0.3,
+              data: basquioCoverLogo,
+            },
+          },
+        ]
+      : [],
   });
 
   pptx.defineSlideMaster({
@@ -1857,14 +1939,27 @@ export async function renderV2PptxArtifact(
     objects: [
       // Footer hairline rule — 0.5pt gray line at y=7.1"
       { rect: { x: 0.6, y: 7.1, w: 12.133, h: 0.007, fill: { color: norm(tokens.palette.border) } } },
+      ...(basquioFooterIcon
+        ? [
+            {
+              image: {
+                x: 0.6,
+                y: 7.15,
+                w: 0.18,
+                h: 0.18,
+                data: basquioFooterIcon,
+              },
+            },
+          ]
+        : []),
       // Footer left: source note
       {
         text: {
           text: "Basquio | Confidential",
           options: {
-            x: 0.6,
+            x: 0.85,
             y: 7.15,
-            w: 6,
+            w: 5.75,
             h: 0.25,
             fontSize: 8,
             fontFace: tokens.typography.monoFont,

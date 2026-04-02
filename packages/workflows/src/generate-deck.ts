@@ -123,6 +123,54 @@ const ALL_CHART_TYPES: ChartSlotType[] = [
   "horizontal_bar",
 ];
 
+function coercePositiveNumber(value: unknown) {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function normalizeChartFigureSize(value: unknown) {
+  if (!value) {
+    return undefined;
+  }
+
+  if (Array.isArray(value) && value.length >= 2) {
+    const widthInches = coercePositiveNumber(value[0]);
+    const heightInches = coercePositiveNumber(value[1]);
+    return widthInches && heightInches ? { widthInches, heightInches } : undefined;
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const widthInches = coercePositiveNumber(record.widthInches ?? record.w ?? record.width);
+    const heightInches = coercePositiveNumber(record.heightInches ?? record.h ?? record.height);
+    return widthInches && heightInches ? { widthInches, heightInches } : undefined;
+  }
+
+  return undefined;
+}
+
+function normalizeChartSort(value: unknown): "desc" | "asc" | "none" | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "asc" || normalized === "ascending") {
+    return "asc";
+  }
+  if (normalized === "none" || normalized === "keep" || normalized === "keep-order") {
+    return "none";
+  }
+  if (normalized === "desc" || normalized === "descending" || normalized === "value") {
+    return "desc";
+  }
+
+  return "desc";
+}
+
 const analysisSchema = z.object({
   language: z.string().default("English"),
   thesis: z.string().default(""),
@@ -146,18 +194,15 @@ const analysisSchema = z.object({
     }).passthrough().optional(),
     evidenceIds: z.array(z.string()).optional(),
     chart: z.object({
-      id: z.string(),
-      chartType: z.string(),
-      title: z.string(),
+      id: z.string().optional().transform((value) => value?.trim() || `chart-${randomUUID().slice(0, 8)}`),
+      chartType: z.string().optional().transform((value) => value?.trim() || "bar"),
+      title: z.string().optional().transform((value) => value?.trim() || ""),
       sourceNote: z.string().optional(),
-      maxCategories: z.number().int().min(1).optional(),
-      preferredOrientation: z.enum(["horizontal", "vertical"]).optional(),
-      slotAspectRatio: z.number().positive().optional(),
-      figureSize: z.object({
-        widthInches: z.number().positive(),
-        heightInches: z.number().positive(),
-      }).passthrough().optional(),
-      sort: z.enum(["desc", "asc", "none"]).optional(),
+      maxCategories: z.coerce.number().int().min(1).optional().catch(undefined),
+      preferredOrientation: z.enum(["horizontal", "vertical"]).optional().catch(undefined),
+      slotAspectRatio: z.any().optional().transform((value) => coercePositiveNumber(value)),
+      figureSize: z.any().optional().transform((value) => normalizeChartFigureSize(value)),
+      sort: z.any().optional().transform((value) => normalizeChartSort(value) ?? "desc"),
       truncateLabels: z.boolean().optional(),
     }).passthrough().optional(),
   }).passthrough()).default([]),
@@ -3782,6 +3827,49 @@ function normalizeSlidePlanEntry(value: unknown): Record<string, unknown> | null
       .map((metric) => normalizeMetricEntry(metric))
       .filter((metric): metric is Record<string, unknown> => metric !== null);
   }
+
+  if (normalized.chart != null) {
+    const chart = normalizeChartPlanEntry(normalized.chart);
+    if (chart) {
+      normalized.chart = chart;
+    } else {
+      delete normalized.chart;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeChartPlanEntry(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = { ...(value as Record<string, unknown>) };
+  const normalized: Record<string, unknown> = {
+    ...record,
+    id: stringifyLooseText(record.id ?? record.chartId ?? record.chart_id) || undefined,
+    chartType: stringifyLooseText(record.chartType ?? record.chart_type ?? record.type) || undefined,
+    title: stringifyLooseText(record.title ?? record.chartTitle ?? record.label) || undefined,
+    sourceNote: stringifyLooseText(record.sourceNote ?? record.source_note) || undefined,
+    maxCategories: coercePositiveNumber(record.maxCategories ?? record.max_categories),
+    preferredOrientation: stringifyLooseText(record.preferredOrientation ?? record.preferred_orientation) || undefined,
+    slotAspectRatio: coercePositiveNumber(record.slotAspectRatio ?? record.slot_aspect_ratio),
+    figureSize: normalizeChartFigureSize(record.figureSize ?? record.figure_size),
+    sort: normalizeChartSort(record.sort),
+  };
+
+  if (typeof record.truncateLabels === "boolean") {
+    normalized.truncateLabels = record.truncateLabels;
+  } else if (typeof record.truncate_labels === "boolean") {
+    normalized.truncateLabels = record.truncate_labels;
+  }
+
+  Object.keys(normalized).forEach((key) => {
+    if (normalized[key] === undefined) {
+      delete normalized[key];
+    }
+  });
 
   return normalized;
 }

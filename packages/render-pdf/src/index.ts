@@ -702,7 +702,7 @@ function resolveTheme(templateProfile: TemplateProfile) {
     background: brandTokens?.palette.background ?? templateProfile.colors[3] ?? "#FFFFFF",
     surface: brandTokens?.palette.surface ?? templateProfile.colors[4] ?? "#F9FAFB",
     border: brandTokens?.palette.border ?? templateProfile.colors[5] ?? "#D1D5DB",
-    accentMuted: brandTokens?.palette.accentMuted ?? "#DDEBFF",
+    accentMuted: brandTokens?.palette.accentMuted ?? "#E0EBFF",
     mutedText: "#6B7280",
     headingFont: brandTokens?.typography.headingFont ?? templateProfile.fonts[0] ?? "Arial",
     bodyFont: brandTokens?.typography.bodyFont ?? templateProfile.fonts[1] ?? templateProfile.fonts[0] ?? "Arial",

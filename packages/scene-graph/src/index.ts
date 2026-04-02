@@ -191,7 +191,7 @@ export function buildDeckSceneGraph(
     background: tokens.palette?.background ?? "#FFFFFF",
     surface: tokens.palette?.surface ?? "#F9FAFB",
     accent: tokens.palette?.accent ?? "#1A6AFF",
-    accentMuted: tokens.palette?.accentMuted ?? "#DDEBFF",
+    accentMuted: tokens.palette?.accentMuted ?? "#E0EBFF",
     border: tokens.palette?.border ?? "#D1D5DB",
     coverBg: (tokens.palette as Record<string, string>)?.coverBg ?? "#1F2937",
     calloutGreen: (tokens.palette as Record<string, string>)?.calloutGreen ?? "#059669",
@@ -641,7 +641,7 @@ const defaultBrandTokens = {
     background: "#FFFFFF",
     surface: "#F8FAFC",    // Slate 50
     accent: "#1A6AFF",     // Brand ultramarine
-    accentMuted: "#DDEBFF", // ~12% ultramarine on white
+    accentMuted: "#E0EBFF", // ~12% ultramarine on white
     border: "#E2E8F0",     // Slate 200
   },
   typography: {

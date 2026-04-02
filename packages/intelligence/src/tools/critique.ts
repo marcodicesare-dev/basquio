@@ -249,19 +249,20 @@ export function createAuditDeckStructureTool(ctx: CritiqueToolContext) {
         layoutCounts[s.layoutId] = (layoutCounts[s.layoutId] ?? 0) + 1;
       }
       const uniqueLayouts = Object.keys(layoutCounts).length;
-      if (slides.length > 5 && uniqueLayouts < 3) {
+      const minimumUniqueLayouts = slides.length >= 15 ? 5 : slides.length >= 10 ? 4 : slides.length > 5 ? 3 : 0;
+      if (minimumUniqueLayouts > 0 && uniqueLayouts < minimumUniqueLayouts) {
         issues.push({
           severity: "major",
-          description: `Only ${uniqueLayouts} layout type(s) used across ${slides.length} slides. Professional decks use 4+ layouts.`,
-          fix: "Replace some slides with title-chart, chart-split, metrics, title-bullets, or summary layouts",
+          description: `Only ${uniqueLayouts} layout type(s) used across ${slides.length} slides. Professional decks at this length need at least ${minimumUniqueLayouts} layouts.`,
+          fix: "Replace some slides with title-chart, chart-split, evidence-grid, comparison, metrics, or summary layouts",
         });
       }
       const maxLayout = Object.entries(layoutCounts).sort((a, b) => b[1] - a[1])[0];
-      if (maxLayout && maxLayout[1] / slides.length > 0.5 && slides.length > 5) {
+      if (maxLayout && maxLayout[1] / slides.length > 0.4 && slides.length > 5) {
         issues.push({
           severity: "major",
-          description: `Layout "${maxLayout[0]}" used ${maxLayout[1]}/${slides.length} times (${Math.round(maxLayout[1] / slides.length * 100)}%). Max 50% recommended.`,
-          fix: `Replace ${Math.ceil(maxLayout[1] - slides.length * 0.5)} slides with different layouts`,
+          description: `Layout "${maxLayout[0]}" used ${maxLayout[1]}/${slides.length} times (${Math.round(maxLayout[1] / slides.length * 100)}%). Max 40% recommended.`,
+          fix: `Replace ${Math.ceil(maxLayout[1] - slides.length * 0.4)} slides with different layouts`,
         });
       }
 

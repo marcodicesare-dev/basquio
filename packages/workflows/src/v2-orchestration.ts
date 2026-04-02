@@ -1187,11 +1187,11 @@ function resolveChartTheme(templateProfile?: TemplateProfile | null): V2ChartIma
   return {
     background: palette?.background ?? "#F9FAFB",
     cardBg: palette?.surface ?? "#F9FAFB",
-    ink: palette?.text ?? "#1A1A2E",
+    ink: palette?.text ?? "#0B0C0C",
     muted: palette?.muted ?? "#6B7280",
     dim: palette?.accentMuted ?? "#9CA3AF",
     border: palette?.border ?? "#D1D5DB",
-    chartPalette: chartPalette?.length ? chartPalette : ["#2563EB", "#F59E0B", "#059669", "#DC2626", "#7C3AED", "#0891B2"],
+    chartPalette: chartPalette?.length ? chartPalette : ["#F0CC27", "#1A6AFF", "#4CC9A0", "#E8636F", "#9B7AE0", "#5AC4D4"],
     headingFont: typography?.headingFont ?? "Arial",
     bodyFont: typography?.bodyFont ?? "Arial",
   };

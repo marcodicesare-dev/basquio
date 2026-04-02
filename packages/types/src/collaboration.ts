@@ -8,7 +8,7 @@ export const extractedActionItemSchema = z.object({
   category: z.enum(["bug", "feature", "improvement", "feedback", "finance", "marketing"]),
   assignee: z.string(),
   priority: z.enum(["urgent", "high", "medium", "low"]),
-});
+}).passthrough();
 
 export const extractedSalesMentionSchema = z.object({
   company: z.string(),
@@ -23,7 +23,7 @@ export const extractedSalesMentionSchema = z.object({
     "pilot",
     "negotiation",
   ]),
-});
+}).passthrough();
 
 export const extractedDecisionSchema = z.object({
   decision: z.string(),
@@ -32,7 +32,7 @@ export const extractedDecisionSchema = z.object({
   category: z
     .enum(["product", "technical", "financial", "sales", "marketing", "general"])
     .default("general"),
-});
+}).passthrough();
 
 export const extractionResultSchema = z.object({
   summary: z.string(),
@@ -40,7 +40,7 @@ export const extractionResultSchema = z.object({
   action_items: z.array(extractedActionItemSchema).default([]),
   sales_mentions: z.array(extractedSalesMentionSchema).default([]),
   key_quotes: z.array(z.string()).default([]),
-});
+}).passthrough();
 
 // ── Transcript schemas ─────────────────────────────────────────────
 

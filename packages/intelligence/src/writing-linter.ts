@@ -405,10 +405,20 @@ export function lintDeckText(slides: SlideTextInput[]): DeckLintResult {
   for (const s of slides) {
     layoutCounts[s.layoutId] = (layoutCounts[s.layoutId] ?? 0) + 1;
   }
+  const uniqueLayouts = Object.keys(layoutCounts).length;
   const maxLayoutCount = Math.max(...Object.values(layoutCounts), 0);
-  if (slides.length > 4 && maxLayoutCount > slides.length * 0.5) {
+  const minimumUniqueLayouts = slides.length >= 15 ? 5 : slides.length >= 10 ? 4 : slides.length > 5 ? 3 : 0;
+  if (minimumUniqueLayouts > 0 && uniqueLayouts < minimumUniqueLayouts) {
+    deckViolations.push({
+      rule: "low_layout_variety",
+      severity: "major",
+      field: "deck",
+      message: `Only ${uniqueLayouts} layout types used across ${slides.length} slides (minimum ${minimumUniqueLayouts})`,
+    });
+  }
+  if (slides.length > 4 && maxLayoutCount > slides.length * 0.4) {
     const dominantLayout = Object.entries(layoutCounts).find(([, c]) => c === maxLayoutCount)?.[0];
-    deckViolations.push({ rule: "low_layout_variety", severity: "major", field: "deck", message: `>50% of slides use "${dominantLayout}" layout (${maxLayoutCount}/${slides.length})` });
+    deckViolations.push({ rule: "low_layout_variety", severity: "major", field: "deck", message: `>40% of slides use "${dominantLayout}" layout (${maxLayoutCount}/${slides.length})` });
   }
 
   // Cover check

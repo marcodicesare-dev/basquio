@@ -26,7 +26,7 @@ const slide = pptx.addSlide();
 
 slide.addText("EXECUTIVE SUMMARY", {
   x: 0.45, y: 0.22, w: 9.1, h: 0.18,
-  fontSize: 9, fontFace: "Arial", color: "E8A84C", letterSpacing: 1.5, bold: true
+  fontSize: 9, fontFace: "Arial", color: "F0CC27", letterSpacing: 1.5, bold: true
 });
 
 slide.addText("Petfood category grew +8.2% but brand lost 1.4pp share to private label", {
@@ -70,7 +70,7 @@ import matplotlib.pyplot as plt
 fig, ax = plt.subplots(figsize=(9.25, 3.5))
 categories = ["Premium Wet", "Standard Wet", "Premium Dry", "Standard Dry", "Treats"]
 values = [23.4, 18.7, 15.2, 31.1, 11.6]
-colors = ["#E8A84C" if v == max(values) else "#3A3940" for v in values]
+colors = ["#F0CC27" if v == max(values) else "#3A3940" for v in values]
 bars = ax.barh(categories, values, color=colors)
 ax.bar_label(bars, fmt='%.1f%%', padding=5, fontsize=9, color="#A09FA6")
 ax.set_xlim(0, max(values) * 1.15)
@@ -82,7 +82,7 @@ fig.patch.set_facecolor('#0A090D')
 fig.text(0.02, 0.02, "Source: NIQ Total Tracked Market, MAT Q4 2025", fontsize=7, color="#6B6A72")
 plt.subplots_adjust(bottom=0.15)
 plt.tight_layout()
-plt.savefig("chart_1.png", dpi=200, bbox_inches='tight', facecolor='#0A090D')
+plt.savefig("chart_1.png", dpi=300, bbox_inches='tight', facecolor='#0A090D')
 
 slide.addText("Standard Dry dominates at 31.1% mix but Premium Wet is fastest growing at +12.4% YoY", {
   x: 0.45, y: 0.32, w: 9.1, h: 0.52,
@@ -126,7 +126,7 @@ const slide = pptx.addSlide();
 
 slide.addText("COMPARTI CRITICI", {
   x: 0.6, y: 0.5, w: 12.1, h: 0.25,
-  fontSize: 9, fontFace: "Arial", color: "E8A84C", letterSpacing: 1.5, bold: true
+  fontSize: 9, fontFace: "Arial", color: "F0CC27", letterSpacing: 1.5, bold: true
 });
 
 slide.addText("8 comparti su 10 perdono velocita: Freddo e Cura Casa guidano il gap a -3.5pp", {
@@ -140,7 +140,7 @@ import matplotlib.pyplot as plt
 
 categories = ["Freddo", "Cura Casa", "Cura Persona", "Bevande", "Drogheria", "Pet Care", "Fresco", "Ortofrutta"]
 gaps = [-3.8, -3.5, -2.8, -2.9, -2.8, -2.9, -1.0, +3.1]
-colors = ["#E84C4C" if g < -2 else "#E8A84C" if g < 0 else "#4CC9A0" for g in gaps]
+colors = ["#E8636F" if g < -2 else "#F0CC27" if g < 0 else "#4CC9A0" for g in gaps]
 
 fig, ax = plt.subplots(figsize=(6.2, 4.25))
 bars = ax.barh(categories, gaps, color=colors)
@@ -152,7 +152,7 @@ ax.spines[['top', 'right']].set_visible(False)
 fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W", fontsize=7, color="#6B6A72")
 plt.subplots_adjust(bottom=0.12)
 plt.tight_layout()
-plt.savefig("chart_gaps.png", dpi=200, bbox_inches='tight')
+plt.savefig("chart_gaps.png", dpi=300, bbox_inches='tight')
 
 slide.addImage({ path: "chart_gaps.png", x: 0.6, y: 1.75, w: 6.2, h: 4.25 });
 
@@ -188,7 +188,7 @@ slide.background = { color: "0A090D" };
 
 slide.addText("RACCOMANDAZIONI", {
   x: 0.6, y: 0.5, w: 12.1, h: 0.25,
-  fontSize: 9, fontFace: "Arial", color: "E8A84C", letterSpacing: 1.5, bold: true
+  fontSize: 9, fontFace: "Arial", color: "F0CC27", letterSpacing: 1.5, bold: true
 });
 
 slide.addText("Quattro azioni concrete per recuperare lo 0.5pp di gap confezioni entro 12 mesi", {
@@ -210,7 +210,7 @@ const cards = [
     lever: "Promo", impact: "+0.05pp conf", timeline: "2 mesi"
   },
   {
-    index: "03", color: "E8A84C",
+    index: "03", color: "F0CC27",
     title: "Espandi offerta nelle categorie outperforming",
     body: "Preparati Bev. Calde (+2.7pp gap), Pane Fresco (+2.2pp), Avicunicolo (+1.6pp): ampliare referenze e migliorare esposizione.",
     lever: "Portfolio", impact: "+0.08pp conf", timeline: "4 mesi"
@@ -290,7 +290,7 @@ ax1.spines[['top']].set_visible(False)
 ax2.spines[['top']].set_visible(False)
 fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W S22/02/26", fontsize=7, color="#6B6A72")
 plt.tight_layout()
-plt.savefig("pareto_skus.png", dpi=200, bbox_inches='tight')
+plt.savefig("pareto_skus.png", dpi=300, bbox_inches='tight')
 
 slide.addImage({ path: "pareto_skus.png", x: 0.6, y: 1.75, w: 7.0, h: 4.25 });
 </example>
@@ -376,6 +376,138 @@ DO: "Tre leve per recuperare 1.5pp entro H2: distribuzione Birre, facing Yogurt,
 
 Every title states the finding AND its magnitude. The reader knows the insight before opening the slide.
 </example>
+
+<example name="chart_theme_and_sizing_preamble">
+## Basquio chart preamble and slot sizing
+
+# Paste this at the top of every matplotlib chart script, then swap the tokens to the active template palette if the template is light or client-specific.
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+BG = '#0A090D'
+TEXT = '#F2F0EB'
+MUTED = '#A09FA6'
+DIM = '#6B6A72'
+BORDER = '#272630'
+ACCENT = '#F0CC27'
+POSITIVE = '#4CC9A0'
+NEGATIVE = '#E8636F'
+PALETTE = ['#F0CC27', '#1A6AFF', '#4CC9A0', '#9B7AE0', '#E8636F', '#5AC4D4', '#6B7280', '#7ABBE0']
+
+plt.rcParams.update({
+    'figure.facecolor': BG,
+    'axes.facecolor': BG,
+    'text.color': TEXT,
+    'axes.labelcolor': MUTED,
+    'xtick.color': DIM,
+    'ytick.color': DIM,
+    'axes.edgecolor': BORDER,
+    'grid.color': BORDER,
+    'grid.alpha': 0.15,
+    'legend.facecolor': 'none',
+    'legend.edgecolor': 'none',
+    'legend.labelcolor': MUTED,
+    'font.family': 'Arial',
+    'font.size': 11,
+})
+
+# Match figure size to the slide slot.
+# title-chart: figsize=(9.25, 3.5), dpi=300
+# chart-split: figsize=(5.75, 3.5), dpi=300
+# evidence-grid: figsize=(5.75, 2.55), dpi=300
+# comparison: figsize=(4.55, 3.2), dpi=300
+# scenario-cards: figsize=(5.5, 3.5), dpi=300
+# Never render below figsize=(4, 2); charts smaller than that become unreadable in PPTX.
+</example>
+
+<example name="chart_emphasis_and_label_safety">
+## Highlight the insight and separate labels cleanly
+
+fig, ax = plt.subplots(figsize=(5.75, 3.5))
+categories = ["Cat Food", "Dog Food", "Treats", "Litter"]
+shares = [37.0, 29.4, 18.2, 15.4]
+growths = [2.5, -1.1, 4.2, 0.6]
+colors = [ACCENT, '#3A3940', '#3A3940', '#3A3940']
+
+bars = ax.barh(categories, shares, color=colors, height=0.58)
+ax.set_xlim(0, 45)
+ax.grid(axis='x')
+ax.invert_yaxis()
+ax.spines[['top', 'right']].set_visible(False)
+ax.spines['left'].set_color(BORDER)
+ax.spines['bottom'].set_visible(False)
+
+for i, (share, growth) in enumerate(zip(shares, growths)):
+    ax.text(share + 0.6, i, f'{share:.1f}%', va='center', fontsize=10, color=TEXT)
+    growth_color = POSITIVE if growth >= 0 else NEGATIVE
+    ax.text(share + 4.2, i, f'{"+" if growth >= 0 else ""}{growth:.1f}%', va='center', fontsize=9, color=growth_color)
+
+# GOOD: share and growth are separate labels, so they never collide.
+# BAD: ax.text(share, i, f'{share:.1f}%({growth:+.1f}%)')  # never combine two metrics in one label
+
+fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+plt.subplots_adjust(bottom=0.18)
+plt.tight_layout()
+plt.savefig("chart_safe_labels.png", dpi=300, bbox_inches='tight', pad_inches=0.15)
+</example>
+
+<example name="layout_variety_example">
+## Layout variety for a 15-slide consulting deck
+
+Good 15-slide mix:
+- 1 cover
+- 1 exec-summary
+- 3 title-chart
+- 3 chart-split
+- 2 evidence-grid
+- 2 comparison
+- 2 recommendation-cards or key-findings
+- 1 summary
+
+This gives 6 layout types and keeps no single layout above 40% of the deck.
+If chart-split appears more than 5 times, convert some of those slides to title-chart or evidence-grid.
+</example>
+
+<example name="template_aware_chart_theme">
+## Template-aware chart theme adaptation
+
+# The structure stays the same for every template. Only the color tokens change.
+# Keep the same rcParams keys, font sizes, spacing, and overlap-prevention rules.
+
+THEME_BG = TEMPLATE_BG
+THEME_TEXT = TEMPLATE_TEXT
+THEME_MUTED = TEMPLATE_MUTED
+THEME_BORDER = TEMPLATE_BORDER
+THEME_ACCENT = TEMPLATE_ACCENT
+THEME_POSITIVE = TEMPLATE_POSITIVE
+THEME_NEGATIVE = TEMPLATE_NEGATIVE
+THEME_PALETTE = TEMPLATE_CHART_PALETTE
+
+plt.rcParams.update({
+    'figure.facecolor': THEME_BG,
+    'axes.facecolor': THEME_BG,
+    'text.color': THEME_TEXT,
+    'axes.labelcolor': THEME_MUTED,
+    'xtick.color': THEME_MUTED,
+    'ytick.color': THEME_MUTED,
+    'axes.edgecolor': THEME_BORDER,
+    'grid.color': THEME_BORDER,
+    'legend.facecolor': 'none',
+    'legend.edgecolor': 'none',
+    'legend.labelcolor': THEME_MUTED,
+    'font.family': 'Arial',
+    'font.size': 11,
+})
+
+# Template fidelity changes palette and mood.
+# It does NOT relax any readability rule:
+# - charts still use dpi=300
+# - charts still match slot figsize
+# - labels still cannot overlap
+# - legends still move outside the plot if needed
+# - titles, callouts, and cards still stay inside their bands
+</example>
 </examples>
 `.trim();
 
@@ -411,6 +543,7 @@ export async function buildBasquioSystemPrompt(input: {
   const staticKnowledge = await loadKnowledgePack();
   const deckGrammar = describeAllArchetypesForPrompt();
   const templateSummary = summarizeTemplateProfile(input.templateProfile);
+  const hasCustomTemplate = input.templateProfile.sourceType !== "system";
   const hasImportedPptxTemplate = input.templateProfile.sourceType === "pptx";
   const promptPalette = resolvePromptPalette(input.templateProfile);
   const deckExamples = buildDeckExamples(promptPalette);
@@ -420,12 +553,12 @@ export async function buildBasquioSystemPrompt(input: {
   const decorativeShapeDirective = hasImportedPptxTemplate
     ? buildDecorativeShapeDirectives(input.templateProfile)
     : [];
-  const templatePaletteDirective = hasImportedPptxTemplate
+  const templatePaletteDirective = hasCustomTemplate
     ? [
         `- CLIENT TEMPLATE COLOR PALETTE: ${promptPalette.chartSequence.join(", ")}.`,
         `- CLIENT TEMPLATE CORE COLORS: background ${promptPalette.background}, primary ${promptPalette.primary}, text ${promptPalette.text}, accent ${promptPalette.highlight}.`,
         "- Use ONLY the client template palette for fills, borders, callouts, and chart emphasis when a client template is present.",
-        "- Do NOT fall back to Basquio default colors (#1A6AFF, #0A090D, #E8A84C) when a client template provides its own palette.",
+        "- Do NOT fall back to Basquio default colors (#F0CC27, #1A6AFF, #0A090D) when a client template provides its own palette.",
         `- Template-aware matplotlib color sequence: ${JSON.stringify(promptPalette.chartSequence)}.`,
         "- A rendered deck that visibly uses Basquio house styling instead of the uploaded template is a failure of template fidelity.",
         "- NEVER write 'Basquio' in any slide footer, header, watermark, or confidentiality notice when a client template is present.",
@@ -491,6 +624,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Use restrained sans body copy and monospace micro-labels for metadata and source lines.",
     "- Use sparse accents, thin borders, compact cards, and disciplined whitespace instead of loud dashboard chrome.",
     "- Use the approved slide grammar instead of inventing custom layouts in the default path.",
+    "- Visual safety rules are universal across Basquio, imported PPTX templates, and brand-token templates. Template choice may change palette, background, and logos, but it never relaxes overlap, spacing, chart sizing, or readability requirements.",
     "- Do not rely on stacked decorative numerals, floating footer metrics, or narrow text boxes that need exact font metrics to survive PowerPoint, Keynote, and Google Slides.",
     "- Recommendation and action cards must reserve separate non-overlapping vertical bands for index, title, body, and footer. If that structure is not clean, simplify the card instead of forcing the composition.",
     "- Recommendation/action card geometry (mandatory when slideArchetype = recommendation-cards): card bounding box = 230px wide x 240px tall.",
@@ -514,10 +648,19 @@ export async function buildBasquioSystemPrompt(input: {
     "- Metric footers must live in their own bottom band with enough height for the value and label; body copy must end above that band.",
     "- Generate charts as high-resolution PNG assets in Python and insert them as images in the final deck; do not rely on native PowerPoint chart objects or SmartArt for critical visuals.",
     "- Concretely: render charts with matplotlib or seaborn, save them as PNG files, and use the loaded presentation skill to place those PNGs in the deck. Do not use native PowerPoint chart objects for final deck visuals.",
+    "- Layout variety rule: a 10-slide deck needs at least 4 layout types, a 15-slide deck needs at least 5 layout types, and no single layout may exceed 40% of total slides.",
+    "- Recommended 15-slide mix: 1 cover, 1 exec-summary, 2-3 title-chart, 2-3 chart-split, 1-2 evidence-grid, 1-2 comparison, 1-2 recommendation-cards/key-findings, 1 summary.",
+    "- If chart-split appears more than 5 times in a 15-slide deck, convert some slides to title-chart or evidence-grid.",
     "- Image format compatibility is critical for PowerPoint. When reusing template assets such as logos, icons, decorative elements, or backgrounds, convert them to PNG before embedding with addImage().",
     "- Never embed .svg, .emf, or .wmf files directly in the output deck. If the client template contains those formats, rasterize SVG to PNG first (for example with cairosvg.svg2png) and skip EMF/WMF unless you have a safe PNG/JPEG alternative.",
     "- Only PNG and JPEG are safe cross-viewer image formats for the final PPTX. If a decorative template asset cannot be converted safely, omit it instead of risking a broken file.",
-    "- Make charts readable on dark backgrounds with explicit foreground colors, restrained palettes, and larger labels.",
+    "- Make charts readable on both dark and light backgrounds with explicit foreground colors, restrained palettes, and larger labels.",
+    "- Start every chart script from the template-aware matplotlib preamble in the examples. For Basquio dark mode, use the dark tokens directly. For client/custom templates, swap in the active template colors but keep the same rcParams structure and readability settings.",
+    "- Chart size rules: title-chart=(9.25, 3.5), chart-split=(5.75, 3.5), evidence-grid=(5.75, 2.55), comparison=(4.55, 3.2), scenario-cards=(5.5, 3.5), all at dpi=300.",
+    "- Never render a chart below figsize=(4, 2). If the slot is too small for a readable chart, change the slide grammar instead of forcing a thumbnail.",
+    "- Chart emphasis rule: highlight exactly one bar, segment, or line with the accent color and keep the rest of the series in muted supporting colors.",
+    "- Label safety rule: never combine two metrics inside one label, keep legends outside the plot when needed, and leave enough axis padding for end-of-bar labels.",
+    "- In custom templates, preserve the template palette and mood, but still move legends, annotations, or labels if they collide. Template fidelity never justifies overlap.",
     "- Label collision prevention (apply BEFORE rendering, do not rely on post-hoc QA):",
     "  - Maximum 12 bars per chart. If a grouped bar would exceed 12 bars, split it into 2 slides or switch to a heatmap, small multiples, or a horizontal alternative.",
     "  - Never rotate x-axis labels. If labels do not fit horizontally, abbreviate them, switch to a horizontal bar chart, or split the chart.",
@@ -638,9 +781,9 @@ function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
     .map((value) => normalizeHex(value))
     .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
 
-  const primary = chartPalette[0] ?? normalizeHex(palette?.accent, "#1A6AFF");
-  const secondary = chartPalette[1] ?? normalizeHex(palette?.highlight, "#6B8EE8");
-  const highlight = normalizeHex(palette?.highlight, chartPalette[1] ?? "#E8A84C");
+  const primary = chartPalette[0] ?? normalizeHex(palette?.accent, "#F0CC27");
+  const secondary = chartPalette[1] ?? normalizeHex(palette?.highlight, "#1A6AFF");
+  const highlight = normalizeHex(palette?.highlight, chartPalette[0] ?? "#F0CC27");
   const positive = normalizeHex(palette?.positive, chartPalette[2] ?? "#4CC9A0");
   const negative = normalizeHex(palette?.negative, chartPalette[3] ?? "#E8636F");
   const background = normalizeHex(palette?.coverBg || palette?.background, "#FFFFFF");
@@ -714,6 +857,8 @@ function buildDeckExamples(palette: PromptPalette) {
     [/#F2F0EB/g, palette.text],
     [/\bA09FA6\b/g, palette.mutedNoHash],
     [/#A09FA6/g, palette.muted],
+    [/\bF0CC27\b/g, palette.highlightNoHash],
+    [/#F0CC27/g, palette.highlight],
     [/\bE8A84C\b/g, palette.highlightNoHash],
     [/#E8A84C/g, palette.highlight],
     [/\b4CC9A0\b/g, palette.positiveNoHash],

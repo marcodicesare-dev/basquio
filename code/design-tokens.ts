@@ -27,7 +27,7 @@ export const BASQUIO_COLORS = {
   textSec: "A09FA6",
   textDim: "6B6A72",
   amber: "F0CC27",
-  amberDim: "B8832E",
+  amberDim: "C4A71F",
   green: "4CC9A0",
   greenDim: "2D8F6E",
   red: "E8636F",
