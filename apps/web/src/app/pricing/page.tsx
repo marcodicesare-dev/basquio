@@ -186,7 +186,7 @@ export default function PricingPage() {
         </article>
       </section>
 
-      <section className="pricing-explainer-grid">
+      <section className="pricing-explainer-stage">
         <article className="panel pricing-explainer-panel">
           <div className="stack-xs">
             <p className="section-label">Deliverables</p>
@@ -216,35 +216,39 @@ export default function PricingPage() {
             ))}
           </div>
         </article>
+      </section>
 
+      <section className="pricing-formula-stage">
         <article className="technical-panel pricing-formula-panel">
           <div className="stack-xs">
             <p className="section-label light">Credit logic</p>
             <h2>Credits map to workload, not vague “AI usage.”</h2>
           </div>
 
-          <div className="pricing-formula-list">
-            {creditFormulaRows.map((row) => (
-              <div key={row.label} className="pricing-formula-row">
-                <div>
-                  <p className="pricing-tier-name">{row.label}</p>
-                  <p className="pricing-formula-value">{row.formula}</p>
-                </div>
-                <p className="muted">{row.note}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="pricing-example-card">
-            <p className="section-label light">Examples</p>
-            <div className="pricing-example-grid">
-              {outputTypes.map((type) => (
-                <div key={type.name} className="pricing-example-pill">
-                  <strong>{type.name}</strong>
-                  <span>{type.time}</span>
-                  <span>{type.artifacts}</span>
+          <div className="pricing-formula-body">
+            <div className="pricing-formula-list">
+              {creditFormulaRows.map((row) => (
+                <div key={row.label} className="pricing-formula-row">
+                  <div>
+                    <p className="pricing-tier-name">{row.label}</p>
+                    <p className="pricing-formula-value">{row.formula}</p>
+                  </div>
+                  <p className="muted">{row.note}</p>
                 </div>
               ))}
+            </div>
+
+            <div className="pricing-example-card">
+              <p className="section-label light">Examples</p>
+              <div className="pricing-example-grid">
+                {outputTypes.map((type) => (
+                  <div key={type.name} className="pricing-example-pill">
+                    <strong>{type.name}</strong>
+                    <span>{type.time}</span>
+                    <span>{type.artifacts}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </article>

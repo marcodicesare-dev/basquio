@@ -5,13 +5,13 @@
 
 // ─── CHART PALETTE ─────────────────────────────────────────────
 export const BASQUIO_CHART_PALETTE = [
-  "E8A84C",  // amber — brand / primary
+  "F0CC27",  // brand amber
+  "1A6AFF",  // brand ultramarine
   "4CC9A0",  // green — positive / secondary
-  "6B8EE8",  // blue — info / tertiary
   "9B7AE0",  // purple — accent
   "E8636F",  // red — danger / competitor
   "5AC4D4",  // cyan — highlight
-  "E8B86C",  // warm amber variant
+  "6B7280",  // brand slate
   "7ABBE0",  // light blue variant
 ];
 
@@ -26,13 +26,13 @@ export const BASQUIO_COLORS = {
   text: "F2F0EB",
   textSec: "A09FA6",
   textDim: "6B6A72",
-  amber: "E8A84C",
+  amber: "F0CC27",
   amberDim: "B8832E",
   green: "4CC9A0",
   greenDim: "2D8F6E",
   red: "E8636F",
   redDim: "B84A54",
-  blue: "6B8EE8",
+  blue: "1A6AFF",
   purple: "9B7AE0",
   cyan: "5AC4D4",
   teal: "3AAFB0",

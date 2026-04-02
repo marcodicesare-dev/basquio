@@ -111,13 +111,13 @@ type BrandTokens = {
 };
 
 const DEFAULT_CHART_PALETTE = [
-  "E8A84C",  // amber — brand / primary
+  "F0CC27",  // brand amber
+  "1A6AFF",  // brand ultramarine
   "4CC9A0",  // green — positive / secondary
-  "6B8EE8",  // blue — info / tertiary
   "9B7AE0",  // purple — accent
   "E8636F",  // red — danger / competitor
   "5AC4D4",  // cyan — highlight
-  "E8B86C",  // warm amber variant
+  "6B7280",  // brand slate
   "7ABBE0",  // light blue variant
 ];
 
@@ -135,13 +135,13 @@ const DEFAULT_TOKENS: BrandTokens = {
     surface: "13121A",    // JSX: surface — slide content bg
     card: "16151E",       // JSX: card — KPI card, chart container bg
     bg: "0A090D",         // JSX: bg — cover slide deepest black
-    accent: "E8A84C",     // JSX: amber
-    accentLight: "1A1922", // JSX: surfaceAlt
+    accent: "F0CC27",     // Brand amber
+    accentLight: "1A1A12", // ~12% amber on dark
     positive: "4CC9A0",   // JSX: green
     negative: "E8636F",   // JSX: red
     coverBg: "0A090D",    // JSX: bg
     calloutGreen: "4CC9A0",
-    calloutOrange: "E8A84C",
+    calloutOrange: "F0CC27",
   },
   typography: {
     // Font strategy: Arial ONLY for maximum cross-platform compatibility.
@@ -161,7 +161,7 @@ const DEFAULT_TOKENS: BrandTokens = {
     kpiValueSize: 30,            // JSX: 30px serif large number
     kpiLabelSize: 9,             // JSX: 9px mono uppercase
   },
-  chartPalette: ["E8A84C", "4CC9A0", "6B8EE8", "9B7AE0", "E8636F", "5AC4D4", "E8B86C", "7ABBE0"],
+  chartPalette: ["F0CC27", "1A6AFF", "4CC9A0", "9B7AE0", "E8636F", "5AC4D4", "6B7280", "7ABBE0"],
 };
 
 // ─── "OBSIDIAN" HOUSE TEMPLATE — Dark Executive ─────────────────
@@ -202,14 +202,14 @@ const OBSIDIAN_TOKENS: BrandTokens = {
 // ─── "BOWER" HOUSE TEMPLATE — MBB Consulting Classic ────────────
 const BOWER_TOKENS: BrandTokens = {
   palette: {
-    ink: "1A1A2E",        // Near-black with warmth
+    ink: "0B0C0C",        // Brand onyx
     muted: "6B7280",      // Gray 500
     dim: "9CA3AF",        // Gray 400
     border: "D1D5DB",     // Gray 300
     surface: "F9FAFB",    // Gray 50
     card: "F9FAFB",       // Gray 50
     bg: "FFFFFF",
-    accent: "1F2937",     // Gray 800 (McKinsey-style: authority from contrast, not color)
+    accent: "0B0C0C",     // Brand onyx
     accentLight: "F3F4F6", // Gray 100
     positive: "059669",   // Emerald 600
     negative: "DC2626",   // Red 600
@@ -233,7 +233,7 @@ const BOWER_TOKENS: BrandTokens = {
   },
   // Chart palette: lead with vibrant blue + teal for Discount/TI comparisons.
   // Dark authority gray moves to position 6 (rarely used in 2-series charts).
-  chartPalette: ["2563EB", "F59E0B", "059669", "DC2626", "7C3AED", "1F2937", "0891B2", "6B7280"],
+  chartPalette: ["1A6AFF", "F0CC27", "059669", "DC2626", "7C3AED", "0B0C0C", "0891B2", "6B7280"],
 };
 
 // ─── "SIGNAL" HOUSE TEMPLATE — Data-Heavy ───────────────────────
@@ -1868,7 +1868,7 @@ export async function renderV2PptxArtifact(
             h: 0.25,
             fontSize: 8,
             fontFace: tokens.typography.monoFont,
-            color: norm(tokens.palette.muted),
+            color: "6B7280",
           },
         },
       },
@@ -1880,7 +1880,7 @@ export async function renderV2PptxArtifact(
       h: 0.25,
       fontSize: 8,
       fontFace: tokens.typography.monoFont,
-      color: "94A3B8",
+      color: "6B7280",
       align: "right",
     },
   });

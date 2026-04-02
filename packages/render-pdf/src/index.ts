@@ -696,13 +696,13 @@ function resolveTheme(templateProfile: TemplateProfile) {
   // the PPTX counterpart doesn't survive Google Slides/Keynote, creating
   // a jarring mismatch between PDF and PPTX outputs.
   return {
-    text: brandTokens?.palette.text ?? templateProfile.colors[0] ?? "#1A1A2E",
-    accent: brandTokens?.palette.accent ?? templateProfile.colors[1] ?? "#1F2937",
-    highlight: brandTokens?.palette.highlight ?? templateProfile.colors[2] ?? "#1F2937",
+    text: brandTokens?.palette.text ?? templateProfile.colors[0] ?? "#0B0C0C",
+    accent: brandTokens?.palette.accent ?? templateProfile.colors[1] ?? "#1A6AFF",
+    highlight: brandTokens?.palette.highlight ?? templateProfile.colors[2] ?? "#1A6AFF",
     background: brandTokens?.palette.background ?? templateProfile.colors[3] ?? "#FFFFFF",
     surface: brandTokens?.palette.surface ?? templateProfile.colors[4] ?? "#F9FAFB",
     border: brandTokens?.palette.border ?? templateProfile.colors[5] ?? "#D1D5DB",
-    accentMuted: brandTokens?.palette.accentMuted ?? "#F3F4F6",
+    accentMuted: brandTokens?.palette.accentMuted ?? "#DDEBFF",
     mutedText: "#6B7280",
     headingFont: brandTokens?.typography.headingFont ?? templateProfile.fonts[0] ?? "Arial",
     bodyFont: brandTokens?.typography.bodyFont ?? templateProfile.fonts[1] ?? templateProfile.fonts[0] ?? "Arial",
@@ -811,7 +811,7 @@ export async function renderV2PdfArtifact(input: V2PdfInput): Promise<BinaryArti
 }
 
 function buildV2DeckHtml(input: V2PdfInput): string {
-  const accent = input.accentColor ?? (input.paletteBg ? "E8A84C" : "2563EB");
+  const accent = input.accentColor ?? (input.paletteBg ? "F0CC27" : "1A6AFF");
   const coverBg = input.coverBgColor ?? input.paletteBg ?? "0A090D";
   const safeFont = (f: string) => f.replace(/[^a-zA-Z0-9 ,\-]/g, "");
   const headingFont = safeFont(input.headingFont ?? "Arial");
@@ -821,6 +821,7 @@ function buildV2DeckHtml(input: V2PdfInput): string {
   const surface = input.paletteSurface ?? "13121A";
   const text = input.paletteText ?? "F2F0EB";
   const muted = input.paletteMuted ?? "A09FA6";
+  const footer = "6B7280";
   const border = input.paletteBorder ?? "272630";
   const positive = input.palettePositive ?? "4CC9A0";
   const negative = input.paletteNegative ?? "E8636F";
@@ -1009,7 +1010,7 @@ li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in;
 .chart-title { font-size: 11pt; font-weight: 600; color: #${text}; margin-bottom: 0.08in; }
 
 /* Footer */
-.slide-footer { position: absolute; bottom: 0.15in; left: 0.6in; font-size: 8pt; color: #${muted}; letter-spacing: 0.5pt; }
+.slide-footer { position: absolute; bottom: 0.15in; left: 0.6in; font-size: 8pt; color: #${footer}; letter-spacing: 0.5pt; }
 </style></head><body>${slideHtml}</body></html>`;
 }
 
@@ -1280,7 +1281,7 @@ function buildHtmlFromSceneGraph(sg: DeckSceneGraph, charts: Map<string, V2PdfCh
     const bg = slide.background ?? palette.background ?? "#FFFFFF";
     return `<div class="sg-slide" style="width:${slideW}px;height:${slideH}px;background:${bg};position:relative;overflow:hidden;">
       ${nodesHtml}
-      <div class="sg-footer" style="position:absolute;bottom:${0.15 * PPI}px;left:${0.6 * PPI}px;font-size:8pt;color:${palette.accentMuted ?? "#999"};letter-spacing:0.5pt;">Basquio | Confidential</div>
+      <div class="sg-footer" style="position:absolute;bottom:${0.15 * PPI}px;left:${0.6 * PPI}px;font-size:8pt;color:#6B7280;letter-spacing:0.5pt;">Basquio | Confidential</div>
     </div>`;
   }).join("\n");
 

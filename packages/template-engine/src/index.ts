@@ -44,7 +44,7 @@ export function createSystemTemplateProfile(): TemplateProfile {
     slideWidthInches: 13.333,
     slideHeightInches: 7.5,
     fonts: ["Arial"],
-    colors: ["#F2F0EB", "#E8A84C", "#4CC9A0", "#13121A", "#0A090D", "#272630"],
+    colors: ["#F2F0EB", "#F0CC27", "#1A6AFF", "#4CC9A0", "#0A090D", "#272630"],
     spacingTokens: ["pageX:0.6", "pageY:0.5", "sectionGap:0.32", "blockGap:0.2"],
     logoAssetHints: [
       "/brand/svg/logo/basquio-logo-dark-bg.svg",
@@ -56,9 +56,9 @@ export function createSystemTemplateProfile(): TemplateProfile {
         text: "#F2F0EB",
         background: "#0A090D",
         surface: "#13121A",
-        accent: "#E8A84C",
-        accentMuted: "#1A1922",
-        highlight: "#E8A84C",
+        accent: "#F0CC27",
+        accentMuted: "#1A1A12",
+        highlight: "#F0CC27",
         border: "#272630",
       },
       typography: {

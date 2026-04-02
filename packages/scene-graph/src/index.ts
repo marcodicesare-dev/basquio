@@ -187,11 +187,11 @@ export function buildDeckSceneGraph(
   };
 
   const palette: Record<string, string> = {
-    text: tokens.palette?.text ?? "#1A1A2E",
+    text: tokens.palette?.text ?? "#0B0C0C",
     background: tokens.palette?.background ?? "#FFFFFF",
     surface: tokens.palette?.surface ?? "#F9FAFB",
-    accent: tokens.palette?.accent ?? "#1F2937",
-    accentMuted: tokens.palette?.accentMuted ?? "#F3F4F6",
+    accent: tokens.palette?.accent ?? "#1A6AFF",
+    accentMuted: tokens.palette?.accentMuted ?? "#DDEBFF",
     border: tokens.palette?.border ?? "#D1D5DB",
     coverBg: (tokens.palette as Record<string, string>)?.coverBg ?? "#1F2937",
     calloutGreen: (tokens.palette as Record<string, string>)?.calloutGreen ?? "#059669",
@@ -637,11 +637,11 @@ export function auditSlideScene(
 // Light consulting defaults used when no template tokens are available.
 const defaultBrandTokens = {
   palette: {
-    text: "#0F172A",       // Slate 900
+    text: "#0B0C0C",       // Brand onyx
     background: "#FFFFFF",
     surface: "#F8FAFC",    // Slate 50
-    accent: "#2563EB",     // Blue 600
-    accentMuted: "#DBEAFE", // Blue 100
+    accent: "#1A6AFF",     // Brand ultramarine
+    accentMuted: "#DDEBFF", // ~12% ultramarine on white
     border: "#E2E8F0",     // Slate 200
   },
   typography: {
@@ -656,7 +656,7 @@ const defaultBrandTokens = {
     pageY: 0.5,
     sectionGap: 0.15,
     blockGap: 0.12,
-    cardRadius: 0.0,       // Consulting-grade: sharp corners
+    cardRadius: 0.06,      // Align with Basquio light-template radius
   },
   logo: {},
 };

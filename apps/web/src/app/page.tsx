@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
+import { SlideShowcase } from "@/components/slide-showcase";
 
 export const metadata: Metadata = {
   title: "Basquio — Turn Data into Finished Analysis Decks | AI Data-to-Presentation Tool",
@@ -147,32 +148,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="output-showcase-grid">
-          <div className="showcase-card showcase-card-large">
-            <Image
-              src="/showcase/slide-showcase-executive.svg"
-              alt="Basquio executive overview slide showing KPI cards, segment performance, and a key finding"
-              width={960}
-              height={540}
-            />
-          </div>
-          <div className="showcase-card">
-            <Image
-              src="/showcase/slide-showcase-chart.svg"
-              alt="Basquio segment performance slide showing a horizontal bar chart"
-              width={960}
-              height={540}
-            />
-          </div>
-          <div className="showcase-card">
-            <Image
-              src="/showcase/slide-showcase-recommendations.svg"
-              alt="Basquio recommendations slide showing prioritized next actions"
-              width={960}
-              height={540}
-            />
-          </div>
-        </div>
+        <SlideShowcase />
       </section>
 
       <section className="how-it-works-section" id="pipeline">
