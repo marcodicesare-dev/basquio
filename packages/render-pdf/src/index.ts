@@ -1324,9 +1324,9 @@ async function buildHtmlFromSceneGraph(
     const rightInset = (x: number, w: number) => (sg.slideWidth - x - w) * PPI;
     const brandingHtml = basquioLogo
       ? isCover
-        ? `<div style="position:absolute;top:${0.28 * PPI}px;right:${rightInset(10.2, 1.15)}px;width:${1.15 * PPI}px;height:${0.16 * PPI}px;font-size:8pt;color:#${normalizeHexColor(palette.muted ?? "#5D656B")};text-align:right;">Made with</div>
-<img src="${basquioLogo}" style="position:absolute;top:${0.18 * PPI}px;right:${rightInset(11.45, 1.5)}px;width:${1.5 * PPI}px;height:${0.379 * PPI}px;" alt="Basquio" />`
-        : `<img src="${basquioLogo}" style="position:absolute;top:${0.2 * PPI}px;right:${rightInset(11.98, 0.55)}px;width:${0.55 * PPI}px;height:${0.139 * PPI}px;" alt="Basquio" />
+        ? `<div style="position:absolute;top:${0.22 * PPI}px;right:${rightInset(9.25, 1.45)}px;width:${1.45 * PPI}px;height:${0.2 * PPI}px;font-size:9pt;color:#${normalizeHexColor(palette.muted ?? "#5D656B")};text-align:right;">Made with</div>
+<img src="${basquioLogo}" style="position:absolute;top:${0.12 * PPI}px;right:${rightInset(10.8, 2.05)}px;width:${2.05 * PPI}px;height:${0.517 * PPI}px;" alt="Basquio" />`
+        : `<img src="${basquioLogo}" style="position:absolute;top:${0.14 * PPI}px;right:${rightInset(11.45, 1.1)}px;width:${1.1 * PPI}px;height:${0.278 * PPI}px;" alt="Basquio" />
 <div style="position:absolute;bottom:${0.15 * PPI}px;right:${0.6 * PPI}px;width:${0.733 * PPI}px;height:${0.25 * PPI}px;font-size:8pt;color:#6B7280;text-align:right;">${slide.position}</div>`
       : "";
     return `<div class="sg-slide" style="width:${slideW}px;height:${slideH}px;background:${bg};position:relative;overflow:hidden;">

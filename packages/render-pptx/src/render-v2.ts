@@ -1967,11 +1967,11 @@ export async function renderV2PptxArtifact(
             text: {
               text: "Made with",
               options: {
-                x: 10.2,
-                y: 0.28,
-                w: 1.15,
-                h: 0.16,
-                fontSize: 8,
+                x: 9.25,
+                y: 0.22,
+                w: 1.45,
+                h: 0.2,
+                fontSize: 9,
                 fontFace: tokens.typography.bodyFont,
                 color: norm(tokens.palette.muted),
                 align: "right",
@@ -1980,10 +1980,10 @@ export async function renderV2PptxArtifact(
           },
           {
             image: {
-              x: 11.45,
-              y: 0.18,
-              w: 1.5,
-              h: 0.379,
+              x: 10.8,
+              y: 0.12,
+              w: 2.05,
+              h: 0.517,
               data: basquioLogo,
             },
           },
@@ -1998,10 +1998,10 @@ export async function renderV2PptxArtifact(
       ? [
           {
             image: {
-              x: 11.98,
-              y: 0.2,
-              w: 0.55,
-              h: 0.139,
+              x: 11.45,
+              y: 0.14,
+              w: 1.1,
+              h: 0.278,
               data: basquioLogo,
             },
           },

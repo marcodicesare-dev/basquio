@@ -39,17 +39,17 @@ if (BASQUIO_LOGO) {
       text: {
         text: "Made with",
         options: {
-          x: 10.28, y: 0.27, w: 1.15, h: 0.16,
-          fontSize: 8, fontFace: "Arial", color: "5D656B", align: "right",
+          x: 9.25, y: 0.22, w: 1.45, h: 0.2,
+          fontSize: 9, fontFace: "Arial", color: "5D656B", align: "right",
         },
       },
     },
     {
-      image: { data: BASQUIO_LOGO, x: 11.5, y: 0.18, w: 1.5, h: 0.379 },
+      image: { data: BASQUIO_LOGO, x: 10.8, y: 0.12, w: 2.05, h: 0.517 },
     },
   );
   contentMasterObjects.push({
-    image: { data: BASQUIO_LOGO, x: 11.98, y: 0.2, w: 0.55, h: 0.139 },
+    image: { data: BASQUIO_LOGO, x: 11.45, y: 0.14, w: 1.1, h: 0.278 },
   });
 }
 
