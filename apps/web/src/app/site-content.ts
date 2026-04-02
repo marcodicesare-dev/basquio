@@ -1,5 +1,3 @@
-export const heroSignals = ["Story by AI. Math by code.", "Private workspace by default", "Branded PPTX + report + data"] as const;
-
 export const reportTypePresets = [
   {
     id: "category-review",
