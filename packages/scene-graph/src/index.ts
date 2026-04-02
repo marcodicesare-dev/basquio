@@ -188,14 +188,14 @@ export function buildDeckSceneGraph(
 
   const palette: Record<string, string> = {
     text: tokens.palette?.text ?? "#0B0C0C",
-    background: tokens.palette?.background ?? "#FFFFFF",
-    surface: tokens.palette?.surface ?? "#F9FAFB",
+    background: tokens.palette?.background ?? "#F5F1E8",
+    surface: tokens.palette?.surface ?? "#FFFFFF",
     accent: tokens.palette?.accent ?? "#1A6AFF",
     accentMuted: tokens.palette?.accentMuted ?? "#E0EBFF",
-    border: tokens.palette?.border ?? "#D1D5DB",
-    coverBg: (tokens.palette as Record<string, string>)?.coverBg ?? "#1F2937",
+    border: tokens.palette?.border ?? "#D6D1C4",
+    coverBg: (tokens.palette as Record<string, string>)?.coverBg ?? "#F5F1E8",
     calloutGreen: (tokens.palette as Record<string, string>)?.calloutGreen ?? "#059669",
-    calloutOrange: (tokens.palette as Record<string, string>)?.calloutOrange ?? "#D97706",
+    calloutOrange: (tokens.palette as Record<string, string>)?.calloutOrange ?? "#F0CC27",
   };
 
   const ctx: LayoutContext = { typography, palette };
@@ -638,11 +638,15 @@ export function auditSlideScene(
 const defaultBrandTokens = {
   palette: {
     text: "#0B0C0C",       // Brand onyx
-    background: "#FFFFFF",
-    surface: "#F8FAFC",    // Slate 50
+    muted: "#5D656B",
+    background: "#F5F1E8", // Warm editorial canvas
+    surface: "#FFFFFF",
     accent: "#1A6AFF",     // Brand ultramarine
     accentMuted: "#E0EBFF", // ~12% ultramarine on white
-    border: "#E2E8F0",     // Slate 200
+    border: "#D6D1C4",
+    coverBg: "#F5F1E8",
+    calloutGreen: "#4CC9A0",
+    calloutOrange: "#F0CC27",
   },
   typography: {
     headingFont: "Arial",

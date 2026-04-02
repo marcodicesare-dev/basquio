@@ -48,7 +48,7 @@ const workflowSteps = [
   {
     stage: "03",
     title: "Review and send",
-    detail: "Edit the PPTX, share the PDF. Same story, both formats.",
+    detail: "Edit the PPTX, send the report, keep the workbook. Same story, one pack.",
   },
 ] as const;
 

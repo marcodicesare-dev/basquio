@@ -25,7 +25,7 @@
 - `data_tables.xlsx` is a first-class Basquio artifact and must be written from the same DataFrames used for charts and reported numbers.
 - Haiku is a report-and-data tier, not a low-quality slide tier.
 - Production runtime prompt inputs must come from tracked repository files, never workspace-only `.context` files.
-- Direct deck generation should default to a premium dark editorial slide language with restrained card surfaces, sparse accents, and disciplined whitespace unless the uploaded template clearly overrides it.
+- Direct deck generation should default to a light editorial slide language with a warm cream canvas, calm white surfaces, restrained ultramarine action accents, and sparse amber highlights unless the uploaded template clearly overrides it.
 - In the direct code-execution path, serif display should be limited to short page-level headlines when no strong template is provided; dense slide text and card internals should use Arial-class safe fonts to reduce cross-viewer layout drift.
 - Charts in the direct code-execution path should be rendered as raster image assets and embedded into the PPTX when Basquio needs one visually consistent deliverable across PowerPoint, Keynote, and Google Slides.
 - Claude responds much more reliably to explicit slide geometry, forbidden layout patterns, and implementation constraints than to abstract taste language alone.
@@ -93,9 +93,9 @@ Initial domain bias:
 - The durable worker should heartbeat `deck_runs.updated_at` while a Claude call is in flight so the database reflects live execution rather than only phase boundaries.
 - every Anthropic phase request should persist request id, usage, phase, and attempt linkage durably so failed-run cost does not require external log forensics.
 - Moving generation off Vercel is not sufficient if the Anthropic client timeout remains at 15 minutes. The durable worker timeout budget must exceed real workbook generation time.
-- A concrete rendered-page QA path now exists: upload the generated `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
+- A concrete rendered-page QA path now exists: upload the generated internal `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
 - Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks. File-backed phases need post-response budget enforcement from actual usage instead of preflight token counting.
-- The final direct-deck generation contract should require `deck.pptx`, `deck.pdf`, and `deck_manifest.json`. `basquio_analysis.json` is optional audit output, not a blocking transport requirement.
+- The final direct-deck publish contract should require `deck.pptx`, `narrative_report.md`, `data_tables.xlsx`, and `deck_manifest.json`. `deck.pdf` remains an internal QA/checkpoint artifact when generated, not a required durable user-facing publish artifact.
 - `narrative_report.md` is a live artifact in the direct deck path and must be authored from the same canonical narrative and evidence layer as the deck, not reverse-converted from slides or PDF.
 - NielsenIQ-style exports contain hierarchy subtotal traps. Any topline number must reconcile category rows against supplier rows before it is allowed into the artifacts.
 - narrative markdown in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.

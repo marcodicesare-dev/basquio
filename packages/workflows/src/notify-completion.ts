@@ -123,7 +123,7 @@ function buildCompletionHtml(
       <td>
         <p style="color: #94A3B8; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; margin: 0 0 16px 0; text-transform: uppercase;">DECK READY</p>
         <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-mono.png" alt="Basquio" width="100" height="auto" style="display: block; margin-bottom: 32px;">
-        <p style="color: #0b0c0c; font-size: 14px; line-height: 24px; margin: 0 0 20px 0;">Your ${slideCount}-slide deck is ready. Download the PPTX to edit or share the PDF.</p>
+        <p style="color: #0b0c0c; font-size: 14px; line-height: 24px; margin: 0 0 20px 0;">Your ${slideCount}-slide deck is ready. Download the PPTX, narrative report, and data workbook.</p>
         <table cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
           <tr>
             <td>

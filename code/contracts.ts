@@ -665,18 +665,18 @@ export const validationReportSchema = z.object({
 export const templateBrandTokensSchema = z.object({
   palette: z
     .object({
-      text: z.string().default("#F2F0EB"),
-      muted: z.string().default("#A09FA6"),
-      background: z.string().default("#0A090D"),
-      surface: z.string().default("#13121A"),
-      accent: z.string().default("#F0CC27"),
-      accentMuted: z.string().default("#1A1A12"),
-      accentLight: z.string().default("#1A1A12"),
+      text: z.string().default("#0B0C0C"),
+      muted: z.string().default("#5D656B"),
+      background: z.string().default("#F5F1E8"),
+      surface: z.string().default("#FFFFFF"),
+      accent: z.string().default("#1A6AFF"),
+      accentMuted: z.string().default("#E0EBFF"),
+      accentLight: z.string().default("#E0EBFF"),
       highlight: z.string().default("#F0CC27"),
-      border: z.string().default("#272630"),
+      border: z.string().default("#D6D1C4"),
       positive: z.string().default("#4CC9A0"),
       negative: z.string().default("#E8636F"),
-      coverBg: z.string().default("#0A090D"),
+      coverBg: z.string().default("#F5F1E8"),
       calloutGreen: z.string().default("#4CC9A0"),
       calloutOrange: z.string().default("#F0CC27"),
     })
@@ -774,6 +774,8 @@ export const templateProfileSchema = z.object({
 
 export const artifactProviderSchema = z.enum(["supabase", "database", "local"]);
 
+// `pdf` remains part of the schema for legacy manifests and internal QA/checkpoint
+// artifacts, but new durable user-facing publishes do not require it.
 export const artifactKindSchema = z.enum(["pptx", "pdf", "md", "xlsx"]);
 
 export const artifactRecordSchema = z.object({

@@ -22,7 +22,7 @@ Implication:
 
 Decision:
 - replace the generated narrative artifact lane from `report.docx` to `narrative_report.md`
-- treat the markdown report as the first-class third artifact beside PPTX and PDF
+- treat the markdown report as a first-class durable artifact alongside the PPTX and data workbook
 - remove the post-hoc DOCX conversion and salvage builders from the direct worker path
 - raise direct-worker budget guards to `pre-flight = $4.50` and `hard = $6.00` so `revise` can actually execute after normal author spend
 
@@ -34,6 +34,7 @@ Why:
 
 Implication:
 - artifact contracts, download routes, UI affordances, and QA checks must use `md` / `narrative_report.md`
+- canonical docs and publish summaries must describe PDF as an internal QA artifact rather than a required user-facing durable artifact
 - publish validation for the narrative lane should check markdown content quality, not DOCX zip signatures
 - canonical docs and memory should describe narrative markdown as the live narrative artifact lane
 
@@ -199,7 +200,7 @@ Implication:
 
 Decision:
 
-- the direct Claude code-execution deck engine should target a premium dark editorial slide language by default when the uploaded template does not strongly override the look
+- the direct Claude code-execution deck engine should target a light editorial Basquio-standard slide language by default when the uploaded template does not strongly override the look
 - the direct deck engine should render charts to raster image assets and embed those images into the PPTX instead of relying on native PowerPoint chart objects whenever one visually consistent deck must survive PowerPoint, Keynote, and Google Slides
 
 Why:

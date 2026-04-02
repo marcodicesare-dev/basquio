@@ -14,10 +14,10 @@
 - Package-level file understanding must happen before trustworthy analytics planning when multiple files are uploaded.
 - Deterministic analytics must run from explicit `ExecutableMetricSpec[]`.
 - Multi-file joins must support explicit left-key and right-key contracts instead of same-name-only assumptions.
-- `SlideSpec[]` remains a valid intermediate planning contract when Basquio needs one, but it is no longer the only permissible path to final PPTX/PDF generation.
+- `SlideSpec[]` remains a valid intermediate planning contract when Basquio needs one, but it is no longer the only permissible path to final artifact generation.
 - Slide count, sectioning, and layout selection must still be evidence-driven, not fixed-spine hard-coding.
 - `ChartSpec` remains the canonical chart-planning contract even when the direct deck engine decides to render a chart with Python instead of a custom renderer.
-- If Basquio uses a direct code-execution deck engine, the deck agent must remain accountable for the final PPTX and PDF artifacts.
+- If Basquio uses a direct code-execution deck engine, the deck agent must remain accountable for the final durable user artifacts (`deck.pptx`, `narrative_report.md`, `data_tables.xlsx`) and any internal QA artifacts it generates.
 - Template geometry, palette, and typography must still come from `TemplateProfile`, even when the final PPTX is generated directly by Claude.
 - Template and brand interpretation must flow through `TemplateProfile`.
 - `.pptx` parsing must materially preserve layout, placeholder, placeholder-frame, theme, and source-origin constraints.

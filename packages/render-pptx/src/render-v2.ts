@@ -22,8 +22,8 @@ function discreteTitleSize(text: string, baseSize: number): number {
 }
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const BASQUIO_COVER_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png";
-const BASQUIO_FOOTER_ICON_PATH = "apps/web/public/brand/png/icon/2x/basquio-icon-amber@2x.png";
+const BASQUIO_LIGHT_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-mono@2x.png";
+const BASQUIO_DARK_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png";
 const brandAssetCache = new Map<string, Promise<string | null>>();
 
 function resolveRepoAssetPath(relativePath: string) {
@@ -128,6 +128,7 @@ export type RenderV2PptxInput = {
   sceneGraph?: DeckSceneGraph;
   brandTokens?: Partial<BrandTokens>;
   templateName?: string;
+  includeBasquioBranding?: boolean;
   exportMode?: ExportMode;
   chartImages?: Map<string, Buffer>;
 };
@@ -179,25 +180,24 @@ const DEFAULT_CHART_PALETTE = [
   "7ABBE0",  // light blue variant
 ];
 
-// ─── "SLATE" HOUSE TEMPLATE (default) ─────────────────────────────
-// Premium dark-mode design. Ported from basquio-deck-templates-v2.jsx.
-// Deep near-black backgrounds with warm amber accent.
-// 8-color chart palette tuned for dark surfaces.
+// ─── BASQUIO STANDARD HOUSE TEMPLATE ──────────────────────────────
+// Warm light editorial canvas with white surfaces, onyx copy,
+// ultramarine action accents, and restrained amber highlights.
 
 const DEFAULT_TOKENS: BrandTokens = {
   palette: {
-    ink: "F2F0EB",        // JSX: text
-    muted: "A09FA6",      // JSX: textSec
-    dim: "6B6A72",        // JSX: textDim — metadata, labels, source notes
-    border: "272630",     // JSX: border
-    surface: "13121A",    // JSX: surface — slide content bg
-    card: "16151E",       // JSX: card — KPI card, chart container bg
-    bg: "0A090D",         // JSX: bg — cover slide deepest black
-    accent: "F0CC27",     // Brand amber
-    accentLight: "1A1A12", // ~12% amber on dark
+    ink: "0B0C0C",
+    muted: "5D656B",
+    dim: "6B7280",
+    border: "D6D1C4",
+    surface: "FFFFFF",
+    card: "FFFFFF",
+    bg: "F5F1E8",
+    accent: "1A6AFF",
+    accentLight: "E0EBFF",
     positive: "4CC9A0",   // JSX: green
     negative: "E8636F",   // JSX: red
-    coverBg: "0A090D",    // JSX: bg
+    coverBg: "F5F1E8",
     calloutGreen: "4CC9A0",
     calloutOrange: "F0CC27",
   },
@@ -218,6 +218,40 @@ const DEFAULT_TOKENS: BrandTokens = {
     sourceSize: 9,               // JSX: 9pt mono source notes
     kpiValueSize: 30,            // JSX: 30px serif large number
     kpiLabelSize: 9,             // JSX: 9px mono uppercase
+  },
+  chartPalette: ["F0CC27", "1A6AFF", "4CC9A0", "9B7AE0", "E8636F", "5AC4D4", "6B7280", "7ABBE0"],
+};
+
+const SLATE_TOKENS: BrandTokens = {
+  palette: {
+    ink: "F2F0EB",
+    muted: "A09FA6",
+    dim: "6B6A72",
+    border: "272630",
+    surface: "13121A",
+    card: "16151E",
+    bg: "0A090D",
+    accent: "F0CC27",
+    accentLight: "1A1A12",
+    positive: "4CC9A0",
+    negative: "E8636F",
+    coverBg: "0A090D",
+    calloutGreen: "4CC9A0",
+    calloutOrange: "F0CC27",
+  },
+  typography: {
+    headingFont: "Arial",
+    bodyFont: "Arial",
+    monoFont: "Courier New",
+    coverTitleSize: 40,
+    titleSize: 22,
+    subtitleSize: 14,
+    bodySize: 12,
+    bulletSize: 12,
+    chartTitleSize: 12,
+    sourceSize: 9,
+    kpiValueSize: 30,
+    kpiLabelSize: 9,
   },
   chartPalette: ["F0CC27", "1A6AFF", "4CC9A0", "9B7AE0", "E8636F", "5AC4D4", "6B7280", "7ABBE0"],
 };
@@ -261,19 +295,19 @@ const OBSIDIAN_TOKENS: BrandTokens = {
 const BOWER_TOKENS: BrandTokens = {
   palette: {
     ink: "0B0C0C",        // Brand onyx
-    muted: "6B7280",      // Gray 500
-    dim: "9CA3AF",        // Gray 400
-    border: "D1D5DB",     // Gray 300
-    surface: "F9FAFB",    // Gray 50
-    card: "F9FAFB",       // Gray 50
-    bg: "FFFFFF",
+    muted: "5D656B",
+    dim: "6B7280",
+    border: "D6D1C4",
+    surface: "FFFFFF",
+    card: "FFFFFF",
+    bg: "F5F1E8",
     accent: "0B0C0C",     // Brand onyx
     accentLight: "F3F4F6", // Gray 100
     positive: "059669",   // Emerald 600
     negative: "DC2626",   // Red 600
-    coverBg: "1F2937",    // Gray 800
+    coverBg: "F5F1E8",
     calloutGreen: "059669",
-    calloutOrange: "D97706",
+    calloutOrange: "F0CC27",
   },
   typography: {
     headingFont: "Arial",    // All-Arial for cross-platform pixel consistency
@@ -366,7 +400,9 @@ const VERSO_TOKENS: BrandTokens = {
 
 // ─── TEMPLATE LOOKUP MAP ────────────────────────────────────────
 const TEMPLATE_MAP: Record<string, BrandTokens> = {
-  slate: DEFAULT_TOKENS,
+  slate: SLATE_TOKENS,
+  "basquio standard": DEFAULT_TOKENS,
+  "warm editorial": DEFAULT_TOKENS,
   obsidian: OBSIDIAN_TOKENS,
   bower: BOWER_TOKENS,
   signal: SIGNAL_TOKENS,
@@ -374,11 +410,8 @@ const TEMPLATE_MAP: Record<string, BrandTokens> = {
 };
 
 function resolveTokens(partial?: Partial<BrandTokens>, templateName?: string): BrandTokens {
-  // Default to BOWER (light, consulting-grade) not SLATE (dark).
-  // Dark themes don't survive PPTX export: Google Slides, Keynote, and many
-  // PowerPoint versions strip or ignore custom slide backgrounds, leaving
-  // near-white text invisible on the default white canvas.
-  const base = (templateName && TEMPLATE_MAP[templateName.toLowerCase()]) || BOWER_TOKENS;
+  // Basquio standard is the no-template fallback. Named house variants still resolve explicitly.
+  const base = (templateName && TEMPLATE_MAP[templateName.toLowerCase()]) || DEFAULT_TOKENS;
   if (!partial) return base;
   const rawPalette = partial.palette as (Partial<BrandTokens["palette"]> & Record<string, string | undefined>) | undefined;
   const normalizedPalette = partial.palette
@@ -403,6 +436,18 @@ function resolveTokens(partial?: Partial<BrandTokens>, templateName?: string): B
 
 function norm(color: string): string {
   return color.replace("#", "").toUpperCase();
+}
+
+function isDarkHexColor(color: string): boolean {
+  const normalized = norm(color);
+  const hex = normalized.length === 3
+    ? normalized.split("").map((char) => `${char}${char}`).join("")
+    : normalized.padStart(6, "0").slice(0, 6);
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance < 0.55;
 }
 
 /** Blend `fg` onto `bg` at `alpha` (0-1). Produces a tinted color that works on any background. */
@@ -790,7 +835,7 @@ function renderSubtitle(
     h: region.h,
     fontFace: tokens.typography.bodyFont,
     fontSize: tokens.typography.subtitleSize,
-    color: norm(tokens.palette.muted), // muted is A09FA6 — readable on both dark cover and content bg
+    color: norm(tokens.palette.muted),
     margin: 0,
     lineSpacingMultiple: 1.2,
   });
@@ -1517,11 +1562,8 @@ function renderCoverSlide(
   // The orchestration clears it (finalKicker = "" for cover) but the LLM
   // sometimes generates one anyway. Defense in depth: don't render it.
 
-  // Title: serif, centered, large (JSX: Playfair Display 56px)
-  // Cover uses WHITE text because cover background is always dark (coverBg).
-  // This works whether the background renders (dark bg + white text) or not
-  // (white bg + fallback). Content slides use ink (dark text on light bg).
-  const coverTextColor = "FFFFFF";
+  const coverTextColor = isDarkHexColor(tokens.palette.coverBg) ? "FFFFFF" : norm(tokens.palette.ink);
+  const coverSubtitleColor = isDarkHexColor(tokens.palette.coverBg) ? "D1D5DB" : norm(tokens.palette.muted);
   const titleY = SLIDE_H / 2 - 1.2;
   slide.addText(processNewlines(s.title), {
     x: 1.5,
@@ -1546,7 +1588,7 @@ function renderCoverSlide(
       h: 0.8,
       fontFace: tokens.typography.bodyFont,
       fontSize: 14,
-      color: "D1D5DB", // Light gray on dark cover bg
+      color: coverSubtitleColor,
       align: "center",
       valign: "top",
       lineSpacingMultiple: 1.5,
@@ -1572,7 +1614,7 @@ function renderContentSlide(
   exportMode: ExportMode = "powerpoint-native",
   chartImageMap?: Map<string, Buffer>,
 ): void {
-  // Content slides use BASQUIO_MASTER (white bg + accent top bar + navy footer)
+  // Content slides use BASQUIO_MASTER for the warm-light house chrome.
   const layoutId = s.layoutId || "title-body";
   const regions = getLayoutRegions(layoutId);
   const arch = getArchetypeOrDefault(layoutId);
@@ -1896,10 +1938,11 @@ export async function renderV2PptxArtifact(
   input: RenderV2PptxInput,
 ): Promise<BinaryArtifact> {
   const tokens = resolveTokens(input.brandTokens, input.templateName);
-  const [basquioCoverLogo, basquioFooterIcon] = await Promise.all([
-    loadBrandAssetDataUri(BASQUIO_COVER_LOGO_PATH),
-    loadBrandAssetDataUri(BASQUIO_FOOTER_ICON_PATH),
-  ]);
+  const includeBasquioBranding = input.includeBasquioBranding ?? false;
+  const basquioLogoPath = isDarkHexColor(tokens.palette.coverBg) || isDarkHexColor(tokens.palette.surface)
+    ? BASQUIO_DARK_LOGO_PATH
+    : BASQUIO_LIGHT_LOGO_PATH;
+  const basquioLogo = includeBasquioBranding ? await loadBrandAssetDataUri(basquioLogoPath) : null;
 
   const pptx = new PptxGenJS();
   pptx.defineLayout({ name: "BASQUIO_16x9", width: SLIDE_W, height: SLIDE_H });
@@ -1918,15 +1961,30 @@ export async function renderV2PptxArtifact(
   pptx.defineSlideMaster({
     title: "BASQUIO_COVER",
     background: { fill: norm(tokens.palette.coverBg) },
-    objects: basquioCoverLogo
+    objects: basquioLogo
       ? [
           {
+            text: {
+              text: "Made with",
+              options: {
+                x: 10.2,
+                y: 0.28,
+                w: 1.15,
+                h: 0.16,
+                fontSize: 8,
+                fontFace: tokens.typography.bodyFont,
+                color: norm(tokens.palette.muted),
+                align: "right",
+              },
+            },
+          },
+          {
             image: {
-              x: 0.6,
-              y: 6.6,
-              w: 1.8,
-              h: 0.3,
-              data: basquioCoverLogo,
+              x: 11.45,
+              y: 0.18,
+              w: 1.5,
+              h: 0.379,
+              data: basquioLogo,
             },
           },
         ]
@@ -1936,48 +1994,33 @@ export async function renderV2PptxArtifact(
   pptx.defineSlideMaster({
     title: "BASQUIO_MASTER",
     background: { fill: norm(tokens.palette.surface) },
-    objects: [
-      // Footer hairline rule — 0.5pt gray line at y=7.1"
-      { rect: { x: 0.6, y: 7.1, w: 12.133, h: 0.007, fill: { color: norm(tokens.palette.border) } } },
-      ...(basquioFooterIcon
-        ? [
-            {
-              image: {
-                x: 0.6,
-                y: 7.15,
-                w: 0.18,
-                h: 0.18,
-                data: basquioFooterIcon,
-              },
+    objects: basquioLogo
+      ? [
+          {
+            image: {
+              x: 11.98,
+              y: 0.2,
+              w: 0.55,
+              h: 0.139,
+              data: basquioLogo,
             },
-          ]
-        : []),
-      // Footer left: source note
-      {
-        text: {
-          text: "Basquio | Confidential",
-          options: {
-            x: 0.85,
+          },
+        ]
+      : [],
+    ...(includeBasquioBranding
+      ? {
+          slideNumber: {
+            x: 12.0,
             y: 7.15,
-            w: 5.75,
+            w: 0.733,
             h: 0.25,
             fontSize: 8,
             fontFace: tokens.typography.monoFont,
             color: "6B7280",
+            align: "right" as const,
           },
-        },
-      },
-    ],
-    slideNumber: {
-      x: 12.0,
-      y: 7.15,
-      w: 0.733,
-      h: 0.25,
-      fontSize: 8,
-      fontFace: tokens.typography.monoFont,
-      color: "6B7280",
-      align: "right",
-    },
+        }
+      : {}),
   });
 
   // Build chart lookup

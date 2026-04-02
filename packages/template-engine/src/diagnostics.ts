@@ -39,7 +39,7 @@ export function buildNoTemplateDiagnostics(): TemplateDiagnostics {
     effect: "none",
     reason: "no_template_attached",
     templateProfileId: null,
-    templateName: "Basquio House Style",
+    templateName: "Basquio Standard",
     sourceType: "system",
     layoutCount: 0,
     warningCount: 0,

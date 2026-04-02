@@ -43,6 +43,10 @@ type ChartRow = {
   thumbnail_url?: string | null;
 };
 
+type ArtifactCheckpointContent = {
+  pdfStoragePath?: string | null;
+};
+
 function usageAndExit(): never {
   console.error("Usage: pnpm test:run --run-id <uuid>");
   process.exit(1);
@@ -173,6 +177,14 @@ async function loadWorkingPaper(runId: string, paperType: string): Promise<Recor
   return rows[0]?.content ?? null;
 }
 
+async function loadArtifactCheckpoint(runId: string): Promise<ArtifactCheckpointContent | null> {
+  const rows = await fetchRestRows<{ content?: ArtifactCheckpointContent | null }>(
+    "working_papers",
+    `run_id=eq.${runId}&paper_type=eq.artifact_checkpoint&select=content&order=version.desc&limit=1`,
+  ).catch(() => []);
+  return rows[0]?.content ?? null;
+}
+
 async function loadV2Charts(runId: string): Promise<ChartRow[]> {
   return fetchRestRows<ChartRow>(
     "deck_spec_v2_charts",
@@ -208,9 +220,11 @@ async function writePersistedRunOutputs(runId: string, outputDir: string, charts
   const charts = await loadV2Charts(runId);
   const plan = await loadWorkingPaper(runId, "deck_plan");
   const analysis = await loadWorkingPaper(runId, "analysis_result");
+  const checkpoint = await loadArtifactCheckpoint(runId);
 
   let pptxBuffer = Buffer.alloc(0);
   let pdfBuffer = Buffer.alloc(0);
+  let pdfSource: "published" | "internal_checkpoint" | null = null;
   for (const artifact of manifestRow.artifacts ?? []) {
     const buffer = await resolveArtifactBuffer(artifact.storagePath, artifact.storageBucket ?? "artifacts");
     if (!buffer) continue;
@@ -221,6 +235,16 @@ async function writePersistedRunOutputs(runId: string, outputDir: string, charts
     if (artifact.kind === "pdf") {
       pdfBuffer = Buffer.from(buffer);
       await writeFile(path.join(outputDir, "deck.pdf"), buffer);
+      pdfSource = "published";
+    }
+  }
+
+  if (pdfBuffer.length === 0 && checkpoint?.pdfStoragePath) {
+    const recoveredPdf = await resolveArtifactBuffer(checkpoint.pdfStoragePath, "artifacts").catch(() => null);
+    if (recoveredPdf) {
+      pdfBuffer = Buffer.from(recoveredPdf);
+      await writeFile(path.join(outputDir, "deck.internal-qa.pdf"), recoveredPdf);
+      pdfSource = "internal_checkpoint";
     }
   }
 
@@ -270,9 +294,10 @@ async function writePersistedRunOutputs(runId: string, outputDir: string, charts
       report: qaReport,
     },
     artifacts: {
+      publishedKinds: (manifestRow.artifacts ?? []).map((artifact) => artifact.kind),
       pptxSlides: pptxSlideCount,
-      pdfPages: pdfPageCount,
-      parity: pptxSlideCount > 0 && pptxSlideCount === pdfPageCount,
+      internalQaPdfPages: pdfPageCount,
+      internalQaPdfSource: pdfSource,
     },
     cost: {
       available: Boolean(costTelemetry),
@@ -291,6 +316,7 @@ async function writePersistedRunOutputs(runId: string, outputDir: string, charts
     chartFailures: manifest.chartImages.failed,
     pptxSlideCount,
     pdfPageCount,
+    pdfSource,
     qaPassed: manifest.qa.passed,
     qaTier: manifest.qa.tier,
     qaCheckCount: checks.length,
@@ -314,7 +340,7 @@ async function main() {
 
   console.log(
     `Slides: ${result.slideCount} | Charts: ${result.chartPngCount}/${result.chartCount} rendered\n` +
-    `Artifacts: PPTX ${result.pptxSlideCount} slides | PDF ${result.pdfPageCount} pages | Parity=${result.pptxSlideCount === result.pdfPageCount}\n` +
+    `Artifacts: PPTX ${result.pptxSlideCount} slides | Internal QA PDF ${result.pdfPageCount} pages${result.pdfSource ? ` (${result.pdfSource})` : ""}\n` +
     `QA: passed=${result.qaPassed} | tier=${result.qaTier ?? "unknown"} | checks=${result.qaCheckCount}\n` +
     `${formatCostLine(result.costTelemetry)}\n` +
     `Time: ${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`,

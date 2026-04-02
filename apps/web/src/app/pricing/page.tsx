@@ -26,7 +26,7 @@ const outputTypes = [
   {
     name: "Deck",
     credits: "~13 credits",
-    artifacts: "PPTX + PDF + MD + XLSX",
+    artifacts: "PPTX + MD + XLSX",
     description: "Full analysis deck with real charts and narrative report.",
     time: "~15 min",
     highlight: true,
@@ -34,7 +34,7 @@ const outputTypes = [
   {
     name: "Deep-Dive",
     credits: "~33 credits",
-    artifacts: "PPTX + PDF + MD + XLSX",
+    artifacts: "PPTX + MD + XLSX",
     description: "Consulting-grade depth. The full treatment.",
     time: "~25 min",
     highlight: false,
@@ -45,7 +45,7 @@ const faqs = [
   {
     question: "What do I get with each output type?",
     answer:
-      "Memo gives you data tables and a narrative report (XLSX + MD). Deck adds a full presentation with real charts (PPTX + PDF). Deep-Dive is the same artifacts as Deck but with consulting-grade analytical depth.",
+      "Memo gives you data tables and a narrative report (XLSX + MD). Deck adds a full presentation with real charts plus the report and workbook (PPTX + MD + XLSX). Deep-Dive is the same artifact pack as Deck but with consulting-grade analytical depth.",
   },
   {
     question: "How do credits work?",

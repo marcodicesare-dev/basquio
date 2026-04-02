@@ -2895,6 +2895,7 @@ Be exhaustive. Every number matters. If a value is approximate, note it. If you 
             ];
         const pptx = await renderV2PptxArtifact({
           slides: slidesForRender, charts: [], deckTitle: brief.slice(0, 100),
+          includeBasquioBranding: true,
           exportMode: "universal-compatible",
         });
         const buf = Buffer.isBuffer(pptx.buffer) ? pptx.buffer : Buffer.from((pptx.buffer as { data: number[] }).data);
@@ -3161,7 +3162,7 @@ function validateAndFixPlan(
     last.layout = "summary";
   }
 
-  // ── Rule 4: Cap at 15 slides ──
+  // ── Rule 4: Cap at the canonical slide ceiling ──
   if (slides.length > MAX_TARGET_SLIDES) {
     // Keep cover, exec-summary, last (recommendation). Remove weakest middle slides.
     const protected_ = new Set([1, 2, slides.length]); // positions to keep
@@ -3317,7 +3318,7 @@ function validateAndFixPlan(
  * Constraints:
  * - No Opus anywhere
  * - No section-level tool loops
- * - Max 15 slides, max 10 charts, max 1 chart per slide
+ * - Max 30 slides, prefer <=24 charts, max 1 chart per slide
  */
 export const basquioAuthor = inngest.createFunction(
   { id: "basquio-author", retries: 0, timeouts: { finish: "25m" } },
@@ -5650,6 +5651,8 @@ export const basquioExport = inngest.createFunction(
         sceneGraph,
         deckTitle: deckTitle || "Basquio Analysis",
         brandTokens: templateProfile?.brandTokens as Record<string, unknown> | undefined,
+        templateName: templateProfile?.templateName,
+        includeBasquioBranding: (templateProfile?.sourceType ?? "system") === "system",
         exportMode,
         chartImages: chartImageMap,
       });
@@ -5868,6 +5871,7 @@ export const basquioExport = inngest.createFunction(
           sceneGraph: pdfSceneGraph,
           charts: chartsMap,
           deckTitle: deckTitle || "Basquio Analysis",
+          includeBasquioBranding: (templateProfile?.sourceType ?? "system") === "system",
         });
 
         if (pdfResult) {

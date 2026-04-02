@@ -30,7 +30,7 @@ The expected input is:
 The expected output is:
 
 - an executive-grade PPTX
-- an executive-grade PDF
+- an audit-ready narrative report and data workbook
 
 Do not reduce the product goal to "upload CSV, get random deck."
 

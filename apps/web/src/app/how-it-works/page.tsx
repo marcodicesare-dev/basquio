@@ -9,7 +9,7 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 export const metadata: Metadata = {
   title: "How Basquio Works — From Data Upload to Finished Analysis Deck",
   description:
-    "Upload CSV or Excel files, Basquio analyzes the data, computes metrics, generates real charts, and delivers a branded PPTX and PDF report in one automated workflow.",
+    "Upload CSV or Excel files, Basquio analyzes the data, computes metrics, generates real charts, and delivers a branded PPTX, narrative report, and data workbook in one automated workflow.",
   alternates: { canonical: "https://basquio.com/how-it-works" },
 };
 
@@ -92,9 +92,9 @@ export default function HowItWorksPage() {
       <section className="panel technical-panel">
         <div className="stack">
           <p className="section-label">What you receive</p>
-          <h2>One story in two formats.</h2>
+          <h2>One story across the full artifact pack.</h2>
           <p className="muted">
-            An editable PowerPoint for working sessions and a polished PDF for sharing — both built from the same
+            An editable PowerPoint, a narrative report, and the audit workbook are built from the same
             analysis, the same narrative, and the same verified claims.
           </p>
         </div>

@@ -150,17 +150,17 @@ export const howItWorksPhases = [
   },
   {
     stage: "04",
-    title: "Deliver both formats",
+    title: "Deliver the artifact pack",
     time: "Step 4",
     copy:
-      "You get an editable PowerPoint and a polished PDF from the same analysis, with source references attached to the claims that matter.",
+      "You get an editable PowerPoint, a narrative report, and the data workbook from the same analysis, with source references attached to the claims that matter.",
   },
 ] as const;
 
 export const howItWorksChecks = [
   "Numbers checked before delivery",
   "Charts and claims tied back to source data",
-  "Brand input carried through both PPTX and PDF",
+  "Brand input carried through the deck output",
 ] as const;
 
 
@@ -290,7 +290,7 @@ export const personas = [
     bestWhen: [
       "You prepare recurring client reporting packs.",
       "You need white-label output that still feels bespoke.",
-      "You want the same analysis to produce both PPTX and PDF.",
+      "You want the same analysis to produce the full deck pack without rebuilding it by hand.",
     ],
     pressureTitle: "The real bottleneck",
     pressureCopy:

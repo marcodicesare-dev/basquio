@@ -45,7 +45,7 @@ export default function PrivacyPage() {
           <ul className="clean-list">
             <li>Basic account information such as your email address.</li>
             <li>Files you upload to run an analysis.</li>
-            <li>Generated artifacts such as PPTX and PDF outputs.</li>
+            <li>Generated artifacts such as PPTX decks, narrative reports, and data workbooks.</li>
             <li>Operational records needed to show run history and workspace state.</li>
           </ul>
         </article>

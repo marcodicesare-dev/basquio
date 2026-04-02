@@ -22,7 +22,7 @@ export const TIER_CONFIG = {
     description: "Full analysis deck with real charts and narrative report.",
     shortDescription: "Full deck with charts",
     estimatedTime: "~15 min",
-    artifacts: ["PPTX", "PDF", "MD", "XLSX"],
+    artifacts: ["PPTX", "MD", "XLSX"],
   },
   "deep-dive": {
     model: "claude-opus-4-6" as const,
@@ -30,7 +30,7 @@ export const TIER_CONFIG = {
     description: "Consulting-grade depth. The full treatment.",
     shortDescription: "Maximum analytical depth",
     estimatedTime: "~25 min",
-    artifacts: ["PPTX", "PDF", "MD", "XLSX"],
+    artifacts: ["PPTX", "MD", "XLSX"],
   },
 } as const;
 

@@ -66,8 +66,8 @@ export const OOXML_RULES = {
   animations: false,        // Break in Slides/Keynote
   transitions: false,       // Break in Slides/Keynote
   masterSlides: false,      // Template-dependent
-  maxSlidesPerDeck: 15,
-  maxChartsPerDeck: 12,
+  maxSlidesPerDeck: 30,
+  maxChartsPerDeck: 24,
   maxBulletsPerSlide: 4,
   maxMetricsPerSlide: 6,
   maxBodyWords: {

@@ -115,19 +115,20 @@ Last updated: 2026-04-02
 
 Pipeline output must use **universally-installed system fonts** for cross-platform PPTX compatibility (PowerPoint, Google Slides, Keynote). Web fonts (Manrope, JetBrains Mono) cannot be embedded in PPTX.
 
-### House Template: "Slate" (system default for Basquio-branded output)
+### House Template: Basquio Standard (system default for Basquio-branded output)
 
 | Token | Value | Notes |
 |-------|-------|-------|
-| bg | `#0A090D` | Near-black |
-| surface | `#13121A` | Card/panel bg |
-| card | `#16151E` | Elevated card bg |
-| border | `#272630` | Subtle borders |
-| text (ink) | `#F2F0EB` | Primary text |
-| muted | `#A09FA6` | Secondary text |
-| dim | `#6B6A72` | Tertiary text |
-| accent | `#F0CC27` | Brand amber |
-| accentLight | `#1A1A12` | Amber tint bg |
+| bg | `#F5F1E8` | Warm cream canvas |
+| surface | `#FFFFFF` | Card/panel bg |
+| card | `#FFFFFF` | Elevated card bg |
+| border | `#D6D1C4` | Warm neutral border |
+| text (ink) | `#0B0C0C` | Primary text |
+| muted | `#5D656B` | Secondary text |
+| dim | `#6B7280` | Tertiary text |
+| accent | `#1A6AFF` | Primary action accent |
+| accentLight | `#E0EBFF` | Ultramarine tint bg |
+| highlight | `#F0CC27` | Sparse highlight accent |
 | positive | `#4CC9A0` | Growth/success |
 | negative | `#E8636F` | Decline/error |
 
@@ -162,25 +163,26 @@ Pipeline output must use **universally-installed system fonts** for cross-platfo
 | blockGap | 0.2" |
 | cardRadius | 0.06" (Bower) / 0.12" (Slate) |
 
-### PPTX Export Default: "Bower" (light theme for compatibility)
+### PPTX Export Default: Basquio Standard (warm light editorial)
 
-The actual PPTX export defaults to Bower (white background) because dark themes do not survive reliably across PowerPoint, Google Slides, and Keynote.
+The Basquio no-template default is a warm light editorial deck. The canvas should track the website's warm cream background, not the older dark Slate house style.
 
 | Token | Value |
 |-------|-------|
-| bg | `#FFFFFF` |
+| bg | `#F5F1E8` |
 | ink | `#0B0C0C` |
-| accent | `#0B0C0C` (brand onyx) |
-| coverBg | `#1F2937` |
-| Chart lead | `#1A6AFF` (brand ultramarine) |
+| accent | `#1A6AFF` (brand ultramarine) |
+| highlight | `#F0CC27` (brand amber) |
+| coverBg | `#F5F1E8` |
+| Chart lead | `#F0CC27` then `#1A6AFF` |
 
 ### All 5 House Templates
 
 | Name | Style | Background | Accent | Use case |
 |------|-------|-----------|--------|----------|
-| Slate | Premium Dark Editorial | `#0A090D` | `#F0CC27` (brand amber) | Basquio-branded |
+| Slate | Premium Dark Editorial | `#0A090D` | `#F0CC27` (brand amber) | Optional dark variant |
 | Obsidian | Dark Executive | `#0F172A` | `#F59E0B` (amber 500) | Executive decks |
-| Bower | MBB Consulting Classic | `#FFFFFF` | `#0B0C0C` (brand onyx) | Consulting (DEFAULT EXPORT) |
+| Bower | MBB Consulting Classic | `#FFFFFF` | `#0B0C0C` (brand onyx) | Consulting variant |
 | Signal | Data-Heavy | `#FFFFFF` | `#7C3AED` (violet 600) | Analyst decks |
 | Verso | Bold Modern / VC Pitch | `#FFFFFF` | `#E11D48` (rose 600) | Pitch decks |
 
@@ -189,13 +191,13 @@ The actual PPTX export defaults to Bower (white background) because dark themes 
 ## "Made by Basquio" Branding Rules
 
 ### When Basquio template is active (no client template):
-- PPTX footer: `"Basquio | Confidential"` at x=0.6", y=7.15", fontSize 8, mono font, brand slate `#6B7280`
-- PDF footer: same text, positioned bottom-left
-- Logo: `/brand/svg/logo/basquio-logo-dark-bg.svg` (dark bg) or `/brand/svg/icon/basquio-icon-amber.svg`
+- Cover master: non-editable `"Made with"` plus Basquio logo image in the top-right corner
+- Content master: small non-editable Basquio logo image in the top-right corner plus slide number bottom-right
+- Logo: light-background mono lockup on warm/light slides; dark-background lockup only on genuinely dark variants
 
 ### When client template IS provided:
 - NEVER write "Basquio" in any slide footer, header, watermark, or confidentiality notice
-- This is enforced in the system prompt (`system-prompt.ts` line 431)
+- This is enforced in the system prompt and template-fidelity rules
 
 ---
 
@@ -204,13 +206,13 @@ The actual PPTX export defaults to Bower (white background) because dark themes 
 | What | Web | Pipeline | Status |
 |------|-----|----------|--------|
 | Amber accent | `#F0CC27` | `#F0CC27` | Aligned |
-| Background | `#f5f1e8` (warm cream) | `#0A090D` (Slate) / `#FFFFFF` (Bower) | **INTENTIONAL** — different contexts |
+| Background | `#f5f1e8` (warm cream) | `#F5F1E8` (Basquio standard) | Aligned |
 | Body font | Manrope | Arial | **INTENTIONAL** — PPTX requires system fonts |
 | Mono font | JetBrains Mono | Courier New | **INTENTIONAL** — PPTX requires system fonts |
 | Border radius | 4-8px | 0.06"-0.12" | Minor medium-specific variance; Basquio templates now keep rounded cards |
-| Blue accent | `#1A6AFF` | `#1A6AFF` (Bower chart / fallback accent) | Aligned |
+| Blue accent | `#1A6AFF` | `#1A6AFF` | Aligned |
 
-Remaining discrepancies are medium-driven, not brand drift: web and pipeline still differ on fonts and background treatment because PPTX compatibility and presentation contexts require it.
+Remaining discrepancies are medium-driven, not brand drift: web and pipeline still differ on fonts because PPTX compatibility requires system fonts.
 
 ---
 

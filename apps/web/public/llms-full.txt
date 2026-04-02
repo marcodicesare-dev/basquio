@@ -29,8 +29,8 @@ The numbers are computed before the writing starts. Basquio reads the package, i
 ### Stage 3: The Story Gets Shaped for the Room
 Audience, objective, and thesis steer the draft. The deck is shaped around who will read it and what decision it needs to support, so the output reads like it belongs in the meeting.
 
-### Stage 4: You Get Both Files Back
-Edit the PPTX in PowerPoint, share the PDF with stakeholders, and keep the same story in both formats. Source references are attached to the claims that matter.
+### Stage 4: You Get the Full Artifact Pack
+Edit the PPTX in PowerPoint, share the narrative report with stakeholders, and keep the same story grounded in the workbook. Source references are attached to the claims that matter.
 
 A typical run takes 5-15 minutes for a standard category review deck.
 
@@ -90,7 +90,7 @@ Add-ins link Excel data to PowerPoint charts but require manual setup for each c
 $10 per report. First standard report is free.
 - Standard reports up to 10 slides
 - Pro reports up to 30 slides
-- PPTX and PDF from the same run
+- PPTX, narrative report, and data workbook from the same run
 - One rerun within 24 hours
 - Works with Basquio Standard or one saved template
 

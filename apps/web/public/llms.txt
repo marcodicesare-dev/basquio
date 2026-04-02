@@ -2,7 +2,7 @@
 
 > Basquio is an AI-native data-to-presentation tool. Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output. The only tool that bridges data analysis (Tableau, Power BI) and presentation design (Gamma, Beautiful.ai) in one automated workflow.
 
-Basquio was built by market research analysts and CPG brand managers who spent years building category review decks manually. It reads structured data files, computes metrics with code (not AI hallucination), generates real charts, writes audience-aware narratives, and delivers branded PPTX + PDF from one run.
+Basquio was built by market research analysts and CPG brand managers who spent years building category review decks manually. It reads structured data files, computes metrics with code (not AI hallucination), generates real charts, writes audience-aware narratives, and delivers editable PPTX plus the narrative report and data workbook from one run.
 
 ## Product
 

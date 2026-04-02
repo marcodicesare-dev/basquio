@@ -17,11 +17,11 @@ const KNOWLEDGE_PACK_FILES = [
 ] as const;
 
 let knowledgePackPromise: Promise<string> | null = null;
-const BASQUIO_LOGO_PLACEHOLDER = "__BASQUIO_LOGO_DARK_BG_BASE64__";
+const BASQUIO_LOGO_PLACEHOLDER = "__BASQUIO_LOGO_LIGHT_BG_BASE64__";
 const BASQUIO_MASTER_ARGS_PLACEHOLDER = "__BASQUIO_MASTER_ARGS__";
 const BASQUIO_COVER_ARGS_PLACEHOLDER = "__BASQUIO_COVER_ARGS__";
 const basquioLogoBase64Promise = readFile(
-  path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png"),
+  path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-mono@2x.png"),
 )
   .then((buffer) => `data:image/png;base64,${buffer.toString("base64")}`)
   .catch(() => null);
@@ -30,38 +30,46 @@ const BASQUIO_BRANDING_EXAMPLE = `
 <example name="perfect_slide_master_setup">
 // FIRST THING before any addSlide(): define masters
 const BASQUIO_LOGO = "${BASQUIO_LOGO_PLACEHOLDER}";
+const coverMasterObjects = [];
 const contentMasterObjects = [];
 
 if (BASQUIO_LOGO) {
+  coverMasterObjects.push(
+    {
+      text: {
+        text: "Made with",
+        options: {
+          x: 10.28, y: 0.27, w: 1.15, h: 0.16,
+          fontSize: 8, fontFace: "Arial", color: "5D656B", align: "right",
+        },
+      },
+    },
+    {
+      image: { data: BASQUIO_LOGO, x: 11.5, y: 0.18, w: 1.5, h: 0.379 },
+    },
+  );
   contentMasterObjects.push({
-    image: { data: BASQUIO_LOGO, x: 12.233, y: 0.22, w: 0.55, h: 0.139 },
+    image: { data: BASQUIO_LOGO, x: 11.98, y: 0.2, w: 0.55, h: 0.139 },
   });
 }
 
 pptx.defineSlideMaster({
   title: "BASQUIO_COVER",
-  background: { fill: "0A090D" },
-  objects: [],
+  background: { fill: "F5F1E8" },
+  objects: coverMasterObjects,
 });
 
 pptx.defineSlideMaster({
   title: "BASQUIO_MASTER",
-  background: { fill: "13121A" },
+  background: { fill: "F5F1E8" },
   objects: contentMasterObjects,
   slideNumber: {
-    x: 12.2, y: 7.18, w: 0.533, h: 0.22,
-    fontSize: 7, fontFace: "Arial", color: "6B7280", align: "right",
+    x: 12.0, y: 7.15, w: 0.533, h: 0.22,
+    fontSize: 8, fontFace: "Arial", color: "6B7280", align: "right",
   },
 });
 
 const coverSlide = pptx.addSlide({ masterName: "BASQUIO_COVER" });
-if (BASQUIO_LOGO) {
-  coverSlide.addText("Made with", {
-    x: 5.5, y: 6.15, w: 2.33, h: 0.22,
-    fontSize: 9, fontFace: "Arial", color: "6B6A72", align: "center",
-  });
-  coverSlide.addImage({ data: BASQUIO_LOGO, x: 5.92, y: 6.4, w: 1.5, h: 0.379 });
-}
 const slide2 = pptx.addSlide({ masterName: "BASQUIO_MASTER" });
 </example>
 `.trim();
@@ -429,7 +437,7 @@ Every title states the finding AND its magnitude. The reader knows the insight b
 <example name="chart_theme_and_sizing_preamble">
 ## Basquio chart preamble and slot sizing
 
-# Paste this at the top of every matplotlib chart script, then swap the tokens to the active template palette if the template is light or client-specific.
+# Paste this at the top of every matplotlib chart script, then swap the tokens to the active template palette if a client template overrides them.
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -629,7 +637,7 @@ export async function buildBasquioSystemPrompt(input: {
         `- CLIENT TEMPLATE COLOR PALETTE: ${promptPalette.chartSequence.join(", ")}.`,
         `- CLIENT TEMPLATE CORE COLORS: background ${promptPalette.background}, primary ${promptPalette.primary}, text ${promptPalette.text}, accent ${promptPalette.highlight}.`,
         "- Use ONLY the client template palette for fills, borders, callouts, and chart emphasis when a client template is present.",
-        "- Do NOT fall back to Basquio default colors (#F0CC27, #1A6AFF, #0A090D) when a client template provides its own palette.",
+        "- Do NOT fall back to Basquio default colors (#F5F1E8, #1A6AFF, #F0CC27) when a client template provides its own palette.",
         `- Template-aware matplotlib color sequence: ${JSON.stringify(promptPalette.chartSequence)}.`,
         "- A rendered deck that visibly uses Basquio house styling instead of the uploaded template is a failure of template fidelity.",
         "- NEVER write 'Basquio' in any slide footer, header, watermark, or confidentiality notice when a client template is present.",
@@ -687,8 +695,9 @@ export async function buildBasquioSystemPrompt(input: {
     ...(!hasCustomTemplate
       ? [
           "- Define BASQUIO_COVER and BASQUIO_MASTER slide masters before any addSlide() call.",
-          "- Cover slide uses BASQUIO_COVER. Add 'Made with' text plus the Basquio logo image at the bottom center of the cover when the logo data is available.",
-          "- All other slides use BASQUIO_MASTER which automatically adds the Basquio logo image and slide number.",
+          "- Cover slide uses BASQUIO_COVER. Put a non-editable 'Made with' label plus the Basquio logo image in the top-right corner when the logo data is available.",
+          "- All other slides use BASQUIO_MASTER which automatically adds a small non-editable Basquio logo in the top-right corner plus the slide number.",
+          "- Treat Basquio branding as master-level chrome or watermark-style background elements. Do not add it as editable body content.",
           "- The Basquio logo is provided as a base64 data URI in the example. Use addImage with data:, not a file path.",
         ]
       : []),
@@ -705,7 +714,7 @@ export async function buildBasquioSystemPrompt(input: {
           "- If the template is light, keep it light. If the template is dark, keep it dark. Do not flip the deck into Basquio dark by default.",
         ]
       : [
-          "- Default to a premium dark editorial deck style when the template does not strongly override it.",
+          "- Default to the Basquio standard light editorial style when the template does not strongly override it: warm cream canvas, white cards, onyx text, ultramarine action accents, and sparse amber highlights.",
         ]),
     ...templatePaletteDirective,
     ...templateLogoDirective,
@@ -880,23 +889,23 @@ function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
     ? systemChartPalette[1]
     : normalizeHex(palette?.accent, chartPalette[0] ?? "#F0CC27");
   const secondary = templateProfile.sourceType === "system"
-    ? systemChartPalette[3]
+    ? systemChartPalette[2]
     : normalizeHex(templateProfile.brandTokens?.chartPalette?.[1], chartPalette[1] ?? "#1A6AFF");
   const highlight = templateProfile.sourceType === "system"
     ? systemChartPalette[0]
     : normalizeHex(palette?.highlight, chartPalette[0] ?? "#F0CC27");
   const positive = normalizeHex(palette?.positive, chartPalette[2] ?? "#4CC9A0");
   const negative = normalizeHex(palette?.negative, chartPalette[3] ?? "#E8636F");
-  const background = normalizeHex(palette?.coverBg || palette?.background, "#FFFFFF");
-  const text = normalizeHex(palette?.text, "#F2F0EB");
-  const muted = normalizeHex(palette?.muted, "#A09FA6");
-  const surface = normalizeHex(palette?.surface, "#16151E");
-  const border = normalizeHex(palette?.border, "#272630");
+  const background = normalizeHex(palette?.coverBg || palette?.background, "#F5F1E8");
+  const text = normalizeHex(palette?.text, "#0B0C0C");
+  const muted = normalizeHex(palette?.muted, "#5D656B");
+  const surface = normalizeHex(palette?.surface, "#FFFFFF");
+  const border = normalizeHex(palette?.border, "#D6D1C4");
 
   const finalChartSequence = [
+    highlight,
     primary,
     secondary,
-    highlight,
     positive,
     negative,
     ...chartPalette,

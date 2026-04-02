@@ -2874,7 +2874,7 @@ function buildAuthorMessage(
           : []),
         isReportOnly
           ? "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: deck_manifest.json, data_tables.xlsx, and narrative_report.md."
-          : "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: analysis_result.json, data_tables.xlsx, deck.pptx, deck.pdf, deck_manifest.json, and narrative_report.md.",
+          : "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final user-facing outputs: deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json. Also attach `deck.pdf` as the internal rendered-QA artifact for this run.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         ...(isReportOnly
           ? ["- This is a report-only run. Do not produce slides or presentation artifacts."]
@@ -2979,10 +2979,10 @@ function buildAuthorMessage(
           analysis
             ? (isReportOnly
               ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck.pptx`, (4) `deck.pdf`, (5) `deck_manifest.json`.")
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
             : (isReportOnly
               ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (4) `deck.pptx`, (5) `deck.pdf`, (6) `deck_manifest.json`."),
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
           ...(analysis
             ? []
             : [
@@ -3205,7 +3205,7 @@ function buildReviseMessage(input: {
       {
         type: "text" as const,
         text: [
-          "Repair the generated deck and regenerate deck.pptx, deck.pdf, and deck_manifest.json.",
+          "Repair the generated deck and regenerate deck.pptx, deck.pdf (internal rendered-QA artifact), and deck_manifest.json.",
           "The rendered PDF above is the exact current deck. Inspect it before you change anything.",
           "Reuse the existing container state and the prior authoring context. Do not start a new draft from scratch unless necessary to fix the issues.",
           "If a client PPTX template is present in the container, continue using it as the visual source of truth. Do not drift back to Basquio dark/editorial styling during repair.",
@@ -3245,7 +3245,7 @@ function buildReviseMessage(input: {
           "Re-apply the deterministic chart preprocessing guide when rebuilding any chart:",
           chartPreprocessingGuide,
           "Fix overlaps, clipped text, blank sections, and claim-exhibit mismatches before any cosmetic refinements.",
-          "Your final assistant message must attach deck.pptx, deck.pdf, and deck_manifest.json as container_upload blocks.",
+          "Your final assistant message must attach deck.pptx, deck.pdf, and deck_manifest.json as container_upload blocks. `deck.pdf` is internal QA support, not a durable user-facing publish artifact.",
         ].join("\n"),
       },
     ],
@@ -3275,7 +3275,7 @@ function buildMinimalReviseThread(input: {
     `Thesis: ${input.analysis?.thesis || input.run.thesis || "Not specified"}`,
     `Executive summary: ${input.analysis?.executiveSummary || "Not available"}`,
     `Manifest summary: ${JSON.stringify(compactManifest, null, 2)}`,
-    "Generated files already present in the container: deck.pptx, deck.pdf, deck_manifest.json.",
+    "Generated files already present in the container: deck.pptx, deck.pdf (internal QA), deck_manifest.json.",
     "Use the rendered PDF and issue list from the next user message to make local repairs without replaying the full authoring transcript.",
   ].join("\n\n");
 

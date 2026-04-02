@@ -65,7 +65,7 @@ The moat is:
 
 The AI must be accountable for final deck quality, not just intermediate planning objects.
 
-Basquio still requires deterministic ingest, evidence grounding, template interpretation, and budget guards, but the current primary path allows Claude to generate the final PPTX and PDF inside a controlled execution sandbox when that produces better report quality than a fragmented renderer stack.
+Basquio still requires deterministic ingest, evidence grounding, template interpretation, and budget guards, but the current primary path allows Claude to generate the final PPTX and supporting artifacts inside a controlled execution sandbox when that produces better report quality than a fragmented renderer stack.
 The generated PDF is an internal QA artifact in the current direct path; the durable user-facing outputs are the PPTX, markdown report, and data workbook.
 
 ## Quality Principle

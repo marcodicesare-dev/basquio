@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     template: "%s | Basquio",
   },
   description:
-    "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, and matching PPTX and PDF output. The only tool that bridges data analysis and presentation design.",
+    "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook. The only tool that bridges data analysis and presentation design.",
   icons: {
     icon: "/brand/svg/favicon/basquio-favicon.svg",
     shortcut: "/brand/png/favicon/basquio-favicon-32.png",
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     siteName: "Basquio",
     title: "Basquio — AI-Powered Data-to-Presentation Analysis",
     description:
-      "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, and matching PPTX and PDF output.",
+      "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook.",
     images: [{ url: "/brand/png/logo/basquio-logo-dark-bg-4x.png", width: 1200, height: 630, alt: "Basquio" }],
   },
   twitter: {
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     creator: "@basquio",
     title: "Basquio — AI-Powered Data-to-Presentation Analysis",
     description:
-      "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, and matching PPTX and PDF output.",
+      "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook.",
     images: ["/brand/png/logo/basquio-logo-dark-bg-4x.png"],
   },
   alternates: {
@@ -72,7 +72,7 @@ const jsonLd = {
         "https://www.linkedin.com/company/basquio",
       ],
       description:
-        "AI-native business intelligence tool that turns raw data files into finished analysis decks with real charts, traceable numbers, and branded PPTX + PDF output.",
+        "AI-native business intelligence tool that turns raw data files into finished analysis decks with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook.",
     },
     {
       "@type": "SoftwareApplication",
@@ -113,7 +113,7 @@ const jsonLd = {
         "Automated data analysis with real computed metrics",
         "Chart generation from actual data (matplotlib, PptxGenJS)",
         "Branded PPTX presentation output",
-        "Narrative PDF report output",
+        "Narrative markdown report output",
         "Data workbook with traceable source references",
         "Brand template interpretation",
         "Zero-prompt operation",

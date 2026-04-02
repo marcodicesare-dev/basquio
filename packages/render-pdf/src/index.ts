@@ -1,9 +1,15 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { PDFDocument, PDFPage, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 
 import { renderChartSvg } from "@basquio/render-charts";
 import type { BinaryArtifact, ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
 import type { DeckSceneGraph, SceneNode } from "@basquio/scene-graph";
 import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
+
+const BASQUIO_LIGHT_LOGO_PATH = path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-mono@2x.png");
+const BASQUIO_DARK_LOGO_PATH = path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png");
 
 type RenderPdfInput = {
   deckTitle: string;
@@ -811,20 +817,20 @@ export async function renderV2PdfArtifact(input: V2PdfInput): Promise<BinaryArti
 }
 
 function buildV2DeckHtml(input: V2PdfInput): string {
-  const accent = input.accentColor ?? (input.paletteBg ? "F0CC27" : "1A6AFF");
-  const coverBg = input.coverBgColor ?? input.paletteBg ?? "0A090D";
+  const accent = input.accentColor ?? "1A6AFF";
+  const coverBg = input.coverBgColor ?? input.paletteBg ?? "F5F1E8";
   const safeFont = (f: string) => f.replace(/[^a-zA-Z0-9 ,\-]/g, "");
   const headingFont = safeFont(input.headingFont ?? "Arial");
   const bodyFont = safeFont(input.bodyFont ?? "Arial");
-  // Dark-mode tokens with fallbacks
-  const bg = input.paletteBg ?? "0A090D";
-  const surface = input.paletteSurface ?? "13121A";
-  const text = input.paletteText ?? "F2F0EB";
-  const muted = input.paletteMuted ?? "A09FA6";
-  const footer = "6B7280";
-  const border = input.paletteBorder ?? "272630";
+  const bg = input.paletteBg ?? "F5F1E8";
+  const surface = input.paletteSurface ?? "FFFFFF";
+  const text = input.paletteText ?? "0B0C0C";
+  const muted = input.paletteMuted ?? "5D656B";
+  const border = input.paletteBorder ?? "D6D1C4";
   const positive = input.palettePositive ?? "4CC9A0";
   const negative = input.paletteNegative ?? "E8636F";
+  const coverText = text;
+  const coverSubtitle = muted;
 
   // Strip markdown from all text
   const clean = (s: string) => s.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
@@ -838,8 +844,8 @@ function buildV2DeckHtml(input: V2PdfInput): string {
         <div class="cover-glow"></div>
         <div class="cover-content">
           ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
-          <h1 style="color:#FFFFFF">${escHtml(clean(s.title))}</h1>
-          ${s.subtitle ? `<p class="subtitle" style="color:#${muted}">${escHtml(clean(s.subtitle))}</p>` : ""}
+          <h1 style="color:#${coverText}">${escHtml(clean(s.title))}</h1>
+          ${s.subtitle ? `<p class="subtitle" style="color:#${coverSubtitle}">${escHtml(clean(s.subtitle))}</p>` : ""}
         </div>
         <div class="cover-bar" style="background:#${accent}"></div>
       </div>`;
@@ -865,7 +871,6 @@ function buildV2DeckHtml(input: V2PdfInput): string {
             <div class="callout-bar" style="background:#${accent}"></div>
             <div class="callout-text">Summary exhibit.</div>
           </div>
-          <div class="slide-footer">Basquio | Confidential</div>
         </div>
       </div>`;
     }
@@ -913,7 +918,7 @@ function buildV2DeckHtml(input: V2PdfInput): string {
     const headerHtml = `
       ${s.kicker ? `<div class="kicker" style="color:#${accent}">${escHtml(clean(s.kicker))}</div>` : ""}
       <h2>${escHtml(clean(s.title))}</h2>`;
-    const footerHtml = `<div class="slide-footer">Basquio | Confidential</div>`;
+    const footerHtml = ``;
     const layout = s.layoutId || "title-body";
 
     // Layout-specific composition
@@ -1009,8 +1014,6 @@ li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in;
 .chart-container { margin: 0.15in 0; background: #${bg}; border: 1px solid #${border}; border-radius: 0; padding: 0.15in 0.2in; }
 .chart-title { font-size: 11pt; font-weight: 600; color: #${text}; margin-bottom: 0.08in; }
 
-/* Footer */
-.slide-footer { position: absolute; bottom: 0.15in; left: 0.6in; font-size: 8pt; color: #${footer}; letter-spacing: 0.5pt; }
 </style></head><body>${slideHtml}</body></html>`;
 }
 
@@ -1244,7 +1247,34 @@ export type SceneGraphPdfInput = {
   sceneGraph: DeckSceneGraph;
   charts: Map<string, V2PdfChart>;
   deckTitle: string;
+  includeBasquioBranding?: boolean;
 };
+
+function normalizeHexColor(color: string): string {
+  return color.replace("#", "").toUpperCase();
+}
+
+function isDarkHexColor(color: string): boolean {
+  const normalized = normalizeHexColor(color);
+  const hex = normalized.length === 3
+    ? normalized.split("").map((char) => `${char}${char}`).join("")
+    : normalized.padStart(6, "0").slice(0, 6);
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance < 0.55;
+}
+
+async function loadBasquioLogoDataUri(darkBackground: boolean): Promise<string | null> {
+  const assetPath = darkBackground ? BASQUIO_DARK_LOGO_PATH : BASQUIO_LIGHT_LOGO_PATH;
+  try {
+    const buffer = await readFile(assetPath);
+    return `data:image/png;base64,${buffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Render PDF from the unified scene graph.
@@ -1257,7 +1287,11 @@ export async function renderPdfFromSceneGraph(input: SceneGraphPdfInput): Promis
     return null;
   }
 
-  const html = buildHtmlFromSceneGraph(input.sceneGraph, input.charts);
+  const html = await buildHtmlFromSceneGraph(
+    input.sceneGraph,
+    input.charts,
+    input.includeBasquioBranding ?? false,
+  );
   try {
     const buffer = await renderViaBrowserless(html, input.deckTitle);
     return { fileName: "basquio-deck.pdf", mimeType: "application/pdf", buffer };
@@ -1267,21 +1301,37 @@ export async function renderPdfFromSceneGraph(input: SceneGraphPdfInput): Promis
   }
 }
 
-function buildHtmlFromSceneGraph(sg: DeckSceneGraph, charts: Map<string, V2PdfChart>): string {
+async function buildHtmlFromSceneGraph(
+  sg: DeckSceneGraph,
+  charts: Map<string, V2PdfChart>,
+  includeBasquioBranding: boolean,
+): Promise<string> {
   const PPI = 96; // pixels per inch (CSS px)
   const slideW = sg.slideWidth * PPI;
   const slideH = sg.slideHeight * PPI;
   const palette = sg.brandTokens.palette;
   const typo = sg.brandTokens.typography;
+  const darkBranding = isDarkHexColor(palette.coverBg ?? palette.background ?? "#FFFFFF")
+    || isDarkHexColor(palette.surface ?? palette.background ?? "#FFFFFF");
+  const basquioLogo = includeBasquioBranding ? await loadBasquioLogoDataUri(darkBranding) : null;
 
   const slidesHtml = sg.slides.map((slide: DeckSceneGraph["slides"][number]) => {
     const nodesHtml = slide.nodes.map((node: SceneNode) =>
       renderSceneNodeHtml(node, PPI, palette, typo, charts),
     ).join("\n");
     const bg = slide.background ?? palette.background ?? "#FFFFFF";
+    const isCover = slide.position === 1 || slide.background === palette.coverBg;
+    const rightInset = (x: number, w: number) => (sg.slideWidth - x - w) * PPI;
+    const brandingHtml = basquioLogo
+      ? isCover
+        ? `<div style="position:absolute;top:${0.28 * PPI}px;right:${rightInset(10.2, 1.15)}px;width:${1.15 * PPI}px;height:${0.16 * PPI}px;font-size:8pt;color:#${normalizeHexColor(palette.muted ?? "#5D656B")};text-align:right;">Made with</div>
+<img src="${basquioLogo}" style="position:absolute;top:${0.18 * PPI}px;right:${rightInset(11.45, 1.5)}px;width:${1.5 * PPI}px;height:${0.379 * PPI}px;" alt="Basquio" />`
+        : `<img src="${basquioLogo}" style="position:absolute;top:${0.2 * PPI}px;right:${rightInset(11.98, 0.55)}px;width:${0.55 * PPI}px;height:${0.139 * PPI}px;" alt="Basquio" />
+<div style="position:absolute;bottom:${0.15 * PPI}px;right:${0.6 * PPI}px;width:${0.733 * PPI}px;height:${0.25 * PPI}px;font-size:8pt;color:#6B7280;text-align:right;">${slide.position}</div>`
+      : "";
     return `<div class="sg-slide" style="width:${slideW}px;height:${slideH}px;background:${bg};position:relative;overflow:hidden;">
       ${nodesHtml}
-      <div class="sg-footer" style="position:absolute;bottom:${0.15 * PPI}px;left:${0.6 * PPI}px;font-size:8pt;color:#6B7280;letter-spacing:0.5pt;">Basquio | Confidential</div>
+      ${brandingHtml}
     </div>`;
   }).join("\n");
 

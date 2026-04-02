@@ -76,7 +76,7 @@ These rules are the applied design canon for future agents working on Basquio UI
 - `/dashboard` should foreground report state, latest findings, and output status rather than vanity metrics
 - `/jobs/new` should read as a report composer with evidence-package, brief, and output-contract framing
 - `/templates` should communicate template and brand-contract behavior, not generic settings
-- `/artifacts` should present PPTX and PDF as paired deliverables from one run, not a generic file library
+- `/artifacts` should present the PPTX, narrative report, and data workbook as one coherent run output, not a generic file library
 
 ### Reusable UI Patterns
 
@@ -97,7 +97,7 @@ These rules are the applied design canon for future agents working on Basquio UI
 1. Replace placeholder text-only branding in the Basquio app shell with the canonical Basquio mark.
 2. Add a first-class job creation flow with a premium, presentation-oriented layout.
 3. Show the generation pipeline visually so users understand parse, analyze, insight, story, slide, and render stages.
-4. Add artifact cards that make PPTX and PDF outputs feel like real deliverables instead of generic files.
+4. Add artifact cards that make the PPTX, narrative report, and data workbook feel like real deliverables instead of generic files.
 
 ## Current Canonical Baseline
 
@@ -107,4 +107,4 @@ As of March 14, 2026, the current Basquio UI baseline is:
 - app shell: branded workspace rail, deliberate topbar, and stronger navigation context
 - job creation: the primary path is a report-composer surface centered on evidence package plus report brief
 - templates: positioned as contract and brand-system control, not decorative theme settings
-- artifacts: positioned as paired deliverables tied to one report run
+- artifacts: positioned as one coherent deliverable pack tied to one report run
