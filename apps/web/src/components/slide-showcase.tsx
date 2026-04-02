@@ -24,8 +24,10 @@ const slides = [
   },
 ] as const;
 
+type SlideId = (typeof slides)[number]["id"];
+
 export function SlideShowcase() {
-  const [active, setActive] = useState(slides[0].id);
+  const [active, setActive] = useState<SlideId>(slides[0].id);
 
   return (
     <div className="slide-showcase">
