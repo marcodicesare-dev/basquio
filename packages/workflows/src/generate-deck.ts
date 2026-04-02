@@ -35,7 +35,14 @@ import {
   FILES_BETA,
   type ClaudeAuthorModel,
 } from "./anthropic-execution-contract";
-import { assertDeckSpendWithinBudget, enforceDeckBudget, roundUsd, usageToCost } from "./cost-guard";
+import {
+  assertDeckSpendWithinBudget,
+  CROSS_ATTEMPT_BUDGET_USD,
+  enforceDeckBudget,
+  getPriorAttemptsCost,
+  roundUsd,
+  usageToCost,
+} from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
@@ -577,6 +584,22 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const modelBetas = buildClaudeBetas(MODEL);
     const toolCallSummary = buildAuthoringToolCallSummary(MODEL);
     const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
+    const priorAttemptsCostUsd = await getPriorAttemptsCost({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      runId,
+      excludeAttemptId: attempt.id,
+    });
+    phaseTelemetry.crossAttemptBudget = {
+      priorAttemptsCostUsd,
+      budgetUsd: CROSS_ATTEMPT_BUDGET_USD,
+      attemptNumber: attempt.attemptNumber,
+    };
+    if (priorAttemptsCostUsd >= CROSS_ATTEMPT_BUDGET_USD) {
+      throw new Error(
+        `Run has already spent $${priorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget is $${CROSS_ATTEMPT_BUDGET_USD.toFixed(2)}.`,
+      );
+    }
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
     // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
     const isTemplateFallback = attempt.recoveryReason === "template_fallback";
@@ -1698,6 +1721,16 @@ async function buildRunCostTelemetry(
   currentAttemptEstimatedCostUsd: number,
   extraTelemetry: Record<string, unknown>,
 ) {
+  const runRow = await fetchRestRows<Pick<RunRow, "target_slide_count">>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_runs",
+    query: {
+      select: "target_slide_count",
+      id: `eq.${runId}`,
+      limit: "1",
+    },
+  }).catch(() => []);
   const attempts = await fetchRestRows<AttemptCostRow>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
@@ -1716,12 +1749,28 @@ async function buildRunCostTelemetry(
       const value = Number(row.cost_telemetry?.estimatedCostUsd ?? 0);
       return sum + (Number.isFinite(value) ? value : 0);
     }, 0);
+  const expectedCostRangeUsd = inferExpectedRunCostRange(
+    model,
+    runRow[0]?.target_slide_count ?? null,
+  );
+  const costAnomaly = Boolean(
+    expectedCostRangeUsd &&
+    currentAttemptEstimatedCostUsd > expectedCostRangeUsd.highUsd * 1.5,
+  );
+
+  if (costAnomaly) {
+    console.warn(
+      `[generateDeckRun] cost anomaly for run ${runId}: attempt cost $${currentAttemptEstimatedCostUsd.toFixed(3)} exceeded expected range $${expectedCostRangeUsd!.lowUsd.toFixed(2)}-$${expectedCostRangeUsd!.highUsd.toFixed(2)} for model ${model}.`,
+    );
+  }
 
   return {
     model,
     ...extraTelemetry,
     estimatedCostUsd: roundUsd(priorEstimatedCostUsd + currentAttemptEstimatedCostUsd),
     latestAttemptEstimatedCostUsd: roundUsd(currentAttemptEstimatedCostUsd),
+    expectedCostRangeUsd,
+    costAnomaly,
     attemptNumber: attempt?.attemptNumber ?? null,
     totalAttemptCount: Math.max(
       attempt?.attemptNumber ?? 0,
@@ -1729,6 +1778,30 @@ async function buildRunCostTelemetry(
       0,
     ),
   };
+}
+
+function inferExpectedRunCostRange(model: string, targetSlideCount: number | null) {
+  if (!targetSlideCount) {
+    return null;
+  }
+
+  if (model === "claude-haiku-4-5" && targetSlideCount <= 10) {
+    return { lowUsd: 0.8, highUsd: 1.5 };
+  }
+
+  if (model === "claude-sonnet-4-6" && targetSlideCount <= 10) {
+    return { lowUsd: 2, highUsd: 4 };
+  }
+
+  if (model === "claude-sonnet-4-6" && targetSlideCount <= 15) {
+    return { lowUsd: 3, highUsd: 5 };
+  }
+
+  if (model === "claude-opus-4-6" && targetSlideCount <= 15) {
+    return { lowUsd: 5, highUsd: 7 };
+  }
+
+  return null;
 }
 
 async function loadSourceFiles(
@@ -2792,6 +2865,13 @@ function buildAuthorMessage(
         "- Keep code execution output concise: after the initial 2-3 profiling blocks, print only the computed values needed for charts and narrative, not full DataFrames.",
         "- After initial profiling, print at most 5 rows from any dataframe. Compact output means fewer print() calls, not fewer analysis steps.",
         "- Use matplotlib in non-interactive mode (`matplotlib.use('Agg')`, `plt.ioff()`) to suppress GUI and debug rendering output.",
+        ...(model === "claude-sonnet-4-6"
+          ? [
+              "- Sonnet efficiency: finish chart generation and PPTX writing in as few execution rounds as possible.",
+              "- Sonnet efficiency: avoid intermediate debug prints or exploratory code once the required evidence is identified.",
+              "- Sonnet efficiency: generate the full chart pack in one coherent script instead of one chart per execution round.",
+            ]
+          : []),
         isReportOnly
           ? "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: deck_manifest.json, data_tables.xlsx, and narrative_report.md."
           : "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: analysis_result.json, data_tables.xlsx, deck.pptx, deck.pdf, deck_manifest.json, and narrative_report.md.",

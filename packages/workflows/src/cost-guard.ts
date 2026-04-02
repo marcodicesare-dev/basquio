@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+import { fetchRestRows } from "./supabase";
+
 const MODEL_PRICING: Record<string, { inputUsdPerMTok: number; outputUsdPerMTok: number }> = {
   "claude-sonnet-4-6": { inputUsdPerMTok: 3, outputUsdPerMTok: 15 },
   "claude-haiku-4-5": { inputUsdPerMTok: 1, outputUsdPerMTok: 5 },
@@ -8,6 +10,7 @@ const MODEL_PRICING: Record<string, { inputUsdPerMTok: number; outputUsdPerMTok:
 
 const PRE_FLIGHT_BUDGET_USD = 7.0;
 const HARD_BUDGET_USD = 10.0;
+export const CROSS_ATTEMPT_BUDGET_USD = 15.0;
 
 export async function enforceDeckBudget(input: {
   client: Anthropic;
@@ -106,6 +109,39 @@ export function usageToCost(
 
 export function roundUsd(value: number) {
   return Math.round(value * 1000) / 1000;
+}
+
+export async function getPriorAttemptsCost(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  runId: string;
+  excludeAttemptId?: string | null;
+}) {
+  const attempts = await fetchRestRows<{
+    id: string;
+    status: string;
+    cost_telemetry: Record<string, unknown> | null;
+  }>({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      select: "id,status,cost_telemetry",
+      run_id: `eq.${input.runId}`,
+      order: "attempt_number.asc",
+      limit: "50",
+    },
+  }).catch(() => []);
+
+  return roundUsd(
+    attempts
+      .filter((row) => row.id !== input.excludeAttemptId)
+      .filter((row) => row.status !== "queued" && row.status !== "running")
+      .reduce((sum, row) => {
+        const value = Number(row.cost_telemetry?.estimatedCostUsd ?? 0);
+        return sum + (Number.isFinite(value) ? value : 0);
+      }, 0),
+  );
 }
 
 function containsUncountableFileSource(value: unknown): boolean {

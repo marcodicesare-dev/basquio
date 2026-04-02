@@ -5,6 +5,8 @@ import path from "node:path";
 import { describeAllArchetypesForPrompt } from "@basquio/scene-graph/slot-archetypes";
 import type { TemplateProfile } from "@basquio/types";
 
+import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
+
 const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-analyst-playbook.md",
   "docs/domain-knowledge/basquio-copywriting-skill.md",
@@ -15,6 +17,54 @@ const KNOWLEDGE_PACK_FILES = [
 ] as const;
 
 let knowledgePackPromise: Promise<string> | null = null;
+const BASQUIO_LOGO_PLACEHOLDER = "__BASQUIO_LOGO_DARK_BG_BASE64__";
+const BASQUIO_MASTER_ARGS_PLACEHOLDER = "__BASQUIO_MASTER_ARGS__";
+const BASQUIO_COVER_ARGS_PLACEHOLDER = "__BASQUIO_COVER_ARGS__";
+const basquioLogoBase64Promise = readFile(
+  path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png"),
+)
+  .then((buffer) => `data:image/png;base64,${buffer.toString("base64")}`)
+  .catch(() => null);
+
+const BASQUIO_BRANDING_EXAMPLE = `
+<example name="perfect_slide_master_setup">
+// FIRST THING before any addSlide(): define masters
+const BASQUIO_LOGO = "${BASQUIO_LOGO_PLACEHOLDER}";
+const contentMasterObjects = [];
+
+if (BASQUIO_LOGO) {
+  contentMasterObjects.push({
+    image: { data: BASQUIO_LOGO, x: 12.233, y: 0.22, w: 0.55, h: 0.139 },
+  });
+}
+
+pptx.defineSlideMaster({
+  title: "BASQUIO_COVER",
+  background: { fill: "0A090D" },
+  objects: [],
+});
+
+pptx.defineSlideMaster({
+  title: "BASQUIO_MASTER",
+  background: { fill: "13121A" },
+  objects: contentMasterObjects,
+  slideNumber: {
+    x: 12.2, y: 7.18, w: 0.533, h: 0.22,
+    fontSize: 7, fontFace: "Arial", color: "6B7280", align: "right",
+  },
+});
+
+const coverSlide = pptx.addSlide({ masterName: "BASQUIO_COVER" });
+if (BASQUIO_LOGO) {
+  coverSlide.addText("Made with", {
+    x: 5.5, y: 6.15, w: 2.33, h: 0.22,
+    fontSize: 9, fontFace: "Arial", color: "6B6A72", align: "center",
+  });
+  coverSlide.addImage({ data: BASQUIO_LOGO, x: 5.92, y: 6.4, w: 1.5, h: 0.379 });
+}
+const slide2 = pptx.addSlide({ masterName: "BASQUIO_MASTER" });
+</example>
+`.trim();
 
 const DECK_EXAMPLES = `
 <examples>
@@ -22,7 +72,7 @@ const DECK_EXAMPLES = `
 // Executive summary slide using exec-summary archetype
 // Note: 4 KPI cards with label + value + delta, plus SCQA body with real sentences
 
-const slide = pptx.addSlide();
+const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
 
 slide.addText("EXECUTIVE SUMMARY", {
   x: 0.45, y: 0.22, w: 9.1, h: 0.18,
@@ -99,8 +149,7 @@ slide.addText("Mix shift toward premium creates pricing headroom - brand should 
 // Cover slide — only title + subtitle. No KPI cards, no accent bars, no extra geometry.
 // Title = one-sentence finding with a number. Subtitle = client + source + period.
 
-const slide = pptx.addSlide();
-slide.background = { color: "0A090D" };
+const slide = pptx.addSlide(${BASQUIO_COVER_ARGS_PLACEHOLDER});
 
 slide.addText("Il Discount perde 0.5pp confezioni vs Totale Italia: servono velocita e premium mix", {
   x: 1.1, y: 2.6, w: 9.0, h: 1.8,
@@ -453,20 +502,38 @@ plt.savefig("chart_safe_labels.png", dpi=300, bbox_inches='tight', pad_inches=0.
 </example>
 
 <example name="layout_variety_example">
-## Layout variety for a 15-slide consulting deck
+## Layout plan example for a 15-slide consulting deck
 
-Good 15-slide mix:
-- 1 cover
-- 1 exec-summary
-- 3 title-chart
-- 3 chart-split
-- 2 evidence-grid
-- 2 comparison
-- 2 recommendation-cards or key-findings
-- 1 summary
+15-slide deck layout plan:
+1. cover
+2. exec-summary (3-5 KPIs + SCQA body)
+3. title-chart (full-width channel growth)
+4. chart-split (market share chart + text)
+5. chart-split (brand portfolio chart + text)
+6. comparison (dual-panel distribution comparison)
+7. evidence-grid (metrics + chart)
+8. title-chart (full-width pricing analysis)
+9. chart-split (competitive landscape + text)
+10. evidence-grid (promo effectiveness metrics + chart)
+11. key-findings (3 key findings)
+12. title-chart (full-width growth bridge waterfall)
+13. recommendation-cards (3 priority actions)
+14. scenario-cards (bear/base/bull scenarios)
+15. summary (next steps)
 
-This gives 6 layout types and keeps no single layout above 40% of the deck.
-If chart-split appears more than 5 times, convert some of those slides to title-chart or evidence-grid.
+Layout count:
+- cover(1)
+- exec-summary(1)
+- title-chart(3)
+- chart-split(3)
+- comparison(1)
+- evidence-grid(2)
+- key-findings(1)
+- recommendation-cards(1)
+- scenario-cards(1)
+- summary(1)
+
+This yields 10 layout types and keeps no type above 3 slides.
 </example>
 
 <example name="template_aware_chart_theme">
@@ -541,12 +608,16 @@ export async function buildBasquioSystemPrompt(input: {
   authorModel: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6";
 }): Promise<Array<Anthropic.Beta.BetaTextBlockParam>> {
   const staticKnowledge = await loadKnowledgePack();
+  const basquioLogoBase64 = await basquioLogoBase64Promise;
   const deckGrammar = describeAllArchetypesForPrompt();
   const templateSummary = summarizeTemplateProfile(input.templateProfile);
   const hasCustomTemplate = input.templateProfile.sourceType !== "system";
   const hasImportedPptxTemplate = input.templateProfile.sourceType === "pptx";
   const promptPalette = resolvePromptPalette(input.templateProfile);
-  const deckExamples = buildDeckExamples(promptPalette);
+  const deckExamples = buildDeckExamples(promptPalette, {
+    basquioLogoBase64,
+    includeBasquioBrandingExample: !hasCustomTemplate,
+  });
   const templateLogoDirective = hasImportedPptxTemplate
     ? buildTemplateLogoDirective(input.templateProfile)
     : [];
@@ -586,6 +657,13 @@ export async function buildBasquioSystemPrompt(input: {
     "- Before writing any topline number from NielsenIQ-style exports, verify that supplier-level totals reconcile to the category total within plus or minus 2 percent. If they do not, you are double-counting hierarchy subtotals.",
     "- Do not exhaustively profile the full workbook if it is not needed. Inspect only the sheets, columns, and KPI structures required to answer the brief well.",
     "- Use concise stdout. Never print more than 20 rows from any dataframe.",
+    ...(input.authorModel === "claude-sonnet-4-6"
+      ? [
+          "- Sonnet efficiency rule: complete all chart generation and PPTX writing in as few code execution rounds as possible.",
+          "- Sonnet efficiency rule: avoid printing intermediate results or debug output unless needed to fix a real error.",
+          "- Sonnet efficiency rule: generate charts in one coherent script block, not one chart per execution round.",
+        ]
+      : []),
     "- Keep all narrative output in the same language as the brief unless the brief explicitly asks for bilingual output.",
     "- Native-language quality is mandatory. Italian must read like native Italian business writing, not translated English and not pseudo-Spanish. English must be direct, partner-grade, and free of padded corporate filler.",
     "- Every slide title must state an insight, not a topic.",
@@ -606,6 +684,19 @@ export async function buildBasquioSystemPrompt(input: {
     "- Distinguish promo intensity from promo effectiveness. A brand can be heavily promoted and still have weak incremental return.",
     "- Every recommendation must name its main risk and mitigation in the narrative report.",
     "- Build all slides in strict sequential order from slide 1 to slide N. Never go back to recreate or overwrite a slide you already added via addSlide(). If you discover an error in an earlier slide, note it and continue forward. The PPTX skill does not support overwriting slides, and re-adding a slide corrupts the file.",
+    ...(!hasCustomTemplate
+      ? [
+          "- Define BASQUIO_COVER and BASQUIO_MASTER slide masters before any addSlide() call.",
+          "- Cover slide uses BASQUIO_COVER. Add 'Made with' text plus the Basquio logo image at the bottom center of the cover when the logo data is available.",
+          "- All other slides use BASQUIO_MASTER which automatically adds the Basquio logo image and slide number.",
+          "- The Basquio logo is provided as a base64 data URI in the example. Use addImage with data:, not a file path.",
+        ]
+      : []),
+    ...(hasCustomTemplate
+      ? [
+          "- When a client template is present, omit the Basquio logo entirely and use the client template branding instead.",
+        ]
+      : []),
     ...(hasImportedPptxTemplate
       ? [
           "- A client PPTX template is present. Treat that template as the visual source of truth.",
@@ -770,20 +861,30 @@ function summarizeTemplateProfile(templateProfile: TemplateProfile) {
 
 function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
   const palette = templateProfile.brandTokens?.palette;
-  const chartPalette = [
-    ...(templateProfile.brandTokens?.chartPalette ?? []),
-    ...templateProfile.colors,
-    palette?.accent ?? "",
-    palette?.highlight ?? "",
-    palette?.positive ?? "",
-    palette?.negative ?? "",
-  ]
+  const systemChartPalette = BASQUIO_CHART_PALETTE.map((value) => normalizeHex(value));
+  const chartPalette = (templateProfile.sourceType === "system"
+    ? systemChartPalette
+    : [
+        ...(templateProfile.brandTokens?.chartPalette ?? []),
+        palette?.accent ?? "",
+        palette?.highlight ?? "",
+        palette?.positive ?? "",
+        palette?.negative ?? "",
+        ...templateProfile.colors,
+        ...systemChartPalette,
+      ])
     .map((value) => normalizeHex(value))
     .filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
 
-  const primary = chartPalette[0] ?? normalizeHex(palette?.accent, "#F0CC27");
-  const secondary = chartPalette[1] ?? normalizeHex(palette?.highlight, "#1A6AFF");
-  const highlight = normalizeHex(palette?.highlight, chartPalette[0] ?? "#F0CC27");
+  const primary = templateProfile.sourceType === "system"
+    ? systemChartPalette[1]
+    : normalizeHex(palette?.accent, chartPalette[0] ?? "#F0CC27");
+  const secondary = templateProfile.sourceType === "system"
+    ? systemChartPalette[3]
+    : normalizeHex(templateProfile.brandTokens?.chartPalette?.[1], chartPalette[1] ?? "#1A6AFF");
+  const highlight = templateProfile.sourceType === "system"
+    ? systemChartPalette[0]
+    : normalizeHex(palette?.highlight, chartPalette[0] ?? "#F0CC27");
   const positive = normalizeHex(palette?.positive, chartPalette[2] ?? "#4CC9A0");
   const negative = normalizeHex(palette?.negative, chartPalette[3] ?? "#E8636F");
   const background = normalizeHex(palette?.coverBg || palette?.background, "#FFFFFF");
@@ -798,8 +899,10 @@ function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
     highlight,
     positive,
     negative,
+    ...chartPalette,
     muted,
-  ].filter((value, index, all) => all.indexOf(value) === index);
+    ...systemChartPalette,
+  ].filter((value, index, all) => Boolean(value) && all.indexOf(value) === index);
 
   return {
     background,
@@ -847,7 +950,13 @@ function buildDecorativeShapeDirectives(templateProfile: TemplateProfile) {
   );
 }
 
-function buildDeckExamples(palette: PromptPalette) {
+function buildDeckExamples(
+  palette: PromptPalette,
+  input: {
+    basquioLogoBase64: string | null;
+    includeBasquioBrandingExample: boolean;
+  },
+) {
   const replacements: Array<[RegExp, string]> = [
     [/#1A6AFF/g, palette.primary],
     [/\b1A6AFF\b/g, palette.primaryNoHash],
@@ -875,7 +984,20 @@ function buildDeckExamples(palette: PromptPalette) {
     [/\b9B7AE0\b/g, palette.secondaryNoHash],
   ];
 
-  return replacements.reduce((text, [pattern, value]) => text.replace(pattern, value), DECK_EXAMPLES);
+  const baseExamples = input.includeBasquioBrandingExample
+    ? DECK_EXAMPLES.replace("<examples>", `<examples>\n${BASQUIO_BRANDING_EXAMPLE}\n`)
+    : DECK_EXAMPLES;
+  const exampleText = baseExamples
+    .replaceAll(BASQUIO_LOGO_PLACEHOLDER, input.basquioLogoBase64 ?? "")
+    .replaceAll(
+      BASQUIO_MASTER_ARGS_PLACEHOLDER,
+      input.includeBasquioBrandingExample ? '{ masterName: "BASQUIO_MASTER" }' : "",
+    )
+    .replaceAll(
+      BASQUIO_COVER_ARGS_PLACEHOLDER,
+      input.includeBasquioBrandingExample ? '{ masterName: "BASQUIO_COVER" }' : "",
+    );
+  return replacements.reduce((text, [pattern, value]) => text.replace(pattern, value), exampleText);
 }
 
 function normalizeHex(value: string | undefined, fallback = "#1A6AFF") {
