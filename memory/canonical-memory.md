@@ -108,6 +108,7 @@ Initial domain bias:
 - Current production critique and export judges are both `claude-sonnet-4-6`; do not reintroduce a weaker critique judge followed by a stricter export-only judge.
 - Current production `author` / `revise` local watchdogs are disabled; stale recovery must respect active in-flight requests and meaningful progress rather than pure phase age.
 - PPTX publish validation should trust the `presentation.xml` slide list over orphaned zip slide parts, and chart-image aspect checks must not treat normal chart-canvas padding as distortion.
+- Git-connected Railway worker deployments install the full pnpm workspace graph from the repo root. The repo itself must declare any native build prerequisites needed by workspace dependencies instead of relying on dashboard-only packages or manual snapshot deploy rituals.
 
 ## Production Incident Memory: March 21-22, 2026
 

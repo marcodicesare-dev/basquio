@@ -19,6 +19,7 @@ Execution surface:
 
 - Vercel request handlers create `deck_runs` rows and upload input files
 - a long-running Railway worker polls Supabase for queued runs and calls `generateDeckRun(runId)`
+- Git-connected Railway worker deploys must be reproducible from committed repo config; native build prerequisites belong in-repo because Railway installs the full pnpm workspace graph from the service root
 - Supabase is the queue, heartbeat, and progress source of truth
 - `deck_runs` is the stable user-facing job record, while `deck_run_attempts` and `deck_run_request_usage` hold recovery lineage plus per-request Anthropic attribution
 - Vercel no longer hosts the long-running execution route for deck generation

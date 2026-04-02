@@ -1,0 +1,5 @@
+[phases.setup]
+# Railway installs the full pnpm workspace graph for the worker service.
+# Keep native build tooling available for workspace deps that may fall back
+# to node-gyp during Git-connected builds, such as @discordjs/opus.
+aptPkgs = ["python3", "python-is-python3", "build-essential"]

@@ -139,6 +139,23 @@ Implication:
 - Pre-finalization `delivery_status` should stay on the canonical `draft` state, not invent a route-era transitional label.
 - `BASQUIO_PHASES` and the current progress UI should no longer advertise legacy `understand` / `polish` phases for the direct worker, even if broader legacy contracts remain in the repo for historical orchestration code.
 
+### Git-connected Railway worker builds must be repo-reproducible
+
+Decision:
+
+- Railway worker deployments must succeed from committed repo config, not from dashboard-only packages or one-off local snapshot rituals.
+- The repo must declare native build prerequisites needed by any workspace dependency that may compile during the worker install path.
+
+Why:
+
+- Railway Git builds install the full pnpm workspace graph from the service root before the worker starts.
+- The `basquio-worker` Git deployment failed on April 2, 2026 because `@discordjs/opus` fell back to `node-gyp` and the build image had no Python/toolchain.
+
+Implication:
+
+- `nixpacks.toml` is part of the live worker deployment contract.
+- Any new native workspace dependency must be evaluated against Railway's Git-connected build path, even if the worker does not import that package at runtime.
+
 ---
 
 ## March 23, 2026 (morning)

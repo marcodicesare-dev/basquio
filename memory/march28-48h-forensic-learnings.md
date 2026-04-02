@@ -109,7 +109,7 @@ Use that baseline before claiming any March 28 hardening changed the main lane f
 - Anthropic client timeout default: `60m`
 - Local `author` and `revise` phase timeout: disabled
 - Local `author` and `revise` request watchdog: disabled
-- Worker deploy model: Railway worker is deployed manually from a clean `HEAD` snapshot, not Git-auto-deployed
+- Worker deploy model: Git-connected Railway worker builds are now part of the live deployment surface; the earlier clean-`HEAD` snapshot lane is historical context, not canonical deploy truth
 - Canonical memory entry point: `memory/MEMORY.md`
 
 ## What Still Needs Validation

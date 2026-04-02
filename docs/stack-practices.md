@@ -81,6 +81,7 @@ Basquio implication:
 
 - Vercel should enqueue `deck_runs` and return immediately
 - Railway should poll Supabase for `status = "queued"` runs and claim them atomically
+- Git-connected Railway builds must stay reproducible from committed repo config; if any workspace dependency may invoke `node-gyp`, keep the required native toolchain in `nixpacks.toml`
 - the worker must heartbeat `deck_runs.updated_at` while a long Claude call is in flight
 - stale-running runs must be re-queued on a recurring interval, not only at startup
 - Anthropic client timeouts in the worker must exceed real workbook runtime instead of inheriting old route-era ceilings

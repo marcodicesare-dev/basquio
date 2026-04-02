@@ -42,6 +42,7 @@
 - Queued jobs must be reconstructable from persisted request state keyed by `jobId`.
 - `deck_runs.status = "queued"` in Supabase is a valid queue contract when a single worker claims runs atomically and updates heartbeat timestamps.
 - The durable worker must run recurring stale-run recovery and keep `deck_runs.updated_at` fresh while a run is in flight.
+- Git-connected Railway worker deploys must be reproducible from committed repo config, including any native build prerequisites required by workspace dependencies during install.
 - Production runtime code must not depend on gitignored workspace-only `.context` files.
 - Large or ambiguous decks are allowed to take more revision attempts than simple ones.
 - Every LLM-assisted stage must emit auditable trace metadata.
