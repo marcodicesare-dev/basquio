@@ -12,7 +12,7 @@ import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
 import { detectLanguage, enforceExhibit, inferQuestionType, lintDeckText, routeQuestion, validateDeckContract, type SlideTextInput } from "@basquio/intelligence";
-import { renderPptxArtifact } from "@basquio/render-pptx";
+import { applyTemplateBranding, renderPptxArtifact } from "@basquio/render-pptx";
 import type { ChartSlotType } from "@basquio/scene-graph";
 import { getArchetypeOrDefault, listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
 import { getLayoutRegions } from "@basquio/scene-graph/layout-regions";
@@ -1463,9 +1463,17 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
 
       if (!isReportOnly) {
+        let brandedBuffer = await sanitizePptxMedia(finalPptx!.buffer);
+
+        // PGTI: deterministically inject template branding (logo, theme, decorative shapes)
+        if (templateProfile.sourceType === "pptx" && templateProfile.brandTokens?.injection) {
+          brandedBuffer = await applyTemplateBranding(brandedBuffer, templateProfile.brandTokens.injection);
+          console.log("[PGTI] Template branding injected deterministically");
+        }
+
         finalPptx = {
           ...finalPptx!,
-          buffer: await sanitizePptxMedia(finalPptx!.buffer),
+          buffer: brandedBuffer,
         };
         finalPdf = await ensureValidPdfArtifact({
           pdf: finalPdf!,

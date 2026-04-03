@@ -74,42 +74,30 @@ const slide2 = pptx.addSlide({ masterName: "BASQUIO_MASTER" });
 </example>
 `.trim();
 
-function buildClientMasterExample(
+/**
+ * Lighter client master example — provides color constants and master naming convention.
+ * Logo and solid-fill decorative shapes are handled by PGTI post-processor.
+ * Claude is still responsible for: footer text, cover background, slide number styling.
+ */
+function buildClientPaletteExample(
   templateProfile: TemplateProfile,
   promptPalette: PromptPalette,
 ) {
-  const logo = templateProfile.brandTokens?.logo;
-  const shapes = templateProfile.brandTokens?.decorativeShapes ?? [];
   const typography = templateProfile.brandTokens?.typography;
   const contentFont = typography?.bodyFont ?? typography?.headingFont ?? "Arial";
   const clientName = (templateProfile.templateName?.replace(/\.pptx$/i, "") || "Client").trim();
   const footerLabel = `${clientName} | Confidential`;
   const contentFontLiteral = JSON.stringify(contentFont);
   const footerLabelLiteral = JSON.stringify(footerLabel);
-  const coverObjects: string[] = [];
-  const contentObjects: string[] = [];
-
-  if (logo?.imageBase64) {
-    const position = logo.position ?? { x: 0.4, y: 6.8, w: 1.5, h: 0.5 };
-    const data = JSON.stringify(logo.imageBase64);
-    coverObjects.push(`    { image: { data: ${data}, x: ${position.x}, y: ${position.y}, w: ${position.w}, h: ${position.h} } },`);
-    contentObjects.push(`    { image: { data: ${data}, x: ${position.x}, y: ${position.y}, w: ${position.w}, h: ${position.h} } },`);
-  }
-
-  for (const shape of shapes.slice(0, 3)) {
-    contentObjects.push(
-      `    { rect: { x: ${shape.x.toFixed(2)}, y: ${shape.y.toFixed(2)}, w: ${shape.w.toFixed(2)}, h: ${shape.h.toFixed(2)}, fill: { color: "${stripHexPrefix(normalizeHex(shape.fill))}" }, line: { color: "${stripHexPrefix(normalizeHex(shape.fill))}", transparency: 100 } } },`,
-    );
-  }
-
-  contentObjects.push(
-    `    { text: { text: ${footerLabelLiteral}, options: { x: 0.45, y: 7.12, w: 2.8, h: 0.22, fontSize: 8, fontFace: ${contentFontLiteral}, color: "${promptPalette.mutedNoHash}" } } },`,
-  );
+  const coverBg = templateProfile.brandTokens?.palette?.coverBg
+    ? stripHexPrefix(normalizeHex(templateProfile.brandTokens.palette.coverBg))
+    : promptPalette.backgroundNoHash;
 
   return `
-<example name="client_template_slide_master_setup">
-// FIRST THING before any addSlide(): define client masters from the extracted template profile.
-// These masters ensure the client logo, colors, and accent elements appear on EVERY slide.
+<example name="client_template_palette_and_masters">
+// Color constants from the client template — use these throughout.
+// The client logo and decorative accent bars are added to the slide master automatically.
+// You do NOT need to add the logo via addImage().
 
 const BG = "${promptPalette.backgroundNoHash}";
 const SURFACE = "${promptPalette.surfaceNoHash}";
@@ -121,17 +109,15 @@ const HIGHLIGHT = "${promptPalette.highlightNoHash}";
 
 pptx.defineSlideMaster({
   title: "CLIENT_COVER",
-  background: { fill: BG },
-  objects: [
-${coverObjects.join("\n")}
-  ],
+  background: { fill: "${coverBg}" },
+  objects: [],
 });
 
 pptx.defineSlideMaster({
   title: "CLIENT_MASTER",
   background: { fill: SURFACE },
   objects: [
-${contentObjects.join("\n")}
+    { text: { text: ${footerLabelLiteral}, options: { x: 0.45, y: 7.12, w: 2.8, h: 0.22, fontSize: 8, fontFace: ${contentFontLiteral}, color: MUTED } } },
   ],
   slideNumber: {
     x: 12.0, y: 7.12, w: 0.55, h: 0.22,
@@ -691,15 +677,22 @@ export async function buildBasquioSystemPrompt(input: {
   const deckExamples = buildDeckExamples(promptPalette, {
     basquioLogoBase64,
     includeBasquioBrandingExample: !hasCustomTemplate,
+    // Lighter example: color constants + master naming + footer text.
+    // Logo and decorative shapes are injected by PGTI post-processor.
     clientMasterExample: hasCustomTemplate
-      ? buildClientMasterExample(input.templateProfile, promptPalette)
+      ? buildClientPaletteExample(input.templateProfile, promptPalette)
       : null,
   });
-  const templateLogoDirective = hasImportedPptxTemplate
-    ? buildTemplateLogoDirective(input.templateProfile)
-    : [];
-  const decorativeShapeDirective = hasImportedPptxTemplate
-    ? buildDecorativeShapeDirectives(input.templateProfile)
+  // PGTI post-processor handles: logo injection into slide master, theme color/font scheme
+  // replacement, solid-fill decorative rectangles, and master solid background.
+  // Claude is still responsible for: gradient/image backgrounds, footer text, layout-specific
+  // accents, non-rect decorative shapes, and any template elements PGTI can't reproduce.
+  const pgtiDirective = hasImportedPptxTemplate
+    ? [
+        "- The client logo and basic decorative accent bars (solid-fill rectangles) will be added to the slide master automatically after generation. Do NOT manually add the client logo image via addImage().",
+        "- You ARE still responsible for: footer text (e.g. 'ClientName | Confidential'), gradient or image backgrounds from the template, any non-rectangular decorative elements, and layout-specific accents that differ between slide types.",
+        "- If the template profile shows a distinct cover background color, apply it to slide 1 via the background property.",
+      ]
     : [];
   const templatePaletteDirective = hasCustomTemplate
     ? [
@@ -792,8 +785,7 @@ export async function buildBasquioSystemPrompt(input: {
           "- Default to the Basquio standard light editorial style when the template does not strongly override it: warm cream canvas, tonal ivory cards, onyx text, ultramarine logo chrome, ultramarine eyebrow labels, ultramarine top hairlines, and sparse amber highlights.",
         ]),
     ...templatePaletteDirective,
-    ...templateLogoDirective,
-    ...decorativeShapeDirective,
+    ...pgtiDirective,
     "- Use cross-viewer-safe typography when the template does not force another stack.",
     "- If no strong template is provided, reserve serif display only for short page headlines or cover titles. Use Arial for dense slide text, card titles, KPI numerals, recommendation labels, and all body copy.",
     "- Use restrained sans body copy and monospace micro-labels for metadata and source lines.",
@@ -1019,34 +1011,6 @@ function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
     negativeNoHash: stripHexPrefix(negative),
     chartSequence: finalChartSequence,
   };
-}
-
-function buildTemplateLogoDirective(templateProfile: TemplateProfile) {
-  const logo = templateProfile.brandTokens?.logo;
-  if (!logo?.imageBase64) {
-    return [
-      "- No client logo was extracted from the template. If the brief clearly names the client, use client text only in the master footer position instead of inventing a logo treatment.",
-    ];
-  }
-
-  const position = logo.position ?? { x: 0.4, y: 0.3, w: 2.0, h: 0.6 };
-  return [
-    "- CLIENT LOGO: define it once inside CLIENT_MASTER and CLIENT_COVER so it appears on every slide automatically.",
-    "- Do NOT add the client logo manually on individual slides. The master handles it.",
-    `- Keep the extracted logo position unless the template clearly requires a small local adjustment: x=${position.x}, y=${position.y}, w=${position.w}, h=${position.h}.`,
-    "- If the logo appears clipped or mispositioned, adjust the master definition, not each slide.",
-  ];
-}
-
-function buildDecorativeShapeDirectives(templateProfile: TemplateProfile) {
-  const shapes = templateProfile.brandTokens?.decorativeShapes ?? [];
-  if (shapes.length === 0) {
-    return [];
-  }
-  return [
-    `- ${shapes.length} decorative accent element(s) from the template are embedded in CLIENT_MASTER and should appear on every content slide automatically.`,
-    "- Do NOT redraw accent bars manually on individual slides. Put them in the master definition once.",
-  ];
 }
 
 function buildDeckExamples(
