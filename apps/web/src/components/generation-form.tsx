@@ -909,6 +909,11 @@ export function GenerationForm({
                   <p className="template-selection-summary">
                     This report will use: <strong>{templateLabel}</strong>
                   </p>
+                  {requiresTemplateFee ? (
+                    <p className="muted" style={{ fontSize: "0.82rem" }}>
+                      Free plan: this custom template will trigger a one-time $5 checkout before the run starts.
+                    </p>
+                  ) : null}
                   <a href="/templates" className="button small secondary" style={{ alignSelf: "flex-start" }}>
                     Import a new template
                   </a>

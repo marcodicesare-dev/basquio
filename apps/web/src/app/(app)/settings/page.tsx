@@ -44,7 +44,7 @@ export default async function SettingsPage() {
               We never use your data to train models. Source files can be deleted after export.
             </p>
             <p className="muted">
-              Report artifacts (PPTX, PDF) are retained until you delete them.
+              Report artifacts (PPTX, narrative report, workbook) are retained until you delete them.
               Credit history is kept for billing records.
             </p>
           </div>

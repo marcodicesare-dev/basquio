@@ -388,7 +388,7 @@ export function RunProgressView(input: {
               <p className="artifact-kind">Credits exhausted</p>
               <h2>You used all your free credits</h2>
               <p className="muted">
-                See pricing to keep generating reports or move this workflow into a team workspace.
+                See pricing to keep generating reports or move this workflow onto a paid plan with cheaper credits.
               </p>
             </div>
             <Link className="button" href="/pricing">

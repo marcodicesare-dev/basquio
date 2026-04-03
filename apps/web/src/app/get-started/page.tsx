@@ -86,10 +86,9 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">What you receive</p>
-            <h2>An editable PPTX and a polished PDF.</h2>
+            <h2>An editable PPTX, a narrative report, and a workbook.</h2>
             <p className="muted">
-              The PowerPoint stays workable for your internal team. The PDF is ready for sharing when the story is
-              locked.
+              The deck stays editable, the report captures the written story, and the workbook preserves the traceable data pack behind it.
             </p>
           </div>
         </article>
@@ -107,12 +106,12 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">Pricing</p>
-            <h2>Start free. Three full runs, no card needed.</h2>
+            <h2>Start free. Upgrade when the workflow repeats.</h2>
             <p className="muted">
-              Start with live data, review the first draft, and decide from there whether the workflow should repeat.
+              Start with 30 free credits, review the first draft, and decide from there whether the workflow should repeat.
             </p>
             <p className="muted">
-              Plans start at $29/month with 30 credits. Credit packs available anytime.{" "}
+              Starter begins at $19/month. Free users can unlock a custom template with a $5 per-run fee, and credit packs are available anytime.{" "}
               <a href="/pricing">See full pricing.</a>
             </p>
             <p className="muted">

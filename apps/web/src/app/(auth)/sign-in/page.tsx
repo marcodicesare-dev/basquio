@@ -46,7 +46,7 @@ export default async function SignInPage({
           </div>
           <div className="auth-value-prop">
             <strong>Two formats, one analysis</strong>
-            <span className="muted">Editable PPTX + polished PDF</span>
+            <span className="muted">Editable PPTX + narrative report + workbook</span>
           </div>
         </div>
       </section>
