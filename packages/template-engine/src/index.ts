@@ -540,7 +540,9 @@ async function extractLogoFromSlideXml(
     return null;
   }
 
-  const relationshipTargets = readRelationshipTargets(slideRels, relsPath);
+  // OOXML: relationship targets are relative to the SOURCE PART (the XML file),
+  // not the .rels file. Use xmlPath as the base for path resolution.
+  const relationshipTargets = readRelationshipTargets(slideRels, xmlPath);
   const pictureBlocks = slideXml.match(/<p:pic\b[\s\S]*?<\/p:pic>/gim) ?? [];
 
   for (const block of pictureBlocks) {
