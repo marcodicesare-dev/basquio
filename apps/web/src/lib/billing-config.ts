@@ -82,7 +82,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
   starter: {
     label: "Starter",
     monthlyPrice: 19,
-    annualMonthlyPrice: 15.83,
+    annualMonthlyPrice: 16,
     annualPrice: 190,
     creditsIncluded: 30,
     templateSlots: 2,

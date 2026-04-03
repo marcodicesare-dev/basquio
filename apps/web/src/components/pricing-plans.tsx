@@ -11,6 +11,7 @@ const plans = [
     name: "Free",
     monthlyPrice: "$0",
     annualPrice: "$0",
+    monthlyFull: "",
     unit: "",
     description: "Try Basquio on real work. No credit card required.",
     bestFor: "Best for validating the workflow on one real reporting cycle.",
@@ -26,7 +27,8 @@ const plans = [
     id: "starter" as const,
     name: "Starter",
     monthlyPrice: "$19",
-    annualPrice: "$15.83",
+    annualPrice: "$16",
+    monthlyFull: "$19",
     unit: "/mo",
     description: "For recurring reporting work that needs clean output without Basquio branding.",
     bestFor: "Best for solo operators who need one stable lane and a couple of client templates.",
@@ -45,6 +47,7 @@ const plans = [
     name: "Pro",
     monthlyPrice: "$149",
     annualPrice: "$124",
+    monthlyFull: "$149",
     unit: "/mo",
     description: "For heavier recurring delivery where credits should stay cheap and supply should stay high.",
     bestFor: "Best for consultants, agencies, and operators running multiple full reviews every month.",
@@ -64,6 +67,7 @@ const plans = [
     name: "Enterprise",
     monthlyPrice: "Custom",
     annualPrice: "Custom",
+    monthlyFull: "",
     unit: "",
     description: "Custom commercial terms for larger teams, procurement review, and bespoke controls.",
     bestFor: "Best for shared workspaces, approval-heavy billing, and higher-volume reporting programs.",
@@ -80,6 +84,7 @@ const plans = [
 
 export function PricingPlans() {
   const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
+  const isAnnual = interval === "annual";
 
   return (
     <section className="pricing-plans-section">
@@ -88,24 +93,24 @@ export function PricingPlans() {
         <div className="pricing-interval-toggle" style={{ display: "flex", gap: "0.5rem", justifyContent: "center", marginTop: "0.75rem" }}>
           <button
             type="button"
-            className={interval === "monthly" ? "button small" : "button small secondary"}
+            className={!isAnnual ? "button small" : "button small secondary"}
             onClick={() => setInterval("monthly")}
           >
             Monthly
           </button>
           <button
             type="button"
-            className={interval === "annual" ? "button small" : "button small secondary"}
+            className={isAnnual ? "button small" : "button small secondary"}
             onClick={() => setInterval("annual")}
           >
-            Annual — save ~17%
+            Annual
           </button>
         </div>
       </div>
       <div className="pricing-grid pricing-grid-editorial">
         {plans.map((plan) => {
-          const price = interval === "annual" ? plan.annualPrice : plan.monthlyPrice;
-          const billedNote = interval === "annual" && plan.unit ? "billed annually" : null;
+          const showStrikethrough = isAnnual && plan.monthlyFull;
+          const displayPrice = isAnnual ? plan.annualPrice : plan.monthlyPrice;
 
           return (
             <article
@@ -118,10 +123,12 @@ export function PricingPlans() {
                   {"badge" in plan && plan.badge ? <span className="pricing-badge">{plan.badge}</span> : null}
                 </div>
                 <div className="pricing-price-row">
-                  <span className="pricing-price">{price}</span>
+                  {showStrikethrough ? (
+                    <span className="pricing-price-struck">{plan.monthlyFull}</span>
+                  ) : null}
+                  <span className="pricing-price">{displayPrice}</span>
                   {plan.unit ? <span className="pricing-unit">{plan.unit}</span> : null}
                 </div>
-                {billedNote ? <p className="pricing-annual-note">{billedNote}</p> : null}
                 <p className="muted">{plan.description}</p>
                 <p className="pricing-plan-best-for">{plan.bestFor}</p>
               </div>

@@ -5973,6 +5973,14 @@ textarea {
   gap: 12px;
 }
 
+.pricing-price-struck {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
 .pricing-plan-best-for {
   margin: 0;
   color: var(--text);
