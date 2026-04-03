@@ -31,6 +31,7 @@ type ExtractedBrandTokens = {
   logo?: Partial<NonNullable<TemplateProfile["brandTokens"]>["logo"]>;
   decorativeShapes?: NonNullable<TemplateProfile["brandTokens"]>["decorativeShapes"];
   chartPalette?: string[];
+  injection?: NonNullable<TemplateProfile["brandTokens"]>["injection"];
 };
 
 export function createSystemTemplateProfile(): TemplateProfile {
@@ -243,7 +244,9 @@ async function parsePptxTemplate(input: {
   const coverBg = await extractCoverBackground(zip);
   const coverLogo = await extractCoverLogo(zip, slideMetrics.widthInches ?? input.base.slideWidthInches);
   const decorativeShapes = await extractDecorativeShapes(zip);
+  const masterDecorativeShapes = await extractMasterDecorativeShapes(zip);
   const theme = extractTheme(themeXml, coverBg);
+  const injectionPayload = extractInjectionPayload(themeXml, coverLogo, masterDecorativeShapes, zip);
   const layouts = await Promise.all(
     layoutEntries.map(async (entry) =>
       extractLayout(
@@ -268,6 +271,8 @@ async function parsePptxTemplate(input: {
     warnings.push(`Design translation reviewed ${input.reviewFeedback.length} revision cue${input.reviewFeedback.length === 1 ? "" : "s"} while re-reading the template.`);
   }
 
+  const allDecorativeShapes = [...decorativeShapes, ...masterDecorativeShapes].slice(0, 5);
+
   const templateProfile = applyBrandTokens(
     input.base,
     input.id,
@@ -279,7 +284,8 @@ async function parsePptxTemplate(input: {
         ...coverLogo,
         treatment: "template-import",
       },
-      decorativeShapes,
+      decorativeShapes: allDecorativeShapes,
+      injection: await injectionPayload,
     },
     warnings,
     input.fileName,
@@ -418,6 +424,7 @@ function applyBrandTokens(
       logo,
       decorativeShapes,
       ...(extracted.chartPalette ? { chartPalette: extracted.chartPalette } : {}),
+      ...(extracted.injection ? { injection: extracted.injection } : {}),
     },
     warnings,
   };
@@ -508,14 +515,14 @@ async function extractCoverLogo(zip: JSZip, slideWidthInches: number) {
     return slideLogo;
   }
 
-  const masterLogo = await extractLogoFromSlideXml(
-    zip,
-    "ppt/slideMasters/slideMaster1.xml",
-    "ppt/slideMasters/_rels/slideMaster1.xml.rels",
-    slideWidthInches,
-  );
-  if (masterLogo) {
-    return masterLogo;
+  // Try all slide masters, not just slideMaster1
+  const masterEntries = Object.keys(zip.files)
+    .filter((e) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/i.test(e))
+    .sort();
+  for (const masterEntry of masterEntries) {
+    const relsEntry = masterEntry.replace("slideMasters/", "slideMasters/_rels/") + ".rels";
+    const masterLogo = await extractLogoFromSlideXml(zip, masterEntry, relsEntry, slideWidthInches);
+    if (masterLogo) return masterLogo;
   }
 
   return {};
@@ -620,6 +627,112 @@ async function extractDecorativeShapes(zip: JSZip) {
   }
 
   return decorativeShapes.slice(0, 3);
+}
+
+async function extractMasterDecorativeShapes(zip: JSZip) {
+  // Check all slide masters, not just slideMaster1
+  const masterEntries = Object.keys(zip.files)
+    .filter((e) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/i.test(e))
+    .sort();
+  const allShapes: NonNullable<TemplateProfile["brandTokens"]>["decorativeShapes"] = [];
+  for (const entry of masterEntries) {
+    allShapes.push(...await extractDecorativeShapesFromXml(zip, entry));
+  }
+  return allShapes.slice(0, 5);
+}
+
+async function extractDecorativeShapesFromXml(zip: JSZip, xmlPath: string) {
+  const masterXml = await readZipText(zip, xmlPath);
+  if (!masterXml) return [];
+
+  const shapes: NonNullable<TemplateProfile["brandTokens"]>["decorativeShapes"] = [];
+  const shapeBlocks = masterXml.match(/<p:sp\b[\s\S]*?<\/p:sp>/gim) ?? [];
+
+  for (const block of shapeBlocks) {
+    // Skip placeholders — they have <p:ph> elements
+    if (block.includes("<p:ph")) continue;
+    // Skip text-heavy shapes (>10 chars of actual text content)
+    const textContent = [...block.matchAll(/<a:t>([^<]*)<\/a:t>/gim)].map(m => m[1]).join("");
+    if (textContent.length > 10) continue;
+
+    const off = block.match(/<a:off x="(\d+)" y="(\d+)"/i);
+    const ext = block.match(/<a:ext cx="(\d+)" cy="(\d+)"/i);
+    const fill = block.match(/<a:solidFill>\s*<a:srgbClr val="([0-9A-Fa-f]{6})"/i);
+    if (!off || !ext || !fill) continue;
+
+    const x = emuToInches(Number.parseInt(off[1], 10));
+    const y = emuToInches(Number.parseInt(off[2], 10));
+    const w = emuToInches(Number.parseInt(ext[1], 10));
+    const h = emuToInches(Number.parseInt(ext[2], 10));
+    const color = `#${fill[1].toUpperCase()}`;
+
+    // Decorative heuristic: tall/narrow sidebar, wide/short footer bar, or small accent dot
+    const isSidebar = h > 3 && w < 2;
+    const isFooterBar = w > 8 && h < 1;
+    const isAccentDot = w < 0.5 && h < 0.5 && w > 0.05;
+    if (!isSidebar && !isFooterBar && !isAccentDot) continue;
+
+    shapes.push({ x, y, w, h, fill: color });
+  }
+
+  return shapes.slice(0, 5);
+}
+
+async function extractMasterBackground(zip: JSZip): Promise<string | null> {
+  // Check all slide masters, return first with a solid background
+  const masterEntries = Object.keys(zip.files)
+    .filter((e) => /^ppt\/slideMasters\/slideMaster\d+\.xml$/i.test(e))
+    .sort();
+  for (const entry of masterEntries) {
+    const masterXml = await readZipText(zip, entry);
+    if (!masterXml) continue;
+    const bgMatch = masterXml.match(/<p:bg>[\s\S]*?<a:solidFill>\s*<a:srgbClr val="([0-9A-Fa-f]{6})"/i);
+    if (bgMatch?.[1]) return `#${bgMatch[1].toUpperCase()}`;
+  }
+  return null;
+}
+
+async function extractInjectionPayload(
+  themeXml: string,
+  coverLogo: { imageBase64?: string; position?: { x: number; y: number; w: number; h: number } },
+  masterShapes: NonNullable<TemplateProfile["brandTokens"]>["decorativeShapes"],
+  zip: JSZip,
+) {
+  // Extract raw XML fragments for deterministic injection
+  const colorSchemeMatch = themeXml.match(/<a:clrScheme\b[^>]*>[\s\S]*?<\/a:clrScheme>/i);
+  const fontSchemeMatch = themeXml.match(/<a:fontScheme\b[^>]*>[\s\S]*?<\/a:fontScheme>/i);
+
+  // Determine logo mime type from data URI
+  let logoMimeType: "image/png" | "image/jpeg" = "image/png";
+  let logoBase64: string | null = null;
+  if (coverLogo.imageBase64) {
+    logoBase64 = coverLogo.imageBase64;
+    if (coverLogo.imageBase64.startsWith("data:image/jpeg")) {
+      logoMimeType = "image/jpeg";
+    }
+  }
+
+  const masterBg = await extractMasterBackground(zip);
+
+  // Always return a payload if there's ANYTHING to inject — theme, logo, shapes, or background.
+  // A template with a logo but no theme XML still needs deterministic injection.
+  const hasAnythingToInject =
+    colorSchemeMatch || fontSchemeMatch || logoBase64 || masterShapes.length > 0 || masterBg;
+
+  if (!hasAnythingToInject) return undefined;
+
+  return {
+    themeColorSchemeXml: colorSchemeMatch?.[0] ?? "",
+    themeFontSchemeXml: fontSchemeMatch?.[0] ?? "",
+    logoBase64,
+    logoMimeType,
+    logoPosition: coverLogo.position ?? null,
+    decorativeShapes: masterShapes.map(s => ({
+      x: s.x, y: s.y, w: s.w, h: s.h,
+      fill: s.fill.replace(/^#/, ""),
+    })),
+    masterBackground: masterBg?.replace(/^#/, "") ?? null,
+  };
 }
 
 function inferSlideMetrics(raw: string) {

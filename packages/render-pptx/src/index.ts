@@ -9,6 +9,8 @@ import PptxGenJS from "pptxgenjs";
 import { renderChartSvg, selectChartRenderMode } from "@basquio/render-charts";
 import type { BinaryArtifact, ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
 
+export { applyTemplateBranding, type InjectionPayload } from "./apply-template-branding";
+
 type RenderPptxInput = {
   deckTitle: string;
   slidePlan: SlideSpec[];

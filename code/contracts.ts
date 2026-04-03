@@ -725,6 +725,29 @@ export const templateBrandTokensSchema = z.object({
       fill: z.string(),
     }),
   ).default([]),
+  /** Deterministic injection payload for post-generation template branding (PGTI). */
+  injection: z.object({
+    themeColorSchemeXml: z.string(),
+    themeFontSchemeXml: z.string(),
+    logoBase64: z.string().nullable(),
+    logoMimeType: z.enum(["image/png", "image/jpeg"]).default("image/png"),
+    logoPosition: z.object({
+      x: z.number().nonnegative(),
+      y: z.number().nonnegative(),
+      w: z.number().positive(),
+      h: z.number().positive(),
+    }).nullable(),
+    decorativeShapes: z.array(
+      z.object({
+        x: z.number().nonnegative(),
+        y: z.number().nonnegative(),
+        w: z.number().positive(),
+        h: z.number().positive(),
+        fill: z.string(),
+      }),
+    ).default([]),
+    masterBackground: z.string().nullable(),
+  }).optional(),
 });
 
 export const templateProfileSchema = z.object({
