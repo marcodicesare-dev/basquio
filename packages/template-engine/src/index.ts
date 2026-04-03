@@ -559,10 +559,13 @@ async function extractLogoFromSlideXml(
     const w = emuToInches(Number.parseInt(extMatch[1], 10));
     const h = emuToInches(Number.parseInt(extMatch[2], 10));
 
-    if (!(y < 3.75 && w > 0.5 && w < 5 && h > 0.15 && h < 2 && w / Math.max(h, 0.1) > 1.5)) {
+    // Size and aspect ratio filter: must be logo-shaped (wider than tall, reasonable dimensions)
+    if (!(w > 0.5 && w < 5 && h > 0.15 && h < 2 && w / Math.max(h, 0.1) > 1.5)) {
       continue;
     }
 
+    // Position filter: must be near a slide edge (left or right), any vertical position
+    // Corporate templates put logos in headers (y < 2") OR footers (y > 5.5") — both are valid.
     const nearLeft = x < 4;
     const nearRight = x + w > slideWidthInches - 4;
     if (!nearLeft && !nearRight) {
