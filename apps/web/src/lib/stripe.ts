@@ -84,8 +84,6 @@ export const PLAN_CREDITS: Record<string, { credits: number; templateSlots: numb
     .map(([id, config]) => [id, { credits: config.creditsIncluded, templateSlots: config.templateSlots }]),
 );
 
-PLAN_CREDITS.team = { credits: 200, templateSlots: 10 };
-
 /**
  * Get or create a Stripe customer for a Supabase user.
  * Checks stripe_customers mapping table first, creates if missing.

@@ -8,7 +8,7 @@ import {
   markWebhookEventProcessed,
   upsertSubscription,
 } from "@/lib/credits";
-import { type CreditPackId } from "@/lib/billing-config";
+import { normalizePlanId, type CreditPackId } from "@/lib/billing-config";
 import { getStripe, CREDIT_PACKS, PLAN_CREDITS } from "@/lib/stripe";
 import { getTemplateFeeDraft, updateTemplateFeeDraft } from "@/lib/template-fee-drafts";
 
@@ -246,18 +246,19 @@ async function handleSubscriptionChange(
   _eventId: string,
 ) {
   const userId = subscription.metadata?.user_id;
-  const plan = subscription.metadata?.plan;
+  const rawPlan = subscription.metadata?.plan;
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
   void _eventId; // reserved for future use
 
-  if (!userId || !plan) {
-    console.error("[stripe-webhook] subscription missing metadata", { userId, plan, subId: subscription.id });
+  if (!userId || !rawPlan) {
+    console.error("[stripe-webhook] subscription missing metadata", { userId, plan: rawPlan, subId: subscription.id });
     return;
   }
 
+  const plan = normalizePlanId(rawPlan);
   const planConfig = PLAN_CREDITS[plan];
   if (!planConfig) {
-    console.error(`[stripe-webhook] unknown plan: ${plan}`);
+    console.error(`[stripe-webhook] unknown plan: ${rawPlan}`);
     return;
   }
 
@@ -413,7 +414,8 @@ async function handleInvoicePaid(
     return;
   }
 
-  const planConfig = PLAN_CREDITS[plan];
+  const normalizedPlan = normalizePlanId(plan);
+  const planConfig = PLAN_CREDITS[normalizedPlan];
   if (!planConfig) {
     console.error(`[stripe-webhook] unknown plan in invoice: ${plan}`);
     return;
@@ -444,7 +446,7 @@ async function handleInvoicePaid(
     stripeEventId: eventId,
   });
 
-  console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${plan}, interval=${isAnnual ? "annual" : "monthly"}, event=${eventId})`);
+  console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${normalizedPlan}, interval=${isAnnual ? "annual" : "monthly"}, event=${eventId})`);
 }
 
 async function handleInvoicePaymentFailed(
