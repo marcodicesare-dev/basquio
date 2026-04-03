@@ -120,8 +120,8 @@ Pipeline output must use **universally-installed system fonts** for cross-platfo
 | Token | Value | Notes |
 |-------|-------|-------|
 | bg | `#F5F1E8` | Warm cream canvas |
-| surface | `#FFFFFF` | Card/panel bg |
-| card | `#FFFFFF` | Elevated card bg |
+| surface | `#FBF8F1` | Tonal ivory card/panel bg |
+| card | `#FBF8F1` | Elevated card bg |
 | border | `#D6D1C4` | Warm neutral border |
 | text (ink) | `#0B0C0C` | Primary text |
 | muted | `#5D656B` | Secondary text |
@@ -165,7 +165,7 @@ Pipeline output must use **universally-installed system fonts** for cross-platfo
 
 ### PPTX Export Default: Basquio Standard (warm light editorial)
 
-The Basquio no-template default is a warm light editorial deck. The canvas should track the website's warm cream background, not the older dark Slate house style.
+The Basquio no-template default is a warm light editorial deck. The canvas should track the website's warm cream background, and the surfaces should stay tonal rather than stark white.
 
 | Token | Value |
 |-------|-------|
@@ -193,7 +193,7 @@ The Basquio no-template default is a warm light editorial deck. The canvas shoul
 ### When Basquio template is active (no client template):
 - Cover master: non-editable `"Made with"` plus Basquio logo image in the top-right corner
 - Content master: small non-editable Basquio logo image in the top-right corner plus slide number bottom-right
-- Logo: light-background mono lockup on warm/light slides; dark-background lockup only on genuinely dark variants
+- Logo: light-background blue lockup on warm/light slides; dark-background lockup only on genuinely dark variants
 
 ### When client template IS provided:
 - NEVER write "Basquio" in any slide footer, header, watermark, or confidentiality notice
@@ -227,7 +227,7 @@ Remaining discrepancies are medium-driven, not brand drift: web and pipeline sti
 | Muted text | `#5d656b` |
 | Font stack | -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif |
 | Tagline | "Beautiful Intelligence." |
-| Logo | PNG from `/brand/png/logo/1x/basquio-logo-light-bg-mono.png` |
+| Logo | PNG from `/brand/png/logo/1x/basquio-logo-light-bg-blue.png` |
 
 ---
 
@@ -235,10 +235,10 @@ Remaining discrepancies are medium-driven, not brand drift: web and pipeline sti
 
 | Path | Variant |
 |------|---------|
-| `/brand/svg/logo/basquio-logo-light-bg-mono.svg` | Dark text on light bg |
+| `/brand/svg/logo/basquio-logo-light-bg-blue.svg` | Blue lockup on light bg |
 | `/brand/svg/logo/basquio-logo-dark-bg.svg` | Light text on dark bg |
 | `/brand/svg/icon/basquio-icon-onyx.svg` | Icon only, dark |
 | `/brand/svg/icon/basquio-icon-amber.svg` | Icon only, amber |
 | `/brand/png/circle/1x/basquio-circle-onyx.png` | Circle mark, dark |
-| `/brand/png/logo/1x/basquio-logo-light-bg-mono.png` | Logo PNG for emails |
-| `/brand/png/logo/2x/basquio-logo-light-bg-mono@2x.png` | Logo PNG 2x retina |
+| `/brand/png/logo/1x/basquio-logo-light-bg-blue.png` | Logo PNG for emails |
+| `/brand/png/logo/2x/basquio-logo-light-bg-blue@2x.png` | Logo PNG 2x retina |

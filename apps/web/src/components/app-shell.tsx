@@ -55,7 +55,7 @@ export function AppShell({
       <aside className="sidebar">
         <div className="sidebar-brand">
           <Link href="/" className="brand-lockup" aria-label="Basquio website">
-            <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={178} height={30} priority />
+            <Image src="/brand/svg/logo/basquio-logo-light-bg-blue.svg" alt="Basquio" width={178} height={30} priority />
           </Link>
           <p className="sidebar-brand-note">Open the public Basquio site without leaving your workspace.</p>
         </div>

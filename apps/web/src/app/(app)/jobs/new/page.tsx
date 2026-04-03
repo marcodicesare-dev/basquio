@@ -1,6 +1,9 @@
 import { GenerationForm } from "@/components/generation-form";
+import { normalizePlanId } from "@/lib/billing-config";
+import { getActiveSubscription } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
+import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
 import { resolveViewerOrgId } from "@/lib/viewer-workspace";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +39,12 @@ type RecipePrefill = {
     storagePath: string;
     fileBytes: number;
   }>;
+};
+
+type TemplateFeeReturn = {
+  draftId: string;
+  status: "success" | "cancelled";
+  sessionId: string | null;
 };
 
 type DefaultSettingsRow = {
@@ -252,6 +261,57 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
   }
 }
 
+async function getTemplateFeeDraftPrefill(draftId: string, userId: string): Promise<RecipePrefill | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return null;
+
+  const draft = await getTemplateFeeDraft({ supabaseUrl, serviceKey, draftId, userId });
+  if (!draft) {
+    return null;
+  }
+
+  let sourceFiles: RecipePrefill["sourceFiles"] = [];
+  try {
+    const sfRows = await fetchRestRows<{
+      id: string;
+      kind: string;
+      file_name: string;
+      storage_bucket: string;
+      storage_path: string;
+      file_bytes: number;
+    }>({
+      supabaseUrl,
+      serviceKey,
+      table: "source_files",
+      query: {
+        select: "id,kind,file_name,storage_bucket,storage_path,file_bytes",
+        id: `in.(${(draft.source_file_ids ?? []).join(",")})`,
+        limit: "20",
+      },
+    });
+    sourceFiles = sfRows.map((sf) => ({
+      id: sf.id,
+      kind: sf.kind,
+      fileName: sf.file_name,
+      storageBucket: sf.storage_bucket,
+      storagePath: sf.storage_path,
+      fileBytes: sf.file_bytes ?? 0,
+    }));
+  } catch { /* ok */ }
+
+  return {
+    id: draft.id,
+    recipeId: draft.recipe_id,
+    name: "Pending custom-template run",
+    brief: draft.brief,
+    templateProfileId: draft.template_profile_id,
+    targetSlideCount: draft.target_slide_count,
+    authorModel: draft.author_model,
+    sourceFiles,
+  };
+}
+
 export default async function NewJobPage({
   searchParams,
 }: {
@@ -263,6 +323,13 @@ export default async function NewJobPage({
   const [savedTemplates, defaultTemplateId] = orgId
     ? await Promise.all([getSavedTemplates(orgId), getDefaultTemplateId(orgId)])
     : [[], null];
+  const currentPlan = viewer.user?.id && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? normalizePlanId((await getActiveSubscription({
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        userId: viewer.user.id,
+      }))?.plan ?? "free")
+    : "free";
 
   // Load recipe prefill if ?recipe= is present
   const recipeId = typeof params.recipe === "string" ? params.recipe : undefined;
@@ -277,11 +344,27 @@ export default async function NewJobPage({
     fromRunPrefill = await getRunPrefill(fromRunId, viewer.user.id);
   }
 
-  const activePrefill = recipePrefill ?? fromRunPrefill ?? undefined;
+  const templateFeeDraftId = typeof params.draft === "string" ? params.draft : undefined;
+  const templateFeeStatusParam = typeof params.templateFee === "string" ? params.templateFee : undefined;
+  const templateFeeReturn: TemplateFeeReturn | undefined =
+    templateFeeDraftId && (templateFeeStatusParam === "success" || templateFeeStatusParam === "cancelled")
+      ? {
+          draftId: templateFeeDraftId,
+          status: templateFeeStatusParam,
+          sessionId: typeof params.session_id === "string" ? params.session_id : null,
+        }
+      : undefined;
+  const templateFeeDraftPrefill = templateFeeDraftId && viewer.user?.id
+    ? await getTemplateFeeDraftPrefill(templateFeeDraftId, viewer.user.id)
+    : null;
+
+  const activePrefill = recipePrefill ?? fromRunPrefill ?? templateFeeDraftPrefill ?? undefined;
   const pageTitle = recipePrefill
     ? `Rerun: ${recipePrefill.name}`
     : fromRunPrefill
       ? "Rerun with changes"
+      : templateFeeDraftPrefill
+        ? "Resume custom-template run"
       : "New analysis";
   const startTour = typeof params.tour === "string" && params.tour === "1";
 
@@ -293,10 +376,12 @@ export default async function NewJobPage({
       </section>
 
       <GenerationForm
+        currentPlan={currentPlan}
         savedTemplates={savedTemplates}
         defaultTemplateId={defaultTemplateId}
         recipePrefill={activePrefill}
         startTour={startTour}
+        templateFeeReturn={templateFeeReturn}
       />
     </div>
   );

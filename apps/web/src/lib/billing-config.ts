@@ -1,11 +1,11 @@
 /**
- * Billing configuration: tier mapping, plan definitions, credit pack pricing.
+ * Billing configuration: tier mapping, plan definitions, and credit pack pricing.
  *
  * UI shows Memo/Deck/Deep-Dive. Internal code uses claude-* model names.
- * This file is the single source of truth for the mapping.
+ * This file is the single source of truth for pricing copy and Stripe resolution.
  */
 
-// ─── TIER CONFIG (output types) ─────────────────────────────
+// ─── TIER CONFIG (output types) ─────────────────────────────────────
 
 export const TIER_CONFIG = {
   memo: {
@@ -37,22 +37,21 @@ export const TIER_CONFIG = {
 export type TierId = keyof typeof TIER_CONFIG;
 export type AuthorModel = (typeof TIER_CONFIG)[TierId]["model"];
 
-/** Resolve a UI tier ID to an internal model name. */
 export function tierToModel(tier: TierId): AuthorModel {
   return TIER_CONFIG[tier].model;
 }
 
-/** Resolve an internal model name back to a tier ID. */
 export function modelToTier(model: string): TierId {
   for (const [id, config] of Object.entries(TIER_CONFIG)) {
     if (config.model === model) return id as TierId;
   }
-  return "deck"; // fallback
+  return "deck";
 }
 
 // ─── PLAN DEFINITIONS ───────────────────────────────────────
 
-export type PlanId = "free" | "starter" | "pro" | "team";
+export type PlanId = "free" | "starter" | "pro" | "enterprise";
+export type PackPricingTier = "free" | "starter" | "pro";
 
 export interface PlanConfig {
   label: string;
@@ -71,10 +70,10 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
     monthlyPrice: 0,
     annualMonthlyPrice: 0,
     annualPrice: 0,
-    creditsIncluded: 0, // 3 free runs via credit_grants, not subscription
+    creditsIncluded: 0,
     templateSlots: 0,
     features: [
-      "40 free credits (~3 Deck runs)",
+      "30 free credits (~2 Deck runs)",
       "Basquio branding on output",
       "Community templates only",
     ],
@@ -82,54 +81,79 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
   },
   starter: {
     label: "Starter",
-    monthlyPrice: 29,
-    annualMonthlyPrice: 23,
-    annualPrice: 276,
+    monthlyPrice: 19,
+    annualMonthlyPrice: 15.83,
+    annualPrice: 190,
     creditsIncluded: 30,
-    templateSlots: 1,
+    templateSlots: 2,
     features: [
       "No branding on output",
       "30 credits/month",
-      "1 custom template slot",
+      "2 custom template slots",
       "Email support",
     ],
-    highlight: false,
+    highlight: true,
   },
   pro: {
     label: "Pro",
-    monthlyPrice: 79,
-    annualMonthlyPrice: 63,
-    annualPrice: 756,
-    creditsIncluded: 100,
+    monthlyPrice: 149,
+    annualMonthlyPrice: 124,
+    annualPrice: 1490,
+    creditsIncluded: 200,
     templateSlots: 5,
     features: [
       "No branding on output",
-      "100 credits/month",
+      "200 credits/month",
       "5 custom template slots",
       "Priority generation queue",
       "Narrative reports",
     ],
-    highlight: true,
+    highlight: false,
   },
-  team: {
-    label: "Team",
-    monthlyPrice: 149,
-    annualMonthlyPrice: 119,
-    annualPrice: 1428,
-    creditsIncluded: 200,
-    templateSlots: 10,
+  enterprise: {
+    label: "Enterprise",
+    monthlyPrice: 0,
+    annualMonthlyPrice: 0,
+    annualPrice: 0,
+    creditsIncluded: 0,
+    templateSlots: 0,
     features: [
-      "Shared workspace",
-      "200 credits/month pool",
-      "10 custom template slots",
-      "Billing controls",
-      "+$29/seat/month",
+      "Custom credits and billing",
+      "Custom template setup",
+      "Shared workspace and controls",
+      "Priority support",
     ],
     highlight: false,
   },
 };
 
+export function normalizePlanId(plan: string | null | undefined): PlanId {
+  if (plan === "starter" || plan === "pro" || plan === "enterprise" || plan === "free") {
+    return plan;
+  }
+  if (plan === "team") {
+    return "enterprise";
+  }
+  return "free";
+}
+
+export function planToCreditPackTier(plan: string | null | undefined): PackPricingTier {
+  const normalized = normalizePlanId(plan);
+  if (normalized === "starter") return "starter";
+  if (normalized === "pro" || normalized === "enterprise") return "pro";
+  return "free";
+}
+
 // ─── CREDIT PACKS ───────────────────────────────────────────
+
+export const CREDIT_PACK_CATALOG = {
+  pack_25: { credits: 25 },
+  pack_50: { credits: 50 },
+  pack_100: { credits: 100 },
+  pack_250: { credits: 250 },
+} as const;
+
+export type CreditPackId = keyof typeof CREDIT_PACK_CATALOG;
 
 export interface CreditPackConfig {
   credits: number;
@@ -138,21 +162,36 @@ export interface CreditPackConfig {
   discount: string;
 }
 
-export const CREDIT_PACKS_CONFIG: Record<string, CreditPackConfig> = {
-  pack_25: { credits: 25, price: 18, perCredit: 0.72, discount: "10%" },
-  pack_50: { credits: 50, price: 32, perCredit: 0.64, discount: "20%" },
-  pack_100: { credits: 100, price: 56, perCredit: 0.56, discount: "30%" },
-  pack_250: { credits: 250, price: 125, perCredit: 0.50, discount: "37.5%" },
+export const CREDIT_PACKS_CONFIG: Record<PackPricingTier, Record<CreditPackId, CreditPackConfig>> = {
+  free: {
+    pack_25: { credits: 25, price: 22, perCredit: 0.88, discount: "standard" },
+    pack_50: { credits: 50, price: 44, perCredit: 0.88, discount: "standard" },
+    pack_100: { credits: 100, price: 88, perCredit: 0.88, discount: "standard" },
+    pack_250: { credits: 250, price: 220, perCredit: 0.88, discount: "standard" },
+  },
+  starter: {
+    pack_25: { credits: 25, price: 17.5, perCredit: 0.7, discount: "subscriber" },
+    pack_50: { credits: 50, price: 35, perCredit: 0.7, discount: "subscriber" },
+    pack_100: { credits: 100, price: 70, perCredit: 0.7, discount: "subscriber" },
+    pack_250: { credits: 250, price: 175, perCredit: 0.7, discount: "subscriber" },
+  },
+  pro: {
+    pack_25: { credits: 25, price: 12.5, perCredit: 0.5, discount: "best" },
+    pack_50: { credits: 50, price: 25, perCredit: 0.5, discount: "best" },
+    pack_100: { credits: 100, price: 50, perCredit: 0.5, discount: "best" },
+    pack_250: { credits: 250, price: 125, perCredit: 0.5, discount: "best" },
+  },
 };
 
-export type CreditPackId = keyof typeof CREDIT_PACKS_CONFIG;
+export function getCreditPackConfig(
+  tier: PackPricingTier,
+  packId: CreditPackId,
+): CreditPackConfig {
+  return CREDIT_PACKS_CONFIG[tier][packId];
+}
 
 // ─── PRICE ENV VAR RESOLVER ─────────────────────────────────
 
-/**
- * Get Stripe Price ID from environment variable.
- * Convention: STRIPE_PRICE_{IDENTIFIER} where identifier is uppercase.
- */
 export function getStripePriceId(identifier: string): string {
   const envKey = `STRIPE_PRICE_${identifier.toUpperCase()}`;
   const priceId = process.env[envKey];
@@ -162,7 +201,6 @@ export function getStripePriceId(identifier: string): string {
   return priceId;
 }
 
-/** Map plan + interval to Stripe price env var identifier. */
-export function planPriceIdentifier(plan: PlanId, interval: "monthly" | "annual"): string {
+export function planPriceIdentifier(plan: Exclude<PlanId, "free" | "enterprise">, interval: "monthly" | "annual"): string {
   return `${plan}_${interval}`;
 }

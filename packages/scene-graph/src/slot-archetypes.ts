@@ -346,9 +346,9 @@ const ARCHETYPES: Record<string, SlideArchetype> = {
       metrics: {
         kind: "metrics",
         frame: { x: 0.45, y: 3.72, w: 9.1, h: 0.78 },
-        minMetrics: 2,
-        maxMetrics: 2,
-        required: true,
+        minMetrics: 0,
+        maxMetrics: 4,
+        required: false,
       },
       callout: {
         kind: "callout",
@@ -825,7 +825,7 @@ export function describeAllArchetypesForPrompt(): string {
   lines.push("- comparison: two charts side by side. Use for CY vs PY or brand A vs brand B.");
   lines.push("- scenario-cards: chart left + 2-3 option/scenario cards stacked right. Use for 'what if' or 'option A vs B'. Each card: max 3 lines body, max 40ch title.");
   lines.push("- key-findings: 3 equal cards in a row. Use for '3 key takeaways' or '3 priority actions'. Each card: colored header + title + max 4 lines body.");
-  lines.push("- recommendation-cards: body + exactly 2 action cards. Use for final recommendation.");
+  lines.push("- recommendation-cards: body + 2 disciplined action cards. Footer metrics are optional and only used when the data supports them.");
   lines.push("- title-body: text-heavy. Use sparingly, max 1 per deck.");
   lines.push("- title-bullets: bulleted list. Use for agendas or structured lists.");
   lines.push("- table: data table. Use when detail requires > 6 rows of comparison.");

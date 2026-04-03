@@ -640,7 +640,7 @@ const defaultBrandTokens = {
     text: "#0B0C0C",       // Brand onyx
     muted: "#5D656B",
     background: "#F5F1E8", // Warm editorial canvas
-    surface: "#FFFFFF",
+    surface: "#FBF8F1",
     accent: "#1A6AFF",     // Brand ultramarine
     accentMuted: "#E0EBFF", // ~12% ultramarine on white
     border: "#D6D1C4",

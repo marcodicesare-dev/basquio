@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 
-import { CREDIT_PACKS_CONFIG, PLAN_CONFIG } from "@/lib/billing-config";
+import { CREDIT_PACK_CATALOG, type CreditPackId, type PackPricingTier, PLAN_CONFIG } from "@/lib/billing-config";
+export type { CreditPackId } from "@/lib/billing-config";
 
 let stripeInstance: Stripe | null = null;
 
@@ -25,24 +26,27 @@ export function getStripe(): Stripe {
  * This re-export adds the `reason` field needed by webhook handlers.
  */
 export const CREDIT_PACKS = Object.fromEntries(
-  Object.entries(CREDIT_PACKS_CONFIG).map(([id, config]) => [
+  Object.entries(CREDIT_PACK_CATALOG).map(([id, config]) => [
     id,
-    { credits: config.credits, price: config.price, reason: "purchase_pack" as const },
+    { credits: config.credits, reason: "purchase_pack" as const },
   ]),
-) as Record<string, { credits: number; price: number; reason: "purchase_pack" }>;
-
-export type CreditPackId = keyof typeof CREDIT_PACKS_CONFIG;
+) as Record<string, { credits: number; reason: "purchase_pack" }>;
 
 /**
  * Get the Stripe Price ID for a credit pack from env vars.
- * Env var format: STRIPE_PRICE_PACK_25, STRIPE_PRICE_PACK_50, etc.
+ * New env var format: STRIPE_PRICE_FREE_PACK_25, STRIPE_PRICE_STARTER_PACK_25, STRIPE_PRICE_PRO_PACK_25.
+ * Fallback format for backwards compatibility: STRIPE_PRICE_PACK_25.
  */
-export function getPriceId(packId: CreditPackId): string {
-  const envKey = `STRIPE_PRICE_${packId.toUpperCase()}`;
-  const priceId = process.env[envKey];
+export function getPriceId(packId: CreditPackId, tier: PackPricingTier): string {
+  const envKeys = [
+    `STRIPE_PRICE_${tier.toUpperCase()}_${packId.toUpperCase()}`,
+    `STRIPE_PRICE_${packId.toUpperCase()}`,
+  ];
+  const envKey = envKeys.find((candidate) => Boolean(process.env[candidate]));
+  const priceId = envKey ? process.env[envKey] : undefined;
 
   if (!priceId) {
-    throw new Error(`${envKey} environment variable is required.`);
+    throw new Error(`${envKeys.join(" or ")} environment variable is required.`);
   }
 
   return priceId;
@@ -63,12 +67,24 @@ export function getSubscriptionPriceId(plan: string, interval: "monthly" | "annu
   return priceId;
 }
 
+export function getTemplateFeePriceId(): string {
+  const envKeys = ["STRIPE_PRICE_TEMPLATE_FEE", "STRIPE_PRICE_TEMPLATE_RUN_FEE"];
+  const envKey = envKeys.find((candidate) => Boolean(process.env[candidate]));
+  const priceId = envKey ? process.env[envKey] : undefined;
+  if (!priceId) {
+    throw new Error(`${envKeys.join(" or ")} environment variable is required.`);
+  }
+  return priceId;
+}
+
 /** Plan metadata: credits included per period + template slots. Derived from billing-config. */
 export const PLAN_CREDITS: Record<string, { credits: number; templateSlots: number }> = Object.fromEntries(
   Object.entries(PLAN_CONFIG)
     .filter(([id]) => id !== "free")
     .map(([id, config]) => [id, { credits: config.creditsIncluded, templateSlots: config.templateSlots }]),
 );
+
+PLAN_CREDITS.team = { credits: 200, templateSlots: 10 };
 
 /**
  * Get or create a Stripe customer for a Supabase user.

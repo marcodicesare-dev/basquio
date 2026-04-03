@@ -10,7 +10,7 @@ import { PricingPlans } from "@/components/pricing-plans";
 export const metadata: Metadata = {
   title: "Pricing — Basquio",
   description:
-    "Start free with 40 credits — enough for ~3 Deck runs. Then choose a plan that fits: Starter at $29/mo, Pro at $79/mo, or Team at $149/mo. Turn CSV and Excel data into finished analysis decks.",
+    "Start free with 30 credits. Upgrade to Starter at $19/mo or Pro at $149/mo when the workflow becomes recurring. Basquio turns spreadsheets into finished analysis decks, narratives, and workbooks.",
   alternates: { canonical: "https://basquio.com/pricing" },
 };
 
@@ -25,7 +25,7 @@ const outputTypes = [
   },
   {
     name: "Deck",
-    credits: "~13 credits",
+    credits: "10 slides = 13 credits",
     artifacts: "PPTX + MD + XLSX",
     description: "Full analysis deck with real charts and narrative report.",
     time: "~15 min",
@@ -33,7 +33,7 @@ const outputTypes = [
   },
   {
     name: "Deep-Dive",
-    credits: "~33 credits",
+    credits: "10 slides = 25 credits",
     artifacts: "PPTX + MD + XLSX",
     description: "Consulting-grade depth. The full treatment.",
     time: "~25 min",
@@ -45,12 +45,12 @@ const faqs = [
   {
     question: "What do I get with each output type?",
     answer:
-      "Memo gives you data tables and a narrative report (XLSX + MD). Deck adds a full presentation with real charts plus the report and workbook (PPTX + MD + XLSX). Deep-Dive is the same artifact pack as Deck but with consulting-grade analytical depth.",
+      "Memo gives you data tables and a narrative report (XLSX + MD). Deck adds a full presentation plus the report and workbook (PPTX + MD + XLSX). Deep-Dive ships the same artifact pack as Deck but with a heavier analytical pass.",
   },
   {
     question: "How do credits work?",
     answer:
-      "Memo costs 3 credits flat. Deck costs 3 base + 1 per slide (a 10-slide deck = 13 credits). Deep-Dive costs 3 base + 3 per slide (a 10-slide deck = 33 credits). Plans include monthly credits; you can buy more anytime.",
+      "Memo costs 3 credits flat. Deck uses a progressive formula: 3 base + 1 per slide for the first 10 slides, then 2 per slide after that. Deep-Dive costs 5 base + 2 per slide. Examples: Deck 10 slides = 13 credits, Deck 15 slides = 23 credits, Deep-Dive 20 slides = 45 credits.",
   },
   {
     question: "What happens to unused credits?",
@@ -67,20 +67,20 @@ const faqs = [
       "CSV, XLSX, XLS, PDF, PPTX, and plain text. Excel gives the deepest analysis; PPTX and PDF also work for extraction and restyling.",
   },
   {
-    question: "Can I cancel anytime?",
+    question: "Do custom templates cost extra on Free?",
     answer:
-      "Yes. Cancel from the billing page or Stripe portal. Your plan stays active until the end of the billing period. No refunds for partial months.",
+      "Yes. Free users pay a $5 per-run custom-template fee. Starter and Pro include template usage inside the plan.",
   },
 ] as const;
 
 const planComparisonRows = [
   {
     label: "Who it is for",
-    values: ["Trialing Basquio on real work", "Solo operator", "Power user", "Reporting team"],
+    values: ["Trialing Basquio on real work", "Solo operator", "Power user", "Larger team / procurement"],
   },
   {
     label: "Monthly credits",
-    values: ["40 free credits once", "30 / month", "100 / month", "200 / month pooled"],
+    values: ["30 free credits once", "30 / month", "200 / month", "Custom"],
   },
   {
     label: "Branding on output",
@@ -88,7 +88,7 @@ const planComparisonRows = [
   },
   {
     label: "Custom templates",
-    values: ["Community only", "1 slot", "5 slots", "10 slots"],
+    values: ["Community only", "2 slots", "5 slots", "Custom"],
   },
   {
     label: "Workspace model",
@@ -96,7 +96,7 @@ const planComparisonRows = [
   },
   {
     label: "Best buying motion",
-    values: ["Try before paying", "Subscribe", "Subscribe", "Subscribe + top up"],
+    values: ["Try before paying", "Subscribe", "Subscribe", "Talk to sales"],
   },
 ] as const;
 
@@ -110,14 +110,14 @@ const outputModes = [
   },
   {
     name: "Deck",
-    credits: "~13 credits",
-    deliverables: ["Editable PPTX", "Shareable PDF", "Narrative report", "Audit-ready workbook"],
+    credits: "10 slides = 13 credits",
+    deliverables: ["Editable PPTX", "Narrative report", "Audit-ready workbook"],
     fit: "Default client-ready report package.",
     featured: true,
   },
   {
     name: "Deep-Dive",
-    credits: "~33 credits",
+    credits: "10 slides = 25 credits",
     deliverables: ["Full deck set", "Longer analytical pass", "Heavier narrative depth"],
     fit: "When the room needs more analysis, not more decoration.",
     featured: false,
@@ -126,8 +126,8 @@ const outputModes = [
 
 const creditFormulaRows = [
   { label: "Memo", formula: "3 flat", note: "No slides." },
-  { label: "Deck", formula: "3 + 1 per slide", note: "10 slides = 13 credits." },
-  { label: "Deep-Dive", formula: "3 + 3 per slide", note: "10 slides = 33 credits." },
+  { label: "Deck", formula: "3 + 1/slide for first 10, then 2/slide", note: "10 slides = 13. 15 slides = 23." },
+  { label: "Deep-Dive", formula: "5 + 2 per slide", note: "10 slides = 25. 20 slides = 45." },
 ] as const;
 
 export default function PricingPage() {
@@ -138,14 +138,13 @@ export default function PricingPage() {
       <section className="page-hero pricing-hero">
         <div className="stack pricing-hero-copy">
           <p className="section-label">Pricing</p>
-          <h1>Start free. Scale when it clicks.</h1>
+          <h1>Start free. Upgrade when the workflow is real.</h1>
           <p className="page-copy">
-            40 free credits — enough for ~3 Deck runs. No credit card. See if Basquio fits before you pay anything.
+            30 free credits. No card. Enough to pressure-test the workflow on live work before you subscribe.
           </p>
         </div>
       </section>
 
-      {/* Plans with monthly/annual toggle */}
       <PricingPlans />
 
       <section className="pricing-comparison-stage">
@@ -153,10 +152,10 @@ export default function PricingPage() {
           <div className="pricing-comparison-head">
             <div className="stack-xs">
               <p className="section-label light">Plan comparison</p>
-              <h2>Pick the buying model first. Scope comes second.</h2>
+              <h2>Pick the buying motion first. Scope comes second.</h2>
             </div>
             <p className="muted">
-              This should read like a decision table, not a scavenger hunt. Start free, subscribe when the motion is recurring, top up when volume spikes.
+              Start free, move to Starter when the motion repeats, and move to Pro when recurring deck volume makes cheaper credit packs matter.
             </p>
           </div>
 
@@ -168,7 +167,7 @@ export default function PricingPage() {
                   <th>Free</th>
                   <th>Starter</th>
                   <th>Pro</th>
-                  <th>Team</th>
+                  <th>Enterprise</th>
                 </tr>
               </thead>
               <tbody>
@@ -222,7 +221,7 @@ export default function PricingPage() {
         <article className="technical-panel pricing-formula-panel">
           <div className="stack-xs">
             <p className="section-label light">Credit logic</p>
-            <h2>Credits map to workload, not vague “AI usage.”</h2>
+            <h2>Credits map to workload, not vague AI usage.</h2>
           </div>
 
           <div className="pricing-formula-body">
@@ -254,14 +253,15 @@ export default function PricingPage() {
         </article>
       </section>
 
-      {/* Credit Packs — BuyCreditsButton uses useSearchParams, needs Suspense */}
       <Suspense fallback={null}>
         <div id="packs">
-          <CreditPackShelf />
+          <CreditPackShelf
+            plan="free"
+            subtitle="Top up anytime. Pack pricing gets cheaper once you subscribe: Free pays $0.88/credit, Starter $0.70, Pro $0.50."
+          />
         </div>
       </Suspense>
 
-      {/* FAQ */}
       <section className="cards">
         <article className="technical-panel stack-lg">
           <div className="stack">

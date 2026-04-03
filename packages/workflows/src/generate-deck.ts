@@ -2967,7 +2967,7 @@ function buildAuthorMessage(
           "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
           "- If the brief is English, write direct partner-grade English with no padded corporate phrasing such as 'in order to' or 'going forward'.",
           "- Every analytical slide must answer four questions: what changed, by how much, why it happened, and what the executive should do. A slide that only restates the chart is unfinished.",
-          "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify all recommendations with FMCG levers.",
+          "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify recommendations only when the evidence supports a direct calculation.",
           "- Slide titles: MAXIMUM 70 characters. If the insight needs more, split it into title + subtitle.",
           "- Never use donut or pie charts with more than 4 segments. Use a horizontal stacked bar when there are 5+ segments.",
           ...(!isReportOnly ? [
@@ -3024,7 +3024,7 @@ function buildAuthorMessage(
           isReportOnly
             ? "  7. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline."
             : "  7. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
-          "  7a. For every recommendation include volume impact, EUR value impact, quarterly milestones, required investment/resources, and expected ROI.",
+          "  7a. For every recommendation include the action, traceable rationale, priority, and any measurable impact that can be computed directly from the source data. If financial impact is not directly computable, say so explicitly instead of inventing ROI, investment, or budget figures.",
           "  8. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, top items, distribution by channel, or the closest available evidence).",
           "  9. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
           "- Include markdown tables wherever the slide has a chart. The table gives the reader the exact numbers behind the visual.",
@@ -6256,5 +6256,7 @@ function buildTemplateQaContext(templateProfile: TemplateProfile) {
     templateName: templateProfile.templateName,
     palette,
     background: templateProfile.brandTokens?.palette.coverBg ?? templateProfile.brandTokens?.palette.background ?? null,
+    clientLabel: templateProfile.templateName?.replace(/\.pptx$/i, "") ?? null,
+    logoExpected: Boolean(templateProfile.brandTokens?.logo?.imageBase64),
   };
 }

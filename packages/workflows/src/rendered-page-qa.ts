@@ -40,6 +40,8 @@ export async function runRenderedPageQa(input: {
     templateName?: string;
     palette?: string[];
     background?: string | null;
+    clientLabel?: string | null;
+    logoExpected?: boolean;
   };
 }) {
   const pdfFile = await input.client.beta.files.upload({
@@ -156,7 +158,7 @@ export async function runRenderedPageQa(input: {
 
 function buildRenderedPageQaPrompt(
   manifest: JudgeManifest,
-  templateContext?: { templateName?: string; palette?: string[]; background?: string | null },
+  templateContext?: { templateName?: string; palette?: string[]; background?: string | null; clientLabel?: string | null; logoExpected?: boolean },
 ) {
   const templateLines = templateContext?.palette && templateContext.palette.length > 0
     ? [
@@ -166,9 +168,21 @@ function buildRenderedPageQaPrompt(
           templateName: templateContext.templateName ?? null,
           palette: templateContext.palette,
           background: templateContext.background ?? null,
+          clientLabel: templateContext.clientLabel ?? null,
+          logoExpected: templateContext.logoExpected ?? false,
           forbiddenFallbackDefaults: ["#F0CC27", "#1A6AFF", "#0A090D"],
         }, null, 2),
         "- If the rendered deck visibly falls back to Basquio default blue/navy/amber instead of the client palette above, flag `template_fidelity_gap`.",
+        ...(templateContext.logoExpected
+          ? [
+              "- If the client logo or wordmark is not visibly repeated on content slides via the master chrome, flag `template_fidelity_gap`.",
+            ]
+          : []),
+        ...(templateContext.clientLabel
+          ? [
+              `- If the footer/header chrome does not reflect the client identity (${templateContext.clientLabel}) and instead shows Basquio text or generic defaults, flag \`template_fidelity_gap\`.`,
+            ]
+          : []),
       ]
     : [];
 
@@ -186,6 +200,7 @@ function buildRenderedPageQaPrompt(
     "- footer collisions",
     "- broken recommendation cards",
     "- weak visual hierarchy",
+    "- low-contrast text on pale or tinted bands, especially white text on light green / light amber / light blue fills",
     "- unreadable charts",
     "- stretched or squeezed charts",
     "- bars or marks that look visually inconsistent with their encoded values or labels",
@@ -195,6 +210,8 @@ function buildRenderedPageQaPrompt(
     "- comparison slides that promise a full set of entities but visibly cover only a subset",
     "- template fidelity that clearly falls back to generic house styling when a strong template should be visible",
     "- ugly dead space",
+    "- giant cards, columns, or roadmap lanes whose lower half is visibly empty",
+    "- pure-white cards that fight a warm cream canvas instead of feeling integrated into it",
     "- generic dashboard sludge",
     "- low layout variety where the deck feels like the same slide repeated",
     "- cheap-looking chart styling, weak typography rhythm, or uneven card spacing that make the slide feel non-premium",
@@ -243,6 +260,9 @@ function buildRenderedPageQaPrompt(
     "- recommendation_card_overlap",
     "- label_overlap",
     "- template_fidelity_gap",
+    "- low_contrast_callout",
+    "- harsh_card_canvas_contrast",
+    "- underfilled_cards",
     "- weak_visual_hierarchy",
     "- generic_visual_style",
     "- footer_overlap",

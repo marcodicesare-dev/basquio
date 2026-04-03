@@ -20,8 +20,8 @@ Source of truth imported from the existing Basquio brand work under the local `.
 ## Logo Rules
 
 - Dark background primary lockup: amber crown plus white wordmark
-- Light background default lockup: onyx crown plus onyx wordmark
-- Light background alternate lockup: ultramarine crown plus onyx wordmark
+- Light background default lockup: ultramarine crown plus onyx wordmark
+- Light background alternate lockup: onyx crown plus onyx wordmark
 - Crown stays filled. Do not rotate, stretch, outline, or restyle it.
 
 ## Asset Location
@@ -50,5 +50,5 @@ Canonical web-ready assets now live in:
 - dark surfaces are allowed for technical-stage moments such as pipeline explanation, generation state, and proof framing, but Basquio must not become a dark-mode-only brand.
 - ultramarine is the primary UI accent for action and navigation emphasis.
 - amber should stay sparse and directional: logo moments, proof labels, stage emphasis, and selective calls to attention.
-- on light surfaces, prefer the onyx or ultramarine lockups; on dark surfaces, use the dark-background lockup.
+- on light surfaces, prefer the ultramarine lockup for Basquio Standard chrome; use the onyx lockup only when a quieter treatment is explicitly needed. On dark surfaces, use the dark-background lockup.
 - do not replace the crown or wordmark with text-only branding in the app shell or landing page when canonical assets are available.

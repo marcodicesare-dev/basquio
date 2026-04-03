@@ -22,7 +22,7 @@ function discreteTitleSize(text: string, baseSize: number): number {
 }
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const BASQUIO_LIGHT_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-mono@2x.png";
+const BASQUIO_LIGHT_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-blue@2x.png";
 const BASQUIO_DARK_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png";
 const brandAssetCache = new Map<string, Promise<string | null>>();
 
@@ -181,7 +181,7 @@ const DEFAULT_CHART_PALETTE = [
 ];
 
 // ─── BASQUIO STANDARD HOUSE TEMPLATE ──────────────────────────────
-// Warm light editorial canvas with white surfaces, onyx copy,
+// Warm light editorial canvas with tonal ivory surfaces, onyx copy,
 // ultramarine action accents, and restrained amber highlights.
 
 const DEFAULT_TOKENS: BrandTokens = {
@@ -190,8 +190,8 @@ const DEFAULT_TOKENS: BrandTokens = {
     muted: "5D656B",
     dim: "6B7280",
     border: "D6D1C4",
-    surface: "FFFFFF",
-    card: "FFFFFF",
+    surface: "FBF8F1",
+    card: "FBF8F1",
     bg: "F5F1E8",
     accent: "1A6AFF",
     accentLight: "E0EBFF",
@@ -985,6 +985,7 @@ function renderMetrics(
   const gap = 0.12;
   const cardW = (region.w - gap * (count - 1)) / count;
   const cardH = Math.min(region.h, 1.2);
+  const framelessCards = norm(tokens.palette.bg) === "F5F1E8" && norm(tokens.palette.card ?? tokens.palette.surface) === "FBF8F1";
 
   metrics.slice(0, 6).forEach((m, i) => {
     const cardX = region.x + i * (cardW + gap);
@@ -996,17 +997,16 @@ function renderMetrics(
       w: cardW,
       h: cardH,
       fill: { color: norm(tokens.palette.card ?? tokens.palette.surface) },
-      line: { color: norm(tokens.palette.border), pt: 0.5 },
+      ...(framelessCards ? {} : { line: { color: norm(tokens.palette.border), pt: 0.5 } }),
     });
 
-    // TOP semantic bar: 2.5px, green/red (JSX: position absolute top, height 2.5)
-    const isPositive = m.delta ? (m.delta.startsWith("+") || m.delta.includes("↑")) : true;
+    // Top hairline: Basquio light mode uses a single ultramarine chrome accent here.
     slide.addText("", {
       x: cardX,
       y: region.y,
       w: cardW,
       h: 0.035,  // ~2.5px at 72dpi
-      fill: { color: norm(isPositive ? tokens.palette.positive : tokens.palette.negative), transparency: 40 },
+      fill: { color: norm(tokens.palette.accent), transparency: 10 },
     });
 
     // Label: monospace, ALL CAPS, dim color, 1.5 letter-spacing (JSX: T.mono 9px textDim)
@@ -1038,6 +1038,7 @@ function renderMetrics(
 
     // Delta + sub on same row (JSX: delta then sub with marginLeft 8)
     if (m.delta) {
+      const isPositive = m.delta.startsWith("+") || m.delta.includes("↑");
       const deltaColor = isPositive ? norm(tokens.palette.positive) : norm(tokens.palette.negative);
       slide.addText(m.delta, {
         x: cardX + 0.15,
@@ -1183,8 +1184,8 @@ function renderCallout(
   // Derive callout background from the accent color at ~10% opacity on the surface color.
   // Works on both dark (Slate/Obsidian) and light (Bower/Signal/Verso) templates.
   const accentColor = accentMap[variant] || tokens.palette.accent;
-  const bgColor = tintColor(accentColor, tokens.palette.surface ?? tokens.palette.bg, 0.12);
-  const calloutH = Math.min(region.h, 0.45); // Respect region height — never overflow
+  const bgColor = tintColor(accentColor, tokens.palette.surface ?? tokens.palette.bg, 0.2);
+  const calloutH = Math.min(region.h, 0.5); // Respect region height — never overflow
 
   // Tinted background (no border, sharp corners)
   slide.addText("", {
@@ -1199,7 +1200,7 @@ function renderCallout(
   slide.addText("", {
     x: region.x,
     y: region.y,
-    w: 0.04,
+    w: 0.05,
     h: calloutH,
     fill: { color: norm(accentColor) },
   });
@@ -1216,9 +1217,9 @@ function renderCallout(
   }
   slide.addText(processNewlines(cleanText), {
     x: region.x + 0.16,
-    y: region.y + 0.08,
-    w: region.w - 0.24,
-    h: calloutH - 0.16,
+    y: region.y + 0.09,
+    w: region.w - 0.28,
+    h: calloutH - 0.18,
     fontSize: 10,
     fontFace: tokens.typography.bodyFont,
     color: norm(tokens.palette.ink),
@@ -1386,6 +1387,7 @@ function renderSceneGraphNode(
       const metrics = node.metrics ?? [];
       if (!metrics.length) return;
       const cardW = frame.w / metrics.length;
+      const framelessCards = norm(tokens.palette.bg) === "F5F1E8" && norm(tokens.palette.surface) === "FBF8F1";
       metrics.forEach((metric, index) => {
         const x = frame.x + cardW * index;
         slide.addShape("rect" as PptxGenJS.ShapeType, {
@@ -1394,7 +1396,7 @@ function renderSceneGraphNode(
           w: cardW - 0.06,
           h: frame.h,
           fill: { color: norm(tokens.palette.surface) },
-          line: { color: norm(tokens.palette.border), width: 1 },
+          ...(framelessCards ? {} : { line: { color: norm(tokens.palette.border), width: 1 } }),
         });
         slide.addText(metric.label, {
           x: x + 0.08,

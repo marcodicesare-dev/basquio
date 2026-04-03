@@ -21,7 +21,7 @@ const BASQUIO_LOGO_PLACEHOLDER = "__BASQUIO_LOGO_LIGHT_BG_BASE64__";
 const BASQUIO_MASTER_ARGS_PLACEHOLDER = "__BASQUIO_MASTER_ARGS__";
 const BASQUIO_COVER_ARGS_PLACEHOLDER = "__BASQUIO_COVER_ARGS__";
 const basquioLogoBase64Promise = readFile(
-  path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-mono@2x.png"),
+  path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-blue@2x.png"),
 )
   .then((buffer) => `data:image/png;base64,${buffer.toString("base64")}`)
   .catch(() => null);
@@ -74,6 +74,77 @@ const slide2 = pptx.addSlide({ masterName: "BASQUIO_MASTER" });
 </example>
 `.trim();
 
+function buildClientMasterExample(
+  templateProfile: TemplateProfile,
+  promptPalette: PromptPalette,
+) {
+  const logo = templateProfile.brandTokens?.logo;
+  const shapes = templateProfile.brandTokens?.decorativeShapes ?? [];
+  const typography = templateProfile.brandTokens?.typography;
+  const contentFont = typography?.bodyFont ?? typography?.headingFont ?? "Arial";
+  const clientName = (templateProfile.templateName?.replace(/\.pptx$/i, "") || "Client").trim();
+  const footerLabel = `${clientName} | Confidential`;
+  const contentFontLiteral = JSON.stringify(contentFont);
+  const footerLabelLiteral = JSON.stringify(footerLabel);
+  const coverObjects: string[] = [];
+  const contentObjects: string[] = [];
+
+  if (logo?.imageBase64) {
+    const position = logo.position ?? { x: 0.4, y: 6.8, w: 1.5, h: 0.5 };
+    const data = JSON.stringify(logo.imageBase64);
+    coverObjects.push(`    { image: { data: ${data}, x: ${position.x}, y: ${position.y}, w: ${position.w}, h: ${position.h} } },`);
+    contentObjects.push(`    { image: { data: ${data}, x: ${position.x}, y: ${position.y}, w: ${position.w}, h: ${position.h} } },`);
+  }
+
+  for (const shape of shapes.slice(0, 3)) {
+    contentObjects.push(
+      `    { rect: { x: ${shape.x.toFixed(2)}, y: ${shape.y.toFixed(2)}, w: ${shape.w.toFixed(2)}, h: ${shape.h.toFixed(2)}, fill: { color: "${stripHexPrefix(normalizeHex(shape.fill))}" }, line: { color: "${stripHexPrefix(normalizeHex(shape.fill))}", transparency: 100 } } },`,
+    );
+  }
+
+  contentObjects.push(
+    `    { text: { text: ${footerLabelLiteral}, options: { x: 0.45, y: 7.12, w: 2.8, h: 0.22, fontSize: 8, fontFace: ${contentFontLiteral}, color: "${promptPalette.mutedNoHash}" } } },`,
+  );
+
+  return `
+<example name="client_template_slide_master_setup">
+// FIRST THING before any addSlide(): define client masters from the extracted template profile.
+// These masters ensure the client logo, colors, and accent elements appear on EVERY slide.
+
+const BG = "${promptPalette.backgroundNoHash}";
+const SURFACE = "${promptPalette.surfaceNoHash}";
+const TEXT = "${promptPalette.textNoHash}";
+const MUTED = "${promptPalette.mutedNoHash}";
+const BORDER = "${promptPalette.borderNoHash}";
+const ACCENT = "${promptPalette.primaryNoHash}";
+const HIGHLIGHT = "${promptPalette.highlightNoHash}";
+
+pptx.defineSlideMaster({
+  title: "CLIENT_COVER",
+  background: { fill: BG },
+  objects: [
+${coverObjects.join("\n")}
+  ],
+});
+
+pptx.defineSlideMaster({
+  title: "CLIENT_MASTER",
+  background: { fill: SURFACE },
+  objects: [
+${contentObjects.join("\n")}
+  ],
+  slideNumber: {
+    x: 12.0, y: 7.12, w: 0.55, h: 0.22,
+    fontSize: 8, fontFace: ${contentFontLiteral}, color: MUTED, align: "right",
+  },
+});
+
+const coverSlide = pptx.addSlide({ masterName: "CLIENT_COVER" });
+const slide2 = pptx.addSlide({ masterName: "CLIENT_MASTER" });
+</example>
+`.trim();
+}
+
 const DECK_EXAMPLES = `
 <examples>
 <example name="perfect_exec_summary_slide">
@@ -84,12 +155,12 @@ const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
 
 slide.addText("EXECUTIVE SUMMARY", {
   x: 0.45, y: 0.22, w: 9.1, h: 0.18,
-  fontSize: 9, fontFace: "Arial", color: "F0CC27", letterSpacing: 1.5, bold: true
+  fontSize: 9, fontFace: "Arial", color: "1A6AFF", letterSpacing: 1.5, bold: true
 });
 
 slide.addText("Petfood category grew +8.2% but brand lost 1.4pp share to private label", {
   x: 0.45, y: 0.32, w: 9.1, h: 0.56,
-  fontSize: 22, fontFace: "Arial", color: "F2F0EB", bold: true
+  fontSize: 22, fontFace: "Arial", color: "0B0C0C", bold: true
 });
 
 const metrics = [
@@ -107,19 +178,21 @@ slide.addText([
   "ANSWER: Shift promo from deep TPR to event-led in top-5 retailers and launch a 150g premium wet SKU."
 ].join("\\n\\n"), {
   x: 0.45, y: 2.35, w: 9.1, h: 1.65,
-  fontSize: 11, fontFace: "Arial", color: "A09FA6", breakLine: false
+  fontSize: 11, fontFace: "Arial", color: "5D656B", breakLine: false
 });
 
 slide.addText("Action: list top-3 SKUs at Coop and Esselunga to capture EUR2.1M incremental", {
   x: 0.45, y: 4.15, w: 9.1, h: 0.42,
-  fontSize: 10, fontFace: "Arial", color: "F2F0EB",
-  fill: { color: "1A6AFF", transparency: 85 }
+  fontSize: 10, fontFace: "Arial", color: "0B0C0C",
+  fill: { color: "1A6AFF", transparency: 76 }
 });
 </example>
 
 <example name="perfect_chart_slide">
 // Chart slide using title-chart archetype
 // Note: chart rendered as PNG at slot dimensions with safe label padding
+
+slide.background = { color: "F5F1E8" };
 
 import matplotlib
 matplotlib.use('Agg')
@@ -128,28 +201,29 @@ import matplotlib.pyplot as plt
 fig, ax = plt.subplots(figsize=(9.25, 3.5))
 categories = ["Premium Wet", "Standard Wet", "Premium Dry", "Standard Dry", "Treats"]
 values = [23.4, 18.7, 15.2, 31.1, 11.6]
-colors = ["#F0CC27" if v == max(values) else "#3A3940" for v in values]
+colors = ["#F0CC27" if v == max(values) else "#8A93A0" for v in values]
 bars = ax.barh(categories, values, color=colors)
-ax.bar_label(bars, fmt='%.1f%%', padding=5, fontsize=9, color="#A09FA6")
+ax.bar_label(bars, fmt='%.1f%%', padding=5, fontsize=9, color="#5D656B")
 ax.set_xlim(0, max(values) * 1.15)
 ax.invert_yaxis()
-ax.tick_params(colors="#A09FA6", labelsize=10)
+ax.tick_params(colors="#5D656B", labelsize=10)
 ax.spines[['top', 'right', 'bottom']].set_visible(False)
-ax.set_facecolor('#0A090D')
-fig.patch.set_facecolor('#0A090D')
-fig.text(0.02, 0.02, "Source: NIQ Total Tracked Market, MAT Q4 2025", fontsize=7, color="#6B6A72")
+ax.spines['left'].set_color('#D6D1C4')
+ax.set_facecolor('#F5F1E8')
+fig.patch.set_facecolor('#F5F1E8')
+fig.text(0.02, 0.02, "Source: NIQ Total Tracked Market, MAT Q4 2025", fontsize=7, color="#6B7280")
 plt.subplots_adjust(bottom=0.15)
 plt.tight_layout()
-plt.savefig("chart_1.png", dpi=300, bbox_inches='tight', facecolor='#0A090D')
+plt.savefig("chart_1.png", dpi=300, bbox_inches='tight', facecolor='#F5F1E8')
 
 slide.addText("Standard Dry dominates at 31.1% mix but Premium Wet is fastest growing at +12.4% YoY", {
   x: 0.45, y: 0.32, w: 9.1, h: 0.52,
-  fontSize: 20, fontFace: "Arial", color: "F2F0EB", bold: true
+  fontSize: 20, fontFace: "Arial", color: "0B0C0C", bold: true
 });
 slide.addImage({ path: "chart_1.png", x: 0.35, y: 0.92, w: 9.25, h: 3.5 });
 slide.addText("Mix shift toward premium creates pricing headroom - brand should accelerate the 150g launch", {
   x: 0.45, y: 4.55, w: 9.1, h: 0.42,
-  fontSize: 10, fontFace: "Arial", color: "F2F0EB"
+  fontSize: 10, fontFace: "Arial", color: "5D656B"
 });
 </example>
 
@@ -161,12 +235,12 @@ const slide = pptx.addSlide(${BASQUIO_COVER_ARGS_PLACEHOLDER});
 
 slide.addText("Il Discount perde 0.5pp confezioni vs Totale Italia: servono velocita e premium mix", {
   x: 1.1, y: 2.6, w: 9.0, h: 1.8,
-  fontSize: 28, fontFace: "Arial", color: "F2F0EB", bold: true
+  fontSize: 28, fontFace: "Arial", color: "0B0C0C", bold: true
 });
 
 slide.addText("Analisi per Gruppo VeGe | NielsenIQ RMS | L52W a S22/02/26", {
   x: 1.1, y: 4.5, w: 8.0, h: 0.6,
-  fontSize: 14, fontFace: "Arial", color: "A09FA6"
+  fontSize: 14, fontFace: "Arial", color: "5D656B"
 });
 
 slide.addText("Confidential", {
@@ -179,11 +253,12 @@ slide.addText("Confidential", {
 // Chart-split slide: horizontal bar chart LEFT + structured analysis RIGHT
 // Use this for diagnostic slides where one chart proves a point and the text explains why
 
-const slide = pptx.addSlide();
+const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
+slide.background = { color: "F5F1E8" };
 
 slide.addText("COMPARTI CRITICI", {
   x: 0.6, y: 0.5, w: 12.1, h: 0.25,
-  fontSize: 9, fontFace: "Arial", color: "F0CC27", letterSpacing: 1.5, bold: true
+  fontSize: 9, fontFace: "Arial", color: "1A6AFF", letterSpacing: 1.5, bold: true
 });
 
 slide.addText("8 comparti su 10 perdono velocita: Freddo e Cura Casa guidano il gap a -3.5pp", {
@@ -201,15 +276,19 @@ colors = ["#E8636F" if g < -2 else "#F0CC27" if g < 0 else "#4CC9A0" for g in ga
 
 fig, ax = plt.subplots(figsize=(6.2, 4.25))
 bars = ax.barh(categories, gaps, color=colors)
-ax.bar_label(bars, fmt='%+.1fpp', padding=5, fontsize=9)
+ax.bar_label(bars, fmt='%+.1fpp', padding=5, fontsize=9, color="#5D656B")
 ax.axvline(x=0, color="#6B6A72", linewidth=0.5)
 ax.invert_yaxis()
-ax.set_xlabel("Gap confezioni/pdv Discount vs TI (pp)", fontsize=9)
+ax.set_xlabel("Gap confezioni/pdv Discount vs TI (pp)", fontsize=9, color="#5D656B")
 ax.spines[['top', 'right']].set_visible(False)
-fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W", fontsize=7, color="#6B6A72")
+ax.spines['left'].set_color('#D6D1C4')
+ax.spines['bottom'].set_color('#D6D1C4')
+ax.set_facecolor('#F5F1E8')
+fig.patch.set_facecolor('#F5F1E8')
+fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W", fontsize=7, color="#6B7280")
 plt.subplots_adjust(bottom=0.12)
 plt.tight_layout()
-plt.savefig("chart_gaps.png", dpi=300, bbox_inches='tight')
+plt.savefig("chart_gaps.png", dpi=300, bbox_inches='tight', facecolor='#F5F1E8')
 
 slide.addImage({ path: "chart_gaps.png", x: 0.6, y: 1.75, w: 6.2, h: 4.25 });
 
@@ -231,26 +310,26 @@ slide.addText([
 
 slide.addText("Il focus deve essere sull'intensificare la rotazione e ampliare l'offerta premium, non sull'aprire nuovi PDV.", {
   x: 7.1, y: 5.0, w: 5.6, h: 0.65,
-  fontSize: 10, fontFace: "Arial", color: "F2F0EB",
+  fontSize: 10, fontFace: "Arial", color: "0B0C0C",
   fill: { color: "1A6AFF", transparency: 85 }, shrinkText: true
 });
 </example>
 
 <example name="perfect_recommendation_cards_slide">
-// Recommendation cards on dark background using recommendation-cards archetype
-// Note: 4 cards, each with colored index badge, title, body, and bottom metric
+// Recommendation cards using recommendation-cards archetype
+// Note: use warm/light canvas, tonal cards, dark text, and exactly 2 action cards
 
-const slide = pptx.addSlide();
-slide.background = { color: "0A090D" };
+const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
+slide.background = { color: "F5F1E8" };
 
 slide.addText("RACCOMANDAZIONI", {
   x: 0.6, y: 0.5, w: 12.1, h: 0.25,
-  fontSize: 9, fontFace: "Arial", color: "F0CC27", letterSpacing: 1.5, bold: true
+  fontSize: 9, fontFace: "Arial", color: "1A6AFF", letterSpacing: 1.5, bold: true
 });
 
-slide.addText("Quattro azioni concrete per recuperare lo 0.5pp di gap confezioni entro 12 mesi", {
+slide.addText("Due azioni ad alta priorita per recuperare lo 0.5pp di gap confezioni", {
   x: 0.6, y: 0.8, w: 12.1, h: 0.7,
-  fontSize: 20, fontFace: "Arial", color: "F2F0EB", bold: true
+  fontSize: 20, fontFace: "Arial", color: "0B0C0C", bold: true
 });
 
 const cards = [
@@ -261,31 +340,19 @@ const cards = [
     lever: "Assortimento", impact: "+0.15pp conf", timeline: "3 mesi"
   },
   {
-    index: "02", color: "6B8EE8",
+    index: "02", color: "1A6AFF",
     title: "Ripristina pressione promo su Salumi",
     body: "Intensita promo scesa da 28.5% a 25.7%. Ripristinare soglie PY con promozioni di ingresso e multipack sui top-seller.",
     lever: "Promo", impact: "+0.05pp conf", timeline: "2 mesi"
-  },
-  {
-    index: "03", color: "F0CC27",
-    title: "Espandi offerta nelle categorie outperforming",
-    body: "Preparati Bev. Calde (+2.7pp gap), Pane Fresco (+2.2pp), Avicunicolo (+1.6pp): ampliare referenze e migliorare esposizione.",
-    lever: "Portfolio", impact: "+0.08pp conf", timeline: "4 mesi"
-  },
-  {
-    index: "04", color: "9B7AE0",
-    title: "Difendi il price index sulle categorie traffico",
-    body: "Bevande Gassate IDX 70, Acqua IDX 72, Birre IDX 73: bloccare i prezzi quando l'indice supera 80. Lo shopper price-sensitive e il core.",
-    lever: "Pricing", impact: "Difensivo", timeline: "Immediato"
   }
 ];
 
 cards.forEach((card, i) => {
-  const cx = 0.45 + i * 3.05;
+  const cx = 0.45 + i * 4.6;
   const cy = 1.5;
   slide.addShape(pptx.ShapeType.rect, {
-    x: cx, y: cy, w: 2.85, h: 4.5,
-    fill: { color: "16151E" }, line: { color: "272630", width: 0.5 }
+    x: cx, y: cy, w: 4.15, h: 4.2,
+    fill: { color: "FBF8F1" }, line: { color: "FBF8F1", transparency: 100 }
   });
   slide.addShape(pptx.ShapeType.rect, {
     x: cx + 0.15, y: cy + 0.2, w: 0.45, h: 0.45,
@@ -296,23 +363,23 @@ cards.forEach((card, i) => {
     fontSize: 16, fontFace: "Arial", color: "FFFFFF", bold: true, align: "center", valign: "middle"
   });
   slide.addText(card.title, {
-    x: cx + 0.7, y: cy + 0.2, w: 2.0, h: 0.45,
-    fontSize: 13, fontFace: "Arial", color: "F2F0EB", bold: true, valign: "middle"
+    x: cx + 0.7, y: cy + 0.2, w: 3.2, h: 0.45,
+    fontSize: 13, fontFace: "Arial", color: "0B0C0C", bold: true, valign: "middle"
   });
   slide.addText(card.body, {
-    x: cx + 0.15, y: cy + 0.85, w: 2.55, h: 2.5,
-    fontSize: 11, fontFace: "Arial", color: "A09FA6", lineSpacing: 14, valign: "top", shrinkText: true
+    x: cx + 0.15, y: cy + 0.85, w: 3.7, h: 2.25,
+    fontSize: 11, fontFace: "Arial", color: "5D656B", lineSpacing: 14, valign: "top", shrinkText: true
   });
   slide.addText("Leva: " + card.lever + " | Impatto: " + card.impact + " | Timeline: " + card.timeline, {
-    x: cx + 0.15, y: cy + 3.8, w: 2.55, h: 0.5,
-    fontSize: 9, fontFace: "Arial", color: "6B6A72", valign: "bottom"
+    x: cx + 0.15, y: cy + 3.45, w: 3.7, h: 0.45,
+    fontSize: 9, fontFace: "Arial", color: "6B7280", valign: "bottom"
   });
 });
 
 slide.addText("Con interventi mirati in 90 giorni, il gap di -0.5pp e recuperabile. La distribuzione c'e gia; serve velocita, non copertura.", {
   x: 0.45, y: 6.3, w: 12.1, h: 0.45,
-  fontSize: 10, fontFace: "Arial", color: "F2F0EB",
-  fill: { color: "1A6AFF", transparency: 85 }
+  fontSize: 10, fontFace: "Arial", color: "0B0C0C",
+  fill: { color: "1A6AFF", transparency: 76 }
 });
 </example>
 
@@ -360,13 +427,12 @@ For each analytical slide, follow this reasoning chain:
 1. WHAT changed: "Discount channel grew +2.1% vs prior year"
 2. HOW MUCH: "vs Total Italy at +4.3%, creating a -2.2pp gap"
 3. WHY: "Three compartments drive 60% of the gap: Birre (-2.2pp gap, 3.9% of sales), Yogurt (-2.8pp gap, 3.4%), Salumi (-1.0pp gap, 4.6%)"
-4. SO WHAT: "Recommendation: shift 15% of promo budget from Discount to Hypermarket where growth headroom is 3x. Prize: recovering the -0.52pp gap on Birre+Yogurt+Salumi equals ~EUR12M incremental value at current category rate. Priority: Birre (EUR5.2M, 2-3 months) > Yogurt (EUR4.1M, 3-4 months) > Salumi (EUR2.7M, immediate)."
+4. SO WHAT: "Recommendation: fix premium assortment in Birre and Yogurt first, then rebuild promo pressure in Salumi. Priority: Birre > Yogurt > Salumi based on weighted gap contribution and channel relevance."
 
 A slide that only states facts 1-2 is a data readout, not analysis. A slide worth paying for states all four, with the recommendation grounded in the specific numbers from the evidence.
-A slide that quantifies the WHAT and WHY but not the HOW MUCH IN EUR is analysis, not consulting.
-A slide worth paying for estimates the size of the prize, even approximately.
-When the data contains value or volume, always compute the EUR impact of each recommendation.
-When exact EUR is not computable, estimate the range: "~EURX-YM based on [assumption]."
+A slide that quantifies the WHAT and WHY but not the HOW MUCH IN EUR is still valid analysis when the source data does not support a clean financial translation.
+When the data contains explicit value or volume, compute the EUR impact and show the calculation.
+When exact EUR is not computable from the evidence, use directional language such as "material gap", "priority opportunity", or "significant headroom" instead of inventing a range.
 </example>
 
 <example name="content_budget_rules">
@@ -442,12 +508,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-BG = '#0A090D'
-TEXT = '#F2F0EB'
-MUTED = '#A09FA6'
-DIM = '#6B6A72'
-BORDER = '#272630'
-ACCENT = '#F0CC27'
+BG = '#F5F1E8'
+TEXT = '#0B0C0C'
+MUTED = '#5D656B'
+DIM = '#6B7280'
+BORDER = '#D6D1C4'
+ACCENT = '#1A6AFF'
 POSITIVE = '#4CC9A0'
 NEGATIVE = '#E8636F'
 PALETTE = ['#F0CC27', '#1A6AFF', '#4CC9A0', '#9B7AE0', '#E8636F', '#5AC4D4', '#6B7280', '#7ABBE0']
@@ -625,6 +691,9 @@ export async function buildBasquioSystemPrompt(input: {
   const deckExamples = buildDeckExamples(promptPalette, {
     basquioLogoBase64,
     includeBasquioBrandingExample: !hasCustomTemplate,
+    clientMasterExample: hasCustomTemplate
+      ? buildClientMasterExample(input.templateProfile, promptPalette)
+      : null,
   });
   const templateLogoDirective = hasImportedPptxTemplate
     ? buildTemplateLogoDirective(input.templateProfile)
@@ -676,10 +745,13 @@ export async function buildBasquioSystemPrompt(input: {
     "- Native-language quality is mandatory. Italian must read like native Italian business writing, not translated English and not pseudo-Spanish. English must be direct, partner-grade, and free of padded corporate filler.",
     "- Every slide title must state an insight, not a topic.",
     "- Every slide title should include at least one specific number from the data and state a finding, not a topic.",
-    "- Quantify the financial size of the prize whenever value or volume data makes it possible. Recommendation slides should estimate incremental EUR impact, not just name the lever.",
-    "- Every recommendation must include: the action, volume impact, EUR value impact at current prices, quarterly milestones, required investment/resources, and expected ROI.",
+    "- Quantify the financial size of the opportunity ONLY when the source data contains explicit value or volume figures that support a direct calculation. Show the calculation (for example, gap × average price = EURX). If the data does not support a financial estimate, describe the opportunity qualitatively with words like significant, material, or priority. NEVER fabricate investment amounts, ROI figures, or financial projections.",
+    "- Every recommendation must include: the specific action, the data-backed rationale with traceable numbers, and the priority ranking. Include EUR impact ONLY if it can be computed directly from the uploaded data. NEVER include investment amounts, ROI claims, budget estimates, headcount, or any number that implies a financial commitment not derivable from the source files.",
     "- The recommendation slide and the narrative report must show a sequenced roadmap: Q1 actions, Q2 actions, Q3 actions, and Q4 review.",
     "- When the brief asks for a growth target such as +10%, include a volume bridge or waterfall that sums to the target and ties each recommendation to a quantified contribution.",
+    "- DATA TRACEABILITY: every number on every slide must trace back to the uploaded evidence files. If a reviewer asks where a number comes from, the answer must be a specific file, column, row, or calculation, never an outside benchmark estimate.",
+    "- NEVER generate investment amounts, ROI figures, budget allocations, cost estimates, headcount requirements, payback periods, or forward-looking financial projections unless the source files explicitly contain the required inputs.",
+    "- Industry benchmarks from the knowledge base inform your analysis approach. They do NOT become slide content unless the uploaded files explicitly support the same claim.",
     "- Distinguish measured facts from interpretations. Hedge inferred cultural or demographic explanations instead of stating them as proven facts.",
     "- Cover-slide dates and source lines must match the evidence period exactly. Never use today's date, a placeholder period, or a made-up geography.",
     "- Every slide must contain data or analysis. Do not spend slide budget on section divider slides that only show a number or title; use the upper-left category label as the section marker instead.",
@@ -714,7 +786,7 @@ export async function buildBasquioSystemPrompt(input: {
           "- If the template is light, keep it light. If the template is dark, keep it dark. Do not flip the deck into Basquio dark by default.",
         ]
       : [
-          "- Default to the Basquio standard light editorial style when the template does not strongly override it: warm cream canvas, white cards, onyx text, ultramarine action accents, and sparse amber highlights.",
+          "- Default to the Basquio standard light editorial style when the template does not strongly override it: warm cream canvas, tonal ivory cards, onyx text, ultramarine logo chrome, ultramarine eyebrow labels, ultramarine top hairlines, and sparse amber highlights.",
         ]),
     ...templatePaletteDirective,
     ...templateLogoDirective,
@@ -783,6 +855,14 @@ export async function buildBasquioSystemPrompt(input: {
     "- Generate speaker notes for each substantive content slide using addNotes(). Notes must include: (1) one-sentence talk track, (2) one supporting data point, (3) one anticipated client question with the answer.",
     "- When you write `data_tables.xlsx`, every sheet must come from the exact DataFrame used for the chart or numeric finding. Do not recreate the table from prose.",
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
+    "- Basquio standard is a LIGHT editorial system. On the warm cream canvas, never use white text on pale tinted fills or low-opacity color bands. Pale green, pale amber, pale blue, and pale lilac fills must use onyx or deep slate text.",
+    "- White text is allowed only on genuinely dark or fully saturated fills that clearly support it. If the fill is light enough to feel like paper, the text must be dark.",
+    "- On light templates, callout/banner fills must be visibly present. Do not use hairline tints or ultra-high transparency. A callout should read as a deliberate band, not a nearly invisible wash.",
+    "- On the Basquio warm canvas, avoid large pure-white boxes that visually fight the background. Prefer either (a) tonal cream cards close to the canvas with clear borders, or (b) smaller white cards that are densely and purposefully filled.",
+    "- Do not place sparse bullet lists inside giant fixed-height cards. If a card uses less than roughly 60% of its vertical space, either shrink the card, add meaningful structured content (owner, KPI, milestone, risk), or switch to a different archetype.",
+    "- Roadmap / quarter-plan slides must not be four tall empty boxes. Each lane should either be content-fit or include a clear footer band such as KPI, owner, milestone, or commercial target so the page feels filled and intentional.",
+    "- If a Q1-Q4 roadmap has only a few actions per quarter, prefer compact quarter cards or a text-led summary slide. Do not invent oversized quarterly columns just to occupy the page.",
+    "- For light-template callout banners, use this hierarchy: tinted background + dark text + one strong accent edge. Do NOT use pale background + white text.",
     "Deck grammar:",
     deckGrammar,
     "",
@@ -941,22 +1021,29 @@ function resolvePromptPalette(templateProfile: TemplateProfile): PromptPalette {
 function buildTemplateLogoDirective(templateProfile: TemplateProfile) {
   const logo = templateProfile.brandTokens?.logo;
   if (!logo?.imageBase64) {
-    return [];
+    return [
+      "- No client logo was extracted from the template. If the brief clearly names the client, use client text only in the master footer position instead of inventing a logo treatment.",
+    ];
   }
 
   const position = logo.position ?? { x: 0.4, y: 0.3, w: 2.0, h: 0.6 };
   return [
-    "- CLIENT LOGO: embed the client logo on slide 1 and on the closing/next-steps slide using addImage().",
-    `- Safe logo placement example: slide.addImage({ data: '${logo.imageBase64}', x: ${position.x}, y: ${position.y}, w: ${position.w}, h: ${position.h} });`,
-    "- Keep the logo in its extracted position unless the template clearly requires a small local adjustment.",
+    "- CLIENT LOGO: define it once inside CLIENT_MASTER and CLIENT_COVER so it appears on every slide automatically.",
+    "- Do NOT add the client logo manually on individual slides. The master handles it.",
+    `- Keep the extracted logo position unless the template clearly requires a small local adjustment: x=${position.x}, y=${position.y}, w=${position.w}, h=${position.h}.`,
+    "- If the logo appears clipped or mispositioned, adjust the master definition, not each slide.",
   ];
 }
 
 function buildDecorativeShapeDirectives(templateProfile: TemplateProfile) {
   const shapes = templateProfile.brandTokens?.decorativeShapes ?? [];
-  return shapes.slice(0, 3).map((shape, index) =>
-    `- Template accent element ${index + 1}: add a rect on every content slide at x ${shape.x.toFixed(2)}, y ${shape.y.toFixed(2)}, w ${shape.w.toFixed(2)}, h ${shape.h.toFixed(2)} with fill ${shape.fill}.`,
-  );
+  if (shapes.length === 0) {
+    return [];
+  }
+  return [
+    `- ${shapes.length} decorative accent element(s) from the template are embedded in CLIENT_MASTER and should appear on every content slide automatically.`,
+    "- Do NOT redraw accent bars manually on individual slides. Put them in the master definition once.",
+  ];
 }
 
 function buildDeckExamples(
@@ -964,6 +1051,7 @@ function buildDeckExamples(
   input: {
     basquioLogoBase64: string | null;
     includeBasquioBrandingExample: boolean;
+    clientMasterExample: string | null;
   },
 ) {
   const replacements: Array<[RegExp, string]> = [
@@ -973,8 +1061,19 @@ function buildDeckExamples(
     [/\b0A090D\b/g, palette.backgroundNoHash],
     [/\bF2F0EB\b/g, palette.textNoHash],
     [/#F2F0EB/g, palette.text],
+    [/\b0B0C0C\b/g, palette.textNoHash],
+    [/#0B0C0C/g, palette.text],
+    [/\b5D656B\b/g, palette.mutedNoHash],
+    [/#5D656B/g, palette.muted],
+    [/\b6B7280\b/g, palette.mutedNoHash],
     [/\bA09FA6\b/g, palette.mutedNoHash],
     [/#A09FA6/g, palette.muted],
+    [/\bFBF8F1\b/g, palette.surfaceNoHash],
+    [/#FBF8F1/g, palette.surface],
+    [/\bF5F1E8\b/g, palette.backgroundNoHash],
+    [/#F5F1E8/g, palette.background],
+    [/\bD6D1C4\b/g, palette.borderNoHash],
+    [/#D6D1C4/g, palette.border],
     [/\bF0CC27\b/g, palette.highlightNoHash],
     [/#F0CC27/g, palette.highlight],
     [/\bE8A84C\b/g, palette.highlightNoHash],
@@ -993,19 +1092,27 @@ function buildDeckExamples(
     [/\b9B7AE0\b/g, palette.secondaryNoHash],
   ];
 
-  const baseExamples = input.includeBasquioBrandingExample
-    ? DECK_EXAMPLES.replace("<examples>", `<examples>\n${BASQUIO_BRANDING_EXAMPLE}\n`)
+  const injectedExamples = [
+    input.includeBasquioBrandingExample ? BASQUIO_BRANDING_EXAMPLE : null,
+    input.clientMasterExample,
+  ].filter((value): value is string => Boolean(value));
+  const baseExamples = injectedExamples.length > 0
+    ? DECK_EXAMPLES.replace("<examples>", `<examples>\n${injectedExamples.join("\n")}\n`)
     : DECK_EXAMPLES;
+  const contentMasterArgs = input.includeBasquioBrandingExample
+    ? '{ masterName: "BASQUIO_MASTER" }'
+    : input.clientMasterExample
+      ? '{ masterName: "CLIENT_MASTER" }'
+      : "";
+  const coverMasterArgs = input.includeBasquioBrandingExample
+    ? '{ masterName: "BASQUIO_COVER" }'
+    : input.clientMasterExample
+      ? '{ masterName: "CLIENT_COVER" }'
+      : "";
   const exampleText = baseExamples
     .replaceAll(BASQUIO_LOGO_PLACEHOLDER, input.basquioLogoBase64 ?? "")
-    .replaceAll(
-      BASQUIO_MASTER_ARGS_PLACEHOLDER,
-      input.includeBasquioBrandingExample ? '{ masterName: "BASQUIO_MASTER" }' : "",
-    )
-    .replaceAll(
-      BASQUIO_COVER_ARGS_PLACEHOLDER,
-      input.includeBasquioBrandingExample ? '{ masterName: "BASQUIO_COVER" }' : "",
-    );
+    .replaceAll(BASQUIO_MASTER_ARGS_PLACEHOLDER, contentMasterArgs)
+    .replaceAll(BASQUIO_COVER_ARGS_PLACEHOLDER, coverMasterArgs);
   return replacements.reduce((text, [pattern, value]) => text.replace(pattern, value), exampleText);
 }
 

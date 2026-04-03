@@ -176,6 +176,11 @@ A slide with a chart and empty white space is NEVER acceptable. Every analytical
 - Supporting detail (data table, bullets, or metric cards) — the specifics
 - A "so what" (callout) — the decision implication
 
+For Basquio standard light slides:
+- Never use white text on pale tinted banners or soft pastel fills. Use dark text on light fills.
+- Do not place 3-4 bullets inside a giant tall card just to create columns. Either shrink the container or add meaningful structured content (owner, KPI, milestone, risk) so the card feels filled.
+- Avoid stark pure-white cards covering most of a warm cream page unless they are richly populated and visually justified.
+
 Layout selection:
 - **chart-split** — DEFAULT for analytical slides. Chart left (58%) + interpretation bullets or table right (42%) + callout bottom. Use this for most evidence slides.
 - **evidence-grid** — For highest-density slides that need metrics ribbon + chart + supporting text. Max 2-3 per deck.

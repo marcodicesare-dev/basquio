@@ -14,7 +14,7 @@ export function PublicSiteNav() {
       <div className="row landing-nav-copy landing-nav-brand-row">
         <Link href="/" className="brand-lockup" aria-label="Basquio home">
           <Image
-            src="/brand/svg/logo/basquio-logo-light-bg-mono.svg"
+            src="/brand/svg/logo/basquio-logo-light-bg-blue.svg"
             alt="Basquio"
             width={188}
             height={30}

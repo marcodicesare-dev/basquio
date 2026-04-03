@@ -3,8 +3,8 @@
  *
  * Credit formula:
  *   Memo (Haiku): 3 flat
- *   Deck (Sonnet): 3 base + 1/slide (10 slides = 13)
- *   Deep-Dive (Opus): 3 base + 3/slide (10 slides = 33)
+ *   Deck (Sonnet): 3 + first 10 slides at 1 each, then 2 each
+ *   Deep-Dive (Opus): 5 + 2/slide
  *
  * Balance source of truth: credit_grants table (FIFO consumption by earliest expiry).
  * Legacy credit_ledger kept as audit trail.
@@ -12,37 +12,44 @@
 
 // ─── CREDIT CALCULATION ──────────────────────────────────────
 
-/** Fixed credits per run (covers understand + QA phases) */
+/** Baseline credits used by Deck math and legacy pricing surfaces. */
 export const BASE_CREDITS = 3;
 
-/** Credits per slide (covers author + potential revise per slide) */
+/** Legacy/default per-slide slope for the first 10 Sonnet slides. */
 export const CREDITS_PER_SLIDE = 1;
 
-/** Free tier grant amount (enough for 3 Deck runs: 3 × 13 = 39, rounded to 40) */
-export const FREE_TIER_CREDITS = 40;
+/** Free tier grant amount. Must not exceed Starter's included credits. */
+export const FREE_TIER_CREDITS = 30;
 
 export const MIN_TARGET_SLIDES = 1;
 export const MAX_TARGET_SLIDES = 30;
 
 export const DEFAULT_AUTHOR_MODEL = "claude-sonnet-4-6";
 
-/** Per-slide multiplier by model. Applied to per-slide cost only (base stays 3). */
-export const MODEL_SLIDE_MULTIPLIERS: Record<string, number> = {
-  "claude-haiku-4-5": 0,
-  "claude-sonnet-4-6": 1,
-  "claude-opus-4-6": 3,
-};
-
 /**
  * Calculate credits required for a deck run.
- * Memo=3 flat, Deck=3+1/slide, Deep-Dive=3+3/slide.
+ * Memo=3 flat, Deck=3+1/slide for first 10 then +2/slide, Deep-Dive=5+2/slide.
  */
 export function calculateRunCredits(slideCount: number, model: string = DEFAULT_AUTHOR_MODEL): number {
   if (model === "claude-haiku-4-5") {
     return 3;
   }
-  const slideMultiplier = MODEL_SLIDE_MULTIPLIERS[model] ?? 1;
-  return BASE_CREDITS + (slideMultiplier * assertValidSlideCount(slideCount));
+  const slides = assertValidSlideCount(slideCount);
+  if (model === "claude-opus-4-6") {
+    return 5 + (2 * slides);
+  }
+  const firstTen = Math.min(slides, 10);
+  const overTen = Math.max(slides - 10, 0);
+  return BASE_CREDITS + firstTen + (2 * overTen);
+}
+
+export function maxAffordableSlides(balance: number, model: string = DEFAULT_AUTHOR_MODEL): number {
+  for (let slides = MAX_TARGET_SLIDES; slides >= MIN_TARGET_SLIDES; slides -= 1) {
+    if (calculateRunCredits(slides, model) <= balance) {
+      return slides;
+    }
+  }
+  return 0;
 }
 
 export function assertValidSlideCount(slideCount: number): number {
@@ -140,7 +147,7 @@ export async function getDetailedCreditBalance(
 
 /**
  * Grant free tier credits if not already granted.
- * Grants 40 credits (enough for 3 Deck runs).
+ * Grants the free tier credit amount once.
  * Safe to call multiple times — only grants once.
  */
 export async function ensureFreeTierCredit(

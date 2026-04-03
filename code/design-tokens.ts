@@ -18,9 +18,9 @@ export const BASQUIO_CHART_PALETTE = [
 // ─── SEMANTIC COLORS ───────────────────────────────────────────
 export const BASQUIO_COLORS = {
   bg: "F5F1E8",
-  surface: "FFFFFF",
-  surfaceAlt: "FBF8F1",
-  card: "FFFFFF",
+  surface: "FBF8F1",
+  surfaceAlt: "F8F3EA",
+  card: "FBF8F1",
   border: "D6D1C4",
   borderSubtle: "E6E0D3",
   text: "0B0C0C",

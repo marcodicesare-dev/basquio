@@ -8,7 +8,9 @@ import {
   markWebhookEventProcessed,
   upsertSubscription,
 } from "@/lib/credits";
-import { getStripe, CREDIT_PACKS, PLAN_CREDITS, type CreditPackId } from "@/lib/stripe";
+import { type CreditPackId } from "@/lib/billing-config";
+import { getStripe, CREDIT_PACKS, PLAN_CREDITS } from "@/lib/stripe";
+import { getTemplateFeeDraft, updateTemplateFeeDraft } from "@/lib/template-fee-drafts";
 
 export const runtime = "nodejs";
 
@@ -93,6 +95,9 @@ export async function POST(request: Request) {
         if (checkoutType === "subscription") {
           // Subscription checkout completed — subscription events will handle the rest
           console.log(`[stripe-webhook] subscription checkout completed for session ${session.id}`);
+        } else if (checkoutType === "template_fee") {
+          await handleTemplateFeeCheckoutCompleted(config, session);
+          console.log(`[stripe-webhook] template fee checkout completed for session ${session.id}`);
         } else {
           // Credit pack purchase
           await handleCreditPackPurchase(config, session);
@@ -146,6 +151,50 @@ export async function POST(request: Request) {
 }
 
 // ─── HANDLERS ────────────────────────────────────────────────
+
+async function handleTemplateFeeCheckoutCompleted(
+  config: { supabaseUrl: string; serviceKey: string },
+  session: {
+    id: string;
+    metadata?: Record<string, string> | null;
+  },
+) {
+  const userId = session.metadata?.user_id;
+  const draftId = session.metadata?.draft_id;
+
+  if (!userId || !draftId) {
+    console.error("[stripe-webhook] template fee session missing metadata", { sessionId: session.id, userId, draftId });
+    return;
+  }
+
+  const draft = await getTemplateFeeDraft({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    draftId,
+    userId,
+  });
+
+  if (!draft) {
+    console.error("[stripe-webhook] template fee draft not found", { sessionId: session.id, draftId, userId });
+    return;
+  }
+
+  if (draft.status === "consumed" || draft.status === "paid") {
+    return;
+  }
+
+  await updateTemplateFeeDraft({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    draftId,
+    userId,
+    patch: {
+      status: "paid",
+      stripe_checkout_session_id: session.id,
+      paid_at: new Date().toISOString(),
+    },
+  });
+}
 
 async function handleCreditPackPurchase(
   config: { supabaseUrl: string; serviceKey: string },

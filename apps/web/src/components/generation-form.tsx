@@ -162,10 +162,16 @@ type RecipePrefill = {
 };
 
 type GenerationFormProps = {
+  currentPlan?: string;
   savedTemplates?: SavedTemplateOption[];
   defaultTemplateId?: string | null;
   recipePrefill?: RecipePrefill;
   startTour?: boolean;
+  templateFeeReturn?: {
+    draftId: string;
+    status: "success" | "cancelled";
+    sessionId: string | null;
+  };
 };
 
 type TourRect = {
@@ -215,10 +221,12 @@ const TOUR_STEPS = [
 ] as const;
 
 export function GenerationForm({
+  currentPlan = "free",
   savedTemplates = [],
   defaultTemplateId = null,
   recipePrefill,
   startTour = false,
+  templateFeeReturn,
 }: GenerationFormProps) {
   const router = useRouter();
   const evidenceInputRef = useRef<HTMLInputElement>(null);
@@ -229,6 +237,11 @@ export function GenerationForm({
   const reviewStepRef = useRef<HTMLElement | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templateFeeMessage, setTemplateFeeMessage] = useState<string | null>(
+    templateFeeReturn?.status === "cancelled"
+      ? "Template fee checkout was cancelled. Your prepared draft is still loaded below."
+      : null,
+  );
   const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
   const [prefillSourceFiles] = useState(recipePrefill?.sourceFiles ?? []);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
@@ -251,6 +264,7 @@ export function GenerationForm({
       : DEFAULT_AUTHOR_MODEL,
   );
   const isReportOnlyTier = selectedModel === "claude-haiku-4-5";
+  const requiresTemplateFee = currentPlan === "free" && selectedTemplateId !== null;
   const creditsNeeded = isReportOnlyTier ? 3 : calculateRunCredits(targetSlideCount, selectedModel);
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: recipePrefill?.brief.businessContext ?? "",
@@ -272,6 +286,7 @@ export function GenerationForm({
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
+  const autoResumeTemplateFeeRef = useRef(false);
 
   function getTourTarget(stepId: (typeof TOUR_STEPS)[number]["id"]) {
     if (stepId === "report-type") return reportTypeRef.current;
@@ -370,6 +385,55 @@ export function GenerationForm({
     };
   }, [currentStep, isTourOpen, tourIndex]);
 
+  useEffect(() => {
+    if (!templateFeeReturn || templateFeeReturn.status !== "success" || !templateFeeReturn.draftId || autoResumeTemplateFeeRef.current) {
+      return;
+    }
+
+    autoResumeTemplateFeeRef.current = true;
+
+    if (!templateFeeReturn.sessionId) {
+      setError("Template fee payment returned without a Stripe session ID. Retry from /jobs/new.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+    setTemplateFeeMessage("Template fee paid. Confirming the checkout and resuming your run...");
+
+    void (async () => {
+      try {
+        const confirmResponse = await fetch("/api/template-fee-drafts/confirm", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            draftId: templateFeeReturn.draftId,
+            sessionId: templateFeeReturn.sessionId,
+          }),
+        });
+        const confirmPayload = (await readApiPayload(confirmResponse)) as { error?: string };
+        if (!confirmResponse.ok) {
+          throw new Error(confirmPayload.error ?? "Template fee confirmation failed.");
+        }
+
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ draftId: templateFeeReturn.draftId }),
+        });
+        const payload = await readGenerationPayload(response);
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Generation failed.");
+        }
+
+        router.push(payload.progressUrl);
+      } catch (resumeError) {
+        setError(resumeError instanceof Error ? resumeError.message : "Unable to resume the paid template run.");
+        setIsSubmitting(false);
+      }
+    })();
+  }, [router, templateFeeReturn]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // Prevent accidental form submission from Enter key on non-final steps
@@ -388,6 +452,64 @@ export function GenerationForm({
     try {
       validateSubmission(evidenceFiles, brief, prefillSourceFiles.length);
       const effectiveTargetSlideCount = isReportOnlyTier ? 1 : targetSlideCount;
+
+      if (requiresTemplateFee && selectedTemplateId) {
+        let draftId: string;
+
+        if (prefillSourceFiles.length > 0 && evidenceFiles.length === 0) {
+          const draftResult = await createTemplateFeeDraft({
+            templateProfileId: selectedTemplateId,
+            existingSourceFileIds: prefillSourceFiles.map((sf) => sf.id),
+            targetSlideCount: effectiveTargetSlideCount,
+            authorModel: selectedModel,
+            recipeId: recipePrefill?.recipeId ?? undefined,
+            brief,
+          });
+          draftId = draftResult.draftId;
+        } else {
+          const prepareResponse = await fetch("/api/uploads/prepare", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              organizationId: "local-org",
+              projectId: "local-project",
+              evidenceFiles: evidenceFiles.map((file) => ({
+                fileName: file.name,
+                mediaType: file.type || "application/octet-stream",
+                sizeBytes: file.size,
+              })),
+            }),
+          });
+
+          const preparePayload = (await readApiPayload(prepareResponse)) as PrepareUploadsResponse & { error?: string };
+
+          if (!prepareResponse.ok) {
+            throw new Error(preparePayload.error ?? "Unable to prepare uploads.");
+          }
+
+          await uploadPreparedFiles(evidenceFiles, preparePayload.evidenceUploads);
+
+          const draftResult = await createTemplateFeeDraft({
+            templateProfileId: selectedTemplateId,
+            sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
+            targetSlideCount: effectiveTargetSlideCount,
+            authorModel: selectedModel,
+            recipeId: recipePrefill?.recipeId ?? undefined,
+            brief,
+          });
+          draftId = draftResult.draftId;
+        }
+
+        setTemplateFeeMessage("Redirecting to Stripe to unlock the custom template for this run...");
+        const checkout = await startTemplateFeeCheckout(selectedTemplateId, draftId);
+        if (checkout.status >= 400 || !checkout.url) {
+          throw new Error(checkout.error ?? "Template fee checkout failed.");
+        }
+        window.location.href = checkout.url;
+        return;
+      }
 
       // If reusing files from a prior run, skip upload and reference existing source files directly
       if (prefillSourceFiles.length > 0 && evidenceFiles.length === 0) {
@@ -1094,6 +1216,7 @@ export function GenerationForm({
       </form>
 
       {error ? <div className="panel danger-panel">{error}</div> : null}
+      {templateFeeMessage ? <div className="panel success-panel">{templateFeeMessage}</div> : null}
 
       {isTourOpen && tourCardPosition ? (
         <div className="tour-overlay" role="dialog" aria-modal="true" aria-label="Guided setup">
@@ -1350,6 +1473,40 @@ async function readApiPayload(response: Response) {
   return {
     error: text || "Request failed.",
   };
+}
+
+async function createTemplateFeeDraft(input: {
+  templateProfileId: string;
+  sourceFiles?: Array<ReturnType<typeof stripUploadTransportFields>>;
+  existingSourceFileIds?: string[];
+  brief: BriefFields;
+  targetSlideCount: number;
+  authorModel: AuthorModel;
+  recipeId?: string;
+}) {
+  const response = await fetch("/api/template-fee-drafts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  const payload = (await readApiPayload(response)) as { draftId?: string; error?: string };
+  if (!response.ok || !payload.draftId) {
+    throw new Error(payload.error ?? "Failed to prepare the custom-template draft.");
+  }
+
+  return payload as { draftId: string };
+}
+
+async function startTemplateFeeCheckout(templateProfileId: string, draftId: string) {
+  const response = await fetch("/api/stripe/checkout", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "template_fee", templateProfileId, draftId }),
+  });
+
+  const payload = (await readApiPayload(response)) as { url?: string; error?: string };
+  return { ...payload, status: response.status };
 }
 
 async function uploadPreparedFiles(files: File[], uploads: PreparedUpload[]) {

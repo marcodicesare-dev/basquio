@@ -69,7 +69,7 @@ You are adversarial — find what's wrong, not what's right.
 
 12. ANALYTICAL SHARPNESS: A strong slide moves from fact -> driver -> implication. Flag slides that merely restate the chart, state a number without commercial meaning, or make a recommendation without tying it to the evidence. Severity: major.
 
-13. VISUAL BEAUTY IN CONTEXT: Judge the slide inside its chosen template. Flag generic dashboard sludge, weak hierarchy, awkward dead space, cheap-looking chart treatment, uneven card rhythm, or clear underuse of the available template language. Severity: major.
+13. VISUAL BEAUTY IN CONTEXT: Judge the slide inside its chosen template. Flag generic dashboard sludge, weak hierarchy, awkward dead space, cheap-looking chart treatment, uneven card rhythm, clear underuse of the available template language, pale callout bands with low-contrast text, or giant cards whose lower half is empty. Severity: major.
 
 Be specific. "Slide 5 title 'Revenue Analysis' is a topic label — should state the finding, e.g., 'Revenue declined -3.2% driven by volume loss in Q3'" is useful. "Titles could be better" is not.
 

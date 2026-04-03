@@ -25,7 +25,7 @@
 - `data_tables.xlsx` is a first-class Basquio artifact and must be written from the same DataFrames used for charts and reported numbers.
 - Haiku is a report-and-data tier, not a low-quality slide tier.
 - Production runtime prompt inputs must come from tracked repository files, never workspace-only `.context` files.
-- Direct deck generation should default to a light editorial slide language with a warm cream canvas, calm white surfaces, restrained ultramarine action accents, and sparse amber highlights unless the uploaded template clearly overrides it.
+- Direct deck generation should default to a light editorial slide language with a warm cream canvas, tonal ivory surfaces, ultramarine light-background logo chrome, ultramarine eyebrow/top-hairline accents, and sparse amber highlights unless the uploaded template clearly overrides it.
 - In the direct code-execution path, serif display should be limited to short page-level headlines when no strong template is provided; dense slide text and card internals should use Arial-class safe fonts to reduce cross-viewer layout drift.
 - Charts in the direct code-execution path should be rendered as raster image assets and embedded into the PPTX when Basquio needs one visually consistent deliverable across PowerPoint, Keynote, and Google Slides.
 - Claude responds much more reliably to explicit slide geometry, forbidden layout patterns, and implementation constraints than to abstract taste language alone.
@@ -156,6 +156,7 @@ Template fidelity lesson:
 - imported client PPTX profiles may carry extracted `brandTokens.logo.imageBase64`, `brandTokens.logo.position`, and `brandTokens.decorativeShapes`; those fields are part of the live template-fidelity contract and must not be stripped from the schema
 - the current manifest is not rich enough to rebuild final slides from metadata alone; manifest-only recomposition can preserve geometry while destroying actual slide content
 - until full rendered slide content is carried explicitly, prefer clean prompt palette injection over post-hoc PPTX reconstruction
+- free-plan custom-template runs must persist a durable checkout draft before redirecting to Stripe so `/jobs/new` can resume safely after payment without losing uploaded files or the brief
 
 When architecture changes:
 

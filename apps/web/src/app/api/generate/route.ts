@@ -5,10 +5,12 @@ import { NextResponse } from "next/server";
 import { inferSourceFileKind } from "@basquio/core";
 import type { GenerationRequest } from "@basquio/types";
 
+import { normalizePlanId } from "@/lib/billing-config";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
-import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit } from "@/lib/credits";
+import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit, getActiveSubscription } from "@/lib/credits";
 import { callRpc, deleteRestRows, fetchRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
+import { getTemplateFeeDraft, updateTemplateFeeDraft } from "@/lib/template-fee-drafts";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
@@ -35,6 +37,11 @@ class BillingUnavailableError extends Error {
 }
 
 class InvalidGenerationRequestError extends Error {}
+class TemplateFeeRequiredError extends Error {
+  constructor() {
+    super("Free-plan custom-template runs require the one-time template fee. Resume through /jobs/new after checkout.");
+  }
+}
 
 const AUTHOR_MODELS = new Set([
   "claude-sonnet-4-6",
@@ -51,6 +58,7 @@ const TIER_TO_MODEL: Record<string, string> = {
 
 type QueuedGenerationRequest = GenerationRequest & {
   templateProfileId?: string | null;
+  draftId?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -68,9 +76,12 @@ export async function POST(request: Request) {
     }
 
     const generationRequest = await parseGenerationRequest(request, workspace);
+    const draftId = generationRequest.draftId ?? null;
     const existingSourceFileIds = (generationRequest as Record<string, unknown>).existingSourceFileIds as string[] | undefined;
     const hasExistingFiles = (existingSourceFileIds?.length ?? 0) > 0;
-    const validationError = validateGenerationFiles(generationRequest.sourceFiles, generationRequest.styleFile, hasExistingFiles);
+    const validationError = draftId
+      ? null
+      : validateGenerationFiles(generationRequest.sourceFiles, generationRequest.styleFile, hasExistingFiles);
 
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
@@ -86,6 +97,11 @@ export async function POST(request: Request) {
     const runId = randomUUID();
 
     const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
+    const subscription =
+      billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage
+        ? await getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id })
+        : null;
+    const currentPlan = normalizePlanId(subscription?.plan ?? "free");
     const targetSlideCount = requireValidTargetSlideCount(
       generationRequest.targetSlideCount ?? 10,
     );
@@ -100,6 +116,7 @@ export async function POST(request: Request) {
       ...(await queueGeneration(generationRequest, viewer.user, workspace, runId, {
         chargeCredits: billingEnabled && !hasUnlimitedUsage,
         creditAmount: creditsNeeded,
+        requireTemplateFee: currentPlan === "free" && !hasUnlimitedUsage,
       })),
     }, { status: 202 });
   } catch (error) {
@@ -123,6 +140,9 @@ export async function POST(request: Request) {
     if (error instanceof TemplateNotImportedError) {
       return NextResponse.json({ error: error.message, code: "TEMPLATE_NOT_IMPORTED" }, { status: 400 });
     }
+    if (error instanceof TemplateFeeRequiredError) {
+      return NextResponse.json({ error: error.message, code: "TEMPLATE_FEE_REQUIRED" }, { status: 402 });
+    }
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -136,6 +156,7 @@ async function queueGeneration(
   billing: {
     chargeCredits: boolean;
     creditAmount: number;
+    requireTemplateFee: boolean;
   },
 ) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -144,20 +165,57 @@ async function queueGeneration(
   if (!supabaseUrl || !serviceKey) {
     throw new Error("Supabase credentials are required.");
   }
-  const targetSlideCount = requireValidTargetSlideCount(
+  let targetSlideCount = requireValidTargetSlideCount(
     generationRequest.targetSlideCount ?? 10,
   );
-  const authorModel = requireValidAuthorModel(generationRequest.authorModel ?? DEFAULT_AUTHOR_MODEL);
+  let authorModel = requireValidAuthorModel(generationRequest.authorModel ?? DEFAULT_AUTHOR_MODEL);
+  let recipeId = generationRequest.recipeId ?? null;
+  const pendingDraft = generationRequest.draftId
+    ? await getTemplateFeeDraft({
+        supabaseUrl,
+        serviceKey,
+        draftId: generationRequest.draftId,
+        userId: viewer.id,
+      })
+    : null;
+
+  if (generationRequest.draftId && !pendingDraft) {
+    throw new InvalidGenerationRequestError("Template-fee draft not found.");
+  }
+
+  if (pendingDraft) {
+    if (pendingDraft.status === "consumed") {
+      throw new InvalidGenerationRequestError("This template-fee draft was already used.");
+    }
+    if (new Date(pendingDraft.expires_at).getTime() <= Date.now()) {
+      await updateTemplateFeeDraft({
+        supabaseUrl,
+        serviceKey,
+        draftId: pendingDraft.id,
+        userId: viewer.id,
+        patch: { status: "expired" },
+      }).catch(() => {});
+      throw new InvalidGenerationRequestError("This template-fee draft expired. Start a new run from /jobs/new.");
+    }
+    if (pendingDraft.status !== "paid") {
+      throw new InvalidGenerationRequestError("This template-fee draft is not paid yet.");
+    }
+    targetSlideCount = requireValidTargetSlideCount(pendingDraft.target_slide_count);
+    authorModel = requireValidAuthorModel(pendingDraft.author_model);
+    recipeId = pendingDraft.recipe_id;
+  }
+
   const sourceFileIds = await resolveValidatedExistingSourceFileIds({
     supabaseUrl,
     serviceKey,
     organizationId: workspace.organizationRowId,
     projectId: workspace.projectRowId,
-    existingSourceFileIds: ((generationRequest as Record<string, unknown>).existingSourceFileIds as string[] | undefined) ?? [],
+    existingSourceFileIds: pendingDraft
+      ? pendingDraft.source_file_ids
+      : (((generationRequest as Record<string, unknown>).existingSourceFileIds as string[] | undefined) ?? []),
   });
-  let styleSourceFileId: string | null = null;
 
-  const queuedInputs = [
+  const queuedInputs = pendingDraft ? [] : [
     ...generationRequest.sourceFiles.map((file) => ({ file, isStyle: false })),
     ...(generationRequest.styleFile ? [{ file: generationRequest.styleFile, isStyle: true }] : []),
   ];
@@ -167,7 +225,7 @@ async function queueGeneration(
   }
 
   const sourceFileRows = [];
-  for (const { file, isStyle } of queuedInputs) {
+  for (const { file } of queuedInputs) {
     const fileId = randomUUID();
     const storageBucket = file.storageBucket ?? "source-files";
     const storagePath = file.storagePath ?? `${workspace.organizationId}/${workspace.projectId}/${fileId}/${file.fileName}`;
@@ -187,9 +245,6 @@ async function queueGeneration(
     }
 
     sourceFileIds.push(fileId);
-    if (isStyle) {
-      styleSourceFileId = fileId;
-    }
     sourceFileRows.push({
       id: fileId,
       organization_id: workspace.organizationRowId,
@@ -203,29 +258,33 @@ async function queueGeneration(
     });
   }
 
-  const insertResponse = await fetch(`${supabaseUrl}/rest/v1/source_files`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(sourceFileRows),
-  });
+  if (sourceFileRows.length > 0) {
+    const insertResponse = await fetch(`${supabaseUrl}/rest/v1/source_files`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(sourceFileRows),
+    });
 
-  if (!insertResponse.ok) {
-    const errorText = await insertResponse.text().catch(() => "Unknown error");
-    throw new Error(`Failed to create source_files records: ${errorText}`);
+    if (!insertResponse.ok) {
+      const errorText = await insertResponse.text().catch(() => "Unknown error");
+      throw new Error(`Failed to create source_files records: ${errorText}`);
+    }
   }
 
   // Resolve template: saved profile ID, workspace default, or Basquio Standard
-  let templateProfileId = await resolveOwnedTemplateProfileId({
-    supabaseUrl,
-    serviceKey,
-    organizationId: workspace.organizationRowId,
-    templateProfileId: ((generationRequest as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
-  });
+  let templateProfileId = pendingDraft
+    ? pendingDraft.template_profile_id
+    : await resolveOwnedTemplateProfileId({
+        supabaseUrl,
+        serviceKey,
+        organizationId: workspace.organizationRowId,
+        templateProfileId: ((generationRequest as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
+      });
   const createdTemplateProfileId: string | null = null;
 
   // Verify the resolved template is actually ready (not processing or failed)
@@ -281,6 +340,10 @@ async function queueGeneration(
     }
   }
 
+  if (billing.requireTemplateFee && templateProfileId && !pendingDraft) {
+    throw new TemplateFeeRequiredError();
+  }
+
   // Template fidelity: when a saved workspace template is selected, include the
   // original imported PPTX source_file on the run. The worker can then upload
   // the real template binary into the authoring container instead of relying
@@ -310,6 +373,16 @@ async function queueGeneration(
 
   // Resolve account-level notification preference (default: true)
   let notifyOnComplete = true;
+  const effectiveBrief = pendingDraft
+    ? {
+        businessContext: pendingDraft.brief.businessContext ?? "",
+        client: pendingDraft.brief.client ?? "",
+        audience: pendingDraft.brief.audience ?? "Executive stakeholder",
+        objective: pendingDraft.brief.objective ?? "Explain the business performance signal",
+        thesis: pendingDraft.brief.thesis ?? "",
+        stakes: pendingDraft.brief.stakes ?? "",
+      }
+    : generationRequest.brief;
   try {
     const prefResponse = await fetch(`${supabaseUrl}/rest/v1/user_preferences?user_id=eq.${viewer.id}&select=notify_on_run_complete&limit=1`, {
       headers: {
@@ -345,24 +418,24 @@ async function queueGeneration(
           p_project_id: workspace.projectRowId,
           p_requested_by: viewer.id,
           p_brief: {
-            businessContext: generationRequest.brief.businessContext,
-            client: generationRequest.brief.client,
-            audience: generationRequest.brief.audience,
-            objective: generationRequest.brief.objective,
-            thesis: generationRequest.brief.thesis,
-            stakes: generationRequest.brief.stakes,
+            businessContext: effectiveBrief.businessContext,
+            client: effectiveBrief.client,
+            audience: effectiveBrief.audience,
+            objective: effectiveBrief.objective,
+            thesis: effectiveBrief.thesis,
+            stakes: effectiveBrief.stakes,
           },
-          p_business_context: generationRequest.brief.businessContext,
-          p_client: generationRequest.brief.client,
-          p_audience: generationRequest.brief.audience,
-          p_objective: generationRequest.brief.objective,
-          p_thesis: generationRequest.brief.thesis,
-          p_stakes: generationRequest.brief.stakes,
+          p_business_context: effectiveBrief.businessContext,
+          p_client: effectiveBrief.client,
+          p_audience: effectiveBrief.audience,
+          p_objective: effectiveBrief.objective,
+          p_thesis: effectiveBrief.thesis,
+          p_stakes: effectiveBrief.stakes,
           p_source_file_ids: sourceFileIds,
           p_target_slide_count: targetSlideCount,
           p_author_model: authorModel,
           p_template_profile_id: templateProfileId ?? null,
-          p_recipe_id: generationRequest.recipeId ?? null,
+          p_recipe_id: recipeId ?? null,
           p_notify_on_complete: notifyOnComplete,
           p_charge_credits: billing.chargeCredits,
           p_credit_amount: billing.chargeCredits ? billing.creditAmount : null,
@@ -377,6 +450,18 @@ async function queueGeneration(
       }
       if (!enqueueResult.run_id || !enqueueResult.attempt_id) {
         throw new Error("Run enqueue did not return durable run lineage.");
+      }
+      if (pendingDraft) {
+        await updateTemplateFeeDraft({
+          supabaseUrl,
+          serviceKey,
+          draftId: pendingDraft.id,
+          userId: viewer.id,
+          patch: {
+            status: "consumed",
+            consumed_at: new Date().toISOString(),
+          },
+        });
       }
     } catch (error) {
       if (billing.chargeCredits && !(error instanceof InsufficientCreditsError)) {
@@ -481,6 +566,7 @@ async function parseGenerationRequest(
       thesis: brief.thesis,
       stakes: brief.stakes,
       templateProfileId: ((payload as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
+      draftId: ((payload as Record<string, unknown>).draftId as string | undefined) ?? null,
       targetSlideCount: payload.targetSlideCount ?? 10,
       authorModel: payload.authorModel ?? DEFAULT_AUTHOR_MODEL,
       recipeId: payload.recipeId ?? null,

@@ -6,7 +6,7 @@ export function PublicSiteFooter() {
     <footer className="site-footer">
       <div className="site-footer-grid">
         <div className="site-footer-brand stack">
-          <Image src="/brand/svg/logo/basquio-logo-light-bg-mono.svg" alt="Basquio" width={168} height={27} />
+          <Image src="/brand/svg/logo/basquio-logo-light-bg-blue.svg" alt="Basquio" width={168} height={27} />
           <p className="muted">Beautiful Intelligence.</p>
         </div>
 

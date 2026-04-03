@@ -579,3 +579,13 @@ If any accepted decision changes, update all of the following in the same change
 - `memory/canonical-memory.md`
 - `rules/canonical-rules.md`
 - `code/contracts.ts`
+
+## April 3, 2026
+
+### Durable template-fee draft before Stripe redirect
+
+Accepted because:
+
+- free-plan custom-template runs cannot safely redirect to Stripe from `/jobs/new` unless Basquio persists uploaded files and the brief first
+- a durable checkout draft lets the app confirm payment and resume generation without forcing the user to re-upload evidence after payment
+- it closes the server-side bypass where a free user could inherit a workspace default custom template without paying the template fee

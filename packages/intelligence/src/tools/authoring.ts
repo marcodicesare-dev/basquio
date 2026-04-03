@@ -258,7 +258,7 @@ export function createInspectBrandTokensTool(ctx: AuthoringToolContext) {
         palette: {
           text: "#0F172A",
           background: "#F8FAFC",
-          surface: "#FFFFFF",
+          surface: "#FBF8F1",
           accent: "#2563EB",
           accentMuted: "#DBEAFE",
           highlight: "#F0CC27",

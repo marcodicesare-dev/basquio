@@ -4,9 +4,8 @@ import {
   getDetailedCreditBalance,
   ensureFreeTierCredit,
   calculateRunCredits,
+  maxAffordableSlides,
   getActiveSubscription,
-  BASE_CREDITS,
-  CREDITS_PER_SLIDE,
   MAX_TARGET_SLIDES,
 } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -36,10 +35,10 @@ export async function GET() {
   const subscription = await getActiveSubscription(config);
 
   // Calculate what the user can afford
-  const maxSlidesAffordableRaw = balance.balance > BASE_CREDITS
-    ? Math.floor((balance.balance - BASE_CREDITS) / CREDITS_PER_SLIDE)
-    : 0;
-  const maxSlidesAffordable = Math.min(MAX_TARGET_SLIDES, maxSlidesAffordableRaw);
+  const maxSlidesAffordable = Math.min(
+    MAX_TARGET_SLIDES,
+    maxAffordableSlides(balance.balance, "claude-sonnet-4-6"),
+  );
 
   return NextResponse.json({
     balance: balance.balance,
@@ -59,9 +58,10 @@ export async function GET() {
     templateSlotsIncluded: subscription?.template_slots_included ?? 0,
     // Pricing info
     pricing: {
-      baseCredits: BASE_CREDITS,
-      creditsPerSlide: CREDITS_PER_SLIDE,
-      example10Slides: calculateRunCredits(10),
+      freeTierCredits: 30,
+      example10Slides: calculateRunCredits(10, "claude-sonnet-4-6"),
+      example15Slides: calculateRunCredits(15, "claude-sonnet-4-6"),
+      example20SlidesOpus: calculateRunCredits(20, "claude-opus-4-6"),
       memoCredits: calculateRunCredits(10, "claude-haiku-4-5"),
       deckCredits: calculateRunCredits(10, "claude-sonnet-4-6"),
       deepDiveCredits: calculateRunCredits(10, "claude-opus-4-6"),

@@ -5,7 +5,7 @@ import { getViewerState } from "@/lib/supabase/auth";
 import { getDetailedCreditBalance, ensureFreeTierCredit, getActiveSubscription } from "@/lib/credits";
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
-import { PLAN_CONFIG, type PlanId } from "@/lib/billing-config";
+import { normalizePlanId, PLAN_CONFIG, type PlanId } from "@/lib/billing-config";
 import { BillingActions } from "@/components/billing-actions";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +82,7 @@ export default async function BillingPage() {
     .filter((e) => e.amount < 0)
     .reduce((sum, e) => sum + Math.abs(e.amount), 0);
 
-  const currentPlan = (subscription?.plan ?? "free") as PlanId;
+  const currentPlan = normalizePlanId(subscription?.plan ?? "free") as PlanId;
   const planConfig = PLAN_CONFIG[currentPlan];
 
   return (
@@ -158,6 +158,7 @@ export default async function BillingPage() {
       {!hasUnlimitedUsage ? (
         <CreditPackShelf
           tone="app"
+          plan={currentPlan}
           title="Buy credits inside billing"
           subtitle="The checkout starts from this account, so purchased credits are attached to the signed-in user automatically."
         />

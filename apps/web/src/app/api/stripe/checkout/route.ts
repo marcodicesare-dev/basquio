@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server";
 
+import { normalizePlanId, planToCreditPackTier, type CreditPackId } from "@/lib/billing-config";
+import { getActiveSubscription } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
-import { getStripe, getPriceId, getSubscriptionPriceId, getOrCreateStripeCustomer, type CreditPackId } from "@/lib/stripe";
+import { getStripe, getPriceId, getSubscriptionPriceId, getOrCreateStripeCustomer, getTemplateFeePriceId } from "@/lib/stripe";
+import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
 
 export const runtime = "nodejs";
 
 const VALID_PACKS: CreditPackId[] = ["pack_25", "pack_50", "pack_100", "pack_250"];
-const VALID_PLANS = ["starter", "pro", "team"] as const;
+const VALID_PLANS = ["starter", "pro"] as const;
 const VALID_INTERVALS = ["monthly", "annual"] as const;
 
 type CheckoutBody =
   | { type: "credit_pack"; packId: string }
   | { type: "subscription"; plan: string; interval: string }
+  | { type: "template_fee"; templateProfileId?: string | null; draftId?: string | null }
   | { packId: string }; // Legacy: credit pack only (backwards compat)
 
 /**
@@ -50,6 +54,11 @@ export async function POST(request: Request) {
         origin, userId: viewer.user.id, email: viewer.user.email ?? "", supabaseUrl, serviceKey,
       });
     }
+    if (type === "template_fee") {
+      return handleTemplateFeeCheckout(stripe, body as { type: "template_fee"; templateProfileId?: string | null; draftId?: string | null }, {
+        origin, userId: viewer.user.id, email: viewer.user.email ?? "", supabaseUrl, serviceKey,
+      });
+    }
 
     // Credit pack (default / legacy)
     const packId = ("packId" in body ? body.packId : undefined) as CreditPackId | undefined;
@@ -71,7 +80,9 @@ async function handleCreditPackCheckout(
     return NextResponse.json({ error: `Invalid pack. Use: ${VALID_PACKS.join(", ")}.` }, { status: 400 });
   }
 
-  const priceId = getPriceId(packId);
+  const subscription = await getActiveSubscription({ supabaseUrl: ctx.supabaseUrl, serviceKey: ctx.serviceKey, userId: ctx.userId });
+  const priceTier = planToCreditPackTier(subscription?.plan ?? "free");
+  const priceId = getPriceId(packId, priceTier);
   const customerId = await getOrCreateStripeCustomer(stripe, ctx.supabaseUrl, ctx.serviceKey, ctx.userId, ctx.email);
 
   const session = await stripe.checkout.sessions.create({
@@ -81,6 +92,7 @@ async function handleCreditPackCheckout(
     metadata: {
       user_id: ctx.userId,
       pack_id: packId,
+      pack_pricing_tier: priceTier,
       type: "credit_pack",
     },
     success_url: `${ctx.origin}/billing?purchase=success&pack=${packId}`,
@@ -89,6 +101,64 @@ async function handleCreditPackCheckout(
 
   if (!session.url) {
     return NextResponse.json({ error: "Failed to create checkout session." }, { status: 500 });
+  }
+
+  return NextResponse.json({ url: session.url });
+}
+
+async function handleTemplateFeeCheckout(
+  stripe: ReturnType<typeof getStripe>,
+  body: { type: "template_fee"; templateProfileId?: string | null; draftId?: string | null },
+  ctx: { origin: string; userId: string; email: string; supabaseUrl: string; serviceKey: string },
+) {
+  if (!body.draftId) {
+    return NextResponse.json({ error: "A persisted template-fee draft is required before checkout." }, { status: 400 });
+  }
+
+  const subscription = await getActiveSubscription({ supabaseUrl: ctx.supabaseUrl, serviceKey: ctx.serviceKey, userId: ctx.userId });
+  const currentPlan = normalizePlanId(subscription?.plan ?? "free");
+  if (currentPlan !== "free") {
+    return NextResponse.json({ error: "Template-fee checkout is only available on the free plan." }, { status: 400 });
+  }
+
+  const draft = await getTemplateFeeDraft({
+    supabaseUrl: ctx.supabaseUrl,
+    serviceKey: ctx.serviceKey,
+    draftId: body.draftId,
+    userId: ctx.userId,
+  });
+  if (!draft) {
+    return NextResponse.json({ error: "Template-fee draft not found." }, { status: 404 });
+  }
+  if (draft.status !== "pending_payment") {
+    return NextResponse.json({ error: "This template-fee draft is no longer awaiting payment." }, { status: 409 });
+  }
+  if (new Date(draft.expires_at).getTime() <= Date.now()) {
+    return NextResponse.json({ error: "This template-fee draft expired. Start a new run from /jobs/new." }, { status: 409 });
+  }
+  if (body.templateProfileId && draft.template_profile_id !== body.templateProfileId) {
+    return NextResponse.json({ error: "Template-fee checkout does not match the persisted draft." }, { status: 400 });
+  }
+
+  const customerId = await getOrCreateStripeCustomer(stripe, ctx.supabaseUrl, ctx.serviceKey, ctx.userId, ctx.email);
+  const priceId = getTemplateFeePriceId();
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer: customerId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    metadata: {
+      user_id: ctx.userId,
+      draft_id: body.draftId,
+      template_profile_id: body.templateProfileId ?? "",
+      type: "template_fee",
+    },
+    success_url: `${ctx.origin}/jobs/new?templateFee=success&draft=${encodeURIComponent(body.draftId)}&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${ctx.origin}/jobs/new?templateFee=cancelled&draft=${encodeURIComponent(body.draftId)}`,
+  });
+
+  if (!session.url) {
+    return NextResponse.json({ error: "Failed to create template fee checkout session." }, { status: 500 });
   }
 
   return NextResponse.json({ url: session.url });
@@ -118,14 +188,14 @@ async function handleSubscriptionCheckout(
     line_items: [{ price: priceId, quantity: 1 }],
     metadata: {
       user_id: ctx.userId,
-      plan,
+      plan: normalizePlanId(plan),
       interval,
       type: "subscription",
     },
     subscription_data: {
       metadata: {
         user_id: ctx.userId,
-        plan,
+        plan: normalizePlanId(plan),
         interval,
       },
     },

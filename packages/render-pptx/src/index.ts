@@ -164,7 +164,7 @@ function renderSlide(
       fontFace: theme.bodyFont,
       fontSize: 9,
       bold: true,
-      color: normalizeColor(options.preserveTemplate ? theme.accent : isCover ? theme.highlight : theme.accent),
+      color: normalizeColor(theme.accent),
     });
   }
 

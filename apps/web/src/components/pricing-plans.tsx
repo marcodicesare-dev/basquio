@@ -15,7 +15,7 @@ const plans = [
     description: "Try Basquio on real work. No credit card required.",
     bestFor: "Best for validating the workflow on one real reporting cycle.",
     features: [
-      "40 free credits (~3 Deck runs)",
+      "30 free credits (~2 Deck runs)",
       "Basquio branding on output",
       "Community templates only",
     ],
@@ -25,55 +25,55 @@ const plans = [
   {
     id: "starter" as const,
     name: "Starter",
-    monthlyPrice: "$29",
-    annualPrice: "$23",
+    monthlyPrice: "$19",
+    annualPrice: "$15.83",
     unit: "/mo",
-    description: "For individuals who run 2\u20133 decks a month.",
-    bestFor: "Best for solo operators who need one stable monthly reporting lane.",
+    description: "For recurring reporting work that needs clean output without Basquio branding.",
+    bestFor: "Best for solo operators who need one stable lane and a couple of client templates.",
     features: [
       "No branding on output",
       "30 credits/month",
-      "1 custom template slot",
+      "2 custom template slots",
       "Email support",
     ],
     cta: { label: "Subscribe", plan: "starter" },
-    highlight: false,
+    highlight: true,
+    badge: "Default choice",
   },
   {
     id: "pro" as const,
     name: "Pro",
-    monthlyPrice: "$79",
-    annualPrice: "$63",
+    monthlyPrice: "$149",
+    annualPrice: "$124",
     unit: "/mo",
-    description: "For power users running 5\u20138 decks a month.",
-    bestFor: "Best for consultants and recurring client delivery work.",
+    description: "For heavier recurring delivery where credits should stay cheap and supply should stay high.",
+    bestFor: "Best for consultants, agencies, and operators running multiple full reviews every month.",
     features: [
       "No branding on output",
-      "100 credits/month",
+      "200 credits/month",
       "5 custom template slots",
       "Priority generation queue",
       "Narrative reports",
     ],
     cta: { label: "Subscribe", plan: "pro" },
-    highlight: true,
-    badge: "Most popular",
+    highlight: false,
+    badge: "Heavy usage",
   },
   {
-    id: "team" as const,
-    name: "Team",
-    monthlyPrice: "$149",
-    annualPrice: "$119",
-    unit: "/mo",
-    description: "Shared workspace for teams that run the same reporting motion.",
-    bestFor: "Best for teams with shared templates, pooled usage, and finance ownership.",
+    id: "enterprise" as const,
+    name: "Enterprise",
+    monthlyPrice: "Custom",
+    annualPrice: "Custom",
+    unit: "",
+    description: "Custom commercial terms for larger teams, procurement review, and bespoke controls.",
+    bestFor: "Best for shared workspaces, approval-heavy billing, and higher-volume reporting programs.",
     features: [
       "Shared workspace",
-      "200 credits/month pool",
-      "10 custom template slots",
-      "Billing controls",
-      "+$29/seat/month",
+      "Custom credits and billing",
+      "Custom template setup",
+      "Priority support",
     ],
-    cta: { label: "Subscribe", plan: "team" },
+    cta: { label: "Talk to us", href: "/get-started" },
     highlight: false,
   },
 ] as const;
@@ -98,16 +98,14 @@ export function PricingPlans() {
             className={interval === "annual" ? "button small" : "button small secondary"}
             onClick={() => setInterval("annual")}
           >
-            Annual — save 20%
+            Annual — save ~17%
           </button>
         </div>
       </div>
       <div className="pricing-grid pricing-grid-editorial">
         {plans.map((plan) => {
           const price = interval === "annual" ? plan.annualPrice : plan.monthlyPrice;
-          const billedNote = interval === "annual" && plan.annualPrice !== plan.monthlyPrice
-            ? "billed annually"
-            : null;
+          const billedNote = interval === "annual" && plan.unit ? "billed annually" : null;
 
           return (
             <article
@@ -123,9 +121,7 @@ export function PricingPlans() {
                   <span className="pricing-price">{price}</span>
                   {plan.unit ? <span className="pricing-unit">{plan.unit}</span> : null}
                 </div>
-                {billedNote ? (
-                  <p className="pricing-annual-note">{billedNote}</p>
-                ) : null}
+                {billedNote ? <p className="pricing-annual-note">{billedNote}</p> : null}
                 <p className="muted">{plan.description}</p>
                 <p className="pricing-plan-best-for">{plan.bestFor}</p>
               </div>
@@ -140,10 +136,7 @@ export function PricingPlans() {
                 {"plan" in plan.cta ? (
                   <SubscribeButton plan={plan.cta.plan} label={plan.cta.label} highlighted={plan.highlight} interval={interval} />
                 ) : (
-                  <Link
-                    className={plan.highlight ? "button" : "button secondary"}
-                    href={plan.cta.href}
-                  >
+                  <Link className={plan.highlight ? "button" : "button secondary"} href={plan.cta.href}>
                     {plan.cta.label}
                   </Link>
                 )}

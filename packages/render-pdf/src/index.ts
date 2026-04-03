@@ -8,7 +8,7 @@ import type { BinaryArtifact, ChartSpec, SlideSpec, TemplateProfile } from "@bas
 import type { DeckSceneGraph, SceneNode } from "@basquio/scene-graph";
 import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
 
-const BASQUIO_LIGHT_LOGO_PATH = path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-mono@2x.png");
+const BASQUIO_LIGHT_LOGO_PATH = path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-blue@2x.png");
 const BASQUIO_DARK_LOGO_PATH = path.join(process.cwd(), "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png");
 
 type RenderPdfInput = {
@@ -47,6 +47,7 @@ export function buildDeckHtml(
   deckTitle: string,
 ) {
   const theme = resolveTheme(templateProfile);
+  const framelessBasquioStandard = theme.background === "F5F1E8" && theme.surface === "FBF8F1";
   const pageWidth = templateProfile.slideWidthInches || 13.333;
   const pageHeight = templateProfile.slideHeightInches || 7.5;
 
@@ -71,7 +72,7 @@ export function buildDeckHtml(
       main { display: grid; gap: 18px; padding: 0.24in; }
       section {
         background: var(--surface);
-        border: 1px solid var(--border);
+        ${framelessBasquioStandard ? "border: none;" : "border: 1px solid var(--border);"}
         border-radius: 0;
         padding: ${theme.pageY}in ${theme.pageX}in;
         width: ${pageWidth}in;
@@ -82,33 +83,32 @@ export function buildDeckHtml(
         gap: 16px;
       }
       section.cover {
-        background: var(--text);
-        color: white;
+        background: var(--bg);
+        color: var(--text);
         border-color: transparent;
       }
       .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--accent); font-weight: 700; }
-      .cover .eyebrow { color: var(--highlight); }
+      .cover .eyebrow { color: var(--accent); }
       h1 { margin: 0; font-family: ${escapeHtml(theme.headingFont)}, sans-serif; font-size: 34px; line-height: 1.08; }
       h2 { margin: 0; font-size: 16px; color: var(--muted); font-weight: 500; }
-      .cover h2 { color: rgba(255,255,255,0.76); }
+      .cover h2 { color: var(--muted); }
       .grid { display: grid; gap: 14px; }
       .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .metric {
         background: var(--surface);
-        border: 1px solid var(--border);
         border-radius: 0;
         padding: 14px 16px;
       }
       .metric-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
       .metric-value { font-size: 28px; font-weight: 700; margin-top: 6px; }
-      .cover .metric { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); }
+      .cover .metric { background: var(--surface); }
       .callout, .panel {
         border-radius: 0;
         padding: 16px 18px;
-        border: 1px solid var(--border);
+        ${framelessBasquioStandard ? "border: none;" : "border: 1px solid var(--border);"}
         background: var(--surface);
       }
-      .cover .callout, .cover .panel { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); }
+      .cover .callout, .cover .panel { background: var(--surface); }
       .callout { background: var(--accent-muted); }
       .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px; font-weight: 700; }
       .split { display: grid; gap: 16px; align-items: stretch; }
@@ -296,8 +296,8 @@ async function createFallbackPdf(
     const layout = resolveTemplateLayout(templateProfile, slide.layoutId);
     const layoutMode = inferLayoutMode(layout, slide, Boolean(slide.blocks.find((block) => block.chartId)));
     const chart = charts.find((candidate) => candidate.id === slide.blocks.find((block) => block.chartId)?.chartId);
-    const textColor = hexToRgb(isCover ? "#FFFFFF" : theme.text);
-    const mutedColor = hexToRgb(isCover ? "DDE7FF" : theme.mutedText);
+    const textColor = hexToRgb(theme.text);
+    const mutedColor = hexToRgb(theme.mutedText);
     const titleFrame = toPdfFrame(resolveRegionFrame(layout, ["title"], {
       x: theme.pageX,
       y: 0.72,
@@ -341,7 +341,7 @@ async function createFallbackPdf(
       y: 0,
       width: pageWidth,
       height: pageHeight,
-      color: hexToRgb(isCover ? theme.text : theme.background),
+      color: hexToRgb(theme.background),
     });
 
     page.drawText(slide.eyebrow ?? deckTitle, {
@@ -349,7 +349,7 @@ async function createFallbackPdf(
       y: eyebrowFrame?.y ?? pageHeight - 42,
       size: 11,
       font: titleFont,
-      color: hexToRgb(isCover ? theme.highlight : theme.accent),
+      color: hexToRgb(theme.accent),
     });
 
     page.drawText(slide.title, {
@@ -389,9 +389,6 @@ async function createFallbackPdf(
           width: metricFrame.w,
           height: metricFrame.h,
           color: hexToRgb(theme.surface),
-          borderColor: hexToRgb(theme.border),
-          borderWidth: 1,
-          borderOpacity: 0.3,
         });
         page.drawText(block.label ?? "", {
           x: metricFrame.x + 12,
@@ -995,7 +992,7 @@ li { font-size: 12pt; line-height: 1.5; color: #${muted}; margin-bottom: 0.06in;
 
 /* Metrics — max 4, card style matching PPTX */
 .metrics { display: flex; gap: 0.15in; margin-bottom: 0.2in; }
-.metric-card { border: 1px solid #${border}; padding: 0.15in 0.2in; flex: 1; max-width: 3in; background: #${bg}; border-top: 2.5px solid #${accent}; }
+.metric-card { padding: 0.15in 0.2in; flex: 1; max-width: 3in; background: #${surface}; border-top: 2.5px solid #${accent}; }
 .metric-label { font-size: 9pt; text-transform: uppercase; font-weight: 600; color: #${muted}; letter-spacing: 1pt; margin-bottom: 0.04in; }
 .metric-value { font-size: 28pt; font-weight: 700; line-height: 1.1; }
 .metric-delta { font-size: 11pt; font-weight: 600; margin-top: 0.03in; }
@@ -1387,7 +1384,7 @@ function renderSceneNodeHtml(
       const cardWidth = w / Math.max(metrics.length, 1);
       const cardsHtml = metrics.map((m: { label: string; value: string; delta?: string }, i: number) => {
         const deltaColor = m.delta?.startsWith("-") ? (palette.negative ?? "#E8636F") : (palette.positive ?? "#4CC9A0");
-        return `<div style="display:inline-block;vertical-align:top;width:${cardWidth - 8}px;border:1px solid ${palette.border ?? "#DDD"};padding:8px 12px;margin-right:8px;border-top:2.5px solid ${palette.accent ?? "#2563EB"};">
+        return `<div style="display:inline-block;vertical-align:top;width:${cardWidth - 8}px;padding:8px 12px;margin-right:8px;background:${palette.surface ?? "#FBF8F1"};border-top:2.5px solid ${palette.accent ?? "#2563EB"};">
           <div style="font-size:9pt;text-transform:uppercase;font-weight:600;color:${palette.accentMuted ?? "#999"};letter-spacing:1pt;">${escHtml(m.label)}</div>
           <div style="font-size:24pt;font-weight:700;color:${palette.accent ?? "#2563EB"};line-height:1.1;">${escHtml(m.value)}</div>
           ${m.delta ? `<div style="font-size:11pt;font-weight:600;color:${deltaColor};">${escHtml(m.delta)}</div>` : ""}

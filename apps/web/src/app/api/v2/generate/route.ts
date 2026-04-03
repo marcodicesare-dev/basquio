@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
+import { normalizePlanId } from "@/lib/billing-config";
 import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit } from "@/lib/credits";
+import { getActiveSubscription } from "@/lib/credits";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { callRpc, deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -63,9 +65,21 @@ export async function POST(request: Request) {
     const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
     const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
     const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
+    const subscription =
+      billingEnabled && !hasUnlimitedUsage
+        ? await getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id })
+        : null;
+    const currentPlan = normalizePlanId(subscription?.plan ?? "free");
 
     if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
+    }
+
+    if (currentPlan === "free" && templateProfileId) {
+      return NextResponse.json({
+        error: "Free-plan custom-template runs must start from /jobs/new so Basquio can stage the template-fee checkout and resume safely.",
+        code: "TEMPLATE_FEE_REQUIRED",
+      }, { status: 402 });
     }
 
     const chargeCredits = billingEnabled && !hasUnlimitedUsage;

@@ -134,7 +134,7 @@ function buildWelcomeHtml() {
     <tr>
       <td style="padding: 28px; border: 1px solid #E8E4DB; border-radius: 14px; background: #FFFFFF;">
         <p style="color: #1A6AFF; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; margin: 0 0 16px 0; text-transform: uppercase;">Welcome to Basquio</p>
-        <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-mono.png" alt="Basquio" width="110" height="auto" style="display: block; margin-bottom: 28px;">
+        <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-blue.png" alt="Basquio" width="110" height="auto" style="display: block; margin-bottom: 28px;">
         <h1 style="color: #0B0C0C; font-size: 28px; line-height: 1.1; letter-spacing: -0.04em; margin: 0 0 14px 0;">Your workspace is ready.</h1>
         <p style="color: #4B5563; font-size: 15px; line-height: 24px; margin: 0 0 18px 0;">Start with one real reporting cycle. Upload the working files, write a tight brief, and Basquio will turn it into a presentation, report, and data pack.</p>
         <table cellpadding="0" cellspacing="0" border="0" style="margin: 28px 0;">

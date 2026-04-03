@@ -6,25 +6,26 @@ The target is not generic SaaS slides. The target is a premium editorial consult
 
 ## Core Visual Direction
 
-- default canvas: dark editorial background, close to `#0A090D`
-- card surfaces: slightly lifted charcoal panels, not flat black and not light dashboard cards
-- headlines: large serif display, high contrast, strong left alignment, generous whitespace
+- default canvas: warm editorial background, close to `#F5F1E8`
+- card surfaces: tonal ivory panels, not stark white dashboard cards
+- headlines: large sans-led editorial display, high contrast, strong left alignment, generous whitespace
 - body copy: restrained sans serif, muted gray, short paragraphs only
 - metadata and labels: monospace or tightly tracked small caps
 - accents: sparse and structural, not decorative
 
 ## Canonical Palette
 
-- background: `#0A090D`
-- surface: `#13121A`
-- card: `#16151E`
-- border: `#272630`
-- headline/body high contrast: `#F2F0EB`
-- secondary text: `#A09FA6`
-- muted text: `#6B6A72`
-- amber accent: `#E8A84C`
+- background: `#F5F1E8`
+- surface: `#FBF8F1`
+- card: `#FBF8F1`
+- border: `#D6D1C4`
+- headline/body high contrast: `#0B0C0C`
+- secondary text: `#5D656B`
+- muted text: `#6B7280`
+- ultramarine accent: `#1A6AFF`
+- amber highlight: `#F0CC27`
 - green accent: `#4CC9A0`
-- blue accent: `#6B8EE8`
+- blue accent: `#1A6AFF`
 - purple accent: `#9B7AE0`
 - cyan accent: `#5AC4D4`
 
@@ -46,8 +47,8 @@ If an uploaded template provides a stronger palette, preserve that template. Oth
 - do not fill empty space with filler paragraphs
 - do not place long narrative text beside a weak chart just to occupy the page
 - use 2-column layouts only when both columns have legitimate information weight
-- cards should have restrained rounding and thin borders
-- top accent rules on cards are preferred over thick decorative borders
+- cards should have restrained rounding and no visible boxy framing unless a specific slide grammar truly needs it
+- top accent rules on cards should use ultramarine in the Basquio standard light system
 
 ## Slide Archetypes
 
@@ -72,10 +73,10 @@ If an uploaded template provides a stronger palette, preserve that template. Oth
 ## Chart Rules
 
 - charts must look native to the slide system, not default matplotlib screenshots pasted blindly
-- use dark chart backgrounds that match the slide or transparent backgrounds over dark slides
-- axis labels, legends, and value labels must be readable on dark surfaces
+- use warm-light or transparent chart backgrounds that match the slide system unless a client template clearly requires dark charts
+- axis labels, legends, and value labels must be readable on light surfaces with enough contrast
 - prefer a single emphasized series plus muted comparison series
-- use solid amber / teal / blue accents with limited palette variety
+- use solid amber / teal / blue accents with limited palette variety, but keep chrome/navigation emphasis ultramarine-led
 - do not use rainbow palettes
 - do not use 3D charts, SmartArt, or Microsoft Office default chart themes
 - never stretch a rendered chart to fill a mismatched picture box; render the chart at the target slot aspect ratio or place it with contain/pad behavior

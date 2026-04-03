@@ -2,6 +2,17 @@
 
 Synthesized from McKinsey, Deloitte, Bain, PwC, EY, and Kearney sources (2021-2026).
 
+## USAGE GUARDRAIL — READ BEFORE APPLYING
+
+The formulas and benchmarks in this document are analytical frameworks, not slide content.
+
+- Use them to inform your analysis approach and to sanity-check whether observed patterns look normal.
+- Never present benchmark ranges as findings from the user's data.
+- Never use ROI formulas unless every required input exists in the uploaded files.
+- Never fabricate investment estimates. If costs are missing, say "investment TBD pending cost analysis".
+
+A fabricated financial projection on a slide destroys the product's credibility permanently.
+
 ---
 
 ## 1. RGM Frameworks and Operating Models

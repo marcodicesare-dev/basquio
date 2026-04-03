@@ -44,11 +44,11 @@ export function createSystemTemplateProfile(): TemplateProfile {
     slideWidthInches: 13.333,
     slideHeightInches: 7.5,
     fonts: ["Arial"],
-    colors: ["#0B0C0C", "#F0CC27", "#1A6AFF", "#4CC9A0", "#F5F1E8", "#D6D1C4"],
+    colors: ["#0B0C0C", "#1A6AFF", "#F0CC27", "#4CC9A0", "#F5F1E8", "#D6D1C4"],
     spacingTokens: ["pageX:0.6", "pageY:0.5", "sectionGap:0.32", "blockGap:0.2"],
     logoAssetHints: [
-      "/brand/svg/logo/basquio-logo-light-bg-mono.svg",
-      "/brand/svg/icon/basquio-icon-onyx.svg",
+      "/brand/svg/logo/basquio-logo-light-bg-blue.svg",
+      "/brand/svg/icon/basquio-icon-ultramarine.svg",
     ],
     placeholderCatalog: ["eyebrow", "title", "subtitle", "body", "callout", "chart", "evidence-list"],
     brandTokens: {
@@ -56,7 +56,7 @@ export function createSystemTemplateProfile(): TemplateProfile {
         text: "#0B0C0C",
         muted: "#5D656B",
         background: "#F5F1E8",
-        surface: "#FFFFFF",
+        surface: "#FBF8F1",
         accent: "#1A6AFF",
         accentMuted: "#E0EBFF",
         accentLight: "#E0EBFF",
@@ -83,8 +83,8 @@ export function createSystemTemplateProfile(): TemplateProfile {
         cardRadius: 0.06,
       },
       logo: {
-        wordmarkPath: "/brand/svg/logo/basquio-logo-light-bg-mono.svg",
-        iconPath: "/brand/svg/icon/basquio-icon-onyx.svg",
+        wordmarkPath: "/brand/svg/logo/basquio-logo-light-bg-blue.svg",
+        iconPath: "/brand/svg/icon/basquio-icon-ultramarine.svg",
         treatment: "default",
       },
     },
@@ -498,14 +498,43 @@ async function extractCoverBackground(zip: JSZip) {
 }
 
 async function extractCoverLogo(zip: JSZip, slideWidthInches: number) {
-  const slide1Xml = await readZipText(zip, "ppt/slides/slide1.xml");
-  const slide1Rels = await readZipText(zip, "ppt/slides/_rels/slide1.xml.rels");
-  if (!slide1Xml || !slide1Rels) {
-    return {};
+  const slideLogo = await extractLogoFromSlideXml(
+    zip,
+    "ppt/slides/slide1.xml",
+    "ppt/slides/_rels/slide1.xml.rels",
+    slideWidthInches,
+  );
+  if (slideLogo) {
+    return slideLogo;
   }
 
-  const relationshipTargets = readRelationshipTargets(slide1Rels, "ppt/slides/_rels/slide1.xml.rels");
-  const pictureBlocks = slide1Xml.match(/<p:pic\b[\s\S]*?<\/p:pic>/gim) ?? [];
+  const masterLogo = await extractLogoFromSlideXml(
+    zip,
+    "ppt/slideMasters/slideMaster1.xml",
+    "ppt/slideMasters/_rels/slideMaster1.xml.rels",
+    slideWidthInches,
+  );
+  if (masterLogo) {
+    return masterLogo;
+  }
+
+  return {};
+}
+
+async function extractLogoFromSlideXml(
+  zip: JSZip,
+  xmlPath: string,
+  relsPath: string,
+  slideWidthInches: number,
+) {
+  const slideXml = await readZipText(zip, xmlPath);
+  const slideRels = await readZipText(zip, relsPath);
+  if (!slideXml || !slideRels) {
+    return null;
+  }
+
+  const relationshipTargets = readRelationshipTargets(slideRels, relsPath);
+  const pictureBlocks = slideXml.match(/<p:pic\b[\s\S]*?<\/p:pic>/gim) ?? [];
 
   for (const block of pictureBlocks) {
     const relId = matchFirst(block, /<a:blip\b[^>]*r:embed="([^"]+)"/i);
@@ -554,7 +583,7 @@ async function extractCoverLogo(zip: JSZip, slideWidthInches: number) {
     };
   }
 
-  return {};
+  return null;
 }
 
 async function extractDecorativeShapes(zip: JSZip) {
