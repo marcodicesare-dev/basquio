@@ -155,7 +155,7 @@ export default function PricingPage() {
               <h2>Pick the buying motion first. Scope comes second.</h2>
             </div>
             <p className="muted">
-              Start free, move to Starter when the motion repeats, and move to Pro when recurring deck volume makes cheaper credit packs matter.
+              Every plan uses the same analysis engine. Higher tiers unlock cheaper credits, more template slots, and cleaner output.
             </p>
           </div>
 
