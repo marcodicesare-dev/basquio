@@ -4995,9 +4995,39 @@ function collectCritiqueIssues(
   return issues;
 }
 
+/**
+ * Determine whether a critique issue is advisory (should NOT trigger revise)
+ * vs blocking (SHOULD trigger revise).
+ *
+ * KEY RULE: visual issues with severity "major" or "critical" are ALWAYS blocking,
+ * regardless of their code. Only "advisory"-severity visual issues are advisory.
+ * Lint and manifest issues are classified by content, not severity.
+ */
 function isAdvisoryCritiqueIssue(issue: string) {
-  const normalized = issue.toLowerCase();
-  return normalized.includes("title is") && normalized.includes("overflow the right margin");
+  const n = issue.toLowerCase();
+
+  // Visual issues carry severity in the string: "has major visual issue" or "has advisory visual issue"
+  // Major and critical visual issues are NEVER advisory — they must trigger revise.
+  if (n.includes("has major visual issue") || n.includes("has critical visual issue")) return false;
+  // Advisory-severity visual issues are always advisory
+  if (n.includes("has advisory visual issue")) return true;
+  // "pptx_large_image_aspect_fit" is a top-level advisory, not from the visual QA judge
+  if (n.includes("pptx_large_image_aspect_fit")) return true;
+
+  // Lint advisories — layout diversity, layout percentage, writing issues
+  if (n.includes("layout type") || n.includes("layout used") || n.includes("main\" layout")) return true;
+  if (n.startsWith("deck writing issue") || (n.startsWith("slide") && n.includes("writing issue"))) return true;
+
+  // Title overflow — advisory
+  if (n.includes("title is") && n.includes("overflow the right margin")) return true;
+
+  // Contract advisories — slide count mismatch is advisory per CLAUDE.md publish gate rules
+  if (n.includes("does not match requested targetslidecount")) return true;
+
+  // Body length / metric layout warnings — hints, not structural failures
+  if (n.includes("body is too long") || n.includes("too much body copy") || n.includes("title is too long for a clean")) return true;
+
+  return false;
 }
 
 async function buildQaReport(

@@ -763,6 +763,9 @@ export async function buildBasquioSystemPrompt(input: {
     "- Every analytical slide must go beyond description: state the fact, the magnitude, the driver, and the business implication or action.",
     "- Distinguish promo intensity from promo effectiveness. A brand can be heavily promoted and still have weak incremental return.",
     "- Every recommendation must name its main risk and mitigation in the narrative report.",
+    "- ANALYTICAL DEPTH: go one layer deeper than the obvious finding. If a category is declining, show WHY (price, distribution, assortment, competitor action). If a brand is growing, decompose the growth into its drivers. Surface-level observation without causation is not consulting-grade.",
+    "- VISUAL POLISH: every chart must have a clear title that states the insight (not the metric name), properly formatted axis labels with units, a subtle grid, and a source note. Bar charts should use a highlight color for the key bar. Line charts should annotate inflection points. Waterfall charts must have connectors.",
+    "- NARRATIVE ARC: the deck must tell a story with rising tension. Slide 1 sets the stage. Slides 2-3 establish the baseline. The middle section reveals the problem or opportunity with escalating specificity. The final third pivots to action. The last slide must feel like a call to action, not a summary of summaries.",
     "- Build all slides in strict sequential order from slide 1 to slide N. Never go back to recreate or overwrite a slide you already added via addSlide(). If you discover an error in an earlier slide, note it and continue forward. The PPTX skill does not support overwriting slides, and re-adding a slide corrupts the file.",
     ...(!hasCustomTemplate
       ? [
