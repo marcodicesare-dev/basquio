@@ -19,7 +19,7 @@ const outputTypes = [
     name: "Memo",
     credits: "3 credits",
     artifacts: "XLSX + MD",
-    description: "Data tables and narrative report. Fast, no slides.",
+    description: "Written analysis + data workbook. Fast, no slides.",
     time: "~2 min",
     highlight: false,
   },
@@ -27,7 +27,7 @@ const outputTypes = [
     name: "Deck",
     credits: "10 slides = 13 credits",
     artifacts: "PPTX + MD + XLSX",
-    description: "Full analysis deck with real charts and narrative report.",
+    description: "Full deck with real charts, written analysis, and data workbook.",
     time: "~15 min",
     highlight: true,
   },
@@ -45,7 +45,7 @@ const faqs = [
   {
     question: "What do I get with each output type?",
     answer:
-      "Memo gives you data tables and a narrative report (XLSX + MD). Deck adds a full presentation plus the report and workbook (PPTX + MD + XLSX). Deep-Dive ships the same artifact pack as Deck but with a heavier analytical pass.",
+      "Every run includes a written analysis (2000+ words with methodology, findings, and recommendations) and a data workbook (XLSX). Deck and Deep-Dive also include an editable PPTX with real charts. Deep-Dive runs a deeper analytical pass for more nuanced findings.",
   },
   {
     question: "How do credits work?",
@@ -104,21 +104,21 @@ const outputModes = [
   {
     name: "Memo",
     credits: "3 credits",
-    deliverables: ["Narrative report", "Audit-ready workbook"],
+    deliverables: ["Written analysis (2000+ words)", "Data workbook (XLSX)"],
     fit: "Fast readout when slides are unnecessary.",
     featured: false,
   },
   {
     name: "Deck",
     credits: "10 slides = 13 credits",
-    deliverables: ["Editable PPTX", "Narrative report", "Audit-ready workbook"],
+    deliverables: ["Editable PPTX with charts", "Written analysis (2000+ words)", "Data workbook (XLSX)"],
     fit: "Default client-ready report package.",
     featured: true,
   },
   {
     name: "Deep-Dive",
     credits: "10 slides = 25 credits",
-    deliverables: ["Full deck set", "Longer analytical pass", "Heavier narrative depth"],
+    deliverables: ["Full deck with deeper analysis", "Extended written analysis", "Data workbook (XLSX)"],
     fit: "When the room needs more analysis, not more decoration.",
     featured: false,
   },

@@ -26,7 +26,7 @@ const MODEL_OPTIONS = [
   {
     id: "claude-haiku-4-5",
     name: "Memo",
-    description: "Data tables + narrative report. No slides.",
+    description: "Written analysis + data workbook. No slides.",
     badge: null,
   },
 ] as const;
