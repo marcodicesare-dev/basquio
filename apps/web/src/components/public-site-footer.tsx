@@ -28,6 +28,7 @@ export function PublicSiteFooter() {
 
         <div className="site-footer-column">
           <p className="site-footer-column-title">Legal</p>
+          <Link href="/trust">Trust & Security</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/sign-in">Sign in</Link>

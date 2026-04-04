@@ -6693,3 +6693,143 @@ textarea {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ── Trust page ── */
+
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.trust-card {
+  display: grid;
+  gap: 10px;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.trust-card h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.trust-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.trust-source-link {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.trust-source-link:hover {
+  text-decoration: underline;
+}
+
+.trust-flow {
+  display: grid;
+  gap: 0;
+  margin-top: 32px;
+  max-width: 640px;
+}
+
+.trust-flow-step {
+  display: flex;
+  gap: 20px;
+  padding: 20px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.trust-flow-step:last-child {
+  border-bottom: none;
+}
+
+.trust-flow-number {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.trust-flow-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #ffffff;
+}
+
+.trust-infra-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.trust-infra-card {
+  display: grid;
+  gap: 10px;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.trust-infra-name {
+  margin: 0;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.trust-infra-role {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.trust-infra-card ul {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.upload-trust-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.upload-trust-note a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.upload-trust-note a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .trust-grid,
+  .trust-infra-grid {
+    grid-template-columns: 1fr;
+  }
+}
