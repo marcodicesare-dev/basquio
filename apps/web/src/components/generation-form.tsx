@@ -787,6 +787,10 @@ export function GenerationForm({
                   <span className="dropzone-title">Drop evidence files here</span>
                   <span className="dropzone-copy">Supported: CSV, XLSX, XLS, PPTX, PDF, DOCX, text, JSON, CSS, or images. For the deepest analysis, upload the source Excel too.</span>
                 </button>
+                <p className="upload-trust-note">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M8 1a5 5 0 0 0-5 5v2a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2V6a5 5 0 0 0-5-5zm3 7V6a3 3 0 1 0-6 0v2h6z" fill="currentColor"/></svg>
+                  Encrypted. Never used for AI training. <a href="/trust">Learn more</a>
+                </p>
 
                 <input
                   ref={evidenceInputRef}
