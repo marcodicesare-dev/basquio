@@ -941,14 +941,63 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         outputConfig: buildAuthoringOutputConfig(MODEL),
         onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
       });
-      const authorFiles = await downloadGeneratedFiles(client, authorResponse.fileIds);
-      requireGeneratedFiles(
-        authorFiles,
-        isReportOnly
-          ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
-          : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"],
-        "author",
-      );
+      const requiredAuthorFiles = isReportOnly
+        ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
+        : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
+      const authorAnalysisMessage = authorResponse.message;
+      let authorFiles: GeneratedFile[] = await downloadGeneratedFiles(client, authorResponse.fileIds);
+      const missingAuthorFiles = findMissingGeneratedFiles(authorFiles, requiredAuthorFiles);
+      if (MODEL === "claude-haiku-4-5" && missingAuthorFiles.length > 0) {
+        const retryMissingFiles = [...missingAuthorFiles];
+        console.warn(`[haiku-retry] Missing author files: ${retryMissingFiles.join(", ")}. Retrying author phase once.`);
+        await insertEvent(config, runId, attempt, "author", "haiku_missing_files_retry", {
+          missingFiles: retryMissingFiles,
+        }).catch(() => {});
+
+        const retryResponse = await runClaudeLoop({
+          client,
+          model: MODEL,
+          systemPrompt,
+          maxTokens: 64_000,
+          phaseLabel: "author",
+          circuitKey: `${run.id}:${attempt.id}:author`,
+          onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
+          maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
+          phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
+          requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
+          currentSpentUsd: roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage)),
+          betas: modelBetas,
+          container: buildAuthoringContainer(authorResponse.containerId ?? baseContainerId, MODEL),
+          messages: [
+            ...authorResponse.thread,
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `You did not produce all required files. Missing: ${retryMissingFiles.join(", ")}. Please generate exactly those missing files now and attach each file when done.`,
+                },
+              ],
+            },
+          ],
+          tools: buildClaudeTools(MODEL),
+          outputConfig: buildAuthoringOutputConfig(MODEL),
+          onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
+        });
+        const retryFiles = await downloadGeneratedFiles(client, retryResponse.fileIds);
+        authorFiles = mergeGeneratedFiles(authorFiles, retryFiles);
+        authorResponse = {
+          ...authorResponse,
+          containerId: retryResponse.containerId ?? authorResponse.containerId,
+          thread: retryResponse.thread,
+          fileIds: [...new Set([...authorResponse.fileIds, ...retryResponse.fileIds])],
+          usage: mergeClaudeUsage(authorResponse.usage, retryResponse.usage),
+          iterations: authorResponse.iterations + retryResponse.iterations,
+          pauseTurns: authorResponse.pauseTurns + retryResponse.pauseTurns,
+          requests: [...authorResponse.requests, ...retryResponse.requests],
+        };
+      }
+      requireGeneratedFiles(authorFiles, requiredAuthorFiles, "author");
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
       assertDeckSpendWithinBudget(spentUsd);
       continuationCount += authorResponse.pauseTurns;
@@ -965,11 +1014,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         cache_read_input_tokens: authorResponse.usage.cache_read_input_tokens ?? 0,
       };
       const containerId = authorResponse.containerId;
-      manifest = parseManifestResponse(authorResponse.message, authorFiles);
+      manifest = parseManifestResponse(authorAnalysisMessage, authorFiles);
       if (!recoveredAnalysisForSplit) {
         const resolvedAnalysis = resolveAuthorAnalysis({
           run,
-          message: authorResponse.message,
+          message: authorAnalysisMessage,
           files: authorFiles,
           manifest,
         });
@@ -3676,10 +3725,31 @@ function requireGeneratedFiles(
   requiredFiles: string[],
   phase: "author" | "revise" | "checkpoint_export",
 ) {
-  const missingFiles = requiredFiles.filter((fileName) => !files.some((file) => file.fileName === fileName || file.fileName.endsWith(fileName)));
+  const missingFiles = findMissingGeneratedFiles(files, requiredFiles);
   if (missingFiles.length > 0) {
     throw new Error(`${phase} phase is missing required output files: ${missingFiles.join(", ")}.`);
   }
+}
+
+function findMissingGeneratedFiles(files: GeneratedFile[], requiredFiles: string[]) {
+  return requiredFiles.filter((fileName) => !files.some((file) => file.fileName === fileName || file.fileName.endsWith(fileName)));
+}
+
+function mergeGeneratedFiles(primaryFiles: GeneratedFile[], retryFiles: GeneratedFile[]) {
+  const merged = new Map<string, GeneratedFile>();
+  for (const file of [...primaryFiles, ...retryFiles]) {
+    merged.set(file.fileName, file);
+  }
+  return [...merged.values()];
+}
+
+function mergeClaudeUsage(baseUsage: ClaudeUsage, retryUsage: ClaudeUsage): Required<ClaudeUsage> {
+  return {
+    input_tokens: (baseUsage.input_tokens ?? 0) + (retryUsage.input_tokens ?? 0),
+    output_tokens: (baseUsage.output_tokens ?? 0) + (retryUsage.output_tokens ?? 0),
+    cache_creation_input_tokens: (baseUsage.cache_creation_input_tokens ?? 0) + (retryUsage.cache_creation_input_tokens ?? 0),
+    cache_read_input_tokens: (baseUsage.cache_read_input_tokens ?? 0) + (retryUsage.cache_read_input_tokens ?? 0),
+  };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {
