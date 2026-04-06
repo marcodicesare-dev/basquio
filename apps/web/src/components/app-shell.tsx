@@ -19,18 +19,18 @@ import type { ReactNode } from "react";
 import { SignOutButton } from "@/components/sign-out-button";
 import type { ViewerState } from "@/lib/supabase/auth";
 
-const mainNav: ReadonlyArray<{ href: string; label: string; icon: Icon }> = [
+const mainNav: ReadonlyArray<{ href: string; label: string; icon: Icon; prefetch?: boolean }> = [
   { href: "/dashboard", label: "Dashboard", icon: House },
-  { href: "/jobs/new", label: "New report", icon: Plus },
+  { href: "/jobs/new", label: "New report", icon: Plus, prefetch: false },
   { href: "/artifacts", label: "Reports", icon: Files },
-  { href: "/recipes", label: "Recipes", icon: Repeat },
-  { href: "/templates", label: "Brand system", icon: Palette },
+  { href: "/recipes", label: "Recipes", icon: Repeat, prefetch: false },
+  { href: "/templates", label: "Brand system", icon: Palette, prefetch: false },
 ];
 
-const bottomNav: ReadonlyArray<{ href: string; label: string; icon: Icon }> = [
+const bottomNav: ReadonlyArray<{ href: string; label: string; icon: Icon; prefetch?: boolean }> = [
   { href: "/", label: "Website", icon: ArrowSquareOut },
   { href: "/billing", label: "Billing & Usage", icon: CreditCard },
-  { href: "/settings", label: "Settings", icon: Gear },
+  { href: "/settings", label: "Settings", icon: Gear, prefetch: false },
 ];
 
 export function AppShell({
@@ -60,7 +60,7 @@ export function AppShell({
           <p className="sidebar-brand-note">Open the public Basquio site without leaving your workspace.</p>
         </div>
 
-        <Link className="button sidebar-cta" href="/jobs/new">
+        <Link className="button sidebar-cta" href="/jobs/new" prefetch={false}>
           New report
         </Link>
 
@@ -68,7 +68,12 @@ export function AppShell({
           {mainNav.map((item) => {
             const Icon = item.icon;
             return (
-              <Link key={item.href} className={isActive(item.href) ? "nav-link active" : "nav-link"} href={item.href}>
+              <Link
+                key={item.href}
+                className={isActive(item.href) ? "nav-link active" : "nav-link"}
+                href={item.href}
+                prefetch={item.prefetch}
+              >
                 <span className="nav-link-icon" aria-hidden>
                   <Icon size={18} weight={isActive(item.href) ? "fill" : "regular"} />
                 </span>
@@ -115,7 +120,12 @@ export function AppShell({
           {bottomNav.map((item) => {
             const Icon = item.icon;
             return (
-              <Link key={item.href} className={isActive(item.href) ? "nav-link active" : "nav-link"} href={item.href}>
+              <Link
+                key={item.href}
+                className={isActive(item.href) ? "nav-link active" : "nav-link"}
+                href={item.href}
+                prefetch={item.prefetch}
+              >
                 <span className="nav-link-icon" aria-hidden>
                   <Icon size={18} weight={isActive(item.href) ? "fill" : "regular"} />
                 </span>

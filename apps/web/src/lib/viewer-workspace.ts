@@ -1,7 +1,7 @@
 import { fetchRestRows, upsertRestRows } from "@/lib/supabase/admin";
 import type { ViewerState } from "@/lib/supabase/auth";
 
-const DEFAULT_PROJECT_SLUG = "default-workspace";
+export const DEFAULT_PROJECT_SLUG = "default-workspace";
 
 export type ViewerWorkspace = {
   organizationId: string;
@@ -105,7 +105,7 @@ export async function resolveViewerOrgId(userId: string): Promise<string | null>
   return memberships[0]?.organization_id ?? null;
 }
 
-function buildOrganizationSlug(userId: string) {
+export function buildOrganizationSlug(userId: string) {
   return `user-${userId}`.toLowerCase();
 }
 

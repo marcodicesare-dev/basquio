@@ -276,7 +276,7 @@ async function queueGeneration(
     }
   }
 
-  // Resolve template: saved profile ID, workspace default, or Basquio Standard
+  // Resolve template: saved profile ID or Basquio Standard
   let templateProfileId = pendingDraft
     ? pendingDraft.template_profile_id
     : await resolveOwnedTemplateProfileId({
@@ -298,7 +298,7 @@ async function queueGeneration(
         const rows = await tpCheck.json();
         const status = rows[0]?.status;
         if (status && status !== "ready") {
-          // Template is not ready — fall through to workspace default or Basquio Standard
+          // Template is not ready — fall through to Basquio Standard
           templateProfileId = null;
         }
       }
@@ -310,34 +310,6 @@ async function queueGeneration(
   // Reject inline style file interpretation — templates must be imported first
   if (!templateProfileId && generationRequest.styleFile) {
     throw new TemplateNotImportedError();
-  }
-
-  // If no explicit template, try workspace default
-  if (!templateProfileId) {
-    try {
-      const defaultSettings = await fetch(
-        `${supabaseUrl}/rest/v1/organization_template_settings?organization_id=eq.${workspace.organizationRowId}&select=default_template_profile_id&limit=1`,
-        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
-      );
-      if (defaultSettings.ok) {
-        const rows = await defaultSettings.json();
-        if (rows[0]?.default_template_profile_id) {
-          // Verify the default template is ready
-          const tpCheck = await fetch(
-            `${supabaseUrl}/rest/v1/template_profiles?id=eq.${rows[0].default_template_profile_id}&status=eq.ready&select=id&limit=1`,
-            { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
-          );
-          if (tpCheck.ok) {
-            const tpRows = await tpCheck.json();
-            if (tpRows[0]) {
-              templateProfileId = tpRows[0].id;
-            }
-          }
-        }
-      }
-    } catch {
-      // Workspace default resolution is best-effort
-    }
   }
 
   if (billing.requireTemplateFee && templateProfileId && !pendingDraft) {

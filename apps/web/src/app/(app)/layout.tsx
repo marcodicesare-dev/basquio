@@ -7,11 +7,13 @@ import { AuthGate } from "@/components/auth-gate";
 import { buildSignInPath } from "@/lib/supabase/auth";
 import { getViewerState } from "@/lib/supabase/auth";
 import { bootstrapViewerAccount } from "@/lib/auth-bootstrap";
-import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
+import { ensureFreeTierCredit, getCreditBalance } from "@/lib/credits";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 
 export default async function AuthenticatedLayout({ children }: { children: ReactNode }) {
-  const viewer = await getViewerState();
+  const viewerPromise = getViewerState();
+  const headersPromise = headers();
+  const viewer = await viewerPromise;
 
   if (!viewer.configured) {
     return (
@@ -23,7 +25,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
 
   if (!viewer.user) {
     // Preserve the current path so sign-in redirects back here, not /dashboard
-    const headersList = await headers();
+    const headersList = await headersPromise;
     const currentPath = headersList.get("x-next-url") ?? headersList.get("x-invoke-path") ?? "/dashboard";
     redirect(buildSignInPath(currentPath));
   }
