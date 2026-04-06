@@ -21,7 +21,7 @@ import type { ViewerState } from "@/lib/supabase/auth";
 
 const mainNav: ReadonlyArray<{ href: string; label: string; icon: Icon; prefetch?: boolean }> = [
   { href: "/dashboard", label: "Dashboard", icon: House },
-  { href: "/jobs/new", label: "New report", icon: Plus, prefetch: false },
+  { href: "/jobs/new", label: "New report", icon: Plus },
   { href: "/artifacts", label: "Reports", icon: Files },
   { href: "/recipes", label: "Recipes", icon: Repeat, prefetch: false },
   { href: "/templates", label: "Brand system", icon: Palette, prefetch: false },
@@ -29,7 +29,7 @@ const mainNav: ReadonlyArray<{ href: string; label: string; icon: Icon; prefetch
 
 const bottomNav: ReadonlyArray<{ href: string; label: string; icon: Icon; prefetch?: boolean }> = [
   { href: "/", label: "Website", icon: ArrowSquareOut },
-  { href: "/billing", label: "Billing & Usage", icon: CreditCard },
+  { href: "/billing", label: "Billing & Usage", icon: CreditCard, prefetch: false },
   { href: "/settings", label: "Settings", icon: Gear, prefetch: false },
 ];
 
@@ -60,7 +60,7 @@ export function AppShell({
           <p className="sidebar-brand-note">Open the public Basquio site without leaving your workspace.</p>
         </div>
 
-        <Link className="button sidebar-cta" href="/jobs/new" prefetch={false}>
+        <Link className="button sidebar-cta" href="/jobs/new">
           New report
         </Link>
 

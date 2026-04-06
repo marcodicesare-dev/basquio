@@ -30,39 +30,41 @@ export async function bootstrapViewerAccount(
   }
 
   const now = new Date().toISOString();
-  const [existingState] = await fetchRestRows<BootstrapStateRow>({
-    supabaseUrl,
-    serviceKey,
-    table: "user_bootstrap_state",
-    query: {
-      select: "*",
-      user_id: `eq.${user.id}`,
-      limit: "1",
-    },
-  }).catch(() => []);
-
-  const workspace = await ensureViewerWorkspace(user);
+  const [[existingState], workspace] = await Promise.all([
+    fetchRestRows<BootstrapStateRow>({
+      supabaseUrl,
+      serviceKey,
+      table: "user_bootstrap_state",
+      query: {
+        select: "*",
+        user_id: `eq.${user.id}`,
+        limit: "1",
+      },
+    }).catch(() => []),
+    ensureViewerWorkspace(user),
+  ]);
   const workspaceReady = Boolean(workspace);
 
-  await upsertRestRows<BootstrapStateRow>({
-    supabaseUrl,
-    serviceKey,
-    table: "user_bootstrap_state",
-    onConflict: "user_id",
-    select: "*",
-    rows: [
-      {
-        user_id: user.id,
-        first_authenticated_at: existingState?.first_authenticated_at ?? now,
-        last_authenticated_at: now,
-        workspace_initialized_at: existingState?.workspace_initialized_at ?? (workspaceReady ? now : null),
-        welcome_email_sent_at: existingState?.welcome_email_sent_at ?? null,
-        updated_at: now,
-      },
-    ],
-  });
-
-  await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: user.id });
+  await Promise.all([
+    upsertRestRows<BootstrapStateRow>({
+      supabaseUrl,
+      serviceKey,
+      table: "user_bootstrap_state",
+      onConflict: "user_id",
+      select: "*",
+      rows: [
+        {
+          user_id: user.id,
+          first_authenticated_at: existingState?.first_authenticated_at ?? now,
+          last_authenticated_at: now,
+          workspace_initialized_at: existingState?.workspace_initialized_at ?? (workspaceReady ? now : null),
+          welcome_email_sent_at: existingState?.welcome_email_sent_at ?? null,
+          updated_at: now,
+        },
+      ],
+    }),
+    ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: user.id }),
+  ]);
 
   const welcomeEmailPreviouslySent = Boolean(existingState?.welcome_email_sent_at);
   let welcomeEmailSent = false;

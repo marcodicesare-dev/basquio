@@ -359,17 +359,31 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
         failureGuidance,
       }
     : null;
+  let attemptSummaries: Array<Record<string, unknown>> = [];
   if (run.status === "completed" || run.completed_at) {
-    const manifests = await fetchRestRows<ArtifactManifestRow>({
-      supabaseUrl: supabaseUrl!,
-      serviceKey: serviceKey!,
-      table: "artifact_manifests_v2",
-      query: {
-        select: "slide_count,page_count,qa_passed,artifacts",
-        run_id: `eq.${jobId}`,
-        limit: "1",
-      },
-    }).catch(() => []);
+    const [manifests, attemptRows] = await Promise.all([
+      fetchRestRows<ArtifactManifestRow>({
+        supabaseUrl: supabaseUrl!,
+        serviceKey: serviceKey!,
+        table: "artifact_manifests_v2",
+        query: {
+          select: "slide_count,page_count,qa_passed,artifacts",
+          run_id: `eq.${jobId}`,
+          limit: "1",
+        },
+      }).catch(() => []),
+      fetchRestRows<AttemptCostSummaryRow>({
+        supabaseUrl: supabaseUrl!,
+        serviceKey: serviceKey!,
+        table: "deck_run_attempts",
+        query: {
+          select: "id,attempt_number,status,failure_phase,recovery_reason,cost_telemetry,started_at,completed_at",
+          run_id: `eq.${jobId}`,
+          order: "attempt_number.asc",
+          limit: "10",
+        },
+      }).catch(() => []),
+    ]);
 
     if (manifests.length > 0) {
       const m = manifests[0];
@@ -413,10 +427,22 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
         // Slides not available
       }
     }
+
+    attemptSummaries = attemptRows.map((row) => ({
+      id: row.id,
+      attemptNumber: row.attempt_number,
+      status: row.status,
+      failurePhase: row.failure_phase,
+      recoveryReason: row.recovery_reason,
+      estimatedCostUsd: typeof row.cost_telemetry?.estimatedCostUsd === "number"
+        ? row.cost_telemetry.estimatedCostUsd
+        : null,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+    }));
   }
 
-  let attemptSummaries: Array<Record<string, unknown>> = [];
-  if (run.status === "completed" || run.status === "failed") {
+  if (run.status === "failed") {
     const attemptRows = await fetchRestRows<AttemptCostSummaryRow>({
       supabaseUrl: supabaseUrl!,
       serviceKey: serviceKey!,

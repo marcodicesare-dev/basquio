@@ -39,36 +39,37 @@ export async function ensureViewerWorkspace(user: NonNullable<ViewerState["user"
     return null;
   }
 
-  await upsertRestRows({
-    supabaseUrl,
-    serviceKey,
-    table: "organization_memberships",
-    onConflict: "organization_id,user_id",
-    rows: [
-      {
-        organization_id: organizations[0].id,
-        user_id: user.id,
-        role: "owner",
-      },
-    ],
-  });
-
-  const projects = await upsertRestRows<{ id: string }>({
-    supabaseUrl,
-    serviceKey,
-    table: "projects",
-    onConflict: "organization_id,slug",
-    select: "id",
-    rows: [
-      {
-        organization_id: organizations[0].id,
-        slug: DEFAULT_PROJECT_SLUG,
-        name: "Default workspace",
-        objective: "Generate executive-grade evidence packages",
-        audience: "Authenticated Basquio workspace",
-      },
-    ],
-  });
+  const [, projects] = await Promise.all([
+    upsertRestRows({
+      supabaseUrl,
+      serviceKey,
+      table: "organization_memberships",
+      onConflict: "organization_id,user_id",
+      rows: [
+        {
+          organization_id: organizations[0].id,
+          user_id: user.id,
+          role: "owner",
+        },
+      ],
+    }),
+    upsertRestRows<{ id: string }>({
+      supabaseUrl,
+      serviceKey,
+      table: "projects",
+      onConflict: "organization_id,slug",
+      select: "id",
+      rows: [
+        {
+          organization_id: organizations[0].id,
+          slug: DEFAULT_PROJECT_SLUG,
+          name: "Default workspace",
+          objective: "Generate executive-grade evidence packages",
+          audience: "Authenticated Basquio workspace",
+        },
+      ],
+    }),
+  ]);
 
   if (!projects[0]?.id) {
     return null;

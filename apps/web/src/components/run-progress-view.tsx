@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, File, MagnifyingGlass, PaintBrush, Package } from "@phosphor-icons/react";
+import { Check } from "@phosphor-icons/react";
+import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -82,37 +83,6 @@ export type RunProgressSnapshot = {
   notifyOnComplete?: boolean;
 };
 
-// ─── USER-FACING PHASE MAP ─────────────────────────────────────
-const USER_STEPS = [
-  { id: "read", label: "Reading your files", Icon: File },
-  { id: "analyze", label: "Finding the story", Icon: MagnifyingGlass },
-  { id: "design", label: "Designing the deck", Icon: PaintBrush },
-  { id: "review", label: "Reviewing and polishing", Icon: MagnifyingGlass },
-  { id: "export", label: "Exporting", Icon: Package },
-] as const;
-
-const PHASE_TO_USER_STEP: Record<string, number> = {
-  normalize: 0,
-  understand: 1,
-  author: 2,
-  render: 2,
-  polish: 3,
-  critique: 3,
-  revise: 3,
-  export: 4,
-};
-
-const PHASE_BREADCRUMBS: Record<string, string> = {
-  normalize: "Indexing your files and checking what can be used.",
-  understand: "Analyzing the evidence and finding the commercial angle.",
-  author: "Building the first full draft and chart system.",
-  render: "Collecting the draft artifacts and preparing them for review.",
-  polish: "Refining the draft before the final quality pass.",
-  critique: "Reviewing the rendered pages for weak slides and layout drift.",
-  revise: "Repairing the slides that need another pass.",
-  export: "Packaging the final deck, report, and workbook.",
-};
-
 // ─── COMPONENT ─────────────────────────────────────────────────
 
 export function RunProgressView(input: {
@@ -120,7 +90,7 @@ export function RunProgressView(input: {
   initialSnapshot: RunProgressSnapshot | null;
 }) {
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
   const [missingPollCount, setMissingPollCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [showSaveRecipe, setShowSaveRecipe] = useState(false);
@@ -128,10 +98,6 @@ export function RunProgressView(input: {
   const [recipeSaved, setRecipeSaved] = useState(false);
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [showCompletionToast, setShowCompletionToast] = useState(false);
-  const [breadcrumbVisible, setBreadcrumbVisible] = useState(true);
-  const [displayedBreadcrumb, setDisplayedBreadcrumb] = useState(
-    describePhaseBreadcrumb(input.initialSnapshot?.currentStage ?? "normalize"),
-  );
   const prevStatusRef = useRef<string | null>(null);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
@@ -186,22 +152,6 @@ export function RunProgressView(input: {
     return () => { active = false; window.clearInterval(interval); };
   }, [input.jobId, isTerminal, snapshot]);
 
-  const conceptualBreadcrumb = describePhaseBreadcrumb(snapshot?.currentStage ?? "normalize");
-
-  useEffect(() => {
-    if (conceptualBreadcrumb === displayedBreadcrumb) {
-      return;
-    }
-
-    setBreadcrumbVisible(false);
-    const timeout = window.setTimeout(() => {
-      setDisplayedBreadcrumb(conceptualBreadcrumb);
-      setBreadcrumbVisible(true);
-    }, 160);
-
-    return () => window.clearTimeout(timeout);
-  }, [conceptualBreadcrumb, displayedBreadcrumb]);
-
   // ─── WAITING STATE ───────────────────────────────────────────
   if (!snapshot) {
     return (
@@ -219,9 +169,6 @@ export function RunProgressView(input: {
   }
 
   const slideCount = snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0;
-  const currentUserStepIdx = PHASE_TO_USER_STEP[snapshot.currentStage] ?? 0;
-  const displayPercent = snapshot.status === "completed" ? 100 : snapshot.progressPercent;
-
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
     const authorModel = snapshot.authorModel ?? DEFAULT_AUTHOR_MODEL;
@@ -524,132 +471,45 @@ export function RunProgressView(input: {
   }
 
   // ─── IN-PROGRESS STATE ───────────────────────────────────────
-  const elapsed = snapshot.elapsedSeconds;
-  const etaText = formatEta(snapshot);
-  const templateSummary = describeTemplateDiagnostics(snapshot.templateDiagnostics);
-  const staleWarning = snapshot.runHealth === "stale";
-  const recoveringWarning = snapshot.runHealth === "recovering";
-  const heartbeatLateWarning = snapshot.runHealth === "late_heartbeat";
+  const isReportOnlyRun = snapshot.authorModel === "claude-haiku-4-5";
+  const title = isReportOnlyRun ? "Building your report" : "Building your deck";
+  const elapsedLabel = formatElapsedLabel(snapshot.elapsedSeconds);
+  const leaveRunCopy = snapshot.notifyOnComplete !== false
+    ? "This runs in the background. Close this page and we'll email you when it's ready."
+    : "This runs in the background. Close this page and come back from Reports or Dashboard later.";
 
   return (
     <div style={styles.fullPage}>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes shimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
       `}</style>
 
       <div style={styles.center}>
-        {/* Ambient glow */}
         <div style={styles.glow} />
 
-        {/* Title */}
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, color: "#F2F0EB", marginBottom: "0.3rem", zIndex: 1 }}>
-          Building your deck
-        </h1>
-        <p style={{ color: "#A09FA6", fontSize: "1.05rem", marginBottom: "2.5rem", zIndex: 1 }}>
-          {snapshot.currentStageLabel ?? USER_STEPS[currentUserStepIdx]?.label ?? "Working..."}
-        </p>
-        {typeof snapshot.attemptNumber === "number" && snapshot.attemptNumber > 1 ? (
-          <p style={{ color: "#6B6A72", fontSize: "0.82rem", marginTop: "-1.8rem", marginBottom: "1.8rem", zIndex: 1 }}>
-            Recovery attempt {snapshot.attemptNumber}
-          </p>
-        ) : null}
-        {staleWarning ? (
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 560,
-              marginBottom: "1.5rem",
-              padding: "0.9rem 1rem",
-              borderRadius: 18,
-              border: "1px solid rgba(255,196,87,0.35)",
-              background: "rgba(255,196,87,0.08)",
-              color: "#F2F0EB",
-              zIndex: 1,
-            }}
-          >
-            This run stopped heartbeating and looks stalled. Basquio is trying to recover it automatically.
-          </div>
-        ) : null}
-        {recoveringWarning ? (
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 560,
-              marginBottom: "1.5rem",
-              padding: "0.9rem 1rem",
-              borderRadius: 18,
-              border: "1px solid rgba(26,106,255,0.35)",
-              background: "rgba(26,106,255,0.08)",
-              color: "#F2F0EB",
-              zIndex: 1,
-            }}
-          >
-            Retrying automatically after a temporary service issue. You don&apos;t need to restart the run.
-          </div>
-        ) : null}
-        {heartbeatLateWarning ? (
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 560,
-              marginBottom: "1.5rem",
-              padding: "0.9rem 1rem",
-              borderRadius: 18,
-              border: "1px solid rgba(255,196,87,0.22)",
-              background: "rgba(255,196,87,0.05)",
-              color: "#F2F0EB",
-              zIndex: 1,
-            }}
-          >
-            This run has not heartbeated recently. Basquio has not started recovery yet.
-          </div>
-        ) : null}
-
-        {/* Progress bar — full width, monotonic display of the model-based estimate */}
-        <div style={{ width: "100%", maxWidth: 480, marginBottom: "2.5rem", zIndex: 1 }}>
-          <div style={styles.progressTrack}>
-            <div
-              style={{
-                ...styles.progressFill,
-                width: `${displayPercent}%`,
-              }}
+        <div className="run-status-logo-shell" aria-hidden>
+          <div className="run-status-logo-glow" />
+          <div className="run-status-logo-frame">
+            <Image
+              src="/brand/svg/icon/basquio-icon-white.svg"
+              alt=""
+              width={72}
+              height={72}
+              className="run-status-logo-image"
+              priority
             />
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem" }}>
-            <span style={{ color: "#6B6A72", fontSize: "0.8rem" }}>{formatTime(elapsed)} elapsed</span>
-            <span style={{ color: "#A09FA6", fontSize: "0.8rem", fontWeight: 600 }}>{displayPercent}%</span>
-          </div>
-          <div style={{ marginTop: "0.9rem", textAlign: "left" }}>
-            <p style={{ color: "#F2F0EB", fontSize: "0.92rem", margin: 0 }}>
-              {snapshot.currentDetail}
-            </p>
-            <p style={{ color: "#A09FA6", fontSize: "0.8rem", margin: "0.45rem 0 0" }}>
-              {etaText}
-            </p>
-            <p style={{ color: "#6B6A72", fontSize: "0.78rem", margin: "0.45rem 0 0" }}>
-              {templateSummary.detail}
-            </p>
           </div>
         </div>
 
+        <h1 className="run-status-title">{title}</h1>
+        <p className="run-status-elapsed">{elapsedLabel}</p>
+
         <div style={styles.leaveRunCard}>
-          <p style={styles.leaveRunEyebrow}>Need to step away?</p>
-          <p style={styles.leaveRunCopy}>
-            This run keeps going in your workspace even if you leave this page. You can come back from Reports or Dashboard later.
-          </p>
-          <div style={{ marginTop: "0.75rem" }}>
-            {snapshot.notifyOnComplete !== false ? (
-              <p style={styles.leaveRunCopy}>We&apos;ll email you when the report is ready.</p>
-            ) : (
-              <p style={styles.leaveRunCopy}>Email notifications are off. Turn them on in Settings.</p>
-            )}
-          </div>
+          <p style={styles.leaveRunEyebrow}>This keeps running</p>
+          <p style={styles.leaveRunCopy}>{leaveRunCopy}</p>
+          {snapshot.notifyOnComplete === false ? (
+            <p style={styles.leaveRunCopy}>Email notifications are off. Turn them on in Settings.</p>
+          ) : null}
           <div style={styles.leaveRunActions}>
             <Link href="/artifacts" style={styles.leaveRunButton}>
               See reports
@@ -662,71 +522,7 @@ export function RunProgressView(input: {
             </Link>
           </div>
         </div>
-
-        {/* Steps — minimal, horizontal */}
-        <div style={{ display: "flex", gap: "2rem", zIndex: 1, marginBottom: "2rem" }}>
-          {USER_STEPS.map((step, idx) => {
-            const isDone = idx < currentUserStepIdx || snapshot.status === "completed";
-            const isActive = idx === currentUserStepIdx;
-            const StepIcon = step.Icon;
-            return (
-              <div key={step.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.4rem" }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: "50%",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  background: isDone ? "#E8A84C" : isActive ? "rgba(232,168,76,0.2)" : "rgba(255,255,255,0.08)",
-                  color: isDone ? "#0A090D" : isActive ? "#E8A84C" : "#6B6A72",
-                  border: isActive ? "2px solid #E8A84C" : "2px solid transparent",
-                  animation: isActive ? "breathe 2s ease-in-out infinite" : undefined,
-                  transition: "all 0.5s ease",
-                }}>
-                  {isDone ? <Check size={16} weight="bold" /> : <StepIcon size={16} weight={isActive ? "fill" : "regular"} />}
-                </div>
-                <span style={{
-                  fontSize: "0.75rem", fontWeight: isActive ? 600 : 400,
-                  color: isDone ? "#A09FA6" : isActive ? "#F2F0EB" : "#6B6A72",
-                  transition: "color 0.5s ease",
-                }}>
-                  {step.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        <ProgressOrbPanel
-          message={displayedBreadcrumb}
-          visible={breadcrumbVisible}
-        />
       </div>
-
-      {error && (
-        <div style={{ position: "absolute", bottom: "1.5rem", left: "50%", transform: "translateX(-50%)", padding: "0.75rem 1.5rem", background: "#2D1B1B", borderRadius: 4, color: "#E8636F", fontSize: "0.85rem", border: "1px solid #4A2020", zIndex: 2 }}>
-          {error}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProgressOrbPanel({
-  message,
-  visible,
-}: {
-  message: string;
-  visible: boolean;
-}) {
-  return (
-    <div className="progress-orb-panel" aria-live="polite">
-      <div className="progress-orb-backdrop" aria-hidden />
-      <div className="progress-orb-shell" aria-hidden>
-        <div className="progress-orb-ring">
-          <div className="progress-orb-core">
-            <span className="progress-orb-mark">bq</span>
-          </div>
-        </div>
-      </div>
-      <p className={`progress-orb-message${visible ? " is-visible" : ""}`}>{message}</p>
     </div>
   );
 }
@@ -767,20 +563,6 @@ const styles = {
     pointerEvents: "none" as const,
     filter: "blur(60px)",
   },
-  progressTrack: {
-    height: 4,
-    borderRadius: 1,
-    background: "rgba(255,255,255,0.08)",
-    overflow: "hidden" as const,
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 1,
-    background: "linear-gradient(90deg, #E8A84C, #F0CC6B, #E8A84C)",
-    backgroundSize: "200% 100%",
-    animation: "shimmer 2s ease-in-out infinite",
-    transition: "width 2s ease-out",
-  },
   spinner: {
     width: 40,
     height: 40,
@@ -797,17 +579,6 @@ const styles = {
     fontWeight: 700,
     fontSize: "1rem",
     borderRadius: 4,
-    textDecoration: "none",
-  } as CSSProperties,
-  secondaryButton: {
-    display: "inline-block",
-    padding: "0.85rem 2.5rem",
-    background: "transparent",
-    color: "#F2F0EB",
-    fontWeight: 600,
-    fontSize: "1rem",
-    borderRadius: 4,
-    border: "1px solid rgba(255,255,255,0.2)",
     textDecoration: "none",
   } as CSSProperties,
   leaveRunCard: {
@@ -859,38 +630,13 @@ const styles = {
 
 // ─── HELPERS ───────────────────────────────────────────────────
 
-function formatTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-function formatEta(snapshot: RunProgressSnapshot) {
-  if (snapshot.status === "completed") return "Finished.";
-  if (snapshot.estimatedRemainingSeconds === null) return "Estimating time remaining...";
-  if (snapshot.estimatedRemainingConfidence === "low") return "Phase-timing estimate only. Timing is variable right now.";
-  if (
-    typeof snapshot.estimatedRemainingLowSeconds === "number" &&
-    typeof snapshot.estimatedRemainingHighSeconds === "number" &&
-    snapshot.estimatedRemainingHighSeconds > snapshot.estimatedRemainingLowSeconds
-  ) {
-    return `Estimated ${formatEtaRange(snapshot.estimatedRemainingLowSeconds, snapshot.estimatedRemainingHighSeconds)} left based on the current workflow phase.`;
+function formatElapsedLabel(seconds: number) {
+  if (seconds < 60) {
+    return `${seconds}s elapsed`;
   }
-  return `Estimated ${formatTime(snapshot.estimatedRemainingSeconds)} left based on the current workflow phase.`;
-}
 
-function formatEtaRange(lowSeconds: number, highSeconds: number) {
-  if (highSeconds < 60) {
-    return `${lowSeconds}s-${highSeconds}s`;
-  }
-  const lowMinutes = Math.max(1, Math.round(lowSeconds / 60));
-  const highMinutes = Math.max(lowMinutes, Math.round(highSeconds / 60));
-  return `${lowMinutes}-${highMinutes} min`;
-}
-
-function describePhaseBreadcrumb(phase: string) {
-  return PHASE_BREADCRUMBS[phase] ?? "Basquio is working through the report pipeline.";
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} min elapsed`;
 }
 
 function describeTemplateDiagnostics(template: TemplateDiagnostics | null | undefined) {

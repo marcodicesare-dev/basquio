@@ -79,32 +79,33 @@ export async function POST(request: Request) {
     }
 
     const jobId = createJobId();
-    const evidenceUploads = await Promise.all(
-      payload.evidenceFiles.map((file, index) =>
-        createPreparedUpload({
-          supabaseUrl,
-          serviceKey,
-          bucket: "source-files",
-          externalId: `${jobId}-upload-${index + 1}`,
-          file,
-          jobId,
-          order: index + 1,
-        }),
+    const [evidenceUploads, brandUpload] = await Promise.all([
+      Promise.all(
+        payload.evidenceFiles.map((file, index) =>
+          createPreparedUpload({
+            supabaseUrl,
+            serviceKey,
+            bucket: "source-files",
+            externalId: `${jobId}-upload-${index + 1}`,
+            file,
+            jobId,
+            order: index + 1,
+          }),
+        ),
       ),
-    );
-
-    const brandUpload = payload.brandFile
-      ? await createPreparedUpload({
-          supabaseUrl,
-          serviceKey,
-          bucket: "templates",
-          externalId: `${jobId}-style`,
-          file: payload.brandFile,
-          jobId,
-          order: payload.evidenceFiles.length + 1,
-          prefix: "style",
-        })
-      : null;
+      payload.brandFile
+        ? createPreparedUpload({
+            supabaseUrl,
+            serviceKey,
+            bucket: "templates",
+            externalId: `${jobId}-style`,
+            file: payload.brandFile,
+            jobId,
+            order: payload.evidenceFiles.length + 1,
+            prefix: "style",
+          })
+        : Promise.resolve(null),
+    ]);
 
     return NextResponse.json({
       jobId,

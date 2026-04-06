@@ -2415,22 +2415,6 @@ textarea {
   letter-spacing: -0.05em;
 }
 
-.loading-progress-track {
-  position: relative;
-  height: 14px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.loading-progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--blue), var(--amber));
-  box-shadow: 0 0 26px rgba(26, 106, 255, 0.35);
-  transition: width 320ms ease;
-}
-
 .loading-stat-strip,
 .loading-board {
   display: grid;
@@ -2461,117 +2445,88 @@ textarea {
   align-content: start;
 }
 
-.progress-orb-panel {
+.run-status-logo-shell {
   position: relative;
   display: grid;
-  justify-items: center;
-  gap: 18px;
-  width: 100%;
-  max-width: 600px;
-  padding: 30px 24px 26px;
+  place-items: center;
+  width: 120px;
+  height: 120px;
+  margin-bottom: 20px;
+  z-index: 1;
+}
+
+.run-status-logo-glow {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(26, 106, 255, 0.34), rgba(26, 106, 255, 0) 72%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.run-status-logo-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)),
-    radial-gradient(circle at top, rgba(26, 106, 255, 0.1), transparent 55%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 60px rgba(0, 0, 0, 0.34);
   overflow: hidden;
 }
 
-.progress-orb-backdrop {
+.run-status-logo-frame::after {
+  content: "";
   position: absolute;
-  right: 50%;
-  bottom: -90px;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(240, 204, 39, 0.18), transparent 68%);
-  filter: blur(30px);
-  pointer-events: none;
-  transform: translateX(50%);
+  inset: -35%;
+  background: linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0) 38%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0) 62%
+  );
+  transform: translateX(-165%) skewX(-18deg);
+  animation: basquio-logo-sheen 3.2s ease-in-out infinite;
+  will-change: transform;
 }
 
-.progress-orb-shell {
+.run-status-logo-image {
   position: relative;
   z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 126px;
-  height: 126px;
+  width: 72px;
+  height: 72px;
 }
 
-@property --progress-orb-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
-.progress-orb-ring {
-  display: grid;
-  place-items: center;
-  width: 126px;
-  height: 126px;
-  padding: 3px;
-  border-radius: 50%;
-  background: conic-gradient(from var(--progress-orb-angle), var(--blue), var(--amber), var(--blue));
-  box-shadow:
-    0 0 32px rgba(26, 106, 255, 0.18),
-    0 0 56px rgba(240, 204, 39, 0.12);
-  animation: basquio-orb-rotate 3s linear infinite;
-}
-
-.progress-orb-core {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 30%, rgba(244, 246, 248, 0.24), transparent 22%),
-    radial-gradient(circle at center, #1a6aff 0%, #1146ab 46%, #0b0c0c 100%);
-  animation: basquio-orb-breathe 3s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
-.progress-orb-mark {
+.run-status-title {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 10px;
   color: var(--text-inverse);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.06em;
-  text-transform: lowercase;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
-.progress-orb-message {
+.run-status-elapsed {
   position: relative;
   z-index: 1;
-  max-width: 420px;
-  margin: 0;
+  margin: 0 0 32px;
   color: var(--text-inverse-soft);
-  font-size: 1rem;
-  line-height: 1.6;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 300ms ease, transform 300ms ease;
+  font-size: 0.92rem;
 }
 
-.progress-orb-message.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-@keyframes basquio-orb-breathe {
-  0%, 100% {
-    transform: scale(0.95);
-    opacity: 0.72;
+@keyframes basquio-logo-sheen {
+  0%,
+  100% {
+    transform: translateX(-165%) skewX(-18deg);
   }
-  50% {
-    transform: scale(1.05);
-    opacity: 1;
-  }
-}
-
-@keyframes basquio-orb-rotate {
-  to {
-    --progress-orb-angle: 360deg;
+  45%,
+  55% {
+    transform: translateX(165%) skewX(-18deg);
   }
 }
 
@@ -2694,10 +2649,6 @@ textarea {
   .sidebar,
   .sticky-stack {
     position: static;
-  }
-
-  .progress-orb-panel {
-    padding: 26px 18px 22px;
   }
 }
 

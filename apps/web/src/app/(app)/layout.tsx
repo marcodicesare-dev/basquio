@@ -43,8 +43,10 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (supabaseUrl && serviceKey && !hasUnlimitedUsage) {
-    await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
-    const balance = await getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
+    const [, balance] = await Promise.all([
+      ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id }),
+      getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id }),
+    ]);
     creditBalance = balance.balance;
   }
 

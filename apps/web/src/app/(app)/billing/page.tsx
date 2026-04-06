@@ -64,6 +64,7 @@ async function getLedgerHistory(userId: string): Promise<LedgerEntry[]> {
 export default async function BillingPage() {
   const viewer = await getViewerState();
   const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user?.email);
+  const userId = viewer.user?.id;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -71,12 +72,14 @@ export default async function BillingPage() {
   let subscription: Awaited<ReturnType<typeof getActiveSubscription>> = null;
   let ledger: LedgerEntry[] = [];
 
-  if (supabaseUrl && serviceKey && viewer.user?.id) {
-    await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
+  if (supabaseUrl && serviceKey && userId) {
     [balance, subscription, ledger] = await Promise.all([
-      getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id }),
-      getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id }),
-      getLedgerHistory(viewer.user.id),
+      (async () => {
+        await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId });
+        return getDetailedCreditBalance({ supabaseUrl, serviceKey, userId });
+      })(),
+      getActiveSubscription({ supabaseUrl, serviceKey, userId }),
+      getLedgerHistory(userId),
     ]);
   }
 
