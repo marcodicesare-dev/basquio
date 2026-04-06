@@ -491,7 +491,7 @@ export function RunProgressView(input: {
           <div className="run-status-logo-glow" />
           <div className="run-status-logo-frame">
             <Image
-              src="/brand/svg/icon/basquio-icon-white.svg"
+              src="/brand/svg/icon/basquio-icon-ultramarine.svg"
               alt=""
               width={72}
               height={72}
@@ -505,20 +505,17 @@ export function RunProgressView(input: {
         <p className="run-status-elapsed">{elapsedLabel}</p>
 
         <div style={styles.leaveRunCard}>
-          <p style={styles.leaveRunEyebrow}>This keeps running</p>
+          <p style={styles.leaveRunTitle}>Need to step away?</p>
           <p style={styles.leaveRunCopy}>{leaveRunCopy}</p>
-          {snapshot.notifyOnComplete === false ? (
-            <p style={styles.leaveRunCopy}>Email notifications are off. Turn them on in Settings.</p>
-          ) : null}
           <div style={styles.leaveRunActions}>
             <Link href="/artifacts" style={styles.leaveRunButton}>
               See reports
             </Link>
             <Link href="/dashboard" style={styles.leaveRunButton}>
-              Back to dashboard
+              Dashboard
             </Link>
             <Link href="/" style={styles.leaveRunButton}>
-              Visit website
+              Website
             </Link>
           </div>
         </div>
@@ -592,13 +589,12 @@ const styles = {
     zIndex: 1,
     textAlign: "left",
   } as CSSProperties,
-  leaveRunEyebrow: {
+  leaveRunTitle: {
     margin: 0,
     color: "#F2F0EB",
-    fontSize: "0.82rem",
-    fontWeight: 700,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
+    fontSize: "1rem",
+    fontWeight: 600,
+    letterSpacing: "-0.02em",
   } as CSSProperties,
   leaveRunCopy: {
     margin: "0.55rem 0 0",
@@ -631,10 +627,6 @@ const styles = {
 // ─── HELPERS ───────────────────────────────────────────────────
 
 function formatElapsedLabel(seconds: number) {
-  if (seconds < 60) {
-    return `${seconds}s elapsed`;
-  }
-
   const minutes = Math.floor(seconds / 60);
   return `${minutes} min elapsed`;
 }
