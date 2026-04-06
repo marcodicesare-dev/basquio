@@ -4,6 +4,7 @@ import { getActiveSubscription } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
+import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { resolveViewerOrgId } from "@/lib/viewer-workspace";
 
 export const dynamic = "force-dynamic";
@@ -323,13 +324,15 @@ export default async function NewJobPage({
   const [savedTemplates, defaultTemplateId] = orgId
     ? await Promise.all([getSavedTemplates(orgId), getDefaultTemplateId(orgId)])
     : [[], null];
-  const currentPlan = viewer.user?.id && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? normalizePlanId((await getActiveSubscription({
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-        serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-        userId: viewer.user.id,
-      }))?.plan ?? "free")
-    : "free";
+  const currentPlan = hasUnlimitedAccess(viewer.user?.email)
+    ? "unlimited"
+    : viewer.user?.id && process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+      ? normalizePlanId((await getActiveSubscription({
+          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+          serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+          userId: viewer.user.id,
+        }))?.plan ?? "free")
+      : "free";
 
   // Load recipe prefill if ?recipe= is present
   const recipeId = typeof params.recipe === "string" ? params.recipe : undefined;

@@ -636,9 +636,11 @@ const styles = {
 
 // ─── HELPERS ───────────────────────────────────────────────────
 
-function formatElapsedLabel(seconds: number) {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes} min elapsed`;
+function formatElapsedLabel(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  if (minutes === 0) return `${secs}s elapsed`;
+  return `${minutes}m ${secs}s elapsed`;
 }
 
 function describeTemplateDiagnostics(template: TemplateDiagnostics | null | undefined) {
