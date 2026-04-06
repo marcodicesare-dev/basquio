@@ -1,12 +1,16 @@
 "use client";
 
+import { BASQUIO_PHASES } from "@basquio/core";
 import { Check } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 
 import { DEFAULT_AUTHOR_MODEL, calculateRunCredits } from "@/lib/credits";
+import { buildPhaseProgressModel, estimateRemainingSecondsForPhase } from "@/lib/run-progress";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type TemplateDiagnostics = {
   status: "not_provided" | "parsed_successfully" | "partially_applied" | "fallback_default";
@@ -55,6 +59,61 @@ type FailureClassification = {
   retryAdvice: string;
 };
 
+type DeckRunRealtimeRow = {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "needs_input";
+  author_model: string | null;
+  current_phase: string | null;
+  phase_started_at: string | null;
+  failure_message: string | null;
+  created_at: string;
+  updated_at: string | null;
+  completed_at: string | null;
+  latest_attempt_number: number | null;
+  notify_on_complete: boolean | null;
+};
+
+const V2_PHASES = BASQUIO_PHASES;
+const WORKER_STALE_RUN_SECONDS = 8 * 60;
+const STALE_RUN_UI_SECONDS = Math.min(180, WORKER_STALE_RUN_SECONDS);
+const PHASE_ESTIMATES: Record<string, { label: string; activeDetail: string; completedDetail: string }> = {
+  normalize: {
+    label: "Reading your files",
+    activeDetail: "Indexing files and finding the usable evidence.",
+    completedDetail: "Files indexed.",
+  },
+  understand: {
+    label: "Finding the story",
+    activeDetail: "Inspecting the data and working out the commercial angle.",
+    completedDetail: "Storyline approved.",
+  },
+  author: {
+    label: "Designing the deck",
+    activeDetail: "Writing the first full draft and building the charts.",
+    completedDetail: "First draft generated.",
+  },
+  render: {
+    label: "Designing the deck",
+    activeDetail: "Collecting the generated deck artifacts.",
+    completedDetail: "Artifacts collected.",
+  },
+  critique: {
+    label: "Reviewing and polishing",
+    activeDetail: "Draft complete. Running visual review.",
+    completedDetail: "Rendered pages reviewed.",
+  },
+  revise: {
+    label: "Reviewing and polishing",
+    activeDetail: "Repairing weak slides, chart fit, and formatting problems.",
+    completedDetail: "Deck repaired.",
+  },
+  export: {
+    label: "Exporting",
+    activeDetail: "Deck repaired. Final export checks in progress.",
+    completedDetail: "Downloads published.",
+  },
+};
+
 export type RunProgressSnapshot = {
   jobId: string;
   authorModel?: string;
@@ -99,7 +158,18 @@ export function RunProgressView(input: {
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [showCompletionToast, setShowCompletionToast] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
+  const snapshotRef = useRef<RunProgressSnapshot | null>(input.initialSnapshot);
+  const isTerminalRef = useRef(false);
+  const terminalHydrationRef = useRef(false);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(() => {
+    isTerminalRef.current = isTerminal;
+  }, [isTerminal]);
 
   // Detect live completion transition for toast
   useEffect(() => {
@@ -122,17 +192,26 @@ export function RunProgressView(input: {
       .catch(() => {});
   }, [snapshot?.status]);
 
-  // Polling
+  // Initial snapshot + realtime subscription
   useEffect(() => {
-    if (isTerminal) return;
     let active = true;
-    const poll = async () => {
+    let fallbackTimeout: number | null = null;
+    const supabase = getSupabaseBrowserClient();
+
+    const clearFallbackPolling = () => {
+      if (fallbackTimeout !== null) {
+        window.clearTimeout(fallbackTimeout);
+        fallbackTimeout = null;
+      }
+    };
+
+    const fetchSnapshot = async () => {
       try {
         const response = await fetch(`/api/jobs/${input.jobId}`, { cache: "no-store" });
         const payload = (await response.json()) as RunProgressSnapshot & { error?: string };
         if (!active) return;
         if (!response.ok) {
-          if (response.status === 404 && !snapshot) {
+          if (response.status === 404 && !snapshotRef.current) {
             setMissingPollCount((c) => c + 1);
             setError(null);
             return;
@@ -142,15 +221,94 @@ export function RunProgressView(input: {
         setSnapshot(payload);
         setMissingPollCount(0);
         setError(null);
+        terminalHydrationRef.current = payload.status === "completed" || payload.status === "failed" || payload.status === "needs_input";
       } catch (e) {
         if (!active) return;
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
     };
-    void poll();
-    const interval = window.setInterval(poll, 2500);
-    return () => { active = false; window.clearInterval(interval); };
-  }, [input.jobId, isTerminal, snapshot]);
+
+    const startFallbackPolling = () => {
+      if (fallbackTimeout !== null || isTerminalRef.current) {
+        return;
+      }
+
+      const schedulePoll = () => {
+        if (!active) {
+          return;
+        }
+        const elapsedSeconds = snapshotRef.current?.elapsedSeconds ?? 0;
+        fallbackTimeout = window.setTimeout(() => {
+          void fetchSnapshot();
+          clearFallbackPolling();
+          if (!terminalHydrationRef.current && !isTerminalRef.current) {
+            schedulePoll();
+          }
+        }, elapsedSeconds >= 120 ? 10_000 : 2_500);
+      };
+
+      schedulePoll();
+    };
+
+    const handleRealtimeUpdate = (row: DeckRunRealtimeRow) => {
+      const nextStatus = row.status === "queued" && (row.latest_attempt_number ?? 1) > 1 ? "running" : row.status;
+      if (nextStatus === "completed" || nextStatus === "failed" || nextStatus === "needs_input" || row.completed_at) {
+        if (!terminalHydrationRef.current) {
+          terminalHydrationRef.current = true;
+          void fetchSnapshot();
+        }
+        return;
+      }
+
+      setSnapshot((current) => applyRealtimeRunUpdate(current, row));
+      setError(null);
+    };
+
+    void fetchSnapshot();
+
+    if (!supabase) {
+      startFallbackPolling();
+      return () => {
+        active = false;
+        clearFallbackPolling();
+      };
+    }
+
+    const channel = supabase
+      .channel(`run-${input.jobId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "deck_runs",
+          filter: `id=eq.${input.jobId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+          const row = parseRealtimeRunRow(payload.new);
+          if (!row || !active) {
+            return;
+          }
+          handleRealtimeUpdate(row);
+        },
+      )
+      .subscribe((status) => {
+        if (!active) {
+          return;
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          startFallbackPolling();
+        } else if (status === "SUBSCRIBED") {
+          clearFallbackPolling();
+        }
+      });
+
+    return () => {
+      active = false;
+      clearFallbackPolling();
+      void supabase.removeChannel(channel);
+    };
+  }, [input.jobId]);
 
   // ─── WAITING STATE ───────────────────────────────────────────
   if (!snapshot) {
@@ -638,9 +796,7 @@ const styles = {
 
 function formatElapsedLabel(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds % 60;
-  if (minutes === 0) return `${secs}s elapsed`;
-  return `${minutes}m ${secs}s elapsed`;
+  return `${minutes} min elapsed`;
 }
 
 function describeTemplateDiagnostics(template: TemplateDiagnostics | null | undefined) {
@@ -668,5 +824,146 @@ function describeTemplateDiagnostics(template: TemplateDiagnostics | null | unde
   return {
     badge: template.source === "saved_profile" ? "Saved template parsed" : "Uploaded template parsed",
     detail: `${template.templateName ?? "Template"} parsed cleanly and is available to guide ${template.effect === "layout_and_theme" ? "layout and theme choices" : "theme choices"} for this run. This reflects template interpretation status, not a final fidelity score.`,
+  };
+}
+
+function parseRealtimeRunRow(value: Record<string, unknown>): DeckRunRealtimeRow | null {
+  if (typeof value.id !== "string" || typeof value.status !== "string" || typeof value.created_at !== "string") {
+    return null;
+  }
+
+  if (!["queued", "running", "completed", "failed", "needs_input"].includes(value.status)) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    status: value.status as DeckRunRealtimeRow["status"],
+    author_model: typeof value.author_model === "string" ? value.author_model : null,
+    current_phase: typeof value.current_phase === "string" ? value.current_phase : null,
+    phase_started_at: typeof value.phase_started_at === "string" ? value.phase_started_at : null,
+    failure_message: typeof value.failure_message === "string" ? value.failure_message : null,
+    created_at: value.created_at,
+    updated_at: typeof value.updated_at === "string" ? value.updated_at : null,
+    completed_at: typeof value.completed_at === "string" ? value.completed_at : null,
+    latest_attempt_number: typeof value.latest_attempt_number === "number" ? value.latest_attempt_number : null,
+    notify_on_complete: typeof value.notify_on_complete === "boolean" ? value.notify_on_complete : null,
+  };
+}
+
+function applyRealtimeRunUpdate(
+  current: RunProgressSnapshot | null,
+  row: DeckRunRealtimeRow,
+): RunProgressSnapshot {
+  const now = Date.now();
+  const nextStatus = row.status === "queued" && (row.latest_attempt_number ?? 1) > 1 ? "running" : row.status;
+  const previousStage = current?.currentStage ?? null;
+  const currentPhase = row.current_phase ?? previousStage ?? V2_PHASES[0];
+  const completedPhases = new Set(
+    current?.steps
+      ?.filter((step) => step.status === "completed")
+      .map((step) => step.stage) ?? [],
+  );
+
+  if (previousStage && previousStage !== currentPhase && current?.status === "running") {
+    completedPhases.add(previousStage);
+  }
+
+  const createdAtMs = new Date(row.created_at).getTime();
+  const updatedAtMs = row.updated_at ? new Date(row.updated_at).getTime() : createdAtMs;
+  const completedAtMs = row.completed_at ? new Date(row.completed_at).getTime() : null;
+  const elapsedToMs = nextStatus === "completed" && completedAtMs ? completedAtMs : now;
+  const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
+  const heartbeatLate = nextStatus === "running" && now - updatedAtMs > STALE_RUN_UI_SECONDS * 1000;
+  const recoveryEligibleStale = nextStatus === "running" && now - updatedAtMs > WORKER_STALE_RUN_SECONDS * 1000;
+  const progressClockMs = heartbeatLate ? updatedAtMs : now;
+  const progressModel = buildPhaseProgressModel({
+    phases: V2_PHASES,
+    currentPhase,
+    completedPhases,
+    phaseStartedAt: row.phase_started_at,
+    nowMs: progressClockMs,
+  });
+  const estimatedRemaining = estimateRemainingSecondsForPhase({
+    phases: V2_PHASES,
+    currentPhase,
+    completedPhases,
+    elapsedInPhaseSeconds: progressModel.elapsedInPhaseSeconds,
+  });
+  const phaseMeta = PHASE_ESTIMATES[currentPhase] ?? PHASE_ESTIMATES.normalize;
+  const progressPercent = nextStatus === "completed"
+    ? 100
+    : nextStatus === "failed" || nextStatus === "needs_input"
+      ? Math.max(2, Math.round((completedPhases.size / V2_PHASES.length) * 100))
+      : Math.max(2, Math.min(96, Math.round(progressModel.progressPercent)));
+
+  return {
+    ...(current ?? {
+      jobId: row.id,
+      artifactsReady: false,
+      status: nextStatus,
+      createdAt: row.created_at,
+      currentStage: currentPhase,
+      currentDetail: phaseMeta.activeDetail,
+      progressPercent,
+      elapsedSeconds,
+      estimatedRemainingSeconds: estimatedRemaining.midpointSeconds,
+      steps: [],
+      summary: null,
+    }),
+    jobId: row.id,
+    authorModel: row.author_model ?? current?.authorModel,
+    attemptNumber: row.latest_attempt_number ?? current?.attemptNumber,
+    status: nextStatus,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at ?? current?.updatedAt,
+    currentStage: currentPhase,
+    currentStageLabel: phaseMeta.label,
+    currentDetail: nextStatus === "failed" || nextStatus === "needs_input"
+      ? row.failure_message ?? current?.failureMessage ?? "Run failed."
+      : nextStatus === "completed"
+        ? "Generation finished. Checking artifact availability."
+        : phaseMeta.activeDetail,
+    progressPercent,
+    elapsedSeconds,
+    estimatedRemainingSeconds: nextStatus === "completed" || nextStatus === "failed" || nextStatus === "needs_input"
+      ? 0
+      : estimatedRemaining.midpointSeconds,
+    estimatedRemainingLowSeconds: nextStatus === "completed" || nextStatus === "failed" || nextStatus === "needs_input"
+      ? 0
+      : estimatedRemaining.lowSeconds,
+    estimatedRemainingHighSeconds: nextStatus === "completed" || nextStatus === "failed" || nextStatus === "needs_input"
+      ? 0
+      : estimatedRemaining.highSeconds,
+    estimatedRemainingConfidence: nextStatus === "completed" || nextStatus === "failed" || nextStatus === "needs_input"
+      ? "high"
+      : estimatedRemaining.confidence,
+    steps: V2_PHASES.map((phase) => {
+      const completed = completedPhases.has(phase);
+      const stepStatus: Step["status"] = completed
+        ? "completed"
+        : phase === currentPhase
+          ? nextStatus === "needs_input"
+            ? "needs_input"
+            : nextStatus === "failed"
+              ? "failed"
+              : "running"
+          : "queued";
+      const stepMeta = PHASE_ESTIMATES[phase] ?? PHASE_ESTIMATES.normalize;
+      return {
+        stage: phase,
+        baseStage: phase,
+        attempt: row.latest_attempt_number ?? current?.attemptNumber ?? 1,
+        status: stepStatus,
+        detail: stepStatus === "completed"
+          ? stepMeta.completedDetail
+          : stepStatus === "running"
+            ? stepMeta.activeDetail
+            : "",
+      };
+    }),
+    notifyOnComplete: row.notify_on_complete ?? current?.notifyOnComplete,
+    failureMessage: row.failure_message ?? current?.failureMessage,
+    runHealth: recoveryEligibleStale ? "stale" : heartbeatLate ? "late_heartbeat" : "healthy",
   };
 }
