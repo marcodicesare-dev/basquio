@@ -33,6 +33,13 @@ export type FailureClassification = {
 
 const RETRYABLE_CONTAINER_STRING_ERROR = "container: input should be a valid string";
 
+export function isRetryableContainerStringError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  const status = "status" in error ? (error as { status?: number }).status : undefined;
+  return msg.includes(RETRYABLE_CONTAINER_STRING_ERROR) && (status === undefined || status === 400);
+}
+
 /**
  * Classify a runtime error from the worker/generation path.
  */
@@ -184,7 +191,7 @@ export function isTransientProviderError(error: unknown): boolean {
   const msg = error.message.toLowerCase();
   const name = error.name?.toLowerCase() ?? "";
 
-  if (msg.includes(RETRYABLE_CONTAINER_STRING_ERROR)) return true;
+  if (isRetryableContainerStringError(error)) return true;
   if (msg.includes("overloaded") || msg.includes("overloaded_error")) return true;
   if (msg.includes("rate_limit") || msg.includes("rate limit")) return true;
   if (/\b(429|529|502|503|504)\b/.test(msg)) return true;
@@ -198,7 +205,6 @@ export function isTransientProviderError(error: unknown): boolean {
 
   if ("status" in error) {
     const status = (error as { status?: number }).status;
-    if (status === 400 && msg.includes(RETRYABLE_CONTAINER_STRING_ERROR)) return true;
     if (status && [429, 502, 503, 504, 529].includes(status)) return true;
   }
 

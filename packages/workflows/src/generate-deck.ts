@@ -46,7 +46,7 @@ import {
 } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
-import { isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
+import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
@@ -3684,12 +3684,14 @@ async function runClaudeLoop(input: {
             streamError = watchdogError;
           }
           requestId = null;
-          if (isTransientProviderError(streamError) && retry < TRANSIENT_RETRY_DELAYS_MS.length) {
+          const containerStringRetry = isRetryableContainerStringError(streamError);
+          const maxTransientRetries = containerStringRetry ? 1 : TRANSIENT_RETRY_DELAYS_MS.length;
+          if (isTransientProviderError(streamError) && retry < maxTransientRetries) {
             lastTransientError = streamError instanceof Error ? streamError : new Error(String(streamError));
-            const baseDelay = TRANSIENT_RETRY_DELAYS_MS[retry];
+            const baseDelay = TRANSIENT_RETRY_DELAYS_MS[Math.min(retry, TRANSIENT_RETRY_DELAYS_MS.length - 1)];
             const jitter = Math.round(Math.random() * baseDelay * 0.3);
             console.warn(
-              `[runClaudeLoop] transient error (retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}): ${lastTransientError.message.slice(0, 200)}. Waiting ${baseDelay + jitter}ms...`,
+              `[runClaudeLoop] transient error (retry ${retry + 1}/${maxTransientRetries}): ${lastTransientError.message.slice(0, 200)}. Waiting ${baseDelay + jitter}ms...`,
             );
             const retryRecord: ClaudeRequestUsage = {
               requestId: null,
