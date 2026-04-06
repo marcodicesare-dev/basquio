@@ -944,7 +944,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       const requiredAuthorFiles = isReportOnly
         ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
         : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
-      const authorAnalysisMessage = authorResponse.message;
+      const authorFallbackMessages = [authorResponse.message];
       let authorFiles: GeneratedFile[] = await downloadGeneratedFiles(client, authorResponse.fileIds);
       const missingAuthorFiles = findMissingGeneratedFiles(authorFiles, requiredAuthorFiles);
       if (MODEL === "claude-haiku-4-5" && missingAuthorFiles.length > 0) {
@@ -996,6 +996,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           pauseTurns: authorResponse.pauseTurns + retryResponse.pauseTurns,
           requests: [...authorResponse.requests, ...retryResponse.requests],
         };
+        authorFallbackMessages.unshift(retryResponse.message);
       }
       requireGeneratedFiles(authorFiles, requiredAuthorFiles, "author");
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
@@ -1014,11 +1015,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         cache_read_input_tokens: authorResponse.usage.cache_read_input_tokens ?? 0,
       };
       const containerId = authorResponse.containerId;
-      manifest = parseManifestResponse(authorAnalysisMessage, authorFiles);
+      manifest = parseManifestResponseWithFallback(authorFallbackMessages, authorFiles);
       if (!recoveredAnalysisForSplit) {
-        const resolvedAnalysis = resolveAuthorAnalysis({
+        const resolvedAnalysis = resolveAuthorAnalysisWithFallback({
           run,
-          message: authorAnalysisMessage,
+          messages: authorFallbackMessages,
           files: authorFiles,
           manifest,
         });
@@ -3878,6 +3879,49 @@ function resolveAuthorAnalysis(input: {
   }
 }
 
+function resolveAuthorAnalysisWithFallback(input: {
+  run: RunRow;
+  messages: Anthropic.Beta.BetaMessage[];
+  files: GeneratedFile[];
+  manifest: z.infer<typeof deckManifestSchema>;
+}): {
+  analysis: AnalysisResult;
+  recovery: Record<string, unknown> | null;
+  invalidPayload: Record<string, unknown> | null;
+} {
+  let lastError: unknown = null;
+
+  for (const message of input.messages) {
+    try {
+      return {
+        analysis: parseGeneratedAnalysisResponse(message, input.files),
+        recovery: null,
+        invalidPayload: null,
+      };
+    } catch (analysisError) {
+      lastError = analysisError;
+    }
+  }
+
+  const reason = lastError instanceof Error ? lastError.message : String(lastError);
+  const rawPayload = extractRawAnalysisPayloadFromMessages(input.messages, input.files);
+  const salvagedAnalysis = synthesizeAnalysisFromManifest(input.run, input.manifest);
+  return {
+    analysis: salvagedAnalysis,
+    recovery: {
+      source: "manifest_salvage",
+      reason,
+      slidePlanCount: salvagedAnalysis.slidePlan.length,
+    },
+    invalidPayload: {
+      source: rawPayload.source,
+      error: reason,
+      rawText: rawPayload.rawText.slice(0, 200_000),
+      salvagedFromManifest: true,
+    },
+  };
+}
+
 function extractRawAnalysisPayload(
   message: Anthropic.Beta.BetaMessage,
   files: GeneratedFile[],
@@ -3893,6 +3937,34 @@ function extractRawAnalysisPayload(
   return {
     source: "assistant_response_text",
     rawText: extractResponseText(message.content) ?? "",
+  };
+}
+
+function extractRawAnalysisPayloadFromMessages(
+  messages: Anthropic.Beta.BetaMessage[],
+  files: GeneratedFile[],
+) {
+  const analysisFile = findGeneratedFile(files, "analysis_result.json");
+  if (analysisFile) {
+    return {
+      source: analysisFile.fileName,
+      rawText: analysisFile.buffer.toString("utf8"),
+    };
+  }
+
+  for (const message of messages) {
+    const text = extractResponseText(message.content);
+    if (text) {
+      return {
+        source: "assistant_response_text",
+        rawText: text,
+      };
+    }
+  }
+
+  return {
+    source: "assistant_response_text",
+    rawText: "",
   };
 }
 
@@ -4219,6 +4291,26 @@ function parseManifestResponse(
       `Claude did not generate a parseable deck manifest. ${reason} Response preview: ${text.slice(0, 800)}`,
     );
   }
+}
+
+function parseManifestResponseWithFallback(
+  messages: Anthropic.Beta.BetaMessage[],
+  files: GeneratedFile[],
+) {
+  let lastError: unknown = null;
+
+  for (const message of messages) {
+    try {
+      return parseManifestResponse(message, files);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("Claude did not generate a parseable deck manifest.");
 }
 
 function findGeneratedFile(files: GeneratedFile[], fileName: string) {

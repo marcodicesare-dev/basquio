@@ -90,7 +90,7 @@ export function RunProgressView(input: {
   initialSnapshot: RunProgressSnapshot | null;
 }) {
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
-  const [, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [missingPollCount, setMissingPollCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [showSaveRecipe, setShowSaveRecipe] = useState(false);
@@ -477,6 +477,7 @@ export function RunProgressView(input: {
   const leaveRunCopy = snapshot.notifyOnComplete !== false
     ? "This runs in the background. Close this page and we'll email you when it's ready."
     : "This runs in the background. Close this page and come back from Reports or Dashboard later.";
+  const progressStatusMessage = error ? "Progress updates paused. Retrying automatically." : null;
 
   return (
     <div style={styles.fullPage}>
@@ -507,6 +508,9 @@ export function RunProgressView(input: {
         <div style={styles.leaveRunCard}>
           <p style={styles.leaveRunTitle}>Need to step away?</p>
           <p style={styles.leaveRunCopy}>{leaveRunCopy}</p>
+          {progressStatusMessage ? (
+            <p style={styles.leaveRunError}>{progressStatusMessage}</p>
+          ) : null}
           <div style={styles.leaveRunActions}>
             <Link href="/artifacts" style={styles.leaveRunButton}>
               See reports
@@ -600,6 +604,12 @@ const styles = {
     margin: "0.55rem 0 0",
     color: "#A09FA6",
     fontSize: "0.9rem",
+    lineHeight: 1.5,
+  } as CSSProperties,
+  leaveRunError: {
+    margin: "0.55rem 0 0",
+    color: "#F2F0EB",
+    fontSize: "0.86rem",
     lineHeight: 1.5,
   } as CSSProperties,
   leaveRunActions: {
