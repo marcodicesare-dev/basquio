@@ -210,35 +210,36 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const run = runs[0];
   const attemptId = run.active_attempt_id ?? run.latest_attempt_id;
   const needsInputSummary = run.status === "failed" || run.status === "completed" || Boolean(run.completed_at);
-  const sourceFiles = needsInputSummary
-    ? await loadSourceFileSummaries(supabaseUrl, serviceKey, run.source_file_ids)
-    : [];
-
-  const events = await fetchRestRows<DeckRunEventRow>({
-    supabaseUrl,
-    serviceKey,
-    table: "deck_run_events",
-    query: {
-      select: "id,attempt_id,attempt_number,phase,event_type,tool_name,payload,created_at",
-      run_id: `eq.${jobId}`,
-      ...(attemptId ? { attempt_id: `eq.${attemptId}` } : {}),
-      order: "created_at.asc",
-      limit: "200",
-    },
-  }).catch(() => []);
-
-  const summaryEvents = await fetchRestRows<DeckRunEventRow>({
-    supabaseUrl,
-    serviceKey,
-    table: "deck_run_events",
-    query: {
-      select: "id,attempt_id,attempt_number,phase,event_type,tool_name,payload,created_at",
-      run_id: `eq.${jobId}`,
-      ...(attemptId ? { attempt_id: `eq.${attemptId}` } : {}),
-      order: "created_at.asc",
-      limit: "500",
-    },
-  }).catch(() => events);
+  const [sourceFiles, summaryEvents, templateDiagnostics, attemptProgressRows] = await Promise.all([
+    needsInputSummary
+      ? loadSourceFileSummaries(supabaseUrl, serviceKey, run.source_file_ids)
+      : Promise.resolve([]),
+    fetchRestRows<DeckRunEventRow>({
+      supabaseUrl,
+      serviceKey,
+      table: "deck_run_events",
+      query: {
+        select: "id,attempt_id,attempt_number,phase,event_type,tool_name,payload,created_at",
+        run_id: `eq.${jobId}`,
+        ...(attemptId ? { attempt_id: `eq.${attemptId}` } : {}),
+        order: "created_at.asc",
+        limit: "500",
+      },
+    }).catch(() => []),
+    resolveTemplateDiagnostics(supabaseUrl, serviceKey, run),
+    attemptId
+      ? fetchRestRows<DeckRunAttemptHealthRow>({
+          supabaseUrl,
+          serviceKey,
+          table: "deck_run_attempts",
+          query: {
+            select: "id,status,updated_at,last_meaningful_event_at",
+            id: `eq.${attemptId}`,
+            limit: "1",
+          },
+        }).catch(() => [])
+      : Promise.resolve([]),
+  ]);
 
   const completedPhases = new Set(
     summaryEvents
@@ -256,19 +257,6 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
   const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
-  const templateDiagnostics = await resolveTemplateDiagnostics(supabaseUrl, serviceKey, run);
-  const attemptProgressRows = attemptId
-    ? await fetchRestRows<DeckRunAttemptHealthRow>({
-      supabaseUrl,
-      serviceKey,
-      table: "deck_run_attempts",
-      query: {
-        select: "id,status,updated_at,last_meaningful_event_at",
-        id: `eq.${attemptId}`,
-        limit: "1",
-      },
-    }).catch(() => [])
-    : [];
   const attemptProgressRow = attemptProgressRows[0] ?? null;
   const meaningfulProgressAt = attemptProgressRow?.last_meaningful_event_at ?? attemptProgressRow?.updated_at ?? run.updated_at;
   const meaningfulProgressAtMs = meaningfulProgressAt ? new Date(meaningfulProgressAt).getTime() : updatedAtMs;
@@ -372,34 +360,31 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       }
     : null;
   if (run.status === "completed" || run.completed_at) {
-    try {
-      const manifests = await fetchRestRows<ArtifactManifestRow>({
-        supabaseUrl: supabaseUrl!,
-        serviceKey: serviceKey!,
-        table: "artifact_manifests_v2",
-        query: {
-          select: "slide_count,page_count,qa_passed,artifacts",
-          run_id: `eq.${jobId}`,
-          limit: "1",
-        },
-      });
-      if (manifests.length > 0) {
-        const m = manifests[0];
-        summary = {
-          ...summary,
-          slideCount: m.slide_count,
-          pageCount: m.page_count,
-          qaPassed: m.qa_passed,
-          artifacts: m.artifacts.map((a) => ({
-            kind: a.kind,
-            fileName: a.fileName,
-            fileBytes: a.fileBytes,
-            downloadUrl: `/api/artifacts/${jobId}/${a.kind}`,
-          })),
-        };
-      }
-    } catch {
-      // Manifest not available yet
+    const manifests = await fetchRestRows<ArtifactManifestRow>({
+      supabaseUrl: supabaseUrl!,
+      serviceKey: serviceKey!,
+      table: "artifact_manifests_v2",
+      query: {
+        select: "slide_count,page_count,qa_passed,artifacts",
+        run_id: `eq.${jobId}`,
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    if (manifests.length > 0) {
+      const m = manifests[0];
+      summary = {
+        ...summary,
+        slideCount: m.slide_count,
+        pageCount: m.page_count,
+        qaPassed: m.qa_passed,
+        artifacts: m.artifacts.map((a) => ({
+          kind: a.kind,
+          fileName: a.fileName,
+          fileBytes: a.fileBytes,
+          downloadUrl: `/api/artifacts/${jobId}/${a.kind}`,
+        })),
+      };
     }
 
     // Fallback: if no manifest but slides exist, derive count from slide rows
@@ -496,24 +481,26 @@ async function loadSourceFileSummaries(
   serviceKey: string,
   sourceFileIds: string[],
 ) {
-  const rows = await Promise.all(
-    sourceFileIds.map(async (id) => {
-      const files = await fetchRestRows<SourceFileSummaryRow>({
-        supabaseUrl,
-        serviceKey,
-        table: "source_files",
-        query: {
-          select: "id,kind,file_name",
-          id: `eq.${id}`,
-          limit: "1",
-        },
-      }).catch(() => []);
+  const uniqueIds = [...new Set(sourceFileIds.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return [];
+  }
 
-      return files[0] ?? null;
-    }),
-  );
-
-  return rows.filter((row): row is SourceFileSummaryRow => Boolean(row));
+  return fetchRestRows<SourceFileSummaryRow>({
+    supabaseUrl,
+    serviceKey,
+    table: "source_files",
+    query: {
+      select: "id,kind,file_name",
+      id: `in.(${uniqueIds.join(",")})`,
+      limit: String(uniqueIds.length),
+    },
+  })
+    .then((rows) => {
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      return uniqueIds.map((id) => byId.get(id) ?? null).filter((row): row is SourceFileSummaryRow => row !== null);
+    })
+    .catch(() => []);
 }
 
 // B: Unified failure classification — uses the canonical classifier from the workflow layer

@@ -76,19 +76,26 @@ function StatusBadge({ status }: { status: string }) {
 
 export default async function DashboardPage() {
   const viewer = await getViewerState();
-  const runs = await listV2RunCards(6, viewer.user?.id);
-  const recipes = viewer.user?.id ? await listRecipes(viewer.user.id) : [];
   const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user?.email);
+  const runsPromise = listV2RunCards(6, viewer.user?.id);
+  const recipesPromise = viewer.user?.id ? listRecipes(viewer.user.id) : Promise.resolve([]);
+  const userId = viewer.user?.id;
 
-  // Get credit balance for stats
-  let creditBalance = 0;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (supabaseUrl && serviceKey && viewer.user?.id) {
-    await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
-    const bal = await getCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
-    creditBalance = bal.balance;
-  }
+  const creditBalancePromise = supabaseUrl && serviceKey && userId && !hasUnlimitedUsage
+    ? (async () => {
+        await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId });
+        const balance = await getCreditBalance({ supabaseUrl, serviceKey, userId });
+        return balance.balance;
+      })()
+    : Promise.resolve(0);
+
+  const [runs, recipes, creditBalance] = await Promise.all([
+    runsPromise,
+    recipesPromise,
+    creditBalancePromise,
+  ]);
 
   const completedRuns = runs.filter((r) => r.status === "completed");
   const totalSlides = completedRuns.reduce((sum, r) => sum + r.slideCount, 0);

@@ -73,9 +73,11 @@ export default async function BillingPage() {
 
   if (supabaseUrl && serviceKey && viewer.user?.id) {
     await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
-    balance = await getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
-    subscription = await getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id });
-    ledger = await getLedgerHistory(viewer.user.id);
+    [balance, subscription, ledger] = await Promise.all([
+      getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id }),
+      getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id }),
+      getLedgerHistory(viewer.user.id),
+    ]);
   }
 
   const totalSpent = ledger

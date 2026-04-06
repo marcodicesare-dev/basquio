@@ -2,7 +2,6 @@
 
 import { Check, File, MagnifyingGlass, PaintBrush, Package } from "@phosphor-icons/react";
 import Link from "next/link";
-import Script from "next/script";
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -103,6 +102,17 @@ const PHASE_TO_USER_STEP: Record<string, number> = {
   export: 4,
 };
 
+const PHASE_BREADCRUMBS: Record<string, string> = {
+  normalize: "Indexing your files and checking what can be used.",
+  understand: "Analyzing the evidence and finding the commercial angle.",
+  author: "Building the first full draft and chart system.",
+  render: "Collecting the draft artifacts and preparing them for review.",
+  polish: "Refining the draft before the final quality pass.",
+  critique: "Reviewing the rendered pages for weak slides and layout drift.",
+  revise: "Repairing the slides that need another pass.",
+  export: "Packaging the final deck, report, and workbook.",
+};
+
 // ─── COMPONENT ─────────────────────────────────────────────────
 
 export function RunProgressView(input: {
@@ -118,6 +128,10 @@ export function RunProgressView(input: {
   const [recipeSaved, setRecipeSaved] = useState(false);
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [showCompletionToast, setShowCompletionToast] = useState(false);
+  const [breadcrumbVisible, setBreadcrumbVisible] = useState(true);
+  const [displayedBreadcrumb, setDisplayedBreadcrumb] = useState(
+    describePhaseBreadcrumb(input.initialSnapshot?.currentStage ?? "normalize"),
+  );
   const prevStatusRef = useRef<string | null>(null);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
@@ -190,8 +204,22 @@ export function RunProgressView(input: {
 
   const slideCount = snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0;
   const currentUserStepIdx = PHASE_TO_USER_STEP[snapshot.currentStage] ?? 0;
-
+  const conceptualBreadcrumb = describePhaseBreadcrumb(snapshot.currentStage);
   const displayPercent = snapshot.status === "completed" ? 100 : snapshot.progressPercent;
+
+  useEffect(() => {
+    if (conceptualBreadcrumb === displayedBreadcrumb) {
+      return;
+    }
+
+    setBreadcrumbVisible(false);
+    const timeout = window.setTimeout(() => {
+      setDisplayedBreadcrumb(conceptualBreadcrumb);
+      setBreadcrumbVisible(true);
+    }, 160);
+
+    return () => window.clearTimeout(timeout);
+  }, [conceptualBreadcrumb, displayedBreadcrumb]);
 
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
@@ -665,20 +693,10 @@ export function RunProgressView(input: {
           })}
         </div>
 
-        {/* GIF — large, centered, fills panel width */}
-        <Script src="https://tenor.com/embed.js" strategy="afterInteractive" />
-        <div style={{ borderRadius: 4, overflow: "hidden", zIndex: 1, width: "100%", maxWidth: 600 }}>
-          <div
-            className="tenor-gif-embed"
-            data-postid="5925040"
-            data-share-method="host"
-            data-aspect-ratio="2.31481"
-            data-width="100%"
-          >
-            <a href="https://tenor.com/view/mathew-wolf-gif-5925040">Mathew Wolf GIF</a>
-            from <a href="https://tenor.com/search/mathew-gifs">Mathew GIFs</a>
-          </div>
-        </div>
+        <ProgressOrbPanel
+          message={displayedBreadcrumb}
+          visible={breadcrumbVisible}
+        />
       </div>
 
       {error && (
@@ -686,6 +704,28 @@ export function RunProgressView(input: {
           {error}
         </div>
       )}
+    </div>
+  );
+}
+
+function ProgressOrbPanel({
+  message,
+  visible,
+}: {
+  message: string;
+  visible: boolean;
+}) {
+  return (
+    <div className="progress-orb-panel" aria-live="polite">
+      <div className="progress-orb-backdrop" aria-hidden />
+      <div className="progress-orb-shell" aria-hidden>
+        <div className="progress-orb-ring">
+          <div className="progress-orb-core">
+            <span className="progress-orb-mark">bq</span>
+          </div>
+        </div>
+      </div>
+      <p className={`progress-orb-message${visible ? " is-visible" : ""}`}>{message}</p>
     </div>
   );
 }
@@ -846,6 +886,10 @@ function formatEtaRange(lowSeconds: number, highSeconds: number) {
   const lowMinutes = Math.max(1, Math.round(lowSeconds / 60));
   const highMinutes = Math.max(lowMinutes, Math.round(highSeconds / 60));
   return `${lowMinutes}-${highMinutes} min`;
+}
+
+function describePhaseBreadcrumb(phase: string) {
+  return PHASE_BREADCRUMBS[phase] ?? "Basquio is working through the report pipeline.";
 }
 
 function describeTemplateDiagnostics(template: TemplateDiagnostics | null | undefined) {
