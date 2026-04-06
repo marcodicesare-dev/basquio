@@ -1,5 +1,3 @@
-import { createSystemTemplateProfile } from "@basquio/template-engine";
-
 import { ActiveDefaultCard, TemplateCard, TemplateImportBox } from "@/components/template-library";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
@@ -68,14 +66,12 @@ async function loadTemplateData(orgId: string) {
 
 export default async function TemplatesPage() {
   const viewer = await getViewerState();
-  const systemTemplate = createSystemTemplateProfile();
   const orgId = viewer.user ? await resolveViewerOrgId(viewer.user.id) : null;
   const { templates, defaultTemplateId } = orgId
     ? await loadTemplateData(orgId)
     : { templates: [], defaultTemplateId: null };
 
   const hasCustomDefault = defaultTemplateId !== null;
-  const defaultTemplate = templates.find((t) => t.id === defaultTemplateId);
 
   const templateItems = templates.map((t) => ({
     id: t.id,

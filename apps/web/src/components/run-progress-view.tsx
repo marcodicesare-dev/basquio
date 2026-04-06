@@ -186,6 +186,22 @@ export function RunProgressView(input: {
     return () => { active = false; window.clearInterval(interval); };
   }, [input.jobId, isTerminal, snapshot]);
 
+  const conceptualBreadcrumb = describePhaseBreadcrumb(snapshot?.currentStage ?? "normalize");
+
+  useEffect(() => {
+    if (conceptualBreadcrumb === displayedBreadcrumb) {
+      return;
+    }
+
+    setBreadcrumbVisible(false);
+    const timeout = window.setTimeout(() => {
+      setDisplayedBreadcrumb(conceptualBreadcrumb);
+      setBreadcrumbVisible(true);
+    }, 160);
+
+    return () => window.clearTimeout(timeout);
+  }, [conceptualBreadcrumb, displayedBreadcrumb]);
+
   // ─── WAITING STATE ───────────────────────────────────────────
   if (!snapshot) {
     return (
@@ -204,22 +220,7 @@ export function RunProgressView(input: {
 
   const slideCount = snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0;
   const currentUserStepIdx = PHASE_TO_USER_STEP[snapshot.currentStage] ?? 0;
-  const conceptualBreadcrumb = describePhaseBreadcrumb(snapshot.currentStage);
   const displayPercent = snapshot.status === "completed" ? 100 : snapshot.progressPercent;
-
-  useEffect(() => {
-    if (conceptualBreadcrumb === displayedBreadcrumb) {
-      return;
-    }
-
-    setBreadcrumbVisible(false);
-    const timeout = window.setTimeout(() => {
-      setDisplayedBreadcrumb(conceptualBreadcrumb);
-      setBreadcrumbVisible(true);
-    }, 160);
-
-    return () => window.clearTimeout(timeout);
-  }, [conceptualBreadcrumb, displayedBreadcrumb]);
 
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
