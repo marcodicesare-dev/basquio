@@ -62,6 +62,16 @@ type QueuedGenerationRequest = GenerationRequest & {
   draftId?: string | null;
 };
 
+function buildAcceptedGenerationResponse(runId: string, message = "Basquio accepted the run and started generation.") {
+  return {
+    jobId: runId,
+    status: "queued" as const,
+    statusUrl: `/api/jobs/${runId}`,
+    progressUrl: `/jobs/${runId}`,
+    message,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const viewer = await getViewerState();
@@ -95,6 +105,29 @@ export async function POST(request: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
+    const requestedRunId = UUID_RE.test(generationRequest.jobId ?? "") ? generationRequest.jobId : null;
+
+    if (requestedRunId && supabaseUrl && serviceKey) {
+      const existingRuns = await fetchRestRows<{ id: string; requested_by: string }>({
+        supabaseUrl,
+        serviceKey,
+        table: "deck_runs",
+        query: {
+          select: "id,requested_by",
+          id: `eq.${requestedRunId}`,
+          limit: "1",
+        },
+      }).catch(() => []);
+
+      if (existingRuns[0]) {
+        if (existingRuns[0].requested_by !== viewer.user.id) {
+          return NextResponse.json({ error: "Run ID already exists." }, { status: 409 });
+        }
+
+        return NextResponse.json(buildAcceptedGenerationResponse(requestedRunId, "Basquio is already starting this run."), { status: 202 });
+      }
+    }
+
     const runId = UUID_RE.test(generationRequest.jobId ?? "") ? generationRequest.jobId : randomUUID();
 
     const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
@@ -457,13 +490,7 @@ async function queueGeneration(
     throw error;
   }
 
-  return {
-    jobId: runId,
-    status: "queued",
-    statusUrl: `/api/jobs/${runId}`,
-    progressUrl: `/jobs/${runId}`,
-    message: "Basquio accepted the run and started generation.",
-  };
+  return buildAcceptedGenerationResponse(runId);
 }
 
 async function cleanupQueuedGenerationSetup(input: {

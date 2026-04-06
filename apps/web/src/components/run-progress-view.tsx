@@ -151,9 +151,11 @@ export function RunProgressView(input: {
   initialSnapshot: RunProgressSnapshot | null;
 }) {
   const router = useRouter();
+  const initialLaunchDraft = readRunLaunchDraft(input.jobId);
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [hasLaunchDraft, setHasLaunchDraft] = useState(() => Boolean(initialLaunchDraft));
   const [missingPollCount, setMissingPollCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [showSaveRecipe, setShowSaveRecipe] = useState(false);
@@ -197,16 +199,16 @@ export function RunProgressView(input: {
       return;
     }
 
-    const launchDraft = readRunLaunchDraft(input.jobId);
+    const launchDraft = initialLaunchDraft ?? readRunLaunchDraft(input.jobId);
     if (!launchDraft) {
       return;
     }
 
     setSnapshot(buildPendingLaunchSnapshot(launchDraft));
-  }, [input.initialSnapshot, input.jobId]);
+  }, [initialLaunchDraft, input.initialSnapshot, input.jobId]);
 
   useEffect(() => {
-    const launchDraft = readRunLaunchDraft(input.jobId);
+    const launchDraft = initialLaunchDraft ?? readRunLaunchDraft(input.jobId);
 
     if (!launchDraft || launchStartedRef.current) {
       return;
@@ -216,6 +218,7 @@ export function RunProgressView(input: {
     let active = true;
 
     void (async () => {
+      let shouldClearDraft = false;
       try {
         const response = await fetch("/api/generate", {
           method: "POST",
@@ -244,22 +247,29 @@ export function RunProgressView(input: {
           return;
         }
         if (response.status === 402) {
+          shouldClearDraft = true;
           clearRunLaunchDraft(input.jobId);
+          setHasLaunchDraft(false);
           router.replace(payload.pricingUrl ?? "/pricing");
           return;
         }
         if (!response.ok) {
+          shouldClearDraft = response.status >= 400 && response.status < 500;
           throw new Error(payload.error ?? "Generation failed.");
         }
 
         clearRunLaunchDraft(input.jobId);
+        setHasLaunchDraft(false);
         setLaunchError(null);
       } catch (launchFailure) {
         if (!active) {
           return;
         }
 
-        clearRunLaunchDraft(input.jobId);
+        if (shouldClearDraft) {
+          clearRunLaunchDraft(input.jobId);
+          setHasLaunchDraft(false);
+        }
         setLaunchError(launchFailure instanceof Error ? launchFailure.message : "Unable to start the run.");
       }
     })();
@@ -267,7 +277,7 @@ export function RunProgressView(input: {
     return () => {
       active = false;
     };
-  }, [input.jobId, router]);
+  }, [initialLaunchDraft, input.jobId, router]);
 
   // Detect live completion transition for toast
   useEffect(() => {
@@ -438,6 +448,7 @@ export function RunProgressView(input: {
 
   // ─── WAITING STATE ───────────────────────────────────────────
   if (!snapshot) {
+    const showMissingRunState = missingPollCount > 6 && !hasLaunchDraft && !launchError;
     return (
       <div style={styles.fullPage}>
         <div style={styles.center}>
@@ -445,14 +456,24 @@ export function RunProgressView(input: {
           <p style={{ color: "#A09FA6", fontSize: "1.1rem", marginTop: "1.5rem" }}>
             {launchError
               ? "We couldn't start this run."
-              : missingPollCount > 6
-              ? "This is taking longer than expected. Try refreshing."
+              : showMissingRunState
+              ? "This run was not found."
               : "Starting up..."}
           </p>
           {launchError ? (
             <p style={{ color: "#F4B4B4", fontSize: "0.95rem", marginTop: "0.85rem", maxWidth: 420, textAlign: "center" }}>
               {launchError}
             </p>
+          ) : null}
+          {showMissingRunState ? (
+            <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap", justifyContent: "center" }}>
+              <Link href="/artifacts" style={styles.leaveRunButton}>
+                See reports
+              </Link>
+              <Link href="/jobs/new" style={styles.leaveRunButton}>
+                New report
+              </Link>
+            </div>
           ) : null}
         </div>
       </div>
