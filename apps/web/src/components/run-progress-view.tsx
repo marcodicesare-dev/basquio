@@ -157,9 +157,11 @@ export function RunProgressView(input: {
   const [recipeSaved, setRecipeSaved] = useState(false);
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [showCompletionToast, setShowCompletionToast] = useState(false);
+  const [elapsedTickMs, setElapsedTickMs] = useState(() => Date.now());
   const prevStatusRef = useRef<string | null>(null);
   const snapshotRef = useRef<RunProgressSnapshot | null>(input.initialSnapshot);
   const isTerminalRef = useRef(false);
+  const realtimeSubscribedRef = useRef(false);
   const terminalHydrationRef = useRef(false);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
@@ -170,6 +172,20 @@ export function RunProgressView(input: {
   useEffect(() => {
     isTerminalRef.current = isTerminal;
   }, [isTerminal]);
+
+  useEffect(() => {
+    if (!snapshot || isTerminal) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setElapsedTickMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [isTerminal, snapshot]);
 
   // Detect live completion transition for toast
   useEffect(() => {
@@ -225,6 +241,7 @@ export function RunProgressView(input: {
       } catch (e) {
         if (!active) return;
         setError(e instanceof Error ? e.message : "Something went wrong.");
+        startFallbackPolling();
       }
     };
 
@@ -241,7 +258,11 @@ export function RunProgressView(input: {
         fallbackTimeout = window.setTimeout(() => {
           void fetchSnapshot();
           clearFallbackPolling();
-          if (!terminalHydrationRef.current && !isTerminalRef.current) {
+          if (
+            !terminalHydrationRef.current &&
+            !isTerminalRef.current &&
+            (!realtimeSubscribedRef.current || !snapshotRef.current)
+          ) {
             schedulePoll();
           }
         }, elapsedSeconds >= 120 ? 10_000 : 2_500);
@@ -262,6 +283,7 @@ export function RunProgressView(input: {
 
       setSnapshot((current) => applyRealtimeRunUpdate(current, row));
       setError(null);
+      clearFallbackPolling();
     };
 
     void fetchSnapshot();
@@ -297,14 +319,19 @@ export function RunProgressView(input: {
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          realtimeSubscribedRef.current = false;
           startFallbackPolling();
         } else if (status === "SUBSCRIBED") {
-          clearFallbackPolling();
+          realtimeSubscribedRef.current = true;
+          if (snapshotRef.current) {
+            clearFallbackPolling();
+          }
         }
       });
 
     return () => {
       active = false;
+      realtimeSubscribedRef.current = false;
       clearFallbackPolling();
       void supabase.removeChannel(channel);
     };
@@ -631,7 +658,7 @@ export function RunProgressView(input: {
   // ─── IN-PROGRESS STATE ───────────────────────────────────────
   const isReportOnlyRun = snapshot.authorModel === "claude-haiku-4-5";
   const title = isReportOnlyRun ? "Building your report" : "Building your deck";
-  const elapsedLabel = formatElapsedLabel(snapshot.elapsedSeconds);
+  const elapsedLabel = formatElapsedLabel(getDisplayedElapsedSeconds(snapshot, elapsedTickMs));
   const leaveRunCopy = snapshot.notifyOnComplete !== false
     ? "This runs in the background. Close this page and we'll email you when it's ready."
     : "This runs in the background. Close this page and come back from Reports or Dashboard later.";
@@ -797,6 +824,19 @@ const styles = {
 function formatElapsedLabel(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   return `${minutes} min elapsed`;
+}
+
+function getDisplayedElapsedSeconds(snapshot: RunProgressSnapshot, nowMs: number) {
+  if (snapshot.status === "completed" || snapshot.status === "failed" || snapshot.status === "needs_input") {
+    return snapshot.elapsedSeconds;
+  }
+
+  const createdAtMs = new Date(snapshot.createdAt).getTime();
+  if (Number.isNaN(createdAtMs)) {
+    return snapshot.elapsedSeconds;
+  }
+
+  return Math.max(snapshot.elapsedSeconds, Math.max(1, Math.round((nowMs - createdAtMs) / 1000)));
 }
 
 function describeTemplateDiagnostics(template: TemplateDiagnostics | null | undefined) {
