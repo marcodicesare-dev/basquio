@@ -4,11 +4,13 @@ import { BASQUIO_PHASES } from "@basquio/core";
 import { Check } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 
 import { DEFAULT_AUTHOR_MODEL, calculateRunCredits } from "@/lib/credits";
+import { clearRunLaunchDraft, readRunLaunchDraft, type RunLaunchDraft } from "@/lib/run-launch-draft";
 import { buildPhaseProgressModel, estimateRemainingSecondsForPhase } from "@/lib/run-progress";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
@@ -148,8 +150,10 @@ export function RunProgressView(input: {
   jobId: string;
   initialSnapshot: RunProgressSnapshot | null;
 }) {
+  const router = useRouter();
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
   const [error, setError] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
   const [missingPollCount, setMissingPollCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [showSaveRecipe, setShowSaveRecipe] = useState(false);
@@ -163,6 +167,7 @@ export function RunProgressView(input: {
   const isTerminalRef = useRef(false);
   const realtimeSubscribedRef = useRef(false);
   const terminalHydrationRef = useRef(false);
+  const launchStartedRef = useRef(false);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
   useEffect(() => {
@@ -186,6 +191,83 @@ export function RunProgressView(input: {
       window.clearInterval(interval);
     };
   }, [isTerminal, snapshot]);
+
+  useEffect(() => {
+    if (input.initialSnapshot || snapshotRef.current) {
+      return;
+    }
+
+    const launchDraft = readRunLaunchDraft(input.jobId);
+    if (!launchDraft) {
+      return;
+    }
+
+    setSnapshot(buildPendingLaunchSnapshot(launchDraft));
+  }, [input.initialSnapshot, input.jobId]);
+
+  useEffect(() => {
+    const launchDraft = readRunLaunchDraft(input.jobId);
+
+    if (!launchDraft || launchStartedRef.current) {
+      return;
+    }
+
+    launchStartedRef.current = true;
+    let active = true;
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            jobId: launchDraft.runId,
+            sourceFiles: launchDraft.sourceFiles,
+            existingSourceFileIds: launchDraft.existingSourceFileIds,
+            templateProfileId: launchDraft.templateProfileId ?? undefined,
+            targetSlideCount: launchDraft.targetSlideCount,
+            authorModel: launchDraft.authorModel,
+            recipeId: launchDraft.recipeId ?? undefined,
+            brief: launchDraft.brief,
+            businessContext: launchDraft.brief.businessContext,
+            client: launchDraft.brief.client,
+            audience: launchDraft.brief.audience,
+            objective: launchDraft.brief.objective,
+            thesis: launchDraft.brief.thesis,
+            stakes: launchDraft.brief.stakes,
+          }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as { error?: string; pricingUrl?: string };
+        if (!active) {
+          return;
+        }
+        if (response.status === 402) {
+          clearRunLaunchDraft(input.jobId);
+          router.replace(payload.pricingUrl ?? "/pricing");
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Generation failed.");
+        }
+
+        clearRunLaunchDraft(input.jobId);
+        setLaunchError(null);
+      } catch (launchFailure) {
+        if (!active) {
+          return;
+        }
+
+        clearRunLaunchDraft(input.jobId);
+        setLaunchError(launchFailure instanceof Error ? launchFailure.message : "Unable to start the run.");
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [input.jobId, router]);
 
   // Detect live completion transition for toast
   useEffect(() => {
@@ -230,6 +312,7 @@ export function RunProgressView(input: {
           if (response.status === 404 && !snapshotRef.current) {
             setMissingPollCount((c) => c + 1);
             setError(null);
+            startFallbackPolling();
             return;
           }
           throw new Error(payload.error ?? "Something went wrong.");
@@ -301,6 +384,22 @@ export function RunProgressView(input: {
       .on(
         "postgres_changes",
         {
+          event: "INSERT",
+          schema: "public",
+          table: "deck_runs",
+          filter: `id=eq.${input.jobId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+          const row = parseRealtimeRunRow(payload.new);
+          if (!row || !active) {
+            return;
+          }
+          handleRealtimeUpdate(row);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
           event: "UPDATE",
           schema: "public",
           table: "deck_runs",
@@ -344,10 +443,17 @@ export function RunProgressView(input: {
         <div style={styles.center}>
           <div style={styles.spinner} />
           <p style={{ color: "#A09FA6", fontSize: "1.1rem", marginTop: "1.5rem" }}>
-            {missingPollCount > 6
+            {launchError
+              ? "We couldn't start this run."
+              : missingPollCount > 6
               ? "This is taking longer than expected. Try refreshing."
               : "Starting up..."}
           </p>
+          {launchError ? (
+            <p style={{ color: "#F4B4B4", fontSize: "0.95rem", marginTop: "0.85rem", maxWidth: 420, textAlign: "center" }}>
+              {launchError}
+            </p>
+          ) : null}
         </div>
       </div>
     );
@@ -662,7 +768,11 @@ export function RunProgressView(input: {
   const leaveRunCopy = snapshot.notifyOnComplete !== false
     ? "This runs in the background. Close this page and we'll email you when it's ready."
     : "This runs in the background. Close this page and come back from Reports or Dashboard later.";
-  const progressStatusMessage = error ? "Progress updates paused. Retrying automatically." : null;
+  const progressStatusMessage = launchError
+    ? launchError
+    : error
+      ? "Progress updates paused. Retrying automatically."
+      : null;
 
   return (
     <div style={styles.fullPage}>
@@ -864,6 +974,31 @@ function describeTemplateDiagnostics(template: TemplateDiagnostics | null | unde
   return {
     badge: template.source === "saved_profile" ? "Saved template parsed" : "Uploaded template parsed",
     detail: `${template.templateName ?? "Template"} parsed cleanly and is available to guide ${template.effect === "layout_and_theme" ? "layout and theme choices" : "theme choices"} for this run. This reflects template interpretation status, not a final fidelity score.`,
+  };
+}
+
+function buildPendingLaunchSnapshot(draft: RunLaunchDraft): RunProgressSnapshot {
+  return {
+    jobId: draft.runId,
+    authorModel: draft.authorModel,
+    attemptNumber: 1,
+    pipelineVersion: "v2",
+    status: "queued",
+    artifactsReady: false,
+    createdAt: draft.createdAt,
+    updatedAt: draft.createdAt,
+    currentStage: "queued",
+    currentStageLabel: "Starting your run",
+    currentDetail: "Uploading files and reserving the worker.",
+    progressPercent: 2,
+    elapsedSeconds: 1,
+    estimatedRemainingSeconds: null,
+    estimatedRemainingLowSeconds: null,
+    estimatedRemainingHighSeconds: null,
+    estimatedRemainingConfidence: "low",
+    steps: [],
+    summary: null,
+    notifyOnComplete: true,
   };
 }
 

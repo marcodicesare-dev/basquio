@@ -1,11 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import * as tus from "tus-js-client";
+
+import type { GenerationRequest } from "@basquio/types";
 
 import { reportTypePresets } from "@/app/site-content";
 import { DEFAULT_AUTHOR_MODEL, MAX_TARGET_SLIDES, calculateRunCredits } from "@/lib/credits";
+import { saveRunLaunchDraft } from "@/lib/run-launch-draft";
 
 const UI_MIN_TARGET_SLIDES = 3;
 const UI_MAX_TARGET_SLIDES = MAX_TARGET_SLIDES;
@@ -99,6 +102,19 @@ type PrepareUploadsResponse = {
   evidenceUploads: PreparedUpload[];
   brandUpload: PreparedUpload | null;
 };
+
+type HostedEvidenceDraft = {
+  jobId: string;
+  organizationId: string;
+  projectId: string;
+  sourceFiles: Array<NonNullable<GenerationRequest["sourceFiles"]>[number]>;
+};
+
+type HostedEvidenceState =
+  | { status: "idle"; filesKey: string | null; draft: null; error: null }
+  | { status: "preparing" | "uploading"; filesKey: string; draft: null; error: null }
+  | { status: "ready"; filesKey: string; draft: HostedEvidenceDraft; error: null }
+  | { status: "error"; filesKey: string; draft: null; error: string };
 
 type BriefFields = {
   businessContext: string;
@@ -283,10 +299,19 @@ export function GenerationForm({
   const [tourIndex, setTourIndex] = useState(0);
   const [tourRect, setTourRect] = useState<TourRect | null>(null);
   const [tourCardPosition, setTourCardPosition] = useState<TourCardPosition | null>(null);
+  const [hostedEvidence, setHostedEvidence] = useState<HostedEvidenceState>({
+    status: "idle",
+    filesKey: null,
+    draft: null,
+    error: null,
+  });
+  const [launchRunId, setLaunchRunId] = useState<string | null>(null);
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
   const autoResumeTemplateFeeRef = useRef(false);
+  const hostedEvidencePromiseRef = useRef<Promise<HostedEvidenceDraft> | null>(null);
+  const hostedEvidenceRequestRef = useRef(0);
 
   function getTourTarget(stepId: (typeof TOUR_STEPS)[number]["id"]) {
     if (stepId === "report-type") return reportTypeRef.current;
@@ -310,6 +335,140 @@ export function GenerationForm({
   function openTour(fromIndex = 0) {
     setTourIndex(fromIndex);
     setIsTourOpen(true);
+  }
+
+  function reserveRunId() {
+    const nextRunId = crypto.randomUUID();
+    setLaunchRunId(nextRunId);
+    return nextRunId;
+  }
+
+  const ensureHostedEvidenceReady = useCallback(async (nextFiles = evidenceFiles) => {
+    const filesKey = buildFilesKey(nextFiles);
+    if (!filesKey) {
+      throw new Error("Add at least one supported evidence file before generating.");
+    }
+
+    if (hostedEvidence.status === "ready" && hostedEvidence.filesKey === filesKey && hostedEvidence.draft) {
+      return hostedEvidence.draft;
+    }
+
+    if (
+      hostedEvidencePromiseRef.current &&
+      (hostedEvidence.status === "preparing" || hostedEvidence.status === "uploading") &&
+      hostedEvidence.filesKey === filesKey
+    ) {
+      return hostedEvidencePromiseRef.current;
+    }
+
+    const requestId = hostedEvidenceRequestRef.current + 1;
+    hostedEvidenceRequestRef.current = requestId;
+
+    const uploadPromise = (async () => {
+      setHostedEvidence({
+        status: "preparing",
+        filesKey,
+        draft: null,
+        error: null,
+      });
+
+      const prepareResponse = await fetch("/api/uploads/prepare", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "local-org",
+          projectId: "local-project",
+          evidenceFiles: nextFiles.map((file) => ({
+            fileName: file.name,
+            mediaType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+          })),
+        }),
+      });
+
+      const preparePayload = (await readApiPayload(prepareResponse)) as PrepareUploadsResponse & { error?: string };
+
+      if (!prepareResponse.ok) {
+        throw new Error(preparePayload.error ?? "Unable to prepare uploads.");
+      }
+
+      setHostedEvidence({
+        status: "uploading",
+        filesKey,
+        draft: null,
+        error: null,
+      });
+
+      await uploadPreparedFiles(nextFiles, preparePayload.evidenceUploads);
+
+      const draft = {
+        jobId: preparePayload.jobId,
+        organizationId: preparePayload.organizationId,
+        projectId: preparePayload.projectId,
+        sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
+      } satisfies HostedEvidenceDraft;
+
+      if (hostedEvidenceRequestRef.current === requestId) {
+        setHostedEvidence({
+          status: "ready",
+          filesKey,
+          draft,
+          error: null,
+        });
+      }
+
+      return draft;
+    })();
+
+    hostedEvidencePromiseRef.current = uploadPromise;
+
+    try {
+      return await uploadPromise;
+    } catch (uploadError) {
+      const message = uploadError instanceof Error ? uploadError.message : "Unable to secure your files.";
+      if (hostedEvidenceRequestRef.current === requestId) {
+        setHostedEvidence({
+          status: "error",
+          filesKey,
+          draft: null,
+          error: message,
+        });
+      }
+      throw uploadError;
+    } finally {
+      if (hostedEvidencePromiseRef.current === uploadPromise) {
+        hostedEvidencePromiseRef.current = null;
+      }
+    }
+  }, [evidenceFiles, hostedEvidence]);
+
+  function launchRun(draft: {
+    runId: string;
+    authorModel: string;
+    templateProfileId: string | null;
+    targetSlideCount: number;
+    recipeId?: string;
+    brief: BriefFields;
+    sourceFiles?: Array<NonNullable<GenerationRequest["sourceFiles"]>[number]>;
+    existingSourceFileIds?: string[];
+  }) {
+    saveRunLaunchDraft({
+      runId: draft.runId,
+      createdAt: new Date().toISOString(),
+      authorModel: draft.authorModel,
+      templateProfileId: draft.templateProfileId,
+      targetSlideCount: draft.targetSlideCount,
+      recipeId: draft.recipeId,
+      brief: draft.brief,
+      sourceFiles: draft.sourceFiles,
+      existingSourceFileIds: draft.existingSourceFileIds,
+    });
+
+    startTransition(() => {
+      router.push(`/jobs/${draft.runId}`);
+    });
   }
 
   useEffect(() => {
@@ -434,6 +593,51 @@ export function GenerationForm({
     })();
   }, [router, templateFeeReturn]);
 
+  useEffect(() => {
+    const filesKey = buildFilesKey(evidenceFiles);
+
+    hostedEvidenceRequestRef.current += 1;
+    hostedEvidencePromiseRef.current = null;
+    setHostedEvidence((current) => {
+      if (!filesKey) {
+        return {
+          status: "idle",
+          filesKey: null,
+          draft: null,
+          error: null,
+        };
+      }
+
+      if (current.filesKey === filesKey && current.status === "ready") {
+        return current;
+      }
+
+      return {
+        status: "idle",
+        filesKey,
+        draft: null,
+        error: null,
+      };
+    });
+  }, [evidenceFiles]);
+
+  useEffect(() => {
+    if (currentStep < 2 || evidenceFiles.length === 0) {
+      return;
+    }
+
+    void ensureHostedEvidenceReady().catch(() => {});
+  }, [currentStep, ensureHostedEvidenceReady, evidenceFiles]);
+
+  useEffect(() => {
+    if (currentStep !== steps.length - 1) {
+      return;
+    }
+
+    const runId = launchRunId ?? reserveRunId();
+    router.prefetch(`/jobs/${runId}`);
+  }, [currentStep, launchRunId, router]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // Prevent accidental form submission from Enter key on non-final steps
@@ -467,33 +671,11 @@ export function GenerationForm({
           });
           draftId = draftResult.draftId;
         } else {
-          const prepareResponse = await fetch("/api/uploads/prepare", {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              organizationId: "local-org",
-              projectId: "local-project",
-              evidenceFiles: evidenceFiles.map((file) => ({
-                fileName: file.name,
-                mediaType: file.type || "application/octet-stream",
-                sizeBytes: file.size,
-              })),
-            }),
-          });
-
-          const preparePayload = (await readApiPayload(prepareResponse)) as PrepareUploadsResponse & { error?: string };
-
-          if (!prepareResponse.ok) {
-            throw new Error(preparePayload.error ?? "Unable to prepare uploads.");
-          }
-
-          await uploadPreparedFiles(evidenceFiles, preparePayload.evidenceUploads);
+          const hostedDraft = await ensureHostedEvidenceReady();
 
           const draftResult = await createTemplateFeeDraft({
             templateProfileId: selectedTemplateId,
-            sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
+            sourceFiles: hostedDraft.sourceFiles,
             targetSlideCount: effectiveTargetSlideCount,
             authorModel: selectedModel,
             recipeId: recipePrefill?.recipeId ?? undefined,
@@ -511,101 +693,32 @@ export function GenerationForm({
         return;
       }
 
-      // If reusing files from a prior run, skip upload and reference existing source files directly
+      const runId = launchRunId ?? reserveRunId();
+
       if (prefillSourceFiles.length > 0 && evidenceFiles.length === 0) {
-        const response = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            organizationId: "local-org",
-            projectId: "local-project",
-            existingSourceFileIds: prefillSourceFiles.map((sf) => sf.id),
-            templateProfileId: selectedTemplateId ?? undefined,
-            targetSlideCount: effectiveTargetSlideCount,
-            authorModel: selectedModel,
-            recipeId: recipePrefill?.recipeId ?? undefined,
-            brief,
-            businessContext: brief.businessContext,
-            client: brief.client,
-            audience: brief.audience,
-            objective: brief.objective,
-            thesis: brief.thesis,
-            stakes: brief.stakes,
-          }),
-        });
-        const payload = await readGenerationPayload(response);
-        if (response.status === 402) {
-          router.push((payload as { pricingUrl?: string }).pricingUrl ?? "/pricing");
-          return;
-        }
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Generation failed.");
-        }
-        router.push(payload.progressUrl);
-        return;
-      }
-
-      const prepareResponse = await fetch("/api/uploads/prepare", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          organizationId: "local-org",
-          projectId: "local-project",
-          evidenceFiles: evidenceFiles.map((file) => ({
-            fileName: file.name,
-            mediaType: file.type || "application/octet-stream",
-            sizeBytes: file.size,
-          })),
-        }),
-      });
-
-      const preparePayload = (await readApiPayload(prepareResponse)) as PrepareUploadsResponse & { error?: string };
-
-      if (!prepareResponse.ok) {
-        throw new Error(preparePayload.error ?? "Unable to prepare uploads.");
-      }
-
-      await uploadPreparedFiles(evidenceFiles, preparePayload.evidenceUploads);
-
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          jobId: preparePayload.jobId,
-          organizationId: preparePayload.organizationId,
-          projectId: preparePayload.projectId,
-          sourceFiles: preparePayload.evidenceUploads.map(stripUploadTransportFields),
-          templateProfileId: selectedTemplateId ?? undefined,
-          targetSlideCount: effectiveTargetSlideCount,
+        launchRun({
+          runId,
           authorModel: selectedModel,
+          templateProfileId: selectedTemplateId,
+          targetSlideCount: effectiveTargetSlideCount,
           recipeId: recipePrefill?.recipeId ?? undefined,
           brief,
-          businessContext: brief.businessContext,
-          client: brief.client,
-          audience: brief.audience,
-          objective: brief.objective,
-          thesis: brief.thesis,
-          stakes: brief.stakes,
-        }),
-      });
-
-      const payload = await readGenerationPayload(response);
-
-      if (response.status === 402) {
-        // No credits — redirect to pricing
-        router.push((payload as { pricingUrl?: string }).pricingUrl ?? "/pricing");
+          existingSourceFileIds: prefillSourceFiles.map((sf) => sf.id),
+        });
         return;
       }
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Generation failed.");
-      }
+      const hostedDraft = await ensureHostedEvidenceReady();
 
-      router.push(payload.progressUrl);
+      launchRun({
+        runId,
+        authorModel: selectedModel,
+        templateProfileId: selectedTemplateId,
+        targetSlideCount: effectiveTargetSlideCount,
+        recipeId: recipePrefill?.recipeId ?? undefined,
+        brief,
+        sourceFiles: hostedDraft.sourceFiles,
+      });
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "Generation failed.");
     } finally {
@@ -1077,6 +1190,17 @@ export function GenerationForm({
                     : "No files added yet"}</p>
                 <p className="muted">Required: at least one supported evidence file. Excel/CSV is best for deep KPI work; PPTX/PDF also work for extraction and restyling.</p>
                 {evidenceFiles.length > 0 ? (
+                  <p className="muted" style={{ fontSize: "0.82rem" }}>
+                    {hostedEvidence.status === "ready"
+                      ? "Files are already secured. Generate will open the run immediately."
+                      : hostedEvidence.status === "preparing" || hostedEvidence.status === "uploading"
+                        ? "Securing files in the background so the final launch is instant."
+                        : hostedEvidence.status === "error"
+                          ? hostedEvidence.error
+                          : "Files will be secured before launch."}
+                  </p>
+                ) : null}
+                {evidenceFiles.length > 0 ? (
                   <div className="file-list">
                     {evidenceFiles.map((file) => (
                       <div key={`${file.name}-${file.size}-${file.lastModified}`} className="file-chip">
@@ -1215,7 +1339,7 @@ export function GenerationForm({
                 disabled={isSubmitting}
                 onClick={() => { submitIntentRef.current = true; }}
               >
-                {isSubmitting ? "Building report..." : "Build my report"}
+                {isSubmitting ? "Opening run..." : "Build my report"}
               </button>
             )}
           </div>
@@ -1410,6 +1534,14 @@ function mergeFiles(existingFiles: File[], nextFiles: File[]) {
 
 function makeFileKey(file: File) {
   return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function buildFilesKey(files: File[]) {
+  if (files.length === 0) {
+    return null;
+  }
+
+  return files.map(makeFileKey).join("|");
 }
 
 function validateSubmission(
@@ -1625,12 +1757,12 @@ async function uploadPreparedFileResumable(file: File, upload: PreparedUpload) {
   });
 }
 
-function stripUploadTransportFields(upload: PreparedUpload) {
+function stripUploadTransportFields(upload: PreparedUpload): NonNullable<GenerationRequest["sourceFiles"]>[number] {
   return {
     id: upload.id,
     fileName: upload.fileName,
     mediaType: upload.mediaType,
-    kind: upload.kind,
+    kind: upload.kind as NonNullable<GenerationRequest["sourceFiles"]>[number]["kind"],
     storageBucket: upload.storageBucket,
     storagePath: upload.storagePath,
     fileBytes: upload.fileBytes,

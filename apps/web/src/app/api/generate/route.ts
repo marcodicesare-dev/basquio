@@ -48,6 +48,7 @@ const AUTHOR_MODELS = new Set([
   "claude-opus-4-6",
   "claude-haiku-4-5",
 ]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Map UI tier names to internal model names. */
 const TIER_TO_MODEL: Record<string, string> = {
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
-    const runId = randomUUID();
+    const runId = UUID_RE.test(generationRequest.jobId ?? "") ? generationRequest.jobId : randomUUID();
 
     const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
     const subscription =

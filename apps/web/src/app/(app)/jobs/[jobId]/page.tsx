@@ -2,9 +2,10 @@ import { notFound } from "next/navigation";
 
 import { RunProgressView } from "@/components/run-progress-view";
 import { getViewerState } from "@/lib/supabase/auth";
-import { fetchRestRows } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default async function JobProgressPage({
   params,
@@ -18,30 +19,9 @@ export default async function JobProgressPage({
     notFound();
   }
 
-  // Check if this run exists in deck_runs (v2)
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceKey) {
+  if (!UUID_RE.test(jobId)) {
     notFound();
   }
 
-  const runs = await fetchRestRows<{ id: string }>({
-    supabaseUrl,
-    serviceKey,
-    table: "deck_runs",
-    query: {
-      select: "id",
-      id: `eq.${jobId}`,
-      limit: "1",
-    },
-  }).catch(() => []);
-
-  if (runs.length === 0) {
-    notFound();
-  }
-
-  // The RunProgressView component polls /api/jobs/[jobId] for real-time updates.
-  // Pass null as initial snapshot so it fetches immediately.
   return <RunProgressView jobId={jobId} initialSnapshot={null} />;
 }
