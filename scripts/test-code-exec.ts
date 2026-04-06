@@ -9,6 +9,7 @@ import { createSystemTemplateProfile } from "@basquio/template-engine";
 
 import {
   BETAS,
+  type AuthoringContainer,
   buildAuthoringOutputConfig,
   buildAuthoringContainer,
   buildClaudeTools,
@@ -73,7 +74,7 @@ async function main() {
   };
 
   let messages: Anthropic.Beta.BetaMessageParam[] = [initialMessage];
-  let container: Anthropic.Beta.BetaContainerParams | undefined = buildAuthoringContainer(undefined, MODEL);
+  let container: AuthoringContainer = buildAuthoringContainer(undefined, MODEL);
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
   const fileIds = new Set<string>();
   let totalInputTokens = 0;

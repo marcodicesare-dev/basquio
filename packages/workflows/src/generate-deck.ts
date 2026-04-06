@@ -27,6 +27,7 @@ import type { ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
 
 import {
   BETAS,
+  type AuthoringContainer,
   buildAuthoringContainer,
   buildAuthoringOutputConfig,
   buildAuthoringToolCallSummary,
@@ -2948,42 +2949,44 @@ function buildAuthorMessage(
         "- When a slide presents 3 key takeaways or 3 takeaway cards, use the key-findings archetype.",
         "- Use the system-prompt examples as the visual contract: charts should be PNG-based, slot-sized, and paired with complete narrative copy rather than placeholder labels.",
       ];
+  const uploadedFilesContent = [
+    ...(files?.uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })) ?? []),
+    ...(files?.uploadedTemplate ? [{ type: "container_upload" as const, file_id: files.uploadedTemplate.id }] : []),
+  ];
+
+  if (isReportOnly) {
+    return {
+      role: "user" as const,
+      content: [
+        ...uploadedFilesContent,
+        {
+          type: "text" as const,
+          text: buildReportOnlyAuthorText({
+            run,
+            analysis,
+            extractionInstruction,
+            routeContext,
+            analysisDepthInstruction,
+            files,
+          }),
+        },
+      ],
+    };
+  }
 
   return {
     role: "user" as const,
     content: [
-      ...(files?.uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })) ?? []),
-      ...(files?.uploadedTemplate ? [{ type: "container_upload" as const, file_id: files.uploadedTemplate.id }] : []),
+      ...uploadedFilesContent,
       {
         type: "text" as const,
         text: [
           analysis
-            ? (isReportOnly
-              ? "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade report deliverables."
-              : "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts.")
-            : (isReportOnly
-              ? "Use the evidence files already available in the current container to build the final consulting-grade report deliverables without a separate analysis turn."
-              : "Use the evidence files already available in the current container to build a final consulting-grade deck without a separate analysis turn."),
+            ? "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts."
+            : "Use the evidence files already available in the current container to build a final consulting-grade deck without a separate analysis turn.",
           "",
           buildGenerationBrief(run),
           "",
-          ...(model === "claude-haiku-4-5"
-            ? [
-                "- This run is using Haiku in report-only mode. Do not assume pptx/pdf container skills are preloaded.",
-                "- Do NOT generate deck.pptx or deck.pdf in this run. The required deliverables are narrative_report.md, data_tables.xlsx, and deck_manifest.json with slideCount set to 0.",
-                "- Use Python/pandas as the primary execution path. `data_tables.xlsx` must contain the exact DataFrames behind every quantitative finding.",
-                "- Report-only depth budget is mandatory: Executive Summary minimum 500 words; each Finding section minimum 400 words with at least one markdown table; Competitor Deep-Dive minimum 600 words; Recommendations with sensitivity minimum 800 words; total report target 800-1200 lines and 10000-16000 words.",
-                "- The Data Appendix must include at least 5 markdown tables mirroring the key XLSX sheets so the report is self-sufficient without opening Excel.",
-                "- Correct NielsenIQ subtotal filtering example:",
-                "```python",
-                "supplier_df = df[(df['FORNITORE'].notna()) & (df['MARCA'].isna()) & (df['ITEM'].isna())]",
-                "npp = supplier_df[supplier_df['FORNITORE'] == 'NPP']",
-                "# WRONG: includes supplier + brand + item rows and double-counts",
-                "npp_wrong = df[df['FORNITORE'] == 'NPP']",
-                "```",
-                "",
-              ]
-            : []),
           ...(analysis ? [`Approved analysis JSON:\n${JSON.stringify(analysis, null, 2)}`, ""] : mergedAnalysisInstructions),
           "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
           ...(analysis
@@ -2995,13 +2998,7 @@ function buildAuthorMessage(
                 "- Build the analysis and slide plan inline, then render the deck from that plan without starting over in a second pass.",
                 "- Keep the analysis concise and execution-oriented. Do not spend tokens on narrative throat-clearing.",
               ]),
-          ...(model === "claude-haiku-4-5"
-            ? [
-                "- Use direct code execution for the report and data pack in this run. Do not rely on unavailable presentation skills.",
-              ]
-            : [
-                "- Follow the loaded pptx skill for the deck artifact generation.",
-              ]),
+          "- Follow the loaded pptx skill for the deck artifact generation.",
           ...(files?.uploadedTemplate
             ? [
                 `- A client PPTX template is uploaded in the container as ${files.uploadedTemplate.filename}. Use that actual template file as the visual source of truth, not just the summarized template tokens.`,
@@ -3122,6 +3119,90 @@ function buildAuthorMessage(
       },
     ],
   };
+}
+
+function buildReportOnlyAuthorText(input: {
+  run: RunRow;
+  analysis: z.infer<typeof analysisSchema> | null;
+  extractionInstruction: string;
+  routeContext: string;
+  analysisDepthInstruction: string;
+  files?: {
+    uploadedEvidence: Array<{ id: string; filename: string }>;
+    uploadedTemplate: { id: string; filename: string } | null;
+  };
+}) {
+  const lines = [
+    input.analysis
+      ? "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade report deliverables."
+      : "Use the evidence files already available in the current container to build the final consulting-grade report deliverables without a separate analysis turn.",
+    "",
+    buildGenerationBrief(input.run),
+    "",
+    ...(input.analysis
+      ? [`Approved analysis JSON:\n${JSON.stringify(input.analysis, null, 2)}`, ""]
+      : [
+          "Analyze the uploaded evidence package first, then generate the final report deliverables in the same pass.",
+          "- Use code execution to inspect the uploaded files directly and compute the facts you need.",
+          `- ${input.extractionInstruction}`,
+          "- Follow the NIQ Analyst Playbook from the system prompt: recognize Italian column names, compute all applicable derivatives (growth, share, price index, mix gap) before forming findings, and detect diagnostic motifs.",
+          "- Frame the analysis around the true commercial question, not a generic summary. Classify each finding as connection, contradiction, or curiosity.",
+          "- Recommendations must be traceable to the data in this run. Do not invent geographies, channels, or opportunities that are not directly supported by the evidence.",
+          "- BEFORE writing any number, verify that the sum of supplier-level values per channel matches the channel category total within plus or minus 2%. If it does not, you are double-counting NielsenIQ hierarchical subtotal rows.",
+          "- NielsenIQ exports contain subtotal rows at category, supplier, brand, and item level. For category totals use only rows where FORNITORE, MARCA, and ITEM are blank. For supplier totals use only rows where FORNITORE is present and MARCA and ITEM are blank.",
+          ...(input.routeContext ? [input.routeContext] : []),
+          "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
+          `- ${input.analysisDepthInstruction}`,
+          "- Complete all work in a single uninterrupted code execution session. Do not end the turn until every required output file is attached as a container upload.",
+          "- If you hit an error while analyzing or exporting, fix it and continue in the same session rather than ending the turn early.",
+        ]),
+    "- This is a Haiku report-only run. Do not rely on pptx or pdf skills.",
+    "- Generate ONLY these deliverables: narrative_report.md, data_tables.xlsx, and deck_manifest.json with slideCount set to 0.",
+    "- Do NOT generate deck.pptx, deck.pdf, slide plans, or presentation artifacts.",
+    "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
+    ...(input.analysis
+      ? [
+          "- Recalculate only the facts needed to render the promised report accurately.",
+        ]
+      : [
+          "- Build the analysis inline, then write the report and workbook from that analysis without starting over in a second pass.",
+        ]),
+    ...(input.files?.uploadedTemplate
+      ? [
+          `- A client PPTX template is uploaded in the container as ${input.files.uploadedTemplate.filename}. Use it only as naming and client-brand context for the title page; do not generate presentation artifacts from it.`,
+          "- Never inject Basquio branding when a client template or client name is present.",
+        ]
+      : []),
+    "- Use direct code execution for the report and data pack in this run.",
+    "- Keep code execution output compact after the first profiling pass, but still complete every required deliverable.",
+    "- data_tables.xlsx must contain the exact pandas DataFrames behind every quantitative finding.",
+    "- If the report cites a quantitative claim, include the exact markdown table in the report and the exact supporting DataFrame in data_tables.xlsx.",
+    "- Rank recommendations by impact x feasibility. The first recommendation must be Priority 1, then Priority 2, then quick wins.",
+    "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
+    "- Every recommendation must include its own Risk: and Mitigation: in the narrative report.",
+    "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
+    "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
+    "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
+    "- If the brief is English, write direct partner-grade English with no padded corporate phrasing such as 'in order to' or 'going forward'.",
+    "- `deck_manifest.json` must contain slideCount: 0, slides: [], charts: [], and pageCount: 0 unless you have a better factual page count for the markdown report.",
+    "- Generate files in this exact order: (1) narrative_report.md, (2) data_tables.xlsx, (3) deck_manifest.json.",
+    "- `narrative_report.md` must be a standalone consulting leave-behind that the reader can use without opening any deck. Target 800-1200 lines and roughly 10000-16000 words.",
+    "- Required sections for `narrative_report.md`:",
+    "  1. Title page with client name from the brief, objective, date, and data source.",
+    "  2. Executive summary (minimum 500 words): situation, complication, key findings, recommended actions, and expected impact.",
+    "  3. Methodology: data used, KPIs computed, time periods, comparison basis, data quality caveats, explicit assumptions, and sensitivity ranges.",
+    "  4. Detailed findings (minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add context where available.",
+    "  5. For every chart-like or table-backed finding, include a markdown table with the exact numbers so the report is usable without Excel.",
+    "  6. Competitor deep-dive (minimum 600 words): dedicated section on each major competitor's strategy, strengths, and implications for the client.",
+    "  7. Recommendations with sensitivity analysis (minimum 800 words): base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+    "  8. Full data appendix: markdown tables with the key cross-tabulations behind the report.",
+    "  9. Risk register: probability x impact matrix for the recommendations and main delivery risks.",
+    "- `narrative_report.md` must be at least 800 lines. If it is shorter, extend the appendix, competitor analysis, and chart-supporting markdown tables.",
+    "- When you write `data_tables.xlsx`, every sheet must come from the exact DataFrame used for the finding. Do not recreate the table from prose.",
+    "- Your final assistant message must attach narrative_report.md, data_tables.xlsx, and deck_manifest.json as container uploads before finishing.",
+  ];
+
+  return lines.join("\n");
 }
 
 function buildPerSlideConstraintBlock(analysis: z.infer<typeof analysisSchema> | null): string | undefined {
@@ -3484,7 +3565,7 @@ async function runClaudeLoop(input: {
   maxTokens: number;
   messages: Anthropic.Beta.BetaMessageParam[];
   tools: Anthropic.Beta.BetaToolUnion[];
-  container?: Anthropic.Beta.BetaContainerParams;
+  container?: AuthoringContainer;
   contextManagement?: Anthropic.Beta.BetaContextManagementConfig | null;
   outputConfig?: Anthropic.Beta.BetaOutputConfig;
   /** Optional: persist each retry-level request record immediately for telemetry truth */
@@ -3501,6 +3582,7 @@ async function runClaudeLoop(input: {
   let messages = [...input.messages];
   const fileIds = new Set<string>();
   let currentContainer = input.container;
+  const usePlainContainerId = input.model === "claude-haiku-4-5";
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
   let iterationCount = 0;
   let pauseTurns = 0;
@@ -3649,7 +3731,9 @@ async function runClaudeLoop(input: {
       const completedAt = new Date().toISOString();
 
       finalMessage = message!;
-      currentContainer = finalMessage.container ? { id: finalMessage.container.id } : currentContainer;
+      currentContainer = finalMessage.container
+        ? (usePlainContainerId ? finalMessage.container.id : { id: finalMessage.container.id })
+        : currentContainer;
       const finalInputTokens = finalMessage.usage?.input_tokens ?? 0;
       const finalOutputTokens = finalMessage.usage?.output_tokens ?? 0;
       const finalCacheCreationInputTokens = finalMessage.usage?.cache_creation_input_tokens ?? 0;
@@ -3711,7 +3795,9 @@ async function runClaudeLoop(input: {
 
   return {
     message: finalMessage,
-    containerId: finalMessage.container?.id ?? currentContainer?.id ?? null,
+    containerId: finalMessage.container?.id ??
+      (typeof currentContainer === "string" ? currentContainer : currentContainer?.id) ??
+      null,
     fileIds: [...fileIds],
     thread: appendAssistantTurn(messages, finalMessage),
     usage,

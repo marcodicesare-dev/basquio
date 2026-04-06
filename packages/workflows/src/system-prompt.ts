@@ -16,7 +16,7 @@ const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/circana-knowledge-graph.md",
 ] as const;
 
-let knowledgePackPromise: Promise<string> | null = null;
+let knowledgePackPromises: Map<string, Promise<string>> | null = null;
 const BASQUIO_LOGO_PLACEHOLDER = "__BASQUIO_LOGO_LIGHT_BG_BASE64__";
 const BASQUIO_MASTER_ARGS_PLACEHOLDER = "__BASQUIO_MASTER_ARGS__";
 const BASQUIO_COVER_ARGS_PLACEHOLDER = "__BASQUIO_COVER_ARGS__";
@@ -667,11 +667,36 @@ export async function buildBasquioSystemPrompt(input: {
   briefLanguageHint: string;
   authorModel: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6";
 }): Promise<Array<Anthropic.Beta.BetaTextBlockParam>> {
-  const staticKnowledge = await loadKnowledgePack();
+  const hasCustomTemplate = input.templateProfile.sourceType !== "system";
+
+  if (input.authorModel === "claude-haiku-4-5") {
+    const staticBlock = buildHaikuReportOnlySystemPrompt({
+      hasCustomTemplate,
+    });
+    const dynamicBlock = [
+      "Report-only template summary:",
+      summarizeReportOnlyTemplateProfile(input.templateProfile),
+      "",
+      `Language requirement: ${input.briefLanguageHint}`,
+    ].join("\n");
+
+    return [
+      {
+        type: "text",
+        text: staticBlock,
+        cache_control: { type: "ephemeral", ttl: "1h" },
+      },
+      {
+        type: "text",
+        text: dynamicBlock,
+      },
+    ];
+  }
+
+  const templateSummary = summarizeTemplateProfile(input.templateProfile);
+  const staticKnowledge = await loadKnowledgePack("deck");
   const basquioLogoBase64 = await basquioLogoBase64Promise;
   const deckGrammar = describeAllArchetypesForPrompt();
-  const templateSummary = summarizeTemplateProfile(input.templateProfile);
-  const hasCustomTemplate = input.templateProfile.sourceType !== "system";
   const hasImportedPptxTemplate = input.templateProfile.sourceType === "pptx";
   const promptPalette = resolvePromptPalette(input.templateProfile);
   const deckExamples = buildDeckExamples(promptPalette, {
@@ -715,13 +740,7 @@ export async function buildBasquioSystemPrompt(input: {
     "",
     "Operating rules:",
     "- Use the uploaded workbook files directly inside the execution container.",
-    ...(input.authorModel === "claude-haiku-4-5"
-      ? [
-          "- This Haiku run may not have preloaded pptx/pdf skills. Use code execution directly, install `pptxgenjs` if required, and generate the final deliverables inside the container without relying on skills.",
-        ]
-      : [
-          "- Use the loaded pptx and pdf skills for the final deliverables instead of inventing a separate export pipeline.",
-        ]),
+    "- Use the loaded pptx and pdf skills for the final deliverables instead of inventing a separate export pipeline.",
     "- Compute deterministic facts in Python instead of guessing.",
     "- Every number in every artifact must be traceable to a correctly filtered pandas DataFrame.",
     "- Before writing any topline number from NielsenIQ-style exports, verify that supplier-level totals reconcile to the category total within plus or minus 2 percent. If they do not, you are double-counting hierarchy subtotals.",
@@ -888,9 +907,48 @@ export async function buildBasquioSystemPrompt(input: {
   ];
 }
 
-async function loadKnowledgePack() {
-  if (!knowledgePackPromise) {
-    knowledgePackPromise = (async () => {
+function buildHaikuReportOnlySystemPrompt(input: {
+  hasCustomTemplate: boolean;
+}) {
+  return [
+    "You are Basquio, a hyperspecialised consulting-grade analyst for report-only deliverables.",
+    "You are not generating slides in this run.",
+    "You must produce a board-ready analytical leave-behind from the uploaded business evidence.",
+    "",
+    "Operating rules:",
+    "- Use the uploaded files directly inside the execution container.",
+    "- Use Python, pandas, and openpyxl as the default execution path.",
+    "- Generate ONLY these deliverables: narrative_report.md, data_tables.xlsx, and deck_manifest.json with slideCount set to 0.",
+    "- Do NOT generate deck.pptx or deck.pdf in this run.",
+    "- Compute deterministic facts in Python instead of guessing.",
+    "- Every number in every artifact must be traceable to a correctly filtered pandas DataFrame.",
+    "- Before writing any topline number from NielsenIQ-style exports, verify that supplier-level totals reconcile to the category total within plus or minus 2 percent. If they do not, you are double-counting hierarchy subtotals.",
+    "- Do not exhaustively profile the full workbook if it is not needed. Inspect only the sheets, columns, and KPI structures required to answer the brief well.",
+    "- Use concise stdout. Never print more than 20 rows from any dataframe.",
+    "- Keep all narrative output in the same language as the brief unless the brief explicitly asks for bilingual output.",
+    "- Native-language quality is mandatory. Italian must read like native Italian business writing, not translated English and not pseudo-Spanish. English must be direct, partner-grade, and free of padded corporate filler.",
+    "- Quantify the financial size of the opportunity ONLY when the source data contains explicit value or volume figures that support a direct calculation. If the data does not support a financial estimate, describe the opportunity qualitatively and state that the financial impact is not directly computable from the uploaded data.",
+    "- Every recommendation must include: the specific action, the data-backed rationale with traceable numbers, the priority ranking, and a Risk / Mitigation pair in the narrative report.",
+    "- DATA TRACEABILITY: every number in the markdown report and workbook must trace back to the uploaded evidence files. If a reviewer asks where a number comes from, the answer must be a specific file, column, row, or calculation, never an outside benchmark estimate.",
+    "- NEVER generate investment amounts, ROI figures, budget allocations, cost estimates, headcount requirements, payback periods, or forward-looking financial projections unless the source files explicitly contain the required inputs.",
+    "- Industry benchmarks from the knowledge base inform your analysis approach. They do NOT become report content unless the uploaded files explicitly support the same claim.",
+    "- Distinguish measured facts from interpretations. Hedge inferred cultural or demographic explanations instead of stating them as proven facts.",
+    "- The recommendation section and the narrative report must show a sequenced roadmap: Q1 actions, Q2 actions, Q3 actions, and Q4 review.",
+    ...(input.hasCustomTemplate
+      ? [
+          "- When a client template or brand asset is present, never inject Basquio branding or footer text into the report. Use the client name from the brief when available, otherwise remain neutral.",
+        ]
+      : []),
+  ].join("\n");
+}
+
+async function loadKnowledgePack(mode: "deck" = "deck") {
+  if (!knowledgePackPromises) {
+    knowledgePackPromises = new Map();
+  }
+
+  if (!knowledgePackPromises.has(mode)) {
+    knowledgePackPromises.set(mode, (async () => {
       const cwd = process.cwd();
       const contents = await Promise.all(
         KNOWLEDGE_PACK_FILES.map(async (relativePath) => {
@@ -904,10 +962,35 @@ async function loadKnowledgePack() {
       );
 
       return contents.filter(Boolean).join("\n");
-    })();
+    })());
   }
 
-  return knowledgePackPromise;
+  return knowledgePackPromises.get(mode)!;
+}
+
+function summarizeReportOnlyTemplateProfile(templateProfile: TemplateProfile) {
+  return JSON.stringify(
+    {
+      templateName: templateProfile.templateName,
+      sourceType: templateProfile.sourceType,
+      fonts: templateProfile.fonts.slice(0, 6),
+      colors: templateProfile.colors.slice(0, 8),
+      brandTokens: templateProfile.brandTokens
+        ? {
+            palette: templateProfile.brandTokens.palette,
+            typography: templateProfile.brandTokens.typography,
+            logo: templateProfile.brandTokens.logo
+              ? {
+                  position: templateProfile.brandTokens.logo.position,
+                }
+              : undefined,
+          }
+        : undefined,
+      warnings: templateProfile.warnings ?? [],
+    },
+    null,
+    2,
+  );
 }
 
 function summarizeTemplateProfile(templateProfile: TemplateProfile) {

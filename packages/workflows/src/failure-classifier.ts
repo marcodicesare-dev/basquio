@@ -31,6 +31,8 @@ export type FailureClassification = {
   retryAdvice: string;
 };
 
+const RETRYABLE_CONTAINER_STRING_ERROR = "container: input should be a valid string";
+
 /**
  * Classify a runtime error from the worker/generation path.
  */
@@ -182,6 +184,7 @@ export function isTransientProviderError(error: unknown): boolean {
   const msg = error.message.toLowerCase();
   const name = error.name?.toLowerCase() ?? "";
 
+  if (msg.includes(RETRYABLE_CONTAINER_STRING_ERROR)) return true;
   if (msg.includes("overloaded") || msg.includes("overloaded_error")) return true;
   if (msg.includes("rate_limit") || msg.includes("rate limit")) return true;
   if (/\b(429|529|502|503|504)\b/.test(msg)) return true;
@@ -195,6 +198,7 @@ export function isTransientProviderError(error: unknown): boolean {
 
   if ("status" in error) {
     const status = (error as { status?: number }).status;
+    if (status === 400 && msg.includes(RETRYABLE_CONTAINER_STRING_ERROR)) return true;
     if (status && [429, 502, 503, 504, 529].includes(status)) return true;
   }
 
@@ -269,7 +273,8 @@ function isUnsupportedInputError(error: unknown): boolean {
 }
 
 function matchesTransientProvider(msg: string): boolean {
-  return msg.includes("upstream error") || msg.includes("upstream infrastructure") ||
+  return msg.includes(RETRYABLE_CONTAINER_STRING_ERROR) ||
+    msg.includes("upstream error") || msg.includes("upstream infrastructure") ||
     msg.includes("connection error") || msg.includes("overloaded") ||
     msg.includes("529") || msg.includes("502") || msg.includes("503") ||
     msg.includes("rate limit") || msg.includes("stream ended") ||

@@ -66,17 +66,19 @@ export function buildAuthoringOutputConfig(
   } as const satisfies Anthropic.Beta.BetaOutputConfig;
 }
 
+export type AuthoringContainer = Anthropic.Beta.BetaContainerParams | string | undefined;
+
 export function buildAuthoringContainer(
   containerId?: string | null,
   model: ClaudeAuthorModel = "claude-sonnet-4-6",
-): Anthropic.Beta.BetaContainerParams | undefined {
+): AuthoringContainer {
   if (model === "claude-haiku-4-5") {
     // Haiku: no skills. Pass container ID only if we have one from a previous call;
     // otherwise return undefined so the API auto-creates a bare container from
     // any container_upload blocks in the user message. Passing {} causes the API
     // to reject with "container: skills can only be used when a code execution
     // tool is enabled" even though no skills are present.
-    return containerId ? { id: containerId } : undefined;
+    return containerId ?? undefined;
   }
   const skills = AUTHORING_SKILLS.map((skill) => ({ ...skill }));
   return containerId
