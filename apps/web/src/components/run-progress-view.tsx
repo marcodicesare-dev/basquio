@@ -953,8 +953,16 @@ const styles = {
 // ─── HELPERS ───────────────────────────────────────────────────
 
 function formatElapsedLabel(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor(totalSeconds / 60);
-  return `${minutes} min elapsed`;
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    const remainingMinutes = Math.floor((totalSeconds % 3600) / 60);
+    return `${hours}:${String(remainingMinutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")} elapsed`;
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, "0")} elapsed`;
 }
 
 function getDisplayedElapsedSeconds(snapshot: RunProgressSnapshot, nowMs: number) {
