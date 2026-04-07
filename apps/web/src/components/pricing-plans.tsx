@@ -20,7 +20,7 @@ const plans = [
       "Basquio branding on output",
       "Community templates only",
     ],
-    cta: { label: "Start free", href: "/sign-up" },
+    cta: { label: "Start free", href: "/sign-in?mode=sign-up" },
     highlight: false,
   },
   {
