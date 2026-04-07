@@ -68,6 +68,11 @@ interface ResolvedCustomerMessage {
   signature: string;
 }
 
+interface CustomerIdentity {
+  name: string;
+  email: string | null;
+}
+
 class DiscordApiError extends Error {
   constructor(
     readonly status: number,
@@ -146,8 +151,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, deduped: true });
   }
 
-  const customerName = resolvedMessage.author.name?.trim() || mapping?.customer_name || "Customer";
-  const customerEmail = resolvedMessage.author.email?.trim() || mapping?.customer_email || null;
+  const customerIdentity = resolveCustomerIdentity(
+    resolvedMessage.author.name,
+    resolvedMessage.author.email,
+    mapping,
+  );
+  const customerName = customerIdentity.name;
+  const customerEmail = customerIdentity.email;
   const status = normalizeConversationStatus(conversation.state);
 
   let discordThreadId = mapping?.discord_thread_id ?? null;
@@ -204,6 +214,23 @@ export async function POST(request: Request) {
 
   if (upsertError) {
     return NextResponse.json({ error: `Failed to persist thread mapping: ${upsertError.message}` }, { status: 500 });
+  }
+
+  if (
+    discordThreadId
+    && mapping
+    && (customerName !== mapping.customer_name || customerEmail !== mapping.customer_email)
+  ) {
+    await discordRequest(
+      `/channels/${discordThreadId}`,
+      discordBotToken,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: buildThreadName(customerName, customerEmail, resolvedMessage.body),
+        }),
+      },
+    ).catch(() => {});
   }
 
   return NextResponse.json({ ok: true, conversationId, discordThreadId });
@@ -411,7 +438,7 @@ async function createDiscordLivechatThread(input: {
     {
       method: "POST",
       body: JSON.stringify({
-        name: buildThreadName(input.customerName, input.preview),
+        name: buildThreadName(input.customerName, input.customerEmail, input.preview),
         auto_archive_duration: 10080,
       }),
     },
@@ -425,7 +452,9 @@ async function postMessageToDiscordThread(
   threadId: string,
   body: string,
 ): Promise<void> {
-  for (const chunk of splitDiscordMessage(body)) {
+  const formattedBody = formatCustomerRelay(body);
+
+  for (const chunk of splitDiscordMessage(formattedBody)) {
     await discordRequest(
       `/channels/${threadId}/messages`,
       discordBotToken,
@@ -472,14 +501,62 @@ function buildStarterMessage(
   customerEmail: string | null,
   conversationId: string,
 ): string {
-  const emailSegment = customerEmail ? ` <${customerEmail}>` : "";
-  return `Incoming Intercom chat from **${customerName}**${emailSegment}\nConversation \`${conversationId}\``;
+  const identityLine = customerEmail
+    ? `From **${customerName}** (${customerEmail})`
+    : `From **${customerName}**`;
+
+  return [
+    "📩 **New live chat**",
+    identityLine,
+    `Intercom conversation \`${conversationId}\``,
+    "---",
+    "Reply naturally in this thread. Basquio Bot will send your message to the customer and keep the team loop tight.",
+  ].join("\n");
 }
 
-function buildThreadName(customerName: string, preview: string): string {
+function buildThreadName(customerName: string, customerEmail: string | null, preview: string): string {
   const compactPreview = preview.replace(/\s+/g, " ").trim().slice(0, 60);
-  const base = `${customerName} — ${compactPreview || "Live chat"}`;
+  const participantLabel = buildThreadParticipantLabel(customerName, customerEmail);
+  const base = `${participantLabel} — ${compactPreview || "Live chat"}`;
   return base.slice(0, 100);
+}
+
+function resolveCustomerIdentity(
+  nextName: string | undefined,
+  nextEmail: string | undefined,
+  mapping: IntercomThreadRow | null,
+): CustomerIdentity {
+  const name = nextName?.trim() || mapping?.customer_name?.trim() || "Customer";
+  const email = nextEmail?.trim() || mapping?.customer_email?.trim() || null;
+
+  if (isGenericCustomerName(name) && email) {
+    return { name: "Visitor", email };
+  }
+
+  return {
+    name: name || "Visitor",
+    email,
+  };
+}
+
+function buildThreadParticipantLabel(customerName: string, customerEmail: string | null): string {
+  if (customerEmail) {
+    return `${customerName} (${customerEmail})`;
+  }
+
+  return isGenericCustomerName(customerName) ? "Visitor" : customerName;
+}
+
+function isGenericCustomerName(customerName: string): boolean {
+  const normalized = customerName.trim().toLowerCase();
+  return normalized.length === 0 || normalized === "customer" || normalized === "visitor";
+}
+
+function formatCustomerRelay(body: string): string {
+  return body
+    .split("\n")
+    .map((line) => line.trim().length === 0 ? ">" : `> ${line}`)
+    .join("\n");
 }
 
 function splitDiscordMessage(content: string): string[] {

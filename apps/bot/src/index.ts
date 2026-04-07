@@ -18,6 +18,7 @@ import { ensureLabels } from "./linear.js";
 import { handleDocsMessage } from "./ingestor.js";
 import { handleBotMention } from "./searcher.js";
 import { bufferLivechatMessage, handleLivechatReply } from "./livechat-handler.js";
+import { loadIntercomAdmins } from "./intercom-admins.js";
 
 const client = new Client({
   intents: [
@@ -36,6 +37,12 @@ client.once(Events.ClientReady, async (c) => {
 
   await initChannels(client);
   await ensureLabels();
+
+  if (env.INTERCOM_ACCESS_TOKEN) {
+    await loadIntercomAdmins(env.INTERCOM_ACCESS_TOKEN, env.INTERCOM_API_BASE_URL).catch((error) => {
+      console.error("[livechat] failed to load Intercom admins:", error);
+    });
+  }
 
   // Schedule weekly digest — Monday 9:00 CET
   scheduleWeeklyDigest();

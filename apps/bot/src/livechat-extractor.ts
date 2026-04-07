@@ -114,21 +114,12 @@ Respond with JSON matching:
   });
 
   const responseText = message.content[0]?.type === "text" ? message.content[0].text : "";
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  const strippedResponse = stripMarkdownCodeBlock(responseText);
+  const jsonMatch = strippedResponse.match(/\{[\s\S]*\}/);
 
   if (!jsonMatch) {
-    console.error("Failed to extract livechat JSON:", responseText);
-    return {
-      customer: { name: null, email: null, company: null },
-      sentiment: "neutral",
-      category: "general",
-      summary: "Failed to process the live chat transcript.",
-      resolution: null,
-      featureRequests: [],
-      bugReports: [],
-      salesSignals: [],
-      keyQuotes: [],
-    };
+    console.error("Failed to extract livechat JSON. Raw response:", responseText);
+    return buildFallbackExtraction();
   }
 
   try {
@@ -140,9 +131,18 @@ Respond with JSON matching:
 
     console.error("Livechat extraction schema validation failed:", result.error.issues);
   } catch (error) {
-    console.error("Failed to parse livechat extraction JSON:", error);
+    console.error("Failed to parse livechat extraction JSON:", error, responseText);
   }
 
+  return buildFallbackExtraction();
+}
+
+function stripMarkdownCodeBlock(responseText: string): string {
+  const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  return codeBlockMatch?.[1]?.trim() || responseText.trim();
+}
+
+function buildFallbackExtraction(): LivechatExtraction {
   return {
     customer: { name: null, email: null, company: null },
     sentiment: "neutral",

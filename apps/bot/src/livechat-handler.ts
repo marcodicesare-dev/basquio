@@ -3,6 +3,7 @@ import type { ExtractionResult, ExtractedActionItem, ExtractedSalesMention } fro
 import { ASSIGNMENT_RULES, env, LIVECHAT_INACTIVITY_MS } from "./config.js";
 import { postSessionSummary } from "./discord.js";
 import { extractFromLivechat, type LivechatExtraction } from "./livechat-extractor.js";
+import { resolveIntercomAdminId } from "./intercom-admins.js";
 import { createIssues } from "./linear.js";
 import { embedAndStoreTranscript } from "./transcript-embedder.js";
 import { getIntercomThreadByDiscordThreadId, saveTranscript, upsertLead } from "./supabase.js";
@@ -30,11 +31,12 @@ const processedMessageIds = new Set<string>();
 const MAX_PROCESSED_IDS = 2000;
 const BOT_STARTED_AT = new Date();
 const INTERCOM_API_VERSION = "2.13";
+const LIVECHAT_STARTER_PREFIXES = ["Incoming Intercom chat from", "📩 New live chat from"];
 
 export async function handleLivechatReply(message: Message): Promise<void> {
   if (!message.channel.isThread()) return;
 
-  if (!env.INTERCOM_ACCESS_TOKEN || !env.INTERCOM_ADMIN_ID) {
+  if (!env.INTERCOM_ACCESS_TOKEN) {
     console.warn("⚠️ Livechat reply skipped — Intercom env vars are not configured");
     await safeReact(message, "❌");
     return;
@@ -54,6 +56,14 @@ export async function handleLivechatReply(message: Message): Promise<void> {
     return;
   }
 
+  const discordName = message.member?.displayName ?? message.author.username;
+  const adminId = resolveIntercomAdminId(discordName) ?? env.INTERCOM_ADMIN_ID;
+  if (!adminId) {
+    console.warn(`⚠️ No Intercom admin ID resolved for ${discordName}`);
+    await safeReact(message, "❌");
+    return;
+  }
+
   const response = await fetch(
     `${env.INTERCOM_API_BASE_URL}/conversations/${mapping.intercom_conversation_id}/reply`,
     {
@@ -67,7 +77,7 @@ export async function handleLivechatReply(message: Message): Promise<void> {
       body: JSON.stringify({
         message_type: "comment",
         type: "admin",
-        admin_id: env.INTERCOM_ADMIN_ID,
+        admin_id: adminId,
         body: replyBody,
       }),
     },
@@ -97,11 +107,7 @@ export async function bufferLivechatMessage(message: Message): Promise<void> {
 
   let session = livechatSessions.get(message.channelId);
   if (!session) {
-    const mapping = await getIntercomThreadByDiscordThreadId(message.channelId).catch((error) => {
-      console.error(`Failed to load livechat mapping for ${message.channelId}:`, error);
-      return null;
-    });
-
+    const mapping = await loadLivechatMapping(message.channelId);
     session = {
       startedAt: message.createdAt,
       messages: [],
@@ -112,10 +118,15 @@ export async function bufferLivechatMessage(message: Message): Promise<void> {
       guildId: message.guildId,
     };
     livechatSessions.set(message.channelId, session);
+  } else if (!hasCompleteSessionMetadata(session)) {
+    const mapping = await loadLivechatMapping(message.channelId);
+    if (mapping) {
+      hydrateLivechatSession(session, mapping);
+    }
   }
 
   const author = isCustomerRelay
-    ? session.customerName?.trim() || "Customer"
+    ? buildCustomerAuthorLabel(session)
     : message.member?.displayName ?? message.author.username;
 
   session.messages.push({
@@ -151,12 +162,15 @@ async function flushLivechatThread(threadId: string): Promise<void> {
 
   const startedAt = session.startedAt;
   const endedAt = session.messages[session.messages.length - 1]!.timestamp;
+  const hasCustomerMessages = session.messages.some((message) => message.role === "customer");
   const transcript = session.messages
     .map((message) => `[${message.role === "customer" ? `Customer: ${message.author}` : `Team: ${message.author}`}]: ${message.content}`)
     .join("\n");
   const participants = [...new Set(session.messages.map((message) => message.author))];
 
-  const extraction = await extractFromLivechat(transcript);
+  const extraction = hasCustomerMessages
+    ? await extractFromLivechat(transcript)
+    : buildEmptyLivechatExtraction(session);
   const normalizedExtraction = normalizeExtraction(extraction);
 
   const transcriptId = await saveTranscript({
@@ -297,7 +311,9 @@ function buildIntercomReplyBody(message: Message): string {
 }
 
 function buildBufferedContent(message: Message, isCustomerRelay: boolean): string {
-  const base = isCustomerRelay ? message.content.trim() : message.cleanContent.trim();
+  const base = isCustomerRelay
+    ? normalizeCustomerRelayContent(message.content)
+    : message.cleanContent.trim();
   const attachmentLines = !isCustomerRelay
     ? [...message.attachments.values()].map((attachment) => attachment.url)
     : [];
@@ -315,6 +331,88 @@ function escapeHtml(input: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function buildEmptyLivechatExtraction(session: LivechatSession): LivechatExtraction {
+  return {
+    customer: {
+      name: session.customerName,
+      email: session.customerEmail,
+      company: null,
+    },
+    sentiment: "neutral",
+    category: "general",
+    summary: "No customer message was captured before the team responded, so AI extraction was skipped for this thread.",
+    resolution: null,
+    featureRequests: [],
+    bugReports: [],
+    salesSignals: [],
+    keyQuotes: [],
+  };
+}
+
+function normalizeCustomerRelayContent(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (LIVECHAT_STARTER_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
+    return "";
+  }
+
+  return trimmed
+    .split("\n")
+    .map((line) => line.startsWith("> ") ? line.slice(2) : line)
+    .join("\n")
+    .trim();
+}
+
+async function loadLivechatMapping(threadId: string) {
+  return getIntercomThreadByDiscordThreadId(threadId).catch((error) => {
+    console.error(`Failed to load livechat mapping for ${threadId}:`, error);
+    return null;
+  });
+}
+
+function hasCompleteSessionMetadata(session: LivechatSession): boolean {
+  if (!session.intercomConversationId) {
+    return false;
+  }
+
+  const customerName = session.customerName?.trim().toLowerCase() ?? "";
+  const hasResolvedName = customerName.length > 0 && customerName !== "customer";
+
+  return hasResolvedName || !!session.customerEmail?.trim();
+}
+
+function hydrateLivechatSession(
+  session: LivechatSession,
+  mapping: Awaited<ReturnType<typeof getIntercomThreadByDiscordThreadId>>,
+): void {
+  if (!mapping) {
+    return;
+  }
+
+  session.customerName = mapping.customer_name ?? session.customerName;
+  session.customerEmail = mapping.customer_email ?? session.customerEmail;
+  session.intercomConversationId = mapping.intercom_conversation_id ?? session.intercomConversationId;
+}
+
+function buildCustomerAuthorLabel(session: LivechatSession): string {
+  const customerName = session.customerName?.trim();
+  const customerEmail = session.customerEmail?.trim();
+  const hasResolvedName = !!customerName && customerName.toLowerCase() !== "customer";
+
+  if (customerEmail && hasResolvedName) {
+    return `${customerName} (${customerEmail})`;
+  }
+
+  if (customerEmail) {
+    return `Visitor (${customerEmail})`;
+  }
+
+  return hasResolvedName ? customerName : "Customer";
 }
 
 function shouldAlert(extraction: LivechatExtraction): boolean {
