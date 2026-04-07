@@ -233,3 +233,4 @@ process.on("uncaughtException", (err) => {
 // ── Login ──────────────────────────────────────────────────────────
 
 client.login(env.DISCORD_BOT_TOKEN);
+// livechat bridge deployed 2026-04-07
