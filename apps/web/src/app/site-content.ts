@@ -33,16 +33,16 @@ export const reportTypePresets = [
 
 
 export const evidencePackageInputs = [
-  "At least one CSV or spreadsheet as primary evidence",
-  "Support PDFs and notes",
-  "Report brief",
-  "Brand tokens or template",
+  "At least one CSV or Excel spreadsheet",
+  "Supporting PDFs and notes (optional)",
+  "A short brief describing what you need",
+  "Your PowerPoint template (optional)",
 ] as const;
 
 export const gettingStartedSteps = [
   {
-    title: "Bring one reporting cycle",
-    detail: "Upload the workbook evidence behind one review, then add any PDFs, notes, or brand files that help the draft land faster.",
+    title: "Upload your files",
+    detail: "Upload the spreadsheets behind your next review, plus any PDFs, notes, or brand files that add context.",
   },
   {
     title: "Write the brief",
@@ -50,7 +50,7 @@ export const gettingStartedSteps = [
   },
   {
     title: "Review the first output",
-    detail: "Start from a ready-to-edit PPTX, a polished report, and an audit-ready data workbook instead of a blank slide.",
+    detail: "Start from a ready-to-edit PowerPoint, a written report, and a data workbook instead of a blank slide.",
   },
 ] as const;
 
@@ -82,19 +82,19 @@ export const detailedComparisonRows = [
     basquio: "Yes",
   },
   {
-    label: "Deterministic analysis plus artifact QA",
+    label: "Analysis checked before delivery",
     genericAi: "No",
     slideGenerators: "No",
     basquio: "Yes",
   },
   {
-    label: "Formatted PPTX you can edit and reshare",
+    label: "Editable PowerPoint you can reshare",
     genericAi: "No",
     slideGenerators: "Yes",
     basquio: "Yes",
   },
   {
-    label: "PPTX + report + data from one run",
+    label: "PowerPoint + report + data from one run",
     genericAi: "No",
     slideGenerators: "No",
     basquio: "Yes",
@@ -129,17 +129,17 @@ export const detailedComparisonRows = [
 export const howItWorksPhases = [
   {
     stage: "01",
-    title: "Upload one evidence package",
+    title: "Upload your files",
     time: "Step 1",
     copy:
-      "Bring the workbook evidence behind one reporting cycle, then add PDFs, briefs, and brand files as supporting context. Basquio treats them as one package instead of one disconnected upload at a time.",
+      "Upload the spreadsheets, PDFs, briefs, and brand files behind one review. Basquio reads them together instead of one disconnected upload at a time.",
   },
   {
     stage: "02",
-    title: "Compute what matters",
+    title: "Analyze your data",
     time: "Step 2",
     copy:
-      "Basquio reads the package, works out how the files connect, and computes the numbers before it starts writing the story.",
+      "Basquio reads your files, works out how they connect, and computes the numbers before it starts writing the story.",
   },
   {
     stage: "03",
@@ -150,17 +150,17 @@ export const howItWorksPhases = [
   },
   {
     stage: "04",
-    title: "Deliver the artifact pack",
+    title: "Deliver your files",
     time: "Step 4",
     copy:
-      "You get an editable PowerPoint, a narrative report, and the data workbook from the same analysis, with source references attached to the claims that matter.",
+      "You get an editable PowerPoint, a written report, and the data workbook from the same analysis, with source references attached to the claims that matter.",
   },
 ] as const;
 
 export const howItWorksChecks = [
   "Numbers checked before delivery",
-  "Charts and claims tied back to source data",
-  "Brand input carried through the deck output",
+  "Charts and claims built from your source data",
+  "Your brand template applied to the final deck",
 ] as const;
 
 
@@ -254,9 +254,9 @@ export const personas = [
   {
     slug: "strategy-teams",
     title: "Strategy Teams",
-    summary: "Go from evidence package to decision-ready storyline faster.",
+    summary: "Go from raw data to decision-ready storyline faster.",
     challenge: "Strategy teams often sit between messy evidence and a room that wants one clear recommendation. The time sink is stitching the case together.",
-    heroTitle: "Go from evidence package to decision-ready storyline faster.",
+    heroTitle: "Go from raw data to decision-ready storyline faster.",
     heroCopy:
       "When the review is high stakes, the hardest part is often not the spreadsheet itself. It is deciding which signals matter, what the room should care about, and how to present that clearly.",
     bestWhen: [
@@ -289,7 +289,7 @@ export const personas = [
       "Agency teams need to move fast across several accounts without making every report feel interchangeable. Basquio helps keep the evidence, story, and client-facing design aligned.",
     bestWhen: [
       "You prepare recurring client reporting packs.",
-      "You need white-label output that still feels bespoke.",
+      "You need white-label output that still feels custom to each client.",
       "You want the same analysis to produce the full deck pack without rebuilding it by hand.",
     ],
     pressureTitle: "The real bottleneck",

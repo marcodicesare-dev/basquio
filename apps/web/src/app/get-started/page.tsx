@@ -21,10 +21,10 @@ export default function GetStartedPage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">Get started</p>
-              <h1>Start with one live reporting cycle.</h1>
+              <h1>Start with the files behind your next review.</h1>
               <p className="page-copy">
-                Basquio works best when you begin with the files behind a real review. Upload one evidence package,
-                check the first output, and decide from there whether the workflow should repeat.
+                Basquio works best on real data. Upload your spreadsheets and supporting files,
+                check the first output, and decide from there.
               </p>
             </div>
 
@@ -39,10 +39,10 @@ export default function GetStartedPage() {
           </div>
 
           <aside className="page-hero-aside stack">
-            <p className="artifact-kind">Evidence package</p>
+            <p className="artifact-kind">What to upload</p>
             <p>
-              An evidence package is simply the set of files behind one reporting cycle. Basquio reads them as one
-              package instead of one disconnected upload at a time.
+              Upload all the files behind one review together. Basquio reads them as one package instead of
+              one disconnected upload at a time.
             </p>
           </aside>
         </div>
@@ -65,7 +65,7 @@ export default function GetStartedPage() {
         <article className="technical-panel stack-lg">
           <div className="stack">
             <p className="section-label light">How the first run works</p>
-            <h2>Three steps from package to output.</h2>
+            <h2>Three steps from upload to finished deck.</h2>
           </div>
 
           <div className="stack">
@@ -86,9 +86,9 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">What you receive</p>
-            <h2>An editable PPTX, a narrative report, and a workbook.</h2>
+            <h2>An editable PowerPoint, a written report, and a data workbook.</h2>
             <p className="muted">
-              The deck stays editable, the report captures the written story, and the workbook preserves the traceable data pack behind it.
+              The deck stays editable, the report captures the written story, and the workbook preserves the data behind it.
             </p>
           </div>
         </article>
@@ -124,7 +124,7 @@ export default function GetStartedPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to start"
         title="Bring the files behind your next review."
-        copy="Start with one live package and see how much of the reporting loop Basquio can take off the team."
+        copy="Start with one real review and see how much time Basquio saves you."
         primaryLabel="Try with your data"
         primaryHref="/jobs/new"
         secondaryLabel="How it works"

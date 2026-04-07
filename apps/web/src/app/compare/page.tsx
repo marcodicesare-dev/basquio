@@ -32,7 +32,7 @@ export default function ComparePage() {
           <h1>What matters when the deck has to survive review.</h1>
           <p className="page-copy">
             Generic AI can draft language. Slide generators can help with layout. Neither reads your files, checks the
-            math, or hands you a branded deck with every claim traced to source. Basquio does.
+            math, or hands you a branded deck. Basquio does.
           </p>
         </div>
       </section>
@@ -88,8 +88,8 @@ export default function ComparePage() {
             <article className="panel stack">
               <h3>Your category review is tomorrow.</h3>
               <p className="muted">
-                ChatGPT can write bullets. Gamma can make slides. Only Basquio can read your 6 source files, check the
-                math, and hand you a branded deck with every claim traced to source.
+                ChatGPT can write bullets. Gamma can make slides. Only Basquio can read your source files, check the
+                math, and hand you a branded deck with real charts from your data.
               </p>
             </article>
             <article className="panel stack">
@@ -106,7 +106,7 @@ export default function ComparePage() {
       <PublicSiteFooterCta
         eyebrow="Want to see the workflow"
         title="See what happens between the upload and the finished deck."
-        copy="The workflow page shows how Basquio moves from one evidence package to one review-ready story."
+        copy="The workflow page shows how Basquio moves from your uploaded files to a review-ready deck."
         secondaryLabel="Read how it works"
         secondaryHref="/how-it-works"
       />

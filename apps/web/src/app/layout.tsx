@@ -20,11 +20,11 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://basquio.com"),
   title: {
-    default: "Basquio — AI-Powered Data-to-Presentation Analysis",
+    default: "Basquio — Turn Data into Finished Analysis Decks",
     template: "%s | Basquio",
   },
   description:
-    "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook. The only tool that bridges data analysis and presentation design.",
+    "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, an editable PowerPoint, and a data workbook. The only tool that does the analysis AND builds the presentation.",
   icons: {
     icon: "/brand/svg/favicon/basquio-favicon.svg",
     shortcut: "/brand/png/favicon/basquio-favicon-32.png",
@@ -34,18 +34,18 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     siteName: "Basquio",
-    title: "Basquio — AI-Powered Data-to-Presentation Analysis",
+    title: "Basquio — Turn Data into Finished Analysis Decks",
     description:
-      "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook.",
+      "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
     images: [{ url: "/brand/png/logo/basquio-logo-dark-bg-4x.png", width: 1200, height: 630, alt: "Basquio" }],
   },
   twitter: {
     card: "summary_large_image",
     site: "@basquio",
     creator: "@basquio",
-    title: "Basquio — AI-Powered Data-to-Presentation Analysis",
+    title: "Basquio — Turn Data into Finished Analysis Decks",
     description:
-      "Upload your data. Get back a finished analysis deck with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook.",
+      "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
     images: ["/brand/png/logo/basquio-logo-dark-bg-4x.png"],
   },
   alternates: {
@@ -75,7 +75,7 @@ const jsonLd = {
         "https://www.linkedin.com/company/basquio",
       ],
       description:
-        "AI-native business intelligence tool that turns raw data files into finished analysis decks with real charts, traceable numbers, editable PPTX output, a narrative report, and a data workbook.",
+        "Basquio turns raw CSV and Excel data into finished PowerPoint decks with real charts, written narrative analysis, and branded templates. Upload a spreadsheet, describe the analysis in two sentences, get a 10-15 slide presentation with methodology, findings, and recommendations.",
     },
     {
       "@type": "SoftwareApplication",

@@ -37,7 +37,7 @@ const problemCards = [
 const workflowSteps = [
   {
     stage: "01",
-    title: "Upload your evidence",
+    title: "Upload your data",
     detail: "Spreadsheets, notes, PDFs, and a template if you have one.",
   },
   {
@@ -48,7 +48,7 @@ const workflowSteps = [
   {
     stage: "03",
     title: "Review and send",
-    detail: "Edit the PPTX, send the report, keep the workbook. Same story, one pack.",
+    detail: "Edit the PowerPoint, send the report, keep the workbook. Same story, three files.",
   },
 ] as const;
 
@@ -144,7 +144,7 @@ export default function HomePage() {
           <p className="section-label light">The output</p>
           <h2>Upload once. Present tomorrow.</h2>
           <p className="muted">
-            A finished analysis deck with real charts, a narrative report, and an editable PPTX. Ready to review, not rebuild.
+            A finished analysis deck with real charts, a narrative report, and an editable PowerPoint. Ready to review, not rebuild.
           </p>
         </div>
 
@@ -199,8 +199,8 @@ export default function HomePage() {
 
       <PublicSiteFooterCta
         eyebrow="Ready to start"
-        title="Put one live review through Basquio."
-        copy="Start with the files behind a real meeting. If the first draft is strong enough to edit, the workflow is doing its job."
+        title="Try it with the files behind your next meeting."
+        copy="If the first draft is strong enough to edit, the tool is doing its job."
         primaryLabel="Try it with your data"
         primaryHref="/jobs/new"
         secondaryLabel="See pricing"

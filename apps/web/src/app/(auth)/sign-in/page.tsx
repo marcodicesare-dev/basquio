@@ -30,23 +30,23 @@ export default async function SignInPage({
       <section className="panel auth-intro-panel stack-lg">
         <div className="stack">
           <p className="section-label">Basquio</p>
-          <h1>Your next report starts with one evidence package.</h1>
+          <h1>Upload your data. Get your first deck.</h1>
           <p className="muted">
-            Upload your data, describe the brief, and get back a branded PPTX, report, and data workbook with every number traced to source.
+            Describe what you need, upload your spreadsheet, and get back an editable PowerPoint, a written report, and a data workbook.
           </p>
         </div>
         <div className="auth-value-props stack">
           <div className="auth-value-prop">
-            <strong>Async progress</strong>
+            <strong>Track your deck</strong>
             <span className="muted">Follow each phase from upload to finished deck</span>
           </div>
           <div className="auth-value-prop">
-            <strong>Traceable evidence</strong>
-            <span className="muted">Every claim linked to your source data</span>
+            <strong>Numbers from your data</strong>
+            <span className="muted">Every chart and claim built from your actual files</span>
           </div>
           <div className="auth-value-prop">
-            <strong>Two formats, one analysis</strong>
-            <span className="muted">Editable PPTX + narrative report + workbook</span>
+            <strong>Three files, one analysis</strong>
+            <span className="muted">Editable PowerPoint + written report + data workbook</span>
           </div>
         </div>
       </section>

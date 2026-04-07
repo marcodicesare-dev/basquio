@@ -45,7 +45,7 @@ const faqs = [
   {
     question: "What do I get with each output type?",
     answer:
-      "Every run includes a written analysis (2000+ words with methodology, findings, and recommendations) and a data workbook (XLSX). Deck and Deep-Dive also include an editable PPTX with real charts. Deep-Dive runs a deeper analytical pass for more nuanced findings.",
+      "Every run includes a written analysis (2000+ words with methodology, findings, and recommendations) and a data workbook. Deck and Deep-Dive also include an editable PowerPoint with real charts. Deep-Dive runs a deeper analytical pass for more nuanced findings.",
   },
   {
     question: "How do credits work?",
@@ -95,7 +95,7 @@ const planComparisonRows = [
     values: ["Single user", "Single user", "Single user", "Shared workspace"],
   },
   {
-    label: "Best buying motion",
+    label: "How to start",
     values: ["Try before paying", "Subscribe", "Subscribe", "Talk to sales"],
   },
 ] as const;
@@ -152,7 +152,7 @@ export default function PricingPage() {
           <div className="pricing-comparison-head">
             <div className="stack-xs">
               <p className="section-label light">Plan comparison</p>
-              <h2>Pick the buying motion first. Scope comes second.</h2>
+              <h2>Pick your plan. Adjust scope later.</h2>
             </div>
             <p className="muted">
               Every plan uses the same analysis engine. Higher tiers unlock cheaper credits, more template slots, and cleaner output.

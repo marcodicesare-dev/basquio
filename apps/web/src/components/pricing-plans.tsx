@@ -31,7 +31,7 @@ const plans = [
     monthlyFull: "$19",
     unit: "/mo",
     description: "For recurring reporting work that needs clean output without Basquio branding.",
-    bestFor: "Best for solo operators who need one stable lane and a couple of client templates.",
+    bestFor: "Best for solo operators with recurring reports and a couple of client templates.",
     features: [
       "No branding on output",
       "30 credits/month",
@@ -49,7 +49,7 @@ const plans = [
     annualPrice: "$124",
     monthlyFull: "$149",
     unit: "/mo",
-    description: "For heavier recurring delivery where credits should stay cheap and supply should stay high.",
+    description: "For teams running multiple reports every month who need cheaper credits and priority access.",
     bestFor: "Best for consultants, agencies, and operators running multiple full reviews every month.",
     features: [
       "No branding on output",
@@ -69,8 +69,8 @@ const plans = [
     annualPrice: "Custom",
     monthlyFull: "",
     unit: "",
-    description: "Custom commercial terms for larger teams, procurement review, and bespoke controls.",
-    bestFor: "Best for shared workspaces, approval-heavy billing, and higher-volume reporting programs.",
+    description: "Custom billing, shared workspace, and dedicated support for larger teams.",
+    bestFor: "Best for teams that need shared access, custom billing, and higher-volume reporting.",
     features: [
       "Shared workspace",
       "Custom credits and billing",

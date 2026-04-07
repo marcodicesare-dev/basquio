@@ -23,11 +23,10 @@ export default function HowItWorksPage() {
           <div className="stack-xl">
             <div className="stack">
               <p className="section-label">How it works</p>
-              <h1>Four stages. One accountable deck engine.</h1>
+              <h1>Four stages. One finished deck.</h1>
               <p className="page-copy">
-                You upload one evidence package: the CSVs, spreadsheets, PDFs, briefs, and brand files behind a single
-                reporting cycle. Basquio reads every file, computes the numbers, shapes the story, checks the artifacts,
-                and delivers a deck you can present.
+                Upload your spreadsheets, PDFs, briefs, and brand files. Basquio reads every file, computes the numbers,
+                shapes the story, checks the output, and delivers a deck you can present.
               </p>
             </div>
           </div>
@@ -62,9 +61,8 @@ export default function HowItWorksPage() {
           <p className="section-label light">What makes Basquio different</p>
           <h2>Every deck is checked before delivery.</h2>
           <p className="muted">
-            Basquio combines deterministic analysis, template-aware deck generation, and artifact QA before
-            anything is published. Broken exports and mismatched artifact metadata are blocked instead of being
-            silently shipped.
+            Basquio checks the analysis, verifies the charts match your data, and applies your brand template before
+            anything is published. Broken exports are blocked instead of being silently shipped.
           </p>
         </div>
         <ul className="clean-list">
@@ -92,18 +90,18 @@ export default function HowItWorksPage() {
       <section className="panel technical-panel">
         <div className="stack">
           <p className="section-label">What you receive</p>
-          <h2>One story across the full artifact pack.</h2>
+          <h2>One story across three files.</h2>
           <p className="muted">
-            An editable PowerPoint, a narrative report, and the audit workbook are built from the same
+            An editable PowerPoint, a written report, and the data workbook — all built from the same
             analysis, the same narrative, and the same verified claims.
           </p>
         </div>
       </section>
 
       <PublicSiteFooterCta
-        eyebrow="Ready to try one package"
+        eyebrow="Ready to try it"
         title="Bring the files behind your next review."
-        copy="Start with one reporting cycle and let Basquio show you what the first draft can look like."
+        copy="Start with one real review and let Basquio show you what the first draft can look like."
         secondaryLabel="Compare the categories"
         secondaryHref="/compare"
       />
