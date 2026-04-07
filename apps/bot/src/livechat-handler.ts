@@ -312,7 +312,7 @@ function buildIntercomReplyBody(message: Message): string {
 
 function buildBufferedContent(message: Message, isCustomerRelay: boolean): string {
   const base = isCustomerRelay
-    ? normalizeCustomerRelayContent(message.content)
+    ? normalizeCustomerRelayContent(extractCustomerRelayText(message))
     : message.cleanContent.trim();
   const attachmentLines = !isCustomerRelay
     ? [...message.attachments.values()].map((attachment) => attachment.url)
@@ -366,6 +366,23 @@ function normalizeCustomerRelayContent(content: string): string {
     .map((line) => line.startsWith("> ") ? line.slice(2) : line)
     .join("\n")
     .trim();
+}
+
+function extractCustomerRelayText(message: Message): string {
+  if (message.content.trim()) {
+    return message.content.trim();
+  }
+
+  const embed = message.embeds[0];
+  if (!embed) {
+    return "";
+  }
+
+  if (embed.title?.trim().toLowerCase() === "new live chat") {
+    return "";
+  }
+
+  return embed.description?.trim() || "";
 }
 
 async function loadLivechatMapping(threadId: string) {

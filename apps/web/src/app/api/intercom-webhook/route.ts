@@ -532,7 +532,7 @@ async function postMessageToDiscordThread(input: {
       {
         method: "POST",
         body: JSON.stringify({
-          content: chunk,
+          embeds: [buildCustomerRelayEmbed(input.customerIdentity, chunk)],
           allowed_mentions: { parse: [] },
         }),
       },
@@ -673,6 +673,19 @@ function buildCustomerRelayUsername(customerIdentity: CustomerIdentity): string 
   return buildThreadParticipantLabel(customerIdentity.name, customerIdentity.email).slice(0, 80);
 }
 
+function buildCustomerRelayEmbed(
+  customerIdentity: CustomerIdentity,
+  body: string,
+): Record<string, unknown> {
+  return {
+    color: 0x334155,
+    author: {
+      name: buildCustomerRelayUsername(customerIdentity),
+    },
+    description: body,
+  };
+}
+
 function formatCustomerRelay(body: string): string {
   return body
     .split("\n")
@@ -716,14 +729,21 @@ async function createTemporaryDiscordWebhook(
   channelId: string,
   botToken: string,
 ): Promise<DiscordWebhook> {
-  return discordRequest<DiscordWebhook>(
-    `/channels/${channelId}/webhooks`,
-    botToken,
-    {
-      method: "POST",
-      body: JSON.stringify({ name: "Basquio Live Chat" }),
-    },
-  );
+  try {
+    return await discordRequest<DiscordWebhook>(
+      `/channels/${channelId}/webhooks`,
+      botToken,
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Basquio Live Chat" }),
+      },
+    );
+  } catch (error) {
+    if (error instanceof DiscordApiError && error.status === 403) {
+      console.warn("[intercom-webhook] Missing Discord Manage Webhooks permission in #live-chat; using bot fallback");
+    }
+    throw error;
+  }
 }
 
 async function executeDiscordWebhook<T = Record<string, unknown>>(
