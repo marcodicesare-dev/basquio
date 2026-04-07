@@ -155,10 +155,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: "No customer text found." });
   }
 
-  if (mapping?.last_customer_message_signature === resolvedMessage.signature) {
-    return NextResponse.json({ ok: true, deduped: true });
-  }
-
   const customerIdentity = resolveCustomerIdentity(
     resolvedMessage.author,
     mapping,
@@ -167,34 +163,38 @@ export async function POST(request: Request) {
   const customerName = customerIdentity.name;
   const customerEmail = customerIdentity.email;
   const status = normalizeConversationStatus(conversation.state);
+  const identityChanged = customerName !== mapping?.customer_name || customerEmail !== mapping?.customer_email;
+  const isDuplicateMessage = mapping?.last_customer_message_signature === resolvedMessage.signature;
 
   let discordThreadId = mapping?.discord_thread_id ?? null;
   let discordWebhook: DiscordWebhook | null = null;
 
   try {
-    discordWebhook = await createTemporaryDiscordWebhook(livechatChannelId, discordBotToken).catch(() => null);
+    if (!isDuplicateMessage) {
+      discordWebhook = await createTemporaryDiscordWebhook(livechatChannelId, discordBotToken).catch(() => null);
 
-    if (!discordThreadId) {
-      discordThreadId = await createDiscordLivechatThread({
+      if (!discordThreadId) {
+        discordThreadId = await createDiscordLivechatThread({
+          discordBotToken,
+          discordWebhook,
+          livechatChannelId,
+          customerIdentity,
+          preview: resolvedMessage.body,
+          conversationId,
+          status,
+        });
+      }
+
+      await postMessageToDiscordThread({
         discordBotToken,
         discordWebhook,
-        livechatChannelId,
+        threadId: discordThreadId,
         customerIdentity,
-        preview: resolvedMessage.body,
-        conversationId,
-        status,
+        body: resolvedMessage.body,
       });
     }
-
-    await postMessageToDiscordThread({
-      discordBotToken,
-      discordWebhook,
-      threadId: discordThreadId,
-      customerIdentity,
-      body: resolvedMessage.body,
-    });
   } catch (error) {
-    if (error instanceof DiscordApiError && error.status === 404) {
+    if (!isDuplicateMessage && error instanceof DiscordApiError && error.status === 404) {
       discordThreadId = await createDiscordLivechatThread({
         discordBotToken,
         discordWebhook,
@@ -230,7 +230,9 @@ export async function POST(request: Request) {
         customer_name: customerName,
         customer_email: customerEmail,
         status,
-        last_customer_message_signature: resolvedMessage.signature,
+        last_customer_message_signature: isDuplicateMessage
+          ? mapping?.last_customer_message_signature
+          : resolvedMessage.signature,
         metadata: {
           last_intercom_message_id: resolvedMessage.messageId,
           last_webhook_topic: topic,
@@ -250,7 +252,7 @@ export async function POST(request: Request) {
   if (
     discordThreadId
     && mapping
-    && (customerName !== mapping.customer_name || customerEmail !== mapping.customer_email)
+    && identityChanged
   ) {
     await discordRequest(
       `/channels/${discordThreadId}`,
@@ -262,6 +264,10 @@ export async function POST(request: Request) {
         }),
       },
     ).catch(() => {});
+  }
+
+  if (isDuplicateMessage) {
+    return NextResponse.json({ ok: true, deduped: true, identityUpdated: identityChanged });
   }
 
   return NextResponse.json({ ok: true, conversationId, discordThreadId });
