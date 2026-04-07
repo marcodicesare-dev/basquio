@@ -22,6 +22,8 @@ export const extractedSalesMentionSchema = z.object({
     "demo_scheduled",
     "pilot",
     "negotiation",
+    "closed_won",
+    "closed_lost",
   ]),
 }).passthrough();
 
@@ -44,7 +46,7 @@ export const extractionResultSchema = z.object({
 
 // ── Transcript schemas ─────────────────────────────────────────────
 
-export const sessionTypeSchema = z.enum(["voice", "text"]);
+export const sessionTypeSchema = z.enum(["voice", "text", "livechat"]);
 
 export const transcriptRecordSchema = z.object({
   id: z.string().uuid().optional(),

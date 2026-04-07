@@ -74,7 +74,7 @@ Rules:
     return null;
   }
 
-  return matched;
+  return { docId: matched.id, filename: matched.filename };
 }
 
 /**
@@ -155,7 +155,12 @@ export async function search(query: string): Promise<SearchResult> {
           day: "numeric",
           year: "numeric",
         });
-        sourceName = `Voice session — ${date} (${transcript.participants.join(", ")})`;
+        const sessionLabel = transcript.session_type === "voice"
+          ? "Voice session"
+          : transcript.session_type === "livechat"
+            ? "Live chat"
+            : "Text session";
+        sourceName = `${sessionLabel} — ${date} (${transcript.participants.join(", ")})`;
       }
     }
 
@@ -168,7 +173,7 @@ export async function search(query: string): Promise<SearchResult> {
       metadata: chunk.metadata,
     });
 
-    const typeLabel = chunk.source_type === "document" ? "uploaded doc" : "voice/text transcript";
+      const typeLabel = chunk.source_type === "document" ? "uploaded doc" : "voice/text/live chat transcript";
     contextParts.push(`[${i + 1}] (${typeLabel}: ${sourceName}) ${chunk.content}`);
   }
 
@@ -179,7 +184,7 @@ export async function search(query: string): Promise<SearchResult> {
     system: `You are Basquio's knowledge assistant. Answer the question using ONLY the provided context chunks. Cite sources by [number]. If the context doesn't contain enough info, say so — never make things up. Keep answers concise (2-5 sentences) unless the question demands detail. IMPORTANT: Respond in the same language as the question (e.g. Italian question → Italian answer).
 
 Important:
-- Each source is labeled as "uploaded doc" or "voice/text transcript". Treat them as distinct — an uploaded screenshot about a person is different from a voice session where a similarly-named team member participated.
+- Each source is labeled as "uploaded doc" or "voice/text/live chat transcript". Treat them as distinct — an uploaded screenshot about a person is different from a conversation transcript where a similarly-named team member participated.
 - Do NOT conflate people who share a name. A document mentioning "Francesco Lama" is not the same person as a team member called "Francesco" in a voice session, unless the content explicitly links them.
 - Prioritize uploaded docs when the question is about specific names, leads, or external contacts.`,
     messages: [{

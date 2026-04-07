@@ -21,6 +21,7 @@ const ASSIGNEE_COLORS: Record<string, string> = {
 
 let botChannel: TextChannel | null = null;
 let generalChannel: TextChannel | null = null;
+let livechatChannel: TextChannel | null = null;
 
 let discordClient: Client | null = null;
 
@@ -39,8 +40,17 @@ export async function initChannels(client: Client): Promise<void> {
     ?? await client.channels.fetch(env.DISCORD_GENERAL_CHANNEL_ID).catch(() => null);
   if (general instanceof TextChannel) generalChannel = general;
 
+  if (env.DISCORD_LIVECHAT_CHANNEL_ID) {
+    const livechat = client.channels.cache.get(env.DISCORD_LIVECHAT_CHANNEL_ID)
+      ?? await client.channels.fetch(env.DISCORD_LIVECHAT_CHANNEL_ID).catch(() => null);
+    if (livechat instanceof TextChannel) livechatChannel = livechat;
+  }
+
   if (!botChannel) console.error("⚠️ Could not find #basquio-ai channel");
   if (!generalChannel) console.error("⚠️ Could not find #general channel");
+  if (env.DISCORD_LIVECHAT_CHANNEL_ID && !livechatChannel) {
+    console.error("⚠️ Could not find #live-chat channel");
+  }
 }
 
 export function getBotChannel(): TextChannel | null {
@@ -51,17 +61,22 @@ export function getGeneralChannel(): TextChannel | null {
   return generalChannel;
 }
 
+export function getLivechatChannel(): TextChannel | null {
+  return livechatChannel;
+}
+
 /**
  * Post a session summary to #basquio-ai after processing.
  */
 export async function postSessionSummary(opts: {
-  sessionType: "voice" | "text";
+  sessionType: "voice" | "text" | "livechat";
   duration: string;
   participants: string[];
   extraction: ExtractionResult;
   issues: CreatedIssue[];
   transcriptUrl: string;
   crmUpdates: string[];
+  alertPrefix?: string | null;
 }): Promise<string | null> {
   if (!botChannel) {
     console.error("Bot channel not initialized");
@@ -71,7 +86,10 @@ export async function postSessionSummary(opts: {
   const lines: string[] = [];
 
   // Header
-  const icon = opts.sessionType === "voice" ? "🎙️" : "💬";
+  const icon = opts.sessionType === "voice" ? "🎙️" : opts.sessionType === "livechat" ? "🛟" : "💬";
+  if (opts.alertPrefix) {
+    lines.push(opts.alertPrefix);
+  }
   lines.push(
     `${icon} **SESSION ENDED** — ${opts.duration} | ${opts.participants.join(", ")}`,
   );

@@ -9,6 +9,7 @@ const envSchema = z.object({
   DISCORD_VOICE_CHANNEL_ID: z.string().min(1),
   DISCORD_BOT_CHANNEL_ID: z.string().min(1),
   DISCORD_GENERAL_CHANNEL_ID: z.string().min(1),
+  DISCORD_LIVECHAT_CHANNEL_ID: z.string().min(1).optional(),
 
   // Deepgram
   DEEPGRAM_API_KEY: z.string().min(1),
@@ -19,6 +20,9 @@ const envSchema = z.object({
   // Linear
   LINEAR_API_KEY: z.string().min(1),
   LINEAR_TEAM_ID: z.string().min(1),
+  INTERCOM_ACCESS_TOKEN: z.string().min(1).optional(),
+  INTERCOM_ADMIN_ID: z.string().min(1).optional(),
+  INTERCOM_API_BASE_URL: z.string().url().default("https://api.intercom.io"),
 
   // Supabase
   SUPABASE_URL: z.string().url(),
@@ -73,12 +77,16 @@ export const ASSIGNMENT_RULES: Record<string, string[]> = {
   feedback: ["Marco", "Rossella"],
   finance: ["Fra"],
   marketing: ["Giulia"],
+  "bug-report-livechat": ["Marco"],
+  "feature-request-livechat": ["Veronica"],
+  "sales-signal-livechat": ["Ale"],
 };
 
 // Session timing
 export const VOICE_EMPTY_TIMEOUT_MS = 30 * 1000; // 30s empty → end session
 export const TEXT_INACTIVITY_MS = 5 * 60 * 1000; // 5 min silence after last message → end session
 export const TEXT_MAX_SESSION_MS = 60 * 60 * 1000; // 1 hour hard cap (safety net for never-ending chats)
+export const LIVECHAT_INACTIVITY_MS = 10 * 60 * 1000; // 10 min silence after last message → end thread session
 export const AUDIO_CHUNK_DURATION_MS = 5 * 60 * 1000; // 5 min audio chunks
 export const LONG_SESSION_SEGMENT_MS = 3 * 60 * 60 * 1000; // 3 hour segments
 

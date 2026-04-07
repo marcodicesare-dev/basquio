@@ -30,6 +30,7 @@ export async function ensureLabels(): Promise<void> {
     feedback: "#2d9cdb",
     "from-voice": "#9b51e0",
     "from-text": "#56ccf2",
+    "from-livechat": "#f2994a",
     finance: "#27ae60",
     marketing: "#ff6b9d",
     sales: "#eb5757",
@@ -127,7 +128,7 @@ export interface CreatedIssue {
 export async function createIssues(
   actionItems: ExtractedActionItem[],
   transcriptUrl: string,
-  sessionType: "voice" | "text",
+  sessionType: "voice" | "text" | "livechat",
 ): Promise<CreatedIssue[]> {
   const linear = getClient();
   if (labelCache.size === 0) await ensureLabels();
@@ -166,10 +167,15 @@ export async function createIssues(
       labelNames.push(item.category);
     }
 
-    const sourceLabel = labelCache.get(sessionType === "voice" ? "from-voice" : "from-text");
+    const sourceLabelName = sessionType === "voice"
+      ? "from-voice"
+      : sessionType === "livechat"
+        ? "from-livechat"
+        : "from-text";
+    const sourceLabel = labelCache.get(sourceLabelName);
     if (sourceLabel) {
       labelIds.push(sourceLabel);
-      labelNames.push(sessionType === "voice" ? "from-voice" : "from-text");
+      labelNames.push(sourceLabelName);
     }
 
     // Resolve assignee + add color-coded assignee label
@@ -187,7 +193,9 @@ export async function createIssues(
       sourceLines.push(`Source: [Transcript](${transcriptUrl})`);
     }
     sourceLines.push(
-      `Extracted by Basquio Bot from ${sessionType === "voice" ? "🎙️ voice" : "💬 text"} session`,
+      `Extracted by Basquio Bot from ${
+        sessionType === "voice" ? "🎙️ voice" : sessionType === "livechat" ? "🛟 live chat" : "💬 text"
+      } session`,
     );
 
     const description = [

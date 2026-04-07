@@ -19,7 +19,7 @@ function getClient(): SupabaseClient {
 // ── Transcripts ────────────────────────────────────────────────────
 
 export interface SaveTranscriptInput {
-  sessionType: "voice" | "text";
+  sessionType: "voice" | "text" | "livechat";
   startedAt: Date;
   endedAt: Date;
   participants: string[];
@@ -27,6 +27,7 @@ export interface SaveTranscriptInput {
   extraction: ExtractionResult;
   audioStoragePath?: string;
   discordMessageId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export async function saveTranscript(input: SaveTranscriptInput): Promise<string> {
@@ -48,6 +49,7 @@ export async function saveTranscript(input: SaveTranscriptInput): Promise<string
       sales_mentions: input.extraction.sales_mentions,
       audio_storage_path: input.audioStoragePath ?? null,
       discord_message_id: input.discordMessageId ?? null,
+      metadata: input.metadata ?? {},
     })
     .select("id")
     .single();
@@ -392,14 +394,48 @@ export async function getDocumentChunksById(
 export async function getTranscriptMeta(transcriptId: string): Promise<{
   started_at: string;
   participants: string[];
+  session_type: "voice" | "text" | "livechat";
 } | null> {
   const db = getClient();
   const { data } = await db
     .from("transcripts")
-    .select("started_at, participants")
+    .select("started_at, participants, session_type")
     .eq("id", transcriptId)
     .maybeSingle();
   return data;
+}
+
+// ── Intercom Thread Mapping ─────────────────────────────────────
+
+export interface IntercomThreadRecord {
+  intercom_conversation_id: string;
+  discord_thread_id: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  status: string;
+  last_customer_message_signature: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getIntercomThreadByDiscordThreadId(
+  discordThreadId: string,
+): Promise<IntercomThreadRecord | null> {
+  const db = getClient();
+  const { data, error } = await db
+    .from("intercom_threads")
+    .select(
+      "intercom_conversation_id, discord_thread_id, customer_name, customer_email, status, last_customer_message_signature, metadata, created_at, updated_at",
+    )
+    .eq("discord_thread_id", discordThreadId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load Intercom thread mapping: ${error.message}`);
+  }
+
+  return data as IntercomThreadRecord | null;
 }
 
 // ── Transcript Embedding ────────────────────────────────────────

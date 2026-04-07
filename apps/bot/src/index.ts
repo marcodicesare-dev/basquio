@@ -17,6 +17,7 @@ import { handleTextMessage, handleReaction } from "./text-handler.js";
 import { ensureLabels } from "./linear.js";
 import { handleDocsMessage } from "./ingestor.js";
 import { handleBotMention } from "./searcher.js";
+import { bufferLivechatMessage, handleLivechatReply } from "./livechat-handler.js";
 
 const client = new Client({
   intents: [
@@ -77,10 +78,31 @@ client.on(Events.VoiceStateUpdate, async (oldState: VoiceState, newState: VoiceS
 // ── Text Messages ──────────────────────────────────────────────────
 
 client.on(Events.MessageCreate, (message: Message) => {
-  if (message.author.bot) return;
-  if (message.webhookId) return; // Skip webhook messages
   // Skip system messages (join notifications, boosts, etc.)
   if (message.type !== MessageType.Default && message.type !== MessageType.Reply) return;
+
+  const isLivechatThread = !!env.DISCORD_LIVECHAT_CHANNEL_ID
+    && message.channel.isThread()
+    && message.channel.parentId === env.DISCORD_LIVECHAT_CHANNEL_ID;
+
+  if (isLivechatThread) {
+    const isFromWebhookReceiver = message.author.id === client.user?.id;
+    const isTeamReply = !message.author.bot && !message.webhookId && !isFromWebhookReceiver;
+
+    if (isTeamReply) {
+      handleLivechatReply(message).catch((err) => {
+        console.error("[livechat] reply forward failed:", err);
+      });
+    }
+
+    bufferLivechatMessage(message).catch((err) => {
+      console.error("[livechat] buffer failed:", err);
+    });
+    return;
+  }
+
+  if (message.author.bot) return;
+  if (message.webhookId) return; // Skip webhook messages
 
   // #docs channel — file ingestion
   if (message.channelId === env.DISCORD_DOCS_CHANNEL_ID) {
