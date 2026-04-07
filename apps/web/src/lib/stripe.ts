@@ -84,6 +84,11 @@ export const PLAN_CREDITS: Record<string, { credits: number; templateSlots: numb
     .map(([id, config]) => [id, { credits: config.creditsIncluded, templateSlots: config.templateSlots }]),
 );
 
+type StripeCustomerMappingRow = {
+  user_id: string;
+  stripe_customer_id: string;
+};
+
 /**
  * Get or create a Stripe customer for a Supabase user.
  * Checks stripe_customers mapping table first, creates if missing.
@@ -95,68 +100,169 @@ export async function getOrCreateStripeCustomer(
   userId: string,
   email: string,
 ): Promise<string> {
-  // Check mapping table
-  const lookupUrl = new URL("/rest/v1/stripe_customers", supabaseUrl);
-  lookupUrl.searchParams.set("user_id", `eq.${userId}`);
-  lookupUrl.searchParams.set("select", "stripe_customer_id");
-  lookupUrl.searchParams.set("limit", "1");
-
-  const lookupRes = await fetch(lookupUrl, {
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (lookupRes.ok) {
-    const rows = await lookupRes.json();
-    if (rows.length > 0 && rows[0].stripe_customer_id) {
-      return rows[0].stripe_customer_id;
+  const existingMapping = await getStripeCustomerMapping(supabaseUrl, serviceKey, userId);
+  if (existingMapping?.stripe_customer_id) {
+    const existingCustomer = await retrieveStripeCustomer(stripe, existingMapping.stripe_customer_id);
+    if (existingCustomer) {
+      return existingCustomer.id;
     }
   }
 
-  // Create Stripe customer
+  const matchedCustomer = await findReusableStripeCustomer(stripe, userId, email);
+  if (matchedCustomer) {
+    await saveStripeCustomerMapping(supabaseUrl, serviceKey, userId, matchedCustomer.id);
+    return matchedCustomer.id;
+  }
+
   const customer = await stripe.customers.create({
-    email,
+    ...(email ? { email } : {}),
     metadata: { supabase_user_id: userId },
   });
 
-  // Save mapping (handle race condition: another request may have inserted first)
+  await saveStripeCustomerMapping(supabaseUrl, serviceKey, userId, customer.id);
+
+  return customer.id;
+}
+
+async function getStripeCustomerMapping(
+  supabaseUrl: string,
+  serviceKey: string,
+  userId: string,
+): Promise<StripeCustomerMappingRow | null> {
+  const lookupUrl = new URL("/rest/v1/stripe_customers", supabaseUrl);
+  lookupUrl.searchParams.set("user_id", `eq.${userId}`);
+  lookupUrl.searchParams.set("select", "user_id,stripe_customer_id");
+  lookupUrl.searchParams.set("limit", "1");
+
+  const lookupRes = await fetch(lookupUrl, {
+    headers: buildSupabaseHeaders(serviceKey),
+    cache: "no-store",
+  });
+
+  if (!lookupRes.ok) {
+    return null;
+  }
+
+  const rows = (await lookupRes.json()) as StripeCustomerMappingRow[];
+  return rows[0] ?? null;
+}
+
+async function saveStripeCustomerMapping(
+  supabaseUrl: string,
+  serviceKey: string,
+  userId: string,
+  stripeCustomerId: string,
+): Promise<void> {
+  const existingMapping = await getStripeCustomerMapping(supabaseUrl, serviceKey, userId);
+
+  if (existingMapping) {
+    const updateUrl = new URL("/rest/v1/stripe_customers", supabaseUrl);
+    updateUrl.searchParams.set("user_id", `eq.${userId}`);
+
+    const updateRes = await fetch(updateUrl, {
+      method: "PATCH",
+      headers: {
+        ...buildSupabaseHeaders(serviceKey),
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        stripe_customer_id: stripeCustomerId,
+      }),
+      cache: "no-store",
+    });
+
+    if (updateRes.ok) {
+      return;
+    }
+  }
+
   const insertUrl = new URL("/rest/v1/stripe_customers", supabaseUrl);
   const insertRes = await fetch(insertUrl, {
     method: "POST",
     headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
+      ...buildSupabaseHeaders(serviceKey),
       "Content-Type": "application/json",
-      Prefer: "return=minimal",
+      Prefer: "resolution=merge-duplicates,return=minimal",
     },
     body: JSON.stringify({
       user_id: userId,
-      stripe_customer_id: customer.id,
+      stripe_customer_id: stripeCustomerId,
     }),
     cache: "no-store",
   });
 
   if (!insertRes.ok) {
-    // Conflict means another request created the mapping — re-query
-    const retryUrl = new URL("/rest/v1/stripe_customers", supabaseUrl);
-    retryUrl.searchParams.set("user_id", `eq.${userId}`);
-    retryUrl.searchParams.set("select", "stripe_customer_id");
-    retryUrl.searchParams.set("limit", "1");
-    const retryRes = await fetch(retryUrl, {
-      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, Accept: "application/json" },
-      cache: "no-store",
-    });
-    if (retryRes.ok) {
-      const rows = await retryRes.json();
-      if (rows.length > 0 && rows[0].stripe_customer_id) {
-        return rows[0].stripe_customer_id;
-      }
+    const message = await insertRes.text().catch(() => "Unknown error");
+    throw new Error(`Failed to save Stripe customer mapping: ${message}`);
+  }
+}
+
+async function retrieveStripeCustomer(
+  stripe: Stripe,
+  stripeCustomerId: string,
+): Promise<Stripe.Customer | null> {
+  try {
+    const customer = await stripe.customers.retrieve(stripeCustomerId);
+    if ("deleted" in customer && customer.deleted) {
+      return null;
     }
+    return customer;
+  } catch (error) {
+    if (isMissingCustomerError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function findReusableStripeCustomer(
+  stripe: Stripe,
+  userId: string,
+  email: string,
+): Promise<Stripe.Customer | null> {
+  if (!email) {
+    return null;
   }
 
-  return customer.id;
+  const customers = await stripe.customers.list({ email, limit: 10 });
+  const activeCustomers = customers.data.filter((customer) => !("deleted" in customer && customer.deleted));
+
+  const exactMetadataMatch = activeCustomers.find(
+    (customer) => customer.metadata?.supabase_user_id === userId,
+  );
+  if (exactMetadataMatch) {
+    return exactMetadataMatch;
+  }
+
+  const exactEmailMatch = activeCustomers.find(
+    (customer) => (customer.email ?? "").toLowerCase() === email.toLowerCase(),
+  );
+  if (exactEmailMatch) {
+    if (exactEmailMatch.metadata?.supabase_user_id !== userId) {
+      await stripe.customers.update(exactEmailMatch.id, {
+        metadata: {
+          ...exactEmailMatch.metadata,
+          supabase_user_id: userId,
+        },
+      });
+    }
+    return exactEmailMatch;
+  }
+
+  return null;
+}
+
+function isMissingCustomerError(error: unknown): boolean {
+  return error instanceof Stripe.errors.StripeInvalidRequestError
+    && error.code === "resource_missing"
+    && error.param === "customer";
+}
+
+function buildSupabaseHeaders(serviceKey: string) {
+  return {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    Accept: "application/json",
+  };
 }
