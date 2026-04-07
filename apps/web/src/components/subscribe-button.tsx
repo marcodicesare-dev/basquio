@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { getBrowserSessionUser } from "@/lib/supabase/browser";
+
 async function startSubscriptionCheckout(plan: string, interval: "monthly" | "annual") {
   const response = await fetch("/api/stripe/checkout", {
     method: "POST",
@@ -31,6 +33,7 @@ export function SubscribeButton({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const autoResumed = useRef(false);
+  const signInHref = `/sign-in?next=${encodeURIComponent(`/pricing?subscribe=${plan}&interval=${interval}`)}`;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -45,13 +48,26 @@ export function SubscribeButton({
     if (subscribePlan !== plan || subscribeInterval !== interval) {
       return;
     }
-    autoResumed.current = true;
-    setLoading(true);
-    setError(null);
-    void startSubscriptionCheckout(plan, interval)
-      .then((result) => {
+    let cancelled = false;
+
+    void (async () => {
+      const user = await getBrowserSessionUser();
+      if (!user || cancelled || autoResumed.current) {
+        return;
+      }
+
+      autoResumed.current = true;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await startSubscriptionCheckout(plan, interval);
+        if (cancelled) {
+          return;
+        }
         if (result.status === 401) {
           setLoading(false);
+          window.location.href = signInHref;
           return;
         }
         if (result.status >= 400 || !result.data?.url) {
@@ -60,22 +76,34 @@ export function SubscribeButton({
           return;
         }
         window.location.href = result.data.url;
-      })
-      .catch(() => {
-        setError("Network error. Please try again.");
-        setLoading(false);
-      });
-  }, [interval, plan]);
+      } catch {
+        if (!cancelled) {
+          setError("Network error. Please try again.");
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [interval, plan, signInHref]);
 
   async function handleClick() {
     setLoading(true);
     setError(null);
 
     try {
+      const user = await getBrowserSessionUser();
+      if (!user) {
+        window.location.href = signInHref;
+        return;
+      }
+
       const result = await startSubscriptionCheckout(plan, interval);
 
       if (result.status === 401) {
-        window.location.href = `/sign-in?next=${encodeURIComponent(`/pricing?subscribe=${plan}&interval=${interval}`)}`;
+        window.location.href = signInHref;
         return;
       }
 

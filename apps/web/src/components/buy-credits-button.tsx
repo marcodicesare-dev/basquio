@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { getBrowserSessionUser } from "@/lib/supabase/browser";
+
 type BuyCreditsButtonProps = {
   packId: string;
   label: string;
@@ -30,32 +32,56 @@ export function BuyCreditsButton({ packId, label, highlighted }: BuyCreditsButto
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const autoResumed = useRef(false);
+  const signInHref = `/sign-in?next=${encodeURIComponent(`/pricing?buy=${packId}`)}`;
 
   // Auto-resume checkout when returning from sign-in with ?buy=pack_id
   useEffect(() => {
     const buyParam = searchParams.get("buy");
-    if (buyParam === packId && !autoResumed.current) {
-      autoResumed.current = true;
-      void startCheckout(packId).then((result) => {
-        if (result.status === 401) {
-          return;
-        }
-        if (result.url) {
-          window.location.href = result.url;
-        }
-      });
+    if (buyParam !== packId || autoResumed.current) {
+      return;
     }
-  }, [searchParams, packId]);
+
+    let cancelled = false;
+    void (async () => {
+      const user = await getBrowserSessionUser();
+      if (!user || cancelled || autoResumed.current) {
+        return;
+      }
+
+      autoResumed.current = true;
+      const result = await startCheckout(packId);
+      if (cancelled) {
+        return;
+      }
+      if (result.status === 401) {
+        router.replace(signInHref);
+        return;
+      }
+      if (result.url) {
+        window.location.href = result.url;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [packId, router, searchParams, signInHref]);
 
   async function handleClick() {
     setLoading(true);
     setError(null);
 
     try {
+      const user = await getBrowserSessionUser();
+      if (!user) {
+        router.push(signInHref);
+        return;
+      }
+
       const result = await startCheckout(packId);
 
       if (result.status === 401) {
-        router.push(`/sign-in?next=${encodeURIComponent(`/pricing?buy=${packId}`)}`);
+        router.push(signInHref);
         return;
       }
 
