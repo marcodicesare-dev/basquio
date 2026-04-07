@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
+import { IntercomAuth } from "@/components/intercom/intercom-auth";
 import { buildSignInPath } from "@/lib/supabase/auth";
 import { getViewerState } from "@/lib/supabase/auth";
 import { bootstrapViewerAccount } from "@/lib/auth-bootstrap";
@@ -52,5 +53,13 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
       : balance.balance;
   }
 
-  return <AppShell viewer={viewer} creditBalance={hasUnlimitedUsage ? -1 : creditBalance}>{children}</AppShell>;
+  return (
+    <AppShell viewer={viewer} creditBalance={hasUnlimitedUsage ? -1 : creditBalance}>
+      <IntercomAuth
+        userId={viewer.user.id}
+        email={viewer.user.email ?? ""}
+      />
+      {children}
+    </AppShell>
+  );
 }

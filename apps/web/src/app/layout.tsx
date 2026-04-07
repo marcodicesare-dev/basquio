@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { JetBrains_Mono, Manrope } from "next/font/google";
 
+import { IntercomProvider } from "@/components/intercom/intercom-provider";
+
 import "./global.css";
 
 const manrope = Manrope({
@@ -144,7 +146,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         />
       </head>
       <body className={`${manrope.variable} ${jetbrainsMono.variable}`}>
-        <div className="site-wrap">{children}</div>
+        <IntercomProvider>
+          <div className="site-wrap">{children}</div>
+        </IntercomProvider>
       </body>
     </html>
   );

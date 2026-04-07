@@ -142,6 +142,9 @@ importers:
       '@basquio/workflows':
         specifier: workspace:*
         version: link:../../packages/workflows
+      '@intercom/messenger-js-sdk':
+        specifier: ^0.0.19
+        version: 0.0.19
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -814,6 +817,9 @@ packages:
 
   '@inngest/ai@0.1.7':
     resolution: {integrity: sha512-5xWatW441jacGf9czKEZdgAmkvoy7GS2tp7X8GSbdGeRXzjisHR6vM+q8DQbv6rqRsmQoCQ5iShh34MguELvUQ==}
+
+  '@intercom/messenger-js-sdk@0.0.19':
+    resolution: {integrity: sha512-ZpzJXLyo4VReQoOW/OOCYZqylhg2uwj0RGU6pcYazFDuk/S1Xsqi0GChLQMDviBQ/SuKB1Mv50uFsY7KzHljGw==}
 
   '@jpwilliams/waitgroup@2.1.1':
     resolution: {integrity: sha512-0CxRhNfkvFCTLZBKGvKxY2FYtYW1yWhO2McLqBL0X5UWvYjIf9suH8anKW/DNutl369A75Ewyoh2iJMwBZ2tRg==}
@@ -4627,6 +4633,8 @@ snapshots:
     dependencies:
       '@types/node': 22.19.15
       typescript: 5.9.3
+
+  '@intercom/messenger-js-sdk@0.0.19': {}
 
   '@jpwilliams/waitgroup@2.1.1': {}
 
