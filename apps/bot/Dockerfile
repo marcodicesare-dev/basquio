@@ -13,4 +13,4 @@ COPY code ./code
 RUN corepack enable && pnpm install --filter @basquio/bot...
 
 WORKDIR /app/apps/bot
-CMD ["pnpm", "start"]
+ENTRYPOINT ["pnpm", "start"]
