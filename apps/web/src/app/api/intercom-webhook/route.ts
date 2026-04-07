@@ -574,47 +574,26 @@ function buildStarterMessagePayload(
   preview: string,
 ): Record<string, unknown> {
   const customerLabel = buildThreadParticipantLabel(customerIdentity.name, customerIdentity.email);
-  const relationshipLabel = customerIdentity.kind === "user"
-    ? "Logged-in Basquio user"
-    : "Anonymous or Intercom-only visitor";
+  const footerParts = [
+    customerIdentity.kind === "user" ? "User" : "Visitor",
+    status,
+    `Intercom ${conversationId}`,
+  ];
 
   return {
     embeds: [
       {
-        title: "New live chat",
-        description: "Reply naturally in this thread. Team messages stay authored by the teammate who wrote them.",
+        author: {
+          name: customerLabel,
+          ...(customerIdentity.intercomProfileUrl ? { url: customerIdentity.intercomProfileUrl } : {}),
+        },
         color: 0x1d4ed8,
-        fields: [
-          {
-            name: "Customer",
-            value: customerLabel,
-            inline: true,
-          },
-          {
-            name: "Relationship",
-            value: relationshipLabel,
-            inline: true,
-          },
-          {
-            name: "Status",
-            value: status,
-            inline: true,
-          },
-          {
-            name: "Intercom",
-            value: customerIdentity.intercomProfileUrl
-              ? `[Open profile](${customerIdentity.intercomProfileUrl})`
-              : "Profile unavailable",
-            inline: false,
-          },
-          {
-            name: "Opening message",
-            value: truncateForEmbed(preview, 300),
-            inline: false,
-          },
-        ],
+        description: [
+          customerIdentity.intercomProfileUrl ? `[Open in Intercom](${customerIdentity.intercomProfileUrl})` : null,
+          `> ${truncateForEmbed(preview, 260)}`,
+        ].filter(Boolean).join("\n"),
         footer: {
-          text: `Intercom conversation ${conversationId}`,
+          text: footerParts.join(" · "),
         },
       },
     ],
