@@ -71,6 +71,13 @@ interface ResolvedCustomerMessage {
 interface CustomerIdentity {
   name: string;
   email: string | null;
+  kind: "user" | "visitor";
+  intercomProfileUrl: string | null;
+}
+
+interface DiscordWebhook {
+  id: string;
+  token?: string;
 }
 
 class DiscordApiError extends Error {
@@ -92,6 +99,7 @@ export async function POST(request: Request) {
   const intercomClientSecret = process.env.INTERCOM_CLIENT_SECRET;
   const discordBotToken = process.env.DISCORD_BOT_TOKEN;
   const livechatChannelId = process.env.DISCORD_LIVECHAT_CHANNEL_ID;
+  const intercomAppId = process.env.NEXT_PUBLIC_INTERCOM_APP_ID;
 
   if (!supabaseUrl || !serviceKey || !intercomClientSecret || !discordBotToken || !livechatChannelId) {
     return NextResponse.json({ error: "Intercom webhook configuration is incomplete." }, { status: 500 });
@@ -152,43 +160,64 @@ export async function POST(request: Request) {
   }
 
   const customerIdentity = resolveCustomerIdentity(
-    resolvedMessage.author.name,
-    resolvedMessage.author.email,
+    resolvedMessage.author,
     mapping,
+    intercomAppId,
   );
   const customerName = customerIdentity.name;
   const customerEmail = customerIdentity.email;
   const status = normalizeConversationStatus(conversation.state);
 
   let discordThreadId = mapping?.discord_thread_id ?? null;
+  let discordWebhook: DiscordWebhook | null = null;
 
   try {
+    discordWebhook = await createTemporaryDiscordWebhook(livechatChannelId, discordBotToken).catch(() => null);
+
     if (!discordThreadId) {
       discordThreadId = await createDiscordLivechatThread({
         discordBotToken,
+        discordWebhook,
         livechatChannelId,
-        customerName,
-        customerEmail,
+        customerIdentity,
         preview: resolvedMessage.body,
         conversationId,
+        status,
       });
     }
 
-    await postMessageToDiscordThread(discordBotToken, discordThreadId, resolvedMessage.body);
+    await postMessageToDiscordThread({
+      discordBotToken,
+      discordWebhook,
+      threadId: discordThreadId,
+      customerIdentity,
+      body: resolvedMessage.body,
+    });
   } catch (error) {
     if (error instanceof DiscordApiError && error.status === 404) {
       discordThreadId = await createDiscordLivechatThread({
         discordBotToken,
+        discordWebhook,
         livechatChannelId,
-        customerName,
-        customerEmail,
+        customerIdentity,
         preview: resolvedMessage.body,
         conversationId,
+        status,
       });
-      await postMessageToDiscordThread(discordBotToken, discordThreadId, resolvedMessage.body);
+      await postMessageToDiscordThread({
+        discordBotToken,
+        discordWebhook,
+        threadId: discordThreadId,
+        customerIdentity,
+        body: resolvedMessage.body,
+      });
     } else {
       const message = error instanceof Error ? error.message : "Discord delivery failed.";
       return NextResponse.json({ error: message }, { status: 502 });
+    }
+  } finally {
+    if (discordWebhook?.token) {
+      await deleteTemporaryDiscordWebhook(discordWebhook.id, discordBotToken).catch(() => {});
     }
   }
 
@@ -206,6 +235,8 @@ export async function POST(request: Request) {
           last_intercom_message_id: resolvedMessage.messageId,
           last_webhook_topic: topic,
           last_customer_body_preview: resolvedMessage.body.slice(0, 280),
+          last_customer_kind: customerIdentity.kind,
+          last_intercom_profile_url: customerIdentity.intercomProfileUrl,
         },
         updated_at: new Date().toISOString(),
       },
@@ -414,31 +445,47 @@ function buildMessageSignature(input: {
 
 async function createDiscordLivechatThread(input: {
   discordBotToken: string;
+  discordWebhook: DiscordWebhook | null;
   livechatChannelId: string;
-  customerName: string;
-  customerEmail: string | null;
+  customerIdentity: CustomerIdentity;
   preview: string;
   conversationId: string;
+  status: string;
 }): Promise<string> {
-  const starterMessage = await discordRequest<{ id: string }>(
+  const starterPayload = buildStarterMessagePayload(
+    input.customerIdentity,
+    input.conversationId,
+    input.status,
+    input.preview,
+  );
+
+  const starterMessage = input.discordWebhook?.token
+    ? await executeDiscordWebhook<{ id: string }>(
+        input.discordWebhook,
+        {
+          ...starterPayload,
+          username: "Live Chat System",
+        },
+        { wait: true },
+      ).catch(() => null)
+    : null;
+
+  const starterMessageRecord = starterMessage ?? await discordRequest<{ id: string }>(
     `/channels/${input.livechatChannelId}/messages`,
     input.discordBotToken,
     {
       method: "POST",
-      body: JSON.stringify({
-        content: buildStarterMessage(input.customerName, input.customerEmail, input.conversationId),
-        allowed_mentions: { parse: [] },
-      }),
+      body: JSON.stringify(starterPayload),
     },
   );
 
   const thread = await discordRequest<{ id: string }>(
-    `/channels/${input.livechatChannelId}/messages/${starterMessage.id}/threads`,
+    `/channels/${input.livechatChannelId}/messages/${starterMessageRecord.id}/threads`,
     input.discordBotToken,
     {
       method: "POST",
       body: JSON.stringify({
-        name: buildThreadName(input.customerName, input.customerEmail, input.preview),
+        name: buildThreadName(input.customerIdentity.name, input.customerIdentity.email, input.preview),
         auto_archive_duration: 10080,
       }),
     },
@@ -447,17 +494,35 @@ async function createDiscordLivechatThread(input: {
   return thread.id;
 }
 
-async function postMessageToDiscordThread(
-  discordBotToken: string,
-  threadId: string,
-  body: string,
-): Promise<void> {
-  const formattedBody = formatCustomerRelay(body);
+async function postMessageToDiscordThread(input: {
+  discordBotToken: string;
+  discordWebhook: DiscordWebhook | null;
+  threadId: string;
+  customerIdentity: CustomerIdentity;
+  body: string;
+}): Promise<void> {
+  const formattedBody = formatCustomerRelay(input.body);
 
   for (const chunk of splitDiscordMessage(formattedBody)) {
+    if (input.discordWebhook?.token) {
+      const deliveredViaWebhook = await executeDiscordWebhook(
+        input.discordWebhook,
+        {
+          content: chunk,
+          username: buildCustomerRelayUsername(input.customerIdentity),
+          allowed_mentions: { parse: [] },
+        },
+        { threadId: input.threadId },
+      ).then(() => true).catch(() => false);
+
+      if (deliveredViaWebhook) {
+        continue;
+      }
+    }
+
     await discordRequest(
-      `/channels/${threadId}/messages`,
-      discordBotToken,
+      `/channels/${input.threadId}/messages`,
+      input.discordBotToken,
       {
         method: "POST",
         body: JSON.stringify({
@@ -496,22 +561,59 @@ async function discordRequest<T = Record<string, unknown>>(
   return (await response.json()) as T;
 }
 
-function buildStarterMessage(
-  customerName: string,
-  customerEmail: string | null,
+function buildStarterMessagePayload(
+  customerIdentity: CustomerIdentity,
   conversationId: string,
-): string {
-  const identityLine = customerEmail
-    ? `From **${customerName}** (${customerEmail})`
-    : `From **${customerName}**`;
+  status: string,
+  preview: string,
+): Record<string, unknown> {
+  const customerLabel = buildThreadParticipantLabel(customerIdentity.name, customerIdentity.email);
+  const relationshipLabel = customerIdentity.kind === "user"
+    ? "Logged-in Basquio user"
+    : "Anonymous or Intercom-only visitor";
 
-  return [
-    "📩 **New live chat**",
-    identityLine,
-    `Intercom conversation \`${conversationId}\``,
-    "---",
-    "Reply naturally in this thread. Basquio Bot will send your message to the customer and keep the team loop tight.",
-  ].join("\n");
+  return {
+    embeds: [
+      {
+        title: "New live chat",
+        description: "Reply naturally in this thread. Team messages stay authored by the teammate who wrote them.",
+        color: 0x1d4ed8,
+        fields: [
+          {
+            name: "Customer",
+            value: customerLabel,
+            inline: true,
+          },
+          {
+            name: "Relationship",
+            value: relationshipLabel,
+            inline: true,
+          },
+          {
+            name: "Status",
+            value: status,
+            inline: true,
+          },
+          {
+            name: "Intercom",
+            value: customerIdentity.intercomProfileUrl
+              ? `[Open profile](${customerIdentity.intercomProfileUrl})`
+              : "Profile unavailable",
+            inline: false,
+          },
+          {
+            name: "Opening message",
+            value: truncateForEmbed(preview, 300),
+            inline: false,
+          },
+        ],
+        footer: {
+          text: `Intercom conversation ${conversationId}`,
+        },
+      },
+    ],
+    allowed_mentions: { parse: [] },
+  };
 }
 
 function buildThreadName(customerName: string, customerEmail: string | null, preview: string): string {
@@ -522,20 +624,29 @@ function buildThreadName(customerName: string, customerEmail: string | null, pre
 }
 
 function resolveCustomerIdentity(
-  nextName: string | undefined,
-  nextEmail: string | undefined,
+  author: IntercomAuthor,
   mapping: IntercomThreadRow | null,
+  intercomAppId: string | undefined,
 ): CustomerIdentity {
-  const name = nextName?.trim() || mapping?.customer_name?.trim() || "Customer";
-  const email = nextEmail?.trim() || mapping?.customer_email?.trim() || null;
+  const kind = author.type === "user" ? "user" : "visitor";
+  const genericLabel = kind === "user" ? "User" : "Visitor";
+  const name = author.name?.trim() || mapping?.customer_name?.trim() || genericLabel;
+  const email = author.email?.trim() || mapping?.customer_email?.trim() || null;
 
   if (isGenericCustomerName(name) && email) {
-    return { name: "Visitor", email };
+    return {
+      name: genericLabel,
+      email,
+      kind,
+      intercomProfileUrl: buildIntercomProfileUrl(intercomAppId, author),
+    };
   }
 
   return {
-    name: name || "Visitor",
+    name: name || genericLabel,
     email,
+    kind,
+    intercomProfileUrl: buildIntercomProfileUrl(intercomAppId, author),
   };
 }
 
@@ -552,11 +663,112 @@ function isGenericCustomerName(customerName: string): boolean {
   return normalized.length === 0 || normalized === "customer" || normalized === "visitor";
 }
 
+function buildCustomerRelayUsername(customerIdentity: CustomerIdentity): string {
+  return buildThreadParticipantLabel(customerIdentity.name, customerIdentity.email).slice(0, 80);
+}
+
 function formatCustomerRelay(body: string): string {
   return body
     .split("\n")
     .map((line) => line.trim().length === 0 ? ">" : `> ${line}`)
     .join("\n");
+}
+
+function truncateForEmbed(value: string, maxLength: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) {
+    return compact;
+  }
+
+  return `${compact.slice(0, maxLength - 1)}…`;
+}
+
+function buildIntercomProfileUrl(
+  intercomAppId: string | undefined,
+  author: IntercomAuthor,
+): string | null {
+  if (!intercomAppId || author.id == null || !author.type) {
+    return null;
+  }
+
+  const segment = author.type === "user"
+    ? "users"
+    : author.type === "lead"
+      ? "leads"
+      : author.type === "contact"
+        ? "contacts"
+        : null;
+
+  if (!segment) {
+    return null;
+  }
+
+  return `https://app.intercom.com/a/apps/${intercomAppId}/${segment}/${author.id}/all-conversations`;
+}
+
+async function createTemporaryDiscordWebhook(
+  channelId: string,
+  botToken: string,
+): Promise<DiscordWebhook> {
+  return discordRequest<DiscordWebhook>(
+    `/channels/${channelId}/webhooks`,
+    botToken,
+    {
+      method: "POST",
+      body: JSON.stringify({ name: "Basquio Live Chat" }),
+    },
+  );
+}
+
+async function executeDiscordWebhook<T = Record<string, unknown>>(
+  webhook: DiscordWebhook,
+  payload: Record<string, unknown>,
+  options?: { threadId?: string; wait?: boolean },
+): Promise<T> {
+  if (!webhook.token) {
+    throw new Error("Discord webhook token missing.");
+  }
+
+  const params = new URLSearchParams();
+  if (options?.wait) {
+    params.set("wait", "true");
+  }
+  if (options?.threadId) {
+    params.set("thread_id", options.threadId);
+  }
+
+  const response = await fetch(
+    `${DISCORD_API_BASE_URL}/webhooks/${webhook.id}/${webhook.token}${params.size > 0 ? `?${params.toString()}` : ""}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new DiscordApiError(response.status, `Discord webhook ${response.status}: ${text}`);
+  }
+
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+async function deleteTemporaryDiscordWebhook(webhookId: string, botToken: string): Promise<void> {
+  await discordRequest(
+    `/webhooks/${webhookId}`,
+    botToken,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 function splitDiscordMessage(content: string): string[] {

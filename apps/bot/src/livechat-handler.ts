@@ -99,7 +99,7 @@ export async function bufferLivechatMessage(message: Message): Promise<void> {
   if (message.createdAt < BOT_STARTED_AT) return;
   if (processedMessageIds.has(message.id)) return;
 
-  const isCustomerRelay = message.author.id === message.client.user?.id;
+  const isCustomerRelay = message.author.id === message.client.user?.id || !!message.webhookId;
   if (message.author.bot && !isCustomerRelay) return;
 
   const content = buildBufferedContent(message, isCustomerRelay);
@@ -126,7 +126,7 @@ export async function bufferLivechatMessage(message: Message): Promise<void> {
   }
 
   const author = isCustomerRelay
-    ? buildCustomerAuthorLabel(session)
+    ? buildCustomerAuthorLabel(session, message.webhookId ? message.author.username : null)
     : message.member?.displayName ?? message.author.username;
 
   session.messages.push({
@@ -399,7 +399,7 @@ function hydrateLivechatSession(
   session.intercomConversationId = mapping.intercom_conversation_id ?? session.intercomConversationId;
 }
 
-function buildCustomerAuthorLabel(session: LivechatSession): string {
+function buildCustomerAuthorLabel(session: LivechatSession, fallbackAuthor: string | null): string {
   const customerName = session.customerName?.trim();
   const customerEmail = session.customerEmail?.trim();
   const hasResolvedName = !!customerName && customerName.toLowerCase() !== "customer";
@@ -412,7 +412,15 @@ function buildCustomerAuthorLabel(session: LivechatSession): string {
     return `Visitor (${customerEmail})`;
   }
 
-  return hasResolvedName ? customerName : "Customer";
+  if (hasResolvedName) {
+    return customerName;
+  }
+
+  if (fallbackAuthor?.trim()) {
+    return fallbackAuthor.trim();
+  }
+
+  return "Customer";
 }
 
 function shouldAlert(extraction: LivechatExtraction): boolean {
