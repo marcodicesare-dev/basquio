@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { JetBrains_Mono, Manrope } from "next/font/google";
+import Script from "next/script";
 
 import { IntercomProvider } from "@/components/intercom/intercom-provider";
 
@@ -140,6 +141,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <Script
+          src="https://app.loamly.ai/t.js?d=basquio.com"
+          strategy="afterInteractive"
+        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
