@@ -94,12 +94,12 @@ export async function HEAD() {
 }
 
 export async function POST(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const intercomClientSecret = process.env.INTERCOM_CLIENT_SECRET;
-  const discordBotToken = process.env.DISCORD_BOT_TOKEN;
-  const livechatChannelId = process.env.DISCORD_LIVECHAT_CHANNEL_ID;
-  const intercomAppId = process.env.NEXT_PUBLIC_INTERCOM_APP_ID;
+  const supabaseUrl = readEnv("NEXT_PUBLIC_SUPABASE_URL");
+  const serviceKey = readEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const intercomClientSecret = readEnv("INTERCOM_CLIENT_SECRET");
+  const discordBotToken = readEnv("DISCORD_BOT_TOKEN");
+  const livechatChannelId = readEnv("DISCORD_LIVECHAT_CHANNEL_ID");
+  const intercomAppId = readEnv("NEXT_PUBLIC_INTERCOM_APP_ID");
 
   if (!supabaseUrl || !serviceKey || !intercomClientSecret || !discordBotToken || !livechatChannelId) {
     return NextResponse.json({ error: "Intercom webhook configuration is incomplete." }, { status: 500 });
@@ -147,8 +147,8 @@ export async function POST(request: Request) {
   const resolvedMessage = await resolveCustomerMessage({
     conversation,
     topic,
-    intercomAccessToken: process.env.INTERCOM_ACCESS_TOKEN,
-    intercomApiBaseUrl: process.env.INTERCOM_API_BASE_URL ?? "https://api.intercom.io",
+    intercomAccessToken: readEnv("INTERCOM_ACCESS_TOKEN"),
+    intercomApiBaseUrl: readEnv("INTERCOM_API_BASE_URL") ?? "https://api.intercom.io",
   });
 
   if (!resolvedMessage) {
@@ -288,6 +288,16 @@ function verifyIntercomSignature(
   }
 
   return timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
+function readEnv(name: string): string | undefined {
+  const value = process.env[name];
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 async function resolveCustomerMessage(input: {
@@ -497,6 +507,8 @@ async function createDiscordLivechatThread(input: {
     },
   );
 
+  await ensureBotJoinedThread(thread.id, input.discordBotToken);
+
   return thread.id;
 }
 
@@ -565,6 +577,19 @@ async function discordRequest<T = Record<string, unknown>>(
   }
 
   return (await response.json()) as T;
+}
+
+async function ensureBotJoinedThread(threadId: string, botToken: string): Promise<void> {
+  await discordRequest(
+    `/channels/${threadId}/thread-members/@me`,
+    botToken,
+    {
+      method: "PUT",
+    },
+  ).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[intercom-webhook] Failed to join livechat thread ${threadId}: ${message}`);
+  });
 }
 
 function buildStarterMessagePayload(

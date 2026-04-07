@@ -2,40 +2,46 @@ import dotenv from "dotenv";
 dotenv.config({ override: true });
 import { z } from "zod";
 
+const trimmedString = () =>
+  z.string().transform((value) => value.trim()).pipe(z.string().min(1));
+
+const trimmedOptionalString = () =>
+  z.string().transform((value) => value.trim()).pipe(z.string().min(1)).optional();
+
 const envSchema = z.object({
   // Discord
-  DISCORD_BOT_TOKEN: z.string().min(1),
-  DISCORD_GUILD_ID: z.string().min(1),
-  DISCORD_VOICE_CHANNEL_ID: z.string().min(1),
-  DISCORD_BOT_CHANNEL_ID: z.string().min(1),
-  DISCORD_GENERAL_CHANNEL_ID: z.string().min(1),
-  DISCORD_LIVECHAT_CHANNEL_ID: z.string().min(1).optional(),
+  DISCORD_BOT_TOKEN: trimmedString(),
+  DISCORD_GUILD_ID: trimmedString(),
+  DISCORD_VOICE_CHANNEL_ID: trimmedString(),
+  DISCORD_BOT_CHANNEL_ID: trimmedString(),
+  DISCORD_GENERAL_CHANNEL_ID: trimmedString(),
+  DISCORD_LIVECHAT_CHANNEL_ID: trimmedOptionalString(),
 
   // Deepgram
-  DEEPGRAM_API_KEY: z.string().min(1),
+  DEEPGRAM_API_KEY: trimmedString(),
 
   // Anthropic
-  ANTHROPIC_API_KEY: z.string().min(1),
+  ANTHROPIC_API_KEY: trimmedString(),
 
   // Linear
-  LINEAR_API_KEY: z.string().min(1),
-  LINEAR_TEAM_ID: z.string().min(1),
-  INTERCOM_ACCESS_TOKEN: z.string().min(1).optional(),
-  INTERCOM_ADMIN_ID: z.string().min(1).optional(),
-  INTERCOM_API_BASE_URL: z.string().url().default("https://api.intercom.io"),
+  LINEAR_API_KEY: trimmedString(),
+  LINEAR_TEAM_ID: trimmedString(),
+  INTERCOM_ACCESS_TOKEN: trimmedOptionalString(),
+  INTERCOM_ADMIN_ID: trimmedOptionalString(),
+  INTERCOM_API_BASE_URL: z.string().transform((value) => value.trim()).pipe(z.string().url()).default("https://api.intercom.io"),
 
   // Supabase
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  SUPABASE_URL: z.string().transform((value) => value.trim()).pipe(z.string().url()),
+  SUPABASE_SERVICE_ROLE_KEY: trimmedString(),
 
   // OpenAI (embeddings)
-  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_API_KEY: trimmedString(),
 
   // Knowledge Base
-  DISCORD_DOCS_CHANNEL_ID: z.string().min(1),
+  DISCORD_DOCS_CHANNEL_ID: trimmedString(),
 
   // Optional
-  WHISPER_API_KEY: z.string().optional(),
+  WHISPER_API_KEY: z.string().transform((value) => value.trim()).optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 });
 
