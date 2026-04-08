@@ -138,9 +138,9 @@ export default function PricingPage() {
       <section className="page-hero pricing-hero">
         <div className="stack pricing-hero-copy">
           <p className="section-label">Pricing</p>
-          <h1>Start free. Upgrade when the workflow is real.</h1>
+          <h1>Start free. Upgrade when you need more.</h1>
           <p className="page-copy">
-            30 free credits. No card. Enough to pressure-test the workflow on live work before you subscribe.
+            30 free credits. No credit card. Run your first deck and see what comes back.
           </p>
         </div>
       </section>
@@ -283,7 +283,7 @@ export default function PricingPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to try it?"
         title="Run the first report on live data."
-        copy="The fastest way to know if Basquio fits is to put one real review through it."
+        copy="Upload your data. Get a finished deck in 15 minutes. 30 free credits, no credit card."
         primaryLabel="Try it with your data"
         primaryHref="/jobs/new"
         secondaryLabel="Get started"

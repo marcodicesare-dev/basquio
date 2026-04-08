@@ -195,7 +195,7 @@ export default function TrustPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to start"
         title="Try it with your own data."
-        copy="Upload a real file. If the output is strong enough to present, the workflow is doing its job."
+        copy="Upload a real file and see what comes back. 30 free credits, no credit card."
         primaryLabel="Try it free"
         primaryHref="/jobs/new"
         secondaryLabel="See pricing"

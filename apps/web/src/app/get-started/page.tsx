@@ -106,9 +106,9 @@ export default function GetStartedPage() {
         <article className="panel stack-lg">
           <div className="stack">
             <p className="section-label">Pricing</p>
-            <h2>Start free. Upgrade when the workflow repeats.</h2>
+            <h2>Start free. Upgrade when you need more.</h2>
             <p className="muted">
-              Start with 30 free credits, review the first draft, and decide from there whether the workflow should repeat.
+              30 free credits. Enough for 2 full deck runs. No credit card required.
             </p>
             <p className="muted">
               Starter begins at $19/month. Free users can unlock a custom template with a $5 per-run fee, and credit packs are available anytime.{" "}
@@ -124,7 +124,7 @@ export default function GetStartedPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to start"
         title="Bring the files behind your next review."
-        copy="Start with one real review and see how much time Basquio saves you."
+        copy="Upload your spreadsheet. Get a finished deck with real charts and a written report."
         primaryLabel="Try with your data"
         primaryHref="/jobs/new"
         secondaryLabel="How it works"

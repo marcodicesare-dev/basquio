@@ -101,7 +101,7 @@ export default function HowItWorksPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to try it"
         title="Bring the files behind your next review."
-        copy="Start with one real review and let Basquio show you what the first draft can look like."
+        copy="Upload your spreadsheet. Get a finished deck with real charts and a written report."
         secondaryLabel="Compare the categories"
         secondaryHref="/compare"
       />
