@@ -9,7 +9,16 @@ import {
   upsertSubscription,
 } from "@/lib/credits";
 import { normalizePlanId, type CreditPackId } from "@/lib/billing-config";
+import {
+  notifyCancellation,
+  notifyCreditPurchase,
+  notifyPaymentFailed,
+  notifyPlanUpgrade,
+  notifySubscriptionRenewed,
+  notifySubscriptionStarted,
+} from "@/lib/discord-customers";
 import { getStripe, CREDIT_PACKS, PLAN_CREDITS } from "@/lib/stripe";
+import { createServiceSupabaseClient, fetchRestRows } from "@/lib/supabase/admin";
 import { getTemplateFeeDraft, updateTemplateFeeDraft } from "@/lib/template-fee-drafts";
 
 export const runtime = "nodejs";
@@ -24,6 +33,12 @@ type SubscriptionData = {
   current_period_end: number;
   cancel_at_period_end?: boolean;
   items?: { data: Array<{ price?: { id: string; recurring?: { interval: string } | null } }> };
+};
+
+type ExistingSubscriptionRow = {
+  plan: string;
+  billing_interval: "monthly" | "annual";
+  status: string;
 };
 
 /**
@@ -237,6 +252,14 @@ async function handleCreditPackPurchase(
     paymentIntentId,
   });
 
+  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
+    .then((email) => notifyCreditPurchase({
+      email,
+      packId,
+      pricingTier: normalizePackPricingTier(session.metadata?.pack_pricing_tier),
+    }))
+    .catch(() => {});
+
   console.log(`[stripe-webhook] granted ${pack.credits} credits to user ${userId} (pack=${packId}, pi=${paymentIntentId})`);
 }
 
@@ -261,6 +284,8 @@ async function handleSubscriptionChange(
     console.error(`[stripe-webhook] unknown plan: ${rawPlan}`);
     return;
   }
+
+  const existingSubscription = await getExistingSubscription(config, subscription.id);
 
   // Determine billing interval from subscription items
   const interval = subscription.items?.data?.[0]?.price?.recurring?.interval === "year" ? "annual" : "monthly";
@@ -292,6 +317,36 @@ async function handleSubscriptionChange(
     templateSlotsIncluded: planConfig.templateSlots,
   });
 
+  const normalizedStatus = statusMap[subscription.status] ?? "active";
+  const previousPlan = existingSubscription ? normalizePlanId(existingSubscription.plan) : null;
+  const previousInterval = existingSubscription?.billing_interval ?? "monthly";
+  const previousStatus = existingSubscription?.status ?? null;
+  const isUpgrade = Boolean(previousPlan && previousPlan !== plan && getPlanWeight(plan) > getPlanWeight(previousPlan));
+
+  if (normalizedStatus === "active") {
+    if (isUpgrade) {
+      void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
+        .then((email) => notifyPlanUpgrade({
+          email,
+          fromPlan: previousPlan!,
+          toPlan: plan,
+          fromInterval: previousInterval,
+          toInterval: interval,
+        }))
+        .catch(() => {});
+    } else if (!existingSubscription || previousStatus !== "active") {
+      void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
+        .then((email) => notifySubscriptionStarted({
+          email,
+          plan,
+          interval,
+          creditsIncluded: planConfig.credits,
+          previousStatus,
+        }))
+        .catch(() => {});
+    }
+  }
+
   console.log(`[stripe-webhook] upserted subscription ${subscription.id} (plan=${plan}, status=${subscription.status})`);
 }
 
@@ -300,6 +355,7 @@ async function handleSubscriptionCanceled(
   subscription: SubscriptionData,
 ) {
   const userId = subscription.metadata?.user_id;
+  const existingSubscription = await getExistingSubscription(config, subscription.id);
 
   if (!userId) {
     console.error("[stripe-webhook] canceled subscription missing user_id", { subId: subscription.id });
@@ -333,7 +389,15 @@ async function handleSubscriptionCanceled(
   if (!response.ok) {
     const text = await response.text().catch(() => "Unknown error");
     console.error(`[stripe-webhook] failed to cancel subscription: ${text}`);
+    return;
   }
+
+  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
+    .then((email) => notifyCancellation({
+      email,
+      plan: existingSubscription?.plan ?? null,
+    }))
+    .catch(() => {});
 
   console.log(`[stripe-webhook] subscription canceled ${subscription.id} for user ${userId}`);
 }
@@ -446,6 +510,14 @@ async function handleInvoicePaid(
     stripeEventId: eventId,
   });
 
+  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
+    .then((email) => notifySubscriptionRenewed({
+      email,
+      plan: normalizedPlan,
+      creditsGranted: creditAmount,
+    }))
+    .catch(() => {});
+
   console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${normalizedPlan}, interval=${isAnnual ? "annual" : "monthly"}, event=${eventId})`);
 }
 
@@ -462,6 +534,7 @@ async function handleInvoicePaymentFailed(
 
   const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
   const userId = invoice.subscription_details?.metadata?.user_id ?? invoice.metadata?.user_id;
+  const existingSubscription = await getExistingSubscription(config, subId);
   if (!userId) return;
 
   // Update subscription status to past_due
@@ -484,6 +557,13 @@ async function handleInvoicePaymentFailed(
     const text = await patchRes.text().catch(() => "Unknown error");
     console.error(`[stripe-webhook] failed to mark subscription past_due: ${text}`);
   } else {
+    void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
+      .then((email) => notifyPaymentFailed({
+        email,
+        plan: invoice.subscription_details?.metadata?.plan ?? invoice.metadata?.plan ?? existingSubscription?.plan ?? null,
+      }))
+      .catch(() => {});
+
     console.log(`[stripe-webhook] marked subscription past_due for user ${userId} (inv=${invoice.id})`);
   }
 }
@@ -495,4 +575,55 @@ function getSupabaseConfig() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) return null;
   return { supabaseUrl, serviceKey };
+}
+
+async function resolveUserEmail(
+  supabaseUrl: string,
+  serviceKey: string,
+  userId: string,
+): Promise<string> {
+  try {
+    const supabase = createServiceSupabaseClient(supabaseUrl, serviceKey);
+    const { data, error } = await supabase.auth.admin.getUserById(userId);
+
+    if (error) {
+      throw error;
+    }
+
+    return data.user?.email ?? userId;
+  } catch {
+    return userId;
+  }
+}
+
+async function getExistingSubscription(
+  config: { supabaseUrl: string; serviceKey: string },
+  stripeSubscriptionId: string,
+): Promise<ExistingSubscriptionRow | null> {
+  const rows = await fetchRestRows<ExistingSubscriptionRow>({
+    ...config,
+    table: "subscriptions",
+    query: {
+      stripe_subscription_id: `eq.${stripeSubscriptionId}`,
+      select: "plan,billing_interval,status",
+      limit: "1",
+    },
+  }).catch(() => []);
+
+  return rows[0] ?? null;
+}
+
+function normalizePackPricingTier(value: string | undefined): "free" | "starter" | "pro" {
+  if (value === "starter" || value === "pro") {
+    return value;
+  }
+  return "free";
+}
+
+function getPlanWeight(plan: string): number {
+  const normalized = normalizePlanId(plan);
+  if (normalized === "starter") return 1;
+  if (normalized === "pro") return 2;
+  if (normalized === "enterprise") return 3;
+  return 0;
 }

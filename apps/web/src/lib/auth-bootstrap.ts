@@ -1,4 +1,5 @@
 import { ensureFreeTierCredit } from "@/lib/credits";
+import { notifySignup } from "@/lib/discord-customers";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "@/lib/supabase/admin";
 import type { ViewerState } from "@/lib/supabase/auth";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
@@ -65,6 +66,10 @@ export async function bootstrapViewerAccount(
     }),
     ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: user.id }),
   ]);
+
+  if (!existingState?.first_authenticated_at && user.email) {
+    void notifySignup({ email: user.email }).catch(() => {});
+  }
 
   const welcomeEmailPreviouslySent = Boolean(existingState?.welcome_email_sent_at);
   let welcomeEmailSent = false;
