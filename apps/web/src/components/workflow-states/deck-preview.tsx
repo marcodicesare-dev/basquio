@@ -19,6 +19,14 @@ export function DeckPreview() {
       </div>
 
       <div className="workflow-deliverables">
+        <div className="workflow-deliverable-card workflow-deliverable-proof">
+          <span className="workflow-deliverable-kind">Turnaround</span>
+          <strong>15 min</strong>
+        </div>
+        <div className="workflow-deliverable-card workflow-deliverable-proof">
+          <span className="workflow-deliverable-kind">Deliverables</span>
+          <strong>3 files</strong>
+        </div>
         <div className="workflow-deliverable-card">
           <span className="workflow-deliverable-kind">Narrative</span>
           <strong>report.md</strong>

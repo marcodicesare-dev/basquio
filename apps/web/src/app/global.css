@@ -8223,3 +8223,166 @@ textarea {
     bottom: 118px;
   }
 }
+
+/* Homepage polish V2 */
+
+.hero-product-showcase::before,
+.workflow-stage-shell::before,
+.showcase-layer-foundation,
+.showcase-deliverables-strip,
+.workflow-proof-row,
+.workflow-copy-detail,
+.workflow-visual-orbit {
+  display: none;
+}
+
+.showcase-layer-chart,
+.showcase-layer-report {
+  animation: none;
+}
+
+.showcase-layer-slide {
+  inset: 0 0 130px 80px;
+}
+
+.showcase-layer-slide img {
+  background: #ffffff;
+}
+
+.showcase-layer-chart {
+  left: 18px;
+  bottom: 18px;
+  width: min(216px, 32%);
+}
+
+.showcase-layer-report {
+  right: 0;
+  bottom: 18px;
+  width: min(220px, 32%);
+}
+
+.showcase-mini-chart {
+  min-height: 88px;
+}
+
+.showcase-layer-chart,
+.showcase-layer-report {
+  gap: 12px;
+  padding: 14px;
+}
+
+.showcase-layer-chart p,
+.showcase-layer-report p {
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.workflow-copy {
+  max-width: 20rem;
+  gap: 18px;
+}
+
+.workflow-progress {
+  gap: 12px;
+}
+
+.workflow-progress-step {
+  opacity: 0.42;
+}
+
+.workflow-visual-container {
+  position: relative;
+  overflow: hidden;
+  min-height: 540px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 12px 40px rgba(11, 12, 12, 0.06);
+}
+
+.workflow-visual {
+  min-height: 540px;
+}
+
+.workflow-state {
+  padding: 26px;
+}
+
+.workflow-panel {
+  width: 100%;
+  max-width: none;
+  min-height: calc(540px - 52px);
+  transform: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workflow-upload-panel,
+.workflow-brief-panel,
+.workflow-data-panel,
+.workflow-chart-panel,
+.workflow-deck-panel {
+  padding: 0;
+}
+
+.workflow-deliverables {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.workflow-deliverable-proof {
+  background: rgba(11, 12, 12, 0.04);
+}
+
+@media (max-width: 1180px) {
+  .showcase-layer-slide {
+    inset: 0 0 130px 44px;
+  }
+}
+
+@media (max-width: 900px) {
+  .workflow-copy {
+    max-width: none;
+  }
+
+  .workflow-deliverables {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workflow-deliverable-proof {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 767px) {
+  .showcase-layer-slide {
+    inset: 0 0 128px 0;
+  }
+
+  .showcase-layer-chart {
+    left: 0;
+    bottom: 18px;
+    width: calc(48% - 6px);
+  }
+
+  .showcase-layer-report {
+    right: 0;
+    bottom: 18px;
+    width: calc(48% - 6px);
+  }
+
+  .workflow-state {
+    padding: 22px;
+  }
+
+  .workflow-deliverables {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .workflow-download-button {
+    grid-column: 1 / -1;
+  }
+}

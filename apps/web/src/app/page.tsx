@@ -90,15 +90,6 @@ export default function HomePage() {
         </div>
 
         <div className="hero-product-showcase">
-          <div className="showcase-layer showcase-layer-foundation" aria-hidden="true">
-            <div className="showcase-foundation-grid">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
-
           <div className="showcase-layer showcase-layer-slide">
             <div className="showcase-window-chrome" aria-hidden="true">
               <span />
@@ -142,21 +133,6 @@ export default function HomePage() {
               <span />
               <span />
               <span />
-            </div>
-          </div>
-
-          <div className="showcase-deliverables-strip">
-            <div className="showcase-deliverable-pill">
-              <span>Deck</span>
-              <strong>PPTX</strong>
-            </div>
-            <div className="showcase-deliverable-pill">
-              <span>Report</span>
-              <strong>MD</strong>
-            </div>
-            <div className="showcase-deliverable-pill">
-              <span>Workbook</span>
-              <strong>XLSX</strong>
             </div>
           </div>
         </div>

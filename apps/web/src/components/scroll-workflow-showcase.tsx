@@ -58,25 +58,6 @@ export function ScrollWorkflowShowcase() {
                 </p>
               </div>
 
-              <div className="workflow-proof-row" aria-hidden="true">
-                <div className="workflow-proof-card">
-                  <span>Turnaround</span>
-                  <strong>15 min</strong>
-                </div>
-                <div className="workflow-proof-card">
-                  <span>Deliverables</span>
-                  <strong>3 files</strong>
-                </div>
-              </div>
-
-              <div className="workflow-copy-detail">
-                <span>Step {activeStep + 1}</span>
-                <p>{workflowSteps[activeStep]?.description}</p>
-                <div className="workflow-progress-bar" aria-hidden="true">
-                  <span style={{ transform: `scaleX(${Math.max(progress, 0.08)})` }} />
-                </div>
-              </div>
-
               <div className="workflow-progress" aria-label="Workflow steps">
                 {workflowSteps.map((step, index) => (
                   <div
@@ -93,13 +74,7 @@ export function ScrollWorkflowShowcase() {
               </div>
             </div>
 
-            <div className="workflow-visual-wrap">
-              <div className="workflow-visual-orbit workflow-visual-orbit-left" aria-hidden="true">
-                <span className="workflow-visual-orbit-label">Inputs</span>
-                <strong>CSV / XLSX / PDF</strong>
-                <p>Files, notes, and brand templates travel together.</p>
-              </div>
-
+            <div className="workflow-visual-container">
               <div className="workflow-visual" aria-live="polite">
                 {workflowSteps.map((step, index) => (
                   <div
@@ -110,12 +85,6 @@ export function ScrollWorkflowShowcase() {
                     {step.panel}
                   </div>
                 ))}
-              </div>
-
-              <div className="workflow-visual-orbit workflow-visual-orbit-right" aria-hidden="true">
-                <span className="workflow-visual-orbit-label">Outputs</span>
-                <strong>Deck / Report / Workbook</strong>
-                <p>One analysis becomes the full artifact pack.</p>
               </div>
             </div>
           </div>
