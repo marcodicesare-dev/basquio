@@ -73,22 +73,26 @@ export async function bootstrapViewerAccount(
   const resendApiKey = process.env.RESEND_API_KEY ?? process.env.RESEND_CURSOR_API_KEY;
 
   if (!welcomeEmailPreviouslySent && user.email && resendApiKey) {
-    welcomeEmailSent = await sendWelcomeEmail({
-      resendApiKey,
-      email: user.email,
+    const welcomeEmailClaim = await claimWelcomeEmailSend({
+      supabaseUrl,
+      serviceKey,
+      userId: user.id,
     });
 
-    if (welcomeEmailSent) {
-      await patchRestRows({
-        supabaseUrl,
-        serviceKey,
-        table: "user_bootstrap_state",
-        query: { user_id: `eq.${user.id}` },
-        payload: {
-          welcome_email_sent_at: now,
-          updated_at: now,
-        },
+    if (welcomeEmailClaim.shouldSend) {
+      welcomeEmailSent = await sendWelcomeEmail({
+        resendApiKey,
+        email: user.email,
       });
+
+      if (!welcomeEmailSent) {
+        await releaseWelcomeEmailClaim({
+          supabaseUrl,
+          serviceKey,
+          userId: user.id,
+          claimedAt: welcomeEmailClaim.claimedAt,
+        });
+      }
     }
   }
 
@@ -152,6 +156,58 @@ async function claimBootstrapState(input: {
     existingState: existingState ?? null,
     isFirstAuthentication: false,
   };
+}
+
+async function claimWelcomeEmailSend(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  userId: string;
+}): Promise<{ shouldSend: boolean; claimedAt: string | null }> {
+  const claimedAt = new Date().toISOString();
+  const claimedRows = await patchRestRows<BootstrapStateRow>({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "user_bootstrap_state",
+    query: {
+      user_id: `eq.${input.userId}`,
+      welcome_email_sent_at: "is.null",
+    },
+    payload: {
+      welcome_email_sent_at: claimedAt,
+      updated_at: claimedAt,
+    },
+    select: "*",
+  }).catch(() => []);
+
+  return {
+    shouldSend: claimedRows.length > 0,
+    claimedAt: claimedRows.length > 0 ? claimedAt : null,
+  };
+}
+
+async function releaseWelcomeEmailClaim(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  userId: string;
+  claimedAt: string | null;
+}): Promise<void> {
+  if (!input.claimedAt) {
+    return;
+  }
+
+  await patchRestRows({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "user_bootstrap_state",
+    query: {
+      user_id: `eq.${input.userId}`,
+      welcome_email_sent_at: `eq.${input.claimedAt}`,
+    },
+    payload: {
+      welcome_email_sent_at: null,
+      updated_at: new Date().toISOString(),
+    },
+  }).catch(() => []);
 }
 
 function resolveSignupAttribution(

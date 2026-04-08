@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   clearSignupAttributionFromBrowser,
@@ -40,6 +40,7 @@ export function AuthComplete({
   const router = useRouter();
   const [status, setStatus] = useState<CompletionState>("checking");
   const [error, setError] = useState("");
+  const bootstrapPromiseRef = useRef<Promise<void> | null>(null);
 
   const helperCopy = useMemo(() => {
     if (status === "done") {
@@ -69,6 +70,13 @@ export function AuthComplete({
     }
 
     let isMounted = true;
+    const ensureBootstrapOnce = () => {
+      if (!bootstrapPromiseRef.current) {
+        bootstrapPromiseRef.current = bootstrapAccountRequest();
+      }
+
+      return bootstrapPromiseRef.current;
+    };
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const accessToken = hashParams.get("access_token");
     const refreshToken = hashParams.get("refresh_token");
@@ -126,7 +134,7 @@ export function AuthComplete({
       }
 
       try {
-        await bootstrapAccountRequest();
+        await ensureBootstrapOnce();
 
         window.clearTimeout(fallbackTimer);
         setStatus("done");
@@ -149,7 +157,7 @@ export function AuthComplete({
         return;
       }
 
-      void bootstrapAccountRequest().then(() => {
+      void ensureBootstrapOnce().then(() => {
         if (!isMounted) {
           return;
         }
