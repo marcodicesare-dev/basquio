@@ -1,6 +1,5 @@
-"use client";
-
 export const SIGNUP_ATTRIBUTION_STORAGE_KEY = "basquio_signup_source";
+export const SIGNUP_ATTRIBUTION_COOKIE_NAME = "basquio_signup_source";
 
 export type SignupAttribution = {
   source: string;
@@ -31,6 +30,7 @@ export function captureSignupAttributionFromBrowser() {
   };
 
   window.sessionStorage.setItem(SIGNUP_ATTRIBUTION_STORAGE_KEY, JSON.stringify(payload));
+  document.cookie = `${SIGNUP_ATTRIBUTION_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(payload))}; Path=/; Max-Age=2592000; SameSite=Lax`;
 }
 
 export function readSignupAttributionFromBrowser(): SignupAttribution | null {
@@ -44,18 +44,7 @@ export function readSignupAttributionFromBrowser(): SignupAttribution | null {
   }
 
   try {
-    const parsed = JSON.parse(raw) as Partial<SignupAttribution>;
-    if (!parsed || typeof parsed.source !== "string" || parsed.source.trim().length === 0) {
-      return null;
-    }
-
-    return {
-      source: parsed.source.trim(),
-      medium: typeof parsed.medium === "string" && parsed.medium.trim() ? parsed.medium.trim() : undefined,
-      campaign: typeof parsed.campaign === "string" && parsed.campaign.trim() ? parsed.campaign.trim() : undefined,
-      landingPath: typeof parsed.landingPath === "string" && parsed.landingPath.trim() ? parsed.landingPath.trim() : undefined,
-      referrer: typeof parsed.referrer === "string" && parsed.referrer.trim() ? parsed.referrer.trim() : undefined,
-    };
+    return normalizeSignupAttribution(JSON.parse(raw) as Partial<SignupAttribution>);
   } catch {
     return null;
   }
@@ -67,6 +56,43 @@ export function clearSignupAttributionFromBrowser() {
   }
 
   window.sessionStorage.removeItem(SIGNUP_ATTRIBUTION_STORAGE_KEY);
+  document.cookie = `${SIGNUP_ATTRIBUTION_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+export function readSignupAttributionFromCookie(cookieHeader: string | null | undefined): SignupAttribution | null {
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookieValue = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${SIGNUP_ATTRIBUTION_COOKIE_NAME}=`))
+    ?.slice(`${SIGNUP_ATTRIBUTION_COOKIE_NAME}=`.length);
+
+  if (!cookieValue) {
+    return null;
+  }
+
+  try {
+    return normalizeSignupAttribution(JSON.parse(decodeURIComponent(cookieValue)) as Partial<SignupAttribution>);
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeSignupAttribution(value: Partial<SignupAttribution> | null | undefined): SignupAttribution | null {
+  if (!value || typeof value.source !== "string" || value.source.trim().length === 0) {
+    return null;
+  }
+
+  return {
+    source: value.source.trim(),
+    medium: typeof value.medium === "string" && value.medium.trim() ? value.medium.trim() : undefined,
+    campaign: typeof value.campaign === "string" && value.campaign.trim() ? value.campaign.trim() : undefined,
+    landingPath: typeof value.landingPath === "string" && value.landingPath.trim() ? value.landingPath.trim() : undefined,
+    referrer: typeof value.referrer === "string" && value.referrer.trim() ? value.referrer.trim() : undefined,
+  };
 }
 
 function getReferrerHost(referrer: string): string | null {

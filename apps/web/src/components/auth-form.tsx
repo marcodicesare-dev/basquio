@@ -122,12 +122,14 @@ export function AuthForm({
 
       const emailRedirectTo = new URL("/auth/callback", window.location.origin);
       emailRedirectTo.searchParams.set("next", nextPath);
+      const signupAttribution = readSignupAttributionFromBrowser();
 
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: emailRedirectTo.toString(),
+          ...(signupAttribution ? { data: { basquio_signup_attribution: signupAttribution } } : {}),
         },
       });
 

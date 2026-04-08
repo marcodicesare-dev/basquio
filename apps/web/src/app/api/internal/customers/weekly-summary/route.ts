@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const now = new Date();
   const schedule = getZurichSchedule(now);
 
-  if (force && !isAuthorized(request)) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -45,6 +45,9 @@ export async function GET(request: Request) {
   }
 
   const summary = await postWeeklyRevenueSummary({ occurredAt: now });
+  if (!summary) {
+    return NextResponse.json({ error: "Customers webhook not configured." }, { status: 503 });
+  }
 
   if (!force) {
     await markWebhookEventProcessed({
@@ -74,12 +77,13 @@ function getSupabaseConfig() {
 }
 
 function isAuthorized(request: Request) {
-  const token = process.env.BASQUIO_INTERNAL_JOB_TOKEN?.trim();
-  if (!token) {
-    return false;
-  }
+  const authorization = request.headers.get("authorization");
+  const validTokens = [
+    process.env.CRON_SECRET?.trim(),
+    process.env.BASQUIO_INTERNAL_JOB_TOKEN?.trim(),
+  ].filter((value): value is string => Boolean(value));
 
-  return request.headers.get("authorization") === `Bearer ${token}`;
+  return validTokens.some((token) => authorization === `Bearer ${token}`);
 }
 
 function shouldRunWeeklySummary(schedule: ReturnType<typeof getZurichSchedule>) {

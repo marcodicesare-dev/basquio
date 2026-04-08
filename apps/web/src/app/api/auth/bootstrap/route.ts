@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { bootstrapViewerAccount } from "@/lib/auth-bootstrap";
-import type { SignupAttribution } from "@/lib/signup-attribution";
+import {
+  normalizeSignupAttribution,
+  readSignupAttributionFromCookie,
+  type SignupAttribution,
+} from "@/lib/signup-attribution";
 import { getViewerState } from "@/lib/supabase/auth";
 
 export const runtime = "nodejs";
@@ -16,8 +20,11 @@ export async function POST(request: Request) {
     }
 
     const payload = (await request.json().catch(() => null)) as { signupAttribution?: SignupAttribution | null } | null;
+    const signupAttribution =
+      normalizeSignupAttribution(payload?.signupAttribution ?? null) ??
+      readSignupAttributionFromCookie(request.headers.get("cookie"));
     const result = await bootstrapViewerAccount(viewer.user, {
-      signupAttribution: payload?.signupAttribution ?? null,
+      signupAttribution,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

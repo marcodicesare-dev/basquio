@@ -1,6 +1,6 @@
 import { ensureFreeTierCredit } from "@/lib/credits";
 import { notifySignup } from "@/lib/discord-customers";
-import type { SignupAttribution } from "@/lib/signup-attribution";
+import { normalizeSignupAttribution, type SignupAttribution } from "@/lib/signup-attribution";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "@/lib/supabase/admin";
 import type { ViewerState } from "@/lib/supabase/auth";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
@@ -33,6 +33,7 @@ export async function bootstrapViewerAccount(
   }
 
   const now = new Date().toISOString();
+  const signupAttribution = resolveSignupAttribution(user, options?.signupAttribution ?? null);
   const [[existingState], workspace] = await Promise.all([
     fetchRestRows<BootstrapStateRow>({
       supabaseUrl,
@@ -72,7 +73,7 @@ export async function bootstrapViewerAccount(
   if (!existingState?.first_authenticated_at && user.email) {
     void notifySignup({
       email: user.email,
-      sourceLabel: formatSignupSourceLabel(options?.signupAttribution ?? null),
+      sourceLabel: formatSignupSourceLabel(signupAttribution),
     }).catch(() => {});
   }
 
@@ -106,6 +107,21 @@ export async function bootstrapViewerAccount(
     welcomeEmailSent,
     welcomeEmailPreviouslySent,
   };
+}
+
+function resolveSignupAttribution(
+  user: NonNullable<ViewerState["user"]>,
+  signupAttribution: SignupAttribution | null,
+): SignupAttribution | null {
+  if (signupAttribution) {
+    return signupAttribution;
+  }
+
+  const metadataAttribution = normalizeSignupAttribution(
+    asRecord(user.user_metadata)?.basquio_signup_attribution as Partial<SignupAttribution> | undefined,
+  );
+
+  return metadataAttribution;
 }
 
 function formatSignupSourceLabel(signupAttribution: SignupAttribution | null): string | null {
@@ -171,6 +187,14 @@ function sanitizeLandingPath(landingPath: string | undefined): string | null {
 
 function compactParts(values: Array<string | null | undefined>) {
   return values.filter((value): value is string => Boolean(value?.trim()));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
 }
 
 async function sendWelcomeEmail(input: {
