@@ -8386,3 +8386,184 @@ textarea {
     grid-column: 1 / -1;
   }
 }
+
+/* Workflow chart and heading refinement */
+
+.workflow-copy {
+  max-width: 25rem;
+}
+
+.workflow-copy h2 {
+  max-width: 9ch;
+  font-size: clamp(2.7rem, 4.4vw, 3.9rem);
+  line-height: 0.94;
+}
+
+.workflow-chart-panel {
+  gap: 18px;
+  padding: 28px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(26, 106, 255, 0.14), transparent 18rem),
+    linear-gradient(180deg, #101317, #181d23);
+  color: var(--text-inverse);
+}
+
+.workflow-chart-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.workflow-chart-topbar strong {
+  letter-spacing: -0.03em;
+}
+
+.workflow-chart-stat {
+  display: grid;
+  gap: 4px;
+  min-width: 104px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.workflow-chart-stat span,
+.workflow-chart-axis span,
+.workflow-chart-summary-label {
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(244, 246, 248, 0.56);
+}
+
+.workflow-chart-stat strong {
+  font-size: 1.15rem;
+}
+
+.workflow-chart-shell {
+  gap: 14px;
+}
+
+.workflow-chart-axis {
+  display: grid;
+  grid-template-columns: 112px repeat(3, 1fr) 68px;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-chart-axis span:first-child,
+.workflow-chart-axis span:last-child {
+  opacity: 0;
+}
+
+.workflow-chart-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 68px;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-chart-label,
+.workflow-chart-value {
+  font-size: 0.9rem;
+}
+
+.workflow-chart-label {
+  color: rgba(244, 246, 248, 0.78);
+}
+
+.workflow-chart-track {
+  position: relative;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.workflow-chart-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  pointer-events: none;
+}
+
+.workflow-chart-grid span {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workflow-chart-grid span:last-child {
+  border-right: 0;
+}
+
+.workflow-chart-fill {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  bottom: 8px;
+  width: calc(var(--bar-width) - 8px);
+  min-width: 28px;
+  border-radius: 8px;
+}
+
+.workflow-chart-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.workflow-chart-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.workflow-chart-summary p {
+  margin: 0;
+  max-width: 30rem;
+  color: rgba(244, 246, 248, 0.76);
+  line-height: 1.6;
+}
+
+.workflow-chart-source {
+  font-size: 0.78rem;
+  color: rgba(244, 246, 248, 0.54);
+}
+
+@media (max-width: 900px) {
+  .workflow-copy h2 {
+    max-width: none;
+  }
+
+  .workflow-chart-topbar,
+  .workflow-chart-footer {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+}
+
+@media (max-width: 767px) {
+  .workflow-copy h2 {
+    font-size: clamp(2.5rem, 11vw, 3.4rem);
+  }
+
+  .workflow-chart-panel {
+    padding: 22px;
+  }
+
+  .workflow-chart-axis {
+    grid-template-columns: 92px repeat(3, 1fr) 54px;
+  }
+
+  .workflow-chart-row {
+    grid-template-columns: 92px minmax(0, 1fr) 54px;
+  }
+
+  .workflow-chart-label,
+  .workflow-chart-value {
+    font-size: 0.82rem;
+  }
+}
