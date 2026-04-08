@@ -123,7 +123,7 @@ export async function POST(request: Request) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = event.data.object;
-        await handleSubscriptionChange(config, subscription as unknown as SubscriptionData, event.id);
+        await handleSubscriptionChange(config, subscription as unknown as SubscriptionData, event.type);
         break;
       }
 
@@ -266,12 +266,11 @@ async function handleCreditPackPurchase(
 async function handleSubscriptionChange(
   config: { supabaseUrl: string; serviceKey: string },
   subscription: SubscriptionData,
-  _eventId: string,
+  eventType: "customer.subscription.created" | "customer.subscription.updated",
 ) {
   const userId = subscription.metadata?.user_id;
   const rawPlan = subscription.metadata?.plan;
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-  void _eventId; // reserved for future use
 
   if (!userId || !rawPlan) {
     console.error("[stripe-webhook] subscription missing metadata", { userId, plan: rawPlan, subId: subscription.id });
@@ -322,6 +321,11 @@ async function handleSubscriptionChange(
   const previousInterval = existingSubscription?.billing_interval ?? "monthly";
   const previousStatus = existingSubscription?.status ?? null;
   const isUpgrade = Boolean(previousPlan && previousPlan !== plan && getPlanWeight(plan) > getPlanWeight(previousPlan));
+  const isNewSubscriptionStart = normalizedStatus === "active"
+    && (
+      !existingSubscription
+      || (eventType === "customer.subscription.updated" && previousStatus === "incomplete")
+    );
 
   if (normalizedStatus === "active") {
     if (isUpgrade) {
@@ -334,7 +338,7 @@ async function handleSubscriptionChange(
           toInterval: interval,
         }))
         .catch(() => {});
-    } else if (!existingSubscription || previousStatus !== "active") {
+    } else if (isNewSubscriptionStart) {
       void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
         .then((email) => notifySubscriptionStarted({
           email,

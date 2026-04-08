@@ -91,6 +91,10 @@ type SignupRow = {
   user_id: string;
 };
 
+type IntercomThreadRow = {
+  intercom_conversation_id: string;
+};
+
 type RevenueSnapshot = {
   payerUserIds: Set<string>;
   currentUserRevenueEvents: number;
@@ -453,8 +457,12 @@ async function buildSignupMilestone(email: string): Promise<DiscordEmbed | null>
     return null;
   }
 
-  const signupCount = await getExternalSignupCount(config);
-  if (signupCount === 1) {
+  const [signupCount, intercomThreadCount] = await Promise.all([
+    getExternalSignupCount(config),
+    getIntercomThreadCount(config),
+  ]);
+
+  if (signupCount === 1 && intercomThreadCount === 0) {
     return createEmbed({
       title: "🎊 THE FIRST ONE",
       description: `**${email}** just signed up. The legend begins. Everyone drop what you're doing.`,
@@ -610,6 +618,18 @@ async function getExternalSignupCount(config: RuntimeConfig): Promise<number> {
   ]);
 
   return signups.filter((row) => isExternalUserId(emailIndex, row.user_id)).length;
+}
+
+async function getIntercomThreadCount(config: RuntimeConfig): Promise<number> {
+  const rows = await fetchRestRows<IntercomThreadRow>({
+    ...config,
+    table: "intercom_threads",
+    query: {
+      select: "intercom_conversation_id",
+    },
+  }).catch(() => []);
+
+  return rows.length;
 }
 
 async function getRevenueSnapshot(config: RuntimeConfig, email: string): Promise<RevenueSnapshot> {
