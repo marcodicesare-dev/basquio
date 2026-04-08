@@ -48,49 +48,76 @@ export function ScrollWorkflowShowcase() {
     <section className="workflow-showcase" id="workflow">
       <div className="workflow-track" ref={trackRef}>
         <div className="workflow-sticky">
-          <div className="workflow-copy">
-            <div className="stack">
-              <p className="section-label">How it works</p>
-              <h2>Upload your data. Get the deck.</h2>
-              <p className="workflow-copy-body">
-                Three steps. No formatting. No chart-building. Just the finished analysis.
-              </p>
-            </div>
+          <div className="workflow-stage-shell">
+            <div className="workflow-copy">
+              <div className="stack">
+                <p className="section-label">How it works</p>
+                <h2>Upload your data. Get the deck.</h2>
+                <p className="workflow-copy-body">
+                  Three steps. No formatting. No chart-building. Just the finished analysis.
+                </p>
+              </div>
 
-            <div className="workflow-progress" aria-label="Workflow steps">
-              {workflowSteps.map((step, index) => (
-                <div
-                  key={step.label}
-                  className={`workflow-progress-step${index === activeStep ? " active" : ""}`}
-                >
-                  <span className="workflow-progress-dot" aria-hidden="true" />
-                  <div className="stack">
-                    <strong>{step.label}</strong>
-                    <p>{step.title}</p>
-                  </div>
+              <div className="workflow-proof-row" aria-hidden="true">
+                <div className="workflow-proof-card">
+                  <span>Turnaround</span>
+                  <strong>15 min</strong>
                 </div>
-              ))}
-            </div>
+                <div className="workflow-proof-card">
+                  <span>Deliverables</span>
+                  <strong>3 files</strong>
+                </div>
+              </div>
 
-            <div className="workflow-copy-detail">
-              <span>Step {activeStep + 1}</span>
-              <p>{workflowSteps[activeStep]?.description}</p>
-              <div className="workflow-progress-bar" aria-hidden="true">
-                <span style={{ transform: `scaleX(${Math.max(progress, 0.08)})` }} />
+              <div className="workflow-copy-detail">
+                <span>Step {activeStep + 1}</span>
+                <p>{workflowSteps[activeStep]?.description}</p>
+                <div className="workflow-progress-bar" aria-hidden="true">
+                  <span style={{ transform: `scaleX(${Math.max(progress, 0.08)})` }} />
+                </div>
+              </div>
+
+              <div className="workflow-progress" aria-label="Workflow steps">
+                {workflowSteps.map((step, index) => (
+                  <div
+                    key={step.label}
+                    className={`workflow-progress-step${index === activeStep ? " active" : ""}`}
+                  >
+                    <span className="workflow-progress-dot" aria-hidden="true" />
+                    <div className="stack">
+                      <strong>{step.label}</strong>
+                      <p>{step.title}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
 
-          <div className="workflow-visual" aria-live="polite">
-            {workflowSteps.map((step, index) => (
-              <div
-                key={step.label}
-                className={`workflow-state${index === activeStep ? " active" : ""}`}
-                aria-hidden={index !== activeStep}
-              >
-                {step.panel}
+            <div className="workflow-visual-wrap">
+              <div className="workflow-visual-orbit workflow-visual-orbit-left" aria-hidden="true">
+                <span className="workflow-visual-orbit-label">Inputs</span>
+                <strong>CSV / XLSX / PDF</strong>
+                <p>Files, notes, and brand templates travel together.</p>
               </div>
-            ))}
+
+              <div className="workflow-visual" aria-live="polite">
+                {workflowSteps.map((step, index) => (
+                  <div
+                    key={step.label}
+                    className={`workflow-state${index === activeStep ? " active" : ""}`}
+                    aria-hidden={index !== activeStep}
+                  >
+                    {step.panel}
+                  </div>
+                ))}
+              </div>
+
+              <div className="workflow-visual-orbit workflow-visual-orbit-right" aria-hidden="true">
+                <span className="workflow-visual-orbit-label">Outputs</span>
+                <strong>Deck / Report / Workbook</strong>
+                <p>One analysis becomes the full artifact pack.</p>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -90,6 +90,15 @@ export default function HomePage() {
         </div>
 
         <div className="hero-product-showcase">
+          <div className="showcase-layer showcase-layer-foundation" aria-hidden="true">
+            <div className="showcase-foundation-grid">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+
           <div className="showcase-layer showcase-layer-slide">
             <div className="showcase-window-chrome" aria-hidden="true">
               <span />
@@ -126,13 +135,28 @@ export default function HomePage() {
               <strong>Key finding</strong>
             </div>
             <p>
-              Enterprise accounts for 62% of market value, but growth is being driven by the private label mix
-              shift in mid-market accounts.
+              Enterprise carries most value, but private label momentum is shifting the category story in
+              mid-market accounts.
             </p>
             <div className="showcase-report-lines" aria-hidden="true">
               <span />
               <span />
               <span />
+            </div>
+          </div>
+
+          <div className="showcase-deliverables-strip">
+            <div className="showcase-deliverable-pill">
+              <span>Deck</span>
+              <strong>PPTX</strong>
+            </div>
+            <div className="showcase-deliverable-pill">
+              <span>Report</span>
+              <strong>MD</strong>
+            </div>
+            <div className="showcase-deliverable-pill">
+              <span>Workbook</span>
+              <strong>XLSX</strong>
             </div>
           </div>
         </div>
