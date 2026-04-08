@@ -1,7 +1,7 @@
 import { ensureFreeTierCredit } from "@/lib/credits";
 import { notifySignup } from "@/lib/discord-customers";
 import { normalizeSignupAttribution, type SignupAttribution } from "@/lib/signup-attribution";
-import { fetchRestRows, patchRestRows, upsertRestRows } from "@/lib/supabase/admin";
+import { createServiceSupabaseClient, fetchRestRows, patchRestRows } from "@/lib/supabase/admin";
 import type { ViewerState } from "@/lib/supabase/auth";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
@@ -34,43 +34,33 @@ export async function bootstrapViewerAccount(
 
   const now = new Date().toISOString();
   const signupAttribution = resolveSignupAttribution(user, options?.signupAttribution ?? null);
-  const [[existingState], workspace] = await Promise.all([
-    fetchRestRows<BootstrapStateRow>({
+  const [{ existingState, isFirstAuthentication }, workspace] = await Promise.all([
+    claimBootstrapState({
       supabaseUrl,
       serviceKey,
-      table: "user_bootstrap_state",
-      query: {
-        select: "*",
-        user_id: `eq.${user.id}`,
-        limit: "1",
-      },
-    }).catch(() => []),
+      userId: user.id,
+      now,
+    }),
     ensureViewerWorkspace(user),
   ]);
   const workspaceReady = Boolean(workspace);
 
   await Promise.all([
-    upsertRestRows<BootstrapStateRow>({
+    patchRestRows<BootstrapStateRow>({
       supabaseUrl,
       serviceKey,
       table: "user_bootstrap_state",
-      onConflict: "user_id",
-      select: "*",
-      rows: [
-        {
-          user_id: user.id,
-          first_authenticated_at: existingState?.first_authenticated_at ?? now,
-          last_authenticated_at: now,
-          workspace_initialized_at: existingState?.workspace_initialized_at ?? (workspaceReady ? now : null),
-          welcome_email_sent_at: existingState?.welcome_email_sent_at ?? null,
-          updated_at: now,
-        },
-      ],
+      query: { user_id: `eq.${user.id}` },
+      payload: {
+        last_authenticated_at: now,
+        workspace_initialized_at: existingState?.workspace_initialized_at ?? (workspaceReady ? now : null),
+        updated_at: now,
+      },
     }),
     ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: user.id }),
   ]);
 
-  if (!existingState?.first_authenticated_at && user.email) {
+  if (isFirstAuthentication && user.email) {
     void notifySignup({
       email: user.email,
       sourceLabel: formatSignupSourceLabel(signupAttribution),
@@ -106,6 +96,61 @@ export async function bootstrapViewerAccount(
     workspaceReady,
     welcomeEmailSent,
     welcomeEmailPreviouslySent,
+  };
+}
+
+async function claimBootstrapState(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  userId: string;
+  now: string;
+}): Promise<{ existingState: BootstrapStateRow | null; isFirstAuthentication: boolean }> {
+  const supabase = createServiceSupabaseClient(input.supabaseUrl, input.serviceKey);
+  const { data: insertedRows, error } = await supabase
+    .from("user_bootstrap_state")
+    .upsert(
+      [
+        {
+          user_id: input.userId,
+          first_authenticated_at: input.now,
+          last_authenticated_at: input.now,
+          workspace_initialized_at: null,
+          welcome_email_sent_at: null,
+          updated_at: input.now,
+        },
+      ],
+      {
+        onConflict: "user_id",
+        ignoreDuplicates: true,
+      },
+    )
+    .select("*");
+
+  if (error) {
+    throw error;
+  }
+
+  if (insertedRows && insertedRows.length > 0) {
+    return {
+      existingState: insertedRows[0] as BootstrapStateRow,
+      isFirstAuthentication: true,
+    };
+  }
+
+  const [existingState] = await fetchRestRows<BootstrapStateRow>({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "user_bootstrap_state",
+    query: {
+      select: "*",
+      user_id: `eq.${input.userId}`,
+      limit: "1",
+    },
+  }).catch(() => []);
+
+  return {
+    existingState: existingState ?? null,
+    isFirstAuthentication: false,
   };
 }
 
