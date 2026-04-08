@@ -203,8 +203,8 @@ export default function HomePage() {
 
       <PublicSiteFooterCta
         eyebrow="Ready to start"
-        title="Try it with the files behind your next meeting."
-        copy="If the first draft is strong enough to edit, the tool is doing its job."
+        title="Upload your data. Get a finished deck in 15 minutes."
+        copy="Start with a real draft, not a blank slide."
         primaryLabel="Try it with your data"
         primaryHref="/jobs/new"
         secondaryLabel="See pricing"

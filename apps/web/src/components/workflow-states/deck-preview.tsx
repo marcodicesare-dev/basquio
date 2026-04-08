@@ -28,6 +28,10 @@ export function DeckPreview() {
           <strong>3 files</strong>
         </div>
         <div className="workflow-deliverable-card">
+          <span className="workflow-deliverable-kind">Deck</span>
+          <strong>deck.pptx</strong>
+        </div>
+        <div className="workflow-deliverable-card">
           <span className="workflow-deliverable-kind">Narrative</span>
           <strong>report.md</strong>
         </div>
@@ -35,9 +39,6 @@ export function DeckPreview() {
           <span className="workflow-deliverable-kind">Workbook</span>
           <strong>workbook.xlsx</strong>
         </div>
-        <button type="button" className="workflow-download-button">
-          Download
-        </button>
       </div>
 
       <p className="workflow-ready-label">15 minutes. 3 files. Ready to present.</p>
