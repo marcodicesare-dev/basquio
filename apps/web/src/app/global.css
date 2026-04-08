@@ -7635,12 +7635,56 @@ textarea {
 
 /* Homepage polish pass */
 
+.marketing-hero-editorial {
+  padding: 56px;
+}
+
+.marketing-hero-editorial::after {
+  content: "";
+  position: absolute;
+  top: 42px;
+  right: 42px;
+  width: 46%;
+  height: 76%;
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 58%),
+    radial-gradient(circle at 24% 28%, rgba(240, 204, 39, 0.12), transparent 18rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.marketing-hero-editorial .hero-main h1 {
+  max-width: 7ch;
+  font-size: clamp(3.3rem, 5.8vw, 5.6rem);
+  line-height: 0.92;
+}
+
+.marketing-hero-editorial .hero-subtitle {
+  max-width: 26rem;
+  font-size: 1.1rem;
+}
+
 .hero-product-showcase {
-  min-height: 600px;
+  min-height: 560px;
+}
+
+.hero-product-showcase::before {
+  content: "";
+  position: absolute;
+  inset: 34px 46px 94px 118px;
+  border-radius: 30px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.28;
+  pointer-events: none;
 }
 
 .showcase-layer-foundation {
-  inset: 44px 56px 118px 116px;
+  inset: 28px 46px 102px 110px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01)),
     rgba(255, 255, 255, 0.03);
@@ -7662,29 +7706,29 @@ textarea {
 }
 
 .showcase-layer-slide {
-  inset: 0 18px 104px 148px;
+  inset: 0 8px 96px 142px;
   border-radius: 22px;
 }
 
 .showcase-layer-chart {
-  left: 32px;
-  bottom: 132px;
-  width: min(278px, 40%);
+  left: 18px;
+  bottom: 118px;
+  width: min(262px, 38%);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
 .showcase-layer-report {
   right: 0;
-  bottom: 112px;
-  width: min(296px, 42%);
+  bottom: 102px;
+  width: min(278px, 38%);
   border-color: rgba(11, 12, 12, 0.08);
 }
 
 .showcase-deliverables-strip {
   position: absolute;
-  right: 26px;
+  right: 12px;
   bottom: 18px;
-  left: 182px;
+  left: 152px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
@@ -7718,7 +7762,8 @@ textarea {
 }
 
 .workflow-sticky {
-  display: block;
+  display: flex;
+  align-items: center;
   padding: 40px 0;
 }
 
@@ -7729,7 +7774,7 @@ textarea {
   align-items: center;
   gap: 42px;
   width: 100%;
-  min-height: calc(100vh - 80px);
+  min-height: 760px;
   padding: 44px;
   border: 1px solid rgba(11, 12, 12, 0.08);
   border-radius: 36px;
@@ -7760,10 +7805,13 @@ textarea {
 
 .workflow-copy {
   gap: 24px;
+  max-width: 22rem;
 }
 
 .workflow-copy h2 {
-  font-size: clamp(2.8rem, 5vw, 4rem);
+  max-width: 7ch;
+  font-size: clamp(2.45rem, 4vw, 3.5rem);
+  line-height: 0.95;
 }
 
 .workflow-proof-row {
@@ -7798,11 +7846,24 @@ textarea {
 }
 
 .workflow-progress {
+  position: relative;
   gap: 8px;
+  padding-left: 6px;
+}
+
+.workflow-progress::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 4px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(26, 106, 255, 0.22), rgba(11, 12, 12, 0.08));
 }
 
 .workflow-progress-step {
-  padding: 10px 0;
+  grid-template-columns: 14px minmax(0, 1fr);
+  padding: 10px 0 10px 0;
 }
 
 .workflow-copy-detail {
@@ -7811,11 +7872,11 @@ textarea {
 
 .workflow-visual-wrap {
   position: relative;
-  min-height: 760px;
+  min-height: 620px;
 }
 
 .workflow-visual {
-  min-height: 760px;
+  min-height: 620px;
 }
 
 .workflow-visual-orbit {
@@ -7842,17 +7903,18 @@ textarea {
 }
 
 .workflow-visual-orbit-left {
-  top: 88px;
-  left: -16px;
+  top: 20px;
+  left: 8px;
 }
 
 .workflow-visual-orbit-right {
-  right: -8px;
-  bottom: 74px;
+  right: 0;
+  bottom: 18px;
 }
 
 .workflow-panel {
-  width: min(100%, 720px);
+  width: min(100%, 700px);
+  transform: translateX(8px);
 }
 
 .workflow-upload-grid {
@@ -7911,25 +7973,25 @@ textarea {
   }
 
   .showcase-layer-foundation {
-    inset: 44px 26px 118px 56px;
+    inset: 34px 20px 112px 44px;
   }
 
   .showcase-layer-slide {
-    inset: 0 0 104px 86px;
+    inset: 0 0 100px 74px;
   }
 
   .showcase-deliverables-strip {
-    left: 118px;
+    left: 94px;
   }
 
   .workflow-stage-shell {
     grid-template-columns: minmax(0, 1fr);
-    min-height: auto;
+    min-height: 880px;
   }
 
   .workflow-visual-wrap,
   .workflow-visual {
-    min-height: 720px;
+    min-height: 640px;
   }
 
   .workflow-visual-orbit-left {
@@ -7967,6 +8029,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .workflow-copy {
+    max-width: none;
+  }
+
   .workflow-upload-grid {
     grid-template-columns: 1fr;
   }
@@ -7974,9 +8040,21 @@ textarea {
   .workflow-visual-orbit {
     width: 190px;
   }
+
+  .workflow-panel {
+    transform: none;
+  }
 }
 
 @media (max-width: 767px) {
+  .marketing-hero-editorial {
+    padding: 32px 24px;
+  }
+
+  .marketing-hero-editorial .hero-main h1 {
+    font-size: clamp(2.8rem, 12vw, 4.4rem);
+  }
+
   .hero-product-showcase {
     min-height: 420px;
   }
@@ -8014,5 +8092,134 @@ textarea {
     border-radius: 24px;
     background: rgba(255, 255, 255, 0.56);
     box-shadow: var(--shadow-soft);
+  }
+}
+
+/* Homepage art-direction pass 2 */
+
+.landing-shell-editorial {
+  gap: 72px;
+}
+
+.marketing-hero-editorial .hero-main h1 {
+  max-width: 9ch;
+  font-size: clamp(3rem, 5.2vw, 5rem);
+  line-height: 0.93;
+}
+
+.marketing-hero-editorial .hero-subtitle {
+  max-width: 26rem;
+}
+
+.hero-product-showcase {
+  min-height: 520px;
+}
+
+.showcase-window-chrome {
+  background: rgba(11, 13, 16, 0.72);
+}
+
+.showcase-layer-slide img {
+  object-fit: contain;
+  background: #f7f2e7;
+}
+
+.showcase-layer-chart {
+  bottom: 106px;
+}
+
+.showcase-layer-report {
+  bottom: 92px;
+}
+
+.showcase-deliverables-strip {
+  left: 152px;
+  right: 12px;
+}
+
+.social-proof-bar {
+  margin-top: -28px;
+  padding: 0;
+}
+
+.social-proof-bar p {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: var(--shadow-soft);
+}
+
+.workflow-stage-shell {
+  min-height: 700px;
+}
+
+.workflow-copy h2 {
+  max-width: 7ch;
+  font-size: clamp(2.45rem, 4vw, 3.5rem);
+}
+
+.workflow-progress {
+  position: relative;
+  padding-left: 6px;
+}
+
+.workflow-progress::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 4px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(26, 106, 255, 0.22), rgba(11, 12, 12, 0.08));
+}
+
+.workflow-progress-step {
+  grid-template-columns: 14px minmax(0, 1fr);
+}
+
+.workflow-visual-wrap,
+.workflow-visual {
+  min-height: 580px;
+}
+
+@media (max-width: 1180px) {
+  .hero-product-showcase {
+    min-height: 500px;
+  }
+
+  .showcase-deliverables-strip {
+    left: 94px;
+  }
+
+  .workflow-stage-shell {
+    min-height: 820px;
+  }
+
+  .workflow-visual-wrap,
+  .workflow-visual {
+    min-height: 600px;
+  }
+}
+
+@media (max-width: 767px) {
+  .marketing-hero-editorial .hero-main h1 {
+    font-size: clamp(2.8rem, 12vw, 4.4rem);
+  }
+
+  .hero-product-showcase {
+    min-height: 400px;
+  }
+
+  .showcase-layer-chart {
+    bottom: 118px;
+  }
+
+  .showcase-layer-report {
+    bottom: 118px;
   }
 }
