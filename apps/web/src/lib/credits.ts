@@ -60,6 +60,28 @@ export function assertValidSlideCount(slideCount: number): number {
   return slideCount;
 }
 
+// ─── TIME ESTIMATES ─────────────────────────────────────────
+// Derived from production run data (100 completed runs, April 2026).
+// Linear model: base_minutes + per_slide_minutes * slideCount.
+// Base accounts for container setup, QA, export — fixed overhead regardless of slides.
+// Outliers (stuck runs > 120 min) excluded from the regression.
+
+const TIME_MODEL: Record<string, { baseMinutes: number; perSlideMinutes: number }> = {
+  "claude-haiku-4-5":  { baseMinutes: 8,  perSlideMinutes: 0.7 },
+  "claude-sonnet-4-6": { baseMinutes: 12, perSlideMinutes: 1.0 },
+  "claude-opus-4-6":   { baseMinutes: 12, perSlideMinutes: 0.75 },
+};
+
+/**
+ * Estimate total run time in minutes based on model and slide count.
+ * Returns a round number suitable for UI display ("~22 min").
+ */
+export function estimateRunMinutes(slideCount: number, model: string = DEFAULT_AUTHOR_MODEL): number {
+  const params = TIME_MODEL[model] ?? TIME_MODEL[DEFAULT_AUTHOR_MODEL];
+  const raw = params.baseMinutes + params.perSlideMinutes * slideCount;
+  return Math.round(raw);
+}
+
 // ─── TYPES ───────────────────────────────────────────────────
 
 type SupabaseConfig = {

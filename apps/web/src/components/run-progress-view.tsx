@@ -9,7 +9,7 @@ import type { CSSProperties } from "react";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 
-import { DEFAULT_AUTHOR_MODEL, calculateRunCredits } from "@/lib/credits";
+import { DEFAULT_AUTHOR_MODEL, calculateRunCredits, estimateRunMinutes } from "@/lib/credits";
 import { clearRunLaunchDraft, readRunLaunchDraft, type RunLaunchDraft } from "@/lib/run-launch-draft";
 import { buildPhaseProgressModel, estimateRemainingSecondsForPhase } from "@/lib/run-progress";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -786,6 +786,8 @@ export function RunProgressView(input: {
   const isReportOnlyRun = snapshot.authorModel === "claude-haiku-4-5";
   const title = isReportOnlyRun ? "Building your report" : "Building your deck";
   const elapsedLabel = formatElapsedLabel(getDisplayedElapsedSeconds(snapshot, elapsedTickMs));
+  const estimatedSlideCount = initialLaunchDraft?.targetSlideCount ?? 10;
+  const estimatedMinutes = estimateRunMinutes(estimatedSlideCount, snapshot.authorModel ?? DEFAULT_AUTHOR_MODEL);
   const leaveRunCopy = snapshot.notifyOnComplete !== false
     ? "This runs in the background. Close this page and we'll email you when it's ready."
     : "This runs in the background. Close this page and come back from Reports or Dashboard later.";
@@ -819,7 +821,10 @@ export function RunProgressView(input: {
         </div>
 
         <h1 className="run-status-title">{title}</h1>
-        <p className="run-status-elapsed">{elapsedLabel}</p>
+        <p className="run-status-elapsed">
+          {elapsedLabel}
+          <span className="run-status-estimate"> · ~{estimatedMinutes} min total</span>
+        </p>
 
         <div style={styles.leaveRunCard}>
           <p style={styles.leaveRunTitle}>Need to step away?</p>

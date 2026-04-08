@@ -2460,6 +2460,10 @@ textarea {
   font-size: 0.92rem;
 }
 
+.run-status-estimate {
+  opacity: 0.5;
+}
+
 @keyframes basquio-logo-sheen {
   0%,
   100% {
