@@ -3,3 +3,14 @@
 # Keep native build tooling available for workspace deps that may fall back
 # to node-gyp during Git-connected builds, such as @discordjs/opus.
 aptPkgs = ["python3", "python-is-python3", "build-essential"]
+
+[phases.build]
+# Railway's mounted .next/cache has been intermittently failing with ENOENT
+# during Next's config cache rename step. Keep the node_modules cache, but
+# let Next rebuild its own cache directory fresh inside the container.
+cmds = [
+  "rm -rf apps/web/.next",
+  "mkdir -p apps/web/.next/cache",
+  "pnpm run build",
+]
+cacheDirectories = ["node_modules/.cache"]
