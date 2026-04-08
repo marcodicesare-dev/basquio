@@ -8,6 +8,7 @@ import {
   type PackPricingTier,
   type PlanId,
 } from "@/lib/billing-config";
+import { getStripe } from "@/lib/stripe";
 import { createServiceSupabaseClient, fetchRestRows } from "@/lib/supabase/admin";
 
 const DISCORD_CUSTOMERS_WEBHOOK_URL = process.env.DISCORD_CUSTOMERS_WEBHOOK_URL;
@@ -80,15 +81,19 @@ type SubscriptionRow = {
   plan: string;
   billing_interval: "monthly" | "annual";
   status: string;
+  created_at?: string;
 };
 
 type CreditGrantRow = {
   user_id: string;
   source: string;
+  original_amount?: number;
+  created_at?: string;
 };
 
 type SignupRow = {
   user_id: string;
+  first_authenticated_at?: string;
 };
 
 type IntercomThreadRow = {
@@ -102,9 +107,21 @@ type RevenueSnapshot = {
   currentMrr: number;
 };
 
+type WeeklyRevenueSummary = {
+  signupCount: number;
+  newSubscriberCount: number;
+  subscriberBreakdownLabel: string;
+  creditPackCount: number;
+  creditPackRevenue: number;
+  currentMrr: number;
+  totalRevenue: number;
+  topCustomerLabel: string;
+};
+
 type SignupInput = {
   email: string;
   sourceLabel?: string | null;
+  occurredAt?: Date;
 };
 
 type CreditPurchaseInput = {
@@ -179,14 +196,18 @@ export async function notifySignup(input: SignupInput): Promise<void> {
       pickRandom(SIGNUP_FLAVOR_TEXT),
       getCompanyEasterEgg(email),
       getDomainIntelligence(email),
-      getTimeBasedSignupEasterEgg(),
+      getTimeBasedSignupEasterEgg(input.occurredAt),
       getAleJapaneseLine(email),
-      getSampietroAlert(email),
     ]);
 
     const milestone = await buildSignupMilestone(email).catch(() => null);
     if (milestone) {
       embeds.push(milestone);
+    }
+
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
     }
   }
 
@@ -222,7 +243,6 @@ export async function notifyCreditPurchase(input: CreditPurchaseInput): Promise<
       getCreditPackExtraLine(packId),
       getCompanyEasterEgg(email),
       getDomainIntelligence(email),
-      getSampietroAlert(email),
     ]);
 
     const milestone = await buildFirstRevenueMilestone({
@@ -231,6 +251,11 @@ export async function notifyCreditPurchase(input: CreditPurchaseInput): Promise<
     }).catch(() => null);
     if (milestone) {
       embeds.push(milestone);
+    }
+
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
     }
   }
 
@@ -264,7 +289,6 @@ export async function notifySubscriptionStarted(input: SubscriptionStartedInput)
       getSubscriptionExtraLine(plan, interval),
       getCompanyEasterEgg(email),
       getDomainIntelligence(email),
-      getSampietroAlert(email),
     ]);
 
     const milestones = await buildSubscriptionMilestones({
@@ -274,6 +298,11 @@ export async function notifySubscriptionStarted(input: SubscriptionStartedInput)
       previousStatus: input.previousStatus ?? null,
     }).catch(() => []);
     embeds.push(...milestones);
+
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
   }
 
   await postWebhook({ content, embeds });
@@ -307,7 +336,6 @@ export async function notifyPlanUpgrade(input: PlanUpgradeInput): Promise<void> 
       getSubscriptionExtraLine(toPlan, toInterval),
       getCompanyEasterEgg(email),
       getDomainIntelligence(email),
-      getSampietroAlert(email),
     ]);
 
     const milestones = await buildMrrMilestones({
@@ -318,6 +346,11 @@ export async function notifyPlanUpgrade(input: PlanUpgradeInput): Promise<void> 
       toInterval,
     }).catch(() => []);
     embeds.push(...milestones);
+
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
   }
 
   await postWebhook({ content, embeds });
@@ -330,27 +363,31 @@ export async function notifySubscriptionRenewed(input: RenewalInput): Promise<vo
 
   const email = input.email.trim();
   const plan = normalizePlanId(input.plan);
+  const embeds: DiscordEmbed[] = [
+    createEmbed({
+      title: "🔄 Subscription renewed",
+      description: `**${email}** renewed **${getPlanLabel(plan)}**`,
+      color: COLOR.EMERALD,
+      fields: [
+        { name: "Plan", value: getPlanLabel(plan), inline: true },
+        { name: "Credits granted", value: String(input.creditsGranted), inline: true },
+      ],
+    }),
+  ];
   const content = isTestCustomerEmail(email)
     ? ""
-    : buildContent([
-        getCompanyEasterEgg(email),
-        getDomainIntelligence(email),
-        getSampietroAlert(email),
-      ]);
+    : buildContent([getCompanyEasterEgg(email), getDomainIntelligence(email)]);
+
+  if (!isTestCustomerEmail(email)) {
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+  }
 
   await postWebhook({
     content,
-    embeds: [
-      createEmbed({
-        title: "🔄 Subscription renewed",
-        description: `**${email}** renewed **${getPlanLabel(plan)}**`,
-        color: COLOR.EMERALD,
-        fields: [
-          { name: "Plan", value: getPlanLabel(plan), inline: true },
-          { name: "Credits granted", value: String(input.creditsGranted), inline: true },
-        ],
-      }),
-    ],
+    embeds,
   });
 }
 
@@ -367,19 +404,26 @@ export async function notifyPaymentFailed(input: PaymentFailedInput): Promise<vo
         `⚠️ ${email}'s card bounced on ${getPlanLabel(plan)}. Stripe will retry. Fra, keep an eye on this.`,
         getCompanyEasterEgg(email),
         getDomainIntelligence(email),
-        getSampietroAlert(email),
       ]);
+  const embeds: DiscordEmbed[] = [
+    createEmbed({
+      title: "⚠️ Payment failed",
+      description: `**${email}** payment failed`,
+      color: COLOR.ORANGE,
+      fields: [{ name: "Plan", value: getPlanLabel(plan), inline: true }],
+    }),
+  ];
+
+  if (!isTestCustomerEmail(email)) {
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+  }
 
   await postWebhook({
     content,
-    embeds: [
-      createEmbed({
-        title: "⚠️ Payment failed",
-        description: `**${email}** payment failed`,
-        color: COLOR.ORANGE,
-        fields: [{ name: "Plan", value: getPlanLabel(plan), inline: true }],
-      }),
-    ],
+    embeds,
   });
 }
 
@@ -396,20 +440,66 @@ export async function notifyCancellation(input: CancellationInput): Promise<void
         `👋 ${email} left ${getPlanLabel(plan)}. Was it the price? The output? The vibes? Rossella, dig into their runs.`,
         getCompanyEasterEgg(email),
         getDomainIntelligence(email),
-        getSampietroAlert(email),
       ]);
+  const embeds: DiscordEmbed[] = [
+    createEmbed({
+      title: "👋 Subscription canceled",
+      description: `**${email}** canceled **${getPlanLabel(plan)}**`,
+      color: COLOR.RED,
+      fields: [{ name: "Plan", value: getPlanLabel(plan), inline: true }],
+    }),
+  ];
+
+  if (!isTestCustomerEmail(email)) {
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+  }
 
   await postWebhook({
     content,
+    embeds,
+  });
+}
+
+export async function postWeeklyRevenueSummary(input?: {
+  occurredAt?: Date;
+}): Promise<WeeklyRevenueSummary | null> {
+  if (!DISCORD_CUSTOMERS_WEBHOOK_URL) {
+    return null;
+  }
+
+  const config = getRuntimeConfig();
+  if (!config) {
+    return null;
+  }
+
+  const summary = await buildWeeklyRevenueSummary(config, input?.occurredAt ?? new Date());
+  const lines = [
+    "━━━━━━━━━━━━━━━━━━━━━━━━",
+    `New signups this week: ${summary.signupCount}`,
+    `New subscribers: ${summary.newSubscriberCount}${summary.subscriberBreakdownLabel ? ` (${summary.subscriberBreakdownLabel})` : ""}`,
+    `Credit packs sold: ${summary.creditPackCount} (${formatUsd(summary.creditPackRevenue)} total)`,
+    `MRR: ${formatUsd(summary.currentMrr)}`,
+    `Total revenue this week: ${formatUsd(summary.totalRevenue)}`,
+    "",
+    `Top customer: ${summary.topCustomerLabel}`,
+    "━━━━━━━━━━━━━━━━━━━━━━━━",
+  ];
+
+  await postWebhook({
+    content: "\"Non puo rimanere fra noi 6 sta cosa\" - Veronica",
     embeds: [
       createEmbed({
-        title: "👋 Subscription canceled",
-        description: `**${email}** canceled **${getPlanLabel(plan)}**`,
-        color: COLOR.RED,
-        fields: [{ name: "Plan", value: getPlanLabel(plan), inline: true }],
+        title: "📊 Weekly Revenue Summary",
+        description: lines.join("\n"),
+        color: COLOR.BLURPLE,
       }),
     ],
   });
+
+  return summary;
 }
 
 async function postWebhook(input: {
@@ -612,7 +702,7 @@ async function getExternalSignupCount(config: RuntimeConfig): Promise<number> {
     fetchRestRows<SignupRow>({
       ...config,
       table: "user_bootstrap_state",
-      query: { select: "user_id" },
+      query: { select: "user_id,first_authenticated_at" },
     }),
     listAuthUsers(config),
   ]);
@@ -638,12 +728,12 @@ async function getRevenueSnapshot(config: RuntimeConfig, email: string): Promise
     fetchRestRows<SubscriptionRow>({
       ...config,
       table: "subscriptions",
-      query: { select: "user_id,plan,billing_interval,status" },
+      query: { select: "user_id,plan,billing_interval,status,created_at" },
     }),
     fetchRestRows<CreditGrantRow>({
       ...config,
       table: "credit_grants",
-      query: { select: "user_id,source", source: "eq.purchase" },
+      query: { select: "user_id,source,original_amount,created_at", source: "eq.purchase" },
     }),
   ]);
 
@@ -687,6 +777,188 @@ async function getRevenueSnapshot(config: RuntimeConfig, email: string): Promise
     activeSubscriptionCount,
     currentMrr,
   };
+}
+
+async function buildWeeklyRevenueSummary(
+  config: RuntimeConfig,
+  occurredAt: Date,
+): Promise<WeeklyRevenueSummary> {
+  const weekStart = new Date(occurredAt.getTime() - (7 * 24 * 60 * 60 * 1000));
+  const weekStartIso = weekStart.toISOString();
+  const emailIndex = await listAuthUsers(config);
+
+  const [signups, subscriptions, creditPackEvents, subscriptionRevenueEvents] = await Promise.all([
+    fetchRestRows<SignupRow>({
+      ...config,
+      table: "user_bootstrap_state",
+      query: {
+        select: "user_id,first_authenticated_at",
+        first_authenticated_at: `gte.${weekStartIso}`,
+      },
+    }),
+    fetchRestRows<SubscriptionRow>({
+      ...config,
+      table: "subscriptions",
+      query: {
+        select: "user_id,plan,billing_interval,status,created_at",
+      },
+    }),
+    listWeeklyCreditPackRevenueEvents(emailIndex, weekStart),
+    listWeeklySubscriptionRevenueEvents(emailIndex, weekStart),
+  ]);
+
+  const signupCount = signups.filter((row) => isExternalUserId(emailIndex, row.user_id)).length;
+  const newSubscriptions = subscriptions.filter((subscription) => {
+    if (!isExternalUserId(emailIndex, subscription.user_id)) {
+      return false;
+    }
+
+    if (!subscription.created_at || subscription.created_at < weekStartIso) {
+      return false;
+    }
+
+    return subscription.status !== "incomplete";
+  });
+
+  const planBreakdown = new Map<PlanId, number>();
+  for (const subscription of newSubscriptions) {
+    const plan = normalizePlanId(subscription.plan);
+    planBreakdown.set(plan, (planBreakdown.get(plan) ?? 0) + 1);
+  }
+
+  const subscriberBreakdownLabel = Array.from(planBreakdown.entries())
+    .filter(([, count]) => count > 0)
+    .sort(([left], [right]) => getPlanWeight(right) - getPlanWeight(left))
+    .map(([plan, count]) => `${count} ${getPlanLabel(plan)}`)
+    .join(", ");
+
+  const currentMrr = subscriptions.reduce((total, subscription) => {
+    if (!isExternalUserId(emailIndex, subscription.user_id) || subscription.status !== "active") {
+      return total;
+    }
+
+    return total + getMonthlyRecurringValue(
+      normalizePlanId(subscription.plan),
+      normalizeInterval(subscription.billing_interval),
+    );
+  }, 0);
+
+  const creditPackRevenue = sumAmounts(creditPackEvents.map((event) => event.amount));
+  const subscriptionRevenue = sumAmounts(subscriptionRevenueEvents.map((event) => event.amount));
+  const topCustomer = [...creditPackEvents, ...subscriptionRevenueEvents]
+    .sort((left, right) => right.amount - left.amount)[0];
+
+  return {
+    signupCount,
+    newSubscriberCount: newSubscriptions.length,
+    subscriberBreakdownLabel,
+    creditPackCount: creditPackEvents.length,
+    creditPackRevenue,
+    currentMrr,
+    totalRevenue: creditPackRevenue + subscriptionRevenue,
+    topCustomerLabel: topCustomer ? `${topCustomer.email} (${topCustomer.label})` : "None yet",
+  };
+}
+
+async function listWeeklyCreditPackRevenueEvents(
+  emailIndex: Map<string, string>,
+  weekStart: Date,
+): Promise<Array<{ amount: number; email: string; label: string }>> {
+  const stripe = getStripe();
+  const events: Array<{ amount: number; email: string; label: string }> = [];
+  const created = { gte: Math.floor(weekStart.getTime() / 1000) };
+
+  for await (const session of stripe.checkout.sessions.list({ limit: 100, created })) {
+    if (session.payment_status !== "paid" || session.metadata?.type === "subscription" || session.metadata?.type === "template_fee") {
+      continue;
+    }
+
+    const email = resolveRevenueEventEmail({
+      userId: session.metadata?.user_id ?? null,
+      fallbackEmail: session.customer_details?.email ?? null,
+      emailIndex,
+    });
+
+    if (!email || isTestCustomerEmail(email)) {
+      continue;
+    }
+
+    const packId = session.metadata?.pack_id as CreditPackId | undefined;
+    const label = packId ? `${CREDIT_PACK_CATALOG[packId].credits} credit pack` : "Credit pack";
+
+    events.push({
+      amount: (session.amount_total ?? 0) / 100,
+      email,
+      label,
+    });
+  }
+
+  return events;
+}
+
+async function listWeeklySubscriptionRevenueEvents(
+  emailIndex: Map<string, string>,
+  weekStart: Date,
+): Promise<Array<{ amount: number; email: string; label: string }>> {
+  const stripe = getStripe();
+  const events: Array<{ amount: number; email: string; label: string }> = [];
+  const created = { gte: Math.floor(weekStart.getTime() / 1000) };
+
+  for await (const invoice of stripe.invoices.list({ limit: 100, created })) {
+    const invoiceData = invoice as typeof invoice & {
+      subscription?: string | null;
+      subscription_details?: { metadata?: Record<string, string> | null } | null;
+      metadata?: Record<string, string> | null;
+      customer_email?: string | null;
+      amount_paid?: number | null;
+      lines: {
+        data: Array<{
+          price?: { recurring?: { interval?: string | null } | null } | null;
+        }>;
+      };
+    };
+
+    if (invoiceData.status !== "paid" || !invoiceData.subscription) {
+      continue;
+    }
+
+    const metadata = invoiceData.subscription_details?.metadata ?? invoiceData.metadata ?? {};
+    const email = resolveRevenueEventEmail({
+      userId: metadata.user_id ?? null,
+      fallbackEmail: invoiceData.customer_email ?? null,
+      emailIndex,
+    });
+
+    if (!email || isTestCustomerEmail(email)) {
+      continue;
+    }
+
+    const plan = normalizePlanId(metadata.plan);
+    const invoiceLines = invoiceData.lines.data as Array<{
+      price?: { recurring?: { interval?: string | null } | null } | null;
+    }>;
+    const interval = invoiceLines.find((line) => line.price?.recurring)?.price?.recurring?.interval === "year"
+      ? "annual"
+      : "monthly";
+
+    events.push({
+      amount: (invoiceData.amount_paid ?? 0) / 100,
+      email,
+      label: `${getPlanLabel(plan)} ${interval === "annual" ? "Annual" : "Monthly"}`,
+    });
+  }
+
+  return events;
+}
+
+function resolveRevenueEventEmail(input: {
+  userId: string | null;
+  fallbackEmail: string | null;
+  emailIndex: Map<string, string>;
+}): string | null {
+  const indexedEmail = input.userId ? input.emailIndex.get(input.userId) : null;
+  const fallbackEmail = input.fallbackEmail?.trim().toLowerCase() ?? null;
+  return indexedEmail ?? fallbackEmail;
 }
 
 async function listAuthUsers(config: RuntimeConfig): Promise<Map<string, string>> {
@@ -872,8 +1144,7 @@ function getDomainIntelligence(email: string): string | null {
   return null;
 }
 
-function getTimeBasedSignupEasterEgg(): string | null {
-  const now = new Date();
+function getTimeBasedSignupEasterEgg(now = new Date()): string | null {
   const parts = getZurichDateParts(now);
 
   if (parts.hour >= 0 && parts.hour < 5) {
@@ -895,12 +1166,17 @@ function getAleJapaneseLine(email: string): string | null {
   return null;
 }
 
-function getSampietroAlert(email: string): string | null {
+function buildSampietroPanicEmbed(email: string): DiscordEmbed | null {
   const normalized = email.toLowerCase();
   if (!normalized.includes("sampietro")) {
     return null;
   }
-  return "🚨 CODICE ROSSO. Una Sampietro si è iscritta. Giulia, respira. Probabilmente non è lei. ...Probabilmente.";
+
+  return createEmbed({
+    title: "🚨 CODICE ROSSO",
+    description: "Una Sampietro si e iscritta. Giulia, respira. Probabilmente non e lei. ...Probabilmente.",
+    color: COLOR.RED,
+  });
 }
 
 function getEmailDomain(email: string): string | null {
@@ -924,6 +1200,20 @@ function getSubscriptionChargeAmount(plan: PlanId, interval: "monthly" | "annual
   return interval === "annual" ? config.annualPrice : config.monthlyPrice;
 }
 
+function getPlanWeight(plan: PlanId): number {
+  switch (plan) {
+    case "enterprise":
+      return 4;
+    case "pro":
+      return 3;
+    case "starter":
+      return 2;
+    case "free":
+    default:
+      return 1;
+  }
+}
+
 function formatUsd(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -935,12 +1225,17 @@ function formatUsd(value: number): string {
 
 function getZurichDateParts(date: Date): {
   hour: number;
+  minute: number;
   weekday: string;
+  isoDate: string;
   timeLabel: string;
 } {
   const formatter = new Intl.DateTimeFormat("en-GB", {
     timeZone: CUSTOMERS_TIMEZONE,
     weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -949,12 +1244,15 @@ function getZurichDateParts(date: Date): {
   const parts = formatter.formatToParts(date);
   const partMap = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   const hour = Number.parseInt(partMap.hour ?? "0", 10);
-  const minute = partMap.minute ?? "00";
+  const minuteLabel = partMap.minute ?? "00";
+  const minute = Number.parseInt(minuteLabel, 10);
 
   return {
     hour,
+    minute,
     weekday: partMap.weekday ?? "",
-    timeLabel: `${partMap.hour ?? "00"}:${minute} ${CUSTOMERS_TIMEZONE}`,
+    isoDate: `${partMap.year ?? "0000"}-${partMap.month ?? "01"}-${partMap.day ?? "01"}`,
+    timeLabel: `${partMap.hour ?? "00"}:${minuteLabel} ${CUSTOMERS_TIMEZONE}`,
   };
 }
 
@@ -968,4 +1266,8 @@ function buildContent(values: Array<string | null | undefined>): string {
 
 function compact(values: Array<string | null | undefined>): string[] {
   return values.filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim());
+}
+
+function sumAmounts(values: number[]): number {
+  return values.reduce((total, value) => total + value, 0);
 }

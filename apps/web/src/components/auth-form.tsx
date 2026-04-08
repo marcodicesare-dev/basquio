@@ -2,25 +2,34 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import {
+  captureSignupAttributionFromBrowser,
+  clearSignupAttributionFromBrowser,
+  readSignupAttributionFromBrowser,
+} from "@/lib/signup-attribution";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 type AuthMode = "sign-in" | "sign-up";
 type ExtendedAuthMode = AuthMode | "reset";
 
 async function bootstrapAccountRequest() {
+  const signupAttribution = readSignupAttributionFromBrowser();
   const response = await fetch("/api/auth/bootstrap", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
+    body: JSON.stringify(signupAttribution ? { signupAttribution } : {}),
   });
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(payload?.error ?? "We couldn't finish setting up your workspace.");
   }
+
+  clearSignupAttributionFromBrowser();
 }
 
 export function AuthForm({
@@ -53,6 +62,10 @@ export function AuthForm({
           : "Sign in to start or continue a report.",
     [mode],
   );
+
+  useEffect(() => {
+    captureSignupAttributionFromBrowser();
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

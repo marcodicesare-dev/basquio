@@ -3,23 +3,31 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  clearSignupAttributionFromBrowser,
+  readSignupAttributionFromBrowser,
+} from "@/lib/signup-attribution";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { buildSignInPath } from "@/lib/supabase/paths";
 
 type CompletionState = "checking" | "done" | "invalid";
 
 async function bootstrapAccountRequest() {
+  const signupAttribution = readSignupAttributionFromBrowser();
   const response = await fetch("/api/auth/bootstrap", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
+    body: JSON.stringify(signupAttribution ? { signupAttribution } : {}),
   });
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(payload?.error ?? "We couldn't finish setting up your workspace.");
   }
+
+  clearSignupAttributionFromBrowser();
 }
 
 export function AuthComplete({

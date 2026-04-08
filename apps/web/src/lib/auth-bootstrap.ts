@@ -1,5 +1,6 @@
 import { ensureFreeTierCredit } from "@/lib/credits";
 import { notifySignup } from "@/lib/discord-customers";
+import type { SignupAttribution } from "@/lib/signup-attribution";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "@/lib/supabase/admin";
 import type { ViewerState } from "@/lib/supabase/auth";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
@@ -22,6 +23,7 @@ type BootstrapResult = {
 
 export async function bootstrapViewerAccount(
   user: NonNullable<ViewerState["user"]>,
+  options?: { signupAttribution?: SignupAttribution | null },
 ): Promise<BootstrapResult> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -68,7 +70,10 @@ export async function bootstrapViewerAccount(
   ]);
 
   if (!existingState?.first_authenticated_at && user.email) {
-    void notifySignup({ email: user.email }).catch(() => {});
+    void notifySignup({
+      email: user.email,
+      sourceLabel: formatSignupSourceLabel(options?.signupAttribution ?? null),
+    }).catch(() => {});
   }
 
   const welcomeEmailPreviouslySent = Boolean(existingState?.welcome_email_sent_at);
@@ -101,6 +106,71 @@ export async function bootstrapViewerAccount(
     welcomeEmailSent,
     welcomeEmailPreviouslySent,
   };
+}
+
+function formatSignupSourceLabel(signupAttribution: SignupAttribution | null): string | null {
+  if (!signupAttribution?.source?.trim()) {
+    return null;
+  }
+
+  const source = signupAttribution.source.trim().toLowerCase();
+  const referrer = signupAttribution.referrer?.trim().toLowerCase() ?? "";
+  const landingPath = sanitizeLandingPath(signupAttribution.landingPath);
+  const sourceLabel = resolveSourceLabel(source, referrer);
+  const queryParts = compactParts([
+    signupAttribution.source ? `utm_source=${signupAttribution.source}` : null,
+    signupAttribution.medium ? `utm_medium=${signupAttribution.medium}` : null,
+    signupAttribution.campaign ? `utm_campaign=${signupAttribution.campaign}` : null,
+  ]);
+
+  const suffix = compactParts([
+    landingPath ? `-> ${landingPath}` : null,
+    queryParts.length > 0 ? `(${queryParts.join(", ")})` : null,
+  ]).join(" ");
+
+  return suffix ? `${sourceLabel} ${suffix}` : sourceLabel;
+}
+
+function resolveSourceLabel(source: string, referrer: string): string {
+  if (source.includes("linkedin") || referrer.includes("linkedin.com")) {
+    return "via LinkedIn";
+  }
+  if (source === "google" || referrer.includes("google.")) {
+    return "via Google Search";
+  }
+  if (source === "twitter" || source === "x" || referrer.includes("twitter.com") || referrer.includes("x.com")) {
+    return "via X/Twitter";
+  }
+  if (source.includes("producthunt")) {
+    return "via Product Hunt";
+  }
+  if (source.includes("taaft") || source.includes("theresanaiforthat") || referrer.includes("theresanaiforthat.com")) {
+    return "via There's An AI For That";
+  }
+  if (referrer.includes("basquio.com")) {
+    return "direct / returning visitor";
+  }
+  if (source === "direct") {
+    return "direct";
+  }
+  return `via ${source}`;
+}
+
+function sanitizeLandingPath(landingPath: string | undefined): string | null {
+  if (!landingPath) {
+    return null;
+  }
+
+  const trimmed = landingPath.trim();
+  if (!trimmed || trimmed === "/sign-in") {
+    return null;
+  }
+
+  return trimmed;
+}
+
+function compactParts(values: Array<string | null | undefined>) {
+  return values.filter((value): value is string => Boolean(value?.trim()));
 }
 
 async function sendWelcomeEmail(input: {
