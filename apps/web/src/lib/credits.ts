@@ -74,9 +74,11 @@ const TIME_MODEL: Record<string, { baseMinutes: number; perSlideMinutes: number 
 
 /**
  * Estimate total run time in minutes based on model and slide count.
+ * Haiku is memo-only (no slides) — flat 10 min regardless of slide count.
  * Returns a round number suitable for UI display ("~22 min").
  */
 export function estimateRunMinutes(slideCount: number, model: string = DEFAULT_AUTHOR_MODEL): number {
+  if (model === "claude-haiku-4-5") return 10;
   const params = TIME_MODEL[model] ?? TIME_MODEL[DEFAULT_AUTHOR_MODEL];
   const raw = params.baseMinutes + params.perSlideMinutes * slideCount;
   return Math.round(raw);
