@@ -38,6 +38,15 @@ const SIGNUP_FLAVOR_TEXT = [
   "30 free credits. Let's see what they build.",
 ];
 
+const GIULIA_SAMPIETRO_LINES = [
+  "Giulia, fallo meglio di Francesca Sampietro.",
+  "Reminder: Francesca Sampietro would never use Basquio. We're already winning.",
+  "Giulia, this one's for you. Not for Francesca Sampietro.",
+  "Another customer that could've gone to Francesca Sampietro but didn't.",
+  "Somewhere, Francesca Sampietro is still making decks by hand.",
+  "Giulia says this is better than anything Francesca Sampietro ever shipped.",
+];
+
 type DiscordField = {
   name: string;
   value: string;
@@ -196,6 +205,11 @@ export async function notifySignup(input: SignupInput): Promise<void> {
       embeds.push(milestone);
     }
 
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+
   }
 
   await postWebhook({ content, embeds });
@@ -240,6 +254,11 @@ export async function notifyCreditPurchase(input: CreditPurchaseInput): Promise<
       embeds.push(milestone);
     }
 
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+
   }
 
   await postWebhook({ content, embeds });
@@ -281,6 +300,11 @@ export async function notifySubscriptionStarted(input: SubscriptionStartedInput)
       previousStatus: input.previousStatus ?? null,
     }).catch(() => []);
     embeds.push(...milestones);
+
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
 
   }
 
@@ -326,6 +350,11 @@ export async function notifyPlanUpgrade(input: PlanUpgradeInput): Promise<void> 
     }).catch(() => []);
     embeds.push(...milestones);
 
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+
   }
 
   await postWebhook({ content, embeds });
@@ -352,6 +381,13 @@ export async function notifySubscriptionRenewed(input: RenewalInput): Promise<vo
   const content = isTestCustomerEmail(email)
     ? ""
     : buildContent([getCompanyEasterEgg(email), getDomainIntelligence(email)]);
+
+  if (!isTestCustomerEmail(email)) {
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+  }
 
   await postWebhook({
     content,
@@ -382,6 +418,13 @@ export async function notifyPaymentFailed(input: PaymentFailedInput): Promise<vo
     }),
   ];
 
+  if (!isTestCustomerEmail(email)) {
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+  }
+
   await postWebhook({
     content,
     embeds,
@@ -410,6 +453,13 @@ export async function notifyCancellation(input: CancellationInput): Promise<void
       fields: [{ name: "Plan", value: getPlanLabel(plan), inline: true }],
     }),
   ];
+
+  if (!isTestCustomerEmail(email)) {
+    const panicEmbed = buildSampietroPanicEmbed(email);
+    if (panicEmbed) {
+      embeds.push(panicEmbed);
+    }
+  }
 
   await postWebhook({
     content,
@@ -1020,7 +1070,10 @@ function getSubscriptionExtraLine(plan: PlanId, interval: "monthly" | "annual"):
 }
 
 function decorateGiuliaLine(line: string): string {
-  return line;
+  if (!line.includes("Giulia") || line.includes("Sampietro")) {
+    return line;
+  }
+  return `${line} ${pickRandom(GIULIA_SAMPIETRO_LINES)}`;
 }
 
 function getCompanyEasterEgg(email: string): string | null {
@@ -1115,6 +1168,19 @@ function getAleJapaneseLine(email: string): string | null {
     return "アレ、新しいメールで来たね。ようこそ。今日も最高のデッキを作ろう。";
   }
   return null;
+}
+
+function buildSampietroPanicEmbed(email: string): DiscordEmbed | null {
+  const normalized = email.toLowerCase();
+  if (!normalized.includes("sampietro")) {
+    return null;
+  }
+
+  return createEmbed({
+    title: "🚨 CODICE ROSSO",
+    description: "Una Sampietro si e iscritta. Giulia, respira. Probabilmente non e lei. ...Probabilmente.",
+    color: COLOR.RED,
+  });
 }
 
 function getEmailDomain(email: string): string | null {
