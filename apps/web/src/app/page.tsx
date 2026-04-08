@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
+import { ScrollWorkflowShowcase } from "@/components/scroll-workflow-showcase";
 import { SlideShowcase } from "@/components/slide-showcase";
 
 export const metadata: Metadata = {
@@ -31,24 +32,6 @@ const problemCards = [
   {
     title: "A first draft nobody trusts",
     copy: "The deck goes out with a caveat. The team presents something unfinished.",
-  },
-] as const;
-
-const workflowSteps = [
-  {
-    stage: "01",
-    title: "Upload your data",
-    detail: "Spreadsheets, notes, PDFs, and a template if you have one.",
-  },
-  {
-    stage: "02",
-    title: "Basquio builds the deck",
-    detail: "Analysis, charts, narrative, and formatting. One loop.",
-  },
-  {
-    stage: "03",
-    title: "Review and send",
-    detail: "Edit the PowerPoint, send the report, keep the workbook. Same story, three files.",
   },
 ] as const;
 
@@ -100,14 +83,19 @@ export default function HomePage() {
             <Link className="button" href="/jobs/new">
               Try it with your data
             </Link>
-            <Link className="button secondary inverted" href="/how-it-works">
+            <Link className="button secondary inverted" href="#workflow">
               See how it works
             </Link>
           </div>
         </div>
 
-        <div className="hero-artifact-column">
-          <div className="hero-artifact-frame">
+        <div className="hero-product-showcase">
+          <div className="showcase-layer showcase-layer-slide">
+            <div className="showcase-window-chrome" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
             <Image
               src="/showcase/slide-showcase-executive.svg"
               alt="Basquio executive overview slide showing KPI cards, segment performance, and a key finding"
@@ -115,6 +103,37 @@ export default function HomePage() {
               height={540}
               priority
             />
+          </div>
+
+          <div className="showcase-layer showcase-layer-chart">
+            <div className="showcase-card-heading">
+              <span className="showcase-card-label">Share view</span>
+              <strong>Category mix</strong>
+            </div>
+            <div className="showcase-mini-chart" aria-hidden="true">
+              <span style={{ height: "68%" }} />
+              <span style={{ height: "82%" }} />
+              <span className="accent" style={{ height: "100%" }} />
+              <span style={{ height: "58%" }} />
+              <span style={{ height: "44%" }} />
+            </div>
+            <p>Branded share is compressing while private label accelerates.</p>
+          </div>
+
+          <div className="showcase-layer showcase-layer-report">
+            <div className="showcase-card-heading">
+              <span className="showcase-card-label">Narrative</span>
+              <strong>Key finding</strong>
+            </div>
+            <p>
+              Enterprise accounts for 62% of market value, but growth is being driven by the private label mix
+              shift in mid-market accounts.
+            </p>
+            <div className="showcase-report-lines" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
           </div>
         </div>
       </section>
@@ -151,22 +170,7 @@ export default function HomePage() {
         <SlideShowcase />
       </section>
 
-      <section className="how-it-works-section" id="pipeline">
-        <div className="stack">
-          <p className="section-label">How it works</p>
-          <h2>Three steps. One reporting cycle.</h2>
-        </div>
-
-        <div className="steps-row">
-          {workflowSteps.map((step) => (
-            <article key={step.stage} className="step-card">
-              <span className="step-number">{step.stage}</span>
-              <h3>{step.title}</h3>
-              <p>{step.detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <ScrollWorkflowShowcase />
 
       <section className="pricing-snapshot-section" id="pricing">
         <div className="pricing-snapshot-head">

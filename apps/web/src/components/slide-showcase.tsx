@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 
 const slides = [
@@ -28,11 +28,27 @@ type SlideId = (typeof slides)[number]["id"];
 
 export function SlideShowcase() {
   const [active, setActive] = useState<SlideId>(slides[0].id);
+  const [cycle, setCycle] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const currentIndex = slides.findIndex((slide) => slide.id === active);
+      const nextIndex = (currentIndex + 1) % slides.length;
+      setActive(slides[nextIndex].id);
+      setCycle((value) => value + 1);
+    }, 4000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [active]);
+
+  const activeIndex = slides.findIndex((slide) => slide.id === active);
 
   return (
     <div className="slide-showcase">
       <div className="showcase-tabs" role="tablist" aria-label="Output slides">
-        {slides.map((slide) => (
+        {slides.map((slide, index) => (
           <button
             key={slide.id}
             type="button"
@@ -41,9 +57,17 @@ export function SlideShowcase() {
             aria-controls={`panel-${slide.id}`}
             tabIndex={active === slide.id ? 0 : -1}
             className={`showcase-tab${active === slide.id ? " active" : ""}`}
-            onClick={() => setActive(slide.id)}
+            onClick={() => {
+              setActive(slide.id);
+              setCycle((value) => value + 1);
+            }}
           >
-            {slide.label}
+            <span>{slide.label}</span>
+            <span className="showcase-tab-progress" aria-hidden="true">
+              {activeIndex === index ? (
+                <span key={`${slide.id}-${cycle}`} className="showcase-tab-progress-fill" />
+              ) : null}
+            </span>
           </button>
         ))}
       </div>

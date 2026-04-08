@@ -166,7 +166,7 @@ export const howItWorksChecks = [
 
 export const publicNavLinks = [
   {
-    href: "/#pipeline",
+    href: "/#workflow",
     label: "Product",
   },
   {
