@@ -15,6 +15,7 @@ export function PublicSiteFooter() {
           <Link href="/#workflow">How it works</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/compare">Compare</Link>
+          <Link href="/powerpoint-tax">The PowerPoint Tax</Link>
           <Link href="/jobs/new">Try free</Link>
         </div>
 

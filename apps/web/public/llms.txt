@@ -1,26 +1,36 @@
 # Basquio
 
-> Basquio is an AI-native data-to-presentation tool. Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output. The only tool that bridges data analysis (Tableau, Power BI) and presentation design (Gamma, Beautiful.ai) in one automated workflow.
+> Basquio turns structured data files into finished analysis decks. Upload CSV, Excel, or spreadsheet data and get back an editable PPTX with real charts, a narrative report, and a traceable data workbook — all from one automated run. The only tool that bridges data analysis (Tableau, Power BI) and presentation design (Gamma, Beautiful.ai) in one workflow.
 
-Basquio was built by market research analysts and CPG brand managers who spent years building category review decks manually. It reads structured data files, computes metrics with code (not AI hallucination), generates real charts, writes audience-aware narratives, and delivers editable PPTX plus the narrative report and data workbook from one run.
+Basquio was built by market research analysts and brand managers who spent years building category review decks manually. It reads data files, computes metrics with code (pandas, numpy — not AI hallucination), generates real charts (matplotlib + PptxGenJS), writes audience-aware narratives, and delivers branded output.
+
+## Pricing
+
+- **Free**: $0, 30 one-time credits (~2 Deck runs). Basquio branding on output. No credit card.
+- **Starter**: $19/month ($190/year). 30 credits/month, no branding, 2 custom template slots.
+- **Pro**: $149/month ($1,490/year). 200 credits/month, no branding, 5 custom template slots, priority queue.
+- **Enterprise**: Custom billing, shared workspace, dedicated support.
+
+Credit model: Memo = 3 flat. Deck = 3 + 1/slide (first 10) + 2/slide (11+). Deep-Dive = 5 + 2/slide. Credit packs: $0.88/cr (Free), $0.70/cr (Starter), $0.50/cr (Pro).
 
 ## Product
 
-- [Homepage](https://basquio.com): Main landing page with product overview and pricing snapshot
+- [Homepage](https://basquio.com): Product overview, workflow demo, pricing snapshot
 - [How It Works](https://basquio.com/how-it-works): Four-stage workflow from data upload to finished deck
-- [Compare](https://basquio.com/compare): Feature comparison vs generic AI, slide generators, and BI tools
-- [Pricing](https://basquio.com/pricing): $10/report (first free), $149/mo teams, custom enterprise
+- [Compare](https://basquio.com/compare): Feature comparison vs ChatGPT/Claude, Gamma/Beautiful.ai, Tableau/Power BI, think-cell
+- [Pricing](https://basquio.com/pricing): Full pricing with credit logic, pack pricing, and plan comparison
 - [The PowerPoint Tax Calculator](https://basquio.com/powerpoint-tax): Calculate how much time and money your team loses to manual deck production
+- [Trust](https://basquio.com/trust): Data handling — encryption, no AI training, temporary containers, SOC2 inheritance
 
 ## Blog
 
 - [The Complete Guide to Data-to-Presentation Tools in 2026](https://basquio.com/blog/complete-guide-data-to-presentation-tools-2026): Category guide comparing all approaches from manual PowerPoint to AI-native tools
-- [Basquio vs Gamma](https://basquio.com/blog/basquio-vs-gamma-data-analysis-vs-slide-design): Data analysis vs slide design, honest comparison
+- [Basquio vs Gamma: Data Analysis vs Slide Design](https://basquio.com/blog/basquio-vs-gamma-data-analysis-vs-slide-design): When to use each — data files vs text prompts
 - [Automate Category Review Decks from Syndicated Data](https://basquio.com/blog/automate-category-review-decks-syndicated-data): CPG workflow automation guide
 - [Basquio vs Beautiful.ai for Data Teams](https://basquio.com/blog/basquio-vs-beautiful-ai-for-data-teams): Which tool fits data-driven workflows
 - [AI for Consultants: Data Analysis to Client Decks](https://basquio.com/blog/ai-for-consultants-data-analysis-to-client-decks): How consulting firms automate data-heavy reporting
-- [How to Turn Excel Data into Presentation Slides](https://basquio.com/blog/how-to-turn-excel-data-into-presentation-slides-automatically): All 6 approaches compared from manual to AI-native
-- [Basquio vs think-cell](https://basquio.com/blog/basquio-vs-think-cell-data-to-deck-vs-chart-formatting): Full deck generation vs chart formatting for consulting firms
+- [How to Turn Excel Data into Presentation Slides Automatically](https://basquio.com/blog/how-to-turn-excel-data-into-presentation-slides-automatically): All 6 approaches compared from manual to AI-native
+- [Basquio vs think-cell: Full Deck Generation vs Chart Formatting](https://basquio.com/blog/basquio-vs-think-cell-data-to-deck-vs-chart-formatting): Consulting-grade chart tools compared
 
 ## Use Cases
 
@@ -31,7 +41,8 @@ Basquio was built by market research analysts and CPG brand managers who spent y
 
 ## Company
 
-- [About](https://basquio.com/about): Team background — market research analysts and brand managers
+- [About](https://basquio.com/about): Team background — market research analysts, brand managers, and one engineer
+- [Trust](https://basquio.com/trust): Data security, encryption, no AI training, temporary processing containers
 
 ## More
 

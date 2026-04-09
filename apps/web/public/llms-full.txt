@@ -86,33 +86,43 @@ Add-ins link Excel data to PowerPoint charts but require manual setup for each c
 
 ## Pricing
 
-### Individual
-$10 per report. First standard report is free.
-- Standard reports up to 10 slides
-- Pro reports up to 30 slides
-- PPTX, narrative report, and data workbook from the same run
-- One rerun within 24 hours
-- Works with Basquio Standard or one saved template
+### Free
+$0. 30 one-time credits (~2 Deck runs). Basquio branding on output. No credit card required.
+- Try Basquio on real work
+- Community templates only
+- Credit packs at $0.88/credit
 
-### Team
-$149 per month plus usage. For teams that run the same reporting motion every month.
-- Everything in Individual
-- Shared workspace for up to 10 people
-- Shared report history and templates
-- Saved report recipes
-- Billing and usage controls
+### Starter
+$19/month ($190/year). For recurring reporting work that needs clean output.
+- 30 credits/month
+- No branding on output
+- 2 custom template slots
+- Community support
+- Credit packs at $0.70/credit
+
+### Pro
+$149/month ($1,490/year). For teams running multiple reports every month.
+- 200 credits/month
+- No branding on output
+- 5 custom template slots
 - Priority generation queue
+- Email support
+- Credit packs at $0.50/credit
 
 ### Enterprise
-Custom annual contract. For larger rollouts with procurement and governance needs.
-- Everything in Team
-- SSO and SAML
-- Retention and workspace controls
-- Security review and DPA
-- Custom workflow setup
-- Dedicated support channel
+Custom billing, shared workspace, and dedicated support for larger teams.
+- Custom credits and billing
+- Custom template setup
+- Shared workspace
+- Priority support
 
-Credits and report type are calculated from scope, slide count, and workflow complexity.
+### Output Modes and Credit Logic
+
+Three output modes, each with a progressive credit formula:
+
+- **Memo** (Haiku): 3 credits flat. Written analysis (2000+ words) and data workbook. No slides. ~2 min.
+- **Deck** (Sonnet): 3 + 1/slide (first 10 slides) + 2/slide (slides 11+). Default client-ready report. Editable PPTX with charts, written analysis, and data workbook. ~15 min. Example: 10 slides = 13 credits.
+- **Deep-Dive** (Opus): 5 + 2/slide. Consulting-grade depth. Full deck with deeper analysis, extended written analysis, and data workbook. ~25 min. Example: 10 slides = 25 credits.
 
 ## Target Use Cases
 
