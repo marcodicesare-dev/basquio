@@ -6501,12 +6501,9 @@ textarea {
   max-width: 62ch;
 }
 
-.power-tax-page > section:nth-of-type(2) { animation-delay: 80ms; }
-.power-tax-page > section:nth-of-type(3) { animation-delay: 160ms; }
-.power-tax-page > section:nth-of-type(4) { animation-delay: 240ms; }
-.power-tax-page > section:nth-of-type(5) { animation-delay: 320ms; }
-.power-tax-page > section:nth-of-type(6) { animation-delay: 400ms; }
-.power-tax-page > section:nth-of-type(7) { animation-delay: 480ms; }
+.page-shell.public-page.power-tax-page > section {
+  animation: none;
+}
 
 .power-tax-hero {
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
@@ -6540,6 +6537,7 @@ textarea {
   font-weight: 800;
   line-height: 0.98;
   letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 
 .power-tax-hero-head {
@@ -6548,6 +6546,7 @@ textarea {
 
 .power-tax-inline-hero-number {
   display: inline-flex;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .power-tax-inline-hero-number-time,
@@ -6600,6 +6599,7 @@ textarea {
 
 .power-tax-hero-metric {
   display: grid;
+  min-width: 0;
   gap: 10px;
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -6613,10 +6613,18 @@ textarea {
 .power-tax-hero-metric-value,
 .power-tax-result-value {
   margin: 0;
-  font-size: clamp(2.8rem, 6vw, 4.2rem);
   font-weight: 800;
   line-height: 0.92;
   letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.power-tax-hero-metric-value {
+  font-size: clamp(2.4rem, 4vw, 3.6rem);
+}
+
+.power-tax-result-value {
+  font-size: clamp(2.8rem, 6vw, 4.2rem);
 }
 
 .power-tax-scroll-link {
@@ -6661,6 +6669,7 @@ textarea {
 }
 
 .power-tax-field {
+  min-width: 0;
   gap: 12px;
   padding: 18px;
   border: 1px solid var(--border);
@@ -6686,6 +6695,7 @@ textarea {
 .power-tax-field input {
   font-size: 1.05rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .power-tax-input-wrap-prefixed input {
@@ -6808,6 +6818,7 @@ textarea {
 .power-tax-result-card {
   display: grid;
   gap: 8px;
+  min-width: 0;
   min-height: 180px;
   padding: 22px;
   border: 1px solid var(--border);
@@ -6961,7 +6972,7 @@ textarea {
 
 .power-tax-value-swap {
   display: inline-flex;
-  animation: fadeInUp 400ms ease both;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 @media (max-width: 1024px) {
@@ -7008,9 +7019,10 @@ textarea {
   }
 
   .power-tax-tooltip-bubble {
-    left: 0;
-    right: auto;
-    width: min(260px, calc(100vw - 56px));
+    left: auto;
+    right: 0;
+    width: min(260px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
   }
 }
 
