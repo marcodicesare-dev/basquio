@@ -9,22 +9,22 @@ const faqs = [
   {
     question: "How is The PowerPoint Tax calculated?",
     answer:
-      "The calculator multiplies decks per month by 12, then scales by hours per deck and deck size. It converts that annual time into dollars using your hourly rate and estimates Basquio savings at 70% of the production burden.",
+      "The calculator takes decks per month, multiplies by 12, then by hours per deck. That gives annual hours. It then turns those hours into dollars using your hourly rate. The Basquio estimate assumes about 70% of deck time is the work of getting the deck built.",
   },
   {
     question: "What counts as a deck in this calculator?",
     answer:
-      "Any recurring data-driven presentation counts: category reviews, QBRs, client reports, board decks, competitive analyses, or internal performance readouts.",
+      "Any recurring presentation built from data counts: category reviews, QBRs, client reports, board decks, competitive updates, or internal readouts.",
   },
   {
     question: "Is 12 hours per deck realistic?",
     answer:
-      "Yes. Consulting and insight teams routinely spend 8 to 30 hours building data-heavy presentations once prep, charting, formatting, and review cycles are included. The 12-hour default is conservative for a 15-slide review deck.",
+      "Yes. Once you include pulling the numbers, building charts, formatting slides, and fixing review comments, 12 hours is a conservative number for a 15-slide deck.",
   },
   {
     question: "How does Basquio reduce the time?",
     answer:
-      "Basquio automates the production phase: it reads the source files, computes the metrics, generates charts, writes the first narrative draft, and applies the output structure. The team still owns the final judgment on what matters.",
+      "Basquio reads the files, builds the charts, drafts the pages, and gives your team a first deck to review and edit.",
   },
 ] as const;
 
@@ -104,8 +104,8 @@ export default async function PowerPointTaxPage({
           <p className="section-label light">FAQ</p>
           <h2>The skeptical questions are the right questions.</h2>
           <p className="muted">
-            If the number feels high, change the inputs. The point is not to win with a heroic assumption. The point is
-            to make the deck labor visible.
+            If the number feels high, lower the inputs. The point is to make the time visible, not to force a scary
+            answer.
           </p>
         </div>
 
@@ -120,9 +120,9 @@ export default async function PowerPointTaxPage({
       </section>
 
       <PublicSiteFooterCta
-        eyebrow="Ready to redirect the time"
-        title="Turn deck labor back into analysis."
-        copy="Bring the spreadsheet package behind the next review. Basquio handles the production pass so the team can focus on what changed and why."
+        eyebrow="Ready to stop doing this by hand"
+        title="Bring the files. Start from a real draft."
+        copy="Basquio turns the source files behind the next review into charts, pages, and a deck your team can edit."
         primaryLabel="Try Basquio free"
         primaryHref="/jobs/new"
         secondaryLabel="See pricing"

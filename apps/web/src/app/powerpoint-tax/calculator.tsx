@@ -344,8 +344,7 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
               weeks to manual decks last year.
             </h1>
             <p className="hero-copy">
-              Manual production quietly absorbs the time you meant to spend on the actual analysis. Basquio gives that
-              time back.
+              If your team rebuilds the same charts and pages every month, this is what that work costs.
             </p>
           </div>
 
@@ -379,13 +378,13 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
           <div className="power-tax-hero-note">
             <p className="power-tax-side-label">Smart defaults</p>
             <p className="power-tax-side-copy">
-              Typical analyst baseline: {DEFAULT_INPUTS.decksPerMonth} recurring decks / month, {DEFAULT_INPUTS.avgSlides} slides / deck, {DEFAULT_INPUTS.hoursPerDeck} hours / deck, {currencyFormat.format(DEFAULT_INPUTS.hourlyRate)} loaded hourly cost.
+              We loaded a typical analyst setup: {DEFAULT_INPUTS.decksPerMonth} decks a month, {DEFAULT_INPUTS.avgSlides} slides per deck, {DEFAULT_INPUTS.hoursPerDeck} hours per deck, {currencyFormat.format(DEFAULT_INPUTS.hourlyRate)} per hour.
             </p>
           </div>
           <div className="power-tax-hero-note">
             <p className="power-tax-side-label">What changes the number</p>
             <p className="power-tax-side-copy">
-              {numberFormat.format(results.slidesPerYear)} slides a year move through this workflow. Deck count, production hours, and labor cost drive the annual tax.
+              At this workload, your team is building {numberFormat.format(results.slidesPerYear)} slides a year. The number rises fast once decks become routine.
             </p>
           </div>
         </div>
@@ -395,9 +394,7 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
         <div className="stack">
           <p className="section-label">Your numbers</p>
           <h2>Adjust the four inputs that drive the tax.</h2>
-          <p className="page-copy">
-            No submit button. The result updates as you type, and the URL keeps your current scenario shareable.
-          </p>
+          <p className="page-copy">Use your real numbers. The total updates as you type.</p>
         </div>
 
         <div className="power-tax-input-grid">
@@ -430,7 +427,7 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
         <div className="stack">
           <p className="section-label">Your PowerPoint tax</p>
           <h2>
-            {numberFormat.format(results.decksPerYear)} recurring decks a year means {numberFormat.format(results.slidesPerYear)} slides worth of production.
+            {numberFormat.format(results.decksPerYear)} decks a year adds up to {numberFormat.format(results.slidesPerYear)} slides your team has to make.
           </h2>
         </div>
 
@@ -439,9 +436,9 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
             <div className="power-tax-results-heading">
               <div className="power-tax-results-heading-copy">
                 <strong>Current cost</strong>
-                <span>{numberFormat.format(results.totalHoursPerYear)} hours lost to production and formatting work.</span>
+                <span>{numberFormat.format(results.totalHoursPerYear)} hours spent making the deck, not doing the analysis.</span>
               </div>
-              <p className="power-tax-results-heading-stat">Annual tax estimate</p>
+              <p className="power-tax-results-heading-stat">What it costs now</p>
             </div>
             <div className="power-tax-card-grid">
               {summaryTiles.map((tile) => (
@@ -458,7 +455,7 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
 
           <div className="power-tax-savings-copy">
             <p>
-              With Basquio, about 70% of that production time becomes analysis time instead of slide labor.
+              Most of that time is charting, formatting, and version cleanup. That is the part Basquio cuts.
             </p>
           </div>
 
@@ -466,9 +463,9 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
             <div className="power-tax-results-heading">
               <div className="power-tax-results-heading-copy">
                 <strong>What Basquio gives back</strong>
-                <span>Conservative reclaim assuming production is the part that gets automated.</span>
+                <span>Based on the time spent getting the deck built.</span>
               </div>
-              <p className="power-tax-results-heading-stat power-tax-results-heading-stat-accent">Recovered for analysis</p>
+              <p className="power-tax-results-heading-stat power-tax-results-heading-stat-accent">What you get back</p>
             </div>
             <div className="power-tax-card-grid">
               {savingsTiles.map((tile) => (
@@ -487,18 +484,18 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
 
       <section className="inset-panel power-tax-context-strip">
         <article className="power-tax-context-item">
-          <p className="power-tax-context-kicker">Time signal</p>
+          <p className="power-tax-context-kicker">What people say</p>
           <p>55% of professionals say making slides is not a good use of their time.</p>
           <span>24slides survey, about 1,000 marketing professionals</span>
         </article>
         <article className="power-tax-context-item">
-          <p className="power-tax-context-kicker">Benchmark</p>
+          <p className="power-tax-context-kicker">Industry average</p>
           <p>The average knowledge worker spends 4.87 hours per week on presentation design.</p>
           <span>24slides industry benchmark</span>
         </article>
         <article className="power-tax-context-item">
-          <p className="power-tax-context-kicker">Basquio sample</p>
-          <p>Production work like formatting, charting, and styling takes 60-70% of total deck time.</p>
+          <p className="power-tax-context-kicker">What we see</p>
+          <p>In the decks we study, most of the time goes to charting, formatting, and version cleanup.</p>
           <span>Basquio analysis of 40+ internal deck builds</span>
         </article>
       </section>
@@ -508,8 +505,8 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
           <div className="stack">
             <p className="section-label">Share your number</p>
             <h2>My PowerPoint Tax: {numberFormat.format(results.totalHoursPerYear)} hours lost last year.</h2>
-            <p className="page-copy">That is {formatWeeksForShare(results.totalWeeksPerYear)} work weeks of manual deck production.</p>
-            <p className="power-tax-share-quote">Send the exact scenario around the team. The URL keeps the numbers intact.</p>
+            <p className="page-copy">That is {formatWeeksForShare(results.totalWeeksPerYear)} work weeks spent making decks.</p>
+            <p className="power-tax-share-quote">Share it with the team. The link keeps the numbers exactly as you set them.</p>
             <div className="row power-tax-share-actions">
               <a
                 className="button secondary"
@@ -540,10 +537,9 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
           <div className="power-tax-cta-block">
             <div className="stack">
               <p className="section-label">Stop paying the tax</p>
-              <h3>The time sink is real even when you cut the inputs to something conservative.</h3>
+              <h3>Bring the files behind the next review.</h3>
               <p className="muted">
-                Basquio automates the production phase: reading the files, computing the metrics, writing the
-                narrative, and packaging the deck.
+                Basquio turns them into charts, pages, and a first draft deck your team can review and edit.
               </p>
             </div>
             <div className="power-tax-cta-proof-row">
