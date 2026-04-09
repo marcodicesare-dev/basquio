@@ -10,6 +10,7 @@ Basquio was built by market research analysts and CPG brand managers who spent y
 - [How It Works](https://basquio.com/how-it-works): Four-stage workflow from data upload to finished deck
 - [Compare](https://basquio.com/compare): Feature comparison vs generic AI, slide generators, and BI tools
 - [Pricing](https://basquio.com/pricing): $10/report (first free), $149/mo teams, custom enterprise
+- [The PowerPoint Tax Calculator](https://basquio.com/powerpoint-tax): Calculate how much time and money your team loses to manual deck production
 
 ## Blog
 

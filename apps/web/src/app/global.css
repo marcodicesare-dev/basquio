@@ -6494,12 +6494,417 @@ textarea {
   border-color: rgba(26, 106, 255, 0.2);
 }
 
+/* ── PowerPoint tax calculator ──────────────────────────────── */
+
+.power-tax-page .page-copy,
+.power-tax-page .muted {
+  max-width: 62ch;
+}
+
+.power-tax-hero {
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  align-items: stretch;
+  gap: 24px;
+}
+
+.power-tax-hero-copy,
+.power-tax-hero-side,
+.power-tax-hero-note,
+.power-tax-results-stack,
+.power-tax-results-group,
+.power-tax-context-item,
+.power-tax-cta-block {
+  display: grid;
+}
+
+.power-tax-hero-copy,
+.power-tax-hero-side,
+.power-tax-results-stack,
+.power-tax-results-group,
+.power-tax-cta-block {
+  gap: 20px;
+}
+
+.power-tax-hero-copy h1 {
+  margin: 0;
+  max-width: 10.5ch;
+  font-size: clamp(2.4rem, 5vw, 3.8rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+}
+
+.power-tax-inline-hero-number {
+  display: inline-flex;
+}
+
+.power-tax-inline-hero-number-time,
+.power-tax-hero-metric-value-time,
+.power-tax-result-card-savings .power-tax-result-value,
+.power-tax-cta-block .section-label::before {
+  color: var(--blue);
+}
+
+.power-tax-hero-metric-value-money {
+  color: var(--amber);
+}
+
+.power-tax-hero-side {
+  align-content: start;
+}
+
+.power-tax-hero-note {
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03)),
+    rgba(7, 9, 10, 0.38);
+}
+
+.power-tax-side-label,
+.power-tax-result-label,
+.power-tax-hero-metric-label {
+  margin: 0;
+  color: rgba(244, 246, 248, 0.72);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.power-tax-side-copy,
+.power-tax-scroll-link {
+  margin: 0;
+  color: var(--text-inverse-soft);
+}
+
+.power-tax-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.power-tax-hero-metric {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.power-tax-hero-metric-value,
+.power-tax-result-value {
+  margin: 0;
+  font-size: clamp(2.8rem, 6vw, 4.2rem);
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+}
+
+.power-tax-scroll-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.94rem;
+  text-decoration: none;
+}
+
+.power-tax-scroll-link::before {
+  content: "";
+  width: 2px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(240, 204, 39, 0.72);
+}
+
+.power-tax-calculator-panel,
+.power-tax-results-panel,
+.power-tax-share-panel,
+.power-tax-faq-panel {
+  gap: 28px;
+}
+
+.power-tax-calculator-panel,
+.power-tax-results-panel,
+.power-tax-share-panel {
+  display: grid;
+}
+
+.power-tax-input-grid,
+.power-tax-card-grid,
+.power-tax-share-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.power-tax-input-grid,
+.power-tax-card-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.power-tax-field {
+  gap: 12px;
+}
+
+.power-tax-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.power-tax-input-wrap {
+  position: relative;
+}
+
+.power-tax-input-wrap-prefixed input {
+  padding-left: 34px;
+}
+
+.power-tax-input-prefix {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.power-tax-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.power-tax-tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(26, 106, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(26, 106, 255, 0.08);
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.power-tax-tooltip-bubble {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 3;
+  width: min(280px, 70vw);
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.power-tax-tooltip:hover .power-tax-tooltip-bubble,
+.power-tax-tooltip:focus-within .power-tax-tooltip-bubble,
+.power-tax-tooltip-open .power-tax-tooltip-bubble {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.power-tax-results-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.power-tax-results-heading strong {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.power-tax-results-heading span,
+.power-tax-savings-copy p,
+.power-tax-context-item span,
+.power-tax-result-meta,
+.power-tax-copy-toast {
+  color: var(--text-muted);
+}
+
+.power-tax-card-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.power-tax-result-card {
+  display: grid;
+  gap: 8px;
+  min-height: 180px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at top right, rgba(26, 106, 255, 0.06), transparent 12rem),
+    rgba(255, 255, 255, 0.78);
+}
+
+.power-tax-result-card-savings {
+  border-color: rgba(26, 106, 255, 0.14);
+  background:
+    radial-gradient(circle at top right, rgba(26, 106, 255, 0.12), transparent 14rem),
+    rgba(255, 255, 255, 0.92);
+}
+
+.power-tax-result-label,
+.power-tax-result-meta {
+  color: var(--text-muted);
+}
+
+.power-tax-result-meta,
+.power-tax-context-item span {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.power-tax-savings-copy {
+  padding: 4px 0;
+}
+
+.power-tax-savings-copy p,
+.power-tax-context-item p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.power-tax-context-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.power-tax-context-item {
+  gap: 10px;
+}
+
+.power-tax-share-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  align-items: start;
+}
+
+.power-tax-share-actions .button,
+.power-tax-share-actions button.button {
+  gap: 10px;
+}
+
+.power-tax-copy-toast {
+  margin: 0;
+  min-height: 20px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.power-tax-copy-toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.power-tax-cta-block {
+  height: 100%;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at top right, rgba(240, 204, 39, 0.12), transparent 14rem),
+    rgba(255, 255, 255, 0.82);
+}
+
+.power-tax-cta-block h3,
+.power-tax-results-panel h2,
+.power-tax-share-panel h2,
+.power-tax-faq-panel h2,
+.power-tax-calculator-panel h2 {
+  margin: 0;
+  letter-spacing: -0.04em;
+}
+
+.power-tax-value-swap {
+  display: inline-flex;
+  animation: fadeInUp 400ms ease both;
+}
+
+@media (max-width: 1024px) {
+  .power-tax-hero,
+  .power-tax-share-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .power-tax-hero-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .power-tax-hero,
+  .power-tax-calculator-panel,
+  .power-tax-results-panel,
+  .power-tax-share-panel,
+  .power-tax-faq-panel {
+    padding: 22px 18px;
+  }
+
+  .power-tax-hero-copy h1 {
+    max-width: 12ch;
+  }
+
+  .power-tax-input-grid,
+  .power-tax-card-grid,
+  .power-tax-context-strip,
+  .power-tax-hero-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .power-tax-result-card {
+    min-height: auto;
+  }
+
+  .power-tax-results-heading {
+    align-items: flex-start;
+  }
+
+  .power-tax-tooltip-bubble {
+    left: 0;
+    right: auto;
+    width: min(260px, calc(100vw - 56px));
+  }
+}
+
 /* ── Reduce motion for accessibility ── */
 
 @media (prefers-reduced-motion: reduce) {
   .landing-shell > section,
   .page-shell.public-page > section {
     animation: none;
+  }
+
+  .power-tax-value-swap,
+  .power-tax-copy-toast {
+    animation: none;
+    transition: none;
   }
 
   .mini-tier-card:hover,
