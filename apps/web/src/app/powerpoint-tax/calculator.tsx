@@ -337,7 +337,7 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
     <>
       <section className="hero-stage power-tax-hero">
         <div className="power-tax-hero-copy">
-          <div className="stack">
+          <div className="stack power-tax-hero-head">
             <p className="section-label light">The PowerPoint Tax</p>
             <h1>
               You lost <ValueSwap value={formatWeeksForShare(results.totalWeeksPerYear)} className="power-tax-inline-hero-number power-tax-inline-hero-number-time" /> work
@@ -437,8 +437,11 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
         <div className="power-tax-results-stack">
           <div className="power-tax-results-group">
             <div className="power-tax-results-heading">
-              <strong>Current cost</strong>
-              <span>{numberFormat.format(results.totalHoursPerYear)} hours lost to production and formatting work.</span>
+              <div className="power-tax-results-heading-copy">
+                <strong>Current cost</strong>
+                <span>{numberFormat.format(results.totalHoursPerYear)} hours lost to production and formatting work.</span>
+              </div>
+              <p className="power-tax-results-heading-stat">Annual tax estimate</p>
             </div>
             <div className="power-tax-card-grid">
               {summaryTiles.map((tile) => (
@@ -461,8 +464,11 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
 
           <div className="power-tax-results-group">
             <div className="power-tax-results-heading">
-              <strong>What Basquio gives back</strong>
-              <span>Conservative reclaim assuming production is the part that gets automated.</span>
+              <div className="power-tax-results-heading-copy">
+                <strong>What Basquio gives back</strong>
+                <span>Conservative reclaim assuming production is the part that gets automated.</span>
+              </div>
+              <p className="power-tax-results-heading-stat power-tax-results-heading-stat-accent">Recovered for analysis</p>
             </div>
             <div className="power-tax-card-grid">
               {savingsTiles.map((tile) => (
@@ -481,14 +487,17 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
 
       <section className="inset-panel power-tax-context-strip">
         <article className="power-tax-context-item">
+          <p className="power-tax-context-kicker">Time signal</p>
           <p>55% of professionals say making slides is not a good use of their time.</p>
           <span>24slides survey, about 1,000 marketing professionals</span>
         </article>
         <article className="power-tax-context-item">
+          <p className="power-tax-context-kicker">Benchmark</p>
           <p>The average knowledge worker spends 4.87 hours per week on presentation design.</p>
           <span>24slides industry benchmark</span>
         </article>
         <article className="power-tax-context-item">
+          <p className="power-tax-context-kicker">Basquio sample</p>
           <p>Production work like formatting, charting, and styling takes 60-70% of total deck time.</p>
           <span>Basquio analysis of 40+ internal deck builds</span>
         </article>
@@ -500,6 +509,7 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
             <p className="section-label">Share your number</p>
             <h2>My PowerPoint Tax: {numberFormat.format(results.totalHoursPerYear)} hours lost last year.</h2>
             <p className="page-copy">That is {formatWeeksForShare(results.totalWeeksPerYear)} work weeks of manual deck production.</p>
+            <p className="power-tax-share-quote">Send the exact scenario around the team. The URL keeps the numbers intact.</p>
             <div className="row power-tax-share-actions">
               <a
                 className="button secondary"
@@ -535,6 +545,16 @@ export function PowerPointTaxCalculator({ initialQuery }: PowerPointTaxCalculato
                 Basquio automates the production phase: reading the files, computing the metrics, writing the
                 narrative, and packaging the deck.
               </p>
+            </div>
+            <div className="power-tax-cta-proof-row">
+              <div className="power-tax-cta-proof-pill">
+                <strong>{numberFormat.format(results.hoursSaved)}</strong>
+                <span>hours back</span>
+              </div>
+              <div className="power-tax-cta-proof-pill">
+                <strong>{formatWeeksForShare(results.weeksSaved)}</strong>
+                <span>weeks reclaimed</span>
+              </div>
             </div>
             <div className="row">
               <Link className="button" href="/jobs/new">

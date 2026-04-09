@@ -6501,6 +6501,13 @@ textarea {
   max-width: 62ch;
 }
 
+.power-tax-page > section:nth-of-type(2) { animation-delay: 80ms; }
+.power-tax-page > section:nth-of-type(3) { animation-delay: 160ms; }
+.power-tax-page > section:nth-of-type(4) { animation-delay: 240ms; }
+.power-tax-page > section:nth-of-type(5) { animation-delay: 320ms; }
+.power-tax-page > section:nth-of-type(6) { animation-delay: 400ms; }
+.power-tax-page > section:nth-of-type(7) { animation-delay: 480ms; }
+
 .power-tax-hero {
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
   align-items: stretch;
@@ -6513,7 +6520,8 @@ textarea {
 .power-tax-results-stack,
 .power-tax-results-group,
 .power-tax-context-item,
-.power-tax-cta-block {
+.power-tax-cta-block,
+.power-tax-results-heading-copy {
   display: grid;
 }
 
@@ -6532,6 +6540,10 @@ textarea {
   font-weight: 800;
   line-height: 0.98;
   letter-spacing: -0.04em;
+}
+
+.power-tax-hero-head {
+  gap: 16px;
 }
 
 .power-tax-inline-hero-number {
@@ -6592,7 +6604,10 @@ textarea {
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .power-tax-hero-metric-value,
@@ -6647,6 +6662,12 @@ textarea {
 
 .power-tax-field {
   gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 245, 239, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .power-tax-field-label-row {
@@ -6660,6 +6681,11 @@ textarea {
 
 .power-tax-input-wrap {
   position: relative;
+}
+
+.power-tax-field input {
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .power-tax-input-wrap-prefixed input {
@@ -6736,6 +6762,37 @@ textarea {
   letter-spacing: -0.02em;
 }
 
+.power-tax-results-heading-copy {
+  gap: 4px;
+}
+
+.power-tax-results-heading-stat,
+.power-tax-context-kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.power-tax-results-heading-stat {
+  margin: 0;
+}
+
+.power-tax-results-heading-stat-accent {
+  border-color: rgba(26, 106, 255, 0.16);
+  background: rgba(26, 106, 255, 0.08);
+  color: var(--blue);
+}
+
 .power-tax-results-heading span,
 .power-tax-savings-copy p,
 .power-tax-context-item span,
@@ -6758,6 +6815,13 @@ textarea {
   background:
     radial-gradient(circle at top right, rgba(26, 106, 255, 0.06), transparent 12rem),
     rgba(255, 255, 255, 0.78);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.power-tax-result-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(26, 106, 255, 0.16);
+  box-shadow: 0 16px 30px rgba(11, 12, 12, 0.07);
 }
 
 .power-tax-result-card-savings {
@@ -6798,6 +6862,10 @@ textarea {
 
 .power-tax-context-item {
   gap: 10px;
+  padding: 18px;
+  border-left: 3px solid rgba(26, 106, 255, 0.24);
+  background: rgba(255, 255, 255, 0.34);
+  border-radius: 6px;
 }
 
 .power-tax-share-grid {
@@ -6823,14 +6891,24 @@ textarea {
   transform: translateY(0);
 }
 
+.power-tax-share-quote {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 2px solid rgba(26, 106, 255, 0.24);
+  color: var(--text-soft);
+}
+
 .power-tax-cta-block {
   height: 100%;
   padding: 24px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
   background:
-    radial-gradient(circle at top right, rgba(240, 204, 39, 0.12), transparent 14rem),
-    rgba(255, 255, 255, 0.82);
+    radial-gradient(circle at top right, rgba(240, 204, 39, 0.16), transparent 14rem),
+    radial-gradient(circle at 16% 18%, rgba(26, 106, 255, 0.16), transparent 18rem),
+    linear-gradient(180deg, rgba(21, 24, 26, 0.98), rgba(11, 12, 12, 0.99));
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-stage);
 }
 
 .power-tax-cta-block h3,
@@ -6840,6 +6918,45 @@ textarea {
 .power-tax-calculator-panel h2 {
   margin: 0;
   letter-spacing: -0.04em;
+}
+
+.power-tax-cta-proof-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.power-tax-cta-proof-pill {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.power-tax-cta-proof-pill strong {
+  font-size: 1.35rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.power-tax-cta-proof-pill span {
+  color: var(--text-inverse-soft);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.power-tax-cta-block .muted {
+  color: var(--text-inverse-soft);
+}
+
+.power-tax-cta-block .button.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .power-tax-value-swap {
@@ -6880,6 +6997,10 @@ textarea {
 
   .power-tax-result-card {
     min-height: auto;
+  }
+
+  .power-tax-context-item {
+    padding: 16px;
   }
 
   .power-tax-results-heading {
