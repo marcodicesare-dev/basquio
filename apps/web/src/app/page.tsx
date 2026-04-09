@@ -203,7 +203,7 @@ export default function HomePage() {
 
       <section className="powerpoint-tax-hook">
         <p className="section-label">The PowerPoint Tax</p>
-        <h2>You lost 14 weeks to slides last year.</h2>
+        <h2>You lose about 14 weeks to slides every year.</h2>
         <p className="muted">The average analyst spends 580 hours a year on manual deck production. Calculate your number.</p>
         <Link className="button secondary" href="/powerpoint-tax">
           Calculate your PowerPoint Tax →

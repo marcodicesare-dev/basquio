@@ -52,7 +52,7 @@ export default function OpenGraphImage() {
               }}
             >
               <span>You lost</span>
-              <span style={{ color: "#1a6aff" }}>14.5 work weeks</span>
+              <span style={{ color: "#1a6aff" }}>about 14 work weeks</span>
               <span>to manual decks last year.</span>
             </div>
             <div style={{ fontSize: 28, lineHeight: 1.35, color: "rgba(244, 246, 248, 0.84)" }}>

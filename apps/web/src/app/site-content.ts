@@ -178,6 +178,10 @@ export const publicNavLinks = [
     label: "Compare",
   },
   {
+    href: "/powerpoint-tax",
+    label: "PowerPoint Tax",
+  },
+  {
     href: "/blog",
     label: "Blog",
   },

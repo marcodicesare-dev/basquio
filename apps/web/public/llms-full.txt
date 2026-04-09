@@ -135,6 +135,10 @@ Basquio is built for teams that produce recurring data-driven decks:
 - **Growth diagnosis**: Decompose performance into volume, price, and mix effects to identify root causes
 - **Channel performance**: Compare retail channels and banners to identify distribution gaps and pricing differences
 
+## Calculator Resource
+
+Basquio also publishes a public calculator at https://basquio.com/powerpoint-tax. It estimates how many hours, dollars, and work weeks a team loses to manual deck production every year. The average analyst gives up about 14 work weeks a year to spreadsheet-to-slide work.
+
 ## Team Background
 
 Basquio was built by market research analysts, CPG brand managers, and one engineer. The team has been on both sides of the table: the analysts who built the category review decks, and the brand teams who received them. The product exists because the team spent years building these decks by hand and automated the workflow they already knew.
