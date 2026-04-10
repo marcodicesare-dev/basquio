@@ -38,8 +38,8 @@ import {
 } from "./anthropic-execution-contract";
 import {
   assertDeckSpendWithinBudget,
-  CROSS_ATTEMPT_BUDGET_USD,
   enforceDeckBudget,
+  getDeckBudgetCaps,
   getPriorAttemptsCost,
   roundUsd,
   usageToCost,
@@ -582,6 +582,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const run = await loadRun(config, runId);
     authorModel = normalizeAuthorModel(run.author_model);
     const MODEL = authorModel;
+    const modelBudget = getDeckBudgetCaps(MODEL);
     const modelBetas = buildClaudeBetas(MODEL);
     const toolCallSummary = buildAuthoringToolCallSummary(MODEL);
     const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
@@ -593,12 +594,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     });
     phaseTelemetry.crossAttemptBudget = {
       priorAttemptsCostUsd,
-      budgetUsd: CROSS_ATTEMPT_BUDGET_USD,
+      budgetUsd: modelBudget.crossAttempt,
       attemptNumber: attempt.attemptNumber,
+      model: MODEL,
     };
-    if (priorAttemptsCostUsd >= CROSS_ATTEMPT_BUDGET_USD) {
+    if (priorAttemptsCostUsd >= modelBudget.crossAttempt) {
       throw new Error(
-        `Run has already spent $${priorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget is $${CROSS_ATTEMPT_BUDGET_USD.toFixed(2)}.`,
+        `Run has already spent $${priorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget for ${MODEL} is $${modelBudget.crossAttempt.toFixed(2)}.`,
       );
     }
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
@@ -1001,7 +1003,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       requireGeneratedFiles(authorFiles, requiredAuthorFiles, "author");
       spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
-      assertDeckSpendWithinBudget(spentUsd);
+      assertDeckSpendWithinBudget(spentUsd, MODEL);
       continuationCount += authorResponse.pauseTurns;
       phaseTelemetry.author = buildPhaseTelemetry(MODEL, {
         ...authorResponse,
@@ -1153,7 +1155,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     pdfFile = initialQaOutcome.pdf;
     const initialVisualQa = initialQaOutcome.qa;
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
-    assertDeckSpendWithinBudget(spentUsd);
+    assertDeckSpendWithinBudget(spentUsd, MODEL);
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
     await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, initialVisualQa.requests);
     rememberRequestIds(anthropicRequestIds, initialVisualQa.requests);
@@ -1283,7 +1285,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
         });
         spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
-        assertDeckSpendWithinBudget(spentUsd);
+        assertDeckSpendWithinBudget(spentUsd, MODEL);
         continuationCount += reviseResponse.pauseTurns;
         phaseTelemetry.revise = buildPhaseTelemetry(MODEL, {
           ...reviseResponse,
@@ -1333,7 +1335,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       finalPdf = revisedQaOutcome.pdf;
       const revisedVisualQa = revisedQaOutcome.qa;
       spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-      assertDeckSpendWithinBudget(spentUsd);
+      assertDeckSpendWithinBudget(spentUsd, MODEL);
       phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
       await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
       rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
@@ -1458,6 +1460,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           runId,
           attempt,
           config,
+          authorModel: MODEL,
           spentUsdRef: {
             get value() {
               return spentUsd;
@@ -2365,6 +2368,7 @@ async function strengthenFinalVisualQa(input: {
   runId: string;
   attempt: AttemptContext;
   config: ReturnType<typeof resolveConfig>;
+  authorModel: AuthorModel;
   spentUsdRef: MutableNumberRef;
   anthropicRequestIds: Set<string>;
   phaseTelemetry: Record<string, unknown>;
@@ -2410,7 +2414,7 @@ async function strengthenFinalVisualQa(input: {
     });
     const finalVisualQa = finalQaOutcome.qa;
     input.spentUsdRef.value = roundUsd(input.spentUsdRef.value + usageToCost(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage));
-    assertDeckSpendWithinBudget(input.spentUsdRef.value);
+    assertDeckSpendWithinBudget(input.spentUsdRef.value, input.authorModel);
     input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
     await upsertWorkingPaper(input.config, input.runId, "visual_qa_final", finalVisualQa.report).catch(() => {});
     await persistRequestUsage(
@@ -2916,6 +2920,7 @@ function buildAuthorMessage(
         "- NielsenIQ exports contain subtotal rows at category, supplier, brand, and item level. For category totals use only rows where FORNITORE, MARCA, and ITEM are blank. For supplier totals use only rows where FORNITORE is present and MARCA and ITEM are blank.",
         "- If the brief is about promotions, benchmark the focal brand against key competitors and call out what others are doing, not only what the focal brand is doing.",
         "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
+        "- When the brief asks for both geography and brand, retailer, or channel analysis, include cross-tab analysis at the intersection. Use at least one brand x geography or channel x geography heatmap, table, or grouped comparison instead of world totals only.",
         ...(routeContext ? [routeContext] : []),
         "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
         `- ${analysisDepthInstruction}`,
@@ -3022,6 +3027,7 @@ function buildAuthorMessage(
           "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
           "- If the brief is English, write direct partner-grade English with no padded corporate phrasing such as 'in order to' or 'going forward'.",
           "- Every analytical slide must answer four questions: what changed, by how much, why it happened, and what the executive should do. A slide that only restates the chart is unfinished.",
+          "- When the brief asks for both geography and brand, retailer, or channel analysis, at least one slide per chapter should show the intersection directly. Use heatmaps, tables, grouped horizontal bars, or small multiples instead of only world-total rankings.",
           "- Slide titles must state the insight with at least one number, max 14 words. Charts are the hero (60%+ of slide area). Quantify recommendations only when the evidence supports a direct calculation.",
           "- Slide titles: MAXIMUM 70 characters. If the insight needs more, split it into title + subtitle.",
           "- Never use donut or pie charts with more than 4 segments. Use a horizontal stacked bar when there are 5+ segments.",
@@ -3063,25 +3069,29 @@ function buildAuthorMessage(
           isReportOnly
             ? "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. For report-only runs target 800-1200 lines and roughly 10000-16000 words."
             : "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. Target 500-1000 lines and roughly 8000-15000 words.",
+          "- Begin `narrative_report.md` with a short `Brief Interpretation` section (5-7 sentences) explaining the core question, the main segmentation choices, the KPIs prioritized, the chapter/report flow, and what is intentionally out of scope.",
           "- Required sections for `narrative_report.md`:",
           "  1. Title page with client name from the brief (NEVER `Non specificato`), objective, date, and data source.",
           isReportOnly
-            ? "  2. Executive summary (minimum 500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact."
-            : "  2. Executive summary (300-500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact.",
-          "  3. Methodology: data used, KPIs computed, time periods, comparison basis, data quality caveats, explicit assumptions, and sensitivity ranges.",
+            ? "  2. Brief Interpretation: 5-7 sentences on how you read the brief, how you segmented the analysis, and what the report emphasizes."
+            : "  2. Brief Interpretation: 5-7 sentences on how you read the brief, how you segmented the analysis, and what the report emphasizes.",
           isReportOnly
-            ? "  4. Detailed findings (one section per analytical slide, minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available."
-            : "  4. Detailed findings (one section per analytical slide, 300-500 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available.",
-          "  5. For every slide with a chart, include a markdown table with the exact numbers the chart visualizes so the report is usable without the PPTX.",
+            ? "  3. Executive summary (minimum 500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact."
+            : "  3. Executive summary (300-500 words): the full story in one page - situation, complication, key findings, recommended actions, and expected impact.",
+          "  4. Methodology: data used, KPIs computed, time periods, comparison basis, data quality caveats, explicit assumptions, and sensitivity ranges.",
           isReportOnly
-            ? "  6. Competitor deep-dive (minimum 600 words): dedicated section analyzing each major competitor's strategy, relative strengths, and implications for the client."
-            : "  6. Competitor deep-dive: dedicated section analyzing the main competitors' strategies, relative strengths, and implications for the client.",
+            ? "  5. Detailed findings (one section per analytical slide, minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available."
+            : "  5. Detailed findings (one section per analytical slide, 300-500 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add benchmark or historical context where available.",
+          "  6. For every slide with a chart, include a markdown table with the exact numbers the chart visualizes so the report is usable without the PPTX.",
           isReportOnly
-            ? "  7. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline."
-            : "  7. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
-          "  7a. For every recommendation include the action, traceable rationale, priority, and any measurable impact that can be computed directly from the source data. If financial impact is not directly computable, say so explicitly instead of inventing ROI, investment, or budget figures.",
-          "  8. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, top items, distribution by channel, or the closest available evidence).",
-          "  9. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
+            ? "  7. Competitor deep-dive (minimum 600 words): dedicated section analyzing each major competitor's strategy, relative strengths, and implications for the client."
+            : "  7. Competitor deep-dive: dedicated section analyzing the main competitors' strategies, relative strengths, and implications for the client.",
+          isReportOnly
+            ? "  8. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline."
+            : "  8. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+          "  8a. For every recommendation include the action, traceable rationale, priority, and any measurable impact that can be computed directly from the source data. If financial impact is not directly computable, say so explicitly instead of inventing ROI, investment, or budget figures.",
+          "  9. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, brand x geography, top items, distribution by channel, or the closest available evidence).",
+          "  10. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
           "- Include markdown tables wherever the slide has a chart. The table gives the reader the exact numbers behind the visual.",
           "- Write `narrative_report.md` to McKinsey leave-behind quality, not blog-post quality. Use the same language as the brief.",
           isReportOnly
@@ -3150,6 +3160,7 @@ function buildReportOnlyAuthorText(input: {
           "- Recommendations must be traceable to the data in this run. Do not invent geographies, channels, or opportunities that are not directly supported by the evidence.",
           "- BEFORE writing any number, verify that the sum of supplier-level values per channel matches the channel category total within plus or minus 2%. If it does not, you are double-counting NielsenIQ hierarchical subtotal rows.",
           "- NielsenIQ exports contain subtotal rows at category, supplier, brand, and item level. For category totals use only rows where FORNITORE, MARCA, and ITEM are blank. For supplier totals use only rows where FORNITORE is present and MARCA and ITEM are blank.",
+          "- When the brief asks for both geography and brand, retailer, or channel analysis, include cross-tab analysis at the intersection. Use at least one brand x geography or channel x geography heatmap, table, or grouped comparison instead of world totals only.",
           ...(input.routeContext ? [input.routeContext] : []),
           "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
           `- ${input.analysisDepthInstruction}`,
@@ -3181,22 +3192,25 @@ function buildReportOnlyAuthorText(input: {
     "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
     "- Every recommendation must include its own Risk: and Mitigation: in the narrative report.",
     "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
+    "- When the brief asks for both geography and brand, retailer, or channel analysis, include at least one brand x geography or channel x geography cross-tab in the report appendix and call it out in the findings.",
     "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
     "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
     "- If the brief is English, write direct partner-grade English with no padded corporate phrasing such as 'in order to' or 'going forward'.",
     "- `deck_manifest.json` must contain slideCount: 0, slides: [], charts: [], and pageCount: 0 unless you have a better factual page count for the markdown report.",
     "- Generate files in this exact order: (1) narrative_report.md, (2) data_tables.xlsx, (3) deck_manifest.json.",
     "- `narrative_report.md` must be a standalone consulting leave-behind that the reader can use without opening any deck. Target 800-1200 lines and roughly 10000-16000 words.",
+    "- Begin `narrative_report.md` with a short `Brief Interpretation` section (5-7 sentences) explaining the core question, the main segmentation choices, the KPIs prioritized, the report flow, and what is intentionally out of scope.",
     "- Required sections for `narrative_report.md`:",
     "  1. Title page with client name from the brief, objective, date, and data source.",
-    "  2. Executive summary (minimum 500 words): situation, complication, key findings, recommended actions, and expected impact.",
-    "  3. Methodology: data used, KPIs computed, time periods, comparison basis, data quality caveats, explicit assumptions, and sensitivity ranges.",
-    "  4. Detailed findings (minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add context where available.",
-    "  5. For every chart-like or table-backed finding, include a markdown table with the exact numbers so the report is usable without Excel.",
-    "  6. Competitor deep-dive (minimum 600 words): dedicated section on each major competitor's strategy, strengths, and implications for the client.",
-    "  7. Recommendations with sensitivity analysis (minimum 800 words): base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
-    "  8. Full data appendix: markdown tables with the key cross-tabulations behind the report.",
-    "  9. Risk register: probability x impact matrix for the recommendations and main delivery risks.",
+    "  2. Brief Interpretation: 5-7 sentences on how you read the brief, how you segmented the analysis, and what the report emphasizes.",
+    "  3. Executive summary (minimum 500 words): situation, complication, key findings, recommended actions, and expected impact.",
+    "  4. Methodology: data used, KPIs computed, time periods, comparison basis, data quality caveats, explicit assumptions, and sensitivity ranges.",
+    "  5. Detailed findings (minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add context where available.",
+    "  6. For every chart-like or table-backed finding, include a markdown table with the exact numbers so the report is usable without Excel.",
+    "  7. Competitor deep-dive (minimum 600 words): dedicated section on each major competitor's strategy, strengths, and implications for the client.",
+    "  8. Recommendations with sensitivity analysis (minimum 800 words): base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+    "  9. Full data appendix: markdown tables with the key cross-tabulations behind the report, including brand x geography or channel x geography views when the brief calls for both cuts.",
+    "  10. Risk register: probability x impact matrix for the recommendations and main delivery risks.",
     "- `narrative_report.md` must be at least 800 lines. If it is shorter, extend the appendix, competitor analysis, and chart-supporting markdown tables.",
     "- When you write `data_tables.xlsx`, every sheet must come from the exact DataFrame used for the finding. Do not recreate the table from prose.",
     "- Your final assistant message must attach narrative_report.md, data_tables.xlsx, and deck_manifest.json as container uploads before finishing.",
@@ -3611,7 +3625,9 @@ async function runClaudeLoop(input: {
         assertCircuitClosed(circuitState, input.circuitKey);
       }
       if (input.currentSpentUsd !== undefined) {
-        const remainingBudgetUsd = roundUsd(10.0 - input.currentSpentUsd - usageToCost(input.model, usage));
+        const remainingBudgetUsd = roundUsd(
+          getDeckBudgetCaps(normalizeAuthorModel(input.model)).hard - input.currentSpentUsd - usageToCost(input.model, usage),
+        );
         if (remainingBudgetUsd < CONTINUATION_MIN_REMAINING_BUDGET_USD) {
           const budgetMessage = `[runClaudeLoop] remaining budget $${remainingBudgetUsd.toFixed(3)} below continuation threshold $${CONTINUATION_MIN_REMAINING_BUDGET_USD.toFixed(2)}.`;
           console.warn(`${budgetMessage} ${finalMessage ? "Breaking before another continuation." : "Aborting phase before request."}`);
@@ -5060,22 +5076,22 @@ function validateManifestContract(manifest: z.infer<typeof deckManifestSchema>) 
 
 function normalizeManifestLayoutIdForContract(
   slide: z.infer<typeof deckManifestSchema>["slides"][number],
-  index: number,
-  slideCount: number,
+  _index: number,
+  _slideCount: number,
 ) {
   const archetype = normalizeLayoutAlias(slide.slideArchetype);
   if (archetype === "cover") {
     return "cover";
   }
   if (archetype === "recommendation-cards") {
-    return index === slideCount - 1 ? "summary" : "title-body";
+    return "recommendation-cards";
   }
   if (archetype && archetype !== "unknown") {
     return archetype;
   }
 
   const layout = normalizeLayoutAlias(slide.layoutId);
-  if (layout === "exec-summary" && index === slideCount - 1) {
+  if (layout === "exec-summary" && _index === _slideCount - 1) {
     return "summary";
   }
   if (layout && layout !== "unknown") {

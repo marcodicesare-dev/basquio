@@ -27,6 +27,10 @@ function getStorageKey(runId: string) {
   return `basquio:run-launch:${runId}`;
 }
 
+function getLaunchStateKey(runId: string) {
+  return `basquio:run-launch-state:${runId}`;
+}
+
 export function saveRunLaunchDraft(draft: RunLaunchDraft) {
   if (typeof window === "undefined") {
     return;
@@ -59,4 +63,30 @@ export function clearRunLaunchDraft(runId: string) {
   }
 
   window.sessionStorage.removeItem(getStorageKey(runId));
+  clearRunLaunchState(runId);
+}
+
+export function readRunLaunchState(runId: string): "pending" | "accepted" | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const value = window.sessionStorage.getItem(getLaunchStateKey(runId));
+  return value === "pending" || value === "accepted" ? value : null;
+}
+
+export function saveRunLaunchState(runId: string, state: "pending" | "accepted") {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(getLaunchStateKey(runId), state);
+}
+
+export function clearRunLaunchState(runId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.removeItem(getLaunchStateKey(runId));
 }

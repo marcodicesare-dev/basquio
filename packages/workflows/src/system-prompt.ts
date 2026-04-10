@@ -213,6 +213,51 @@ slide.addText("Mix shift toward premium creates pricing headroom - brand should 
 });
 </example>
 
+<example name="multi_series_line_direct_labels">
+## Multi-series line chart with direct end-of-line labels
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(9.25, 3.5), dpi=300)
+years = [2020, 2021, 2022, 2023, 2024, 2025]
+series = {
+    "Dept Stores": [269, 311, 317, 335, 336, 337],
+    "Jewellery": [159, 195, 209, 228, 234, 248],
+    "Sports": [151, 172, 181, 191, 195, 201],
+    "Bags": [34, 40, 45, 50, 51, 52],
+}
+series_colors = ['#1A1A2E', ACCENT, '#8B7355', '#4A6274']
+
+for (name, values), color in zip(series.items(), series_colors):
+    ax.plot(years, values, color=color, linewidth=2.2, marker='o', markersize=4)
+    ax.annotate(
+        f"{name} {values[-1]}",
+        xy=(years[-1], values[-1]),
+        xytext=(8, 0),
+        textcoords='offset points',
+        fontsize=9,
+        fontweight='bold',
+        color=color,
+        va='center'
+    )
+
+ax.set_xlim(2019.5, 2026.2)
+ax.grid(axis='y')
+ax.spines[['top', 'right']].set_visible(False)
+ax.spines['left'].set_color(BORDER)
+ax.spines['bottom'].set_color(BORDER)
+ax.tick_params(colors=MUTED, labelsize=10)
+legend = ax.get_legend()
+if legend:
+    legend.remove()
+fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+plt.subplots_adjust(bottom=0.18, right=0.88)
+plt.tight_layout()
+plt.savefig("line_direct_labels.png", dpi=300, bbox_inches='tight', pad_inches=0.15)
+</example>
+
 <example name="perfect_cover_slide">
 // Cover slide — only title + subtitle. No KPI cards, no accent bars, no extra geometry.
 // Title = one-sentence finding with a number. Subtitle = client + source + period.
@@ -320,13 +365,13 @@ slide.addText("Due azioni ad alta priorita per recuperare lo 0.5pp di gap confez
 
 const cards = [
   {
-    index: "01", color: "4CC9A0",
+    index: "1", color: "4CC9A0",
     title: "Ribilancia assortimento Birre e Yogurt",
     body: "Aggiungere min. 2 referenze no/low alcol nei top-banner. Inserire 3 SKU Yogurt Greco/Skyr e 1 Kefir entry-price per PDV.",
     lever: "Assortimento", impact: "+0.15pp conf", timeline: "3 mesi"
   },
   {
-    index: "02", color: "1A6AFF",
+    index: "2", color: "1A6AFF",
     title: "Ripristina pressione promo su Salumi",
     body: "Intensita promo scesa da 28.5% a 25.7%. Ripristinare soglie PY con promozioni di ingresso e multipack sui top-seller.",
     lever: "Promo", impact: "+0.05pp conf", timeline: "2 mesi"
@@ -596,6 +641,95 @@ Layout count:
 This yields 10 layout types and keeps no type above 3 slides.
 </example>
 
+<example name="cross_tab_heatmap">
+## Cross-tab heatmap for brand x geography analysis
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
+
+brands = ["Macy's", "Nordstrom", "Liverpool", "Coppel", "Kohl's"]
+geos = ["USA", "Mexico", "India", "UK", "Japan"]
+data = np.array([
+    [6.8, 2.1, 15.9, -1.2, 1.2],
+    [4.3, 1.8, 9.7, 3.2, 2.4],
+    [1.5, 13.6, 5.1, 0.8, -0.6],
+    [0.4, 10.2, 3.9, -0.4, 1.1],
+    [2.9, 1.4, 7.2, 2.5, 3.4],
+])
+
+fig, ax = plt.subplots(figsize=(9.25, 3.5), dpi=300)
+im = ax.imshow(data, cmap='RdYlGn', aspect='auto', vmin=-5, vmax=18)
+ax.set_xticks(range(len(geos)), labels=geos)
+ax.set_yticks(range(len(brands)), labels=brands)
+ax.tick_params(axis='x', labelsize=10, colors=TEXT)
+ax.tick_params(axis='y', labelsize=10, colors=TEXT)
+
+for row in range(data.shape[0]):
+    for col in range(data.shape[1]):
+        value = data[row, col]
+        ax.text(
+            col,
+            row,
+            f"{value:+.1f}%",
+            ha='center',
+            va='center',
+            fontsize=10,
+            fontweight='bold',
+            color='white' if value >= 9 else TEXT,
+        )
+
+colorbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
+colorbar.outline.set_edgecolor(BORDER)
+colorbar.ax.tick_params(labelsize=8, colors=MUTED)
+ax.set_title("Revenue CAGR by Brand x Geography", fontsize=12, fontweight='bold', color=TEXT, pad=10)
+for spine in ax.spines.values():
+    spine.set_color(BORDER)
+fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+plt.tight_layout()
+plt.savefig("brand_geo_heatmap.png", dpi=300, bbox_inches='tight', pad_inches=0.12)
+</example>
+
+<example name="waterfall_bridge_example">
+## Waterfall chart for a growth bridge
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+base_value = 1030
+deltas = [89, 50, 18, 68, 69]
+labels = ["2020 Base", "Jewellery", "Sports", "Bags", "Dept Stores", "Homewares", "2025 Total"]
+values = [base_value, *deltas, base_value + sum(deltas)]
+bottoms = [0, 1030, 1119, 1169, 1187, 1255, 0]
+colors = [ACCENT, POSITIVE, POSITIVE, POSITIVE, POSITIVE, POSITIVE, ACCENT]
+
+fig, ax = plt.subplots(figsize=(9.25, 3.5), dpi=300)
+bars = ax.bar(range(len(labels)), values, bottom=bottoms, color=colors, width=0.62)
+
+for index, (bar, value, bottom) in enumerate(zip(bars, values, bottoms)):
+    label_y = bottom + value / 2
+    label = f"CHF {value}bn" if index in {0, len(labels) - 1} else f"+{value}bn"
+    ax.text(bar.get_x() + bar.get_width() / 2, label_y, label, ha='center', va='center', fontsize=9, fontweight='bold', color='white')
+
+for index in range(1, len(labels) - 1):
+    step_top = bottoms[index] + values[index]
+    ax.plot([index - 0.31, index + 0.31], [step_top, step_top], color=BORDER, linewidth=1)
+
+ax.set_xticks(range(len(labels)), labels=["2020\nBase", "Jewellery", "Sports", "Bags", "Dept\nStores", "Homewares", "2025\nTotal"])
+ax.tick_params(axis='x', labelsize=9, colors=TEXT)
+ax.tick_params(axis='y', labelsize=9, colors=MUTED)
+ax.spines[['top', 'right']].set_visible(False)
+ax.spines['left'].set_color(BORDER)
+ax.spines['bottom'].set_color(BORDER)
+ax.grid(axis='y')
+ax.set_title("Where CHF 294bn of growth came from, 2020-2025", fontsize=12, fontweight='bold', color=TEXT, pad=10)
+fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+plt.tight_layout()
+plt.savefig("waterfall_bridge.png", dpi=300, bbox_inches='tight', pad_inches=0.12)
+</example>
+
 <example name="template_aware_chart_theme">
 ## Template-aware chart theme adaptation
 
@@ -633,6 +767,7 @@ plt.rcParams.update({
 # - charts still match slot figsize
 # - labels still cannot overlap
 # - legends still move outside the plot if needed
+# - multi-series end labels should match the series color, not a neutral grey
 # - titles, callouts, and cards still stay inside their bands
 </example>
 </examples>
@@ -778,6 +913,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- ANALYTICAL DEPTH: go one layer deeper than the obvious finding. If a category is declining, show WHY (price, distribution, assortment, competitor action). If a brand is growing, decompose the growth into its drivers. Surface-level observation without causation is not consulting-grade.",
     "- VISUAL POLISH: every chart must have a clear title that states the insight (not the metric name), properly formatted axis labels with units, a subtle grid, and a source note. Bar charts should use a highlight color for the key bar. Line charts should annotate inflection points. Waterfall charts must have connectors.",
     "- NARRATIVE ARC: the deck must tell a story with rising tension. Slide 1 sets the stage. Slides 2-3 establish the baseline. The middle section reveals the problem or opportunity with escalating specificity. The final third pivots to action. The last slide must feel like a call to action, not a summary of summaries.",
+    "- Aha slide rule: decks with 15+ slides should include one non-obvious cross-cut, contradiction, or structural trend observation just before the recommendations. Use source-backed structural metrics such as outlets, share, penetration, or mix. Never extrapolate financial amounts, ROI, budgets, or invented scenarios.",
     "- Build all slides in strict sequential order from slide 1 to slide N. Never go back to recreate or overwrite a slide you already added via addSlide(). If you discover an error in an earlier slide, note it and continue forward. The PPTX skill does not support overwriting slides, and re-adding a slide corrupts the file.",
     ...(!hasCustomTemplate
       ? [
@@ -815,6 +951,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Recommendation and action cards must reserve separate non-overlapping vertical bands for index, title, body, and footer. If that structure is not clean, simplify the card instead of forcing the composition.",
     "- Recommendation/action card geometry (mandatory when slideArchetype = recommendation-cards): card bounding box = 230px wide x 240px tall.",
     "- Recommendation/action card geometry: index badge band = x 10px, y 10px, w 30px, h 30px.",
+    "- Recommendation/action card numbering: use plain numerals such as 1, 2, 3, 4. Never zero-pad them as 01, 02, 03.",
     "- Recommendation/action card geometry: title band = x 48px, y 10px, w 172px, h 34px. One line only, max 40 characters.",
     "- Recommendation/action card geometry: body band = x 10px, y 54px, w 210px, h 124px. Max 4 lines, max 120 characters.",
     "- Recommendation/action card geometry: footer metric band = x 10px, y 188px, w 210px, h 36px.",
@@ -835,6 +972,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Generate charts as high-resolution PNG assets in Python and insert them as images in the final deck; do not rely on native PowerPoint chart objects or SmartArt for critical visuals.",
     "- Concretely: render charts with matplotlib or seaborn, save them as PNG files, and use the loaded presentation skill to place those PNGs in the deck. Do not use native PowerPoint chart objects for final deck visuals.",
     "- Layout variety rule: a 10-slide deck needs at least 4 layout types, a 15-slide deck needs at least 5 layout types, and no single layout may exceed 40% of total slides.",
+    "- For 30-slide decks, plan the archetype mix before writing any slide: use at least 7 archetype types, keep every archetype at 8 slides or fewer, keep chart-split at 10 slides or fewer, include at least one table or heatmap slide, and use at least three different chart families across the deck.",
     "- Recommended 15-slide mix: 1 cover, 1 exec-summary, 2-3 title-chart, 2-3 chart-split, 1-2 evidence-grid, 1-2 comparison, 1-2 recommendation-cards/key-findings, 1 summary.",
     "- If chart-split appears more than 5 times in a 15-slide deck, convert some slides to title-chart or evidence-grid.",
     "- Image format compatibility is critical for PowerPoint. When reusing template assets such as logos, icons, decorative elements, or backgrounds, convert them to PNG before embedding with addImage().",
@@ -846,6 +984,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Never render a chart below figsize=(4, 2). If the slot is too small for a readable chart, change the slide grammar instead of forcing a thumbnail.",
     "- Chart emphasis rule: highlight exactly one bar, segment, or line with the accent color and keep the rest of the series in muted supporting colors.",
     "- Label safety rule: never combine two metrics inside one label, keep legends outside the plot when needed, and leave enough axis padding for end-of-bar labels.",
+    "- Multi-series line chart rule: for line charts with 3 or more series, use direct end-of-line labels in the matching series color at the right edge and remove the legend when those labels fit cleanly. If direct labels would collide, move the legend below the chart. Never place a legend inside the plot area of a multi-series line chart.",
     "- In custom templates, preserve the template palette and mood, but still move legends, annotations, or labels if they collide. Template fidelity never justifies overlap.",
     "- Label collision prevention (apply BEFORE rendering, do not rely on post-hoc QA):",
     "  - Maximum 12 bars per chart. If a grouped bar would exceed 12 bars, split it into 2 slides or switch to a heatmap, small multiples, or a horizontal alternative.",

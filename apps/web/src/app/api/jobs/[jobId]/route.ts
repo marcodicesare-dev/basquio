@@ -92,6 +92,27 @@ type AttemptCostSummaryRow = {
   completed_at: string | null;
 };
 
+function collectQualityWarnings(costTelemetry: Record<string, unknown> | null) {
+  const phases = costTelemetry && typeof costTelemetry.phases === "object" && costTelemetry.phases
+    ? costTelemetry.phases as Record<string, unknown>
+    : null;
+  const finalLint = phases && typeof phases.finalLint === "object" && phases.finalLint
+    ? phases.finalLint as Record<string, unknown>
+    : null;
+  const publishDecision = phases && typeof phases.publishDecision === "object" && phases.publishDecision
+    ? phases.publishDecision as Record<string, unknown>
+    : null;
+
+  const lintIssues = Array.isArray(finalLint?.actionableIssues)
+    ? finalLint.actionableIssues.filter((issue): issue is string => typeof issue === "string")
+    : [];
+  const advisoryIssues = Array.isArray(publishDecision?.advisories)
+    ? publishDecision.advisories.filter((issue): issue is string => typeof issue === "string")
+    : [];
+
+  return [...new Set([...lintIssues, ...advisoryIssues])];
+}
+
 type PhaseEstimate = {
   expectedSeconds: number;
   stepIndex: number;
@@ -208,8 +229,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   }
 
   const run = runs[0];
+  const rawStatus = (run.completed_at ? "completed" : run.status) as DeckRunRow["status"];
   const attemptId = run.active_attempt_id ?? run.latest_attempt_id;
-  const needsInputSummary = run.status === "failed" || run.status === "completed" || Boolean(run.completed_at);
+  const needsInputSummary = rawStatus === "failed" || rawStatus === "completed";
   const [sourceFiles, summaryEvents, templateDiagnostics, attemptProgressRows] = await Promise.all([
     needsInputSummary
       ? loadSourceFileSummaries(supabaseUrl, serviceKey, run.source_file_ids)
@@ -255,13 +277,13 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const createdAtMs = new Date(run.created_at).getTime();
   const updatedAtMs = run.updated_at ? new Date(run.updated_at).getTime() : createdAtMs;
   const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
-  const elapsedToMs = run.status === "completed" && completedAtMs ? completedAtMs : now;
+  const elapsedToMs = rawStatus === "completed" && completedAtMs ? completedAtMs : now;
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
   const attemptProgressRow = attemptProgressRows[0] ?? null;
   const meaningfulProgressAt = attemptProgressRow?.last_meaningful_event_at ?? attemptProgressRow?.updated_at ?? run.updated_at;
   const meaningfulProgressAtMs = meaningfulProgressAt ? new Date(meaningfulProgressAt).getTime() : updatedAtMs;
-  const heartbeatLate = run.status === "running" && now - meaningfulProgressAtMs > STALE_RUN_UI_SECONDS * 1000;
-  const recoveryEligibleStale = run.status === "running" && now - meaningfulProgressAtMs > WORKER_STALE_RUN_SECONDS * 1000;
+  const heartbeatLate = rawStatus === "running" && now - meaningfulProgressAtMs > STALE_RUN_UI_SECONDS * 1000;
+  const recoveryEligibleStale = rawStatus === "running" && now - meaningfulProgressAtMs > WORKER_STALE_RUN_SECONDS * 1000;
   const progressClockMs = heartbeatLate ? meaningfulProgressAtMs : now;
   const progressModel = buildPhaseProgressModel({
     phases: V2_PHASES,
@@ -278,9 +300,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   });
 
   let progressPercent: number;
-  if (run.status === "completed") {
+  if (rawStatus === "completed") {
     progressPercent = 100;
-  } else if (run.status === "failed") {
+  } else if (rawStatus === "failed") {
     progressPercent = Math.max(2, Math.round((completedPhases.size / V2_PHASES.length) * 100));
   } else {
     progressPercent = Math.max(2, Math.min(96, Math.round(progressModel.progressPercent)));
@@ -293,7 +315,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     if (completedPhases.has(phase)) {
       status = "completed";
     } else if (run.current_phase === phase) {
-      status = run.status === "failed" ? "failed" : "running";
+      status = rawStatus === "failed" ? "failed" : "running";
     } else if (index < (currentPhaseIndex >= 0 ? currentPhaseIndex : V2_PHASES.length)) {
       status = "completed";
     } else {
@@ -318,7 +340,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     };
   });
 
-  const isTransientRecovery = run.status === "queued" && run.latest_attempt_number > 1;
+  const isTransientRecovery = rawStatus === "queued" && run.latest_attempt_number > 1;
   const currentDetail = lastToolCall?.tool_name
     ? `${phaseMeta.activeDetail} Tool in use: ${lastToolCall.tool_name}.`
     : recoveryEligibleStale
@@ -327,9 +349,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       ? `This run has not heartbeated recently. Automatic recovery starts after ${Math.round(WORKER_STALE_RUN_SECONDS / 60)} minutes without progress.`
     : isTransientRecovery
       ? `Retrying automatically after a temporary service issue. Attempt ${run.latest_attempt_number}.`
-    : run.status === "failed"
+    : rawStatus === "failed"
         ? run.failure_message ?? "Run failed."
-        : run.status === "completed"
+        : rawStatus === "completed"
           ? "Generation finished. Checking artifact availability."
         : phaseMeta.activeDetail;
 
@@ -342,7 +364,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     stakes: typeof run.brief?.stakes === "string" ? run.brief.stakes : run.stakes,
   };
   const failureGuidance = buildFailureGuidance(run, sourceFiles, recoveryEligibleStale);
-  const failureClassification = run.status === "failed" || recoveryEligibleStale
+  const failureClassification = rawStatus === "failed" || recoveryEligibleStale
     ? classifyFailure(run, recoveryEligibleStale)
     : undefined;
 
@@ -360,7 +382,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       }
     : null;
   let attemptSummaries: Array<Record<string, unknown>> = [];
-  if (run.status === "completed" || run.completed_at) {
+  if (rawStatus === "completed") {
     const [manifests, attemptRows] = await Promise.all([
       fetchRestRows<ArtifactManifestRow>({
         supabaseUrl: supabaseUrl!,
@@ -442,7 +464,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     }));
   }
 
-  if (run.status === "failed") {
+  if (rawStatus === "failed") {
     const attemptRows = await fetchRestRows<AttemptCostSummaryRow>({
       supabaseUrl: supabaseUrl!,
       serviceKey: serviceKey!,
@@ -475,7 +497,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     attemptNumber: run.latest_attempt_number ?? 1,
     activeAttemptId: attemptId,
     pipelineVersion: "v2" as const,
-    status: (isTransientRecovery ? "running" : run.status) as "queued" | "running" | "completed" | "failed",
+    status: (isTransientRecovery ? "running" : rawStatus) as "queued" | "running" | "completed" | "failed",
     artifactsReady: Boolean(summary && Array.isArray(summary.artifacts) && (summary.artifacts as unknown[]).length > 0),
     createdAt: run.created_at,
     updatedAt: run.updated_at ?? undefined,
@@ -484,14 +506,15 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     currentDetail,
     progressPercent,
     elapsedSeconds,
-    estimatedRemainingSeconds: run.status === "completed" || run.status === "failed" ? 0 : estimatedRemaining.midpointSeconds,
-    estimatedRemainingLowSeconds: run.status === "completed" || run.status === "failed" ? 0 : estimatedRemaining.lowSeconds,
-    estimatedRemainingHighSeconds: run.status === "completed" || run.status === "failed" ? 0 : estimatedRemaining.highSeconds,
-    estimatedRemainingConfidence: run.status === "completed" || run.status === "failed" ? "high" : estimatedRemaining.confidence,
+    estimatedRemainingSeconds: rawStatus === "completed" || rawStatus === "failed" ? 0 : estimatedRemaining.midpointSeconds,
+    estimatedRemainingLowSeconds: rawStatus === "completed" || rawStatus === "failed" ? 0 : estimatedRemaining.lowSeconds,
+    estimatedRemainingHighSeconds: rawStatus === "completed" || rawStatus === "failed" ? 0 : estimatedRemaining.highSeconds,
+    estimatedRemainingConfidence: rawStatus === "completed" || rawStatus === "failed" ? "high" : estimatedRemaining.confidence,
     steps,
     summary,
     templateDiagnostics,
     costTelemetry: run.cost_telemetry,
+    qualityWarnings: collectQualityWarnings(run.cost_telemetry),
     attemptSummaries: attemptSummaries.length > 0 ? attemptSummaries : undefined,
     notifyOnComplete: run.notify_on_complete,
     failureMessage: run.failure_message ?? undefined,

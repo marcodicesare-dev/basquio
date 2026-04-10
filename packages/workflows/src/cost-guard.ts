@@ -8,9 +8,19 @@ const MODEL_PRICING: Record<string, { inputUsdPerMTok: number; outputUsdPerMTok:
   "claude-opus-4-6": { inputUsdPerMTok: 5, outputUsdPerMTok: 25 },
 };
 
-const PRE_FLIGHT_BUDGET_USD = 7.0;
-const HARD_BUDGET_USD = 10.0;
-export const CROSS_ATTEMPT_BUDGET_USD = 15.0;
+export const MODEL_BUDGET_USD: Record<keyof typeof MODEL_PRICING, {
+  preFlight: number;
+  hard: number;
+  crossAttempt: number;
+}> = {
+  "claude-sonnet-4-6": { preFlight: 7.0, hard: 10.0, crossAttempt: 15.0 },
+  "claude-haiku-4-5": { preFlight: 3.0, hard: 5.0, crossAttempt: 8.0 },
+  "claude-opus-4-6": { preFlight: 12.0, hard: 18.0, crossAttempt: 24.0 },
+};
+
+export function getDeckBudgetCaps(model: keyof typeof MODEL_PRICING) {
+  return MODEL_BUDGET_USD[model];
+}
 
 export async function enforceDeckBudget(input: {
   client: Anthropic;
@@ -21,7 +31,7 @@ export async function enforceDeckBudget(input: {
   outputTokenBudget: number;
   maxUsd?: number;
 }) {
-  const maxUsd = input.maxUsd ?? PRE_FLIGHT_BUDGET_USD;
+  const maxUsd = input.maxUsd ?? getDeckBudgetCaps(input.model).preFlight;
 
   // Anthropic's token-counting endpoint rejects Files API references such as
   // `source: { type: "file", file_id }` and container uploads. Use token
@@ -65,7 +75,13 @@ export async function enforceDeckBudget(input: {
   };
 }
 
-export function assertDeckSpendWithinBudget(spentUsd: number, maxUsd: number = HARD_BUDGET_USD) {
+export function assertDeckSpendWithinBudget(
+  spentUsd: number,
+  maxUsdOrModel: number | keyof typeof MODEL_PRICING = "claude-sonnet-4-6",
+) {
+  const maxUsd = typeof maxUsdOrModel === "number"
+    ? maxUsdOrModel
+    : getDeckBudgetCaps(maxUsdOrModel).hard;
   if (spentUsd > maxUsd) {
     throw new Error(
       `Claude cost $${spentUsd.toFixed(3)} exceeded hard budget $${maxUsd.toFixed(2)}.`,

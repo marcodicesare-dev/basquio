@@ -10,7 +10,14 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 
 import { DEFAULT_AUTHOR_MODEL, calculateRunCredits, estimateRunMinutes } from "@/lib/credits";
-import { clearRunLaunchDraft, readRunLaunchDraft, type RunLaunchDraft } from "@/lib/run-launch-draft";
+import {
+  clearRunLaunchDraft,
+  clearRunLaunchState,
+  readRunLaunchDraft,
+  readRunLaunchState,
+  saveRunLaunchState,
+  type RunLaunchDraft,
+} from "@/lib/run-launch-draft";
 import { buildPhaseProgressModel, estimateRemainingSecondsForPhase } from "@/lib/run-progress";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
@@ -78,6 +85,10 @@ type DeckRunRealtimeRow = {
 const V2_PHASES = BASQUIO_PHASES;
 const WORKER_STALE_RUN_SECONDS = 8 * 60;
 const STALE_RUN_UI_SECONDS = Math.min(180, WORKER_STALE_RUN_SECONDS);
+const FAST_POLL_INTERVAL_MS = 2_500;
+const FAST_POLL_INTERVAL_WITH_REALTIME_MS = 5_000;
+const SLOW_POLL_INTERVAL_MS = 10_000;
+const SLOW_POLL_INTERVAL_WITH_REALTIME_MS = 15_000;
 const PHASE_ESTIMATES: Record<string, { label: string; activeDetail: string; completedDetail: string }> = {
   normalize: {
     label: "Reading your files",
@@ -142,6 +153,7 @@ export type RunProgressSnapshot = {
   toolCallCount?: number;
   runHealth?: "healthy" | "stale" | "recovering" | "late_heartbeat";
   notifyOnComplete?: boolean;
+  qualityWarnings?: string[];
 };
 
 // ─── COMPONENT ─────────────────────────────────────────────────
@@ -168,6 +180,7 @@ export function RunProgressView(input: {
   const snapshotRef = useRef<RunProgressSnapshot | null>(input.initialSnapshot);
   const isTerminalRef = useRef(false);
   const realtimeSubscribedRef = useRef(false);
+  const realtimeEventCountRef = useRef(0);
   const terminalHydrationRef = useRef(false);
   const launchStartedRef = useRef(false);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
@@ -175,6 +188,17 @@ export function RunProgressView(input: {
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
+
+  useEffect(() => {
+    if (!input.initialSnapshot) {
+      return;
+    }
+
+    const incomingSnapshot = input.initialSnapshot;
+    setSnapshot((current) => getPreferredSnapshot(current, incomingSnapshot));
+    setError(null);
+    setMissingPollCount(0);
+  }, [input.initialSnapshot, input.jobId]);
 
   useEffect(() => {
     isTerminalRef.current = isTerminal;
@@ -209,12 +233,14 @@ export function RunProgressView(input: {
 
   useEffect(() => {
     const launchDraft = initialLaunchDraft ?? readRunLaunchDraft(input.jobId);
+    const launchState = readRunLaunchState(input.jobId);
 
-    if (!launchDraft || launchStartedRef.current) {
+    if (!launchDraft || launchStartedRef.current || launchState === "pending" || launchState === "accepted") {
       return;
     }
 
     launchStartedRef.current = true;
+    saveRunLaunchState(input.jobId, "pending");
     let active = true;
 
     void (async () => {
@@ -261,6 +287,7 @@ export function RunProgressView(input: {
         clearRunLaunchDraft(input.jobId);
         setHasLaunchDraft(false);
         setLaunchError(null);
+        saveRunLaunchState(input.jobId, "accepted");
       } catch (launchFailure) {
         if (!active) {
           return;
@@ -269,6 +296,8 @@ export function RunProgressView(input: {
         if (shouldClearDraft) {
           clearRunLaunchDraft(input.jobId);
           setHasLaunchDraft(false);
+        } else {
+          clearRunLaunchState(input.jobId);
         }
         setLaunchError(launchFailure instanceof Error ? launchFailure.message : "Unable to start the run.");
       }
@@ -291,6 +320,64 @@ export function RunProgressView(input: {
     }
   }, [snapshot?.status]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const previousTitle = document.title;
+    if (!snapshot) {
+      return () => {
+        document.title = previousTitle;
+      };
+    }
+
+    if (snapshot.status === "completed") {
+      document.title = "Basquio | Report Ready";
+    } else if (snapshot.status === "failed") {
+      document.title = "Basquio | Run Failed";
+    } else if (snapshot.status === "needs_input") {
+      document.title = "Basquio | Needs Input";
+    } else {
+      document.title = "Basquio | Building";
+    }
+
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [snapshot?.status, snapshot?.jobId]);
+
+  useEffect(() => {
+    if (
+      snapshot?.status !== "completed" ||
+      snapshot.notifyOnComplete === false ||
+      typeof window === "undefined" ||
+      typeof Notification === "undefined" ||
+      document.visibilityState !== "hidden" ||
+      Notification.permission !== "granted"
+    ) {
+      return;
+    }
+
+    const isReportOnlyResult = !snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pptx");
+    const notification = new Notification(
+      isReportOnlyResult ? "Your Basquio report is ready" : "Your Basquio deck is ready",
+      {
+        body: "Open the job page to review and download the artifacts.",
+        silent: false,
+      },
+    );
+
+    notification.onclick = () => {
+      window.focus();
+      window.location.href = `/jobs/${snapshot.jobId}`;
+    };
+
+    return () => {
+      notification.close();
+    };
+  }, [snapshot?.jobId, snapshot?.notifyOnComplete, snapshot?.status, snapshot?.summary?.artifacts]);
+
   // Fetch credit balance when run completes
   useEffect(() => {
     if (snapshot?.status !== "completed") return;
@@ -303,17 +390,52 @@ export function RunProgressView(input: {
   // Initial snapshot + realtime subscription
   useEffect(() => {
     let active = true;
-    let fallbackTimeout: number | null = null;
+    let pollTimeout: number | null = null;
+    let realtimeHealthTimeout: number | null = null;
+    let fetchInFlight = false;
     const supabase = getSupabaseBrowserClient();
 
-    const clearFallbackPolling = () => {
-      if (fallbackTimeout !== null) {
-        window.clearTimeout(fallbackTimeout);
-        fallbackTimeout = null;
+    const clearPolling = () => {
+      if (pollTimeout !== null) {
+        window.clearTimeout(pollTimeout);
+        pollTimeout = null;
       }
     };
 
-    const fetchSnapshot = async () => {
+    const getPollDelayMs = () => {
+      const elapsedSeconds = snapshotRef.current?.elapsedSeconds ?? 0;
+      const slowPoll = elapsedSeconds >= 120;
+
+      if (realtimeSubscribedRef.current) {
+        return slowPoll ? SLOW_POLL_INTERVAL_WITH_REALTIME_MS : FAST_POLL_INTERVAL_WITH_REALTIME_MS;
+      }
+
+      return slowPoll ? SLOW_POLL_INTERVAL_MS : FAST_POLL_INTERVAL_MS;
+    };
+
+    const schedulePolling = (delayMs = getPollDelayMs()) => {
+      if (!active || pollTimeout !== null || isTerminalRef.current) {
+        return;
+      }
+
+      pollTimeout = window.setTimeout(() => {
+        pollTimeout = null;
+        void fetchSnapshot();
+      }, Math.max(250, delayMs));
+    };
+
+    const fetchSnapshot = async (options?: { nextPollDelayMs?: number }) => {
+      if (!active) {
+        return;
+      }
+      if (fetchInFlight) {
+        schedulePolling(options?.nextPollDelayMs ?? 1_000);
+        return;
+      }
+
+      fetchInFlight = true;
+      let terminalPayload = false;
+
       try {
         const response = await fetch(`/api/jobs/${input.jobId}`, { cache: "no-store" });
         const payload = (await response.json()) as RunProgressSnapshot & { error?: string };
@@ -322,7 +444,6 @@ export function RunProgressView(input: {
           if (response.status === 404 && !snapshotRef.current) {
             setMissingPollCount((c) => c + 1);
             setError(null);
-            startFallbackPolling();
             return;
           }
           throw new Error(payload.error ?? "Something went wrong.");
@@ -330,38 +451,22 @@ export function RunProgressView(input: {
         setSnapshot(payload);
         setMissingPollCount(0);
         setError(null);
-        terminalHydrationRef.current = payload.status === "completed" || payload.status === "failed" || payload.status === "needs_input";
+        terminalPayload = payload.status === "completed" || payload.status === "failed" || payload.status === "needs_input";
+        terminalHydrationRef.current = terminalPayload;
       } catch (e) {
         if (!active) return;
         setError(e instanceof Error ? e.message : "Something went wrong.");
-        startFallbackPolling();
-      }
-    };
-
-    const startFallbackPolling = () => {
-      if (fallbackTimeout !== null || isTerminalRef.current) {
-        return;
-      }
-
-      const schedulePoll = () => {
+      } finally {
+        fetchInFlight = false;
         if (!active) {
           return;
         }
-        const elapsedSeconds = snapshotRef.current?.elapsedSeconds ?? 0;
-        fallbackTimeout = window.setTimeout(() => {
-          void fetchSnapshot();
-          clearFallbackPolling();
-          if (
-            !terminalHydrationRef.current &&
-            !isTerminalRef.current &&
-            (!realtimeSubscribedRef.current || !snapshotRef.current)
-          ) {
-            schedulePoll();
-          }
-        }, elapsedSeconds >= 120 ? 10_000 : 2_500);
-      };
-
-      schedulePoll();
+        if (terminalPayload || isTerminalRef.current) {
+          clearPolling();
+          return;
+        }
+        schedulePolling(options?.nextPollDelayMs);
+      }
     };
 
     const handleRealtimeUpdate = (row: DeckRunRealtimeRow) => {
@@ -369,23 +474,51 @@ export function RunProgressView(input: {
       if (nextStatus === "completed" || nextStatus === "failed" || nextStatus === "needs_input" || row.completed_at) {
         if (!terminalHydrationRef.current) {
           terminalHydrationRef.current = true;
-          void fetchSnapshot();
+          void fetchSnapshot({ nextPollDelayMs: 1_500 });
         }
         return;
       }
 
       setSnapshot((current) => applyRealtimeRunUpdate(current, row));
       setError(null);
-      clearFallbackPolling();
+      realtimeEventCountRef.current += 1;
+      schedulePolling();
     };
 
-    void fetchSnapshot();
+    const launchPending = !input.initialSnapshot
+      && (Boolean(readRunLaunchDraft(input.jobId)) || readRunLaunchState(input.jobId) === "pending");
+
+    if (launchPending) {
+      schedulePolling(1_000);
+    } else {
+      void fetchSnapshot();
+    }
+
+    const refreshFromBrowserResume = () => {
+      if (!active || isTerminalRef.current) {
+        return;
+      }
+      clearPolling();
+      void fetchSnapshot({ nextPollDelayMs: 1_000 });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshFromBrowserResume();
+      }
+    };
+
+    window.addEventListener("focus", refreshFromBrowserResume);
+    window.addEventListener("pageshow", refreshFromBrowserResume);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     if (!supabase) {
-      startFallbackPolling();
       return () => {
         active = false;
-        clearFallbackPolling();
+        window.removeEventListener("focus", refreshFromBrowserResume);
+        window.removeEventListener("pageshow", refreshFromBrowserResume);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        clearPolling();
       };
     }
 
@@ -429,19 +562,33 @@ export function RunProgressView(input: {
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           realtimeSubscribedRef.current = false;
-          startFallbackPolling();
+          schedulePolling(1_000);
         } else if (status === "SUBSCRIBED") {
           realtimeSubscribedRef.current = true;
-          if (snapshotRef.current) {
-            clearFallbackPolling();
+          realtimeEventCountRef.current = 0;
+          if (realtimeHealthTimeout !== null) {
+            window.clearTimeout(realtimeHealthTimeout);
           }
+          realtimeHealthTimeout = window.setTimeout(() => {
+            if (!active || isTerminalRef.current || realtimeEventCountRef.current > 0) {
+              return;
+            }
+            console.warn(`[basquio-progress] Realtime subscribed but delivered no deck_runs events for ${input.jobId} after 60s; relying on HTTP polling.`);
+          }, 60_000);
+          schedulePolling();
         }
       });
 
     return () => {
       active = false;
       realtimeSubscribedRef.current = false;
-      clearFallbackPolling();
+      if (realtimeHealthTimeout !== null) {
+        window.clearTimeout(realtimeHealthTimeout);
+      }
+      window.removeEventListener("focus", refreshFromBrowserResume);
+      window.removeEventListener("pageshow", refreshFromBrowserResume);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearPolling();
       void supabase.removeChannel(channel);
     };
   }, [input.jobId]);
@@ -498,6 +645,7 @@ export function RunProgressView(input: {
     const templateSummary = describeTemplateDiagnostics(
       snapshot.summary?.templateDiagnostics ?? snapshot.templateDiagnostics,
     );
+    const reviewSuggested = snapshot.summary?.qaPassed === false || (snapshot.qualityWarnings?.length ?? 0) > 0;
     const isReportOnlyResult = !hasPptxArtifact && hasMdArtifact && hasXlsxArtifact;
     const readyLabel = isReportOnlyResult ? "Your report is ready" : "Your deck is ready";
     const resultMeta = isReportOnlyResult
@@ -565,13 +713,18 @@ export function RunProgressView(input: {
 
             <div className="compact-meta-row">
               {capabilityPills.map((pill) => <span key={pill} className="run-pill">{pill}</span>)}
-              {snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">Ready to review</span> : null}
-              {snapshot.summary?.qaPassed === false ? <span className="run-pill run-pill-failed">Review suggested</span> : null}
+              {!reviewSuggested && snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">Ready to review</span> : null}
+              {reviewSuggested ? <span className="run-pill run-pill-failed">Review suggested</span> : null}
               <span className="run-pill">{templateSummary.badge}</span>
             </div>
             <p className="muted" style={{ marginTop: "0.85rem", maxWidth: 560 }}>
               {templateSummary.detail}
             </p>
+            {snapshot.qualityWarnings?.length ? (
+              <p className="muted" style={{ marginTop: "0.65rem", maxWidth: 560 }}>
+                Basquio published the artifacts successfully, but flagged review notes such as: {snapshot.qualityWarnings.slice(0, 2).join(" ")}
+              </p>
+            ) : null}
           </div>
 
         </section>
@@ -587,8 +740,8 @@ export function RunProgressView(input: {
           </article>
           <article className="panel billing-stat-card">
             <p className="billing-stat-label">Status</p>
-            <p className={`billing-stat-value job-result-qa ${snapshot.summary?.qaPassed === false ? "job-result-qa-failed" : "job-result-qa-passed"}`}>
-              {snapshot.summary?.qaPassed === false ? "Review suggested" : snapshot.summary?.qaPassed === true ? "Ready" : "Available"}
+            <p className={`billing-stat-value job-result-qa ${reviewSuggested ? "job-result-qa-failed" : "job-result-qa-passed"}`}>
+              {reviewSuggested ? "Review suggested" : snapshot.summary?.qaPassed === true ? "Ready" : "Available"}
             </p>
           </article>
         </div>
@@ -791,11 +944,18 @@ export function RunProgressView(input: {
   const leaveRunCopy = snapshot.notifyOnComplete !== false
     ? "This runs in the background. Close this page and we'll email you when it's ready."
     : "This runs in the background. Close this page and come back from Reports or Dashboard later.";
+  const progressHealthMessage = snapshot.runHealth === "stale"
+    ? "This run looks stalled. Basquio is checking for recovery and will keep refreshing automatically."
+    : snapshot.runHealth === "late_heartbeat"
+      ? "Live updates are behind the worker heartbeat. Refreshing status automatically."
+      : snapshot.runHealth === "recovering"
+        ? "This run is retrying automatically after a temporary service issue."
+        : null;
   const progressStatusMessage = launchError
     ? launchError
     : error
       ? "Progress updates paused. Retrying automatically."
-      : null;
+      : progressHealthMessage;
 
   return (
     <div style={styles.fullPage}>
@@ -1034,6 +1194,49 @@ function buildPendingLaunchSnapshot(draft: RunLaunchDraft): RunProgressSnapshot 
     summary: null,
     notifyOnComplete: true,
   };
+}
+
+function getPreferredSnapshot(
+  current: RunProgressSnapshot | null,
+  incoming: RunProgressSnapshot,
+) {
+  if (!current || current.jobId !== incoming.jobId) {
+    return incoming;
+  }
+
+  const currentTerminal = isTerminalStatus(current.status);
+  const incomingTerminal = isTerminalStatus(incoming.status);
+  if (incomingTerminal && !currentTerminal) {
+    return incoming;
+  }
+  if (currentTerminal && !incomingTerminal) {
+    return current;
+  }
+
+  const currentUpdatedAtMs = getSnapshotTimestampMs(current);
+  const incomingUpdatedAtMs = getSnapshotTimestampMs(incoming);
+  if (incomingUpdatedAtMs > currentUpdatedAtMs) {
+    return incoming;
+  }
+  if (incomingUpdatedAtMs < currentUpdatedAtMs) {
+    return current;
+  }
+
+  if (incoming.elapsedSeconds > current.elapsedSeconds) {
+    return incoming;
+  }
+
+  return current;
+}
+
+function getSnapshotTimestampMs(snapshot: RunProgressSnapshot) {
+  const candidate = snapshot.updatedAt ?? snapshot.createdAt;
+  const timestampMs = new Date(candidate).getTime();
+  return Number.isNaN(timestampMs) ? 0 : timestampMs;
+}
+
+function isTerminalStatus(status: RunProgressSnapshot["status"]) {
+  return status === "completed" || status === "failed" || status === "needs_input";
 }
 
 function parseRealtimeRunRow(value: Record<string, unknown>): DeckRunRealtimeRow | null {
