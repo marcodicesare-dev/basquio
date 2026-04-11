@@ -473,6 +473,7 @@ When exact EUR is not computable from the evidence, use directional language suc
 - Diagnostic bullets on chart-split slides: max 4 bullets, each max 25 words.
 - Callout/action text: max 2 lines (30-40 words). Quantify the action, don't describe the context.
 - Recommendation card body: max 3-4 lines (40-60 words). Lead with the lever, not the finding.
+- Recommendation and key-findings cards must have at least 3 lines of body text. If the insight is too brief, expand with the exact data point, the business implication, or the concrete next action.
 - Recommendation cards in a 4-column layout: title max 6 words, body max 4 lines at fontSize 9, footer metrics always visible with fixed space.
 - Recommendation cards: prioritize the action verb, the EUR prize, and the timeline. Cut context and support detail before you cut those three.
 - Recommendation cards: use shrinkText: true on every recommendation-card text box.
@@ -730,6 +731,41 @@ plt.tight_layout()
 plt.savefig("waterfall_bridge.png", dpi=300, bbox_inches='tight', pad_inches=0.12)
 </example>
 
+<example name="growth_size_scatter_bcg">
+## Scatter / BCG-style quadrant chart with direct labels
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+markets = ["China", "USA", "India", "Mexico", "Japan"]
+size = [131, 46, 4.4, 12, 7.2]      # Revenue CHF bn
+growth = [1.3, 7.6, 16.9, 12.7, 5.3] # CAGR %
+colors = [ACCENT if value >= 10 else "#94A3B8" for value in growth]
+areas = [max(v * 18, 120) for v in size]
+
+fig, ax = plt.subplots(figsize=(9.25, 3.5), dpi=300)
+ax.scatter(size, growth, s=areas, c=colors, alpha=0.85, edgecolors=BORDER, linewidth=0.8)
+ax.axhline(y=8, color=BORDER, linestyle='--', linewidth=0.8)
+ax.axvline(x=20, color=BORDER, linestyle='--', linewidth=0.8)
+
+for label, x, y in zip(markets, size, growth):
+    ax.annotate(label, (x, y), xytext=(6, 6), textcoords='offset points', fontsize=9, fontweight='bold', color=TEXT)
+
+ax.set_xlabel("Revenue 2025 (CHF bn)", fontsize=10, color=TEXT)
+ax.set_ylabel("Revenue CAGR 2020-2025 (%)", fontsize=10, color=TEXT)
+ax.tick_params(axis='x', labelsize=9, colors=MUTED)
+ax.tick_params(axis='y', labelsize=9, colors=MUTED)
+ax.spines[['top', 'right']].set_visible(False)
+ax.spines['left'].set_color(BORDER)
+ax.spines['bottom'].set_color(BORDER)
+ax.grid(axis='both', linestyle=':', linewidth=0.6, alpha=0.35)
+ax.text(0.99, 0.97, "Scale x Growth", transform=ax.transAxes, ha='right', va='top', fontsize=8, color=MUTED)
+fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+plt.tight_layout()
+plt.savefig("growth_size_scatter.png", dpi=300, bbox_inches='tight', pad_inches=0.12)
+</example>
+
 <example name="template_aware_chart_theme">
 ## Template-aware chart theme adaptation
 
@@ -982,6 +1018,8 @@ export async function buildBasquioSystemPrompt(input: {
     "- Start every chart script from the template-aware matplotlib preamble in the examples. For Basquio dark mode, use the dark tokens directly. For client/custom templates, swap in the active template colors but keep the same rcParams structure and readability settings.",
     "- Chart size rules: title-chart=(9.25, 3.5), chart-split=(5.75, 3.5), evidence-grid=(5.75, 2.55), comparison=(4.55, 3.2), scenario-cards=(5.5, 3.5), all at dpi=300.",
     "- Never render a chart below figsize=(4, 2). If the slot is too small for a readable chart, change the slide grammar instead of forcing a thumbnail.",
+    "- Chart fill rule: the plot area must visually fill its slot. After tight_layout(), verify the axes occupy at least roughly 80% of figure width and 70% of figure height. If margins are still wide, manually expand the axes with ax.set_position([...]). Dead space in charts is the most common visual defect.",
+    "- Chart fill rule: when a source note sits below the chart, reserve only the bottom strip needed for it and give the rest of the figure back to the plot area. If there is no y-axis label, push the left margin in aggressively instead of leaving a wide empty gutter.",
     "- Chart emphasis rule: highlight exactly one bar, segment, or line with the accent color and keep the rest of the series in muted supporting colors.",
     "- Label safety rule: never combine two metrics inside one label, keep legends outside the plot when needed, and leave enough axis padding for end-of-bar labels.",
     "- Multi-series line chart rule: for line charts with 3 or more series, use direct end-of-line labels in the matching series color at the right edge and remove the legend when those labels fit cleanly. If direct labels would collide, move the legend below the chart. Never place a legend inside the plot area of a multi-series line chart.",
@@ -1010,9 +1048,11 @@ export async function buildBasquioSystemPrompt(input: {
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
     "- Basquio standard is a LIGHT editorial system. On the warm cream canvas, never use white text on pale tinted fills or low-opacity color bands. Pale green, pale amber, pale blue, and pale lilac fills must use onyx or deep slate text.",
     "- White text is allowed only on genuinely dark or fully saturated fills that clearly support it. If the fill is light enough to feel like paper, the text must be dark.",
+    "- Contrast rule: all callout bars, cards, and tinted backgrounds must maintain WCAG AA contrast. On light-tinted fills use dark text; on dark fills use white text. Never place grey or muted text on pale green, pale amber, pale blue, or pale pink backgrounds.",
     "- On light templates, callout/banner fills must be visibly present. Do not use hairline tints or ultra-high transparency. A callout should read as a deliberate band, not a nearly invisible wash.",
     "- On the Basquio warm canvas, avoid large pure-white boxes that visually fight the background. Prefer either (a) tonal cream cards close to the canvas with clear borders, or (b) smaller white cards that are densely and purposefully filled.",
     "- Do not place sparse bullet lists inside giant fixed-height cards. If a card uses less than roughly 60% of its vertical space, either shrink the card, add meaningful structured content (owner, KPI, milestone, risk), or switch to a different archetype.",
+    "- Card fill rule: recommendation cards and key-findings cards must feel intentionally filled. Give each card at least 3 lines of body copy or add structured footer content such as KPI, timeline, owner, or risk. Never leave a card as a title plus a single thin sentence floating in empty space.",
     "- Roadmap / quarter-plan slides must not be four tall empty boxes. Each lane should either be content-fit or include a clear footer band such as KPI, owner, milestone, or commercial target so the page feels filled and intentional.",
     "- If a Q1-Q4 roadmap has only a few actions per quarter, prefer compact quarter cards or a text-led summary slide. Do not invent oversized quarterly columns just to occupy the page.",
     "- For light-template callout banners, use this hierarchy: tinted background + dark text + one strong accent edge. Do NOT use pale background + white text.",

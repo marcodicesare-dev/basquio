@@ -3359,6 +3359,7 @@ function buildReviseMessage(input: {
         type: "text" as const,
         text: [
           "Repair the generated deck and regenerate deck.pptx, deck.pdf (internal rendered-QA artifact), and deck_manifest.json.",
+          "After making corrections, you MUST regenerate the complete output set: deck.pptx, deck.pdf, and deck_manifest.json. The revise turn is incomplete until all three files exist in the container.",
           "The rendered PDF above is the exact current deck. Inspect it before you change anything.",
           "Reuse the existing container state and the prior authoring context. Do not start a new draft from scratch unless necessary to fix the issues.",
           "If a client PPTX template is present in the container, continue using it as the visual source of truth. Do not drift back to Basquio dark/editorial styling during repair.",
