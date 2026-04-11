@@ -131,6 +131,22 @@ const ALL_CHART_TYPES: ChartSlotType[] = [
   "horizontal_bar",
 ];
 
+type UploadedContainerFileRef = {
+  id: string;
+  filename: string;
+};
+
+type AuthorInputFiles = {
+  uploadedEvidence: UploadedContainerFileRef[];
+  uploadedSupportPackets: UploadedContainerFileRef[];
+  uploadedTemplate: UploadedContainerFileRef | null;
+};
+
+type SupportEvidencePacket = {
+  filename: string;
+  content: string;
+};
+
 function coercePositiveNumber(value: unknown) {
   const parsed = typeof value === "string" ? Number(value) : value;
   return typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -177,6 +193,94 @@ function normalizeChartSort(value: unknown): "desc" | "asc" | "none" | undefined
   }
 
   return "desc";
+}
+
+function buildSupportEvidencePackets(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>): SupportEvidencePacket[] {
+  return parsed.normalizedWorkbook.files.flatMap((file, index) => {
+    if (file.kind === "workbook") {
+      return [];
+    }
+
+    const pageSections = (file.pages ?? [])
+      .slice(0, 16)
+      .map((page) => {
+        const normalized = sanitizeSupportPacketText(page.text, 4_000);
+        return normalized ? `## Page ${page.num}\n${normalized}` : null;
+      })
+      .filter((section): section is string => Boolean(section));
+    const normalizedText = sanitizeSupportPacketText(file.textContent, 20_000);
+
+    if (!normalizedText && pageSections.length === 0) {
+      return [];
+    }
+
+    const fileWarnings = [
+      ...(parsed.datasetProfile.warnings ?? []),
+      ...(file.warnings ?? []),
+    ];
+    const body = [
+      "# Basquio Normalized Evidence Packet",
+      "",
+      "This file was generated during deterministic ingest.",
+      "Use it before re-parsing hostile PDF/PPTX evidence in code execution.",
+      "If the original document is ambiguous, verify against the uploaded source file after reading this packet.",
+      "",
+      `Source file: ${file.fileName}`,
+      `Kind: ${file.kind}`,
+      `Role: ${file.role}`,
+      ...(typeof file.pageCount === "number" && file.pageCount > 0 ? [`Page count: ${file.pageCount}`] : []),
+      ...(fileWarnings.length > 0
+        ? [
+            "",
+            "## Ingest warnings",
+            ...fileWarnings.map((warning) => `- ${warning}`),
+          ]
+        : []),
+      ...(normalizedText
+        ? [
+            "",
+            "## Full normalized extract",
+            normalizedText,
+          ]
+        : []),
+      ...(pageSections.length > 0
+        ? [
+            "",
+            "## Page extracts",
+            ...pageSections,
+          ]
+        : []),
+    ].join("\n");
+
+    return [
+      {
+        filename: buildSupportPacketFilename(index, file.fileName),
+        content: body,
+      },
+    ];
+  });
+}
+
+function sanitizeSupportPacketText(text: string | undefined, maxChars: number) {
+  if (typeof text !== "string") {
+    return "";
+  }
+
+  return text
+    .replace(/\u0000/g, "")
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, maxChars);
+}
+
+function buildSupportPacketFilename(index: number, fileName: string) {
+  const base = path.basename(fileName, path.extname(fileName))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || `file-${index + 1}`;
+  return `basquio-evidence-packet-${String(index + 1).padStart(2, "0")}-${base}.md`;
 }
 
 const analysisSchema = z.object({
@@ -700,6 +804,17 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         }),
       ),
     );
+    const supportEvidencePackets = buildSupportEvidencePackets(parsed);
+    const uploadedSupportPackets = await Promise.all(
+      supportEvidencePackets.map(async (packet) =>
+        client.beta.files.upload({
+          file: await toFile(Buffer.from(packet.content, "utf8"), packet.filename, {
+            type: "text/markdown",
+          }),
+          betas: [FILES_BETA],
+        }),
+      ),
+    );
     const uploadedTemplate = templateFile
       ? await client.beta.files.upload({
           file: await toFile(templateFile.buffer, templateFile.file_name),
@@ -907,7 +1022,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           hasDocumentEvidence: parsed.normalizedWorkbook.files.some((file) =>
             (file.textContent?.trim().length ?? 0) > 100 || (file.pages?.length ?? 0) > 0),
         },
-        !baseContainerId ? { uploadedEvidence, uploadedTemplate } : undefined,
+        !baseContainerId ? { uploadedEvidence, uploadedSupportPackets, uploadedTemplate } : undefined,
         questionRoutes,
         recoveredAnalysisForSplit && analysis ? buildChartSlotConstraintMessage(analysis) : undefined,
         recoveredAnalysisForSplit && analysis ? buildPerSlideConstraintBlock(analysis) : undefined,
@@ -959,11 +1074,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       const authorFallbackMessages = [authorResponse.message];
       let authorFiles: GeneratedFile[] = await downloadGeneratedFiles(client, authorResponse.fileIds);
       const missingAuthorFiles = findMissingGeneratedFiles(authorFiles, requiredAuthorFiles);
-      if (MODEL === "claude-haiku-4-5" && missingAuthorFiles.length > 0) {
+      if (missingAuthorFiles.length > 0) {
         const retryMissingFiles = [...missingAuthorFiles];
-        console.warn(`[haiku-retry] Missing author files: ${retryMissingFiles.join(", ")}. Retrying author phase once.`);
-        await insertEvent(config, runId, attempt, "author", "haiku_missing_files_retry", {
+        console.warn(`[author-retry] Missing author files: ${retryMissingFiles.join(", ")}. Retrying author phase once.`);
+        await insertEvent(config, runId, attempt, "author", "author_missing_files_retry", {
           missingFiles: retryMissingFiles,
+          model: MODEL,
         }).catch(() => {});
 
         const retryResponse = await runClaudeLoop({
@@ -987,7 +1103,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               content: [
                 {
                   type: "text",
-                  text: `You did not produce all required files. Missing: ${retryMissingFiles.join(", ")}. Please generate exactly those missing files now and attach each file when done.`,
+                  text: [
+                    `You did not produce all required files. Missing: ${retryMissingFiles.join(", ")}.`,
+                    "Stop analysis and regenerate the missing deliverables now.",
+                    "If shared state is uncertain, regenerate the complete output set so the missing files are attached cleanly.",
+                    "The turn is incomplete until every missing file is attached as a container_upload block.",
+                  ].join(" "),
                 },
               ],
             },
@@ -2911,10 +3032,7 @@ function buildAuthorMessage(
     hasTabularData: boolean;
     hasDocumentEvidence: boolean;
   },
-  files?: {
-    uploadedEvidence: Array<{ id: string; filename: string }>;
-    uploadedTemplate: { id: string; filename: string } | null;
-  },
+  files?: AuthorInputFiles,
   questionRoutes: Array<{ id: string; name: string; diagnosticMotifs: string[]; recommendationLevers: string[] }> = [],
   chartSlotConstraintMessage?: string,
   perSlideConstraintMessage?: string,
@@ -2935,7 +3053,7 @@ function buildAuthorMessage(
   const extractionInstruction = evidenceMode.hasTabularData
     ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
     : evidenceMode.hasDocumentEvidence
-      ? "The evidence package is presentation/document-led rather than raw Excel. Extract tables, text, and chart data from the uploaded PPTX/PDF files using python-pptx, zipfile/openpyxl, and pdfplumber before analyzing. Reconstruct the smallest usable dataset needed for the storyline."
+      ? "The evidence is document-based (PDF, PPTX, or DOCX), not tabular. There are NO spreadsheets to analyze with pandas. Do NOT spend more than 2 minutes trying to extract or reconstruct tabular data from document text. Instead: read the document content from uploaded evidence packets (`basquio-evidence-packet-*.md`) or the raw file, identify the key claims, data points, and conclusions, then build the deck around these findings using text-heavy archetypes (exec-summary, key-findings, title-body, recommendation-cards, chart-split with simple charts). If the document contains numeric data (market sizes, growth rates, comparisons), extract those numbers and create simple charts. If it is purely qualitative, use text-only slides. Prioritize completing the output files over exhaustive data extraction. A finished deck with partial analysis is ALWAYS better than no deck."
       : "Inspect the uploaded evidence files directly in code execution, recover any readable structure, and use only facts you can verify from the files.";
   const mergedAnalysisInstructions = analysis
     ? []
@@ -2986,6 +3104,7 @@ function buildAuthorMessage(
       ];
   const uploadedFilesContent = [
     ...(files?.uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })) ?? []),
+    ...(files?.uploadedSupportPackets.map((file) => ({ type: "container_upload" as const, file_id: file.id })) ?? []),
     ...(files?.uploadedTemplate ? [{ type: "container_upload" as const, file_id: files.uploadedTemplate.id }] : []),
   ];
 
@@ -3030,9 +3149,15 @@ function buildAuthorMessage(
                 "- Follow the approved slide plan unless a small factual adjustment is necessary for correctness.",
               ]
             : [
-                "- Build the analysis and slide plan inline, then render the deck from that plan without starting over in a second pass.",
-                "- Keep the analysis concise and execution-oriented. Do not spend tokens on narrative throat-clearing.",
-              ]),
+          "- Build the analysis and slide plan inline, then render the deck from that plan without starting over in a second pass.",
+          "- Keep the analysis concise and execution-oriented. Do not spend tokens on narrative throat-clearing.",
+        ]),
+          ...(files?.uploadedSupportPackets.length
+            ? [
+                `- Normalized evidence packets are already uploaded in the container: ${files.uploadedSupportPackets.map((file) => file.filename).join(", ")}.`,
+                "- Read those packets before attempting your own PDF/PPTX extraction. They are the fast path for hostile spacing, OCR drift, and scanned-layout noise.",
+              ]
+            : []),
           "- Follow the loaded pptx skill for the deck artifact generation.",
           ...(files?.uploadedTemplate
             ? [
@@ -3167,10 +3292,7 @@ function buildReportOnlyAuthorText(input: {
   extractionInstruction: string;
   routeContext: string;
   analysisDepthInstruction: string;
-  files?: {
-    uploadedEvidence: Array<{ id: string; filename: string }>;
-    uploadedTemplate: { id: string; filename: string } | null;
-  };
+  files?: AuthorInputFiles;
 }) {
   const lines = [
     input.analysis
@@ -3208,6 +3330,12 @@ function buildReportOnlyAuthorText(input: {
       : [
           "- Build the analysis inline, then write the report and workbook from that analysis without starting over in a second pass.",
         ]),
+    ...(input.files?.uploadedSupportPackets.length
+      ? [
+          `- Normalized evidence packets are already uploaded in the container: ${input.files.uploadedSupportPackets.map((file) => file.filename).join(", ")}.`,
+          "- Read those packets before attempting your own PDF/PPTX extraction. They are the fast path for hostile spacing, OCR drift, and scanned-layout noise.",
+        ]
+      : []),
     ...(input.files?.uploadedTemplate
       ? [
           `- A client PPTX template is uploaded in the container as ${input.files.uploadedTemplate.filename}. Use it only as naming and client-brand context for the title page; do not generate presentation artifacts from it.`,

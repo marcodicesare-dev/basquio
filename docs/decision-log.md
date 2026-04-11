@@ -1,5 +1,21 @@
 # Decision Log
 
+## April 11, 2026 — Normalize document-led evidence before authoring
+
+Decision:
+- when a run is document-led (`pdf` / `pptx` evidence with little or no tabular data), generate a normalized evidence packet during deterministic ingest and upload it into the Claude container alongside the original source files
+- make author-phase missing-file recovery a one-shot fallback for Opus and Sonnet too, not only Haiku
+
+Why:
+- the Alexion IGAN production failure showed a hostile PDF extraction pattern where readable content survived ingest but came out letter-spaced enough to waste the author turn and produce no durable files
+- the recent Simrock PDF-only success proved the document-led lane itself was viable; the regression was in evidence normalization quality, not in the overall architecture
+- a paid author turn that returns no required files is recoverable enough to justify one explicit missing-file retry regardless of author model
+
+Implication:
+- document-led author prompts should tell Claude to read the normalized evidence packet first and fall back to raw PDF/PPTX parsing only when it needs missing detail or visual verification
+- deterministic ingest should clean hostile PDF spacing before the author lane sees it
+- author-phase recovery logic should keep one bounded missing-file retry for all full-deck models, without expanding into unbounded repair loops
+
 ## March 31, 2026 — Add audit-ready data workbook and Haiku report tier
 
 Decision:

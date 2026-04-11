@@ -526,7 +526,7 @@ async function extractSupportText(
 
 async function extractPdfSupportText(fileName: string, buffer: Buffer): Promise<SupportTextResult> {
   try {
-    const parsed = await parsePdfSupportTextInWorker(buffer);
+    const parsed = normalizePdfSupportText(await parsePdfSupportTextInWorker(buffer));
     if (parsed.fullText && parsed.fullText.length > 20) {
       return parsed;
     }
@@ -542,6 +542,82 @@ async function extractPdfSupportText(fileName: string, buffer: Buffer): Promise<
       fullText: `[PDF "${fileName}" could not be parsed — ${reason}.]`,
     };
   }
+}
+
+function normalizePdfSupportText(input: PdfSupportTextPayload): PdfSupportTextPayload {
+  return {
+    ...input,
+    fullText: normalizePdfExtractedText(input.fullText),
+    pages: input.pages.map((page) => ({
+      ...page,
+      text: normalizePdfExtractedText(page.text) ?? page.text,
+    })),
+  };
+}
+
+function normalizePdfExtractedText(text: string | undefined) {
+  if (typeof text !== "string") {
+    return text;
+  }
+
+  const normalizedLines = text
+    .replace(/\u00a0/g, " ")
+    .replace(/\u0000/g, "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => normalizePdfExtractedLine(line))
+    .join("\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return normalizedLines || text.trim();
+}
+
+function normalizePdfExtractedLine(line: string) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed
+    .replace(/\b(?:[A-Za-z0-9] ){1,}[A-Za-z0-9]\b/gu, (match) => repairLetterSpacedRun(match))
+    .split(/ {2,}|\t+/)
+    .map((chunk) => normalizePdfLetterSpacedChunk(chunk))
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+([,.;:%)])/, "$1")
+    .replace(/([(%])\s+/g, "$1")
+    .trim();
+}
+
+function normalizePdfLetterSpacedChunk(chunk: string) {
+  const trimmed = chunk.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length < 4) {
+    return trimmed;
+  }
+
+  const singleCharTokens = tokens.filter((token) => /^[A-Za-z0-9&+/%.,()-]$/u.test(token)).length;
+  const alphaNumericSingles = tokens.filter((token) => /^[A-Za-z0-9]$/u.test(token)).length;
+  const shouldJoin = singleCharTokens / tokens.length >= 0.7 && alphaNumericSingles >= 4;
+
+  if (!shouldJoin) {
+    return trimmed;
+  }
+
+  return tokens.join("");
+}
+
+function repairLetterSpacedRun(match: string) {
+  const collapsed = match.replace(/\s+/g, "");
+  return collapsed
+    .replace(/([a-z])([A-Z][a-z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2");
 }
 
 async function parsePdfSupportTextInWorker(buffer: Buffer): Promise<PdfSupportTextPayload> {

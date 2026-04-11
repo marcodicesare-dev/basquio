@@ -86,6 +86,7 @@ Initial domain bias:
 - The current persisted direct-worker phase list is `normalize`, `understand`, `author`, `render`, `critique`, `revise`, `export`.
 - `polish` is historical and should not appear in live progress or contract schemas.
 - `container_upload` evidence files should be read inside code execution, not summarized back into the prompt as dataset inventory or column dumps.
+- document-led runs should upload a normalized evidence packet derived during ingest into the author container so Claude can read repaired PDF/PPTX text before attempting hostile document parsing from scratch.
 - The correct production execution surface for long Basquio deck runs is a durable worker, not a Vercel request. Vercel should enqueue `deck_runs`; a Railway worker should claim and execute them.
 - Supabase-backed `deck_runs.status = "queued"` is the current queue contract. A separate queue system is unnecessary while one worker claims runs atomically and stale-running runs are re-queued.
 - `deck_runs` is the stable user-visible job, but recovery lineage must live in explicit `deck_run_attempts` records so retries do not become confusing top-level clone runs.
@@ -161,6 +162,7 @@ Template fidelity lesson:
 - `artifact_download_events` is the durable truth for whether a completed run was actually opened, and reminder emails should key off that instead of page visits
 - reminder UX should stay tied to concrete user states: completed-with-no-download, uploaded-template/no-run, and low-credit after a successful debit
 - sample-data onboarding is a valid acquisition path for Basquio because many signups arrive without a workbook ready; the sample run should live directly inside `/jobs/new`, not on a detached marketing flow
+- a full-deck author turn that spends model time but returns no required files should get one bounded missing-file retry on Opus/Sonnet as well as Haiku; do not treat that recovery path as Haiku-only
 
 When architecture changes:
 
