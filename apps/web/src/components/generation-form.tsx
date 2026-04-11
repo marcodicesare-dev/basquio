@@ -578,7 +578,10 @@ export function GenerationForm({
         const response = await fetch("/api/generate", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ draftId: templateFeeReturn.draftId }),
+          body: JSON.stringify({
+            draftId: templateFeeReturn.draftId,
+            jobId: templateFeeReturn.draftId,
+          }),
         });
         const payload = await readGenerationPayload(response);
         if (!response.ok) {

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
+import { Worker } from "node:worker_threads";
 import { createGzip } from "node:zlib";
 
 import { parse as csvParse } from "csv-parse";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
-import pdfParse from "pdf-parse";
 import { inferSourceFileKind } from "@basquio/core";
 import { read, utils } from "xlsx";
 
@@ -36,6 +36,54 @@ type ParseEvidencePackageInput = {
   datasetId: string;
   files: ParseEvidenceFileInput[];
 };
+
+type SupportTextResult = {
+  fullText?: string;
+  pages?: Array<{ num: number; text: string }>;
+  pageCount?: number;
+};
+
+type PdfSupportTextPayload = {
+  fullText?: string;
+  pages: Array<{ num: number; text: string }>;
+  pageCount: number;
+};
+
+const PDF_PARSE_TIMEOUT_MS = 20_000;
+const PDF_PARSE_WORKER_SOURCE = `
+const { parentPort, workerData } = require("node:worker_threads");
+const pdfParse = require("pdf-parse");
+
+(async () => {
+  try {
+    const buffer = Buffer.from(workerData.buffer);
+    const pages = [];
+    const pdfData = await pdfParse(buffer, {
+      max: 100,
+      pagerender: async (pageData) => {
+        const content = await pageData.getTextContent();
+        const text = content.items.map((item) => item.str).join(" ").trim();
+        if (text.length > 30) {
+          pages.push({ num: pageData.pageNumber, text });
+        }
+        return text;
+      },
+    });
+
+    parentPort.postMessage({
+      ok: true,
+      fullText: typeof pdfData.text === "string" ? pdfData.text.trim() : "",
+      pages,
+      pageCount: Number.isFinite(pdfData.numpages) ? pdfData.numpages : pages.length,
+    });
+  } catch (error) {
+    parentPort.postMessage({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+})();
+`;
 
 export async function parseWorkbookBuffer(input: ParseWorkbookInput): Promise<{
   datasetProfile: DatasetProfile;
@@ -342,12 +390,6 @@ function extractTableDataFromSlideXml(slideXml: string): string | null {
   return tables.length > 0 ? tables.join("\n\n") : null;
 }
 
-type SupportTextResult = {
-  fullText: string | undefined;
-  pages?: Array<{ num: number; text: string }>;
-  pageCount?: number;
-};
-
 async function extractSupportText(
   fileName: string,
   kind: ReturnType<typeof inferSourceFileKind>,
@@ -388,31 +430,7 @@ async function extractSupportText(
 
   // PDF text extraction with per-page chunking
   if (normalized.endsWith(".pdf")) {
-    try {
-      const pages: Array<{ num: number; text: string }> = [];
-      const pdfData = await pdfParse(buffer, {
-        max: 100,
-        pagerender: async (pageData: { pageNumber: number; getTextContent: () => Promise<{ items: Array<{ str: string }> }> }) => {
-          const content = await pageData.getTextContent();
-          const text = content.items.map((item) => item.str).join(" ").trim();
-          if (text.length > 30) {
-            pages.push({ num: pageData.pageNumber, text });
-          }
-          return text;
-        },
-      });
-      const fullText = pdfData.text?.trim();
-      if (fullText && fullText.length > 20) {
-        return { fullText, pages, pageCount: pdfData.numpages ?? pages.length };
-      }
-      return {
-        fullText: `[PDF "${fileName}" parsed but contained no readable text — may be image-only or scanned.]`,
-        pages,
-        pageCount: pdfData.numpages ?? 0,
-      };
-    } catch {
-      return { fullText: `[PDF "${fileName}" could not be parsed — may be encrypted or corrupted.]` };
-    }
+    return extractPdfSupportText(fileName, buffer);
   }
 
   // PPTX content extraction with per-slide chunking + chart/table data
@@ -504,6 +522,98 @@ async function extractSupportText(
   }
 
   return { fullText: undefined };
+}
+
+async function extractPdfSupportText(fileName: string, buffer: Buffer): Promise<SupportTextResult> {
+  try {
+    const parsed = await parsePdfSupportTextInWorker(buffer);
+    if (parsed.fullText && parsed.fullText.length > 20) {
+      return parsed;
+    }
+
+    return {
+      fullText: `[PDF "${fileName}" parsed but contained no readable text — may be image-only or scanned.]`,
+      pages: parsed.pages,
+      pageCount: parsed.pageCount,
+    };
+  } catch (error) {
+    const reason = sanitizePdfParseFailure(error);
+    return {
+      fullText: `[PDF "${fileName}" could not be parsed — ${reason}.]`,
+    };
+  }
+}
+
+async function parsePdfSupportTextInWorker(buffer: Buffer): Promise<PdfSupportTextPayload> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(PDF_PARSE_WORKER_SOURCE, {
+      eval: true,
+      workerData: {
+        buffer: Uint8Array.from(buffer),
+      },
+    });
+
+    let settled = false;
+
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeoutId);
+      callback();
+    };
+
+    const timeoutId = setTimeout(() => {
+      settle(() => {
+        void worker.terminate().catch(() => {});
+        reject(new Error("pdf parser timed out"));
+      });
+    }, PDF_PARSE_TIMEOUT_MS);
+
+    worker.once("message", (message: unknown) => {
+      settle(() => {
+        void worker.terminate().catch(() => {});
+        const payload = message as
+          | { ok: true; fullText?: string; pages?: Array<{ num: number; text: string }>; pageCount?: number }
+          | { ok: false; error?: string };
+        if (payload?.ok) {
+          resolve({
+            fullText: payload.fullText,
+            pages: payload.pages ?? [],
+            pageCount: payload.pageCount ?? payload.pages?.length ?? 0,
+          });
+          return;
+        }
+
+        reject(new Error(payload?.error ?? "pdf parser failed"));
+      });
+    });
+
+    worker.once("error", (error) => {
+      settle(() => {
+        reject(error);
+      });
+    });
+
+    worker.once("exit", (code) => {
+      settle(() => {
+        if (code === 0) {
+          reject(new Error("pdf parser exited without returning a result"));
+          return;
+        }
+        reject(new Error(`pdf parser exited with code ${code}`));
+      });
+    });
+  });
+}
+
+function sanitizePdfParseFailure(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120) || "parser unavailable";
 }
 
 // ─── PPTX SLIDE IMAGE EXTRACTION ──────────────────────────────────

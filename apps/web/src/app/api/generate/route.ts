@@ -551,9 +551,10 @@ async function parseGenerationRequest(
   if (contentType.includes("application/json")) {
     const payload = (await request.json()) as Partial<GenerationRequest>;
     const brief = buildBrief(payload);
+    const draftId = ((payload as Record<string, unknown>).draftId as string | undefined) ?? null;
 
     return {
-      jobId: payload.jobId || createJobId(),
+      jobId: payload.jobId || draftId || createJobId(),
       organizationId: workspace.organizationId,
       projectId: workspace.projectId,
       sourceFiles: payload.sourceFiles ?? [],
@@ -566,7 +567,7 @@ async function parseGenerationRequest(
       thesis: brief.thesis,
       stakes: brief.stakes,
       templateProfileId: ((payload as Record<string, unknown>).templateProfileId as string | undefined) ?? null,
-      draftId: ((payload as Record<string, unknown>).draftId as string | undefined) ?? null,
+      draftId,
       targetSlideCount: payload.targetSlideCount ?? 10,
       authorModel: payload.authorModel ?? DEFAULT_AUTHOR_MODEL,
       recipeId: payload.recipeId ?? null,

@@ -4,8 +4,6 @@ import {
   grantPurchaseCredits,
   grantSubscriptionCredits,
   checkPaymentAlreadyProcessed,
-  checkWebhookEventProcessed,
-  markWebhookEventProcessed,
   upsertSubscription,
 } from "@/lib/credits";
 import { normalizePlanId, type CreditPackId } from "@/lib/billing-config";
@@ -86,10 +84,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Server configuration error." }, { status: 500 });
   }
 
-  // Global idempotency check
-  const alreadyProcessed = await checkWebhookEventProcessed({ ...config, eventId: event.id });
-  if (alreadyProcessed) {
-    console.log(`[stripe-webhook] event ${event.id} already processed, skipping`);
+  const claimed = await claimWebhookEvent(config, event.id, event.type);
+  if (!claimed) {
+    console.log(`[stripe-webhook] event ${event.id} already claimed or processed, skipping`);
     return NextResponse.json({ received: true });
   }
 
@@ -149,15 +146,16 @@ export async function POST(request: Request) {
         console.log(`[stripe-webhook] unhandled event type: ${event.type}`);
     }
 
-    // Mark event as processed
-    await markWebhookEventProcessed({ ...config, eventId: event.id, eventType: event.type });
+    await finalizeWebhookEventClaim(config, event.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Webhook handler failed.";
     // If it's a duplicate/unique constraint, it's safe
     if (message.includes("unique") || message.includes("duplicate")) {
+      await finalizeWebhookEventClaim(config, event.id).catch(() => {});
       console.log(`[stripe-webhook] duplicate processing attempt for ${event.id}, safe to ignore`);
       return NextResponse.json({ received: true });
     }
+    await releaseWebhookEventClaim(config, event.id).catch(() => {});
     console.error(`[stripe-webhook] handler failed for ${event.type}: ${message}`);
     return NextResponse.json({ error: "Webhook handler failed." }, { status: 500 });
   }
@@ -597,6 +595,67 @@ async function resolveUserEmail(
     return data.user?.email ?? userId;
   } catch {
     return userId;
+  }
+}
+
+async function claimWebhookEvent(
+  config: { supabaseUrl: string; serviceKey: string },
+  eventId: string,
+  eventType: string,
+): Promise<boolean> {
+  const supabase = createServiceSupabaseClient(config.supabaseUrl, config.serviceKey);
+  const { data, error } = await supabase
+    .from("stripe_webhook_events")
+    .upsert(
+      [
+        {
+          id: eventId,
+          type: eventType,
+          processed: false,
+        },
+      ],
+      {
+        onConflict: "id",
+        ignoreDuplicates: true,
+      },
+    )
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  return (data?.length ?? 0) > 0;
+}
+
+async function finalizeWebhookEventClaim(
+  config: { supabaseUrl: string; serviceKey: string },
+  eventId: string,
+): Promise<void> {
+  const supabase = createServiceSupabaseClient(config.supabaseUrl, config.serviceKey);
+  const { error } = await supabase
+    .from("stripe_webhook_events")
+    .update({ processed: true })
+    .eq("id", eventId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function releaseWebhookEventClaim(
+  config: { supabaseUrl: string; serviceKey: string },
+  eventId: string,
+): Promise<void> {
+  const supabase = createServiceSupabaseClient(config.supabaseUrl, config.serviceKey);
+  const { error } = await supabase
+    .from("stripe_webhook_events")
+    .delete()
+    .eq("id", eventId)
+    .eq("processed", false);
+
+  if (error) {
+    throw error;
   }
 }
 

@@ -11,6 +11,26 @@ type CompletionContext = {
   slideCount: number;
 };
 
+function isSupabaseSecretKey(value: string) {
+  return value.startsWith("sb_secret_");
+}
+
+function isJwtLikeKey(value: string) {
+  return value.split(".").length === 3;
+}
+
+function buildAuthAdminHeaders(serviceKey: string) {
+  const headers = new Headers({
+    apikey: serviceKey,
+  });
+
+  if (isJwtLikeKey(serviceKey) && !isSupabaseSecretKey(serviceKey)) {
+    headers.set("Authorization", `Bearer ${serviceKey}`);
+  }
+
+  return headers;
+}
+
 /**
  * Check notify_on_complete preference and send a completion email if requested.
  * Idempotent: skips if completion_email_sent_at is already set.
@@ -44,11 +64,12 @@ export async function notifyRunCompletionIfRequested(
     const email = await resolveUserEmail(config, run.requested_by);
     if (!email) return;
 
-    await sendCompletionEmail(config.resendApiKey, {
+    const sent = await sendCompletionEmail(config.resendApiKey, {
       to: email,
       runId: context.runId,
       slideCount: context.slideCount,
     });
+    if (!sent) return;
 
     // Mark as sent (idempotency guard)
     await patchRestRows({
@@ -70,10 +91,7 @@ async function resolveUserEmail(
   const response = await fetch(
     `${config.supabaseUrl}/auth/v1/admin/users/${userId}`,
     {
-      headers: {
-        apikey: config.serviceKey,
-        Authorization: `Bearer ${config.serviceKey}`,
-      },
+      headers: buildAuthAdminHeaders(config.serviceKey),
     },
   );
 
@@ -90,7 +108,7 @@ async function sendCompletionEmail(
     runId: string;
     slideCount: number;
   },
-) {
+): Promise<boolean> {
   const progressUrl = `https://basquio.com/jobs/${params.runId}`;
 
   const response = await fetch("https://api.resend.com/emails", {
@@ -110,7 +128,10 @@ async function sendCompletionEmail(
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     console.warn(`[basquio] Resend API ${response.status}: ${body}`);
+    return false;
   }
+
+  return true;
 }
 
 function buildCompletionHtml(
