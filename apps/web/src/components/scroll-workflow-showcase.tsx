@@ -42,7 +42,7 @@ const workflowSteps = [
 ] as const;
 
 export function ScrollWorkflowShowcase() {
-  const { activeStep, progress, trackRef } = useScrollProgress(workflowSteps.length);
+  const { activeStep, trackRef } = useScrollProgress(workflowSteps.length);
 
   return (
     <section className="workflow-showcase" id="workflow">

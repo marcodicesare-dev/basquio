@@ -628,7 +628,7 @@ export function RunProgressView(input: {
       clearPolling();
       void supabase.removeChannel(channel);
     };
-  }, [input.jobId]);
+  }, [input.initialSnapshot, input.jobId]);
 
   // ─── WAITING STATE ───────────────────────────────────────────
   if (!snapshot) {
@@ -809,9 +809,12 @@ export function RunProgressView(input: {
                     boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
                   }}
                 >
-                  <img
+                  <Image
                     src={preview.imageUrl}
                     alt={`Slide ${preview.position} preview`}
+                    width={640}
+                    height={360}
+                    unoptimized
                     style={{ display: "block", width: "100%", height: "auto", background: "#F8FAFC" }}
                   />
                   <figcaption style={{ padding: "0.8rem 0.95rem", fontSize: "0.84rem", color: "#475569" }}>
