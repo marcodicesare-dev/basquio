@@ -373,6 +373,15 @@ type PublishedArtifact = {
   fileBytes: number;
   checksumSha256: string;
 };
+type PreviewAsset = {
+  position: number;
+  fileName: string;
+  mimeType: "image/png";
+  storageBucket: "artifacts";
+  storagePath: string;
+  fileBytes: number;
+  checksumSha256: string;
+};
 
 type QaMode = "deck" | "report_only";
 
@@ -1613,6 +1622,27 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         anthropicRequestIds: [...anthropicRequestIds],
         templateMode,
       });
+      let previewAssets: PreviewAsset[] = [];
+      if (!isReportOnly) {
+        try {
+          previewAssets = await persistPreviewAssets(config, run, attempt, finalManifest);
+          if (previewAssets.length > 0) {
+            await patchRestRows({
+              supabaseUrl: config.supabaseUrl,
+              serviceKey: config.serviceKey,
+              table: "artifact_manifests_v2",
+              query: { run_id: `eq.${runId}` },
+              payload: { preview_assets: previewAssets },
+            });
+          }
+        } catch (previewError) {
+          console.warn(
+            `[generateDeckRun] preview asset publish skipped: ${
+              previewError instanceof Error ? previewError.message : String(previewError)
+            }`,
+          );
+        }
+      }
       await completePhase(config, runId, attempt, "export", {
         artifactCount: artifacts.length,
         estimatedCostUsd: spentUsd,
@@ -1625,7 +1655,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         await notifyRunCompletionIfRequested(
           { supabaseUrl: config.supabaseUrl, serviceKey: config.serviceKey, resendApiKey },
           run,
-          { runId, slideCount: finalManifest.slideCount },
+          { runId, slideCount: finalManifest.slideCount, headline: finalManifest.slides[0]?.title ?? run.objective ?? null },
         );
       }
     } catch (exportPhaseError) {
@@ -6454,6 +6484,157 @@ async function persistArtifacts(
   }
 
   return artifacts;
+}
+
+async function persistPreviewAssets(
+  config: ReturnType<typeof resolveConfig>,
+  run: RunRow,
+  attempt: AttemptContext,
+  manifest: z.infer<typeof deckManifestSchema>,
+) {
+  const slides = selectPreviewSlides(manifest);
+  if (slides.length === 0) {
+    return [];
+  }
+
+  const chartTitles = new Map(manifest.charts.map((chart) => [chart.id, chart.title]));
+  const previewAssets: PreviewAsset[] = [];
+
+  for (const slide of slides) {
+    const svg = buildSlidePreviewSvg(slide, chartTitles.get(slide.chartId ?? "") ?? null);
+    const pngBuffer = await renderPreviewPng(svg);
+    const fileName = `slide-preview-${slide.position}.png`;
+    const storagePath = `${run.id}/attempts/${attempt.attemptNumber}-${attempt.id}/${fileName}`;
+
+    await uploadToStorage({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      bucket: "artifacts",
+      storagePath,
+      body: pngBuffer,
+      contentType: "image/png",
+    });
+
+    previewAssets.push({
+      position: slide.position,
+      fileName,
+      mimeType: "image/png",
+      storageBucket: "artifacts",
+      storagePath,
+      fileBytes: pngBuffer.length,
+      checksumSha256: createHash("sha256").update(pngBuffer).digest("hex"),
+    });
+  }
+
+  return previewAssets;
+}
+
+function selectPreviewSlides(manifest: z.infer<typeof deckManifestSchema>) {
+  if (manifest.slides.length === 0) {
+    return [];
+  }
+
+  const selected = new Map<number, z.infer<typeof deckManifestSchema>["slides"][number]>();
+  const first = manifest.slides[0];
+  const last = manifest.slides[manifest.slides.length - 1];
+  const chartSlide = manifest.slides.find((slide) => Boolean(slide.chartId) && slide.position !== first.position && slide.position !== last.position);
+  const denseInsightSlide = manifest.slides.find((slide) =>
+    slide.position !== first.position &&
+    slide.position !== last.position &&
+    ((slide.metrics?.length ?? 0) > 0 || (slide.callout?.text?.length ?? 0) > 0),
+  );
+
+  [first, chartSlide, denseInsightSlide, last]
+    .filter((slide): slide is z.infer<typeof deckManifestSchema>["slides"][number] => Boolean(slide))
+    .forEach((slide) => selected.set(slide.position, slide));
+
+  for (const slide of manifest.slides) {
+    if (selected.size >= 3) {
+      break;
+    }
+    selected.set(slide.position, slide);
+  }
+
+  return Array.from(selected.values())
+    .sort((left, right) => left.position - right.position)
+    .slice(0, 3);
+}
+
+async function renderPreviewPng(svgText: string) {
+  const { Resvg } = await import("@resvg/resvg-js");
+  const rendered = new Resvg(svgText, {
+    fitTo: { mode: "width", value: 1200 },
+    background: "#f7f5f1",
+  }).render();
+
+  return Buffer.from(rendered.asPng());
+}
+
+function buildSlidePreviewSvg(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  chartTitle: string | null,
+) {
+  const safeTitle = escapeXml(slide.title);
+  const safeSubtitle = escapeXml(slide.subtitle ?? slide.body ?? "");
+  const callout = slide.callout?.text ? escapeXml(slide.callout.text) : "";
+  const bullets = (slide.bullets ?? [])
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((bullet) => escapeXml(bullet));
+  const metrics = (slide.metrics ?? []).slice(0, 3);
+  const chartBadge = chartTitle ? `<text x="960" y="146" font-family="Arial, sans-serif" font-size="26" fill="#1A6AFF">Chart: ${escapeXml(chartTitle)}</text>` : "";
+  const bulletMarkup = bullets.map((bullet, index) => `
+    <circle cx="110" cy="${350 + index * 64}" r="6" fill="#1A6AFF" />
+    <text x="132" y="${358 + index * 64}" font-family="Arial, sans-serif" font-size="30" fill="#1F2937">${bullet}</text>
+  `).join("");
+  const metricsMarkup = metrics.map((metric, index) => {
+    const x = 760 + index * 132;
+    return `
+      <rect x="${x}" y="560" width="116" height="118" rx="18" fill="#FFFFFF" stroke="#D6DEEF" />
+      <text x="${x + 16}" y="602" font-family="Arial, sans-serif" font-size="20" fill="#64748B">${escapeXml(metric.label)}</text>
+      <text x="${x + 16}" y="646" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#0F172A">${escapeXml(metric.value)}</text>
+      ${metric.delta ? `<text x="${x + 16}" y="676" font-family="Arial, sans-serif" font-size="18" fill="#1A6AFF">${escapeXml(metric.delta)}</text>` : ""}
+    `;
+  }).join("");
+  const calloutMarkup = callout
+    ? `<rect x="760" y="332" width="360" height="164" rx="22" fill="#0F172A" />
+       <text x="792" y="386" font-family="Arial, sans-serif" font-size="21" fill="#93C5FD">Key finding</text>
+       <text x="792" y="430" font-family="Arial, sans-serif" font-size="30" fill="#F8FAFC">${truncateSvgLine(callout, 42)}</text>
+       <text x="792" y="468" font-family="Arial, sans-serif" font-size="30" fill="#F8FAFC">${truncateSvgLine(callout.split(" ").slice(7).join(" "), 42)}</text>`
+    : "";
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-label="Slide ${slide.position} preview">
+    <rect width="1200" height="675" rx="24" fill="#F7F5F1" />
+    <rect x="34" y="34" width="1132" height="607" rx="22" fill="#FFFDFC" stroke="#E6E0D5" />
+    <text x="96" y="108" font-family="Arial, sans-serif" font-size="22" letter-spacing="4" fill="#1A6AFF">SLIDE ${slide.position}</text>
+    ${chartBadge}
+    <text x="96" y="176" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="700" fill="#0F172A">${truncateSvgLine(safeTitle, 34)}</text>
+    <text x="96" y="224" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="700" fill="#0F172A">${truncateSvgLine(safeTitle.split(" ").slice(7).join(" "), 34)}</text>
+    ${safeSubtitle ? `<text x="96" y="280" font-family="Arial, sans-serif" font-size="26" fill="#475569">${truncateSvgLine(safeSubtitle, 62)}</text>` : ""}
+    <rect x="96" y="318" width="560" height="250" rx="22" fill="#FFFFFF" stroke="#E2E8F0" />
+    ${bulletMarkup}
+    ${calloutMarkup}
+    ${metricsMarkup}
+    <rect x="96" y="598" width="1024" height="4" rx="2" fill="#1A6AFF" opacity="0.18" />
+  </svg>`;
+}
+
+function truncateSvgLine(value: string, maxChars: number) {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxChars) {
+    return compact;
+  }
+
+  return `${compact.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+function escapeXml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 function buildPublishedArtifact(input: {

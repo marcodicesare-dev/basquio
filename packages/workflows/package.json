@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./generate-deck": "./src/generate-deck.ts",
-    "./failure-classifier": "./src/failure-classifier.ts"
+    "./failure-classifier": "./src/failure-classifier.ts",
+    "./notify-completion": "./src/notify-completion.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.41",

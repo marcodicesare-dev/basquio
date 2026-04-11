@@ -3,7 +3,7 @@ import Link from "next/link";
 import { CreditPackShelf } from "@/components/credit-pack-shelf";
 import { getViewerState } from "@/lib/supabase/auth";
 import { listV2RunCards, type V2RunCard } from "@/lib/job-runs";
-import { getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
+import { calculateRunCredits, getCreditBalance, ensureFreeTierCredit } from "@/lib/credits";
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 
@@ -99,6 +99,14 @@ export default async function DashboardPage() {
 
   const completedRuns = runs.filter((r) => r.status === "completed");
   const totalSlides = completedRuns.reduce((sum, r) => sum + r.slideCount, 0);
+  const lowCreditThreshold = calculateRunCredits(10, "claude-sonnet-4-6");
+  const standardDeckCredits = calculateRunCredits(10, "claude-sonnet-4-6");
+  const lowCreditNotice = !hasUnlimitedUsage && creditBalance > 0 && creditBalance < lowCreditThreshold
+    ? {
+        balance: creditBalance,
+        remainingDecks: Math.floor(creditBalance / standardDeckCredits),
+      }
+    : null;
 
   return (
     <div className="page-shell workspace-page">
@@ -127,6 +135,16 @@ export default async function DashboardPage() {
           <p className="billing-stat-value">{totalSlides}</p>
         </article>
       </div>
+
+      {lowCreditNotice ? (
+        <section className="panel" style={{ padding: "1rem 1.15rem" }}>
+          <p className="muted" style={{ margin: 0 }}>
+            You have {lowCreditNotice.balance} credits left. That is {lowCreditNotice.remainingDecks} more standard Deck run{lowCreditNotice.remainingDecks === 1 ? "" : "s"} before you need to top up.
+            {" "}
+            <Link href="/pricing">See pricing</Link>
+          </p>
+        </section>
+      ) : null}
 
       {!hasUnlimitedUsage ? (
         <section className="stack-lg">

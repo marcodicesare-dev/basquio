@@ -73,6 +73,7 @@ type ArtifactManifestRow = {
   page_count: number;
   qa_passed: boolean;
   artifacts: Array<{ kind: string; fileName: string; fileBytes: number; storagePath: string }>;
+  preview_assets?: Array<{ position: number; fileName: string; mimeType: string; storagePath: string }>;
 };
 
 type SourceFileSummaryRow = {
@@ -389,7 +390,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
         serviceKey: serviceKey!,
         table: "artifact_manifests_v2",
         query: {
-          select: "slide_count,page_count,qa_passed,artifacts",
+          select: "slide_count,page_count,qa_passed,artifacts,preview_assets",
           run_id: `eq.${jobId}`,
           limit: "1",
         },
@@ -420,6 +421,16 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
           fileBytes: a.fileBytes,
           downloadUrl: `/api/artifacts/${jobId}/${a.kind}`,
         })),
+        previews: Array.isArray(m.preview_assets)
+          ? m.preview_assets
+              .filter((asset) => typeof asset?.position === "number")
+              .slice(0, 3)
+              .map((asset) => ({
+                position: asset.position,
+                imageUrl: `/api/jobs/${jobId}/previews/${asset.position}`,
+                fileName: asset.fileName,
+              }))
+          : [],
       };
     }
 

@@ -310,9 +310,9 @@ async function sendWelcomeEmail(input: {
         Authorization: `Bearer ${input.resendApiKey}`,
       },
       body: JSON.stringify({
-        from: "Basquio <reports@basquio.com>",
+        from: "Marco at Basquio <reports@basquio.com>",
         to: [input.email],
-        subject: "Welcome to Basquio",
+        subject: "Your Basquio workspace is ready",
         html: buildWelcomeHtml(),
       }),
     });
@@ -338,11 +338,14 @@ function buildWelcomeHtml() {
         <p style="color: #1A6AFF; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; margin: 0 0 16px 0; text-transform: uppercase;">Welcome to Basquio</p>
         <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-blue.png" alt="Basquio" width="110" height="auto" style="display: block; margin-bottom: 28px;">
         <h1 style="color: #0B0C0C; font-size: 28px; line-height: 1.1; letter-spacing: -0.04em; margin: 0 0 14px 0;">Your workspace is ready.</h1>
-        <p style="color: #4B5563; font-size: 15px; line-height: 24px; margin: 0 0 18px 0;">Start with one real reporting cycle. Upload the working files, write a tight brief, and Basquio will turn it into a presentation, report, and data pack.</p>
+        <p style="color: #4B5563; font-size: 15px; line-height: 24px; margin: 0 0 18px 0;">Start with one real reporting cycle, or use the sample FMCG dataset if you just want to see the full Basquio flow first.</p>
         <table cellpadding="0" cellspacing="0" border="0" style="margin: 28px 0;">
           <tr>
             <td>
               <a href="https://basquio.com/jobs/new?tour=1" style="background-color: #1A6AFF; border-radius: 6px; color: #FFFFFF; display: inline-block; font-size: 14px; font-weight: 700; padding: 12px 20px; text-decoration: none;">Open guided setup</a>
+            </td>
+            <td style="padding-left: 12px;">
+              <a href="https://basquio.com/jobs/new?sample=1" style="border: 1px solid #CBD5E1; border-radius: 6px; color: #0B0C0C; display: inline-block; font-size: 14px; font-weight: 700; padding: 12px 20px; text-decoration: none;">Try sample data</a>
             </td>
           </tr>
         </table>
@@ -353,7 +356,7 @@ function buildWelcomeHtml() {
             </td>
           </tr>
         </table>
-        <p style="color: #94A3B8; font-size: 12px; line-height: 20px; margin: 0;">Beautiful Intelligence.</p>
+        <p style="color: #94A3B8; font-size: 12px; line-height: 20px; margin: 0;">Marco at Basquio</p>
       </td>
     </tr>
   </table>

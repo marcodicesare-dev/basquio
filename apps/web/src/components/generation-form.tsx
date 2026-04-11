@@ -70,6 +70,17 @@ const BRIEF_EXAMPLE = {
   stakes: "We need evidence-backed positions for the annual JBP and shelf-space discussion in 6 weeks.",
 } as const;
 
+const SAMPLE_DATASET_URL = "/samples/basquio-sample-fmcg.csv";
+const SAMPLE_DATASET_FILE_NAME = "basquio-sample-fmcg.csv";
+const SAMPLE_BRIEF = {
+  businessContext:
+    "Use the sample FMCG sell-out dataset to analyze brand performance by channel and identify where Northstar is losing momentum versus BluePeak and private label.",
+  audience: "Country Manager and Commercial Director in the monthly business review",
+  objective: "Diagnose brand performance trends and recommend 3 growth opportunities by channel and pricing posture.",
+  thesis: "Northstar is strongest in traditional trade, but share pressure in modern trade is coming from private label while BluePeak is winning e-commerce growth.",
+  stakes: "The deck should help decide where to defend distribution, where to push promo intensity, and where to lean into higher-growth channels next quarter.",
+} satisfies Pick<BriefFields, "businessContext" | "audience" | "objective" | "thesis" | "stakes">;
+
 type AuthorModel = (typeof MODEL_OPTIONS)[number]["id"];
 
 type GenerationStartResponse = {
@@ -183,6 +194,7 @@ type GenerationFormProps = {
   defaultTemplateId?: string | null;
   recipePrefill?: RecipePrefill;
   startTour?: boolean;
+  startWithSampleData?: boolean;
   templateFeeReturn?: {
     draftId: string;
     status: "success" | "cancelled";
@@ -242,6 +254,7 @@ export function GenerationForm({
   defaultTemplateId = null,
   recipePrefill,
   startTour = false,
+  startWithSampleData = false,
   templateFeeReturn,
 }: GenerationFormProps) {
   const router = useRouter();
@@ -306,6 +319,8 @@ export function GenerationForm({
     error: null,
   });
   const [launchRunId, setLaunchRunId] = useState<string | null>(null);
+  const [sampleLoadState, setSampleLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const sampleLoadTriggeredRef = useRef(false);
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
@@ -818,6 +833,49 @@ export function GenerationForm({
     updateEvidenceFiles(Array.from(event.dataTransfer.files ?? []));
   }
 
+  async function loadSampleDataset() {
+    setSampleLoadState("loading");
+    setError(null);
+
+    try {
+      const response = await fetch(SAMPLE_DATASET_URL, { cache: "force-cache" });
+      if (!response.ok) {
+        throw new Error("Sample dataset is unavailable right now.");
+      }
+
+      const blob = await response.blob();
+      const file = new File([blob], SAMPLE_DATASET_FILE_NAME, {
+        type: "text/csv",
+        lastModified: Date.now(),
+      });
+
+      setEvidenceFiles([file]);
+      syncInputFiles(evidenceInputRef.current, [file]);
+      setBrief((current) => ({
+        businessContext: current.businessContext || SAMPLE_BRIEF.businessContext,
+        client: current.client,
+        audience: current.audience || SAMPLE_BRIEF.audience,
+        objective: current.objective || SAMPLE_BRIEF.objective,
+        thesis: current.thesis || SAMPLE_BRIEF.thesis,
+        stakes: current.stakes || SAMPLE_BRIEF.stakes,
+      }));
+      setCurrentStep((step) => Math.max(step, 1));
+      setSampleLoadState("ready");
+    } catch (sampleError) {
+      setSampleLoadState("error");
+      setError(sampleError instanceof Error ? sampleError.message : "Unable to load the sample dataset.");
+    }
+  }
+
+  useEffect(() => {
+    if (!startWithSampleData || sampleLoadTriggeredRef.current || recipePrefill || prefillSourceFiles.length > 0 || evidenceFiles.length > 0) {
+      return;
+    }
+
+    sampleLoadTriggeredRef.current = true;
+    void loadSampleDataset();
+  }, [evidenceFiles.length, prefillSourceFiles.length, recipePrefill, startWithSampleData]);
+
   return (
     <div className="stack-lg">
       <form className="panel form-shell stack-xl" onSubmit={handleSubmit}>
@@ -884,6 +942,26 @@ export function GenerationForm({
               <p className="section-label">Step 2</p>
               <h2>Upload your evidence</h2>
               <p className="muted">Start with the workbook or CSV behind the review. Add slides or PDFs only if they help the story.</p>
+            </div>
+
+            <div className="panel" style={{ padding: "1rem 1.1rem", background: "rgba(26,106,255,0.04)", borderColor: "rgba(26,106,255,0.16)" }}>
+              <div className="stack-xs">
+                <p className="section-label" style={{ marginBottom: 0 }}>No data ready?</p>
+                <h3 style={{ margin: 0 }}>Try the sample dataset first.</h3>
+                <p className="muted" style={{ marginBottom: 0 }}>
+                  Load an anonymized FMCG sell-out file plus a pre-written brief so you can see a full Basquio run before using your own evidence.
+                </p>
+              </div>
+              <div className="row" style={{ marginTop: "0.9rem", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                <button className="button small secondary" type="button" onClick={() => void loadSampleDataset()} disabled={sampleLoadState === "loading"}>
+                  {sampleLoadState === "loading" ? "Loading sample..." : "Try with sample data"}
+                </button>
+                <span className="muted" style={{ fontSize: "0.82rem" }}>
+                  {sampleLoadState === "ready"
+                    ? "Sample dataset loaded. Basquio also filled the brief below."
+                    : "One click. No setup file hunting."}
+                </span>
+              </div>
             </div>
 
             <div className="step-grid">

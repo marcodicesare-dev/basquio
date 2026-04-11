@@ -37,6 +37,7 @@ type Summary = {
   insights?: Array<{ id: string; title: string }>;
   slidePlan?: { slides: Array<{ id: string }> };
   artifacts?: Array<{ kind: string; fileName: string }>;
+  previews?: Array<{ position: number; imageUrl: string; fileName: string }>;
   slideCount?: number;
   pageCount?: number;
   qaPassed?: boolean;
@@ -126,6 +127,16 @@ const PHASE_ESTIMATES: Record<string, { label: string; activeDetail: string; com
     completedDetail: "Downloads published.",
   },
 };
+const WAITING_COPY_ROTATION = [
+  "Reading your data...",
+  "Looking for patterns...",
+  "Building the story...",
+  "Designing the visuals...",
+  "Choosing the right charts...",
+  "Writing the narrative...",
+  "Checking the numbers...",
+  "Almost there...",
+] as const;
 
 export type RunProgressSnapshot = {
   jobId: string;
@@ -176,7 +187,9 @@ export function RunProgressView(input: {
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [showCompletionToast, setShowCompletionToast] = useState(false);
   const [elapsedTickMs, setElapsedTickMs] = useState(() => Date.now());
+  const [waitCopyIndex, setWaitCopyIndex] = useState(0);
   const prevStatusRef = useRef<string | null>(null);
+  const originalDocumentTitleRef = useRef<string | null>(null);
   const snapshotRef = useRef<RunProgressSnapshot | null>(input.initialSnapshot);
   const isTerminalRef = useRef(false);
   const realtimeSubscribedRef = useRef(false);
@@ -212,6 +225,20 @@ export function RunProgressView(input: {
     const interval = window.setInterval(() => {
       setElapsedTickMs(Date.now());
     }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [isTerminal, snapshot]);
+
+  useEffect(() => {
+    if (!snapshot || isTerminal) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setWaitCopyIndex((current) => (current + 1) % WAITING_COPY_ROTATION.length);
+    }, 35_000);
 
     return () => {
       window.clearInterval(interval);
@@ -325,27 +352,37 @@ export function RunProgressView(input: {
       return;
     }
 
-    const previousTitle = document.title;
-    if (!snapshot) {
-      return () => {
-        document.title = previousTitle;
-      };
-    }
-
-    if (snapshot.status === "completed") {
-      document.title = "Basquio | Report Ready";
-    } else if (snapshot.status === "failed") {
-      document.title = "Basquio | Run Failed";
-    } else if (snapshot.status === "needs_input") {
-      document.title = "Basquio | Needs Input";
-    } else {
-      document.title = "Basquio | Building";
+    if (originalDocumentTitleRef.current === null) {
+      originalDocumentTitleRef.current = document.title;
     }
 
     return () => {
-      document.title = previousTitle;
+      if (originalDocumentTitleRef.current !== null) {
+        document.title = originalDocumentTitleRef.current;
+      }
     };
-  }, [snapshot?.status, snapshot?.jobId]);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    if (!snapshot) {
+      return;
+    }
+
+    const isReportOnlyResult = !snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pptx");
+    if (snapshot.status === "completed") {
+      document.title = `${isReportOnlyResult ? "Report Ready" : "Deck Ready"} - Basquio`;
+    } else if (snapshot.status === "failed") {
+      document.title = "Run Failed - Basquio";
+    } else if (snapshot.status === "needs_input") {
+      document.title = "Needs Input - Basquio";
+    } else {
+      const elapsedMinutes = Math.max(1, Math.floor(getDisplayedElapsedSeconds(snapshot, elapsedTickMs) / 60));
+      document.title = `Building... (${elapsedMinutes}m) - Basquio`;
+    }
+  }, [elapsedTickMs, snapshot]);
 
   useEffect(() => {
     if (
@@ -654,6 +691,7 @@ export function RunProgressView(input: {
     const capabilityPills = isReportOnlyResult
       ? ["Markdown report", "Audit-ready Excel workbook"]
       : ["Editable in PowerPoint", "Report + data workbook included"];
+    const previewImages = snapshot.summary?.previews ?? [];
 
     return (
       <div className="page-shell job-result-page">
@@ -745,6 +783,45 @@ export function RunProgressView(input: {
             </p>
           </article>
         </div>
+
+        {previewImages.length > 0 ? (
+          <section className="panel stack-lg">
+            <div className="workspace-section-head">
+              <h2>Preview before you download</h2>
+            </div>
+            <p className="muted" style={{ maxWidth: 720 }}>
+              Review a few slide thumbnails here first. If the story looks right, grab the editable deck and supporting files.
+            </p>
+            <div style={{
+              display: "grid",
+              gap: "1rem",
+              gridTemplateColumns: previewImages.length === 1 ? "minmax(0, 1fr)" : "repeat(auto-fit, minmax(220px, 1fr))",
+            }}>
+              {previewImages.map((preview) => (
+                <figure
+                  key={`${preview.position}-${preview.fileName}`}
+                  style={{
+                    margin: 0,
+                    borderRadius: 16,
+                    border: "1px solid rgba(15, 23, 42, 0.08)",
+                    overflow: "hidden",
+                    background: "#fff",
+                    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
+                  }}
+                >
+                  <img
+                    src={preview.imageUrl}
+                    alt={`Slide ${preview.position} preview`}
+                    style={{ display: "block", width: "100%", height: "auto", background: "#F8FAFC" }}
+                  />
+                  <figcaption style={{ padding: "0.8rem 0.95rem", fontSize: "0.84rem", color: "#475569" }}>
+                    Slide {preview.position}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="panel stack-lg">
           <div className="workspace-section-head">
@@ -938,6 +1015,7 @@ export function RunProgressView(input: {
   // ─── IN-PROGRESS STATE ───────────────────────────────────────
   const isReportOnlyRun = snapshot.authorModel === "claude-haiku-4-5";
   const title = isReportOnlyRun ? "Building your report" : "Building your deck";
+  const ambientWaitCopy = WAITING_COPY_ROTATION[waitCopyIndex];
   const elapsedLabel = formatElapsedLabel(getDisplayedElapsedSeconds(snapshot, elapsedTickMs));
   const estimatedSlideCount = initialLaunchDraft?.targetSlideCount ?? 10;
   const estimatedMinutes = estimateRunMinutes(estimatedSlideCount, snapshot.authorModel ?? DEFAULT_AUTHOR_MODEL);
@@ -980,10 +1058,20 @@ export function RunProgressView(input: {
           </div>
         </div>
 
-        <h1 className="run-status-title">{title}</h1>
+        <h1 className="run-status-title" key={ambientWaitCopy}>{ambientWaitCopy}</h1>
+        <p className="run-status-subtitle" style={{ margin: "0 0 0.5rem 0", color: "#A09FA6", fontSize: "0.95rem" }}>{title}</p>
         <p className="run-status-elapsed">
           {elapsedLabel}
           <span className="run-status-estimate"> · ~{estimatedMinutes} min total</span>
+        </p>
+        <p style={{
+          maxWidth: 560,
+          margin: "0 0 1.4rem 0",
+          color: "#D7D3CD",
+          fontSize: "0.95rem",
+          lineHeight: 1.6,
+        }}>
+          Basquio is running the same analysis a team of consultants would, just in minutes instead of weeks.
         </p>
 
         <div style={styles.leaveRunCard}>

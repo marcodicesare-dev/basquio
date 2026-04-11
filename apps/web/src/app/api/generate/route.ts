@@ -6,8 +6,16 @@ import { inferSourceFileKind } from "@basquio/core";
 import type { GenerationRequest } from "@basquio/types";
 
 import { normalizePlanId } from "@/lib/billing-config";
+import { maybeSendLowCreditReminder } from "@/lib/engagement";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
-import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit, getActiveSubscription } from "@/lib/credits";
+import {
+  DEFAULT_AUTHOR_MODEL,
+  assertValidSlideCount,
+  calculateRunCredits,
+  ensureFreeTierCredit,
+  getActiveSubscription,
+  getDetailedCreditBalance,
+} from "@/lib/credits";
 import { callRpc, deleteRestRows, fetchRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { getTemplateFeeDraft, updateTemplateFeeDraft } from "@/lib/template-fee-drafts";
@@ -81,6 +89,7 @@ export async function POST(request: Request) {
     }
 
     const workspace = await ensureViewerWorkspace(viewer.user);
+    const viewerUserId = viewer.user.id;
 
     if (!workspace) {
       return NextResponse.json({ error: "Unable to resolve a personal Basquio workspace for this user." }, { status: 500 });
@@ -146,12 +155,41 @@ export async function POST(request: Request) {
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
     }
 
-    return NextResponse.json({
-      ...(await queueGeneration(generationRequest, viewer.user, workspace, runId, {
+    const accepted = await queueGeneration(generationRequest, viewer.user, workspace, runId, {
         chargeCredits: billingEnabled && !hasUnlimitedUsage,
         creditAmount: creditsNeeded,
         requireTemplateFee: currentPlan === "free" && !hasUnlimitedUsage,
-      })),
+      });
+
+    if (
+      billingEnabled &&
+      supabaseUrl &&
+      serviceKey &&
+      currentPlan === "free" &&
+      !hasUnlimitedUsage
+    ) {
+      const resendApiKey = process.env.RESEND_API_KEY ?? process.env.RESEND_CURSOR_API_KEY;
+      if (resendApiKey) {
+        void getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewerUserId })
+          .then((balance) =>
+            maybeSendLowCreditReminder(
+              {
+                supabaseUrl,
+                serviceKey,
+                resendApiKey,
+              },
+              {
+                userId: viewerUserId,
+                balance: balance.balance,
+              },
+            ),
+          )
+          .catch(() => {});
+      }
+    }
+
+    return NextResponse.json({
+      ...accepted,
     }, { status: 202 });
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {

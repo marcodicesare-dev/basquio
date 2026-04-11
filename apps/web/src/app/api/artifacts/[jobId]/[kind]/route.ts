@@ -4,6 +4,7 @@ import {
   getGenerationArtifactRecord,
   readLocalArtifactBuffer,
 } from "@/lib/job-runs";
+import { recordArtifactDownloadEvent } from "@/lib/engagement";
 import { downloadFromStorage, fetchRestRows } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -43,6 +44,23 @@ export async function GET(
         : artifact.provider === "database"
           ? await readInlineArtifact(jobId, requestedKind, viewer.user.id)
           : await readLocalArtifactBuffer(artifact);
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && serviceRoleKey) {
+      void recordArtifactDownloadEvent(
+        {
+          supabaseUrl,
+          serviceKey: serviceRoleKey,
+        },
+        {
+          runId: jobId,
+          userId: viewer.user.id,
+          artifactKind: requestedKind,
+          disposition: contentDisposition,
+        },
+      );
+    }
 
     return new Response(buffer, {
       status: 200,

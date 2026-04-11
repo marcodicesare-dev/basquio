@@ -7,6 +7,10 @@
     {
       "path": "/api/internal/customers/weekly-summary",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/internal/engagement/reminders",
+      "schedule": "17 * * * *"
     }
   ]
 }

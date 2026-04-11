@@ -370,6 +370,7 @@ export default async function NewJobPage({
         ? "Resume custom-template run"
       : "New analysis";
   const startTour = typeof params.tour === "string" && params.tour === "1";
+  const startWithSampleData = typeof params.sample === "string" && params.sample === "1";
 
   return (
     <div className="page-shell workspace-page">
@@ -384,6 +385,7 @@ export default async function NewJobPage({
         defaultTemplateId={defaultTemplateId}
         recipePrefill={activePrefill}
         startTour={startTour}
+        startWithSampleData={startWithSampleData}
         templateFeeReturn={templateFeeReturn}
       />
     </div>

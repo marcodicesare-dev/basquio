@@ -1,0 +1,37 @@
+month,geography,channel,brand,net_sales_eur,units_sold,avg_price_eur,promo_share,weighted_distribution
+2025-01,Italy,Modern Trade,Northstar,412000,103000,4.00,0.14,78
+2025-01,Italy,Modern Trade,BluePeak,389000,101000,3.85,0.22,82
+2025-01,Italy,Modern Trade,Private Label,355000,101500,3.50,0.08,91
+2025-02,Italy,Modern Trade,Northstar,405000,101250,4.00,0.13,78
+2025-02,Italy,Modern Trade,BluePeak,392000,101818,3.85,0.21,82
+2025-02,Italy,Modern Trade,Private Label,361000,103143,3.50,0.08,91
+2025-03,Italy,Modern Trade,Northstar,398000,99500,4.00,0.12,77
+2025-03,Italy,Modern Trade,BluePeak,396000,102857,3.85,0.19,83
+2025-03,Italy,Modern Trade,Private Label,369000,105429,3.50,0.09,92
+2025-04,Italy,Modern Trade,Northstar,394000,98500,4.00,0.12,77
+2025-04,Italy,Modern Trade,BluePeak,404000,104935,3.85,0.18,83
+2025-04,Italy,Modern Trade,Private Label,377000,107714,3.50,0.10,92
+2025-05,Italy,Modern Trade,Northstar,388000,97000,4.00,0.11,76
+2025-05,Italy,Modern Trade,BluePeak,409000,106234,3.85,0.18,84
+2025-05,Italy,Modern Trade,Private Label,384000,109714,3.50,0.10,92
+2025-06,Italy,Modern Trade,Northstar,380000,95000,4.00,0.10,75
+2025-06,Italy,Modern Trade,BluePeak,415000,107792,3.85,0.17,84
+2025-06,Italy,Modern Trade,Private Label,392000,112000,3.50,0.11,93
+2025-07,Italy,Traditional Trade,Northstar,224000,62222,3.60,0.09,58
+2025-07,Italy,Traditional Trade,BluePeak,208000,59429,3.50,0.11,61
+2025-07,Italy,Traditional Trade,Private Label,121000,37813,3.20,0.04,32
+2025-08,Italy,Traditional Trade,Northstar,229000,63611,3.60,0.09,59
+2025-08,Italy,Traditional Trade,BluePeak,211000,60286,3.50,0.11,61
+2025-08,Italy,Traditional Trade,Private Label,123000,38438,3.20,0.04,33
+2025-09,Italy,Traditional Trade,Northstar,233000,64722,3.60,0.08,60
+2025-09,Italy,Traditional Trade,BluePeak,215000,61429,3.50,0.10,62
+2025-09,Italy,Traditional Trade,Private Label,126000,39375,3.20,0.05,34
+2025-10,Italy,E-commerce,Northstar,97000,21556,4.50,0.06,41
+2025-10,Italy,E-commerce,BluePeak,118000,28095,4.20,0.09,46
+2025-10,Italy,E-commerce,Private Label,52000,13000,4.00,0.03,19
+2025-11,Italy,E-commerce,Northstar,104000,23111,4.50,0.06,42
+2025-11,Italy,E-commerce,BluePeak,126000,30000,4.20,0.09,48
+2025-11,Italy,E-commerce,Private Label,57000,14250,4.00,0.03,20
+2025-12,Italy,E-commerce,Northstar,113000,25111,4.50,0.05,44
+2025-12,Italy,E-commerce,BluePeak,133000,31667,4.20,0.08,49
+2025-12,Italy,E-commerce,Private Label,61000,15250,4.00,0.03,21

@@ -157,6 +157,10 @@ Template fidelity lesson:
 - the current manifest is not rich enough to rebuild final slides from metadata alone; manifest-only recomposition can preserve geometry while destroying actual slide content
 - until full rendered slide content is carried explicitly, prefer clean prompt palette injection over post-hoc PPTX reconstruction
 - free-plan custom-template runs must persist a durable checkout draft before redirecting to Stripe so `/jobs/new` can resume safely after payment without losing uploaded files or the brief
+- the completion surface should show durable slide previews before download; preview thumbnails are best-effort assets derived at publish time and stored on `artifact_manifests_v2.preview_assets`
+- `artifact_download_events` is the durable truth for whether a completed run was actually opened, and reminder emails should key off that instead of page visits
+- reminder UX should stay tied to concrete user states: completed-with-no-download, uploaded-template/no-run, and low-credit after a successful debit
+- sample-data onboarding is a valid acquisition path for Basquio because many signups arrive without a workbook ready; the sample run should live directly inside `/jobs/new`, not on a detached marketing flow
 
 When architecture changes:
 

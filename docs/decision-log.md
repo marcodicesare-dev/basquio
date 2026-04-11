@@ -589,3 +589,14 @@ Accepted because:
 - free-plan custom-template runs cannot safely redirect to Stripe from `/jobs/new` unless Basquio persists uploaded files and the brief first
 - a durable checkout draft lets the app confirm payment and resume generation without forcing the user to re-upload evidence after payment
 - it closes the server-side bypass where a free user could inherit a workspace default custom template without paying the template fee
+
+## April 11, 2026
+
+### Delivery UX uses durable preview assets plus reminder triggers
+
+Accepted because:
+
+- the completion moment is part of the product, not a thin wrapper around download links
+- preview thumbnails can be generated best-effort from the published manifest without changing the durable artifact contract
+- completion and reminder emails should be driven by durable run state plus download telemetry, not browser heuristics
+- low-credit and unfinished-setup nudges must remain specific, one-time, and evidence-backed instead of generic lifecycle spam
