@@ -95,9 +95,11 @@ Migrations: `supabase/migrations/`
 - **Haiku gets PptxGenJS via `npm install pptxgenjs`**, not via the PPTX skill. The author prompt includes a conditional fallback instruction.
 - Docs: https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool
 
-### Budget caps (March 31, corrected AGAIN)
-- Pre-flight: $7.00. Hard cap: $10.00. Continuation budget in runClaudeLoop: $10.00.
-- Previous values ($2.75, $3.50, $4.50, $6.00) all killed revise for Opus. The caps must be high enough to only catch genuine runaways, not normal operation.
+### Budget caps (April 12, model-aware)
+- Opus: pre-flight $12.00, hard cap $18.00, cross-attempt cap $24.00.
+- Sonnet: pre-flight $7.00, hard cap $10.00, cross-attempt cap $15.00.
+- Haiku: pre-flight $3.00, hard cap $5.00, cross-attempt cap $8.00.
+- Previous lower flat caps killed revise for Opus. The caps must be high enough to only catch genuine runaways, not normal operation.
 - Budget caps have been the #1 source of "revise never runs" since March 28. DO NOT lower them without production evidence.
 
 ### Real cost model (March 30, 2026 — verified against Anthropic pricing docs)

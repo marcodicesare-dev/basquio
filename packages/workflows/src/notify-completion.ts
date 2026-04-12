@@ -12,7 +12,8 @@ type CompletionContext = {
   headline?: string | null;
 };
 
-type RunEmailVariant = "completion" | "waiting";
+type CompletionVariant = "first_run_clean" | "first_run_after_retry" | "returning";
+type RunEmailVariant = CompletionVariant | "waiting";
 
 type PreviewAsset = {
   position: number;
@@ -22,6 +23,27 @@ type PreviewAsset = {
   storagePath: string;
   fileBytes?: number;
 };
+
+type RunNotificationRow = {
+  notify_on_complete: boolean;
+  completion_email_sent_at: string | null;
+  brief: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type CompletionEmailContext = {
+  variant: CompletionVariant;
+  lastFailureAt: string | null;
+  creditsRemaining: number | null;
+  briefExcerpt: string | null;
+};
+
+type UserIdentity = {
+  email: string | null;
+  firstName: string | null;
+};
+
+const STANDARD_SONNET_DECK_CREDITS = 13;
 
 function isSupabaseSecretKey(value: string) {
   return value.startsWith("sb_secret_");
@@ -48,16 +70,17 @@ export async function notifyRunCompletionIfRequested(
   run: { id: string; requested_by: string | null },
   context: CompletionContext,
 ) {
+  let claimedAt: string | null = null;
   try {
     if (!config.resendApiKey) return;
     if (!run.requested_by) return;
 
-    const rows = await fetchRestRows<{ notify_on_complete: boolean; completion_email_sent_at: string | null }>({
+    const rows = await fetchRestRows<RunNotificationRow>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_runs",
       query: {
-        select: "notify_on_complete,completion_email_sent_at",
+        select: "notify_on_complete,completion_email_sent_at,brief,created_at",
         id: `eq.${run.id}`,
         limit: "1",
       },
@@ -66,34 +89,104 @@ export async function notifyRunCompletionIfRequested(
     if (!rows[0]?.notify_on_complete) return;
     if (rows[0].completion_email_sent_at) return;
 
-    const email = await resolveUserEmail(config, run.requested_by);
-    if (!email) return;
+    const claim = await claimCompletionEmailSend(config, run.id);
+    if (!claim.shouldSend) return;
+    claimedAt = claim.claimedAt;
+
+    const [identity, emailContext] = await Promise.all([
+      resolveUserIdentity(config, run.requested_by),
+      buildCompletionEmailContext(config, {
+        userId: run.requested_by,
+        runId: run.id,
+        runCreatedAt: rows[0].created_at,
+        brief: rows[0].brief,
+      }),
+    ]);
+    if (!identity.email) {
+      await releaseCompletionEmailClaim(config, run.id, claimedAt);
+      return;
+    }
 
     const sent = await sendRunDeliveryEmail(config, {
-      to: email,
+      to: identity.email,
       runId: context.runId,
       slideCount: context.slideCount,
       headline: context.headline ?? null,
-      variant: "completion",
+      variant: emailContext.variant,
+      firstName: identity.firstName,
+      creditsRemaining: emailContext.creditsRemaining,
+      lastFailureAt: emailContext.lastFailureAt,
+      briefExcerpt: emailContext.briefExcerpt,
     });
-    if (!sent) return;
-
-    await patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_runs",
-      query: { id: `eq.${run.id}` },
-      payload: { completion_email_sent_at: new Date().toISOString() },
-    });
+    if (!sent) {
+      await releaseCompletionEmailClaim(config, run.id, claimedAt);
+    }
   } catch (error) {
+    await releaseCompletionEmailClaim(config, run.id, claimedAt);
     console.warn(`[basquio] completion email failed (non-fatal):`, error);
   }
+}
+
+async function claimCompletionEmailSend(
+  config: NotifyConfig,
+  runId: string,
+): Promise<{ shouldSend: boolean; claimedAt: string | null }> {
+  const claimedAt = new Date().toISOString();
+  const claimedRows = await patchRestRows<RunNotificationRow>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_runs",
+    query: {
+      id: `eq.${runId}`,
+      completion_email_sent_at: "is.null",
+    },
+    payload: {
+      completion_email_sent_at: claimedAt,
+    },
+    select: "notify_on_complete,completion_email_sent_at,brief,created_at",
+  }).catch(() => []);
+
+  return {
+    shouldSend: claimedRows.length > 0,
+    claimedAt: claimedRows.length > 0 ? claimedAt : null,
+  };
+}
+
+async function releaseCompletionEmailClaim(
+  config: NotifyConfig,
+  runId: string,
+  claimedAt: string | null,
+) {
+  if (!claimedAt) {
+    return;
+  }
+
+  await patchRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_runs",
+    query: {
+      id: `eq.${runId}`,
+      completion_email_sent_at: `eq.${claimedAt}`,
+    },
+    payload: {
+      completion_email_sent_at: null,
+    },
+  }).catch(() => {});
 }
 
 export async function resolveUserEmail(
   config: { supabaseUrl: string; serviceKey: string },
   userId: string,
 ): Promise<string | null> {
+  const identity = await resolveUserIdentity(config, userId);
+  return identity.email;
+}
+
+async function resolveUserIdentity(
+  config: { supabaseUrl: string; serviceKey: string },
+  userId: string,
+): Promise<UserIdentity> {
   const response = await fetch(
     `${config.supabaseUrl}/auth/v1/admin/users/${userId}`,
     {
@@ -101,10 +194,26 @@ export async function resolveUserEmail(
     },
   );
 
-  if (!response.ok) return null;
+  if (!response.ok) {
+    return {
+      email: null,
+      firstName: null,
+    };
+  }
 
-  const user = (await response.json()) as { email?: string };
-  return user.email ?? null;
+  const user = (await response.json()) as {
+    email?: string;
+    user_metadata?: Record<string, unknown>;
+  };
+  const fullName = [
+    typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
+    typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null,
+  ].find((value): value is string => Boolean(value?.trim())) ?? null;
+
+  return {
+    email: user.email ?? null,
+    firstName: extractFirstName(fullName),
+  };
 }
 
 export async function sendRunDeliveryEmail(
@@ -115,6 +224,10 @@ export async function sendRunDeliveryEmail(
     slideCount: number;
     headline?: string | null;
     variant: RunEmailVariant;
+    firstName?: string | null;
+    creditsRemaining?: number | null;
+    lastFailureAt?: string | null;
+    briefExcerpt?: string | null;
   },
 ): Promise<boolean> {
   const progressUrl = `https://basquio.com/jobs/${params.runId}`;
@@ -135,6 +248,10 @@ export async function sendRunDeliveryEmail(
         slideCount: params.slideCount,
         headline: params.headline ?? null,
         variant: params.variant,
+        firstName: params.firstName ?? null,
+        creditsRemaining: params.creditsRemaining ?? null,
+        lastFailureAt: params.lastFailureAt ?? null,
+        briefExcerpt: params.briefExcerpt ?? null,
       }),
     }),
   });
@@ -246,6 +363,31 @@ function buildRunEmailHtml(input: {
   slideCount: number;
   headline: string | null;
   variant: RunEmailVariant;
+  firstName: string | null;
+  creditsRemaining: number | null;
+  lastFailureAt: string | null;
+  briefExcerpt: string | null;
+}) {
+  if (input.variant === "first_run_clean" || input.variant === "first_run_after_retry") {
+    return buildFirstRunEmailHtml({
+      ...input,
+      variant: input.variant,
+    });
+  }
+
+  return buildLegacyRunEmailHtml(input);
+}
+
+function buildLegacyRunEmailHtml(input: {
+  progressUrl: string;
+  previewUrls: Array<{ position: number; url: string }>;
+  slideCount: number;
+  headline: string | null;
+  variant: RunEmailVariant;
+  firstName: string | null;
+  creditsRemaining: number | null;
+  lastFailureAt: string | null;
+  briefExcerpt: string | null;
 }) {
   const isWaitingReminder = input.variant === "waiting";
   const eyebrow = isWaitingReminder ? "DECK WAITING" : "DECK READY";
@@ -254,6 +396,7 @@ function buildRunEmailHtml(input: {
     ? `Basquio finished your ${input.slideCount}-slide deck, but it looks like you have not opened the exports yet.`
     : `Your ${input.slideCount}-slide deck is ready. Download the PPTX, narrative report, and data workbook.`;
   const ctaLabel = isWaitingReminder ? "Open your deck" : "View your deck";
+  const ctaUrl = appendEmailTracking(input.progressUrl, input.variant);
   const previewMarkup = input.previewUrls.length > 0
     ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 24px 0 8px 0;"><tr>${
         input.previewUrls.map((preview) => `<td style="padding-right: 8px; vertical-align: top;">
@@ -264,8 +407,10 @@ function buildRunEmailHtml(input: {
   const headlineMarkup = input.headline
     ? `<p style="color: #0B0C0C; font-size: 15px; line-height: 24px; font-weight: 600; margin: 0 0 14px 0;">${escapeHtml(input.headline)}</p>`
     : "";
+  const previewText = buildInboxPreviewText(input.slideCount);
 
   return `<body style="background-color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 40px 20px;">
+  <div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(previewText)}</div>
   <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 560px; margin: 0 auto;">
     <tr>
       <td style="padding: 30px; border: 1px solid #E5E7EB; border-radius: 16px; background: #FFFFFF;">
@@ -278,7 +423,7 @@ function buildRunEmailHtml(input: {
         <table cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
           <tr>
             <td>
-              <a href="${input.progressUrl}" style="background-color: #1A6AFF; border-radius: 6px; color: #FFFFFF; display: inline-block; font-size: 14px; font-weight: 700; padding: 12px 22px; text-decoration: none;">${ctaLabel}</a>
+              <a href="${ctaUrl}" style="background-color: #1A6AFF; border-radius: 6px; color: #FFFFFF; display: inline-block; font-size: 14px; font-weight: 700; padding: 12px 22px; text-decoration: none;">${ctaLabel}</a>
             </td>
           </tr>
         </table>
@@ -294,6 +439,202 @@ function buildRunEmailHtml(input: {
     </tr>
   </table>
 </body>`;
+}
+
+function buildFirstRunEmailHtml(input: {
+  progressUrl: string;
+  previewUrls: Array<{ position: number; url: string }>;
+  slideCount: number;
+  headline: string | null;
+  variant: "first_run_clean" | "first_run_after_retry";
+  firstName: string | null;
+  creditsRemaining: number | null;
+  lastFailureAt: string | null;
+  briefExcerpt: string | null;
+}) {
+  const greeting = input.firstName ? `Hi ${escapeHtml(input.firstName)},` : "Hi there,";
+  const mainLine = input.slideCount ? `Your ${input.slideCount}-slide deck is ready.` : "Your deck is ready.";
+  const ctaUrl = appendEmailTracking(input.progressUrl, input.variant);
+  const previewText = buildInboxPreviewText(input.slideCount);
+  const eyebrow = input.variant === "first_run_after_retry" ? "DECK READY" : "FIRST DECK READY";
+  const headlineValue = (input.headline ?? input.briefExcerpt)?.trim() || null;
+  const headlineMarkup = headlineValue
+    ? `<p style="color:#0B0C0C;font-size:15px;line-height:24px;font-weight:600;margin:0 0 14px 0;">${escapeHtml(headlineValue)}</p>`
+    : "";
+  const previewMarkup = input.previewUrls.length > 0
+    ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 24px 0 8px 0;"><tr>${
+        input.previewUrls.map((preview) => `<td style="padding-right: 8px; vertical-align: top;">
+          <img src="${preview.url}" alt="Slide ${preview.position} preview" width="160" style="display:block; width:160px; max-width:100%; border-radius:10px; border:1px solid #E2E8F0;">
+        </td>`).join("")
+      }</tr></table>`
+    : "";
+  const acknowledgment = buildRetryAcknowledgment(input.variant, input.lastFailureAt);
+  const creditSection = buildFirstRunCreditSection(input.creditsRemaining, input.variant);
+
+  return `<body style="background-color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;margin:0;padding:40px 20px;">
+  <div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(previewText)}</div>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;">
+    <tr>
+      <td style="padding:30px;border:1px solid #E5E7EB;border-radius:16px;background:#FFFFFF;">
+        <p style="color:#94A3B8;font-size:11px;font-weight:700;letter-spacing:1.5px;margin:0 0 16px 0;text-transform:uppercase;">${eyebrow}</p>
+        <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-blue.png" alt="Basquio" width="108" height="auto" style="display:block;margin-bottom:28px;">
+        <p style="color:#0B0C0C;font-size:15px;line-height:24px;margin:0 0 16px 0;">${greeting}</p>
+        <h1 style="color:#0B0C0C;font-size:28px;line-height:1.05;letter-spacing:-0.04em;margin:0 0 14px 0;">${escapeHtml(mainLine)}</h1>
+        ${headlineMarkup}
+        ${previewMarkup}
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+          <tr>
+            <td>
+              <a href="${ctaUrl}" style="background-color:#1A6AFF;border-radius:6px;color:#FFFFFF;display:inline-block;font-size:14px;font-weight:700;padding:12px 22px;text-decoration:none;">View and download</a>
+            </td>
+          </tr>
+        </table>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;">
+          <tr>
+            <td style="padding:12px 14px;border:1px solid #E8E4DB;border-radius:8px;background:#FAFBFD;color:#4B5563;font-size:14px;line-height:22px;">
+              <strong style="color:#0B0C0C;">Included:</strong> editable PPTX, narrative report with methodology and findings, and the supporting data workbook.
+            </td>
+          </tr>
+        </table>
+        ${acknowledgment ? `<p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">${escapeHtml(acknowledgment)}</p>` : ""}
+        <p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">Open the narrative alongside the deck. It walks through the reasoning behind every chart and calls out what surprised us in the numbers.</p>
+        ${creditSection}
+        <p style="color:#94A3B8;font-size:12px;line-height:20px;margin:0;">Evidence in. Executive deck out.</p>
+      </td>
+    </tr>
+  </table>
+</body>`;
+}
+
+function buildInboxPreviewText(slideCount: number) {
+  return slideCount > 0 ? `${slideCount} slides ready to download` : "Ready to download";
+}
+
+function buildRetryAcknowledgment(
+  variant: "first_run_clean" | "first_run_after_retry",
+  lastFailureAt: string | null,
+) {
+  if (variant !== "first_run_after_retry") {
+    return null;
+  }
+
+  const lastFailureMs = lastFailureAt ? Date.parse(lastFailureAt) : Number.NaN;
+  if (Number.isFinite(lastFailureMs) && Date.now() - lastFailureMs < 60 * 60 * 1000) {
+    return "The earlier run hit a wall. This one came through.";
+  }
+
+  return "We know the first attempt didn't land. This one's good.";
+}
+
+function buildFirstRunCreditSection(
+  creditsRemaining: number | null,
+  variant: "first_run_clean" | "first_run_after_retry",
+) {
+  if (typeof creditsRemaining !== "number") {
+    return "";
+  }
+
+  if (creditsRemaining <= 0) {
+    return `<p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">You've used your free credits. <a href="${appendEmailTracking("https://basquio.com/pricing", variant)}" style="color:#1A6AFF;text-decoration:none;">See pricing</a> to keep going.</p>`;
+  }
+
+  if (creditsRemaining < STANDARD_SONNET_DECK_CREDITS) {
+    const remainingDecks = Math.floor(creditsRemaining / STANDARD_SONNET_DECK_CREDITS);
+    return `<p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">You have ${creditsRemaining} credits left, enough for ${remainingDecks} more run${remainingDecks === 1 ? "" : "s"}. <a href="${appendEmailTracking("https://basquio.com/pricing", variant)}" style="color:#1A6AFF;text-decoration:none;">See pricing</a>.</p>`;
+  }
+
+  return `<p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">You have ${creditsRemaining} credits. When you're ready for the next one: <a href="${appendEmailTracking("https://basquio.com/jobs/new", variant)}" style="color:#1A6AFF;text-decoration:none;">Generate another deck</a>.</p>`;
+}
+
+async function buildCompletionEmailContext(
+  config: NotifyConfig,
+  input: {
+    userId: string;
+    runId: string;
+    runCreatedAt: string;
+    brief: Record<string, unknown> | null;
+  },
+): Promise<CompletionEmailContext> {
+  const [completedRows, failedRows, creditRows] = await Promise.all([
+    fetchRestRows<{ id: string }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "id",
+        requested_by: `eq.${input.userId}`,
+        status: "eq.completed",
+        id: `neq.${input.runId}`,
+        limit: "1",
+      },
+    }).catch(() => []),
+    fetchRestRows<{ updated_at: string }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "updated_at",
+        requested_by: `eq.${input.userId}`,
+        status: "eq.failed",
+        created_at: `lt.${input.runCreatedAt}`,
+        order: "updated_at.desc",
+        limit: "1",
+      },
+    }).catch(() => []),
+    fetchRestRows<{ balance: number }>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "credit_balances",
+      query: {
+        select: "balance",
+        user_id: `eq.${input.userId}`,
+        limit: "1",
+      },
+    }).catch(() => []),
+  ]);
+
+  return {
+    variant: pickCompletionVariant(completedRows.length, failedRows.length),
+    lastFailureAt: failedRows[0]?.updated_at ?? null,
+    creditsRemaining: typeof creditRows[0]?.balance === "number" ? creditRows[0].balance : null,
+    briefExcerpt: extractBriefExcerpt(input.brief),
+  };
+}
+
+function pickCompletionVariant(completedCount: number, failedCount: number): CompletionVariant {
+  if (completedCount === 0) {
+    return failedCount > 0 ? "first_run_after_retry" : "first_run_clean";
+  }
+
+  return "returning";
+}
+
+function extractBriefExcerpt(brief: Record<string, unknown> | null) {
+  const value = typeof brief?.businessContext === "string"
+    ? brief.businessContext
+    : typeof brief?.objective === "string"
+      ? brief.objective
+      : "";
+
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed ? trimmed.slice(0, 80) : null;
+}
+
+function extractFirstName(fullName: string | null) {
+  if (!fullName) {
+    return null;
+  }
+
+  const [firstName] = fullName.trim().split(/\s+/);
+  return firstName || null;
+}
+
+function appendEmailTracking(url: string, campaign: RunEmailVariant) {
+  const parsed = new URL(url);
+  parsed.searchParams.set("utm_source", "email");
+  parsed.searchParams.set("utm_medium", "transactional");
+  parsed.searchParams.set("utm_campaign", campaign);
+  return parsed.toString();
 }
 
 function escapeHtml(value: string) {

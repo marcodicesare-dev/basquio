@@ -1414,6 +1414,71 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           outputConfig: buildAuthoringOutputConfig(MODEL),
           onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
         });
+        let reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
+        const missingReviseFiles = findMissingGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"]);
+        if (missingReviseFiles.length > 0) {
+          console.warn(`[revise-retry] Missing revise files: ${missingReviseFiles.join(", ")}. Retrying revise phase once.`);
+          await insertEvent(config, runId, attempt, "revise", "revise_missing_files_retry", {
+            missingFiles: missingReviseFiles,
+            model: MODEL,
+          }).catch(() => {});
+
+          const retryResponse = await runClaudeLoop({
+            client,
+            model: MODEL,
+            systemPrompt,
+            maxTokens: 28_000,
+            phaseLabel: "revise",
+            circuitKey: `${run.id}:${attempt.id}:revise`,
+            onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
+            maxPauseTurns: 0,
+            phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
+            requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
+            currentSpentUsd: roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage)),
+            betas: modelBetas,
+            container: buildAuthoringContainer(reviseResponse.containerId ?? latestContainerId, MODEL),
+            messages: [
+              ...reviseResponse.thread,
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      `Missing output files: ${missingReviseFiles.join(", ")}.`,
+                      "Generate them now using the existing slides in the container.",
+                      "Do not re-analyze or rewrite content.",
+                      "Rebuild the PPTX from the current slides, render the PDF, and write deck_manifest.json.",
+                      "The turn is incomplete until every missing file is attached.",
+                    ].join(" "),
+                  },
+                ],
+              },
+            ],
+            tools: buildClaudeTools(MODEL),
+            outputConfig: buildAuthoringOutputConfig(MODEL),
+            onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
+          });
+          const retryFiles = await downloadGeneratedFiles(client, retryResponse.fileIds);
+          for (const retryFile of retryFiles) {
+            const existingIndex = reviseFiles.findIndex((file) => file.fileName === retryFile.fileName);
+            if (existingIndex >= 0) {
+              reviseFiles[existingIndex] = retryFile;
+            } else {
+              reviseFiles.push(retryFile);
+            }
+          }
+          reviseResponse = {
+            ...reviseResponse,
+            containerId: retryResponse.containerId ?? reviseResponse.containerId,
+            thread: retryResponse.thread,
+            fileIds: [...new Set([...reviseResponse.fileIds, ...retryResponse.fileIds])],
+            usage: mergeClaudeUsage(reviseResponse.usage, retryResponse.usage),
+            iterations: reviseResponse.iterations + retryResponse.iterations,
+            pauseTurns: reviseResponse.pauseTurns + retryResponse.pauseTurns,
+            requests: [...reviseResponse.requests, ...retryResponse.requests],
+          };
+        }
         spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
         assertDeckSpendWithinBudget(spentUsd, MODEL);
         continuationCount += reviseResponse.pauseTurns;
@@ -1423,7 +1488,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         });
         await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", MODEL, reviseResponse.requests);
         rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
-        const reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
         requireGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"], "revise");
         finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
         finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");

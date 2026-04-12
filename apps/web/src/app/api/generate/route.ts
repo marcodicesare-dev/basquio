@@ -145,19 +145,12 @@ export async function POST(request: Request) {
         ? await getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id })
         : null;
     const currentPlan = normalizePlanId(subscription?.plan ?? "free");
-    const targetSlideCount = requireValidTargetSlideCount(
-      generationRequest.targetSlideCount ?? 10,
-    );
-    const authorModel = requireValidAuthorModel(generationRequest.authorModel ?? DEFAULT_AUTHOR_MODEL);
-    const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
-
     if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
     }
 
     const accepted = await queueGeneration(generationRequest, viewer.user, workspace, runId, {
         chargeCredits: billingEnabled && !hasUnlimitedUsage,
-        creditAmount: creditsNeeded,
         requireTemplateFee: currentPlan === "free" && !hasUnlimitedUsage,
       });
 
@@ -227,7 +220,6 @@ async function queueGeneration(
   runId: string,
   billing: {
     chargeCredits: boolean;
-    creditAmount: number;
     requireTemplateFee: boolean;
   },
 ) {
@@ -276,6 +268,8 @@ async function queueGeneration(
     authorModel = requireValidAuthorModel(pendingDraft.author_model);
     recipeId = pendingDraft.recipe_id;
   }
+
+  const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
 
   const sourceFileIds = await resolveValidatedExistingSourceFileIds({
     supabaseUrl,
@@ -482,7 +476,7 @@ async function queueGeneration(
           p_recipe_id: recipeId ?? null,
           p_notify_on_complete: notifyOnComplete,
           p_charge_credits: billing.chargeCredits,
-          p_credit_amount: billing.chargeCredits ? billing.creditAmount : null,
+          p_credit_amount: billing.chargeCredits ? creditsNeeded : null,
         },
       });
       const enqueueResult = enqueueRows[0];
@@ -490,7 +484,7 @@ async function queueGeneration(
         throw billing.chargeCredits ? new BillingUnavailableError() : new Error("Run enqueue RPC returned no result.");
       }
       if (enqueueResult.insufficient_credits) {
-        throw new InsufficientCreditsError(billing.creditAmount, targetSlideCount);
+        throw new InsufficientCreditsError(creditsNeeded, targetSlideCount);
       }
       if (!enqueueResult.run_id || !enqueueResult.attempt_id) {
         throw new Error("Run enqueue did not return durable run lineage.");

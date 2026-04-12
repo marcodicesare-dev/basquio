@@ -604,6 +604,8 @@ for i, (share, growth) in enumerate(zip(shares, growths)):
 fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
 plt.subplots_adjust(bottom=0.18)
 plt.tight_layout()
+# After saving any chart: expand axes to fill the frame
+# ax.set_position([0.08, 0.15, 0.88, 0.75])  # [left, bottom, width, height]
 plt.savefig("chart_safe_labels.png", dpi=300, bbox_inches='tight', pad_inches=0.15)
 </example>
 
