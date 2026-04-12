@@ -12,6 +12,7 @@ import { getStripe } from "@/lib/stripe";
 import { createServiceSupabaseClient, fetchRestRows } from "@/lib/supabase/admin";
 
 const DISCORD_CUSTOMERS_WEBHOOK_URL = process.env.DISCORD_CUSTOMERS_WEBHOOK_URL;
+const DISCORD_GENERAL_WEBHOOK_URL = process.env.DISCORD_GENERAL_WEBHOOK_URL;
 const BASQUIO_AVATAR_URL = "https://basquio.com/brand/png/icon/2x/basquio-icon-ultramarine@2x.png";
 const CUSTOMERS_TIMEZONE = "Europe/Zurich";
 const PERSONAL_EMAIL_DOMAINS = new Set(["gmail.com", "outlook.com", "hotmail.com", "yahoo.com"]);
@@ -116,6 +117,34 @@ type WeeklyRevenueSummary = {
   currentMrr: number;
   totalRevenue: number;
   topCustomerLabel: string;
+  // Product metrics
+  runsCompleted: number;
+  runsFailed: number;
+  completionRate: number;
+  modelMixLabel: string;
+  avgDurationMin: number;
+  avgCostUsd: number;
+  totalSlides: number;
+  runsDownloaded: number;
+  runsUnclaimed: number;
+  // User metrics
+  activeUsers: number;
+  totalExternalUsers: number;
+  firstTimeRunners: number;
+  returningRunners: number;
+  neverRanCount: number;
+  userActivityLines: string[];
+  // Engagement metrics
+  emailsSentBreakdown: string[];
+  // Collab metrics
+  sessionCount: number;
+  sessionMinutes: number;
+  decisionCount: number;
+  leadCount: number;
+  topQuotes: string[];
+  // Credit metrics
+  creditsConsumed: number;
+  creditsGranted: number;
 };
 
 type SignupInput = {
@@ -507,7 +536,8 @@ export async function notifyCancellation(input: CancellationInput): Promise<void
 export async function postWeeklyRevenueSummary(input?: {
   occurredAt?: Date;
 }): Promise<WeeklyRevenueSummary | null> {
-  if (!DISCORD_CUSTOMERS_WEBHOOK_URL) {
+  const webhookUrl = DISCORD_GENERAL_WEBHOOK_URL ?? DISCORD_CUSTOMERS_WEBHOOK_URL;
+  if (!webhookUrl) {
     return null;
   }
 
@@ -517,24 +547,76 @@ export async function postWeeklyRevenueSummary(input?: {
   }
 
   const summary = await buildWeeklyRevenueSummary(config, input?.occurredAt ?? new Date());
-  const lines = [
-    "━━━━━━━━━━━━━━━━━━━━━━━━",
-    `New signups this week: ${summary.signupCount}`,
-    `New subscribers: ${summary.newSubscriberCount}${summary.subscriberBreakdownLabel ? ` (${summary.subscriberBreakdownLabel})` : ""}`,
-    `One-time payments: ${summary.creditPackCount} (${formatUsd(summary.creditPackRevenue)} total)`,
-    `MRR: ${formatUsd(summary.currentMrr)}`,
-    `Total revenue this week: ${formatUsd(summary.totalRevenue)}`,
+
+  const weekEnd = input?.occurredAt ?? new Date();
+  const weekStart = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const dateRange = formatWeekRange(weekStart, weekEnd);
+
+  const lines: (string | null)[] = [
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     "",
-    `Top customer: ${summary.topCustomerLabel}`,
-    "━━━━━━━━━━━━━━━━━━━━━━━━",
+    "**PRODUCT**",
+    `Runs: ${summary.runsCompleted + summary.runsFailed} (${summary.runsCompleted} completed, ${summary.runsFailed} failed)`,
+    summary.runsCompleted > 0 ? `Completion rate: ${summary.completionRate}%` : null,
+    summary.modelMixLabel ? `Model mix: ${summary.modelMixLabel}` : null,
+    summary.avgDurationMin > 0 ? `Avg time: ${Math.round(summary.avgDurationMin)} min` : null,
+    summary.avgCostUsd > 0 ? `Avg cost: ${formatUsd(summary.avgCostUsd)}/run` : null,
+    summary.totalSlides > 0 ? `Slides generated: ${summary.totalSlides}` : null,
+    summary.runsCompleted > 0 ? `Downloads: ${summary.runsDownloaded} runs downloaded, ${summary.runsUnclaimed} unclaimed` : null,
+    "",
+    "**USERS**",
+    `New signups: ${summary.signupCount} (${summary.totalExternalUsers} total external)`,
+    `Ran this week: ${summary.activeUsers} users (${summary.totalExternalUsers > 0 ? Math.round(summary.activeUsers / summary.totalExternalUsers * 100) : 0}% of external)`,
+    summary.firstTimeRunners > 0 ? `First-time runners: ${summary.firstTimeRunners}` : null,
+    summary.returningRunners > 0 ? `Returning runners: ${summary.returningRunners}` : null,
+    summary.neverRanCount > 0 ? `Never ran: ${summary.neverRanCount} users sitting on free credits` : null,
+    "",
+    "**REVENUE**",
+    `MRR: ${formatUsd(summary.currentMrr)}`,
+    `Credit packs: ${summary.creditPackCount} (${formatUsd(summary.creditPackRevenue)})`,
+    `Total revenue: ${formatUsd(summary.totalRevenue)}`,
+    summary.topCustomerLabel !== "None yet" ? `Top customer: ${summary.topCustomerLabel}` : null,
+    `Credits consumed: ${summary.creditsConsumed}`,
+    `Credits granted: ${summary.creditsGranted}`,
+    "",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
   ];
 
-  await postWebhook({
-    content: "\"Non puo rimanere fra noi 6 sta cosa\" - Veronica",
+  if (summary.userActivityLines.length > 0) {
+    lines.push("", "**\uD83D\uDC64 User Activity**");
+    lines.push(...summary.userActivityLines);
+  }
+
+  if (summary.emailsSentBreakdown.length > 0) {
+    lines.push("", "**\uD83D\uDCEC Emails Sent**");
+    lines.push(...summary.emailsSentBreakdown);
+  }
+
+  if (summary.sessionCount > 0 || summary.decisionCount > 0 || summary.leadCount > 0) {
+    lines.push("", "**\uD83C\uDFA4 Team**");
+    if (summary.sessionCount > 0) lines.push(`Sessions: ${summary.sessionCount} (${summary.sessionMinutes} min total)`);
+    if (summary.decisionCount > 0) lines.push(`Decisions: ${summary.decisionCount}`);
+    if (summary.leadCount > 0) lines.push(`New leads: ${summary.leadCount}`);
+    if (summary.topQuotes.length > 0) {
+      for (const q of summary.topQuotes.slice(0, 3)) {
+        lines.push(`> "${q}"`);
+      }
+    }
+  }
+
+  lines.push("", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+  const description = lines.filter((line): line is string => line !== null).join("\n");
+
+  // Discord embed description limit is 4096 chars. Truncate if needed.
+  const truncated = description.length > 4090 ? description.slice(0, 4087) + "..." : description;
+
+  await postToWebhookUrl(webhookUrl, {
+    content: "\"Non puo rimanere fra noi 6 sta cosa\" \u2014 Veronica",
     embeds: [
       createEmbed({
-        title: "📊 Weekly Revenue Summary",
-        description: lines.join("\n"),
+        title: `\uD83D\uDCCA Week of ${dateRange}`,
+        description: truncated,
         color: COLOR.BLURPLE,
       }),
     ],
@@ -543,14 +625,10 @@ export async function postWeeklyRevenueSummary(input?: {
   return summary;
 }
 
-async function postWebhook(input: {
-  content?: string;
-  embeds: DiscordEmbed[];
-}) {
-  if (!DISCORD_CUSTOMERS_WEBHOOK_URL) {
-    return;
-  }
-
+async function postToWebhookUrl(
+  webhookUrl: string,
+  input: { content?: string; embeds: DiscordEmbed[] },
+) {
   const payload: DiscordWebhookPayload = {
     username: "Basquio",
     avatar_url: BASQUIO_AVATAR_URL,
@@ -562,7 +640,7 @@ async function postWebhook(input: {
     payload.content = input.content;
   }
 
-  const response = await fetch(DISCORD_CUSTOMERS_WEBHOOK_URL, {
+  const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -570,8 +648,31 @@ async function postWebhook(input: {
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`[discord-customers] ${response.status} ${text}`.trim());
+    throw new Error(`[discord] ${response.status} ${text}`.trim());
   }
+}
+
+async function postWebhook(input: {
+  content?: string;
+  embeds: DiscordEmbed[];
+}) {
+  if (!DISCORD_CUSTOMERS_WEBHOOK_URL) {
+    return;
+  }
+  await postToWebhookUrl(DISCORD_CUSTOMERS_WEBHOOK_URL, input);
+}
+
+function formatWeekRange(start: Date, end: Date): string {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: CUSTOMERS_TIMEZONE,
+    month: "long",
+    day: "numeric",
+  });
+  const yearFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: CUSTOMERS_TIMEZONE,
+    year: "numeric",
+  });
+  return `${fmt.format(start)}\u2013${fmt.format(end)}, ${yearFmt.format(end)}`;
 }
 
 function createEmbed(embed: Omit<DiscordEmbed, "footer" | "timestamp">): DiscordEmbed {
@@ -820,6 +921,25 @@ async function getRevenueSnapshot(config: RuntimeConfig, email: string): Promise
   };
 }
 
+type DeckRunRow = {
+  id: string;
+  requested_by: string;
+  status: string;
+  author_model: string | null;
+  delivery_status: string | null;
+  cost_telemetry: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+type ManifestRow = { run_id: string; slide_count: number };
+type DownloadRow = { run_id: string; requested_by: string };
+type EngagementNotifRow = { notification_type: string; user_id: string };
+type CreditLedgerRow = { user_id: string; amount: number; reason: string };
+type TranscriptRow = { id: string; duration_seconds: number | null; key_quotes: string[] | null };
+type DecisionRow = { id: string };
+type CrmLeadRow = { id: string };
+
 async function buildWeeklyRevenueSummary(
   config: RuntimeConfig,
   occurredAt: Date,
@@ -828,7 +948,24 @@ async function buildWeeklyRevenueSummary(
   const weekStartIso = weekStart.toISOString();
   const emailIndex = await listAuthUsers(config);
 
-  const [signups, subscriptions, creditPackEvents, subscriptionRevenueEvents] = await Promise.all([
+  const [
+    signups,
+    subscriptions,
+    creditPackEvents,
+    subscriptionRevenueEvents,
+    weekRuns,
+    weekDownloads,
+    weekManifests,
+    weekEngagement,
+    weekCompletionEmails,
+    weekWelcomeEmails,
+    weekCreditLedger,
+    allRuns,
+    weekTranscripts,
+    weekDecisions,
+    weekLeads,
+  ] = await Promise.all([
+    // Existing revenue queries
     fetchRestRows<SignupRow>({
       ...config,
       table: "user_bootstrap_state",
@@ -846,18 +983,108 @@ async function buildWeeklyRevenueSummary(
     }),
     listWeeklyCreditPackRevenueEvents(emailIndex, weekStart),
     listWeeklySubscriptionRevenueEvents(emailIndex, weekStart),
+
+    // Product queries
+    fetchRestRows<DeckRunRow>({
+      ...config,
+      table: "deck_runs",
+      query: {
+        select: "id,requested_by,status,author_model,delivery_status,cost_telemetry,created_at,completed_at",
+        created_at: `gte.${weekStartIso}`,
+        order: "created_at.desc",
+      },
+    }).catch(() => [] as DeckRunRow[]),
+    fetchRestRows<DownloadRow>({
+      ...config,
+      table: "artifact_download_events",
+      query: {
+        select: "run_id,requested_by",
+        created_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as DownloadRow[]),
+    fetchRestRows<ManifestRow>({
+      ...config,
+      table: "artifact_manifests_v2",
+      query: {
+        select: "run_id,slide_count",
+        published_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as ManifestRow[]),
+    fetchRestRows<EngagementNotifRow>({
+      ...config,
+      table: "user_engagement_notifications",
+      query: {
+        select: "notification_type,user_id",
+        sent_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as EngagementNotifRow[]),
+    fetchRestRows<{ id: string }>({
+      ...config,
+      table: "deck_runs",
+      query: {
+        select: "id",
+        completion_email_sent_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as { id: string }[]),
+    fetchRestRows<{ user_id: string }>({
+      ...config,
+      table: "user_bootstrap_state",
+      query: {
+        select: "user_id",
+        welcome_email_sent_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as { user_id: string }[]),
+    fetchRestRows<CreditLedgerRow>({
+      ...config,
+      table: "credit_ledger",
+      query: {
+        select: "user_id,amount,reason",
+        created_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as CreditLedgerRow[]),
+
+    // All runs ever (for first-time vs returning calculation)
+    fetchRestRows<{ requested_by: string; created_at: string }>({
+      ...config,
+      table: "deck_runs",
+      query: {
+        select: "requested_by,created_at",
+        created_at: `lt.${weekStartIso}`,
+      },
+    }).catch(() => [] as { requested_by: string; created_at: string }[]),
+
+    // Collab queries
+    fetchRestRows<TranscriptRow>({
+      ...config,
+      table: "transcripts",
+      query: {
+        select: "id,duration_seconds,key_quotes",
+        started_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as TranscriptRow[]),
+    fetchRestRows<DecisionRow>({
+      ...config,
+      table: "decisions",
+      query: {
+        select: "id",
+        created_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as DecisionRow[]),
+    fetchRestRows<CrmLeadRow>({
+      ...config,
+      table: "crm_leads",
+      query: {
+        select: "id",
+        created_at: `gte.${weekStartIso}`,
+      },
+    }).catch(() => [] as CrmLeadRow[]),
   ]);
 
+  // ── Revenue (existing logic, unchanged) ──────────────────────────
   const signupCount = signups.filter((row) => isExternalUserId(emailIndex, row.user_id)).length;
   const newSubscriptions = subscriptions.filter((subscription) => {
-    if (!isExternalUserId(emailIndex, subscription.user_id)) {
-      return false;
-    }
-
-    if (!subscription.created_at || subscription.created_at < weekStartIso) {
-      return false;
-    }
-
+    if (!isExternalUserId(emailIndex, subscription.user_id)) return false;
+    if (!subscription.created_at || subscription.created_at < weekStartIso) return false;
     return subscription.status !== "incomplete";
   });
 
@@ -874,10 +1101,7 @@ async function buildWeeklyRevenueSummary(
     .join(", ");
 
   const currentMrr = subscriptions.reduce((total, subscription) => {
-    if (!isExternalUserId(emailIndex, subscription.user_id) || subscription.status !== "active") {
-      return total;
-    }
-
+    if (!isExternalUserId(emailIndex, subscription.user_id) || subscription.status !== "active") return total;
     return total + getMonthlyRecurringValue(
       normalizePlanId(subscription.plan),
       normalizeInterval(subscription.billing_interval),
@@ -889,6 +1113,192 @@ async function buildWeeklyRevenueSummary(
   const topCustomer = [...creditPackEvents, ...subscriptionRevenueEvents]
     .sort((left, right) => right.amount - left.amount)[0];
 
+  // ── Product metrics ──────────────────────────────────────────────
+  const externalRuns = weekRuns.filter((r) => isExternalUserId(emailIndex, r.requested_by));
+  const runsCompleted = externalRuns.filter((r) => r.status === "completed").length;
+  const runsFailed = externalRuns.filter((r) => r.status === "failed" || r.status === "terminated").length;
+  const completionRate = externalRuns.length > 0 ? Math.round(runsCompleted / externalRuns.length * 100) : 0;
+
+  // Model mix
+  const modelCounts = new Map<string, number>();
+  for (const run of externalRuns) {
+    const model = run.author_model ?? "unknown";
+    const label = model.includes("sonnet") ? "Sonnet"
+      : model.includes("opus") ? "Opus"
+      : model.includes("haiku") ? "Haiku"
+      : model;
+    modelCounts.set(label, (modelCounts.get(label) ?? 0) + 1);
+  }
+  const modelMixLabel = Array.from(modelCounts.entries())
+    .sort(([, a], [, b]) => b - a)
+    .map(([model, count]) => `${count} ${model}`)
+    .join(", ");
+
+  // Avg duration
+  const completedWithTime = externalRuns.filter(
+    (r) => r.status === "completed" && r.completed_at && r.created_at,
+  );
+  const avgDurationMin = completedWithTime.length > 0
+    ? completedWithTime.reduce((sum, r) => {
+        return sum + (new Date(r.completed_at!).getTime() - new Date(r.created_at).getTime());
+      }, 0) / completedWithTime.length / 60_000
+    : 0;
+
+  // Avg cost
+  const costs = completedWithTime.map((r) => {
+    try { return JSON.parse(r.cost_telemetry ?? "{}").estimatedCostUsd ?? 0; }
+    catch { return 0; }
+  }).filter((c: number) => c > 0);
+  const avgCostUsd = costs.length > 0 ? costs.reduce((a: number, b: number) => a + b, 0) / costs.length : 0;
+
+  // Slides
+  const completedRunIds = new Set(externalRuns.filter((r) => r.status === "completed").map((r) => r.id));
+  const totalSlides = weekManifests
+    .filter((m) => completedRunIds.has(m.run_id))
+    .reduce((sum, m) => sum + (m.slide_count ?? 0), 0);
+
+  // Downloads — tracking was deployed 2026-04-11T15:00:00Z.
+  // Runs that completed before that have no download data. Don't count them as "unclaimed".
+  const DOWNLOAD_TRACKING_FLOOR = "2026-04-11T15:00:00Z";
+  const downloadedRunIds = new Set(weekDownloads.map((d) => d.run_id));
+  const trackableCompletedRuns = externalRuns.filter(
+    (r) => r.status === "completed" && r.completed_at && r.completed_at >= DOWNLOAD_TRACKING_FLOOR,
+  );
+  const trackableRunIds = new Set(trackableCompletedRuns.map((r) => r.id));
+  const runsDownloaded = [...trackableRunIds].filter((id) => downloadedRunIds.has(id)).length;
+  const runsUnclaimed = trackableRunIds.size - runsDownloaded;
+
+  // ── User metrics ─────────────────────────────────────────────────
+  const totalExternalUsers = [...emailIndex.entries()]
+    .filter(([, email]) => !isTestCustomerEmail(email)).length;
+
+  const usersWhoRanThisWeek = new Set(
+    externalRuns.map((r) => r.requested_by),
+  );
+  const activeUsers = usersWhoRanThisWeek.size;
+
+  const usersWithOlderRuns = new Set(
+    allRuns
+      .filter((r) => isExternalUserId(emailIndex, r.requested_by))
+      .map((r) => r.requested_by),
+  );
+
+  let firstTimeRunners = 0;
+  let returningRunners = 0;
+  for (const userId of usersWhoRanThisWeek) {
+    if (usersWithOlderRuns.has(userId)) {
+      returningRunners++;
+    } else {
+      firstTimeRunners++;
+    }
+  }
+
+  // Users who have never run anything
+  const usersWhoEverRan = new Set([...usersWithOlderRuns, ...usersWhoRanThisWeek]);
+  const neverRanCount = totalExternalUsers - usersWhoEverRan.size;
+
+  // ── User activity lines ──────────────────────────────────────────
+  const userActivityLines: string[] = [];
+  const externalUserIds = [...emailIndex.entries()]
+    .filter(([, email]) => !isTestCustomerEmail(email))
+    .map(([id]) => id);
+
+  // Gather per-user status for users who did something this week
+  const activeUserDetails: Array<{ email: string; line: string; weight: number }> = [];
+  const ghostEmails: string[] = [];
+
+  for (const userId of externalUserIds) {
+    const email = emailIndex.get(userId) ?? "";
+    const firstName = email.split("@")[0];
+    const userRuns = externalRuns.filter((r) => r.requested_by === userId);
+    const userSignedUpThisWeek = signups.some((s) => s.user_id === userId);
+    const userDownloaded = weekDownloads.some((d) => d.requested_by === userId);
+    const completed = userRuns.some((r) => r.status === "completed");
+    const failed = userRuns.some((r) => r.status === "failed" || r.status === "terminated");
+
+    if (userRuns.length > 0) {
+      // User ran something this week.
+      // Only judge download status for runs that completed after tracking was deployed.
+      const hasTrackableCompletedRun = userRuns.some(
+        (r) => r.status === "completed" && r.completed_at && r.completed_at >= DOWNLOAD_TRACKING_FLOOR,
+      );
+      const canJudgeDownload = hasTrackableCompletedRun;
+
+      if (completed && userDownloaded) {
+        activeUserDetails.push({ email, line: `\u2705 ${firstName} \u2014 ran, downloaded`, weight: 3 });
+      } else if (completed && !userDownloaded && canJudgeDownload) {
+        activeUserDetails.push({ email, line: `\u26A0\uFE0F ${firstName} \u2014 ran, never downloaded`, weight: 4 });
+      } else if (completed && !canJudgeDownload) {
+        activeUserDetails.push({ email, line: `\u2705 ${firstName} \u2014 ran`, weight: 3 });
+      } else if (failed && !completed) {
+        activeUserDetails.push({ email, line: `\u274C ${firstName} \u2014 failed, hasn't retried`, weight: 5 });
+      } else if (failed && completed) {
+        activeUserDetails.push({ email, line: `\u2705 ${firstName} \u2014 ran after retry`, weight: 3 });
+      }
+    } else if (userSignedUpThisWeek) {
+      // Signed up this week but never ran
+      ghostEmails.push(firstName);
+    }
+  }
+
+  // Sort: problems first (higher weight), then successes
+  activeUserDetails.sort((a, b) => b.weight - a.weight);
+  for (const detail of activeUserDetails.slice(0, 15)) {
+    userActivityLines.push(detail.line);
+  }
+  if (activeUserDetails.length > 15) {
+    userActivityLines.push(`... and ${activeUserDetails.length - 15} more`);
+  }
+  if (ghostEmails.length > 0) {
+    userActivityLines.push(`\uD83D\uDC7B ${ghostEmails.join(", ")} \u2014 signed up, nothing`);
+  }
+
+  // ── Engagement emails ────────────────────────────────────────────
+  const emailsSentBreakdown: string[] = [];
+  const welcomeCount = weekWelcomeEmails.length;
+  const completionEmailCount = weekCompletionEmails.length;
+
+  const engagementCounts = new Map<string, number>();
+  for (const notif of weekEngagement) {
+    const type = notif.notification_type;
+    engagementCounts.set(type, (engagementCounts.get(type) ?? 0) + 1);
+  }
+
+  const emailLabels: Record<string, string> = {
+    low_credits: "Low credits",
+    run_waiting: "Still waiting",
+    unfinished_setup: "Setup reminder",
+  };
+
+  const emailParts: string[] = [];
+  if (welcomeCount > 0) emailParts.push(`Welcome: ${welcomeCount}`);
+  if (completionEmailCount > 0) emailParts.push(`Completion: ${completionEmailCount}`);
+  for (const [type, count] of engagementCounts) {
+    emailParts.push(`${emailLabels[type] ?? type}: ${count}`);
+  }
+  if (emailParts.length > 0) {
+    emailsSentBreakdown.push(emailParts.join(" \u00B7 "));
+  }
+
+  // ── Collab metrics ───────────────────────────────────────────────
+  const sessionCount = weekTranscripts.length;
+  const sessionMinutes = Math.round(
+    weekTranscripts.reduce((sum, t) => sum + (t.duration_seconds ?? 0), 0) / 60,
+  );
+  const allQuotes = weekTranscripts.flatMap((t) => t.key_quotes ?? []);
+  const decisionCount = weekDecisions.length;
+  const leadCount = weekLeads.length;
+
+  // ── Credit metrics ───────────────────────────────────────────────
+  const creditsConsumed = Math.abs(
+    weekCreditLedger
+      .filter((e) => e.amount < 0 && isExternalUserId(emailIndex, e.user_id))
+      .reduce((sum, e) => sum + e.amount, 0),
+  );
+  const creditsGranted = weekCreditLedger
+    .filter((e) => e.amount > 0 && isExternalUserId(emailIndex, e.user_id))
+    .reduce((sum, e) => sum + e.amount, 0);
+
   return {
     signupCount,
     newSubscriberCount: newSubscriptions.length,
@@ -898,6 +1308,29 @@ async function buildWeeklyRevenueSummary(
     currentMrr,
     totalRevenue: creditPackRevenue + subscriptionRevenue,
     topCustomerLabel: topCustomer ? `${topCustomer.email} (${topCustomer.label})` : "None yet",
+    runsCompleted,
+    runsFailed,
+    completionRate,
+    modelMixLabel,
+    avgDurationMin,
+    avgCostUsd,
+    totalSlides,
+    runsDownloaded,
+    runsUnclaimed,
+    activeUsers,
+    totalExternalUsers,
+    firstTimeRunners,
+    returningRunners,
+    neverRanCount,
+    userActivityLines,
+    emailsSentBreakdown,
+    sessionCount,
+    sessionMinutes,
+    decisionCount,
+    leadCount,
+    topQuotes: allQuotes.slice(0, 5),
+    creditsConsumed,
+    creditsGranted,
   };
 }
 

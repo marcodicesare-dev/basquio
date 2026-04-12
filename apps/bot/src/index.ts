@@ -44,8 +44,8 @@ client.once(Events.ClientReady, async (c) => {
     });
   }
 
-  // Schedule weekly digest — Monday 9:00 CET
-  scheduleWeeklyDigest();
+  // Weekly digest now runs via the Vercel cron (unified digest in discord-customers.ts).
+  // scheduleWeeklyDigest();
 });
 
 // ── Voice State Updates ────────────────────────────────────────────
