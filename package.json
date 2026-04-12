@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "qa": "pnpm qa:basquio",
     "qa:basquio": "tsx scripts/qa-context.ts",
+    "test:notify-completion": "tsx scripts/test-notify-completion.ts",
     "test:code-exec": "tsx scripts/test-code-exec.ts",
     "test:run": "tsx scripts/test-run.ts",
     "retry:run-attempt": "tsx scripts/retry-run-attempt.ts",
