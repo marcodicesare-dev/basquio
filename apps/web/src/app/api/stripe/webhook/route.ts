@@ -267,7 +267,9 @@ async function handleCreditPackPurchase(
       packId,
       pricingTier: normalizePackPricingTier(session.metadata?.pack_pricing_tier),
     }))
-    .catch(() => {});
+    .catch((error) => {
+      logDiscordNotificationFailure("credit purchase", userId, error);
+    });
 
   console.log(`[stripe-webhook] granted ${pack.credits} credits to user ${userId} (pack=${packId}, pi=${paymentIntentId})`);
 }
@@ -346,7 +348,9 @@ async function handleSubscriptionChange(
           fromInterval: previousInterval,
           toInterval: interval,
         }))
-        .catch(() => {});
+        .catch((error) => {
+          logDiscordNotificationFailure("plan upgrade", userId, error);
+        });
     } else if (isNewSubscriptionStart) {
       void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
         .then((email) => notifySubscriptionStarted({
@@ -356,7 +360,9 @@ async function handleSubscriptionChange(
           creditsIncluded: planConfig.credits,
           previousStatus,
         }))
-        .catch(() => {});
+        .catch((error) => {
+          logDiscordNotificationFailure("subscription started", userId, error);
+        });
     }
   }
 
@@ -410,7 +416,9 @@ async function handleSubscriptionCanceled(
       email,
       plan: existingSubscription?.plan ?? null,
     }))
-    .catch(() => {});
+    .catch((error) => {
+      logDiscordNotificationFailure("subscription canceled", userId, error);
+    });
 
   console.log(`[stripe-webhook] subscription canceled ${subscription.id} for user ${userId}`);
 }
@@ -529,7 +537,9 @@ async function handleInvoicePaid(
       plan: normalizedPlan,
       creditsGranted: creditAmount,
     }))
-    .catch(() => {});
+    .catch((error) => {
+      logDiscordNotificationFailure("subscription renewed", userId, error);
+    });
 
   console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${normalizedPlan}, interval=${isAnnual ? "annual" : "monthly"}, event=${eventId})`);
 }
@@ -575,7 +585,9 @@ async function handleInvoicePaymentFailed(
         email,
         plan: invoice.subscription_details?.metadata?.plan ?? invoice.metadata?.plan ?? existingSubscription?.plan ?? null,
       }))
-      .catch(() => {});
+      .catch((error) => {
+        logDiscordNotificationFailure("payment failed", userId, error);
+      });
 
     console.log(`[stripe-webhook] marked subscription past_due for user ${userId} (inv=${invoice.id})`);
   }
@@ -588,6 +600,10 @@ function getSupabaseConfig() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) return null;
   return { supabaseUrl, serviceKey };
+}
+
+function logDiscordNotificationFailure(context: string, userId: string, error: unknown) {
+  console.error(`[stripe-webhook] Discord ${context} notification failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`);
 }
 
 async function resolveUserEmail(
