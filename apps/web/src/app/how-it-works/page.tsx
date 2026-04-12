@@ -7,7 +7,7 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "How Basquio Works — From Data Upload to Finished Analysis Deck",
+  title: "How Basquio Works - From Data Upload to Finished Deck",
   description:
     "Upload CSV or Excel files, Basquio analyzes the data, computes metrics, generates real charts, and delivers a branded PPTX, narrative report, and data workbook in one automated workflow.",
   alternates: { canonical: "https://basquio.com/how-it-works" },

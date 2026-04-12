@@ -6,7 +6,7 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "About Basquio — Built by Analysts and Brand Managers Who Lived the Problem",
+  title: "About Basquio",
   description:
     "Basquio was built by market research analysts and brand managers who spent years building category review decks manually. Now the workflow is automated.",
   alternates: { canonical: "https://basquio.com/about" },

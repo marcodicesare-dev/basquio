@@ -9,12 +9,12 @@ import { ScrollWorkflowShowcase } from "@/components/scroll-workflow-showcase";
 import { SlideShowcase } from "@/components/slide-showcase";
 
 export const metadata: Metadata = {
-  title: "Basquio — Turn Data into Finished Analysis Decks | AI Data-to-Presentation Tool",
+  title: "Basquio - Turn Data into Finished Analysis Decks",
   description:
     "Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output. The only AI tool that analyzes data AND builds the presentation.",
   alternates: { canonical: "https://basquio.com" },
   openGraph: {
-    title: "Basquio — Turn Data into Finished Analysis Decks",
+    title: "Basquio - Turn Data into Finished Analysis Decks",
     description:
       "Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output.",
   },

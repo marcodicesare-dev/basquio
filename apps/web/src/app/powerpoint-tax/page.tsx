@@ -80,7 +80,7 @@ const faqJsonLd = {
 };
 
 export const metadata: Metadata = {
-  title: "The PowerPoint Tax — How Much Are You Losing to Manual Decks?",
+  title: "The PowerPoint Tax Calculator",
   description:
     "Calculate how many hours, weeks, and dollars your team loses to manual deck production every year. The average analyst spends 580 hours a year on manual decks, or about 14 work weeks.",
   keywords: [
@@ -105,7 +105,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: "The PowerPoint Tax — How Much Are You Losing to Manual Decks?",
+    title: "The PowerPoint Tax Calculator | Basquio",
     description:
       "Calculate how many hours, weeks, and dollars your team loses to manual deck production every year. The average analyst gives up about 14 work weeks.",
     type: "website",
@@ -121,7 +121,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "The PowerPoint Tax — How Much Are You Losing to Manual Decks?",
+    title: "The PowerPoint Tax Calculator | Basquio",
     description:
       "Calculate how many hours, weeks, and dollars your team loses to manual deck production every year. The average analyst gives up about 14 work weeks.",
     images: ["/powerpoint-tax/opengraph-image"],

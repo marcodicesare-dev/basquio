@@ -8,7 +8,7 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 import { PricingPlans } from "@/components/pricing-plans";
 
 export const metadata: Metadata = {
-  title: "Pricing — Basquio",
+  title: "Pricing",
   description:
     "Start free with 30 credits. Upgrade to Starter at $19/mo or Pro at $149/mo when the workflow becomes recurring. Basquio turns spreadsheets into finished analysis decks, narratives, and workbooks.",
   alternates: { canonical: "https://basquio.com/pricing" },

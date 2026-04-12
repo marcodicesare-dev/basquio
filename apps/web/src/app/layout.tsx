@@ -20,7 +20,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://basquio.com"),
   title: {
-    default: "Basquio — Turn Data into Finished Analysis Decks",
+    default: "Basquio - Turn Data into Finished Analysis Decks",
     template: "%s | Basquio",
   },
   description:
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     siteName: "Basquio",
-    title: "Basquio — Turn Data into Finished Analysis Decks",
+    title: "Basquio - Turn Data into Finished Analysis Decks",
     description:
       "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
     images: [{ url: "/brand/png/logo/basquio-logo-dark-bg-4x.png", width: 1200, height: 630, alt: "Basquio" }],
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     site: "@basquio",
     creator: "@basquio",
-    title: "Basquio — Turn Data into Finished Analysis Decks",
+    title: "Basquio - Turn Data into Finished Analysis Decks",
     description:
       "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
     images: ["/brand/png/logo/basquio-logo-dark-bg-4x.png"],
