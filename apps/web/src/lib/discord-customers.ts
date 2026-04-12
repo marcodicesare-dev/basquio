@@ -130,6 +130,11 @@ type CreditPurchaseInput = {
   pricingTier?: PackPricingTier | null;
 };
 
+type TemplateFeePaymentInput = {
+  email: string;
+  amountUsd: number;
+};
+
 type SubscriptionStartedInput = {
   email: string;
   plan: string;
@@ -262,6 +267,38 @@ export async function notifyCreditPurchase(input: CreditPurchaseInput): Promise<
   }
 
   await postWebhook({ content, embeds });
+}
+
+export async function notifyTemplateFeePayment(input: TemplateFeePaymentInput): Promise<void> {
+  if (!DISCORD_CUSTOMERS_WEBHOOK_URL) {
+    return;
+  }
+
+  const email = input.email.trim();
+  const amountLabel = formatUsd(input.amountUsd);
+  const embeds: DiscordEmbed[] = [
+    createEmbed({
+      title: "🎨 Template fee paid",
+      description: `**${email}** paid **${amountLabel}** for custom template access`,
+      color: COLOR.EMERALD,
+      fields: [
+        { name: "Type", value: "Template fee", inline: true },
+        { name: "Amount", value: amountLabel, inline: true },
+      ],
+    }),
+  ];
+
+  if (!isTestCustomerEmail(email)) {
+    const firstRevenueMilestone = await buildFirstRevenueMilestone({
+      email,
+      amountLabel,
+    });
+    if (firstRevenueMilestone) {
+      embeds.push(firstRevenueMilestone);
+    }
+  }
+
+  await postWebhook({ embeds });
 }
 
 export async function notifySubscriptionStarted(input: SubscriptionStartedInput): Promise<void> {
@@ -484,7 +521,7 @@ export async function postWeeklyRevenueSummary(input?: {
     "━━━━━━━━━━━━━━━━━━━━━━━━",
     `New signups this week: ${summary.signupCount}`,
     `New subscribers: ${summary.newSubscriberCount}${summary.subscriberBreakdownLabel ? ` (${summary.subscriberBreakdownLabel})` : ""}`,
-    `Credit packs sold: ${summary.creditPackCount} (${formatUsd(summary.creditPackRevenue)} total)`,
+    `One-time payments: ${summary.creditPackCount} (${formatUsd(summary.creditPackRevenue)} total)`,
     `MRR: ${formatUsd(summary.currentMrr)}`,
     `Total revenue this week: ${formatUsd(summary.totalRevenue)}`,
     "",
@@ -873,7 +910,7 @@ async function listWeeklyCreditPackRevenueEvents(
   const created = { gte: Math.floor(weekStart.getTime() / 1000) };
 
   for await (const session of stripe.checkout.sessions.list({ limit: 100, created })) {
-    if (session.payment_status !== "paid" || session.metadata?.type === "subscription" || session.metadata?.type === "template_fee") {
+    if (session.payment_status !== "paid" || session.metadata?.type === "subscription") {
       continue;
     }
 
@@ -888,7 +925,11 @@ async function listWeeklyCreditPackRevenueEvents(
     }
 
     const packId = session.metadata?.pack_id as CreditPackId | undefined;
-    const label = packId ? `${CREDIT_PACK_CATALOG[packId].credits} credit pack` : "Credit pack";
+    const label = session.metadata?.type === "template_fee"
+      ? "Template fee"
+      : packId
+        ? `${CREDIT_PACK_CATALOG[packId].credits} credit pack`
+        : "Credit pack";
 
     events.push({
       amount: (session.amount_total ?? 0) / 100,

@@ -64,7 +64,9 @@ export async function bootstrapViewerAccount(
     void notifySignup({
       email: user.email,
       sourceLabel: formatSignupSourceLabel(signupAttribution),
-    }).catch(() => {});
+    }).catch((error) => {
+      console.error(`[bootstrap] Discord signup notification failed for ${user.email}: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   const welcomeEmailPreviouslySent = Boolean(existingState?.welcome_email_sent_at);

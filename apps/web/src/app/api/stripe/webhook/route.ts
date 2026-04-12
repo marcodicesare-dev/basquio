@@ -14,6 +14,7 @@ import {
   notifyPlanUpgrade,
   notifySubscriptionRenewed,
   notifySubscriptionStarted,
+  notifyTemplateFeePayment,
 } from "@/lib/discord-customers";
 import { getStripe, CREDIT_PACKS, PLAN_CREDITS } from "@/lib/stripe";
 import { createServiceSupabaseClient, fetchRestRows } from "@/lib/supabase/admin";
@@ -169,6 +170,7 @@ async function handleTemplateFeeCheckoutCompleted(
   config: { supabaseUrl: string; serviceKey: string },
   session: {
     id: string;
+    amount_total?: number | null;
     metadata?: Record<string, string> | null;
   },
 ) {
@@ -207,6 +209,15 @@ async function handleTemplateFeeCheckoutCompleted(
       paid_at: new Date().toISOString(),
     },
   });
+
+  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
+    .then((email) => notifyTemplateFeePayment({
+      email,
+      amountUsd: (session.amount_total ?? 0) / 100,
+    }))
+    .catch((error) => {
+      console.error(`[stripe-webhook] template fee Discord notification failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`);
+    });
 }
 
 async function handleCreditPackPurchase(
