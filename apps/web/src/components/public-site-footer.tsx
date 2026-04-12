@@ -23,6 +23,7 @@ export function PublicSiteFooter() {
           <p className="site-footer-column-title">Resources</p>
           <Link href="/get-started">Get started</Link>
           <Link href="/how-it-works">Full pipeline</Link>
+          <Link href="/library">Output library</Link>
           <Link href="/about">About</Link>
           <a href="mailto:marco@basquio.com">Contact</a>
         </div>
