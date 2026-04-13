@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as tus from "tus-js-client";
 
 import type { GenerationRequest } from "@basquio/types";
@@ -209,12 +209,6 @@ type TourRect = {
   height: number;
 };
 
-type TourCardPosition = {
-  top: number;
-  left: number;
-  width: number;
-};
-
 type TourStepId = (typeof TOUR_STEPS)[number]["id"];
 
 type TourProgressState = {
@@ -227,8 +221,6 @@ type TourProgressState = {
 };
 
 const TOUR_AUTO_ADVANCE_DELAY_MS = 600;
-const TOUR_CARD_ESTIMATED_HEIGHT = 248;
-
 const TOUR_STEPS = [
   {
     id: "report-type",
@@ -325,7 +317,6 @@ export function GenerationForm({
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
   const [tourRect, setTourRect] = useState<TourRect | null>(null);
-  const [tourCardPosition, setTourCardPosition] = useState<TourCardPosition | null>(null);
   const [hostedEvidence, setHostedEvidence] = useState<HostedEvidenceState>({
     status: "idle",
     filesKey: null,
@@ -348,6 +339,37 @@ export function GenerationForm({
   const activeTourStep = isTourOpen ? TOUR_STEPS[tourIndex] : null;
   const activeTourStepId = activeTourStep?.id ?? null;
   const activeTourStepComplete = activeTourStep ? isTourStepComplete(activeTourStep.id, tourProgressState) : false;
+  const getTourTarget = useCallback((stepId: (typeof TOUR_STEPS)[number]["id"]) => {
+    if (stepId === "report-type") return reportTypeRef.current;
+    if (stepId === "upload") return uploadStepRef.current;
+    if (stepId === "business-context") return businessContextRef.current;
+    if (stepId === "audience-objective") return audienceObjectiveRef.current;
+    if (stepId === "review") return reviewStepRef.current;
+    return null;
+  }, []);
+  const measureActiveTour = useCallback((step: (typeof TOUR_STEPS)[number]) => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    const target = getTourTarget(step.id);
+
+    if (!target) {
+      return false;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const paddedRect = {
+      top: Math.max(12, rect.top - 10),
+      left: Math.max(12, rect.left - 10),
+      width: rect.width + 20,
+      height: rect.height + 20,
+    };
+
+    setTourRect((current) => (areTourRectsEqual(current, paddedRect) ? current : paddedRect));
+
+    return true;
+  }, [getTourTarget]);
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
@@ -355,19 +377,9 @@ export function GenerationForm({
   const hostedEvidencePromiseRef = useRef<Promise<HostedEvidenceDraft> | null>(null);
   const hostedEvidenceRequestRef = useRef(0);
 
-  function getTourTarget(stepId: (typeof TOUR_STEPS)[number]["id"]) {
-    if (stepId === "report-type") return reportTypeRef.current;
-    if (stepId === "upload") return uploadStepRef.current;
-    if (stepId === "business-context") return businessContextRef.current;
-    if (stepId === "audience-objective") return audienceObjectiveRef.current;
-    if (stepId === "review") return reviewStepRef.current;
-    return null;
-  }
-
   function closeTour(markSeen = true) {
     setIsTourOpen(false);
     setTourRect(null);
-    setTourCardPosition(null);
     setTourAutoAdvanceHoldId(null);
 
     if (typeof window !== "undefined" && markSeen) {
@@ -530,7 +542,7 @@ export function GenerationForm({
     }
   }, [recipePrefill, startTour]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isTourOpen) {
       return;
     }
@@ -549,59 +561,7 @@ export function GenerationForm({
     const shouldMoveForward = desiredFormStep > currentStep && !stepComplete;
     if (shouldMoveBackward || shouldMoveForward) {
       setCurrentStep(desiredFormStep);
-      return;
     }
-
-    function measureActiveTour() {
-      const target = getTourTarget(currentTourStep.id);
-
-      if (!target) {
-        return;
-      }
-
-      const rect = target.getBoundingClientRect();
-      const paddedRect = {
-        top: Math.max(12, rect.top - 10),
-        left: Math.max(12, rect.left - 10),
-        width: rect.width + 20,
-        height: rect.height + 20,
-      };
-      const cardWidth = Math.min(360, window.innerWidth - 32);
-      const availableBelow = window.innerHeight - (paddedRect.top + paddedRect.height) - 16;
-      const availableAbove = paddedRect.top - 16;
-      const showBelow = availableBelow >= TOUR_CARD_ESTIMATED_HEIGHT || availableBelow >= availableAbove;
-      const preferredTop = showBelow
-        ? paddedRect.top + paddedRect.height + 16
-        : paddedRect.top - TOUR_CARD_ESTIMATED_HEIGHT - 16;
-      const top = Math.min(
-        Math.max(16, preferredTop),
-        Math.max(16, window.innerHeight - TOUR_CARD_ESTIMATED_HEIGHT - 16),
-      );
-      const left = Math.min(
-        Math.max(16, paddedRect.left),
-        Math.max(16, window.innerWidth - cardWidth - 16),
-      );
-
-      setTourRect(paddedRect);
-      setTourCardPosition({ top, left, width: cardWidth });
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      const target = getTourTarget(TOUR_STEPS[tourIndex].id);
-      target?.scrollIntoView({ block: "center", behavior: "smooth" });
-      window.setTimeout(measureActiveTour, 180);
-    }, 40);
-
-    const handleReposition = () => measureActiveTour();
-
-    window.addEventListener("resize", handleReposition);
-    window.addEventListener("scroll", handleReposition, true);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      window.removeEventListener("resize", handleReposition);
-      window.removeEventListener("scroll", handleReposition, true);
-    };
   }, [
     currentStep,
     isSubmitting,
@@ -612,6 +572,61 @@ export function GenerationForm({
     brief.objective,
     hasEvidence,
     selectedReportType,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!isTourOpen || !activeTourStep) {
+      return;
+    }
+
+    const target = getTourTarget(activeTourStep.id);
+
+    if (!target) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const rect = target.getBoundingClientRect();
+      const viewportPadding = 24;
+      const isOutsideViewport = rect.top < viewportPadding || rect.bottom > window.innerHeight - viewportPadding;
+
+      if (isOutsideViewport) {
+        target.scrollIntoView({
+          block: "center",
+          inline: "nearest",
+        });
+      }
+    }
+
+    measureActiveTour(activeTourStep);
+    const rafId = window.requestAnimationFrame(() => {
+      measureActiveTour(activeTourStep);
+    });
+
+    const handleReposition = () => {
+      measureActiveTour(activeTourStep);
+    };
+    const resizeObserver = new ResizeObserver(() => {
+      measureActiveTour(activeTourStep);
+    });
+
+    resizeObserver.observe(target);
+
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [
+    currentStep,
+    isTourOpen,
+    activeTourStep,
+    getTourTarget,
+    measureActiveTour,
   ]);
 
   useEffect(() => {
@@ -1560,7 +1575,7 @@ export function GenerationForm({
       {error ? <div className="panel danger-panel">{error}</div> : null}
       {templateFeeMessage ? <div className="panel success-panel">{templateFeeMessage}</div> : null}
 
-      {isTourOpen && tourCardPosition ? (
+      {isTourOpen ? (
         <div className="tour-overlay" aria-hidden="true">
           {tourRect ? (
             <div
@@ -1578,11 +1593,6 @@ export function GenerationForm({
             className={`tour-card panel${activeTourStepComplete ? " tour-card-complete" : ""}`}
             role="dialog"
             aria-label="Guided setup"
-            style={{
-              top: `${tourCardPosition.top}px`,
-              left: `${tourCardPosition.left}px`,
-              width: `${tourCardPosition.width}px`,
-            }}
           >
             <div className="tour-card-head">
               <span>{String(tourIndex + 1).padStart(2, "0")} / {String(TOUR_STEPS.length).padStart(2, "0")}</span>
@@ -1666,6 +1676,19 @@ function isTourStepComplete(stepId: TourStepId, state: TourProgressState) {
   }
 
   return false;
+}
+
+function areTourRectsEqual(current: TourRect | null, next: TourRect) {
+  if (!current) {
+    return false;
+  }
+
+  return (
+    Math.round(current.top) === Math.round(next.top) &&
+    Math.round(current.left) === Math.round(next.left) &&
+    Math.round(current.width) === Math.round(next.width) &&
+    Math.round(current.height) === Math.round(next.height)
+  );
 }
 
 function clampTargetSlideCount(value: number) {

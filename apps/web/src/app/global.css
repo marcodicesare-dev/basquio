@@ -2915,6 +2915,10 @@ textarea {
   z-index: 82;
   display: grid;
   gap: 16px;
+  top: 24px;
+  right: 24px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
   padding: 18px;
   border: 1px solid rgba(11, 12, 12, 0.06);
   border-radius: 14px;
@@ -2924,8 +2928,9 @@ textarea {
     0 12px 34px rgba(11, 12, 12, 0.12),
     0 1px 0 rgba(255, 255, 255, 0.72) inset;
   backdrop-filter: blur(10px);
+  overflow: auto;
   pointer-events: auto;
-  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+  transition: border-color 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
 }
 
 .tour-card-complete {
@@ -2933,7 +2938,6 @@ textarea {
   box-shadow:
     0 14px 36px rgba(11, 12, 12, 0.14),
     0 0 0 1px rgba(26, 106, 255, 0.12);
-  transform: translateY(-2px) scale(1.01);
 }
 
 .tour-card-head {
@@ -3063,6 +3067,17 @@ textarea {
 .tour-card .button.small.secondary,
 .tour-card .button.small {
   min-width: 84px;
+}
+
+@media (max-width: 900px) {
+  .tour-card {
+    top: auto;
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    width: auto;
+    max-height: min(48vh, 420px);
+  }
 }
 
 @keyframes tour-complete-pulse {
