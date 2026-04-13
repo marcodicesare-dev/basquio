@@ -542,7 +542,9 @@ export function GenerationForm({
       objective: brief.objective,
       isSubmitting,
     });
-    if (currentStep !== desiredFormStep && !stepComplete) {
+    const shouldMoveBackward = desiredFormStep < currentStep;
+    const shouldMoveForward = desiredFormStep > currentStep && !stepComplete;
+    if (shouldMoveBackward || shouldMoveForward) {
       setCurrentStep(desiredFormStep);
       return;
     }
@@ -839,6 +841,9 @@ export function GenerationForm({
     }
     setError(null);
     setCurrentStep(1);
+    if (isTourOpen && activeTourStepId === "report-type") {
+      setTourIndex(1);
+    }
   }
 
   function goToNextStep() {
