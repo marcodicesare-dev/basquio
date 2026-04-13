@@ -1,4 +1,5 @@
 import { createServiceSupabaseClient, fetchRestRows, patchRestRows } from "./supabase";
+import { sendResendHtmlEmail, type ResendSendResult } from "./resend";
 
 export type NotifyConfig = {
   supabaseUrl: string;
@@ -118,7 +119,7 @@ export async function notifyRunCompletionIfRequested(
       lastFailureAt: emailContext.lastFailureAt,
       briefExcerpt: emailContext.briefExcerpt,
     });
-    if (!sent) {
+    if (sent.status === "rejected") {
       await releaseCompletionEmailClaim(config, run.id, claimedAt);
     }
   } catch (error) {
@@ -229,40 +230,27 @@ export async function sendRunDeliveryEmail(
     lastFailureAt?: string | null;
     briefExcerpt?: string | null;
   },
-): Promise<boolean> {
+): Promise<ResendSendResult> {
   const progressUrl = `https://basquio.com/jobs/${params.runId}`;
   const previewUrls = await resolveSignedPreviewUrls(config, params.runId);
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.resendApiKey}`,
-    },
-    body: JSON.stringify({
-      from: "Marco at Basquio <reports@basquio.com>",
-      to: [params.to],
-      subject: buildRunEmailSubject(params),
-      html: buildRunEmailHtml({
-        progressUrl,
-        previewUrls,
-        slideCount: params.slideCount,
-        headline: params.headline ?? null,
-        variant: params.variant,
-        firstName: params.firstName ?? null,
-        creditsRemaining: params.creditsRemaining ?? null,
-        lastFailureAt: params.lastFailureAt ?? null,
-        briefExcerpt: params.briefExcerpt ?? null,
-      }),
+  return sendResendHtmlEmail({
+    apiKey: config.resendApiKey,
+    from: "Marco at Basquio <reports@basquio.com>",
+    to: [params.to],
+    idempotencyKey: `run-email-${params.variant}-${params.runId}`,
+    subject: buildRunEmailSubject(params),
+    html: buildRunEmailHtml({
+      progressUrl,
+      previewUrls,
+      slideCount: params.slideCount,
+      headline: params.headline ?? null,
+      variant: params.variant,
+      firstName: params.firstName ?? null,
+      creditsRemaining: params.creditsRemaining ?? null,
+      lastFailureAt: params.lastFailureAt ?? null,
+      briefExcerpt: params.briefExcerpt ?? null,
     }),
   });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    console.warn(`[basquio] Resend API ${response.status}: ${body}`);
-    return false;
-  }
-
-  return true;
 }
 
 async function resolveSignedPreviewUrls(

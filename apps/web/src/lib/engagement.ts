@@ -2,6 +2,7 @@ import { sendRunDeliveryEmail, resolveUserEmail } from "@basquio/workflows/notif
 
 import { CREDIT_PACKS_CONFIG, PLAN_CONFIG } from "@/lib/billing-config";
 import { calculateRunCredits } from "@/lib/credits";
+import { sendResendHtmlEmail, type ResendSendResult } from "@/lib/resend";
 import { deleteRestRows, fetchRestRows } from "@/lib/supabase/admin";
 
 type SupabaseConfig = {
@@ -16,6 +17,7 @@ type EngagementConfig = SupabaseConfig & {
 type NotificationType = "low_credits" | "run_waiting" | "unfinished_setup";
 
 export const LOW_CREDIT_THRESHOLD = calculateRunCredits(10, "claude-sonnet-4-6");
+export const DOWNLOAD_TRACKING_FLOOR = "2026-04-11T15:00:00Z";
 
 type SourceFileRow = {
   id: string;
@@ -94,16 +96,17 @@ export async function maybeSendLowCreditReminder(
     }
 
     const sent = await sendResendEmail(config.resendApiKey, {
+      idempotencyKey: notificationKey,
       to: email,
       subject: `You have ${input.balance} credits left on Basquio`,
       html: buildLowCreditHtml(input.balance),
     });
 
-    if (!sent) {
+    if (sent.status === "rejected") {
       throw new Error("Resend send failed.");
     }
 
-    return true;
+    return sent.status === "sent";
   } catch {
     await releaseEngagementNotification(config, notificationKey);
     return false;
@@ -148,11 +151,11 @@ export async function sendWaitingRunReminder(
       variant: "waiting",
     });
 
-    if (!sent) {
+    if (sent.status === "rejected") {
       throw new Error("Waiting reminder send failed.");
     }
 
-    return true;
+    return sent.status === "sent";
   } catch {
     await releaseEngagementNotification(config, notificationKey);
     return false;
@@ -189,6 +192,7 @@ export async function sendIncompleteSetupReminder(
     }
 
     const sent = await sendResendEmail(config.resendApiKey, {
+      idempotencyKey: notificationKey,
       to: email,
       subject: input.hasTemplateUpload
         ? "Your Basquio template is saved"
@@ -196,11 +200,11 @@ export async function sendIncompleteSetupReminder(
       html: buildIncompleteSetupHtml(input),
     });
 
-    if (!sent) {
+    if (sent.status === "rejected") {
       throw new Error("Incomplete setup email failed.");
     }
 
-    return true;
+    return sent.status === "sent";
   } catch {
     await releaseEngagementNotification(config, notificationKey);
     return false;
@@ -217,7 +221,7 @@ export async function listCompletedRunsWithoutDownloads(
     table: "deck_runs",
     query: {
       select: "id,requested_by,completed_at,objective",
-      completed_at: `lt.${olderThanIso}`,
+      and: `(completed_at.lt.${olderThanIso},completed_at.gte.${DOWNLOAD_TRACKING_FLOOR})`,
       order: "completed_at.asc",
       limit: String(limit),
     },
@@ -398,32 +402,20 @@ async function postRow(
 async function sendResendEmail(
   resendApiKey: string,
   input: {
+    idempotencyKey?: string;
     to: string;
     subject: string;
     html: string;
   },
-) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${resendApiKey}`,
-    },
-    body: JSON.stringify({
-      from: "Marco at Basquio <reports@basquio.com>",
-      to: [input.to],
-      subject: input.subject,
-      html: input.html,
-    }),
+) : Promise<ResendSendResult> {
+  return sendResendHtmlEmail({
+    apiKey: resendApiKey,
+    from: "Marco at Basquio <reports@basquio.com>",
+    to: [input.to],
+    idempotencyKey: input.idempotencyKey,
+    subject: input.subject,
+    html: input.html,
   });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    console.warn(`[basquio] Resend API ${response.status}: ${body}`);
-    return false;
-  }
-
-  return true;
 }
 
 function buildLowCreditHtml(balance: number) {

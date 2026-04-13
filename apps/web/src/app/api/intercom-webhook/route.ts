@@ -2,6 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { NextResponse } from "next/server";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import {
+  claimServiceIdempotencyKey,
+  completeServiceIdempotencyKey,
+  releaseServiceIdempotencyKey,
+} from "@/lib/idempotency-claims";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,7 +169,30 @@ export async function POST(request: Request) {
   const customerEmail = customerIdentity.email;
   const status = normalizeConversationStatus(conversation.state);
   const identityChanged = customerName !== mapping?.customer_name || customerEmail !== mapping?.customer_email;
-  const isDuplicateMessage = mapping?.last_customer_message_signature === resolvedMessage.signature;
+  const messageClaimId = `intercom-message:${conversationId}:${resolvedMessage.signature}`;
+  const signatureAlreadyPersisted = mapping?.last_customer_message_signature === resolvedMessage.signature;
+  let claimedMessage = false;
+
+  if (!signatureAlreadyPersisted) {
+    claimedMessage = await claimServiceIdempotencyKey(
+      { supabaseUrl, serviceKey },
+      {
+        id: messageClaimId,
+        scope: "intercom_message",
+        metadata: {
+          conversationId,
+          topic,
+        },
+        staleAfterSeconds: 15 * 60,
+      },
+    );
+
+    if (!claimedMessage) {
+      return NextResponse.json({ ok: true, deduped: true, inFlight: true });
+    }
+  }
+
+  const isDuplicateMessage = signatureAlreadyPersisted || !claimedMessage;
 
   let discordThreadId = mapping?.discord_thread_id ?? null;
   let discordWebhook: DiscordWebhook | null = null;
@@ -195,23 +223,32 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     if (!isDuplicateMessage && error instanceof DiscordApiError && error.status === 404) {
-      discordThreadId = await createDiscordLivechatThread({
-        discordBotToken,
-        discordWebhook,
-        livechatChannelId,
-        customerIdentity,
-        preview: resolvedMessage.body,
-        conversationId,
-        status,
-      });
-      await postMessageToDiscordThread({
-        discordBotToken,
-        discordWebhook,
-        threadId: discordThreadId,
-        customerIdentity,
-        body: resolvedMessage.body,
-      });
+      try {
+        discordThreadId = await createDiscordLivechatThread({
+          discordBotToken,
+          discordWebhook,
+          livechatChannelId,
+          customerIdentity,
+          preview: resolvedMessage.body,
+          conversationId,
+          status,
+        });
+        await postMessageToDiscordThread({
+          discordBotToken,
+          discordWebhook,
+          threadId: discordThreadId,
+          customerIdentity,
+          body: resolvedMessage.body,
+        });
+      } catch (retryError) {
+        await releaseServiceIdempotencyKey({ supabaseUrl, serviceKey }, messageClaimId).catch(() => {});
+        const message = retryError instanceof Error ? retryError.message : "Discord delivery failed.";
+        return NextResponse.json({ error: message }, { status: 502 });
+      }
     } else {
+      if (!isDuplicateMessage) {
+        await releaseServiceIdempotencyKey({ supabaseUrl, serviceKey }, messageClaimId).catch(() => {});
+      }
       const message = error instanceof Error ? error.message : "Discord delivery failed.";
       return NextResponse.json({ error: message }, { status: 502 });
     }
@@ -231,7 +268,7 @@ export async function POST(request: Request) {
         customer_email: customerEmail,
         status,
         last_customer_message_signature: isDuplicateMessage
-          ? mapping?.last_customer_message_signature
+          ? (mapping?.last_customer_message_signature ?? resolvedMessage.signature)
           : resolvedMessage.signature,
         metadata: {
           last_intercom_message_id: resolvedMessage.messageId,
@@ -246,7 +283,43 @@ export async function POST(request: Request) {
     );
 
   if (upsertError) {
-    return NextResponse.json({ error: `Failed to persist thread mapping: ${upsertError.message}` }, { status: 500 });
+    if (!isDuplicateMessage) {
+      await completeServiceIdempotencyKey(
+        { supabaseUrl, serviceKey },
+        {
+          id: messageClaimId,
+          metadata: {
+            conversationId,
+            discordThreadId,
+            outcome: "delivered_mapping_unpersisted",
+          },
+        },
+      ).catch(() => {});
+    }
+
+    console.error("[intercom-webhook] delivered Discord message but failed to persist thread mapping:", upsertError.message);
+    return NextResponse.json({
+      ok: true,
+      conversationId,
+      discordThreadId,
+      warning: "mapping_persist_failed",
+    });
+  }
+
+  if (!isDuplicateMessage) {
+    await completeServiceIdempotencyKey(
+      { supabaseUrl, serviceKey },
+      {
+        id: messageClaimId,
+        metadata: {
+          conversationId,
+          discordThreadId,
+          outcome: "delivered",
+        },
+      },
+    ).catch((error) => {
+      console.error("[intercom-webhook] delivered Discord message but failed to finalize idempotency claim:", error);
+    });
   }
 
   if (

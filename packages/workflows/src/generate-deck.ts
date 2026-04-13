@@ -1835,7 +1835,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         visualQa: finalVisualQa,
       });
 
-      const resendApiKey = process.env.RESEND_API_KEY ?? "";
+      const resendApiKey = process.env.RESEND_API_KEY ?? process.env.RESEND_CURSOR_API_KEY ?? "";
       if (resendApiKey) {
         await notifyRunCompletionIfRequested(
           { supabaseUrl: config.supabaseUrl, serviceKey: config.serviceKey, resendApiKey },

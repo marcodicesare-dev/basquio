@@ -3,6 +3,12 @@ import { createHash } from "node:crypto";
 import { interpretTemplateSource } from "@basquio/template-engine";
 import type { TemplateProfile } from "@basquio/types";
 
+import {
+  claimServiceIdempotencyKey,
+  completeServiceIdempotencyKey,
+  releaseServiceIdempotencyKey,
+} from "./idempotency-claims";
+import { sendResendHtmlEmail } from "./resend";
 import { downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows } from "./supabase";
 
 type ImportJobRow = {
@@ -240,10 +246,12 @@ async function notifyTemplateImportCompletion(
   templateName: string,
   success: boolean,
 ) {
-  const resendApiKey = process.env.RESEND_API_KEY;
+  const resendApiKey = process.env.RESEND_API_KEY ?? process.env.RESEND_CURSOR_API_KEY;
   if (!resendApiKey || !job.requested_by) return;
 
-  // Idempotency: skip if already sent
+  // Historical note:
+  // A pre-2026-04-08 welcome-email path caused duplicate sends in production.
+  // This template-import notification is separate and still needs its own durable claim.
   const sentCheck = await fetchRestRows<{ import_email_sent_at: string | null }>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
@@ -255,6 +263,19 @@ async function notifyTemplateImportCompletion(
     },
   }).catch(() => []);
   if (sentCheck[0]?.import_email_sent_at) return;
+
+  const idempotencyKey = `template-import-email:${jobId}`;
+  const claimed = await claimServiceIdempotencyKey(config, {
+    id: idempotencyKey,
+    scope: "template_import_email",
+    metadata: {
+      jobId,
+      templateName,
+      success,
+    },
+    staleAfterSeconds: 23 * 60 * 60,
+  });
+  if (!claimed) return;
 
   // Check account-level notification preference
   try {
@@ -268,7 +289,13 @@ async function notifyTemplateImportCompletion(
         limit: "1",
       },
     });
-    if (prefRows[0] && prefRows[0].notify_on_run_complete === false) return;
+    if (prefRows[0] && prefRows[0].notify_on_run_complete === false) {
+      await completeServiceIdempotencyKey(config, {
+        id: idempotencyKey,
+        metadata: { outcome: "skipped_preference" },
+      }).catch(() => {});
+      return;
+    }
   } catch {
     // Default to sending if preference lookup fails
   }
@@ -283,9 +310,21 @@ async function notifyTemplateImportCompletion(
       },
     },
   );
-  if (!response.ok) return;
+  if (!response.ok) {
+    await completeServiceIdempotencyKey(config, {
+      id: idempotencyKey,
+      metadata: { outcome: "skipped_missing_user" },
+    }).catch(() => {});
+    return;
+  }
   const user = (await response.json()) as { email?: string };
-  if (!user.email) return;
+  if (!user.email) {
+    await completeServiceIdempotencyKey(config, {
+      id: idempotencyKey,
+      metadata: { outcome: "skipped_missing_email" },
+    }).catch(() => {});
+    return;
+  }
 
   const subject = success
     ? "Your Basquio template is ready"
@@ -317,26 +356,39 @@ async function notifyTemplateImportCompletion(
 </td></tr>
 </table></body>`;
 
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${resendApiKey}`,
-    },
-    body: JSON.stringify({
-      from: "Basquio <reports@basquio.com>",
-      to: [user.email],
-      subject,
-      html: body,
-    }),
+  const emailResult = await sendResendHtmlEmail({
+    apiKey: resendApiKey,
+    from: "Marco at Basquio <reports@basquio.com>",
+    to: [user.email],
+    idempotencyKey,
+    subject,
+    html: body,
   });
 
-  // Mark as sent (idempotency guard)
+  if (emailResult.status === "rejected") {
+    await releaseServiceIdempotencyKey(config, idempotencyKey).catch(() => {});
+    return;
+  }
+
+  if (emailResult.status === "unknown") {
+    return;
+  }
+
+  const sentAt = new Date().toISOString();
+  await completeServiceIdempotencyKey(config, {
+    id: idempotencyKey,
+    metadata: {
+      outcome: "sent",
+      messageId: emailResult.messageId,
+      recipient: user.email,
+    },
+  }).catch(() => {});
+
   await patchRestRows({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
     table: "template_import_jobs",
     query: { id: `eq.${jobId}` },
-    payload: { import_email_sent_at: new Date().toISOString() },
+    payload: { import_email_sent_at: sentAt },
   }).catch(() => {});
 }

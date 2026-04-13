@@ -8,6 +8,7 @@ import {
   type PackPricingTier,
   type PlanId,
 } from "@/lib/billing-config";
+import { DOWNLOAD_TRACKING_FLOOR } from "@/lib/engagement";
 import { getStripe } from "@/lib/stripe";
 import { createServiceSupabaseClient, fetchRestRows } from "@/lib/supabase/admin";
 
@@ -973,16 +974,16 @@ async function buildWeeklyRevenueSummary(
         select: "user_id,first_authenticated_at",
         first_authenticated_at: `gte.${weekStartIso}`,
       },
-    }),
+    }).catch(() => [] as SignupRow[]),
     fetchRestRows<SubscriptionRow>({
       ...config,
       table: "subscriptions",
       query: {
         select: "user_id,plan,billing_interval,status,created_at",
       },
-    }),
-    listWeeklyCreditPackRevenueEvents(emailIndex, weekStart),
-    listWeeklySubscriptionRevenueEvents(emailIndex, weekStart),
+    }).catch(() => [] as SubscriptionRow[]),
+    listWeeklyCreditPackRevenueEvents(emailIndex, weekStart).catch(() => [] as Array<{ amount: number; email: string; label: string }>),
+    listWeeklySubscriptionRevenueEvents(emailIndex, weekStart).catch(() => [] as Array<{ amount: number; email: string; label: string }>),
 
     // Product queries
     fetchRestRows<DeckRunRow>({
@@ -1159,7 +1160,6 @@ async function buildWeeklyRevenueSummary(
 
   // Downloads — tracking was deployed 2026-04-11T15:00:00Z.
   // Runs that completed before that have no download data. Don't count them as "unclaimed".
-  const DOWNLOAD_TRACKING_FLOOR = "2026-04-11T15:00:00Z";
   const downloadedRunIds = new Set(weekDownloads.map((d) => d.run_id));
   const trackableCompletedRuns = externalRuns.filter(
     (r) => r.status === "completed" && r.completed_at && r.completed_at >= DOWNLOAD_TRACKING_FLOOR,

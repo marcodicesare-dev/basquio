@@ -1,5 +1,6 @@
 import { ensureFreeTierCredit } from "@/lib/credits";
 import { notifySignup } from "@/lib/discord-customers";
+import { sendResendHtmlEmail, type ResendSendResult } from "@/lib/resend";
 import { normalizeSignupAttribution, type SignupAttribution } from "@/lib/signup-attribution";
 import { createServiceSupabaseClient, fetchRestRows, patchRestRows } from "@/lib/supabase/admin";
 import type { ViewerState } from "@/lib/supabase/auth";
@@ -82,12 +83,14 @@ export async function bootstrapViewerAccount(
     });
 
     if (welcomeEmailClaim.shouldSend) {
-      welcomeEmailSent = await sendWelcomeEmail({
+      const welcomeResult = await sendWelcomeEmail({
         resendApiKey,
         email: user.email,
+        userId: user.id,
       });
+      welcomeEmailSent = welcomeResult.status === "sent";
 
-      if (!welcomeEmailSent) {
+      if (welcomeResult.status === "rejected") {
         await releaseWelcomeEmailClaim({
           supabaseUrl,
           serviceKey,
@@ -303,33 +306,16 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 async function sendWelcomeEmail(input: {
   resendApiKey: string;
   email: string;
-}) {
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${input.resendApiKey}`,
-      },
-      body: JSON.stringify({
-        from: "Marco at Basquio <reports@basquio.com>",
-        to: [input.email],
-        subject: "Your Basquio workspace is ready",
-        html: buildWelcomeHtml(),
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      console.warn(`[basquio] welcome email failed: ${response.status} ${body}`);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.warn("[basquio] welcome email failed:", error);
-    return false;
-  }
+  userId: string;
+}): Promise<ResendSendResult> {
+  return sendResendHtmlEmail({
+    apiKey: input.resendApiKey,
+    from: "Marco at Basquio <reports@basquio.com>",
+    to: [input.email],
+    idempotencyKey: `welcome-email-${input.userId}`,
+    subject: "Your Basquio workspace is ready",
+    html: buildWelcomeHtml(),
+  });
 }
 
 function buildWelcomeHtml() {

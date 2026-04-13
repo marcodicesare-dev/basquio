@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { checkWebhookEventProcessed, markWebhookEventProcessed } from "@/lib/credits";
 import { postWeeklyRevenueSummary } from "@/lib/discord-customers";
+import {
+  claimServiceIdempotencyKey,
+  completeServiceIdempotencyKey,
+  releaseServiceIdempotencyKey,
+} from "@/lib/idempotency-claims";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,27 +37,50 @@ export async function GET(request: Request) {
   }
 
   const eventId = `customers-weekly-summary-${schedule.isoWeekKey}`;
+  const claimId = `weekly-summary:${eventId}`;
   if (!force) {
-    const alreadyProcessed = await checkWebhookEventProcessed({
-      ...config,
-      eventId,
+    const claimed = await claimServiceIdempotencyKey(config, {
+      id: claimId,
+      scope: "weekly_summary",
+      metadata: {
+        eventId,
+        isoWeekKey: schedule.isoWeekKey,
+      },
+      staleAfterSeconds: 8 * 24 * 60 * 60,
     });
 
-    if (alreadyProcessed) {
+    if (!claimed) {
       return NextResponse.json({ ok: true, skipped: true, reason: "already_posted", eventId });
     }
   }
 
-  const summary = await postWeeklyRevenueSummary({ occurredAt: now });
+  let summary;
+  try {
+    summary = await postWeeklyRevenueSummary({ occurredAt: now });
+  } catch (error) {
+    if (!force) {
+      await releaseServiceIdempotencyKey(config, claimId).catch(() => {});
+    }
+    throw error;
+  }
+
   if (!summary) {
+    if (!force) {
+      await releaseServiceIdempotencyKey(config, claimId).catch(() => {});
+    }
     return NextResponse.json({ error: "Customers webhook not configured." }, { status: 503 });
   }
 
   if (!force) {
-    await markWebhookEventProcessed({
-      ...config,
-      eventId,
-      eventType: "customers.weekly_summary",
+    await completeServiceIdempotencyKey(config, {
+      id: claimId,
+      metadata: {
+        eventId,
+        isoWeekKey: schedule.isoWeekKey,
+        postedAt: now.toISOString(),
+      },
+    }).catch((error) => {
+      console.error("[weekly-summary] posted digest but failed to finalize idempotency claim:", error);
     });
   }
 
