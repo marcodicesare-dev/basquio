@@ -215,6 +215,20 @@ type TourCardPosition = {
   width: number;
 };
 
+type TourStepId = (typeof TOUR_STEPS)[number]["id"];
+
+type TourProgressState = {
+  selectedReportType: string | null;
+  hasEvidence: boolean;
+  businessContext: string;
+  audience: string;
+  objective: string;
+  isSubmitting: boolean;
+};
+
+const TOUR_AUTO_ADVANCE_DELAY_MS = 600;
+const TOUR_CARD_ESTIMATED_HEIGHT = 248;
+
 const TOUR_STEPS = [
   {
     id: "report-type",
@@ -321,6 +335,18 @@ export function GenerationForm({
   const [launchRunId, setLaunchRunId] = useState<string | null>(null);
   const [sampleLoadState, setSampleLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const sampleLoadTriggeredRef = useRef(false);
+  const hasEvidence = evidenceFiles.length > 0 || prefillSourceFiles.length > 0;
+  const tourProgressState: TourProgressState = {
+    selectedReportType,
+    hasEvidence,
+    businessContext: brief.businessContext,
+    audience: brief.audience,
+    objective: brief.objective,
+    isSubmitting,
+  };
+  const activeTourStep = isTourOpen ? TOUR_STEPS[tourIndex] : null;
+  const activeTourStepId = activeTourStep?.id ?? null;
+  const activeTourStepComplete = activeTourStep ? isTourStepComplete(activeTourStep.id, tourProgressState) : false;
 
   // Track whether the submit was from the explicit button click
   const submitIntentRef = useRef(false);
@@ -506,15 +532,23 @@ export function GenerationForm({
       return;
     }
 
-    const desiredFormStep = TOUR_STEPS[tourIndex].formStep;
-    if (currentStep !== desiredFormStep) {
+    const currentTourStep = TOUR_STEPS[tourIndex];
+    const desiredFormStep = currentTourStep.formStep;
+    const stepComplete = isTourStepComplete(currentTourStep.id, {
+      selectedReportType,
+      hasEvidence,
+      businessContext: brief.businessContext,
+      audience: brief.audience,
+      objective: brief.objective,
+      isSubmitting,
+    });
+    if (currentStep !== desiredFormStep && !stepComplete) {
       setCurrentStep(desiredFormStep);
       return;
     }
 
     function measureActiveTour() {
-      const activeStep = TOUR_STEPS[tourIndex];
-      const target = getTourTarget(activeStep.id);
+      const target = getTourTarget(currentTourStep.id);
 
       if (!target) {
         return;
@@ -528,10 +562,16 @@ export function GenerationForm({
         height: rect.height + 20,
       };
       const cardWidth = Math.min(360, window.innerWidth - 32);
-      const showBelow = paddedRect.top + paddedRect.height + 220 < window.innerHeight;
-      const top = showBelow
-        ? Math.min(window.innerHeight - 180, paddedRect.top + paddedRect.height + 16)
-        : Math.max(16, paddedRect.top - 188);
+      const availableBelow = window.innerHeight - (paddedRect.top + paddedRect.height) - 16;
+      const availableAbove = paddedRect.top - 16;
+      const showBelow = availableBelow >= TOUR_CARD_ESTIMATED_HEIGHT || availableBelow >= availableAbove;
+      const preferredTop = showBelow
+        ? paddedRect.top + paddedRect.height + 16
+        : paddedRect.top - TOUR_CARD_ESTIMATED_HEIGHT - 16;
+      const top = Math.min(
+        Math.max(16, preferredTop),
+        Math.max(16, window.innerHeight - TOUR_CARD_ESTIMATED_HEIGHT - 16),
+      );
       const left = Math.min(
         Math.max(16, paddedRect.left),
         Math.max(16, window.innerWidth - cardWidth - 16),
@@ -557,7 +597,33 @@ export function GenerationForm({
       window.removeEventListener("resize", handleReposition);
       window.removeEventListener("scroll", handleReposition, true);
     };
-  }, [currentStep, isTourOpen, tourIndex]);
+  }, [
+    currentStep,
+    isSubmitting,
+    isTourOpen,
+    tourIndex,
+    brief.audience,
+    brief.businessContext,
+    brief.objective,
+    hasEvidence,
+    selectedReportType,
+  ]);
+
+  useEffect(() => {
+    if (!isTourOpen || !activeTourStep || activeTourStep.id === "review") {
+      return;
+    }
+
+    if (!activeTourStepComplete) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setTourIndex((current) => Math.min(TOUR_STEPS.length - 1, current + 1));
+    }, TOUR_AUTO_ADVANCE_DELAY_MS);
+
+    return () => window.clearTimeout(timerId);
+  }, [activeTourStep, activeTourStepComplete, isTourOpen]);
 
   useEffect(() => {
     if (!templateFeeReturn || templateFeeReturn.status !== "success" || !templateFeeReturn.draftId || autoResumeTemplateFeeRef.current) {
@@ -672,6 +738,13 @@ export function GenerationForm({
     setError(null);
 
     try {
+      if (isTourOpen && activeTourStepId === "review" && !hasEvidence) {
+        setError("Add a file first. Upload evidence or try the sample dataset, then Basquio can launch the run.");
+        setCurrentStep(1);
+        setTourIndex(1);
+        return;
+      }
+
       validateSubmission(evidenceFiles, brief, prefillSourceFiles.length);
       const effectiveTargetSlideCount = isReportOnlyTier ? 1 : targetSlideCount;
 
@@ -707,6 +780,9 @@ export function GenerationForm({
         if (checkout.status >= 400 || !checkout.url) {
           throw new Error(checkout.error ?? "Template fee checkout failed.");
         }
+        if (isTourOpen) {
+          closeTour();
+        }
         window.location.href = checkout.url;
         return;
       }
@@ -714,6 +790,9 @@ export function GenerationForm({
       const runId = launchRunId ?? reserveRunId();
 
       if (prefillSourceFiles.length > 0 && evidenceFiles.length === 0) {
+        if (isTourOpen) {
+          closeTour();
+        }
         launchRun({
           runId,
           authorModel: selectedModel,
@@ -726,8 +805,11 @@ export function GenerationForm({
         return;
       }
 
-      const hostedDraft = await ensureHostedEvidenceReady();
+      if (isTourOpen) {
+        closeTour();
+      }
 
+      const hostedDraft = await ensureHostedEvidenceReady();
       launchRun({
         runId,
         authorModel: selectedModel,
@@ -909,7 +991,10 @@ export function GenerationForm({
         </div>
 
         {currentStep === 0 ? (
-          <section ref={reportTypeRef} className="step-panel stack-lg">
+          <section
+            ref={reportTypeRef}
+            className={`step-panel stack-lg${activeTourStepId === "report-type" ? " tour-target-active" : ""}${activeTourStepId === "report-type" && activeTourStepComplete ? " tour-target-complete" : ""}`}
+          >
             <div className="stack-xs">
               <p className="section-label">Step 1</p>
               <h2>What kind of report?</h2>
@@ -937,14 +1022,20 @@ export function GenerationForm({
         ) : null}
 
         {currentStep === 1 ? (
-          <section ref={uploadStepRef} className="step-panel stack-lg">
+          <section
+            ref={uploadStepRef}
+            className={`step-panel stack-lg${activeTourStepId === "upload" ? " tour-target-active" : ""}${activeTourStepId === "upload" && activeTourStepComplete ? " tour-target-complete" : ""}`}
+          >
             <div className="stack-xs">
               <p className="section-label">Step 2</p>
               <h2>Upload your evidence</h2>
               <p className="muted">Start with the workbook or CSV behind the review. Add slides or PDFs only if they help the story.</p>
             </div>
 
-            <div className="panel" style={{ padding: "1rem 1.1rem", background: "rgba(26,106,255,0.04)", borderColor: "rgba(26,106,255,0.16)" }}>
+            <div
+              className={`panel${activeTourStepId === "upload" ? " tour-sample-callout-active" : ""}${activeTourStepId === "upload" && activeTourStepComplete ? " tour-target-complete" : ""}`}
+              style={{ padding: "1rem 1.1rem", background: "rgba(26,106,255,0.04)", borderColor: "rgba(26,106,255,0.16)" }}
+            >
               <div className="stack-xs">
                 <p className="section-label" style={{ marginBottom: 0 }}>No data ready?</p>
                 <h3 style={{ margin: 0 }}>Try the sample dataset first.</h3>
@@ -953,7 +1044,12 @@ export function GenerationForm({
                 </p>
               </div>
               <div className="row" style={{ marginTop: "0.9rem", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-                <button className="button small secondary" type="button" onClick={() => void loadSampleDataset()} disabled={sampleLoadState === "loading"}>
+                <button
+                  className={`button small secondary${activeTourStepId === "upload" ? " tour-sample-button" : ""}`}
+                  type="button"
+                  onClick={() => void loadSampleDataset()}
+                  disabled={sampleLoadState === "loading"}
+                >
                   {sampleLoadState === "loading" ? "Loading sample..." : "Try with sample data"}
                 </button>
                 <span className="muted" style={{ fontSize: "0.82rem" }}>
@@ -967,7 +1063,7 @@ export function GenerationForm({
             <div className="step-grid">
               <div className="stack">
                 <button
-                  className={isDraggingEvidence ? "dropzone dropzone-active" : "dropzone"}
+                  className={`${isDraggingEvidence ? "dropzone dropzone-active" : "dropzone"}${activeTourStepId === "upload" ? " tour-dropzone-active" : ""}${activeTourStepId === "upload" && activeTourStepComplete ? " tour-target-complete" : ""}`}
                   type="button"
                   onClick={openEvidencePicker}
                   onDragEnter={() => setIsDraggingEvidence(true)}
@@ -1145,7 +1241,10 @@ export function GenerationForm({
             </div>
 
             <div className="form-grid brief-form-grid">
-              <label ref={businessContextRef} className="field field-span-2">
+              <label
+                ref={businessContextRef}
+                className={`field field-span-2${activeTourStepId === "business-context" ? " tour-target-active" : ""}${activeTourStepId === "business-context" && activeTourStepComplete ? " tour-target-complete" : ""}`}
+              >
                 <span>Business context</span>
                 <small>What changed? Use one or two concrete sentences.</small>
                 <textarea
@@ -1157,7 +1256,10 @@ export function GenerationForm({
                 />
               </label>
 
-              <div ref={audienceObjectiveRef} className="form-grid field-span-2 compact-brief-grid">
+              <div
+                ref={audienceObjectiveRef}
+                className={`form-grid field-span-2 compact-brief-grid${activeTourStepId === "audience-objective" ? " tour-target-active" : ""}${activeTourStepId === "audience-objective" && activeTourStepComplete ? " tour-target-complete" : ""}`}
+              >
                 <label className="field">
                   <span>Audience</span>
                   <small>Role + company or meeting context.</small>
@@ -1255,7 +1357,10 @@ export function GenerationForm({
         ) : null}
 
         {currentStep === 3 ? (
-          <section ref={reviewStepRef} className="step-panel stack-lg">
+          <section
+            ref={reviewStepRef}
+            className={`step-panel stack-lg${activeTourStepId === "review" ? " tour-target-active" : ""}${activeTourStepId === "review" && activeTourStepComplete ? " tour-target-complete" : ""}`}
+          >
             <div className="stack-xs">
               <p className="section-label">Step 4</p>
               <h2>Review and generate</h2>
@@ -1415,7 +1520,7 @@ export function GenerationForm({
               </button>
             ) : (
               <button
-                className="button"
+                className={`button${activeTourStepId === "review" ? " tour-generate-button" : ""}`}
                 type="submit"
                 disabled={isSubmitting}
                 onClick={() => { submitIntentRef.current = true; }}
@@ -1433,10 +1538,10 @@ export function GenerationForm({
       {templateFeeMessage ? <div className="panel success-panel">{templateFeeMessage}</div> : null}
 
       {isTourOpen && tourCardPosition ? (
-        <div className="tour-overlay" role="dialog" aria-modal="true" aria-label="Guided setup">
+        <div className="tour-overlay" aria-hidden="true">
           {tourRect ? (
             <div
-              className="tour-spotlight"
+              className={`tour-spotlight${activeTourStepComplete ? " tour-spotlight-complete" : ""}`}
               style={{
                 top: `${tourRect.top}px`,
                 left: `${tourRect.left}px`,
@@ -1447,7 +1552,9 @@ export function GenerationForm({
           ) : null}
 
           <div
-            className="tour-card panel"
+            className={`tour-card panel${activeTourStepComplete ? " tour-card-complete" : ""}`}
+            role="dialog"
+            aria-label="Guided setup"
             style={{
               top: `${tourCardPosition.top}px`,
               left: `${tourCardPosition.left}px`,
@@ -1463,6 +1570,20 @@ export function GenerationForm({
             <div className="stack-xs">
               <h3>{TOUR_STEPS[tourIndex].title}</h3>
               <p>{TOUR_STEPS[tourIndex].copy}</p>
+            </div>
+            <div className="tour-card-status">
+              <span className="tour-card-status-badge" aria-hidden>
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75">
+                  <path d="M3.5 8.5 6.5 11.5 12.5 4.75" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+              <strong>
+                {activeTourStepId === "review"
+                  ? "Launch the run when this looks right."
+                  : activeTourStepComplete
+                    ? "Nice. Moving to the next step..."
+                    : "Complete this step and the tour moves on automatically."}
+              </strong>
             </div>
             <div className="tour-card-actions">
               <button
@@ -1492,6 +1613,30 @@ export function GenerationForm({
       ) : null}
     </div>
   );
+}
+
+function isTourStepComplete(stepId: TourStepId, state: TourProgressState) {
+  if (stepId === "report-type") {
+    return Boolean(state.selectedReportType);
+  }
+
+  if (stepId === "upload") {
+    return state.hasEvidence;
+  }
+
+  if (stepId === "business-context") {
+    return state.businessContext.trim().length >= 10;
+  }
+
+  if (stepId === "audience-objective") {
+    return state.audience.trim().length > 0 || state.objective.trim().length > 0;
+  }
+
+  if (stepId === "review") {
+    return state.isSubmitting;
+  }
+
+  return false;
 }
 
 function clampTargetSlideCount(value: number) {

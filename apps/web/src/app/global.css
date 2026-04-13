@@ -2887,17 +2887,28 @@ textarea {
   inset: 0;
   z-index: 80;
   background: rgba(11, 12, 12, 0.46);
+  pointer-events: none;
 }
 
 .tour-spotlight {
   position: fixed;
   z-index: 81;
   border-radius: 12px;
+  transition: box-shadow 220ms ease, transform 220ms ease, opacity 220ms ease;
   box-shadow:
     0 0 0 9999px rgba(11, 12, 12, 0.46),
     0 0 0 2px rgba(255, 255, 255, 0.8),
     0 20px 50px rgba(11, 12, 12, 0.24);
   pointer-events: none;
+}
+
+.tour-spotlight-complete {
+  animation: tour-complete-pulse 420ms ease-out;
+  box-shadow:
+    0 0 0 9999px rgba(11, 12, 12, 0.42),
+    0 0 0 2px rgba(26, 106, 255, 0.82),
+    0 0 0 10px rgba(26, 106, 255, 0.12),
+    0 24px 58px rgba(11, 12, 12, 0.22);
 }
 
 .tour-card {
@@ -2910,6 +2921,16 @@ textarea {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 24px 60px rgba(11, 12, 12, 0.22);
+  pointer-events: auto;
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.tour-card-complete {
+  border-color: rgba(26, 106, 255, 0.26);
+  box-shadow:
+    0 26px 62px rgba(11, 12, 12, 0.22),
+    0 0 0 1px rgba(26, 106, 255, 0.12);
+  transform: translateY(-2px) scale(1.01);
 }
 
 .tour-card-head {
@@ -2929,6 +2950,120 @@ textarea {
 
 .tour-card-actions {
   justify-content: space-between;
+}
+
+.tour-card-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.tour-card-status strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.tour-card-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(26, 106, 255, 0.1);
+  color: var(--blue);
+  opacity: 0.52;
+  transform: scale(0.92);
+  transition: opacity 200ms ease, transform 200ms ease, background 200ms ease;
+}
+
+.tour-card-status-badge svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tour-card-complete .tour-card-status-badge {
+  background: rgba(26, 106, 255, 0.16);
+  opacity: 1;
+  transform: scale(1);
+}
+
+.tour-target-active {
+  position: relative;
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.tour-target-complete {
+  animation: tour-complete-pulse 420ms ease-out;
+}
+
+.tour-sample-callout-active,
+.tour-dropzone-active,
+.tour-generate-button {
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
+}
+
+.tour-sample-callout-active {
+  box-shadow:
+    0 0 0 1px rgba(26, 106, 255, 0.16),
+    0 18px 40px rgba(26, 106, 255, 0.08);
+}
+
+.tour-sample-button {
+  animation: tour-breathe 1.8s ease-in-out infinite;
+}
+
+.tour-dropzone-active {
+  box-shadow:
+    0 0 0 1px rgba(26, 106, 255, 0.14),
+    inset 0 0 0 1px rgba(26, 106, 255, 0.08);
+}
+
+.tour-dropzone-active.tour-target-complete {
+  border-color: rgba(26, 106, 255, 0.46);
+  background: rgba(26, 106, 255, 0.08);
+}
+
+.tour-generate-button {
+  animation: tour-breathe 1.8s ease-in-out infinite;
+  box-shadow:
+    0 0 0 1px rgba(26, 106, 255, 0.12),
+    0 14px 30px rgba(26, 106, 255, 0.16);
+}
+
+@keyframes tour-complete-pulse {
+  0% {
+    transform: scale(0.985);
+    opacity: 0.88;
+  }
+  55% {
+    transform: scale(1.01);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes tour-breathe {
+  0%,
+  100% {
+    transform: translateY(0);
+    box-shadow:
+      0 0 0 1px rgba(26, 106, 255, 0.12),
+      0 14px 30px rgba(26, 106, 255, 0.12);
+  }
+  50% {
+    transform: translateY(-1px);
+    box-shadow:
+      0 0 0 1px rgba(26, 106, 255, 0.16),
+      0 18px 34px rgba(26, 106, 255, 0.18);
+  }
 }
 
 .compose-intro-panel,
