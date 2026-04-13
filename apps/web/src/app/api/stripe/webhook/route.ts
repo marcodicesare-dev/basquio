@@ -342,29 +342,31 @@ async function handleSubscriptionChange(
 
   if (normalizedStatus === "active") {
     if (isUpgrade) {
-      void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
-        .then((email) => notifyPlanUpgrade({
+      scheduleDiscordNotification(async () => {
+        const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+        await notifyPlanUpgrade({
           email,
           fromPlan: previousPlan!,
           toPlan: plan,
           fromInterval: previousInterval,
           toInterval: interval,
-        }))
-        .catch((error) => {
-          logDiscordNotificationFailure("plan upgrade", userId, error);
         });
+      }, (error) => {
+        logDiscordNotificationFailure("plan upgrade", userId, error);
+      });
     } else if (isNewSubscriptionStart) {
-      void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
-        .then((email) => notifySubscriptionStarted({
+      scheduleDiscordNotification(async () => {
+        const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+        await notifySubscriptionStarted({
           email,
           plan,
           interval,
           creditsIncluded: planConfig.credits,
           previousStatus,
-        }))
-        .catch((error) => {
-          logDiscordNotificationFailure("subscription started", userId, error);
         });
+      }, (error) => {
+        logDiscordNotificationFailure("subscription started", userId, error);
+      });
     }
   }
 
@@ -413,14 +415,15 @@ async function handleSubscriptionCanceled(
     return;
   }
 
-  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
-    .then((email) => notifyCancellation({
+  scheduleDiscordNotification(async () => {
+    const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+    await notifyCancellation({
       email,
       plan: existingSubscription?.plan ?? null,
-    }))
-    .catch((error) => {
-      logDiscordNotificationFailure("subscription canceled", userId, error);
     });
+  }, (error) => {
+    logDiscordNotificationFailure("subscription canceled", userId, error);
+  });
 
   console.log(`[stripe-webhook] subscription canceled ${subscription.id} for user ${userId}`);
 }
@@ -583,14 +586,15 @@ async function handleInvoicePaymentFailed(
     const text = await patchRes.text().catch(() => "Unknown error");
     console.error(`[stripe-webhook] failed to mark subscription past_due: ${text}`);
   } else {
-    void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
-      .then((email) => notifyPaymentFailed({
+    scheduleDiscordNotification(async () => {
+      const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+      await notifyPaymentFailed({
         email,
         plan: invoice.subscription_details?.metadata?.plan ?? invoice.metadata?.plan ?? existingSubscription?.plan ?? null,
-      }))
-      .catch((error) => {
-        logDiscordNotificationFailure("payment failed", userId, error);
       });
+    }, (error) => {
+      logDiscordNotificationFailure("payment failed", userId, error);
+    });
 
     console.log(`[stripe-webhook] marked subscription past_due for user ${userId} (inv=${invoice.id})`);
   }
