@@ -359,6 +359,14 @@ export function GenerationForm({
     }
 
     const rect = target.getBoundingClientRect();
+    const viewportPadding = 24;
+    const isVisible = rect.bottom > viewportPadding && rect.top < window.innerHeight - viewportPadding;
+
+    if (!isVisible) {
+      setTourRect(null);
+      return false;
+    }
+
     const paddedRect = {
       top: Math.max(12, rect.top - 10),
       left: Math.max(12, rect.left - 10),
@@ -377,6 +385,7 @@ export function GenerationForm({
   const hostedEvidencePromiseRef = useRef<Promise<HostedEvidenceDraft> | null>(null);
   const hostedEvidenceRequestRef = useRef(0);
   const tourAdvanceTimerRef = useRef<number | null>(null);
+  const tourScrollSettleRef = useRef<number | null>(null);
 
   const clearPendingTourAdvance = useCallback(() => {
     if (typeof window !== "undefined" && tourAdvanceTimerRef.current !== null) {
@@ -384,6 +393,13 @@ export function GenerationForm({
     }
     tourAdvanceTimerRef.current = null;
     setTourAdvancePendingFor(null);
+  }, []);
+
+  const clearTourScrollSettle = useCallback(() => {
+    if (typeof window !== "undefined" && tourScrollSettleRef.current !== null) {
+      window.clearTimeout(tourScrollSettleRef.current);
+    }
+    tourScrollSettleRef.current = null;
   }, []);
 
   const moveTourToIndex = useCallback((nextIndex: number) => {
@@ -568,8 +584,9 @@ export function GenerationForm({
   useEffect(() => {
     return () => {
       clearPendingTourAdvance();
+      clearTourScrollSettle();
     };
-  }, [clearPendingTourAdvance]);
+  }, [clearPendingTourAdvance, clearTourScrollSettle]);
 
   useEffect(() => {
     if (recipePrefill || typeof window === "undefined") {
@@ -648,7 +665,16 @@ export function GenerationForm({
     });
 
     const handleReposition = () => {
+      clearTourScrollSettle();
       measureActiveTour(activeTourStep);
+    };
+    const handleScroll = () => {
+      clearTourScrollSettle();
+      setTourRect(null);
+      tourScrollSettleRef.current = window.setTimeout(() => {
+        measureActiveTour(activeTourStep);
+        tourScrollSettleRef.current = null;
+      }, 120);
     };
     const resizeObserver = new ResizeObserver(() => {
       measureActiveTour(activeTourStep);
@@ -657,18 +683,20 @@ export function GenerationForm({
     resizeObserver.observe(target);
 
     window.addEventListener("resize", handleReposition);
-    window.addEventListener("scroll", handleReposition, true);
+    window.addEventListener("scroll", handleScroll, true);
 
     return () => {
       window.cancelAnimationFrame(rafId);
+      clearTourScrollSettle();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleReposition);
-      window.removeEventListener("scroll", handleReposition, true);
+      window.removeEventListener("scroll", handleScroll, true);
     };
   }, [
     currentStep,
     isTourOpen,
     activeTourStep,
+    clearTourScrollSettle,
     getTourTarget,
     measureActiveTour,
   ]);

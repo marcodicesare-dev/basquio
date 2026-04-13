@@ -3002,19 +3002,7 @@ textarea {
 .tour-target-active {
   position: relative;
   z-index: 1;
-  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
-}
-
-.tour-target-active::after {
-  content: "";
-  position: absolute;
-  inset: -8px;
-  border-radius: 16px;
-  border: 1px solid rgba(26, 106, 255, 0.28);
-  box-shadow:
-    0 0 0 6px rgba(26, 106, 255, 0.06),
-    0 20px 42px rgba(26, 106, 255, 0.08);
-  pointer-events: none;
+  transition: background 180ms ease;
 }
 
 .tour-target-active > * {
