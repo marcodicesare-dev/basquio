@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import * as tus from "tus-js-client";
 
 import type { GenerationRequest } from "@basquio/types";
@@ -31,33 +31,6 @@ const MODEL_OPTIONS = [
     name: "Memo",
     description: "Written analysis + data workbook. No slides.",
     badge: null,
-  },
-] as const;
-
-const BRIEF_SIGNAL_LIBRARY = [
-  {
-    label: "Share loss diagnosis",
-    keywords: ["share loss", "lost share", "share erosion", "value share", "market share"],
-  },
-  {
-    label: "Pricing and promo tension",
-    keywords: ["price", "pricing", "promo", "promotion", "discount", "gross-to-net", "gtm"],
-  },
-  {
-    label: "Distribution gap",
-    keywords: ["distribution", "availability", "shelf", "retailer", "banner", "channel"],
-  },
-  {
-    label: "Competitive response",
-    keywords: ["competitor", "private label", "rival", "threat", "white space"],
-  },
-  {
-    label: "Portfolio and mix",
-    keywords: ["mix", "portfolio", "segment", "assortment", "hero sku", "sku"],
-  },
-  {
-    label: "Innovation and launch readout",
-    keywords: ["innovation", "launch", "new product", "npd", "trial"],
   },
 ] as const;
 
@@ -311,9 +284,6 @@ export function GenerationForm({
   });
   // When loading from a recipe, skip to the upload step
   const [currentStep, setCurrentStep] = useState(recipePrefill ? 1 : 0);
-  const briefReadiness = summarizeBriefReadiness(brief);
-  const briefSignals = inferBriefSignals(brief);
-  const briefWarnings = buildBriefWarnings(brief);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
   const [tourRect, setTourRect] = useState<TourRect | null>(null);
@@ -1119,8 +1089,12 @@ export function GenerationForm({
       <form className="panel form-shell stack-xl" onSubmit={handleSubmit}>
         <div className="form-tour-bar">
           <div className="stack-xs">
-            <p className="section-label">Guided setup</p>
-            <p className="muted">Need a quick walkthrough? We will show one step at a time.</p>
+            <p className="section-label">
+              Guided setup
+              <InfoHint>
+                Follow the four steps directly, or use the tour if you want Basquio to walk you through the flow.
+              </InfoHint>
+            </p>
           </div>
           <button className="button small secondary" type="button" onClick={() => openTour(0)}>
             Start tour
@@ -1159,8 +1133,12 @@ export function GenerationForm({
           >
             <div className="stack-xs">
               <p className="section-label">Step 1</p>
-              <h2>What kind of report?</h2>
-              <p className="muted">Choose the closest starting point, or skip it and start from scratch.</p>
+              <h2>
+                What kind of report?
+                <InfoHint>
+                  Pick the closest starting shape. It only pre-fills the brief. You can still rewrite everything.
+                </InfoHint>
+              </h2>
             </div>
 
             <div className="report-type-grid">
@@ -1190,20 +1168,26 @@ export function GenerationForm({
           >
             <div className="stack-xs">
               <p className="section-label">Step 2</p>
-              <h2>Upload your evidence</h2>
-              <p className="muted">Start with the workbook or CSV behind the review. Add slides or PDFs only if they help the story.</p>
+              <h2>
+                Upload your evidence
+                <InfoHint>
+                  Start with the workbook or CSV behind the review. Add slides or PDFs only if they add useful context.
+                </InfoHint>
+              </h2>
             </div>
 
             <div
               className={`panel${activeTourStepId === "upload" ? " tour-sample-callout-active" : ""}${activeTourStepId === "upload" && activeTourStepComplete ? " tour-target-complete" : ""}`}
               style={{ padding: "1rem 1.1rem", background: "rgba(26,106,255,0.04)", borderColor: "rgba(26,106,255,0.16)" }}
             >
-              <div className="stack-xs">
-                <p className="section-label" style={{ marginBottom: 0 }}>No data ready?</p>
-                <h3 style={{ margin: 0 }}>Try the sample dataset first.</h3>
-                <p className="muted" style={{ marginBottom: 0 }}>
-                  Load an anonymized FMCG sell-out file plus a pre-written brief so you can see a full Basquio run before using your own evidence.
+              <div className="setup-inline-head">
+                <p className="section-label" style={{ marginBottom: 0 }}>
+                  No data ready?
+                  <InfoHint>
+                    Loads an anonymized sample file and a ready-made brief so you can test the full flow first.
+                  </InfoHint>
                 </p>
+                <h3 style={{ margin: 0 }}>Try the sample dataset</h3>
               </div>
               <div className="row" style={{ marginTop: "0.9rem", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
                 <button
@@ -1216,8 +1200,8 @@ export function GenerationForm({
                 </button>
                 <span className="muted" style={{ fontSize: "0.82rem" }}>
                   {sampleLoadState === "ready"
-                    ? "Sample dataset loaded. Basquio also filled the brief below."
-                    : "One click. No setup file hunting."}
+                    ? "Sample loaded"
+                    : "One click"}
                 </span>
               </div>
             </div>
@@ -1237,11 +1221,14 @@ export function GenerationForm({
                     +
                   </span>
                   <span className="dropzone-title">Drop evidence files here</span>
-                  <span className="dropzone-copy">Supported: CSV, XLSX, XLS, PPTX, PDF, DOCX, text, JSON, CSS, or images. For the deepest analysis, upload the source Excel too.</span>
+                  <span className="dropzone-copy">CSV, XLSX, PPTX, PDF, DOCX, text, JSON, CSS, or images.</span>
                 </button>
                 <p className="upload-trust-note">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 256 256" aria-hidden><path d="M128,112a28,28,0,0,0-8,54.83V184a8,8,0,0,0,16,0V166.83A28,28,0,0,0,128,112Zm0,40a12,12,0,1,1,12-12A12,12,0,0,1,128,152Zm80-72H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z"></path></svg>
-                  Encrypted. Never used for AI training. <a href="/trust">Learn more</a>
+                  Encrypted.
+                  <InfoHint>
+                    Your files are not used for model training. <a href="/trust">Learn more</a>
+                  </InfoHint>
                 </p>
 
                 <input
@@ -1306,7 +1293,12 @@ export function GenerationForm({
 
               <div className="stack">
                 <div className="stack-xs">
-                  <p className="section-label">Which template should this report use?</p>
+                  <p className="section-label">
+                    Template
+                    <InfoHint>
+                      Choose the design system for this run. Basquio Standard is the default. Saved templates apply your own look.
+                    </InfoHint>
+                  </p>
                   <div className="template-picker" role="radiogroup" aria-label="Template selection">
                     {defaultTemplateId && defaultTemplateName ? (
                       <button
@@ -1362,12 +1354,9 @@ export function GenerationForm({
                       </button>
                     ))}
                   </div>
-                  <p className="template-selection-summary">
-                    This report will use: <strong>{templateLabel}</strong>
-                  </p>
                   {requiresTemplateFee ? (
-                    <p className="muted" style={{ fontSize: "0.82rem" }}>
-                      Free plan: this custom template will trigger a one-time $5 checkout before the run starts.
+                    <p className="template-selection-summary">
+                      Custom template: $5 one-time unlock
                     </p>
                   ) : null}
                   <a href="/templates" className="button small secondary" style={{ alignSelf: "flex-start" }}>
@@ -1383,23 +1372,12 @@ export function GenerationForm({
           <section className="step-panel stack-lg">
             <div className="stack-xs">
               <p className="section-label">Step 3</p>
-              <h2>Describe the brief</h2>
-              <p className="muted">Keep it short and specific. One business problem, one audience, one decision.</p>
-            </div>
-
-            <div className="brief-status-strip">
-              <div className="brief-status-chip">
-                <span>Readiness</span>
-                <strong>{briefReadiness.label}</strong>
-              </div>
-              <div className="brief-status-chip">
-                <span>Signals</span>
-                <strong>{briefSignals.length || "None yet"}</strong>
-              </div>
-              <div className="brief-status-chip">
-                <span>Tip</span>
-                <strong>Use numbers and a decision</strong>
-              </div>
+              <h2>
+                Describe the brief
+                <InfoHint>
+                  Keep it short. One business problem, one audience, one decision. That is enough for a strong first run.
+                </InfoHint>
+              </h2>
             </div>
 
             <div className="form-grid brief-form-grid">
@@ -1407,8 +1385,10 @@ export function GenerationForm({
                 ref={businessContextRef}
                 className={`field field-span-2${activeTourStepId === "business-context" ? " tour-target-active" : ""}${activeTourStepId === "business-context" && activeTourStepComplete ? " tour-target-complete" : ""}`}
               >
-                <span>Business context</span>
-                <small>What changed? Use one or two concrete sentences.</small>
+                <span>
+                  Business context
+                  <InfoHint>What changed? One or two concrete sentences with timing, pressure, or numbers.</InfoHint>
+                </span>
                 <textarea
                   name="businessContext"
                   value={brief.businessContext}
@@ -1423,8 +1403,10 @@ export function GenerationForm({
                 className={`form-grid field-span-2 compact-brief-grid${activeTourStepId === "audience-objective" ? " tour-target-active" : ""}${activeTourStepId === "audience-objective" && activeTourStepComplete ? " tour-target-complete" : ""}`}
               >
                 <label className="field">
-                  <span>Audience</span>
-                  <small>Role + company or meeting context.</small>
+                  <span>
+                    Audience
+                    <InfoHint>Role plus company or meeting context.</InfoHint>
+                  </span>
                   <input
                     name="audience"
                     value={brief.audience}
@@ -1434,8 +1416,10 @@ export function GenerationForm({
                 </label>
 
                 <label className="field">
-                  <span>Objective</span>
-                  <small>What decision should this support?</small>
+                  <span>
+                    Objective
+                    <InfoHint>The decision this deck should help make.</InfoHint>
+                  </span>
                   <input
                     name="objective"
                     value={brief.objective}
@@ -1445,32 +1429,15 @@ export function GenerationForm({
                 </label>
               </div>
 
-              {(briefWarnings.length > 0 || briefSignals.length > 0) ? (
-                <div className="brief-inline-feedback field-span-2">
-                  {briefWarnings.length > 0 ? (
-                    <div className="brief-warning-list">
-                      {briefWarnings.map((warning) => (
-                        <p key={warning}>{warning}</p>
-                      ))}
-                    </div>
-                  ) : null}
-                  {briefSignals.length > 0 ? (
-                    <div className="brief-signal-list">
-                      {briefSignals.map((signal) => (
-                        <span key={signal} className="brief-signal-chip">{signal}</span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
               <details className="field-span-2 brief-optional-details">
                 <summary>Optional: thesis, client, and stakes</summary>
 
                 <div className="form-grid">
                   <label className="field">
-                    <span>Client</span>
-                    <small>Useful if the deck is client-facing.</small>
+                    <span>
+                      Client
+                      <InfoHint>Only useful if the deck is client-facing.</InfoHint>
+                    </span>
                     <input
                       name="client"
                       value={brief.client}
@@ -1480,8 +1447,10 @@ export function GenerationForm({
                   </label>
 
                   <label className="field">
-                    <span>Thesis</span>
-                    <small>Your current point of view.</small>
+                    <span>
+                      Thesis
+                      <InfoHint>Your current point of view before Basquio sharpens it.</InfoHint>
+                    </span>
                     <input
                       name="thesis"
                       value={brief.thesis}
@@ -1491,8 +1460,10 @@ export function GenerationForm({
                   </label>
 
                   <label className="field field-span-2">
-                    <span>Stakes</span>
-                    <small>Why does this matter now?</small>
+                    <span>
+                      Stakes
+                      <InfoHint>Why this matters now.</InfoHint>
+                    </span>
                     <textarea
                       name="stakes"
                       value={brief.stakes}
@@ -1505,7 +1476,7 @@ export function GenerationForm({
               </details>
 
               <details className="field-span-2 brief-optional-details">
-                <summary>See one strong example</summary>
+                <summary>See a strong example</summary>
                 <div className="brief-example-card">
                   <p><strong>Context</strong> {BRIEF_EXAMPLE.businessContext}</p>
                   <p><strong>Audience</strong> {BRIEF_EXAMPLE.audience}</p>
@@ -1536,16 +1507,15 @@ export function GenerationForm({
                   : prefillSourceFiles.length > 0
                     ? `${prefillSourceFiles.length} file${prefillSourceFiles.length === 1 ? "" : "s"} (reused from previous run)`
                     : "No files added yet"}</p>
-                <p className="muted">Required: at least one supported evidence file. Excel/CSV is best for deep KPI work; PPTX/PDF also work for extraction and restyling.</p>
                 {evidenceFiles.length > 0 ? (
                   <p className="muted" style={{ fontSize: "0.82rem" }}>
                     {hostedEvidence.status === "ready"
-                      ? "Files are already secured. Generate will open the run immediately."
+                      ? "Files secured"
                       : hostedEvidence.status === "preparing" || hostedEvidence.status === "uploading"
-                        ? "Securing files in the background so the final launch is instant."
+                        ? "Securing files"
                         : hostedEvidence.status === "error"
                           ? hostedEvidence.error
-                          : "Files will be secured before launch."}
+                          : "Files will be secured before launch"}
                   </p>
                 ) : null}
                 {evidenceFiles.length > 0 ? (
@@ -1579,11 +1549,7 @@ export function GenerationForm({
               <article className="review-card stack">
                 <p className="artifact-kind">Design template</p>
                 <p>{templateLabel}</p>
-                {selectedTemplate ? (
-                  <p className="muted">Saved template selected. Colors, fonts, and style cues will guide the locked slide grid.</p>
-                ) : (
-                  <p className="muted">Clean editorial design with the default locked slide grid.</p>
-                )}
+                <p className="muted">{selectedTemplate ? "Saved template" : "Basquio Standard"}</p>
               </article>
 
               <article className="review-card stack">
@@ -1600,7 +1566,10 @@ export function GenerationForm({
               <article className="review-card stack">
                 <p className="artifact-kind">Deck size and cost</p>
                 <div className="stack-xs">
-                  <p className="section-label" style={{ marginBottom: 0 }}>Model</p>
+                  <p className="section-label" style={{ marginBottom: 0 }}>
+                    Model
+                    <InfoHint>Choose the depth of the output. Memo skips slides. Deck and Deep-Dive generate slides, report, and data.</InfoHint>
+                  </p>
                   <div className="template-picker" role="radiogroup" aria-label="Model selection">
                     {MODEL_OPTIONS.map((option) => (
                       <label
@@ -1813,6 +1782,19 @@ function areTourRectsEqual(current: TourRect | null, next: TourRect) {
   );
 }
 
+function InfoHint({ children }: { children: ReactNode }) {
+  return (
+    <span className="setup-info-hint">
+      <span className="setup-info-trigger" tabIndex={0} aria-label="More information">
+        i
+      </span>
+      <span className="setup-info-bubble" role="tooltip">
+        {children}
+      </span>
+    </span>
+  );
+}
+
 function getTourIndexForFormStep(formStep: number, currentTourIndex: number) {
   const matchingIndexes = TOUR_STEPS.map((step, index) => ({ step, index }))
     .filter(({ step }) => step.formStep === formStep)
@@ -1833,82 +1815,6 @@ function clampTargetSlideCount(value: number) {
   }
 
   return Math.min(UI_MAX_TARGET_SLIDES, Math.max(UI_MIN_TARGET_SLIDES, Math.round(value)));
-}
-
-function summarizeBriefReadiness(brief: BriefFields) {
-  const businessContextWords = countWords(brief.businessContext);
-  const audienceWords = countWords(brief.audience);
-  const objectiveWords = countWords(brief.objective);
-  const score = [
-    brief.businessContext ? 30 : 0,
-    brief.audience ? 20 : 0,
-    brief.objective ? 20 : 0,
-    businessContextWords >= 18 ? 10 : businessContextWords >= 10 ? 6 : 0,
-    audienceWords >= 4 ? 8 : audienceWords >= 2 ? 5 : 0,
-    objectiveWords >= 7 ? 8 : objectiveWords >= 4 ? 5 : 0,
-    brief.thesis ? 7 : 0,
-    brief.stakes ? 7 : 0,
-  ].reduce((sum, value) => sum + value, 0);
-
-  if (score >= 78) {
-    return {
-      label: "Strong brief",
-      score,
-      tone: "strong" as const,
-      copy: "The core ingredients are in place. Basquio should have enough context to build a focused narrative instead of a generic category summary.",
-    };
-  }
-
-  if (score >= 50) {
-    return {
-      label: "Usable brief",
-      score,
-      tone: "medium" as const,
-      copy: "You have the basics. Add more specificity in the business context or objective if you want stronger diagnosis and recommendations.",
-    };
-  }
-
-  return {
-    label: "Thin brief",
-    score,
-    tone: "light" as const,
-    copy: "Right now the form is likely to produce a broad, generic readout. Add concrete business context, a sharper audience, and a decision-led objective.",
-  };
-}
-
-function inferBriefSignals(brief: BriefFields) {
-  const haystack = `${brief.businessContext} ${brief.objective} ${brief.thesis}`.toLowerCase();
-  return BRIEF_SIGNAL_LIBRARY.filter((signal) => signal.keywords.some((keyword) => haystack.includes(keyword))).map(
-    (signal) => signal.label,
-  );
-}
-
-function buildBriefWarnings(brief: BriefFields) {
-  const warnings: string[] = [];
-
-  if (!brief.businessContext) {
-    warnings.push("Add a business context with numbers, trend shifts, or competitive pressure.");
-  } else if (countWords(brief.businessContext) < 12) {
-    warnings.push("Make the business context more concrete. One or two sentences with numbers will help.");
-  }
-
-  if (!brief.audience) {
-    warnings.push("Name the audience as a role, not just a generic leadership group.");
-  } else if (countWords(brief.audience) < 3) {
-    warnings.push("Audience is still broad. Add a role, company, or meeting context.");
-  }
-
-  if (!brief.objective) {
-    warnings.push("Write the decision the report should support.");
-  } else if (!/(diagnose|identify|recommend|compare|quantify|assess|evaluate|defend|explain|recover)/i.test(brief.objective)) {
-    warnings.push("Objective is a bit soft. Use an action verb like diagnose, recommend, compare, or quantify.");
-  }
-
-  return warnings;
-}
-
-function countWords(value: string) {
-  return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
 function syncInputFiles(input: HTMLInputElement | null, files: File[]) {
