@@ -325,8 +325,8 @@ export function GenerationForm({
   });
   const [launchRunId, setLaunchRunId] = useState<string | null>(null);
   const [sampleLoadState, setSampleLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [tourAdvancePendingFor, setTourAdvancePendingFor] = useState<TourStepId | null>(null);
   const sampleLoadTriggeredRef = useRef(false);
-  const [tourAutoAdvanceHoldId, setTourAutoAdvanceHoldId] = useState<TourStepId | null>(null);
   const hasEvidence = evidenceFiles.length > 0 || prefillSourceFiles.length > 0;
   const tourProgressState: TourProgressState = {
     selectedReportType,
@@ -376,22 +376,60 @@ export function GenerationForm({
   const autoResumeTemplateFeeRef = useRef(false);
   const hostedEvidencePromiseRef = useRef<Promise<HostedEvidenceDraft> | null>(null);
   const hostedEvidenceRequestRef = useRef(0);
+  const tourAdvanceTimerRef = useRef<number | null>(null);
+
+  const clearPendingTourAdvance = useCallback(() => {
+    if (typeof window !== "undefined" && tourAdvanceTimerRef.current !== null) {
+      window.clearTimeout(tourAdvanceTimerRef.current);
+    }
+    tourAdvanceTimerRef.current = null;
+    setTourAdvancePendingFor(null);
+  }, []);
+
+  const moveTourToIndex = useCallback((nextIndex: number) => {
+    clearPendingTourAdvance();
+    const clampedIndex = Math.max(0, Math.min(TOUR_STEPS.length - 1, nextIndex));
+    setTourIndex(clampedIndex);
+    setCurrentStep(TOUR_STEPS[clampedIndex].formStep);
+  }, [clearPendingTourAdvance]);
+
+  const scheduleTourAdvance = useCallback((expectedStepId: TourStepId, nextIndex: number) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    clearPendingTourAdvance();
+    setTourAdvancePendingFor(expectedStepId);
+    tourAdvanceTimerRef.current = window.setTimeout(() => {
+      setTourIndex((current) => {
+        if (!isTourOpen || TOUR_STEPS[current]?.id !== expectedStepId) {
+          return current;
+        }
+
+        const clampedIndex = Math.max(0, Math.min(TOUR_STEPS.length - 1, nextIndex));
+        setCurrentStep(TOUR_STEPS[clampedIndex].formStep);
+        return clampedIndex;
+      });
+      tourAdvanceTimerRef.current = null;
+      setTourAdvancePendingFor(null);
+    }, TOUR_AUTO_ADVANCE_DELAY_MS);
+  }, [clearPendingTourAdvance, isTourOpen]);
 
   function closeTour(markSeen = true) {
+    clearPendingTourAdvance();
     setIsTourOpen(false);
     setTourRect(null);
-    setTourAutoAdvanceHoldId(null);
 
     if (typeof window !== "undefined" && markSeen) {
       window.localStorage.setItem("basquio:onboarding-tour-seen", "1");
     }
   }
 
-  function openTour(fromIndex = 0) {
-    setTourAutoAdvanceHoldId(null);
+  const openTour = useCallback((fromIndex = 0) => {
+    clearPendingTourAdvance();
     setTourIndex(fromIndex);
     setIsTourOpen(true);
-  }
+  }, [clearPendingTourAdvance]);
 
   function reserveRunId() {
     const nextRunId = crypto.randomUUID();
@@ -528,6 +566,12 @@ export function GenerationForm({
   }
 
   useEffect(() => {
+    return () => {
+      clearPendingTourAdvance();
+    };
+  }, [clearPendingTourAdvance]);
+
+  useEffect(() => {
     if (recipePrefill || typeof window === "undefined") {
       return;
     }
@@ -540,7 +584,7 @@ export function GenerationForm({
     if (!window.localStorage.getItem("basquio:onboarding-tour-seen")) {
       openTour(0);
     }
-  }, [recipePrefill, startTour]);
+  }, [openTour, recipePrefill, startTour]);
 
   useLayoutEffect(() => {
     if (!isTourOpen) {
@@ -628,26 +672,6 @@ export function GenerationForm({
     getTourTarget,
     measureActiveTour,
   ]);
-
-  useEffect(() => {
-    if (!isTourOpen || !activeTourStep || activeTourStep.id === "review") {
-      return;
-    }
-
-    if (tourAutoAdvanceHoldId === activeTourStep.id) {
-      return;
-    }
-
-    if (!activeTourStepComplete) {
-      return;
-    }
-
-    const timerId = window.setTimeout(() => {
-      setTourIndex((current) => Math.min(TOUR_STEPS.length - 1, current + 1));
-    }, TOUR_AUTO_ADVANCE_DELAY_MS);
-
-    return () => window.clearTimeout(timerId);
-  }, [activeTourStep, activeTourStepComplete, isTourOpen, tourAutoAdvanceHoldId]);
 
   useEffect(() => {
     if (!templateFeeReturn || templateFeeReturn.status !== "success" || !templateFeeReturn.draftId || autoResumeTemplateFeeRef.current) {
@@ -851,7 +875,7 @@ export function GenerationForm({
   }
 
   function selectReportType(presetId: string) {
-    setTourAutoAdvanceHoldId(null);
+    clearPendingTourAdvance();
     setSelectedReportType(presetId);
     const preset = reportTypePresets.find((p) => p.id === presetId);
     if (preset && preset.id !== "custom") {
@@ -863,16 +887,22 @@ export function GenerationForm({
       }));
     }
     setError(null);
-    setCurrentStep(1);
     if (isTourOpen && activeTourStepId === "report-type") {
-      setTourIndex(1);
+      moveTourToIndex(1);
+      return;
     }
+
+    setCurrentStep(1);
   }
 
   function goToNextStep() {
     if (currentStep === 0) {
       // Report type step — skip to upload even without selection
       setError(null);
+      if (isTourOpen) {
+        moveTourToIndex(1);
+        return;
+      }
       setCurrentStep(1);
       return;
     }
@@ -883,6 +913,26 @@ export function GenerationForm({
     }
 
     if (currentStep === 2) {
+      if (isTourOpen && activeTourStepId === "business-context") {
+        if (brief.businessContext.trim().length < 10) {
+          setError("Add a concrete business context before continuing.");
+          return;
+        }
+        setError(null);
+        moveTourToIndex(3);
+        return;
+      }
+
+      if (isTourOpen && activeTourStepId === "audience-objective") {
+        if (!brief.audience.trim() || !brief.objective.trim()) {
+          setError("Add both the audience and objective before continuing.");
+          return;
+        }
+        setError(null);
+        moveTourToIndex(4);
+        return;
+      }
+
       if (!brief.businessContext || !brief.audience || !brief.objective) {
         setError("Add the business context, audience, and objective before continuing.");
         return;
@@ -890,11 +940,30 @@ export function GenerationForm({
     }
 
     setError(null);
+    if (isTourOpen && activeTourStepId) {
+      if (activeTourStepId === "upload") {
+        moveTourToIndex(2);
+        return;
+      }
+      if (activeTourStepId === "business-context") {
+        moveTourToIndex(3);
+        return;
+      }
+      if (activeTourStepId === "audience-objective") {
+        moveTourToIndex(4);
+        return;
+      }
+    }
     setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
   }
 
   function goToPreviousStep() {
     setError(null);
+    clearPendingTourAdvance();
+    if (isTourOpen) {
+      moveTourToIndex(tourIndex - 1);
+      return;
+    }
     setCurrentStep((step) => Math.max(step - 1, 0));
   }
 
@@ -903,15 +972,17 @@ export function GenerationForm({
   }
 
   function updateEvidenceFiles(files: File[]) {
-    if (isTourOpen && activeTourStepId === "upload") {
-      setTourAutoAdvanceHoldId(null);
-    }
+    clearPendingTourAdvance();
     setEvidenceFiles((current) => {
       const merged = mergeFiles(current, files);
       syncInputFiles(evidenceInputRef.current, merged);
       return merged;
     });
     setError(null);
+
+    if (isTourOpen && activeTourStepId === "upload" && !hasEvidence && files.length > 0) {
+      scheduleTourAdvance("upload", 2);
+    }
   }
 
   function removeEvidenceFile(fileToRemove: File) {
@@ -933,17 +1004,32 @@ export function GenerationForm({
   }
 
   function updateBriefField(field: keyof BriefFields, value: string) {
-    if (
-      isTourOpen &&
-      (activeTourStepId === "business-context" || activeTourStepId === "audience-objective")
-    ) {
-      setTourAutoAdvanceHoldId(null);
-    }
-    setBrief((current) => ({
-      ...current,
+    clearPendingTourAdvance();
+    const nextBrief = {
+      ...brief,
       [field]: value,
-    }));
+    };
+    setBrief(nextBrief);
     setError(null);
+
+    if (isTourOpen && activeTourStepId === "business-context" && field === "businessContext") {
+      const previousComplete = brief.businessContext.trim().length >= 10;
+      const nextComplete = nextBrief.businessContext.trim().length >= 10;
+
+      if (!previousComplete && nextComplete) {
+        scheduleTourAdvance("business-context", 3);
+      }
+      return;
+    }
+
+    if (isTourOpen && activeTourStepId === "audience-objective" && (field === "audience" || field === "objective")) {
+      const previousComplete = brief.audience.trim().length > 0 && brief.objective.trim().length > 0;
+      const nextComplete = nextBrief.audience.trim().length > 0 && nextBrief.objective.trim().length > 0;
+
+      if (!previousComplete && nextComplete) {
+        scheduleTourAdvance("audience-objective", 4);
+      }
+    }
   }
 
   function handleDrop(event: React.DragEvent<HTMLElement>) {
@@ -952,7 +1038,7 @@ export function GenerationForm({
     updateEvidenceFiles(Array.from(event.dataTransfer.files ?? []));
   }
 
-  async function loadSampleDataset() {
+  const loadSampleDataset = useCallback(async () => {
     setSampleLoadState("loading");
     setError(null);
 
@@ -969,7 +1055,7 @@ export function GenerationForm({
       });
 
       setEvidenceFiles([file]);
-      setTourAutoAdvanceHoldId(null);
+      clearPendingTourAdvance();
       syncInputFiles(evidenceInputRef.current, [file]);
       setBrief((current) => ({
         businessContext: current.businessContext || SAMPLE_BRIEF.businessContext,
@@ -981,11 +1067,15 @@ export function GenerationForm({
       }));
       setCurrentStep((step) => Math.max(step, 1));
       setSampleLoadState("ready");
+
+      if (isTourOpen && activeTourStepId === "upload" && !hasEvidence) {
+        scheduleTourAdvance("upload", 2);
+      }
     } catch (sampleError) {
       setSampleLoadState("error");
       setError(sampleError instanceof Error ? sampleError.message : "Unable to load the sample dataset.");
     }
-  }
+  }, [activeTourStepId, clearPendingTourAdvance, hasEvidence, isTourOpen, scheduleTourAdvance]);
 
   useEffect(() => {
     if (!startWithSampleData || sampleLoadTriggeredRef.current || recipePrefill || prefillSourceFiles.length > 0 || evidenceFiles.length > 0) {
@@ -994,7 +1084,7 @@ export function GenerationForm({
 
     sampleLoadTriggeredRef.current = true;
     void loadSampleDataset();
-  }, [evidenceFiles.length, prefillSourceFiles.length, recipePrefill, startWithSampleData]);
+  }, [evidenceFiles.length, loadSampleDataset, prefillSourceFiles.length, recipePrefill, startWithSampleData]);
 
   return (
     <div className="stack-lg">
@@ -1019,7 +1109,13 @@ export function GenerationForm({
                 key={step.id}
                 className={`step-chip step-chip-${state}`}
                 type="button"
-                onClick={() => setCurrentStep(index)}
+                onClick={() => {
+                  clearPendingTourAdvance();
+                  setCurrentStep(index);
+                  if (isTourOpen) {
+                    setTourIndex(getTourIndexForFormStep(index, tourIndex));
+                  }
+                }}
               >
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{step.title}</strong>
@@ -1613,8 +1709,10 @@ export function GenerationForm({
               <strong>
                 {activeTourStepId === "review"
                   ? "Launch the run when this looks right."
-                  : activeTourStepComplete
+                  : tourAdvancePendingFor === activeTourStepId
                     ? "Nice. Moving to the next step..."
+                    : activeTourStepComplete
+                      ? "This step looks good. Use Next or keep editing."
                     : "Complete this step and the tour moves on automatically."}
               </strong>
             </div>
@@ -1623,9 +1721,7 @@ export function GenerationForm({
                 className="button small secondary"
                 type="button"
                 onClick={() => {
-                  const nextIndex = Math.max(0, tourIndex - 1);
-                  setTourAutoAdvanceHoldId(TOUR_STEPS[nextIndex].id);
-                  setTourIndex(nextIndex);
+                  moveTourToIndex(tourIndex - 1);
                 }}
                 disabled={tourIndex === 0}
               >
@@ -1639,9 +1735,7 @@ export function GenerationForm({
                     closeTour();
                     return;
                   }
-                  const nextIndex = Math.min(TOUR_STEPS.length - 1, tourIndex + 1);
-                  setTourAutoAdvanceHoldId(TOUR_STEPS[nextIndex].id);
-                  setTourIndex(nextIndex);
+                  moveTourToIndex(tourIndex + 1);
                 }}
               >
                 {tourIndex === TOUR_STEPS.length - 1 ? "Done" : "Next"}
@@ -1668,7 +1762,7 @@ function isTourStepComplete(stepId: TourStepId, state: TourProgressState) {
   }
 
   if (stepId === "audience-objective") {
-    return state.audience.trim().length > 0 || state.objective.trim().length > 0;
+    return state.audience.trim().length > 0 && state.objective.trim().length > 0;
   }
 
   if (stepId === "review") {
@@ -1689,6 +1783,20 @@ function areTourRectsEqual(current: TourRect | null, next: TourRect) {
     Math.round(current.width) === Math.round(next.width) &&
     Math.round(current.height) === Math.round(next.height)
   );
+}
+
+function getTourIndexForFormStep(formStep: number, currentTourIndex: number) {
+  const matchingIndexes = TOUR_STEPS.map((step, index) => ({ step, index }))
+    .filter(({ step }) => step.formStep === formStep)
+    .map(({ index }) => index);
+
+  if (matchingIndexes.length === 0) {
+    return currentTourIndex;
+  }
+
+  return matchingIndexes.reduce((closest, index) => {
+    return Math.abs(index - currentTourIndex) < Math.abs(closest - currentTourIndex) ? index : closest;
+  }, matchingIndexes[0]);
 }
 
 function clampTargetSlideCount(value: number) {
