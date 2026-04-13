@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import {
   grantPurchaseCredits,
@@ -210,14 +210,15 @@ async function handleTemplateFeeCheckoutCompleted(
     },
   });
 
-  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
-    .then((email) => notifyTemplateFeePayment({
+  scheduleDiscordNotification(async () => {
+    const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+    await notifyTemplateFeePayment({
       email,
       amountUsd: (session.amount_total ?? 0) / 100,
-    }))
-    .catch((error) => {
-      console.error(`[stripe-webhook] template fee Discord notification failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`);
     });
+  }, (error) => {
+    console.error(`[stripe-webhook] template fee Discord notification failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }
 
 async function handleCreditPackPurchase(
@@ -261,15 +262,16 @@ async function handleCreditPackPurchase(
     paymentIntentId,
   });
 
-  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
-    .then((email) => notifyCreditPurchase({
+  scheduleDiscordNotification(async () => {
+    const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+    await notifyCreditPurchase({
       email,
       packId,
       pricingTier: normalizePackPricingTier(session.metadata?.pack_pricing_tier),
-    }))
-    .catch((error) => {
-      logDiscordNotificationFailure("credit purchase", userId, error);
     });
+  }, (error) => {
+    logDiscordNotificationFailure("credit purchase", userId, error);
+  });
 
   console.log(`[stripe-webhook] granted ${pack.credits} credits to user ${userId} (pack=${packId}, pi=${paymentIntentId})`);
 }
@@ -531,15 +533,16 @@ async function handleInvoicePaid(
     stripeEventId: eventId,
   });
 
-  void resolveUserEmail(config.supabaseUrl, config.serviceKey, userId)
-    .then((email) => notifySubscriptionRenewed({
+  scheduleDiscordNotification(async () => {
+    const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+    await notifySubscriptionRenewed({
       email,
       plan: normalizedPlan,
       creditsGranted: creditAmount,
-    }))
-    .catch((error) => {
-      logDiscordNotificationFailure("subscription renewed", userId, error);
     });
+  }, (error) => {
+    logDiscordNotificationFailure("subscription renewed", userId, error);
+  });
 
   console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${normalizedPlan}, interval=${isAnnual ? "annual" : "monthly"}, event=${eventId})`);
 }
@@ -604,6 +607,16 @@ function getSupabaseConfig() {
 
 function logDiscordNotificationFailure(context: string, userId: string, error: unknown) {
   console.error(`[stripe-webhook] Discord ${context} notification failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+function scheduleDiscordNotification(task: () => Promise<void>, onError: (error: unknown) => void) {
+  after(async () => {
+    try {
+      await task();
+    } catch (error) {
+      onError(error);
+    }
+  });
 }
 
 async function resolveUserEmail(

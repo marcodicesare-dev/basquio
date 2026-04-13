@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { ensureFreeTierCredit } from "@/lib/credits";
 import { notifySignup } from "@/lib/discord-customers";
 import { sendResendHtmlEmail, type ResendSendResult } from "@/lib/resend";
@@ -62,11 +64,15 @@ export async function bootstrapViewerAccount(
   ]);
 
   if (isFirstAuthentication && user.email) {
-    void notifySignup({
-      email: user.email,
-      sourceLabel: formatSignupSourceLabel(signupAttribution),
-    }).catch((error) => {
-      console.error(`[bootstrap] Discord signup notification failed for ${user.email}: ${error instanceof Error ? error.message : String(error)}`);
+    after(async () => {
+      try {
+        await notifySignup({
+          email: user.email!,
+          sourceLabel: formatSignupSourceLabel(signupAttribution),
+        });
+      } catch (error) {
+        console.error(`[bootstrap] Discord signup notification failed for ${user.email}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     });
   }
 
