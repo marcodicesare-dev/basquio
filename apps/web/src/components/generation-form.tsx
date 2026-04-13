@@ -335,6 +335,7 @@ export function GenerationForm({
   const [launchRunId, setLaunchRunId] = useState<string | null>(null);
   const [sampleLoadState, setSampleLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const sampleLoadTriggeredRef = useRef(false);
+  const [tourAutoAdvanceHoldId, setTourAutoAdvanceHoldId] = useState<TourStepId | null>(null);
   const hasEvidence = evidenceFiles.length > 0 || prefillSourceFiles.length > 0;
   const tourProgressState: TourProgressState = {
     selectedReportType,
@@ -367,6 +368,7 @@ export function GenerationForm({
     setIsTourOpen(false);
     setTourRect(null);
     setTourCardPosition(null);
+    setTourAutoAdvanceHoldId(null);
 
     if (typeof window !== "undefined" && markSeen) {
       window.localStorage.setItem("basquio:onboarding-tour-seen", "1");
@@ -374,6 +376,7 @@ export function GenerationForm({
   }
 
   function openTour(fromIndex = 0) {
+    setTourAutoAdvanceHoldId(null);
     setTourIndex(fromIndex);
     setIsTourOpen(true);
   }
@@ -616,6 +619,10 @@ export function GenerationForm({
       return;
     }
 
+    if (tourAutoAdvanceHoldId === activeTourStep.id) {
+      return;
+    }
+
     if (!activeTourStepComplete) {
       return;
     }
@@ -625,7 +632,7 @@ export function GenerationForm({
     }, TOUR_AUTO_ADVANCE_DELAY_MS);
 
     return () => window.clearTimeout(timerId);
-  }, [activeTourStep, activeTourStepComplete, isTourOpen]);
+  }, [activeTourStep, activeTourStepComplete, isTourOpen, tourAutoAdvanceHoldId]);
 
   useEffect(() => {
     if (!templateFeeReturn || templateFeeReturn.status !== "success" || !templateFeeReturn.draftId || autoResumeTemplateFeeRef.current) {
@@ -829,6 +836,7 @@ export function GenerationForm({
   }
 
   function selectReportType(presetId: string) {
+    setTourAutoAdvanceHoldId(null);
     setSelectedReportType(presetId);
     const preset = reportTypePresets.find((p) => p.id === presetId);
     if (preset && preset.id !== "custom") {
@@ -880,6 +888,9 @@ export function GenerationForm({
   }
 
   function updateEvidenceFiles(files: File[]) {
+    if (isTourOpen && activeTourStepId === "upload") {
+      setTourAutoAdvanceHoldId(null);
+    }
     setEvidenceFiles((current) => {
       const merged = mergeFiles(current, files);
       syncInputFiles(evidenceInputRef.current, merged);
@@ -907,6 +918,12 @@ export function GenerationForm({
   }
 
   function updateBriefField(field: keyof BriefFields, value: string) {
+    if (
+      isTourOpen &&
+      (activeTourStepId === "business-context" || activeTourStepId === "audience-objective")
+    ) {
+      setTourAutoAdvanceHoldId(null);
+    }
     setBrief((current) => ({
       ...current,
       [field]: value,
@@ -937,6 +954,7 @@ export function GenerationForm({
       });
 
       setEvidenceFiles([file]);
+      setTourAutoAdvanceHoldId(null);
       syncInputFiles(evidenceInputRef.current, [file]);
       setBrief((current) => ({
         businessContext: current.businessContext || SAMPLE_BRIEF.businessContext,
@@ -1594,7 +1612,11 @@ export function GenerationForm({
               <button
                 className="button small secondary"
                 type="button"
-                onClick={() => setTourIndex((current) => Math.max(0, current - 1))}
+                onClick={() => {
+                  const nextIndex = Math.max(0, tourIndex - 1);
+                  setTourAutoAdvanceHoldId(TOUR_STEPS[nextIndex].id);
+                  setTourIndex(nextIndex);
+                }}
                 disabled={tourIndex === 0}
               >
                 Back
@@ -1607,7 +1629,9 @@ export function GenerationForm({
                     closeTour();
                     return;
                   }
-                  setTourIndex((current) => Math.min(TOUR_STEPS.length - 1, current + 1));
+                  const nextIndex = Math.min(TOUR_STEPS.length - 1, tourIndex + 1);
+                  setTourAutoAdvanceHoldId(TOUR_STEPS[nextIndex].id);
+                  setTourIndex(nextIndex);
                 }}
               >
                 {tourIndex === TOUR_STEPS.length - 1 ? "Done" : "Next"}
