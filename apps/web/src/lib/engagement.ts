@@ -1,4 +1,4 @@
-import { sendRunDeliveryEmail, resolveUserEmail } from "@basquio/workflows/notify-completion";
+import { resolveUserIdentity, sendRunDeliveryEmail, resolveUserEmail } from "@basquio/workflows/notify-completion";
 
 import { CREDIT_PACKS_CONFIG, PLAN_CONFIG } from "@/lib/billing-config";
 import { calculateRunCredits } from "@/lib/credits";
@@ -433,6 +433,7 @@ async function listActivationCandidates(
     query: {
       select: "user_id,first_authenticated_at",
       and: `(first_authenticated_at.gte.${input.minAuthDate},first_authenticated_at.lt.${input.maxAuthDate})`,
+      order: "first_authenticated_at.asc",
       limit: "100",
     },
   }).catch(() => []);
@@ -489,12 +490,12 @@ async function listActivationCandidates(
       }
     }
 
-    const email = await resolveUserEmail(config, userId);
-    if (!email) {
+    const identity = await resolveUserIdentity(config, userId);
+    if (!identity.email) {
       continue;
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = identity.email.trim().toLowerCase();
     if (
       ACTIVATION_EXCLUDED_DOMAINS.some((domain) => normalizedEmail.endsWith(domain)) ||
       ACTIVATION_EXCLUDED_EMAILS.includes(normalizedEmail as (typeof ACTIVATION_EXCLUDED_EMAILS)[number])
@@ -502,8 +503,7 @@ async function listActivationCandidates(
       continue;
     }
 
-    const firstName = await resolveUserFirstName(config, userId);
-    candidates.push({ userId, email: normalizedEmail, firstName });
+    candidates.push({ userId, email: normalizedEmail, firstName: identity.firstName });
   }
 
   return candidates;
@@ -808,34 +808,4 @@ function buildServiceHeaders(serviceKey: string, extraHeaders: Record<string, st
   }
 
   return headers;
-}
-
-async function resolveUserFirstName(
-  config: SupabaseConfig,
-  userId: string,
-): Promise<string | null> {
-  const response = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${userId}`, {
-    headers: buildServiceHeaders(config.serviceKey),
-    cache: "no-store",
-  }).catch(() => null);
-
-  if (!response?.ok) {
-    return null;
-  }
-
-  const user = (await response.json().catch(() => null)) as {
-    user_metadata?: Record<string, unknown>;
-  } | null;
-
-  const fullName = [
-    typeof user?.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
-    typeof user?.user_metadata?.name === "string" ? user.user_metadata.name : null,
-  ].find((value): value is string => Boolean(value?.trim()));
-
-  if (!fullName) {
-    return null;
-  }
-
-  const [firstName] = fullName.trim().split(/\s+/);
-  return firstName || null;
 }

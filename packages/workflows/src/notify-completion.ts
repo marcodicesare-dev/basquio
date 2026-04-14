@@ -244,7 +244,7 @@ export async function resolveUserEmail(
   return identity.email;
 }
 
-async function resolveUserIdentity(
+export async function resolveUserIdentity(
   config: { supabaseUrl: string; serviceKey: string },
   userId: string,
 ): Promise<UserIdentity> {
