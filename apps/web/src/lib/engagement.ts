@@ -460,6 +460,20 @@ async function listActivationCandidates(
       continue;
     }
 
+    const [upload] = await fetchRestRows<{ id: string }>({
+      ...config,
+      table: "source_files",
+      query: {
+        select: "id",
+        uploaded_by: `eq.${userId}`,
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    if (upload) {
+      continue;
+    }
+
     const [existing] = await fetchRestRows<{ id: string }>({
       ...config,
       table: "user_engagement_notifications",
