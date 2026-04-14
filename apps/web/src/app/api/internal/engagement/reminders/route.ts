@@ -4,6 +4,7 @@ import {
   getRunReminderContext,
   listCompletedRunsWithoutDownloads,
   listUnfinishedSetupCandidates,
+  sendActivationReminders,
   sendIncompleteSetupReminder,
   sendWaitingRunReminder,
 } from "@/lib/engagement";
@@ -61,12 +62,16 @@ export async function GET(request: Request) {
     }
   }
 
+  const activation = await sendActivationReminders(config);
+
   return NextResponse.json({
     ok: true,
     waitingCandidates: waitingRuns.length,
     waitingSent,
     unfinishedCandidates: unfinishedCandidates.length,
     unfinishedSent,
+    activationSent: activation.sent,
+    activationSkipped: activation.skipped,
   });
 }
 

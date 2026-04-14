@@ -14,10 +14,43 @@ type EngagementConfig = SupabaseConfig & {
   resendApiKey: string;
 };
 
-type NotificationType = "low_credits" | "run_waiting" | "unfinished_setup";
+type NotificationType = "low_credits" | "run_waiting" | "unfinished_setup" | "activation";
 
 export const LOW_CREDIT_THRESHOLD = calculateRunCredits(10, "claude-sonnet-4-6");
 export const DOWNLOAD_TRACKING_FLOOR = "2026-04-11T15:00:00Z";
+const ACTIVATION_EXCLUDED_DOMAINS = ["@basquio.com", "@loamly.ai", "@example.com"] as const;
+const ACTIVATION_EXCLUDED_EMAILS = [
+  "marcodicesare1992@gmail.com",
+  "frarobpro@yahoo.it",
+  "ale.salerni95@gmail.com",
+  "francescorobertoprocaccio@gmail.com",
+] as const;
+const ACTIVATION_PHASES = [
+  {
+    key: "activation-6h",
+    minAgeMs: 6 * 3600_000,
+    maxAgeMs: 72 * 3600_000,
+    requirePriorKey: null,
+    subject: "There's sample data if you need it",
+    buildHtml: buildActivation6hHtml,
+  },
+  {
+    key: "activation-3d",
+    minAgeMs: 72 * 3600_000,
+    maxAgeMs: 8 * 86400_000,
+    requirePriorKey: "activation-6h",
+    subject: "How much time does your team spend on decks?",
+    buildHtml: buildActivation3dHtml,
+  },
+  {
+    key: "activation-8d",
+    minAgeMs: 8 * 86400_000,
+    maxAgeMs: 30 * 86400_000,
+    requirePriorKey: "activation-3d",
+    subject: "Here's what comes back",
+    buildHtml: buildActivation8dHtml,
+  },
+] as const;
 
 type SourceFileRow = {
   id: string;
@@ -44,6 +77,12 @@ type ArtifactManifestSummaryRow = {
 
 type CoverSlideRow = {
   title: string;
+};
+
+type ActivationCandidate = {
+  userId: string;
+  email: string;
+  firstName: string | null;
 };
 
 export async function recordArtifactDownloadEvent(
@@ -211,6 +250,43 @@ export async function sendIncompleteSetupReminder(
   }
 }
 
+export async function sendActivationReminders(
+  config: EngagementConfig,
+): Promise<{ sent: number; skipped: number }> {
+  const now = Date.now();
+  let sent = 0;
+  let skipped = 0;
+
+  for (const phase of ACTIVATION_PHASES) {
+    const minAuthDate = new Date(now - phase.maxAgeMs).toISOString();
+    const maxAuthDate = new Date(now - phase.minAgeMs).toISOString();
+    const candidates = await listActivationCandidates(config, {
+      minAuthDate,
+      maxAuthDate,
+      notificationKey: phase.key,
+      requirePriorKey: phase.requirePriorKey,
+    });
+
+    for (const candidate of candidates) {
+      const ok = await sendActivationEmail(config, {
+        userId: candidate.userId,
+        email: candidate.email,
+        firstName: candidate.firstName,
+        notificationKey: `${phase.key}:${candidate.userId}`,
+        subject: phase.subject,
+        html: phase.buildHtml(candidate.firstName),
+      });
+      if (ok) {
+        sent += 1;
+      } else {
+        skipped += 1;
+      }
+    }
+  }
+
+  return { sent, skipped };
+}
+
 export async function listCompletedRunsWithoutDownloads(
   config: SupabaseConfig,
   olderThanIso: string,
@@ -339,6 +415,100 @@ export async function listUnfinishedSetupCandidates(
   return candidates;
 }
 
+async function listActivationCandidates(
+  config: SupabaseConfig,
+  input: {
+    minAuthDate: string;
+    maxAuthDate: string;
+    notificationKey: string;
+    requirePriorKey: string | null;
+  },
+): Promise<ActivationCandidate[]> {
+  const bootstrapRows = await fetchRestRows<{
+    user_id: string;
+    first_authenticated_at: string;
+  }>({
+    ...config,
+    table: "user_bootstrap_state",
+    query: {
+      select: "user_id,first_authenticated_at",
+      and: `(first_authenticated_at.gte.${input.minAuthDate},first_authenticated_at.lt.${input.maxAuthDate})`,
+      limit: "100",
+    },
+  }).catch(() => []);
+
+  if (bootstrapRows.length === 0) {
+    return [];
+  }
+
+  const candidates: ActivationCandidate[] = [];
+
+  for (const row of bootstrapRows) {
+    const userId = row.user_id;
+    const [balance] = await fetchRestRows<{ total_runs: number | null }>({
+      ...config,
+      table: "credit_balances",
+      query: {
+        select: "total_runs",
+        user_id: `eq.${userId}`,
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    if (typeof balance?.total_runs === "number" && balance.total_runs > 0) {
+      continue;
+    }
+
+    const [existing] = await fetchRestRows<{ id: string }>({
+      ...config,
+      table: "user_engagement_notifications",
+      query: {
+        select: "id",
+        notification_key: `eq.${input.notificationKey}:${userId}`,
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    if (existing) {
+      continue;
+    }
+
+    if (input.requirePriorKey) {
+      const [prior] = await fetchRestRows<{ id: string }>({
+        ...config,
+        table: "user_engagement_notifications",
+        query: {
+          select: "id",
+          notification_key: `eq.${input.requirePriorKey}:${userId}`,
+          limit: "1",
+        },
+      }).catch(() => []);
+
+      if (!prior) {
+        continue;
+      }
+    }
+
+    const email = await resolveUserEmail(config, userId);
+    if (!email) {
+      continue;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (
+      ACTIVATION_EXCLUDED_DOMAINS.some((domain) => normalizedEmail.endsWith(domain)) ||
+      ACTIVATION_EXCLUDED_EMAILS.includes(normalizedEmail as (typeof ACTIVATION_EXCLUDED_EMAILS)[number])
+    ) {
+      continue;
+    }
+
+    const firstName = await resolveUserFirstName(config, userId);
+    candidates.push({ userId, email: normalizedEmail, firstName });
+  }
+
+  return candidates;
+}
+
 async function claimEngagementNotification(
   config: SupabaseConfig,
   input: {
@@ -375,6 +545,49 @@ async function releaseEngagementNotification(config: SupabaseConfig, notificatio
       notification_key: `eq.${notificationKey}`,
     },
   }).catch(() => {});
+}
+
+async function sendActivationEmail(
+  config: EngagementConfig,
+  input: {
+    userId: string;
+    email: string;
+    firstName: string | null;
+    notificationKey: string;
+    subject: string;
+    html: string;
+  },
+): Promise<boolean> {
+  const claimed = await claimEngagementNotification(config, {
+    userId: input.userId,
+    notificationKey: input.notificationKey,
+    notificationType: "activation",
+    payload: {
+      subject: input.subject,
+    },
+  });
+
+  if (!claimed) {
+    return false;
+  }
+
+  try {
+    const sent = await sendResendEmail(config.resendApiKey, {
+      idempotencyKey: input.notificationKey,
+      to: input.email,
+      subject: input.subject,
+      html: input.html,
+    });
+
+    if (sent.status === "rejected") {
+      throw new Error("Activation email rejected.");
+    }
+
+    return sent.status === "sent";
+  } catch {
+    await releaseEngagementNotification(config, input.notificationKey);
+    return false;
+  }
 }
 
 async function postRow(
@@ -485,6 +698,90 @@ function buildIncompleteSetupHtml(input: { firstFileName: string; hasTemplateUpl
 </body>`;
 }
 
+function buildActivation6hHtml(firstName: string | null) {
+  const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : "Hi,";
+  return wrapEmailBody(
+    "SAMPLE DATA",
+    [
+      `<p style="${emailParagraphStyle}">${greeting}</p>`,
+      `<p style="${emailParagraphStyle}">If you do not have a spreadsheet handy, there is a sample FMCG dataset loaded in the app. Hit "Try sample data" on the upload screen.</p>`,
+      ctaButton("Run a sample deck", "https://basquio.com/jobs/new?sample=1&utm_source=activation&utm_content=6h"),
+      `<p style="${emailParagraphStyle}">You will get a 10-slide deck back in about 15 minutes.</p>`,
+      signoff(),
+    ].join(""),
+  );
+}
+
+function buildActivation3dHtml(firstName: string | null) {
+  const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : "Hi,";
+  return wrapEmailBody(
+    "CALCULATOR",
+    [
+      `<p style="${emailParagraphStyle}">${greeting}</p>`,
+      `<p style="${emailParagraphStyle}">We made a calculator for this.</p>`,
+      ctaButton("Calculate your PowerPoint Tax", "https://basquio.com/powerpoint-tax?utm_source=activation&utm_content=3d"),
+      `<p style="${emailParagraphStyle}">Put in how many decks, how many slides, how long each takes. It does the math.</p>`,
+      signoff(),
+    ].join(""),
+  );
+}
+
+function buildActivation8dHtml(firstName: string | null) {
+  const greeting = firstName ? `Hi ${escapeHtml(firstName)},` : "Hi,";
+  const previewStrip = [
+    "/library/analysis/analysis.002.png",
+    "/library/analysis/analysis.006.png",
+    "/library/analysis/analysis.010.png",
+  ].map((src, index) => `
+      <td style="padding-right:${index < 2 ? "8px" : "0"};vertical-align:top;">
+        <img src="https://basquio.com${src}" alt="Basquio slide preview ${index + 1}" width="160" style="display:block;width:160px;max-width:100%;border-radius:10px;border:1px solid #E2E8F0;">
+      </td>
+    `).join("");
+
+  return wrapEmailBody(
+    "EXAMPLE OUTPUT",
+    [
+      `<p style="${emailParagraphStyle}">${greeting}</p>`,
+      `<p style="${emailParagraphStyle}">This is a real deck from a single CSV file.</p>`,
+      `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 18px 0;"><tr>${previewStrip}</tr></table>`,
+      `<p style="${emailParagraphStyle}">15 slides, real charts, editable PowerPoint. You can download it and open it yourself.</p>`,
+      ctaButton("See the full deck", "https://basquio.com/library?utm_source=activation&utm_content=8d"),
+      `<p style="${emailParagraphStyle}">Your credits do not expire.</p>`,
+      signoff(),
+    ].join(""),
+  );
+}
+
+const emailParagraphStyle = "color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;";
+
+function wrapEmailBody(eyebrow: string, content: string) {
+  return `<body style="background-color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;margin:0;padding:40px 20px;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;">
+    <tr>
+      <td style="padding:30px;border:1px solid #E5E7EB;border-radius:16px;background:#FFFFFF;">
+        <p style="color:#94A3B8;font-size:11px;font-weight:700;letter-spacing:1.5px;margin:0 0 16px 0;text-transform:uppercase;">${eyebrow}</p>
+        <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-blue.png" alt="Basquio" width="108" height="auto" style="display:block;margin-bottom:28px;">
+        ${content}
+      </td>
+    </tr>
+  </table>
+</body>`;
+}
+
+function ctaButton(label: string, href: string) {
+  return `<table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+    <tr>
+      <td>
+        <a href="${href}" style="background-color:#1A6AFF;border-radius:6px;color:#FFFFFF;display:inline-block;font-size:14px;font-weight:700;padding:12px 22px;text-decoration:none;">${label}</a>
+      </td>
+    </tr>
+  </table>`;
+}
+
+function signoff() {
+  return `<p style="${emailParagraphStyle}margin-bottom:0;">Marco</p>`;
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -511,4 +808,34 @@ function buildServiceHeaders(serviceKey: string, extraHeaders: Record<string, st
   }
 
   return headers;
+}
+
+async function resolveUserFirstName(
+  config: SupabaseConfig,
+  userId: string,
+): Promise<string | null> {
+  const response = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${userId}`, {
+    headers: buildServiceHeaders(config.serviceKey),
+    cache: "no-store",
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    return null;
+  }
+
+  const user = (await response.json().catch(() => null)) as {
+    user_metadata?: Record<string, unknown>;
+  } | null;
+
+  const fullName = [
+    typeof user?.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
+    typeof user?.user_metadata?.name === "string" ? user.user_metadata.name : null,
+  ].find((value): value is string => Boolean(value?.trim()));
+
+  if (!fullName) {
+    return null;
+  }
+
+  const [firstName] = fullName.trim().split(/\s+/);
+  return firstName || null;
 }
