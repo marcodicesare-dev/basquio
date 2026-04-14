@@ -3,39 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  clearSignupAttributionFromBrowser,
-  readSignupAttributionFromBrowser,
-} from "@/lib/signup-attribution";
+import { bootstrapAccountRequest } from "@/lib/auth-bootstrap-client";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { buildSignInPath } from "@/lib/supabase/paths";
 
 type CompletionState = "checking" | "done" | "invalid";
 
-async function bootstrapAccountRequest() {
-  const signupAttribution = readSignupAttributionFromBrowser();
-  const response = await fetch("/api/auth/bootstrap", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(signupAttribution ? { signupAttribution } : {}),
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(payload?.error ?? "We couldn't finish setting up your workspace.");
-  }
-
-  clearSignupAttributionFromBrowser();
-}
-
 export function AuthComplete({
   configured,
   nextPath,
+  hasServerSession = false,
 }: {
   configured: boolean;
   nextPath: string;
+  hasServerSession?: boolean;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<CompletionState>("checking");
@@ -51,7 +32,7 @@ export function AuthComplete({
       return "This sign-in or confirmation link is missing, expired, or already used.";
     }
 
-    return "We’re checking your link and opening your workspace.";
+    return "We’re finishing your sign-in and opening your workspace.";
   }, [status]);
 
   useEffect(() => {
@@ -81,22 +62,33 @@ export function AuthComplete({
     const accessToken = hashParams.get("access_token");
     const refreshToken = hashParams.get("refresh_token");
     const authErrorDescription = hashParams.get("error_description");
-    const hasAuthHash = Boolean(accessToken || refreshToken || hashParams.get("type"));
-
-    const fallbackTimer = window.setTimeout(() => {
-      if (!isMounted) {
-        return;
-      }
-
-      setStatus("invalid");
-      setError("We couldn't finish authentication from that link. Try signing in again.");
-    }, hasAuthHash ? 5000 : 1500);
 
     const complete = async () => {
       if (authErrorDescription) {
-        window.clearTimeout(fallbackTimer);
         setStatus("invalid");
         setError(authErrorDescription);
+        return;
+      }
+
+      if (hasServerSession) {
+        try {
+          await ensureBootstrapOnce();
+          if (!isMounted) {
+            return;
+          }
+
+          setStatus("done");
+          setError("");
+          router.replace(nextPath);
+          router.refresh();
+        } catch (bootstrapError) {
+          if (!isMounted) {
+            return;
+          }
+
+          setStatus("invalid");
+          setError(bootstrapError instanceof Error ? bootstrapError.message : "We couldn't finish setting up your workspace.");
+        }
         return;
       }
 
@@ -118,7 +110,6 @@ export function AuthComplete({
 
         if (!sessionResponse.ok) {
           const payload = (await sessionResponse.json().catch(() => null)) as { error?: string } | null;
-          window.clearTimeout(fallbackTimer);
           setStatus("invalid");
           setError(payload?.error ?? "We couldn't finish that sign-in link.");
           return;
@@ -129,20 +120,24 @@ export function AuthComplete({
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!isMounted || !session?.user) {
+      if (!isMounted) {
+        return;
+      }
+
+      if (!session?.user) {
+        setStatus("invalid");
+        setError("We couldn't finish authentication from that link. Try signing in again.");
         return;
       }
 
       try {
         await ensureBootstrapOnce();
 
-        window.clearTimeout(fallbackTimer);
         setStatus("done");
         setError("");
         router.replace(nextPath);
         router.refresh();
       } catch (bootstrapError) {
-        window.clearTimeout(fallbackTimer);
         setStatus("invalid");
         setError(bootstrapError instanceof Error ? bootstrapError.message : "We couldn't finish setting up your workspace.");
       }
@@ -162,7 +157,6 @@ export function AuthComplete({
           return;
         }
 
-        window.clearTimeout(fallbackTimer);
         setStatus("done");
         setError("");
         router.replace(nextPath);
@@ -172,7 +166,6 @@ export function AuthComplete({
           return;
         }
 
-        window.clearTimeout(fallbackTimer);
         setStatus("invalid");
         setError(bootstrapError instanceof Error ? bootstrapError.message : "We couldn't finish setting up your workspace.");
       });
@@ -181,20 +174,19 @@ export function AuthComplete({
 
     return () => {
       isMounted = false;
-      window.clearTimeout(fallbackTimer);
       subscription.unsubscribe();
     };
-  }, [configured, nextPath, router]);
+  }, [configured, hasServerSession, nextPath, router]);
 
   return (
     <section className="panel auth-card stack-xl">
       <div className="stack">
         <p className="section-label">Workspace access</p>
-        <h1>Checking your link</h1>
+        <h1>Completing sign-in</h1>
         <p className="muted">{helperCopy}</p>
       </div>
 
-      {status === "checking" ? <div className="panel auth-status-panel">Verifying your sign-in link...</div> : null}
+      {status === "checking" ? <div className="panel auth-status-panel">Finishing your sign-in…</div> : null}
       {error ? <div className="panel danger-panel auth-status-panel">{error}</div> : null}
 
       {status === "invalid" ? (

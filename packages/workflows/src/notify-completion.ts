@@ -13,8 +13,14 @@ type CompletionContext = {
   headline?: string | null;
 };
 
+type FailureContext = {
+  runId: string;
+  failureMessage: string;
+  parseWarnings?: string[];
+};
+
 type CompletionVariant = "first_run_clean" | "first_run_after_retry" | "returning";
-type RunEmailVariant = CompletionVariant | "waiting";
+type RunEmailVariant = CompletionVariant | "waiting" | "failed";
 
 type PreviewAsset = {
   position: number;
@@ -128,6 +134,60 @@ export async function notifyRunCompletionIfRequested(
   }
 }
 
+export async function notifyRunFailureIfRequested(
+  config: NotifyConfig,
+  run: { id: string; requested_by: string | null },
+  context: FailureContext,
+) {
+  let claimedAt: string | null = null;
+  try {
+    if (!config.resendApiKey) return;
+    if (!run.requested_by) return;
+
+    const rows = await fetchRestRows<RunNotificationRow>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: {
+        select: "notify_on_complete,completion_email_sent_at,brief,created_at",
+        id: `eq.${run.id}`,
+        limit: "1",
+      },
+    });
+
+    if (!rows[0]?.notify_on_complete) return;
+    if (rows[0].completion_email_sent_at) return;
+
+    const claim = await claimCompletionEmailSend(config, run.id);
+    if (!claim.shouldSend) return;
+    claimedAt = claim.claimedAt;
+
+    const identity = await resolveUserIdentity(config, run.requested_by);
+    if (!identity.email) {
+      await releaseCompletionEmailClaim(config, run.id, claimedAt);
+      return;
+    }
+
+    const sent = await sendRunDeliveryEmail(config, {
+      to: identity.email,
+      runId: context.runId,
+      slideCount: 0,
+      variant: "failed",
+      firstName: identity.firstName,
+      failureMessage: context.failureMessage,
+      retryUrl: `https://basquio.com/jobs/new?from=${context.runId}`,
+      parseWarnings: context.parseWarnings ?? [],
+      creditsRefunded: true,
+    });
+    if (sent.status === "rejected") {
+      await releaseCompletionEmailClaim(config, run.id, claimedAt);
+    }
+  } catch (error) {
+    await releaseCompletionEmailClaim(config, run.id, claimedAt);
+    console.warn(`[basquio] failure email failed (non-fatal):`, error);
+  }
+}
+
 async function claimCompletionEmailSend(
   config: NotifyConfig,
   runId: string,
@@ -229,6 +289,10 @@ export async function sendRunDeliveryEmail(
     creditsRemaining?: number | null;
     lastFailureAt?: string | null;
     briefExcerpt?: string | null;
+    failureMessage?: string | null;
+    retryUrl?: string | null;
+    parseWarnings?: string[];
+    creditsRefunded?: boolean;
   },
 ): Promise<ResendSendResult> {
   const progressUrl = `https://basquio.com/jobs/${params.runId}`;
@@ -249,6 +313,10 @@ export async function sendRunDeliveryEmail(
       creditsRemaining: params.creditsRemaining ?? null,
       lastFailureAt: params.lastFailureAt ?? null,
       briefExcerpt: params.briefExcerpt ?? null,
+      failureMessage: params.failureMessage ?? null,
+      retryUrl: params.retryUrl ?? null,
+      parseWarnings: params.parseWarnings ?? [],
+      creditsRefunded: params.creditsRefunded ?? false,
     }),
   });
 }
@@ -332,6 +400,10 @@ function buildRunEmailSubject(params: {
   headline?: string | null;
   variant: RunEmailVariant;
 }) {
+  if (params.variant === "failed") {
+    return "Your deck couldn't be completed";
+  }
+
   const subjectHead = params.variant === "waiting" ? "Your deck is still waiting" : "Your deck is ready";
   if (!params.headline) {
     return subjectHead;
@@ -355,7 +427,18 @@ function buildRunEmailHtml(input: {
   creditsRemaining: number | null;
   lastFailureAt: string | null;
   briefExcerpt: string | null;
+  failureMessage: string | null;
+  retryUrl: string | null;
+  parseWarnings: string[];
+  creditsRefunded: boolean;
 }) {
+  if (input.variant === "failed") {
+    return buildFailureRunEmailHtml({
+      ...input,
+      variant: "failed",
+    });
+  }
+
   if (input.variant === "first_run_clean" || input.variant === "first_run_after_retry") {
     return buildFirstRunEmailHtml({
       ...input,
@@ -376,6 +459,10 @@ function buildLegacyRunEmailHtml(input: {
   creditsRemaining: number | null;
   lastFailureAt: string | null;
   briefExcerpt: string | null;
+  failureMessage: string | null;
+  retryUrl: string | null;
+  parseWarnings: string[];
+  creditsRefunded: boolean;
 }) {
   const isWaitingReminder = input.variant === "waiting";
   const eyebrow = isWaitingReminder ? "DECK WAITING" : "DECK READY";
@@ -439,6 +526,10 @@ function buildFirstRunEmailHtml(input: {
   creditsRemaining: number | null;
   lastFailureAt: string | null;
   briefExcerpt: string | null;
+  failureMessage: string | null;
+  retryUrl: string | null;
+  parseWarnings: string[];
+  creditsRefunded: boolean;
 }) {
   const greeting = input.firstName ? `Hi ${escapeHtml(input.firstName)},` : "Hi there,";
   const mainLine = input.slideCount ? `Your ${input.slideCount}-slide deck is ready.` : "Your deck is ready.";
@@ -488,6 +579,67 @@ function buildFirstRunEmailHtml(input: {
         <p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">Open the narrative alongside the deck. It walks through the reasoning behind every chart and calls out what surprised us in the numbers.</p>
         ${creditSection}
         <p style="color:#94A3B8;font-size:12px;line-height:20px;margin:0;">Evidence in. Executive deck out.</p>
+      </td>
+    </tr>
+  </table>
+</body>`;
+}
+
+function buildFailureRunEmailHtml(input: {
+  progressUrl: string;
+  previewUrls: Array<{ position: number; url: string }>;
+  slideCount: number;
+  headline: string | null;
+  variant: "failed";
+  firstName: string | null;
+  creditsRemaining: number | null;
+  lastFailureAt: string | null;
+  briefExcerpt: string | null;
+  failureMessage: string | null;
+  retryUrl: string | null;
+  parseWarnings: string[];
+  creditsRefunded: boolean;
+}) {
+  const greeting = input.firstName ? `Hi ${escapeHtml(input.firstName)},` : "Hi there,";
+  const previewText = "Your deck run hit an issue";
+  const retryUrl = appendEmailTracking(input.retryUrl ?? "https://basquio.com/jobs/new", input.variant);
+  const parseWarningMarkup = input.parseWarnings.length > 0
+    ? `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;">
+        <tr>
+          <td style="padding:12px 14px;border:1px solid #F3D3A1;border-radius:8px;background:#FFF8ED;color:#7C5200;font-size:14px;line-height:22px;">
+            <strong style="color:#5C3B00;">File warning:</strong> We had trouble reading part of your upload.${input.parseWarnings[0] ? ` ${escapeHtml(input.parseWarnings[0])}` : ""} Try CSV or XLSX if you want the cleanest rerun.
+          </td>
+        </tr>
+      </table>`
+    : "";
+  const refundLine = input.creditsRefunded
+    ? `<p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">Your credits have been restored automatically.</p>`
+    : "";
+  const failureDetail = input.failureMessage?.trim()
+    ? `<p style="color:#6B7280;font-size:14px;line-height:22px;margin:0 0 18px 0;">${escapeHtml(input.failureMessage.trim().slice(0, 220))}</p>`
+    : "";
+
+  return `<body style="background-color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;margin:0;padding:40px 20px;">
+  <div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(previewText)}</div>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;">
+    <tr>
+      <td style="padding:30px;border:1px solid #E5E7EB;border-radius:16px;background:#FFFFFF;">
+        <p style="color:#94A3B8;font-size:11px;font-weight:700;letter-spacing:1.5px;margin:0 0 16px 0;text-transform:uppercase;">RUN FAILED</p>
+        <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-blue.png" alt="Basquio" width="108" height="auto" style="display:block;margin-bottom:28px;">
+        <p style="color:#0B0C0C;font-size:15px;line-height:24px;margin:0 0 16px 0;">${greeting}</p>
+        <h1 style="color:#0B0C0C;font-size:28px;line-height:1.05;letter-spacing:-0.04em;margin:0 0 14px 0;">Your deck couldn't be completed.</h1>
+        <p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">Something went wrong while building your deck. We’ve saved the run state, and you can restart from it with one click.</p>
+        ${failureDetail}
+        ${parseWarningMarkup}
+        ${refundLine}
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+          <tr>
+            <td>
+              <a href="${retryUrl}" style="background-color:#1A6AFF;border-radius:6px;color:#FFFFFF;display:inline-block;font-size:14px;font-weight:700;padding:12px 22px;text-decoration:none;">Retry this run</a>
+            </td>
+          </tr>
+        </table>
+        <p style="color:#94A3B8;font-size:12px;line-height:20px;margin:0;">If this keeps happening, send us the source file and run ID so we can inspect the failure directly.</p>
       </td>
     </tr>
   </table>

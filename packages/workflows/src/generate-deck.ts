@@ -48,7 +48,7 @@ import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
-import { notifyRunCompletionIfRequested } from "./notify-completion";
+import { notifyRunCompletionIfRequested, notifyRunFailureIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 
 const execFileAsync = promisify(execFile);
@@ -690,14 +690,16 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
   const anthropicRequestIds = new Set<string>();
   let templateMode: "basquio_standard" | "workspace_template" | "template_fallback" = "basquio_standard";
   let authorModel: AuthorModel = DEFAULT_AUTHOR_MODEL;
+  let parseWarnings: string[] = [];
+  let partialDeliveryWarnings: string[] = [];
 
   try {
     const run = await loadRun(config, runId);
     authorModel = normalizeAuthorModel(run.author_model);
-    const MODEL = authorModel;
-    const modelBudget = getDeckBudgetCaps(MODEL);
-    const modelBetas = buildClaudeBetas(MODEL);
-    const toolCallSummary = buildAuthoringToolCallSummary(MODEL);
+    let MODEL = authorModel;
+    let modelBudget = getDeckBudgetCaps(MODEL);
+    let modelBetas = buildClaudeBetas(MODEL);
+    let toolCallSummary = buildAuthoringToolCallSummary(MODEL);
     const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
     const priorAttemptsCostUsd = await getPriorAttemptsCost({
       supabaseUrl: config.supabaseUrl,
@@ -751,6 +753,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         buffer: file.buffer,
       })),
     });
+    parseWarnings = collectParseWarnings(parsed);
+    if (parseWarnings.length > 0) {
+      phaseTelemetry.parseWarnings = parseWarnings;
+      await insertEvent(config, runId, attempt, currentPhase, "parse_warnings", {
+        warnings: parseWarnings,
+      }).catch(() => {});
+    }
 
     const templateProfile = templateFile
       ? await interpretTemplateSource({
@@ -1012,142 +1021,239 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
       currentPhase = "author";
       await markPhase(config, runId, attempt, currentPhase);
+      const authorModelCandidates = [MODEL, ...getAuthorFallbackModels(MODEL)];
+      let isReportOnly = MODEL === "claude-haiku-4-5";
+      let authorResponse: Awaited<ReturnType<typeof runClaudeLoop>> | null = null;
+      let authorFallbackMessages: Anthropic.Beta.BetaMessage[] = [];
+      let authorFiles: GeneratedFile[] = [];
+      let authorPhaseUsage: ClaudeUsage | null = null;
+      let containerId: string | null = null;
+      let lastAuthorError: unknown = null;
 
-      generationMessage = buildAuthorMessage(
-        run,
-        MODEL,
-        recoveredAnalysisForSplit ? analysis : null,
-        {
-          hasTabularData: parsed.datasetProfile.sheets.length > 0,
-          hasDocumentEvidence: parsed.normalizedWorkbook.files.some((file) =>
-            (file.textContent?.trim().length ?? 0) > 100 || (file.pages?.length ?? 0) > 0),
-        },
-        !baseContainerId ? { uploadedEvidence, uploadedSupportPackets, uploadedTemplate } : undefined,
-        questionRoutes,
-        recoveredAnalysisForSplit && analysis ? buildChartSlotConstraintMessage(analysis) : undefined,
-        recoveredAnalysisForSplit && analysis ? buildPerSlideConstraintBlock(analysis) : undefined,
-      );
-      await recordToolCall(config, runId, attempt, "author", "code_execution", {
-        model: MODEL,
-        tools: [...toolCallSummary.tools],
-        autoInjectedTools: [...toolCallSummary.autoInjectedTools],
-        skills: [...toolCallSummary.skills],
-        stepNumber: 1,
-      });
-      await enforceDeckBudget({
-        client,
-        model: MODEL,
-        betas: [...modelBetas],
-        spentUsd,
-        outputTokenBudget: 72_000,
-        body: {
-          system: systemPrompt,
-          messages: [generationMessage],
-          tools: buildClaudeTools(MODEL),
-          output_config: buildAuthoringOutputConfig(MODEL),
-        },
-      });
+      for (let modelIndex = 0; modelIndex < authorModelCandidates.length; modelIndex += 1) {
+        const candidateModel = authorModelCandidates[modelIndex];
+        const candidateBetas = buildClaudeBetas(candidateModel);
+        const candidateToolCallSummary = buildAuthoringToolCallSummary(candidateModel);
+        const candidateIsReportOnly = candidateModel === "claude-haiku-4-5";
+        const candidateGenerationMessage = buildAuthorMessage(
+          run,
+          candidateModel,
+          recoveredAnalysisForSplit ? analysis : null,
+          {
+            hasTabularData: parsed.datasetProfile.sheets.length > 0,
+            hasDocumentEvidence: parsed.normalizedWorkbook.files.some((file) =>
+              (file.textContent?.trim().length ?? 0) > 100 || (file.pages?.length ?? 0) > 0),
+          },
+          !baseContainerId ? { uploadedEvidence, uploadedSupportPackets, uploadedTemplate } : undefined,
+          questionRoutes,
+          recoveredAnalysisForSplit && analysis ? buildChartSlotConstraintMessage(analysis) : undefined,
+          recoveredAnalysisForSplit && analysis ? buildPerSlideConstraintBlock(analysis) : undefined,
+        );
 
-      await persistRequestStart(config, runId, attempt, "author", "phase_generation", MODEL);
-      let authorResponse = await runClaudeLoop({
-        client,
-        model: MODEL,
-        systemPrompt,
-        maxTokens: 64_000,
-        phaseLabel: "author",
-        circuitKey: `${run.id}:${attempt.id}:author`,
-        onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
-        maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
-        phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
-        requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
-        currentSpentUsd: spentUsd,
-        betas: modelBetas,
-        container: buildAuthoringContainer(baseContainerId, MODEL),
-        messages: [generationMessage],
-        tools: buildClaudeTools(MODEL),
-        outputConfig: buildAuthoringOutputConfig(MODEL),
-        onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
-      });
-      const requiredAuthorFiles = isReportOnly
-        ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
-        : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
-      const authorFallbackMessages = [authorResponse.message];
-      let authorFiles: GeneratedFile[] = await downloadGeneratedFiles(client, authorResponse.fileIds);
-      const missingAuthorFiles = findMissingGeneratedFiles(authorFiles, requiredAuthorFiles);
-      if (missingAuthorFiles.length > 0) {
-        const retryMissingFiles = [...missingAuthorFiles];
-        console.warn(`[author-retry] Missing author files: ${retryMissingFiles.join(", ")}. Retrying author phase once.`);
-        await insertEvent(config, runId, attempt, "author", "author_missing_files_retry", {
-          missingFiles: retryMissingFiles,
-          model: MODEL,
-        }).catch(() => {});
+        try {
+          await recordToolCall(config, runId, attempt, "author", "code_execution", {
+            model: candidateModel,
+            tools: [...candidateToolCallSummary.tools],
+            autoInjectedTools: [...candidateToolCallSummary.autoInjectedTools],
+            skills: [...candidateToolCallSummary.skills],
+            stepNumber: 1,
+          });
+          await enforceDeckBudget({
+            client,
+            model: candidateModel,
+            betas: [...candidateBetas],
+            spentUsd,
+            outputTokenBudget: 72_000,
+            body: {
+              system: systemPrompt,
+              messages: [candidateGenerationMessage],
+              tools: buildClaudeTools(candidateModel),
+              output_config: buildAuthoringOutputConfig(candidateModel),
+            },
+          });
 
-        const retryResponse = await runClaudeLoop({
-          client,
-          model: MODEL,
-          systemPrompt,
-          maxTokens: 64_000,
-          phaseLabel: "author",
-          circuitKey: `${run.id}:${attempt.id}:author`,
-          onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
-          maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
-          phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
-          requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
-          currentSpentUsd: roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage)),
-          betas: modelBetas,
-          container: buildAuthoringContainer(authorResponse.containerId ?? baseContainerId, MODEL),
-          messages: [
-            ...authorResponse.thread,
-            {
-              role: "user",
-              content: [
+          await persistRequestStart(config, runId, attempt, "author", "phase_generation", candidateModel);
+          let candidateResponse = await runClaudeLoop({
+            client,
+            model: candidateModel,
+            systemPrompt,
+            maxTokens: 64_000,
+            phaseLabel: "author",
+            circuitKey: `${run.id}:${attempt.id}:author:${candidateModel}`,
+            onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
+            maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
+            phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
+            requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
+            currentSpentUsd: spentUsd,
+            betas: candidateBetas,
+            container: buildAuthoringContainer(baseContainerId, candidateModel),
+            messages: [candidateGenerationMessage],
+            tools: buildClaudeTools(candidateModel),
+            outputConfig: buildAuthoringOutputConfig(candidateModel),
+            onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
+          });
+          const requiredAuthorFiles = candidateIsReportOnly
+            ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
+            : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
+          const candidateMessages = [candidateResponse.message];
+          let candidateFiles: GeneratedFile[] = await downloadGeneratedFiles(client, candidateResponse.fileIds);
+          const missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
+          if (missingAuthorFiles.length > 0) {
+            console.warn(`[author-retry] Missing author files for ${candidateModel}: ${missingAuthorFiles.join(", ")}. Retrying author phase once.`);
+            await insertEvent(config, runId, attempt, "author", "author_missing_files_retry", {
+              missingFiles: missingAuthorFiles,
+              model: candidateModel,
+            }).catch(() => {});
+
+            const retryResponse = await runClaudeLoop({
+              client,
+              model: candidateModel,
+              systemPrompt,
+              maxTokens: 64_000,
+              phaseLabel: "author",
+              circuitKey: `${run.id}:${attempt.id}:author:${candidateModel}`,
+              onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
+              maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
+              phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
+              requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
+              currentSpentUsd: roundUsd(spentUsd + usageToCost(candidateModel, candidateResponse.usage)),
+              betas: candidateBetas,
+              container: buildAuthoringContainer(candidateResponse.containerId ?? baseContainerId, candidateModel),
+              messages: [
+                ...candidateResponse.thread,
                 {
-                  type: "text",
-                  text: [
-                    `You did not produce all required files. Missing: ${retryMissingFiles.join(", ")}.`,
-                    "Stop analysis and regenerate the missing deliverables now.",
-                    "If shared state is uncertain, regenerate the complete output set so the missing files are attached cleanly.",
-                    "The turn is incomplete until every missing file is attached as a container_upload block.",
-                  ].join(" "),
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: [
+                        `You did not produce all required files. Missing: ${missingAuthorFiles.join(", ")}.`,
+                        "Stop analysis and regenerate the missing deliverables now.",
+                        "If shared state is uncertain, regenerate the complete output set so the missing files are attached cleanly.",
+                        "The turn is incomplete until every missing file is attached as a container_upload block.",
+                      ].join(" "),
+                    },
+                  ],
                 },
               ],
-            },
-          ],
-          tools: buildClaudeTools(MODEL),
-          outputConfig: buildAuthoringOutputConfig(MODEL),
-          onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
-        });
-        const retryFiles = await downloadGeneratedFiles(client, retryResponse.fileIds);
-        authorFiles = mergeGeneratedFiles(authorFiles, retryFiles);
-        authorResponse = {
-          ...authorResponse,
-          containerId: retryResponse.containerId ?? authorResponse.containerId,
-          thread: retryResponse.thread,
-          fileIds: [...new Set([...authorResponse.fileIds, ...retryResponse.fileIds])],
-          usage: mergeClaudeUsage(authorResponse.usage, retryResponse.usage),
-          iterations: authorResponse.iterations + retryResponse.iterations,
-          pauseTurns: authorResponse.pauseTurns + retryResponse.pauseTurns,
-          requests: [...authorResponse.requests, ...retryResponse.requests],
-        };
-        authorFallbackMessages.unshift(retryResponse.message);
+              tools: buildClaudeTools(candidateModel),
+              outputConfig: buildAuthoringOutputConfig(candidateModel),
+              onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
+            });
+            candidateFiles = mergeGeneratedFiles(candidateFiles, await downloadGeneratedFiles(client, retryResponse.fileIds));
+            candidateResponse = {
+              ...candidateResponse,
+              containerId: retryResponse.containerId ?? candidateResponse.containerId,
+              thread: retryResponse.thread,
+              fileIds: [...new Set([...candidateResponse.fileIds, ...retryResponse.fileIds])],
+              usage: mergeClaudeUsage(candidateResponse.usage, retryResponse.usage),
+              iterations: candidateResponse.iterations + retryResponse.iterations,
+              pauseTurns: candidateResponse.pauseTurns + retryResponse.pauseTurns,
+              requests: [...candidateResponse.requests, ...retryResponse.requests],
+            };
+            candidateMessages.unshift(retryResponse.message);
+          }
+
+          spentUsd = roundUsd(spentUsd + usageToCost(candidateModel, candidateResponse.usage));
+          assertDeckSpendWithinBudget(spentUsd, candidateModel, {
+            allowPartialOutput: candidateFiles.length > 0,
+            context: `author:${candidateModel}`,
+          });
+          continuationCount += candidateResponse.pauseTurns;
+          await persistRequestUsage(config, runId, attempt, "author", "phase_generation", candidateModel, candidateResponse.requests);
+          rememberRequestIds(anthropicRequestIds, candidateResponse.requests);
+
+          const repaired = await repairPartialAuthorArtifacts({
+            run,
+            model: candidateModel,
+            files: candidateFiles,
+            messages: candidateMessages,
+            recoveredAnalysis: recoveredAnalysisForSplit ? analysis : null,
+            parseWarnings,
+          });
+          candidateFiles = repaired.files;
+          if (repaired.repairWarnings.length > 0) {
+            partialDeliveryWarnings = [...new Set([...partialDeliveryWarnings, ...repaired.repairWarnings])];
+            await insertEvent(config, runId, attempt, "author", "partial_delivery_salvage", {
+              warnings: repaired.repairWarnings,
+              model: candidateModel,
+            }).catch(() => {});
+          }
+
+          const candidateTelemetry = buildPhaseTelemetry(candidateModel, {
+            ...candidateResponse,
+            requestIds: candidateResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+          });
+
+          if (repaired.missingCriticalFiles.length === 0) {
+            MODEL = candidateModel;
+            authorModel = MODEL;
+            modelBudget = getDeckBudgetCaps(MODEL);
+            modelBetas = buildClaudeBetas(MODEL);
+            toolCallSummary = buildAuthoringToolCallSummary(MODEL);
+            isReportOnly = candidateIsReportOnly;
+            generationMessage = candidateGenerationMessage;
+            authorResponse = candidateResponse;
+            authorFallbackMessages = candidateMessages;
+            authorFiles = candidateFiles;
+            authorPhaseUsage = {
+              input_tokens: candidateResponse.usage.input_tokens ?? 0,
+              output_tokens: candidateResponse.usage.output_tokens ?? 0,
+              cache_creation_input_tokens: candidateResponse.usage.cache_creation_input_tokens ?? 0,
+              cache_read_input_tokens: candidateResponse.usage.cache_read_input_tokens ?? 0,
+            };
+            containerId = candidateResponse.containerId;
+            phaseTelemetry.author = candidateTelemetry;
+            break;
+          }
+
+          lastAuthorError = new Error(`author phase is missing critical output files: ${repaired.missingCriticalFiles.join(", ")}.`);
+          const fallbackTelemetry = ((phaseTelemetry.authorFallbacks as Record<string, unknown>[] | undefined) ?? []);
+          fallbackTelemetry.push({
+            model: candidateModel,
+            missingCriticalFiles: repaired.missingCriticalFiles,
+            repairWarnings: repaired.repairWarnings,
+          });
+          phaseTelemetry.authorFallbacks = fallbackTelemetry;
+
+          const nextFallbackModel = authorModelCandidates[modelIndex + 1];
+          if (!nextFallbackModel) {
+            break;
+          }
+          await insertEvent(config, runId, attempt, "author", "author_model_fallback", {
+            fromModel: candidateModel,
+            toModel: nextFallbackModel,
+            reason: "missing_critical_output_files",
+            missingFiles: repaired.missingCriticalFiles,
+          }).catch(() => {});
+        } catch (authorPassError) {
+          lastAuthorError = authorPassError;
+          const authorPassMessage = authorPassError instanceof Error ? authorPassError.message : String(authorPassError);
+          const nextFallbackModel = authorModelCandidates[modelIndex + 1];
+          if (!nextFallbackModel || !isBudgetExhaustionErrorMessage(authorPassMessage)) {
+            throw authorPassError;
+          }
+
+          const fallbackTelemetry = ((phaseTelemetry.authorFallbacks as Record<string, unknown>[] | undefined) ?? []);
+          fallbackTelemetry.push({
+            model: candidateModel,
+            error: authorPassMessage.slice(0, 500),
+            reason: "budget_exhausted",
+          });
+          phaseTelemetry.authorFallbacks = fallbackTelemetry;
+          await insertEvent(config, runId, attempt, "author", "author_model_fallback", {
+            fromModel: candidateModel,
+            toModel: nextFallbackModel,
+            reason: "budget_exhausted",
+            error: authorPassMessage.slice(0, 500),
+          }).catch(() => {});
+        }
       }
-      requireGeneratedFiles(authorFiles, requiredAuthorFiles, "author");
-      spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorResponse.usage));
-      assertDeckSpendWithinBudget(spentUsd, MODEL);
-      continuationCount += authorResponse.pauseTurns;
-      phaseTelemetry.author = buildPhaseTelemetry(MODEL, {
-        ...authorResponse,
-        requestIds: authorResponse.requests.map((r) => r.requestId).filter((id): id is string => Boolean(id)),
-      });
-      await persistRequestUsage(config, runId, attempt, "author", "phase_generation", MODEL, authorResponse.requests);
-      rememberRequestIds(anthropicRequestIds, authorResponse.requests);
-      const authorPhaseUsage = {
-        input_tokens: authorResponse.usage.input_tokens ?? 0,
-        output_tokens: authorResponse.usage.output_tokens ?? 0,
-        cache_creation_input_tokens: authorResponse.usage.cache_creation_input_tokens ?? 0,
-        cache_read_input_tokens: authorResponse.usage.cache_read_input_tokens ?? 0,
-      };
-      const containerId = authorResponse.containerId;
+
+      if (!authorResponse || !authorPhaseUsage) {
+        throw (lastAuthorError instanceof Error ? lastAuthorError : new Error("Author phase failed before any publishable artifacts were produced."));
+      }
+
       manifest = parseManifestResponseWithFallback(authorFallbackMessages, authorFiles);
       if (!recoveredAnalysisForSplit) {
         const resolvedAnalysis = resolveAuthorAnalysisWithFallback({
@@ -1188,7 +1294,33 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       if (!isReportOnly) {
         pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
-        pdfFile = requireGeneratedFile(authorFiles, "deck.pdf");
+        pdfFile = findGeneratedFile(authorFiles, "deck.pdf") ?? null;
+        if (!pdfFile && pptxFile) {
+          try {
+            const recoveredPdfBuffer = await convertPptxToPdf(pptxFile.buffer);
+            pdfFile = {
+              fileId: "deck-pdf-export-recovered",
+              fileName: "deck.pdf",
+              buffer: recoveredPdfBuffer,
+              mimeType: "application/pdf",
+            };
+          } catch (pdfRecoveryError) {
+            partialDeliveryWarnings = [
+              ...new Set([
+                ...partialDeliveryWarnings,
+                `Deck PDF was missing and could not be regenerated before export: ${
+                  pdfRecoveryError instanceof Error ? pdfRecoveryError.message : String(pdfRecoveryError)
+                }`,
+              ]),
+            ];
+            pdfFile = {
+              fileId: "deck-pdf-missing-placeholder",
+              fileName: "deck.pdf",
+              buffer: Buffer.alloc(0),
+              mimeType: "application/pdf",
+            };
+          }
+        }
       }
       finalNarrativeMarkdown = requireGeneratedFile(authorFiles, "narrative_report.md");
       xlsxFile = requireGeneratedFile(authorFiles, "data_tables.xlsx");
@@ -1285,7 +1417,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     pdfFile = initialQaOutcome.pdf;
     const initialVisualQa = initialQaOutcome.qa;
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
-    assertDeckSpendWithinBudget(spentUsd, MODEL);
+    assertDeckSpendWithinBudget(spentUsd, MODEL, { allowPartialOutput: true, context: "critique:visual-qa" });
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
     await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, initialVisualQa.requests);
     rememberRequestIds(anthropicRequestIds, initialVisualQa.requests);
@@ -1480,7 +1612,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           };
         }
         spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
-        assertDeckSpendWithinBudget(spentUsd, MODEL);
+        assertDeckSpendWithinBudget(spentUsd, MODEL, { allowPartialOutput: reviseFiles.length > 0, context: "revise" });
         continuationCount += reviseResponse.pauseTurns;
         phaseTelemetry.revise = buildPhaseTelemetry(MODEL, {
           ...reviseResponse,
@@ -1529,7 +1661,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       finalPdf = revisedQaOutcome.pdf;
       const revisedVisualQa = revisedQaOutcome.qa;
       spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-      assertDeckSpendWithinBudget(spentUsd, MODEL);
+      assertDeckSpendWithinBudget(spentUsd, MODEL, { allowPartialOutput: true, context: "revise:visual-qa" });
       phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
       await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
       rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
@@ -1791,6 +1923,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         phaseTelemetry.finalContract = { skipped: true, reason: "report_only_run" };
       }
       phaseTelemetry.publishDecision = lastPublishDecision;
+      if (partialDeliveryWarnings.length > 0) {
+        phaseTelemetry.partialDelivery = {
+          enabled: true,
+          warnings: partialDeliveryWarnings,
+        };
+      }
       await assertAttemptStillOwnsRun(config, runId, attempt);
       const artifacts = await persistArtifacts(config, run, attempt, {
         pptx: finalPptx,
@@ -1806,6 +1944,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         continuationCount,
         anthropicRequestIds: [...anthropicRequestIds],
         templateMode,
+        partialDelivery: partialDeliveryWarnings.length > 0,
+        partialDeliveryWarnings,
       });
       let previewAssets: PreviewAsset[] = [];
       if (!isReportOnly) {
@@ -1868,6 +2008,24 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       requestCount: anthropicRequestIds.size,
       costIncomplete: spentUsd === 0 && anthropicRequestIds.size > 0,
     }).catch(() => {});
+    const resendApiKey = process.env.RESEND_API_KEY ?? process.env.RESEND_CURSOR_API_KEY ?? "";
+    const shouldSuppressFailureEmail =
+      attempt !== null &&
+      (
+        ((failureClass === "transient_provider" || failureClass === "transient_network") && attempt.attemptNumber < 3) ||
+        (Boolean(run?.template_profile_id) && attempt.attemptNumber === 1 && (currentPhase === "normalize" || String(currentPhase) === "understand"))
+      );
+    if (run && resendApiKey && !shouldSuppressFailureEmail) {
+      await notifyRunFailureIfRequested(
+        { supabaseUrl: config.supabaseUrl, serviceKey: config.serviceKey, resendApiKey },
+        run,
+        {
+          runId,
+          failureMessage: message,
+          parseWarnings,
+        },
+      ).catch(() => {});
+    }
     throw error;
   }
 }
@@ -2629,7 +2787,10 @@ async function strengthenFinalVisualQa(input: {
     });
     const finalVisualQa = finalQaOutcome.qa;
     input.spentUsdRef.value = roundUsd(input.spentUsdRef.value + usageToCost(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage));
-    assertDeckSpendWithinBudget(input.spentUsdRef.value, input.authorModel);
+    assertDeckSpendWithinBudget(input.spentUsdRef.value, input.authorModel, {
+      allowPartialOutput: true,
+      context: "export:final-visual-qa",
+    });
     input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
     await upsertWorkingPaper(input.config, input.runId, "visual_qa_final", finalVisualQa.report).catch(() => {});
     await persistRequestUsage(
@@ -3853,11 +4014,16 @@ async function runClaudeLoop(input: {
         );
         if (remainingBudgetUsd < CONTINUATION_MIN_REMAINING_BUDGET_USD) {
           const budgetMessage = `[runClaudeLoop] remaining budget $${remainingBudgetUsd.toFixed(3)} below continuation threshold $${CONTINUATION_MIN_REMAINING_BUDGET_USD.toFixed(2)}.`;
-          console.warn(`${budgetMessage} ${finalMessage ? "Breaking before another continuation." : "Aborting phase before request."}`);
-          if (!finalMessage) {
-            throw new Error(`${budgetMessage} Aborting phase before another Claude request.`);
+          const hasPartialOutput = fileIds.size > 0;
+          if (hasPartialOutput) {
+            console.warn(`${budgetMessage} Continuing because Claude has already produced ${fileIds.size} file artifact(s).`);
+          } else {
+            console.warn(`${budgetMessage} ${finalMessage ? "Breaking before another continuation." : "Aborting phase before request."}`);
+            if (!finalMessage) {
+              throw new Error(`${budgetMessage} Aborting phase before another Claude request.`);
+            }
+            break;
           }
-          break;
         }
       }
 
@@ -4069,6 +4235,227 @@ function mergeGeneratedFiles(primaryFiles: GeneratedFile[], retryFiles: Generate
     merged.set(file.fileName, file);
   }
   return [...merged.values()];
+}
+
+function isBudgetExhaustionErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes("budget") || normalized.includes("remaining budget") || normalized.includes("continuation threshold");
+}
+
+function getAuthorFallbackModels(model: AuthorModel): AuthorModel[] {
+  switch (model) {
+    case "claude-opus-4-6":
+      return ["claude-sonnet-4-6", "claude-haiku-4-5"];
+    case "claude-sonnet-4-6":
+      return ["claude-haiku-4-5"];
+    default:
+      return [];
+  }
+}
+
+function collectParseWarnings(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {
+  const warnings = new Set<string>();
+
+  for (const warning of parsed.datasetProfile.warnings ?? []) {
+    if (warning.trim()) {
+      warnings.add(warning.trim());
+    }
+  }
+
+  for (const file of parsed.normalizedWorkbook.files) {
+    for (const warning of file.warnings ?? []) {
+      if (warning.trim()) {
+        warnings.add(warning.trim());
+      }
+    }
+
+    const textContent = file.textContent?.trim() ?? "";
+    if (
+      textContent.startsWith("[DOCX ") ||
+      textContent.startsWith("[PDF ") ||
+      textContent.startsWith("[PPTX ") ||
+      textContent.startsWith("[Basquio warning:")
+    ) {
+      warnings.add(textContent.slice(0, 220));
+    }
+  }
+
+  return [...warnings];
+}
+
+function buildManifestFromAnalysis(analysis: AnalysisResult) {
+  return parseDeckManifest({
+    slideCount: analysis.slidePlan.length,
+    pageCount: analysis.slidePlan.length,
+    slides: analysis.slidePlan.map((slide) => ({
+      position: slide.position,
+      layoutId: slide.layoutId,
+      slideArchetype: slide.slideArchetype,
+      title: slide.title,
+      subtitle: slide.subtitle,
+      body: slide.body,
+      bullets: slide.bullets,
+      metrics: slide.metrics,
+      callout: slide.callout,
+      evidenceIds: slide.evidenceIds,
+      chartId: slide.chart?.id,
+    })),
+    charts: analysis.slidePlan
+      .filter((slide) => Boolean(slide.chart))
+      .map((slide) => ({
+        id: slide.chart!.id,
+        chartType: slide.chart!.chartType,
+        title: slide.chart!.title || slide.title,
+        sourceNote: slide.chart!.sourceNote,
+      })),
+  });
+}
+
+async function countPptxSlides(buffer: Buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  return Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name)).length;
+}
+
+function buildPlaceholderNarrativeReport(run: RunRow, warnings: string[]): GeneratedFile {
+  const body = [
+    `# ${run.client?.trim() || "Basquio report"}`,
+    "",
+    "Basquio completed a partial delivery for this run.",
+    "The full narrative report was not generated before the budget or tool limit was reached.",
+    warnings.length > 0 ? "" : null,
+    warnings.length > 0 ? "## File warnings" : null,
+    ...warnings.slice(0, 8).map((warning) => `- ${warning}`),
+    "",
+    "Use the PPTX and workbook artifacts from this run as the primary outputs.",
+  ].filter((line): line is string => typeof line === "string").join("\n");
+
+  return {
+    fileId: "narrative-report-partial",
+    fileName: "narrative_report.md",
+    buffer: Buffer.from(body, "utf8"),
+    mimeType: "text/markdown",
+  };
+}
+
+async function buildPlaceholderWorkbookArtifact(warnings: string[]): Promise<GeneratedFile> {
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("README");
+  sheet.addRow(["status", "partial_delivery"]);
+  sheet.addRow(["message", "Basquio published a partial delivery because the full workbook was not generated in time."]);
+  for (const warning of warnings.slice(0, 12)) {
+    sheet.addRow(["warning", warning]);
+  }
+  const buffer = await workbook.xlsx.writeBuffer();
+
+  return {
+    fileId: "data-tables-partial",
+    fileName: "data_tables.xlsx",
+    buffer: Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer),
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+}
+
+async function repairPartialAuthorArtifacts(input: {
+  run: RunRow;
+  model: AuthorModel;
+  files: GeneratedFile[];
+  messages: Anthropic.Beta.BetaMessage[];
+  recoveredAnalysis: AnalysisResult | null;
+  parseWarnings: string[];
+}) {
+  const repairedFiles = [...input.files];
+  const repairWarnings: string[] = [];
+  const isReportOnly = input.model === "claude-haiku-4-5";
+
+  if (!findGeneratedFile(repairedFiles, "narrative_report.md")) {
+    repairedFiles.push(buildPlaceholderNarrativeReport(input.run, input.parseWarnings));
+    repairWarnings.push("Narrative report was missing. Published a partial markdown placeholder instead.");
+  }
+
+  if (!findGeneratedFile(repairedFiles, "data_tables.xlsx")) {
+    repairedFiles.push(await buildPlaceholderWorkbookArtifact(input.parseWarnings));
+    repairWarnings.push("Workbook was missing. Published a partial workbook placeholder instead.");
+  }
+
+  if (!findGeneratedFile(repairedFiles, "deck_manifest.json")) {
+    let fallbackAnalysis = input.recoveredAnalysis;
+
+    if (!fallbackAnalysis) {
+      for (const message of input.messages) {
+        try {
+          fallbackAnalysis = parseGeneratedAnalysisResponse(message, repairedFiles);
+          break;
+        } catch {
+          // Keep trying older messages.
+        }
+      }
+    }
+
+    if (fallbackAnalysis) {
+      const manifest = buildManifestFromAnalysis(fallbackAnalysis);
+      repairedFiles.push({
+        fileId: "deck-manifest-partial",
+        fileName: "deck_manifest.json",
+        buffer: Buffer.from(JSON.stringify(manifest, null, 2), "utf8"),
+        mimeType: "application/json",
+      });
+      repairWarnings.push("Deck manifest was missing. Rebuilt it from the recovered analysis.");
+    } else if (!isReportOnly) {
+      const pptx = findGeneratedFile(repairedFiles, "deck.pptx");
+      if (pptx) {
+        const slideCount = await countPptxSlides(pptx.buffer).catch(() => 0);
+        if (slideCount > 0) {
+          const manifest = parseDeckManifest({
+            slideCount,
+            pageCount: slideCount,
+            slides: Array.from({ length: slideCount }, (_, index) => ({
+              position: index + 1,
+              layoutId: "title-body",
+              slideArchetype: "title-body",
+              title: `Slide ${index + 1}`,
+            })),
+            charts: [],
+          });
+          repairedFiles.push({
+            fileId: "deck-manifest-generic",
+            fileName: "deck_manifest.json",
+            buffer: Buffer.from(JSON.stringify(manifest, null, 2), "utf8"),
+            mimeType: "application/json",
+          });
+          repairWarnings.push("Deck manifest was missing. Rebuilt a minimal manifest from the PPTX structure.");
+        }
+      }
+    }
+  }
+
+  if (!isReportOnly && !findGeneratedFile(repairedFiles, "deck.pdf")) {
+    const pptx = findGeneratedFile(repairedFiles, "deck.pptx");
+    if (pptx) {
+      try {
+        const pdfBuffer = await convertPptxToPdf(pptx.buffer);
+        repairedFiles.push({
+          fileId: "deck-pdf-recovered",
+          fileName: "deck.pdf",
+          buffer: pdfBuffer,
+          mimeType: "application/pdf",
+        });
+        repairWarnings.push("Deck PDF was missing. Re-rendered it from the PPTX before publish.");
+      } catch (error) {
+        repairWarnings.push(`Deck PDF was missing and could not be regenerated: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  const criticalFiles = isReportOnly
+    ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
+    : ["deck.pptx", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
+
+  return {
+    files: mergeGeneratedFiles(input.files, repairedFiles),
+    repairWarnings,
+    missingCriticalFiles: findMissingGeneratedFiles(mergeGeneratedFiles(input.files, repairedFiles), criticalFiles),
+  };
 }
 
 function mergeClaudeUsage(baseUsage: ClaudeUsage, retryUsage: ClaudeUsage): Required<ClaudeUsage> {

@@ -333,6 +333,9 @@ importers:
       ai:
         specifier: ^6.0.116
         version: 6.0.116(zod@3.25.76)
+      exceljs:
+        specifier: ^4.4.0
+        version: 4.4.0
       inngest:
         specifier: ^3.31.0
         version: 3.52.6(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(next@15.5.12(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(typescript@5.9.3)(zod@3.25.76)
@@ -7867,7 +7870,7 @@ snapshots:
   readable-stream@3.6.2:
     dependencies:
       inherits: 2.0.4
-      string_decoder: 1.1.1
+      string_decoder: 1.3.0
       util-deprecate: 1.0.2
 
   readable-stream@4.7.0:

@@ -78,11 +78,23 @@ export async function enforceDeckBudget(input: {
 export function assertDeckSpendWithinBudget(
   spentUsd: number,
   maxUsdOrModel: number | keyof typeof MODEL_PRICING = "claude-sonnet-4-6",
+  options?: {
+    allowPartialOutput?: boolean;
+    context?: string;
+  },
 ) {
   const maxUsd = typeof maxUsdOrModel === "number"
     ? maxUsdOrModel
     : getDeckBudgetCaps(maxUsdOrModel).hard;
   if (spentUsd > maxUsd) {
+    if (options?.allowPartialOutput) {
+      console.warn(
+        `[cost-guard] hard budget exceeded after partial output${options.context ? ` during ${options.context}` : ""}: ` +
+        `$${spentUsd.toFixed(3)} > $${maxUsd.toFixed(2)}. Allowing publish/salvage to finish.`,
+      );
+      return;
+    }
+
     throw new Error(
       `Claude cost $${spentUsd.toFixed(3)} exceeded hard budget $${maxUsd.toFixed(2)}.`,
     );

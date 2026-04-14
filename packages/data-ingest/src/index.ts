@@ -419,8 +419,11 @@ async function extractSupportText(
         .replace(/&gt;/gi, ">")
         .trim();
       return { fullText: text || undefined };
-    } catch {
-      return { fullText: undefined };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown parse error";
+      return {
+        fullText: `[DOCX "${fileName}" could not be fully parsed — ${reason}. Basquio will continue with the raw upload, but analysis may be limited.]`,
+      };
     }
   }
 
