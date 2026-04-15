@@ -88,6 +88,16 @@ export const OOXML_RULES = {
 
 export type ContractViolation = { rule: string; message: string };
 
+type DeckContractSlide = {
+  layoutId: string;
+  chartType?: string;
+  slideArchetype?: string;
+  position?: number;
+  title?: string;
+  body?: string;
+  bullets?: string[];
+};
+
 export function validateSlideContract(slide: {
   layoutId: string;
   chartType?: string;
@@ -140,10 +150,7 @@ export function validateSlideContract(slide: {
   return { valid: violations.length === 0, violations };
 }
 
-export function validateDeckContract(slides: Array<{
-  layoutId: string;
-  chartType?: string;
-}>): { valid: boolean; violations: ContractViolation[] } {
+export function validateDeckContract(slides: DeckContractSlide[]): { valid: boolean; violations: ContractViolation[] } {
   const violations: ContractViolation[] = [];
 
   if (slides.length > OOXML_RULES.maxSlidesPerDeck) {
@@ -174,7 +181,97 @@ export function validateDeckContract(slides: Array<{
     violations.push({ rule: "low_layout_variety", message: `Only ${uniqueLayouts} distinct layouts (min 3 for decks > 4 slides)` });
   }
 
+  violations.push(...validateRecommendationEvidence(slides));
+
   return { valid: violations.length === 0, violations };
+}
+
+function validateRecommendationEvidence(slides: DeckContractSlide[]): ContractViolation[] {
+  const violations: ContractViolation[] = [];
+
+  for (let index = 0; index < slides.length; index += 1) {
+    const slide = slides[index];
+    if (!isRecommendationSlide(slide)) {
+      continue;
+    }
+
+    const recommendationText = buildSlideText(slide, { stripSlideReferences: true });
+    const recommendationNumbers = extractQuantifiedTokens(recommendationText);
+    if (recommendationNumbers.length === 0) {
+      continue;
+    }
+
+    const priorEvidenceNumbers = new Set(
+      slides
+        .slice(0, index)
+        .filter((candidate) => !isRecommendationSlide(candidate))
+        .flatMap((candidate) => extractQuantifiedTokens(buildSlideText(candidate))),
+    );
+
+    const unsupportedNumbers = recommendationNumbers.filter((token) => !priorEvidenceNumbers.has(token));
+    if (unsupportedNumbers.length === 0) {
+      continue;
+    }
+
+    const slidePosition = slide.position ?? index + 1;
+    violations.push({
+      rule: "recommendation_unsupported",
+      message: `Slide ${slidePosition} recommendation contains unsupported numbers (${unsupportedNumbers.slice(0, 3).join(", ")}). Add supporting evidence on a prior slide or remove the quantified claim.`,
+    });
+  }
+
+  return violations;
+}
+
+function isRecommendationSlide(slide: DeckContractSlide) {
+  const layout = normalizeContractLayoutAlias(slide.layoutId);
+  const archetype = normalizeContractLayoutAlias(slide.slideArchetype);
+  return layout === "recommendation-cards" || archetype === "recommendation-cards" || layout === "recommendation" || archetype === "recommendation";
+}
+
+function normalizeContractLayoutAlias(raw: string | undefined) {
+  if (!raw) {
+    return "";
+  }
+
+  const normalized = raw.trim().toLowerCase();
+  if (normalized.includes("recommendation")) {
+    return "recommendation-cards";
+  }
+
+  return normalized;
+}
+
+function buildSlideText(slide: DeckContractSlide, options?: { stripSlideReferences?: boolean }) {
+  const text = [slide.title, slide.body, ...(slide.bullets ?? [])]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(" ");
+
+  if (!options?.stripSlideReferences) {
+    return text;
+  }
+
+  return text.replace(/\bcfr\.?\s+slide\s+\d+\b/gi, "").replace(/\bslide\s+\d+\b/gi, "");
+}
+
+function extractQuantifiedTokens(text: string) {
+  const matches = text.match(/[€$£]?\d+(?:[.,]\d+)?\s*(?:%|pp|p\.p\.|mln|mld|bln|bn|m|k)?/gi) ?? [];
+  return matches
+    .map((token) => token.trim())
+    .filter(isMeaningfulQuantifiedToken)
+    .map(normalizeQuantifiedToken);
+}
+
+function isMeaningfulQuantifiedToken(token: string) {
+  const normalized = token.toLowerCase().replace(/\s+/g, "");
+  const hasUnit = /[%€$£]|pp|p\.p\.|mln|mld|bln|bn|m|k/.test(normalized);
+  const hasDecimal = /[.,]/.test(normalized);
+  const digitsOnly = normalized.replace(/[^\d]/g, "");
+  return hasUnit || hasDecimal || digitsOnly.length >= 2;
+}
+
+function normalizeQuantifiedToken(token: string) {
+  return token.toLowerCase().replace(/\s+/g, "").replace(/,/g, ".");
 }
 
 // ─── CHART TYPE COERCION ──────────────────────────────────────────

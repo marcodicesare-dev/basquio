@@ -99,6 +99,20 @@ const ENGLISH_CORP_SPEAK: Array<{ pattern: RegExp; rule: string; message: string
   { pattern: /\bgoing forward\b/i, rule: "english_padding_going_forward", message: "Avoid empty forward-looking filler" },
 ];
 
+const ITALIAN_ACCENT_PATTERNS: Array<{ pattern: RegExp; correct: string }> = [
+  { pattern: /\bvelocita\b/gi, correct: "velocità" },
+  { pattern: /\bpriorita\b/gi, correct: "priorità" },
+  { pattern: /\bqualita\b/gi, correct: "qualità" },
+  { pattern: /\bquantita\b/gi, correct: "quantità" },
+  { pattern: /\bopportunita\b/gi, correct: "opportunità" },
+  { pattern: /\bpiu\b/gi, correct: "più" },
+  { pattern: /\bgia\b/gi, correct: "già" },
+  { pattern: /\bperche\b/gi, correct: "perché" },
+  { pattern: /\bcosi\b/gi, correct: "così" },
+  { pattern: /\bpero\b/gi, correct: "però" },
+  { pattern: /\bc['’]?e['’]?\b/gi, correct: "c'è" },
+];
+
 const ANALYTICAL_LAYOUTS = new Set([
   "exec-summary",
   "chart-split",
@@ -207,6 +221,36 @@ function textLanguageViolations(slide: SlideTextInput, text: string, field: stri
   return violations;
 }
 
+function italianAccentViolations(slide: SlideTextInput, text: string, field: string): LintViolation[] {
+  if (!text.trim()) {
+    return [];
+  }
+
+  const shouldCheckItalian = slide.expectedLanguage === "it" || detectLanguage(text) === "it";
+  if (!shouldCheckItalian) {
+    return [];
+  }
+
+  const violations: LintViolation[] = [];
+
+  for (const { pattern, correct } of ITALIAN_ACCENT_PATTERNS) {
+    const matches = text.match(pattern) ?? [];
+    pattern.lastIndex = 0;
+
+    for (const match of matches) {
+      violations.push({
+        rule: "italian_missing_accent",
+        severity: "major",
+        field,
+        message: `Italian orthography issue: use "${correct}" instead of "${match}"`,
+        value: match,
+      });
+    }
+  }
+
+  return violations;
+}
+
 // ─── SLIDE LINTER ─────────────────────────────────────────────────
 
 export function lintSlideText(slide: SlideTextInput): LintResult {
@@ -247,6 +291,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     }
 
     violations.push(...textLanguageViolations(slide, slide.title, "title"));
+    violations.push(...italianAccentViolations(slide, slide.title, "title"));
   }
 
   // ── BODY CHECKS ──
@@ -309,6 +354,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     }
 
     violations.push(...textLanguageViolations(slide, slide.body, "body"));
+    violations.push(...italianAccentViolations(slide, slide.body, "body"));
   }
 
   // ── BULLET CHECKS ──
@@ -335,6 +381,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
         }
       }
       violations.push(...textLanguageViolations(slide, b, `bullets[${i}]`));
+      violations.push(...italianAccentViolations(slide, b, `bullets[${i}]`));
     }
   }
 
@@ -355,6 +402,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
       violations.push({ rule: "callout_not_action", severity: "major", field: "callout", message: "Callout is an observation, not an action (no verb, no number)", value: ct.slice(0, 50) });
     }
     violations.push(...textLanguageViolations(slide, ct, "callout"));
+    violations.push(...italianAccentViolations(slide, ct, "callout"));
   }
 
   // ── METRIC CHECKS ──
@@ -384,6 +432,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
       violations.push({ rule: "em_dash", severity: "minor", field: "speakerNotes", message: "Em dash in speaker notes" });
     }
     violations.push(...textLanguageViolations(slide, slide.speakerNotes, "speakerNotes"));
+    violations.push(...italianAccentViolations(slide, slide.speakerNotes, "speakerNotes"));
   }
 
   const hasCritical = violations.some(v => v.severity === "critical");

@@ -4781,7 +4781,14 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
 
       // ─── RENDERING CONTRACT (compatibility gate) ────────────────
       const deckContractResult = validateDeckContract(
-        slides.map(s => ({ layoutId: s.layoutId ?? "title-body", chartType: charts.find(c => c.id === s.chartId)?.chartType }))
+        slides.map(s => ({
+          layoutId: s.layoutId ?? "title-body",
+          chartType: charts.find(c => c.id === s.chartId)?.chartType,
+          position: s.position,
+          title: s.title,
+          body: s.body ?? undefined,
+          bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+        }))
       );
       for (const v of deckContractResult.violations) {
         issues.push({ severity: "major", claim: `[CONTRACT] ${v.message}` });
@@ -5375,7 +5382,14 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       // Re-run deck-level rendering contract
       const postDeckContract = validateDeckContract(
-        postRevisionSlides.map(s => ({ layoutId: s.layoutId ?? "title-body", chartType: postRevisionCharts.find(c => c.id === s.chartId)?.chartType }))
+        postRevisionSlides.map(s => ({
+          layoutId: s.layoutId ?? "title-body",
+          chartType: postRevisionCharts.find(c => c.id === s.chartId)?.chartType,
+          position: s.position,
+          title: s.title,
+          body: s.body ?? undefined,
+          bullets: Array.isArray(s.bullets) ? s.bullets : undefined,
+        }))
       );
       const contractMajor = postDeckContract.violations.length + postSlideContractIssues.length;
 

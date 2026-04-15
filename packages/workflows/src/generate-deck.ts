@@ -5675,6 +5675,11 @@ function validateManifestContract(manifest: z.infer<typeof deckManifestSchema>) 
     manifest.slides.map((slide, index) => ({
       layoutId: normalizeManifestLayoutIdForContract(slide, index, manifest.slides.length),
       chartType: slide.chartId ? chartById.get(slide.chartId)?.chartType : undefined,
+      slideArchetype: slide.slideArchetype,
+      position: slide.position,
+      title: slide.title,
+      body: slide.body,
+      bullets: slide.bullets,
     })),
   );
 
