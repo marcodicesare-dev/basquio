@@ -73,7 +73,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
     creditsIncluded: 0,
     templateSlots: 0,
     features: [
-      "30 free credits (~2 Deck runs)",
+      "15 free credits (~1 Deck run)",
       "Basquio branding on output",
       "Community templates only",
     ],

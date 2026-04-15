@@ -39,8 +39,8 @@ const pricingSnapshot = [
   {
     name: "Free",
     price: "$0",
-    unit: "30 free credits",
-    copy: "Enough for ~2 Deck runs. No credit card. See if it fits.",
+    unit: "15 free credits",
+    copy: "Enough for ~1 standard Deck run. No credit card. See if it fits.",
     highlight: false,
   },
   {

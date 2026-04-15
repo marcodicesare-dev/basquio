@@ -6,6 +6,7 @@ import {
   calculateRunCredits,
   maxAffordableSlides,
   getActiveSubscription,
+  FREE_TIER_CREDITS,
   MAX_TARGET_SLIDES,
 } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -58,7 +59,7 @@ export async function GET() {
     templateSlotsIncluded: subscription?.template_slots_included ?? 0,
     // Pricing info
     pricing: {
-      freeTierCredits: 30,
+      freeTierCredits: FREE_TIER_CREDITS,
       example10Slides: calculateRunCredits(10, "claude-sonnet-4-6"),
       example15Slides: calculateRunCredits(15, "claude-sonnet-4-6"),
       example20SlidesOpus: calculateRunCredits(20, "claude-opus-4-6"),

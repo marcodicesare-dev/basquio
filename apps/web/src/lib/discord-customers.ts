@@ -37,7 +37,7 @@ const SIGNUP_FLAVOR_TEXT = [
   "Another analyst freed from the reporting cycle.",
   "One more person who'll never copy-paste a chart by hand again.",
   "The rebellion grows.",
-  "30 free credits. Let's see what they build.",
+  `${FREE_TIER_CREDITS} free credits. Let's see what they build.`,
 ];
 
 const GIULIA_SAMPIETRO_LINES = [

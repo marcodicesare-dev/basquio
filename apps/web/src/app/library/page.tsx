@@ -104,7 +104,7 @@ export default function LibraryPage() {
       <PublicSiteFooterCta
         eyebrow="See for yourself"
         title="Upload your data. Get a deck like these."
-        copy="30 free credits. No credit card."
+        copy="15 free credits. No credit card."
         primaryLabel="Try it free →"
         primaryHref="/jobs/new"
       />

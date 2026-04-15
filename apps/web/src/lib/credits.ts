@@ -19,7 +19,7 @@ export const BASE_CREDITS = 3;
 export const CREDITS_PER_SLIDE = 1;
 
 /** Free tier grant amount. Must not exceed Starter's included credits. */
-export const FREE_TIER_CREDITS = 30;
+export const FREE_TIER_CREDITS = 15;
 
 export const MIN_TARGET_SLIDES = 1;
 export const MAX_TARGET_SLIDES = 30;

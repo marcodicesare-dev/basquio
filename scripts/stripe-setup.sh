@@ -18,26 +18,26 @@ echo ""
 echo "Creating Starter plan..."
 STARTER_PROD=$(stripe products create \
   --name="Basquio Starter" \
-  --description="30 credits/month. No branding. 1 custom template slot." \
+  --description="30 credits/month. No branding. 2 custom template slots." \
   --format=json 2>/dev/null | jq -r '.id')
 
 STARTER_MONTHLY=$(stripe prices create \
   --product="$STARTER_PROD" \
-  --unit-amount=2900 \
+  --unit-amount=1900 \
   --currency=usd \
   --recurring[interval]=month \
   --format=json 2>/dev/null | jq -r '.id')
 
 STARTER_ANNUAL=$(stripe prices create \
   --product="$STARTER_PROD" \
-  --unit-amount=27600 \
+  --unit-amount=19000 \
   --currency=usd \
   --recurring[interval]=year \
   --format=json 2>/dev/null | jq -r '.id')
 
 echo "  Product: $STARTER_PROD"
-echo "  Monthly: $STARTER_MONTHLY ($29/mo)"
-echo "  Annual:  $STARTER_ANNUAL ($276/yr)"
+echo "  Monthly: $STARTER_MONTHLY ($19/mo)"
+echo "  Annual:  $STARTER_ANNUAL ($190/yr)"
 echo ""
 
 echo "Creating Pro plan..."
@@ -48,27 +48,27 @@ PRO_PROD=$(stripe products create \
 
 PRO_MONTHLY=$(stripe prices create \
   --product="$PRO_PROD" \
-  --unit-amount=7900 \
+  --unit-amount=14900 \
   --currency=usd \
   --recurring[interval]=month \
   --format=json 2>/dev/null | jq -r '.id')
 
 PRO_ANNUAL=$(stripe prices create \
   --product="$PRO_PROD" \
-  --unit-amount=75600 \
+  --unit-amount=149000 \
   --currency=usd \
   --recurring[interval]=year \
   --format=json 2>/dev/null | jq -r '.id')
 
 echo "  Product: $PRO_PROD"
-echo "  Monthly: $PRO_MONTHLY ($79/mo)"
-echo "  Annual:  $PRO_ANNUAL ($756/yr)"
+echo "  Monthly: $PRO_MONTHLY ($149/mo)"
+echo "  Annual:  $PRO_ANNUAL ($1,490/yr)"
 echo ""
 
-echo "Creating Team plan..."
+echo "Creating legacy Team compatibility prices..."
 TEAM_PROD=$(stripe products create \
-  --name="Basquio Team" \
-  --description="200 credits/month pool. Shared workspace. 10 custom template slots." \
+  --name="Basquio Team (Legacy)" \
+  --description="Legacy compatibility plan for historical team subscriptions." \
   --format=json 2>/dev/null | jq -r '.id')
 
 TEAM_MONTHLY=$(stripe prices create \
@@ -86,16 +86,16 @@ TEAM_ANNUAL=$(stripe prices create \
   --format=json 2>/dev/null | jq -r '.id')
 
 echo "  Product: $TEAM_PROD"
-echo "  Monthly: $TEAM_MONTHLY ($149/mo)"
-echo "  Annual:  $TEAM_ANNUAL ($1,428/yr)"
+echo "  Monthly: $TEAM_MONTHLY ($149/mo legacy)"
+echo "  Annual:  $TEAM_ANNUAL ($1,428/yr legacy)"
 echo ""
 
 # ─── TEAM SEAT ADD-ON ─────────────────────────────────────────
 
-echo "Creating Team Seat add-on..."
+echo "Creating legacy Team Seat add-on..."
 SEAT_PROD=$(stripe products create \
-  --name="Team Seat" \
-  --description="Additional team member seat" \
+  --name="Team Seat (Legacy)" \
+  --description="Legacy compatibility seat add-on for historical team subscriptions." \
   --format=json 2>/dev/null | jq -r '.id')
 
 SEAT_MONTHLY=$(stripe prices create \
@@ -119,81 +119,144 @@ echo ""
 
 # ─── CREDIT PACKS ─────────────────────────────────────────────
 
-echo "Creating Credit Packs..."
+echo "Creating tier-specific Credit Pack prices..."
 PACK25_PROD=$(stripe products create \
   --name="25 Credits" \
-  --description="Credit pack: 25 credits for Basquio reports" \
+  --description="Credit pack: 25 Basquio credits" \
   --format=json 2>/dev/null | jq -r '.id')
 
-PACK25_PRICE=$(stripe prices create \
+FREE_PACK_25=$(stripe prices create \
   --product="$PACK25_PROD" \
-  --unit-amount=1800 \
+  --unit-amount=2200 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+STARTER_PACK_25=$(stripe prices create \
+  --product="$PACK25_PROD" \
+  --unit-amount=1750 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+PRO_PACK_25=$(stripe prices create \
+  --product="$PACK25_PROD" \
+  --unit-amount=1250 \
   --currency=usd \
   --format=json 2>/dev/null | jq -r '.id')
 
 PACK50_PROD=$(stripe products create \
   --name="50 Credits" \
-  --description="Credit pack: 50 credits for Basquio reports" \
+  --description="Credit pack: 50 Basquio credits" \
   --format=json 2>/dev/null | jq -r '.id')
 
-PACK50_PRICE=$(stripe prices create \
+FREE_PACK_50=$(stripe prices create \
   --product="$PACK50_PROD" \
-  --unit-amount=3200 \
+  --unit-amount=4400 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+STARTER_PACK_50=$(stripe prices create \
+  --product="$PACK50_PROD" \
+  --unit-amount=3500 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+PRO_PACK_50=$(stripe prices create \
+  --product="$PACK50_PROD" \
+  --unit-amount=2500 \
   --currency=usd \
   --format=json 2>/dev/null | jq -r '.id')
 
 PACK100_PROD=$(stripe products create \
   --name="100 Credits" \
-  --description="Credit pack: 100 credits for Basquio reports" \
+  --description="Credit pack: 100 Basquio credits" \
   --format=json 2>/dev/null | jq -r '.id')
 
-PACK100_PRICE=$(stripe prices create \
+FREE_PACK_100=$(stripe prices create \
   --product="$PACK100_PROD" \
-  --unit-amount=5600 \
+  --unit-amount=8800 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+STARTER_PACK_100=$(stripe prices create \
+  --product="$PACK100_PROD" \
+  --unit-amount=7000 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+PRO_PACK_100=$(stripe prices create \
+  --product="$PACK100_PROD" \
+  --unit-amount=5000 \
   --currency=usd \
   --format=json 2>/dev/null | jq -r '.id')
 
 PACK250_PROD=$(stripe products create \
   --name="250 Credits" \
-  --description="Credit pack: 250 credits for Basquio reports" \
+  --description="Credit pack: 250 Basquio credits" \
   --format=json 2>/dev/null | jq -r '.id')
 
-PACK250_PRICE=$(stripe prices create \
+FREE_PACK_250=$(stripe prices create \
+  --product="$PACK250_PROD" \
+  --unit-amount=22000 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+STARTER_PACK_250=$(stripe prices create \
+  --product="$PACK250_PROD" \
+  --unit-amount=17500 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+PRO_PACK_250=$(stripe prices create \
   --product="$PACK250_PROD" \
   --unit-amount=12500 \
   --currency=usd \
   --format=json 2>/dev/null | jq -r '.id')
 
-echo "  25 credits:  $PACK25_PRICE ($18)"
-echo "  50 credits:  $PACK50_PRICE ($32)"
-echo "  100 credits: $PACK100_PRICE ($56)"
-echo "  250 credits: $PACK250_PRICE ($125)"
+echo "  Free pack 25:     $FREE_PACK_25 ($22)"
+echo "  Starter pack 25:  $STARTER_PACK_25 ($17.50)"
+echo "  Pro pack 25:      $PRO_PACK_25 ($12.50)"
+echo "  Free pack 50:     $FREE_PACK_50 ($44)"
+echo "  Starter pack 50:  $STARTER_PACK_50 ($35)"
+echo "  Pro pack 50:      $PRO_PACK_50 ($25)"
+echo "  Free pack 100:    $FREE_PACK_100 ($88)"
+echo "  Starter pack 100: $STARTER_PACK_100 ($70)"
+echo "  Pro pack 100:     $PRO_PACK_100 ($50)"
+echo "  Free pack 250:    $FREE_PACK_250 ($220)"
+echo "  Starter pack 250: $STARTER_PACK_250 ($175)"
+echo "  Pro pack 250:     $PRO_PACK_250 ($125)"
 echo ""
 
-# ─── TEMPLATE SLOT ─────────────────────────────────────────────
+# ─── TEMPLATE FEE + LEGACY TEMPLATE SLOT ─────────────────────
 
-echo "Creating Template Slot..."
-TEMPLATE_PROD=$(stripe products create \
-  --name="Custom Template Slot" \
-  --description="Custom brand template slot for Basquio reports" \
+echo "Creating one-time template fee..."
+TEMPLATE_FEE_PROD=$(stripe products create \
+  --name="Custom Template Run Fee" \
+  --description="One-time custom template unlock for free-plan runs" \
+  --format=json 2>/dev/null | jq -r '.id')
+
+TEMPLATE_FEE=$(stripe prices create \
+  --product="$TEMPLATE_FEE_PROD" \
+  --unit-amount=500 \
+  --currency=usd \
+  --format=json 2>/dev/null | jq -r '.id')
+
+echo "  Template fee: $TEMPLATE_FEE ($5 one-time)"
+echo ""
+
+echo "Creating legacy recurring template slot prices..."
+TEMPLATE_LEGACY_PROD=$(stripe products create \
+  --name="Custom Template Slot (Legacy)" \
+  --description="Legacy recurring custom template slot price for historical subscriptions" \
   --format=json 2>/dev/null | jq -r '.id')
 
 TEMPLATE_MONTHLY=$(stripe prices create \
-  --product="$TEMPLATE_PROD" \
+  --product="$TEMPLATE_LEGACY_PROD" \
   --unit-amount=1000 \
   --currency=usd \
   --recurring[interval]=month \
   --format=json 2>/dev/null | jq -r '.id')
 
 TEMPLATE_ANNUAL=$(stripe prices create \
-  --product="$TEMPLATE_PROD" \
+  --product="$TEMPLATE_LEGACY_PROD" \
   --unit-amount=9600 \
   --currency=usd \
   --recurring[interval]=year \
   --format=json 2>/dev/null | jq -r '.id')
 
-echo "  Monthly: $TEMPLATE_MONTHLY ($10/mo)"
-echo "  Annual:  $TEMPLATE_ANNUAL ($96/yr)"
+echo "  Legacy monthly: $TEMPLATE_MONTHLY ($10/mo)"
+echo "  Legacy annual:  $TEMPLATE_ANNUAL ($96/yr)"
 echo ""
 
 # ─── OUTPUT ENV VARS ──────────────────────────────────────────
@@ -209,18 +272,33 @@ echo "STRIPE_PRICE_STARTER_MONTHLY=$STARTER_MONTHLY"
 echo "STRIPE_PRICE_STARTER_ANNUAL=$STARTER_ANNUAL"
 echo "STRIPE_PRICE_PRO_MONTHLY=$PRO_MONTHLY"
 echo "STRIPE_PRICE_PRO_ANNUAL=$PRO_ANNUAL"
+echo ""
+echo "# Tier-specific credit pack prices"
+echo "STRIPE_PRICE_FREE_PACK_25=$FREE_PACK_25"
+echo "STRIPE_PRICE_FREE_PACK_50=$FREE_PACK_50"
+echo "STRIPE_PRICE_FREE_PACK_100=$FREE_PACK_100"
+echo "STRIPE_PRICE_FREE_PACK_250=$FREE_PACK_250"
+echo "STRIPE_PRICE_STARTER_PACK_25=$STARTER_PACK_25"
+echo "STRIPE_PRICE_STARTER_PACK_50=$STARTER_PACK_50"
+echo "STRIPE_PRICE_STARTER_PACK_100=$STARTER_PACK_100"
+echo "STRIPE_PRICE_STARTER_PACK_250=$STARTER_PACK_250"
+echo "STRIPE_PRICE_PRO_PACK_25=$PRO_PACK_25"
+echo "STRIPE_PRICE_PRO_PACK_50=$PRO_PACK_50"
+echo "STRIPE_PRICE_PRO_PACK_100=$PRO_PACK_100"
+echo "STRIPE_PRICE_PRO_PACK_250=$PRO_PACK_250"
 echo "STRIPE_PRICE_TEAM_MONTHLY=$TEAM_MONTHLY"
 echo "STRIPE_PRICE_TEAM_ANNUAL=$TEAM_ANNUAL"
 echo "STRIPE_PRICE_TEAM_SEAT_MONTHLY=$SEAT_MONTHLY"
 echo "STRIPE_PRICE_TEAM_SEAT_ANNUAL=$SEAT_ANNUAL"
 echo ""
-echo "# Credit pack prices"
-echo "STRIPE_PRICE_PACK_25=$PACK25_PRICE"
-echo "STRIPE_PRICE_PACK_50=$PACK50_PRICE"
-echo "STRIPE_PRICE_PACK_100=$PACK100_PRICE"
-echo "STRIPE_PRICE_PACK_250=$PACK250_PRICE"
+echo "# Generic fallback credit pack prices"
+echo "STRIPE_PRICE_PACK_25=$FREE_PACK_25"
+echo "STRIPE_PRICE_PACK_50=$FREE_PACK_50"
+echo "STRIPE_PRICE_PACK_100=$FREE_PACK_100"
+echo "STRIPE_PRICE_PACK_250=$FREE_PACK_250"
 echo ""
-echo "# Template slot prices"
+echo "# Template fee + legacy template slot prices"
+echo "STRIPE_PRICE_TEMPLATE_FEE=$TEMPLATE_FEE"
 echo "STRIPE_PRICE_TEMPLATE_MONTHLY=$TEMPLATE_MONTHLY"
 echo "STRIPE_PRICE_TEMPLATE_ANNUAL=$TEMPLATE_ANNUAL"
 echo ""

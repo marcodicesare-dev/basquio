@@ -10,7 +10,7 @@ import { PricingPlans } from "@/components/pricing-plans";
 export const metadata: Metadata = {
   title: "Pricing",
   description:
-    "Start free with 30 credits. Upgrade to Starter at $19/mo or Pro at $149/mo when the workflow becomes recurring. Basquio turns spreadsheets into finished analysis decks, narratives, and workbooks.",
+    "Start free with 15 credits. Upgrade to Starter at $19/mo or Pro at $149/mo when the workflow becomes recurring. Basquio turns spreadsheets into finished analysis decks, narratives, and workbooks.",
   alternates: { canonical: "https://basquio.com/pricing" },
 };
 
@@ -80,7 +80,7 @@ const planComparisonRows = [
   },
   {
     label: "Monthly credits",
-    values: ["30 free credits once", "30 / month", "200 / month", "Custom"],
+    values: ["15 free credits once", "30 / month", "200 / month", "Custom"],
   },
   {
     label: "Branding on output",
@@ -140,7 +140,7 @@ export default function PricingPage() {
           <p className="section-label">Pricing</p>
           <h1>Start free. Upgrade when you need more.</h1>
           <p className="page-copy">
-            30 free credits. No credit card. Run your first deck and see what comes back.
+            15 free credits. No credit card. Enough for one standard Deck run before you decide.
           </p>
         </div>
       </section>
@@ -283,7 +283,7 @@ export default function PricingPage() {
       <PublicSiteFooterCta
         eyebrow="Ready to try it?"
         title="Run the first report on live data."
-        copy="Upload your data. Get a finished deck in 15 minutes. 30 free credits, no credit card."
+        copy="Upload your data. Get a finished deck in 15 minutes. 15 free credits, no credit card."
         primaryLabel="Try it with your data"
         primaryHref="/jobs/new"
         secondaryLabel="Get started"
