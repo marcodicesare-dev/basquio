@@ -77,9 +77,9 @@ export function classifyFailureMessage(message: string, isStale = false): Failur
     return {
       class: "transient_provider",
       retryable: true,
-      headline: "Temporary service issue",
-      explanation: "An upstream service was briefly unavailable.",
-      retryAdvice: "This is usually transient. Retry with the same files — it should work on the next attempt.",
+      headline: "Our AI provider is experiencing issues right now",
+      explanation: "This is temporary and not related to your file.",
+      retryAdvice: "Your credits have been refunded. Retry in a few minutes and it should work once the provider recovers.",
     };
   }
 
@@ -193,8 +193,9 @@ export function isTransientProviderError(error: unknown): boolean {
 
   if (isRetryableContainerStringError(error)) return true;
   if (msg.includes("overloaded") || msg.includes("overloaded_error")) return true;
+  if (msg.includes("api_error") || msg.includes("internal server error")) return true;
   if (msg.includes("rate_limit") || msg.includes("rate limit")) return true;
-  if (/\b(429|529|502|503|504)\b/.test(msg)) return true;
+  if (/\b(429|500|529|502|503|504)\b/.test(msg)) return true;
   if (msg.includes("stream ended") || msg.includes("did not return")) return true;
   if (msg.includes("request ended without sending any chunks")) return true;
   if (msg.includes("request was aborted")) return true;
@@ -205,7 +206,7 @@ export function isTransientProviderError(error: unknown): boolean {
 
   if ("status" in error) {
     const status = (error as { status?: number }).status;
-    if (status && [429, 502, 503, 504, 529].includes(status)) return true;
+    if (status && [429, 500, 502, 503, 504, 529].includes(status)) return true;
   }
 
   return false;
@@ -282,6 +283,7 @@ function matchesTransientProvider(msg: string): boolean {
   return msg.includes(RETRYABLE_CONTAINER_STRING_ERROR) ||
     msg.includes("upstream error") || msg.includes("upstream infrastructure") ||
     msg.includes("connection error") || msg.includes("overloaded") ||
+    msg.includes("500") || msg.includes("internal server error") || msg.includes("api_error") ||
     msg.includes("529") || msg.includes("502") || msg.includes("503") ||
     msg.includes("rate limit") || msg.includes("stream ended") ||
     msg.includes("did not return") || msg.includes("request ended without sending any chunks");

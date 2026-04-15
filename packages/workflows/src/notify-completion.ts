@@ -1,4 +1,5 @@
 import { createServiceSupabaseClient, fetchRestRows, patchRestRows } from "./supabase";
+import { classifyFailureMessage } from "./failure-classifier";
 import { sendResendHtmlEmail, type ResendSendResult } from "./resend";
 
 export type NotifyConfig = {
@@ -168,12 +169,14 @@ export async function notifyRunFailureIfRequested(
       return;
     }
 
+    const failureClassification = classifyFailureMessage(context.failureMessage);
     const sent = await sendRunDeliveryEmail(config, {
       to: identity.email,
       runId: context.runId,
       slideCount: 0,
       variant: "failed",
       firstName: identity.firstName,
+      failureClass: failureClassification.class,
       failureMessage: context.failureMessage,
       retryUrl: `https://basquio.com/jobs/new?from=${context.runId}`,
       parseWarnings: context.parseWarnings ?? [],
@@ -289,6 +292,7 @@ export async function sendRunDeliveryEmail(
     creditsRemaining?: number | null;
     lastFailureAt?: string | null;
     briefExcerpt?: string | null;
+    failureClass?: string | null;
     failureMessage?: string | null;
     retryUrl?: string | null;
     parseWarnings?: string[];
@@ -313,6 +317,7 @@ export async function sendRunDeliveryEmail(
       creditsRemaining: params.creditsRemaining ?? null,
       lastFailureAt: params.lastFailureAt ?? null,
       briefExcerpt: params.briefExcerpt ?? null,
+      failureClass: params.failureClass ?? null,
       failureMessage: params.failureMessage ?? null,
       retryUrl: params.retryUrl ?? null,
       parseWarnings: params.parseWarnings ?? [],
@@ -399,8 +404,12 @@ function buildRunEmailSubject(params: {
   slideCount: number;
   headline?: string | null;
   variant: RunEmailVariant;
+  failureClass?: string | null;
 }) {
   if (params.variant === "failed") {
+    if (params.failureClass === "transient_provider") {
+      return "Temporary issue - your deck will be ready soon";
+    }
     return "Your deck couldn't be completed";
   }
 
@@ -427,6 +436,7 @@ function buildRunEmailHtml(input: {
   creditsRemaining: number | null;
   lastFailureAt: string | null;
   briefExcerpt: string | null;
+  failureClass: string | null;
   failureMessage: string | null;
   retryUrl: string | null;
   parseWarnings: string[];
@@ -459,6 +469,7 @@ function buildLegacyRunEmailHtml(input: {
   creditsRemaining: number | null;
   lastFailureAt: string | null;
   briefExcerpt: string | null;
+  failureClass: string | null;
   failureMessage: string | null;
   retryUrl: string | null;
   parseWarnings: string[];
@@ -526,6 +537,7 @@ function buildFirstRunEmailHtml(input: {
   creditsRemaining: number | null;
   lastFailureAt: string | null;
   briefExcerpt: string | null;
+  failureClass: string | null;
   failureMessage: string | null;
   retryUrl: string | null;
   parseWarnings: string[];
@@ -595,11 +607,19 @@ function buildFailureRunEmailHtml(input: {
   creditsRemaining: number | null;
   lastFailureAt: string | null;
   briefExcerpt: string | null;
+  failureClass: string | null;
   failureMessage: string | null;
   retryUrl: string | null;
   parseWarnings: string[];
   creditsRefunded: boolean;
 }) {
+  if (input.failureClass === "transient_provider") {
+    return buildTransientProviderFailureEmailHtml({
+      ...input,
+      variant: "failed",
+    });
+  }
+
   const greeting = input.firstName ? `Hi ${escapeHtml(input.firstName)},` : "Hi there,";
   const previewText = "Your deck run hit an issue";
   const retryUrl = appendEmailTracking(input.retryUrl ?? "https://basquio.com/jobs/new", input.variant);
@@ -640,6 +660,55 @@ function buildFailureRunEmailHtml(input: {
           </tr>
         </table>
         <p style="color:#94A3B8;font-size:12px;line-height:20px;margin:0;">If this keeps happening, send us the source file and run ID so we can inspect the failure directly.</p>
+      </td>
+    </tr>
+  </table>
+</body>`;
+}
+
+function buildTransientProviderFailureEmailHtml(input: {
+  progressUrl: string;
+  previewUrls: Array<{ position: number; url: string }>;
+  slideCount: number;
+  headline: string | null;
+  variant: "failed";
+  firstName: string | null;
+  creditsRemaining: number | null;
+  lastFailureAt: string | null;
+  briefExcerpt: string | null;
+  failureClass: string | null;
+  failureMessage: string | null;
+  retryUrl: string | null;
+  parseWarnings: string[];
+  creditsRefunded: boolean;
+}) {
+  const greeting = input.firstName ? `Hi ${escapeHtml(input.firstName)},` : "Hi there,";
+  const previewText = "Temporary issue with our AI provider";
+  const retryUrl = appendEmailTracking(input.retryUrl ?? "https://basquio.com/jobs/new", input.variant);
+  const refundLine = input.creditsRefunded
+    ? `<p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">Your credits have been refunded. You can retry now or wait a few minutes for the provider to recover.</p>`
+    : "";
+
+  return `<body style="background-color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;margin:0;padding:40px 20px;">
+  <div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(previewText)}</div>
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;">
+    <tr>
+      <td style="padding:30px;border:1px solid #E5E7EB;border-radius:16px;background:#FFFFFF;">
+        <p style="color:#94A3B8;font-size:11px;font-weight:700;letter-spacing:1.5px;margin:0 0 16px 0;text-transform:uppercase;">TEMPORARY ISSUE</p>
+        <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-blue.png" alt="Basquio" width="108" height="auto" style="display:block;margin-bottom:28px;">
+        <p style="color:#0B0C0C;font-size:15px;line-height:24px;margin:0 0 16px 0;">${greeting}</p>
+        <h1 style="color:#0B0C0C;font-size:28px;line-height:1.05;letter-spacing:-0.04em;margin:0 0 14px 0;">Your deck hit a temporary provider issue.</h1>
+        <p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">Our AI provider is having an outage right now. This is temporary and not related to your file or settings.</p>
+        ${refundLine}
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+          <tr>
+            <td>
+              <a href="${retryUrl}" style="background-color:#1A6AFF;border-radius:6px;color:#FFFFFF;display:inline-block;font-size:14px;font-weight:700;padding:12px 22px;text-decoration:none;">Retry your deck</a>
+            </td>
+          </tr>
+        </table>
+        <p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 18px 0;">This usually clears within minutes. You can also check the live provider status at <a href="https://status.anthropic.com" style="color:#1A6AFF;text-decoration:none;">status.anthropic.com</a>.</p>
+        <p style="color:#94A3B8;font-size:12px;line-height:20px;margin:0;">Marco</p>
       </td>
     </tr>
   </table>

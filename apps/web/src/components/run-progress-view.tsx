@@ -947,6 +947,7 @@ export function RunProgressView(input: {
     const failedInputs = snapshot.summary?.inputs ?? [];
     const failedBrief = snapshot.summary?.brief;
     const fc = snapshot.failureClassification;
+    const isTransientProviderFailure = fc?.class === "transient_provider";
     const headline = fc?.headline ?? "Something went wrong";
     const explanation = fc?.explanation ?? "We hit an issue generating your deck.";
     const retryAdvice = fc?.retryAdvice ?? "Try again — it won't cost extra.";
@@ -961,55 +962,90 @@ export function RunProgressView(input: {
             {explanation}
           </p>
           <div style={{ width: "100%", maxWidth: 560, textAlign: "left", marginBottom: "1.5rem" }}>
-            <p style={{ color: "#F2F0EB", fontWeight: 600, marginBottom: "0.4rem" }}>
-              Failed during: {snapshot.currentStageLabel ?? snapshot.currentStage}
-            </p>
-            {failedInputs.length > 0 ? (
-              <div style={{ marginBottom: "1rem" }}>
-                <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
-                  Uploaded files
+            {isTransientProviderFailure ? (
+              <div
+                style={{
+                  marginBottom: "1rem",
+                  padding: "1rem 1.05rem",
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                <p style={{ color: "#F2F0EB", fontWeight: 600, marginBottom: "0.4rem" }}>
+                  This is a temporary upstream outage.
                 </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
-                  {failedInputs.map((file) => (
-                    <span
-                      key={`${file.kind}-${file.fileName}`}
-                      style={{
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        borderRadius: 999,
-                        padding: "0.35rem 0.65rem",
-                        color: "#D7D3CD",
-                        fontSize: "0.86rem",
-                      }}
-                    >
-                      {file.fileName} ({file.kind})
-                    </span>
-                  ))}
-                </div>
+                <p style={{ color: "#D7D3CD", fontSize: "0.92rem", margin: 0 }}>
+                  {retryAdvice}
+                </p>
               </div>
-            ) : null}
-            {failedBrief?.businessContext || failedBrief?.audience || failedBrief?.objective ? (
-              <div style={{ marginBottom: "1rem" }}>
-                <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
-                  Brief
+            ) : (
+              <>
+                <p style={{ color: "#F2F0EB", fontWeight: 600, marginBottom: "0.4rem" }}>
+                  Failed during: {snapshot.currentStageLabel ?? snapshot.currentStage}
                 </p>
-                {failedBrief?.businessContext ? (
-                  <p style={{ color: "#D7D3CD", marginBottom: "0.35rem" }}>{failedBrief.businessContext}</p>
+                {failedInputs.length > 0 ? (
+                  <div style={{ marginBottom: "1rem" }}>
+                    <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
+                      Uploaded files
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
+                      {failedInputs.map((file) => (
+                        <span
+                          key={`${file.kind}-${file.fileName}`}
+                          style={{
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 999,
+                            padding: "0.35rem 0.65rem",
+                            color: "#D7D3CD",
+                            fontSize: "0.86rem",
+                          }}
+                        >
+                          {file.fileName} ({file.kind})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
-                <p style={{ color: "#A09FA6", fontSize: "0.92rem", marginBottom: 0 }}>
-                  Audience: {failedBrief?.audience || "n/a"} · Objective: {failedBrief?.objective || "n/a"}
-                </p>
-              </div>
-            ) : null}
-            <div style={{ marginBottom: "1rem" }}>
-              <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
-                What to do
-              </p>
-              <p style={{ color: "#D7D3CD", fontSize: "0.92rem", margin: 0 }}>
-                {retryAdvice}
-              </p>
-            </div>
+                {failedBrief?.businessContext || failedBrief?.audience || failedBrief?.objective ? (
+                  <div style={{ marginBottom: "1rem" }}>
+                    <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
+                      Brief
+                    </p>
+                    {failedBrief?.businessContext ? (
+                      <p style={{ color: "#D7D3CD", marginBottom: "0.35rem" }}>{failedBrief.businessContext}</p>
+                    ) : null}
+                    <p style={{ color: "#A09FA6", fontSize: "0.92rem", marginBottom: 0 }}>
+                      Audience: {failedBrief?.audience || "n/a"} · Objective: {failedBrief?.objective || "n/a"}
+                    </p>
+                  </div>
+                ) : null}
+                <div style={{ marginBottom: "1rem" }}>
+                  <p style={{ color: "#A09FA6", fontSize: "0.78rem", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.35rem" }}>
+                    What to do
+                  </p>
+                  <p style={{ color: "#D7D3CD", fontSize: "0.92rem", margin: 0 }}>
+                    {retryAdvice}
+                  </p>
+                </div>
+              </>
+            )}
           </div>
-          <Link href={`/jobs/new?from=${snapshot.jobId}`} style={styles.primaryButton}>Try again</Link>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", justifyContent: "center" }}>
+            <Link href={`/jobs/new?from=${snapshot.jobId}`} style={styles.primaryButton}>
+              {isTransientProviderFailure ? "Retry now" : "Try again"}
+            </Link>
+            {isTransientProviderFailure ? (
+              <a
+                href="https://status.anthropic.com"
+                target="_blank"
+                rel="noreferrer"
+                style={styles.leaveRunButton}
+              >
+                Check provider status
+              </a>
+            ) : null}
+          </div>
         </div>
       </div>
     );
