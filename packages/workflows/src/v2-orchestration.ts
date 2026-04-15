@@ -4784,6 +4784,7 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
         slides.map(s => ({
           layoutId: s.layoutId ?? "title-body",
           chartType: charts.find(c => c.id === s.chartId)?.chartType,
+          pageIntent: s.pageIntent,
           position: s.position,
           title: s.title,
           body: s.body ?? undefined,
@@ -5385,6 +5386,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
         postRevisionSlides.map(s => ({
           layoutId: s.layoutId ?? "title-body",
           chartType: postRevisionCharts.find(c => c.id === s.chartId)?.chartType,
+          pageIntent: s.pageIntent,
           position: s.position,
           title: s.title,
           body: s.body ?? undefined,

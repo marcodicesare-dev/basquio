@@ -92,6 +92,7 @@ type DeckContractSlide = {
   layoutId: string;
   chartType?: string;
   slideArchetype?: string;
+  pageIntent?: string;
   position?: number;
   title?: string;
   body?: string;
@@ -226,7 +227,12 @@ function validateRecommendationEvidence(slides: DeckContractSlide[]): ContractVi
 function isRecommendationSlide(slide: DeckContractSlide) {
   const layout = normalizeContractLayoutAlias(slide.layoutId);
   const archetype = normalizeContractLayoutAlias(slide.slideArchetype);
-  return layout === "recommendation-cards" || archetype === "recommendation-cards" || layout === "recommendation" || archetype === "recommendation";
+  const intent = (slide.pageIntent ?? "").trim().toLowerCase();
+  return layout === "recommendation-cards"
+    || archetype === "recommendation-cards"
+    || layout === "recommendation"
+    || archetype === "recommendation"
+    || intent === "recommend";
 }
 
 function normalizeContractLayoutAlias(raw: string | undefined) {
@@ -266,6 +272,9 @@ function isMeaningfulQuantifiedToken(token: string) {
   const normalized = token.toLowerCase().replace(/\s+/g, "");
   const hasUnit = /[%€$£]|pp|p\.p\.|mln|mld|bln|bn|m|k/.test(normalized);
   const hasDecimal = /[.,]/.test(normalized);
+  if (!hasUnit && !hasDecimal && /^(19|20)\d{2}$/.test(normalized)) {
+    return false;
+  }
   const digitsOnly = normalized.replace(/[^\d]/g, "");
   return hasUnit || hasDecimal || digitsOnly.length >= 2;
 }
