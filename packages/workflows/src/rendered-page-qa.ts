@@ -253,6 +253,7 @@ function buildRenderedPageQaPrompt(
     "Use concrete issue codes when relevant:",
     "- chart_aspect_distortion",
     "- chart_scale_incoherent",
+    "- numeric_scale_mismatch",
     "- chart_dead_space",
     "- numeric_label_malformed",
     "- claim_exhibit_mismatch",

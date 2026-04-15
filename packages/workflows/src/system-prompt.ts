@@ -183,6 +183,7 @@ slide.background = { color: "F5F1E8" };
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 fig, ax = plt.subplots(figsize=(9.25, 3.5))
 categories = ["Premium Wet", "Standard Wet", "Premium Dry", "Standard Dry", "Treats"]
@@ -367,13 +368,13 @@ const cards = [
   {
     index: "1", color: "4CC9A0",
     title: "Ribilancia assortimento Birre e Yogurt",
-    body: "Aggiungere min. 2 referenze no/low alcol nei top-banner. Inserire 3 SKU Yogurt Greco/Skyr e 1 Kefir entry-price per PDV.",
+    body: "Gap assortimento: -2 ref. vs benchmark canale (cfr. slide 5). Aggiungere 2 ref. no/low alcol + 3 SKU Yogurt Greco/Skyr per PDV. Rotazione Birre: +18% vs media.",
     lever: "Assortimento", impact: "+0.15pp conf", timeline: "3 mesi"
   },
   {
     index: "2", color: "1A6AFF",
     title: "Ripristina pressione promo su Salumi",
-    body: "Intensita promo scesa da 28.5% a 25.7%. Ripristinare soglie PY con promozioni di ingresso e multipack sui top-seller.",
+    body: "Intensità promo scesa da 28.5% a 25.7% (cfr. slide 7). Ripristinare soglie PY con promozioni di ingresso e multipack sui top-seller.",
     lever: "Promo", impact: "+0.05pp conf", timeline: "2 mesi"
   }
 ];
@@ -574,6 +575,26 @@ plt.rcParams.update({
 # comparison: figsize=(4.55, 3.2), dpi=300
 # scenario-cards: figsize=(5.5, 3.5), dpi=300
 # Never render below figsize=(4, 2); charts smaller than that become unreadable in PPTX.
+
+def format_it_number(value: float) -> str:
+    return f"{value:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def apply_currency_axis_formatter(ax, max_val: float, language: str = "it"):
+    if max_val > 1_000_000:
+        scale, suffix = 1e6, " Mln" if language == "it" else "M"
+    elif max_val > 1_000:
+        scale, suffix = 1e3, "K"
+    else:
+        scale, suffix = 1, ""
+
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(
+        lambda x, _: f"€{format_it_number(x / scale)}{suffix}" if language == "it" else f"€{x/scale:,.1f}{suffix}"
+    ))
+
+# Example usage after you create the axes:
+# max_val = df["V. Valore"].max()
+# apply_currency_axis_formatter(ax, max_val, language="it")
+# 13_640_000 becomes €13,6 Mln — never €13,6K.
 </example>
 
 <example name="chart_emphasis_and_label_safety">
@@ -928,10 +949,13 @@ export async function buildBasquioSystemPrompt(input: {
       : []),
     "- Keep all narrative output in the same language as the brief unless the brief explicitly asks for bilingual output.",
     "- Native-language quality is mandatory. Italian must read like native Italian business writing, not translated English and not pseudo-Spanish. English must be direct, partner-grade, and free of padded corporate filler.",
+    "- Italian diacritics are mandatory: è (is/third person), é (in perché, poiché, affinché), à (velocità, priorità, qualità, già, sarà), ù (più), ì (così, lì, sì), ò (però, può). Missing accents are a critical orthographic error that makes the output look machine-translated. Every Italian word that requires an accent must have the correct one.",
     "- Every slide title must state an insight, not a topic.",
     "- Every slide title should include at least one specific number from the data and state a finding, not a topic.",
     "- Quantify the financial size of the opportunity ONLY when the source data contains explicit value or volume figures that support a direct calculation. Show the calculation (for example, gap × average price = EURX). If the data does not support a financial estimate, describe the opportunity qualitatively with words like significant, material, or priority. NEVER fabricate investment amounts, ROI figures, or financial projections.",
     "- Every recommendation must include: the specific action, the data-backed rationale with traceable numbers, and the priority ranking. Include EUR impact ONLY if it can be computed directly from the uploaded data. NEVER include investment amounts, ROI claims, budget estimates, headcount, or any number that implies a financial commitment not derivable from the source files.",
+    "- RECOMMENDATION EVIDENCE BINDING: every recommendation card must reference at least one data point that appears on a prior evidence slide in the deck. If a recommendation says 'expand distribution from X% to Y%', a prior slide must show the current X%. If the data for a recommendation was computed in Python but is not shown on any slide, either add an evidence slide before the recommendation or remove the recommendation.",
+    "- In every recommendation card body include a brief anchor such as '(cfr. slide N)' or '(rotazione: +X%, slide N)' so the reader can trace the action back to visible evidence.",
     "- The recommendation slide and the narrative report must show a sequenced roadmap: Q1 actions, Q2 actions, Q3 actions, and Q4 review.",
     "- When the brief asks for a growth target such as +10%, include a volume bridge or waterfall that sums to the target and ties each recommendation to a quantified contribution.",
     "- DATA TRACEABILITY: every number on every slide must trace back to the uploaded evidence files. If a reviewer asks where a number comes from, the answer must be a specific file, column, row, or calculation, never an outside benchmark estimate.",
@@ -950,6 +974,8 @@ export async function buildBasquioSystemPrompt(input: {
     "- Every recommendation must name its main risk and mitigation in the narrative report.",
     "- ANALYTICAL DEPTH: go one layer deeper than the obvious finding. If a category is declining, show WHY (price, distribution, assortment, competitor action). If a brand is growing, decompose the growth into its drivers. Surface-level observation without causation is not consulting-grade.",
     "- VISUAL POLISH: every chart must have a clear title that states the insight (not the metric name), properly formatted axis labels with units, a subtle grid, and a source note. Bar charts should use a highlight color for the key bar. Line charts should annotate inflection points. Waterfall charts must have connectors.",
+    "- NUMBER SCALE DETECTION: before labeling any chart axis, inspect the data magnitude. If max value > 1,000,000 use 'Mln' for Italian or 'M' for English and divide by 1e6. If max value > 1,000 use 'K' and divide by 1e3. If values are already below 1,000 show raw numbers. NielsenIQ value columns often store raw EUR without scaling — 13,640,000 is €13.64 Mln, not €13.64K.",
+    "- Italian number conventions: use period as thousands separator and comma as decimal separator. On chart axes, use FuncFormatter or an equivalent formatter to enforce locale-safe labels.",
     "- NARRATIVE ARC: the deck must tell a story with rising tension. Slide 1 sets the stage. Slides 2-3 establish the baseline. The middle section reveals the problem or opportunity with escalating specificity. The final third pivots to action. The last slide must feel like a call to action, not a summary of summaries.",
     "- Aha slide rule: decks with 15+ slides should include one non-obvious cross-cut, contradiction, or structural trend observation just before the recommendations. Use source-backed structural metrics such as outlets, share, penetration, or mix. Never extrapolate financial amounts, ROI, budgets, or invented scenarios.",
     "- Build all slides in strict sequential order from slide 1 to slide N. Never go back to recreate or overwrite a slide you already added via addSlide(). If you discover an error in an earlier slide, note it and continue forward. The PPTX skill does not support overwriting slides, and re-adding a slide corrupts the file.",
@@ -1009,6 +1035,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Metric footers must live in their own bottom band with enough height for the value and label; body copy must end above that band.",
     "- Generate charts as high-resolution PNG assets in Python and insert them as images in the final deck; do not rely on native PowerPoint chart objects or SmartArt for critical visuals.",
     "- Concretely: render charts with matplotlib or seaborn, save them as PNG files, and use the loaded presentation skill to place those PNGs in the deck. Do not use native PowerPoint chart objects for final deck visuals.",
+    "- When writing Italian text in PptxGenJS addText() calls or matplotlib labels, use literal accented characters directly in the string. Do not use ASCII approximations such as 'C'e'' or 'priorita'. The execution environment is UTF-8 native.",
     "- Layout variety rule: a 10-slide deck needs at least 4 layout types, a 15-slide deck needs at least 5 layout types, and no single layout may exceed 40% of total slides.",
     "- For 30-slide decks, plan the archetype mix before writing any slide: use at least 7 archetype types, keep every archetype at 8 slides or fewer, keep chart-split at 10 slides or fewer, include at least one table or heatmap slide, and use at least three different chart families across the deck.",
     "- Recommended 15-slide mix: 1 cover, 1 exec-summary, 2-3 title-chart, 2-3 chart-split, 1-2 evidence-grid, 1-2 comparison, 1-2 recommendation-cards/key-findings, 1 summary.",
