@@ -264,7 +264,7 @@ plt.savefig("line_direct_labels.png", dpi=300, bbox_inches='tight', pad_inches=0
 
 const slide = pptx.addSlide(${BASQUIO_COVER_ARGS_PLACEHOLDER});
 
-slide.addText("Il Discount perde 0.5pp confezioni vs Totale Italia: servono velocita e premium mix", {
+slide.addText("Il Discount perde 0.5pp confezioni vs Totale Italia: servono velocità e premium mix", {
   x: 1.1, y: 2.6, w: 9.0, h: 1.8,
   fontSize: 28, fontFace: "Arial", color: "0B0C0C", bold: true
 });
@@ -292,7 +292,7 @@ slide.addText("COMPARTI CRITICI", {
   fontSize: 9, fontFace: "Arial", color: "1A6AFF", letterSpacing: 1.5, bold: true
 });
 
-slide.addText("8 comparti su 10 perdono velocita: Freddo e Cura Casa guidano il gap a -3.5pp", {
+slide.addText("8 comparti su 10 perdono velocità: Freddo e Cura Casa guidano il gap a -3.5pp", {
   x: 0.6, y: 0.8, w: 12.1, h: 0.7,
   fontSize: 20, fontFace: "Arial", color: "0F172A", bold: true
 });
@@ -329,7 +329,7 @@ slide.addText("Diagnosi: Velocity Problem", {
 });
 
 slide.addText([
-  "La distribuzione ponderata ACV cresce o e stabile in 8 aree su 10. La mancanza di prodotto a scaffale non e il problema.",
+  "La distribuzione ponderata ACV cresce o è stabile in 8 aree su 10. La mancanza di prodotto a scaffale non è il problema.",
   "",
   "Le confezioni vendute per punto vendita scendono su tutte le 10 aree: gli shopper visitano il Discount ma comprano meno unita per visita.",
   "",
@@ -358,7 +358,7 @@ slide.addText("RACCOMANDAZIONI", {
   fontSize: 9, fontFace: "Arial", color: "1A6AFF", letterSpacing: 1.5, bold: true
 });
 
-slide.addText("Due azioni ad alta priorita per recuperare lo 0.5pp di gap confezioni", {
+slide.addText("Due azioni ad alta priorità per recuperare lo 0.5pp di gap confezioni", {
   x: 0.6, y: 0.8, w: 12.1, h: 0.7,
   fontSize: 20, fontFace: "Arial", color: "0B0C0C", bold: true
 });
@@ -407,7 +407,7 @@ cards.forEach((card, i) => {
   });
 });
 
-slide.addText("Con interventi mirati in 90 giorni, il gap di -0.5pp e recuperabile. La distribuzione c'e gia; serve velocita, non copertura.", {
+slide.addText("Con interventi mirati in 90 giorni, il gap di -0.5pp è recuperabile. La distribuzione c'è già; serve velocità, non copertura.", {
   x: 0.45, y: 6.3, w: 12.1, h: 0.45,
   fontSize: 10, fontFace: "Arial", color: "0B0C0C",
   fill: { color: "1A6AFF", transparency: 76 }

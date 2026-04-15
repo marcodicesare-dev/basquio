@@ -1759,8 +1759,8 @@ REQUIRED:
 For Italian: write natural professional Italian, not translated-from-English.
 - English business terms OK when standard: brand, market share, retail, B2B, KPI, SKU
 - But use Italian where natural: "distribuzione" not "distribution", "quota" not "share", "crescita" not "growth"
-- BAD: "Questo rappresenta un'opportunita'" (AI Italian)
-- GOOD: "C'e' spazio per crescere" (real Italian)
+- BAD: "Questo rappresenta un'opportunità" (AI Italian)
+- GOOD: "C'è spazio per crescere" (real Italian)
 - Short sentences. 15 words average, 25 max.
 
 ## DESIGN ANTI-PATTERNS (NEVER)
@@ -4103,7 +4103,7 @@ Your job: write the SCQA, assign titles to every slide, and structure 2-4 Points
 Write like a human partner, not an AI. Direct, precise, opinionated.
 BANNED: em dashes, "Let's dive into", "It's worth noting", "leveraging", "synergies", "holistic", "robust", hedging ("may potentially"), sycophantic qualifiers ("Interestingly,"), rhetorical questions.
 REQUIRED: numbers first ("Share fell 2.1pp"), active voice, short words, zero filler, growth with sign (+12% or -3.2%).
-For Italian: natural professional Italian. "C'e' spazio per crescere" not "Questo rappresenta un'opportunita'".
+For Italian: natural professional Italian. "C'è spazio per crescere" not "Questo rappresenta un'opportunità".
 
 ## RULES
 - Every title MUST be a complete sentence with at least one number. Max 14 words.

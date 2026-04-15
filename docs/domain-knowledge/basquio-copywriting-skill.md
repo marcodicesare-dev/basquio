@@ -60,7 +60,7 @@ The text must feel like a sharp Italian professional wrote it. Natural, precise,
 **Rules:**
 - English business terms are OK when standard in Italian business: "business", "brand", "market share", "retail", "B2B", "B2C", "KPI", "SKU", "CAGR", "ROI", "EDLP"
 - But avoid English where a natural Italian word exists: "distribuzione" not "distribution", "quota" not "share" (unless "value share" is clearer in context), "crescita" not "growth"
-- No translated-from-English constructions: "Questo rappresenta un'opportunita'" is AI Italian. "C'e' spazio per crescere" is real Italian.
+- No translated-from-English constructions: "Questo rappresenta un'opportunità" is AI Italian. "C'è spazio per crescere" is real Italian.
 - No fake-Italian or imported pseudo-verbs: "lidera", "performa", "outperforma", "overindexa", "underindexa"
 - Conversational register, not academic. "I freschi crescono ma pesano poco" is good. "Il segmento dei prodotti freschi evidenzia un trend di crescita" is bad.
 - Short sentences. 15 words average, 25 max.
