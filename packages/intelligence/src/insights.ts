@@ -284,7 +284,7 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       rank: 1,
       title: "Il Pet Care Italia vale oltre 2.2 miliardi, con il gatto dominante",
       claim: `${brief.client || "Il brand"} compete in un mercato da ${formatMillions(totalMarket)}; il gatto pesa ${formatMillions(catValue)} (${formatPercent(catValue / Math.max(totalMarket, 1))}), il cane ${formatMillions(dogValue)} e gli altri animali ${formatMillions(otherValue)}.`,
-      businessMeaning: "La priorita non e distribuire lo sforzo in modo uniforme: la scala e nel gatto, mentre il cane resta la principale area di recupero strategico.",
+      businessMeaning: "La priorità non è distribuire lo sforzo in modo uniforme: la scala è nel gatto, mentre il cane resta la principale area di recupero strategico.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_value_current_by_comparto_ecr2", "PET CARE GATTO"],
         ["retail_value_current_by_comparto_ecr2", "PET CARE CANE"],
@@ -296,9 +296,9 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
     retailInsight({
       id: "retail-supplier-landscape",
       rank: 2,
-      title: `Affinity e il #${affinityRank || 5} fornitore nel Pet Care italiano`,
+      title: `Affinity è il #${affinityRank || 5} fornitore nel Pet Care italiano`,
       claim: `Affinity vale ${formatMillions(affinityValue)} con ${formatPercent(affinityShare)} di quota e cresce ${formatSignedPercent(growthRate(affinityValue, affinityPrior))}; davanti restano ${supplierRanking.slice(0, 4).map(([name]) => name).join(", ")}.`,
-      businessMeaning: "La narrativa competitiva deve ancorare Affinity come challenger rilevante ma non ancora nella prima fascia: il gap da colmare e chiaro e misurabile.",
+      businessMeaning: "La narrativa competitiva deve ancorare Affinity come challenger rilevante ma non ancora nella prima fascia: il gap da colmare è chiaro e misurabile.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_value_current_by_fornitore", "AFFINITY"],
         ["retail_value_prior_by_fornitore", "AFFINITY"],
@@ -314,9 +314,9 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       ? retailInsight({
           id: "retail-affinity-stronghold",
           rank: 3,
-          title: `${strongestMarket[0]} e il presidio piu forte di Affinity`,
+          title: `${strongestMarket[0]} è il presidio più forte di Affinity`,
           claim: `${strongestMarket[0]} vale ${formatMillions(marketCurrent.get(strongestMarket[0]) ?? 0)}; Affinity ne controlla ${formatPercent(strongestMarket[1])} con ${formatSignedPercent(growthRate(affinityMarketCurrent.get(strongestMarket[0]) ?? 0, affinityMarketPrior.get(strongestMarket[0]) ?? 0))} di crescita sul brand portfolio rilevante.`,
-          businessMeaning: "Qui Basquio deve mostrare il motore di scala esistente, non solo il problema: e la base da difendere e monetizzare.",
+          businessMeaning: "Qui Basquio deve mostrare il motore di scala esistente, non solo il problema: è la base da difendere e monetizzare.",
           evidence: collectEvidence(analyticsResult, [
             ["retail_value_current_by_mercato_ecr4", strongestMarket[0]],
             ["retail_affinity_value_current_by_market", strongestMarket[0]],
@@ -330,8 +330,8 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       ? retailInsight({
           id: "retail-whitespace",
           rank: 4,
-          title: `${zeroAffinityMarket[0]} e un vuoto strategico`,
-          claim: `${zeroAffinityMarket[0]} vale ${formatMillions(zeroAffinityMarket[1])} e Affinity e sostanzialmente assente; e uno dei vuoti piu grandi nel portafoglio attuale.`,
+          title: `${zeroAffinityMarket[0]} è un vuoto strategico`,
+          claim: `${zeroAffinityMarket[0]} vale ${formatMillions(zeroAffinityMarket[1])} e Affinity è sostanzialmente assente; è uno dei vuoti più grandi nel portafoglio attuale.`,
           businessMeaning: "La raccomandazione finale deve trasformare questo vuoto in un'esplicita tesi di ingresso o di scelta deliberata di non presidio.",
           evidence: collectEvidence(analyticsResult, [
             ["retail_value_current_by_mercato_ecr4", zeroAffinityMarket[0]],
@@ -345,8 +345,8 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       id: "retail-portfolio-concentration",
       rank: 5,
       title: "Ultima sostiene quasi tutto il business Affinity",
-      claim: `Ultima genera ${formatMillions(ultimaValue)} e pesa ${formatPercent(ultimaValue / Math.max(affinityValue, 1))} del valore Affinity; Trainer vale ${formatMillions(trainerValue)} nonostante una base SKU molto piu ampia.`,
-      businessMeaning: "La storia non e solo crescita: e concentrazione estrema del portafoglio, con un rischio operativo evidente se Ultima rallenta.",
+      claim: `Ultima genera ${formatMillions(ultimaValue)} e pesa ${formatPercent(ultimaValue / Math.max(affinityValue, 1))} del valore Affinity; Trainer vale ${formatMillions(trainerValue)} nonostante una base SKU molto più ampia.`,
+      businessMeaning: "La storia non è solo crescita: è concentrazione estrema del portafoglio, con un rischio operativo evidente se Ultima rallenta.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_affinity_value_current_by_brand", "ULTIMA"],
         ["retail_affinity_value_current_by_brand", "TRAINER"],
@@ -361,8 +361,8 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       id: "retail-trainer-efficiency",
       rank: 6,
       title: "Trainer ha un problema strutturale di efficienza SKU",
-      claim: `Trainer ha ${formatWhole(trainerSkus)} SKU per ${formatMillions(trainerValue)} di valore, contro ${formatWhole(ultimaSkus)} SKU per ${formatMillions(ultimaValue)} di Ultima; il differenziale di produttivita e enorme.`,
-      businessMeaning: "Questo e il classico insight che deve diventare una slide operativa: razionalizzazione portfolio, non solo commento di performance.",
+      claim: `Trainer ha ${formatWhole(trainerSkus)} SKU per ${formatMillions(trainerValue)} di valore, contro ${formatWhole(ultimaSkus)} SKU per ${formatMillions(ultimaValue)} di Ultima; il differenziale di produttività è enorme.`,
+      businessMeaning: "Questo è il classico insight che deve diventare una slide operativa: razionalizzazione portfolio, non solo commento di performance.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_affinity_sku_count_by_brand", "TRAINER"],
         ["retail_affinity_sku_count_by_brand", "ULTIMA"],
@@ -375,9 +375,9 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
     retailInsight({
       id: "retail-dry-cat-race",
       rank: 7,
-      title: "Nel Gatto Secco la corsa con ONE e apertissima",
-      claim: `Nel ${dryCatMarket} Ultima vale ${formatMillions(dryCatUltima)} e cresce ${formatSignedPercent(growthRate(dryCatUltima, dryCatUltimaPrior))}; ONE e a ${formatMillions(dryCatOne)} con ${formatSignedPercent(growthRate(dryCatOne, dryCatOnePrior))}, mentre la MDD perde ${formatSignedPercent(growthRate(dryCatMdd, dryCatMddPrior))}.`,
-      businessMeaning: "Questa e la slide da vittoria selettiva: il branded sta prendendo spazio e Ultima ha gia la massa critica per giocarsi il sorpasso.",
+      title: "Nel Gatto Secco la corsa con ONE è apertissima",
+      claim: `Nel ${dryCatMarket} Ultima vale ${formatMillions(dryCatUltima)} e cresce ${formatSignedPercent(growthRate(dryCatUltima, dryCatUltimaPrior))}; ONE è a ${formatMillions(dryCatOne)} con ${formatSignedPercent(growthRate(dryCatOne, dryCatOnePrior))}, mentre la MDD perde ${formatSignedPercent(growthRate(dryCatMdd, dryCatMddPrior))}.`,
+      businessMeaning: "Questa è la slide da vittoria selettiva: il branded sta prendendo spazio e Ultima ha già la massa critica per giocarsi il sorpasso.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_value_current_by_market_brand", `${dryCatMarket} | ULTIMA`],
         ["retail_value_prior_by_market_brand", `${dryCatMarket} | ULTIMA`],
@@ -394,7 +394,7 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       rank: 8,
       title: "La MDD perde terreno nelle aree chiave",
       claim: `Nel ${dryCatMarket} la MDD vale ${formatMillions(dryCatMdd)} e flette ${formatSignedPercent(growthRate(dryCatMdd, dryCatMddPrior))}; lo stesso pattern si vede anche nel ${dogDryMarket}, creando spazio per i brand.`,
-      businessMeaning: "La tesi strategica non e solo su Affinity: c'e un trend strutturale pro-branded che rende il timing migliore di quanto direbbe la sola quota attuale.",
+      businessMeaning: "La tesi strategica non è solo su Affinity: c'è un trend strutturale pro-branded che rende il timing migliore di quanto direbbe la sola quota attuale.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_mdd_value_current_by_market", dryCatMarket],
         ["retail_mdd_value_prior_by_market", dryCatMarket],
@@ -408,8 +408,8 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       id: "retail-dog-dry-issue",
       rank: 9,
       title: "Il Cane Secco resta il principale allarme operativo",
-      claim: `Nel ${dogDryMarket} Ultima si ferma a ${formatMillions(dogDryUltima)} e cala ${formatSignedPercent(growthRate(dogDryUltima, dogDryUltimaPrior))} in un mercato gia in contrazione; la quota resta intorno al ${formatPercent(dogDryUltima / Math.max(marketCurrent.get(dogDryMarket) ?? 1, 1))}.`,
-      businessMeaning: "Serve una slide di allarme chiara: il cane non e un tema secondario ma la principale area in cui l'azienda oggi sottoperforma.",
+      claim: `Nel ${dogDryMarket} Ultima si ferma a ${formatMillions(dogDryUltima)} e cala ${formatSignedPercent(growthRate(dogDryUltima, dogDryUltimaPrior))} in un mercato già in contrazione; la quota resta intorno al ${formatPercent(dogDryUltima / Math.max(marketCurrent.get(dogDryMarket) ?? 1, 1))}.`,
+      businessMeaning: "Serve una slide di allarme chiara: il cane non è un tema secondario ma la principale area in cui l'azienda oggi sottoperforma.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_value_current_by_mercato_ecr4", dogDryMarket],
         ["retail_value_current_by_market_brand", `${dogDryMarket} | ULTIMA`],
@@ -423,7 +423,7 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       rank: 10,
       title: "L'Umido Gatto cresce ma Affinity parte ancora piccola",
       claim: `Nel ${wetCatMarket} Ultima cresce ${formatSignedPercent(growthRate(wetCatUltima, wetCatUltimaPrior))} ma parte da ${formatMillions(wetCatUltima)} su un mercato da ${formatMillions(marketCurrent.get(wetCatMarket) ?? 0)}.`,
-      businessMeaning: "E una classica accelerazione da incubare: segnale positivo, ma base ancora troppo piccola per spostare davvero il business senza investimenti mirati.",
+      businessMeaning: "È una classica accelerazione da incubare: segnale positivo, ma base ancora troppo piccola per spostare davvero il business senza investimenti mirati.",
       evidence: collectEvidence(analyticsResult, [
         ["retail_value_current_by_mercato_ecr4", wetCatMarket],
         ["retail_value_current_by_market_brand", `${wetCatMarket} | ULTIMA`],
@@ -436,9 +436,9 @@ function buildRetailFallbackInsights(analyticsResult: AnalyticsResult, brief: Re
       ? retailInsight({
           id: "retail-strategic-map",
           rank: 11,
-          title: "La mappa strategica e tra difesa del gatto e recupero dei gap",
-          claim: `Le priorita si dividono tra difendere il presidio in ${strongestMarket?.[0] ?? "Gatto Secco"} e aprire spazi nei mercati sottopresidiati come ${whitespaceMarket[0]}.`,
-          businessMeaning: "Questa sintesi deve portare naturalmente a una slide finale con priorita: difendere, accelerare, ristrutturare, esplorare.",
+          title: "La mappa strategica è tra difesa del gatto e recupero dei gap",
+          claim: `Le priorità si dividono tra difendere il presidio in ${strongestMarket?.[0] ?? "Gatto Secco"} e aprire spazi nei mercati sottopresidiati come ${whitespaceMarket[0]}.`,
+          businessMeaning: "Questa sintesi deve portare naturalmente a una slide finale con priorità: difendere, accelerare, ristrutturare, esplorare.",
           evidence: collectEvidence(analyticsResult, [
             ["retail_value_current_by_mercato_ecr4", whitespaceMarket[0]],
             strongestMarket ? ["retail_affinity_value_current_by_market", strongestMarket[0]] as const : null,

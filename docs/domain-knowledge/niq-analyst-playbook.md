@@ -469,7 +469,7 @@ This is strong SCQA because the tension is specific, quantified, and directly li
 Sharp professional Italian. Not translated-from-English. Not bureaucratic.
 - English business terms OK when standard: brand, market share, retail, B2B, KPI, SKU, CAGR
 - Use Italian where natural: "distribuzione" not "distribution", "quota" not "share", "crescita" not "growth"
-- No AI Italian: "Questo rappresenta un'opportunita'" is bad. "C'e' spazio per crescere" is good.
+- No AI Italian: "Questo rappresenta un'opportunità" is bad. "C'è spazio per crescere" is good.
 - Conversational register: "I freschi crescono ma pesano poco" not "Il segmento dei prodotti freschi evidenzia un trend di crescita"
 - Short sentences. 15 words average, 25 max.
 

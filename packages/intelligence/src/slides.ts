@@ -1040,7 +1040,7 @@ function buildRetailSynthesisBlocks(
   return compactUniqueBlocks([
     block({
       kind: "callout",
-      content: "La priorita non e aggiungere altre slide ma scegliere dove difendere, dove accelerare e dove ristrutturare il portafoglio.",
+      content: "La priorità non è aggiungere altre slide ma scegliere dove difendere, dove accelerare e dove ristrutturare il portafoglio.",
       tone: "positive",
       evidenceIds,
     }),
