@@ -43,7 +43,7 @@ echo ""
 echo "Creating Pro plan..."
 PRO_PROD=$(stripe products create \
   --name="Basquio Pro" \
-  --description="100 credits/month. Priority queue. 5 custom template slots." \
+  --description="200 credits/month. Priority queue. 5 custom template slots." \
   --format=json 2>/dev/null | jq -r '.id')
 
 PRO_MONTHLY=$(stripe prices create \

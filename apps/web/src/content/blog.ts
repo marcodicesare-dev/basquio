@@ -426,16 +426,16 @@ Every chart is computed from your uploaded data. Every claim references the sour
 |------------|:-:|:-:|
 | Analyst time per deck | 20-30 hours | 2-4 hours (review only) |
 | Analyst cost per hour | $60-100 (fully loaded) | $60-100 (fully loaded) |
-| Tool cost per deck | $0 (Excel/PPT) | $10 (Basquio) |
-| Total cost per deck | $1,200-3,000 | $130-410 |
-| Annual cost per brand (quarterly) | $4,800-12,000 | $520-1,640 |
-| Annual cost per brand (monthly) | $14,400-36,000 | $1,560-4,920 |
+| Tool cost per deck | $0 (Excel/PPT) | Basquio credits (example: 13-credit Deck) |
+| Total cost per deck | $1,200-3,000 | Analyst review time + credits |
+| Annual cost per brand (quarterly) | $4,800-12,000 | Review time + credits |
+| Annual cost per brand (monthly) | $14,400-36,000 | Review time + credits |
 
 The ROI is 10-30x per brand per year.
 
 ## How Do You Get Started?
 
-1. [Create a Basquio account](https://basquio.com/get-started) (first standard report is free)
+1. [Create a Basquio account](https://basquio.com/get-started) (30 one-time free credits to start)
 2. Upload the syndicated data exports from your most recent cycle
 3. Write a one-line brief about who the deck is for
 4. Review the output and see how much editing the first draft actually needs
@@ -681,7 +681,7 @@ Basquio's output quality on data-heavy analytical decks (category reviews, compe
 
 ## How Do You Get Started?
 
-1. [Create a Basquio account](https://basquio.com/get-started) (first standard report is free)
+1. [Create a Basquio account](https://basquio.com/get-started) (30 one-time free credits to start)
 2. Upload the Excel files from a recent client deliverable
 3. Write a one-line brief matching the original engagement scope
 4. Compare the automated output against the deck your team produced manually
@@ -862,7 +862,7 @@ Yes. The most common combinations:
 4. Wait 10-15 minutes for the analysis and deck generation
 5. Download the PPTX and PDF. Open in PowerPoint to review and refine.
 
-The first standard report is free.
+Basquio starts with 30 one-time free credits.
 
 ## FAQ
 
