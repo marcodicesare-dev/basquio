@@ -23,6 +23,7 @@
     "@resvg/resvg-js": "^2.6.2",
     "@supabase/supabase-js": "^2.49.4",
     "ai": "^6.0.116",
+    "dejavu-fonts-ttf": "^2.37.3",
     "exceljs": "^4.4.0",
     "inngest": "^3.31.0",
     "jszip": "^3.10.1",

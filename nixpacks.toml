@@ -2,18 +2,12 @@
 # Railway installs the full pnpm workspace graph for the worker service.
 # Keep native build tooling available for workspace deps that may fall back
 # to node-gyp during Git-connected builds, such as @discordjs/opus.
-# Fonts are required by @resvg/resvg-js for slide preview PNG rendering.
-# Without fonts installed at the system level, resvg silently drops text and
-# produces blank previews (the empty-preview email bug).
-nixPkgs = [
-  "...",
-  "python3",
-  "gcc",
-  "gnumake",
-  "liberation_ttf",
-  "dejavu_fonts",
-  "noto-fonts",
-]
+# Fonts for @resvg/resvg-js are NOT installed via Nix because Nix profile
+# paths are not in fontconfig's default scan list — system font installation
+# is unreliable in this environment. Instead, the worker bundles DejaVu TTFs
+# via the `dejavu-fonts-ttf` npm package and loads them explicitly via
+# `fontFiles` in packages/workflows/src/generate-deck.ts.
+nixPkgs = ["...", "python3", "gcc", "gnumake"]
 
 [variables]
 # Ensure node-gyp uses the Nix-provided Python instead of relying on a Debian

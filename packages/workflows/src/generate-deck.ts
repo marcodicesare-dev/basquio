@@ -6278,8 +6278,9 @@ async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
           fitTo: { mode: "width", value: 1600 },
           background: "rgba(0,0,0,0)",
           font: {
-            loadSystemFonts: true,
-            defaultFontFamily: "Liberation Sans",
+            fontFiles: resolveBundledFontFiles(),
+            loadSystemFonts: false,
+            defaultFontFamily: "DejaVu Sans",
           },
         }).render();
         pngBuffer = Buffer.from(rendered.asPng());
@@ -7227,19 +7228,43 @@ function selectPreviewSlides(manifest: z.infer<typeof deckManifestSchema>) {
     .slice(0, 3);
 }
 
+// Resolve bundled DejaVu TTF font paths at runtime. The npm package
+// `dejavu-fonts-ttf` ships actual .ttf files that @resvg/resvg-js can load
+// directly. Bundling is the only reliable approach because Nix/Railway's
+// fontconfig configuration does NOT expose system font packages to resvg —
+// adding liberation_ttf or dejavu_fonts to nixpacks.toml is insufficient
+// because Nix profiles are not in the paths fontconfig scans by default.
+// See: https://github.com/thx/resvg-js/issues/210 (identical symptom)
+let cachedFontFiles: string[] | null = null;
+function resolveBundledFontFiles(): string[] {
+  if (cachedFontFiles) return cachedFontFiles;
+  const pkgJson = require.resolve("dejavu-fonts-ttf/package.json");
+  const ttfDir = path.join(path.dirname(pkgJson), "ttf");
+  cachedFontFiles = [
+    path.join(ttfDir, "DejaVuSans.ttf"),
+    path.join(ttfDir, "DejaVuSans-Bold.ttf"),
+    path.join(ttfDir, "DejaVuSans-Oblique.ttf"),
+    path.join(ttfDir, "DejaVuSerif.ttf"),
+    path.join(ttfDir, "DejaVuSerif-Bold.ttf"),
+    path.join(ttfDir, "DejaVuSerif-Italic.ttf"),
+    path.join(ttfDir, "DejaVuSansMono.ttf"),
+  ];
+  return cachedFontFiles;
+}
+
 async function renderPreviewPng(svgText: string) {
   const { Resvg } = await import("@resvg/resvg-js");
   const rendered = new Resvg(svgText, {
     fitTo: { mode: "width", value: 1200 },
     background: "#f7f5f1",
-    // Load system fonts explicitly. On Railway's Nix-built container the
-    // installed font packages (liberation_ttf, dejavu_fonts, noto-fonts)
-    // provide Arial/Georgia/serif fallbacks resvg needs to render text.
-    // Without this, resvg silently drops all text and produces blank PNGs —
-    // the bug behind the empty-preview email.
+    // Bundle DejaVu TTF files with the worker so Railway/Nix/Docker can NEVER
+    // render blank previews. DejaVu has full Latin + Italian diacritic
+    // coverage and substitutes cleanly for Arial (sans) and Georgia (serif)
+    // which the SVG template requests by name.
     font: {
-      loadSystemFonts: true,
-      defaultFontFamily: "Liberation Sans",
+      fontFiles: resolveBundledFontFiles(),
+      loadSystemFonts: false,
+      defaultFontFamily: "DejaVu Sans",
     },
   }).render();
 
