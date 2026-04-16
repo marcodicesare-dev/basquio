@@ -623,6 +623,7 @@ async function handleInvoicePaid(
 
   scheduleBillingEmail(async () => {
     const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+    await ensureStripeChargeReceiptEmail(stripe, invoice.id, email);
     await sendSubscriptionReceiptEmail({
       email,
       invoiceId: invoice.id,
@@ -1113,6 +1114,41 @@ async function sendSubscriptionReceiptEmail(input: {
     html,
     idempotencyKey: `subscription-receipt-${input.invoiceId}`,
   });
+}
+
+async function ensureStripeChargeReceiptEmail(
+  stripe: ReturnType<typeof getStripe>,
+  invoiceId: string,
+  email: string,
+) {
+  if (!email) {
+    return;
+  }
+
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId, {
+      expand: ["payments.data.payment.payment_intent.latest_charge"],
+    });
+
+    const paymentRecords = ((invoice as { payments?: { data?: Array<{
+      payment?: { payment_intent?: { latest_charge?: string | { id?: string; receipt_email?: string | null } | null } | null };
+      status?: string | null;
+    }> } }).payments?.data ?? []);
+
+    const paidPayment = paymentRecords.find((payment) => payment.status === "paid") ?? paymentRecords[0] ?? null;
+    const paymentIntent = paidPayment?.payment?.payment_intent ?? null;
+    const latestCharge = paymentIntent?.latest_charge ?? null;
+    const chargeId = typeof latestCharge === "string" ? latestCharge : latestCharge?.id ?? null;
+    const currentReceiptEmail = typeof latestCharge === "string" ? null : latestCharge?.receipt_email ?? null;
+
+    if (!chargeId || currentReceiptEmail === email) {
+      return;
+    }
+
+    await stripe.charges.update(chargeId, { receipt_email: email });
+  } catch (error) {
+    console.error(`[stripe-webhook] failed to set Stripe receipt email for invoice ${invoiceId}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function formatMoney(amountMinor: number | null, currency: string | null) {
