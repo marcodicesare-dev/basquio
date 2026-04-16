@@ -1384,7 +1384,14 @@ async function listWeeklySubscriptionRevenueEvents(
 
   for await (const invoice of stripe.invoices.list({ limit: 100, created })) {
     const invoiceData = invoice as typeof invoice & {
-      subscription?: string | null;
+      subscription?: string | { id: string } | null;
+      parent?: {
+        type?: string | null;
+        subscription_details?: {
+          subscription?: string | { id: string } | null;
+          metadata?: Record<string, string> | null;
+        } | null;
+      } | null;
       subscription_details?: { metadata?: Record<string, string> | null } | null;
       metadata?: Record<string, string> | null;
       customer_email?: string | null;
@@ -1392,15 +1399,40 @@ async function listWeeklySubscriptionRevenueEvents(
       lines: {
         data: Array<{
           price?: { recurring?: { interval?: string | null } | null } | null;
+          parent?: {
+            type?: string | null;
+            subscription_item_details?: {
+              subscription?: string | { id: string } | null;
+            } | null;
+          } | null;
         }>;
       };
     };
 
-    if (invoiceData.status !== "paid" || !invoiceData.subscription) {
+    const subscriptionId = normalizeStripeReference(invoiceData.subscription)
+      ?? (invoiceData.parent?.type === "subscription_details"
+        ? normalizeStripeReference(invoiceData.parent.subscription_details?.subscription)
+        : null)
+      ?? invoiceData.lines.data
+        .map((line) => line.parent?.type === "subscription_item_details"
+          ? normalizeStripeReference(line.parent.subscription_item_details?.subscription)
+          : null)
+        .find(Boolean)
+      ?? null;
+
+    if (invoiceData.status !== "paid" || !subscriptionId) {
       continue;
     }
 
-    const metadata = invoiceData.subscription_details?.metadata ?? invoiceData.metadata ?? {};
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId).catch(() => null);
+    const metadata =
+      (invoiceData.parent?.type === "subscription_details"
+        ? invoiceData.parent.subscription_details?.metadata
+        : null)
+      ?? invoiceData.subscription_details?.metadata
+      ?? invoiceData.metadata
+      ?? subscription?.metadata
+      ?? {};
     const email = resolveRevenueEventEmail({
       userId: metadata.user_id ?? null,
       fallbackEmail: invoiceData.customer_email ?? null,
@@ -1415,9 +1447,11 @@ async function listWeeklySubscriptionRevenueEvents(
     const invoiceLines = invoiceData.lines.data as Array<{
       price?: { recurring?: { interval?: string | null } | null } | null;
     }>;
-    const interval = invoiceLines.find((line) => line.price?.recurring)?.price?.recurring?.interval === "year"
-      ? "annual"
-      : "monthly";
+    const recurringInterval =
+      invoiceLines.find((line) => line.price?.recurring)?.price?.recurring?.interval
+      ?? subscription?.items.data[0]?.price?.recurring?.interval
+      ?? null;
+    const interval = recurringInterval === "year" ? "annual" : "monthly";
 
     events.push({
       amount: (invoiceData.amount_paid ?? 0) / 100,
@@ -1427,6 +1461,16 @@ async function listWeeklySubscriptionRevenueEvents(
   }
 
   return events;
+}
+
+function normalizeStripeReference(value: string | { id: string } | null | undefined) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object" && typeof value.id === "string") {
+    return value.id;
+  }
+  return null;
 }
 
 function resolveRevenueEventEmail(input: {

@@ -104,12 +104,14 @@ export async function getOrCreateStripeCustomer(
   if (existingMapping?.stripe_customer_id) {
     const existingCustomer = await retrieveStripeCustomer(stripe, existingMapping.stripe_customer_id);
     if (existingCustomer) {
+      await syncStripeCustomerIdentity(stripe, existingCustomer, userId, email);
       return existingCustomer.id;
     }
   }
 
   const matchedCustomer = await findReusableStripeCustomer(stripe, userId, email);
   if (matchedCustomer) {
+    await syncStripeCustomerIdentity(stripe, matchedCustomer, userId, email);
     await saveStripeCustomerMapping(supabaseUrl, serviceKey, userId, matchedCustomer.id);
     return matchedCustomer.id;
   }
@@ -251,6 +253,32 @@ async function findReusableStripeCustomer(
   }
 
   return null;
+}
+
+async function syncStripeCustomerIdentity(
+  stripe: Stripe,
+  customer: Stripe.Customer,
+  userId: string,
+  email: string,
+) {
+  const nextMetadata = customer.metadata?.supabase_user_id === userId
+    ? customer.metadata
+    : {
+        ...customer.metadata,
+        supabase_user_id: userId,
+      };
+  const nextEmail = email || customer.email || undefined;
+  const emailChanged = Boolean(nextEmail && nextEmail !== customer.email);
+  const metadataChanged = nextMetadata !== customer.metadata;
+
+  if (!emailChanged && !metadataChanged) {
+    return;
+  }
+
+  await stripe.customers.update(customer.id, {
+    ...(nextEmail ? { email: nextEmail } : {}),
+    metadata: nextMetadata,
+  });
 }
 
 function isMissingCustomerError(error: unknown): boolean {

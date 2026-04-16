@@ -28,16 +28,58 @@ type SubscriptionData = {
   customer: string | { id: string };
   status: string;
   metadata?: Record<string, string> | null;
-  current_period_start: number;
-  current_period_end: number;
+  current_period_start?: number;
+  current_period_end?: number;
   cancel_at_period_end?: boolean;
-  items?: { data: Array<{ price?: { id: string; recurring?: { interval: string } | null } }> };
+  items?: {
+    data: Array<{
+      current_period_start?: number;
+      current_period_end?: number;
+      price?: { id: string; recurring?: { interval: string } | null };
+    }>;
+  };
 };
 
 type ExistingSubscriptionRow = {
+  user_id: string;
+  stripe_customer_id: string;
   plan: string;
   billing_interval: "monthly" | "annual";
   status: string;
+};
+
+type InvoiceLineData = {
+  metadata?: Record<string, string> | null;
+  period?: { start?: number; end?: number };
+  price?: { recurring?: { interval: string | null } | null } | null;
+  proration?: boolean | null;
+  parent?: {
+    type?: string | null;
+    subscription_item_details?: {
+      subscription?: string | { id: string } | null;
+      subscription_item?: string | null;
+      proration?: boolean | null;
+    } | null;
+  } | null;
+};
+
+type InvoiceData = {
+  id: string;
+  customer?: string | { id: string } | null;
+  customer_email?: string | null;
+  subscription?: string | { id: string } | null;
+  parent?: {
+    type?: string | null;
+    subscription_details?: {
+      subscription?: string | { id: string } | null;
+      metadata?: Record<string, string> | null;
+    } | null;
+  } | null;
+  subscription_details?: { metadata?: Record<string, string> | null } | null;
+  metadata?: Record<string, string> | null;
+  lines?: {
+    data: InvoiceLineData[];
+  };
 };
 
 /**
@@ -133,13 +175,13 @@ export async function POST(request: Request) {
 
       case "invoice.paid": {
         const invoice = event.data.object;
-        await handleInvoicePaid(config, invoice, event.id);
+        await handleInvoicePaid(config, stripe, invoice as InvoiceData, event.id);
         break;
       }
 
       case "invoice.payment_failed": {
         const invoice = event.data.object;
-        await handleInvoicePaymentFailed(config, invoice);
+        await handleInvoicePaymentFailed(config, stripe, invoice as InvoiceData);
         break;
       }
 
@@ -281,9 +323,9 @@ async function handleSubscriptionChange(
   subscription: SubscriptionData,
   eventType: "customer.subscription.created" | "customer.subscription.updated",
 ) {
-  const userId = subscription.metadata?.user_id;
-  const rawPlan = subscription.metadata?.plan;
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+  const userId = subscription.metadata?.user_id ?? await resolveUserIdForStripeCustomer(config, customerId, null);
+  const rawPlan = resolvePlanFromMetadata(subscription.metadata);
 
   if (!userId || !rawPlan) {
     console.error("[stripe-webhook] subscription missing metadata", { userId, plan: rawPlan, subId: subscription.id });
@@ -300,19 +342,16 @@ async function handleSubscriptionChange(
   const existingSubscription = await getExistingSubscription(config, subscription.id);
 
   // Determine billing interval from subscription items
-  const interval = subscription.items?.data?.[0]?.price?.recurring?.interval === "year" ? "annual" : "monthly";
+  const interval = normalizeInterval(subscription.items?.data?.[0]?.price?.recurring?.interval) ?? "monthly";
+  const currentPeriodStart = getSubscriptionPeriodStart(subscription);
+  const currentPeriodEnd = getSubscriptionPeriodEnd(subscription);
 
-  // Map Stripe status to our status
-  const statusMap: Record<string, string> = {
-    active: "active",
-    past_due: "past_due",
-    canceled: "canceled",
-    incomplete: "incomplete",
-    trialing: "active",
-    incomplete_expired: "canceled",
-    unpaid: "past_due",
-    paused: "canceled",
-  };
+  if (!currentPeriodStart || !currentPeriodEnd) {
+    console.error(`[stripe-webhook] subscription ${subscription.id} missing current period bounds`);
+    return;
+  }
+
+  await saveStripeCustomerMappingFromWebhook(config, userId, customerId);
 
   await upsertSubscription({
     ...config,
@@ -321,15 +360,15 @@ async function handleSubscriptionChange(
     stripeSubscriptionId: subscription.id,
     plan,
     billingInterval: interval,
-    status: statusMap[subscription.status] ?? "active",
-    currentPeriodStart: new Date(subscription.current_period_start * 1000).toISOString(),
-    currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+    status: mapStripeSubscriptionStatus(subscription.status),
+    currentPeriodStart: new Date(currentPeriodStart * 1000).toISOString(),
+    currentPeriodEnd: new Date(currentPeriodEnd * 1000).toISOString(),
     cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
     creditsIncluded: planConfig.credits,
     templateSlotsIncluded: planConfig.templateSlots,
   });
 
-  const normalizedStatus = statusMap[subscription.status] ?? "active";
+  const normalizedStatus = mapStripeSubscriptionStatus(subscription.status);
   const previousPlan = existingSubscription ? normalizePlanId(existingSubscription.plan) : null;
   const previousInterval = existingSubscription?.billing_interval ?? "monthly";
   const previousStatus = existingSubscription?.status ?? null;
@@ -377,11 +416,17 @@ async function handleSubscriptionCanceled(
   config: { supabaseUrl: string; serviceKey: string },
   subscription: SubscriptionData,
 ) {
-  const userId = subscription.metadata?.user_id;
+  const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+  const userId = subscription.metadata?.user_id ?? await resolveUserIdForStripeCustomer(config, customerId, null);
   const existingSubscription = await getExistingSubscription(config, subscription.id);
+  const currentPeriodEnd = getSubscriptionPeriodEnd(subscription);
 
   if (!userId) {
     console.error("[stripe-webhook] canceled subscription missing user_id", { subId: subscription.id });
+    return;
+  }
+  if (!currentPeriodEnd) {
+    console.error(`[stripe-webhook] canceled subscription ${subscription.id} missing current period end`);
     return;
   }
 
@@ -403,7 +448,7 @@ async function handleSubscriptionCanceled(
       cancel_at_period_end: false,
       credits_included: 0,
       template_slots_included: 0,
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      current_period_end: new Date(currentPeriodEnd * 1000).toISOString(),
       updated_at: new Date().toISOString(),
     }),
     cache: "no-store",
@@ -430,74 +475,65 @@ async function handleSubscriptionCanceled(
 
 async function handleInvoicePaid(
   config: { supabaseUrl: string; serviceKey: string },
-  invoice: {
-    id: string;
-    subscription?: string | null;
-    subscription_details?: { metadata?: Record<string, string> | null } | null;
-    metadata?: Record<string, string> | null;
-    lines?: {
-      data: Array<{
-        period?: { start: number; end: number };
-        price?: { recurring?: { interval: string } | null } | null;
-        proration?: boolean;
-      }>;
-    };
-  },
+  stripe: ReturnType<typeof getStripe>,
+  invoice: InvoiceData,
   eventId: string,
 ) {
-  // Only handle subscription invoices (not one-time payments)
-  if (!invoice.subscription) return;
+  const subscriptionId = extractInvoiceSubscriptionId(invoice);
+  if (!subscriptionId) {
+    console.log(`[stripe-webhook] invoice ${invoice.id} has no subscription id, skipping`);
+    return;
+  }
 
   const lines = invoice.lines?.data ?? [];
+  const existingSubscription = await getExistingSubscription(config, subscriptionId);
+  const invoiceMetadata = extractInvoiceSubscriptionMetadata(invoice);
+  const lineItem = selectSubscriptionInvoiceLine(lines);
+
+  let stripeSubscription: SubscriptionData | null = null;
+  if (
+    !existingSubscription
+    || !invoiceMetadata.plan
+    || !invoiceMetadata.user_id
+    || !lineItem?.period?.end
+    || !resolveInvoiceInterval(lineItem, existingSubscription.billing_interval, null)
+  ) {
+    stripeSubscription = await retrieveStripeSubscription(stripe, subscriptionId);
+  }
 
   // Find the subscription renewal line item — it has a recurring price and is not a proration.
   // This is more robust than using data[0], which can be a proration or add-on line.
-  const lineItem = lines.find(
-    (line) => line.price?.recurring && !line.proration,
-  ) ?? lines[0]; // fallback to first line if no recurring non-proration found
-
   if (!lineItem) {
     console.log(`[stripe-webhook] invoice ${invoice.id} has no line items, skipping`);
     return;
   }
 
   // Skip if the only lines are prorations (plan switch invoices)
-  if (lines.every((line) => line.proration)) {
+  if (lines.every((line) => isInvoiceLineProration(line))) {
     console.log(`[stripe-webhook] skipping all-proration invoice ${invoice.id}`);
     return;
   }
 
-  // Get plan from subscription metadata (try multiple locations)
-  let plan = invoice.subscription_details?.metadata?.plan ?? invoice.metadata?.plan;
-  let userId = invoice.subscription_details?.metadata?.user_id ?? invoice.metadata?.user_id;
-  let billingInterval: string | null = null;
-
-  // Fallback: look up from our subscriptions table if metadata is missing
-  if (!plan || !userId) {
-    const subId = typeof invoice.subscription === "string" ? invoice.subscription : null;
-    if (subId) {
-      try {
-        const url = new URL("/rest/v1/subscriptions", config.supabaseUrl);
-        url.searchParams.set("stripe_subscription_id", `eq.${subId}`);
-        url.searchParams.set("select", "plan,user_id,billing_interval");
-        url.searchParams.set("limit", "1");
-        const res = await fetch(url, {
-          headers: { apikey: config.serviceKey, Authorization: `Bearer ${config.serviceKey}`, Accept: "application/json" },
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const rows = await res.json();
-          if (rows[0]) {
-            plan = plan ?? rows[0].plan;
-            userId = userId ?? rows[0].user_id;
-            billingInterval = rows[0].billing_interval;
-          }
-        }
-      } catch {
-        // Best-effort fallback
-      }
-    }
-  }
+  const plan =
+    resolvePlanFromMetadata(invoiceMetadata)
+    ?? existingSubscription?.plan
+    ?? resolvePlanFromMetadata(stripeSubscription?.metadata)
+    ?? null;
+  const userId =
+    invoiceMetadata.user_id
+    ?? existingSubscription?.user_id
+    ?? stripeSubscription?.metadata?.user_id
+    ?? await resolveUserIdForStripeCustomer(
+      config,
+      normalizeStripeId(invoice.customer) ?? normalizeStripeId(stripeSubscription?.customer) ?? null,
+      invoice.customer_email ?? null,
+    )
+    ?? null;
+  const billingInterval = resolveInvoiceInterval(
+    lineItem,
+    existingSubscription?.billing_interval ?? null,
+    stripeSubscription,
+  );
 
   if (!plan || !userId) {
     console.log(`[stripe-webhook] invoice.paid without plan/user metadata, skipping (inv=${invoice.id})`);
@@ -512,16 +548,41 @@ async function handleInvoicePaid(
   }
 
   // Determine period end from invoice line items
-  const periodEnd = lineItem?.period?.end;
+  const periodEnd = lineItem.period?.end ?? getSubscriptionPeriodEnd(stripeSubscription);
   if (!periodEnd) {
     console.error(`[stripe-webhook] invoice missing period end (inv=${invoice.id})`);
     return;
   }
 
-  // Determine if annual from invoice line item or DB fallback
-  const isAnnual =
-    lineItem?.price?.recurring?.interval === "year" ||
-    billingInterval === "annual";
+  const stripeCustomerId =
+    existingSubscription?.stripe_customer_id
+    ?? normalizeStripeId(invoice.customer)
+    ?? normalizeStripeId(stripeSubscription?.customer)
+    ?? null;
+
+  if (userId && stripeCustomerId) {
+    await saveStripeCustomerMappingFromWebhook(config, userId, stripeCustomerId);
+  }
+
+  if (stripeCustomerId) {
+    const periodStart = lineItem.period?.start ?? getSubscriptionPeriodStart(stripeSubscription) ?? periodEnd;
+    await upsertSubscription({
+      ...config,
+      userId,
+      stripeCustomerId,
+      stripeSubscriptionId: subscriptionId,
+      plan: normalizedPlan,
+      billingInterval: billingInterval ?? "monthly",
+      status: mapStripeSubscriptionStatus(stripeSubscription?.status),
+      currentPeriodStart: new Date(periodStart * 1000).toISOString(),
+      currentPeriodEnd: new Date(periodEnd * 1000).toISOString(),
+      cancelAtPeriodEnd: stripeSubscription?.cancel_at_period_end ?? false,
+      creditsIncluded: planConfig.credits,
+      templateSlotsIncluded: planConfig.templateSlots,
+    });
+  }
+
+  const isAnnual = billingInterval === "annual";
 
   // Monthly: Stripe sends invoice.paid every month → grant 1 month of credits.
   // Annual: Stripe sends invoice.paid once/year → grant 12 months of credits upfront.
@@ -552,19 +613,67 @@ async function handleInvoicePaid(
 
 async function handleInvoicePaymentFailed(
   config: { supabaseUrl: string; serviceKey: string },
-  invoice: {
-    id: string;
-    subscription?: string | { id: string } | null;
-    subscription_details?: { metadata?: Record<string, string> | null } | null;
-    metadata?: Record<string, string> | null;
-  },
+  stripe: ReturnType<typeof getStripe>,
+  invoice: InvoiceData,
 ) {
-  if (!invoice.subscription) return;
+  const subId = extractInvoiceSubscriptionId(invoice);
+  if (!subId) {
+    return;
+  }
 
-  const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
-  const userId = invoice.subscription_details?.metadata?.user_id ?? invoice.metadata?.user_id;
+  const invoiceMetadata = extractInvoiceSubscriptionMetadata(invoice);
   const existingSubscription = await getExistingSubscription(config, subId);
+  const stripeSubscription = (!existingSubscription || !invoiceMetadata.user_id || !invoiceMetadata.plan)
+    ? await retrieveStripeSubscription(stripe, subId)
+    : null;
+  const userId =
+    invoiceMetadata.user_id
+    ?? existingSubscription?.user_id
+    ?? stripeSubscription?.metadata?.user_id
+    ?? await resolveUserIdForStripeCustomer(
+      config,
+      normalizeStripeId(invoice.customer) ?? normalizeStripeId(stripeSubscription?.customer) ?? null,
+      invoice.customer_email ?? null,
+    );
   if (!userId) return;
+
+  const stripeCustomerId =
+    existingSubscription?.stripe_customer_id
+    ?? normalizeStripeId(invoice.customer)
+    ?? normalizeStripeId(stripeSubscription?.customer)
+    ?? null;
+  const billingInterval =
+    existingSubscription?.billing_interval
+    ?? normalizeInterval(stripeSubscription?.items?.data?.[0]?.price?.recurring?.interval)
+    ?? "monthly";
+  const plan = normalizePlanId(resolvePlanFromMetadata(invoiceMetadata) ?? existingSubscription?.plan ?? resolvePlanFromMetadata(stripeSubscription?.metadata) ?? "free");
+  const planConfig = PLAN_CREDITS[plan];
+
+  if (userId && stripeCustomerId) {
+    await saveStripeCustomerMappingFromWebhook(config, userId, stripeCustomerId);
+  }
+
+  if (!existingSubscription && stripeCustomerId && stripeSubscription && planConfig) {
+    const currentPeriodStart = getSubscriptionPeriodStart(stripeSubscription);
+    const currentPeriodEnd = getSubscriptionPeriodEnd(stripeSubscription);
+
+    if (currentPeriodStart && currentPeriodEnd) {
+      await upsertSubscription({
+        ...config,
+        userId,
+        stripeCustomerId,
+        stripeSubscriptionId: subId,
+        plan,
+        billingInterval,
+        status: "past_due",
+        currentPeriodStart: new Date(currentPeriodStart * 1000).toISOString(),
+        currentPeriodEnd: new Date(currentPeriodEnd * 1000).toISOString(),
+        cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end ?? false,
+        creditsIncluded: planConfig.credits,
+        templateSlotsIncluded: planConfig.templateSlots,
+      });
+    }
+  }
 
   // Update subscription status to past_due
   const url = new URL("/rest/v1/subscriptions", config.supabaseUrl);
@@ -590,7 +699,7 @@ async function handleInvoicePaymentFailed(
       const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
       await notifyPaymentFailed({
         email,
-        plan: invoice.subscription_details?.metadata?.plan ?? invoice.metadata?.plan ?? existingSubscription?.plan ?? null,
+        plan: invoiceMetadata.plan ?? existingSubscription?.plan ?? stripeSubscription?.metadata?.plan ?? null,
       });
     }, (error) => {
       logDiscordNotificationFailure("payment failed", userId, error);
@@ -712,12 +821,77 @@ async function getExistingSubscription(
     table: "subscriptions",
     query: {
       stripe_subscription_id: `eq.${stripeSubscriptionId}`,
-      select: "plan,billing_interval,status",
+      select: "user_id,stripe_customer_id,plan,billing_interval,status",
       limit: "1",
     },
   }).catch(() => []);
 
   return rows[0] ?? null;
+}
+
+async function resolveUserIdForStripeCustomer(
+  config: { supabaseUrl: string; serviceKey: string },
+  stripeCustomerId: string | null,
+  customerEmail: string | null,
+) {
+  if (stripeCustomerId) {
+    const mappedRows = await fetchRestRows<{ user_id: string }>({
+      ...config,
+      table: "stripe_customers",
+      query: {
+        stripe_customer_id: `eq.${stripeCustomerId}`,
+        select: "user_id",
+        limit: "1",
+      },
+    }).catch(() => []);
+
+    if (mappedRows[0]?.user_id) {
+      return mappedRows[0].user_id;
+    }
+  }
+
+  if (!customerEmail) {
+    return null;
+  }
+
+  try {
+    const supabase = createServiceSupabaseClient(config.supabaseUrl, config.serviceKey);
+    const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+    if (error) {
+      throw error;
+    }
+
+    return data.users.find((user) => (user.email ?? "").toLowerCase() === customerEmail.toLowerCase())?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveStripeCustomerMappingFromWebhook(
+  config: { supabaseUrl: string; serviceKey: string },
+  userId: string,
+  stripeCustomerId: string,
+) {
+  const url = new URL("/rest/v1/stripe_customers", config.supabaseUrl);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      apikey: config.serviceKey,
+      Authorization: `Bearer ${config.serviceKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates,return=minimal",
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      stripe_customer_id: stripeCustomerId,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "Unknown error");
+    console.error(`[stripe-webhook] failed to upsert stripe_customers for ${userId}: ${message}`);
+  }
 }
 
 function normalizePackPricingTier(value: string | undefined): "free" | "starter" | "pro" {
@@ -733,4 +907,128 @@ function getPlanWeight(plan: string): number {
   if (normalized === "pro") return 2;
   if (normalized === "enterprise") return 3;
   return 0;
+}
+
+function extractInvoiceSubscriptionId(invoice: InvoiceData): string | null {
+  return (
+    normalizeStripeId(invoice.subscription)
+    ?? normalizeStripeId(invoice.parent?.type === "subscription_details"
+      ? invoice.parent.subscription_details?.subscription
+      : null)
+    ?? invoice.lines?.data.map((line) => normalizeStripeId(
+      line.parent?.type === "subscription_item_details"
+        ? line.parent.subscription_item_details?.subscription
+        : null,
+    )).find(Boolean)
+    ?? null
+  );
+}
+
+function extractInvoiceSubscriptionMetadata(invoice: InvoiceData) {
+  return (
+    (invoice.parent?.type === "subscription_details"
+      ? invoice.parent.subscription_details?.metadata
+      : null)
+    ?? invoice.subscription_details?.metadata
+    ?? invoice.metadata
+    ?? null
+  ) ?? {};
+}
+
+function selectSubscriptionInvoiceLine(lines: InvoiceLineData[]) {
+  return lines.find((line) => !isInvoiceLineProration(line) && (
+    Boolean(line.price?.recurring)
+    || Boolean(normalizeStripeId(
+      line.parent?.type === "subscription_item_details"
+        ? line.parent.subscription_item_details?.subscription
+        : null,
+    ))
+  )) ?? lines.find((line) => !isInvoiceLineProration(line)) ?? lines[0] ?? null;
+}
+
+function isInvoiceLineProration(line: InvoiceLineData) {
+  return line.proration === true || (
+    line.parent?.type === "subscription_item_details"
+    && line.parent.subscription_item_details?.proration === true
+  );
+}
+
+function resolveInvoiceInterval(
+  line: InvoiceLineData | null,
+  existingInterval: ExistingSubscriptionRow["billing_interval"] | null,
+  subscription: SubscriptionData | null,
+): "monthly" | "annual" | null {
+  const recurringInterval = line?.price?.recurring?.interval
+    ?? subscription?.items?.data?.[0]?.price?.recurring?.interval
+    ?? null;
+
+  return normalizeInterval(recurringInterval) ?? existingInterval;
+}
+
+function normalizeInterval(value: string | null | undefined): "monthly" | "annual" | null {
+  if (value === "year") return "annual";
+  if (value === "month") return "monthly";
+  return null;
+}
+
+function getSubscriptionPeriodStart(subscription: SubscriptionData | null) {
+  return subscription?.items?.data?.[0]?.current_period_start ?? subscription?.current_period_start ?? null;
+}
+
+function getSubscriptionPeriodEnd(subscription: SubscriptionData | null) {
+  return subscription?.items?.data?.[0]?.current_period_end ?? subscription?.current_period_end ?? null;
+}
+
+function normalizeStripeId(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  if (value && typeof value === "object" && "id" in value && typeof value.id === "string") {
+    return value.id;
+  }
+  return null;
+}
+
+async function retrieveStripeSubscription(
+  stripe: ReturnType<typeof getStripe>,
+  subscriptionId: string,
+): Promise<SubscriptionData | null> {
+  try {
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    return subscription as unknown as SubscriptionData;
+  } catch (error) {
+    console.error(`[stripe-webhook] failed to retrieve subscription ${subscriptionId}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+function mapStripeSubscriptionStatus(status: string | undefined) {
+  const statusMap: Record<string, string> = {
+    active: "active",
+    past_due: "past_due",
+    canceled: "canceled",
+    incomplete: "incomplete",
+    trialing: "active",
+    incomplete_expired: "canceled",
+    unpaid: "past_due",
+    paused: "canceled",
+  };
+
+  return statusMap[status ?? ""] ?? "active";
+}
+
+function resolvePlanFromMetadata(metadata: Record<string, string> | null | undefined) {
+  const raw = metadata?.plan ?? metadata?.tier ?? null;
+  if (!raw) {
+    return null;
+  }
+
+  if (raw === "grow" || raw === "starter" || raw === "essentials") {
+    return "starter";
+  }
+  if (raw === "professional" || raw === "pro" || raw === "enterprise") {
+    return "pro";
+  }
+
+  return raw;
 }
