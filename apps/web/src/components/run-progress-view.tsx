@@ -277,7 +277,13 @@ export function RunProgressView(input: {
     const launchDraft = initialLaunchDraft ?? readRunLaunchDraft(input.jobId);
     const launchState = readRunLaunchState(input.jobId);
 
-    if (!launchDraft || launchStartedRef.current || launchState === "pending" || launchState === "accepted") {
+    if (
+      !launchDraft
+      || launchStartedRef.current
+      || launchState === "pending"
+      || launchState === "accepted"
+      || launchState === "needs_credits"
+    ) {
       return;
     }
 
