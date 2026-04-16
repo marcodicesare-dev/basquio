@@ -50,9 +50,16 @@ type ExistingSubscriptionRow = {
 };
 
 type InvoiceLineData = {
+  description?: string | null;
   metadata?: Record<string, string> | null;
   period?: { start?: number; end?: number };
   price?: { recurring?: { interval: string | null } | null } | null;
+  pricing?: {
+    price_details?: {
+      price?: string | null;
+      product?: string | null;
+    } | null;
+  } | null;
   proration?: boolean | null;
   parent?: {
     type?: string | null;
@@ -362,7 +369,7 @@ async function handleSubscriptionChange(
     userId,
     stripeCustomerId: customerId,
     stripeSubscriptionId: subscription.id,
-    plan,
+    plan: serializePlanForDatabase(plan),
     billingInterval: interval,
     status: mapStripeSubscriptionStatus(subscription.status),
     currentPeriodStart: new Date(currentPeriodStart * 1000).toISOString(),
@@ -575,7 +582,7 @@ async function handleInvoicePaid(
       userId,
       stripeCustomerId,
       stripeSubscriptionId: subscriptionId,
-      plan: normalizedPlan,
+      plan: serializePlanForDatabase(normalizedPlan),
       billingInterval: billingInterval ?? "monthly",
       status: mapStripeSubscriptionStatus(stripeSubscription?.status),
       currentPeriodStart: new Date(periodStart * 1000).toISOString(),
@@ -587,6 +594,7 @@ async function handleInvoicePaid(
   }
 
   const isAnnual = billingInterval === "annual";
+  const planLabel = resolveInvoicePlanLabel(lineItem, plan);
 
   // Monthly: Stripe sends invoice.paid every month → grant 1 month of credits.
   // Annual: Stripe sends invoice.paid once/year → grant 12 months of credits upfront.
@@ -606,6 +614,7 @@ async function handleInvoicePaid(
     await notifySubscriptionRenewed({
       email,
       plan: normalizedPlan,
+      planLabel,
       creditsGranted: creditAmount,
     });
   }, (error) => {
@@ -620,6 +629,7 @@ async function handleInvoicePaid(
       amountPaid: invoice.amount_paid ?? null,
       currency: invoice.currency ?? null,
       plan: normalizedPlan,
+      planLabel,
       interval: billingInterval ?? "monthly",
       periodEnd: new Date(periodEnd * 1000).toISOString(),
       hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
@@ -682,7 +692,7 @@ async function handleInvoicePaymentFailed(
         userId,
         stripeCustomerId,
         stripeSubscriptionId: subId,
-        plan,
+        plan: serializePlanForDatabase(plan),
         billingInterval,
         status: "past_due",
         currentPeriodStart: new Date(currentPeriodStart * 1000).toISOString(),
@@ -1052,6 +1062,7 @@ async function sendSubscriptionReceiptEmail(input: {
   amountPaid: number | null;
   currency: string | null;
   plan: string;
+  planLabel?: string | null;
   interval: "monthly" | "annual";
   periodEnd: string;
   hostedInvoiceUrl: string | null;
@@ -1063,7 +1074,7 @@ async function sendSubscriptionReceiptEmail(input: {
   }
 
   const amountLabel = formatMoney(input.amountPaid, input.currency);
-  const planLabel = getPlanLabelForEmail(input.plan);
+  const planLabel = input.planLabel?.trim() || getPlanLabelForEmail(input.plan);
   const intervalLabel = input.interval === "annual" ? "Annual" : "Monthly";
   const periodEndLabel = new Intl.DateTimeFormat("en-CH", {
     day: "numeric",
@@ -1127,6 +1138,58 @@ function getPlanLabelForEmail(plan: string) {
   return "Subscription";
 }
 
+function serializePlanForDatabase(plan: string) {
+  return normalizePlanId(plan) === "enterprise" ? "team" : normalizePlanId(plan);
+}
+
+function resolveInvoicePlanLabel(lineItem: InvoiceLineData | null, fallbackPlan: string | null) {
+  return (
+    resolvePlanLabelFromText(lineItem?.description)
+    ?? resolvePlanLabelFromMetadata(lineItem?.metadata)
+    ?? (fallbackPlan ? getPlanLabelForEmail(fallbackPlan) : null)
+  );
+}
+
+function resolvePlanLabelFromText(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (
+    normalized.includes("enterprise")
+    || normalized.includes("custom dashboard")
+    || normalized.includes("custom analysis")
+    || normalized.includes("custom plan")
+    || normalized.includes("team")
+  ) {
+    return "Enterprise";
+  }
+  if (normalized.includes("starter") || normalized.includes("grow") || normalized.includes("essentials")) {
+    return "Starter";
+  }
+  if (normalized.includes("professional") || /\bpro\b/.test(normalized)) {
+    return "Pro";
+  }
+  return null;
+}
+
+function resolvePlanLabelFromMetadata(metadata: Record<string, string> | null | undefined) {
+  const raw = metadata?.plan ?? metadata?.tier ?? null;
+  if (!raw) {
+    return null;
+  }
+  if (raw === "grow" || raw === "starter" || raw === "essentials") {
+    return "Starter";
+  }
+  if (raw === "team" || raw === "enterprise") {
+    return "Enterprise";
+  }
+  if (raw === "professional" || raw === "pro") {
+    return "Pro";
+  }
+  return null;
+}
+
 function resolvePlanFromMetadata(metadata: Record<string, string> | null | undefined) {
   const raw = metadata?.plan ?? metadata?.tier ?? null;
   if (!raw) {
@@ -1136,7 +1199,10 @@ function resolvePlanFromMetadata(metadata: Record<string, string> | null | undef
   if (raw === "grow" || raw === "starter" || raw === "essentials") {
     return "starter";
   }
-  if (raw === "professional" || raw === "pro" || raw === "enterprise") {
+  if (raw === "team" || raw === "enterprise") {
+    return "team";
+  }
+  if (raw === "professional" || raw === "pro") {
     return "pro";
   }
 

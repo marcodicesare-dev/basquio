@@ -185,6 +185,7 @@ type RenewalInput = {
   email: string;
   plan: string;
   creditsGranted: number;
+  planLabel?: string | null;
 };
 
 type PaymentFailedInput = {
@@ -434,13 +435,14 @@ export async function notifySubscriptionRenewed(input: RenewalInput): Promise<vo
 
   const email = input.email.trim();
   const plan = normalizePlanId(input.plan);
+  const planLabel = input.planLabel?.trim() || getPlanLabel(plan);
   const embeds: DiscordEmbed[] = [
     createEmbed({
       title: "🔄 Subscription renewed",
-      description: `**${email}** renewed **${getPlanLabel(plan)}**`,
+      description: `**${email}** renewed **${planLabel}**`,
       color: COLOR.EMERALD,
       fields: [
-        { name: "Plan", value: getPlanLabel(plan), inline: true },
+        { name: "Plan", value: planLabel, inline: true },
         { name: "Credits granted", value: String(input.creditsGranted), inline: true },
       ],
     }),
