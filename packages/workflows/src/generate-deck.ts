@@ -76,13 +76,17 @@ const HARD_QA_BLOCKERS = new Set([
   "pptx_zip_parse_failed",
 ]);
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
+const AUTHOR_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_PHASE_TIMEOUT_MS ?? "2100000", 10);
+const REVISE_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_REVISE_PHASE_TIMEOUT_MS ?? "1500000", 10);
+const AUTHOR_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_REQUEST_WATCHDOG_MS ?? "900000", 10);
+const REVISE_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_REVISE_REQUEST_WATCHDOG_MS ?? "720000", 10);
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  // Long code-execution authoring turns are normal on the main lane.
-  author: null,
-  revise: null,
+  // Large code-execution turns still need an upper bound so stalled streams recover.
+  author: AUTHOR_PHASE_TIMEOUT_MS,
+  revise: REVISE_PHASE_TIMEOUT_MS,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
@@ -98,8 +102,8 @@ const MAX_PAUSE_TURNS_PER_PHASE = {
 const REQUEST_WATCHDOG_BY_PHASE_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  author: null,
-  revise: null,
+  author: AUTHOR_REQUEST_WATCHDOG_MS,
+  revise: REVISE_REQUEST_WATCHDOG_MS,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
