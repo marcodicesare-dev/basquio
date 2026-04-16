@@ -2,7 +2,12 @@
 # Railway installs the full pnpm workspace graph for the worker service.
 # Keep native build tooling available for workspace deps that may fall back
 # to node-gyp during Git-connected builds, such as @discordjs/opus.
-aptPkgs = ["python3", "python-is-python3", "build-essential"]
+nixPkgs = ["...", "python3", "gcc", "gnumake"]
+
+[variables]
+# Ensure node-gyp uses the Nix-provided Python instead of relying on a Debian
+# python symlink from apt.
+PYTHON = "python3"
 
 [phases.build]
 # Railway's mounted .next/cache has been intermittently failing with ENOENT
