@@ -178,6 +178,11 @@ export function RunProgressView(input: {
   const [snapshot, setSnapshot] = useState<RunProgressSnapshot | null>(input.initialSnapshot);
   const [error, setError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [insufficientCredits, setInsufficientCredits] = useState<{
+    needed: number;
+    available: number;
+    pricingUrl: string;
+  } | null>(null);
   const [hasLaunchDraft, setHasLaunchDraft] = useState(() => Boolean(initialLaunchDraft));
   const [missingPollCount, setMissingPollCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
@@ -196,6 +201,7 @@ export function RunProgressView(input: {
   const realtimeEventCountRef = useRef(0);
   const terminalHydrationRef = useRef(false);
   const launchStartedRef = useRef(false);
+  const [launchRetryTick, setLaunchRetryTick] = useState(0);
   const isTerminal = snapshot?.status === "completed" || snapshot?.status === "failed" || snapshot?.status === "needs_input";
 
   useEffect(() => {
@@ -212,6 +218,15 @@ export function RunProgressView(input: {
     setError(null);
     setMissingPollCount(0);
   }, [input.initialSnapshot, input.jobId]);
+
+  function retryLaunch() {
+    launchStartedRef.current = false;
+    clearRunLaunchState(input.jobId);
+    setLaunchError(null);
+    setInsufficientCredits(null);
+    setMissingPollCount(0);
+    setLaunchRetryTick((current) => current + 1);
+  }
 
   useEffect(() => {
     isTerminalRef.current = isTerminal;
@@ -295,11 +310,29 @@ export function RunProgressView(input: {
             stakes: launchDraft.brief.stakes,
           }),
         });
-        const payload = (await response.json().catch(() => ({}))) as { error?: string; pricingUrl?: string };
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          pricingUrl?: string;
+          code?: string;
+          creditsNeeded?: number;
+          creditsAvailable?: number;
+        };
         if (!active) {
           return;
         }
         if (response.status === 402) {
+          if (payload.code === "NO_CREDITS") {
+            saveRunLaunchState(input.jobId, "needs_credits");
+            setLaunchError(payload.error ?? "Not enough credits for this run.");
+            setInsufficientCredits({
+              needed: payload.creditsNeeded ?? 0,
+              available: payload.creditsAvailable ?? 0,
+              pricingUrl: payload.pricingUrl ?? "/pricing",
+            });
+            launchStartedRef.current = false;
+            return;
+          }
+
           shouldClearDraft = true;
           clearRunLaunchDraft(input.jobId);
           setHasLaunchDraft(false);
@@ -333,7 +366,7 @@ export function RunProgressView(input: {
     return () => {
       active = false;
     };
-  }, [initialLaunchDraft, input.jobId, router]);
+  }, [initialLaunchDraft, input.jobId, launchRetryTick, router]);
 
   // Detect live completion transition for toast
   useEffect(() => {
@@ -648,6 +681,21 @@ export function RunProgressView(input: {
             <p style={{ color: "#F4B4B4", fontSize: "0.95rem", marginTop: "0.85rem", maxWidth: 420, textAlign: "center" }}>
               {launchError}
             </p>
+          ) : null}
+          {insufficientCredits ? (
+            <div style={{ marginTop: "1rem", maxWidth: 460, textAlign: "center" }}>
+              <p style={{ color: "#D6E2FF", fontSize: "0.95rem", margin: 0 }}>
+                This run needs {insufficientCredits.needed} credits. You have {insufficientCredits.available}.
+              </p>
+              <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap", justifyContent: "center" }}>
+                <Link href={insufficientCredits.pricingUrl} style={styles.leaveRunButton}>
+                  Buy credits
+                </Link>
+                <button type="button" onClick={retryLaunch} style={styles.leaveRunButton}>
+                  Retry run
+                </button>
+              </div>
+            </div>
           ) : null}
           {showMissingRunState ? (
             <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap", justifyContent: "center" }}>

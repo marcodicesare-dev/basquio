@@ -3,11 +3,19 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, getActiveSubscription } from "@/lib/credits";
+import {
+  DEFAULT_AUTHOR_MODEL,
+  assertValidSlideCount,
+  calculateRunCredits,
+  ensureFreeTierCredit,
+  getActiveSubscription,
+  getDetailedCreditBalance,
+} from "@/lib/credits";
 import { persistPreparedSourceFiles } from "@/lib/source-file-staging";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
+import { listReusableTemplateFeeDrafts, updateTemplateFeeDraft } from "@/lib/template-fee-drafts";
 import { normalizePlanId } from "@/lib/billing-config";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 
@@ -85,6 +93,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Template-fee drafts are only required on the free plan." }, { status: 400 });
     }
     const targetSlideCount = assertValidSlideCount(body.targetSlideCount);
+    const creditsNeeded = calculateRunCredits(targetSlideCount, body.authorModel);
+
+    await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
+    const balance = await getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
+    if (balance.balance < creditsNeeded) {
+      return NextResponse.json({
+        error: `Not enough credits. This run needs ${creditsNeeded} credits, but you have ${balance.balance}. Buy credits before unlocking the custom template.`,
+        code: "INSUFFICIENT_CREDITS_FOR_DRAFT",
+        creditsNeeded,
+        creditsAvailable: balance.balance,
+      }, { status: 402 });
+    }
 
     const existingSourceFileIds = await resolveValidatedExistingSourceFileIds({
       supabaseUrl,
@@ -109,6 +129,54 @@ export async function POST(request: Request) {
 
     if (sourceFileIds.length === 0) {
       return NextResponse.json({ error: "At least one uploaded or reused source file is required." }, { status: 400 });
+    }
+
+    const reusableDraft = selectReusableTemplateFeeDraft(await listReusableTemplateFeeDrafts({
+      supabaseUrl,
+      serviceKey,
+      templateProfileId,
+      userId: viewer.user.id,
+    }));
+
+    if (reusableDraft) {
+      const updatedDraft = await updateTemplateFeeDraft({
+        supabaseUrl,
+        serviceKey,
+        draftId: reusableDraft.id,
+        userId: viewer.user.id,
+        patch: {
+          organization_id: workspace.organizationRowId,
+          project_id: workspace.projectRowId,
+          source_file_ids: sourceFileIds,
+          brief: {
+            businessContext: body.brief.businessContext ?? "",
+            client: body.brief.client ?? "",
+            audience: body.brief.audience ?? "Executive stakeholder",
+            objective: body.brief.objective ?? "Explain the business performance signal",
+            thesis: body.brief.thesis ?? "",
+            stakes: body.brief.stakes ?? "",
+          },
+          target_slide_count: targetSlideCount,
+          author_model: body.authorModel,
+          recipe_id: body.recipeId ?? null,
+          ...(reusableDraft.status === "pending_payment"
+            ? {
+                stripe_checkout_session_id: null,
+                paid_at: null,
+              }
+            : {}),
+        },
+      });
+
+      if (!updatedDraft) {
+        return NextResponse.json({ error: "Failed to reuse the existing template-fee draft." }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        draftId: updatedDraft.id,
+        status: updatedDraft.status,
+        reused: true,
+      }, { status: 200 });
     }
 
     const draftId = randomUUID();
@@ -147,11 +215,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Failed to persist template-fee draft: ${errorText}` }, { status: 500 });
     }
 
-    return NextResponse.json({ draftId }, { status: 201 });
+    return NextResponse.json({ draftId, status: "pending_payment", reused: false }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create the template-fee draft.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function selectReusableTemplateFeeDraft<T extends {
+  status: "pending_payment" | "paid" | string;
+  updated_at: string;
+}>(drafts: T[]) {
+  return drafts
+    .slice()
+    .sort((left, right) => {
+      if (left.status !== right.status) {
+        return left.status === "paid" ? -1 : 1;
+      }
+      return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+    })[0] ?? null;
 }
 
 async function resolveValidatedExistingSourceFileIds(input: {

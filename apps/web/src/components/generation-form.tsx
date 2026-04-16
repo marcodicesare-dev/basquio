@@ -64,6 +64,16 @@ type GenerationStartResponse = {
   message: string;
 };
 
+type CreditPreview = {
+  balance: number;
+};
+
+type TemplateFeeDraftResponse = {
+  draftId: string;
+  status: "pending_payment" | "paid";
+  reused?: boolean;
+};
+
 type PreparedUpload = {
   id: string;
   fileName: string;
@@ -250,6 +260,7 @@ export function GenerationForm({
       ? "Template fee checkout was cancelled. Your prepared draft is still loaded below."
       : null,
   );
+  const [creditPreview, setCreditPreview] = useState<CreditPreview | null>(null);
   const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
   const [prefillSourceFiles] = useState(recipePrefill?.sourceFiles ?? []);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
@@ -274,6 +285,7 @@ export function GenerationForm({
   const isReportOnlyTier = selectedModel === "claude-haiku-4-5";
   const requiresTemplateFee = currentPlan === "free" && selectedTemplateId !== null;
   const creditsNeeded = isReportOnlyTier ? 3 : calculateRunCredits(targetSlideCount, selectedModel);
+  const creditShortfall = creditPreview ? Math.max(0, creditsNeeded - creditPreview.balance) : 0;
   const [brief, setBrief] = useState<BriefFields>({
     businessContext: recipePrefill?.brief.businessContext ?? "",
     client: recipePrefill?.brief.client ?? "",
@@ -309,6 +321,11 @@ export function GenerationForm({
   const activeTourStep = isTourOpen ? TOUR_STEPS[tourIndex] : null;
   const activeTourStepId = activeTourStep?.id ?? null;
   const activeTourStepComplete = activeTourStep ? isTourStepComplete(activeTourStep.id, tourProgressState) : false;
+  const refreshCreditPreview = useCallback(async () => {
+    const next = await fetchCreditPreview();
+    setCreditPreview(next);
+    return next;
+  }, []);
   const getTourTarget = useCallback((stepId: (typeof TOUR_STEPS)[number]["id"]) => {
     if (stepId === "report-type") return reportTypeRef.current;
     if (stepId === "upload") return uploadStepRef.current;
@@ -682,6 +699,7 @@ export function GenerationForm({
       setError("Template fee payment returned without a Stripe session ID. Retry from /jobs/new.");
       return;
     }
+    const sessionId = templateFeeReturn.sessionId;
 
     setIsSubmitting(true);
     setError(null);
@@ -689,32 +707,8 @@ export function GenerationForm({
 
     void (async () => {
       try {
-        const confirmResponse = await fetch("/api/template-fee-drafts/confirm", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            draftId: templateFeeReturn.draftId,
-            sessionId: templateFeeReturn.sessionId,
-          }),
-        });
-        const confirmPayload = (await readApiPayload(confirmResponse)) as { error?: string };
-        if (!confirmResponse.ok) {
-          throw new Error(confirmPayload.error ?? "Template fee confirmation failed.");
-        }
-
-        const response = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            draftId: templateFeeReturn.draftId,
-            jobId: templateFeeReturn.draftId,
-          }),
-        });
-        const payload = await readGenerationPayload(response);
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Generation failed.");
-        }
-
+        await confirmTemplateFeeDraft(templateFeeReturn.draftId, sessionId);
+        const payload = await startPaidTemplateRun(templateFeeReturn.draftId);
         router.push(payload.progressUrl);
       } catch (resumeError) {
         setError(resumeError instanceof Error ? resumeError.message : "Unable to resume the paid template run.");
@@ -722,6 +716,15 @@ export function GenerationForm({
       }
     })();
   }, [router, templateFeeReturn]);
+
+  useEffect(() => {
+    if (currentPlan === "unlimited") {
+      setCreditPreview(null);
+      return;
+    }
+
+    void refreshCreditPreview().catch(() => {});
+  }, [currentPlan, refreshCreditPreview]);
 
   useEffect(() => {
     const filesKey = buildFilesKey(evidenceFiles);
@@ -795,7 +798,16 @@ export function GenerationForm({
       const effectiveTargetSlideCount = isReportOnlyTier ? 1 : targetSlideCount;
 
       if (requiresTemplateFee && selectedTemplateId) {
+        const latestCredits = await refreshCreditPreview();
+        if (latestCredits && latestCredits.balance < creditsNeeded) {
+          setError(
+            `This ${isReportOnlyTier ? "report" : `${effectiveTargetSlideCount}-slide deck`} needs ${creditsNeeded} credits, but you only have ${latestCredits.balance}. Buy credits before paying the custom-template fee.`,
+          );
+          return;
+        }
+
         let draftId: string;
+        let draftStatus: TemplateFeeDraftResponse["status"] = "pending_payment";
 
         if (prefillSourceFiles.length > 0 && evidenceFiles.length === 0) {
           const draftResult = await createTemplateFeeDraft({
@@ -807,6 +819,7 @@ export function GenerationForm({
             brief,
           });
           draftId = draftResult.draftId;
+          draftStatus = draftResult.status;
         } else {
           const hostedDraft = await ensureHostedEvidenceReady();
 
@@ -819,6 +832,14 @@ export function GenerationForm({
             brief,
           });
           draftId = draftResult.draftId;
+          draftStatus = draftResult.status;
+        }
+
+        if (draftStatus === "paid") {
+          setTemplateFeeMessage("Custom template already unlocked for this run. Resuming without another payment...");
+          const payload = await startPaidTemplateRun(draftId);
+          router.push(payload.progressUrl);
+          return;
         }
 
         setTemplateFeeMessage("Redirecting to Stripe to unlock the custom template for this run...");
@@ -1623,6 +1644,27 @@ export function GenerationForm({
                     This tier generates an analytical report and data pack. No presentation slides.
                   </p>
                 )}
+                {currentPlan !== "unlimited" ? (
+                  <div className={`panel ${creditShortfall > 0 ? "warning-panel" : "success-panel"}`} style={{ marginTop: "0.5rem" }}>
+                    <p style={{ margin: 0, fontWeight: 600 }}>
+                      {creditPreview
+                        ? `You have ${creditPreview.balance} credits available.`
+                        : "Checking your available credits..."}
+                    </p>
+                    {creditPreview ? (
+                      <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+                        {creditShortfall > 0
+                          ? `This run is short by ${creditShortfall} credits.${requiresTemplateFee ? " Buy credits before paying the custom-template fee." : ""}`
+                          : "You can afford this run with your current balance."}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {requiresTemplateFee ? (
+                  <p className="muted" style={{ fontSize: "0.82rem", margin: 0 }}>
+                    Custom template fee: $5 one-time checkout for this prepared run. It does not include credits.
+                  </p>
+                ) : null}
               </article>
 
               <article className="review-card stack">
@@ -1923,6 +1965,15 @@ async function readGenerationPayload(response: Response): Promise<GenerationStar
   return payload;
 }
 
+async function fetchCreditPreview() {
+  const response = await fetch("/api/credits", { cache: "no-store" });
+  const payload = (await readApiPayload(response)) as { balance?: number; error?: string };
+  if (!response.ok || typeof payload.balance !== "number") {
+    throw new Error(payload.error ?? "Unable to load your credit balance.");
+  }
+  return { balance: payload.balance } satisfies CreditPreview;
+}
+
 async function readApiPayload(response: Response) {
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -1951,12 +2002,12 @@ async function createTemplateFeeDraft(input: {
     body: JSON.stringify(input),
   });
 
-  const payload = (await readApiPayload(response)) as { draftId?: string; error?: string };
-  if (!response.ok || !payload.draftId) {
+  const payload = (await readApiPayload(response)) as TemplateFeeDraftResponse & { error?: string };
+  if (!response.ok || !payload.draftId || (payload.status !== "pending_payment" && payload.status !== "paid")) {
     throw new Error(payload.error ?? "Failed to prepare the custom-template draft.");
   }
 
-  return payload as { draftId: string };
+  return payload;
 }
 
 async function startTemplateFeeCheckout(templateProfileId: string, draftId: string) {
@@ -1968,6 +2019,37 @@ async function startTemplateFeeCheckout(templateProfileId: string, draftId: stri
 
   const payload = (await readApiPayload(response)) as { url?: string; error?: string };
   return { ...payload, status: response.status };
+}
+
+async function confirmTemplateFeeDraft(draftId: string, sessionId: string) {
+  const confirmResponse = await fetch("/api/template-fee-drafts/confirm", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      draftId,
+      sessionId,
+    }),
+  });
+  const confirmPayload = (await readApiPayload(confirmResponse)) as { error?: string };
+  if (!confirmResponse.ok) {
+    throw new Error(confirmPayload.error ?? "Template fee confirmation failed.");
+  }
+}
+
+async function startPaidTemplateRun(draftId: string) {
+  const response = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      draftId,
+      jobId: draftId,
+    }),
+  });
+  const payload = await readGenerationPayload(response);
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Generation failed.");
+  }
+  return payload;
 }
 
 async function uploadPreparedFiles(files: File[], uploads: PreparedUpload[]) {

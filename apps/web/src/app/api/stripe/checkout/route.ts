@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { normalizePlanId, planToCreditPackTier, type CreditPackId } from "@/lib/billing-config";
-import { getActiveSubscription } from "@/lib/credits";
+import { calculateRunCredits, ensureFreeTierCredit, getActiveSubscription, getDetailedCreditBalance } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 import { getStripe, getPriceId, getSubscriptionPriceId, getOrCreateStripeCustomer, getTemplateFeePriceId } from "@/lib/stripe";
 import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
@@ -89,6 +89,7 @@ async function handleCreditPackCheckout(
     mode: "payment",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
+    ...(ctx.email ? { payment_intent_data: { receipt_email: ctx.email } } : {}),
     metadata: {
       user_id: ctx.userId,
       pack_id: packId,
@@ -140,6 +141,18 @@ async function handleTemplateFeeCheckout(
     return NextResponse.json({ error: "Template-fee checkout does not match the persisted draft." }, { status: 400 });
   }
 
+  await ensureFreeTierCredit({ supabaseUrl: ctx.supabaseUrl, serviceKey: ctx.serviceKey, userId: ctx.userId });
+  const balance = await getDetailedCreditBalance({ supabaseUrl: ctx.supabaseUrl, serviceKey: ctx.serviceKey, userId: ctx.userId });
+  const creditsNeeded = calculateRunCredits(draft.target_slide_count, draft.author_model);
+  if (balance.balance < creditsNeeded) {
+    return NextResponse.json({
+      error: `Not enough credits. This run needs ${creditsNeeded} credits, but you have ${balance.balance}. Buy credits before paying the template fee.`,
+      code: "INSUFFICIENT_CREDITS_FOR_TEMPLATE_CHECKOUT",
+      creditsNeeded,
+      creditsAvailable: balance.balance,
+    }, { status: 402 });
+  }
+
   const customerId = await getOrCreateStripeCustomer(stripe, ctx.supabaseUrl, ctx.serviceKey, ctx.userId, ctx.email);
   const priceId = getTemplateFeePriceId();
 
@@ -147,6 +160,7 @@ async function handleTemplateFeeCheckout(
     mode: "payment",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
+    ...(ctx.email ? { payment_intent_data: { receipt_email: ctx.email } } : {}),
     metadata: {
       user_id: ctx.userId,
       draft_id: body.draftId,

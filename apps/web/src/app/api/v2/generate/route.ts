@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 import { normalizePlanId } from "@/lib/billing-config";
-import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit } from "@/lib/credits";
+import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit, getDetailedCreditBalance } from "@/lib/credits";
 import { getActiveSubscription } from "@/lib/credits";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { callRpc, deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
@@ -201,11 +201,14 @@ export async function POST(request: Request) {
       });
       const enqueueResult = enqueueRows[0];
       if (enqueueResult?.insufficient_credits) {
+        const balance = await getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
         await cleanupQueuedV2RunSetup({ supabaseUrl, serviceKey, runId, sourceFiles: uploadedSourceFiles });
         return NextResponse.json({
           error: `Not enough credits. This ${targetSlideCount}-slide run needs ${creditsNeeded} credits.`,
           code: "NO_CREDITS",
           pricingUrl: "/pricing",
+          creditsNeeded,
+          creditsAvailable: balance.balance,
         }, { status: 402 });
       }
       if (!enqueueResult?.run_id || !enqueueResult?.attempt_id) {

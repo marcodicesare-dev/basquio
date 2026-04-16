@@ -33,7 +33,11 @@ class TemplateNotImportedError extends Error {
 }
 
 class InsufficientCreditsError extends Error {
-  constructor(readonly creditsNeeded: number, readonly targetSlideCount: number) {
+  constructor(
+    readonly creditsNeeded: number,
+    readonly targetSlideCount: number,
+    readonly creditsAvailable: number,
+  ) {
     super(`Not enough credits. This ${targetSlideCount}-slide deck needs ${creditsNeeded} credits.`);
   }
 }
@@ -190,6 +194,8 @@ export async function POST(request: Request) {
         error: error.message,
         code: "NO_CREDITS",
         pricingUrl: "/pricing",
+        creditsNeeded: error.creditsNeeded,
+        creditsAvailable: error.creditsAvailable,
       }, { status: 402 });
     }
     if (error instanceof BillingUnavailableError) {
@@ -484,7 +490,8 @@ async function queueGeneration(
         throw billing.chargeCredits ? new BillingUnavailableError() : new Error("Run enqueue RPC returned no result.");
       }
       if (enqueueResult.insufficient_credits) {
-        throw new InsufficientCreditsError(creditsNeeded, targetSlideCount);
+        const balance = await getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.id });
+        throw new InsufficientCreditsError(creditsNeeded, targetSlideCount, balance.balance);
       }
       if (!enqueueResult.run_id || !enqueueResult.attempt_id) {
         throw new Error("Run enqueue did not return durable run lineage.");

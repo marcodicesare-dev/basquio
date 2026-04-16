@@ -50,6 +50,28 @@ export async function getTemplateFeeDraft(input: {
   return rows[0] ?? null;
 }
 
+export async function listReusableTemplateFeeDrafts(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  templateProfileId: string;
+  userId: string;
+}) {
+  return fetchRestRows<TemplateFeeDraftRow>({
+    supabaseUrl: input.supabaseUrl,
+    serviceKey: input.serviceKey,
+    table: "template_fee_checkout_drafts",
+    query: {
+      select: "id,user_id,organization_id,project_id,template_profile_id,source_file_ids,brief,target_slide_count,author_model,recipe_id,status,stripe_checkout_session_id,paid_at,consumed_at,expires_at,created_at,updated_at",
+      user_id: `eq.${input.userId}`,
+      template_profile_id: `eq.${input.templateProfileId}`,
+      status: "in.(pending_payment,paid)",
+      expires_at: `gt.${new Date().toISOString()}`,
+      order: "updated_at.desc",
+      limit: "10",
+    },
+  }).catch(() => []);
+}
+
 export async function updateTemplateFeeDraft(input: {
   supabaseUrl: string;
   serviceKey: string;

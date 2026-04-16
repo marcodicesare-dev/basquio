@@ -66,16 +66,16 @@ export function clearRunLaunchDraft(runId: string) {
   clearRunLaunchState(runId);
 }
 
-export function readRunLaunchState(runId: string): "pending" | "accepted" | null {
+export function readRunLaunchState(runId: string): "pending" | "accepted" | "needs_credits" | null {
   if (typeof window === "undefined") {
     return null;
   }
 
   const value = window.sessionStorage.getItem(getLaunchStateKey(runId));
-  return value === "pending" || value === "accepted" ? value : null;
+  return value === "pending" || value === "accepted" || value === "needs_credits" ? value : null;
 }
 
-export function saveRunLaunchState(runId: string, state: "pending" | "accepted") {
+export function saveRunLaunchState(runId: string, state: "pending" | "accepted" | "needs_credits") {
   if (typeof window === "undefined") {
     return;
   }
