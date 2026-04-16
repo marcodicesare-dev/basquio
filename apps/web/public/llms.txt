@@ -6,7 +6,7 @@ Basquio was built by market research analysts and brand managers who spent years
 
 ## Pricing
 
-- **Free**: $0, 15 one-time credits (~1 standard Deck run). Basquio branding on output. No credit card.
+- **Free**: $0, 30 one-time credits (~2 Deck runs). Basquio branding on output. No credit card.
 - **Starter**: $19/month ($190/year). 30 credits/month, no branding, 2 custom template slots.
 - **Pro**: $149/month ($1,490/year). 200 credits/month, no branding, 5 custom template slots, priority queue.
 - **Enterprise**: Custom billing, shared workspace, dedicated support.

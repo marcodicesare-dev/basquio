@@ -87,7 +87,7 @@ Add-ins link Excel data to PowerPoint charts but require manual setup for each c
 ## Pricing
 
 ### Free
-$0. 15 one-time credits (~1 standard Deck run). Basquio branding on output. No credit card required.
+$0. 30 one-time credits (~2 Deck runs). Basquio branding on output. No credit card required.
 - Try Basquio on real work
 - Community templates only
 - Credit packs at $0.88/credit

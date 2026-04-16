@@ -108,7 +108,7 @@ export default function GetStartedPage() {
             <p className="section-label">Pricing</p>
             <h2>Start free. Upgrade when you need more.</h2>
             <p className="muted">
-              15 free credits. Enough for one standard Deck run. No credit card required.
+              30 free credits. Enough for 2 full deck runs. No credit card required.
             </p>
             <p className="muted">
               Starter begins at $19/month. Free users can unlock a custom template with a $5 per-run fee, and credit packs are available anytime.{" "}

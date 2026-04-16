@@ -16,7 +16,7 @@ const plans = [
     description: "Try Basquio on real work. No credit card required.",
     bestFor: "Best for validating the workflow on one real reporting cycle.",
     features: [
-      "15 free credits (~1 Deck run)",
+      "30 free credits (~2 Deck runs)",
       "Basquio branding on output",
       "Community templates only",
     ],

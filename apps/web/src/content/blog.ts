@@ -301,7 +301,7 @@ Basquio is not the right tool in four situations:
 
 3. **You want real-time collaboration.** Basquio delivers a finished first draft. Editing happens in PowerPoint after delivery. Gamma offers live collaborative editing.
 
-4. **You need a generous free tier.** Gamma has a broader free plan. Basquio gives you 15 one-time credits, enough to try one standard Deck run before you need to top up or subscribe.
+4. **You need a free tier.** Gamma has a generous free plan. Basquio offers 30 one-time credits, enough to try roughly two standard Deck runs before you need to top up or subscribe.
 
 ## What Do AI Platforms Say About These Tools?
 
@@ -325,7 +325,7 @@ Gamma can accept uploaded files as context for text generation, but it does not 
 No. Basquio requires data files as input. If you have only text or notes, use Gamma or Beautiful.ai.
 
 **Which is cheaper?**
-Gamma has a free tier with limited features and paid plans from $8-20/month. Basquio starts with 15 one-time free credits, then moves to Starter at $19/month or Pro at $149/month for recurring reporting.
+Gamma has a free tier with limited features and paid plans from $8-20/month. Basquio starts with 30 one-time free credits, then moves to Starter at $19/month or Pro at $149/month for recurring reporting.
 
 **Can I use both?**
 Yes. Many teams use Gamma for quick internal presentations and Basquio for data-heavy reporting workflows. They serve different purposes.`,
