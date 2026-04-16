@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import {
   DEFAULT_AUTHOR_MODEL,
+  normalizeAuthorModelId,
+  STANDARD_PLAN_MAX_TARGET_SLIDES,
   assertValidSlideCount,
   calculateRunCredits,
   ensureFreeTierCredit,
@@ -41,7 +43,7 @@ const templateFeeDraftSchema = z.object({
     stakes: z.string().optional(),
   }).default({}),
   targetSlideCount: z.number().int().catch(10),
-  authorModel: z.enum(["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"]).catch(DEFAULT_AUTHOR_MODEL),
+  authorModel: z.enum(["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-6", "claude-haiku-4-5"]).catch(DEFAULT_AUTHOR_MODEL),
   recipeId: z.string().uuid().nullable().optional(),
 });
 
@@ -93,7 +95,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Template-fee drafts are only required on the free plan." }, { status: 400 });
     }
     const targetSlideCount = assertValidSlideCount(body.targetSlideCount);
-    const creditsNeeded = calculateRunCredits(targetSlideCount, body.authorModel);
+    if (targetSlideCount > STANDARD_PLAN_MAX_TARGET_SLIDES) {
+      return NextResponse.json({
+        error: `Template-fee drafts on the free plan are limited to ${STANDARD_PLAN_MAX_TARGET_SLIDES} slides.`,
+      }, { status: 400 });
+    }
+    const authorModel = normalizeAuthorModelId(body.authorModel);
+    const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
 
     await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
     const balance = await getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
@@ -204,7 +212,7 @@ export async function POST(request: Request) {
           stakes: body.brief.stakes ?? "",
         },
         target_slide_count: targetSlideCount,
-        author_model: body.authorModel,
+        author_model: authorModel,
         recipe_id: body.recipeId ?? null,
       }),
       cache: "no-store",

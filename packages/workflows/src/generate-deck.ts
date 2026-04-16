@@ -35,6 +35,8 @@ import {
   buildClaudeTools,
   FILES_BETA,
   type ClaudeAuthorModel,
+  normalizeClaudeAuthorModel,
+  OPUS_AUTHOR_MODEL,
 } from "./anthropic-execution-contract";
 import {
   assertDeckSpendWithinBudget,
@@ -57,7 +59,7 @@ const DEFAULT_AUTHOR_MODEL = "claude-sonnet-4-6";
 type AuthorModel = ClaudeAuthorModel;
 const AUTHOR_MODEL_VALUES = new Set([
   "claude-sonnet-4-6",
-  "claude-opus-4-6",
+  OPUS_AUTHOR_MODEL,
   "claude-haiku-4-5",
 ]);
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
@@ -697,7 +699,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const run = await loadRun(config, runId);
     authorModel = normalizeAuthorModel(run.author_model);
     let MODEL = authorModel;
-    let modelBudget = getDeckBudgetCaps(MODEL);
+    let modelBudget = getDeckBudgetCaps(MODEL, run.target_slide_count);
     let modelBetas = buildClaudeBetas(MODEL);
     let toolCallSummary = buildAuthoringToolCallSummary(MODEL);
     const attempt = await resolveAttemptContext(config, run, suppliedAttempt);
@@ -1051,6 +1053,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         );
 
         try {
+          const authorMaxTokens = getAuthorPhaseMaxTokens(candidateModel, run.target_slide_count);
           await recordToolCall(config, runId, attempt, "author", "code_execution", {
             model: candidateModel,
             tools: [...candidateToolCallSummary.tools],
@@ -1063,7 +1066,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             model: candidateModel,
             betas: [...candidateBetas],
             spentUsd,
-            outputTokenBudget: 72_000,
+            maxUsd: modelBudget.preFlight,
+            outputTokenBudget: authorMaxTokens,
             body: {
               system: systemPrompt,
               messages: [candidateGenerationMessage],
@@ -1077,7 +1081,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             client,
             model: candidateModel,
             systemPrompt,
-            maxTokens: 64_000,
+            maxTokens: authorMaxTokens,
             phaseLabel: "author",
             circuitKey: `${run.id}:${attempt.id}:author:${candidateModel}`,
             onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
@@ -1085,6 +1089,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
             requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
             currentSpentUsd: spentUsd,
+            targetSlideCount: run.target_slide_count,
             betas: candidateBetas,
             container: buildAuthoringContainer(baseContainerId, candidateModel),
             messages: [candidateGenerationMessage],
@@ -1109,7 +1114,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               client,
               model: candidateModel,
               systemPrompt,
-              maxTokens: 64_000,
+              maxTokens: authorMaxTokens,
               phaseLabel: "author",
               circuitKey: `${run.id}:${attempt.id}:author:${candidateModel}`,
               onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
@@ -1117,6 +1122,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
               requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
               currentSpentUsd: roundUsd(spentUsd + usageToCost(candidateModel, candidateResponse.usage)),
+              targetSlideCount: run.target_slide_count,
               betas: candidateBetas,
               container: buildAuthoringContainer(candidateResponse.containerId ?? baseContainerId, candidateModel),
               messages: [
@@ -1158,6 +1164,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           assertDeckSpendWithinBudget(spentUsd, candidateModel, {
             allowPartialOutput: candidateFiles.length > 0,
             context: `author:${candidateModel}`,
+            targetSlideCount: run.target_slide_count,
           });
           continuationCount += candidateResponse.pauseTurns;
           await persistRequestUsage(config, runId, attempt, "author", "phase_generation", candidateModel, candidateResponse.requests);
@@ -1188,7 +1195,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           if (repaired.missingCriticalFiles.length === 0) {
             MODEL = candidateModel;
             authorModel = MODEL;
-            modelBudget = getDeckBudgetCaps(MODEL);
+            modelBudget = getDeckBudgetCaps(MODEL, run.target_slide_count);
             modelBetas = buildClaudeBetas(MODEL);
             toolCallSummary = buildAuthoringToolCallSummary(MODEL);
             isReportOnly = candidateIsReportOnly;
@@ -1417,7 +1424,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     pdfFile = initialQaOutcome.pdf;
     const initialVisualQa = initialQaOutcome.qa;
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
-    assertDeckSpendWithinBudget(spentUsd, MODEL, { allowPartialOutput: true, context: "critique:visual-qa" });
+    assertDeckSpendWithinBudget(spentUsd, MODEL, {
+      allowPartialOutput: true,
+      context: "critique:visual-qa",
+      targetSlideCount: run.target_slide_count,
+    });
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
     await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, initialVisualQa.requests);
     rememberRequestIds(anthropicRequestIds, initialVisualQa.requests);
@@ -1490,6 +1501,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       try {
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
+        const reviseMaxTokens = getRevisePhaseMaxTokens(MODEL, run.target_slide_count);
         const reviseMessage = buildReviseMessage({
           issues: critiqueIssues,
           manifest,
@@ -1517,7 +1529,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           model: MODEL,
           betas: [...modelBetas],
           spentUsd,
-          outputTokenBudget: 28_000,
+          maxUsd: modelBudget.preFlight,
+          outputTokenBudget: reviseMaxTokens,
             body: {
               system: systemPrompt,
               messages: reviseMessages,
@@ -1531,7 +1544,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           client,
           model: MODEL,
           systemPrompt,
-          maxTokens: 28_000,
+          maxTokens: reviseMaxTokens,
           phaseLabel: "revise",
           circuitKey: `${run.id}:${attempt.id}:revise`,
           onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
@@ -1539,6 +1552,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
           requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
           currentSpentUsd: spentUsd,
+          targetSlideCount: run.target_slide_count,
           betas: modelBetas,
           container: buildAuthoringContainer(latestContainerId, MODEL),
           messages: reviseMessages,
@@ -1559,7 +1573,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             client,
             model: MODEL,
             systemPrompt,
-            maxTokens: 28_000,
+            maxTokens: reviseMaxTokens,
             phaseLabel: "revise",
             circuitKey: `${run.id}:${attempt.id}:revise`,
             onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
@@ -1567,6 +1581,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
             requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
             currentSpentUsd: roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage)),
+            targetSlideCount: run.target_slide_count,
             betas: modelBetas,
             container: buildAuthoringContainer(reviseResponse.containerId ?? latestContainerId, MODEL),
             messages: [
@@ -1612,7 +1627,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           };
         }
         spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
-        assertDeckSpendWithinBudget(spentUsd, MODEL, { allowPartialOutput: reviseFiles.length > 0, context: "revise" });
+        assertDeckSpendWithinBudget(spentUsd, MODEL, {
+          allowPartialOutput: reviseFiles.length > 0,
+          context: "revise",
+          targetSlideCount: run.target_slide_count,
+        });
         continuationCount += reviseResponse.pauseTurns;
         phaseTelemetry.revise = buildPhaseTelemetry(MODEL, {
           ...reviseResponse,
@@ -1661,7 +1680,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       finalPdf = revisedQaOutcome.pdf;
       const revisedVisualQa = revisedQaOutcome.qa;
       spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-      assertDeckSpendWithinBudget(spentUsd, MODEL, { allowPartialOutput: true, context: "revise:visual-qa" });
+      assertDeckSpendWithinBudget(spentUsd, MODEL, {
+        allowPartialOutput: true,
+        context: "revise:visual-qa",
+        targetSlideCount: run.target_slide_count,
+      });
       phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
       await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
       rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
@@ -1787,6 +1810,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           attempt,
           config,
           authorModel: MODEL,
+          targetSlideCount: run.target_slide_count,
           spentUsdRef: {
             get value() {
               return spentUsd;
@@ -2043,14 +2067,7 @@ function resolveConfig() {
 }
 
 function normalizeAuthorModel(model: string | null | undefined): AuthorModel {
-  switch (model) {
-    case "claude-opus-4-6":
-    case "claude-sonnet-4-6":
-    case "claude-haiku-4-5":
-      return model;
-    default:
-      return DEFAULT_AUTHOR_MODEL;
-  }
+  return normalizeClaudeAuthorModel(model);
 }
 
 async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) {
@@ -2232,7 +2249,7 @@ function inferExpectedRunCostRange(model: string, targetSlideCount: number | nul
     return { lowUsd: 3, highUsd: 5 };
   }
 
-  if (model === "claude-opus-4-6" && targetSlideCount <= 15) {
+  if (model === OPUS_AUTHOR_MODEL && targetSlideCount <= 15) {
     return { lowUsd: 5, highUsd: 7 };
   }
 
@@ -2742,6 +2759,7 @@ async function strengthenFinalVisualQa(input: {
   attempt: AttemptContext;
   config: ReturnType<typeof resolveConfig>;
   authorModel: AuthorModel;
+  targetSlideCount: number;
   spentUsdRef: MutableNumberRef;
   anthropicRequestIds: Set<string>;
   phaseTelemetry: Record<string, unknown>;
@@ -2790,6 +2808,7 @@ async function strengthenFinalVisualQa(input: {
     assertDeckSpendWithinBudget(input.spentUsdRef.value, input.authorModel, {
       allowPartialOutput: true,
       context: "export:final-visual-qa",
+      targetSlideCount: input.targetSlideCount,
     });
     input.phaseTelemetry.visualQaFinal = buildSimplePhaseTelemetry(FINAL_VISUAL_QA_MODEL, finalVisualQa.usage);
     await upsertWorkingPaper(input.config, input.runId, "visual_qa_final", finalVisualQa.report).catch(() => {});
@@ -3269,12 +3288,16 @@ function buildAuthorMessage(
   const analysisDepthInstruction = isReportOnly
     ? "This is a report-only analytical pack. Go deep on the evidence, quantify the category and supplier story, and make the markdown report and Excel tables the primary deliverables."
     : run.target_slide_count <= 3
-    ? "This is a focused 3-slide executive brief. Analyze only top-line KPIs and 1-2 key insights. Do not profile every sheet or column. Spend minimal code execution time on data exploration."
-    : run.target_slide_count <= 6
-      ? "This is a concise but complete analysis. Profile key sheets and identify 4-6 insights. Do not exhaustively analyze every dimension."
-      : run.target_slide_count <= 15
-        ? "This is a comprehensive deck with full diagnostic depth. Deep-dive the workbook and supporting evidence as needed."
-        : "This is an extended deep-dive. Dedicate slides to individual compartments, detailed appendix diagnostics, scenario modeling, and methodology where supported by the evidence.";
+      ? "This is a Memo-tier executive brief. Focus on top-line KPIs and 1-2 decisive insights only."
+      : run.target_slide_count <= 10
+        ? "This is a Summary-tier deck. Deliver 1-2 slides per chapter, 4-6 insights, and keep the storyline concise."
+        : run.target_slide_count <= 20
+          ? "This is a Standard consulting deck. Deliver 2-3 slides per chapter, full SCQA depth, and ensure every analytical slide shows co-located data."
+          : run.target_slide_count <= 40
+            ? "This is a Deep-dive deck. Deliver 3-5 slides per chapter, deep-dive each segment or competitor individually, and include richer cross-tabs plus detailed recommendation cards."
+            : run.target_slide_count <= 70
+              ? "This is a Full-report deck. Deliver 4-6 slides per chapter, dedicated slides for cross-tab analyses, and cover the full NielsenIQ-style chapter set including appendix."
+              : "This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix.";
   const extractionInstruction = evidenceMode.hasTabularData
     ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
     : evidenceMode.hasDocumentEvidence
@@ -3384,6 +3407,10 @@ function buildAuthorMessage(
               ]
             : []),
           "- Follow the loaded pptx skill for the deck artifact generation.",
+          "- CLIENT-FACING TONE: the client is paying for this deck. Lead with strengths, frame challenges as market dynamics, quantify the upside before the downside, and never attack the client's hero product or format.",
+          "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
+          "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
+          "- Speaker notes are part of the deliverable quality bar. For each substantive non-cover slide, write 200-400 words covering TALK TRACK, DATA CONTEXT, skeptical pushback, anticipated questions, and a transition.",
           ...(files?.uploadedTemplate
             ? [
                 `- A client PPTX template is uploaded in the container as ${files.uploadedTemplate.filename}. Use that actual template file as the visual source of truth, not just the summarized template tokens.`,
@@ -3503,7 +3530,8 @@ function buildAuthorMessage(
           "</example>",
           "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
           "- Each chart in the manifest should include `categoryCount` and `categories[]` when available so Basquio can verify density and label fit.",
-          "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `title`, and `chartId` when applicable.",
+          "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `pageIntent`, `title`, and `chartId` when applicable.",
+          "- For charted slides, each slide entry in `deck_manifest.json` must also set `hasDataTable` and `hasChartAnnotations` so Basquio can verify evidence co-location deterministically.",
           "- Your final assistant message must attach the files as container uploads before finishing.",
         ].join("\n"),
       },
@@ -3975,6 +4003,7 @@ async function runClaudeLoop(input: {
   phaseTimeoutMs?: number | null;
   requestWatchdogMs?: number | null;
   currentSpentUsd?: number;
+  targetSlideCount?: number;
   circuitKey?: string;
 }) {
   let messages = [...input.messages];
@@ -4010,7 +4039,7 @@ async function runClaudeLoop(input: {
       }
       if (input.currentSpentUsd !== undefined) {
         const remainingBudgetUsd = roundUsd(
-          getDeckBudgetCaps(normalizeAuthorModel(input.model)).hard - input.currentSpentUsd - usageToCost(input.model, usage),
+          getDeckBudgetCaps(normalizeAuthorModel(input.model), input.targetSlideCount).hard - input.currentSpentUsd - usageToCost(input.model, usage),
         );
         if (remainingBudgetUsd < CONTINUATION_MIN_REMAINING_BUDGET_USD) {
           const budgetMessage = `[runClaudeLoop] remaining budget $${remainingBudgetUsd.toFixed(3)} below continuation threshold $${CONTINUATION_MIN_REMAINING_BUDGET_USD.toFixed(2)}.`;
@@ -4244,13 +4273,27 @@ function isBudgetExhaustionErrorMessage(message: string) {
 
 function getAuthorFallbackModels(model: AuthorModel): AuthorModel[] {
   switch (model) {
-    case "claude-opus-4-6":
+    case OPUS_AUTHOR_MODEL:
       return ["claude-sonnet-4-6", "claude-haiku-4-5"];
     case "claude-sonnet-4-6":
       return ["claude-haiku-4-5"];
     default:
       return [];
   }
+}
+
+function getAuthorPhaseMaxTokens(model: AuthorModel, targetSlideCount: number) {
+  if (model === OPUS_AUTHOR_MODEL && targetSlideCount >= 40) {
+    return 96_000;
+  }
+  return 64_000;
+}
+
+function getRevisePhaseMaxTokens(model: AuthorModel, targetSlideCount: number) {
+  if (model === OPUS_AUTHOR_MODEL && targetSlideCount >= 40) {
+    return 48_000;
+  }
+  return 28_000;
 }
 
 function collectParseWarnings(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {
@@ -5631,10 +5674,18 @@ function manifestToLintInput(manifest: z.infer<typeof deckManifestSchema>): Slid
     layoutId: slide.layoutId,
     title: slide.title,
     expectedLanguage,
+    slideArchetype: slide.slideArchetype,
     body: slide.body,
     bullets: slide.bullets,
     callout: slide.callout ? { text: slide.callout.text, tone: slide.callout.tone } : undefined,
     metrics: slide.metrics,
+    speakerNotes: typeof (slide as { speakerNotes?: string }).speakerNotes === "string"
+      ? (slide as { speakerNotes?: string }).speakerNotes
+      : undefined,
+    chartId: slide.chartId,
+    pageIntent: typeof slide.pageIntent === "string" ? slide.pageIntent : undefined,
+    hasDataTable: Boolean(slide.hasDataTable),
+    hasChartAnnotations: Boolean(slide.hasChartAnnotations),
   }));
 }
 
@@ -7264,7 +7315,7 @@ function billableInputTokens(usage: ClaudeUsage | null | undefined) {
 }
 
 function buildPhaseTelemetry(
-  model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6",
+  model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-7",
   result: { usage: ClaudeUsage; iterations: number; pauseTurns: number; requestIds?: string[] },
 ) {
   const inputTokens = result.usage.input_tokens ?? 0;
@@ -7288,7 +7339,7 @@ function buildPhaseTelemetry(
 }
 
 function buildSimplePhaseTelemetry(
-  model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6",
+  model: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-7",
   usage: ClaudeUsage | null | undefined,
 ) {
   const inputTokens = usage?.input_tokens ?? 0;

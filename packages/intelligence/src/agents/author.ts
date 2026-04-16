@@ -20,7 +20,7 @@ import {
 } from "../tools";
 
 // ─── AUTHOR AGENT ─────────────────────────────────────────────────
-// Model: claude-opus-4-6 (superior prose, extended thinking, 1M context)
+// Model: claude-opus-4-7 (superior prose, adaptive thinking, 1M context)
 // Purpose: Build the deck slide by slide, using analysis as evidence
 // Output: DeckSpecV2 (structured)
 

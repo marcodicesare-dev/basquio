@@ -44,7 +44,8 @@ export async function generateStructuredStage<TSchema extends z.ZodTypeAny>({
 
   try {
     const shouldOmitTemperature =
-      resolved.provider === "openai" && isOpenAiReasoningModel(resolved.resolvedModelId);
+      (resolved.provider === "openai" && isOpenAiReasoningModel(resolved.resolvedModelId)) ||
+      (resolved.provider === "anthropic" && resolved.resolvedModelId === "claude-opus-4-7");
 
     const { object } = await generateObject({
       model: resolved.model,

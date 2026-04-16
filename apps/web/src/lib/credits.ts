@@ -22,20 +22,33 @@ export const CREDITS_PER_SLIDE = 1;
 export const FREE_TIER_CREDITS = 30;
 
 export const MIN_TARGET_SLIDES = 1;
-export const MAX_TARGET_SLIDES = 30;
+export const STANDARD_PLAN_MAX_TARGET_SLIDES = 30;
+export const MAX_TARGET_SLIDES = 100;
 
+export const OPUS_AUTHOR_MODEL = "claude-opus-4-7";
 export const DEFAULT_AUTHOR_MODEL = "claude-sonnet-4-6";
+
+export function normalizeAuthorModelId(model: string | null | undefined): string {
+  if (model === "claude-opus-4-6" || model === "claude-opus-4-7") {
+    return OPUS_AUTHOR_MODEL;
+  }
+  if (model === "claude-haiku-4-5") {
+    return "claude-haiku-4-5";
+  }
+  return DEFAULT_AUTHOR_MODEL;
+}
 
 /**
  * Calculate credits required for a deck run.
  * Memo=3 flat, Deck=3+1/slide for first 10 then +2/slide, Deep-Dive=5+2/slide.
  */
 export function calculateRunCredits(slideCount: number, model: string = DEFAULT_AUTHOR_MODEL): number {
-  if (model === "claude-haiku-4-5") {
+  const normalizedModel = normalizeAuthorModelId(model);
+  if (normalizedModel === "claude-haiku-4-5") {
     return 3;
   }
   const slides = assertValidSlideCount(slideCount);
-  if (model === "claude-opus-4-6") {
+  if (normalizedModel === OPUS_AUTHOR_MODEL) {
     return 5 + (2 * slides);
   }
   const firstTen = Math.min(slides, 10);
@@ -70,6 +83,7 @@ const TIME_MODEL: Record<string, { baseMinutes: number; perSlideMinutes: number 
   "claude-haiku-4-5":  { baseMinutes: 8,  perSlideMinutes: 0.7 },
   "claude-sonnet-4-6": { baseMinutes: 12, perSlideMinutes: 1.0 },
   "claude-opus-4-6":   { baseMinutes: 12, perSlideMinutes: 0.75 },
+  "claude-opus-4-7":   { baseMinutes: 12, perSlideMinutes: 0.75 },
 };
 
 /**
@@ -78,8 +92,9 @@ const TIME_MODEL: Record<string, { baseMinutes: number; perSlideMinutes: number 
  * Returns a round number suitable for UI display ("~22 min").
  */
 export function estimateRunMinutes(slideCount: number, model: string = DEFAULT_AUTHOR_MODEL): number {
-  if (model === "claude-haiku-4-5") return 10;
-  const params = TIME_MODEL[model] ?? TIME_MODEL[DEFAULT_AUTHOR_MODEL];
+  const normalizedModel = normalizeAuthorModelId(model);
+  if (normalizedModel === "claude-haiku-4-5") return 10;
+  const params = TIME_MODEL[normalizedModel] ?? TIME_MODEL[DEFAULT_AUTHOR_MODEL];
   const raw = params.baseMinutes + params.perSlideMinutes * slideCount;
   return Math.round(raw);
 }

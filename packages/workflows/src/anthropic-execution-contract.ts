@@ -4,7 +4,18 @@ export const FILES_BETA = "files-api-2025-04-14";
 export const SKILLS_BETA = "skills-2025-10-02";
 export const CODE_EXEC_BETA = "code-execution-2025-08-25";
 export const BETAS = [FILES_BETA, SKILLS_BETA, CODE_EXEC_BETA] as const;
-export type ClaudeAuthorModel = "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6";
+export const OPUS_AUTHOR_MODEL = "claude-opus-4-7" as const;
+export type ClaudeAuthorModel = "claude-sonnet-4-6" | "claude-haiku-4-5" | typeof OPUS_AUTHOR_MODEL;
+
+export function normalizeClaudeAuthorModel(model: string | null | undefined): ClaudeAuthorModel {
+  if (model === "claude-opus-4-6" || model === OPUS_AUTHOR_MODEL) {
+    return OPUS_AUTHOR_MODEL;
+  }
+  if (model === "claude-haiku-4-5") {
+    return "claude-haiku-4-5";
+  }
+  return "claude-sonnet-4-6";
+}
 
 export const AUTHORING_TOOL_CALL_SUMMARY = {
   tools: ["web_fetch"] as const,
@@ -62,7 +73,7 @@ export function buildAuthoringOutputConfig(
   }
 
   return {
-    effort: "medium",
+    effort: model === OPUS_AUTHOR_MODEL ? "high" : "medium",
   } as const satisfies Anthropic.Beta.BetaOutputConfig;
 }
 

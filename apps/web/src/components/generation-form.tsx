@@ -7,15 +7,20 @@ import * as tus from "tus-js-client";
 import type { GenerationRequest } from "@basquio/types";
 
 import { reportTypePresets } from "@/app/site-content";
-import { DEFAULT_AUTHOR_MODEL, MAX_TARGET_SLIDES, calculateRunCredits } from "@/lib/credits";
+import {
+  DEFAULT_AUTHOR_MODEL,
+  MAX_TARGET_SLIDES,
+  OPUS_AUTHOR_MODEL,
+  STANDARD_PLAN_MAX_TARGET_SLIDES,
+  calculateRunCredits,
+} from "@/lib/credits";
 import { saveRunLaunchDraft } from "@/lib/run-launch-draft";
 
 const UI_MIN_TARGET_SLIDES = 3;
-const UI_MAX_TARGET_SLIDES = MAX_TARGET_SLIDES;
 
 const MODEL_OPTIONS = [
   {
-    id: "claude-opus-4-6",
+    id: OPUS_AUTHOR_MODEL,
     name: "Deep-Dive",
     description: "Consulting-grade depth. The full treatment.",
     badge: null,
@@ -247,6 +252,7 @@ export function GenerationForm({
   templateFeeReturn,
 }: GenerationFormProps) {
   const router = useRouter();
+  const planSlideCap = currentPlan === "unlimited" ? MAX_TARGET_SLIDES : STANDARD_PLAN_MAX_TARGET_SLIDES;
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const reportTypeRef = useRef<HTMLElement | null>(null);
   const uploadStepRef = useRef<HTMLElement | null>(null);
@@ -276,7 +282,9 @@ export function GenerationForm({
   const defaultTemplateName = savedTemplates.find((t) => t.id === defaultTemplateId)?.name;
   const templateLabel = selectedTemplate ? selectedTemplate.name : "Basquio Standard";
   const [selectedReportType, setSelectedReportType] = useState<string | null>(null);
-  const [targetSlideCount, setTargetSlideCount] = useState(clampTargetSlideCount(recipePrefill?.targetSlideCount ?? 10));
+  const [targetSlideCount, setTargetSlideCount] = useState(
+    clampTargetSlideCount(recipePrefill?.targetSlideCount ?? 10, planSlideCap),
+  );
   const [selectedModel, setSelectedModel] = useState<AuthorModel>(
     MODEL_OPTIONS.some((option) => option.id === recipePrefill?.authorModel)
       ? (recipePrefill?.authorModel as AuthorModel)
@@ -1628,14 +1636,14 @@ export function GenerationForm({
                       <input
                         type="range"
                         min={UI_MIN_TARGET_SLIDES}
-                        max={UI_MAX_TARGET_SLIDES}
+                        max={planSlideCap}
                         value={targetSlideCount}
-                        onChange={(e) => setTargetSlideCount(clampTargetSlideCount(Number(e.target.value)))}
+                        onChange={(e) => setTargetSlideCount(clampTargetSlideCount(Number(e.target.value), planSlideCap))}
                         style={{ width: "100%", accentColor: "var(--blue)" }}
                       />
                       <span className="muted" style={{ fontSize: "0.78rem", display: "flex", justifyContent: "space-between" }}>
                         <span>3 slides (6 cr)</span>
-                        <span>30 slides</span>
+                        <span>{planSlideCap} slides</span>
                       </span>
                     </label>
                   </div>
@@ -1851,12 +1859,12 @@ function getTourIndexForFormStep(formStep: number, currentTourIndex: number) {
   }, matchingIndexes[0]);
 }
 
-function clampTargetSlideCount(value: number) {
+function clampTargetSlideCount(value: number, maxSlides: number) {
   if (!Number.isFinite(value)) {
     return 10;
   }
 
-  return Math.min(UI_MAX_TARGET_SLIDES, Math.max(UI_MIN_TARGET_SLIDES, Math.round(value)));
+  return Math.min(maxSlides, Math.max(UI_MIN_TARGET_SLIDES, Math.round(value)));
 }
 
 function syncInputFiles(input: HTMLInputElement | null, files: File[]) {

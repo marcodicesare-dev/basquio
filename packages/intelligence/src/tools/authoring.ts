@@ -519,7 +519,7 @@ export function createWriteSlideTool(ctx: AuthoringToolContext) {
         tone: z.enum(["accent", "green", "orange"]).optional().describe("Color: accent (blue), green (positive), orange (warning)"),
       }).optional().describe("Colored callout banner at the bottom of the slide. Use for key insight, recommendation, or warning."),
       evidenceIds: z.array(z.string()).describe("Evidence ref IDs supporting this slide — required for non-cover"),
-      speakerNotes: z.string().optional().describe("Presenter narrative 60-140 words — caveats, transitions, backup data"),
+      speakerNotes: z.string().optional().describe("Presenter coaching notes 200-400 words with TALK TRACK, DATA CONTEXT, skeptical pushback, anticipated Q&A, and transition"),
       transition: z.string().optional().describe("Bridge sentence to next slide"),
       pageIntent: z.enum(["inform", "persuade", "recommend", "context"]).optional().describe("The communication purpose of this slide"),
       governingThought: z.string().optional().describe("The single claim this slide must communicate"),

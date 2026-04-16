@@ -2,8 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 import { normalizePlanId } from "@/lib/billing-config";
-import { DEFAULT_AUTHOR_MODEL, assertValidSlideCount, calculateRunCredits, ensureFreeTierCredit, getDetailedCreditBalance } from "@/lib/credits";
-import { getActiveSubscription } from "@/lib/credits";
+import {
+  DEFAULT_AUTHOR_MODEL,
+  MAX_TARGET_SLIDES,
+  getActiveSubscription,
+  normalizeAuthorModelId,
+  STANDARD_PLAN_MAX_TARGET_SLIDES,
+  assertValidSlideCount,
+  calculateRunCredits,
+  ensureFreeTierCredit,
+  getDetailedCreditBalance,
+} from "@/lib/credits";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import { callRpc, deleteRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -18,6 +27,7 @@ class InvalidGenerationRequestError extends Error {}
 
 const AUTHOR_MODELS = new Set([
   "claude-sonnet-4-6",
+  "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-haiku-4-5",
 ]);
@@ -48,7 +58,6 @@ export async function POST(request: Request) {
     const objective = formData.get("objective") as string ?? "";
     const thesis = formData.get("thesis") as string ?? "";
     const stakes = formData.get("stakes") as string ?? "";
-    const targetSlideCount = requireValidTargetSlideCount(Number.parseInt(String(formData.get("targetSlideCount") ?? "10"), 10) || 10);
     const authorModel = requireValidAuthorModel(String(formData.get("authorModel") ?? DEFAULT_AUTHOR_MODEL));
     const templateProfileId = await resolveOwnedTemplateProfileId({
       supabaseUrl,
@@ -64,12 +73,19 @@ export async function POST(request: Request) {
     // ─── CREDIT CHECK (same logic as v1 /api/generate) ───────
     const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
     const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
-    const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
     const subscription =
       billingEnabled && !hasUnlimitedUsage
         ? await getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id })
         : null;
     const currentPlan = normalizePlanId(subscription?.plan ?? "free");
+    const maxSlideCount = hasUnlimitedUsage
+      ? MAX_TARGET_SLIDES
+      : STANDARD_PLAN_MAX_TARGET_SLIDES;
+    const targetSlideCount = requireValidTargetSlideCount(
+      Number.parseInt(String(formData.get("targetSlideCount") ?? "10"), 10) || 10,
+      maxSlideCount,
+    );
+    const creditsNeeded = calculateRunCredits(targetSlideCount, authorModel);
 
     if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
@@ -243,9 +259,13 @@ export async function POST(request: Request) {
   }
 }
 
-function requireValidTargetSlideCount(targetSlideCount: number) {
+function requireValidTargetSlideCount(targetSlideCount: number, maxSlideCount: number = MAX_TARGET_SLIDES) {
   try {
-    return assertValidSlideCount(targetSlideCount);
+    const validated = assertValidSlideCount(targetSlideCount);
+    if (validated > maxSlideCount) {
+      throw new InvalidGenerationRequestError(`targetSlideCount must be ${maxSlideCount} or fewer for this plan.`);
+    }
+    return validated;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid targetSlideCount.";
     throw new InvalidGenerationRequestError(message);
@@ -253,11 +273,12 @@ function requireValidTargetSlideCount(targetSlideCount: number) {
 }
 
 function requireValidAuthorModel(authorModel: string) {
-  if (!AUTHOR_MODELS.has(authorModel)) {
-    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-6, or claude-haiku-4-5.");
+  const normalized = normalizeAuthorModelId(authorModel);
+  if (!AUTHOR_MODELS.has(normalized)) {
+    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-7, or claude-haiku-4-5.");
   }
 
-  return authorModel;
+  return normalized;
 }
 
 async function cleanupQueuedV2RunSetup(input: {

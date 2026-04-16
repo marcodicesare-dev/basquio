@@ -10,6 +10,7 @@ import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
 const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-analyst-playbook.md",
   "docs/domain-knowledge/basquio-copywriting-skill.md",
+  "docs/domain-knowledge/basquio-recommendation-framework.md",
   "docs/direct-deck-design-spec.md",
   "docs/domain-knowledge/fmcg-rgm-consulting-finance-layer.md",
   "docs/domain-knowledge/kantar-knowledge-graph.md",
@@ -211,6 +212,100 @@ slide.addImage({ path: "chart_1.png", x: 0.35, y: 0.92, w: 9.25, h: 3.5 });
 slide.addText("Mix shift toward premium creates pricing headroom - brand should accelerate the 150g launch", {
   x: 0.45, y: 4.55, w: 9.1, h: 0.42,
   fontSize: 10, fontFace: "Arial", color: "5D656B"
+});
+</example>
+
+<example name="evidence_grid_with_colocated_table">
+// Evidence-grid slide with chart LEFT and compact supporting table RIGHT.
+// Use this when the chart makes the point and the table proves the numbers.
+
+const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
+slide.addText("San Carlo cresce +1.7% diversificando su 10 brand, Kellanova cala -5.0% concentrata sul tubo", {
+  x: 0.45, y: 0.32, w: 11.7, h: 0.62,
+  fontSize: 20, fontFace: "Arial", color: "0B0C0C", bold: true
+});
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(5.6, 3.2), dpi=300)
+players = ["San Carlo", "Mondelez", "Kellanova", "PepsiCo"]
+share_delta = [0.6, 0.1, -0.4, -0.2]
+colors = ["#1A6AFF", "#8A93A0", "#E8636F", "#8A93A0"]
+bars = ax.barh(players, share_delta, color=colors)
+ax.bar_label(bars, fmt='%+.1fpp', padding=4, fontsize=9, color="#5D656B")
+ax.axvline(x=0, color="#D6D1C4", linewidth=0.8)
+ax.invert_yaxis()
+ax.spines[['top', 'right']].set_visible(False)
+ax.spines['left'].set_color('#D6D1C4')
+ax.spines['bottom'].set_color('#D6D1C4')
+ax.tick_params(colors="#5D656B", labelsize=9)
+ax.set_facecolor('#F5F1E8')
+fig.patch.set_facecolor('#F5F1E8')
+fig.text(0.02, 0.02, "Source: NIQ Total Italy, MAT Q1 2026", fontsize=7, color="#6B7280")
+plt.subplots_adjust(bottom=0.16)
+plt.tight_layout()
+plt.savefig("competitor_share_chart.png", dpi=300, bbox_inches='tight', facecolor='#F5F1E8')
+
+slide.addImage({ path: "competitor_share_chart.png", x: 0.45, y: 1.2, w: 5.55, h: 3.2 });
+slide.addTable(
+  [
+    [
+      { text: "Produttore", options: { bold: true, fontSize: 9 } },
+      { text: "Val EURM", options: { bold: true, fontSize: 9, align: "right" } },
+      { text: "Quota %", options: { bold: true, fontSize: 9, align: "right" } },
+      { text: "Delta pp", options: { bold: true, fontSize: 9, align: "right" } },
+    ],
+    ["San Carlo", "245.2", "24.0%", "+0.6"],
+    ["Mondelez", "97.8", "9.6%", "+0.1"],
+    ["Kellanova", "93.7", "9.2%", "-0.4"],
+    ["PepsiCo", "38.4", "3.8%", "-0.2"],
+  ],
+  {
+    x: 6.2, y: 1.2, w: 3.55, h: 2.85,
+    fontSize: 9, fontFace: "Arial",
+    border: { type: "solid", pt: 0.5, color: "D6D1C4" },
+    color: "0B0C0C",
+    rowH: [0.3, 0.27, 0.27, 0.27, 0.27],
+    colW: [1.35, 0.8, 0.7, 0.7],
+    fill: "FBF8F1",
+    autoPage: false,
+  }
+);
+slide.addText("La crescita dei player diversificati e visibile nel delta quota e confermata dalla tabella a destra, quindi la raccomandazione puo ancorarsi direttamente a questo exhibit.", {
+  x: 0.45, y: 4.55, w: 9.3, h: 0.4,
+  fontSize: 10, fontFace: "Arial", color: "5D656B"
+});
+</example>
+
+<example name="client_pleasing_recommendation_card">
+// Recommendation card with opportunity-first framing and explicit evidence anchor.
+// Do NOT attack the client or the hero format. Lead with the growth pool.
+
+const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
+slide.addText("Catturare EUR4.8M nel Multipack, il formato in maggiore crescita (+5.0%)", {
+  x: 0.45, y: 0.32, w: 11.7, h: 0.62,
+  fontSize: 20, fontFace: "Arial", color: "0B0C0C", bold: true
+});
+
+slide.addText([
+  { text: "1", options: { fontSize: 28, bold: true, color: "1A6AFF" } },
+  { text: "\\n\\nMultipack Pringles (3-5 pz)\\n", options: { fontSize: 12, bold: true, color: "0B0C0C" } },
+  { text: "Sviluppare per Super e Hyper 2500-4999. Il Multipack e il secondo formato per dimensione (EUR159.9M) e il primo per crescita. Quota immediata del 3% = EUR4.8M (cfr. slide 9).", options: { fontSize: 10, color: "5D656B" } },
+  { text: "\\n\\nLeva: Pack Architecture | Timeline: Q3 2026 | Impatto: EUR4.8M base", options: { fontSize: 9, color: "6B7280" } },
+], {
+  x: 0.45, y: 1.55, w: 4.35, h: 3.15,
+  valign: "top",
+  margin: 0.14,
+  fill: { color: "FBF8F1" },
+  line: { color: "D6D1C4", pt: 1 },
+  breakLine: false,
+});
+
+slide.addText("The canister remains the revenue pillar. The recommendation adds incremental growth by entering the fastest-growing adjacency rather than attacking the core format.", {
+  x: 5.2, y: 1.9, w: 5.1, h: 1.0,
+  fontSize: 11, fontFace: "Arial", color: "5D656B", breakLine: false
 });
 </example>
 
@@ -859,7 +954,7 @@ type PromptPalette = {
 export async function buildBasquioSystemPrompt(input: {
   templateProfile: TemplateProfile;
   briefLanguageHint: string;
-  authorModel: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-6";
+  authorModel: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-7";
 }): Promise<Array<Anthropic.Beta.BetaTextBlockParam>> {
   const hasCustomTemplate = input.templateProfile.sourceType !== "system";
 
@@ -1072,7 +1167,9 @@ export async function buildBasquioSystemPrompt(input: {
     "- Render each chart at the aspect ratio of its intended slot. Never stretch a chart image after export to make it fill a different box.",
     "- For sparse or skewed data, change the slide grammar instead of inflating a weak chart. One dominant bar with tiny tails should not sit in a giant hero frame.",
     "- Numeric labels must be mechanically clean: positives use one plus sign, negatives use one minus sign, and percentage-point labels use formats like +0.09pp.",
-    "- Generate speaker notes for each substantive content slide using addNotes(). Notes must include: (1) one-sentence talk track, (2) one supporting data point, (3) one anticipated client question with the answer.",
+    "- Generate speaker notes for each substantive content slide using addNotes(). Target 200-400 words.",
+    "- Speaker notes structure is mandatory: TALK TRACK, DATA CONTEXT, PRESENTING TO A SKEPTICAL AUDIENCE, ANTICIPATED QUESTIONS, TRANSITION.",
+    "- Speaker notes must coach the analyst, not restate the slide. Include exact numbers, caveats, likely pushback, and a crisp bridge to the next slide.",
     "- When you write `data_tables.xlsx`, every sheet must come from the exact DataFrame used for the chart or numeric finding. Do not recreate the table from prose.",
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
     "- Basquio standard is a LIGHT editorial system. On the warm cream canvas, never use white text on pale tinted fills or low-opacity color bands. Pale green, pale amber, pale blue, and pale lilac fills must use onyx or deep slate text.",

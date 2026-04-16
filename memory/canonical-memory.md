@@ -80,6 +80,10 @@ Initial domain bias:
 - Supabase REST queries in runtime code must stay compatible with the migrated schema; production log review is the source of truth when local assumptions drift.
 - status polling and recovery logic must handle both stale queued runs and stale running-with-zero-checkpoint runs.
 - The strongest quality controls for the current direct deck path are archetype contracts, negative rules, artifact QA, and rendered-page review rather than open-ended styling instructions.
+- The intelligence quality moat is layered: proprietary knowledge packs, deterministic validation, prompt instructions, and an analyst feedback loop that should compound from real client corrections.
+- Client-facing tone is a product constraint, not a copy polish preference. Basquio must frame hard truths as opportunities without weakening the evidence.
+- Recommendation quality is its own reusable knowledge surface and must stay evidence-anchored, quantified only when directly supported, and specific about the lever, target, and expected gain.
+- Analytical slides should surface supporting numbers on the same page whenever possible through co-located tables or explicit chart annotations.
 - High token spend in code-execution runs is often driven by repeated `pause_turn` continuation with growing container history, not only by the initial prompt size.
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
 - The primary direct-worker generation pattern should be one file-backed Claude generation turn that loads the `pptx` and `pdf` skills from the start, not a prompt-stuffed `understand` call followed by a separate `author` call.

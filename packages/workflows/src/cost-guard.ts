@@ -6,6 +6,7 @@ const MODEL_PRICING: Record<string, { inputUsdPerMTok: number; outputUsdPerMTok:
   "claude-sonnet-4-6": { inputUsdPerMTok: 3, outputUsdPerMTok: 15 },
   "claude-haiku-4-5": { inputUsdPerMTok: 1, outputUsdPerMTok: 5 },
   "claude-opus-4-6": { inputUsdPerMTok: 5, outputUsdPerMTok: 25 },
+  "claude-opus-4-7": { inputUsdPerMTok: 5, outputUsdPerMTok: 25 },
 };
 
 export const MODEL_BUDGET_USD: Record<keyof typeof MODEL_PRICING, {
@@ -16,9 +17,16 @@ export const MODEL_BUDGET_USD: Record<keyof typeof MODEL_PRICING, {
   "claude-sonnet-4-6": { preFlight: 7.0, hard: 10.0, crossAttempt: 15.0 },
   "claude-haiku-4-5": { preFlight: 3.0, hard: 5.0, crossAttempt: 8.0 },
   "claude-opus-4-6": { preFlight: 12.0, hard: 18.0, crossAttempt: 24.0 },
+  "claude-opus-4-7": { preFlight: 12.0, hard: 18.0, crossAttempt: 24.0 },
 };
 
-export function getDeckBudgetCaps(model: keyof typeof MODEL_PRICING) {
+export function getDeckBudgetCaps(
+  model: keyof typeof MODEL_PRICING,
+  targetSlideCount?: number,
+) {
+  if ((model === "claude-opus-4-6" || model === "claude-opus-4-7") && typeof targetSlideCount === "number" && targetSlideCount >= 40) {
+    return { preFlight: 30.0, hard: 42.0, crossAttempt: 48.0 };
+  }
   return MODEL_BUDGET_USD[model];
 }
 
@@ -81,11 +89,12 @@ export function assertDeckSpendWithinBudget(
   options?: {
     allowPartialOutput?: boolean;
     context?: string;
+    targetSlideCount?: number;
   },
 ) {
   const maxUsd = typeof maxUsdOrModel === "number"
     ? maxUsdOrModel
-    : getDeckBudgetCaps(maxUsdOrModel).hard;
+    : getDeckBudgetCaps(maxUsdOrModel, options?.targetSlideCount).hard;
   if (spentUsd > maxUsd) {
     if (options?.allowPartialOutput) {
       console.warn(

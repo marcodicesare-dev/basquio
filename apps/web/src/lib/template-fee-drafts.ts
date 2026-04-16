@@ -18,7 +18,7 @@ export type TemplateFeeDraftRow = {
     stakes?: string;
   };
   target_slide_count: number;
-  author_model: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5";
+  author_model: "claude-sonnet-4-6" | "claude-opus-4-7" | "claude-opus-4-6" | "claude-haiku-4-5";
   recipe_id: string | null;
   status: TemplateFeeDraftStatus;
   stripe_checkout_session_id: string | null;

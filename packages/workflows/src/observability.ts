@@ -46,6 +46,7 @@ const PRICING: Record<string, { input: number; output: number }> = {
   "gpt-5-mini": { input: 0.25, output: 2.0 },
   "gpt-5-nano": { input: 0.1, output: 0.5 },
   "claude-opus-4-6": { input: 5.0, output: 25.0 },
+  "claude-opus-4-7": { input: 5.0, output: 25.0 },
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
   "claude-haiku-4-5": { input: 1.0, output: 5.0 },
 };

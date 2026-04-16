@@ -10,11 +10,15 @@ import { maybeSendLowCreditReminder } from "@/lib/engagement";
 import { normalizePersistedSourceFileKind } from "@/lib/source-file-kinds";
 import {
   DEFAULT_AUTHOR_MODEL,
+  MAX_TARGET_SLIDES,
+  OPUS_AUTHOR_MODEL,
+  STANDARD_PLAN_MAX_TARGET_SLIDES,
   assertValidSlideCount,
   calculateRunCredits,
   ensureFreeTierCredit,
   getActiveSubscription,
   getDetailedCreditBalance,
+  normalizeAuthorModelId,
 } from "@/lib/credits";
 import { callRpc, deleteRestRows, fetchRestRows, removeStorageObjects, uploadToStorage } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -57,6 +61,7 @@ class TemplateFeeRequiredError extends Error {
 
 const AUTHOR_MODELS = new Set([
   "claude-sonnet-4-6",
+  "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-haiku-4-5",
 ]);
@@ -66,7 +71,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const TIER_TO_MODEL: Record<string, string> = {
   memo: "claude-haiku-4-5",
   deck: "claude-sonnet-4-6",
-  "deep-dive": "claude-opus-4-6",
+  "deep-dive": OPUS_AUTHOR_MODEL,
 };
 
 type QueuedGenerationRequest = GenerationRequest & {
@@ -149,6 +154,9 @@ export async function POST(request: Request) {
         ? await getActiveSubscription({ supabaseUrl, serviceKey, userId: viewer.user.id })
         : null;
     const currentPlan = normalizePlanId(subscription?.plan ?? "free");
+    const maxSlideCount = hasUnlimitedUsage
+      ? MAX_TARGET_SLIDES
+      : STANDARD_PLAN_MAX_TARGET_SLIDES;
     if (billingEnabled && supabaseUrl && serviceKey && !hasUnlimitedUsage) {
       await ensureFreeTierCredit({ supabaseUrl, serviceKey, userId: viewer.user.id });
     }
@@ -156,6 +164,7 @@ export async function POST(request: Request) {
     const accepted = await queueGeneration(generationRequest, viewer.user, workspace, runId, {
         chargeCredits: billingEnabled && !hasUnlimitedUsage,
         requireTemplateFee: currentPlan === "free" && !hasUnlimitedUsage,
+        maxSlideCount,
       });
 
     if (
@@ -227,6 +236,7 @@ async function queueGeneration(
   billing: {
     chargeCredits: boolean;
     requireTemplateFee: boolean;
+    maxSlideCount: number;
   },
 ) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -237,6 +247,7 @@ async function queueGeneration(
   }
   let targetSlideCount = requireValidTargetSlideCount(
     generationRequest.targetSlideCount ?? 10,
+    billing.maxSlideCount,
   );
   let authorModel = requireValidAuthorModel(generationRequest.authorModel ?? DEFAULT_AUTHOR_MODEL);
   let recipeId = generationRequest.recipeId ?? null;
@@ -270,7 +281,7 @@ async function queueGeneration(
     if (pendingDraft.status !== "paid") {
       throw new InvalidGenerationRequestError("This template-fee draft is not paid yet.");
     }
-    targetSlideCount = requireValidTargetSlideCount(pendingDraft.target_slide_count);
+    targetSlideCount = requireValidTargetSlideCount(pendingDraft.target_slide_count, billing.maxSlideCount);
     authorModel = requireValidAuthorModel(pendingDraft.author_model);
     recipeId = pendingDraft.recipe_id;
   }
@@ -723,9 +734,13 @@ async function resolveValidatedExistingSourceFileIds(input: {
   return uniqueIds;
 }
 
-function requireValidTargetSlideCount(targetSlideCount: number) {
+function requireValidTargetSlideCount(targetSlideCount: number, maxSlideCount: number = MAX_TARGET_SLIDES) {
   try {
-    return assertValidSlideCount(targetSlideCount);
+    const validated = assertValidSlideCount(targetSlideCount);
+    if (validated > maxSlideCount) {
+      throw new Error(`targetSlideCount must be ${maxSlideCount} or fewer for this plan.`);
+    }
+    return validated;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid targetSlideCount.";
     throw new InvalidGenerationRequestError(message);
@@ -734,10 +749,10 @@ function requireValidTargetSlideCount(targetSlideCount: number) {
 
 function requireValidAuthorModel(authorModel: string) {
   // Accept tier names (memo/deck/deep-dive) and resolve to model names
-  const resolved = TIER_TO_MODEL[authorModel] ?? authorModel;
+  const resolved = normalizeAuthorModelId(TIER_TO_MODEL[authorModel] ?? authorModel);
 
   if (!AUTHOR_MODELS.has(resolved)) {
-    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5, or a tier name (memo, deck, deep-dive).");
+    throw new InvalidGenerationRequestError("authorModel must be claude-sonnet-4-6, claude-opus-4-7, claude-haiku-4-5, or a tier name (memo, deck, deep-dive).");
   }
 
   return resolved;

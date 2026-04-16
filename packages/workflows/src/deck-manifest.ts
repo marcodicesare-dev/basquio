@@ -7,6 +7,7 @@ export const deckManifestSchema = z.object({
     position: z.number().int().min(1),
     layoutId: z.string().default("title-body"),
     slideArchetype: z.string().default("title-body"),
+    pageIntent: z.string().optional(),
     title: z.string(),
     subtitle: z.string().optional(),
     body: z.string().optional(),
@@ -22,6 +23,8 @@ export const deckManifestSchema = z.object({
     }).optional(),
     evidenceIds: z.array(z.string()).optional(),
     chartId: z.string().optional(),
+    hasDataTable: z.boolean().optional(),
+    hasChartAnnotations: z.boolean().optional(),
   })).default([]),
   charts: z.array(z.object({
     id: z.string(),
@@ -85,6 +88,7 @@ function normalizeSlide(input: unknown, index: number) {
     title: readString(record.title) ?? `Slide ${index + 1}`,
     subtitle: readString(record.subtitle),
     body: readString(record.body),
+    pageIntent: readString(record.pageIntent) ?? readString(record.page_intent),
     bullets: readStringArray(record.bullets),
     metrics: normalizeMetrics(record.metrics),
     callout: normalizeCallout(record.callout),
@@ -92,6 +96,10 @@ function normalizeSlide(input: unknown, index: number) {
     chartId:
       readString(record.chartId) ??
       readString(record.chart_id),
+    hasDataTable: readBoolean(record.hasDataTable) ?? readBoolean(record.has_data_table),
+    hasChartAnnotations:
+      readBoolean(record.hasChartAnnotations) ??
+      readBoolean(record.has_chart_annotations),
   };
 }
 
@@ -159,6 +167,10 @@ function readString(input: unknown) {
 
 function readNumber(input: unknown) {
   return typeof input === "number" && Number.isFinite(input) ? input : undefined;
+}
+
+function readBoolean(input: unknown) {
+  return typeof input === "boolean" ? input : undefined;
 }
 
 function readStringArray(input: unknown) {

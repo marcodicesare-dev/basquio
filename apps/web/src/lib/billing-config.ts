@@ -1,3 +1,5 @@
+import { OPUS_AUTHOR_MODEL } from "@/lib/credits";
+
 /**
  * Billing configuration: tier mapping, plan definitions, and credit pack pricing.
  *
@@ -25,7 +27,7 @@ export const TIER_CONFIG = {
     artifacts: ["PPTX", "MD", "XLSX"],
   },
   "deep-dive": {
-    model: "claude-opus-4-6" as const,
+    model: OPUS_AUTHOR_MODEL,
     label: "Deep-Dive",
     description: "Consulting-grade depth. The full treatment.",
     shortDescription: "Maximum analytical depth",
@@ -42,6 +44,9 @@ export function tierToModel(tier: TierId): AuthorModel {
 }
 
 export function modelToTier(model: string): TierId {
+  if (model === "claude-opus-4-6" || model === OPUS_AUTHOR_MODEL) {
+    return "deep-dive";
+  }
   for (const [id, config] of Object.entries(TIER_CONFIG)) {
     if (config.model === model) return id as TierId;
   }

@@ -1,6 +1,6 @@
 import { GenerationForm } from "@/components/generation-form";
 import { normalizePlanId } from "@/lib/billing-config";
-import { getActiveSubscription } from "@/lib/credits";
+import { getActiveSubscription, normalizeAuthorModelId, OPUS_AUTHOR_MODEL } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
 import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
@@ -31,7 +31,7 @@ type RecipePrefill = {
   };
   templateProfileId: string | null;
   targetSlideCount: number;
-  authorModel?: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5";
+  authorModel?: "claude-sonnet-4-6" | "claude-opus-4-7" | "claude-haiku-4-5";
   sourceFiles?: Array<{
     id: string;
     kind: string;
@@ -137,7 +137,7 @@ async function getRecipePrefill(recipeId: string, userId: string): Promise<Recip
       brief: Record<string, string>;
       template_profile_id: string | null;
       target_slide_count: number;
-      author_model: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5" | null;
+      author_model: "claude-sonnet-4-6" | "claude-opus-4-7" | "claude-opus-4-6" | "claude-haiku-4-5" | null;
       user_id: string;
     }>({
       supabaseUrl,
@@ -161,8 +161,8 @@ async function getRecipePrefill(recipeId: string, userId: string): Promise<Recip
       templateProfileId: recipe.template_profile_id,
       targetSlideCount: recipe.target_slide_count,
       authorModel:
-        recipe.author_model === "claude-opus-4-6"
-          ? "claude-opus-4-6"
+        normalizeAuthorModelId(recipe.author_model) === OPUS_AUTHOR_MODEL
+          ? OPUS_AUTHOR_MODEL
           : recipe.author_model === "claude-haiku-4-5"
           ? "claude-haiku-4-5"
           : "claude-sonnet-4-6",
@@ -184,7 +184,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       template_profile_id: string | null;
       requested_by: string;
       target_slide_count: number | null;
-      author_model: "claude-sonnet-4-6" | "claude-opus-4-6" | "claude-haiku-4-5" | null;
+      author_model: "claude-sonnet-4-6" | "claude-opus-4-7" | "claude-opus-4-6" | "claude-haiku-4-5" | null;
       source_file_ids: string[];
     }>({
       supabaseUrl,
@@ -250,8 +250,8 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       templateProfileId: run.template_profile_id,
       targetSlideCount: slideCount,
       authorModel:
-        run.author_model === "claude-opus-4-6"
-          ? "claude-opus-4-6"
+        normalizeAuthorModelId(run.author_model) === OPUS_AUTHOR_MODEL
+          ? OPUS_AUTHOR_MODEL
           : run.author_model === "claude-haiku-4-5"
           ? "claude-haiku-4-5"
           : "claude-sonnet-4-6",
@@ -308,7 +308,12 @@ async function getTemplateFeeDraftPrefill(draftId: string, userId: string): Prom
     brief: draft.brief,
     templateProfileId: draft.template_profile_id,
     targetSlideCount: draft.target_slide_count,
-    authorModel: draft.author_model,
+    authorModel:
+      normalizeAuthorModelId(draft.author_model) === OPUS_AUTHOR_MODEL
+        ? OPUS_AUTHOR_MODEL
+        : draft.author_model === "claude-haiku-4-5"
+        ? "claude-haiku-4-5"
+        : "claude-sonnet-4-6",
     sourceFiles,
   };
 }

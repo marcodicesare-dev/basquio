@@ -41,7 +41,7 @@ import {
 
 import { UsageTracker, checkCostBudget, estimateCost, logPhaseEvent } from "./observability";
 
-const MAX_TARGET_SLIDES = 30;
+const MAX_TARGET_SLIDES = 100;
 
 // ─── SHARED CALLBACK TYPES ───────────────────────────────────────
 
@@ -5107,6 +5107,7 @@ export const basquioCritiqueRevise = inngest.createFunction(
     const CRITIQUE_PRICES: Record<string, { input: number; output: number }> = {
       "gpt-5.4":           { input: 2.50, output: 10.00 },
       "claude-opus-4-6":   { input: 15.00, output: 75.00 },
+      "claude-opus-4-7":   { input: 15.00, output: 75.00 },
       "claude-sonnet-4-6": { input: 3.00, output: 15.00 },
       "claude-haiku-4-5":  { input: 1.00, output: 5.00 },
     };

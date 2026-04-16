@@ -8,6 +8,7 @@ export type SlideTextInput = {
   position: number;
   role: string;
   layoutId: string;
+  slideArchetype?: string;
   title: string;
   expectedLanguage?: "it" | "en" | "unknown";
   body?: string;
@@ -15,6 +16,10 @@ export type SlideTextInput = {
   callout?: { text: string; tone?: string };
   metrics?: Array<{ label: string; value: string; delta?: string }>;
   speakerNotes?: string;
+  chartId?: string;
+  pageIntent?: string;
+  hasDataTable?: boolean;
+  hasChartAnnotations?: boolean;
 };
 
 export type LintViolation = {
@@ -113,6 +118,28 @@ const ITALIAN_ACCENT_PATTERNS: Array<{ pattern: RegExp; correct: string }> = [
   { pattern: /\bc['’]?e['’]?\b/gi, correct: "c'è" },
 ];
 
+const CLIENT_AGGRESSIVE_PATTERNS: Array<{ pattern: RegExp; rule: string; message: string }> = [
+  { pattern: /\bil problema [èe]\b/i, rule: "client_aggressive_problem", message: "Client-aggressive: 'il problema e' — reframe as opportunity" },
+  { pattern: /\bintrappolat[oa]\b/i, rule: "client_aggressive_trapped", message: "Client-aggressive: 'intrappolato' — use 'puo sbloccare'" },
+  { pattern: /\bnon basta\b/i, rule: "client_aggressive_non_basta", message: "Client-aggressive: 'non basta' — reframe positively" },
+  { pattern: /\bdel passato\b/i, rule: "client_aggressive_past", message: "Client-aggressive: 'del passato' — do not call client products outdated" },
+  { pattern: /\bfallimento\b/i, rule: "client_aggressive_failure", message: "Client-aggressive: 'fallimento' — use improvement framing" },
+  { pattern: /^\s*nonostante\b/im, rule: "client_aggressive_nonostante", message: "Client-aggressive: sentence starts with 'nonostante'" },
+  { pattern: /\bthe problem is\b/i, rule: "client_aggressive_the_problem", message: "Client-aggressive: 'the problem is' — reframe as opportunity" },
+  { pattern: /\bis trapped\b/i, rule: "client_aggressive_is_trapped", message: "Client-aggressive: 'is trapped'" },
+  { pattern: /\bfrom the past\b/i, rule: "client_aggressive_from_past", message: "Client-aggressive: 'from the past'" },
+  { pattern: /\bthe answer is not\b/i, rule: "client_aggressive_not_answer", message: "Client-aggressive: say what to do, not what not to do" },
+  { pattern: /\bla risposta non [èe]\b/i, rule: "client_aggressive_not_answer_it", message: "Client-aggressive: say what to do, not what not to do" },
+];
+
+const GENERIC_RECOMMENDATION_PATTERNS: Array<{ pattern: RegExp; rule: string; message: string }> = [
+  { pattern: /\bmigliorare la distribuzione\b/i, rule: "generic_recommendation_distribution_it", message: "Too generic: specify which SKU, retailer, or ACV target" },
+  { pattern: /\bimprove distribution\b/i, rule: "generic_recommendation_distribution_en", message: "Too generic: specify the SKU, retailer, or ACV target" },
+  { pattern: /\bespandere la presenza\b/i, rule: "generic_recommendation_presence_it", message: "Too generic: specify channel, format, or target quota" },
+  { pattern: /\bincrease market share\b/i, rule: "generic_recommendation_share_en", message: "Too generic: specify by how much and in which segment" },
+  { pattern: /\bottimizzare il portafoglio\b/i, rule: "generic_recommendation_portfolio_it", message: "Too generic: specify which SKUs to add, remove, or rebalance" },
+];
+
 const ANALYTICAL_LAYOUTS = new Set([
   "exec-summary",
   "chart-split",
@@ -121,6 +148,15 @@ const ANALYTICAL_LAYOUTS = new Set([
   "comparison",
   "metrics",
   "summary",
+]);
+
+const EVIDENCE_COLOCATION_EXEMPT_LAYOUTS = new Set([
+  "cover",
+  "section-divider",
+  "exec-summary",
+  "summary",
+  "recommendation",
+  "recommendation-cards",
 ]);
 
 const ANALYTICAL_DRIVER_WORDS = /\b(driven?\s+by|led\s+by|because|due\s+to|reflects?|signals?|caused?\s+by|mix|pricing|price|distribution|assortment|promo|promotional|velocity|availability|guidat[oaie]|spint[oaie]|trainat[oaie]|perch[eé]|grazie\s+a|a\s+causa\s+di|riflette|segnala|mix|pricing|distribuzion|assortimento|promo|velocit[aà]|disponibilit[aà])\b/i;
@@ -251,6 +287,57 @@ function italianAccentViolations(slide: SlideTextInput, text: string, field: str
   return violations;
 }
 
+function clientAggressiveViolations(text: string, field: string): LintViolation[] {
+  if (!text.trim()) {
+    return [];
+  }
+
+  const violations: LintViolation[] = [];
+  for (const entry of CLIENT_AGGRESSIVE_PATTERNS) {
+    if (entry.pattern.test(text)) {
+      violations.push({
+        rule: entry.rule,
+        severity: "major",
+        field,
+        message: entry.message,
+        value: text.match(entry.pattern)?.[0],
+      });
+    }
+  }
+
+  return violations;
+}
+
+function recommendationSpecificityViolations(slide: SlideTextInput, text: string, field: string): LintViolation[] {
+  if (!text.trim()) {
+    return [];
+  }
+
+  const normalizedIntent = `${slide.pageIntent ?? ""} ${slide.role} ${slide.layoutId} ${slide.slideArchetype ?? ""}`.toLowerCase();
+  const isRecommendation =
+    normalizedIntent.includes("recommend") ||
+    normalizedIntent.includes("summary");
+
+  if (!isRecommendation) {
+    return [];
+  }
+
+  const violations: LintViolation[] = [];
+  for (const entry of GENERIC_RECOMMENDATION_PATTERNS) {
+    if (entry.pattern.test(text)) {
+      violations.push({
+        rule: entry.rule,
+        severity: "minor",
+        field,
+        message: entry.message,
+        value: text.match(entry.pattern)?.[0],
+      });
+    }
+  }
+
+  return violations;
+}
+
 // ─── SLIDE LINTER ─────────────────────────────────────────────────
 
 export function lintSlideText(slide: SlideTextInput): LintResult {
@@ -292,6 +379,8 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
 
     violations.push(...textLanguageViolations(slide, slide.title, "title"));
     violations.push(...italianAccentViolations(slide, slide.title, "title"));
+    violations.push(...clientAggressiveViolations(slide.title, "title"));
+    violations.push(...recommendationSpecificityViolations(slide, slide.title, "title"));
   }
 
   // ── BODY CHECKS ──
@@ -355,6 +444,8 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
 
     violations.push(...textLanguageViolations(slide, slide.body, "body"));
     violations.push(...italianAccentViolations(slide, slide.body, "body"));
+    violations.push(...clientAggressiveViolations(slide.body, "body"));
+    violations.push(...recommendationSpecificityViolations(slide, slide.body, "body"));
   }
 
   // ── BULLET CHECKS ──
@@ -382,6 +473,8 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
       }
       violations.push(...textLanguageViolations(slide, b, `bullets[${i}]`));
       violations.push(...italianAccentViolations(slide, b, `bullets[${i}]`));
+      violations.push(...clientAggressiveViolations(b, `bullets[${i}]`));
+      violations.push(...recommendationSpecificityViolations(slide, b, `bullets[${i}]`));
     }
   }
 
@@ -403,6 +496,8 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     }
     violations.push(...textLanguageViolations(slide, ct, "callout"));
     violations.push(...italianAccentViolations(slide, ct, "callout"));
+    violations.push(...clientAggressiveViolations(ct, "callout"));
+    violations.push(...recommendationSpecificityViolations(slide, ct, "callout"));
   }
 
   // ── METRIC CHECKS ──
@@ -433,6 +528,26 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     }
     violations.push(...textLanguageViolations(slide, slide.speakerNotes, "speakerNotes"));
     violations.push(...italianAccentViolations(slide, slide.speakerNotes, "speakerNotes"));
+  }
+
+  const normalizedLayout = (slide.slideArchetype ?? slide.layoutId ?? "").toLowerCase();
+  const requiresEvidenceColocation =
+    Boolean(slide.chartId) &&
+    !EVIDENCE_COLOCATION_EXEMPT_LAYOUTS.has(slide.role) &&
+    !EVIDENCE_COLOCATION_EXEMPT_LAYOUTS.has(slide.layoutId) &&
+    !EVIDENCE_COLOCATION_EXEMPT_LAYOUTS.has(normalizedLayout);
+  const hasSupportingNumbers =
+    Boolean(slide.hasDataTable) ||
+    Boolean(slide.hasChartAnnotations) ||
+    Boolean(slide.metrics && slide.metrics.length >= 2);
+
+  if (requiresEvidenceColocation && !hasSupportingNumbers) {
+    violations.push({
+      rule: "evidence_colocation_missing",
+      severity: "minor",
+      field: "chartId",
+      message: `Slide ${slide.position} has a chart but no co-located data table or chart annotations. Add visible supporting numbers.`,
+    });
   }
 
   const hasCritical = violations.some(v => v.severity === "critical");

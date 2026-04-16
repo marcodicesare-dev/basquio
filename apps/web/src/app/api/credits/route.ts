@@ -8,6 +8,7 @@ import {
   getActiveSubscription,
   FREE_TIER_CREDITS,
   MAX_TARGET_SLIDES,
+  OPUS_AUTHOR_MODEL,
 } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
 
@@ -62,10 +63,10 @@ export async function GET() {
       freeTierCredits: FREE_TIER_CREDITS,
       example10Slides: calculateRunCredits(10, "claude-sonnet-4-6"),
       example15Slides: calculateRunCredits(15, "claude-sonnet-4-6"),
-      example20SlidesOpus: calculateRunCredits(20, "claude-opus-4-6"),
+      example20SlidesOpus: calculateRunCredits(20, OPUS_AUTHOR_MODEL),
       memoCredits: calculateRunCredits(10, "claude-haiku-4-5"),
       deckCredits: calculateRunCredits(10, "claude-sonnet-4-6"),
-      deepDiveCredits: calculateRunCredits(10, "claude-opus-4-6"),
+      deepDiveCredits: calculateRunCredits(10, OPUS_AUTHOR_MODEL),
     },
     maxSlidesAffordable,
   });
