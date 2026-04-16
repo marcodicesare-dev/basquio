@@ -77,15 +77,16 @@ const HARD_QA_BLOCKERS = new Set([
   "pptx_zip_parse_failed",
 ]);
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
-const AUTHOR_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_PHASE_TIMEOUT_MS ?? "2100000", 10);
-const REVISE_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_REVISE_PHASE_TIMEOUT_MS ?? "1500000", 10);
-const AUTHOR_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_REQUEST_WATCHDOG_MS ?? "900000", 10);
-const REVISE_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_REVISE_REQUEST_WATCHDOG_MS ?? "720000", 10);
+const AUTHOR_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_PHASE_TIMEOUT_MS ?? "3300000", 10);
+const REVISE_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_REVISE_PHASE_TIMEOUT_MS ?? "2700000", 10);
+const AUTHOR_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_REQUEST_WATCHDOG_MS ?? "0", 10);
+const REVISE_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_REVISE_REQUEST_WATCHDOG_MS ?? "0", 10);
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  // Large code-execution turns still need an upper bound so stalled streams recover.
+  // Large code-execution turns routinely run 30-40 minutes on valid decks.
+  // Keep a long phase cap, but avoid a short per-request watchdog that kills healthy runs.
   author: AUTHOR_PHASE_TIMEOUT_MS,
   revise: REVISE_PHASE_TIMEOUT_MS,
   render: 120_000,
@@ -103,8 +104,8 @@ const MAX_PAUSE_TURNS_PER_PHASE = {
 const REQUEST_WATCHDOG_BY_PHASE_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
   understand: 10 * 60_000,
-  author: AUTHOR_REQUEST_WATCHDOG_MS,
-  revise: REVISE_REQUEST_WATCHDOG_MS,
+  author: AUTHOR_REQUEST_WATCHDOG_MS > 0 ? AUTHOR_REQUEST_WATCHDOG_MS : null,
+  revise: REVISE_REQUEST_WATCHDOG_MS > 0 ? REVISE_REQUEST_WATCHDOG_MS : null,
   render: 120_000,
   critique: 90_000,
   export: 120_000,
