@@ -19,6 +19,7 @@ import {
 import { getStripe, CREDIT_PACKS, PLAN_CREDITS } from "@/lib/stripe";
 import { createServiceSupabaseClient, fetchRestRows } from "@/lib/supabase/admin";
 import { getTemplateFeeDraft, updateTemplateFeeDraft } from "@/lib/template-fee-drafts";
+import { sendResendHtmlEmail } from "@/lib/resend";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,9 @@ type InvoiceData = {
   id: string;
   customer?: string | { id: string } | null;
   customer_email?: string | null;
+  amount_paid?: number | null;
+  currency?: string | null;
+  hosted_invoice_url?: string | null;
   subscription?: string | { id: string } | null;
   parent?: {
     type?: string | null;
@@ -608,6 +612,21 @@ async function handleInvoicePaid(
     logDiscordNotificationFailure("subscription renewed", userId, error);
   });
 
+  scheduleBillingEmail(async () => {
+    const email = await resolveUserEmail(config.supabaseUrl, config.serviceKey, userId);
+    await sendSubscriptionReceiptEmail({
+      email,
+      invoiceId: invoice.id,
+      amountPaid: invoice.amount_paid ?? null,
+      currency: invoice.currency ?? null,
+      plan: normalizedPlan,
+      interval: billingInterval ?? "monthly",
+      periodEnd: new Date(periodEnd * 1000).toISOString(),
+      hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
+      creditsGranted: creditAmount,
+    });
+  });
+
   console.log(`[stripe-webhook] granted ${creditAmount} subscription credits to ${userId} (plan=${normalizedPlan}, interval=${isAnnual ? "annual" : "monthly"}, event=${eventId})`);
 }
 
@@ -728,6 +747,16 @@ function scheduleDiscordNotification(task: () => Promise<void>, onError: (error:
       await task();
     } catch (error) {
       onError(error);
+    }
+  });
+}
+
+function scheduleBillingEmail(task: () => Promise<void>) {
+  after(async () => {
+    try {
+      await task();
+    } catch (error) {
+      console.error(`[stripe-webhook] billing email failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 }
@@ -1015,6 +1044,87 @@ function mapStripeSubscriptionStatus(status: string | undefined) {
   };
 
   return statusMap[status ?? ""] ?? "active";
+}
+
+async function sendSubscriptionReceiptEmail(input: {
+  email: string;
+  invoiceId: string;
+  amountPaid: number | null;
+  currency: string | null;
+  plan: string;
+  interval: "monthly" | "annual";
+  periodEnd: string;
+  hostedInvoiceUrl: string | null;
+  creditsGranted: number;
+}) {
+  const resendApiKey = process.env.RESEND_API_KEY ?? process.env.RESEND_CURSOR_API_KEY;
+  if (!resendApiKey || !input.email) {
+    return;
+  }
+
+  const amountLabel = formatMoney(input.amountPaid, input.currency);
+  const planLabel = getPlanLabelForEmail(input.plan);
+  const intervalLabel = input.interval === "annual" ? "Annual" : "Monthly";
+  const periodEndLabel = new Intl.DateTimeFormat("en-CH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(input.periodEnd));
+
+  const html = `<body style="background:#F7F5F1;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;margin:0;padding:40px 20px;">
+  <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;">
+    <tr>
+      <td style="padding:28px;border:1px solid #E8E4DB;border-radius:14px;background:#FFFFFF;">
+        <p style="color:#1A6AFF;font-size:11px;font-weight:700;letter-spacing:1.6px;margin:0 0 16px 0;text-transform:uppercase;">Subscription receipt</p>
+        <img src="https://basquio.com/brand/png/logo/1x/basquio-logo-light-bg-blue.png" alt="Basquio" width="110" height="auto" style="display:block;margin-bottom:28px;">
+        <h1 style="color:#0B0C0C;font-size:28px;line-height:1.1;letter-spacing:-0.04em;margin:0 0 14px 0;">Payment received.</h1>
+        <p style="color:#4B5563;font-size:15px;line-height:24px;margin:0 0 20px 0;">We received your ${planLabel} ${intervalLabel.toLowerCase()} subscription payment.</p>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px 0;border-collapse:collapse;">
+          <tr><td style="padding:10px 0;color:#64748B;font-size:13px;">Amount paid</td><td style="padding:10px 0;color:#0B0C0C;font-size:14px;font-weight:700;text-align:right;">${amountLabel}</td></tr>
+          <tr><td style="padding:10px 0;color:#64748B;font-size:13px;border-top:1px solid #E8E4DB;">Plan</td><td style="padding:10px 0;color:#0B0C0C;font-size:14px;font-weight:700;text-align:right;border-top:1px solid #E8E4DB;">${planLabel}</td></tr>
+          <tr><td style="padding:10px 0;color:#64748B;font-size:13px;border-top:1px solid #E8E4DB;">Billing interval</td><td style="padding:10px 0;color:#0B0C0C;font-size:14px;font-weight:700;text-align:right;border-top:1px solid #E8E4DB;">${intervalLabel}</td></tr>
+          <tr><td style="padding:10px 0;color:#64748B;font-size:13px;border-top:1px solid #E8E4DB;">Credits granted</td><td style="padding:10px 0;color:#0B0C0C;font-size:14px;font-weight:700;text-align:right;border-top:1px solid #E8E4DB;">${input.creditsGranted}</td></tr>
+          <tr><td style="padding:10px 0;color:#64748B;font-size:13px;border-top:1px solid #E8E4DB;">Coverage through</td><td style="padding:10px 0;color:#0B0C0C;font-size:14px;font-weight:700;text-align:right;border-top:1px solid #E8E4DB;">${periodEndLabel}</td></tr>
+          <tr><td style="padding:10px 0;color:#64748B;font-size:13px;border-top:1px solid #E8E4DB;">Invoice</td><td style="padding:10px 0;color:#0B0C0C;font-size:14px;font-weight:700;text-align:right;border-top:1px solid #E8E4DB;">${input.invoiceId}</td></tr>
+        </table>
+        ${input.hostedInvoiceUrl ? `<p style="margin:24px 0 0 0;"><a href="${input.hostedInvoiceUrl}" style="background-color:#1A6AFF;border-radius:6px;color:#FFFFFF;display:inline-block;font-size:14px;font-weight:700;padding:12px 20px;text-decoration:none;">Open Stripe invoice</a></p>` : ""}
+        <p style="color:#94A3B8;font-size:12px;line-height:20px;margin:24px 0 0 0;">Marco at Basquio</p>
+      </td>
+    </tr>
+  </table>
+</body>`;
+
+  await sendResendHtmlEmail({
+    apiKey: resendApiKey,
+    from: "Marco at Basquio <reports@basquio.com>",
+    to: [input.email],
+    subject: `Basquio subscription receipt: ${amountLabel}`,
+    html,
+    idempotencyKey: `subscription-receipt-${input.invoiceId}`,
+  });
+}
+
+function formatMoney(amountMinor: number | null, currency: string | null) {
+  if (amountMinor === null || !currency) {
+    return "Paid";
+  }
+
+  try {
+    return new Intl.NumberFormat("en-CH", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amountMinor / 100);
+  } catch {
+    return `${(amountMinor / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}
+
+function getPlanLabelForEmail(plan: string) {
+  const normalized = normalizePlanId(plan);
+  if (normalized === "starter") return "Starter";
+  if (normalized === "pro") return "Pro";
+  if (normalized === "enterprise") return "Enterprise";
+  return "Subscription";
 }
 
 function resolvePlanFromMetadata(metadata: Record<string, string> | null | undefined) {
