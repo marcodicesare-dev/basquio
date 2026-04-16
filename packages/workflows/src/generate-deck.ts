@@ -6277,6 +6277,10 @@ async function sanitizePptxMedia(pptxBuffer: Buffer): Promise<Buffer> {
         const rendered = new Resvg!(svgText, {
           fitTo: { mode: "width", value: 1600 },
           background: "rgba(0,0,0,0)",
+          font: {
+            loadSystemFonts: true,
+            defaultFontFamily: "Liberation Sans",
+          },
         }).render();
         pngBuffer = Buffer.from(rendered.asPng());
       } catch (error) {
@@ -7160,6 +7164,15 @@ async function persistPreviewAssets(
     const fileName = `slide-preview-${slide.position}.png`;
     const storagePath = `${run.id}/attempts/${attempt.attemptNumber}-${attempt.id}/${fileName}`;
 
+    // Observability: a rendered preview with text should be >12KB. A ~10KB or
+    // smaller PNG strongly suggests text silently dropped (fonts not found).
+    // Warn loudly so this never regresses to the empty-preview email bug again.
+    if (pngBuffer.length < 12_000) {
+      console.warn(
+        `[preview] slide ${slide.position} rendered to only ${pngBuffer.length} bytes — likely missing fonts, text may have silently dropped. Check nixpacks.toml has liberation_ttf/dejavu_fonts/noto-fonts and Resvg is configured with loadSystemFonts: true.`,
+      );
+    }
+
     await uploadToStorage({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
@@ -7219,6 +7232,15 @@ async function renderPreviewPng(svgText: string) {
   const rendered = new Resvg(svgText, {
     fitTo: { mode: "width", value: 1200 },
     background: "#f7f5f1",
+    // Load system fonts explicitly. On Railway's Nix-built container the
+    // installed font packages (liberation_ttf, dejavu_fonts, noto-fonts)
+    // provide Arial/Georgia/serif fallbacks resvg needs to render text.
+    // Without this, resvg silently drops all text and produces blank PNGs —
+    // the bug behind the empty-preview email.
+    font: {
+      loadSystemFonts: true,
+      defaultFontFamily: "Liberation Sans",
+    },
   }).render();
 
   return Buffer.from(rendered.asPng());

@@ -2,7 +2,18 @@
 # Railway installs the full pnpm workspace graph for the worker service.
 # Keep native build tooling available for workspace deps that may fall back
 # to node-gyp during Git-connected builds, such as @discordjs/opus.
-nixPkgs = ["...", "python3", "gcc", "gnumake"]
+# Fonts are required by @resvg/resvg-js for slide preview PNG rendering.
+# Without fonts installed at the system level, resvg silently drops text and
+# produces blank previews (the empty-preview email bug).
+nixPkgs = [
+  "...",
+  "python3",
+  "gcc",
+  "gnumake",
+  "liberation_ttf",
+  "dejavu_fonts",
+  "noto-fonts",
+]
 
 [variables]
 # Ensure node-gyp uses the Nix-provided Python instead of relying on a Debian
