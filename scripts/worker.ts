@@ -747,8 +747,8 @@ function startHeartbeat(config: ReturnType<typeof resolveConfig>, attempt: Queue
 
 async function processTemplateImportJobs(config: ReturnType<typeof resolveConfig>) {
   try {
-    // Recover stale running imports (stuck > 5 minutes)
-    const staleBefore = new Date(Date.now() - 5 * 60_000).toISOString();
+    // Recover stale running imports. Large PPTX templates can legitimately take several minutes.
+    const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString();
     const staleImports = await fetchRestRows<{ id: string; template_profile_id: string | null }>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,

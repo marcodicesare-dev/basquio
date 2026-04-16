@@ -34,6 +34,14 @@ type ExtractedBrandTokens = {
   injection?: NonNullable<TemplateProfile["brandTokens"]>["injection"];
 };
 
+const MAX_TEMPLATE_SOURCE_BYTES = 50 * 1024 * 1024;
+const MAX_LOGO_CANDIDATE_BYTES = 500_000;
+const MIN_LOGO_WIDTH_INCHES = 0.15;
+const MAX_LOGO_WIDTH_INCHES = 5;
+const MIN_LOGO_HEIGHT_INCHES = 0.15;
+const MAX_LOGO_HEIGHT_INCHES = 3;
+const MIN_LOGO_ASPECT_RATIO = 0.5;
+
 export function createSystemTemplateProfile(): TemplateProfile {
   return templateProfileSchema.parse({
     id: "system-default",
@@ -230,7 +238,15 @@ async function parsePptxTemplate(input: {
   reviewFeedback?: string[];
 }) {
   const buffer = Buffer.from(input.base64, "base64");
-  const zip = await JSZip.loadAsync(buffer);
+  if (buffer.length > MAX_TEMPLATE_SOURCE_BYTES) {
+    throw new Error(`PPTX template is too large to parse safely (${Math.round(buffer.length / (1024 * 1024))} MB).`);
+  }
+
+  const zip = await JSZip.loadAsync(buffer, {
+    checkCRC32: false,
+    createFolders: false,
+    optimizedBinaryString: true,
+  });
   const themeXml = await readZipText(zip, "ppt/theme/theme1.xml");
   const presentationXml = await readZipText(zip, "ppt/presentation.xml");
   const presentationRelsXml = await readZipText(zip, "ppt/_rels/presentation.xml.rels");
@@ -525,6 +541,15 @@ async function extractCoverLogo(zip: JSZip, slideWidthInches: number) {
     if (masterLogo) return masterLogo;
   }
 
+  const layoutEntries = Object.keys(zip.files)
+    .filter((entry) => /^ppt\/slideLayouts\/slideLayout\d+\.xml$/i.test(entry))
+    .sort();
+  for (const layoutEntry of layoutEntries) {
+    const relsEntry = layoutEntry.replace("slideLayouts/", "slideLayouts/_rels/") + ".rels";
+    const layoutLogo = await extractLogoFromSlideXml(zip, layoutEntry, relsEntry, slideWidthInches);
+    if (layoutLogo) return layoutLogo;
+  }
+
   return {};
 }
 
@@ -568,8 +593,7 @@ async function extractLogoFromSlideXml(
     const w = emuToInches(Number.parseInt(extMatch[1], 10));
     const h = emuToInches(Number.parseInt(extMatch[2], 10));
 
-    // Size and aspect ratio filter: must be logo-shaped (wider than tall, reasonable dimensions)
-    if (!(w > 0.5 && w < 5 && h > 0.15 && h < 2 && w / Math.max(h, 0.1) > 1.5)) {
+    if (!isLikelyLogoFrame(w, h)) {
       continue;
     }
 
@@ -582,7 +606,7 @@ async function extractLogoFromSlideXml(
     }
 
     const data = await mediaFile.async("nodebuffer");
-    if (data.length > 100_000) {
+    if (data.length > MAX_LOGO_CANDIDATE_BYTES) {
       continue;
     }
 
@@ -596,6 +620,16 @@ async function extractLogoFromSlideXml(
   }
 
   return null;
+}
+
+function isLikelyLogoFrame(widthInches: number, heightInches: number) {
+  return (
+    widthInches > MIN_LOGO_WIDTH_INCHES
+    && widthInches < MAX_LOGO_WIDTH_INCHES
+    && heightInches > MIN_LOGO_HEIGHT_INCHES
+    && heightInches < MAX_LOGO_HEIGHT_INCHES
+    && widthInches / Math.max(heightInches, 0.1) > MIN_LOGO_ASPECT_RATIO
+  );
 }
 
 async function extractDecorativeShapes(zip: JSZip) {

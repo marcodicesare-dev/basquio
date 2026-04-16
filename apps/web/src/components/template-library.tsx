@@ -1,7 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, useRef, useState } from "react";
+
+const DIRECT_TEMPLATE_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
+const MAX_TEMPLATE_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 type TemplateItem = {
   id: string;
@@ -17,79 +20,94 @@ type TemplateItem = {
   updatedAt: string;
 };
 
+type TemplateImportState =
+  | { phase: "idle" }
+  | { phase: "validating"; fileName: string }
+  | { phase: "uploading"; fileName: string; loadedBytes: number; totalBytes: number }
+  | { phase: "processing"; fileName: string; templateId: string; message: string }
+  | { phase: "success"; templateId: string }
+  | { phase: "error"; message: string; recoverable: boolean };
+
+type TemplateImportResponse = {
+  importJobId?: string;
+  templateProfileId?: string;
+  message?: string;
+  error?: string;
+};
+
+type TemplatePrepareUploadResponse = {
+  error?: string;
+  sourceFileId?: string;
+  storageBucket?: string;
+  storagePath?: string;
+  uploadUrl?: string;
+};
+
 // ─── IMPORT BOX ─────────────────────────────────────────────
 
 export function TemplateImportBox() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
-  const [importSuccess, setImportSuccess] = useState(false);
-  const [importedTemplateId, setImportedTemplateId] = useState<string | null>(null);
+  const [importState, setImportState] = useState<TemplateImportState>({ phase: "idle" });
   const [isDragging, setIsDragging] = useState(false);
+  const importedTemplateId = importState.phase === "success" ? importState.templateId : null;
+  const importSuccess = importState.phase === "success";
+  const importing = ["validating", "uploading", "processing"].includes(importState.phase);
 
   async function handleImport(file: File) {
-    setImporting(true);
-    setImportMessage(null);
-    setImportSuccess(false);
-    setImportedTemplateId(null);
+    const validationMessage = validateTemplateFile(file);
+    if (validationMessage) {
+      setImportState({ phase: "error", message: validationMessage, recoverable: false });
+      return;
+    }
+
+    setImportState({ phase: "validating", fileName: file.name });
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("setAsDefault", "false");
+      let payload: TemplateImportResponse;
 
-      const response = await fetch("/api/templates/import", {
-        method: "POST",
-        body: formData,
+      if (file.size > DIRECT_TEMPLATE_UPLOAD_THRESHOLD_BYTES) {
+        payload = await uploadTemplateDirect(file, setImportState);
+      } else {
+        setImportState({
+          phase: "uploading",
+          fileName: file.name,
+          loadedBytes: 0,
+          totalBytes: file.size,
+        });
+        payload = await uploadTemplateViaFallback(file, (loaded, total) => {
+          setImportState({
+            phase: "uploading",
+            fileName: file.name,
+            loadedBytes: loaded,
+            totalBytes: total || file.size,
+          });
+        });
+      }
+
+      const templateId = payload.templateProfileId;
+      if (!templateId) {
+        throw new Error("Basquio queued the template import without returning a template profile ID.");
+      }
+
+      setImportState({
+        phase: "processing",
+        fileName: file.name,
+        templateId,
+        message: payload.message ?? "Processing your template...",
       });
-      const payload = await response.json();
 
-      if (!response.ok) {
-        setImportMessage(payload.error ?? "Import failed.");
-        return;
-      }
-
-      setImportMessage("Processing your template...");
-      const templateId = payload.templateProfileId as string | undefined;
-
-      if (templateId) {
-        setImportedTemplateId(templateId);
-        let attempts = 0;
-        const maxAttempts = 20;
-        const pollInterval = setInterval(async () => {
-          attempts += 1;
-          try {
-            const templatesRes = await fetch("/api/templates", { cache: "no-store" });
-            if (templatesRes.ok) {
-              const data = await templatesRes.json();
-              const imported = (data.templates as Array<{ id: string; status: string }>)
-                ?.find((t) => t.id === templateId);
-              if (imported && (imported.status === "ready" || imported.status === "failed")) {
-                clearInterval(pollInterval);
-                if (imported.status === "ready") {
-                  setImportSuccess(true);
-                  setImportMessage("Template ready");
-                } else {
-                  setImportMessage("Template import failed. Check the card below for details.");
-                }
-                router.refresh();
-                return;
-              }
-            }
-          } catch { /* continue polling */ }
-
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval);
-            setImportMessage("This can take a little longer on larger templates. We'll email you when it's ready.");
-            router.refresh();
-          }
-        }, 3000);
-      }
-    } catch {
-      setImportMessage("Import failed. Try again.");
+      await pollTemplateImportStatus(templateId, file.name, router, setImportState);
+    } catch (error) {
+      setImportState({
+        phase: "error",
+        message: normalizeTemplateImportError(error),
+        recoverable: true,
+      });
     } finally {
-      setImporting(false);
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
     }
   }
 
@@ -97,17 +115,13 @@ export function TemplateImportBox() {
     if (!importedTemplateId) return;
     try {
       await fetch(`/api/templates/${importedTemplateId}/default`, { method: "POST" });
-      setImportSuccess(false);
-      setImportMessage(null);
-      setImportedTemplateId(null);
+      setImportState({ phase: "idle" });
       router.refresh();
     } catch { /* ignore */ }
   }
 
   function handleKeepSaved() {
-    setImportSuccess(false);
-    setImportMessage(null);
-    setImportedTemplateId(null);
+    setImportState({ phase: "idle" });
   }
 
   return (
@@ -154,9 +168,9 @@ export function TemplateImportBox() {
           >
             <span className="dropzone-icon" aria-hidden>+</span>
             <span className="dropzone-title">
-              {importing ? "Importing..." : "Drop a PPTX, JSON, or CSS file here"}
+              {renderTemplateImportTitle(importState)}
             </span>
-            <span className="dropzone-copy">Accepted: .pptx, .json, .css, .pdf</span>
+            <span className="dropzone-copy">Accepted: .pptx, .json, .css, .pdf · up to 50 MB</span>
           </button>
 
           <input
@@ -172,11 +186,352 @@ export function TemplateImportBox() {
         </>
       )}
 
-      {importMessage && !importSuccess ? (
-        <p className="muted" style={{ fontSize: "0.88rem" }}>{importMessage}</p>
+      {importState.phase === "uploading" ? (
+        <div className="stack-xs" style={{ marginTop: "0.2rem" }}>
+          <div
+            aria-hidden
+            style={{
+              width: "100%",
+              height: "0.45rem",
+              borderRadius: 999,
+              background: "rgba(255, 255, 255, 0.08)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.max(6, Math.round((importState.loadedBytes / Math.max(importState.totalBytes, 1)) * 100))}%`,
+                height: "100%",
+                borderRadius: 999,
+                background: "var(--blue, #1A6AFF)",
+                transition: "width 120ms ease-out",
+              }}
+            />
+          </div>
+          <p className="muted" style={{ fontSize: "0.88rem", margin: 0 }}>
+            Uploading {importState.fileName}... {Math.round((importState.loadedBytes / Math.max(importState.totalBytes, 1)) * 100)}%
+            {" "}({formatFileSize(importState.loadedBytes)} / {formatFileSize(importState.totalBytes)})
+          </p>
+        </div>
+      ) : importState.phase !== "idle" && !importSuccess ? (
+        <p className="muted" style={{ fontSize: "0.88rem" }}>{renderTemplateImportMessage(importState)}</p>
       ) : null}
     </article>
   );
+}
+
+async function uploadTemplateDirect(
+  file: File,
+  setImportState: Dispatch<SetStateAction<TemplateImportState>>,
+) {
+  const prepareResponse = await fetch("/api/templates/prepare-upload", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      fileName: file.name,
+      fileSize: file.size,
+      mediaType: file.type || "application/octet-stream",
+      setAsDefault: false,
+    }),
+  });
+  const preparePayload = (await readTemplateApiPayload(prepareResponse)) as TemplatePrepareUploadResponse;
+
+  if (!prepareResponse.ok) {
+    throw new Error(preparePayload.error ?? "Unable to prepare the template upload.");
+  }
+
+  if (!preparePayload.sourceFileId || !preparePayload.storagePath || !preparePayload.uploadUrl) {
+    throw new Error("Basquio did not return a valid upload target for this template.");
+  }
+
+  setImportState({
+    phase: "uploading",
+    fileName: file.name,
+    loadedBytes: 0,
+    totalBytes: file.size,
+  });
+
+  await uploadTemplateFileWithProgress(file, preparePayload.uploadUrl, file.type || "application/octet-stream", (loaded, total) => {
+    setImportState({
+      phase: "uploading",
+      fileName: file.name,
+      loadedBytes: loaded,
+      totalBytes: total || file.size,
+    });
+  });
+
+  const confirmResponse = await fetch("/api/templates/confirm-upload", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      sourceFileId: preparePayload.sourceFileId,
+      storageBucket: preparePayload.storageBucket ?? "source-files",
+      storagePath: preparePayload.storagePath,
+      fileName: file.name,
+      fileSize: file.size,
+      mediaType: file.type || "application/octet-stream",
+      setAsDefault: false,
+    }),
+  });
+  const confirmPayload = (await readTemplateApiPayload(confirmResponse)) as TemplateImportResponse;
+
+  if (!confirmResponse.ok) {
+    throw new Error(confirmPayload.error ?? "Basquio uploaded the template but could not queue the import job.");
+  }
+
+  return confirmPayload;
+}
+
+function uploadTemplateViaFallback(
+  file: File,
+  onProgress: (loaded: number, total: number) => void,
+) {
+  return new Promise<TemplateImportResponse>((resolve, reject) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("setAsDefault", "false");
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/templates/import");
+
+    xhr.upload.onprogress = (event) => {
+      const total = event.lengthComputable ? event.total : file.size;
+      onProgress(event.loaded, total);
+    };
+
+    xhr.onerror = () => {
+      reject(new Error("Upload interrupted. Check your connection and try again."));
+    };
+
+    xhr.onabort = () => {
+      reject(new Error("Upload interrupted. Check your connection and try again."));
+    };
+
+    xhr.onload = () => {
+      const payload = readXhrPayload(xhr.responseText, xhr.status);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(file.size, file.size);
+        resolve(payload as TemplateImportResponse);
+        return;
+      }
+
+      reject(new Error(payload.error ?? "Template import failed."));
+    };
+
+    xhr.send(formData);
+  });
+}
+
+async function pollTemplateImportStatus(
+  templateId: string,
+  fileName: string,
+  router: ReturnType<typeof useRouter>,
+  setImportState: Dispatch<SetStateAction<TemplateImportState>>,
+) {
+  const maxAttempts = 20;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await sleep(3000);
+
+    try {
+      const templatesRes = await fetch("/api/templates", { cache: "no-store" });
+      if (!templatesRes.ok) {
+        continue;
+      }
+
+      const data = await templatesRes.json() as { templates?: Array<{ id: string; status: string }> };
+      const imported = data.templates?.find((template) => template.id === templateId);
+
+      if (!imported) {
+        continue;
+      }
+
+      if (imported.status === "ready") {
+        setImportState({ phase: "success", templateId });
+        router.refresh();
+        return;
+      }
+
+      if (imported.status === "failed") {
+        setImportState({
+          phase: "error",
+          message: "Template import failed during processing. Check the card below for details.",
+          recoverable: true,
+        });
+        router.refresh();
+        return;
+      }
+    } catch {
+      // Keep polling on transient fetch failures.
+    }
+  }
+
+  setImportState({
+    phase: "processing",
+    fileName,
+    templateId,
+    message: "This template is still processing. Large PPTX files can take a few minutes. The import job is still running and the card below will update when it finishes.",
+  });
+  router.refresh();
+}
+
+async function readTemplateApiPayload(response: Response) {
+  if (response.status === 413) {
+    return {
+      error: "This upload was rejected before Basquio could read it. Large templates should use the direct-to-storage upload path.",
+    };
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = (await response.text()).trim();
+  return { error: text || "Request failed." };
+}
+
+function uploadTemplateFileWithProgress(
+  file: File,
+  uploadUrl: string,
+  mediaType: string,
+  onProgress: (loaded: number, total: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl);
+    xhr.setRequestHeader("cache-control", "3600");
+    xhr.setRequestHeader("content-type", mediaType);
+    xhr.setRequestHeader("x-upsert", "true");
+
+    xhr.upload.onprogress = (event) => {
+      const total = event.lengthComputable ? event.total : file.size;
+      onProgress(event.loaded, total);
+    };
+
+    xhr.onerror = () => {
+      reject(new Error("Upload interrupted. Check your connection and try again."));
+    };
+
+    xhr.onabort = () => {
+      reject(new Error("Upload interrupted. Check your connection and try again."));
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(file.size, file.size);
+        resolve();
+        return;
+      }
+
+      reject(new Error(readUploadErrorBody(xhr.responseText) ?? `Unable to upload ${file.name}.`));
+    };
+
+    xhr.send(file);
+  });
+}
+
+function validateTemplateFile(file: File) {
+  if (file.size === 0) {
+    return "This file is empty. Upload a non-empty PPTX, JSON, CSS, or PDF template file.";
+  }
+
+  if (file.size > MAX_TEMPLATE_UPLOAD_BYTES) {
+    return `This file is too large (${formatFileSize(file.size)}). Templates must be under 50 MB. Try removing embedded images or sample slides.`;
+  }
+
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!["pptx", "json", "css", "pdf"].includes(extension)) {
+    return "Unsupported template type. Upload a PPTX, JSON, CSS, or PDF file.";
+  }
+
+  return null;
+}
+
+function normalizeTemplateImportError(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "Basquio could not import this template. Check your connection and try again.";
+}
+
+function renderTemplateImportTitle(state: TemplateImportState) {
+  switch (state.phase) {
+    case "validating":
+      return "Checking your template...";
+    case "uploading":
+      return "Uploading directly to secure storage...";
+    case "processing":
+      return "Template uploaded. Processing now...";
+    case "error":
+      return state.recoverable ? "Template import needs another try" : "Template needs attention";
+    default:
+      return "Drop a PPTX, JSON, CSS, or PDF file here";
+  }
+}
+
+function renderTemplateImportMessage(state: TemplateImportState) {
+  switch (state.phase) {
+    case "validating":
+      return `Checking ${state.fileName} before upload...`;
+    case "processing":
+      return state.message;
+    case "error":
+      return state.message;
+    default:
+      return null;
+  }
+}
+
+function readUploadErrorBody(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: string; message?: string };
+    return parsed.error ?? parsed.message ?? null;
+  } catch {
+    return trimmed;
+  }
+}
+
+function readXhrPayload(raw: string, status: number) {
+  if (status === 413) {
+    return {
+      error: "This upload was rejected before Basquio could read it. Large templates should use the direct-to-storage upload path.",
+    };
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { error: "Request failed." };
+  }
+
+  try {
+    return JSON.parse(trimmed) as TemplateImportResponse;
+  } catch {
+    return { error: trimmed };
+  }
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${bytes} B`;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ─── ACTIVE DEFAULT CARD ──────────────────────────────────────

@@ -28,6 +28,7 @@ type SourceFileRow = {
   storage_bucket: string;
   storage_path: string;
   kind: string;
+  file_bytes: number | null;
 };
 
 type Config = {
@@ -65,13 +66,17 @@ export async function runTemplateImportJob(jobId: string, config: Config) {
       serviceKey: config.serviceKey,
       table: "source_files",
       query: {
-        select: "id,file_name,storage_bucket,storage_path,kind",
+        select: "id,file_name,storage_bucket,storage_path,kind,file_bytes",
         id: `eq.${job.source_file_id}`,
         limit: "1",
       },
     });
     const sourceFile = sourceFiles[0];
     if (!sourceFile) throw new Error(`Source file ${job.source_file_id} not found.`);
+
+    console.log(
+      `[template-import] loading ${sourceFile.file_name} (${formatBytes(sourceFile.file_bytes)}) for job ${jobId}`,
+    );
 
     const buffer = await downloadFromStorage({
       supabaseUrl: config.supabaseUrl,
@@ -211,6 +216,22 @@ export async function runTemplateImportJob(jobId: string, config: Config) {
 
     throw error;
   }
+}
+
+function formatBytes(bytes: number | null) {
+  if (!bytes || bytes <= 0) {
+    return "unknown size";
+  }
+
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${bytes} B`;
 }
 
 function buildPreviewPayload(profile: TemplateProfile, layoutCount: number) {
