@@ -5671,6 +5671,8 @@ export const basquioExport = inngest.createFunction(
         includeBasquioBranding: (templateProfile?.sourceType ?? "system") === "system",
         exportMode,
         chartImages: chartImageMap,
+        slideWidthInches: templateProfile?.slideWidthInches,
+        slideHeightInches: templateProfile?.slideHeightInches,
       });
 
       // Prepare PPTX buffer for QA + upload

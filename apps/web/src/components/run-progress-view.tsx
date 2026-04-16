@@ -37,7 +37,13 @@ type Summary = {
   insights?: Array<{ id: string; title: string }>;
   slidePlan?: { slides: Array<{ id: string }> };
   artifacts?: Array<{ kind: string; fileName: string }>;
-  previews?: Array<{ position: number; imageUrl: string; fileName: string }>;
+  previews?: Array<{
+    position: number;
+    imageUrl: string;
+    fileName: string;
+    fileBytes?: number | null;
+    checksumSha256?: string | null;
+  }>;
   slideCount?: number;
   pageCount?: number;
   qaPassed?: boolean;
@@ -736,7 +742,7 @@ export function RunProgressView(input: {
     const templateSummary = describeTemplateDiagnostics(
       snapshot.summary?.templateDiagnostics ?? snapshot.templateDiagnostics,
     );
-    const reviewSuggested = snapshot.summary?.qaPassed === false || (snapshot.qualityWarnings?.length ?? 0) > 0;
+    const reviewSuggested = snapshot.summary?.qaPassed === false;
     const isReportOnlyResult = !hasPptxArtifact && hasMdArtifact && hasXlsxArtifact;
     const readyLabel = isReportOnlyResult ? "Your report is ready" : "Your deck is ready";
     const resultMeta = isReportOnlyResult
@@ -812,11 +818,6 @@ export function RunProgressView(input: {
             <p className="muted" style={{ marginTop: "0.85rem", maxWidth: 560 }}>
               {templateSummary.detail}
             </p>
-            {snapshot.qualityWarnings?.length ? (
-              <p className="muted" style={{ marginTop: "0.65rem", maxWidth: 560 }}>
-                Basquio published the artifacts successfully, but flagged review notes such as: {snapshot.qualityWarnings.slice(0, 2).join(" ")}
-              </p>
-            ) : null}
           </div>
 
         </section>

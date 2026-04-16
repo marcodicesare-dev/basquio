@@ -73,7 +73,14 @@ type ArtifactManifestRow = {
   page_count: number;
   qa_passed: boolean;
   artifacts: Array<{ kind: string; fileName: string; fileBytes: number; storagePath: string }>;
-  preview_assets?: Array<{ position: number; fileName: string; mimeType: string; storagePath: string }>;
+  preview_assets?: Array<{
+    position: number;
+    fileName: string;
+    mimeType: string;
+    storagePath: string;
+    fileBytes?: number;
+    checksumSha256?: string;
+  }>;
 };
 
 type SourceFileSummaryRow = {
@@ -112,6 +119,44 @@ function collectQualityWarnings(costTelemetry: Record<string, unknown> | null) {
     : [];
 
   return [...new Set([...lintIssues, ...advisoryIssues])];
+}
+
+function buildCustomerPreviewAssets(
+  jobId: string,
+  previewAssets: ArtifactManifestRow["preview_assets"],
+) {
+  if (!Array.isArray(previewAssets)) {
+    return [];
+  }
+
+  const normalized = previewAssets
+    .filter((asset): asset is NonNullable<ArtifactManifestRow["preview_assets"]>[number] =>
+      typeof asset?.position === "number" &&
+      typeof asset?.fileName === "string" &&
+      asset.fileName.length > 0,
+    )
+    .slice(0, 3)
+    .map((asset) => ({
+      position: asset.position,
+      imageUrl: `/api/jobs/${jobId}/previews/${asset.position}`,
+      fileName: asset.fileName,
+      fileBytes: typeof asset.fileBytes === "number" ? asset.fileBytes : null,
+      checksumSha256: typeof asset.checksumSha256 === "string" ? asset.checksumSha256 : null,
+    }));
+
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const distinctChecksums = new Set(
+    normalized
+      .map((asset) => asset.checksumSha256)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  );
+  const largestPreviewBytes = normalized.reduce((max, asset) => Math.max(max, asset.fileBytes ?? 0), 0);
+  const placeholderLike = (normalized.length > 1 && distinctChecksums.size <= 1) || largestPreviewBytes < 15_000;
+
+  return placeholderLike ? [] : normalized;
 }
 
 type PhaseEstimate = {
@@ -421,16 +466,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
           fileBytes: a.fileBytes,
           downloadUrl: `/api/artifacts/${jobId}/${a.kind}`,
         })),
-        previews: Array.isArray(m.preview_assets)
-          ? m.preview_assets
-              .filter((asset) => typeof asset?.position === "number")
-              .slice(0, 3)
-              .map((asset) => ({
-                position: asset.position,
-                imageUrl: `/api/jobs/${jobId}/previews/${asset.position}`,
-                fileName: asset.fileName,
-              }))
-          : [],
+        previews: buildCustomerPreviewAssets(jobId, m.preview_assets),
       };
     }
 

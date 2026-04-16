@@ -48,6 +48,7 @@ export async function applyTemplateBranding(
   shapeIdCounter = 9000;
 
   const zip = await JSZip.loadAsync(pptxBuffer);
+  const slideSize = await readSlideSize(zip);
 
   // 1. Replace theme color + font schemes
   if (injection.themeColorSchemeXml || injection.themeFontSchemeXml) {
@@ -55,7 +56,7 @@ export async function applyTemplateBranding(
   }
 
   // 2. Inject logo + decorative shapes + background into slide master
-  await injectMasterElements(zip, injection);
+  await injectMasterElements(zip, injection, slideSize);
 
   // 3. Ensure content types cover image extensions
   await ensureContentTypes(zip, injection);
@@ -97,6 +98,7 @@ async function replaceThemeSchemes(
 async function injectMasterElements(
   zip: JSZip,
   injection: InjectionPayload,
+  slideSize: { widthInches: number; heightInches: number },
 ): Promise<void> {
   // Discover all slide masters in the PPTX — corporate templates may have 2+
   const masterEntries = Object.keys(zip.files)
@@ -131,10 +133,11 @@ async function injectMasterElements(
     }
 
     // Logo — add a rels entry per master pointing to the shared media file
-    if (injection.logoBase64 && injection.logoPosition) {
+    const logoPosition = resolveVisibleLogoPosition(injection.logoPosition, slideSize);
+    if (injection.logoBase64 && logoPosition) {
       const rId = await addLogoRelToMaster(zip, masterEntry, mediaPath);
       if (rId) {
-        elementsToInsert.push(buildLogoPicXml(rId, injection.logoPosition));
+        elementsToInsert.push(buildLogoPicXml(rId, logoPosition));
       }
     }
 
@@ -239,6 +242,87 @@ function insertIntoSpTree(masterXml: string, elements: string[]): string {
   // Insert before </p:spTree> so new elements render on top of existing master content
   const joined = elements.join("\n");
   return masterXml.replace(/<\/p:spTree>/, `${joined}</p:spTree>`);
+}
+
+async function readSlideSize(zip: JSZip) {
+  const presentationFile = zip.file("ppt/presentation.xml");
+  if (!presentationFile) {
+    return { widthInches: 13.333, heightInches: 7.5 };
+  }
+
+  const presentationXml = await presentationFile.async("text");
+  const match = presentationXml.match(/<p:sldSz cx="(\d+)" cy="(\d+)"\/>/);
+  if (!match) {
+    return { widthInches: 13.333, heightInches: 7.5 };
+  }
+
+  return {
+    widthInches: Number(match[1]) / EMU_PER_INCH,
+    heightInches: Number(match[2]) / EMU_PER_INCH,
+  };
+}
+
+function resolveVisibleLogoPosition(
+  original: InjectionPayload["logoPosition"],
+  slideSize: { widthInches: number; heightInches: number },
+) {
+  if (!original) {
+    return null;
+  }
+
+  const aspectRatio = original.w > 0 && original.h > 0
+    ? clamp(original.w / original.h, 0.5, 4)
+    : 1;
+  const minVisibleWidth = clamp(slideSize.widthInches * 0.055, 0.6, 0.95);
+  const minVisibleHeight = clamp(slideSize.heightInches * 0.055, 0.42, 0.72);
+  const needsPromotion = original.w < minVisibleWidth || original.h < minVisibleHeight;
+
+  if (!needsPromotion) {
+    return clampLogoToSlide(original, slideSize);
+  }
+
+  let width = Math.max(original.w, minVisibleWidth);
+  let height = width / aspectRatio;
+
+  if (height < minVisibleHeight) {
+    height = minVisibleHeight;
+    width = height * aspectRatio;
+  }
+
+  const maxHeaderHeight = slideSize.heightInches * 0.12;
+  if (height > maxHeaderHeight) {
+    height = maxHeaderHeight;
+    width = height * aspectRatio;
+  }
+
+  const marginX = clamp(slideSize.widthInches * 0.04, 0.3, 0.55);
+  const marginY = clamp(slideSize.heightInches * 0.05, 0.28, 0.42);
+
+  return clampLogoToSlide({
+    x: slideSize.widthInches - marginX - width,
+    y: marginY,
+    w: width,
+    h: height,
+  }, slideSize);
+}
+
+function clampLogoToSlide(
+  position: NonNullable<InjectionPayload["logoPosition"]>,
+  slideSize: { widthInches: number; heightInches: number },
+) {
+  const width = clamp(position.w, 0.2, Math.max(0.2, slideSize.widthInches - 0.4));
+  const height = clamp(position.h, 0.2, Math.max(0.2, slideSize.heightInches - 0.4));
+
+  return {
+    x: clamp(position.x, 0.1, Math.max(0.1, slideSize.widthInches - width - 0.1)),
+    y: clamp(position.y, 0.1, Math.max(0.1, slideSize.heightInches - height - 0.1)),
+    w: width,
+    h: height,
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }
 
 async function ensureContentTypes(

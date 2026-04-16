@@ -25,6 +25,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const BASQUIO_LIGHT_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-light-bg-blue@2x.png";
 const BASQUIO_DARK_LOGO_PATH = "apps/web/public/brand/png/logo/2x/basquio-logo-dark-bg@2x.png";
 const brandAssetCache = new Map<string, Promise<string | null>>();
+const EMU_PER_INCH = 914_400;
 
 function resolveRepoAssetPath(relativePath: string) {
   const candidates = [
@@ -131,6 +132,8 @@ export type RenderV2PptxInput = {
   includeBasquioBranding?: boolean;
   exportMode?: ExportMode;
   chartImages?: Map<string, Buffer>;
+  slideWidthInches?: number;
+  slideHeightInches?: number;
 };
 
 // ─── CONSULTING-GRADE DESIGN SYSTEM ─────────────────────────────
@@ -2067,22 +2070,106 @@ export async function renderV2PptxArtifact(
   // The multiLvlStrRef→strRef fix is safe for PowerPoint (flat string refs are valid OOXML)
   // and required for Google Slides / Keynote compatibility.
   const postProcessed = await fixPptxChartCompatibility(rawBuffer);
+  const targetSlideWidth = input.slideWidthInches ?? SLIDE_W;
+  const targetSlideHeight = input.slideHeightInches ?? SLIDE_H;
+  const resizedBuffer = needsCanvasResize(targetSlideWidth, targetSlideHeight)
+    ? await resizePptxCanvas(postProcessed, targetSlideWidth, targetSlideHeight)
+    : postProcessed;
 
   // Validate OOXML structure — warn but don't block export
-  const validation = await validateOoxmlStructure(postProcessed);
+  const validation = await validateOoxmlStructure(resizedBuffer);
   if (!validation.valid) {
     console.warn(`[render-v2] OOXML validation errors: ${validation.errors.join("; ")}`);
   }
   if (validation.warnings.length > 0) {
     console.warn(`[render-v2] OOXML compatibility warnings: ${validation.warnings.join("; ")}`);
   }
-  const buffer = postProcessed;
+  const buffer = resizedBuffer;
 
   return {
     fileName: "basquio-deck.pptx",
     mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     buffer,
   };
+}
+
+function needsCanvasResize(targetWidth: number, targetHeight: number) {
+  return Math.abs(targetWidth - SLIDE_W) > 0.01 || Math.abs(targetHeight - SLIDE_H) > 0.01;
+}
+
+async function resizePptxCanvas(
+  pptxBuffer: Buffer,
+  targetWidthInches: number,
+  targetHeightInches: number,
+) {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(pptxBuffer);
+  const scaleX = targetWidthInches / SLIDE_W;
+  const scaleY = targetHeightInches / SLIDE_H;
+  let modified = false;
+
+  const presentationEntry = "ppt/presentation.xml";
+  const presentationFile = zip.file(presentationEntry);
+  if (presentationFile) {
+    const original = await presentationFile.async("text");
+    const resized = original.replace(
+      /<p:sldSz cx="(\d+)" cy="(\d+)"\/>/,
+      `<p:sldSz cx="${Math.round(targetWidthInches * EMU_PER_INCH)}" cy="${Math.round(targetHeightInches * EMU_PER_INCH)}"/>`,
+    );
+    if (resized !== original) {
+      zip.file(presentationEntry, resized);
+      modified = true;
+    }
+  }
+
+  const coordinateEntries = Object.keys(zip.files).filter((entry) =>
+    /^ppt\/slides\/slide\d+\.xml$/i.test(entry) ||
+    /^ppt\/slideMasters\/slideMaster\d+\.xml$/i.test(entry) ||
+    /^ppt\/slideLayouts\/slideLayout\d+\.xml$/i.test(entry),
+  );
+
+  for (const entry of coordinateEntries) {
+    const file = zip.file(entry);
+    if (!file) {
+      continue;
+    }
+    const original = await file.async("text");
+    const resized = scalePptxCoordinates(original, scaleX, scaleY);
+    if (resized !== original) {
+      zip.file(entry, resized);
+      modified = true;
+    }
+  }
+
+  if (!modified) {
+    return pptxBuffer;
+  }
+
+  return Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+}
+
+function scalePptxCoordinates(xml: string, scaleX: number, scaleY: number) {
+  let scaled = xml;
+  const xAttributes = ["x", "cx", "lIns", "rIns", "marL", "indent", "defTabSz"];
+  const yAttributes = ["y", "cy", "tIns", "bIns"];
+
+  for (const attribute of xAttributes) {
+    scaled = scaleXmlAttribute(scaled, attribute, scaleX);
+  }
+  for (const attribute of yAttributes) {
+    scaled = scaleXmlAttribute(scaled, attribute, scaleY);
+  }
+
+  return scaled;
+}
+
+function scaleXmlAttribute(xml: string, attribute: string, factor: number) {
+  if (Math.abs(factor - 1) < 0.0001) {
+    return xml;
+  }
+
+  const pattern = new RegExp(`\\b${attribute}="(\\d+)"`, "g");
+  return xml.replace(pattern, (_match, rawValue: string) => `${attribute}="${Math.round(Number(rawValue) * factor)}"`);
 }
 
 // ─── CROSS-APP COMPATIBILITY POST-PROCESSOR ─────────────────────
