@@ -202,7 +202,7 @@ When users query ChatGPT or Gemini about turning data into presentations, the AI
 
 ## Try the Workflow
 
-If you have a recurring reporting workflow, category reviews, quarterly business reviews, client reporting packs, [try Basquio with your actual data](https://basquio.com/get-started). The first standard report is free.
+If you have a recurring reporting workflow, category reviews, quarterly business reviews, client reporting packs, [try Basquio with your actual data](https://basquio.com/get-started). Basquio starts with 30 one-time free credits, enough for roughly two standard Deck runs.
 
 Upload the files behind your next review, write a one-line brief about who the audience is, and see what comes back.
 
@@ -218,7 +218,7 @@ CSV, Excel (.xlsx, .xls), and common spreadsheet formats. Syndicated data export
 Yes. Upload your PPTX template and Basquio applies your brand system to the output.
 
 **How does Basquio pricing compare to alternatives?**
-Basquio charges $10 per report or $149/month for teams. A traditional analyst-built deck costs $1,200-3,000 in loaded labor. think-cell costs $450/user/year. Tableau costs $75/user/month.`,
+Basquio starts with 30 one-time free credits, then moves to Starter at $19/month or Pro at $149/month for recurring reporting. A traditional analyst-built deck costs $1,200-3,000 in loaded labor. think-cell costs $450/user/year. Tableau costs $75/user/month.`,
   },
   {
     slug: "basquio-vs-gamma-data-analysis-vs-slide-design",
@@ -334,7 +334,7 @@ Yes. Many teams use Gamma for quick internal presentations and Basquio for data-
     slug: "automate-category-review-decks-syndicated-data",
     title: "How to Automate Category Review Decks from Syndicated Data",
     description:
-      "CPG brand managers spend 20-30 hours per cycle building category review decks from syndicated data. The automated workflow takes 10-15 minutes and costs $10 per report.",
+      "CPG brand managers spend 20-30 hours per cycle building category review decks from syndicated data. The automated workflow takes 10-15 minutes and runs on Basquio's credit system.",
     publishedAt: "2026-04-01",
     author: "Marco Di Cesare",
     category: "industry",
@@ -351,7 +351,7 @@ Yes. Many teams use Gamma for quick internal presentations and Basquio for data-
     readingTime: "10 min read",
     content: `A CPG category review deck costs $1,200-3,000 in analyst labor per cycle. The analysis takes a few hours. The production (charts, narrative, formatting, brand template) takes 20-30 hours. That production time is 3-5x the analysis time, every single cycle, every single brand.
 
-The automated workflow produces the same deliverable in 10-15 minutes at $10 per report. This is a 90-97% cost reduction.
+The automated workflow produces the same deliverable in 10-15 minutes on Basquio's credit system. Free users start with 30 one-time credits, and recurring workflows move to Starter or Pro. This is still a 90-97% cost reduction versus manual production.
 
 ## What Is the Category Review Workflow?
 
@@ -557,7 +557,7 @@ Basquio produces branded, professional PPTX decks with real computed charts. The
 Basquio. Each cycle, upload the new data and get an updated deck. Beautiful.ai requires rebuilding from scratch because it does not process data files.
 
 **What is the price difference?**
-Beautiful.ai costs $12-50/month for unlimited presentations. Basquio costs $10 per report or $149/month for teams. For teams producing 5+ data decks per month, the per-report model is more cost-effective than manually building each one.`,
+Beautiful.ai costs $12-50/month for unlimited presentations. Basquio starts with 30 one-time free credits, then moves to Starter at $19/month or Pro at $149/month for recurring workflows. For teams producing data-heavy decks, the credits model is still far cheaper than manually building each one.`,
   },
   {
     slug: "ai-for-consultants-data-analysis-to-client-decks",
@@ -611,7 +611,7 @@ Steps 1-2 require domain expertise. Steps 3-5 are production. A first-year analy
 | Source notes added per chart | Source traceability built into every chart |
 | 5-10 review cycles | Review one draft, edit in PowerPoint |
 | Time: 20-40 hours per deck | Time: 15 minutes + 2-4 hours review |
-| Cost: $10,000-28,000 per deck (at consulting rates) | Cost: $10 per report + review time |
+| Cost: $10,000-28,000 per deck (at consulting rates) | Cost: Basquio credits + review time |
 
 The analysis stays with the analyst. The production shifts to automation.
 
@@ -793,7 +793,7 @@ A PowerPoint add-in that links Excel ranges directly to PowerPoint charts. When 
 Upload Excel/CSV files with a one-line brief. AI reads the data, computes metrics, identifies trends, generates charts, writes narrative, and produces a branded PPTX + PDF report.
 
 **Time per deck:** 10-15 minutes (automated) + 2-4 hours review.
-**Cost:** $10 per report or $149/month for teams.
+**Cost:** 30 one-time free credits to start, then $19/month Starter or $149/month Pro.
 **Automation level:** Full. Covers analysis, charting, narrative, and formatting.
 **Best for:** Data-heavy analytical decks (category reviews, business reviews, competitive analysis, financial summaries) where the workflow starts with spreadsheets and ends with a finished deck.
 **Limitation:** Less control over individual chart formatting than think-cell. First draft needs human review for strategic framing. Not suited for design-first creative presentations.
