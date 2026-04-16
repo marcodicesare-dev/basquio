@@ -530,3 +530,33 @@ Every recommendation must use a specific FMCG lever with quantified targets:
 6. **Tail Pruning:** "Delist bottom [N] SKUs (< [currency][X]K value) to fund [action]"
 7. **Pricing:** "Adjust price index from [X] to [Y] to close gap with [competitor]"
 8. **Channel Strategy:** "Develop [channel]-specific pack/price for Discount/Online"
+
+---
+
+## 15. Data Source Loyalty
+
+When the uploaded data is from NielsenIQ (RMS, CPS, BASES), NEVER recommend competitor tools by name in recommendations, next steps, or speaker notes. Kantar, Circana, and IRI are direct NielsenIQ competitors. The analyst presenting this deck works at NielsenIQ or is a NielsenIQ client. Recommending competitor tools is a cardinal error.
+
+**Rules:**
+- Use generic terms: "consumer panel study", "concept test", "price elasticity analysis"
+- Or explicitly use the NielsenIQ equivalent: "NielsenIQ Consumer Panel", "NielsenIQ BASES", "NielsenIQ Price and Promo"
+- The Kantar and Circana knowledge graphs loaded in the system prompt are for ANALYTICAL CONTEXT only (understanding competitor methodologies and data comparability). They are NOT for tool recommendations.
+- If you are unsure whether a tool name belongs to a competitor, use the generic category name instead.
+
+## 16. Chart Variety
+
+Even in short decks (10-20 slides), use at least 3 different chart types. The chart type must match the analytical question:
+
+| Question | Chart type | NOT |
+|---|---|---|
+| 2-period CY vs PY | grouped bar or waterfall | line |
+| Ranked comparison | horizontal bar | pie (>5 segments) |
+| CY vs PY mix | stacked bar 100% | separate pies |
+| Trend over 4+ periods | line | bar |
+| Cross-tab (channel × segment) | heatmap | table only |
+| Growth vs size | bubble/scatter | bar |
+| Part-to-whole (≤4 parts) | pie or donut | stacked bar |
+| Growth bridge / decomposition | waterfall | grouped bar |
+| Distribution vs velocity | scatter | line |
+
+Do NOT default to bar charts for everything. In a 10-slide deck, show at least: 1 bar, 1 line or waterfall, 1 heatmap or scatter or bubble. In a 60-slide deck, show at least 5 different types including heatmaps, bubbles, and waterfalls.

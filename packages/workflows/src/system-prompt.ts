@@ -510,6 +510,178 @@ slide.addText("Con interventi mirati in 90 giorni, il gap di -0.5pp è recuperab
 });
 </example>
 
+<example name="evidence_grid_chart_plus_table">
+// Evidence-grid: chart LEFT + compact data table RIGHT for evidence co-location
+// Use this pattern on EVERY analytical slide so the analyst can validate numbers at a glance
+
+const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
+slide.background = { color: "F5F1E8" };
+
+slide.addText("LANDSCAPE COMPETITIVO", {
+  x: 0.45, y: 0.22, w: 12.4, h: 0.18,
+  fontSize: 9, fontFace: "Arial", color: "1A6AFF", letterSpacing: 1.5, bold: true
+});
+slide.addText("San Carlo cresce +1,7% diversificando su 10 brand; Kellanova cala -5,0% concentrata sul tubo", {
+  x: 0.45, y: 0.42, w: 12.4, h: 0.65,
+  fontSize: 20, fontFace: "Arial", color: "0B0C0C", bold: true
+});
+
+// Chart rendered via matplotlib at chart-split dimensions
+slide.addImage({ path: "competitor_share_chart.png", x: 0.4, y: 1.3, w: 5.8, h: 3.5 });
+
+// Compact data table with supporting numbers — RIGHT of chart
+slide.addTable(
+  [
+    [
+      { text: "Produttore", options: { bold: true, fontSize: 9, color: "0B0C0C", fill: { color: "F5F1E8" } } },
+      { text: "Val \\u20ACM", options: { bold: true, fontSize: 9, color: "0B0C0C", align: "right", fill: { color: "F5F1E8" } } },
+      { text: "Quota", options: { bold: true, fontSize: 9, color: "0B0C0C", align: "right", fill: { color: "F5F1E8" } } },
+      { text: "\\u0394 pp", options: { bold: true, fontSize: 9, color: "0B0C0C", align: "right", fill: { color: "F5F1E8" } } },
+    ],
+    ["San Carlo", { text: "245,2", options: { align: "right" } }, { text: "24,0%", options: { align: "right" } }, { text: "+0,6", options: { align: "right", color: "059669" } }],
+    ["Mondelez", { text: "97,8", options: { align: "right" } }, { text: "9,6%", options: { align: "right" } }, { text: "+0,1", options: { align: "right", color: "059669" } }],
+    ["Kellanova", { text: "93,7", options: { align: "right" } }, { text: "9,2%", options: { align: "right" } }, { text: "-0,4", options: { align: "right", color: "DC2626" } }],
+    ["PepsiCo", { text: "38,4", options: { align: "right" } }, { text: "3,8%", options: { align: "right" } }, { text: "-0,2", options: { align: "right", color: "DC2626" } }],
+  ],
+  {
+    x: 6.5, y: 1.3, w: 6.3, colW: [1.8, 1.2, 1.1, 1.0],
+    fontSize: 9, fontFace: "Arial", color: "374151",
+    border: { type: "solid", pt: 0.5, color: "D6D1C4" },
+    rowH: [0.3, 0.28, 0.28, 0.28, 0.28],
+    autoPage: false,
+  }
+);
+
+slide.addText("I player con portafoglio diversificato crescono; chi concentra su un singolo formato arretra", {
+  x: 0.45, y: 5.1, w: 12.4, h: 0.42,
+  fontSize: 10, fontFace: "Arial", color: "0B0C0C",
+  fill: { color: "1A6AFF", transparency: 85 }
+});
+slide.addText("Fonte: NielsenIQ RMS | L52W | Top 8 produttori per valore", {
+  x: 0.45, y: 6.95, w: 12.4, h: 0.25,
+  fontSize: 8, fontFace: "Arial", color: "6B7280"
+});
+</example>
+
+<example name="client_pleasing_recommendation_card">
+// Client-pleasing recommendation: OPPORTUNITY FIRST, then lever and evidence anchor
+// Title states the gain pool. Body explains how. Footer has lever/impact/timeline.
+// This is the correct framing for a client who is PAYING for this analysis.
+
+const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
+slide.background = { color: "F5F1E8" };
+
+slide.addText("RACCOMANDAZIONE 1 | PRIORITY 1 (MUST-WIN)", {
+  x: 0.45, y: 0.22, w: 12.4, h: 0.18,
+  fontSize: 9, fontFace: "Arial", color: "1A6AFF", letterSpacing: 1.5, bold: true
+});
+
+// Title states the OPPORTUNITY, not the problem
+// GOOD: "Catturare \\u20AC4,8M nel Multipack"
+// BAD: "Kellanova ha quota zero nel Multipack"
+slide.addText("Catturare \\u20AC4,8M nel Multipack \\u2014 il formato in maggiore crescita (+5,0%)", {
+  x: 0.45, y: 0.42, w: 12.4, h: 0.65,
+  fontSize: 20, fontFace: "Arial", color: "0B0C0C", bold: true
+});
+
+// Two cards: action + evidence
+const cx1 = 0.45, cx2 = 5.1;
+const cy = 1.3;
+
+// Card 1: ACTION
+slide.addText("", { x: cx1, y: cy, w: 4.3, h: 4.0, fill: { color: "FBF8F1" } });
+slide.addText("", { x: cx1, y: cy, w: 0.08, h: 4.0, fill: { color: "4CC9A0" } });
+slide.addText("L\\u2019AZIONE", {
+  x: cx1 + 0.2, y: cy + 0.15, w: 3.9, h: 0.3,
+  fontSize: 11, fontFace: "Arial", color: "0B0C0C", bold: true
+});
+slide.addText(
+  "Sviluppare un Multipack Pringles (3-5 pz, 40g ciascuno) per il canale Super e Hyper 2500-4999. " +
+  "Posizionamento: snack quotidiano e lunchbox, non sharing serale. " +
+  "Prezzo per kg superiore al tubo Large Sharing per proteggere marginalit\\u00E0.",
+  { x: cx1 + 0.2, y: cy + 0.55, w: 3.9, h: 2.3,
+    fontSize: 11, fontFace: "Arial", color: "5D656B", lineSpacing: 14, valign: "top", shrinkText: true }
+);
+slide.addText("Leva: Pack Architecture | Timeline: Q3 2026 lancio | Impatto base: \\u20AC4,8M", {
+  x: cx1 + 0.2, y: cy + 3.2, w: 3.9, h: 0.5,
+  fontSize: 9, fontFace: "Arial", color: "6B7280", valign: "bottom"
+});
+
+// Card 2: EVIDENCE + SCENARIOS
+slide.addText("", { x: cx2, y: cy, w: 4.3, h: 4.0, fill: { color: "FBF8F1" } });
+slide.addText("", { x: cx2, y: cy, w: 0.08, h: 4.0, fill: { color: "1A6AFF" } });
+slide.addText("EVIDENZA & SCENARI", {
+  x: cx2 + 0.2, y: cy + 0.15, w: 3.9, h: 0.3,
+  fontSize: 11, fontFace: "Arial", color: "0B0C0C", bold: true
+});
+slide.addText(
+  "Pool Multipack: \\u20AC159,9M, +5,0% YoY (cfr. slide 9). " +
+  "Kellanova oggi: quota ~0%. Mondelez 43%, San Carlo 26%.\\n\\n" +
+  "Scenario Base: 3% quota = \\u20AC4,8M\\n" +
+  "Scenario Ambizioso: 5% quota = \\u20AC8,0M\\n" +
+  "Scenario Prudente: 1,5% quota = \\u20AC2,4M\\n\\n" +
+  "Rischio: cannibalizzazione tubo Large Sharing.\\n" +
+  "Mitigazione: posizionamento su occasioni diverse, prezzo/kg superiore.",
+  { x: cx2 + 0.2, y: cy + 0.55, w: 3.9, h: 3.1,
+    fontSize: 11, fontFace: "Arial", color: "5D656B", lineSpacing: 14, valign: "top", shrinkText: true }
+);
+</example>
+
+<example name="kpi_card_correct_layout">
+// CORRECT KPI card layout: each element has DIFFERENT y-coordinates
+// The background rect is the container. Label, value, and delta are SEPARATE addText calls
+// with OFFSET y-positions INSIDE the card region.
+//
+// WRONG (stacking bug):
+//   addText("", { x: 0.45, y: 1.5, w: 3.0, h: 1.25, fill: { color: "FFFFFF" } });  // background
+//   addText("LABEL", { x: 0.45, y: 1.5, w: 3.0, h: 1.25 });  // SAME position = invisible
+//
+// CORRECT (offset layout):
+//   addText("", { x: 0.45, y: 1.5, w: 3.0, h: 1.25, fill: { color: "FFFFFF" } });  // background card
+//   addText("", { x: 0.45, y: 1.5, w: 0.08, h: 1.25, fill: { color: "1A6AFF" } }); // accent bar at left edge
+//   addText("LABEL", { x: 0.65, y: 1.6, w: 2.75, h: 0.2 });   // label near TOP
+//   addText("\\u20AC781M", { x: 0.65, y: 1.8, w: 2.75, h: 0.55 }); // value in MIDDLE
+//   addText("+8.2%", { x: 0.65, y: 2.35, w: 2.75, h: 0.25 });  // delta at BOTTOM
+
+// For a row of 4 KPI cards spaced horizontally:
+const cardWidth = 2.9;
+const cardGap = 0.25;
+const startX = 0.45;
+const cardY = 1.5;
+const cardH = 1.15;
+const accentColors = ["1A6AFF", "31D1FF", "59AD00", "EF5F17"];
+
+const kpis = [
+  { label: "VALORE CATEGORIA", value: "\\u20AC1.020M", delta: "-0,67% YoY" },
+  { label: "MULTIPACK", value: "\\u20AC160M", delta: "+5,0% YoY" },
+  { label: "VEGETABLE CHIPS", value: "\\u20AC27M", delta: "+34% YoY" },
+  { label: "KELLANOVA", value: "\\u20AC93,7M", delta: "-5,0% YoY" },
+];
+
+kpis.forEach((kpi, i) => {
+  const cx = startX + i * (cardWidth + cardGap);
+  // 1. Background card
+  slide.addText("", { x: cx, y: cardY, w: cardWidth, h: cardH, fill: { color: "FFFFFF" } });
+  // 2. Left accent bar (same x, same y, tiny width)
+  slide.addText("", { x: cx, y: cardY, w: 0.08, h: cardH, fill: { color: accentColors[i] } });
+  // 3. Label — offset right and slightly down from card top
+  slide.addText(kpi.label, {
+    x: cx + 0.2, y: cardY + 0.1, w: cardWidth - 0.35, h: 0.2,
+    fontSize: 9, fontFace: "Arial", color: "6B7280"
+  });
+  // 4. Value — below label
+  slide.addText(kpi.value, {
+    x: cx + 0.2, y: cardY + 0.3, w: cardWidth - 0.35, h: 0.45,
+    fontSize: 22, fontFace: "Arial", color: "060A45", bold: true
+  });
+  // 5. Delta — at bottom of card
+  slide.addText(kpi.delta, {
+    x: cx + 0.2, y: cardY + 0.8, w: cardWidth - 0.35, h: 0.25,
+    fontSize: 10, fontFace: "Arial", color: "060A45"
+  });
+});
+</example>
+
 <example name="perfect_pareto_chart">
 // Pareto chart: bars + cumulative line on secondary axis
 // Use for concentration, contribution, or any "vital few" analysis

@@ -3431,6 +3431,12 @@ function buildAuthorMessage(
             : []),
           ...(chartSlotConstraintMessage ? [chartSlotConstraintMessage] : []),
           ...(perSlideConstraintMessage ? [perSlideConstraintMessage] : []),
+          "- CHART VARIETY: use at least 3 different chart types even in short decks. Do not default to bar charts for everything. Use heatmaps for cross-tabs, bubbles/scatter for growth-vs-size, waterfalls for bridges. Follow the chart selection rules in the NIQ Analyst Playbook section 16.",
+          ...(run.target_slide_count >= 40 ? [
+            `- LONG DECK TITLES: every slide title must be a FULL SENTENCE stating an insight with at least one number. Single-word titles like 'CATEGORIA' or 'DISTRIBUZIONE' are NOT acceptable. Chapter labels ('CAPITOLO X | TOPIC') are only for section dividers (max ${Math.min(8, Math.floor(run.target_slide_count / 7))} in a ${run.target_slide_count}-slide deck).`,
+            `- LAYOUT VARIETY: for this ${run.target_slide_count}-slide deck, use at least 6 different archetype layouts. Cycle through exec-summary, title-chart, chart-split, evidence-grid, comparison, recommendation-cards, key-findings, table, scenario-cards.`,
+            `- RECOMMENDATION DEPTH: for a ${run.target_slide_count}-slide deck, generate at least ${Math.max(6, Math.floor(run.target_slide_count / 8))} recommendation cards grouped by strategic theme, with an impact summary slide and a prioritization slide.`,
+          ] : []),
           "- Keep code execution output compact after the first profiling pass, but still complete every required deliverable.",
           "- Follow the system-prompt examples and per-slide constraints instead of inventing custom layout logic: complete SCQA/body copy, slot-sized PNG charts, and clean recommendation cards.",
           "- Rank recommendations by impact × feasibility. The first recommendation must be Priority 1 (must-win), then Priority 2 (high impact), then quick wins.",

@@ -351,6 +351,220 @@ if (!titleHasNumber && !isExemptSlide) {
 
 ---
 
+## 4B. LAYER B CRITICAL: Visual Quality Failures (Forensic from Opus 4.7 60-Slide Runs)
+
+Two production 60-slide decks were forensically analyzed on April 16. The visual quality is **unacceptable for client delivery**. These are not edge cases — they are systematic pipeline failures that must be fixed.
+
+### 4B.1 Finding: Massive Shape Overlaps (KPI Cards Broken)
+
+**Evidence:** 357 overlapping shape pairs in Deck 1, 207 in Deck 2. Most are 100% overlap — shapes stacked directly on top of each other.
+
+**Root cause:** PptxGenJS KPI card rendering creates multiple shapes (background rect + label text + value text + delta text) and places them at the same coordinates. The few-shot examples in the system prompt show correct placement with offset coordinates, but Claude is not following them at 60-slide scale.
+
+**Fix (Layer B — validation):**
+```typescript
+// New rendering contract rule: detect shape collisions
+function detectShapeCollisions(slideXml: string): ContractIssue[] {
+  const positions = extractShapePositions(slideXml);
+  const collisions = [];
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      const overlap = computeOverlap(positions[i], positions[j]);
+      if (overlap > 0.8) {
+        collisions.push({
+          severity: 'major',
+          message: `Shapes ${i} and ${j} overlap by ${(overlap*100).toFixed(0)}% — likely stacked KPI cards`
+        });
+      }
+    }
+  }
+  return collisions;
+}
+```
+
+**Fix (Layer C — prompt):**
+Add to system prompt:
+```
+KPI CARD STACKING BUG: When creating KPI cards with addText(), each card element 
+(background, label, value, delta) MUST have DIFFERENT y-coordinates. The background 
+rect is the container. The label sits at the TOP of the card. The value sits in the 
+MIDDLE. The delta sits at the BOTTOM. They are NOT the same shape — they are 
+SEPARATE addText() calls with OFFSET positions inside the card region.
+
+BAD:  All at y: 1.5
+GOOD: background y: 1.3 h: 1.2, label y: 1.35, value y: 1.6, delta y: 1.95
+```
+
+### 4B.2 Finding: Topic-Label Titles (Not Insight Titles)
+
+**Evidence:** Deck 2 has 55 out of 60 titles that are topic labels. Single words: "CATEGORIA", "DINAMICHE", "DISTRIBUZIONE", "SEGMENTO", "CRESCITA". Deck 1 is better but still has 21 topic labels.
+
+**Root cause:** At 60-slide scale, Claude falls back to chapter-header style ("CAPITOLO X | TOPIC") instead of insight-driven action titles. The current lint rule catches this but only as a minor warning, so it doesn't trigger revise.
+
+**Fix (Layer B — validation):**
+- Upgrade "Non-cover title has no number" from minor → **major** (triggers revise)
+- Add new rule: "Title is a single word" → **critical** (instant fail)
+- Add new rule: "Title is ALL CAPS with no sentence structure" → **major**
+
+```typescript
+// Single-word title detector
+if (title.trim().split(/\s+/).length <= 2 && !isExemptSlide(archetype)) {
+  violations.push({
+    severity: 'critical',
+    message: `Slide ${n}: title "${title}" is too short. Must be a full sentence stating an insight with ≥1 number.`
+  });
+}
+
+// ALL-CAPS non-sentence detector
+if (title === title.toUpperCase() && title.length > 5 && !title.includes('|')) {
+  violations.push({
+    severity: 'major',
+    message: `Slide ${n}: title "${title}" is ALL-CAPS topic label. Must be sentence case with insight.`
+  });
+}
+```
+
+**Fix (Layer C — prompt):**
+Add to author message for ≥40 slides:
+```
+CRITICAL FOR LONG DECKS: Every slide title must be a FULL SENTENCE stating an insight 
+with at least one number. "CATEGORIA" is NOT a title. "La categoria vale €1,02Mld ma 
+cala -0,7%: il valore si sposta verso veggie e formati piccoli" IS a title. 
+Chapter labels like "CAPITOLO 2 | FORMATI" are only acceptable for SECTION DIVIDER 
+slides (max 8 section dividers in a 60-slide deck). All other slides must have 
+insight-driven titles.
+```
+
+### 4B.3 Finding: Zero Data Tables (No Evidence Co-location)
+
+**Evidence:** Deck 1 has 0 tables across 60 slides. Deck 2 has 2 tables. Both have 41-46 chart images.
+
+**Root cause:** Claude renders matplotlib charts as PNG images but never calls addTable() to add supporting data. The evidence co-location instruction was in the spec but never reached the actual prompt.
+
+**Fix (Layer B — validation):**
+- Evidence co-location validator (Section 4.2 above) — flag analytical slides without tables
+- Start as **major** severity, not minor — this is a core quality requirement
+
+**Fix (Layer C — prompt):**
+Evidence co-location rule + few-shot example (Section 5.1 and 5.3 below).
+
+### 4B.4 Finding: Layout Monotony (Single Layout for 60 Slides)
+
+**Evidence:** Both decks use only `slideLayout35.xml` for all 60 slides. The existing lint rule catches ">40% of slides use same layout" but this is at 100%.
+
+**Root cause:** Claude is using a single PptxGenJS layout master for every slide because it works. The few-shot examples don't show enough variety, and there's no strong enforcement.
+
+**Fix (Layer B — validation):**
+- Existing "Only N layout types used" rule: upgrade from minor → **major** for ≥20-slide decks
+- Add new rule: "100% of slides use same layout" → **critical**
+
+**Fix (Layer C — prompt):**
+Add to author message for ≥20 slides:
+```
+LAYOUT VARIETY: For decks with 20+ slides, you MUST use at least 5 different archetype 
+layouts. Cycle through: exec-summary, title-chart, chart-split, evidence-grid, 
+comparison, recommendation-cards, key-findings, table. Do NOT default to the same 
+two-column layout for every slide.
+```
+
+### 4B.5 Finding: Competitor Tool Recommendations (Cardinal Sin)
+
+**Evidence:** Slide 60 of babaeae1 says "Kantar/Circana panel consumer per validare ipotesi occasione Multipack." This recommends NielsenIQ's direct competitors to a client using a NielsenIQ template with NielsenIQ data.
+
+**Root cause:** The knowledge packs include Kantar and Circana knowledge graphs (`kantar-knowledge-graph.md`, `circana-knowledge-graph.md`). Claude sees these as valid tools and recommends them in next-steps. There is no rule saying "if the data source is NielsenIQ, never recommend Kantar or Circana tools."
+
+**Fix (Layer A — knowledge pack):**
+Add to `niq-analyst-playbook.md`:
+```
+DATA SOURCE LOYALTY: When the uploaded data is from NielsenIQ (RMS, CPS, BASES),
+NEVER recommend competitor tools (Kantar, Circana, IRI) by name in recommendations 
+or next steps. Use generic terms: "consumer panel", "concept test", "price elasticity 
+study" — or explicitly say "NielsenIQ Consumer Panel" / "NielsenIQ BASES".
+The Kantar and Circana knowledge graphs are loaded for ANALYTICAL CONTEXT only 
+(understanding competitor methodologies), not for tool recommendations.
+```
+
+**Fix (Layer B — validation):**
+```typescript
+const COMPETITOR_TOOL_PATTERNS = [
+  { pattern: /\bkantar\b/i, message: "Competitor tool reference: 'Kantar' — use 'consumer panel' or 'NielsenIQ' instead" },
+  { pattern: /\bcircana\b/i, message: "Competitor tool reference: 'Circana' — use 'NielsenIQ' equivalent" },
+  { pattern: /\biri\s+panel\b/i, message: "Competitor tool reference: 'IRI' — use generic or NielsenIQ term" },
+];
+// Severity: critical — never ship a deck recommending the client's data provider's competitor
+```
+
+### 4B.6 Finding: Recommendation Quality Disappointing
+
+**Evidence from Marco:** "come raccomandations sta un po' delusionato" — recommendations are generic, not specific enough for a 60-slide deep-dive.
+
+**Root cause:** At 60-slide scale, Claude spreads analysis across many slides but compresses recommendations into the same 3-4 generic cards. The recommendation framework doesn't scale with slide count.
+
+**Fix (Layer A — recommendation framework):**
+Add slide-count-aware recommendation depth:
+```
+FOR 10-20 SLIDES: 3-4 recommendation cards, each 50-70 words
+FOR 21-40 SLIDES: 5-6 recommendation cards with base/bull/bear scenarios, each 80-100 words
+FOR 41-60 SLIDES: 7-10 recommendation cards grouped by strategic theme, 
+  each with: action, rationale, evidence slide reference, timeline, risk, 
+  quantified impact. Include an IMPACT SUMMARY slide and a PRIORITIZATION MATRIX.
+FOR 61-100 SLIDES: Full recommendation section (8-12 slides):
+  - 1 overview slide: "5 strategic themes" 
+  - 1 slide per recommendation (5-8): deep-dive with evidence, scenarios, risk
+  - 1 impact summary: cumulative value across all recommendations
+  - 1 prioritization matrix: effort × impact
+  - 1 implementation roadmap: quarterly timeline
+```
+
+### 4B.7 Finding: Chart Variety Is Good — Must Preserve in Short Decks
+
+**Evidence from Marco:** "Bello che ci siano soluzioni estetiche diverse (heatmap, bolle, tabelle più diverse esteticamente, torte) → questa varietà sarebbe ottimo averla anche nelle presentazioni corte"
+
+The 60-slide decks show chart variety (heatmaps, bubble charts, varied table styles, pie charts). This variety is LOST in 10-20 slide decks which tend to use only bar charts.
+
+**Fix (Layer C — prompt):**
+Add to author message for ALL deck sizes:
+```
+CHART VARIETY: Even in short decks (10-20 slides), use at least 3 different chart 
+types. Do not default to bar charts for everything. Choose from:
+- Horizontal bar: for ranked comparisons, category names > 12 chars
+- Grouped bar: for CY vs PY comparisons
+- Line: for trends over 4+ periods
+- Heatmap: for cross-tab matrices (channel × segment, brand × geography)
+- Bubble/scatter: for growth vs size, distribution vs velocity
+- Waterfall: for growth bridges, decomposition
+- Stacked bar 100%: for mix comparisons
+- Pie/donut (max 4 segments): for simple share breakdowns
+The chart type should match the QUESTION being answered, not just be the easiest to render.
+```
+
+### 4B.8 Summary: Visual Quality Scorecard
+
+| Issue | Deck 1 (EN) | Deck 2 (IT) | Severity | Fix Layer |
+|---|---|---|---|---|
+| Shape overlaps (>50%) | 357 pairs | 207 pairs | Critical | B + C |
+| Topic-label titles | 21/60 | 55/60 | Critical | B + C |
+| Tables (evidence) | 0/60 | 2/60 | Major | B + C |
+| Layout variety | 1 layout | 1 layout | Major | B + C |
+| Competitor tool refs | Kantar/Circana on slide 60 | — | Critical | A + B |
+| Recommendation depth | Generic 4 cards for 60 slides | Same | Major | A + C |
+| Chart variety in short decks | N/A (60 slides had variety) | N/A | Major | C |
+| Dense slides (>15 shapes) | 12/60 | 14/60 | Minor | C |
+| Aggressive framing | 1 slide ("fallimento") | 3 slides | Major | A + B |
+
+**Target for next production run:**
+- 0 shape collision pairs with >80% overlap
+- 0 single-word titles, ≥90% of non-divider titles have numbers
+- ≥80% of analytical slides have co-located data tables
+- ≥5 different archetype layouts used
+- 0 competitor tool name references
+- Recommendation count scales with slide count (≥7 for 60-slide decks)
+- ≥3 different chart types even in 10-slide decks
+- 0 client-aggressive framing patterns
+- No slide with >20 shapes
+
+---
+
 ## 5. LAYER C: Prompt Instruction Changes
 
 ### 5.1 Evidence Co-location Rule (Author Message)
@@ -555,24 +769,41 @@ A competitor can copy Basquio's prompts on day 1. They cannot copy 6 months of N
 
 | # | Change | Layer | File(s) | Defensibility | Effort |
 |---|---|---|---|---|---|
-| 1 | Add Client-Facing Tone section to copywriting skill | **A** | `docs/domain-knowledge/basquio-copywriting-skill.md` | High | 0.5 day |
-| 2 | Create recommendation framework knowledge pack | **A** | `docs/domain-knowledge/basquio-recommendation-framework.md` (NEW) | High | 0.5 day |
-| 3 | Add client-aggressive tone detector to linter | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.5 day |
-| 4 | Add evidence co-location validator | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.5 day |
-| 5 | Add recommendation specificity checker | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.5 day |
-| 6 | Upgrade number-in-title to major violation | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.25 day |
-| 7 | Add tone calibration instruction to author message | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.25 day |
-| 8 | Add evidence co-location instruction to author message | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.25 day |
-| 9 | Add chart+table few-shot example to system prompt | **C** | `packages/workflows/src/system-prompt.ts` | Low | 0.25 day |
-| 10 | Add client-pleasing recommendation few-shot example | **C** | `packages/workflows/src/system-prompt.ts` | Low | 0.25 day |
-| 11 | Upgrade speaker notes instruction | **C** | `packages/workflows/src/system-prompt.ts` + `generate-deck.ts` | Low | 0.25 day |
-| 12 | Raise MAX_TARGET_SLIDES to 100 | **C** | `credits.ts` + `generation-form.tsx` | Low | 0.5 day |
-| 13 | New Supabase migration (1-100 range) | **C** | `supabase/migrations/` (NEW) | Low | 0.25 day |
-| 14 | Replace depth tier instructions (6-tier system) | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.5 day |
-| 15 | Raise Opus budget caps for ≥40-slide runs | **C** | `packages/workflows/src/cost-guard.ts` | Low | 0.25 day |
-| 16 | Register recommendation-framework.md in KNOWLEDGE_PACK_FILES | **C** | `packages/workflows/src/system-prompt.ts` | Low | 0.1 day |
+| | **P0 — VISUAL QUALITY + CONTENT SAFETY (blocking)** | | | | |
+| 1 | Add shape collision detector to rendering contract | **B** | `packages/intelligence/src/rendering-contract.ts` | High | 0.5 day |
+| 2 | Add single-word title detector (critical severity) | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.25 day |
+| 3 | Add ALL-CAPS topic-label detector (major severity) | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.25 day |
+| 4 | Upgrade number-in-title to major violation | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.1 day |
+| 5 | Upgrade layout-monotony to major for ≥20 slides | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.1 day |
+| 6 | Add competitor tool name detector (critical) | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.25 day |
+| 7 | Add data-source-loyalty rule to NIQ playbook | **A** | `docs/domain-knowledge/niq-analyst-playbook.md` | High | 0.1 day |
+| 8 | Add KPI card stacking fix instruction to system prompt | **C** | `packages/workflows/src/system-prompt.ts` | Low | 0.25 day |
+| 9 | Add layout variety instruction for long decks | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.25 day |
+| 10 | Add "full sentence title" enforcement for ≥40 slides | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.25 day |
+| 11 | Add chart variety instruction for ALL deck sizes | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.25 day |
+| | **P1 — TONE CALIBRATION (highest business impact)** | | | | |
+| 12 | Add Client-Facing Tone section to copywriting skill | **A** | `docs/domain-knowledge/basquio-copywriting-skill.md` | High | 0.5 day |
+| 13 | Create recommendation framework knowledge pack | **A** | `docs/domain-knowledge/basquio-recommendation-framework.md` (NEW) | High | 0.5 day |
+| 14 | Add client-aggressive tone detector to linter | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.5 day |
+| 15 | Add tone calibration instruction to author message | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.25 day |
+| 16 | Add client-pleasing recommendation few-shot example | **C** | `packages/workflows/src/system-prompt.ts` | Low | 0.25 day |
+| | **P2 — EVIDENCE DENSITY** | | | | |
+| 17 | Add evidence co-location validator (major severity) | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.5 day |
+| 18 | Add evidence co-location instruction to author message | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.25 day |
+| 19 | Add chart+table few-shot example to system prompt | **C** | `packages/workflows/src/system-prompt.ts` | Low | 0.25 day |
+| | **P3 — SPEAKER NOTES + RECOMMENDATIONS** | | | | |
+| 20 | Upgrade speaker notes instruction | **C** | `packages/workflows/src/system-prompt.ts` + `generate-deck.ts` | Low | 0.25 day |
+| 21 | Add recommendation specificity checker | **B** | `packages/intelligence/src/writing-linter.ts` | High | 0.5 day |
+| 22 | Add slide-count-aware recommendation depth | **A** | `docs/domain-knowledge/basquio-recommendation-framework.md` | High | 0.25 day |
+| 23 | Register recommendation-framework.md in KNOWLEDGE_PACK_FILES | **C** | `packages/workflows/src/system-prompt.ts` | Low | 0.1 day |
+| | **P4 — SLIDE COUNT EXPANSION** | | | | |
+| 24 | Raise MAX_TARGET_SLIDES to 100 | **C** | `credits.ts` + `generation-form.tsx` | Low | 0.5 day |
+| 25 | New Supabase migration (1-100 range) | **C** | `supabase/migrations/` (NEW) | Low | 0.25 day |
+| 26 | Replace depth tier instructions (6-tier system) | **C** | `packages/workflows/src/generate-deck.ts` | Low | 0.5 day |
+| 27 | Raise Opus budget caps for ≥40-slide runs | **C** | `packages/workflows/src/cost-guard.ts` | Low | 0.25 day |
 
-**Total: ~5 days of implementation**
+**Total: ~7.5 days of implementation**
+**P0 alone: ~2.5 days — ship this first, validate with 1 production run before anything else**
 
 ### 7.2 Files NOT Changed
 
@@ -583,9 +814,13 @@ A competitor can copy Basquio's prompts on day 1. They cannot copy 6 months of N
 
 ### 7.3 Validation Matrix
 
-| Stefania's feedback | Layer A fix | Layer B fix | Layer C fix | Validation |
+| Problem | Layer A fix | Layer B fix | Layer C fix | Success criteria |
 |---|---|---|---|---|
-| "Messaggi troppo strong" | Copywriting skill tone section | Client-aggressive detector | Tone instruction | Run Kellanova brief, zero aggressive framing |
+| **357 shape overlaps** | — | Shape collision detector | KPI stacking fix instruction | 0 collisions with >80% overlap |
+| **55/60 topic-label titles** | — | Single-word + ALL-CAPS detector | Full-sentence enforcement | 0 single-word titles, ≥90% have numbers |
+| **0 data tables** | — | Evidence co-location validator | Co-location instruction + example | ≥80% analytical slides have table |
+| **1 layout type** | — | Layout monotony upgrade | Layout variety instruction | ≥5 archetype types used |
+| "Messaggi troppo strong" | Copywriting skill tone section | Client-aggressive detector | Tone instruction | 0 client-aggressive patterns detected |
 | "Da molti insight senza mostrare i numeri" | — | Evidence co-location validator | Evidence instruction + example | Every analytical slide has data table |
 | "La faremo lunga almeno 4 volte tanto" | — | — | Slide count to 100 + depth tiers | Run same brief at 60 slides |
 | "Non è da dare così ai clienti" | All tone rules | All validators | All instructions | End-to-end tone check |

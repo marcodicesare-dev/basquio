@@ -119,7 +119,7 @@ const ITALIAN_ACCENT_PATTERNS: Array<{ pattern: RegExp; correct: string }> = [
 ];
 
 const CLIENT_AGGRESSIVE_PATTERNS: Array<{ pattern: RegExp; rule: string; message: string }> = [
-  { pattern: /\bil problema [èe]\b/i, rule: "client_aggressive_problem", message: "Client-aggressive: 'il problema e' — reframe as opportunity" },
+  { pattern: /\bil problema (è|e)(?=\s|$|[,.;:!?])/i, rule: "client_aggressive_problem", message: "Client-aggressive: 'il problema e' — reframe as opportunity" },
   { pattern: /\bintrappolat[oa]\b/i, rule: "client_aggressive_trapped", message: "Client-aggressive: 'intrappolato' — use 'puo sbloccare'" },
   { pattern: /\bnon basta\b/i, rule: "client_aggressive_non_basta", message: "Client-aggressive: 'non basta' — reframe positively" },
   { pattern: /\bdel passato\b/i, rule: "client_aggressive_past", message: "Client-aggressive: 'del passato' — do not call client products outdated" },
@@ -129,7 +129,13 @@ const CLIENT_AGGRESSIVE_PATTERNS: Array<{ pattern: RegExp; rule: string; message
   { pattern: /\bis trapped\b/i, rule: "client_aggressive_is_trapped", message: "Client-aggressive: 'is trapped'" },
   { pattern: /\bfrom the past\b/i, rule: "client_aggressive_from_past", message: "Client-aggressive: 'from the past'" },
   { pattern: /\bthe answer is not\b/i, rule: "client_aggressive_not_answer", message: "Client-aggressive: say what to do, not what not to do" },
-  { pattern: /\bla risposta non [èe]\b/i, rule: "client_aggressive_not_answer_it", message: "Client-aggressive: say what to do, not what not to do" },
+  { pattern: /\bla risposta non (è|e)(?=\s|$|[,.;:!?])/i, rule: "client_aggressive_not_answer_it", message: "Client-aggressive: say what to do, not what not to do" },
+];
+
+const COMPETITOR_TOOL_PATTERNS: Array<{ pattern: RegExp; rule: string; message: string }> = [
+  { pattern: /\bkantar\b/i, rule: "competitor_tool_kantar", message: "Competitor tool reference: 'Kantar' — use 'consumer panel' or 'NielsenIQ' instead" },
+  { pattern: /\bcircana\b/i, rule: "competitor_tool_circana", message: "Competitor tool reference: 'Circana' — use generic or NielsenIQ equivalent" },
+  { pattern: /\biri\s+panel\b/i, rule: "competitor_tool_iri", message: "Competitor tool reference: 'IRI' — use generic or NielsenIQ term" },
 ];
 
 const GENERIC_RECOMMENDATION_PATTERNS: Array<{ pattern: RegExp; rule: string; message: string }> = [
@@ -308,6 +314,27 @@ function clientAggressiveViolations(text: string, field: string): LintViolation[
   return violations;
 }
 
+function competitorToolViolations(text: string, field: string): LintViolation[] {
+  if (!text.trim()) {
+    return [];
+  }
+
+  const violations: LintViolation[] = [];
+  for (const entry of COMPETITOR_TOOL_PATTERNS) {
+    if (entry.pattern.test(text)) {
+      violations.push({
+        rule: entry.rule,
+        severity: "critical",
+        field,
+        message: entry.message,
+        value: text.match(entry.pattern)?.[0],
+      });
+    }
+  }
+
+  return violations;
+}
+
 function recommendationSpecificityViolations(slide: SlideTextInput, text: string, field: string): LintViolation[] {
   if (!text.trim()) {
     return [];
@@ -377,10 +404,22 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
       violations.push({ rule: "passive_title", severity: "minor", field: "title", message: "Title uses passive voice", value: slide.title.slice(0, 50) });
     }
 
+    // ALL-CAPS title that isn't a section divider chapter label
+    if (
+      slide.title === slide.title.toUpperCase() &&
+      slide.title.length > 5 &&
+      !slide.title.includes("|") &&
+      slide.role !== "cover" &&
+      slide.role !== "section-divider"
+    ) {
+      violations.push({ rule: "allcaps_topic_title", severity: "major", field: "title", message: `ALL-CAPS topic label: "${slide.title.slice(0, 50)}" — must be sentence case with insight` });
+    }
+
     violations.push(...textLanguageViolations(slide, slide.title, "title"));
     violations.push(...italianAccentViolations(slide, slide.title, "title"));
     violations.push(...clientAggressiveViolations(slide.title, "title"));
     violations.push(...recommendationSpecificityViolations(slide, slide.title, "title"));
+    violations.push(...competitorToolViolations(slide.title, "title"));
   }
 
   // ── BODY CHECKS ──
@@ -446,6 +485,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     violations.push(...italianAccentViolations(slide, slide.body, "body"));
     violations.push(...clientAggressiveViolations(slide.body, "body"));
     violations.push(...recommendationSpecificityViolations(slide, slide.body, "body"));
+    violations.push(...competitorToolViolations(slide.body, "body"));
   }
 
   // ── BULLET CHECKS ──
@@ -475,6 +515,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
       violations.push(...italianAccentViolations(slide, b, `bullets[${i}]`));
       violations.push(...clientAggressiveViolations(b, `bullets[${i}]`));
       violations.push(...recommendationSpecificityViolations(slide, b, `bullets[${i}]`));
+      violations.push(...competitorToolViolations(b, `bullets[${i}]`));
     }
   }
 
@@ -498,6 +539,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     violations.push(...italianAccentViolations(slide, ct, "callout"));
     violations.push(...clientAggressiveViolations(ct, "callout"));
     violations.push(...recommendationSpecificityViolations(slide, ct, "callout"));
+    violations.push(...competitorToolViolations(ct, "callout"));
   }
 
   // ── METRIC CHECKS ──
@@ -528,6 +570,7 @@ export function lintSlideText(slide: SlideTextInput): LintResult {
     }
     violations.push(...textLanguageViolations(slide, slide.speakerNotes, "speakerNotes"));
     violations.push(...italianAccentViolations(slide, slide.speakerNotes, "speakerNotes"));
+    violations.push(...competitorToolViolations(slide.speakerNotes, "speakerNotes"));
   }
 
   const normalizedLayout = (slide.slideArchetype ?? slide.layoutId ?? "").toLowerCase();

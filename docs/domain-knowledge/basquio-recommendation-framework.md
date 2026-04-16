@@ -48,7 +48,28 @@ Use the scenario names above instead of Bear/Base/Bull in Italian client-facing 
 ## Impact Summary Slide
 After the individual recommendation cards, include an impact summary slide showing expected cumulative impact and the prioritization logic. The client must be able to see the total value pool and sequencing at a glance.
 
+## Recommendation Depth by Slide Count
+
+The number and depth of recommendations must scale with the deck size:
+
+| Deck size | Recommendation cards | Structure |
+|---|---|---|
+| 10-20 slides | 3-4 cards, 50-70 words each | 1-2 recommendation slides |
+| 21-40 slides | 5-6 cards, 80-100 words each | 3-5 slides with base/ambizioso/prudente scenarios |
+| 41-60 slides | 7-10 cards grouped by theme | 5-8 slides + impact summary + prioritization |
+| 61-100 slides | Full section (8-12 slides) | Overview + 1 slide per recommendation + impact summary + prioritization matrix + implementation roadmap |
+
+For 60-slide decks, 4 generic recommendation cards is NOT acceptable. Scale the recommendation depth to match the analytical depth.
+
 ## Evidence Rules
 - If financial impact is directly computable from the data, show the calculation anchor on-slide or reference the exact supporting slide.
 - If financial impact is NOT directly computable, say so explicitly. Do not invent ROI, budget, or revenue precision.
 - Recommendations must stay inside the proven evidence. They can extrapolate only when the assumptions are explicit and conservative.
+
+## Recommendation Anti-Patterns (BANNED)
+
+- Recommendations without quantification: "Improve distribution" (must specify: which SKU, which retailer, which ACV target)
+- Recommendations referencing competitor tools by name: "Run a Kantar panel" (use: "consumer panel study" or "NielsenIQ Consumer Panel")
+- Recommendations without evidence anchor: every action must trace to a data point on a prior slide
+- Fabricated financial projections: only quantify what can be computed from the uploaded data
+- Generic "increase market share" without specifying segment, target, and lever
