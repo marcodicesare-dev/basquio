@@ -77,6 +77,18 @@ export function buildAuthoringOutputConfig(
   } as const satisfies Anthropic.Beta.BetaOutputConfig;
 }
 
+export function buildAuthoringThinkingConfig(
+  model: ClaudeAuthorModel,
+): Anthropic.Beta.BetaThinkingConfigParam | undefined {
+  if (model !== OPUS_AUTHOR_MODEL) {
+    return undefined;
+  }
+
+  return {
+    type: "adaptive",
+  } as const satisfies Anthropic.Beta.BetaThinkingConfigParam;
+}
+
 export type AuthoringContainer = Anthropic.Beta.BetaContainerParams | string | undefined;
 
 export function buildAuthoringContainer(

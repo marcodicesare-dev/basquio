@@ -30,6 +30,7 @@ import {
   type AuthoringContainer,
   buildAuthoringContainer,
   buildAuthoringOutputConfig,
+  buildAuthoringThinkingConfig,
   buildAuthoringToolCallSummary,
   buildClaudeBetas,
   buildClaudeTools,
@@ -1076,6 +1077,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               system: systemPrompt,
               messages: [candidateGenerationMessage],
               tools: buildClaudeTools(candidateModel),
+              thinking: buildAuthoringThinkingConfig(candidateModel),
               output_config: buildAuthoringOutputConfig(candidateModel),
             },
           });
@@ -1147,6 +1149,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
                 },
               ],
               tools: buildClaudeTools(candidateModel),
+              thinking: buildAuthoringThinkingConfig(candidateModel),
               outputConfig: buildAuthoringOutputConfig(candidateModel),
               onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
             });
@@ -1539,6 +1542,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               system: systemPrompt,
               messages: reviseMessages,
               tools: buildClaudeTools(MODEL),
+              thinking: buildAuthoringThinkingConfig(MODEL),
               output_config: buildAuthoringOutputConfig(MODEL),
             },
         });
@@ -1561,6 +1565,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           container: buildAuthoringContainer(latestContainerId, MODEL),
           messages: reviseMessages,
           tools: buildClaudeTools(MODEL),
+          thinking: buildAuthoringThinkingConfig(MODEL),
           outputConfig: buildAuthoringOutputConfig(MODEL),
           onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
         });
@@ -1607,6 +1612,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               },
             ],
             tools: buildClaudeTools(MODEL),
+            thinking: buildAuthoringThinkingConfig(MODEL),
             outputConfig: buildAuthoringOutputConfig(MODEL),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
           });
@@ -3997,6 +4003,7 @@ async function runClaudeLoop(input: {
   tools: Anthropic.Beta.BetaToolUnion[];
   container?: AuthoringContainer;
   contextManagement?: Anthropic.Beta.BetaContextManagementConfig | null;
+  thinking?: Anthropic.Beta.BetaThinkingConfigParam;
   outputConfig?: Anthropic.Beta.BetaOutputConfig;
   /** Optional: persist each retry-level request record immediately for telemetry truth */
   onRequestRecord?: (record: ClaudeRequestUsage) => Promise<void>;
@@ -4073,6 +4080,7 @@ async function runClaudeLoop(input: {
         context_management: input.contextManagement,
         messages,
         tools: input.tools,
+        thinking: input.thinking,
         output_config: input.outputConfig,
       };
 
