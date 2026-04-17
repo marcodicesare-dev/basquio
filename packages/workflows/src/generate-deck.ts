@@ -1991,7 +1991,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     await markPhase(config, runId, attempt, currentPhase);
     let finalDocx: GeneratedFile | null = null;
     let finalXlsx: GeneratedFile | null = null;
-    let qaReport: Awaited<ReturnType<typeof buildQaReport>>;
+    let qaReport: Awaited<ReturnType<typeof buildQaReport>> & {
+      qualityPassport?: PublishDecision["qualityPassport"];
+    };
     let lastPublishDecision: PublishDecision | null = null;
     try {
       if (!isReportOnly) {
@@ -3644,6 +3646,8 @@ function buildAuthorMessage(
             : []),
           "- Follow the loaded pptx skill for the deck artifact generation.",
           "- CLIENT-FACING TONE: the client is paying for this deck. Lead with strengths, frame challenges as market dynamics, quantify the upside before the downside, and never attack the client's hero product or format.",
+          "- BEFORE committing each slide to PPTX, self-score it against this rubric and revise in-place until it passes: TITLE = full-sentence insight with at least one number and max 14 words; BODY = no AI slop, active voice, evidence-led; EVIDENCE = chart/table/source actually support the claim; STRUCTURE = approved archetype and no duplicate question; RECOMMENDATIONS = opportunity first, lever second, rationale tied to visible evidence.",
+          "- Treat the rubric as blocking inside the author turn. If a planned slide fails any dimension, rewrite the slide before adding it to the deck instead of hoping revise will fix it later.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
           "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
           "- Speaker notes are part of the deliverable quality bar. For each substantive non-cover slide, write 200-400 words covering TALK TRACK, DATA CONTEXT, skeptical pushback, anticipated questions, and a transition.",
@@ -3672,6 +3676,9 @@ function buildAuthorMessage(
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
           "- If a slide promises a comparison set with an explicit count such as 4 provinces, 3 channels, or 5 segments, cover all of them explicitly or change the claim.",
           "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
+          "- Preserve source labels exactly: use the input label or the canonical NIQ English label, never invented synonyms like ACV when the source says Distr. Pond.",
+          "- Tables with PY and CY must be ordered past-to-present (PY before CY), and any share or price table must include the relevant delta columns when those metrics are shown.",
+          "- Bubble charts must declare the bubble-size dimension explicitly in both metadata and visible title text (`bolla = ...` or `bubble = ...`).",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
           "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
           "- If the brief is English, write direct partner-grade English with no padded corporate phrasing such as 'in order to' or 'going forward'.",
