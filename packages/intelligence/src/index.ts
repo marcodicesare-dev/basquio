@@ -101,6 +101,25 @@ export {
   type SlidePlanLintResult,
 } from "./slide-plan-linter";
 
+export {
+  lintDeckFidelity,
+  type FidelityChartInput,
+  type FidelityLintResult,
+  type FidelitySheetInput,
+  type FidelitySlideInput,
+  type FidelityViolation,
+} from "./fidelity-validators";
+
+export { validateSourceLabels } from "./source-label-validator";
+export { validatePeriodOrdering } from "./period-order-validator";
+export { validateBubbleLegend } from "./bubble-size-legend-validator";
+export { validateTitleClaims } from "./title-claim-verifier";
+export { validateChartRepetition } from "./chart-repetition-validator";
+export { validateEntityGrounding } from "./entity-grounding-validator";
+export { validateRequiredDeltaColumns } from "./required-delta-validator";
+export { validateBarOrdering } from "./bar-order-validator";
+export { validateSingleSourceLine } from "./source-line-validator";
+
 // ─── FMCG SEMANTIC LAYER (executable domain logic) ────────────────
 export {
   routeQuestion,

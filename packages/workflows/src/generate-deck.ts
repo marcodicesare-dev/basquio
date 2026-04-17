@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
+import { read, utils } from "xlsx";
 import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
@@ -16,11 +17,15 @@ import {
   enforceExhibit,
   inferQuestionType,
   lintDeckText,
+  lintDeckFidelity,
   lintSlidePlan,
   MIN_REQUIRED_STRUCTURAL_DECK_SLIDES,
   MAX_RENDERING_TARGET_SLIDES,
   routeQuestion,
   validateDeckContract,
+  type FidelitySheetInput,
+  type FidelitySlideInput,
+  type FidelityViolation,
   type SlidePlanLintInput,
   type SlideTextInput,
 } from "@basquio/intelligence";
@@ -60,6 +65,7 @@ import {
   usageToCost,
 } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
+import { runClaimTraceabilityQa } from "./claim-traceability-qa";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
@@ -180,6 +186,19 @@ type AuthorInputFiles = {
 type SupportEvidencePacket = {
   filename: string;
   content: string;
+};
+
+type WorkbookSheetProfile = FidelitySheetInput;
+
+type FidelityContext = {
+  workbookSheets: WorkbookSheetProfile[];
+  knownEntities: string[];
+};
+
+type ClaimTraceabilityIssue = {
+  position: number;
+  severity: "major" | "critical";
+  message: string;
 };
 
 function coercePositiveNumber(value: unknown) {
@@ -344,6 +363,9 @@ const analysisSchema = z.object({
       id: z.string().optional().transform((value) => value?.trim() || `chart-${randomUUID().slice(0, 8)}`),
       chartType: z.string().optional().transform((value) => value?.trim() || "bar"),
       title: z.string().optional().transform((value) => value?.trim() || ""),
+      xAxisLabel: z.string().optional(),
+      yAxisLabel: z.string().optional(),
+      bubbleSizeLabel: z.string().optional(),
       sourceNote: z.string().optional(),
       excelSheetName: z.string().optional(),
       excelChartCellAnchor: z.string().optional(),
@@ -483,6 +505,14 @@ type PublishDecision = {
   decision: "publish" | "fail";
   hardBlockers: string[];
   advisories: string[];
+  qualityPassport: {
+    classification: "gold" | "silver" | "bronze" | "recovery";
+    criticalCount: number;
+    majorCount: number;
+    visualScore: number;
+    mecePass: boolean;
+    summary: string;
+  };
   artifactSource: "fresh_generation" | "checkpoint";
   visualQa: {
     overallStatus: "green" | "yellow" | "red";
@@ -709,6 +739,71 @@ async function runRenderedPageQaSafely(input: {
     return {
       pdf: safePdf,
       qa: buildSkippedVisualQaResult(message),
+    };
+  }
+}
+
+async function runClaimTraceabilityQaSafely(input: {
+  client: Anthropic;
+  manifest: z.infer<typeof deckManifestSchema>;
+  fidelityContext: FidelityContext | null;
+  run: RunRow;
+  phaseTelemetry: Record<string, unknown>;
+  telemetryKey: string;
+}) {
+  if (!input.fidelityContext) {
+    return {
+      report: {
+        summary: "Claim-traceability QA skipped because no workbook fidelity context was available.",
+        issues: [] as ClaimTraceabilityIssue[],
+      },
+      usage: { input_tokens: 0, output_tokens: 0 },
+      requests: [] as Array<{
+        requestId: string | null;
+        startedAt: string;
+        completedAt: string;
+        usage: { input_tokens: number; output_tokens: number };
+        stopReason: string | null;
+      }>,
+    };
+  }
+
+  try {
+    return await runClaimTraceabilityQa({
+      client: input.client,
+      manifest: {
+        slideCount: input.manifest.slideCount,
+        slides: manifestToClaimTraceabilityInput(input.manifest),
+      },
+      workbookSheets: input.fidelityContext.workbookSheets,
+      knownEntities: input.fidelityContext.knownEntities,
+      briefContext: {
+        client: input.run.client,
+        audience: input.run.audience,
+        objective: input.run.objective,
+        thesis: input.run.thesis,
+        businessContext: input.run.business_context,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[generateDeckRun] claim-traceability QA skipped: ${message.slice(0, 300)}`);
+    input.phaseTelemetry[input.telemetryKey] = {
+      reason: message.slice(0, 300),
+    };
+    return {
+      report: {
+        summary: `Claim-traceability QA skipped: ${message.slice(0, 200)}`,
+        issues: [] as ClaimTraceabilityIssue[],
+      },
+      usage: { input_tokens: 0, output_tokens: 0 },
+      requests: [] as Array<{
+        requestId: string | null;
+        startedAt: string;
+        completedAt: string;
+        usage: { input_tokens: number; output_tokens: number };
+        stopReason: string | null;
+      }>,
     };
   }
 }
@@ -974,6 +1069,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     let pdfFile: GeneratedFile | null = null;
     let finalNarrativeMarkdown: GeneratedFile | null = null;
     let xlsxFile: GeneratedFile | null = null;
+    let fidelityContext: FidelityContext | null = null;
+    let claimTraceabilityIssues: ClaimTraceabilityIssue[] = [];
     let manifest: z.infer<typeof deckManifestSchema>;
     let latestResponse: Awaited<ReturnType<typeof runClaudeLoop>> | null = null;
     let generationMessage: ReturnType<typeof buildAuthorMessage> | null = null;
@@ -1384,6 +1481,18 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       finalNarrativeMarkdown = requireGeneratedFile(authorFiles, "narrative_report.md");
       xlsxFile = requireGeneratedFile(authorFiles, "data_tables.xlsx");
+      fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
+      const authorClaimQa = isReportOnly
+        ? null
+        : await runClaimTraceabilityQaSafely({
+            client,
+            manifest,
+            fidelityContext,
+            run,
+            phaseTelemetry,
+            telemetryKey: "claimTraceabilityAuthorSkipped",
+          });
+      claimTraceabilityIssues = authorClaimQa?.report.issues ?? [];
       if (!isReportOnly && useExactTemplateMode && pptxFile) {
         const recomposedArtifacts = await recomposeExactTemplateArtifacts({
           stage: "author",
@@ -1407,7 +1516,20 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         phaseTelemetry.authorLint = { passed: true, actionableIssueCount: 0, actionableIssues: [], slideViolationCount: 0, deckViolationCount: 0 };
         phaseTelemetry.authorContract = { passed: true, actionableIssueCount: 0, actionableIssues: [], violationCount: 0 };
       } else {
-        phaseTelemetry.authorLint = summarizeLintResult(lintManifest(manifest, run.target_slide_count));
+        if (authorClaimQa && ((authorClaimQa.usage.input_tokens ?? 0) + (authorClaimQa.usage.output_tokens ?? 0) > 0)) {
+          phaseTelemetry.claimTraceabilityAuthor = buildSimplePhaseTelemetry("claude-haiku-4-5", authorClaimQa.usage);
+          await persistRequestUsage(config, runId, attempt, "author", "claim_traceability_qa", "claude-haiku-4-5", authorClaimQa.requests);
+          rememberRequestIds(anthropicRequestIds, authorClaimQa.requests);
+          await upsertWorkingPaper(config, runId, "claim_traceability_author", authorClaimQa.report);
+        }
+        const authorLintSummary = summarizeLintResult(lintManifest(manifest, run.target_slide_count, fidelityContext ?? undefined));
+        const claimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
+        phaseTelemetry.authorLint = {
+          ...authorLintSummary,
+          actionableIssueCount: authorLintSummary.actionableIssueCount + claimIssueMessages.length,
+          actionableIssues: [...authorLintSummary.actionableIssues, ...claimIssueMessages],
+          claimTraceabilityIssueCount: claimTraceabilityIssues.length,
+        };
         phaseTelemetry.authorContract = summarizeDeckContractResult(validateManifestContract(manifest));
       }
 
@@ -1496,7 +1618,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       run.target_slide_count,
     );
     const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
-    const critiqueLint = lintManifest(manifest, run.target_slide_count);
+    const critiqueLint = lintManifest(manifest, run.target_slide_count, fidelityContext ?? undefined);
     const critiqueContract = validateManifestContract(manifest);
     const hasBlockingCritiqueIssues = blockingCritiqueIssues.length > 0;
     const hasMajorOrCriticalVisualIssues = initialVisualQa.report.issues.some(
@@ -1701,6 +1823,16 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
         finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
         xlsxFile = findGeneratedFile(reviseFiles, "data_tables.xlsx") ?? xlsxFile;
+        fidelityContext = xlsxFile ? buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run) : fidelityContext;
+        const reviseClaimQa = await runClaimTraceabilityQaSafely({
+          client,
+          manifest: finalManifest,
+          fidelityContext,
+          run,
+          phaseTelemetry,
+          telemetryKey: "claimTraceabilityReviseSkipped",
+        });
+        claimTraceabilityIssues = reviseClaimQa.report.issues ?? [];
         if (useExactTemplateMode) {
           const recomposedArtifacts = await recomposeExactTemplateArtifacts({
             stage: "revise",
@@ -1748,6 +1880,12 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         await touchAttemptProgress(config, runId, attempt, "revise");
       }
       finalVisualQa = revisedVisualQa.report;
+        if ((reviseClaimQa.usage.input_tokens ?? 0) + (reviseClaimQa.usage.output_tokens ?? 0) > 0) {
+          phaseTelemetry.claimTraceabilityRevise = buildSimplePhaseTelemetry("claude-haiku-4-5", reviseClaimQa.usage);
+          await persistRequestUsage(config, runId, attempt, "revise", "claim_traceability_qa", "claude-haiku-4-5", reviseClaimQa.requests);
+          rememberRequestIds(anthropicRequestIds, reviseClaimQa.requests);
+          await upsertWorkingPaper(config, runId, "claim_traceability_revise", reviseClaimQa.report);
+        }
         await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
         await assertAttemptStillOwnsRun(config, runId, attempt);
         await persistDeckSpec(config, runId, finalManifest);
@@ -1772,14 +1910,15 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         );
 
         // B1: Persist pre-export checkpoint after revise success
-        const reviseLint = lintManifest(finalManifest, run.target_slide_count);
+        const reviseLint = lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
         const reviseContract = validateManifestContract(finalManifest);
+        const reviseClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
         const reviseCheckpointProof = buildCheckpointProof({
           authorComplete: true,
           critiqueComplete: true,
           reviseComplete: true,
           visualQaGreen: finalVisualQa.overallStatus === "green",
-          lintPassed: reviseLint.actionableIssues.length === 0,
+          lintPassed: reviseLint.actionableIssues.length === 0 && reviseClaimIssueMessages.length === 0,
           contractPassed: reviseContract.actionableIssues.length === 0,
           deckNeedsRevision: finalVisualQa.deckNeedsRevision,
         });
@@ -1955,7 +2094,24 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         run.target_slide_count,
         isReportOnly ? "report_only" : "deck",
       );
-      const finalLint = isReportOnly ? null : lintManifest(finalManifest, run.target_slide_count);
+      if (!isReportOnly && claimTraceabilityIssues.length === 0) {
+        const exportClaimQa = await runClaimTraceabilityQaSafely({
+          client,
+          manifest: finalManifest,
+          fidelityContext,
+          run,
+          phaseTelemetry,
+          telemetryKey: "claimTraceabilityExportSkipped",
+        });
+        claimTraceabilityIssues = exportClaimQa.report.issues ?? [];
+        if ((exportClaimQa.usage.input_tokens ?? 0) + (exportClaimQa.usage.output_tokens ?? 0) > 0) {
+          phaseTelemetry.claimTraceabilityExport = buildSimplePhaseTelemetry("claude-haiku-4-5", exportClaimQa.usage);
+          await persistRequestUsage(config, runId, attempt, "export", "claim_traceability_qa", "claude-haiku-4-5", exportClaimQa.requests);
+          rememberRequestIds(anthropicRequestIds, exportClaimQa.requests);
+          await upsertWorkingPaper(config, runId, "claim_traceability_export", exportClaimQa.report);
+        }
+      }
+      const finalLint = isReportOnly ? null : lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
       const finalContract = isReportOnly ? null : validateManifestContract(finalManifest);
       const finalQualityGate = isReportOnly
         ? {
@@ -1966,6 +2122,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             qaReport,
             lint: finalLint!,
             contract: finalContract!,
+            claimIssues: claimTraceabilityIssues,
           });
 
       lastPublishDecision = isReportOnly
@@ -1973,6 +2130,16 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             decision: finalQualityGate.blockingFailures.length === 0 ? "publish" : "fail",
             hardBlockers: finalQualityGate.blockingFailures,
             advisories: finalQualityGate.advisories,
+            qualityPassport: {
+              classification: finalQualityGate.blockingFailures.length === 0 ? "silver" : "recovery",
+              criticalCount: finalQualityGate.blockingFailures.length,
+              majorCount: 0,
+              visualScore: finalVisualQa.score,
+              mecePass: true,
+              summary: finalQualityGate.blockingFailures.length === 0
+                ? "Report-only run published without deck-level visual scoring."
+                : "Report-only run degraded because artifact gate blockers remained.",
+            },
             artifactSource: "fresh_generation",
             visualQa: {
               overallStatus: finalVisualQa.overallStatus,
@@ -1990,13 +2157,27 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             contract: finalContract!,
             visualQa: finalVisualQa,
             artifactSource: publishFromCheckpoint ? "checkpoint" : "fresh_generation",
+            claimIssues: claimTraceabilityIssues,
           });
+      qaReport = {
+        ...qaReport,
+        qualityPassport: lastPublishDecision.qualityPassport,
+      };
 
       if (finalQualityGate.blockingFailures.length > 0) {
         throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
       }
       if (finalLint && finalContract) {
-        phaseTelemetry.finalLint = summarizeLintResult(finalLint);
+        const finalLintSummary = summarizeLintResult(finalLint);
+        phaseTelemetry.finalLint = {
+          ...finalLintSummary,
+          claimTraceabilityIssueCount: claimTraceabilityIssues.length,
+          actionableIssueCount: finalLintSummary.actionableIssueCount + claimTraceabilityIssues.length,
+          actionableIssues: [
+            ...finalLintSummary.actionableIssues,
+            ...claimTraceabilityIssues.map(formatClaimTraceabilityIssue),
+          ],
+        };
         phaseTelemetry.finalContract = summarizeDeckContractResult(finalContract);
       } else {
         phaseTelemetry.finalLint = { skipped: true, reason: "report_only_run" };
@@ -2917,6 +3098,12 @@ async function finalizeSuccess(
   extraTelemetry: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
+  const qualityPassport = qaReport && typeof qaReport === "object"
+    ? ((qaReport as Record<string, unknown>).qualityPassport as { classification?: string } | undefined)
+    : undefined;
+  const deliveryStatus = qualityPassport?.classification === "gold" || qualityPassport?.classification === "silver"
+    ? "reviewed"
+    : "degraded";
   const attemptCostTelemetry = {
     model,
     estimatedCostUsd,
@@ -2935,13 +3122,13 @@ async function finalizeSuccess(
       p_attempt_id: attempt.id,
       p_attempt_number: attempt.attemptNumber,
       p_completed_at: now,
-      p_delivery_status: qaReport.tier === "red" ? "degraded" : "reviewed",
+      p_delivery_status: deliveryStatus,
       p_attempt_cost_telemetry: attemptCostTelemetry,
       p_run_cost_telemetry: runCostTelemetry,
       p_anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
       p_slide_count: manifest.slideCount,
       p_page_count: manifest.pageCount ?? manifest.slideCount,
-      p_qa_passed: qaReport.tier !== "red",
+      p_qa_passed: deliveryStatus === "reviewed",
       p_qa_report: {
         ...qaReport,
         template: templateDiagnostics,
@@ -3512,6 +3699,7 @@ function buildAuthorMessage(
             : [
                 "- `analysis_result.json` must be valid JSON matching the approved analysis schema with `language`, `thesis`, `executiveSummary`, and `slidePlan[]`.",
                 "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
+                "- For every `slidePlan[].chart`, also include `xAxisLabel`, `yAxisLabel`, and for bubble charts `bubbleSizeLabel` so fidelity validators can verify labels and legends.",
                 "- For every `slidePlan[].chart`, also include `excelSheetName`; include `excelChartCellAnchor` for native-eligible Excel chart families; include `dataSignature` when you can derive a stable signature from the plotted data columns.",
                 "- Use the same language as the brief. Do not emit mixed-language output.",
               ]),
@@ -3568,6 +3756,7 @@ function buildAuthorMessage(
           "- Basquio chart-type mapping for native Excel charts is deterministic: `bar` -> column, `horizontal_bar` -> bar, `grouped_bar` -> column cluster, `stacked_bar` -> bar stacked, `stacked_bar_100` -> bar percent-stacked, `line` -> line, `area` -> area, `scatter` -> scatter, `pie` -> pie, `doughnut` -> doughnut.",
           "- Excel-native charts are best-effort companion artifacts. If XlsxWriter is unavailable or a specific chart object fails, still write the exact sheet, omit `excelChartCellAnchor` for that chart, and continue. Never let Excel chart generation block `deck.pptx`, `deck.pdf`, `narrative_report.md`, or the workbook itself.",
           "- For unsupported Excel chart families (for example waterfall, heatmap, bubble, or table-only exhibits), still write the sheet and set `excelSheetName` in the manifest, but omit `excelChartCellAnchor` instead of inventing a broken native chart.",
+          "- Every manifest chart should include `xAxisLabel`, `yAxisLabel`, and for bubble charts `bubbleSizeLabel` so slide-level fidelity validators can check source labels and legends.",
           "- Every manifest chart should include `excelSheetName` and, when a native Excel chart object exists, `excelChartCellAnchor`. Include `dataSignature` when you can derive a stable signature from the plotted data columns.",
           "<example name=\"data_tables_xlsx_with_native_charts\">",
           "import pandas as pd",
@@ -4447,6 +4636,9 @@ function buildManifestFromAnalysis(analysis: AnalysisResult) {
         id: slide.chart!.id,
         chartType: slide.chart!.chartType,
         title: slide.chart!.title || slide.title,
+        xAxisLabel: slide.chart!.xAxisLabel,
+        yAxisLabel: slide.chart!.yAxisLabel,
+        bubbleSizeLabel: slide.chart!.bubbleSizeLabel,
         sourceNote: slide.chart!.sourceNote,
         excelSheetName: slide.chart!.excelSheetName,
         excelChartCellAnchor: slide.chart!.excelChartCellAnchor,
@@ -5038,6 +5230,9 @@ function synthesizeAnalysisFromManifest(
               id: chart.id,
               chartType: chart.chartType,
               title: chart.title,
+              ...(chart.xAxisLabel ? { xAxisLabel: chart.xAxisLabel } : {}),
+              ...(chart.yAxisLabel ? { yAxisLabel: chart.yAxisLabel } : {}),
+              ...(chart.bubbleSizeLabel ? { bubbleSizeLabel: chart.bubbleSizeLabel } : {}),
               ...(chart.sourceNote ? { sourceNote: chart.sourceNote } : {}),
               ...(chart.excelSheetName ? { excelSheetName: chart.excelSheetName } : {}),
               ...(chart.excelChartCellAnchor ? { excelChartCellAnchor: chart.excelChartCellAnchor } : {}),
@@ -5960,9 +6155,199 @@ function manifestToPlanLintInput(manifest: z.infer<typeof deckManifestSchema>): 
   });
 }
 
-function lintManifest(manifest: z.infer<typeof deckManifestSchema>, requestedSlideCount?: number) {
+function buildFidelityContext(
+  manifest: z.infer<typeof deckManifestSchema>,
+  workbookBuffer: Buffer | null | undefined,
+  parsed: Awaited<ReturnType<typeof parseEvidencePackage>>,
+  run: RunRow,
+): FidelityContext {
+  return {
+    workbookSheets: workbookBuffer ? extractWorkbookSheetProfiles(workbookBuffer) : [],
+    knownEntities: buildKnownEntityCatalog(parsed, run),
+  };
+}
+
+function extractWorkbookSheetProfiles(buffer: Buffer): WorkbookSheetProfile[] {
+  const workbook = read(buffer, {
+    type: "buffer",
+    raw: true,
+    cellDates: true,
+  });
+
+  return workbook.SheetNames.map((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: null,
+      raw: true,
+    }) as unknown[][];
+    const normalizedRows = matrix
+      .map((row) => row.map((cell) => normalizeWorkbookCell(cell)))
+      .filter((row) => row.some((cell) => cell !== null && cell !== ""));
+    const headers = (normalizedRows[0] ?? []).map((cell, index) => normalizeWorkbookHeader(cell, index));
+    const rowObjects = normalizedRows
+      .slice(1)
+      .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? null])))
+      .filter((row) => Object.values(row).some((value) => value !== null && value !== ""));
+    const numericValues = rowObjects.flatMap((row) =>
+      Object.values(row)
+        .map((value) => typeof value === "number" && Number.isFinite(value) ? value : null)
+        .filter((value): value is number => value !== null),
+    );
+
+    return {
+      name: sheetName,
+      headers,
+      rows: rowObjects,
+      numericValues,
+      dataSignature: createHash("sha256")
+        .update(JSON.stringify({ headers, rows: rowObjects }))
+        .digest("hex")
+        .slice(0, 16),
+    };
+  });
+}
+
+function normalizeWorkbookHeader(value: unknown, index: number) {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  return `column_${index + 1}`;
+}
+
+function normalizeWorkbookCell(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return value ?? null;
+}
+
+function buildKnownEntityCatalog(
+  parsed: Awaited<ReturnType<typeof parseEvidencePackage>>,
+  run: RunRow,
+) {
+  const entities = new Set<string>();
+  const entityColumnPattern = /(brand|marca|supplier|fornitore|retailer|insegna|channel|canale|segment|segmento|family|famiglia|market|mercato|item|sku)/i;
+
+  for (const sheet of parsed.normalizedWorkbook.sheets) {
+    for (const column of sheet.columns) {
+      if (!entityColumnPattern.test(column.name)) {
+        continue;
+      }
+
+      for (const row of sheet.rows.slice(0, 500)) {
+        const value = row[column.name];
+        if (typeof value !== "string") {
+          continue;
+        }
+        const normalized = normalizeEntityName(value);
+        if (normalized) {
+          entities.add(normalized);
+        }
+      }
+    }
+  }
+
+  [
+    run.client,
+    run.audience,
+    run.objective,
+    run.thesis,
+    run.business_context,
+  ].forEach((value) => {
+    const normalized = normalizeEntityName(value ?? "");
+    if (normalized) {
+      entities.add(normalized);
+    }
+  });
+
+  return [...entities];
+}
+
+function normalizeEntityName(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function manifestToFidelityInput(
+  manifest: z.infer<typeof deckManifestSchema>,
+): FidelitySlideInput[] {
+  const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
+  return manifest.slides.map((slide) => {
+    const chart = slide.chartId ? chartById.get(slide.chartId) : undefined;
+    return {
+      position: slide.position,
+      title: slide.title,
+      ...(slide.body ? { body: slide.body } : {}),
+      ...(slide.bullets ? { bullets: slide.bullets } : {}),
+      ...(slide.callout ? { callout: { text: slide.callout.text } } : {}),
+      ...(slide.metrics ? { metrics: slide.metrics } : {}),
+      ...(slide.evidenceIds ? { evidenceIds: slide.evidenceIds } : {}),
+      ...(slide.pageIntent ? { pageIntent: slide.pageIntent } : {}),
+      ...(chart
+        ? {
+            chart: {
+              chartType: chart.chartType,
+              title: chart.title,
+              ...(chart.xAxisLabel ? { xAxisLabel: chart.xAxisLabel } : {}),
+              ...(chart.yAxisLabel ? { yAxisLabel: chart.yAxisLabel } : {}),
+              ...(chart.bubbleSizeLabel ? { bubbleSizeLabel: chart.bubbleSizeLabel } : {}),
+              ...(chart.excelSheetName ? { excelSheetName: chart.excelSheetName } : {}),
+              ...(chart.dataSignature ? { dataSignature: chart.dataSignature } : {}),
+              ...(chart.sourceNote ? { sourceNote: chart.sourceNote } : {}),
+            },
+          }
+        : {}),
+    };
+  });
+}
+
+function manifestToClaimTraceabilityInput(
+  manifest: z.infer<typeof deckManifestSchema>,
+) {
+  const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
+  return manifest.slides.map((slide) => {
+    const chart = slide.chartId ? chartById.get(slide.chartId) : undefined;
+    return {
+      position: slide.position,
+      layoutId: slide.layoutId,
+      slideArchetype: slide.slideArchetype,
+      pageIntent: slide.pageIntent,
+      title: slide.title,
+      body: slide.body,
+      bullets: slide.bullets,
+      calloutText: slide.callout?.text,
+      chartSheetName: chart?.excelSheetName,
+    };
+  });
+}
+
+function formatClaimTraceabilityIssue(issue: ClaimTraceabilityIssue) {
+  return `Slide ${issue.position} claim issue [claim_traceability]: ${issue.message}`;
+}
+
+function lintManifest(
+  manifest: z.infer<typeof deckManifestSchema>,
+  requestedSlideCount?: number,
+  fidelityContext?: FidelityContext,
+) {
   const result = lintDeckText(manifestToLintInput(manifest));
   const planLint = lintManifestPlan(manifest, requestedSlideCount);
+  const fidelityLint = fidelityContext
+    ? lintDeckFidelity({
+        slides: manifestToFidelityInput(manifest),
+        sheets: fidelityContext.workbookSheets,
+        knownEntities: fidelityContext.knownEntities,
+      })
+    : { passed: true, violations: [] as FidelityViolation[] };
   const actionableIssues = [
     ...result.slideResults.flatMap((slideResult) =>
       slideResult.result.violations
@@ -5972,10 +6357,13 @@ function lintManifest(manifest: z.infer<typeof deckManifestSchema>, requestedSli
     ...result.deckViolations
       .filter((violation) => violation.severity === "critical" || violation.severity === "major")
       .map((violation) => `Deck writing issue [${violation.rule}]: ${violation.message}`),
+    ...fidelityLint.violations
+      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .map((violation) => `Slide ${violation.position} fidelity issue [${violation.rule}]: ${violation.message}`),
     ...planLint.actionableIssues,
   ];
 
-  return { result, actionableIssues, planLint: planLint.result };
+  return { result, actionableIssues, planLint: planLint.result, fidelity: fidelityLint };
 }
 
 function lintManifestPlan(manifest: z.infer<typeof deckManifestSchema>, requestedSlideCount?: number) {
@@ -6005,6 +6393,7 @@ function summarizeLintResult(lint: ReturnType<typeof lintManifest>) {
     actionableIssues: lint.actionableIssues,
     slideViolationCount,
     deckViolationCount: lint.result.deckViolations.length,
+    fidelityViolationCount: lint.fidelity.violations.length,
     planPairViolationCount: lint.planLint.pairViolations.length,
     planDeckViolationCount: lint.planLint.deckViolations.length,
     planUniqueDimensions: lint.planLint.uniqueDimensions,
@@ -6146,12 +6535,14 @@ function collectPublishGateFailures(input: {
   qaReport: Awaited<ReturnType<typeof buildQaReport>>;
   lint: ReturnType<typeof lintManifest>;
   contract: ReturnType<typeof validateManifestContract>;
+  claimIssues?: ClaimTraceabilityIssue[];
 }) {
   const blockingFailures = input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check));
   const advisories = [
     ...input.qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
     ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
     ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
+    ...((input.claimIssues ?? []).map((issue) => `claim:${formatClaimTraceabilityIssue(issue)}`)),
   ];
 
   return {
@@ -6162,17 +6553,88 @@ function collectPublishGateFailures(input: {
   };
 }
 
+function classifyQualityPassport(input: {
+  qaReport: Awaited<ReturnType<typeof buildQaReport>>;
+  lint: ReturnType<typeof lintManifest>;
+  contract: ReturnType<typeof validateManifestContract>;
+  visualQa: RenderedPageQaReport;
+  claimIssues?: ClaimTraceabilityIssue[];
+}) {
+  const writingCriticalCount =
+    input.lint.result.deckViolations.filter((issue) => issue.severity === "critical").length +
+    input.lint.result.slideResults.reduce(
+      (total, slide) => total + slide.result.violations.filter((issue) => issue.severity === "critical").length,
+      0,
+    ) +
+    input.lint.fidelity.violations.filter((issue) => issue.severity === "critical").length +
+    input.lint.planLint.pairViolations.filter((issue) => issue.severity === "critical").length +
+    input.lint.planLint.deckViolations.filter((issue) => issue.severity === "critical").length;
+  const writingMajorCount =
+    input.lint.result.deckViolations.filter((issue) => issue.severity === "major").length +
+    input.lint.result.slideResults.reduce(
+      (total, slide) => total + slide.result.violations.filter((issue) => issue.severity === "major").length,
+      0,
+    ) +
+    input.lint.fidelity.violations.filter((issue) => issue.severity === "major").length +
+    input.lint.planLint.pairViolations.filter((issue) => issue.severity === "major").length +
+    input.lint.planLint.deckViolations.filter((issue) => issue.severity === "major").length;
+  const visualCriticalCount = input.visualQa.issues.filter((issue) => issue.severity === "critical").length;
+  const visualMajorCount = input.visualQa.issues.filter((issue) => issue.severity === "major").length;
+  const claimCriticalCount = (input.claimIssues ?? []).filter((issue) => issue.severity === "critical").length;
+  const claimMajorCount = (input.claimIssues ?? []).filter((issue) => issue.severity === "major").length;
+  const contractCriticalCount = input.contract.actionableIssues.length;
+  const criticalCount = writingCriticalCount + visualCriticalCount + claimCriticalCount + contractCriticalCount;
+  const majorCount = writingMajorCount + visualMajorCount + claimMajorCount;
+  const mecePass = input.lint.planLint.pairViolations.every((issue) => issue.severity === "minor")
+    && input.lint.planLint.deckViolations.every((issue) => issue.severity === "minor");
+
+  let classification: "gold" | "silver" | "bronze" | "recovery";
+  if (
+    input.qaReport.failed.some((check) => HARD_QA_BLOCKERS.has(check))
+    || criticalCount > 0
+    || !mecePass
+    || input.visualQa.score < 5
+    || majorCount > 10
+  ) {
+    classification = "recovery";
+  } else if (majorCount <= 3 && input.visualQa.score >= 8.5) {
+    classification = "gold";
+  } else if (majorCount <= 6 && input.visualQa.score >= 7) {
+    classification = "silver";
+  } else {
+    classification = "bronze";
+  }
+
+  return {
+    classification,
+    criticalCount,
+    majorCount,
+    visualScore: input.visualQa.score,
+    mecePass,
+    summary: `Quality passport ${classification}: visual=${input.visualQa.score.toFixed(1)}, critical=${criticalCount}, major=${majorCount}, mecePass=${mecePass}.`,
+  };
+}
+
 function buildPublishDecision(input: {
   qaReport: Awaited<ReturnType<typeof buildQaReport>>;
   lint: ReturnType<typeof lintManifest>;
   contract: ReturnType<typeof validateManifestContract>;
   visualQa: RenderedPageQaReport;
   artifactSource: PublishDecision["artifactSource"];
+  claimIssues?: ClaimTraceabilityIssue[];
 }): PublishDecision {
   const gate = collectPublishGateFailures({
     qaReport: input.qaReport,
     lint: input.lint,
     contract: input.contract,
+    claimIssues: input.claimIssues,
+  });
+  const qualityPassport = classifyQualityPassport({
+    qaReport: input.qaReport,
+    lint: input.lint,
+    contract: input.contract,
+    visualQa: input.visualQa,
+    claimIssues: input.claimIssues,
   });
 
   return {
@@ -6193,12 +6655,13 @@ function buildPublishDecision(input: {
         .filter((issue) => issue.severity === "minor")
         .map((issue) => `Rendered slide ${issue.slidePosition} advisory ${issue.code}: ${issue.description}`),
     ],
+    qualityPassport,
     artifactSource: input.artifactSource,
     visualQa: {
       overallStatus: input.visualQa.overallStatus,
       deckNeedsRevision: input.visualQa.deckNeedsRevision,
     },
-    lintPassed: input.lint.actionableIssues.length === 0,
+    lintPassed: input.lint.actionableIssues.length === 0 && (input.claimIssues?.length ?? 0) === 0,
     contractPassed: input.contract.actionableIssues.length === 0,
     chartImageCoveragePct: null,
     sceneOverflowCount: 0,

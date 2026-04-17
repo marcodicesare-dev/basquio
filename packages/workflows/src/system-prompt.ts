@@ -9,6 +9,7 @@ import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
 
 const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-analyst-playbook.md",
+  "docs/domain-knowledge/basquio-data-fidelity-rules.md",
   "docs/domain-knowledge/basquio-copywriting-skill.md",
   "docs/domain-knowledge/basquio-deck-depth-architecture.md",
   "docs/domain-knowledge/basquio-recommendation-framework.md",

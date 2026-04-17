@@ -10,3 +10,12 @@ output
 supabase/.temp
 .vercel
 fixture-deck-*.pptx
+
+# Local env for Vercel pulls — contains service role key, never commit
+.env.vercel.local
+
+# Playwright local debug artifacts
+.playwright-cli/
+
+# Local test output
+test-output/
