@@ -38,6 +38,9 @@ export type SlidePlanLintResult = {
   minRequiredDimensions: number;
   deepestLevel: number;
   chapterDepths: Array<{ chapter: string; deepestLevel: number }>;
+  contentSlideCount: number;
+  appendixSlideCount: number;
+  appendixCap: number;
 };
 
 type EnrichedSlide = SlidePlanLintInput & {
@@ -155,6 +158,9 @@ export function lintSlidePlan(
   )];
   const minRequiredDimensions = requiredDimensionCoverage(targetSlideCount);
   const analyticalSlides = slides.filter((slide) => !isStructuralSlide(slide));
+  const appendixSlides = analyticalSlides.filter((slide) => isAppendixSlide(slide));
+  const contentSlides = analyticalSlides.filter((slide) => !isAppendixSlide(slide));
+  const appendixCap = Math.ceil(targetSlideCount * 0.10);
   const deepestLevel = analyticalSlides.reduce(
     (maxLevel, slide) => Math.max(maxLevel, slide.decompositionLevel),
     1,
@@ -170,17 +176,38 @@ export function lintSlidePlan(
   }));
 
   const deckViolations: SlidePlanDeckViolation[] = [];
+  if (contentSlides.length < targetSlideCount) {
+    deckViolations.push({
+      rule: "content_shortfall",
+      severity: "critical",
+      message:
+        `Plan has only ${contentSlides.length} content slides; user asked for ${targetSlideCount}. ` +
+        `Add ${targetSlideCount - contentSlides.length} more content slides through deeper drill-down ` +
+        `(SKU level, retailer level, intersection cross-tabs).`,
+    });
+  }
+
+  if (appendixSlides.length > appendixCap) {
+    deckViolations.push({
+      rule: "appendix_overfill",
+      severity: "critical",
+      message:
+        `Plan has ${appendixSlides.length} appendix slides for a ${targetSlideCount}-slide ask; ` +
+        `max is ${appendixCap} (10% top-up). Drill deeper in existing chapters instead.`,
+    });
+  }
+
   if (uniqueDimensions.length < minRequiredDimensions) {
     deckViolations.push({
       rule: "drilldown_dimension_coverage",
-      severity: targetSlideCount >= 41 ? "major" : "minor",
+      severity: targetSlideCount >= 40 ? "major" : "minor",
       message:
         `Deck covers ${uniqueDimensions.length} drill-down dimensions but ${minRequiredDimensions} are required ` +
         `for ${targetSlideCount} slides.`,
     });
   }
 
-  if (targetSlideCount >= 41 && deepestLevel < 3) {
+  if (targetSlideCount >= 40 && deepestLevel < 3) {
     deckViolations.push({
       rule: "insufficient_decomposition_depth",
       severity: "major",
@@ -190,7 +217,7 @@ export function lintSlidePlan(
 
   const shallowChapters = chapterDepths
     .filter((entry) => !["Recommendations", "Appendix", "General"].includes(entry.chapter) && entry.deepestLevel < 3);
-  if (targetSlideCount >= 41 && shallowChapters.length > 0) {
+  if (targetSlideCount >= 40 && shallowChapters.length > 0) {
     deckViolations.push({
       rule: "chapter_depth_shallow",
       severity: "minor",
@@ -207,6 +234,9 @@ export function lintSlidePlan(
     minRequiredDimensions,
     deepestLevel,
     chapterDepths,
+    contentSlideCount: contentSlides.length,
+    appendixSlideCount: appendixSlides.length,
+    appendixCap,
   };
 }
 
@@ -351,7 +381,7 @@ function jaccard(left: Set<string>, right: Set<string>) {
 
 function requiredDimensionCoverage(targetSlideCount: number) {
   if (targetSlideCount <= 20) return 4;
-  if (targetSlideCount <= 40) return 7;
+  if (targetSlideCount < 40) return 7;
   if (targetSlideCount <= 60) return 10;
   return 14;
 }
@@ -360,6 +390,25 @@ function isStructuralSlide(slide: EnrichedSlide) {
   const role = (slide.role ?? "").toLowerCase();
   const layout = (slide.layoutId ?? slide.slideArchetype ?? "").toLowerCase();
   return role === "cover" || role === "section-divider" || layout === "cover" || layout === "section-divider";
+}
+
+function isAppendixSlide(slide: EnrichedSlide) {
+  const role = (slide.role ?? "").toLowerCase();
+  const layout = (slide.layoutId ?? slide.slideArchetype ?? "").toLowerCase();
+  const title = normalize(slide.title ?? "");
+  const intent = slide.pageIntentNormalized;
+
+  return role === "appendix"
+    || role === "methodology"
+    || role === "source-trail"
+    || layout === "appendix"
+    || layout === "methodology"
+    || intent.includes("appendix")
+    || intent.includes("methodology")
+    || intent.includes("source-trail")
+    || slide.dimensions.includes("methodology")
+    || /^(appendix|appendice)\b/.test(title)
+    || /\b(methodology|definitions|data quality|source trail|sources|assumptions)\b/.test(title);
 }
 
 function normalize(text: string) {

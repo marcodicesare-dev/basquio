@@ -79,7 +79,7 @@ const slide2 = pptx.addSlide({ masterName: "BASQUIO_MASTER" });
 /**
  * Lighter client master example — provides color constants and master naming convention.
  * Logo and solid-fill decorative shapes are handled by PGTI post-processor.
- * Claude is still responsible for: footer text, cover background, slide number styling.
+ * Claude is still responsible for: cover background and slide number styling.
  */
 function buildClientPaletteExample(
   templateProfile: TemplateProfile,
@@ -87,10 +87,7 @@ function buildClientPaletteExample(
 ) {
   const typography = templateProfile.brandTokens?.typography;
   const contentFont = typography?.bodyFont ?? typography?.headingFont ?? "Arial";
-  const clientName = (templateProfile.templateName?.replace(/\.pptx$/i, "") || "Client").trim();
-  const footerLabel = `${clientName} | Confidential`;
   const contentFontLiteral = JSON.stringify(contentFont);
-  const footerLabelLiteral = JSON.stringify(footerLabel);
   const coverBg = templateProfile.brandTokens?.palette?.coverBg
     ? stripHexPrefix(normalizeHex(templateProfile.brandTokens.palette.coverBg))
     : promptPalette.backgroundNoHash;
@@ -118,9 +115,7 @@ pptx.defineSlideMaster({
 pptx.defineSlideMaster({
   title: "CLIENT_MASTER",
   background: { fill: SURFACE },
-  objects: [
-    { text: { text: ${footerLabelLiteral}, options: { x: 0.45, y: 7.12, w: 2.8, h: 0.22, fontSize: 8, fontFace: ${contentFontLiteral}, color: MUTED } } },
-  ],
+  objects: [],
   slideNumber: {
     x: 12.0, y: 7.12, w: 0.55, h: 0.22,
     fontSize: 8, fontFace: ${contentFontLiteral}, color: MUTED, align: "right",
@@ -200,7 +195,7 @@ ax.spines[['top', 'right', 'bottom']].set_visible(False)
 ax.spines['left'].set_color('#D6D1C4')
 ax.set_facecolor('#F5F1E8')
 fig.patch.set_facecolor('#F5F1E8')
-fig.text(0.02, 0.02, "Source: NIQ Total Tracked Market, MAT Q4 2025", fontsize=7, color="#6B7280")
+# The slide footer band carries the single canonical source line.
 plt.subplots_adjust(bottom=0.15)
 plt.tight_layout()
 plt.savefig("chart_1.png", dpi=300, bbox_inches='tight', facecolor='#F5F1E8')
@@ -244,7 +239,7 @@ ax.spines['bottom'].set_color('#D6D1C4')
 ax.tick_params(colors="#5D656B", labelsize=9)
 ax.set_facecolor('#F5F1E8')
 fig.patch.set_facecolor('#F5F1E8')
-fig.text(0.02, 0.02, "Source: NIQ Total Italy, MAT Q1 2026", fontsize=7, color="#6B7280")
+# The slide footer band carries the single canonical source line.
 plt.subplots_adjust(bottom=0.16)
 plt.tight_layout()
 plt.savefig("competitor_share_chart.png", dpi=300, bbox_inches='tight', facecolor='#F5F1E8')
@@ -349,7 +344,7 @@ ax.tick_params(colors=MUTED, labelsize=10)
 legend = ax.get_legend()
 if legend:
     legend.remove()
-fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+# The slide footer band carries the single canonical source line.
 plt.subplots_adjust(bottom=0.18, right=0.88)
 plt.tight_layout()
 plt.savefig("line_direct_labels.png", dpi=300, bbox_inches='tight', pad_inches=0.15)
@@ -360,6 +355,7 @@ plt.savefig("line_direct_labels.png", dpi=300, bbox_inches='tight', pad_inches=0
 // Title = one-sentence finding with a number. Subtitle = client + source + period.
 
 const slide = pptx.addSlide(${BASQUIO_COVER_ARGS_PLACEHOLDER});
+const SOURCE_Y = 6.95;
 
 slide.addText("Il Discount perde 0.5pp confezioni vs Totale Italia: servono velocità e premium mix", {
   x: 1.1, y: 2.6, w: 9.0, h: 1.8,
@@ -372,7 +368,7 @@ slide.addText("Analisi per Gruppo VeGe | NielsenIQ RMS | L52W a S22/02/26", {
 });
 
 slide.addText("Confidential", {
-  x: 1.1, y: 6.9, w: 5.0, h: 0.3,
+  x: 1.1, y: SOURCE_Y, w: 5.0, h: 0.3,
   fontSize: 8, fontFace: "Arial", color: "6B6A72"
 });
 </example>
@@ -413,7 +409,7 @@ ax.spines['left'].set_color('#D6D1C4')
 ax.spines['bottom'].set_color('#D6D1C4')
 ax.set_facecolor('#F5F1E8')
 fig.patch.set_facecolor('#F5F1E8')
-fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W", fontsize=7, color="#6B7280")
+# The slide footer band carries the single canonical source line.
 plt.subplots_adjust(bottom=0.12)
 plt.tight_layout()
 plt.savefig("chart_gaps.png", dpi=300, bbox_inches='tight', facecolor='#F5F1E8')
@@ -712,7 +708,7 @@ for i, v in enumerate(cumulative):
 
 ax1.spines[['top']].set_visible(False)
 ax2.spines[['top']].set_visible(False)
-fig.text(0.02, 0.02, "Fonte: NielsenIQ RMS, L52W S22/02/26", fontsize=7, color="#6B6A72")
+# The slide footer band carries the single canonical source line.
 plt.tight_layout()
 plt.savefig("pareto_skus.png", dpi=300, bbox_inches='tight')
 
@@ -804,10 +800,12 @@ Every title states the finding AND its magnitude. The reader knows the insight b
 <example name="chart_theme_and_sizing_preamble">
 ## Basquio chart preamble and slot sizing
 
-# Paste this at the top of every matplotlib chart script, then swap the tokens to the active template palette if a client template overrides them.
+# Paste this exact block at the top of every matplotlib chart script.
+# The prompt already resolves these tokens to the active template palette when a client template is present.
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 BG = '#F5F1E8'
 TEXT = '#0B0C0C'
@@ -856,13 +854,15 @@ def apply_currency_axis_formatter(ax, max_val: float, language: str = "it"):
         scale, suffix = 1, ""
 
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(
-        lambda x, _: f"€{format_it_number(x / scale)}{suffix}" if language == "it" else f"€{x/scale:,.1f}{suffix}"
+        lambda x, _: f"{chr(8364)}{format_it_number(x / scale)}{suffix}" if language == "it" else f"{chr(8364)}{x/scale:,.1f}{suffix}"
     ))
 
 # Example usage after you create the axes:
 # max_val = df["V. Valore"].max()
 # apply_currency_axis_formatter(ax, max_val, language="it")
 # 13_640_000 becomes €13,6 Mln — never €13,6K.
+# For currency axes and tick labels, always call apply_currency_axis_formatter().
+# Do not type the euro symbol directly into axis labels or tick formatter lambdas.
 </example>
 
 <example name="chart_emphasis_and_label_safety">
@@ -890,7 +890,7 @@ for i, (share, growth) in enumerate(zip(shares, growths)):
 # GOOD: share and growth are separate labels, so they never collide.
 # BAD: ax.text(share, i, f'{share:.1f}%({growth:+.1f}%)')  # never combine two metrics in one label
 
-fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+# The slide footer band carries the single canonical source line.
 plt.subplots_adjust(bottom=0.18)
 plt.tight_layout()
 # After saving any chart: expand axes to fill the frame
@@ -978,7 +978,7 @@ colorbar.ax.tick_params(labelsize=8, colors=MUTED)
 ax.set_title("Revenue CAGR by Brand x Geography", fontsize=12, fontweight='bold', color=TEXT, pad=10)
 for spine in ax.spines.values():
     spine.set_color(BORDER)
-fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+# The slide footer band carries the single canonical source line.
 plt.tight_layout()
 plt.savefig("brand_geo_heatmap.png", dpi=300, bbox_inches='tight', pad_inches=0.12)
 </example>
@@ -1017,7 +1017,7 @@ ax.spines['left'].set_color(BORDER)
 ax.spines['bottom'].set_color(BORDER)
 ax.grid(axis='y')
 ax.set_title("Where CHF 294bn of growth came from, 2020-2025", fontsize=12, fontweight='bold', color=TEXT, pad=10)
-fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+# The slide footer band carries the single canonical source line.
 plt.tight_layout()
 plt.savefig("waterfall_bridge.png", dpi=300, bbox_inches='tight', pad_inches=0.12)
 </example>
@@ -1052,7 +1052,7 @@ ax.spines['left'].set_color(BORDER)
 ax.spines['bottom'].set_color(BORDER)
 ax.grid(axis='both', linestyle=':', linewidth=0.6, alpha=0.35)
 ax.text(0.99, 0.97, "Scale x Growth", transform=ax.transAxes, ha='right', va='top', fontsize=8, color=MUTED)
-fig.text(0.02, 0.02, "Source: NielsenIQ RMS, MAT Q1 2026", fontsize=8, color=DIM)
+# The slide footer band carries the single canonical source line.
 plt.tight_layout()
 plt.savefig("growth_size_scatter.png", dpi=300, bbox_inches='tight', pad_inches=0.12)
 </example>
@@ -1204,12 +1204,13 @@ export async function buildBasquioSystemPrompt(input: {
   });
   // PGTI post-processor handles: logo injection into slide master, theme color/font scheme
   // replacement, solid-fill decorative rectangles, and master solid background.
-  // Claude is still responsible for: gradient/image backgrounds, footer text, layout-specific
+  // Claude is still responsible for: gradient/image backgrounds, layout-specific
   // accents, non-rect decorative shapes, and any template elements PGTI can't reproduce.
   const pgtiDirective = hasImportedPptxTemplate
     ? [
         "- The client logo and basic decorative accent bars (solid-fill rectangles) will be added to the slide master automatically after generation. Do NOT manually add the client logo image via addImage().",
-        "- You ARE still responsible for: footer text (e.g. 'ClientName | Confidential'), gradient or image backgrounds from the template, any non-rectangular decorative elements, and layout-specific accents that differ between slide types.",
+        "- Assume the imported PPTX template already carries its own footer chrome unless the template profile explicitly says otherwise. Do NOT add a duplicate footer text box on content slides.",
+        "- You ARE still responsible for: gradient or image backgrounds from the template, any non-rectangular decorative elements, and layout-specific accents that differ between slide types.",
         "- If the template profile shows a distinct cover background color, apply it to slide 1 via the background property.",
       ]
     : [];
@@ -1220,9 +1221,10 @@ export async function buildBasquioSystemPrompt(input: {
         "- Use ONLY the client template palette for fills, borders, callouts, and chart emphasis when a client template is present.",
         "- Do NOT fall back to Basquio default colors (#F5F1E8, #1A6AFF, #F0CC27) when a client template provides its own palette.",
         `- Template-aware matplotlib color sequence: ${JSON.stringify(promptPalette.chartSequence)}.`,
+        `- Copy the matplotlib preamble exactly as shown in the examples so ACCENT, POSITIVE, NEGATIVE, and PALETTE already use the resolved client palette.`,
         "- A rendered deck that visibly uses Basquio house styling instead of the uploaded template is a failure of template fidelity.",
         "- NEVER write 'Basquio' in any slide footer, header, watermark, or confidentiality notice when a client template is present.",
-        "- Footer text must use the client name from the brief if available or just 'Confidential'. Example: 'NielsenIQ | Confidential' or 'Confidential'.",
+        "- If you must add footer text on a non-template deck, keep exactly one footer/source line in the footer band and use SOURCE_Y = 6.95.",
         "- The closing slide must NOT contain Basquio branding. Use the client name and the analysis title instead.",
       ]
     : [];
@@ -1340,6 +1342,8 @@ export async function buildBasquioSystemPrompt(input: {
     "- Generate charts as high-resolution PNG assets in Python and insert them as images in the final deck; do not rely on native PowerPoint chart objects or SmartArt for critical visuals.",
     "- Concretely: render charts with matplotlib or seaborn, save them as PNG files, and use the loaded presentation skill to place those PNGs in the deck. Do not use native PowerPoint chart objects for final deck visuals.",
     "- When writing Italian text in PptxGenJS addText() calls or matplotlib labels, use literal accented characters directly in the string. Do not use ASCII approximations such as 'C'e'' or 'priorita'. The execution environment is UTF-8 native.",
+    "- For any currency axis or tick labels, ALWAYS call apply_currency_axis_formatter(ax, max_val, language=...) from the example preamble. Do not hand-roll euro tick labels or type raw '€' glyphs inside formatter lambdas.",
+    "- Keep exactly one source/footer line per slide in the footer band. Use SOURCE_Y = 6.95 for slide-level footer/source text and do not duplicate the source under the chart and again in the footer.",
     "- Layout variety rule: a 10-slide deck needs at least 4 layout types, a 15-slide deck needs at least 5 layout types, and no single layout may exceed 40% of total slides.",
     "- For 30-slide decks, plan the archetype mix before writing any slide: use at least 7 archetype types, keep every archetype at 8 slides or fewer, keep chart-split at 10 slides or fewer, include at least one table or heatmap slide, and use at least three different chart families across the deck.",
     "- Recommended 15-slide mix: 1 cover, 1 exec-summary, 2-3 title-chart, 2-3 chart-split, 1-2 evidence-grid, 1-2 comparison, 1-2 recommendation-cards/key-findings, 1 summary.",

@@ -86,6 +86,17 @@ const HARD_QA_BLOCKERS = new Set([
   "report_only_manifest_zero_slides",
   "pptx_zip_parse_failed",
 ]);
+const DECK_PLAN_MECE_CHECK = (process.env.DECK_PLAN_MECE_CHECK ?? "true").trim().toLowerCase() !== "false";
+const ALWAYS_ACTIONABLE_PLAN_RULES = new Set([
+  "redundant_data_cut",
+  "content_shortfall",
+  "appendix_overfill",
+]);
+const LONG_DECK_PLAN_RULES = new Set([
+  "drilldown_dimension_coverage",
+  "insufficient_decomposition_depth",
+  "chapter_depth_shallow",
+]);
 const ANTHROPIC_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_ANTHROPIC_TIMEOUT_MS ?? "3600000", 10);
 const AUTHOR_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_PHASE_TIMEOUT_MS ?? "3300000", 10);
 const REVISE_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_REVISE_PHASE_TIMEOUT_MS ?? "2700000", 10);
@@ -1023,7 +1034,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       if (recoveredAnalysisForSplit) {
         analysis = recoveredAnalysisForSplit;
         applyChartPreprocessingConstraints(analysis);
-        const recoveredPlanLint = buildPlanLintSummary(analysis);
+        const recoveredPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
         phaseTelemetry.understandPlanLint = recoveredPlanLint.summary;
         await upsertWorkingPaper(config, runId, "deck_plan_validation", recoveredPlanLint.result).catch(() => {});
         await insertEvent(config, runId, attempt, "understand", "plan_validation", {
@@ -1306,7 +1317,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         }
         enforceAnalysisExhibitRules(analysis);
         applyChartPreprocessingConstraints(analysis);
-        const resolvedPlanLint = buildPlanLintSummary(analysis);
+        const resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
         phaseTelemetry.understandPlanLint = resolvedPlanLint.summary;
         await upsertWorkingPaper(config, runId, "analysis_result", analysis);
         await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
@@ -1386,7 +1397,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         phaseTelemetry.authorLint = { passed: true, actionableIssueCount: 0, actionableIssues: [], slideViolationCount: 0, deckViolationCount: 0 };
         phaseTelemetry.authorContract = { passed: true, actionableIssueCount: 0, actionableIssues: [], violationCount: 0 };
       } else {
-        phaseTelemetry.authorLint = summarizeLintResult(lintManifest(manifest));
+        phaseTelemetry.authorLint = summarizeLintResult(lintManifest(manifest, run.target_slide_count));
         phaseTelemetry.authorContract = summarizeDeckContractResult(validateManifestContract(manifest));
       }
 
@@ -1475,7 +1486,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       run.target_slide_count,
     );
     const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
-    const critiqueLint = lintManifest(manifest);
+    const critiqueLint = lintManifest(manifest, run.target_slide_count);
     const critiqueContract = validateManifestContract(manifest);
     const hasBlockingCritiqueIssues = blockingCritiqueIssues.length > 0;
     const hasMajorOrCriticalVisualIssues = initialVisualQa.report.issues.some(
@@ -2098,7 +2109,11 @@ function resolveConfig() {
   if (!supabaseUrl) throw new Error("NEXT_PUBLIC_SUPABASE_URL is required.");
   if (!serviceKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required.");
 
-  return { anthropicApiKey, supabaseUrl, serviceKey };
+  return {
+    anthropicApiKey,
+    supabaseUrl,
+    serviceKey,
+  };
 }
 
 function normalizeAuthorModel(model: string | null | undefined): AuthorModel {
@@ -3328,11 +3343,11 @@ function buildAuthorMessage(
         ? "This is a Summary-tier deck. Deliver 1-2 slides per chapter, 4-6 insights, and keep the storyline concise."
         : run.target_slide_count <= 20
           ? "This is a Standard consulting deck. Deliver 2-3 slides per chapter, full SCQA depth, and ensure every analytical slide shows co-located data."
-          : run.target_slide_count <= 40
+        : run.target_slide_count <= 40
             ? "This is a Deep-dive deck. Deliver 3-5 slides per chapter, deep-dive each segment or competitor individually, and include richer cross-tabs plus detailed recommendation cards."
             : run.target_slide_count <= 70
-              ? "This is a Full-report NielsenIQ-grade deck. BEFORE generating any slide, plan an MECE issue tree with 4-6 chapters and 4-6 unique leaf questions per chapter. No two slides may answer the same question with different chart types. Cover at least 10 drill-down dimensions from the deck-depth architecture pack, and decompose every segment finding to at least L3 before recommending action."
-              : "This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix.";
+              ? `This is a Full-report NielsenIQ-grade deck. BEFORE generating any slide, plan an MECE issue tree with 4-6 chapters and 4-6 unique leaf questions per chapter. No two slides may answer the same question with different chart types. Cover at least 10 drill-down dimensions from the deck-depth architecture pack, and decompose every segment finding to at least L3 before recommending action. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides through drill-down depth. You MAY add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides as genuinely supplementary top-up only, never as filler to reach count.`
+              : `This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides first. You MAY add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides as optional top-up only if they are genuinely additive.`;
   const extractionInstruction = evidenceMode.hasTabularData
     ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
     : evidenceMode.hasDocumentEvidence
@@ -3373,7 +3388,7 @@ function buildAuthorMessage(
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         ...(isReportOnly
           ? ["- This is a report-only run. Do not produce slides or presentation artifacts."]
-          : [`- The requested deck size is canonical. Produce exactly ${run.target_slide_count} slides in the final deck.`]),
+          : [`- The requested deck size is canonical. Produce exactly ${run.target_slide_count} content slides. You may add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as optional supplementary top-up, never as filler.`]),
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
         "- Archetype selection is mandatory for every slide. Do not improvise freeform slide compositions outside the approved archetype system.",
         "- Never use addShape/addText with custom coordinates outside defined archetype slots unless an existing client template placeholder requires a microscopic adjustment.",
@@ -3480,8 +3495,9 @@ function buildAuthorMessage(
           "- Slide titles: MAXIMUM 70 characters. If the insight needs more, split it into title + subtitle.",
           "- Never use donut or pie charts with more than 4 segments. Use a horizontal stacked bar when there are 5+ segments.",
           ...(!isReportOnly ? [
-            `- Produce exactly ${run.target_slide_count} slides. Do not widen or compress the deck.`,
-            `- \`deck_manifest.json\` slideCount must equal ${run.target_slide_count}.`,
+            `- Produce exactly ${run.target_slide_count} content slides. Do not compress the body of the deck below that ask.`,
+            `- Appendix is optional and capped at ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} slides. Use it only for genuinely supplementary methodology or source-trail material.`,
+            `- \`deck_manifest.json\` slideCount must equal the actual total slides shipped: ${run.target_slide_count} content slides plus 0-${getAppendixCapForRequestedDeckSize(run.target_slide_count)} optional appendix slides.`,
           ] : [
             "- `deck_manifest.json` slideCount must be 0 for this report-only run.",
           ]),
@@ -3847,7 +3863,7 @@ function buildReviseMessage(input: {
           "",
           "Target only the weak slides. Preserve the rest of the deck.",
           "Do not use a deck-wide rewrite to solve local issues.",
-          "Do not widen or compress the deck.",
+          "Do not widen or compress the deck unless you are fixing a count-contract failure. If a critique issue says [content_shortfall] or [appendix_overfill], you may add or remove only the minimum slides needed to restore the requested content-slide count and keep appendix within the allowed top-up cap.",
           "Re-apply the deterministic chart preprocessing guide when rebuilding any chart:",
           chartPreprocessingGuide,
           "Fix overlaps, clipped text, blank sections, and claim-exhibit mismatches before any cosmetic refinements.",
@@ -5409,17 +5425,19 @@ function analysisToPlanLintInput(analysis: z.infer<typeof analysisSchema>): Slid
   }));
 }
 
-function buildPlanLintSummary(analysis: z.infer<typeof analysisSchema>) {
-  const result = lintSlidePlan(analysisToPlanLintInput(analysis), analysis.slidePlan.length);
+function buildPlanLintSummary(analysis: z.infer<typeof analysisSchema>, requestedSlideCount?: number) {
+  const planTargetSlideCount = resolvePlanLintTargetSlideCount(requestedSlideCount, analysis.slidePlan.length);
+  const result = lintSlidePlan(analysisToPlanLintInput(analysis), planTargetSlideCount);
+  const meceCheckEnabled = shouldEnforceDeckPlanMeceCheck(planTargetSlideCount);
   const actionableIssues = [
     ...result.pairViolations
-      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .filter((violation) => isActionablePlanPairViolation(violation, meceCheckEnabled))
       .map((violation) =>
         `Slides ${violation.positions[0]} and ${violation.positions[1]}: ${violation.message}`,
       ),
     ...result.deckViolations
-      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
-      .map((violation) => violation.message),
+      .filter((violation) => isActionablePlanDeckViolation(violation, meceCheckEnabled))
+      .map((violation) => formatPlanDeckViolation(violation)),
   ];
 
   return {
@@ -5427,13 +5445,67 @@ function buildPlanLintSummary(analysis: z.infer<typeof analysisSchema>) {
     actionableIssues,
     summary: {
       slideCount: analysis.slidePlan.length,
+      requestedSlideCount: planTargetSlideCount,
       drillDownDimensions: result.uniqueDimensions.length,
       minRequiredDimensions: result.minRequiredDimensions,
       mecePairViolations: result.pairViolations.length,
       deepestLevel: result.deepestLevel,
       chapterDepths: result.chapterDepths,
+      contentSlideCount: result.contentSlideCount,
+      appendixSlideCount: result.appendixSlideCount,
+      appendixCap: result.appendixCap,
+      meceCheckEnabled,
     },
   };
+}
+
+function shouldEnforceDeckPlanMeceCheck(targetSlideCount: number) {
+  return DECK_PLAN_MECE_CHECK && targetSlideCount >= 40;
+}
+
+function getAppendixCapForRequestedDeckSize(targetSlideCount: number) {
+  return Math.ceil(targetSlideCount * 0.10);
+}
+
+function resolvePlanLintTargetSlideCount(requestedSlideCount: number | undefined, fallbackSlideCount: number) {
+  return typeof requestedSlideCount === "number" && requestedSlideCount > 0
+    ? requestedSlideCount
+    : fallbackSlideCount;
+}
+
+function isActionablePlanPairViolation(
+  violation: { rule: string; severity: "critical" | "major" | "minor" },
+  meceCheckEnabled: boolean,
+) {
+  if (violation.severity !== "critical" && violation.severity !== "major") {
+    return false;
+  }
+
+  return DECK_PLAN_MECE_CHECK && (ALWAYS_ACTIONABLE_PLAN_RULES.has(violation.rule) || meceCheckEnabled);
+}
+
+function isActionablePlanDeckViolation(
+  violation: { rule: string; severity: "critical" | "major" | "minor" },
+  meceCheckEnabled: boolean,
+) {
+  if (violation.severity !== "critical" && violation.severity !== "major") {
+    return false;
+  }
+
+  if (ALWAYS_ACTIONABLE_PLAN_RULES.has(violation.rule)) {
+    return true;
+  }
+
+  if (LONG_DECK_PLAN_RULES.has(violation.rule)) {
+    return meceCheckEnabled;
+  }
+
+  return meceCheckEnabled;
+}
+
+function formatPlanDeckViolation(violation: { rule: string; message: string }) {
+  const prefix = LONG_DECK_PLAN_RULES.has(violation.rule) ? "Deck depth issue" : "Deck plan issue";
+  return `${prefix} [${violation.rule}]: ${violation.message}`;
 }
 
 
@@ -5563,8 +5635,15 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>, req
   const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
   if (manifest.slideCount <= 0) issues.push("Manifest has zero slides.");
   if (manifest.slideCount !== manifest.slides.length) issues.push("Manifest slideCount does not match slides[].");
-  if (typeof requestedSlideCount === "number" && manifest.slideCount !== requestedSlideCount) {
-    issues.push(`Manifest slideCount ${manifest.slideCount} does not match requested targetSlideCount ${requestedSlideCount}.`);
+  if (typeof requestedSlideCount === "number") {
+    const appendixCap = getAppendixCapForRequestedDeckSize(requestedSlideCount);
+    const maxTotalSlides = requestedSlideCount + appendixCap;
+    if (manifest.slideCount < requestedSlideCount) {
+      issues.push(`Manifest slideCount ${manifest.slideCount} is below requested targetSlideCount ${requestedSlideCount}.`);
+    }
+    if (manifest.slideCount > maxTotalSlides) {
+      issues.push(`Manifest slideCount ${manifest.slideCount} exceeds requested targetSlideCount ${requestedSlideCount} plus appendix cap ${appendixCap}.`);
+    }
   }
   if (manifest.slides.some((slide) => /chart unavailable|placeholder/i.test(`${slide.body ?? ""} ${slide.title}`))) {
     issues.push("Deck still contains placeholder or chart-unavailable language.");
@@ -5615,20 +5694,8 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>, req
   if (new Set(manifest.slides.map((slide) => slide.title)).size !== manifest.slides.length) {
     issues.push("Slide titles are duplicated.");
   }
-  const planLint = lintManifestPlan(manifest);
-  for (const violation of planLint.result.pairViolations) {
-    if (violation.severity === "critical" || violation.severity === "major") {
-      issues.push(
-        `Slides ${violation.positions[0]} and ${violation.positions[1]} look analytically redundant ` +
-        `(${Math.round(violation.similarity * 100)}% similarity).`,
-      );
-    }
-  }
-  for (const violation of planLint.result.deckViolations) {
-    if (violation.severity === "critical" || violation.severity === "major") {
-      issues.push(violation.message);
-    }
-  }
+  const planLint = lintManifestPlan(manifest, requestedSlideCount);
+  issues.push(...planLint.actionableIssues);
   for (const slide of manifest.slides) {
     if (!APPROVED_ARCHETYPES.includes(slide.slideArchetype)) {
       issues.push(`Slide ${slide.position} uses unsupported slideArchetype "${slide.slideArchetype}".`);
@@ -5822,40 +5889,37 @@ function manifestToPlanLintInput(manifest: z.infer<typeof deckManifestSchema>): 
   });
 }
 
-function lintManifest(manifest: z.infer<typeof deckManifestSchema>) {
+function lintManifest(manifest: z.infer<typeof deckManifestSchema>, requestedSlideCount?: number) {
   const result = lintDeckText(manifestToLintInput(manifest));
-  const planLint = lintManifestPlan(manifest);
+  const planLint = lintManifestPlan(manifest, requestedSlideCount);
   const actionableIssues = [
     ...result.slideResults.flatMap((slideResult) =>
       slideResult.result.violations
         .filter((violation) => violation.severity === "critical" || violation.severity === "major")
-        .map((violation) => `Slide ${slideResult.position} writing issue: ${violation.message} (${violation.field})`),
+        .map((violation) => `Slide ${slideResult.position} writing issue [${violation.rule}]: ${violation.message} (${violation.field})`),
     ),
     ...result.deckViolations
       .filter((violation) => violation.severity === "critical" || violation.severity === "major")
-      .map((violation) => `Deck writing issue: ${violation.message}`),
-    ...planLint.result.pairViolations
-      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
-      .map((violation) => `Slides ${violation.positions[0]} and ${violation.positions[1]} redundancy issue: ${violation.message}`),
-    ...planLint.result.deckViolations
-      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
-      .map((violation) => `Deck depth issue: ${violation.message}`),
+      .map((violation) => `Deck writing issue [${violation.rule}]: ${violation.message}`),
+    ...planLint.actionableIssues,
   ];
 
   return { result, actionableIssues, planLint: planLint.result };
 }
 
-function lintManifestPlan(manifest: z.infer<typeof deckManifestSchema>) {
-  const result = lintSlidePlan(manifestToPlanLintInput(manifest), manifest.slideCount);
+function lintManifestPlan(manifest: z.infer<typeof deckManifestSchema>, requestedSlideCount?: number) {
+  const planTargetSlideCount = resolvePlanLintTargetSlideCount(requestedSlideCount, manifest.slideCount);
+  const result = lintSlidePlan(manifestToPlanLintInput(manifest), planTargetSlideCount);
+  const meceCheckEnabled = shouldEnforceDeckPlanMeceCheck(planTargetSlideCount);
   const actionableIssues = [
     ...result.pairViolations
-      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
-      .map((violation) => `Slides ${violation.positions[0]} and ${violation.positions[1]}: ${violation.message}`),
+      .filter((violation) => isActionablePlanPairViolation(violation, meceCheckEnabled))
+      .map((violation) => `Slides ${violation.positions[0]} and ${violation.positions[1]} redundancy issue [${violation.rule}]: ${violation.message}`),
     ...result.deckViolations
-      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
-      .map((violation) => violation.message),
+      .filter((violation) => isActionablePlanDeckViolation(violation, meceCheckEnabled))
+      .map((violation) => formatPlanDeckViolation(violation)),
   ];
-  return { result, actionableIssues };
+  return { result, actionableIssues, meceCheckEnabled };
 }
 
 function summarizeLintResult(lint: ReturnType<typeof lintManifest>) {
@@ -5875,6 +5939,9 @@ function summarizeLintResult(lint: ReturnType<typeof lintManifest>) {
     planUniqueDimensions: lint.planLint.uniqueDimensions,
     planMinRequiredDimensions: lint.planLint.minRequiredDimensions,
     planDeepestLevel: lint.planLint.deepestLevel,
+    planContentSlideCount: lint.planLint.contentSlideCount,
+    planAppendixSlideCount: lint.planLint.appendixSlideCount,
+    planAppendixCap: lint.planLint.appendixCap,
   };
 }
 
@@ -6113,6 +6180,16 @@ function isAdvisoryCritiqueIssue(issue: string) {
   // "pptx_large_image_aspect_fit" is a top-level advisory, not from the visual QA judge
   if (n.includes("pptx_large_image_aspect_fit")) return true;
 
+  // Wave 1 quality blockers: these must trigger revise, not remain advisory.
+  if (n.includes("[competitor_tool_")) return false;
+  if (n.includes("[title_no_number]")) return false;
+  if (n.includes("[title_number_coverage]")) return false;
+  if (n.includes("redundancy issue [redundant_data_cut]")) return false;
+  if (n.includes("deck depth issue [drilldown_dimension_coverage]")) return false;
+  if (n.includes("deck depth issue [insufficient_decomposition_depth]")) return false;
+  if (n.includes("deck plan issue [content_shortfall]")) return false;
+  if (n.includes("deck plan issue [appendix_overfill]")) return false;
+
   // Lint advisories — layout diversity, layout percentage, writing issues
   if (n.includes("layout type") || n.includes("layout used") || n.includes("main\" layout")) return true;
   if (n.startsWith("deck writing issue") || (n.startsWith("slide") && n.includes("writing issue"))) return true;
@@ -6120,8 +6197,8 @@ function isAdvisoryCritiqueIssue(issue: string) {
   // Title overflow — advisory
   if (n.includes("title is") && n.includes("overflow the right margin")) return true;
 
-  // Contract advisories — slide count mismatch is advisory per CLAUDE.md publish gate rules
-  if (n.includes("does not match requested targetslidecount")) return true;
+  if (n.includes("is below requested targetslidecount")) return false;
+  if (n.includes("exceeds requested targetslidecount")) return false;
 
   // Body length / metric layout warnings — hints, not structural failures
   if (n.includes("body is too long") || n.includes("too much body copy") || n.includes("title is too long for a clean")) return true;
@@ -6154,14 +6231,32 @@ async function buildQaReport(
   ];
 
   if (mode === "deck") {
+    const planLint = lintManifestPlan(manifest, requestedSlideCount);
     checks.push(
       { name: "pptx_present", passed: (artifacts.pptx?.buffer.length ?? 0) > 0, detail: `${artifacts.pptx?.buffer.length ?? 0} bytes` },
       { name: "pdf_present", passed: (artifacts.pdf?.buffer.length ?? 0) > 0, detail: `${artifacts.pdf?.buffer.length ?? 0} bytes` },
       { name: "slide_count_positive", passed: manifest.slideCount > 0, detail: `${manifest.slideCount} slides` },
       {
-        name: "slide_count_matches_requested_target",
-        passed: typeof requestedSlideCount !== "number" || manifest.slideCount === requestedSlideCount,
-        detail: typeof requestedSlideCount === "number" ? `requested=${requestedSlideCount} manifest=${manifest.slideCount}` : "no requested slide count recorded",
+        name: "slide_count_within_requested_plus_appendix_cap",
+        passed: typeof requestedSlideCount !== "number"
+          || (manifest.slideCount >= requestedSlideCount && manifest.slideCount <= requestedSlideCount + getAppendixCapForRequestedDeckSize(requestedSlideCount)),
+        detail: typeof requestedSlideCount === "number"
+          ? `requested=${requestedSlideCount} appendixCap=${getAppendixCapForRequestedDeckSize(requestedSlideCount)} manifest=${manifest.slideCount}`
+          : "no requested slide count recorded",
+      },
+      {
+        name: "content_slide_count_meets_request",
+        passed: typeof requestedSlideCount !== "number" || planLint.result.contentSlideCount >= requestedSlideCount,
+        detail: typeof requestedSlideCount === "number"
+          ? `requested=${requestedSlideCount} content=${planLint.result.contentSlideCount}`
+          : "no requested slide count recorded",
+      },
+      {
+        name: "appendix_slide_count_within_cap",
+        passed: typeof requestedSlideCount !== "number" || planLint.result.appendixSlideCount <= planLint.result.appendixCap,
+        detail: typeof requestedSlideCount === "number"
+          ? `appendix=${planLint.result.appendixSlideCount} cap=${planLint.result.appendixCap}`
+          : "no requested slide count recorded",
       },
       {
         name: "chart_density_fits_layout_slots",

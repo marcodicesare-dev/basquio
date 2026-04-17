@@ -56,6 +56,9 @@ export const SAFE_FONTS = {
   mono: "Courier New",
 } as const;
 
+const MAX_RENDERING_TARGET_SLIDES = 100;
+const MAX_RENDERING_CHARTS_PER_DECK = MAX_RENDERING_TARGET_SLIDES;
+
 // ─── OOXML RULES ──────────────────────────────────────────────────
 
 export const OOXML_RULES = {
@@ -66,8 +69,8 @@ export const OOXML_RULES = {
   animations: false,        // Break in Slides/Keynote
   transitions: false,       // Break in Slides/Keynote
   masterSlides: false,      // Template-dependent
-  maxSlidesPerDeck: 30,
-  maxChartsPerDeck: 24,
+  maxSlidesPerDeck: MAX_RENDERING_TARGET_SLIDES,
+  maxChartsPerDeck: MAX_RENDERING_CHARTS_PER_DECK,
   maxBulletsPerSlide: 4,
   maxMetricsPerSlide: 6,
   maxBodyWords: {

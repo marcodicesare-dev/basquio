@@ -642,6 +642,24 @@ export function lintDeckText(slides: SlideTextInput[]): DeckLintResult {
     deckViolations.push({ rule: "too_many_text_slides", severity: "major", field: "deck", message: `${textOnlyAnalytical.length} text-only analytical slides (max 1)` });
   }
 
+  const numberRequiredSlides = slides.filter((slide) =>
+    slide.role !== "cover" &&
+    slide.role !== "section-divider" &&
+    slide.layoutId !== "section-divider"
+  );
+  if (numberRequiredSlides.length > 0) {
+    const titledWithNumbers = numberRequiredSlides.filter((slide) => hasNumber(slide.title)).length;
+    const titleNumberCoverage = titledWithNumbers / numberRequiredSlides.length;
+    if (titleNumberCoverage < 0.8) {
+      deckViolations.push({
+        rule: "title_number_coverage",
+        severity: "major",
+        field: "deck",
+        message: `Only ${titledWithNumbers}/${numberRequiredSlides.length} non-divider slide titles contain a number (minimum 80% coverage required)`,
+      });
+    }
+  }
+
   // Repetitive narrative (consecutive titles share >3 content words)
   for (let i = 1; i < slides.length; i++) {
     const prevWords = new Set(slides[i - 1].title.toLowerCase().split(/\s+/).filter(w => w.length > 3));
