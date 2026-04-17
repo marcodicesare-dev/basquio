@@ -452,7 +452,7 @@ async function masterAlreadyContainsEquivalentLogo(args: {
     }
 
     const geometry = readPictureGeometry(block);
-    if (geometry && isNearlySameGeometry(geometry, args.projectedPosition)) {
+    if (geometry && isLogoLikePictureBlock(block) && isNearlySameGeometry(geometry, args.projectedPosition)) {
       return true;
     }
   }
@@ -493,6 +493,11 @@ function isNearlySameGeometry(a: LogoPosition, b: LogoPosition) {
     Math.abs(a.w - b.w) <= tolerance &&
     Math.abs(a.h - b.h) <= tolerance
   );
+}
+
+function isLogoLikePictureBlock(block: string) {
+  const descriptor = block.match(/<p:cNvPr\b[^>]*(?:name|descr)="([^"]+)"/i)?.[1] ?? "";
+  return /\b(logo|symbol|brand)\b/i.test(descriptor);
 }
 
 async function ensureContentTypes(

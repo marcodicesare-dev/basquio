@@ -96,6 +96,23 @@ const DIMENSION_PRIORITY = [
   "methodology",
 ] as const;
 
+const COVERAGE_DIMENSIONS = new Set([
+  "segment",
+  "channel",
+  "format",
+  "brand",
+  "sku",
+  "flavour",
+  "promo",
+  "price",
+  "distribution",
+  "retailer",
+  "geography",
+  "occasion",
+  "shopper",
+  "sensitivity",
+]);
+
 export function lintSlidePlan(
   rawSlides: SlidePlanLintInput[],
   targetSlideCount: number,
@@ -133,7 +150,9 @@ export function lintSlidePlan(
     }
   }
 
-  const uniqueDimensions = [...new Set(slides.flatMap((slide) => slide.dimensions))];
+  const uniqueDimensions = [...new Set(
+    slides.flatMap((slide) => slide.dimensions.filter((dimension) => COVERAGE_DIMENSIONS.has(dimension))),
+  )];
   const minRequiredDimensions = requiredDimensionCoverage(targetSlideCount);
   const analyticalSlides = slides.filter((slide) => !isStructuralSlide(slide));
   const deepestLevel = analyticalSlides.reduce(
@@ -220,9 +239,6 @@ function inferDimensions(slide: SlidePlanLintInput, text: string) {
     .map((definition) => definition.id);
 
   if ((slide.pageIntent ?? "").toLowerCase().includes("recommend")) {
-    matched.push("recommendation");
-  }
-  if ((slide.layoutId ?? "").toLowerCase().includes("summary")) {
     matched.push("recommendation");
   }
   if ((slide.title ?? "").match(/\bappendix|methodology|data quality|definitions\b/i)) {
