@@ -11,7 +11,17 @@ import { PDFDocument } from "pdf-lib";
 import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
-import { detectLanguage, enforceExhibit, inferQuestionType, lintDeckText, routeQuestion, validateDeckContract, type SlideTextInput } from "@basquio/intelligence";
+import {
+  detectLanguage,
+  enforceExhibit,
+  inferQuestionType,
+  lintDeckText,
+  lintSlidePlan,
+  routeQuestion,
+  validateDeckContract,
+  type SlidePlanLintInput,
+  type SlideTextInput,
+} from "@basquio/intelligence";
 import { applyTemplateBranding, renderPptxArtifact } from "@basquio/render-pptx";
 import type { ChartSlotType } from "@basquio/scene-graph";
 import { getArchetypeOrDefault, listArchetypeIds, validateSlotConstraints } from "@basquio/scene-graph/slot-archetypes";
@@ -1013,6 +1023,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       if (recoveredAnalysisForSplit) {
         analysis = recoveredAnalysisForSplit;
         applyChartPreprocessingConstraints(analysis);
+        const recoveredPlanLint = buildPlanLintSummary(analysis);
+        phaseTelemetry.understandPlanLint = recoveredPlanLint.summary;
+        await upsertWorkingPaper(config, runId, "deck_plan_validation", recoveredPlanLint.result).catch(() => {});
+        await insertEvent(config, runId, attempt, "understand", "plan_validation", {
+          ...recoveredPlanLint.summary,
+          actionableIssues: recoveredPlanLint.actionableIssues.slice(0, 8),
+        }).catch(() => {});
         phaseTelemetry.understandRecovery = {
           source: "working_paper",
           recoveryReason: attempt.recoveryReason,
@@ -1289,8 +1306,15 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         }
         enforceAnalysisExhibitRules(analysis);
         applyChartPreprocessingConstraints(analysis);
+        const resolvedPlanLint = buildPlanLintSummary(analysis);
+        phaseTelemetry.understandPlanLint = resolvedPlanLint.summary;
         await upsertWorkingPaper(config, runId, "analysis_result", analysis);
         await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
+        await upsertWorkingPaper(config, runId, "deck_plan_validation", resolvedPlanLint.result).catch(() => {});
+        await insertEvent(config, runId, attempt, "understand", "plan_validation", {
+          ...resolvedPlanLint.summary,
+          actionableIssues: resolvedPlanLint.actionableIssues.slice(0, 8),
+        }).catch(() => {});
         await upsertWorkingPaper(config, runId, "analysis_checkpoint", {
           ...analysis,
           checkpointedAt: new Date().toISOString(),
@@ -3307,7 +3331,7 @@ function buildAuthorMessage(
           : run.target_slide_count <= 40
             ? "This is a Deep-dive deck. Deliver 3-5 slides per chapter, deep-dive each segment or competitor individually, and include richer cross-tabs plus detailed recommendation cards."
             : run.target_slide_count <= 70
-              ? "This is a Full-report deck. Deliver 4-6 slides per chapter, dedicated slides for cross-tab analyses, and cover the full NielsenIQ-style chapter set including appendix."
+              ? "This is a Full-report NielsenIQ-grade deck. BEFORE generating any slide, plan an MECE issue tree with 4-6 chapters and 4-6 unique leaf questions per chapter. No two slides may answer the same question with different chart types. Cover at least 10 drill-down dimensions from the deck-depth architecture pack, and decompose every segment finding to at least L3 before recommending action."
               : "This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix.";
   const extractionInstruction = evidenceMode.hasTabularData
     ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
@@ -4356,6 +4380,9 @@ function buildManifestFromAnalysis(analysis: AnalysisResult) {
       title: slide.title,
       subtitle: slide.subtitle,
       body: slide.body,
+      pageIntent: typeof (slide as { pageIntent?: string }).pageIntent === "string"
+        ? (slide as { pageIntent?: string }).pageIntent
+        : undefined,
       bullets: slide.bullets,
       metrics: slide.metrics,
       callout: slide.callout,
@@ -5363,6 +5390,52 @@ function applyChartPreprocessingConstraints(analysis: z.infer<typeof analysisSch
   }
 }
 
+function analysisToPlanLintInput(analysis: z.infer<typeof analysisSchema>): SlidePlanLintInput[] {
+  return analysis.slidePlan.map((slide) => ({
+    position: slide.position,
+    role: slide.position === 1 ? "cover" : slide.position === 2 ? "exec-summary" : "content",
+    layoutId: slide.layoutId,
+    slideArchetype: slide.slideArchetype,
+    title: slide.title,
+    body: slide.body,
+    governingThought: slide.body,
+    focalObject: slide.subtitle,
+    pageIntent: typeof (slide as { pageIntent?: string }).pageIntent === "string"
+      ? (slide as { pageIntent?: string }).pageIntent
+      : undefined,
+    chartId: slide.chart?.id,
+    chartType: slide.chart?.chartType,
+    evidenceIds: slide.evidenceIds,
+  }));
+}
+
+function buildPlanLintSummary(analysis: z.infer<typeof analysisSchema>) {
+  const result = lintSlidePlan(analysisToPlanLintInput(analysis), analysis.slidePlan.length);
+  const actionableIssues = [
+    ...result.pairViolations
+      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .map((violation) =>
+        `Slides ${violation.positions[0]} and ${violation.positions[1]}: ${violation.message}`,
+      ),
+    ...result.deckViolations
+      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .map((violation) => violation.message),
+  ];
+
+  return {
+    result,
+    actionableIssues,
+    summary: {
+      slideCount: analysis.slidePlan.length,
+      drillDownDimensions: result.uniqueDimensions.length,
+      minRequiredDimensions: result.minRequiredDimensions,
+      mecePairViolations: result.pairViolations.length,
+      deepestLevel: result.deepestLevel,
+      chapterDepths: result.chapterDepths,
+    },
+  };
+}
+
 
 async function persistDeckSpec(
   config: ReturnType<typeof resolveConfig>,
@@ -5542,6 +5615,20 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>, req
   if (new Set(manifest.slides.map((slide) => slide.title)).size !== manifest.slides.length) {
     issues.push("Slide titles are duplicated.");
   }
+  const planLint = lintManifestPlan(manifest);
+  for (const violation of planLint.result.pairViolations) {
+    if (violation.severity === "critical" || violation.severity === "major") {
+      issues.push(
+        `Slides ${violation.positions[0]} and ${violation.positions[1]} look analytically redundant ` +
+        `(${Math.round(violation.similarity * 100)}% similarity).`,
+      );
+    }
+  }
+  for (const violation of planLint.result.deckViolations) {
+    if (violation.severity === "critical" || violation.severity === "major") {
+      issues.push(violation.message);
+    }
+  }
   for (const slide of manifest.slides) {
     if (!APPROVED_ARCHETYPES.includes(slide.slideArchetype)) {
       issues.push(`Slide ${slide.position} uses unsupported slideArchetype "${slide.slideArchetype}".`);
@@ -5708,8 +5795,36 @@ function manifestToLintInput(manifest: z.infer<typeof deckManifestSchema>): Slid
   }));
 }
 
+function manifestToPlanLintInput(manifest: z.infer<typeof deckManifestSchema>): SlidePlanLintInput[] {
+  const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
+  return manifest.slides.map((slide, index) => {
+    const chart = slide.chartId ? chartById.get(slide.chartId) : undefined;
+    return {
+      position: slide.position,
+      role: index === 0 || slide.layoutId === "cover"
+        ? "cover"
+        : slide.layoutId === "exec-summary"
+          ? "exec-summary"
+          : slide.pageIntent ?? "content",
+      layoutId: slide.layoutId,
+      slideArchetype: slide.slideArchetype,
+      title: slide.title,
+      body: slide.body,
+      governingThought: slide.body ?? slide.subtitle,
+      focalObject: slide.callout?.text,
+      pageIntent: slide.pageIntent,
+      chartId: slide.chartId,
+      chartType: chart?.chartType,
+      categories: chart?.categories,
+      categoryCount: chart?.categoryCount,
+      evidenceIds: slide.evidenceIds,
+    };
+  });
+}
+
 function lintManifest(manifest: z.infer<typeof deckManifestSchema>) {
   const result = lintDeckText(manifestToLintInput(manifest));
+  const planLint = lintManifestPlan(manifest);
   const actionableIssues = [
     ...result.slideResults.flatMap((slideResult) =>
       slideResult.result.violations
@@ -5719,8 +5834,27 @@ function lintManifest(manifest: z.infer<typeof deckManifestSchema>) {
     ...result.deckViolations
       .filter((violation) => violation.severity === "critical" || violation.severity === "major")
       .map((violation) => `Deck writing issue: ${violation.message}`),
+    ...planLint.result.pairViolations
+      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .map((violation) => `Slides ${violation.positions[0]} and ${violation.positions[1]} redundancy issue: ${violation.message}`),
+    ...planLint.result.deckViolations
+      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .map((violation) => `Deck depth issue: ${violation.message}`),
   ];
 
+  return { result, actionableIssues, planLint: planLint.result };
+}
+
+function lintManifestPlan(manifest: z.infer<typeof deckManifestSchema>) {
+  const result = lintSlidePlan(manifestToPlanLintInput(manifest), manifest.slideCount);
+  const actionableIssues = [
+    ...result.pairViolations
+      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .map((violation) => `Slides ${violation.positions[0]} and ${violation.positions[1]}: ${violation.message}`),
+    ...result.deckViolations
+      .filter((violation) => violation.severity === "critical" || violation.severity === "major")
+      .map((violation) => violation.message),
+  ];
   return { result, actionableIssues };
 }
 
@@ -5736,6 +5870,11 @@ function summarizeLintResult(lint: ReturnType<typeof lintManifest>) {
     actionableIssues: lint.actionableIssues,
     slideViolationCount,
     deckViolationCount: lint.result.deckViolations.length,
+    planPairViolationCount: lint.planLint.pairViolations.length,
+    planDeckViolationCount: lint.planLint.deckViolations.length,
+    planUniqueDimensions: lint.planLint.uniqueDimensions,
+    planMinRequiredDimensions: lint.planLint.minRequiredDimensions,
+    planDeepestLevel: lint.planLint.deepestLevel,
   };
 }
 
@@ -5750,6 +5889,7 @@ function validateManifestContract(manifest: z.infer<typeof deckManifestSchema>) 
       title: slide.title,
       body: slide.body,
       bullets: slide.bullets,
+      pageIntent: slide.pageIntent,
     })),
   );
 

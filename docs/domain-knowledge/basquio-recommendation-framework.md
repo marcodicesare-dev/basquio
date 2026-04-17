@@ -65,6 +65,9 @@ For 60-slide decks, 4 generic recommendation cards is NOT acceptable. Scale the 
 - If financial impact is directly computable from the data, show the calculation anchor on-slide or reference the exact supporting slide.
 - If financial impact is NOT directly computable, say so explicitly. Do not invent ROI, budget, or revenue precision.
 - Recommendations must stay inside the proven evidence. They can extrapolate only when the assumptions are explicit and conservative.
+- Every recommendation must draw from at least 2 distinct drill-down levels. Example: segment signal + channel or SKU proof, not just a single topline chart.
+- For 60-slide decks, 7 recommendation cards imply at least 14 distinct analytical findings feeding them. If the evidence base is shallower than that, reduce the number of cards or deepen the analysis first.
+- Recommendation evidence should ladder from WHAT happened to WHY it happened before stating the action.
 
 ## Recommendation Anti-Patterns (BANNED)
 

@@ -93,6 +93,14 @@ export {
   type DeckLintResult,
 } from "./writing-linter";
 
+export {
+  lintSlidePlan,
+  type SlidePlanLintInput,
+  type SlidePlanPairViolation,
+  type SlidePlanDeckViolation,
+  type SlidePlanLintResult,
+} from "./slide-plan-linter";
+
 // ─── FMCG SEMANTIC LAYER (executable domain logic) ────────────────
 export {
   routeQuestion,

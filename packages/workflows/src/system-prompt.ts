@@ -10,6 +10,7 @@ import { BASQUIO_CHART_PALETTE } from "../../../code/design-tokens";
 const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-analyst-playbook.md",
   "docs/domain-knowledge/basquio-copywriting-skill.md",
+  "docs/domain-knowledge/basquio-deck-depth-architecture.md",
   "docs/domain-knowledge/basquio-recommendation-framework.md",
   "docs/direct-deck-design-spec.md",
   "docs/domain-knowledge/fmcg-rgm-consulting-finance-layer.md",
@@ -1096,6 +1097,38 @@ plt.rcParams.update({
 # - multi-series end labels should match the series color, not a neutral grey
 # - titles, callouts, and cards still stay inside their bands
 </example>
+
+<example name="drill_down_cascade">
+// GOOD long-deck pattern: each slide answers a deeper leaf question.
+// Slide N
+title: "Reconstituted loses 2,1pp share, with Super driving 65% of the decline"
+chart: grouped_bar showing segment x channel share change
+
+// Slide N+1
+title: "Within Super, top-3 Reconstituted SKUs explain 70% of the value loss"
+chart: pareto or horizontal_bar on SKU contribution
+
+// Slide N+2
+title: "Those SKUs carry a 108 price index, so the gap is pricing, not distribution"
+chart: grouped_bar or waterfall on price index vs distribution
+
+// This is real depth:
+// L1 segment -> L2 channel -> L3 SKU/driver.
+</example>
+
+<example name="bad_redundant_broadening">
+// BAD long-deck pattern: three slides answer the same question with different visuals.
+title: "Share fell 1,4pp in Reconstituted"
+chart: horizontal_bar
+
+title: "Reconstituted share loss trend"
+chart: line showing the same two-period claim
+
+title: "Reconstituted share loss table"
+chart: table with the same figures
+
+// Do NOT do this. Collapse to one slide and use the saved slot for a deeper cut.
+</example>
 </examples>
 `.trim();
 
@@ -1234,6 +1267,9 @@ export async function buildBasquioSystemPrompt(input: {
     "- Slide titles should fit on one line at the rendered font size. If a title exceeds ~75 characters, shorten it. Never let title text overflow the right slide margin.",
     "- Hard ceiling: 70 characters for a slide title. If the insight needs more space, use a subtitle.",
     "- Prefer one strong claim and one strong visual per slide.",
+    "- MECE DEPTH RULE: for decks above 40 slides, plan the deck as an issue tree with unique leaf questions. Two slides may not answer the same question with different chart types.",
+    "- DRILL-DOWN RULE: long decks get longer by drilling deeper, not by broadening. Move from category -> segment/brand/channel -> SKU/driver before adding more slides on the same topic.",
+    "- COVERAGE RULE: 60-slide decks should cover at least 10 distinct drill-down dimensions across segment, channel, format, brand, SKU, retailer, price, promo, distribution, geography, flavour, shopper, or scenario.",
     "- Never leave placeholders, empty chart frames, or generic filler boxes.",
     "- If a chart is weak, use a stronger text-first slide instead of forcing a bad chart.",
     "- Every analytical slide must go beyond description: state the fact, the magnitude, the driver, and the business implication or action.",
@@ -1245,6 +1281,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Italian number conventions: use period as thousands separator and comma as decimal separator. On chart axes, use FuncFormatter or an equivalent formatter to enforce locale-safe labels.",
     "- NARRATIVE ARC: the deck must tell a story with rising tension. Slide 1 sets the stage. Slides 2-3 establish the baseline. The middle section reveals the problem or opportunity with escalating specificity. The final third pivots to action. The last slide must feel like a call to action, not a summary of summaries.",
     "- Aha slide rule: decks with 15+ slides should include one non-obvious cross-cut, contradiction, or structural trend observation just before the recommendations. Use source-backed structural metrics such as outlets, share, penetration, or mix. Never extrapolate financial amounts, ROI, budgets, or invented scenarios.",
+    "- Recommendation evidence depth: every recommendation should be supported by at least two drill-down levels, for example segment plus channel, or channel plus SKU/driver.",
     "- Build all slides in strict sequential order from slide 1 to slide N. Never go back to recreate or overwrite a slide you already added via addSlide(). If you discover an error in an earlier slide, note it and continue forward. The PPTX skill does not support overwriting slides, and re-adding a slide corrupts the file.",
     ...(!hasCustomTemplate
       ? [

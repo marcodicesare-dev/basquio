@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai";
 import { generateObject, generateText, Output } from "ai";
 import { z } from "zod";
 import { parseEvidencePackage, streamParseFile, checksumSha256, loadRowsFromBlob, extractPptxSlideImages, type SheetManifest, type PptxSlideImage } from "@basquio/data-ingest";
-import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, detectDiagnosticMotifs, lintSlideText, lintDeckText, validateSlideContract, validateDeckContract, routeQuestion, getRequiredDerivatives, validateSlideEvidence, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
+import { runAnalystAgent, runAuthorAgent, runCriticAgent, runStrategicCriticAgent, detectLanguage, buildDomainKnowledgeContext, enforceExhibit, inferQuestionType, evaluateSlideQuality, filterSlidesByQuality, mapColumns, resolveColumns, resolveColumnValue, resolveColumnKey, buildColumnReport, findBestExhibitFamily, detectDiagnosticMotifs, lintSlideText, lintDeckText, lintSlidePlan, validateSlideContract, validateDeckContract, routeQuestion, getRequiredDerivatives, validateSlideEvidence, type AnalystResult, type ColumnRegistry } from "@basquio/intelligence";
 import { renderPdfArtifact, renderV2PdfArtifact, renderPdfFromSceneGraph, type V2PdfChart } from "@basquio/render-pdf";
 import { renderPptxArtifact } from "@basquio/render-pptx";
 import { renderV2PptxArtifact, type V2ChartRow } from "@basquio/render-pptx/v2";
@@ -3303,6 +3303,36 @@ function validateAndFixPlan(
   return { ...plan, slides: deduped, charts: dedupedCharts, targetSlideCount: deduped.length };
 }
 
+function summarizeV1PlanDepth(plan: V1DeckPlan) {
+  const chartById = new Map(plan.charts.map((chart) => [chart.chartId, chart]));
+  const result = lintSlidePlan(
+    plan.slides.map((slide) => ({
+      position: slide.position,
+      role: slide.role,
+      layoutId: slide.layout,
+      title: slide.governingThought || slide.focalObject || `Slide ${slide.position}`,
+      governingThought: slide.governingThought,
+      focalObject: slide.focalObject,
+      pageIntent: slide.role,
+      chartId: slide.chartId || undefined,
+      chartType: slide.chartId ? chartById.get(slide.chartId)?.chartType : undefined,
+    })),
+    plan.targetSlideCount,
+  );
+
+  return {
+    result,
+    summary: {
+      slideCount: plan.targetSlideCount,
+      drillDownDimensions: result.uniqueDimensions.length,
+      minRequiredDimensions: result.minRequiredDimensions,
+      mecePairViolations: result.pairViolations.length,
+      deepestLevel: result.deepestLevel,
+      chapterDepths: result.chapterDepths,
+    },
+  };
+}
+
 /**
  * basquioAuthor: V1 Pipeline — Plan + Build Charts (deterministic) + Author Slides (parallel) + Critique + Repair
  *
@@ -3572,6 +3602,7 @@ NEVER use pie/doughnut with >5 categories — use horizontal_bar instead.
 - Use "chart-split" for chart + narrative explanation
 - Use "title-chart" for full-width chart evidence slides
 - The deck MUST use at least 3 different layout types across analytical slides
+- Layout variety does NOT justify analytical repetition. Different layouts must carry different data cuts.
 
 ## CHART DATA ACCURACY (critical)
 - The chart MUST show the EXACT metric mentioned in the slide title. If the title says "prezzo medio per confezione €1,58 vs €1,99", the chart yAxis MUST be the average price column, NOT total sales value.
@@ -3593,6 +3624,10 @@ NEVER use pie/doughnut with >5 categories — use horizontal_bar instead.
 - Max 8-10 content slides. Fewer is better.
 - Kill any slide that only restates what another slide already proved
 - Recommendation slide must have specific, quantified actions — not topic labels
+- For decks above 40 slides, plan an MECE issue tree first: root question -> chapter branches -> unique leaf questions.
+- Long decks get longer by drilling deeper, not by broadening. Use cascades such as category -> segment -> channel -> SKU/driver.
+- No two slides may answer the same leaf question with different chart types.
+- A 60-slide deck should cover at least 10 distinct drill-down dimensions across segment, channel, format, brand, SKU, retailer, price, promo, distribution, geography, flavour, shopper, or scenario.
 
 ## Brief
 ${brief}
@@ -3675,6 +3710,18 @@ Return a V1DeckPlan with slides and charts.`,
       analysisForValidation?.analysis?.recommendedChartTypes,
       plannerSheetInventory,
     );
+    const validatedPlanDepth = summarizeV1PlanDepth(validatedPlan);
+    console.log(
+      `[plan] deck size: ${validatedPlanDepth.summary.slideCount} slides | ` +
+      `drill-down dimensions: ${validatedPlanDepth.summary.drillDownDimensions}/${validatedPlanDepth.summary.minRequiredDimensions} | ` +
+      `MECE check: ${validatedPlanDepth.summary.mecePairViolations} pairs above threshold | ` +
+      `deepest level: L${validatedPlanDepth.summary.deepestLevel}`,
+    );
+    await persistWorkingPaper(runId, "v1_plan_validation", validatedPlanDepth.result).catch(() => {});
+    await emitRunEvent(runId, "author", "checkpoint", {
+      checkpoint: "plan_validation",
+      ...validatedPlanDepth.summary,
+    }).catch(() => {});
 
     // ─── STEP 2: BUILD CHARTS (deterministic, ZERO LLM) ──────────────
     const chartBuildResult = await step.run("build-charts", async () => {
@@ -4763,6 +4810,20 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
         speakerNotes: s.speakerNotes ?? undefined,
       }));
       const deckLintResult = lintDeckText(lintInputs);
+      const planLintResult = lintSlidePlan(
+        slides.map((s) => ({
+          position: s.position,
+          role: s.layoutId === "cover" ? "cover" : s.layoutId === "exec-summary" ? "exec-summary" : "content",
+          layoutId: s.layoutId ?? "title-body",
+          title: s.title ?? "",
+          body: s.body ?? undefined,
+          focalObject: s.kicker ?? s.subtitle ?? undefined,
+          pageIntent: s.pageIntent ?? undefined,
+          chartId: s.chartId ?? undefined,
+          chartType: charts.find((c) => c.id === s.chartId)?.chartType,
+        })),
+        slides.length,
+      );
       for (const sr of deckLintResult.slideResults) {
         for (const v of sr.result.violations) {
           issues.push({
@@ -4774,6 +4835,16 @@ ${arcDomainContext ? `## DOMAIN KNOWLEDGE\n${arcDomainContext}` : ""}${motifCont
       }
       for (const v of deckLintResult.deckViolations) {
         issues.push({ severity: v.severity, claim: `[LINT] Deck-level: ${v.message}` });
+      }
+      for (const v of planLintResult.pairViolations) {
+        issues.push({
+          severity: v.severity,
+          claim: `[PLAN] Slides ${v.positions[0]} & ${v.positions[1]}: ${v.message}`,
+          slidePosition: v.positions[1],
+        });
+      }
+      for (const v of planLintResult.deckViolations) {
+        issues.push({ severity: v.severity, claim: `[PLAN] ${v.message}` });
       }
       if (!deckLintResult.passed) {
         console.warn(`[basquio-critique] Writing linter FAILED: ${deckLintResult.slideResults.filter(r => !r.result.passed).length} slides have critical violations`);
@@ -5359,10 +5430,28 @@ export const basquioCritiqueRevise = inngest.createFunction(
         metrics: s.metrics ? (typeof s.metrics === "string" ? JSON.parse(s.metrics) : s.metrics) : undefined,
       }));
       const postLintResult = lintDeckText(postLintInputs);
+      const postPlanLintResult = lintSlidePlan(
+        postRevisionSlides.map((s) => ({
+          position: s.position,
+          role: s.layoutId === "cover" ? "cover" : s.layoutId === "exec-summary" ? "exec-summary" : "content",
+          layoutId: s.layoutId ?? "title-body",
+          title: s.title ?? "",
+          body: s.body ?? undefined,
+          focalObject: s.kicker ?? s.subtitle ?? undefined,
+          pageIntent: s.pageIntent ?? undefined,
+          chartId: s.chartId ?? undefined,
+          chartType: postRevisionCharts.find((c) => c.id === s.chartId)?.chartType,
+        })),
+        postRevisionSlides.length,
+      );
       const postCritical = postLintResult.slideResults.flatMap(r => r.result.violations).filter(v => v.severity === "critical").length
         + postLintResult.deckViolations.filter(v => v.severity === "critical").length;
       const postMajor = postLintResult.slideResults.flatMap(r => r.result.violations).filter(v => v.severity === "major").length
         + postLintResult.deckViolations.filter(v => v.severity === "major").length;
+      const postPlanCritical = postPlanLintResult.pairViolations.filter(v => v.severity === "critical").length
+        + postPlanLintResult.deckViolations.filter(v => v.severity === "critical").length;
+      const postPlanMajor = postPlanLintResult.pairViolations.filter(v => v.severity === "major").length
+        + postPlanLintResult.deckViolations.filter(v => v.severity === "major").length;
 
       // Re-run per-slide rendering contract (surface each violation)
       const postSlideContractIssues: Array<{ severity: "major"; claim: string }> = [];
@@ -5423,8 +5512,8 @@ export const basquioCritiqueRevise = inngest.createFunction(
 
       const criticCritical = revisedIssues.filter((i) => i?.severity === "critical").length;
       const criticMajor = revisedIssues.filter((i) => i?.severity === "major").length;
-      const finalCritical = postCritical + criticCritical;
-      const finalMajor = postMajor + contractMajor + postEvidenceMajor + criticMajor;
+      const finalCritical = postCritical + postPlanCritical + criticCritical;
+      const finalMajor = postMajor + postPlanMajor + contractMajor + postEvidenceMajor + criticMajor;
       const publishGrade = finalCritical > 0 || finalMajor > 0 ? "red" : "green";
       await updateDeliveryStatus(runId, publishGrade === "green" ? "reviewed" : "degraded");
       console.info(`[basquio-critique] Post-revision publish grade: ${publishGrade} (${finalCritical} critical, ${finalMajor} major)`);
@@ -5435,6 +5524,8 @@ export const basquioCritiqueRevise = inngest.createFunction(
           .map((i) => ({ severity: i.severity, claim: i.claim })),
         ...postLintResult.slideResults.flatMap(r => r.result.violations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] Slide ${r.position}: ${v.message}` }))),
         ...postLintResult.deckViolations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[LINT] ${v.message}` })),
+        ...postPlanLintResult.pairViolations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[PLAN] Slides ${v.positions[0]} & ${v.positions[1]}: ${v.message}` })),
+        ...postPlanLintResult.deckViolations.filter(v => v.severity === "critical" || v.severity === "major").map(v => ({ severity: v.severity, claim: `[PLAN] ${v.message}` })),
         ...postDeckContract.violations.map(v => ({ severity: "major" as const, claim: `[CONTRACT] ${v.message}` })),
         ...postSlideContractIssues,
         ...postEvidenceIssues.filter(i => i.severity === "major"),

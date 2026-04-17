@@ -271,6 +271,14 @@ Good: "Gaining back z% of buyers at Retailer A through bigger pack launch would 
 ### Pyramid Principle (Barbara Minto)
 Level 1: ANSWER (exec summary title) → Level 2: 3-4 POVs → Level 3: Evidence slides (chart-led)
 
+### Long-Deck Depth Rule (MECE issue tree)
+- Decks above 20 slides must be planned as an issue tree: root question -> chapter branches -> unique leaf questions.
+- Each leaf question becomes exactly one slide.
+- Two slides may not answer the same leaf question with different visuals.
+- Long decks deepen by drilling into segment, channel, format, brand, SKU, retailer, price, promo, distribution, geography, shopper, or scenario cuts.
+- Good progression: category -> segment -> channel/brand -> SKU/driver -> recommendation.
+- Bad progression: same finding repeated as bar, line, and table.
+
 ### DEDUCTIVE is DEFAULT for Basquio
 Answer comes FIRST (slide 2), then Reasons, then Data evidence.
 Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
@@ -279,6 +287,7 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 - Distill findings into 3-4 POVs, not a pile of facts
 - Recommendations prioritized by: Prize × Feasibility × Ease × Time × Fit
 - FMCG levers: distribution expansion, pricing/pack architecture, promo optimization, portfolio rebalancing, hero renovation, tail pruning
+- For decks above 40 slides, each chapter should reach at least L3 depth before recommending action.
 
 ### Exhibit Selection Rules (for chart planning — ABSOLUTE, no exceptions)
 | Question | CORRECT Chart | FORBIDDEN |
@@ -336,6 +345,12 @@ Rotazioni → Velocity/ROS, Prezzo Medio → Avg Price, Any Promo Int. → Promo
 
 ### Quantify All Recommendations Using FMCG Levers
 Distribution expansion, pricing/pack, promo optimization, portfolio rebalancing, hero renovation, tail pruning.
+
+### Long-Deck Depth Rules
+- Decks above 40 slides must cover multiple drill-down dimensions, not more chart types of the same cut.
+- A recommendation is only credible after the deck reaches at least two evidence levels below the topline claim.
+- Use explicit cascades such as segment -> channel -> SKU/driver, or brand -> format -> retailer.
+- Avoid redundant broadening: if two planned slides can be reconstructed from the same data cut, collapse them and go deeper instead.
 
 ### COPYWRITING VOICE (HARD RULES)
 

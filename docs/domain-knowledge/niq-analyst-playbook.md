@@ -239,6 +239,42 @@ Before planning slides, check which motifs apply. The detected motifs should dri
 
 ## 7. Analytical Recipes
 
+---
+
+## 17. Drill-Down Decomposition Cascade
+
+For any segment-level or channel-level insight, do not jump directly to the recommendation. Decompose the issue at least two more levels until the driver is decision-useful.
+
+Required cascade:
+
+1. LEVEL 1: State the topline signal.
+   Example: "Reconstituted declines -4.2%."
+2. LEVEL 2: Localize where it happens.
+   Example: "The decline is concentrated in Super, while Discount is stable."
+3. LEVEL 3: Explain why it happens.
+   Example: "Within Super, the top 3 SKUs lose because price index moved to 108 while distribution stayed flat."
+
+Only after LEVEL 3 should the deck recommend a pricing, assortment, promo, or distribution action.
+
+Bad pattern:
+- Segment down
+- Segment still down in another chart
+- Generic recommendation
+
+Good pattern:
+- Segment down
+- Channel or format decomposition
+- SKU or driver decomposition
+- Recommendation anchored to that driver
+
+When planning long decks:
+- 20 slides: at least 4 drill-down dimensions
+- 40 slides: at least 7 drill-down dimensions
+- 60 slides: at least 10 drill-down dimensions
+- 100 slides: at least 14 drill-down dimensions
+
+If two planned slides can be reconstructed from the same data cut at the same level, collapse them and use the slot for a deeper cut instead.
+
 ### Materiality thresholds - when a finding is worth a slide
 
 | Signal | Noise | Material | Significant |
