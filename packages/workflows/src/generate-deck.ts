@@ -3297,18 +3297,7 @@ function appendPauseTurnContinuation(
   messages: Anthropic.Beta.BetaMessageParam[],
   message: Anthropic.Beta.BetaMessage,
 ): Anthropic.Beta.BetaMessageParam[] {
-  return [
-    ...appendAssistantTurn(messages, message),
-    {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "Please continue from where you left off and finish the same turn using the current container state.",
-        },
-      ],
-    },
-  ];
+  return appendAssistantTurn(messages, message);
 }
 
 function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {
@@ -3513,11 +3502,11 @@ function buildAuthorMessage(
           ]),
           analysis
             ? (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
             : (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
           ...(analysis
             ? []
             : [
@@ -3575,8 +3564,9 @@ function buildAuthorMessage(
           "- `data_tables.xlsx` must contain every pandas DataFrame that supports a chart, table, or numeric finding. Verify supplier-level sums vs category totals before writing it.",
           "- EXCEL-NATIVE-CHARTS RULE: for every slide that contains a matplotlib chart in the PPTX, write the exact underlying DataFrame to a sheet named `S<NN>_<descriptor>` in `data_tables.xlsx`.",
           "- Excel sheet names must already be Excel-safe in both the workbook and the manifest: max 31 characters, no `\\ / ? * [ ] :`, and use the exact same sanitized string in both places.",
-          "- For supported Excel chart families (bar/column, line, scatter, pie/doughnut, area), also embed a native XlsxWriter chart object in that same sheet so an analyst can copy it into another deck.",
+          "- For supported Excel chart families (bar/column, line, scatter, pie/doughnut, area), attempt to embed a native XlsxWriter chart object in that same sheet so an analyst can copy it into another deck.",
           "- Basquio chart-type mapping for native Excel charts is deterministic: `bar` -> column, `horizontal_bar` -> bar, `grouped_bar` -> column cluster, `stacked_bar` -> bar stacked, `stacked_bar_100` -> bar percent-stacked, `line` -> line, `area` -> area, `scatter` -> scatter, `pie` -> pie, `doughnut` -> doughnut.",
+          "- Excel-native charts are best-effort companion artifacts. If XlsxWriter is unavailable or a specific chart object fails, still write the exact sheet, omit `excelChartCellAnchor` for that chart, and continue. Never let Excel chart generation block `deck.pptx`, `deck.pdf`, `narrative_report.md`, or the workbook itself.",
           "- For unsupported Excel chart families (for example waterfall, heatmap, bubble, or table-only exhibits), still write the sheet and set `excelSheetName` in the manifest, but omit `excelChartCellAnchor` instead of inventing a broken native chart.",
           "- Every manifest chart should include `excelSheetName` and, when a native Excel chart object exists, `excelChartCellAnchor`. Include `dataSignature` when you can derive a stable signature from the plotted data columns.",
           "<example name=\"data_tables_xlsx_with_native_charts\">",
