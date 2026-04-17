@@ -1621,9 +1621,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     const critiqueLint = lintManifest(manifest, run.target_slide_count, fidelityContext ?? undefined);
     const critiqueContract = validateManifestContract(manifest);
     const hasBlockingCritiqueIssues = blockingCritiqueIssues.length > 0;
-    const hasMajorOrCriticalVisualIssues = initialVisualQa.report.issues.some(
-      (issue) => issue.severity === "major" || issue.severity === "critical",
-    );
     const critiqueCheckpointProof = buildCheckpointProof({
       authorComplete: true,
       critiqueComplete: true,
@@ -1665,236 +1662,299 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     finalManifest = manifest;
     finalVisualQa = initialVisualQa.report;
 
-    const shouldRunRevise = latestResponse !== null && !(
-      initialVisualQa.report.score >= 7.5 &&
-      !initialVisualQa.report.deckNeedsRevision &&
-      !hasMajorOrCriticalVisualIssues &&
-      !hasBlockingCritiqueIssues
-    );
+    const reviseIterationLimit = latestResponse
+      ? computeReviseIterationBudget({
+          visualQa: initialVisualQa.report,
+          blockingCritiqueIssues,
+        })
+      : 0;
 
-    if (shouldRunRevise && latestResponse) {
+    if (reviseIterationLimit > 0 && latestResponse) {
       try {
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
         const reviseMaxTokens = getRevisePhaseMaxTokens(MODEL, run.target_slide_count);
-        const reviseMessage = buildReviseMessage({
-          issues: critiqueIssues,
-          manifest,
-          currentPdf: pdfFile,
-          visualQa: initialVisualQa.report,
-        });
-        const reviseMessages = [
-          ...buildMinimalReviseThread({
-            generationMessage: generationMessage!,
-            run,
-            analysis,
-            manifest,
-          }),
-          reviseMessage,
-        ];
-        await recordToolCall(config, runId, attempt, "revise", "code_execution", {
-          model: MODEL,
-          tools: [...toolCallSummary.tools],
-          autoInjectedTools: [...toolCallSummary.autoInjectedTools],
-          skills: [...toolCallSummary.skills],
-          stepNumber: 1,
-        });
-        await enforceDeckBudget({
-          client,
-          model: MODEL,
-          betas: [...modelBetas],
-          spentUsd,
-          maxUsd: modelBudget.preFlight,
-          outputTokenBudget: reviseMaxTokens,
-            body: {
-              system: systemPrompt,
-              messages: reviseMessages,
-              tools: buildClaudeTools(MODEL),
-              thinking: buildAuthoringThinkingConfig(MODEL),
-              output_config: buildAuthoringOutputConfig(MODEL),
-            },
-        });
+        let activeManifest = manifest;
+        let activePdf = pdfFile;
+        let activeVisualQa = initialVisualQa.report;
+        let activeCritiqueIssues = critiqueIssues;
+        let activeBlockingCritiqueIssues = blockingCritiqueIssues;
+        let reviseLoopCount = 0;
+        let reviseAggregateUsage: Required<ClaudeUsage> = {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        };
+        let reviseVisualQaAggregateUsage: Required<ClaudeUsage> = {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        };
+        let reviseAggregateIterations = 0;
+        let reviseAggregatePauseTurns = 0;
 
-        await persistRequestStart(config, runId, attempt, "revise", "phase_generation", MODEL);
-        let reviseResponse = await runClaudeLoop({
-          client,
-          model: MODEL,
-          systemPrompt,
-          maxTokens: reviseMaxTokens,
-          phaseLabel: "revise",
-          circuitKey: `${run.id}:${attempt.id}:revise`,
-          onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
-          maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.revise,
-          phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
-          requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
-          currentSpentUsd: spentUsd,
-          targetSlideCount: run.target_slide_count,
-          betas: modelBetas,
-          container: buildAuthoringContainer(latestContainerId, MODEL),
-          messages: reviseMessages,
-          tools: buildClaudeTools(MODEL),
-          thinking: buildAuthoringThinkingConfig(MODEL),
-          outputConfig: buildAuthoringOutputConfig(MODEL),
-          onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
-        });
-        let reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
-        const missingReviseFiles = findMissingGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"]);
-        if (missingReviseFiles.length > 0) {
-          console.warn(`[revise-retry] Missing revise files: ${missingReviseFiles.join(", ")}. Retrying revise phase once.`);
-          await insertEvent(config, runId, attempt, "revise", "revise_missing_files_retry", {
-            missingFiles: missingReviseFiles,
+        while (reviseLoopCount < reviseIterationLimit && latestResponse) {
+          reviseLoopCount += 1;
+          const reviseMessage = buildReviseMessage({
+            issues: activeCritiqueIssues,
+            manifest: activeManifest,
+            currentPdf: activePdf,
+            visualQa: activeVisualQa,
+          });
+          const reviseMessages = [
+            ...buildMinimalReviseThread({
+              generationMessage: generationMessage!,
+              run,
+              analysis,
+              manifest: activeManifest,
+            }),
+            reviseMessage,
+          ];
+          await recordToolCall(config, runId, attempt, "revise", "code_execution", {
             model: MODEL,
-          }).catch(() => {});
+            tools: [...toolCallSummary.tools],
+            autoInjectedTools: [...toolCallSummary.autoInjectedTools],
+            skills: [...toolCallSummary.skills],
+            stepNumber: reviseLoopCount,
+          });
+          await enforceDeckBudget({
+            client,
+            model: MODEL,
+            betas: [...modelBetas],
+            spentUsd,
+            maxUsd: modelBudget.preFlight,
+            outputTokenBudget: reviseMaxTokens,
+              body: {
+                system: systemPrompt,
+                messages: reviseMessages,
+                tools: buildClaudeTools(MODEL),
+                thinking: buildAuthoringThinkingConfig(MODEL),
+                output_config: buildAuthoringOutputConfig(MODEL),
+              },
+          });
 
-          const retryResponse = await runClaudeLoop({
+          await persistRequestStart(config, runId, attempt, "revise", "phase_generation", MODEL);
+          let reviseResponse = await runClaudeLoop({
             client,
             model: MODEL,
             systemPrompt,
             maxTokens: reviseMaxTokens,
             phaseLabel: "revise",
-            circuitKey: `${run.id}:${attempt.id}:revise`,
+            circuitKey: `${run.id}:${attempt.id}:revise:${reviseLoopCount}`,
             onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
-            maxPauseTurns: 0,
+            maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.revise,
             phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
             requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
-            currentSpentUsd: roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage)),
+            currentSpentUsd: spentUsd,
             targetSlideCount: run.target_slide_count,
             betas: modelBetas,
-            container: buildAuthoringContainer(reviseResponse.containerId ?? latestContainerId, MODEL),
-            messages: [
-              ...reviseResponse.thread,
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: [
-                      `Missing output files: ${missingReviseFiles.join(", ")}.`,
-                      "Generate them now using the existing slides in the container.",
-                      "Do not re-analyze or rewrite content.",
-                      "Rebuild the PPTX from the current slides, render the PDF, and write deck_manifest.json.",
-                      "The turn is incomplete until every missing file is attached.",
-                    ].join(" "),
-                  },
-                ],
-              },
-            ],
+            container: buildAuthoringContainer(latestContainerId, MODEL),
+            messages: reviseMessages,
             tools: buildClaudeTools(MODEL),
             thinking: buildAuthoringThinkingConfig(MODEL),
             outputConfig: buildAuthoringOutputConfig(MODEL),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
           });
-          const retryFiles = await downloadGeneratedFiles(client, retryResponse.fileIds);
-          for (const retryFile of retryFiles) {
-            const existingIndex = reviseFiles.findIndex((file) => file.fileName === retryFile.fileName);
-            if (existingIndex >= 0) {
-              reviseFiles[existingIndex] = retryFile;
-            } else {
-              reviseFiles.push(retryFile);
-            }
-          }
-          reviseResponse = {
-            ...reviseResponse,
-            containerId: retryResponse.containerId ?? reviseResponse.containerId,
-            thread: retryResponse.thread,
-            fileIds: [...new Set([...reviseResponse.fileIds, ...retryResponse.fileIds])],
-            usage: mergeClaudeUsage(reviseResponse.usage, retryResponse.usage),
-            iterations: reviseResponse.iterations + retryResponse.iterations,
-            pauseTurns: reviseResponse.pauseTurns + retryResponse.pauseTurns,
-            requests: [...reviseResponse.requests, ...retryResponse.requests],
-          };
-        }
-        spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
-        assertDeckSpendWithinBudget(spentUsd, MODEL, {
-          allowPartialOutput: reviseFiles.length > 0,
-          context: "revise",
-          targetSlideCount: run.target_slide_count,
-        });
-        continuationCount += reviseResponse.pauseTurns;
-        phaseTelemetry.revise = buildPhaseTelemetry(MODEL, {
-          ...reviseResponse,
-          requestIds: reviseResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
-        });
-        await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", MODEL, reviseResponse.requests);
-        rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
-        requireGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"], "revise");
-        finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
-        finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
-        finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
-        finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
-        xlsxFile = findGeneratedFile(reviseFiles, "data_tables.xlsx") ?? xlsxFile;
-        fidelityContext = xlsxFile ? buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run) : fidelityContext;
-        const reviseClaimQa = await runClaimTraceabilityQaSafely({
-          client,
-          manifest: finalManifest,
-          fidelityContext,
-          run,
-          phaseTelemetry,
-          telemetryKey: "claimTraceabilityReviseSkipped",
-        });
-        claimTraceabilityIssues = reviseClaimQa.report.issues ?? [];
-        if (useExactTemplateMode) {
-          const recomposedArtifacts = await recomposeExactTemplateArtifacts({
-            stage: "revise",
-            run,
-            manifest: finalManifest,
-            interimPptx: finalPptx,
-            templateProfile,
-            templateFile,
-            phaseTelemetry,
-          });
-          if (recomposedArtifacts) {
-            finalPptx = recomposedArtifacts.pptx;
-            if (recomposedArtifacts.pdf) {
-              finalPdf = recomposedArtifacts.pdf;
-            }
-          }
-        }
-        latestResponse = reviseResponse;
-        latestContainerId = reviseResponse.containerId ?? latestContainerId;
+          let reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
+          const missingReviseFiles = findMissingGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"]);
+          if (missingReviseFiles.length > 0) {
+            console.warn(`[revise-retry] Missing revise files: ${missingReviseFiles.join(", ")}. Retrying revise phase once.`);
+            await insertEvent(config, runId, attempt, "revise", "revise_missing_files_retry", {
+              missingFiles: missingReviseFiles,
+              model: MODEL,
+              reviseIteration: reviseLoopCount,
+            }).catch(() => {});
 
-      const revisedQaOutcome = await runRenderedPageQaSafely({
-        client,
-        pdf: finalPdf,
-        pptx: finalPptx,
-        manifest: finalManifest,
-        templateProfile,
-        betas: [FILES_BETA],
-        model: VISUAL_QA_MODEL,
-        phaseTelemetry,
-        telemetryKey: "visualQaReviseSkipped",
-        recoveryStage: "revise",
-      });
-      finalPdf = revisedQaOutcome.pdf;
-      const revisedVisualQa = revisedQaOutcome.qa;
-      spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-      assertDeckSpendWithinBudget(spentUsd, MODEL, {
-        allowPartialOutput: true,
-        context: "revise:visual-qa",
-        targetSlideCount: run.target_slide_count,
-      });
-      phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, revisedVisualQa.usage);
-      await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
-      rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
-      if ((revisedVisualQa.usage.input_tokens ?? 0) + (revisedVisualQa.usage.output_tokens ?? 0) > 0) {
-        await touchAttemptProgress(config, runId, attempt, "revise");
-      }
-      finalVisualQa = revisedVisualQa.report;
-        if ((reviseClaimQa.usage.input_tokens ?? 0) + (reviseClaimQa.usage.output_tokens ?? 0) > 0) {
-          phaseTelemetry.claimTraceabilityRevise = buildSimplePhaseTelemetry("claude-haiku-4-5", reviseClaimQa.usage);
-          await persistRequestUsage(config, runId, attempt, "revise", "claim_traceability_qa", "claude-haiku-4-5", reviseClaimQa.requests);
-          rememberRequestIds(anthropicRequestIds, reviseClaimQa.requests);
-          await upsertWorkingPaper(config, runId, "claim_traceability_revise", reviseClaimQa.report);
+            const retryResponse = await runClaudeLoop({
+              client,
+              model: MODEL,
+              systemPrompt,
+              maxTokens: reviseMaxTokens,
+              phaseLabel: "revise",
+              circuitKey: `${run.id}:${attempt.id}:revise:${reviseLoopCount}`,
+              onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "revise").catch(() => {}),
+              maxPauseTurns: 0,
+              phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
+              requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
+              currentSpentUsd: roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage)),
+              targetSlideCount: run.target_slide_count,
+              betas: modelBetas,
+              container: buildAuthoringContainer(reviseResponse.containerId ?? latestContainerId, MODEL),
+              messages: [
+                ...reviseResponse.thread,
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: [
+                        `Missing output files: ${missingReviseFiles.join(", ")}.`,
+                        "Generate them now using the existing slides in the container.",
+                        "Do not re-analyze or rewrite content.",
+                        "Rebuild the PPTX from the current slides, render the PDF, and write deck_manifest.json.",
+                        "The turn is incomplete until every missing file is attached.",
+                      ].join(" "),
+                    },
+                  ],
+                },
+              ],
+              tools: buildClaudeTools(MODEL),
+              thinking: buildAuthoringThinkingConfig(MODEL),
+              outputConfig: buildAuthoringOutputConfig(MODEL),
+              onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
+            });
+            const retryFiles = await downloadGeneratedFiles(client, retryResponse.fileIds);
+            for (const retryFile of retryFiles) {
+              const existingIndex = reviseFiles.findIndex((file) => file.fileName === retryFile.fileName);
+              if (existingIndex >= 0) {
+                reviseFiles[existingIndex] = retryFile;
+              } else {
+                reviseFiles.push(retryFile);
+              }
+            }
+            reviseResponse = {
+              ...reviseResponse,
+              containerId: retryResponse.containerId ?? reviseResponse.containerId,
+              thread: retryResponse.thread,
+              fileIds: [...new Set([...reviseResponse.fileIds, ...retryResponse.fileIds])],
+              usage: mergeClaudeUsage(reviseResponse.usage, retryResponse.usage),
+              iterations: reviseResponse.iterations + retryResponse.iterations,
+              pauseTurns: reviseResponse.pauseTurns + retryResponse.pauseTurns,
+              requests: [...reviseResponse.requests, ...retryResponse.requests],
+            };
+          }
+          spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
+          assertDeckSpendWithinBudget(spentUsd, MODEL, {
+            allowPartialOutput: reviseFiles.length > 0,
+            context: `revise:${reviseLoopCount}`,
+            targetSlideCount: run.target_slide_count,
+          });
+          continuationCount += reviseResponse.pauseTurns;
+          reviseAggregateUsage = mergeClaudeUsage(reviseAggregateUsage, reviseResponse.usage);
+          reviseAggregateIterations += reviseResponse.iterations;
+          reviseAggregatePauseTurns += reviseResponse.pauseTurns;
+          await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", MODEL, reviseResponse.requests);
+          rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
+          requireGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"], "revise");
+          finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
+          finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
+          finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
+          finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
+          xlsxFile = findGeneratedFile(reviseFiles, "data_tables.xlsx") ?? xlsxFile;
+          fidelityContext = xlsxFile ? buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run) : fidelityContext;
+          const reviseClaimQa = await runClaimTraceabilityQaSafely({
+            client,
+            manifest: finalManifest,
+            fidelityContext,
+            run,
+            phaseTelemetry,
+            telemetryKey: "claimTraceabilityReviseSkipped",
+          });
+          claimTraceabilityIssues = reviseClaimQa.report.issues ?? [];
+          if (useExactTemplateMode) {
+            const recomposedArtifacts = await recomposeExactTemplateArtifacts({
+              stage: "revise",
+              run,
+              manifest: finalManifest,
+              interimPptx: finalPptx,
+              templateProfile,
+              templateFile,
+              phaseTelemetry,
+            });
+            if (recomposedArtifacts) {
+              finalPptx = recomposedArtifacts.pptx;
+              if (recomposedArtifacts.pdf) {
+                finalPdf = recomposedArtifacts.pdf;
+              }
+            }
+          }
+          latestResponse = reviseResponse;
+          latestContainerId = reviseResponse.containerId ?? latestContainerId;
+
+          const revisedQaOutcome = await runRenderedPageQaSafely({
+            client,
+            pdf: finalPdf,
+            pptx: finalPptx,
+            manifest: finalManifest,
+            templateProfile,
+            betas: [FILES_BETA],
+            model: VISUAL_QA_MODEL,
+            phaseTelemetry,
+            telemetryKey: "visualQaReviseSkipped",
+            recoveryStage: "revise",
+          });
+          finalPdf = revisedQaOutcome.pdf;
+          const revisedVisualQa = revisedQaOutcome.qa;
+          spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
+          assertDeckSpendWithinBudget(spentUsd, MODEL, {
+            allowPartialOutput: true,
+            context: `revise:visual-qa:${reviseLoopCount}`,
+            targetSlideCount: run.target_slide_count,
+          });
+          reviseVisualQaAggregateUsage = mergeClaudeUsage(reviseVisualQaAggregateUsage, revisedVisualQa.usage);
+          await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
+          rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
+          if ((revisedVisualQa.usage.input_tokens ?? 0) + (revisedVisualQa.usage.output_tokens ?? 0) > 0) {
+            await touchAttemptProgress(config, runId, attempt, "revise");
+          }
+          finalVisualQa = revisedVisualQa.report;
+          if ((reviseClaimQa.usage.input_tokens ?? 0) + (reviseClaimQa.usage.output_tokens ?? 0) > 0) {
+            phaseTelemetry.claimTraceabilityRevise = buildSimplePhaseTelemetry("claude-haiku-4-5", reviseClaimQa.usage);
+            await persistRequestUsage(config, runId, attempt, "revise", "claim_traceability_qa", "claude-haiku-4-5", reviseClaimQa.requests);
+            rememberRequestIds(anthropicRequestIds, reviseClaimQa.requests);
+            await upsertWorkingPaper(config, runId, "claim_traceability_revise", reviseClaimQa.report);
+          }
+          await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
+
+          const revisedLint = lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
+          const revisedContract = validateManifestContract(finalManifest);
+          const revisedLintSummary = summarizeLintResult(revisedLint);
+          const revisedContractSummary = summarizeDeckContractResult(revisedContract);
+          const revisedClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
+          activeManifest = finalManifest;
+          activePdf = finalPdf;
+          activeVisualQa = finalVisualQa;
+          activeCritiqueIssues = collectCritiqueIssues(
+            finalManifest,
+            finalVisualQa,
+            [
+              ...revisedLintSummary.actionableIssues,
+              ...revisedContractSummary.actionableIssues,
+              ...revisedClaimIssueMessages,
+            ],
+            run.target_slide_count,
+          );
+          activeBlockingCritiqueIssues = activeCritiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
+
+          if (!deckStillNeedsRevise({
+            visualQa: activeVisualQa,
+            blockingCritiqueIssues: activeBlockingCritiqueIssues,
+          })) {
+            break;
+          }
         }
-        await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
+
+        phaseTelemetry.revise = {
+          ...buildPhaseTelemetry(MODEL, {
+            usage: reviseAggregateUsage,
+            iterations: reviseAggregateIterations,
+            pauseTurns: reviseAggregatePauseTurns,
+            requestIds: [...anthropicRequestIds],
+          }),
+          reviseLoops: reviseLoopCount,
+          reviseLoopBudget: reviseIterationLimit,
+        };
+        phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, {
+          input_tokens: reviseVisualQaAggregateUsage.input_tokens,
+          output_tokens: reviseVisualQaAggregateUsage.output_tokens,
+          cache_creation_input_tokens: reviseVisualQaAggregateUsage.cache_creation_input_tokens,
+          cache_read_input_tokens: reviseVisualQaAggregateUsage.cache_read_input_tokens,
+        });
         await assertAttemptStillOwnsRun(config, runId, attempt);
         await persistDeckSpec(config, runId, finalManifest);
-        const revisePhaseUsage = {
-          input_tokens: reviseResponse.usage.input_tokens ?? 0,
-          output_tokens: reviseResponse.usage.output_tokens ?? 0,
-          cache_creation_input_tokens: reviseResponse.usage.cache_creation_input_tokens ?? 0,
-          cache_read_input_tokens: reviseResponse.usage.cache_read_input_tokens ?? 0,
-        };
+        const revisePhaseUsage = reviseAggregateUsage;
 
         await completePhase(
           config,
@@ -1902,14 +1962,15 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           attempt,
           "revise",
           {
-            issueCount: critiqueIssues.length,
+            issueCount: activeCritiqueIssues.length,
             estimatedCostUsd: spentUsd,
             visualQa: finalVisualQa,
+            reviseLoops: reviseLoopCount,
+            reviseLoopBudget: reviseIterationLimit,
           },
           revisePhaseUsage,
         );
 
-        // B1: Persist pre-export checkpoint after revise success
         const reviseLint = lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
         const reviseContract = validateManifestContract(finalManifest);
         const reviseClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
@@ -1923,7 +1984,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           deckNeedsRevision: finalVisualQa.deckNeedsRevision,
         });
         await assertAttemptStillOwnsRun(config, runId, attempt);
-        await persistArtifactCheckpoint(config, runId, attempt, "revise", finalPptx, finalPdf, finalManifest, {
+        await persistArtifactCheckpoint(config, runId, attempt, "revise", finalPptx!, finalPdf, finalManifest, {
           resumeReady:
             reviseCheckpointProof.visualQaGreen &&
             reviseCheckpointProof.lintPassed &&
@@ -6700,6 +6761,47 @@ function collectCritiqueIssues(
   issues.push(...lintIssues);
 
   return issues;
+}
+
+function hasMajorOrCriticalVisualIssues(visualQa: RenderedPageQaReport) {
+  return visualQa.issues.some((issue) => issue.severity === "major" || issue.severity === "critical");
+}
+
+function deckStillNeedsRevise(input: {
+  visualQa: RenderedPageQaReport;
+  blockingCritiqueIssues: string[];
+}) {
+  return !(
+    input.visualQa.score >= 7.5 &&
+    !input.visualQa.deckNeedsRevision &&
+    !hasMajorOrCriticalVisualIssues(input.visualQa) &&
+    input.blockingCritiqueIssues.length === 0
+  );
+}
+
+function computeReviseIterationBudget(input: {
+  visualQa: RenderedPageQaReport;
+  blockingCritiqueIssues: string[];
+}) {
+  if (!deckStillNeedsRevise(input)) {
+    return 0;
+  }
+
+  const criticalVisualCount = input.visualQa.issues.filter((issue) => issue.severity === "critical").length;
+  const majorVisualCount = input.visualQa.issues.filter((issue) => issue.severity === "major").length;
+  const severityWeight =
+    (input.blockingCritiqueIssues.length * 2) +
+    (criticalVisualCount * 3) +
+    (majorVisualCount * 2) +
+    (input.visualQa.score < 5 ? 4 : input.visualQa.score < 7 ? 2 : 0);
+
+  if (severityWeight >= 18) {
+    return 3;
+  }
+  if (severityWeight >= 8) {
+    return 2;
+  }
+  return 1;
 }
 
 function countStructuralSlidesInManifest(manifest: z.infer<typeof deckManifestSchema>) {
