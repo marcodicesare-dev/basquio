@@ -865,6 +865,55 @@ def apply_currency_axis_formatter(ax, max_val: float, language: str = "it"):
 # Do not type the euro symbol directly into axis labels or tick formatter lambdas.
 </example>
 
+<example name="data_tables_xlsx_with_native_charts">
+## data_tables.xlsx with native Excel chart objects
+
+import pandas as pd
+
+with pd.ExcelWriter('data_tables.xlsx', engine='xlsxwriter') as writer:
+    workbook = writer.book
+
+    brand_df = brand_share_top10[['Brand', 'Quota_CY_pct']].copy()
+    brand_df.to_excel(writer, sheet_name='S15_BrandShare', index=False)
+    worksheet = writer.sheets['S15_BrandShare']
+
+    bar_chart = workbook.add_chart({'type': 'bar'})
+    bar_chart.add_series({
+        'name': ['S15_BrandShare', 0, 1],
+        'categories': ['S15_BrandShare', 1, 0, len(brand_df), 0],
+        'values': ['S15_BrandShare', 1, 1, len(brand_df), 1],
+        'fill': {'color': ACCENT},
+        'data_labels': {'value': True},
+    })
+    bar_chart.set_title({'name': 'S15 - Top 10 brand - Quota CY %'})
+    bar_chart.set_x_axis({'name': 'Quota CY %'})
+    bar_chart.set_y_axis({'name': 'Brand'})
+    worksheet.insert_chart('G2', bar_chart)
+
+    trend_df = monthly_sales_trend[['Period', 'SalesValue']].copy()
+    trend_df.to_excel(writer, sheet_name='S22_SalesTrend', index=False)
+    worksheet = writer.sheets['S22_SalesTrend']
+
+    line_chart = workbook.add_chart({'type': 'line'})
+    line_chart.add_series({
+        'name': ['S22_SalesTrend', 0, 1],
+        'categories': ['S22_SalesTrend', 1, 0, len(trend_df), 0],
+        'values': ['S22_SalesTrend', 1, 1, len(trend_df), 1],
+        'line': {'color': ACCENT, 'width': 2.25},
+    })
+    line_chart.set_title({'name': 'S22 - Sales trend'})
+    line_chart.set_x_axis({'name': 'Period'})
+    line_chart.set_y_axis({'name': 'Sales Value'})
+    worksheet.insert_chart('G2', line_chart)
+
+# For every supported chart-bearing slide:
+# - sheet name = S<NN>_<descriptor>
+# - native Excel chart anchor = G2 unless another anchor is necessary
+# - deck_manifest.json chart entry includes excelSheetName and excelChartCellAnchor
+# For unsupported Excel chart families (for example waterfall, heatmap, bubble):
+# write the exact DataFrame sheet and set excelSheetName, but omit excelChartCellAnchor.
+</example>
+
 <example name="chart_emphasis_and_label_safety">
 ## Highlight the insight and separate labels cleanly
 
@@ -1384,6 +1433,10 @@ export async function buildBasquioSystemPrompt(input: {
     "- Speaker notes structure is mandatory: TALK TRACK, DATA CONTEXT, PRESENTING TO A SKEPTICAL AUDIENCE, ANTICIPATED QUESTIONS, TRANSITION.",
     "- Speaker notes must coach the analyst, not restate the slide. Include exact numbers, caveats, likely pushback, and a crisp bridge to the next slide.",
     "- When you write `data_tables.xlsx`, every sheet must come from the exact DataFrame used for the chart or numeric finding. Do not recreate the table from prose.",
+    "- Excel sheet names must be Excel-safe in both the workbook and manifest: max 31 characters, no `\\ / ? * [ ] :`, and use the exact same sanitized string in both places.",
+    "- For supported chart families, `data_tables.xlsx` must also include a native XlsxWriter chart object linked to that same sheet.",
+    "- Native Excel chart mapping is deterministic: `bar` -> column, `horizontal_bar` -> bar, `grouped_bar` -> column cluster, `stacked_bar` -> bar stacked, `stacked_bar_100` -> bar percent-stacked, `line` -> line, `area` -> area, `scatter` -> scatter, `pie` -> pie, `doughnut` -> doughnut.",
+    "- Every manifest chart should include `excelSheetName` and, when a native Excel chart exists, `excelChartCellAnchor`.",
     "- If the template is weakly specified, preserve the palette, typography, spacing rhythm, and visual restraint rather than inventing noisy decoration.",
     "- Basquio standard is a LIGHT editorial system. On the warm cream canvas, never use white text on pale tinted fills or low-opacity color bands. Pale green, pale amber, pale blue, and pale lilac fills must use onyx or deep slate text.",
     "- White text is allowed only on genuinely dark or fully saturated fills that clearly support it. If the fill is light enough to feel like paper, the text must be dark.",
@@ -1435,7 +1488,7 @@ function buildHaikuReportOnlySystemPrompt(input: {
     "",
     "Operating rules:",
     "- Use the uploaded files directly inside the execution container.",
-    "- Use Python, pandas, and openpyxl as the default execution path.",
+    "- Use Python and pandas as the default execution path. When writing `data_tables.xlsx` for chart-bearing sheets, use XlsxWriter so native Excel chart objects can be embedded.",
     "- Generate ONLY these deliverables: narrative_report.md, data_tables.xlsx, and deck_manifest.json with slideCount set to 0.",
     "- Do NOT generate deck.pptx or deck.pdf in this run.",
     "- Compute deterministic facts in Python instead of guessing.",

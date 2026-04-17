@@ -1,3 +1,8 @@
+import {
+  MAX_RENDERING_TARGET_SLIDES,
+  MIN_REQUIRED_STRUCTURAL_DECK_SLIDES,
+} from "./rendering-contract";
+
 export type SlidePlanLintInput = {
   position: number;
   role?: string;
@@ -160,7 +165,7 @@ export function lintSlidePlan(
   const analyticalSlides = slides.filter((slide) => !isStructuralSlide(slide));
   const appendixSlides = analyticalSlides.filter((slide) => isAppendixSlide(slide));
   const contentSlides = analyticalSlides.filter((slide) => !isAppendixSlide(slide));
-  const appendixCap = Math.ceil(targetSlideCount * 0.10);
+  const appendixCap = computeAppendixCap(targetSlideCount);
   const deepestLevel = analyticalSlides.reduce(
     (maxLevel, slide) => Math.max(maxLevel, slide.decompositionLevel),
     1,
@@ -184,6 +189,16 @@ export function lintSlidePlan(
         `Plan has only ${contentSlides.length} content slides; user asked for ${targetSlideCount}. ` +
         `Add ${targetSlideCount - contentSlides.length} more content slides through deeper drill-down ` +
         `(SKU level, retailer level, intersection cross-tabs).`,
+    });
+  }
+
+  if (contentSlides.length > targetSlideCount) {
+    deckViolations.push({
+      rule: "content_overflow",
+      severity: "critical",
+      message:
+        `Plan has ${contentSlides.length} content slides for a ${targetSlideCount}-slide ask. ` +
+        `Ship exactly ${targetSlideCount} content slides and move any surplus support material into appendix or narrative.`,
     });
   }
 
@@ -384,6 +399,15 @@ function requiredDimensionCoverage(targetSlideCount: number) {
   if (targetSlideCount < 40) return 7;
   if (targetSlideCount <= 60) return 10;
   return 14;
+}
+
+function computeAppendixCap(targetSlideCount: number) {
+  const nominalTopUp = Math.ceil(targetSlideCount * 0.10);
+  const remainingHeadroom = Math.max(
+    0,
+    MAX_RENDERING_TARGET_SLIDES - MIN_REQUIRED_STRUCTURAL_DECK_SLIDES - targetSlideCount,
+  );
+  return Math.min(nominalTopUp, remainingHeadroom);
 }
 
 function isStructuralSlide(slide: EnrichedSlide) {

@@ -17,6 +17,8 @@ import {
   inferQuestionType,
   lintDeckText,
   lintSlidePlan,
+  MIN_REQUIRED_STRUCTURAL_DECK_SLIDES,
+  MAX_RENDERING_TARGET_SLIDES,
   routeQuestion,
   validateDeckContract,
   type SlidePlanLintInput,
@@ -83,6 +85,9 @@ const HARD_QA_BLOCKERS = new Set([
   "xlsx_zip_signature",
   "pptx_zip_signature",
   "slide_count_positive",
+  "slide_count_within_requested_plus_appendix_cap",
+  "content_slide_count_matches_request",
+  "appendix_slide_count_within_cap",
   "report_only_manifest_zero_slides",
   "pptx_zip_parse_failed",
 ]);
@@ -90,6 +95,7 @@ const DECK_PLAN_MECE_CHECK = (process.env.DECK_PLAN_MECE_CHECK ?? "true").trim()
 const ALWAYS_ACTIONABLE_PLAN_RULES = new Set([
   "redundant_data_cut",
   "content_shortfall",
+  "content_overflow",
   "appendix_overfill",
 ]);
 const LONG_DECK_PLAN_RULES = new Set([
@@ -339,6 +345,9 @@ const analysisSchema = z.object({
       chartType: z.string().optional().transform((value) => value?.trim() || "bar"),
       title: z.string().optional().transform((value) => value?.trim() || ""),
       sourceNote: z.string().optional(),
+      excelSheetName: z.string().optional(),
+      excelChartCellAnchor: z.string().optional(),
+      dataSignature: z.string().optional(),
       maxCategories: z.coerce.number().int().min(1).optional().catch(undefined),
       preferredOrientation: z.enum(["horizontal", "vertical"]).optional().catch(undefined),
       slotAspectRatio: z.any().optional().transform((value) => coercePositiveNumber(value)),
@@ -866,6 +875,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       authorModel: MODEL,
     });
     const isReportOnly = MODEL === "claude-haiku-4-5";
+    assertRequestedDeckSizeSupported(run.target_slide_count, isReportOnly ? "report_only" : "deck");
     const useExactTemplateMode = shouldUseExactTemplateMode({
       isReportOnly,
       templateFile,
@@ -1762,7 +1772,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         );
 
         // B1: Persist pre-export checkpoint after revise success
-        const reviseLint = lintManifest(finalManifest);
+        const reviseLint = lintManifest(finalManifest, run.target_slide_count);
         const reviseContract = validateManifestContract(finalManifest);
         const reviseCheckpointProof = buildCheckpointProof({
           authorComplete: true,
@@ -1945,7 +1955,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         run.target_slide_count,
         isReportOnly ? "report_only" : "deck",
       );
-      const finalLint = isReportOnly ? null : lintManifest(finalManifest);
+      const finalLint = isReportOnly ? null : lintManifest(finalManifest, run.target_slide_count);
       const finalContract = isReportOnly ? null : validateManifestContract(finalManifest);
       const finalQualityGate = isReportOnly
         ? {
@@ -3346,8 +3356,8 @@ function buildAuthorMessage(
         : run.target_slide_count <= 40
             ? "This is a Deep-dive deck. Deliver 3-5 slides per chapter, deep-dive each segment or competitor individually, and include richer cross-tabs plus detailed recommendation cards."
             : run.target_slide_count <= 70
-              ? `This is a Full-report NielsenIQ-grade deck. BEFORE generating any slide, plan an MECE issue tree with 4-6 chapters and 4-6 unique leaf questions per chapter. No two slides may answer the same question with different chart types. Cover at least 10 drill-down dimensions from the deck-depth architecture pack, and decompose every segment finding to at least L3 before recommending action. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides through drill-down depth. You MAY add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides as genuinely supplementary top-up only, never as filler to reach count.`
-              : `This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides first. You MAY add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides as optional top-up only if they are genuinely additive.`;
+              ? `This is a Full-report NielsenIQ-grade deck. BEFORE generating any slide, plan an MECE issue tree with 4-6 chapters and 4-6 unique leaf questions per chapter. No two slides may answer the same question with different chart types. Cover at least 10 drill-down dimensions from the deck-depth architecture pack, and decompose every segment finding to at least L3 before recommending action. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides through drill-down depth. Ship one structural cover slide outside that count, and add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as genuinely supplementary top-up, never as filler to reach count.`
+              : `This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides first. Ship one structural cover slide outside that count, and add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as optional top-up if they are genuinely additive.`;
   const extractionInstruction = evidenceMode.hasTabularData
     ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
     : evidenceMode.hasDocumentEvidence
@@ -3388,7 +3398,7 @@ function buildAuthorMessage(
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         ...(isReportOnly
           ? ["- This is a report-only run. Do not produce slides or presentation artifacts."]
-          : [`- The requested deck size is canonical. Produce exactly ${run.target_slide_count} content slides. You may add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as optional supplementary top-up, never as filler.`]),
+          : [`- The requested deck size is canonical. Produce exactly ${run.target_slide_count} content slides, plus one structural cover slide outside that count. You may add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as optional supplementary top-up, never as filler.`]),
         `- Every planned slide must use a slideArchetype chosen from: ${APPROVED_ARCHETYPES.join(", ")}.`,
         "- Archetype selection is mandatory for every slide. Do not improvise freeform slide compositions outside the approved archetype system.",
         "- Never use addShape/addText with custom coordinates outside defined archetype slots unless an existing client template placeholder requires a microscopic adjustment.",
@@ -3495,24 +3505,25 @@ function buildAuthorMessage(
           "- Slide titles: MAXIMUM 70 characters. If the insight needs more, split it into title + subtitle.",
           "- Never use donut or pie charts with more than 4 segments. Use a horizontal stacked bar when there are 5+ segments.",
           ...(!isReportOnly ? [
-            `- Produce exactly ${run.target_slide_count} content slides. Do not compress the body of the deck below that ask.`,
+            `- Produce exactly ${run.target_slide_count} content slides. Do not compress the body of the deck below that ask. The cover is structural and sits outside the content count.`,
             `- Appendix is optional and capped at ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} slides. Use it only for genuinely supplementary methodology or source-trail material.`,
-            `- \`deck_manifest.json\` slideCount must equal the actual total slides shipped: ${run.target_slide_count} content slides plus 0-${getAppendixCapForRequestedDeckSize(run.target_slide_count)} optional appendix slides.`,
+            `- \`deck_manifest.json\` slideCount must equal the actual total slides shipped: 1 structural cover slide + ${run.target_slide_count} content slides + 0-${getAppendixCapForRequestedDeckSize(run.target_slide_count)} optional appendix slides.`,
           ] : [
             "- `deck_manifest.json` slideCount must be 0 for this report-only run.",
           ]),
           analysis
             ? (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
             : (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with openpyxl. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, adding native Excel chart objects for supported chart-bearing slides. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
           ...(analysis
             ? []
             : [
                 "- `analysis_result.json` must be valid JSON matching the approved analysis schema with `language`, `thesis`, `executiveSummary`, and `slidePlan[]`.",
                 "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
+                "- For every `slidePlan[].chart`, also include `excelSheetName`; include `excelChartCellAnchor` for native-eligible Excel chart families; include `dataSignature` when you can derive a stable signature from the plotted data columns.",
                 "- Use the same language as the brief. Do not emit mixed-language output.",
               ]),
           ...(!isReportOnly
@@ -3562,14 +3573,48 @@ function buildAuthorMessage(
             ? "- `narrative_report.md` must be at least 800 lines for a report-only run. If it is shorter, extend the appendix, competitor analysis, and chart-supporting markdown tables."
             : "- `narrative_report.md` must be at least 500 lines. If it is shorter, extend the appendix and the chart-supporting markdown tables.",
           "- `data_tables.xlsx` must contain every pandas DataFrame that supports a chart, table, or numeric finding. Verify supplier-level sums vs category totals before writing it.",
-          "<example name=\"data_tables_xlsx_pattern\">",
+          "- EXCEL-NATIVE-CHARTS RULE: for every slide that contains a matplotlib chart in the PPTX, write the exact underlying DataFrame to a sheet named `S<NN>_<descriptor>` in `data_tables.xlsx`.",
+          "- Excel sheet names must already be Excel-safe in both the workbook and the manifest: max 31 characters, no `\\ / ? * [ ] :`, and use the exact same sanitized string in both places.",
+          "- For supported Excel chart families (bar/column, line, scatter, pie/doughnut, area), also embed a native XlsxWriter chart object in that same sheet so an analyst can copy it into another deck.",
+          "- Basquio chart-type mapping for native Excel charts is deterministic: `bar` -> column, `horizontal_bar` -> bar, `grouped_bar` -> column cluster, `stacked_bar` -> bar stacked, `stacked_bar_100` -> bar percent-stacked, `line` -> line, `area` -> area, `scatter` -> scatter, `pie` -> pie, `doughnut` -> doughnut.",
+          "- For unsupported Excel chart families (for example waterfall, heatmap, bubble, or table-only exhibits), still write the sheet and set `excelSheetName` in the manifest, but omit `excelChartCellAnchor` instead of inventing a broken native chart.",
+          "- Every manifest chart should include `excelSheetName` and, when a native Excel chart object exists, `excelChartCellAnchor`. Include `dataSignature` when you can derive a stable signature from the plotted data columns.",
+          "<example name=\"data_tables_xlsx_with_native_charts\">",
           "import pandas as pd",
-          "with pd.ExcelWriter('data_tables.xlsx', engine='openpyxl') as writer:",
-          "    category_overview.to_excel(writer, sheet_name='Category_Overview', index=True)",
-          "    brand_share_by_channel.to_excel(writer, sheet_name='Brand_Share', index=True)",
-          "    distribution_matrix.to_excel(writer, sheet_name='Distribution', index=True)",
-          "    top_items_ranked.to_excel(writer, sheet_name='Top_Items', index=False)",
-          "    reco_summary.to_excel(writer, sheet_name='Recommendations', index=False)",
+          "",
+          "with pd.ExcelWriter('data_tables.xlsx', engine='xlsxwriter') as writer:",
+          "    workbook = writer.book",
+          "",
+          "    brand_df = brand_share_top10  # columns: Brand, Quota_CY_pct",
+          "    brand_df.to_excel(writer, sheet_name='S15_BrandShare', index=False)",
+          "    ws = writer.sheets['S15_BrandShare']",
+          "    bar = workbook.add_chart({'type': 'bar'})",
+          "    bar.add_series({",
+          "        'name':       ['S15_BrandShare', 0, 1],",
+          "        'categories': ['S15_BrandShare', 1, 0, len(brand_df), 0],",
+          "        'values':     ['S15_BrandShare', 1, 1, len(brand_df), 1],",
+          "        'fill':       {'color': ACCENT},",
+          "        'data_labels': {'value': True},",
+          "    })",
+          "    bar.set_title({'name': 'S15 — Top 10 brand — Quota CY %'})",
+          "    bar.set_x_axis({'name': 'Quota CY %'})",
+          "    bar.set_y_axis({'name': 'Brand'})",
+          "    ws.insert_chart('G2', bar)",
+          "",
+          "    trend_df = monthly_sales_trend  # columns: Period, SalesValue",
+          "    trend_df.to_excel(writer, sheet_name='S22_SalesTrend', index=False)",
+          "    ws = writer.sheets['S22_SalesTrend']",
+          "    line = workbook.add_chart({'type': 'line'})",
+          "    line.add_series({",
+          "        'name':       ['S22_SalesTrend', 0, 1],",
+          "        'categories': ['S22_SalesTrend', 1, 0, len(trend_df), 0],",
+          "        'values':     ['S22_SalesTrend', 1, 1, len(trend_df), 1],",
+          "        'line':       {'color': ACCENT, 'width': 2.25},",
+          "    })",
+          "    line.set_title({'name': 'S22 — Sales trend'})",
+          "    line.set_x_axis({'name': 'Period'})",
+          "    line.set_y_axis({'name': 'Sales Value'})",
+          "    ws.insert_chart('G2', line)",
           "</example>",
           "<example name=\"perfect_narrative_finding_section\">",
           "## Finding 2: Birre, Yogurt e Salumi spiegano la meta del gap ponderato",
@@ -3587,6 +3632,7 @@ function buildAuthorMessage(
           "</example>",
           "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
           "- Each chart in the manifest should include `categoryCount` and `categories[]` when available so Basquio can verify density and label fit.",
+          "- Each chart in the manifest should also include `excelSheetName` for the linked `data_tables.xlsx` sheet and `excelChartCellAnchor` when a native Excel chart object exists.",
           "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `pageIntent`, `title`, and `chartId` when applicable.",
           "- For charted slides, each slide entry in `deck_manifest.json` must also set `hasDataTable` and `hasChartAnnotations` so Basquio can verify evidence co-location deterministically.",
           "- Your final assistant message must attach the files as container uploads before finishing.",
@@ -4412,6 +4458,9 @@ function buildManifestFromAnalysis(analysis: AnalysisResult) {
         chartType: slide.chart!.chartType,
         title: slide.chart!.title || slide.title,
         sourceNote: slide.chart!.sourceNote,
+        excelSheetName: slide.chart!.excelSheetName,
+        excelChartCellAnchor: slide.chart!.excelChartCellAnchor,
+        dataSignature: slide.chart!.dataSignature,
       })),
   });
 }
@@ -5000,6 +5049,9 @@ function synthesizeAnalysisFromManifest(
               chartType: chart.chartType,
               title: chart.title,
               ...(chart.sourceNote ? { sourceNote: chart.sourceNote } : {}),
+              ...(chart.excelSheetName ? { excelSheetName: chart.excelSheetName } : {}),
+              ...(chart.excelChartCellAnchor ? { excelChartCellAnchor: chart.excelChartCellAnchor } : {}),
+              ...(chart.dataSignature ? { dataSignature: chart.dataSignature } : {}),
               ...(typeof chart.categoryCount === "number" ? { maxCategories: chart.categoryCount } : {}),
               ...(preferredOrientation ? { preferredOrientation } : {}),
               ...(shouldTruncateChartLabels(chart.categories) ? { truncateLabels: true } : {}),
@@ -5463,8 +5515,31 @@ function shouldEnforceDeckPlanMeceCheck(targetSlideCount: number) {
   return DECK_PLAN_MECE_CHECK && targetSlideCount >= 40;
 }
 
+function getMaxContentTargetSlides() {
+  return Math.max(0, MAX_RENDERING_TARGET_SLIDES - MIN_REQUIRED_STRUCTURAL_DECK_SLIDES);
+}
+
 function getAppendixCapForRequestedDeckSize(targetSlideCount: number) {
-  return Math.ceil(targetSlideCount * 0.10);
+  const nominalTopUp = Math.ceil(targetSlideCount * 0.10);
+  const remainingHeadroom = Math.max(
+    0,
+    MAX_RENDERING_TARGET_SLIDES - MIN_REQUIRED_STRUCTURAL_DECK_SLIDES - targetSlideCount,
+  );
+  return Math.min(nominalTopUp, remainingHeadroom);
+}
+
+function assertRequestedDeckSizeSupported(targetSlideCount: number, mode: "deck" | "report_only") {
+  if (mode !== "deck") {
+    return;
+  }
+
+  const maxContentSlides = getMaxContentTargetSlides();
+  if (targetSlideCount > maxContentSlides) {
+    throw new Error(
+      `Requested ${targetSlideCount} content slides exceeds the supported maximum of ${maxContentSlides}. ` +
+      `Basquio reserves ${MIN_REQUIRED_STRUCTURAL_DECK_SLIDES} structural slide for the cover within the ${MAX_RENDERING_TARGET_SLIDES}-slide rendering ceiling.`,
+    );
+  }
 }
 
 function resolvePlanLintTargetSlideCount(requestedSlideCount: number | undefined, fallbackSlideCount: number) {
@@ -5637,12 +5712,18 @@ function collectManifestIssues(manifest: z.infer<typeof deckManifestSchema>, req
   if (manifest.slideCount !== manifest.slides.length) issues.push("Manifest slideCount does not match slides[].");
   if (typeof requestedSlideCount === "number") {
     const appendixCap = getAppendixCapForRequestedDeckSize(requestedSlideCount);
-    const maxTotalSlides = requestedSlideCount + appendixCap;
-    if (manifest.slideCount < requestedSlideCount) {
-      issues.push(`Manifest slideCount ${manifest.slideCount} is below requested targetSlideCount ${requestedSlideCount}.`);
+    const structuralSlideCount = countStructuralSlidesInManifest(manifest);
+    const minTotalSlides = requestedSlideCount + structuralSlideCount;
+    const maxTotalSlides = requestedSlideCount + structuralSlideCount + appendixCap;
+    if (manifest.slideCount < minTotalSlides) {
+      issues.push(
+        `Manifest slideCount ${manifest.slideCount} is below requested targetSlideCount ${requestedSlideCount} plus structural slides ${structuralSlideCount}.`,
+      );
     }
     if (manifest.slideCount > maxTotalSlides) {
-      issues.push(`Manifest slideCount ${manifest.slideCount} exceeds requested targetSlideCount ${requestedSlideCount} plus appendix cap ${appendixCap}.`);
+      issues.push(
+        `Manifest slideCount ${manifest.slideCount} exceeds requested targetSlideCount ${requestedSlideCount} plus structural slides ${structuralSlideCount} and appendix cap ${appendixCap}.`,
+      );
     }
   }
   if (manifest.slides.some((slide) => /chart unavailable|placeholder/i.test(`${slide.body ?? ""} ${slide.title}`))) {
@@ -6161,6 +6242,13 @@ function collectCritiqueIssues(
   return issues;
 }
 
+function countStructuralSlidesInManifest(manifest: z.infer<typeof deckManifestSchema>) {
+  return manifest.slides.some((slide) => {
+    const layout = (slide.layoutId ?? slide.slideArchetype ?? "").trim().toLowerCase();
+    return layout === "cover";
+  }) ? 1 : 0;
+}
+
 /**
  * Determine whether a critique issue is advisory (should NOT trigger revise)
  * vs blocking (SHOULD trigger revise).
@@ -6188,6 +6276,7 @@ function isAdvisoryCritiqueIssue(issue: string) {
   if (n.includes("deck depth issue [drilldown_dimension_coverage]")) return false;
   if (n.includes("deck depth issue [insufficient_decomposition_depth]")) return false;
   if (n.includes("deck plan issue [content_shortfall]")) return false;
+  if (n.includes("deck plan issue [content_overflow]")) return false;
   if (n.includes("deck plan issue [appendix_overfill]")) return false;
 
   // Lint advisories — layout diversity, layout percentage, writing issues
@@ -6232,6 +6321,7 @@ async function buildQaReport(
 
   if (mode === "deck") {
     const planLint = lintManifestPlan(manifest, requestedSlideCount);
+    const structuralSlideCount = countStructuralSlidesInManifest(manifest);
     checks.push(
       { name: "pptx_present", passed: (artifacts.pptx?.buffer.length ?? 0) > 0, detail: `${artifacts.pptx?.buffer.length ?? 0} bytes` },
       { name: "pdf_present", passed: (artifacts.pdf?.buffer.length ?? 0) > 0, detail: `${artifacts.pdf?.buffer.length ?? 0} bytes` },
@@ -6239,14 +6329,17 @@ async function buildQaReport(
       {
         name: "slide_count_within_requested_plus_appendix_cap",
         passed: typeof requestedSlideCount !== "number"
-          || (manifest.slideCount >= requestedSlideCount && manifest.slideCount <= requestedSlideCount + getAppendixCapForRequestedDeckSize(requestedSlideCount)),
+          || (
+            manifest.slideCount >= requestedSlideCount + structuralSlideCount &&
+            manifest.slideCount <= requestedSlideCount + structuralSlideCount + getAppendixCapForRequestedDeckSize(requestedSlideCount)
+          ),
         detail: typeof requestedSlideCount === "number"
-          ? `requested=${requestedSlideCount} appendixCap=${getAppendixCapForRequestedDeckSize(requestedSlideCount)} manifest=${manifest.slideCount}`
+          ? `requested=${requestedSlideCount} structural=${structuralSlideCount} appendixCap=${getAppendixCapForRequestedDeckSize(requestedSlideCount)} manifest=${manifest.slideCount}`
           : "no requested slide count recorded",
       },
       {
-        name: "content_slide_count_meets_request",
-        passed: typeof requestedSlideCount !== "number" || planLint.result.contentSlideCount >= requestedSlideCount,
+        name: "content_slide_count_matches_request",
+        passed: typeof requestedSlideCount !== "number" || planLint.result.contentSlideCount === requestedSlideCount,
         detail: typeof requestedSlideCount === "number"
           ? `requested=${requestedSlideCount} content=${planLint.result.contentSlideCount}`
           : "no requested slide count recorded",
@@ -6416,9 +6509,51 @@ async function validateArtifactChecks(
   try {
     const zip = await JSZip.loadAsync(buffers.xlsx);
     const workbookXml = zip.file("xl/workbook.xml");
+    const workbookXmlString = workbookXml ? await workbookXml.async("string") : "";
+    const workbookSheetNames = workbookXmlString ? extractWorkbookSheetNames(workbookXmlString) : [];
+    const nativeChartXmlCount = Object.keys(zip.files).filter((name) => /^xl\/charts\/chart\d+\.xml$/i.test(name)).length;
+    const manifestCharts = manifest.charts ?? [];
+    const chartsMissingExcelSheetName = manifestCharts.filter((chart) => !chart.excelSheetName);
+    const missingWorkbookSheets = manifestCharts
+      .map((chart) => chart.excelSheetName)
+      .filter((sheetName): sheetName is string => typeof sheetName === "string" && sheetName.trim().length > 0)
+      .filter((sheetName) => !workbookSheetNames.includes(sheetName));
+    const chartsExpectingNativeExcel = manifestCharts.filter((chart) => supportsNativeExcelChart(chart.chartType));
+    const chartsMissingExcelAnchor = chartsExpectingNativeExcel.filter((chart) => !chart.excelChartCellAnchor);
+    const linkedNativeExcelCharts = manifestCharts.filter((chart) => chart.excelChartCellAnchor);
     const extraChecks = [
       { name: "xlsx_zip_signature", passed: true, detail: "xlsx starts with PK" },
       { name: "xlsx_workbook_xml", passed: Boolean(workbookXml), detail: "xl/workbook.xml exists" },
+      {
+        name: "xlsx_manifest_excel_sheet_links_present",
+        passed: manifestCharts.length === 0 || chartsMissingExcelSheetName.length === 0,
+        detail: manifestCharts.length === 0
+          ? "manifest has no chart entries"
+          : chartsMissingExcelSheetName.length === 0
+            ? `all ${manifestCharts.length} manifest charts include excelSheetName`
+            : `missing excelSheetName for ${chartsMissingExcelSheetName.map((chart) => chart.id).slice(0, 5).join(", ")}`,
+      },
+      {
+        name: "xlsx_manifest_excel_sheets_exist",
+        passed: missingWorkbookSheets.length === 0,
+        detail: missingWorkbookSheets.length === 0
+          ? `workbook contains all linked sheets (${workbookSheetNames.length} total)`
+          : `missing workbook sheets: ${missingWorkbookSheets.slice(0, 5).join(", ")}`,
+      },
+      {
+        name: "xlsx_manifest_native_chart_links_present",
+        passed: chartsExpectingNativeExcel.length === 0 || chartsMissingExcelAnchor.length === 0,
+        detail: chartsExpectingNativeExcel.length === 0
+          ? "manifest has no native-eligible chart families"
+          : chartsMissingExcelAnchor.length === 0
+            ? `all ${chartsExpectingNativeExcel.length} native-eligible charts include excelChartCellAnchor`
+            : `missing excelChartCellAnchor for ${chartsMissingExcelAnchor.map((chart) => chart.id).slice(0, 5).join(", ")}`,
+      },
+      {
+        name: "xlsx_native_chart_xml_present",
+        passed: linkedNativeExcelCharts.length === 0 || nativeChartXmlCount >= linkedNativeExcelCharts.length,
+        detail: `manifestAnchors=${linkedNativeExcelCharts.length} nativeChartXml=${nativeChartXmlCount}`,
+      },
     ];
     allChecks.push(...extraChecks);
     allFailed.push(...extraChecks.filter((check) => !check.passed).map((check) => check.name));
@@ -6475,6 +6610,49 @@ async function validateArtifactChecks(
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };
+}
+
+function extractWorkbookSheetNames(workbookXml: string) {
+  const sheetNames: string[] = [];
+  const sheetNameRegex = /<sheet\b[^>]*\bname="([^"]+)"/gi;
+
+  for (const match of workbookXml.matchAll(sheetNameRegex)) {
+    const name = decodeXmlEntities(match[1] ?? "").trim();
+    if (name.length > 0) {
+      sheetNames.push(name);
+    }
+  }
+
+  return sheetNames;
+}
+
+function decodeXmlEntities(value: string) {
+  return value
+    .replaceAll("&quot;", "\"")
+    .replaceAll("&apos;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+function supportsNativeExcelChart(chartType: string | undefined) {
+  const normalized = (chartType ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    "bar",
+    "horizontal_bar",
+    "grouped_bar",
+    "stacked_bar",
+    "stacked_bar_100",
+    "line",
+    "area",
+    "scatter",
+    "pie",
+    "doughnut",
+  ].includes(normalized);
 }
 
 const TRANSPARENT_PNG_BUFFER = Buffer.from(

@@ -31,6 +31,9 @@ export const deckManifestSchema = z.object({
     chartType: z.string(),
     title: z.string(),
     sourceNote: z.string().optional(),
+    excelSheetName: z.string().optional(),
+    excelChartCellAnchor: z.string().optional(),
+    dataSignature: z.string().optional(),
     categoryCount: z.number().int().min(0).optional(),
     categories: z.array(z.string()).optional(),
     seriesCount: z.number().int().min(0).optional(),
@@ -115,6 +118,9 @@ function normalizeChart(input: unknown, index: number) {
       "bar",
     title: readString(record.title) ?? `Chart ${index + 1}`,
     sourceNote: readString(record.sourceNote) ?? readString(record.source_note),
+    excelSheetName: normalizeExcelSheetName(readString(record.excelSheetName) ?? readString(record.excel_sheet_name)),
+    excelChartCellAnchor: readString(record.excelChartCellAnchor) ?? readString(record.excel_chart_cell_anchor),
+    dataSignature: readString(record.dataSignature) ?? readString(record.data_signature),
     categoryCount: readNumber(record.categoryCount) ?? readNumber(record.category_count),
     categories: readStringArray(record.categories),
     seriesCount: readNumber(record.seriesCount) ?? readNumber(record.series_count),
@@ -180,4 +186,18 @@ function readStringArray(input: unknown) {
 
   const values = input.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
   return values.length > 0 ? values : undefined;
+}
+
+function normalizeExcelSheetName(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  const sanitized = value
+    .replace(/[\\/?*\[\]:]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 31);
+
+  return sanitized.length > 0 ? sanitized : undefined;
 }

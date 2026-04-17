@@ -56,7 +56,8 @@ export const SAFE_FONTS = {
   mono: "Courier New",
 } as const;
 
-const MAX_RENDERING_TARGET_SLIDES = 100;
+export const MIN_REQUIRED_STRUCTURAL_DECK_SLIDES = 1;
+export const MAX_RENDERING_TARGET_SLIDES = 100;
 const MAX_RENDERING_CHARTS_PER_DECK = MAX_RENDERING_TARGET_SLIDES;
 
 // ─── OOXML RULES ──────────────────────────────────────────────────
