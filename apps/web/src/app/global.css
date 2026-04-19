@@ -10888,3 +10888,201 @@ textarea {
   color: var(--text-muted);
 }
 
+/* ── Deliverable detail page ─────────────────────────────────────── */
+
+.wbeta-deliverable-page {
+  width: min(960px, calc(100% - 68px));
+  margin: 0 auto;
+  padding: 34px 0 89px;
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+@media (max-width: 980px) {
+  .wbeta-deliverable-page {
+    width: min(960px, calc(100% - 42px));
+    padding: 21px 0 55px;
+  }
+}
+
+.wbeta-deliverable-page-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 34px;
+}
+
+.wbeta-deliverable-back {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+
+.wbeta-deliverable-back:hover,
+.wbeta-deliverable-back:focus-visible {
+  background: var(--canvas-stage);
+  color: var(--text);
+  outline: none;
+}
+
+.wbeta-deliverable-page-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-deliverable-page-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.15;
+}
+
+.wbeta-deliverable-page-prompt {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.wbeta-deliverable-page-error {
+  font-size: 13px;
+  color: #b3271a;
+  margin: 0;
+}
+
+.wbeta-deliverable-body {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.wbeta-deliverable-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 13px;
+}
+
+.wbeta-deliverable-saved {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wbeta-deliverable-edit-btn,
+.wbeta-deliverable-cancel-btn {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.wbeta-deliverable-edit-btn:hover,
+.wbeta-deliverable-cancel-btn:hover {
+  background: var(--canvas-stage);
+  border-color: var(--text);
+}
+
+.wbeta-deliverable-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 21px;
+}
+
+.wbeta-deliverable-textarea {
+  width: 100%;
+  min-height: 360px;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  resize: vertical;
+  outline: none;
+}
+
+.wbeta-deliverable-textarea:focus {
+  border-color: var(--blue);
+  background: var(--canvas-stage);
+}
+
+.wbeta-deliverable-pref {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.wbeta-deliverable-pref input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+}
+
+.wbeta-deliverable-error {
+  font-size: 13px;
+  color: #b3271a;
+  margin: 0;
+}
+
+.wbeta-deliverable-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 13px;
+}
+
+.wbeta-deliverable-state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 34px;
+}
+
+.wbeta-deliverable-state-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-deliverable-state-body {
+  font-size: 14px;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.wbeta-deliverable-state-err .wbeta-deliverable-state-title {
+  color: #b3271a;
+}
+
