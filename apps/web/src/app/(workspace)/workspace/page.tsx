@@ -1,3 +1,4 @@
+import { getViewerState } from "@/lib/supabase/auth";
 import {
   countProcessingDocuments,
   inferDefaultScope,
@@ -33,58 +34,144 @@ async function safe<T>(promise: Promise<T>, fallback: T, label: string): Promise
 }
 
 export default async function WorkspaceHomePage() {
-  const [documents, entitiesByType, deliverables, suggestions, scopes, defaultScope] = await Promise.all([
-    safe(listRecentWorkspaceDocuments(20), [], "list documents"),
-    safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
-    safe(listRecentWorkspaceDeliverables(8), [], "list deliverables"),
-    safe(buildSuggestions(3), [], "build suggestions"),
-    safe(listKnownScopes(12), ["workspace", "analyst"], "list scopes"),
-    safe(inferDefaultScope(), "workspace", "infer default scope"),
-  ]);
+  const [viewer, documents, entitiesByType, deliverables, suggestions, scopes, defaultScope] =
+    await Promise.all([
+      getViewerState(),
+      safe(listRecentWorkspaceDocuments(20), [], "list documents"),
+      safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
+      safe(listRecentWorkspaceDeliverables(8), [], "list deliverables"),
+      safe(buildSuggestions(3), [], "build suggestions"),
+      safe(listKnownScopes(12), ["workspace", "analyst"], "list scopes"),
+      safe(inferDefaultScope(), "workspace", "infer default scope"),
+    ]);
 
   const processingCount = countProcessingDocuments(documents);
   const totalEntityCount = Object.values(entitiesByType).reduce(
     (sum, group) => sum + group.length,
     0,
   );
+  const isEmpty = documents.length === 0 && deliverables.length === 0 && totalEntityCount === 0;
+  const userEmail = viewer.user?.email ?? null;
+
+  if (isEmpty) {
+    return (
+      <div className="wbeta-page wbeta-page-empty">
+        <WorkspaceAutoRefresh processingCount={processingCount} />
+        <WorkspaceShortcuts />
+
+        <header className="wbeta-hero">
+          <p className="wbeta-hero-eyebrow">Workspace</p>
+          <h1 className="wbeta-hero-title">Drop a file. Ask anything.</h1>
+          <p className="wbeta-hero-lede">
+            Basquio reads briefs, transcripts, decks, and data exports. Then it answers questions
+            with citations and remembers what you taught it for next time.
+          </p>
+        </header>
+
+        <section className="wbeta-hero-drop">
+          <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} variant="hero" />
+        </section>
+
+        <section className="wbeta-hero-prompt">
+          <WorkspacePrompt scopes={scopes} defaultScope={defaultScope} />
+        </section>
+
+        <p className="wbeta-hero-shortcuts">
+          Cmd+U to upload. Cmd+K to focus the prompt. Cmd+/ for the full list.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="wbeta-home">
+    <div className="wbeta-page">
       <WorkspaceAutoRefresh processingCount={processingCount} />
       <WorkspaceShortcuts />
 
-      <aside className="wbeta-context">
-        <div className="wbeta-context-head">
-          <p className="wbeta-context-kicker">What Basquio knows</p>
-          <h2 className="wbeta-context-title">Timeline</h2>
+      <header className="wbeta-page-head">
+        <div>
+          <p className="wbeta-page-eyebrow">Workspace</p>
+          <h1 className="wbeta-page-title">
+            {userEmail ? userEmail.split("@")[0].replace(/\./g, " ") : "your workspace"}
+          </h1>
         </div>
+        <div className="wbeta-page-summary">
+          <span className="wbeta-stat">
+            <span className="wbeta-stat-num">{documents.length}</span>
+            <span className="wbeta-stat-label">files</span>
+          </span>
+          <span className="wbeta-stat-sep" aria-hidden>
+            ·
+          </span>
+          <span className="wbeta-stat">
+            <span className="wbeta-stat-num">{totalEntityCount}</span>
+            <span className="wbeta-stat-label">entities</span>
+          </span>
+          <span className="wbeta-stat-sep" aria-hidden>
+            ·
+          </span>
+          <span className="wbeta-stat">
+            <span className="wbeta-stat-num">{deliverables.length}</span>
+            <span className="wbeta-stat-label">answers</span>
+          </span>
+        </div>
+      </header>
 
-        <WorkspaceTimeline
-          entitiesByType={entitiesByType}
-          totalEntityCount={totalEntityCount}
-        />
+      <div className="wbeta-grid">
+        <aside className="wbeta-aside">
+          <section className="wbeta-section">
+            <header className="wbeta-section-head">
+              <h2 className="wbeta-section-title">Timeline</h2>
+              <p className="wbeta-section-meta">What Basquio knows</p>
+            </header>
+            <WorkspaceTimeline
+              entitiesByType={entitiesByType}
+              totalEntityCount={totalEntityCount}
+            />
+          </section>
 
-        {suggestions.length > 0 ? (
-          <WorkspaceSuggestions initialSuggestions={suggestions} />
-        ) : null}
-      </aside>
+          {suggestions.length > 0 ? (
+            <section className="wbeta-section">
+              <header className="wbeta-section-head">
+                <h2 className="wbeta-section-title">Try this</h2>
+              </header>
+              <WorkspaceSuggestions initialSuggestions={suggestions} />
+            </section>
+          ) : null}
+        </aside>
 
-      <section className="wbeta-main-col">
-        <WorkspacePrompt scopes={scopes} defaultScope={defaultScope} />
+        <section className="wbeta-content">
+          <WorkspacePrompt scopes={scopes} defaultScope={defaultScope} />
 
-        {documents.length === 0 ? (
-          <>
-            <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} />
-            <WorkspaceDocumentList documents={documents} />
-          </>
-        ) : (
-          <>
-            <WorkspaceDeliverablesList deliverables={deliverables} />
-            <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} />
-            <WorkspaceDocumentList documents={documents} />
-          </>
-        )}
-      </section>
+          {deliverables.length > 0 ? (
+            <section className="wbeta-section">
+              <header className="wbeta-section-head">
+                <h2 className="wbeta-section-title">Recent answers</h2>
+                <p className="wbeta-section-meta">{deliverables.length} in the last weeks</p>
+              </header>
+              <WorkspaceDeliverablesList deliverables={deliverables} />
+            </section>
+          ) : null}
+
+          <section className="wbeta-section">
+            <header className="wbeta-section-head">
+              <h2 className="wbeta-section-title">Add to the workspace</h2>
+              <p className="wbeta-section-meta">Drop a file or paste text. Parsing runs in seconds.</p>
+            </header>
+            <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} variant="inline" />
+          </section>
+
+          {documents.length > 0 ? (
+            <section className="wbeta-section">
+              <header className="wbeta-section-head">
+                <h2 className="wbeta-section-title">Files</h2>
+                <p className="wbeta-section-meta">{documents.length} indexed</p>
+              </header>
+              <WorkspaceDocumentList documents={documents} />
+            </section>
+          ) : null}
+        </section>
+      </div>
     </div>
   );
 }

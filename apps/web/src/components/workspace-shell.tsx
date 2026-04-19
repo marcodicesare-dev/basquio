@@ -17,25 +17,31 @@ export function WorkspaceShell({
   return (
     <div className="wbeta-frame">
       <header className="wbeta-topbar">
-        <div className="wbeta-topbar-brand">
+        <div className="wbeta-topbar-left">
           <Link href="/workspace" className="wbeta-brand-lockup" aria-label="Workspace home">
             <Image
               src="/brand/svg/logo/basquio-logo-light-bg-blue.svg"
               alt="Basquio"
-              width={132}
-              height={22}
+              width={108}
+              height={18}
               priority
             />
-            <span className="wbeta-pill">Workspace beta</span>
+            <span className="wbeta-pill">beta</span>
           </Link>
         </div>
 
-        <div className="wbeta-topbar-account">
+        <div className="wbeta-topbar-right">
           <Link href="/dashboard" className="wbeta-back-link">
-            Back to app
+            App
           </Link>
-          {userEmail ? <span className="wbeta-account-email">{userEmail}</span> : null}
-          <SignOutButton />
+          {userEmail ? (
+            <span className="wbeta-account-email" title={userEmail}>
+              {userEmail}
+            </span>
+          ) : null}
+          <span className="wbeta-signout-slot">
+            <SignOutButton />
+          </span>
         </div>
       </header>
 

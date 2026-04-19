@@ -9,7 +9,13 @@ type UploadState =
   | { kind: "success"; filename: string; deduplicated: boolean }
   | { kind: "error"; message: string };
 
-export function WorkspaceUploadZone({ supportedLabel }: { supportedLabel: string }) {
+export function WorkspaceUploadZone({
+  supportedLabel,
+  variant = "inline",
+}: {
+  supportedLabel: string;
+  variant?: "inline" | "hero";
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<UploadState>({ kind: "idle" });
@@ -83,6 +89,7 @@ export function WorkspaceUploadZone({ supportedLabel }: { supportedLabel: string
     <div
       className={[
         "wbeta-drop",
+        variant === "hero" ? "wbeta-drop-hero" : "wbeta-drop-inline",
         isDragOver ? "wbeta-drop-over" : "",
         isBusy ? "wbeta-drop-busy" : "",
       ]
@@ -118,8 +125,14 @@ export function WorkspaceUploadZone({ supportedLabel }: { supportedLabel: string
       />
 
       <div className="wbeta-drop-headline">
-        <span className="wbeta-drop-title">Drop a file here.</span>
-        <span className="wbeta-drop-sub">Or click to browse. {supportedLabel}.</span>
+        <span className="wbeta-drop-title">
+          {variant === "hero" ? "Drop your first file." : "Drop a file."}
+        </span>
+        <span className="wbeta-drop-sub">
+          {variant === "hero"
+            ? `Or click anywhere on this card. ${supportedLabel}. Up to 25 MB.`
+            : `Or click to browse. ${supportedLabel}.`}
+        </span>
       </div>
 
       <UploadStatus state={state} />

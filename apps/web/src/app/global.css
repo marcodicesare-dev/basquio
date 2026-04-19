@@ -9649,59 +9649,78 @@ textarea {
   background: var(--surface-strong);
   border-bottom: 1px solid var(--border);
   backdrop-filter: saturate(140%) blur(8px);
+  min-height: 55px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.wbeta-topbar-brand {
+.wbeta-topbar-left,
+.wbeta-topbar-right {
   display: flex;
   align-items: center;
   gap: 13px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 .wbeta-brand-lockup {
   display: inline-flex;
   align-items: center;
-  gap: 13px;
+  gap: 8px;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .wbeta-pill {
   display: inline-flex;
   align-items: center;
-  height: 21px;
-  padding: 0 8px;
+  height: 18px;
+  padding: 0 6px;
   border-radius: var(--radius-pill);
   background: var(--amber-soft);
   color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.wbeta-topbar-account {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-}
-
 .wbeta-back-link {
-  font-size: 13px;
-  color: var(--text-soft);
-  padding: 8px 13px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 6px 10px;
   border-radius: var(--radius-md);
+  white-space: nowrap;
   transition: background 150ms ease-out, color 150ms ease-out;
 }
 
 .wbeta-back-link:hover,
 .wbeta-back-link:focus-visible {
-  background: var(--surface-muted);
+  background: var(--canvas-stage);
   color: var(--text);
+  outline: none;
 }
 
 .wbeta-account-email {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-signout-slot .button {
+  font-size: 11px;
+  font-weight: 600;
+  height: 28px;
+  padding: 0 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .wbeta-main {
@@ -9709,6 +9728,285 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* ── Page (populated state) ─────────────────────────────────────── */
+
+.wbeta-page {
+  width: min(1240px, calc(100% - 68px));
+  margin: 0 auto;
+  padding: 34px 0 89px;
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+
+@media (max-width: 980px) {
+  .wbeta-page {
+    width: min(1240px, calc(100% - 42px));
+    padding: 21px 0 55px;
+  }
+}
+
+.wbeta-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 34px;
+  padding-bottom: 21px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-page-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-page-title {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  margin: 4px 0 0;
+  text-transform: capitalize;
+}
+
+.wbeta-page-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.wbeta-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.wbeta-stat-num {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--text);
+  font-feature-settings: "tnum" 1;
+}
+
+.wbeta-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wbeta-stat-sep {
+  color: var(--border-strong);
+  font-size: 16px;
+}
+
+/* Two-column editorial grid */
+.wbeta-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 55px;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .wbeta-grid {
+    grid-template-columns: 1fr;
+    gap: 34px;
+  }
+}
+
+.wbeta-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  position: sticky;
+  top: 89px;
+}
+
+@media (max-width: 980px) {
+  .wbeta-aside {
+    position: static;
+  }
+}
+
+.wbeta-content {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  min-width: 0;
+}
+
+/* Section: editorial unit, no heavy card chrome */
+.wbeta-section {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.wbeta-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 13px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-section-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+/* Inside a section, components shed their card chrome */
+.wbeta-section .wbeta-context,
+.wbeta-section .wbeta-prompt-shell,
+.wbeta-section .wbeta-doclist,
+.wbeta-section .wbeta-deliverables {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+.wbeta-section .wbeta-doclist-head,
+.wbeta-section .wbeta-deliverables-head {
+  display: none;
+}
+
+/* The prompt is the hero on the right column, keep its card */
+.wbeta-content > .wbeta-prompt-shell {
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 21px;
+}
+
+/* ── Empty state hero ───────────────────────────────────────────── */
+
+.wbeta-page-empty {
+  width: min(720px, calc(100% - 68px));
+  margin: 0 auto;
+  padding: 89px 0 89px;
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+
+@media (max-width: 980px) {
+  .wbeta-page-empty {
+    width: min(720px, calc(100% - 42px));
+    padding: 55px 0 55px;
+  }
+}
+
+.wbeta-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-hero-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin: 0;
+}
+
+.wbeta-hero-title {
+  font-size: 50px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  margin: 8px 0 0;
+}
+
+@media (max-width: 760px) {
+  .wbeta-hero-title { font-size: 40px; }
+}
+
+.wbeta-hero-lede {
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  margin: 13px 0 0;
+  max-width: 56ch;
+}
+
+.wbeta-hero-drop {
+  display: contents;
+}
+
+.wbeta-hero-prompt {
+  display: contents;
+}
+
+.wbeta-hero-shortcuts {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  text-align: center;
+}
+
+/* Hero variant of the drop zone */
+.wbeta-drop-hero {
+  padding: 89px 55px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(248, 245, 239, 0.4));
+}
+
+.wbeta-drop-hero .wbeta-drop-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.wbeta-drop-hero .wbeta-drop-sub {
+  font-size: 15px;
+  color: var(--text-soft);
+  max-width: 56ch;
+}
+
+@media (max-width: 760px) {
+  .wbeta-drop-hero {
+    padding: 55px 21px;
+  }
+  .wbeta-drop-hero .wbeta-drop-title { font-size: 25px; }
+}
+
+.wbeta-drop-inline {
+  padding: 21px;
+}
+
+.wbeta-drop-inline .wbeta-drop-title {
+  font-size: 16px;
+}
+
+.wbeta-drop-inline .wbeta-drop-sub {
+  font-size: 13px;
 }
 
 /* Empty state used by Session 0 stub. Session A replaces with golden-ratio split. */
