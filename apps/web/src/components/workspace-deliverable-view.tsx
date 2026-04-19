@@ -9,6 +9,53 @@ import {
   type CitationView,
 } from "@/components/workspace-answer-card";
 
+function RetryDeliverableButton({ deliverableId }: { deliverableId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/workspace/deliverables/${deliverableId}/retry`, {
+        method: "POST",
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        deliverableId?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        setError(data.error ?? "Retry failed.");
+        return;
+      }
+      if (data.deliverableId) {
+        router.push(`/workspace/deliverable/${data.deliverableId}`);
+        return;
+      }
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Retry failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="wbeta-deliverable-edit-btn"
+        onClick={handleClick}
+        disabled={busy}
+      >
+        {busy ? "Retrying..." : "Retry"}
+      </button>
+      {error ? <p className="wbeta-deliverable-error">{error}</p> : null}
+    </>
+  );
+}
+
 type Status = "generating" | "ready" | "failed" | "archived";
 
 export function WorkspaceDeliverableView({
@@ -71,7 +118,10 @@ export function WorkspaceDeliverableView({
     return (
       <div className="wbeta-deliverable-state wbeta-deliverable-state-err">
         <p className="wbeta-deliverable-state-title">Generation failed.</p>
-        <p className="wbeta-deliverable-state-body">Try again from the workspace home.</p>
+        <p className="wbeta-deliverable-state-body">
+          Retry runs the same prompt again with the latest workspace context.
+        </p>
+        <RetryDeliverableButton deliverableId={deliverableId} />
       </div>
     );
   }

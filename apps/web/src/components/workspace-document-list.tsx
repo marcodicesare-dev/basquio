@@ -1,3 +1,8 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+
 import type { WorkspaceDocumentRow } from "@/lib/workspace/db";
 
 const STATUS_LABELS: Record<WorkspaceDocumentRow["status"], string> = {
@@ -61,12 +66,57 @@ export function WorkspaceDocumentList({ documents }: { documents: WorkspaceDocum
                 <p className="wbeta-doclist-error">{doc.error_message}</p>
               ) : null}
             </div>
-            <span className={`wbeta-doclist-status wbeta-doclist-status-${doc.status}`}>
-              {STATUS_LABELS[doc.status]}
-            </span>
+            <div className="wbeta-doclist-side">
+              <span className={`wbeta-doclist-status wbeta-doclist-status-${doc.status}`}>
+                {STATUS_LABELS[doc.status]}
+              </span>
+              {doc.status === "failed" ? <RetryDocumentButton documentId={doc.id} /> : null}
+            </div>
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+function RetryDocumentButton({ documentId }: { documentId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  async function handleClick() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/workspace/documents/${documentId}/retry`, {
+        method: "POST",
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setError(data.error ?? "Retry failed.");
+        return;
+      }
+      startTransition(() => router.refresh());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Retry failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="wbeta-doclist-retry"
+        onClick={handleClick}
+        disabled={busy}
+        aria-label="Retry processing this document"
+      >
+        {busy ? "Retrying..." : "Retry"}
+      </button>
+      {error ? <p className="wbeta-doclist-error">{error}</p> : null}
+    </>
   );
 }

@@ -269,3 +269,181 @@ function buildCitationsFromText(text: string, ctx: WorkspaceContext): Citation[]
   citations.sort((a, b) => Number(a.label.slice(1)) - Number(b.label.slice(1)));
   return citations;
 }
+
+export type StreamEvent =
+  | { type: "meta"; deliverableId: string; scope: string }
+  | { type: "status"; message: string }
+  | { type: "text-delta"; text: string }
+  | { type: "done"; deliverableId: string; bodyMarkdown: string; citations: Citation[]; scope: string }
+  | { type: "error"; deliverableId: string | null; message: string };
+
+export async function* streamAnswer(input: {
+  prompt: string;
+  scope?: string;
+  userEmail: string;
+  userId: string;
+}): AsyncGenerator<StreamEvent, void, void> {
+  const cleanedPrompt = input.prompt.trim();
+  if (!cleanedPrompt) {
+    yield { type: "error", deliverableId: null, message: "Prompt is empty." };
+    return;
+  }
+
+  const db = getDb();
+  let deliverableId: string | null = null;
+
+  try {
+    const { data: deliverable, error: insertError } = await db
+      .from("workspace_deliverables")
+      .insert({
+        organization_id: BASQUIO_TEAM_ORG_ID,
+        is_team_beta: true,
+        created_by: input.userId,
+        kind: "answer",
+        title: cleanedPrompt.slice(0, 120),
+        prompt: cleanedPrompt,
+        scope: input.scope ?? null,
+        status: "generating",
+        metadata: { user_email: input.userEmail },
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !deliverable) {
+      yield {
+        type: "error",
+        deliverableId: null,
+        message: insertError?.message ?? "Failed to create deliverable.",
+      };
+      return;
+    }
+    deliverableId = deliverable.id as string;
+
+    yield { type: "meta", deliverableId, scope: input.scope ?? "workspace" };
+    yield { type: "status", message: "Reading workspace context." };
+
+    const ctx = await assembleWorkspaceContext({ prompt: cleanedPrompt, scope: input.scope });
+
+    yield { type: "status", message: "Thinking." };
+
+    const renderedContext = renderContextForPrompt(ctx);
+    const userTurnText = `## User question\n${cleanedPrompt}\n\n## Workspace context (use this for citations, do not invent)\n${renderedContext}`;
+
+    const messages: BetaMessageParam[] = [
+      { role: "user", content: [{ type: "text", text: userTurnText }] },
+    ];
+
+    let finalText = "";
+    let totalTokens = 0;
+    const anthropic = getClient();
+
+    for (let step = 0; step < MAX_AGENT_STEPS; step += 1) {
+      const stream = anthropic.beta.messages.stream({
+        model: MODEL,
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        betas: ["context-management-2025-06-27"],
+        tools: [{ type: "memory_20250818", name: "memory" }] as never,
+        messages,
+      });
+
+      let stepText = "";
+      const textHandler = (delta: string) => {
+        stepText += delta;
+        return delta;
+      };
+
+      for await (const event of stream as AsyncIterable<{
+        type: string;
+        index?: number;
+        delta?: { type: string; text?: string };
+      }>) {
+        if (
+          event.type === "content_block_delta" &&
+          event.delta?.type === "text_delta" &&
+          typeof event.delta.text === "string"
+        ) {
+          const delta = textHandler(event.delta.text);
+          yield { type: "text-delta", text: delta };
+        }
+      }
+
+      const final = await stream.finalMessage();
+      const usage = final.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+      totalTokens += (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
+
+      const toolUses: Array<{ id: string; input: unknown }> = [];
+      for (const block of final.content as BetaContentBlock[]) {
+        if (block.type === "tool_use" && block.name === "memory") {
+          toolUses.push({ id: block.id, input: block.input });
+        }
+      }
+
+      if (stepText) finalText = stepText;
+
+      if (toolUses.length === 0) break;
+
+      if (totalTokens > MAX_TOTAL_TOKENS) {
+        console.warn(`[stream] token budget hit (${totalTokens}); stopping early.`);
+        break;
+      }
+
+      yield { type: "status", message: "Reading memory." };
+
+      messages.push({ role: "assistant", content: final.content as BetaContentBlock[] });
+
+      const toolResults: BetaToolResultBlockParam[] = [];
+      for (const toolUse of toolUses) {
+        let outcome = "";
+        try {
+          outcome = await handleMemoryCommand(toolUse.input as MemoryCommand);
+        } catch (error) {
+          outcome = `Error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: outcome });
+      }
+      messages.push({ role: "user", content: toolResults });
+
+      if (final.stop_reason === "end_turn") break;
+    }
+
+    const citations = buildCitationsFromText(finalText, ctx);
+
+    await db
+      .from("workspace_deliverables")
+      .update({
+        status: "ready",
+        body_markdown: finalText.trim(),
+        citations,
+        metadata: {
+          user_email: input.userEmail,
+          chunk_count: ctx.chunks.length,
+          fact_count: ctx.facts.length,
+          entity_count: ctx.entities.length,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", deliverableId);
+
+    yield {
+      type: "done",
+      deliverableId,
+      bodyMarkdown: finalText.trim(),
+      citations,
+      scope: ctx.scope,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (deliverableId) {
+      await db
+        .from("workspace_deliverables")
+        .update({
+          status: "failed",
+          error_message: message.slice(0, 500),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", deliverableId);
+    }
+    yield { type: "error", deliverableId, message };
+  }
+}

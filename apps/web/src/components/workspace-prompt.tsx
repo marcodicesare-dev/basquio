@@ -3,7 +3,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { WorkspaceAnswerCard, type AnswerView } from "@/components/workspace-answer-card";
+import { WorkspaceAnswerCard, type AnswerView, type CitationView } from "@/components/workspace-answer-card";
+
+type StreamEvent =
+  | { type: "meta"; deliverableId: string; scope: string }
+  | { type: "status"; message: string }
+  | { type: "text-delta"; text: string }
+  | { type: "done"; deliverableId: string; bodyMarkdown: string; citations: CitationView[]; scope: string }
+  | { type: "error"; deliverableId: string | null; message: string };
 
 export function WorkspacePrompt({
   scopes,
@@ -15,50 +22,111 @@ export function WorkspacePrompt({
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [scope, setScope] = useState(defaultScope);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [streamingText, setStreamingText] = useState("");
   const [answer, setAnswer] = useState<AnswerView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!prompt.trim() || isSubmitting) return;
+    if (!prompt.trim() || isStreaming) return;
     setError(null);
-    setIsSubmitting(true);
+    setIsStreaming(true);
+    setStatusMessage("Sending.");
+    setStreamingText("");
     setAnswer(null);
+
+    const submittedPrompt = prompt.trim();
+
+    let activeDeliverableId: string | null = null;
+    let activeScope = scope;
+    let accumulatedText = "";
 
     try {
       const response = await fetch("/api/workspace/ask", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), scope }),
+        body: JSON.stringify({ prompt: submittedPrompt, scope }),
       });
-      const data = (await response.json().catch(() => ({}))) as {
-        deliverableId?: string;
-        bodyMarkdown?: string;
-        citations?: AnswerView["citations"];
-        scope?: string;
-        error?: string;
-      };
-      if (!response.ok) {
-        setError(data.error ?? "Generation failed.");
+
+      if (!response.ok || !response.body) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? `Generation failed (${response.status}).`);
         return;
       }
-      setAnswer({
-        deliverableId: data.deliverableId ?? "",
-        bodyMarkdown: data.bodyMarkdown ?? "",
-        citations: data.citations ?? [],
-        scope: data.scope ?? scope,
-        prompt: prompt.trim(),
-      });
-      setPrompt("");
-      startTransition(() => router.refresh());
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalCitations: CitationView[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() ?? "";
+        for (const block of lines) {
+          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
+          if (!dataLine) continue;
+          let parsed: StreamEvent;
+          try {
+            parsed = JSON.parse(dataLine.slice(6)) as StreamEvent;
+          } catch {
+            continue;
+          }
+          if (parsed.type === "meta") {
+            activeDeliverableId = parsed.deliverableId;
+            activeScope = parsed.scope;
+            setStatusMessage(`Working on it. Scope: ${parsed.scope}.`);
+          } else if (parsed.type === "status") {
+            setStatusMessage(parsed.message);
+          } else if (parsed.type === "text-delta") {
+            accumulatedText += parsed.text;
+            setStreamingText(accumulatedText);
+            setStatusMessage(null);
+          } else if (parsed.type === "done") {
+            finalCitations = parsed.citations;
+            accumulatedText = parsed.bodyMarkdown;
+            activeDeliverableId = parsed.deliverableId;
+            activeScope = parsed.scope;
+          } else if (parsed.type === "error") {
+            setError(parsed.message);
+          }
+        }
+      }
+
+      if (accumulatedText) {
+        setAnswer({
+          deliverableId: activeDeliverableId ?? "",
+          bodyMarkdown: accumulatedText,
+          citations: finalCitations,
+          scope: activeScope,
+          prompt: submittedPrompt,
+        });
+        setStreamingText("");
+        setPrompt("");
+        startTransition(() => router.refresh());
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed.");
     } finally {
-      setIsSubmitting(false);
+      setIsStreaming(false);
+      setStatusMessage(null);
     }
   }
+
+  const liveAnswer: AnswerView | null = isStreaming && streamingText
+    ? {
+        deliverableId: "",
+        bodyMarkdown: streamingText,
+        citations: [],
+        scope,
+        prompt: prompt.trim() || "Generating.",
+      }
+    : null;
 
   return (
     <div className="wbeta-prompt-shell">
@@ -76,7 +144,7 @@ export function WorkspacePrompt({
               className="wbeta-prompt-scope-select"
               value={scope}
               onChange={(event) => setScope(event.target.value)}
-              disabled={isSubmitting}
+              disabled={isStreaming}
               aria-describedby="wbeta-scope-hint"
               title="Limit retrieval and memory to this slice of the workspace"
             >
@@ -101,27 +169,28 @@ export function WorkspacePrompt({
             }
           }}
           rows={3}
-          disabled={isSubmitting}
+          disabled={isStreaming}
         />
         <div className="wbeta-prompt-row">
-          <p className="wbeta-prompt-hint" id="wbeta-scope-hint">
-            {isSubmitting
-              ? "Generating. This usually finishes in 15 to 30 seconds."
+          <p className="wbeta-prompt-hint" id="wbeta-scope-hint" aria-live="polite">
+            {isStreaming
+              ? statusMessage ?? "Streaming the answer."
               : "Cmd+Enter to send. Cmd+/ for shortcuts. Every claim cites a source from your uploads."}
           </p>
           <button
             type="submit"
             className="wbeta-prompt-submit"
-            disabled={isSubmitting || prompt.trim().length === 0}
+            disabled={isStreaming || prompt.trim().length === 0}
           >
-            {isSubmitting ? "Generating..." : "Send"}
+            {isStreaming ? "Generating..." : "Send"}
           </button>
         </div>
       </form>
 
       {error ? <p className="wbeta-prompt-error">{error}</p> : null}
 
-      {answer ? <WorkspaceAnswerCard answer={answer} /> : null}
+      {liveAnswer ? <WorkspaceAnswerCard answer={liveAnswer} /> : null}
+      {!liveAnswer && answer ? <WorkspaceAnswerCard answer={answer} /> : null}
     </div>
   );
 }
