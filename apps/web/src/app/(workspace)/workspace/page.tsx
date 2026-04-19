@@ -10,6 +10,9 @@ import { WorkspaceTimeline } from "@/components/workspace-timeline";
 import { WorkspaceAutoRefresh } from "@/components/workspace-auto-refresh";
 import { WorkspacePrompt } from "@/components/workspace-prompt";
 import { WorkspaceDeliverablesList } from "@/components/workspace-deliverables-list";
+import { WorkspaceSuggestions } from "@/components/workspace-suggestions";
+import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
+import { buildSuggestions } from "@/lib/workspace/suggestions";
 import { SUPPORTED_UPLOAD_LABEL } from "@/lib/workspace/constants";
 
 export const metadata = {
@@ -19,10 +22,11 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function WorkspaceHomePage() {
-  const [documents, entitiesByType, deliverables] = await Promise.all([
+  const [documents, entitiesByType, deliverables, suggestions] = await Promise.all([
     listRecentWorkspaceDocuments(20),
     listWorkspaceEntitiesGrouped(),
     listRecentWorkspaceDeliverables(8),
+    buildSuggestions(3),
   ]);
 
   const processingCount = countProcessingDocuments(documents);
@@ -34,6 +38,7 @@ export default async function WorkspaceHomePage() {
   return (
     <div className="wbeta-home">
       <WorkspaceAutoRefresh processingCount={processingCount} />
+      <WorkspaceShortcuts />
 
       <aside className="wbeta-context">
         <div className="wbeta-context-head">
@@ -45,6 +50,10 @@ export default async function WorkspaceHomePage() {
           entitiesByType={entitiesByType}
           totalEntityCount={totalEntityCount}
         />
+
+        {suggestions.length > 0 ? (
+          <WorkspaceSuggestions initialSuggestions={suggestions} />
+        ) : null}
       </aside>
 
       <section className="wbeta-main-col">

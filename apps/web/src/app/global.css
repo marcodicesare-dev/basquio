@@ -11086,3 +11086,196 @@ textarea {
   color: #b3271a;
 }
 
+/* ── Suggestions panel ──────────────────────────────────────────── */
+
+.wbeta-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--canvas-stage);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 13px;
+  margin-top: 8px;
+}
+
+.wbeta-suggestions-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-suggestions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-suggestions-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wbeta-suggestions-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wbeta-suggestions-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wbeta-suggestions-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wbeta-suggestions-kind-summarize { background: var(--amber-soft); color: var(--text); }
+.wbeta-suggestions-kind-investigate { background: rgba(26, 106, 255, 0.12); color: var(--blue); }
+.wbeta-suggestions-kind-narrate { background: rgba(76, 201, 160, 0.18); color: #1a6a45; }
+.wbeta-suggestions-kind-retry { background: var(--danger); color: #b3271a; }
+
+.wbeta-suggestions-prompt {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.wbeta-suggestions-reason {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-suggestions-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wbeta-suggestions-cta {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.wbeta-suggestions-cta:hover {
+  background: #1257d8;
+}
+
+.wbeta-suggestions-dismiss {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wbeta-suggestions-dismiss:hover {
+  background: var(--canvas);
+  color: var(--text);
+}
+
+/* ── Shortcuts help panel ───────────────────────────────────────── */
+
+.wbeta-shortcuts-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 12, 12, 0.36);
+  backdrop-filter: blur(4px);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: wbeta-fade-in 150ms ease-out;
+}
+
+.wbeta-shortcuts-panel {
+  width: min(420px, 90vw);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-stage);
+  padding: 21px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.wbeta-shortcuts-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.wbeta-shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-shortcuts-list li {
+  display: grid;
+  grid-template-columns: 89px minmax(0, 1fr);
+  gap: 13px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.wbeta-shortcuts-list kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--canvas);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
