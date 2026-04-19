@@ -67,13 +67,18 @@ export function WorkspacePrompt({
           <label className="wbeta-prompt-label" htmlFor="wbeta-prompt-input">
             Ask anything
           </label>
-          <label className="wbeta-prompt-scope">
-            <span className="wbeta-prompt-scope-label">Scope</span>
+          <div className="wbeta-prompt-scope">
+            <label className="wbeta-prompt-scope-label" htmlFor="wbeta-scope-select">
+              Scope
+            </label>
             <select
+              id="wbeta-scope-select"
               className="wbeta-prompt-scope-select"
               value={scope}
               onChange={(event) => setScope(event.target.value)}
               disabled={isSubmitting}
+              aria-describedby="wbeta-scope-hint"
+              title="Limit retrieval and memory to this slice of the workspace"
             >
               {scopes.map((s) => (
                 <option key={s} value={s}>
@@ -81,12 +86,12 @@ export function WorkspacePrompt({
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         </div>
         <textarea
           id="wbeta-prompt-input"
           className="wbeta-prompt-input wbeta-prompt-textarea"
-          placeholder="Write the Q1 narrative for Kellanova Snack Salati. Or anything else."
+          placeholder="Ask a question or describe a deliverable. Example: what changed in Q4 vs Q3 and why."
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => {
@@ -99,10 +104,10 @@ export function WorkspacePrompt({
           disabled={isSubmitting}
         />
         <div className="wbeta-prompt-row">
-          <p className="wbeta-prompt-hint">
+          <p className="wbeta-prompt-hint" id="wbeta-scope-hint">
             {isSubmitting
-              ? "Thinking. Pulling entities, facts, memory, and source excerpts."
-              : "Cmd+Enter to send. Every claim is grounded in your uploads."}
+              ? "Generating. This usually finishes in 15 to 30 seconds."
+              : "Cmd+Enter to send. Cmd+/ for shortcuts. Every claim cites a source from your uploads."}
           </p>
           <button
             type="submit"

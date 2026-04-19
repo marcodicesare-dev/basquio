@@ -52,9 +52,9 @@ export function WorkspaceShortcuts() {
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="wbeta-shortcuts-title"
+        aria-labelledby="wbeta-shortcuts-title-h"
       >
-        <h3 id="wbeta-shortcuts-title" className="wbeta-shortcuts-title">
+        <h3 id="wbeta-shortcuts-title-h" className="wbeta-shortcuts-title">
           Keyboard shortcuts
         </h3>
         <ul className="wbeta-shortcuts-list">

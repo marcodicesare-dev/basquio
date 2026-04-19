@@ -85,6 +85,8 @@ async function fetchByPath(scope: string, path: string): Promise<MemoryRow | nul
   return data ? (data as MemoryRow) : null;
 }
 
+const MAX_CHILDREN_PER_VIEW = 200;
+
 async function listChildren(scope: string, prefix: string): Promise<MemoryRow[]> {
   const db = getDb();
   const trimmedPrefix = prefix === "/" ? "/" : prefix.replace(/\/$/, "") + "/";
@@ -94,7 +96,8 @@ async function listChildren(scope: string, prefix: string): Promise<MemoryRow[]>
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("scope", scope)
     .like("path", `${trimmedPrefix}%`)
-    .order("path", { ascending: true });
+    .order("path", { ascending: true })
+    .limit(MAX_CHILDREN_PER_VIEW);
   if (error) throw new Error(`Memory list failed: ${error.message}`);
   return (data ?? []) as MemoryRow[];
 }

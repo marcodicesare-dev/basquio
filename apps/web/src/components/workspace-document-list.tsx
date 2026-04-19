@@ -29,9 +29,10 @@ export function WorkspaceDocumentList({ documents }: { documents: WorkspaceDocum
   if (documents.length === 0) {
     return (
       <div className="wbeta-doclist-empty">
-        <p className="wbeta-doclist-empty-title">No uploads yet.</p>
+        <p className="wbeta-doclist-empty-title">Upload your first file.</p>
         <p className="wbeta-doclist-empty-body">
-          Drop a brief, transcript, prior deck, or data export. Parsing runs in the background.
+          Drop a brief, a transcript, a prior deck, or a data export above. Basquio parses,
+          extracts entities, and adds them to the timeline within about 30 seconds.
         </p>
       </div>
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { EntityWithCount } from "@/lib/workspace/db";
 
@@ -60,6 +60,15 @@ export function WorkspaceTimeline({
   const [detail, setDetail] = useState<EntityDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  function close() {
+    setOpenEntityId(null);
+    requestAnimationFrame(() => {
+      triggerRef.current?.focus();
+      triggerRef.current = null;
+    });
+  }
 
   useEffect(() => {
     if (!openEntityId) {
@@ -94,10 +103,12 @@ export function WorkspaceTimeline({
   useEffect(() => {
     if (!openEntityId) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpenEntityId(null);
+      if (event.key === "Escape") close();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // close is stable for this component lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEntityId]);
 
   if (totalEntityCount === 0) {
@@ -135,8 +146,12 @@ export function WorkspaceTimeline({
                       <button
                         type="button"
                         className="wbeta-timeline-row"
-                        onClick={() => setOpenEntityId(entity.id)}
+                        onClick={(event) => {
+                          triggerRef.current = event.currentTarget;
+                          setOpenEntityId(entity.id);
+                        }}
                         aria-haspopup="dialog"
+                        aria-expanded={openEntityId === entity.id}
                       >
                         <span className="wbeta-timeline-row-name">{entity.canonical_name}</span>
                         <span className="wbeta-timeline-row-meta">
@@ -164,7 +179,7 @@ export function WorkspaceTimeline({
           loading={loading}
           error={error}
           detail={detail}
-          onClose={() => setOpenEntityId(null)}
+          onClose={close}
         />
       ) : null}
     </>
@@ -184,6 +199,10 @@ function EntitySideSheet({
   detail: EntityDetail | null;
   onClose: () => void;
 }) {
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
   return (
     <div className="wbeta-sheet-backdrop" onClick={onClose} role="presentation">
       <aside
@@ -195,6 +214,7 @@ function EntitySideSheet({
       >
         <header className="wbeta-sheet-head">
           <button
+            ref={closeRef}
             type="button"
             className="wbeta-sheet-close"
             onClick={onClose}

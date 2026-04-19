@@ -10113,6 +10113,12 @@ textarea {
 .wbeta-doclist-status-processing {
   background: var(--amber-soft);
   color: var(--text);
+  animation: wbeta-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes wbeta-pulse {
+  0%, 100% { background: var(--amber-soft); }
+  50% { background: rgba(240, 204, 39, 0.32); }
 }
 
 .wbeta-doclist-status-indexed {

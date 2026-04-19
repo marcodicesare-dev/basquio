@@ -104,6 +104,7 @@ export function WorkspaceUploadZone({ supportedLabel }: { supportedLabel: string
         }
       }}
       aria-busy={isBusy}
+      aria-label={`Upload files. ${supportedLabel}. Press Enter or Space to open the picker.`}
     >
       <input
         ref={inputRef}

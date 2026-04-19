@@ -110,15 +110,32 @@ export async function assembleWorkspaceContext({
     }
   }
 
-  const { data: entityRows } = await db
+  const candidatePool = Math.max(entityLimit * 5, 100);
+  const { data: candidateRows } = await db
     .from("entities")
     .select("id, type, canonical_name, aliases")
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
     .order("created_at", { ascending: false })
-    .limit(entityLimit);
+    .limit(candidatePool);
 
-  const entities = (entityRows ?? []) as ContextEntity[];
+  const candidates = (candidateRows ?? []) as ContextEntity[];
+  let entities: ContextEntity[] = candidates.slice(0, entityLimit);
+
+  if (candidates.length > 0) {
+    const { data: mentionRows } = await db
+      .from("entity_mentions")
+      .select("entity_id")
+      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .in("entity_id", candidates.map((e) => e.id));
+    const mentionCounts = new Map<string, number>();
+    for (const row of (mentionRows ?? []) as Array<{ entity_id: string }>) {
+      mentionCounts.set(row.entity_id, (mentionCounts.get(row.entity_id) ?? 0) + 1);
+    }
+    entities = [...candidates]
+      .sort((a, b) => (mentionCounts.get(b.id) ?? 0) - (mentionCounts.get(a.id) ?? 0))
+      .slice(0, entityLimit);
+  }
   const entityById = new Map(entities.map((e) => [e.id, e]));
 
   const { data: factRows } = await db

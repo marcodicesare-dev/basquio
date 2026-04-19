@@ -13,6 +13,7 @@ import { handleMemoryCommand, type MemoryCommand } from "@/lib/workspace/memory-
 
 const MODEL = "claude-opus-4-7";
 const MAX_AGENT_STEPS = 6;
+const MAX_TOTAL_TOKENS = 80_000;
 
 type BetaMessageParam = Anthropic.Beta.Messages.BetaMessageParam;
 type BetaContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
@@ -24,7 +25,11 @@ function getClient(): Anthropic {
   if (!client) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set.");
-    client = new Anthropic({ apiKey });
+    client = new Anthropic({
+      apiKey,
+      timeout: 90_000,
+      maxRetries: 2,
+    });
   }
   return client;
 }
@@ -174,6 +179,7 @@ async function runAgent(prompt: string, ctx: WorkspaceContext): Promise<{ bodyMa
   ];
 
   let finalText = "";
+  let totalTokens = 0;
 
   for (let step = 0; step < MAX_AGENT_STEPS; step += 1) {
     const response = await anthropic.beta.messages.create({
@@ -184,6 +190,9 @@ async function runAgent(prompt: string, ctx: WorkspaceContext): Promise<{ bodyMa
       tools: [{ type: "memory_20250818", name: "memory" }] as never,
       messages,
     });
+
+    const usage = response.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+    totalTokens += (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0);
 
     const toolUses: Array<{ id: string; input: unknown }> = [];
     let stepText = "";
@@ -200,6 +209,11 @@ async function runAgent(prompt: string, ctx: WorkspaceContext): Promise<{ bodyMa
     }
 
     if (toolUses.length === 0) {
+      break;
+    }
+
+    if (totalTokens > MAX_TOTAL_TOKENS) {
+      console.warn(`[generate] token budget hit (${totalTokens}); stopping early.`);
       break;
     }
 

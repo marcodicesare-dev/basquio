@@ -72,11 +72,18 @@ export default async function WorkspaceHomePage() {
       <section className="wbeta-main-col">
         <WorkspacePrompt scopes={scopes} defaultScope={defaultScope} />
 
-        <WorkspaceDeliverablesList deliverables={deliverables} />
-
-        <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} />
-
-        <WorkspaceDocumentList documents={documents} />
+        {documents.length === 0 ? (
+          <>
+            <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} />
+            <WorkspaceDocumentList documents={documents} />
+          </>
+        ) : (
+          <>
+            <WorkspaceDeliverablesList deliverables={deliverables} />
+            <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} />
+            <WorkspaceDocumentList documents={documents} />
+          </>
+        )}
       </section>
     </div>
   );

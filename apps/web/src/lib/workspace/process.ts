@@ -253,8 +253,26 @@ async function persistExtraction(
         })
         .select("id")
         .single();
-      if (insertError || !inserted) {
-        throw new Error(`Entity insert failed: ${insertError?.message ?? "no row"}`);
+      if (insertError) {
+        // Race: another concurrent extraction inserted the same (org, type, normalized_name).
+        // Re-fetch and treat as existing.
+        if (insertError.code === "23505") {
+          const { data: raced } = await db
+            .from("entities")
+            .select("id")
+            .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+            .eq("type", entity.type)
+            .eq("normalized_name", normalized)
+            .maybeSingle();
+          if (raced) {
+            entityKeyToId.set(key, raced.id as string);
+            continue;
+          }
+        }
+        throw new Error(`Entity insert failed: ${insertError.message}`);
+      }
+      if (!inserted) {
+        throw new Error("Entity insert returned no row.");
       }
       entityKeyToId.set(key, inserted.id as string);
       newEntityCount += 1;

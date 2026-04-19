@@ -59,9 +59,9 @@ export function WorkspaceDeliverableView({
   if (status === "generating") {
     return (
       <div className="wbeta-deliverable-state">
-        <p className="wbeta-deliverable-state-title">Thinking.</p>
+        <p className="wbeta-deliverable-state-title">Generating your answer.</p>
         <p className="wbeta-deliverable-state-body">
-          Pulling entities, facts, memory, and source excerpts. This page refreshes when ready.
+          This usually finishes in 15 to 30 seconds. The page refreshes itself when ready.
         </p>
       </div>
     );
