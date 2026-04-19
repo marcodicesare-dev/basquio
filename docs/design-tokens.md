@@ -67,7 +67,9 @@ Last updated: 2026-04-02
 | Token | Value | Usage |
 |-------|-------|-------|
 | `--success` | `#edf7f1` | Success background tint |
+| `--success-text` | `#1a6a45` | Success text on success tint |
 | `--danger` | `#fff1ee` | Error background tint |
+| `--danger-text` | `#b3271a` | Error text on danger tint |
 
 ### Shadows
 

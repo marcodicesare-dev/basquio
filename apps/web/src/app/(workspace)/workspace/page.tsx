@@ -1,5 +1,7 @@
 import {
   countProcessingDocuments,
+  inferDefaultScope,
+  listKnownScopes,
   listRecentWorkspaceDeliverables,
   listRecentWorkspaceDocuments,
   listWorkspaceEntitiesGrouped,
@@ -21,12 +23,23 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
+async function safe<T>(promise: Promise<T>, fallback: T, label: string): Promise<T> {
+  try {
+    return await promise;
+  } catch (error) {
+    console.error(`[workspace] ${label} failed`, error);
+    return fallback;
+  }
+}
+
 export default async function WorkspaceHomePage() {
-  const [documents, entitiesByType, deliverables, suggestions] = await Promise.all([
-    listRecentWorkspaceDocuments(20),
-    listWorkspaceEntitiesGrouped(),
-    listRecentWorkspaceDeliverables(8),
-    buildSuggestions(3),
+  const [documents, entitiesByType, deliverables, suggestions, scopes, defaultScope] = await Promise.all([
+    safe(listRecentWorkspaceDocuments(20), [], "list documents"),
+    safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
+    safe(listRecentWorkspaceDeliverables(8), [], "list deliverables"),
+    safe(buildSuggestions(3), [], "build suggestions"),
+    safe(listKnownScopes(12), ["workspace", "analyst"], "list scopes"),
+    safe(inferDefaultScope(), "workspace", "infer default scope"),
   ]);
 
   const processingCount = countProcessingDocuments(documents);
@@ -57,7 +70,7 @@ export default async function WorkspaceHomePage() {
       </aside>
 
       <section className="wbeta-main-col">
-        <WorkspacePrompt />
+        <WorkspacePrompt scopes={scopes} defaultScope={defaultScope} />
 
         <WorkspaceDeliverablesList deliverables={deliverables} />
 

@@ -364,3 +364,47 @@ export async function getWorkspaceDeliverable(
   }
   return data ? (data as WorkspaceDeliverableRow) : null;
 }
+
+export async function listKnownScopes(limit = 12): Promise<string[]> {
+  const db = getServiceClient();
+  const [deliverables, memories] = await Promise.all([
+    db
+      .from("workspace_deliverables")
+      .select("scope")
+      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("is_team_beta", true)
+      .not("scope", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    db
+      .from("memory_entries")
+      .select("scope")
+      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("is_team_beta", true)
+      .order("updated_at", { ascending: false })
+      .limit(50),
+  ]);
+
+  const seen = new Set<string>(["workspace", "analyst"]);
+  for (const row of (deliverables.data ?? []) as Array<{ scope: string | null }>) {
+    if (row.scope) seen.add(row.scope);
+  }
+  for (const row of (memories.data ?? []) as Array<{ scope: string }>) {
+    if (row.scope) seen.add(row.scope);
+  }
+  return Array.from(seen).slice(0, limit);
+}
+
+export async function inferDefaultScope(): Promise<string> {
+  const db = getServiceClient();
+  const { data } = await db
+    .from("workspace_deliverables")
+    .select("scope")
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("is_team_beta", true)
+    .not("scope", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return ((data as { scope: string | null } | null)?.scope ?? null) || "workspace";
+}

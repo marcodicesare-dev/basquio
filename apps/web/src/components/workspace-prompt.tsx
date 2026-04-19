@@ -5,9 +5,16 @@ import { useRouter } from "next/navigation";
 
 import { WorkspaceAnswerCard, type AnswerView } from "@/components/workspace-answer-card";
 
-export function WorkspacePrompt() {
+export function WorkspacePrompt({
+  scopes,
+  defaultScope,
+}: {
+  scopes: string[];
+  defaultScope: string;
+}) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
+  const [scope, setScope] = useState(defaultScope);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [answer, setAnswer] = useState<AnswerView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +31,7 @@ export function WorkspacePrompt() {
       const response = await fetch("/api/workspace/ask", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim() }),
+        body: JSON.stringify({ prompt: prompt.trim(), scope }),
       });
       const data = (await response.json().catch(() => ({}))) as {
         deliverableId?: string;
@@ -41,7 +48,7 @@ export function WorkspacePrompt() {
         deliverableId: data.deliverableId ?? "",
         bodyMarkdown: data.bodyMarkdown ?? "",
         citations: data.citations ?? [],
-        scope: data.scope ?? "workspace",
+        scope: data.scope ?? scope,
         prompt: prompt.trim(),
       });
       setPrompt("");
@@ -56,9 +63,26 @@ export function WorkspacePrompt() {
   return (
     <div className="wbeta-prompt-shell">
       <form className="wbeta-prompt-form" onSubmit={handleSubmit}>
-        <label className="wbeta-prompt-label" htmlFor="wbeta-prompt-input">
-          Ask anything
-        </label>
+        <div className="wbeta-prompt-headrow">
+          <label className="wbeta-prompt-label" htmlFor="wbeta-prompt-input">
+            Ask anything
+          </label>
+          <label className="wbeta-prompt-scope">
+            <span className="wbeta-prompt-scope-label">Scope</span>
+            <select
+              className="wbeta-prompt-scope-select"
+              value={scope}
+              onChange={(event) => setScope(event.target.value)}
+              disabled={isSubmitting}
+            >
+              {scopes.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <textarea
           id="wbeta-prompt-input"
           className="wbeta-prompt-input wbeta-prompt-textarea"

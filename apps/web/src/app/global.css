@@ -31,6 +31,8 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-pill: 4px;
+  --success-text: #1a6a45;
+  --danger-text: #b3271a;
 }
 
 * {
@@ -9995,7 +9997,7 @@ textarea {
 }
 
 .wbeta-drop-status-err {
-  color: #b3271a;
+  color: var(--danger-text);
 }
 
 .wbeta-drop-spinner {
@@ -10091,7 +10093,7 @@ textarea {
 
 .wbeta-doclist-error {
   font-size: 12px;
-  color: #b3271a;
+  color: var(--danger-text);
   margin: 0;
 }
 
@@ -10115,12 +10117,12 @@ textarea {
 
 .wbeta-doclist-status-indexed {
   background: var(--success);
-  color: #1a6a45;
+  color: var(--success-text);
 }
 
 .wbeta-doclist-status-failed {
   background: var(--danger);
-  color: #b3271a;
+  color: var(--danger-text);
 }
 
 .wbeta-doclist-status-deleted {
@@ -10367,7 +10369,7 @@ textarea {
 }
 
 .wbeta-sheet-state-err {
-  color: #b3271a;
+  color: var(--danger-text);
 }
 
 .wbeta-sheet-body {
@@ -10498,6 +10500,45 @@ textarea {
   gap: 8px;
 }
 
+.wbeta-prompt-headrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+}
+
+.wbeta-prompt-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wbeta-prompt-scope-label {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wbeta-prompt-scope-select {
+  font-size: 13px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 150ms ease-out;
+}
+
+.wbeta-prompt-scope-select:hover,
+.wbeta-prompt-scope-select:focus {
+  border-color: var(--blue);
+  outline: none;
+}
+
 .wbeta-prompt-textarea {
   resize: vertical;
   min-height: 89px;
@@ -10549,7 +10590,7 @@ textarea {
 
 .wbeta-prompt-error {
   font-size: 13px;
-  color: #b3271a;
+  color: var(--danger-text);
   margin: 0;
 }
 
@@ -10875,12 +10916,12 @@ textarea {
 
 .wbeta-deliverables-status-ready {
   background: var(--success);
-  color: #1a6a45;
+  color: var(--success-text);
 }
 
 .wbeta-deliverables-status-failed {
   background: var(--danger);
-  color: #b3271a;
+  color: var(--danger-text);
 }
 
 .wbeta-deliverables-status-archived {
@@ -10960,7 +11001,7 @@ textarea {
 
 .wbeta-deliverable-page-error {
   font-size: 13px;
-  color: #b3271a;
+  color: var(--danger-text);
   margin: 0;
 }
 
@@ -11049,7 +11090,7 @@ textarea {
 
 .wbeta-deliverable-error {
   font-size: 13px;
-  color: #b3271a;
+  color: var(--danger-text);
   margin: 0;
 }
 
@@ -11083,7 +11124,7 @@ textarea {
 }
 
 .wbeta-deliverable-state-err .wbeta-deliverable-state-title {
-  color: #b3271a;
+  color: var(--danger-text);
 }
 
 /* ── Suggestions panel ──────────────────────────────────────────── */
@@ -11157,8 +11198,8 @@ textarea {
 
 .wbeta-suggestions-kind-summarize { background: var(--amber-soft); color: var(--text); }
 .wbeta-suggestions-kind-investigate { background: rgba(26, 106, 255, 0.12); color: var(--blue); }
-.wbeta-suggestions-kind-narrate { background: rgba(76, 201, 160, 0.18); color: #1a6a45; }
-.wbeta-suggestions-kind-retry { background: var(--danger); color: #b3271a; }
+.wbeta-suggestions-kind-narrate { background: rgba(76, 201, 160, 0.18); color: var(--success-text); }
+.wbeta-suggestions-kind-retry { background: var(--danger); color: var(--danger-text); }
 
 .wbeta-suggestions-prompt {
   font-size: 13px;
