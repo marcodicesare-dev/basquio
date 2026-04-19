@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -13,9 +13,10 @@ import {
   MAX_UPLOAD_BYTES,
   SUPPORTED_UPLOAD_EXTENSIONS,
 } from "@/lib/workspace/constants";
+import { processWorkspaceDocument } from "@/lib/workspace/process";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const SUPPORTED = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
 
@@ -98,6 +99,14 @@ export async function POST(request: Request) {
     uploadedByEmail: viewer.user.email ?? "unknown",
     uploadedByUserId: viewer.user.id,
     uploadContext,
+  });
+
+  after(async () => {
+    try {
+      await processWorkspaceDocument(documentId);
+    } catch (error) {
+      console.error(`[workspace] background processing failed for ${documentId}`, error);
+    }
   });
 
   return NextResponse.json({ id: documentId, status: "processing", deduplicated: false });

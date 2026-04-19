@@ -1,6 +1,12 @@
-import { listRecentWorkspaceDocuments } from "@/lib/workspace/db";
+import {
+  countProcessingDocuments,
+  listRecentWorkspaceDocuments,
+  listWorkspaceEntitiesGrouped,
+} from "@/lib/workspace/db";
 import { WorkspaceUploadZone } from "@/components/workspace-upload-zone";
 import { WorkspaceDocumentList } from "@/components/workspace-document-list";
+import { WorkspaceTimeline } from "@/components/workspace-timeline";
+import { WorkspaceAutoRefresh } from "@/components/workspace-auto-refresh";
 import { SUPPORTED_UPLOAD_LABEL } from "@/lib/workspace/constants";
 
 export const metadata = {
@@ -10,23 +16,31 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function WorkspaceHomePage() {
-  const documents = await listRecentWorkspaceDocuments(20);
+  const [documents, entitiesByType] = await Promise.all([
+    listRecentWorkspaceDocuments(20),
+    listWorkspaceEntitiesGrouped(),
+  ]);
+
+  const processingCount = countProcessingDocuments(documents);
+  const totalEntityCount = Object.values(entitiesByType).reduce(
+    (sum, group) => sum + group.length,
+    0,
+  );
 
   return (
     <div className="wbeta-home">
+      <WorkspaceAutoRefresh processingCount={processingCount} />
+
       <aside className="wbeta-context">
         <div className="wbeta-context-head">
           <p className="wbeta-context-kicker">What Basquio knows</p>
           <h2 className="wbeta-context-title">Timeline</h2>
         </div>
 
-        <div className="wbeta-context-empty">
-          <p className="wbeta-context-empty-line">
-            People, brands, categories, retailers, metrics, and deliverables land here as soon as
-            extraction runs on your uploads.
-          </p>
-          <p className="wbeta-context-empty-meta">Coming next: live entity counts grouped by type.</p>
-        </div>
+        <WorkspaceTimeline
+          entitiesByType={entitiesByType}
+          totalEntityCount={totalEntityCount}
+        />
       </aside>
 
       <section className="wbeta-main-col">

@@ -10154,3 +10154,339 @@ textarea {
   max-width: 42em;
 }
 
+/* ── Timeline (left column) ─────────────────────────────────────── */
+
+.wbeta-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.wbeta-timeline-summary {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.wbeta-timeline-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+.wbeta-timeline-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-timeline-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-timeline-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.wbeta-timeline-group-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-timeline-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-timeline-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.wbeta-timeline-row:hover,
+.wbeta-timeline-row:focus-visible {
+  background: var(--canvas-stage);
+  border-color: var(--border);
+  outline: none;
+}
+
+.wbeta-timeline-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.wbeta-timeline-row-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-timeline-row-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  font-style: italic;
+}
+
+/* ── Entity side sheet ──────────────────────────────────────────── */
+
+.wbeta-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 12, 12, 0.36);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  animation: wbeta-fade-in 150ms ease-out;
+}
+
+@keyframes wbeta-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.wbeta-sheet {
+  width: min(520px, 90vw);
+  height: 100vh;
+  background: var(--surface-strong);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-stage);
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+  padding: 34px;
+  overflow-y: auto;
+  animation: wbeta-slide-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes wbeta-slide-in {
+  from { transform: translateX(8%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.wbeta-sheet-head {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 34px;
+}
+
+.wbeta-sheet-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+
+.wbeta-sheet-close:hover,
+.wbeta-sheet-close:focus-visible {
+  background: var(--canvas-stage);
+  color: var(--text);
+  outline: none;
+}
+
+.wbeta-sheet-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-sheet-title {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.15;
+}
+
+.wbeta-sheet-sub {
+  font-size: 14px;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.wbeta-sheet-aliases {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-sheet-state {
+  font-size: 14px;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.wbeta-sheet-state-err {
+  color: #b3271a;
+}
+
+.wbeta-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+.wbeta-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.wbeta-sheet-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-sheet-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.wbeta-sheet-section-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-sheet-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px;
+  background: var(--canvas-stage);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wbeta-sheet-fact-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wbeta-sheet-fact-predicate {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.wbeta-sheet-fact-confidence {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-sheet-fact-value {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wbeta-sheet-fact-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-sheet-fact-evidence {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin: 0;
+  font-style: italic;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.wbeta-sheet-mention {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wbeta-sheet-mention-source {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-sheet-mention-excerpt {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.wbeta-sheet-mention-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
