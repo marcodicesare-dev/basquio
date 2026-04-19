@@ -9623,3 +9623,160 @@ textarea {
     font-size: 0.82rem;
   }
 }
+
+/* =========================================================================
+   Workspace beta (V1 Workspace, team-gated)
+   Prefix: wbeta-* to avoid collisions with the existing app .workspace-* classes.
+   Tokens from /docs/design-tokens.md only. Fibonacci spacing (4, 8, 13, 21, 34, 55, 89).
+   ========================================================================= */
+
+.wbeta-frame {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  color: var(--text);
+}
+
+.wbeta-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 21px;
+  padding: 13px 34px;
+  background: var(--surface-strong);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: saturate(140%) blur(8px);
+}
+
+.wbeta-topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.wbeta-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 13px;
+  text-decoration: none;
+}
+
+.wbeta-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 21px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.wbeta-topbar-account {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.wbeta-back-link {
+  font-size: 13px;
+  color: var(--text-soft);
+  padding: 8px 13px;
+  border-radius: var(--radius-md);
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+
+.wbeta-back-link:hover,
+.wbeta-back-link:focus-visible {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.wbeta-account-email {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Empty state used by Session 0 stub. Session A replaces with golden-ratio split. */
+.wbeta-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 89px 34px;
+}
+
+.wbeta-empty-card {
+  max-width: 528px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  padding: 55px;
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+.wbeta-empty-kicker {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.wbeta-empty-title {
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--text);
+}
+
+.wbeta-empty-body {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  margin: 0;
+  max-width: 38em;
+}
+
+/* Sidebar nav link variant with trailing beta pill */
+.sidebar .nav-link.nav-link-beta {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.nav-link-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nav-link.active .nav-link-pill {
+  background: rgba(240, 204, 39, 0.34);
+  color: var(--text);
+}
+

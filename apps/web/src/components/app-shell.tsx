@@ -9,6 +9,7 @@ import {
   Palette,
   Plus,
   Repeat,
+  Sparkle,
 } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
@@ -36,10 +37,12 @@ const bottomNav: ReadonlyArray<{ href: string; label: string; icon: Icon; prefet
 export function AppShell({
   viewer,
   creditBalance,
+  isTeamBeta = false,
   children,
 }: {
   viewer: ViewerState;
   creditBalance: number;
+  isTeamBeta?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -81,6 +84,19 @@ export function AppShell({
               </Link>
             );
           })}
+          {isTeamBeta ? (
+            <Link
+              className={isActive("/workspace") ? "nav-link active nav-link-beta" : "nav-link nav-link-beta"}
+              href="/workspace"
+              prefetch={false}
+            >
+              <span className="nav-link-icon" aria-hidden>
+                <Sparkle size={18} weight={isActive("/workspace") ? "fill" : "regular"} />
+              </span>
+              <span>Workspace</span>
+              <span className="nav-link-pill" aria-label="Team beta">beta</span>
+            </Link>
+          ) : null}
         </nav>
 
         <div className="sidebar-credits-block">

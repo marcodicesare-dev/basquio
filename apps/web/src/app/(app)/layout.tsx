@@ -9,6 +9,7 @@ import { buildSignInPath } from "@/lib/supabase/auth";
 import { getViewerState } from "@/lib/supabase/auth";
 import { bootstrapViewerAccount } from "@/lib/auth-bootstrap";
 import { ensureFreeTierCredit, getCreditBalance } from "@/lib/credits";
+import { isTeamBetaEmail } from "@/lib/team-beta";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 
 export default async function AuthenticatedLayout({ children }: { children: ReactNode }) {
@@ -53,8 +54,14 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
       : balance.balance;
   }
 
+  const isTeamBeta = isTeamBetaEmail(viewer.user.email);
+
   return (
-    <AppShell viewer={viewer} creditBalance={hasUnlimitedUsage ? -1 : creditBalance}>
+    <AppShell
+      viewer={viewer}
+      creditBalance={hasUnlimitedUsage ? -1 : creditBalance}
+      isTeamBeta={isTeamBeta}
+    >
       <IntercomAuth
         userId={viewer.user.id}
         email={viewer.user.email ?? ""}
