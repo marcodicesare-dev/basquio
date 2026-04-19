@@ -1,0 +1,152 @@
+"use client";
+
+import { useCallback, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+
+type UploadState =
+  | { kind: "idle" }
+  | { kind: "uploading"; filename: string }
+  | { kind: "success"; filename: string; deduplicated: boolean }
+  | { kind: "error"; message: string };
+
+export function WorkspaceUploadZone({ supportedLabel }: { supportedLabel: string }) {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [state, setState] = useState<UploadState>({ kind: "idle" });
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  const uploadFile = useCallback(
+    async (file: File) => {
+      setState({ kind: "uploading", filename: file.name });
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await fetch("/api/workspace/uploads", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = (await response.json().catch(() => ({}))) as {
+          id?: string;
+          status?: string;
+          deduplicated?: boolean;
+          error?: string;
+        };
+
+        if (!response.ok) {
+          setState({ kind: "error", message: data.error ?? "Upload failed. Try again." });
+          return;
+        }
+
+        setState({
+          kind: "success",
+          filename: file.name,
+          deduplicated: data.deduplicated ?? false,
+        });
+
+        startTransition(() => {
+          router.refresh();
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Upload failed. Try again.";
+        setState({ kind: "error", message });
+      }
+    },
+    [router],
+  );
+
+  const handleFiles = useCallback(
+    async (fileList: FileList | null) => {
+      if (!fileList || fileList.length === 0) return;
+      for (const file of Array.from(fileList)) {
+        await uploadFile(file);
+      }
+    },
+    [uploadFile],
+  );
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsDragOver(false);
+      void handleFiles(event.dataTransfer.files);
+    },
+    [handleFiles],
+  );
+
+  const isBusy = state.kind === "uploading" || isPending;
+
+  return (
+    <div
+      className={[
+        "wbeta-drop",
+        isDragOver ? "wbeta-drop-over" : "",
+        isBusy ? "wbeta-drop-busy" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!isDragOver) setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={handleDrop}
+      onClick={() => inputRef.current?.click()}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
+      aria-busy={isBusy}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        className="wbeta-drop-input"
+        multiple
+        onChange={(event) => {
+          void handleFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+
+      <div className="wbeta-drop-headline">
+        <span className="wbeta-drop-title">Drop a file here.</span>
+        <span className="wbeta-drop-sub">Or click to browse. {supportedLabel}.</span>
+      </div>
+
+      <UploadStatus state={state} />
+    </div>
+  );
+}
+
+function UploadStatus({ state }: { state: UploadState }) {
+  if (state.kind === "idle") return null;
+
+  if (state.kind === "uploading") {
+    return (
+      <p className="wbeta-drop-status wbeta-drop-status-busy">
+        <span className="wbeta-drop-spinner" aria-hidden />
+        Uploading {state.filename}.
+      </p>
+    );
+  }
+
+  if (state.kind === "success") {
+    return (
+      <p className="wbeta-drop-status wbeta-drop-status-ok">
+        {state.deduplicated
+          ? `Already in the workspace: ${state.filename}.`
+          : `Uploaded ${state.filename}. Parsing runs next.`}
+      </p>
+    );
+  }
+
+  return <p className="wbeta-drop-status wbeta-drop-status-err">{state.message}</p>;
+}

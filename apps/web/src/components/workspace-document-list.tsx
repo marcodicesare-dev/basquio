@@ -1,0 +1,71 @@
+import type { WorkspaceDocumentRow } from "@/lib/workspace/db";
+
+const STATUS_LABELS: Record<WorkspaceDocumentRow["status"], string> = {
+  processing: "Parsing",
+  indexed: "Ready",
+  failed: "Needs attention",
+  deleted: "Removed",
+};
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatRelativeDate(iso: string): string {
+  const created = new Date(iso);
+  const now = Date.now();
+  const diffSec = Math.round((now - created.getTime()) / 1000);
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} min ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} h ago`;
+  const days = Math.floor(diffSec / 86400);
+  if (days < 7) return `${days}d ago`;
+  return created.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+export function WorkspaceDocumentList({ documents }: { documents: WorkspaceDocumentRow[] }) {
+  if (documents.length === 0) {
+    return (
+      <div className="wbeta-doclist-empty">
+        <p className="wbeta-doclist-empty-title">No uploads yet.</p>
+        <p className="wbeta-doclist-empty-body">
+          Drop a brief, transcript, prior deck, or data export. Parsing runs in the background.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="wbeta-doclist">
+      <h3 className="wbeta-doclist-head">Recent uploads</h3>
+      <ul className="wbeta-doclist-rows">
+        {documents.map((doc) => (
+          <li key={doc.id} className="wbeta-doclist-row">
+            <div className="wbeta-doclist-row-main">
+              <p className="wbeta-doclist-filename" title={doc.filename}>
+                {doc.filename}
+              </p>
+              <p className="wbeta-doclist-meta">
+                <span>{doc.file_type.toUpperCase()}</span>
+                <span aria-hidden> · </span>
+                <span>{formatSize(doc.file_size_bytes)}</span>
+                <span aria-hidden> · </span>
+                <span>{formatRelativeDate(doc.created_at)}</span>
+                <span aria-hidden> · </span>
+                <span>{doc.uploaded_by}</span>
+              </p>
+              {doc.error_message ? (
+                <p className="wbeta-doclist-error">{doc.error_message}</p>
+              ) : null}
+            </div>
+            <span className={`wbeta-doclist-status wbeta-doclist-status-${doc.status}`}>
+              {STATUS_LABELS[doc.status]}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
