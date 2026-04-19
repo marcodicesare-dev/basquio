@@ -1,5 +1,6 @@
 import {
   countProcessingDocuments,
+  listRecentWorkspaceDeliverables,
   listRecentWorkspaceDocuments,
   listWorkspaceEntitiesGrouped,
 } from "@/lib/workspace/db";
@@ -7,6 +8,8 @@ import { WorkspaceUploadZone } from "@/components/workspace-upload-zone";
 import { WorkspaceDocumentList } from "@/components/workspace-document-list";
 import { WorkspaceTimeline } from "@/components/workspace-timeline";
 import { WorkspaceAutoRefresh } from "@/components/workspace-auto-refresh";
+import { WorkspacePrompt } from "@/components/workspace-prompt";
+import { WorkspaceDeliverablesList } from "@/components/workspace-deliverables-list";
 import { SUPPORTED_UPLOAD_LABEL } from "@/lib/workspace/constants";
 
 export const metadata = {
@@ -16,9 +19,10 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function WorkspaceHomePage() {
-  const [documents, entitiesByType] = await Promise.all([
+  const [documents, entitiesByType, deliverables] = await Promise.all([
     listRecentWorkspaceDocuments(20),
     listWorkspaceEntitiesGrouped(),
+    listRecentWorkspaceDeliverables(8),
   ]);
 
   const processingCount = countProcessingDocuments(documents);
@@ -44,20 +48,9 @@ export default async function WorkspaceHomePage() {
       </aside>
 
       <section className="wbeta-main-col">
-        <div className="wbeta-prompt-shell">
-          <label className="wbeta-prompt-label" htmlFor="wbeta-prompt-disabled">
-            Ask anything
-          </label>
-          <input
-            id="wbeta-prompt-disabled"
-            className="wbeta-prompt-input"
-            placeholder="A direct answer or a deliverable. Wired up next."
-            disabled
-          />
-          <p className="wbeta-prompt-hint">
-            The ask anything input lands with memory and citations in the next pass.
-          </p>
-        </div>
+        <WorkspacePrompt />
+
+        <WorkspaceDeliverablesList deliverables={deliverables} />
 
         <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} />
 

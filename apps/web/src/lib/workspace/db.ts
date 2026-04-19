@@ -313,3 +313,54 @@ export async function getWorkspaceEntityDetail(entityId: string): Promise<Entity
 export function countProcessingDocuments(documents: WorkspaceDocumentRow[]): number {
   return documents.filter((d) => d.status === "processing").length;
 }
+
+export type WorkspaceDeliverableRow = {
+  id: string;
+  kind: string;
+  title: string;
+  prompt: string;
+  scope: string | null;
+  status: "generating" | "ready" | "failed" | "archived";
+  body_markdown: string | null;
+  citations: unknown;
+  metadata: Record<string, unknown>;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listRecentWorkspaceDeliverables(limit = 10): Promise<WorkspaceDeliverableRow[]> {
+  const db = getServiceClient();
+  const { data, error } = await db
+    .from("workspace_deliverables")
+    .select(
+      "id, kind, title, prompt, scope, status, body_markdown, citations, metadata, error_message, created_at, updated_at",
+    )
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("is_team_beta", true)
+    .neq("status", "archived")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    throw new Error(`Failed to list deliverables: ${error.message}`);
+  }
+  return (data ?? []) as WorkspaceDeliverableRow[];
+}
+
+export async function getWorkspaceDeliverable(
+  deliverableId: string,
+): Promise<WorkspaceDeliverableRow | null> {
+  const db = getServiceClient();
+  const { data, error } = await db
+    .from("workspace_deliverables")
+    .select(
+      "id, kind, title, prompt, scope, status, body_markdown, citations, metadata, error_message, created_at, updated_at",
+    )
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("id", deliverableId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Failed to load deliverable: ${error.message}`);
+  }
+  return data ? (data as WorkspaceDeliverableRow) : null;
+}
