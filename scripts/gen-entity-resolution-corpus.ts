@@ -418,7 +418,7 @@ function main() {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(fixture, null, 2));
   console.log(
-    `Wrote ${out} — ${fixture.candidates.length} candidates, ${fixture.cases.length} cases ` +
+    `Wrote ${out}. ${fixture.candidates.length} candidates, ${fixture.cases.length} cases ` +
       `(${fixture.cases.filter((c) => c.label === "same").length} same, ` +
       `${fixture.cases.filter((c) => c.label === "different").length} different).`,
   );

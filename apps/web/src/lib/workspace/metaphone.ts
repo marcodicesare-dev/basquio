@@ -12,7 +12,7 @@
  * The encoder strips diacritics, folds CH/GH/GLI/GN/SC/CI/CE digraphs per
  * Italian orthography, drops silent H, and collapses doubled consonants.
  * The output is a canonical lowercase string of phonemes used only for
- * candidate selection — never persisted.
+ * candidate selection. Never persisted.
  */
 
 function stripDiacritics(input: string): string {

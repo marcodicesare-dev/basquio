@@ -4,13 +4,13 @@ import { metaphoneIT } from "@/lib/workspace/metaphone";
  * Pure entity resolution cascade.
  *
  * Stages (in order, first hit wins):
- *   1. exact         — normalized string equality
- *   2. alias         — normalized equality against canonical or aliases
- *   3. token_set     — token-set equality (handles surname-first, suffix noise)
- *   4. initials      — initial-expanded equality ("A. Ricci" ↔ "Alessandro Ricci")
- *   5. metaphone     — Italian-metaphone equality
- *   6. similarity    — Levenshtein ratio above SIMILARITY_ACCEPT
- *   7. haiku         — optional LLM tiebreak in the ambiguity band
+ *   1. exact. Normalized string equality.
+ *   2. alias. Normalized equality against canonical or aliases.
+ *   3. token_set. Token-set equality (handles surname-first, suffix noise).
+ *   4. initials. Initial-expanded equality ("A. Ricci" ↔ "Alessandro Ricci").
+ *   5. metaphone. Italian-metaphone equality.
+ *   6. similarity. Levenshtein ratio above SIMILARITY_ACCEPT.
+ *   7. haiku. Optional LLM tiebreak in the ambiguity band.
  */
 
 export type ResolveMethod =
@@ -154,14 +154,14 @@ export async function resolveEntity(input: {
   const queryTokens = tokens(normalized);
   const queryInitial = initialKey(queryTokens);
 
-  // Stage 1 — exact normalized match.
+  // Stage 1. Exact normalized match.
   for (const c of input.candidates) {
     if (c.normalized_name === normalized) {
       return { entity_id: c.id, method: "exact", confidence: 1.0 };
     }
   }
 
-  // Stage 2 — alias and de-spaced match.
+  // Stage 2. Alias and de-spaced match.
   const queryNoSpace = normalized.replace(/\s+/g, "");
   for (const c of input.candidates) {
     if (c.normalized_name.replace(/\s+/g, "") === queryNoSpace && queryNoSpace.length > 2) {
@@ -178,7 +178,7 @@ export async function resolveEntity(input: {
     }
   }
 
-  // Stage 3 — token-set match (surname-first, suffix noise).
+  // Stage 3. Token-set match (surname-first, suffix noise).
   if (queryTokenSet) {
     for (const c of input.candidates) {
       if (tokenSetKey(c.canonical_name) === queryTokenSet) {
@@ -192,7 +192,7 @@ export async function resolveEntity(input: {
     }
   }
 
-  // Stage 4 — initial-aware match.
+  // Stage 4. Initial-aware match.
   if (hasAnyInitial(queryTokens)) {
     for (const c of input.candidates) {
       if (expandableMatch(name, c.canonical_name)) {
@@ -214,7 +214,7 @@ export async function resolveEntity(input: {
     }
   }
 
-  // Stage 5 — Italian-metaphone match. Require same token count to avoid
+  // Stage 5. Italian-metaphone match. Require same token count to avoid
   // over-matching when entity names have shared surname-y phonemes.
   const queryPhon = metaphoneIT(name);
   if (queryPhon) {
@@ -231,7 +231,7 @@ export async function resolveEntity(input: {
     }
   }
 
-  // Stage 6 — similarity. Levenshtein ratio on normalized strings.
+  // Stage 6. Similarity. Levenshtein ratio on normalized strings.
   const scored: Array<{ id: string; canonical_name: string; score: number }> = [];
   for (const c of input.candidates) {
     const base = ratio(normalized, c.normalized_name);
@@ -258,7 +258,7 @@ export async function resolveEntity(input: {
     }
   }
 
-  // Stage 7 — Haiku tiebreak.
+  // Stage 7. Haiku tiebreak.
   if (input.tiebreak && top && top.score >= SIMILARITY_AMBIG_LO) {
     const shortlist = scored.slice(0, 5).map((s) => {
       const c = input.candidates.find((x) => x.id === s.id);

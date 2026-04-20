@@ -278,7 +278,7 @@ async function upsertMemories(
   for (const m of MEMORIES) {
     const scopeId = scopeBySlug.get(m.scopeSlug);
     if (!scopeId) {
-      console.warn(`[memory] skip — no scope for slug ${m.scopeSlug}`);
+      console.warn(`[memory] skip. No scope for slug ${m.scopeSlug}`);
       continue;
     }
     const { data: existing } = await db

@@ -129,7 +129,7 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Work
  *   - entities (type, canonical_name, aliases, metadata)
  *   - memory_entries (non-archived, with remapped workspace_scope_id)
  *
- * Does NOT copy deliverables, documents, or facts — those are conversation
+ * Does NOT copy deliverables, documents, or facts. Those are conversation
  * artifacts that belong to the user who generates them, not to the template.
  *
  * Returns the new workspace row.
