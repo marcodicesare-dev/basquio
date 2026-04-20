@@ -10,6 +10,7 @@ import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { WorkspaceContextRail } from "@/components/workspace-context-rail";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
 import { WorkspaceOnboarding } from "@/components/workspace-onboarding";
+import { listConversations } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace, isWorkspaceOnboarded } from "@/lib/workspace/workspaces";
 
 export const metadata = {
@@ -44,11 +45,12 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
 };
 
 export default async function WorkspaceHomePage() {
-  const [workspace, documents, entitiesByType, deliverables] = await Promise.all([
+  const [workspace, documents, entitiesByType, deliverables, conversations] = await Promise.all([
     getCurrentWorkspace(),
     safe(listRecentWorkspaceDocuments(20), [], "list documents"),
     safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
     safe(listRecentWorkspaceDeliverables(8), [], "list deliverables"),
+    safe(listConversations({ limit: 15 }), [], "list conversations"),
   ]);
 
   const processingCount = countProcessingDocuments(documents);
@@ -76,12 +78,10 @@ export default async function WorkspaceHomePage() {
     }))
     .sort((a, b) => b.count - a.count);
 
-  const recentAnswers = deliverables.map((d) => ({
-    id: d.id,
-    title: d.title,
-    status: d.status,
-    createdAt: d.created_at,
-    citations: Array.isArray(d.citations) ? d.citations.length : 0,
+  const recentConversations = conversations.map((c) => ({
+    id: c.id,
+    title: c.title ?? "Untitled",
+    lastMessageAt: c.last_message_at,
   }));
 
   return (
@@ -93,7 +93,10 @@ export default async function WorkspaceHomePage() {
         <WorkspaceChat />
       </section>
 
-      <WorkspaceContextRail entityGroups={entityGroups} recentAnswers={recentAnswers} />
+      <WorkspaceContextRail
+        entityGroups={entityGroups}
+        recentConversations={recentConversations}
+      />
     </div>
   );
 }
