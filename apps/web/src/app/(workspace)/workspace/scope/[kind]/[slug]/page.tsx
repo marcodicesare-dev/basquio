@@ -204,7 +204,7 @@ export default async function WorkspaceScopePage({
           <header className="wbeta-rail-section-head">
             <h3 className="wbeta-rail-section-title">Recent answers</h3>
             <span className="wbeta-rail-section-meta">
-              {deliverables.length > 0 ? `${deliverables.length}` : "—"}
+              {deliverables.length > 0 ? `${deliverables.length}` : "None yet"}
             </span>
           </header>
           {deliverables.length === 0 ? (
