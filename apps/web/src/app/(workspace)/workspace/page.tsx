@@ -9,7 +9,7 @@ import { WorkspaceUploadZone } from "@/components/workspace-upload-zone";
 import { WorkspaceDocumentList } from "@/components/workspace-document-list";
 import { WorkspaceTimeline } from "@/components/workspace-timeline";
 import { WorkspaceAutoRefresh } from "@/components/workspace-auto-refresh";
-import { WorkspacePrompt } from "@/components/workspace-prompt";
+import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { WorkspaceDeliverablesList } from "@/components/workspace-deliverables-list";
 import { WorkspaceSuggestions } from "@/components/workspace-suggestions";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
@@ -69,7 +69,7 @@ export default async function WorkspaceHomePage() {
         </section>
 
         <section className="wbeta-hero-prompt">
-          <WorkspacePrompt />
+          <WorkspaceChat />
         </section>
 
         <p className="wbeta-hero-shortcuts">
@@ -137,7 +137,7 @@ export default async function WorkspaceHomePage() {
         </aside>
 
         <section className="wbeta-content">
-          <WorkspacePrompt />
+          <WorkspaceChat />
 
           {deliverables.length > 0 ? (
             <section className="wbeta-section">

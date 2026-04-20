@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 
 import { WorkspaceBreadcrumb } from "@/components/workspace-breadcrumb";
-import { WorkspacePrompt } from "@/components/workspace-prompt";
+import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { SCOPE_KIND_LABELS, type ScopeKind } from "@/lib/workspace/constants";
 import { getScopeByKindSlug } from "@/lib/workspace/scopes";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
@@ -125,7 +125,7 @@ export default async function WorkspaceScopePage({
         </p>
       </header>
 
-      <WorkspacePrompt
+      <WorkspaceChat
         scopeId={scope.id}
         scopeName={scope.name}
         scopeKind={scope.kind}
