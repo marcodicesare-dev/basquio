@@ -164,10 +164,13 @@ export async function cloneWorkspace(input: {
     createdBy: input.createdBy ?? null,
   });
 
-  const { data: scopes } = await db
+  const { data: scopes, error: scopesListErr } = await db
     .from("workspace_scopes")
     .select("id, kind, name, slug, parent_scope_id, metadata")
     .eq("workspace_id", template.id);
+  if (scopesListErr) {
+    throw new Error(`cloneWorkspace scope list failed: ${scopesListErr.message}`);
+  }
 
   const scopeIdMap = new Map<string, string>();
   for (const s of ((scopes ?? []) as Array<{
@@ -190,24 +193,35 @@ export async function cloneWorkspace(input: {
       })
       .select("id")
       .single();
-    if (!scopeErr && inserted) scopeIdMap.set(s.id, inserted.id as string);
+    if (scopeErr || !inserted) {
+      throw new Error(
+        `cloneWorkspace scope insert failed for ${s.kind}:${s.slug}: ${scopeErr?.message ?? "no row returned"}`,
+      );
+    }
+    scopeIdMap.set(s.id, inserted.id as string);
   }
 
   // Patch parent_scope_id in a second pass once all new ids exist.
   for (const s of ((scopes ?? []) as Array<{ id: string; parent_scope_id: string | null }>)) {
     if (s.parent_scope_id && scopeIdMap.has(s.id) && scopeIdMap.has(s.parent_scope_id)) {
-      await db
+      const { error: parentErr } = await db
         .from("workspace_scopes")
         .update({ parent_scope_id: scopeIdMap.get(s.parent_scope_id)! })
         .eq("id", scopeIdMap.get(s.id)!);
+      if (parentErr) {
+        throw new Error(`cloneWorkspace parent_scope_id patch failed: ${parentErr.message}`);
+      }
     }
   }
 
   // Clone entities (type + canonical_name + aliases + metadata)
-  const { data: entities } = await db
+  const { data: entities, error: entListErr } = await db
     .from("entities")
     .select("type, canonical_name, normalized_name, aliases, metadata")
     .eq("workspace_id", template.id);
+  if (entListErr) {
+    throw new Error(`cloneWorkspace entity list failed: ${entListErr.message}`);
+  }
   const entityBatch = ((entities ?? []) as Array<{
     type: string;
     canonical_name: string;
@@ -226,14 +240,19 @@ export async function cloneWorkspace(input: {
   }));
   if (entityBatch.length > 0) {
     const { error: entErr } = await db.from("entities").insert(entityBatch);
-    if (entErr) console.error("[cloneWorkspace] entity insert partial fail", entErr.message);
+    if (entErr) {
+      throw new Error(`cloneWorkspace entity insert failed: ${entErr.message}`);
+    }
   }
 
   // Clone memory entries (non-archived)
-  const { data: memories } = await db
+  const { data: memories, error: memListErr } = await db
     .from("memory_entries")
     .select("workspace_scope_id, scope, memory_type, path, content, metadata")
     .eq("workspace_id", template.id);
+  if (memListErr) {
+    throw new Error(`cloneWorkspace memory list failed: ${memListErr.message}`);
+  }
   const memoryBatch = ((memories ?? []) as Array<{
     workspace_scope_id: string | null;
     scope: string;
@@ -256,7 +275,9 @@ export async function cloneWorkspace(input: {
     }));
   if (memoryBatch.length > 0) {
     const { error: memErr } = await db.from("memory_entries").insert(memoryBatch);
-    if (memErr) console.error("[cloneWorkspace] memory insert partial fail", memErr.message);
+    if (memErr) {
+      throw new Error(`cloneWorkspace memory insert failed: ${memErr.message}`);
+    }
   }
 
   return newWorkspace;
