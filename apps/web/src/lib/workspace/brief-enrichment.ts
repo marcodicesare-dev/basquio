@@ -116,64 +116,124 @@ export async function buildEnrichedBrief(
     })
     .slice(0, 4);
 
-  // Resolve cited knowledge_documents → source_files (upsert by external_id
-  // so repeated prefills don't duplicate rows).
+  // Resolve cited sources (documents, chunks, transcripts) → knowledge_documents
+  // → source_files (upsert by external_id so repeated prefills don't duplicate).
   const citedDocumentIds = new Set<string>();
+  const citedChunkIds = new Set<string>();
+  const citedTranscriptIds = new Set<string>();
   for (const c of citations) {
-    if (c.source_type === "document" && c.source_id) {
-      citedDocumentIds.add(c.source_id);
+    if (!c.source_id) continue;
+    switch (c.source_type) {
+      case "document":
+        citedDocumentIds.add(c.source_id);
+        break;
+      case "chunk":
+        citedChunkIds.add(c.source_id);
+        break;
+      case "transcript":
+        citedTranscriptIds.add(c.source_id);
+        break;
+      default:
+        // Unknown source_type — try resolving as a document id; if it fails, drop it.
+        citedDocumentIds.add(c.source_id);
+    }
+  }
+
+  if (citedChunkIds.size > 0) {
+    try {
+      const { data: chunkRows } = await db
+        .from("knowledge_chunks")
+        .select("document_id")
+        .in("id", Array.from(citedChunkIds));
+      for (const row of ((chunkRows ?? []) as Array<{ document_id: string | null }>)) {
+        if (row.document_id) citedDocumentIds.add(row.document_id);
+      }
+    } catch (err) {
+      console.error("[brief-enrichment] chunk → document resolve failed", err);
+    }
+  }
+
+  if (citedTranscriptIds.size > 0) {
+    try {
+      const { data: transcriptRows } = await db
+        .from("transcript_chunks")
+        .select("source_id")
+        .in("id", Array.from(citedTranscriptIds));
+      for (const row of ((transcriptRows ?? []) as Array<{ source_id: string | null }>)) {
+        if (row.source_id) citedDocumentIds.add(row.source_id);
+      }
+    } catch (err) {
+      console.error("[brief-enrichment] transcript resolve failed", err);
     }
   }
 
   const citedDocs = citedDocumentIds.size > 0
     ? await (async () => {
-        const { data } = await db
-          .from("knowledge_documents")
-          .select("id, filename, file_type, file_size_bytes, storage_path, status")
-          .in("id", Array.from(citedDocumentIds));
-        return (data ?? []) as Array<{
-          id: string;
-          filename: string;
-          file_type: string;
-          file_size_bytes: number;
-          storage_path: string;
-          status: string;
-        }>;
+        try {
+          const { data } = await db
+            .from("knowledge_documents")
+            .select("id, filename, file_type, file_size_bytes, storage_path, status")
+            .in("id", Array.from(citedDocumentIds));
+          return (data ?? []) as Array<{
+            id: string;
+            filename: string;
+            file_type: string;
+            file_size_bytes: number;
+            storage_path: string;
+            status: string;
+          }>;
+        } catch (err) {
+          console.error("[brief-enrichment] knowledge_documents fetch failed", err);
+          return [];
+        }
       })()
     : [];
 
   const sourceFiles: EnrichedBrief["sourceFiles"] = [];
   for (const doc of citedDocs) {
     if (doc.status !== "indexed") continue;
-    const externalId = `workspace-doc:${doc.id}:${viewerWorkspace.projectRowId}`;
-    const kind = kindForFile(doc.filename, doc.file_type);
-    const { data: upserted, error: upsertErr } = await db
-      .from("source_files")
-      .upsert(
-        {
-          organization_id: viewerWorkspace.organizationRowId,
-          project_id: viewerWorkspace.projectRowId,
-          uploaded_by: viewer.user.id,
-          kind,
-          file_name: doc.filename,
-          storage_bucket: "knowledge-base",
-          storage_path: doc.storage_path,
-          file_bytes: doc.file_size_bytes ?? 0,
-          external_id: externalId,
-        },
-        { onConflict: "external_id" },
-      )
-      .select("id, kind, file_name, storage_bucket, storage_path, file_bytes")
-      .single();
-    if (upsertErr || !upserted) continue;
-    sourceFiles.push({
-      id: upserted.id as string,
-      kind: upserted.kind as string,
-      fileName: upserted.file_name as string,
-      storageBucket: upserted.storage_bucket as string,
-      storagePath: upserted.storage_path as string,
-      fileBytes: Number(upserted.file_bytes ?? 0),
-    });
+    try {
+      const externalId = `workspace-doc:${doc.id}:${viewerWorkspace.projectRowId}`;
+      const kind = kindForFile(doc.filename, doc.file_type);
+      const { data: upserted, error: upsertErr } = await db
+        .from("source_files")
+        .upsert(
+          {
+            organization_id: viewerWorkspace.organizationRowId,
+            project_id: viewerWorkspace.projectRowId,
+            uploaded_by: viewer.user.id,
+            kind,
+            file_name: doc.filename,
+            storage_bucket: "knowledge-base",
+            storage_path: doc.storage_path,
+            file_bytes: doc.file_size_bytes ?? 0,
+            external_id: externalId,
+          },
+          { onConflict: "external_id" },
+        )
+        .select("id, kind, file_name, storage_bucket, storage_path, file_bytes")
+        .single();
+      if (upsertErr || !upserted) {
+        console.error(
+          `[brief-enrichment] source_files upsert failed for ${doc.filename}: ${upsertErr?.message ?? "no row"}`,
+        );
+        continue;
+      }
+      sourceFiles.push({
+        id: upserted.id as string,
+        kind: upserted.kind as string,
+        fileName: upserted.file_name as string,
+        storageBucket: upserted.storage_bucket as string,
+        storagePath: upserted.storage_path as string,
+        fileBytes: Number(upserted.file_bytes ?? 0),
+      });
+    } catch (err) {
+      console.error(
+        `[brief-enrichment] source_files upsert threw for ${doc.filename}`,
+        err,
+      );
+      continue;
+    }
   }
 
   // Compose the enriched brief body. The pipeline's system prompt reads
