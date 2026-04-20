@@ -49,6 +49,7 @@ Use `.stream()` + `.finalMessage()` for Claude API calls that may take > 10 minu
 ### Railway worker
 The worker (`scripts/worker.ts`) polls Supabase every 5s for `status="queued"` runs. It claims atomically, heartbeats via `updated_at`, starts shutdown handoff immediately on `SIGTERM`, and recovers stale runs stuck > 30 minutes. No Inngest needed.
 - Railway production start command should invoke Node directly, not `pnpm worker`, so the worker process receives `SIGTERM` reliably.
+- Railway Config-as-Code no longer accepts `builder = "nixpacks"`; use a valid current builder (`DOCKERFILE` or `RAILPACK`) or Railway will ignore the file and fall back to dashboard defaults.
 - Railway production config should use focused `watchPatterns` so unrelated UI-only commits do not redeploy the worker service mid-run.
 - Railway production config should set deployment overlap and drain windows long enough for shutdown handoff RPCs to complete.
 
