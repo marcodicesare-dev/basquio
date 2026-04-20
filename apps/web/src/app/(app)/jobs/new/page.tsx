@@ -6,6 +6,7 @@ import { fetchRestRows } from "@/lib/supabase/admin";
 import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { resolveViewerOrgId } from "@/lib/viewer-workspace";
+import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -320,7 +321,7 @@ async function getTemplateFeeDraftPrefill(draftId: string, userId: string): Prom
 
 async function getWorkspaceDeliverablePrefill(
   deliverableId: string,
-  userId: string,
+  workspaceId: string,
 ): Promise<RecipePrefill | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -334,12 +335,14 @@ async function getWorkspaceDeliverablePrefill(
       prompt: string;
       scope: string | null;
       status: string;
+      workspace_id: string | null;
+      organization_id: string | null;
     }>({
       supabaseUrl,
       serviceKey,
       table: "workspace_deliverables",
       query: {
-        select: "id,title,body_markdown,prompt,scope,status",
+        select: "id,title,body_markdown,prompt,scope,status,workspace_id,organization_id",
         id: `eq.${deliverableId}`,
         limit: "1",
       },
@@ -347,9 +350,11 @@ async function getWorkspaceDeliverablePrefill(
     const deliverable = rows[0];
     if (!deliverable || !deliverable.body_markdown) return null;
     if (deliverable.status !== "ready") return null;
-
-    // Sentinel to keep us from duplicating intent accidentally later.
-    void userId;
+    // Scope prefill to the current workspace. organization_id is the V1 field
+    // and BASQUIO_TEAM_WORKSPACE_ID shares its value, so either match is valid
+    // during the V1/V2 coexistence window.
+    const owner = deliverable.workspace_id ?? deliverable.organization_id;
+    if (owner !== workspaceId) return null;
 
     return {
       id: `deliverable-${deliverable.id}`,
@@ -368,7 +373,8 @@ async function getWorkspaceDeliverablePrefill(
       authorModel: "claude-sonnet-4-6",
       sourceFiles: [],
     };
-  } catch {
+  } catch (error) {
+    console.error("[jobs/new] workspace deliverable prefill failed", error);
     return null;
   }
 }
@@ -425,7 +431,7 @@ export default async function NewJobPage({
   const deliverableId = typeof params.deliverable === "string" ? params.deliverable : undefined;
   const deliverablePrefill =
     deliverableId && viewer.user?.id && !recipePrefill && !fromRunPrefill && !templateFeeDraftPrefill
-      ? await getWorkspaceDeliverablePrefill(deliverableId, viewer.user.id)
+      ? await getWorkspaceDeliverablePrefill(deliverableId, BASQUIO_TEAM_WORKSPACE_ID)
       : null;
 
   const activePrefill =
