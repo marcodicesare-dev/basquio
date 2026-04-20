@@ -2,14 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useRouter } from "next/navigation";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
-import { ArrowUp, Stop } from "@phosphor-icons/react";
+import { ArrowUp, Paperclip, Stop } from "@phosphor-icons/react";
 
 import { ChatMessage } from "@/components/workspace-chat/ChatMessage";
+
+type UploadStatus =
+  | { kind: "idle" }
+  | { kind: "uploading"; filename: string }
+  | { kind: "success"; filename: string }
+  | { kind: "error"; message: string };
 
 export function WorkspaceChat({
   scopeId,
@@ -32,7 +39,90 @@ export function WorkspaceChat({
   );
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [upload, setUpload] = useState<UploadStatus>({ kind: "idle" });
   const endRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
+  const router = useRouter();
+
+  const uploadFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const list = Array.from(files).filter((f) => f && f.size > 0);
+      if (list.length === 0) return;
+      for (const file of list) {
+        setUpload({ kind: "uploading", filename: file.name });
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          const response = await fetch("/api/workspace/uploads", {
+            method: "POST",
+            body: formData,
+          });
+          const data = (await response.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          if (!response.ok) {
+            setUpload({ kind: "error", message: data.error ?? "Upload failed." });
+            return;
+          }
+          setUpload({ kind: "success", filename: file.name });
+        } catch (uploadError) {
+          const message =
+            uploadError instanceof Error ? uploadError.message : "Upload failed.";
+          setUpload({ kind: "error", message });
+          return;
+        }
+      }
+      router.refresh();
+      setTimeout(() => setUpload({ kind: "idle" }), 4000);
+    },
+    [router],
+  );
+
+  const handleDragEnter = useCallback((event: React.DragEvent<HTMLElement>) => {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDragOver(false);
+  }, []);
+
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLElement>) => {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      dragDepthRef.current = 0;
+      setIsDragOver(false);
+      if (event.dataTransfer?.files?.length) {
+        void uploadFiles(event.dataTransfer.files);
+      }
+    },
+    [uploadFiles],
+  );
+
+  const handleAttachClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (files && files.length > 0) void uploadFiles(files);
+      event.target.value = "";
+    },
+    [uploadFiles],
+  );
 
   const { messages, sendMessage, status, stop, regenerate } = useChat({
     id: conversationIdRef.current,
@@ -95,7 +185,13 @@ export function WorkspaceChat({
   const placeholder = scopeName ? `Ask about ${scopeName}` : "Message Basquio";
 
   return (
-    <section className="wbeta-ai-chat">
+    <section
+      className={isDragOver ? "wbeta-ai-chat wbeta-ai-chat-drop" : "wbeta-ai-chat"}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {messages.length === 0 ? (
         <div className="wbeta-ai-chat-empty">
           {scopeName ? (
@@ -143,6 +239,42 @@ export function WorkspaceChat({
         </p>
       ) : null}
 
+      {isDragOver ? (
+        <div className="wbeta-ai-chat-drop-overlay" aria-hidden>
+          <div className="wbeta-ai-chat-drop-card">
+            <Paperclip size={18} weight="bold" />
+            <p>Drop to add to your workspace</p>
+          </div>
+        </div>
+      ) : null}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={handleFileChange}
+        aria-hidden
+      />
+
+      {upload.kind !== "idle" ? (
+        <p
+          className={
+            upload.kind === "error"
+              ? "wbeta-ai-chat-upload wbeta-ai-chat-upload-error"
+              : "wbeta-ai-chat-upload"
+          }
+          role="status"
+          aria-live="polite"
+        >
+          {upload.kind === "uploading"
+            ? `Uploading ${upload.filename}…`
+            : upload.kind === "success"
+              ? `Added ${upload.filename}. Basquio is indexing it in the background.`
+              : upload.message}
+        </p>
+      ) : null}
+
       <form className="wbeta-ai-chat-form" onSubmit={handleSubmit}>
         <label className="wbeta-ai-chat-label" htmlFor="wbeta-ai-input">
           Message
@@ -163,6 +295,15 @@ export function WorkspaceChat({
           disabled={isStreaming}
         />
         <div className="wbeta-ai-chat-row">
+          <button
+            type="button"
+            className="wbeta-ai-chat-attach"
+            onClick={handleAttachClick}
+            disabled={isStreaming || upload.kind === "uploading"}
+            aria-label="Attach a file"
+          >
+            <Paperclip size={14} weight="regular" />
+          </button>
           <p className="wbeta-ai-chat-hint" aria-live="polite">
             {isStreaming ? "Generating" : <kbd className="wbeta-kbd">⌘ ↵</kbd>}
           </p>

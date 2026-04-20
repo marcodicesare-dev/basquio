@@ -15331,3 +15331,99 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-rail-item-active:hover {
   background: rgba(26, 106, 255, 0.12);
 }
+
+/* Drag-to-upload overlay on the chat pane */
+
+.wbeta-ai-chat-drop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(26, 106, 255, 0.04);
+  border: 2px dashed var(--blue);
+  border-radius: 10px;
+  z-index: 6;
+}
+
+.wbeta-chat-pane > .wbeta-ai-chat {
+  position: relative;
+}
+
+.wbeta-ai-chat-drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.wbeta-ai-chat-drop-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 21px;
+  background: var(--surface-strong);
+  border: 1px solid var(--blue);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel);
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wbeta-ai-chat-drop-card p {
+  margin: 0;
+}
+
+/* Inline attachment button in the composer row */
+
+.wbeta-ai-chat-attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+  margin-right: auto;
+}
+
+.wbeta-ai-chat-attach:hover:not(:disabled),
+.wbeta-ai-chat-attach:focus-visible {
+  background: var(--canvas-stage);
+  color: var(--text);
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+.wbeta-ai-chat-attach:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Upload status message above the composer */
+
+.wbeta-ai-chat-upload {
+  max-width: 720px;
+  width: calc(100% - 42px);
+  margin: 0 auto 8px;
+  padding: 8px 13px;
+  background: var(--canvas-stage);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wbeta-ai-chat-upload-error {
+  background: var(--danger);
+  color: var(--danger-text);
+  border-color: var(--danger-text, #b91c1c);
+}
