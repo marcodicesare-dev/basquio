@@ -11147,6 +11147,31 @@ body:has(.wbeta-shell) .site-wrap {
   background: rgba(26, 106, 255, 0.1);
 }
 
+.wbeta-ai-action-btn-primary {
+  color: #ffffff;
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.wbeta-ai-action-btn-primary:hover:not(:disabled),
+.wbeta-ai-action-btn-primary:focus-visible {
+  background: #1257d8;
+  color: #ffffff;
+  border-color: #1257d8;
+}
+
+.wbeta-ai-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wbeta-ai-action-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  align-self: center;
+  margin-left: 4px;
+}
+
 /* ── Markdown rendering ─────────────────────────────────────────── */
 
 .wbeta-ai-md {
@@ -15049,12 +15074,24 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-chat-pane .wbeta-ai-chat-stream {
   flex: 1;
   width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 21px 21px 13px;
+  margin: 0;
+  padding: 21px 0 13px;
   overflow-y: auto;
+  overflow-x: hidden;
   gap: 21px;
   scroll-behavior: smooth;
+  /* Offset the gutter so the scrollbar sits flush with the pane's right edge
+     while content stays visually centered within a 760px reading column. */
+  scrollbar-gutter: stable;
+}
+
+.wbeta-chat-pane .wbeta-ai-chat-stream > * {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding-left: 21px;
+  padding-right: 21px;
+  box-sizing: border-box;
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-form {

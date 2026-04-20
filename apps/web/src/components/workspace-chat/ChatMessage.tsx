@@ -6,6 +6,8 @@ import {
   CaretRight,
   CheckCircle,
   ClipboardText,
+  FileArrowDown,
+  Presentation,
   ThumbsDown,
   ThumbsUp,
 } from "@phosphor-icons/react";
@@ -80,17 +82,23 @@ export const ChatMessage = memo(function ChatMessage({
   onCopy,
   onRegenerate,
   onFeedback,
+  onSaveAsMemo,
+  onGenerateDeck,
 }: {
   message: UIMessage;
   isStreaming: boolean;
   onCopy?: (text: string) => void;
   onRegenerate?: () => void;
   onFeedback?: (value: "up" | "down") => void;
+  onSaveAsMemo?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
+  onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
 }) {
   const isUser = message.role === "user";
   const citations = gatherCitations(message);
   const [copiedAt, setCopiedAt] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
+  const [saving, setSaving] = useState<"memo" | "deck" | null>(null);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   async function handleCopy() {
     const md = messageToMarkdown(message);
@@ -103,6 +111,44 @@ export const ChatMessage = memo(function ChatMessage({
   function handleFeedback(value: "up" | "down") {
     setFeedback(value);
     onFeedback?.(value);
+  }
+
+  async function handleSave() {
+    if (!onSaveAsMemo || saving) return;
+    setSaving("memo");
+    setSaveMsg(null);
+    try {
+      const url = await onSaveAsMemo({
+        text: messageToMarkdown(message),
+        citations,
+        messageId: message.id ?? "",
+      });
+      setSaveMsg(url ? "Saved as memo" : "Could not save");
+    } finally {
+      setSaving(null);
+      window.setTimeout(() => setSaveMsg(null), 2400);
+    }
+  }
+
+  async function handleDeck() {
+    if (!onGenerateDeck || saving) return;
+    setSaving("deck");
+    setSaveMsg(null);
+    try {
+      const url = await onGenerateDeck({
+        text: messageToMarkdown(message),
+        citations,
+        messageId: message.id ?? "",
+      });
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      setSaveMsg("Could not start deck");
+    } finally {
+      setSaving(null);
+      window.setTimeout(() => setSaveMsg(null), 2400);
+    }
   }
 
   return (
@@ -218,6 +264,31 @@ export const ChatMessage = memo(function ChatMessage({
               <CaretRight size={12} weight="regular" /> Regenerate
             </button>
           ) : null}
+          {onSaveAsMemo ? (
+            <button
+              type="button"
+              className="wbeta-ai-action-btn"
+              onClick={handleSave}
+              disabled={saving !== null}
+              aria-label="Save as memo"
+            >
+              <FileArrowDown size={12} weight="regular" />
+              {saving === "memo" ? "Saving…" : "Save as memo"}
+            </button>
+          ) : null}
+          {onGenerateDeck ? (
+            <button
+              type="button"
+              className="wbeta-ai-action-btn wbeta-ai-action-btn-primary"
+              onClick={handleDeck}
+              disabled={saving !== null}
+              aria-label="Generate a deck from this answer"
+            >
+              <Presentation size={12} weight="regular" />
+              {saving === "deck" ? "Preparing…" : "Generate deck"}
+            </button>
+          ) : null}
+          {saveMsg ? <span className="wbeta-ai-action-status">{saveMsg}</span> : null}
           <button
             type="button"
             className={

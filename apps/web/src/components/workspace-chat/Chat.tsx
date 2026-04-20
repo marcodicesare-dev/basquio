@@ -11,6 +11,7 @@ import {
 import { ArrowUp, Paperclip, Stop } from "@phosphor-icons/react";
 
 import { ChatMessage } from "@/components/workspace-chat/ChatMessage";
+import type { CitationInline } from "@/components/workspace-chat/CitationChip";
 
 type UploadStatus =
   | { kind: "idle" }
@@ -182,6 +183,83 @@ export function WorkspaceChat({
     regenerate();
   }, [regenerate]);
 
+  const deriveTitle = useCallback(
+    (text: string): string => {
+      const firstLine = text
+        .split("\n")
+        .map((s) => s.replace(/^#+\s*/, "").trim())
+        .find((s) => s.length > 0);
+      if (firstLine && firstLine.length > 0) return firstLine.slice(0, 200);
+      if (scopeName) return `Memo · ${scopeName}`;
+      return "Untitled memo";
+    },
+    [scopeName],
+  );
+
+  const derivePrompt = useCallback((): string => {
+    const firstUser = messages.find((m) => m.role === "user");
+    if (!firstUser) return "Saved from chat";
+    const parts = (firstUser.parts ?? []) as Array<{ type?: string; text?: string }>;
+    const text = parts
+      .filter((p) => p.type === "text")
+      .map((p) => p.text ?? "")
+      .join(" ");
+    return text.slice(0, 1200) || "Saved from chat";
+  }, [messages]);
+
+  const saveAsMemo = useCallback(
+    async ({
+      text,
+      citations,
+      messageId,
+    }: {
+      text: string;
+      citations: CitationInline[];
+      messageId: string;
+    }): Promise<string | null> => {
+      try {
+        const response = await fetch("/api/workspace/deliverables", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: deriveTitle(text),
+            prompt: derivePrompt(),
+            body_markdown: text,
+            citations: citations.map((c) => ({
+              label: c.label,
+              source_type: c.source_type ?? "chunk",
+              source_id: c.source_id ?? "",
+              filename: c.filename ?? null,
+              excerpt: c.excerpt ?? "",
+            })),
+            scope: scopeName ?? null,
+            workspace_scope_id: scopeId ?? null,
+            conversation_id: conversationIdRef.current,
+            from_message_id: messageId,
+            kind: "memo",
+          }),
+        });
+        const data = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
+        if (!response.ok || !data.url) return null;
+        return data.url;
+      } catch {
+        return null;
+      }
+    },
+    [deriveTitle, derivePrompt, scopeName, scopeId],
+  );
+
+  const generateDeck = useCallback(
+    async (args: Parameters<typeof saveAsMemo>[0]): Promise<string | null> => {
+      const memoUrl = await saveAsMemo(args);
+      if (!memoUrl) return null;
+      const id = memoUrl.split("/").pop();
+      if (!id) return null;
+      return `/jobs/new?deliverable=${id}`;
+    },
+    [saveAsMemo],
+  );
+
   const placeholder = scopeName ? `Ask about ${scopeName}` : "Message Basquio";
 
   return (
@@ -226,6 +304,8 @@ export function WorkspaceChat({
                 message={message}
                 isStreaming={isStreaming && isLast && message.role === "assistant"}
                 onRegenerate={isLast && message.role === "assistant" ? handleRegenerate : undefined}
+                onSaveAsMemo={message.role === "assistant" && !isStreaming ? saveAsMemo : undefined}
+                onGenerateDeck={message.role === "assistant" && !isStreaming ? generateDeck : undefined}
               />
             );
           })}
