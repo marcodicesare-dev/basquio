@@ -7,6 +7,7 @@ import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { resolveViewerOrgId } from "@/lib/viewer-workspace";
 import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
+import { buildEnrichedBrief } from "@/lib/workspace/brief-enrichment";
 
 export const dynamic = "force-dynamic";
 
@@ -322,6 +323,7 @@ async function getTemplateFeeDraftPrefill(draftId: string, userId: string): Prom
 async function getWorkspaceDeliverablePrefill(
   deliverableId: string,
   workspaceId: string,
+  viewer: Awaited<ReturnType<typeof getViewerState>>,
 ): Promise<RecipePrefill | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -350,12 +352,38 @@ async function getWorkspaceDeliverablePrefill(
     const deliverable = rows[0];
     if (!deliverable || !deliverable.body_markdown) return null;
     if (deliverable.status !== "ready") return null;
-    // Scope prefill to the current workspace. organization_id is the V1 field
-    // and BASQUIO_TEAM_WORKSPACE_ID shares its value, so either match is valid
-    // during the V1/V2 coexistence window.
     const owner = deliverable.workspace_id ?? deliverable.organization_id;
     if (owner !== workspaceId) return null;
 
+    // Pull the full workspace context: scope + memory + stakeholders + cited
+    // knowledge_documents minted as source_files so the pipeline can read them.
+    const enriched = await buildEnrichedBrief(deliverableId, viewer).catch((error) => {
+      console.error("[jobs/new] buildEnrichedBrief failed", error);
+      return null;
+    });
+
+    if (enriched) {
+      return {
+        id: `deliverable-${deliverable.id}`,
+        recipeId: null,
+        name: `From workspace: ${deliverable.title}`,
+        brief: {
+          businessContext: enriched.bodyMarkdown,
+          client: enriched.client,
+          audience: enriched.audience,
+          objective: enriched.objective,
+          thesis: enriched.thesis,
+          stakes: enriched.stakes,
+        },
+        templateProfileId: null,
+        targetSlideCount: 10,
+        authorModel: "claude-sonnet-4-6",
+        sourceFiles: enriched.sourceFiles,
+      };
+    }
+
+    // Fallback: thin prefill without workspace hydration if the enrichment
+    // helper errors out. Better than returning null and losing the brief.
     return {
       id: `deliverable-${deliverable.id}`,
       recipeId: null,
@@ -431,7 +459,7 @@ export default async function NewJobPage({
   const deliverableId = typeof params.deliverable === "string" ? params.deliverable : undefined;
   const deliverablePrefill =
     deliverableId && viewer.user?.id && !recipePrefill && !fromRunPrefill && !templateFeeDraftPrefill
-      ? await getWorkspaceDeliverablePrefill(deliverableId, BASQUIO_TEAM_WORKSPACE_ID)
+      ? await getWorkspaceDeliverablePrefill(deliverableId, BASQUIO_TEAM_WORKSPACE_ID, viewer)
       : null;
 
   const activePrefill =
