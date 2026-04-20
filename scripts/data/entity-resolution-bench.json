@@ -1,0 +1,1290 @@
+{
+  "candidates": [
+    {
+      "id": "e-elena-bianchi",
+      "canonical_name": "Elena Bianchi",
+      "aliases": [
+        "E. Bianchi"
+      ]
+    },
+    {
+      "id": "e-mario-rossi",
+      "canonical_name": "Mario Rossi",
+      "aliases": []
+    },
+    {
+      "id": "e-giulia-neri",
+      "canonical_name": "Giulia Neri",
+      "aliases": []
+    },
+    {
+      "id": "e-paolo-verdi",
+      "canonical_name": "Paolo Verdi",
+      "aliases": []
+    },
+    {
+      "id": "e-francesca-gallo",
+      "canonical_name": "Francesca Gallo",
+      "aliases": [
+        "Fra Gallo"
+      ]
+    },
+    {
+      "id": "e-stefano-colombo",
+      "canonical_name": "Stefano Colombo",
+      "aliases": []
+    },
+    {
+      "id": "e-valentina-moretti",
+      "canonical_name": "Valentina Moretti",
+      "aliases": []
+    },
+    {
+      "id": "e-chiara-greco",
+      "canonical_name": "Chiara Greco",
+      "aliases": []
+    },
+    {
+      "id": "e-alessandro-ricci",
+      "canonical_name": "Alessandro Ricci",
+      "aliases": []
+    },
+    {
+      "id": "e-luca-martini",
+      "canonical_name": "Luca Martini",
+      "aliases": []
+    },
+    {
+      "id": "e-davide-esposito",
+      "canonical_name": "Davide Esposito",
+      "aliases": []
+    },
+    {
+      "id": "e-paola-ferrari",
+      "canonical_name": "Paola Ferrari",
+      "aliases": []
+    },
+    {
+      "id": "b-mulino-bianco",
+      "canonical_name": "Mulino Bianco",
+      "aliases": [
+        "MB"
+      ]
+    },
+    {
+      "id": "b-barilla",
+      "canonical_name": "Barilla",
+      "aliases": []
+    },
+    {
+      "id": "b-ferrero",
+      "canonical_name": "Ferrero",
+      "aliases": [
+        "Ferrero International"
+      ]
+    },
+    {
+      "id": "b-ferrero-rocher",
+      "canonical_name": "Ferrero Rocher",
+      "aliases": []
+    },
+    {
+      "id": "b-kinder-bueno",
+      "canonical_name": "Kinder Bueno",
+      "aliases": []
+    },
+    {
+      "id": "b-algida",
+      "canonical_name": "Algida",
+      "aliases": []
+    },
+    {
+      "id": "b-galbani",
+      "canonical_name": "Galbani",
+      "aliases": []
+    },
+    {
+      "id": "b-parmalat",
+      "canonical_name": "Parmalat",
+      "aliases": []
+    },
+    {
+      "id": "b-illycaffe",
+      "canonical_name": "illycaffè",
+      "aliases": [
+        "illy"
+      ]
+    },
+    {
+      "id": "b-lavazza",
+      "canonical_name": "Lavazza",
+      "aliases": [
+        "Luigi Lavazza"
+      ]
+    },
+    {
+      "id": "b-loacker",
+      "canonical_name": "Loacker",
+      "aliases": []
+    },
+    {
+      "id": "b-amadori",
+      "canonical_name": "Amadori",
+      "aliases": [
+        "Gruppo Amadori"
+      ]
+    },
+    {
+      "id": "b-mutti",
+      "canonical_name": "Mutti",
+      "aliases": []
+    },
+    {
+      "id": "b-cirio",
+      "canonical_name": "Cirio",
+      "aliases": []
+    },
+    {
+      "id": "b-alce-nero",
+      "canonical_name": "Alce Nero",
+      "aliases": []
+    },
+    {
+      "id": "b-rigoni-asiago",
+      "canonical_name": "Rigoni di Asiago",
+      "aliases": []
+    },
+    {
+      "id": "b-granterre",
+      "canonical_name": "GranTerre",
+      "aliases": [
+        "Gran Terre"
+      ]
+    },
+    {
+      "id": "b-haleon",
+      "canonical_name": "Haleon",
+      "aliases": []
+    },
+    {
+      "id": "b-montenegro",
+      "canonical_name": "Gruppo Montenegro",
+      "aliases": [
+        "Montenegro"
+      ]
+    },
+    {
+      "id": "b-perugina",
+      "canonical_name": "Perugina",
+      "aliases": []
+    },
+    {
+      "id": "b-orogel",
+      "canonical_name": "Orogel",
+      "aliases": []
+    },
+    {
+      "id": "r-coop-italia",
+      "canonical_name": "Coop Italia",
+      "aliases": [
+        "Coop"
+      ]
+    },
+    {
+      "id": "r-conad",
+      "canonical_name": "Conad",
+      "aliases": []
+    },
+    {
+      "id": "r-carrefour-italia",
+      "canonical_name": "Carrefour Italia",
+      "aliases": [
+        "Carrefour IT"
+      ]
+    },
+    {
+      "id": "r-esselunga",
+      "canonical_name": "Esselunga",
+      "aliases": []
+    },
+    {
+      "id": "r-eurospin",
+      "canonical_name": "Eurospin",
+      "aliases": []
+    },
+    {
+      "id": "r-lidl-italia",
+      "canonical_name": "Lidl Italia",
+      "aliases": [
+        "Lidl IT"
+      ]
+    },
+    {
+      "id": "c-snack-salati",
+      "canonical_name": "Snack Salati",
+      "aliases": []
+    },
+    {
+      "id": "c-biscotti",
+      "canonical_name": "Biscotti",
+      "aliases": []
+    },
+    {
+      "id": "c-pasta",
+      "canonical_name": "Pasta",
+      "aliases": []
+    },
+    {
+      "id": "c-surgelati",
+      "canonical_name": "Surgelati",
+      "aliases": []
+    },
+    {
+      "id": "c-caffe",
+      "canonical_name": "Caffè",
+      "aliases": []
+    },
+    {
+      "id": "b-pavesi",
+      "canonical_name": "Pavesi",
+      "aliases": []
+    },
+    {
+      "id": "b-motta",
+      "canonical_name": "Motta",
+      "aliases": []
+    },
+    {
+      "id": "e-chiara-conti",
+      "canonical_name": "Chiara Conti",
+      "aliases": []
+    },
+    {
+      "id": "e-marco-russo",
+      "canonical_name": "Marco Russo",
+      "aliases": []
+    }
+  ],
+  "cases": [
+    {
+      "query": "A. Ricci",
+      "expected_id": "e-alessandro-ricci",
+      "label": "same",
+      "note": "variant of Alessandro Ricci"
+    },
+    {
+      "query": "Alce Bianco",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Alce Nero"
+    },
+    {
+      "query": "Alessandra Ricci",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Alessandro Ricci"
+    },
+    {
+      "query": "alessandro ricci",
+      "expected_id": "e-alessandro-ricci",
+      "label": "same",
+      "note": "variant of Alessandro Ricci"
+    },
+    {
+      "query": "Alessandro Ricci",
+      "expected_id": "e-alessandro-ricci",
+      "label": "same",
+      "note": "variant of Alessandro Ricci"
+    },
+    {
+      "query": "Alessio Ricci",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Alessandro Ricci"
+    },
+    {
+      "query": "Algica",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Algida"
+    },
+    {
+      "query": "ALGIDA",
+      "expected_id": "b-algida",
+      "label": "same",
+      "note": "variant of Algida"
+    },
+    {
+      "query": "algida",
+      "expected_id": "b-algida",
+      "label": "same",
+      "note": "variant of Algida"
+    },
+    {
+      "query": "Algida",
+      "expected_id": "b-algida",
+      "label": "same",
+      "note": "variant of Algida"
+    },
+    {
+      "query": "Algidà",
+      "expected_id": "b-algida",
+      "label": "same",
+      "note": "variant of Algida"
+    },
+    {
+      "query": "Amador",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Amadori"
+    },
+    {
+      "query": "Amarori",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Amadori"
+    },
+    {
+      "query": "BARILLA",
+      "expected_id": "b-barilla",
+      "label": "same",
+      "note": "variant of Barilla"
+    },
+    {
+      "query": "barilla",
+      "expected_id": "b-barilla",
+      "label": "same",
+      "note": "variant of Barilla"
+    },
+    {
+      "query": "Barilla",
+      "expected_id": "b-barilla",
+      "label": "same",
+      "note": "variant of Barilla"
+    },
+    {
+      "query": "Barilla Group",
+      "expected_id": "b-barilla",
+      "label": "same",
+      "note": "variant of Barilla"
+    },
+    {
+      "query": "Barilla Holdings",
+      "expected_id": "b-barilla",
+      "label": "same",
+      "note": "variant of Barilla"
+    },
+    {
+      "query": "Barilla Italia",
+      "expected_id": "b-barilla",
+      "label": "same",
+      "note": "variant of Barilla"
+    },
+    {
+      "query": "Barilla S.p.A.",
+      "expected_id": "b-barilla",
+      "label": "same",
+      "note": "variant of Barilla"
+    },
+    {
+      "query": "Barilli",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Barilla"
+    },
+    {
+      "query": "Barillo",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Barilla"
+    },
+    {
+      "query": "Basilla",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Barilla"
+    },
+    {
+      "query": "Bianchi Elena",
+      "expected_id": "e-elena-bianchi",
+      "label": "same",
+      "note": "variant of Elena Bianchi"
+    },
+    {
+      "query": "Bianco Mulinelli",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mulino Bianco"
+    },
+    {
+      "query": "Biscotteria",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Biscotti"
+    },
+    {
+      "query": "Biscottino",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Biscotti"
+    },
+    {
+      "query": "C. Greco",
+      "expected_id": "e-chiara-greco",
+      "label": "same",
+      "note": "variant of Chiara Greco"
+    },
+    {
+      "query": "Caffettiera",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Caffè"
+    },
+    {
+      "query": "Carrefour France",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Carrefour Italia"
+    },
+    {
+      "query": "Casfè",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Caffè"
+    },
+    {
+      "query": "Chiara Conte",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Chiara Conti"
+    },
+    {
+      "query": "Chiara Contini",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Chiara Conti"
+    },
+    {
+      "query": "Chiara Greca",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Chiara Greco"
+    },
+    {
+      "query": "chiara greco",
+      "expected_id": "e-chiara-greco",
+      "label": "same",
+      "note": "variant of Chiara Greco"
+    },
+    {
+      "query": "Chiara Greco",
+      "expected_id": "e-chiara-greco",
+      "label": "same",
+      "note": "variant of Chiara Greco"
+    },
+    {
+      "query": "Cirò",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Cirio"
+    },
+    {
+      "query": "Clara Conti",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Chiara Conti"
+    },
+    {
+      "query": "Colombo Stefano",
+      "expected_id": "e-stefano-colombo",
+      "label": "same",
+      "note": "variant of Stefano Colombo"
+    },
+    {
+      "query": "Conadi",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Conad"
+    },
+    {
+      "query": "Conda",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Conad"
+    },
+    {
+      "query": "Coop Deutschland",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Coop Italia"
+    },
+    {
+      "query": "Coop Germany",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Coop Italia"
+    },
+    {
+      "query": "D. Esposito",
+      "expected_id": "e-davide-esposito",
+      "label": "same",
+      "note": "variant of Davide Esposito"
+    },
+    {
+      "query": "davide esposito",
+      "expected_id": "e-davide-esposito",
+      "label": "same",
+      "note": "variant of Davide Esposito"
+    },
+    {
+      "query": "Davide Esposito",
+      "expected_id": "e-davide-esposito",
+      "label": "same",
+      "note": "variant of Davide Esposito"
+    },
+    {
+      "query": "Davide Esposto",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Davide Esposito"
+    },
+    {
+      "query": "E. Bianchi",
+      "expected_id": "e-elena-bianchi",
+      "label": "same",
+      "note": "variant of Elena Bianchi"
+    },
+    {
+      "query": "Elena  Bianchi",
+      "expected_id": "e-elena-bianchi",
+      "label": "same",
+      "note": "variant of Elena Bianchi"
+    },
+    {
+      "query": "Elena Bianca",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Elena Bianchi"
+    },
+    {
+      "query": "elena bianchi",
+      "expected_id": "e-elena-bianchi",
+      "label": "same",
+      "note": "variant of Elena Bianchi"
+    },
+    {
+      "query": "Elena Bianchi",
+      "expected_id": "e-elena-bianchi",
+      "label": "same",
+      "note": "variant of Elena Bianchi"
+    },
+    {
+      "query": "Elena Bianchini",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Elena Bianchi"
+    },
+    {
+      "query": "Elena Bianchí",
+      "expected_id": "e-elena-bianchi",
+      "label": "same",
+      "note": "variant of Elena Bianchi"
+    },
+    {
+      "query": "Elena Bianco",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Elena Bianchi"
+    },
+    {
+      "query": "Elena Branchi",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Elena Bianchi"
+    },
+    {
+      "query": "Esse Lunga",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Esselunga"
+    },
+    {
+      "query": "Eurospan",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Eurospin"
+    },
+    {
+      "query": "F. Gallo",
+      "expected_id": "e-francesca-gallo",
+      "label": "same",
+      "note": "variant of Francesca Gallo"
+    },
+    {
+      "query": "Ferrari",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Ferrero"
+    },
+    {
+      "query": "Ferrera",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Ferrero"
+    },
+    {
+      "query": "FERRERO",
+      "expected_id": "b-ferrero",
+      "label": "same",
+      "note": "variant of Ferrero"
+    },
+    {
+      "query": "ferrero",
+      "expected_id": "b-ferrero",
+      "label": "same",
+      "note": "variant of Ferrero"
+    },
+    {
+      "query": "Ferrero",
+      "expected_id": "b-ferrero",
+      "label": "same",
+      "note": "variant of Ferrero"
+    },
+    {
+      "query": "Ferrero International",
+      "expected_id": "b-ferrero",
+      "label": "same",
+      "note": "variant of Ferrero"
+    },
+    {
+      "query": "Ferrero Kinder",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Ferrero Rocher"
+    },
+    {
+      "query": "ferrero rocher",
+      "expected_id": "b-ferrero-rocher",
+      "label": "same",
+      "note": "variant of Ferrero Rocher"
+    },
+    {
+      "query": "Ferrero Rocher",
+      "expected_id": "b-ferrero-rocher",
+      "label": "same",
+      "note": "variant of Ferrero Rocher"
+    },
+    {
+      "query": "Ferrero-Rocher",
+      "expected_id": "b-ferrero-rocher",
+      "label": "same",
+      "note": "variant of Ferrero Rocher"
+    },
+    {
+      "query": "Fra Gallo",
+      "expected_id": "e-francesca-gallo",
+      "label": "same",
+      "note": "variant of Francesca Gallo"
+    },
+    {
+      "query": "francesca gallo",
+      "expected_id": "e-francesca-gallo",
+      "label": "same",
+      "note": "variant of Francesca Gallo"
+    },
+    {
+      "query": "Francesca Gallo",
+      "expected_id": "e-francesca-gallo",
+      "label": "same",
+      "note": "variant of Francesca Gallo"
+    },
+    {
+      "query": "Francesca Gallone",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Francesca Gallo"
+    },
+    {
+      "query": "Francesco Gallo",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Francesca Gallo"
+    },
+    {
+      "query": "G. Neri",
+      "expected_id": "e-giulia-neri",
+      "label": "same",
+      "note": "variant of Giulia Neri"
+    },
+    {
+      "query": "GALBANI",
+      "expected_id": "b-galbani",
+      "label": "same",
+      "note": "variant of Galbani"
+    },
+    {
+      "query": "galbani",
+      "expected_id": "b-galbani",
+      "label": "same",
+      "note": "variant of Galbani"
+    },
+    {
+      "query": "Galbani",
+      "expected_id": "b-galbani",
+      "label": "same",
+      "note": "variant of Galbani"
+    },
+    {
+      "query": "Galbani S.p.A.",
+      "expected_id": "b-galbani",
+      "label": "same",
+      "note": "variant of Galbani"
+    },
+    {
+      "query": "Galbanini",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Galbani"
+    },
+    {
+      "query": "Giulia Nera",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Giulia Neri"
+    },
+    {
+      "query": "giulia neri",
+      "expected_id": "e-giulia-neri",
+      "label": "same",
+      "note": "variant of Giulia Neri"
+    },
+    {
+      "query": "Giulia Neri",
+      "expected_id": "e-giulia-neri",
+      "label": "same",
+      "note": "variant of Giulia Neri"
+    },
+    {
+      "query": "Giulia Nieri",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Giulia Neri"
+    },
+    {
+      "query": "Giullia Neri",
+      "expected_id": "e-giulia-neri",
+      "label": "same",
+      "note": "variant of Giulia Neri"
+    },
+    {
+      "query": "GranPrato",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of GranTerre"
+    },
+    {
+      "query": "Greco Chiara",
+      "expected_id": "e-chiara-greco",
+      "label": "same",
+      "note": "variant of Chiara Greco"
+    },
+    {
+      "query": "Haleos",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Haleon"
+    },
+    {
+      "query": "Ilaria Bianchi",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Elena Bianchi"
+    },
+    {
+      "query": "Illy Caffè",
+      "expected_id": "b-illycaffe",
+      "label": "same",
+      "note": "variant of illycaffè"
+    },
+    {
+      "query": "illy caffè",
+      "expected_id": "b-illycaffe",
+      "label": "same",
+      "note": "variant of illycaffè"
+    },
+    {
+      "query": "illycaffe",
+      "expected_id": "b-illycaffe",
+      "label": "same",
+      "note": "variant of illycaffè"
+    },
+    {
+      "query": "illycaffè",
+      "expected_id": "b-illycaffe",
+      "label": "same",
+      "note": "variant of illycaffè"
+    },
+    {
+      "query": "illycassa",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of illycaffè"
+    },
+    {
+      "query": "illyply",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of illycaffè"
+    },
+    {
+      "query": "kinder bueno",
+      "expected_id": "b-kinder-bueno",
+      "label": "same",
+      "note": "variant of Kinder Bueno"
+    },
+    {
+      "query": "Kinder Bueno",
+      "expected_id": "b-kinder-bueno",
+      "label": "same",
+      "note": "variant of Kinder Bueno"
+    },
+    {
+      "query": "Kinder Cereali",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Kinder Bueno"
+    },
+    {
+      "query": "Kinder Happy Hippo",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Kinder Bueno"
+    },
+    {
+      "query": "Kinder-Bueno",
+      "expected_id": "b-kinder-bueno",
+      "label": "same",
+      "note": "variant of Kinder Bueno"
+    },
+    {
+      "query": "L. Martini",
+      "expected_id": "e-luca-martini",
+      "label": "same",
+      "note": "variant of Luca Martini"
+    },
+    {
+      "query": "Lavassa",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Lavazza"
+    },
+    {
+      "query": "Lessalunga",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Esselunga"
+    },
+    {
+      "query": "Lidl Deutschland",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Lidl Italia"
+    },
+    {
+      "query": "Locker",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Loacker"
+    },
+    {
+      "query": "Luca Martina",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Luca Martini"
+    },
+    {
+      "query": "luca martini",
+      "expected_id": "e-luca-martini",
+      "label": "same",
+      "note": "variant of Luca Martini"
+    },
+    {
+      "query": "Luca Martini",
+      "expected_id": "e-luca-martini",
+      "label": "same",
+      "note": "variant of Luca Martini"
+    },
+    {
+      "query": "M. Rossi",
+      "expected_id": "e-mario-rossi",
+      "label": "same",
+      "note": "variant of Mario Rossi"
+    },
+    {
+      "query": "Marco Rossi",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Marco Russo"
+    },
+    {
+      "query": "Marco Rossi",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mario Rossi"
+    },
+    {
+      "query": "Marco Rosso",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Marco Russo"
+    },
+    {
+      "query": "mario rossi",
+      "expected_id": "e-mario-rossi",
+      "label": "same",
+      "note": "variant of Mario Rossi"
+    },
+    {
+      "query": "Mario Rossi",
+      "expected_id": "e-mario-rossi",
+      "label": "same",
+      "note": "variant of Mario Rossi"
+    },
+    {
+      "query": "Mario Rosso",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mario Rossi"
+    },
+    {
+      "query": "Mario Russo",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Marco Russo"
+    },
+    {
+      "query": "Mario Russo",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mario Rossi"
+    },
+    {
+      "query": "Marta Russo",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Marco Russo"
+    },
+    {
+      "query": "Martini Luca",
+      "expected_id": "e-luca-martini",
+      "label": "same",
+      "note": "variant of Luca Martini"
+    },
+    {
+      "query": "Matta",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Motta"
+    },
+    {
+      "query": "MB",
+      "expected_id": "b-mulino-bianco",
+      "label": "same",
+      "note": "variant of Mulino Bianco"
+    },
+    {
+      "query": "Mitti",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mutti"
+    },
+    {
+      "query": "Molino Bianco",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mulino Bianco"
+    },
+    {
+      "query": "Mondenegro",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Gruppo Montenegro"
+    },
+    {
+      "query": "Motto",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Motta"
+    },
+    {
+      "query": "MULINO BIANCO",
+      "expected_id": "b-mulino-bianco",
+      "label": "same",
+      "note": "variant of Mulino Bianco"
+    },
+    {
+      "query": "mulino bianco",
+      "expected_id": "b-mulino-bianco",
+      "label": "same",
+      "note": "variant of Mulino Bianco"
+    },
+    {
+      "query": "Mulino Bianco",
+      "expected_id": "b-mulino-bianco",
+      "label": "same",
+      "note": "variant of Mulino Bianco"
+    },
+    {
+      "query": "Mulino Nero",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mulino Bianco"
+    },
+    {
+      "query": "Mulino Rosso",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mulino Bianco"
+    },
+    {
+      "query": "Mulino Verde",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Mulino Bianco"
+    },
+    {
+      "query": "Mulino-Bianco",
+      "expected_id": "b-mulino-bianco",
+      "label": "same",
+      "note": "variant of Mulino Bianco"
+    },
+    {
+      "query": "Mulìno Biànco",
+      "expected_id": "b-mulino-bianco",
+      "label": "same",
+      "note": "variant of Mulino Bianco"
+    },
+    {
+      "query": "Orgel",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Orogel"
+    },
+    {
+      "query": "P. Ferrari",
+      "expected_id": "e-paola-ferrari",
+      "label": "same",
+      "note": "variant of Paola Ferrari"
+    },
+    {
+      "query": "P. Verdi",
+      "expected_id": "e-paolo-verdi",
+      "label": "same",
+      "note": "variant of Paolo Verdi"
+    },
+    {
+      "query": "paola ferrari",
+      "expected_id": "e-paola-ferrari",
+      "label": "same",
+      "note": "variant of Paola Ferrari"
+    },
+    {
+      "query": "Paola Ferrari",
+      "expected_id": "e-paola-ferrari",
+      "label": "same",
+      "note": "variant of Paola Ferrari"
+    },
+    {
+      "query": "Paola Ferraro",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Paola Ferrari"
+    },
+    {
+      "query": "Paola Verdi",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Paolo Verdi"
+    },
+    {
+      "query": "Paolo Ferrari",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Paola Ferrari"
+    },
+    {
+      "query": "Paolo Verde",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Paolo Verdi"
+    },
+    {
+      "query": "paolo verdi",
+      "expected_id": "e-paolo-verdi",
+      "label": "same",
+      "note": "variant of Paolo Verdi"
+    },
+    {
+      "query": "Paolo Verdi",
+      "expected_id": "e-paolo-verdi",
+      "label": "same",
+      "note": "variant of Paolo Verdi"
+    },
+    {
+      "query": "Parmalac",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Parmalat"
+    },
+    {
+      "query": "PARMALAT",
+      "expected_id": "b-parmalat",
+      "label": "same",
+      "note": "variant of Parmalat"
+    },
+    {
+      "query": "parmalat",
+      "expected_id": "b-parmalat",
+      "label": "same",
+      "note": "variant of Parmalat"
+    },
+    {
+      "query": "Parmalat",
+      "expected_id": "b-parmalat",
+      "label": "same",
+      "note": "variant of Parmalat"
+    },
+    {
+      "query": "Paste",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Pasta"
+    },
+    {
+      "query": "Pastry",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Pasta"
+    },
+    {
+      "query": "Pavasi",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Pavesi"
+    },
+    {
+      "query": "Pavese",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Pavesi"
+    },
+    {
+      "query": "Peruggina",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Perugina"
+    },
+    {
+      "query": "Ricci Alessandro",
+      "expected_id": "e-alessandro-ricci",
+      "label": "same",
+      "note": "variant of Alessandro Ricci"
+    },
+    {
+      "query": "Rigoni Milano",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Rigoni di Asiago"
+    },
+    {
+      "query": "Rossi Mario",
+      "expected_id": "e-mario-rossi",
+      "label": "same",
+      "note": "variant of Mario Rossi"
+    },
+    {
+      "query": "S. Colombo",
+      "expected_id": "e-stefano-colombo",
+      "label": "same",
+      "note": "variant of Stefano Colombo"
+    },
+    {
+      "query": "Salsasnack",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Snack Salati"
+    },
+    {
+      "query": "Snack Dolci",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Snack Salati"
+    },
+    {
+      "query": "Stefania Colombo",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Stefano Colombo"
+    },
+    {
+      "query": "stefano colombo",
+      "expected_id": "e-stefano-colombo",
+      "label": "same",
+      "note": "variant of Stefano Colombo"
+    },
+    {
+      "query": "Stefano Colombo",
+      "expected_id": "e-stefano-colombo",
+      "label": "same",
+      "note": "variant of Stefano Colombo"
+    },
+    {
+      "query": "Surgelato",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Surgelati"
+    },
+    {
+      "query": "V. Moretti",
+      "expected_id": "e-valentina-moretti",
+      "label": "same",
+      "note": "variant of Valentina Moretti"
+    },
+    {
+      "query": "valentina moretti",
+      "expected_id": "e-valentina-moretti",
+      "label": "same",
+      "note": "variant of Valentina Moretti"
+    },
+    {
+      "query": "Valentina Moretti",
+      "expected_id": "e-valentina-moretti",
+      "label": "same",
+      "note": "variant of Valentina Moretti"
+    },
+    {
+      "query": "Valentina Moretto",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Valentina Moretti"
+    },
+    {
+      "query": "Valeria Moretti",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Valentina Moretti"
+    },
+    {
+      "query": "Varilla",
+      "expected_id": null,
+      "label": "different",
+      "note": "lookalike of Barilla"
+    },
+    {
+      "query": "Verdi Paolo",
+      "expected_id": "e-paolo-verdi",
+      "label": "same",
+      "note": "variant of Paolo Verdi"
+    }
+  ]
+}
