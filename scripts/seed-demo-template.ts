@@ -27,15 +27,6 @@ function getEnv(name: string): string {
   return value;
 }
 
-function slugify(input: string): string {
-  return input
-    .normalize("NFKD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 function normalize(name: string): string {
   return name
     .normalize("NFKD")
@@ -329,6 +320,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
-// Avoid unused-warning when --help style flag handling lands later.
-void slugify;

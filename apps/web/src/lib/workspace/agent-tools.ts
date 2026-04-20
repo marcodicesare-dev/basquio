@@ -218,9 +218,10 @@ export function retrieveContextTool(ctx: AgentCallContext) {
 
 /**
  * showMetricCard: generative UI tool. Renders a metric card inline for a single
- * KPI (value share, ROS, distribution, etc.) with a scope + period.
+ * KPI (value share, ROS, distribution, etc.) with a scope + period. Pure render
+ * so the call context is not read.
  */
-export function showMetricCardTool(ctx: AgentCallContext) {
+export function showMetricCardTool(_ctx: AgentCallContext) {
   return tool({
     description:
       "Render a metric card component inline in the chat. Call this when the user's answer centers on a single KPI number.",
@@ -235,7 +236,6 @@ export function showMetricCardTool(ctx: AgentCallContext) {
       source_label: z.string().max(40).optional().describe("Citation label to attribute the number, e.g. 's1'."),
     }),
     execute: async (input) => {
-      void ctx; // scope not needed at render time
       return { rendered: true, card: input };
     },
   });
@@ -257,7 +257,6 @@ export function showStakeholderCardTool(ctx: AgentCallContext) {
       preferences: z.array(z.string().max(200)).max(5).optional(),
     }),
     execute: async (input) => {
-      void ctx;
       let personId = input.person_id;
       if (!personId && input.name) {
         const db = getDb();

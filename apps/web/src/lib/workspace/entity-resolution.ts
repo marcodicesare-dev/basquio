@@ -104,13 +104,6 @@ function hasAnyInitial(toks: string[]): boolean {
   return toks.some(isInitialToken);
 }
 
-function initialKey(toks: string[]): string {
-  return toks
-    .map((t) => (isInitialToken(t) ? t[0] : t))
-    .filter((t) => t.length > 0)
-    .join(" ");
-}
-
 function expandableMatch(a: string, b: string): boolean {
   const ta = tokens(normalizeEntityName(a));
   const tb = tokens(normalizeEntityName(b));
@@ -152,7 +145,6 @@ export async function resolveEntity(input: {
   const normalized = normalizeEntityName(name);
   const queryTokenSet = tokenSetKey(name);
   const queryTokens = tokens(normalized);
-  const queryInitial = initialKey(queryTokens);
 
   // Stage 1. Exact normalized match.
   for (const c of input.candidates) {
@@ -284,9 +276,6 @@ export async function resolveEntity(input: {
     confidence: top?.score ?? 0,
     candidates: scored.slice(0, 5),
   };
-
-  // initialKey is used lazily; retained here for future alias index.
-  void queryInitial;
 }
 
 function ratio(a: string, b: string): number {

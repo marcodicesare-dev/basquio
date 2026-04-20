@@ -58,9 +58,7 @@ export function MemoryBrowser({
   const grouped = useMemo(() => {
     const result: Record<MemoryType, MemoryRow[]> = { procedural: [], semantic: [], episodic: [] };
     for (const entry of filtered) {
-      const pinned = Boolean(entry.metadata?.pinned_at);
       result[entry.memory_type].push(entry);
-      void pinned;
     }
     for (const t of TYPE_ORDER) {
       result[t].sort((a, b) => {
