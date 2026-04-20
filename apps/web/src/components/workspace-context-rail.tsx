@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CaretRight, SidebarSimple } from "@phosphor-icons/react";
+import { CaretRight } from "@phosphor-icons/react";
 
 import { WorkspaceUploadZone } from "@/components/workspace-upload-zone";
 import { SUPPORTED_UPLOAD_LABEL } from "@/lib/workspace/constants";
@@ -21,6 +21,7 @@ type EntityGroup = {
 };
 
 export type WorkspaceContextRailProps = {
+  workspaceName: string;
   stats: {
     files: number;
     entities: number;
@@ -46,39 +47,14 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function WorkspaceContextRail({ stats, entityGroups, recentAnswers }: WorkspaceContextRailProps) {
-  const [collapsed, setCollapsed] = useState(false);
-
-  if (collapsed) {
-    return (
-      <aside className="wbeta-rail wbeta-rail-collapsed" aria-label="Context rail">
-        <button
-          type="button"
-          className="wbeta-rail-open"
-          onClick={() => setCollapsed(false)}
-          aria-label="Show context rail"
-        >
-          <SidebarSimple size={16} weight="regular" />
-        </button>
-      </aside>
-    );
-  }
-
+export function WorkspaceContextRail({ stats, entityGroups, recentAnswers, workspaceName }: WorkspaceContextRailProps) {
   return (
     <aside className="wbeta-rail" aria-label="Workspace context">
       <header className="wbeta-rail-head">
         <div>
           <p className="wbeta-rail-kicker">Workspace</p>
-          <h2 className="wbeta-rail-title">Marco</h2>
+          <h2 className="wbeta-rail-title">{workspaceName}</h2>
         </div>
-        <button
-          type="button"
-          className="wbeta-rail-close"
-          onClick={() => setCollapsed(true)}
-          aria-label="Hide context rail"
-        >
-          <SidebarSimple size={14} weight="regular" />
-        </button>
       </header>
 
       <ul className="wbeta-rail-stats">

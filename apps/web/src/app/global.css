@@ -14934,36 +14934,6 @@ textarea {
   height: 100%;
 }
 
-.wbeta-rail-collapsed {
-  padding: 13px;
-  background: var(--surface-strong);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  width: 42px;
-  justify-self: end;
-}
-
-.wbeta-rail-open,
-.wbeta-rail-close {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background 150ms ease-out, color 150ms ease-out;
-}
-
-.wbeta-rail-open:hover,
-.wbeta-rail-close:hover {
-  background: var(--canvas-stage);
-  color: var(--text);
-}
-
 .wbeta-rail-head {
   display: flex;
   align-items: flex-start;

@@ -102,6 +102,7 @@ export default async function WorkspaceHomePage() {
       </section>
 
       <WorkspaceContextRail
+        workspaceName={workspace.name}
         stats={{
           files: documents.length,
           entities: totalEntityCount,

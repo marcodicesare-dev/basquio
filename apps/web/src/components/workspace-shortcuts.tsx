@@ -16,7 +16,9 @@ export function WorkspaceShortcuts() {
 
       if (isCmd && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        const input = document.getElementById("wbeta-prompt-input") as HTMLTextAreaElement | null;
+        const input =
+          (document.getElementById("wbeta-ai-input") as HTMLTextAreaElement | null) ??
+          (document.getElementById("wbeta-prompt-input") as HTMLTextAreaElement | null);
         input?.focus();
         input?.scrollIntoView({ behavior: "smooth", block: "center" });
         return;

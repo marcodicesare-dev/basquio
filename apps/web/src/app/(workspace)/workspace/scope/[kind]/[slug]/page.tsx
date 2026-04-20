@@ -44,7 +44,7 @@ async function listScopeDeliverables(workspaceId: string, scopeId: string) {
   return data ?? [];
 }
 
-async function listScopeStakeholders(workspaceId: string, scopeName: string) {
+async function listScopeStakeholders(workspaceId: string, scopeId: string, scopeName: string) {
   const db = getDb();
   const { data } = await db
     .from("entities")
@@ -60,6 +60,11 @@ async function listScopeStakeholders(workspaceId: string, scopeName: string) {
   const needle = scopeName.toLowerCase();
   return list
     .filter((entity) => {
+      // Explicit link wins (set by onboarding and by the clone flow).
+      if (entity.metadata?.linked_scope_id === scopeId) return true;
+      // Legacy fallback: substring match on role or company for seeded data
+      // that predates linked_scope_id. Useful for client scopes where the
+      // company name is embedded in the stakeholder's role string.
       const role = String(entity.metadata?.role ?? "").toLowerCase();
       const company = String(entity.metadata?.company ?? "").toLowerCase();
       return company.includes(needle) || role.includes(needle);
@@ -109,7 +114,7 @@ export default async function WorkspaceScopePage({
   const [memory, deliverables, stakeholders] = await Promise.all([
     listScopeMemory(workspace.id, scope.id),
     listScopeDeliverables(workspace.id, scope.id),
-    listScopeStakeholders(workspace.id, scope.name),
+    listScopeStakeholders(workspace.id, scope.id, scope.name),
   ]);
 
   return (
