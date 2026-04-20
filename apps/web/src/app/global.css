@@ -10768,6 +10768,888 @@ textarea {
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
 }
 
+/* ── AI Chat (AI SDK 6 surface) ─────────────────────────────────── */
+
+.wbeta-ai-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+  min-height: 0;
+}
+
+.wbeta-ai-chat-empty {
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-ai-chat-empty-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-ai-chat-empty-title {
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-chat-empty-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  max-width: 62ch;
+  margin: 0;
+}
+
+.wbeta-ai-chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+.wbeta-ai-chat-form {
+  position: sticky;
+  bottom: 21px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 13px;
+  box-shadow: var(--shadow-panel);
+  z-index: 5;
+}
+
+.wbeta-ai-chat-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.wbeta-ai-chat-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 55px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 10px 13px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--text);
+  outline: none;
+  transition: border-color 150ms ease-out, background 150ms ease-out;
+}
+
+.wbeta-ai-chat-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.wbeta-ai-chat-textarea:focus {
+  border-color: var(--blue);
+  background: var(--surface-strong);
+}
+
+.wbeta-ai-chat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+  padding: 0 4px;
+}
+
+.wbeta-ai-chat-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-ai-chat-send,
+.wbeta-ai-chat-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease-out, transform 80ms ease-out;
+}
+
+.wbeta-ai-chat-send {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.wbeta-ai-chat-send:hover:not(:disabled) {
+  background: #1257d8;
+}
+
+.wbeta-ai-chat-send:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.wbeta-ai-chat-send:disabled {
+  background: var(--slate);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wbeta-ai-chat-stop {
+  background: var(--danger);
+  color: var(--danger-text);
+}
+
+.wbeta-ai-chat-stop:hover {
+  background: rgba(255, 241, 238, 0.8);
+}
+
+.wbeta-ai-chat-error {
+  font-size: 13px;
+  color: var(--danger-text);
+  padding: 10px 13px;
+  background: var(--danger);
+  border-radius: var(--radius-md);
+  margin: 0;
+}
+
+.wbeta-ai-chat-error-retry {
+  background: transparent;
+  border: none;
+  color: var(--danger-text);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+/* ── Message bubbles ────────────────────────────────────────────── */
+
+.wbeta-ai-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-ai-msg-user {
+  align-items: flex-end;
+}
+
+.wbeta-ai-user-bubble {
+  max-width: 68ch;
+  padding: 10px 14px;
+  background: rgba(26, 106, 255, 0.08);
+  border: 1px solid rgba(26, 106, 255, 0.14);
+  border-radius: var(--radius-lg);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.wbeta-ai-asst-block {
+  display: block;
+  max-width: 80ch;
+}
+
+.wbeta-ai-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  background: var(--blue);
+  animation: wbeta-ai-blink 1s steps(2, start) infinite;
+}
+
+@keyframes wbeta-ai-blink {
+  to {
+    opacity: 0;
+  }
+}
+
+.wbeta-ai-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  opacity: 0.5;
+  transition: opacity 150ms ease-out;
+}
+
+.wbeta-ai-msg:hover .wbeta-ai-actions,
+.wbeta-ai-msg:focus-within .wbeta-ai-actions {
+  opacity: 1;
+}
+
+.wbeta-ai-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease-out, color 150ms ease-out;
+}
+
+.wbeta-ai-action-btn:hover,
+.wbeta-ai-action-btn:focus-visible {
+  background: var(--canvas-stage);
+  color: var(--text);
+  outline: none;
+}
+
+.wbeta-ai-action-btn-active {
+  color: var(--blue);
+  background: rgba(26, 106, 255, 0.1);
+}
+
+/* ── Markdown rendering ─────────────────────────────────────────── */
+
+.wbeta-ai-md {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.wbeta-ai-md .wbeta-ai-p {
+  margin: 0 0 10px;
+}
+
+.wbeta-ai-md .wbeta-ai-p:last-child {
+  margin-bottom: 0;
+}
+
+.wbeta-ai-md ul,
+.wbeta-ai-md ol {
+  margin: 0 0 10px;
+  padding-left: 24px;
+}
+
+.wbeta-ai-md .wbeta-ai-li {
+  margin-bottom: 4px;
+}
+
+.wbeta-ai-md .wbeta-ai-h1 {
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 16px 0 8px;
+}
+
+.wbeta-ai-md .wbeta-ai-h2 {
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 16px 0 8px;
+}
+
+.wbeta-ai-md .wbeta-ai-h3 {
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 700;
+  margin: 12px 0 6px;
+}
+
+.wbeta-ai-md .wbeta-ai-h4 {
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 12px 0 6px;
+}
+
+.wbeta-ai-md .wbeta-ai-quote {
+  border-left: 3px solid var(--border-strong);
+  margin: 10px 0;
+  padding: 2px 0 2px 13px;
+  color: var(--text-soft);
+}
+
+.wbeta-ai-md .wbeta-ai-link {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.wbeta-ai-md .wbeta-ai-hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+
+.wbeta-ai-md .wbeta-ai-code-inline {
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.88em;
+  padding: 1px 5px;
+  background: var(--canvas-stage);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.wbeta-ai-md .wbeta-ai-pre {
+  margin: 10px 0;
+  padding: 13px;
+  background: var(--canvas-stage);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.wbeta-ai-md .wbeta-ai-pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.wbeta-ai-md .wbeta-ai-table-wrap {
+  overflow-x: auto;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wbeta-ai-md .wbeta-ai-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wbeta-ai-md .wbeta-ai-table thead {
+  background: var(--canvas-stage);
+}
+
+.wbeta-ai-md .wbeta-ai-table th,
+.wbeta-ai-md .wbeta-ai-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.wbeta-ai-md .wbeta-ai-table th {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wbeta-ai-md .wbeta-ai-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.wbeta-ai-md .wbeta-ai-table tbody tr:hover {
+  background: var(--canvas-stage);
+}
+
+/* ── Citations ──────────────────────────────────────────────────── */
+
+.wbeta-ai-citation {
+  position: relative;
+  display: inline-block;
+}
+
+.wbeta-ai-citation-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  margin: 0 2px;
+  border-radius: var(--radius-pill);
+  background: rgba(26, 106, 255, 0.1);
+  border: 1px solid rgba(26, 106, 255, 0.2);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  cursor: help;
+  transition: background 150ms ease-out;
+}
+
+.wbeta-ai-citation:hover .wbeta-ai-citation-chip {
+  background: rgba(26, 106, 255, 0.18);
+}
+
+.wbeta-ai-citation-pop {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  min-width: 240px;
+  max-width: 340px;
+  padding: 8px 10px;
+  background: var(--surface-dark);
+  color: var(--text-inverse);
+  border-radius: var(--radius-md);
+  font-family: var(--font-manrope), "Avenir Next", sans-serif;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  z-index: 20;
+  box-shadow: var(--shadow-stage);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: wbeta-ai-pop 120ms ease-out;
+}
+
+@keyframes wbeta-ai-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.wbeta-ai-citation-pop-source {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.wbeta-ai-citation-pop-excerpt {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-inverse);
+  white-space: normal;
+}
+
+/* ── Tool chips (memory, retrieveContext, etc.) ────────────────── */
+
+.wbeta-ai-tool-chip {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+  background: var(--canvas-stage);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  animation: wbeta-ai-tool-in 180ms ease-out;
+}
+
+@keyframes wbeta-ai-tool-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wbeta-ai-tool-chip-error {
+  background: var(--danger);
+  border-color: rgba(179, 39, 26, 0.24);
+}
+
+.wbeta-ai-tool-chip-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 150ms ease-out;
+}
+
+.wbeta-ai-tool-chip-head:hover {
+  background: rgba(11, 12, 12, 0.04);
+}
+
+.wbeta-ai-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.wbeta-ai-tool-chip-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-ai-tool-caret {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.wbeta-ai-tool-chip-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 8px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-ai-tool-chip-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.wbeta-ai-tool-chip-entry-kind {
+  flex-shrink: 0;
+  padding: 0 5px;
+  height: 15px;
+  line-height: 15px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wbeta-ai-tool-chip-entry-pin {
+  color: var(--amber);
+  margin-top: 2px;
+}
+
+.wbeta-ai-tool-chip-entry-body {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.wbeta-ai-tool-chip-stats {
+  display: flex;
+  gap: 21px;
+  margin: 0;
+  padding: 0 10px 10px 40px;
+}
+
+.wbeta-ai-tool-chip-stats div {
+  display: flex;
+  flex-direction: column;
+}
+
+.wbeta-ai-tool-chip-stats dt {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-ai-tool-chip-stats dd {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  font-feature-settings: "tnum" 1;
+}
+
+.wbeta-ai-tool-chip-error-text {
+  font-size: 12px;
+  color: var(--danger-text);
+  padding: 0 10px 8px 40px;
+  margin: 0;
+}
+
+/* ── TeachRule affirmative card ─────────────────────────────────── */
+
+.wbeta-ai-teach-card {
+  max-width: 62ch;
+  background: linear-gradient(180deg, rgba(76, 201, 160, 0.1), rgba(76, 201, 160, 0.02));
+  border: 1px solid rgba(76, 201, 160, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: wbeta-ai-tool-in 200ms ease-out;
+}
+
+.wbeta-ai-teach-card-error {
+  background: linear-gradient(180deg, rgba(179, 39, 26, 0.08), rgba(179, 39, 26, 0.02));
+  border-color: rgba(179, 39, 26, 0.24);
+}
+
+.wbeta-ai-teach-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.wbeta-ai-teach-icon {
+  color: var(--success-text);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wbeta-ai-teach-card-error .wbeta-ai-teach-icon {
+  color: var(--danger-text);
+}
+
+.wbeta-ai-teach-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wbeta-ai-teach-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-teach-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-teach-foot {
+  padding-left: 28px;
+}
+
+.wbeta-ai-teach-link {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Metric card (generative UI) ───────────────────────────────── */
+
+.wbeta-ai-metric-card {
+  max-width: 240px;
+  padding: 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-ai-metric-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-ai-metric-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  margin: 0;
+  font-feature-settings: "tnum" 1;
+}
+
+.wbeta-ai-metric-unit {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+.wbeta-ai-metric-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+.wbeta-ai-metric-delta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success-text);
+  margin: 2px 0 0;
+}
+
+.wbeta-ai-metric-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  margin: 4px 0 0;
+}
+
+/* ── Stakeholder card (generative UI) ───────────────────────────── */
+
+.wbeta-ai-stakeholder-card {
+  max-width: 42ch;
+  padding: 13px 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-ai-stakeholder-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbeta-ai-stakeholder-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-stakeholder-role,
+.wbeta-ai-stakeholder-company {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-ai-stakeholder-prefs {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.wbeta-ai-stakeholder-prefs li {
+  padding-left: 10px;
+  position: relative;
+}
+
+.wbeta-ai-stakeholder-prefs li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.wbeta-ai-stakeholder-link {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  align-self: flex-start;
+}
+
+/* ── Reasoning block (collapsed by default) ────────────────────── */
+
+.wbeta-ai-reasoning {
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wbeta-ai-reasoning-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wbeta-ai-reasoning-head::-webkit-details-marker {
+  display: none;
+}
+
+.wbeta-ai-reasoning-body {
+  margin: 6px 0 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  color: var(--text-soft);
+}
+
 /* ── Page (populated state) ─────────────────────────────────────── */
 
 .wbeta-page {

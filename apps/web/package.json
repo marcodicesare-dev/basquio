@@ -22,6 +22,7 @@
     "@supabase/supabase-js": "^2.49.4",
     "ai": "^6.0.116",
     "exceljs": "^4.4.0",
+    "highlight.js": "^11.11.1",
     "inngest": "^3.31.0",
     "mammoth": "^1.12.0",
     "next": "^15.5.9",
@@ -29,6 +30,10 @@
     "pdf-parse": "^2.4.5",
     "react": "^19.1.2",
     "react-dom": "^19.1.2",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
     "stripe": "^20.4.1",
     "tus-js-client": "^4.3.1",
     "zod": "^3.25.76"
