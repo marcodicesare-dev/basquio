@@ -41,9 +41,12 @@ export function WorkspaceSidebar({
   const router = useRouter();
   const [openForm, setOpenForm] = useState<Exclude<ScopeKind, "system"> | null>(null);
 
-  const homeActive = pathname === "/workspace";
   const peopleActive = pathname === "/workspace/people" || pathname.startsWith("/workspace/people/");
   const memoryActive = pathname === "/workspace/memory" || pathname.startsWith("/workspace/memory/");
+  const scopeActiveAny = pathname.startsWith("/workspace/scope/");
+  // Home is the fallback for any /workspace path that isn't scope / people / memory
+  // so deliverable detail pages still read as "you are inside workspace".
+  const homeActive = !peopleActive && !memoryActive && !scopeActiveAny;
 
   function scopeHref(scope: WorkspaceScope) {
     return `/workspace/scope/${scope.kind}/${scope.slug}`;

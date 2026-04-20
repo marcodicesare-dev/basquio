@@ -14809,6 +14809,17 @@ textarea {
 @media (max-width: 1080px) {
   .wbeta-workspace-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100dvh - 112px);
+  }
+
+  .wbeta-chat-pane {
+    min-height: 480px;
+  }
+
+  .wbeta-rail {
+    height: auto;
+    max-height: none;
   }
 }
 
