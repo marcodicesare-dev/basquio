@@ -40,7 +40,7 @@ async function listScopeDeliverables(workspaceId: string, scopeId: string) {
     .eq("workspace_scope_id", scopeId)
     .neq("status", "archived")
     .order("created_at", { ascending: false })
-    .limit(8);
+    .limit(5);
   return data ?? [];
 }
 
@@ -69,7 +69,7 @@ async function listScopeStakeholders(workspaceId: string, scopeId: string, scope
       const company = String(entity.metadata?.company ?? "").toLowerCase();
       return company.includes(needle) || role.includes(needle);
     })
-    .slice(0, 8)
+    .slice(0, 4)
     .map((entity) => ({
       id: entity.id,
       canonical_name: entity.canonical_name,
@@ -159,7 +159,7 @@ export default async function WorkspaceScopePage({
             </p>
           ) : (
             <ul className="wbeta-rail-list">
-              {memory.slice(0, 5).map((entry) => (
+              {memory.slice(0, 4).map((entry) => (
                 <li key={entry.id}>
                   <Link href="/workspace/memory" className="wbeta-rail-item">
                     <span className="wbeta-rail-item-title">{shorten(entry.content as string, 90)}</span>
@@ -167,7 +167,7 @@ export default async function WorkspaceScopePage({
                   </Link>
                 </li>
               ))}
-              {memory.length > 5 ? (
+              {memory.length > 4 ? (
                 <li>
                   <Link href="/workspace/memory" className="wbeta-rail-more">
                     View all in memory

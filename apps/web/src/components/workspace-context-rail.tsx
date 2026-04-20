@@ -1,20 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { CaretRight } from "@phosphor-icons/react";
-
-type EntityGroupRow = {
-  id: string;
-  label: string;
-  sub?: string | null;
-};
 
 type EntityGroup = {
   type: string;
   label: string;
   count: number;
-  rows: EntityGroupRow[];
 };
 
 export type WorkspaceContextRailProps = {
@@ -50,7 +41,7 @@ export function WorkspaceContextRail({ entityGroups, recentAnswers }: WorkspaceC
             <span className="wbeta-rail-section-meta">{recentAnswers.length}</span>
           </header>
           <ul className="wbeta-rail-list">
-            {recentAnswers.slice(0, 4).map((a) => (
+            {recentAnswers.slice(0, 5).map((a) => (
               <li key={a.id}>
                 <Link href={`/workspace/deliverable/${a.id}`} className="wbeta-rail-item">
                   <span className="wbeta-rail-item-title">{a.title}</span>
@@ -67,44 +58,18 @@ export function WorkspaceContextRail({ entityGroups, recentAnswers }: WorkspaceC
       {entityGroups.length > 0 ? (
         <section className="wbeta-rail-section">
           <header className="wbeta-rail-section-head">
-            <h3 className="wbeta-rail-section-title">Timeline</h3>
-            <span className="wbeta-rail-section-meta">What Basquio knows</span>
+            <h3 className="wbeta-rail-section-title">What Basquio knows</h3>
           </header>
-          {entityGroups.map((group) => (
-            <RailEntityGroup key={group.type} group={group} />
-          ))}
+          <ul className="wbeta-rail-chips">
+            {entityGroups.map((group) => (
+              <li key={group.type} className="wbeta-rail-chip">
+                <span className="wbeta-rail-chip-label">{group.label}</span>
+                <span className="wbeta-rail-chip-count">{group.count}</span>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
     </aside>
-  );
-}
-
-function RailEntityGroup({ group }: { group: EntityGroup }) {
-  const [open, setOpen] = useState(false);
-  const displayRows = open ? group.rows : group.rows.slice(0, 2);
-
-  return (
-    <div className="wbeta-rail-group">
-      <button
-        type="button"
-        className="wbeta-rail-group-head"
-        onClick={() => setOpen((prev) => !prev)}
-        aria-expanded={open}
-      >
-        <CaretRight size={10} weight="bold" className={open ? "wbeta-rail-group-caret-open" : ""} />
-        <span className="wbeta-rail-group-label">{group.label}</span>
-        <span className="wbeta-rail-group-count">{group.count}</span>
-      </button>
-      {displayRows.length > 0 ? (
-        <ul className="wbeta-rail-group-list">
-          {displayRows.map((row) => (
-            <li key={row.id} className="wbeta-rail-group-item">
-              <span className="wbeta-rail-group-item-name">{row.label}</span>
-              {row.sub ? <span className="wbeta-rail-group-item-sub">{row.sub}</span> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
   );
 }

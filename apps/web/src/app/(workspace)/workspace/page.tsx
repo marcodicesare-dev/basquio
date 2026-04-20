@@ -73,14 +73,6 @@ export default async function WorkspaceHomePage() {
       type,
       label: ENTITY_TYPE_LABELS[type] ?? type,
       count: rows.length,
-      rows: rows.slice(0, 12).map((r) => ({
-        id: r.id,
-        label: r.canonical_name,
-        sub:
-          r.mention_count || r.fact_count
-            ? `${r.mention_count} src · ${r.fact_count} facts`
-            : null,
-      })),
     }))
     .sort((a, b) => b.count - a.count);
 
