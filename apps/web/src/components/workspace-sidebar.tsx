@@ -13,7 +13,7 @@ import {
   UsersThree,
 } from "@phosphor-icons/react";
 
-import type { WorkspaceScope, ScopeCounts } from "@/lib/workspace/scopes";
+import type { WorkspaceScope, ScopeCounts } from "@/lib/workspace/types";
 import { SCOPE_KIND_LABELS, type ScopeKind } from "@/lib/workspace/constants";
 
 type SidebarScopeTree = Record<ScopeKind, WorkspaceScope[]>;

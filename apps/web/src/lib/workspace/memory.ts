@@ -2,33 +2,17 @@ import "server-only";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
+import {
+  MEMORY_TYPE_DESCRIPTIONS,
+  MEMORY_TYPE_LABELS,
+  isArchived,
+  isPinned,
+  type MemoryRow,
+  type MemoryType,
+} from "@/lib/workspace/types";
 
-export type MemoryType = "procedural" | "semantic" | "episodic";
-
-export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
-  procedural: "Rules",
-  semantic: "Facts",
-  episodic: "Wins",
-};
-
-export const MEMORY_TYPE_DESCRIPTIONS: Record<MemoryType, string> = {
-  procedural: "Things Basquio does for you, in your style.",
-  semantic: "Things Basquio knows about your world.",
-  episodic: "Things Basquio remembers from the last time.",
-};
-
-export type MemoryRow = {
-  id: string;
-  workspace_id: string;
-  workspace_scope_id: string | null;
-  scope: string;
-  memory_type: MemoryType;
-  path: string;
-  content: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-};
+export { MEMORY_TYPE_DESCRIPTIONS, MEMORY_TYPE_LABELS, isArchived, isPinned };
+export type { MemoryRow, MemoryType };
 
 function getDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -167,12 +151,4 @@ function generateMemoryPath(memoryType: MemoryType): string {
     memoryType === "procedural" ? "preferences" : memoryType === "semantic" ? "facts" : "wins";
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   return `/${folder}/${ts}.md`;
-}
-
-export function isPinned(row: MemoryRow): boolean {
-  return typeof row.metadata?.pinned_at === "string";
-}
-
-export function isArchived(row: MemoryRow): boolean {
-  return typeof row.metadata?.archived_at === "string";
 }

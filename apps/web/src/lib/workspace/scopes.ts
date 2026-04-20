@@ -6,19 +6,9 @@ import {
   type ScopeKind,
   SCOPE_KIND_LABELS,
 } from "@/lib/workspace/constants";
+import type { ScopeCounts, ScopeTree, WorkspaceScope } from "@/lib/workspace/types";
 
-export type WorkspaceScope = {
-  id: string;
-  workspace_id: string;
-  kind: ScopeKind;
-  name: string;
-  slug: string;
-  parent_scope_id: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-};
-
-export type ScopeTree = Record<ScopeKind, WorkspaceScope[]>;
+export type { ScopeCounts, ScopeTree, WorkspaceScope };
 
 function getDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -147,14 +137,8 @@ export async function deleteScope(scopeId: string): Promise<void> {
 /**
  * Scope counts for left-rail badges. Counts memory entries and deliverables per scope
  * for the current workspace. Used by WorkspaceSidebar to render "12 rules, 4 answers".
+ * Type lives in lib/workspace/types.ts.
  */
-export type ScopeCounts = {
-  scope_id: string;
-  memory_count: number;
-  deliverable_count: number;
-  fact_count: number;
-};
-
 export async function countByScope(
   workspaceId: string = BASQUIO_TEAM_WORKSPACE_ID,
 ): Promise<Map<string, ScopeCounts>> {

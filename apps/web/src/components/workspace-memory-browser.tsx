@@ -12,9 +12,8 @@ import {
   X,
 } from "@phosphor-icons/react";
 
-import type { MemoryRow, MemoryType } from "@/lib/workspace/memory";
-import { MEMORY_TYPE_DESCRIPTIONS, MEMORY_TYPE_LABELS } from "@/lib/workspace/memory";
-import type { WorkspaceScope } from "@/lib/workspace/scopes";
+import type { MemoryRow, MemoryType, WorkspaceScope } from "@/lib/workspace/types";
+import { MEMORY_TYPE_DESCRIPTIONS, MEMORY_TYPE_LABELS } from "@/lib/workspace/types";
 
 const TYPE_ORDER: MemoryType[] = ["procedural", "semantic", "episodic"];
 
