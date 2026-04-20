@@ -108,6 +108,26 @@ If Marco asks "is X shipped?" and you are not sure, check the code. Run `git sho
 
 Marco ships in hours. A task you would estimate at 3 weeks for a funded team ships here in 2 to 3 focused sessions. Calibrate timelines accordingly. Do not pad estimates. Do not recommend a 3-month multi-tenant lift when the foundation is already multi-tenant and the remaining work is a few database columns.
 
+## 12b. No emojis. Ever.
+
+Locked 2026-04-20 by Marco. Absolute ban on emojis in any Basquio surface: product UI, chat render, tool-call chips, status pills, empty states, website copy, email, Discord messages, spec examples, commit messages, PR titles, docs, memory entries.
+
+The only allowed iconography is crafted SVG icons from Heroicons or Phosphor Icons. `apps/web` already has `@phosphor-icons/react` installed. Prefer Phosphor for consistency with the existing sidebar icons.
+
+When uncertain which icon fits, scrape the library via Firecrawl (`firecrawl scrape https://phosphoricons.com/` or `firecrawl scrape https://heroicons.com/`) and pick the right one for the semantic meaning.
+
+Common replacements:
+- 🧠 (brain) → Phosphor `<Brain />` or `<Sparkle />`
+- 📊 (chart) → Phosphor `<ChartBar />` or Heroicons `<ChartBarIcon />`
+- ✨ (sparkle) → Phosphor `<Sparkle />` or Heroicons `<SparklesIcon />`
+- ⚡ (bolt) → Phosphor `<Lightning />` or Heroicons `<BoltIcon />`
+- ✅ (check) → Phosphor `<Check />` or Heroicons `<CheckIcon />`
+- ❌ (cross) → Phosphor `<X />` or Heroicons `<XMarkIcon />`
+
+Why: emojis are a low-effort AI tell. Basquio surfaces must look like a paid 2k-euro-per-hour design studio shipped them. Emojis signal "ChatGPT with extra steps," which is the exact positioning Basquio differentiates against.
+
+Enforcement: grep for emoji codepoints in every commit. Reject any PR that introduces an emoji outside data fixtures or verbatim third-party quotes.
+
 ## 12. Strategic alignment is locked
 
 Canonical strategy lives in:
