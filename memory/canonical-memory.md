@@ -76,6 +76,8 @@ Initial domain bias:
 - queued runs should persist a reconstructable generation request envelope keyed by `jobId`.
 - large browser uploads should use signed resumable transport, while smaller uploads can continue to use signed single-shot transport.
 - run execution must be restartable from durable database state without depending on in-memory request context.
+- Railway worker deploys must not restart on unrelated repo changes; the worker service should use focused watch patterns, a direct Node start command, and immediate shutdown handoff on `SIGTERM`.
+- `data_tables.xlsx` is incomplete when it only contains tables; for chart-bearing runs the worker must deterministically link workbook sheets and inject native Excel companion charts before publish.
 - cross-provider model fallback must be explicit and opt-in; strict structured outputs are the default contract for planning stages.
 - Supabase REST queries in runtime code must stay compatible with the migrated schema; production log review is the source of truth when local assumptions drift.
 - status polling and recovery logic must handle both stale queued runs and stale running-with-zero-checkpoint runs.

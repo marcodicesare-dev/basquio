@@ -1,6 +1,23 @@
 [build]
 builder = "nixpacks"
+watchPatterns = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "tsconfig.json",
+  "tsconfig.base.json",
+  "nixpacks.toml",
+  "railway.toml",
+  "scripts/**",
+  "packages/**",
+  "apps/web/package.json",
+  "apps/web/src/lib/**",
+  "apps/web/src/app/api/**",
+  "supabase/**",
+]
 
 [deploy]
-startCommand = "pnpm worker"
+startCommand = "node --import tsx scripts/worker.ts"
 restartPolicyType = "always"
+overlapSeconds = 90
+drainingSeconds = 60

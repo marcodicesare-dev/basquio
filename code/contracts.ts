@@ -202,6 +202,7 @@ export const directDeckArtifactContractSchema = z.object({
     z.literal("pdf"),
   ]),
   chartArtifactMode: z.literal("raster-screenshot"),
+  companionWorkbookChartMode: z.literal("native-editable"),
   executionSurface: executionSurfaceSchema.default("railway-worker"),
 });
 

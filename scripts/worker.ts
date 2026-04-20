@@ -17,7 +17,7 @@ const STALE_ATTEMPT_MEANINGFUL_MINUTES = Number.parseInt(
 const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBEAT_INTERVAL_MS ?? "30000", 10);
 const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
 const MAX_CONCURRENT_RUNS = Math.max(1, Number.parseInt(process.env.BASQUIO_WORKER_MAX_CONCURRENCY ?? "10", 10));
-const SHUTDOWN_DRAIN_TIMEOUT_MS = Math.max(1_000, Number.parseInt(process.env.BASQUIO_WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS ?? "25000", 10));
+const SHUTDOWN_DRAIN_TIMEOUT_MS = Math.max(5_000, Number.parseInt(process.env.BASQUIO_WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS ?? "55000", 10));
 const SHUTDOWN_RECOVERY_REASON = "worker_shutdown";
 const WORKER_RPC_TIMEOUT_MS = 30_000;
 
@@ -61,6 +61,21 @@ async function main() {
   let shuttingDown = false;
   const activeRuns = new Map<string, ActiveRunState>();
   let recoveryInFlight = false;
+  let shutdownHandoffPromise: Promise<void> | null = null;
+
+  const ensureShutdownHandoff = () => {
+    if (shutdownHandoffPromise || activeRuns.size === 0) {
+      return shutdownHandoffPromise;
+    }
+
+    shutdownHandoffPromise = handoffActiveRuns(config, activeRuns)
+      .catch((error) => {
+        console.error(
+          `[basquio-worker] shutdown handoff error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    return shutdownHandoffPromise;
+  };
 
   const requestShutdown = (signal: string) => {
     if (shuttingDown) {
@@ -69,6 +84,7 @@ async function main() {
 
     shuttingDown = true;
     console.warn(`[basquio-worker] received ${signal}; stopping claims and draining ${activeRuns.size} active runs`);
+    void ensureShutdownHandoff();
   };
 
   process.on("SIGTERM", () => requestShutdown("SIGTERM"));
@@ -107,6 +123,14 @@ async function main() {
           break;
         }
 
+        if (shuttingDown) {
+          console.warn(
+            `[basquio-worker] shutdown raced with claim for run ${attempt.run_id} attempt ${attempt.attempt_number}; requeueing before start`,
+          );
+          await handoffClaimedAttemptOnShutdown(config, attempt);
+          break;
+        }
+
         claimedRun = true;
         const startedAt = Date.now();
         console.log(
@@ -141,7 +165,8 @@ async function main() {
 
   if (activeRuns.size > 0) {
     console.warn(`[basquio-worker] handing off ${activeRuns.size} active runs before shutdown`);
-    await handoffActiveRuns(config, activeRuns);
+    shutdownHandoffPromise ??= handoffActiveRuns(config, activeRuns);
+    await shutdownHandoffPromise;
   }
 
   if (activeRuns.size > 0) {
@@ -286,51 +311,87 @@ async function handoffActiveRuns(
   config: ReturnType<typeof resolveConfig>,
   activeRuns: ReadonlyMap<string, ActiveRunState>,
 ) {
-  const handedOffRunIds: string[] = [];
-
-  for (const [runId, { attempt, stopHeartbeat }] of activeRuns) {
-    stopHeartbeat();
-    const now = new Date().toISOString();
-
-    try {
-      const recoveryRows = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
-        supabaseUrl: config.supabaseUrl,
-        serviceKey: config.serviceKey,
-        functionName: "recover_deck_run_attempt",
-        params: {
-          p_run_id: runId,
-          p_old_attempt_id: attempt.id,
-          p_new_attempt_id: randomUUID(),
-          p_new_attempt_number: attempt.attempt_number + 1,
-          p_recovery_reason: SHUTDOWN_RECOVERY_REASON,
-          p_now: now,
-          p_expected_old_status: "running",
-          p_old_status_override: "failed",
-          p_failure_phase: SHUTDOWN_RECOVERY_REASON,
-          p_failure_message: "Worker shutdown interrupted the run; Basquio automatically requeued it.",
-        },
-      });
-
-      if (recoveryRows[0]) {
-        handedOffRunIds.push(runId);
+  const handoffResults = await Promise.allSettled(
+    [...activeRuns.entries()].map(async ([runId, { attempt, stopHeartbeat }]) => {
+      stopHeartbeat();
+      const recovery = await recoverAttemptForShutdown(config, runId, attempt);
+      if (recovery) {
         console.warn(
-          `[basquio-worker] handed off run ${runId} to attempt ${recoveryRows[0].attempt_number} before shutdown`,
+          `[basquio-worker] handed off run ${runId} to attempt ${recovery.attempt_number} before shutdown`,
         );
-        continue;
+        return runId;
       }
-    } catch (error) {
-      console.error(
-        `[basquio-worker] shutdown handoff failed for ${runId}: ${error instanceof Error ? error.message : String(error)}`,
+      console.warn(
+        `[basquio-worker] leaving run ${runId} on active attempt ${attempt.id}; stale recovery will supersede it after shutdown if direct handoff could not be recorded`,
       );
+      return null;
+    }),
+  );
+
+  const handedOffRunIds = handoffResults
+    .filter((result): result is PromiseFulfilledResult<string | null> => result.status === "fulfilled")
+    .map((result) => result.value)
+    .filter((value): value is string => typeof value === "string");
+
+  for (const result of handoffResults) {
+    if (result.status === "rejected") {
+      console.error(`[basquio-worker] shutdown handoff failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
     }
-    console.warn(
-      `[basquio-worker] leaving run ${runId} on active attempt ${attempt.id}; stale recovery will supersede it after shutdown if direct handoff could not be recorded`,
-    );
   }
 
   if (handedOffRunIds.length > 0) {
     console.log(`[basquio-worker] shutdown handoff queued superseding attempts for: ${handedOffRunIds.join(", ")}`);
   }
+}
+
+async function handoffClaimedAttemptOnShutdown(
+  config: ReturnType<typeof resolveConfig>,
+  attempt: QueuedRunRow,
+) {
+  try {
+    const recovery = await recoverAttemptForShutdown(config, attempt.run_id, attempt);
+    if (recovery) {
+      console.warn(
+        `[basquio-worker] requeued claimed run ${attempt.run_id} to attempt ${recovery.attempt_number} during shutdown`,
+      );
+      return;
+    }
+  } catch (error) {
+    console.error(
+      `[basquio-worker] failed to requeue claimed run ${attempt.run_id} during shutdown: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  console.warn(
+    `[basquio-worker] leaving claimed run ${attempt.run_id} on attempt ${attempt.id}; stale recovery will supersede it after shutdown if direct handoff could not be recorded`,
+  );
+}
+
+async function recoverAttemptForShutdown(
+  config: ReturnType<typeof resolveConfig>,
+  runId: string,
+  attempt: QueuedRunRow,
+) {
+  const now = new Date().toISOString();
+  const recoveryRows = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    functionName: "recover_deck_run_attempt",
+    params: {
+      p_run_id: runId,
+      p_old_attempt_id: attempt.id,
+      p_new_attempt_id: randomUUID(),
+      p_new_attempt_number: attempt.attempt_number + 1,
+      p_recovery_reason: SHUTDOWN_RECOVERY_REASON,
+      p_now: now,
+      p_expected_old_status: "running",
+      p_old_status_override: "failed",
+      p_failure_phase: SHUTDOWN_RECOVERY_REASON,
+      p_failure_message: "Worker shutdown interrupted the run; Basquio automatically requeued it.",
+    },
+  });
+
+  return recoveryRows[0] ?? null;
 }
 
 function resolveConfig() {

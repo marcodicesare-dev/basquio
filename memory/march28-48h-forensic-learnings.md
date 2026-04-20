@@ -3,6 +3,20 @@
 This file is the canonical forensic truth source for the March 27-28 stabilization window.
 Use it to avoid reintroducing the same failure classes.
 
+## April 20, 2026 Addendum — deploy churn and Files API liveness
+
+1. The Railway worker must not redeploy on unrelated web UI commits.
+   Use focused `watchPatterns` in `railway.toml` so UI-only changes do not restart the worker service and interrupt active runs.
+
+2. The Railway worker must start via Node directly, not `pnpm worker`.
+   Railway's current guidance is that package-manager entrypoints can interfere with clean `SIGTERM` handling.
+
+3. Shutdown handoff must begin immediately on `SIGTERM`, not only after the main poll loop exits.
+   If the worker waits too long to supersede active attempts with `worker_shutdown`, Railway can kill the process before the handoff RPC is recorded.
+
+4. The `normalize` Files API upload window needs its own liveness updates and bounded transient retries.
+   Long or flaky file uploads can legitimately take minutes; they should refresh `last_meaningful_event_at` and retry transient 5xx / overload failures before failing the attempt.
+
 ## Last Known-Good Baseline
 
 - Comparable production success before the regression cluster: run `281f287a-3a72-41af-b84e-e6fe84efd646`

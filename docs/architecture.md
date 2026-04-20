@@ -36,6 +36,7 @@ Important direct-path constraints:
 - the worker should rely on documented Anthropic skill contracts, not undocumented assumptions about the skill internals
 - narrative markdown should share the same knowledge pack and copywriting rules as the deck path while going deeper on what, why, and how
 - `data_tables.xlsx` must be written from the exact pandas DataFrames used for charts and numeric findings so the workbook becomes the audit trail for every number
+- after model generation, the worker must deterministically bind chart-bearing slides to workbook sheets and inject native Excel companion charts for supported families before publish QA
 - Haiku is a report-only tier in the direct lane: it publishes `narrative_report.md` + `data_tables.xlsx` + `deck_manifest.json` with `slideCount = 0`
 - failed attempts must still persist cost telemetry, and the top-level run cost must reflect the whole logical run rather than only the last successful attempt
 

@@ -30,7 +30,7 @@ pnpm worker            # run Railway worker locally
 pnpm test:code-exec    # smoke test against Claude API
 ```
 
-After pushing to main, Vercel auto-deploys. Railway worker deploys must be done manually from a clean `HEAD` snapshot.
+After pushing to `main`, Vercel auto-deploys. The Railway worker is Git-connected, so deploy safety depends on committed `railway.toml` watch patterns and graceful shutdown behavior, not on manual clean-`HEAD` snapshot rituals.
 
 ## Key rules
 
@@ -47,7 +47,10 @@ The Anthropic PPTX skill uses PptxGenJS (Node.js). Do NOT instruct Claude to use
 Use `.stream()` + `.finalMessage()` for Claude API calls that may take > 10 minutes. Non-streaming requests get 502'd by Cloudflare.
 
 ### Railway worker
-The worker (`scripts/worker.ts`) polls Supabase every 5s for `status="queued"` runs. It claims atomically, heartbeats via `updated_at`, and recovers stale runs stuck > 30 minutes. No Inngest needed.
+The worker (`scripts/worker.ts`) polls Supabase every 5s for `status="queued"` runs. It claims atomically, heartbeats via `updated_at`, starts shutdown handoff immediately on `SIGTERM`, and recovers stale runs stuck > 30 minutes. No Inngest needed.
+- Railway production start command should invoke Node directly, not `pnpm worker`, so the worker process receives `SIGTERM` reliably.
+- Railway production config should use focused `watchPatterns` so unrelated UI-only commits do not redeploy the worker service mid-run.
+- Railway production config should set deployment overlap and drain windows long enough for shutdown handoff RPCs to complete.
 
 ### Data access
 Evidence files are uploaded to Claude via Files API `container_upload`. Claude reads them via pandas/openpyxl in code execution. No preloading into memory.
@@ -72,6 +75,7 @@ Storage policies for artifacts scope access by org membership via `deck_runs` jo
 ## Environment variables
 See `.env.example`. Critical: `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`.
 Railway also needs: `BASQUIO_ANTHROPIC_TIMEOUT_MS=1800000`.
+If `BASQUIO_WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS` is unset, the worker now assumes roughly 55 seconds of shutdown drain time to match Railway teardown settings.
 
 ## Supabase project
 Project ID: `fxvbvkpzzvrkwvqmecmi`
