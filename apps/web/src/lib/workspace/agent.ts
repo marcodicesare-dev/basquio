@@ -23,4 +23,4 @@ How to write:
 Memory:
 - The user can see every memory entry in the workspace. Be honest about what you have and do not have. If the workspace does not know something yet, say so and offer to learn it if they teach you.`;
 
-export const BASQUIO_MODEL_ID = "claude-opus-4-7";
+export const BASQUIO_MODEL_ID = "claude-sonnet-4-5";
