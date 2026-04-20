@@ -12,22 +12,34 @@ type StreamEvent =
   | { type: "done"; deliverableId: string; bodyMarkdown: string; citations: CitationView[]; scope: string }
   | { type: "error"; deliverableId: string | null; message: string };
 
+/**
+ * Scope-as-navigation rule: the prompt never carries a scope chip.
+ * The surrounding page decides what scope the prompt submits against, and passes
+ * `scopeId` + `scopeName` + `scopeKind` here. For the workspace home, scope is
+ * undefined and submits as the legacy "workspace" scope.
+ */
 export function WorkspacePrompt({
-  scopes,
-  defaultScope,
+  scopeId,
+  scopeName,
+  scopeKind,
 }: {
-  scopes: string[];
-  defaultScope: string;
+  scopeId?: string;
+  scopeName?: string;
+  scopeKind?: string;
 }) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
-  const [scope, setScope] = useState(defaultScope);
   const [isStreaming, setIsStreaming] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState("");
   const [answer, setAnswer] = useState<AnswerView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  const legacyScopeValue = scopeToLegacyValue(scopeKind, scopeName);
+  const placeholder = scopeName
+    ? `Ask about ${scopeName}, or describe a deliverable.`
+    : "Ask a question or describe a deliverable. Example: what changed in Q4 vs Q3 and why.";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,14 +53,18 @@ export function WorkspacePrompt({
     const submittedPrompt = prompt.trim();
 
     let activeDeliverableId: string | null = null;
-    let activeScope = scope;
+    let activeScope = legacyScopeValue;
     let accumulatedText = "";
 
     try {
       const response = await fetch("/api/workspace/ask", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: submittedPrompt, scope }),
+        body: JSON.stringify({
+          prompt: submittedPrompt,
+          scope: legacyScopeValue,
+          workspace_scope_id: scopeId ?? null,
+        }),
       });
 
       if (!response.ok || !response.body) {
@@ -80,7 +96,9 @@ export function WorkspacePrompt({
           if (parsed.type === "meta") {
             activeDeliverableId = parsed.deliverableId;
             activeScope = parsed.scope;
-            setStatusMessage(`Working on it. Scope: ${parsed.scope}.`);
+            setStatusMessage(
+              scopeName ? `Working inside ${scopeName}.` : "Reading your workspace.",
+            );
           } else if (parsed.type === "status") {
             setStatusMessage(parsed.message);
           } else if (parsed.type === "text-delta") {
@@ -123,7 +141,7 @@ export function WorkspacePrompt({
         deliverableId: "",
         bodyMarkdown: streamingText,
         citations: [],
-        scope,
+        scope: legacyScopeValue,
         prompt: prompt.trim() || "Generating.",
       }
     : null;
@@ -131,35 +149,13 @@ export function WorkspacePrompt({
   return (
     <div className="wbeta-prompt-shell">
       <form className="wbeta-prompt-form" onSubmit={handleSubmit}>
-        <div className="wbeta-prompt-headrow">
-          <label className="wbeta-prompt-label" htmlFor="wbeta-prompt-input">
-            Ask anything
-          </label>
-          <div className="wbeta-prompt-scope">
-            <label className="wbeta-prompt-scope-label" htmlFor="wbeta-scope-select">
-              Scope
-            </label>
-            <select
-              id="wbeta-scope-select"
-              className="wbeta-prompt-scope-select"
-              value={scope}
-              onChange={(event) => setScope(event.target.value)}
-              disabled={isStreaming}
-              aria-describedby="wbeta-scope-hint"
-              title="Limit retrieval and memory to this slice of the workspace"
-            >
-              {scopes.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <label className="wbeta-prompt-label" htmlFor="wbeta-prompt-input">
+          Ask anything
+        </label>
         <textarea
           id="wbeta-prompt-input"
           className="wbeta-prompt-input wbeta-prompt-textarea"
-          placeholder="Ask a question or describe a deliverable. Example: what changed in Q4 vs Q3 and why."
+          placeholder={placeholder}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => {
@@ -172,7 +168,7 @@ export function WorkspacePrompt({
           disabled={isStreaming}
         />
         <div className="wbeta-prompt-row">
-          <p className="wbeta-prompt-hint" id="wbeta-scope-hint" aria-live="polite">
+          <p className="wbeta-prompt-hint" aria-live="polite">
             {isStreaming
               ? statusMessage ?? "Streaming the answer."
               : "Cmd+Enter to send. Cmd+/ for shortcuts. Every claim cites a source from your uploads."}
@@ -182,7 +178,7 @@ export function WorkspacePrompt({
             className="wbeta-prompt-submit"
             disabled={isStreaming || prompt.trim().length === 0}
           >
-            {isStreaming ? "Generating..." : "Send"}
+            {isStreaming ? "Generating" : "Send"}
           </button>
         </div>
       </form>
@@ -193,4 +189,15 @@ export function WorkspacePrompt({
       {!liveAnswer && answer ? <WorkspaceAnswerCard answer={answer} /> : null}
     </div>
   );
+}
+
+/**
+ * Map a workspace_scope row onto the legacy scope string format the /ask
+ * endpoint uses today. Task 7 (AI SDK 6 migration) moves /ask to accept
+ * workspace_scope_id directly; until then this preserves behavior.
+ */
+function scopeToLegacyValue(kind?: string, name?: string): string {
+  if (!kind || !name) return "workspace";
+  if (kind === "system") return name.toLowerCase();
+  return `${kind}:${name}`;
 }

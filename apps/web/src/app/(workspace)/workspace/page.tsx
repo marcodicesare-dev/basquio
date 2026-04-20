@@ -1,8 +1,6 @@
 import { getViewerState } from "@/lib/supabase/auth";
 import {
   countProcessingDocuments,
-  inferDefaultScope,
-  listKnownScopes,
   listRecentWorkspaceDeliverables,
   listRecentWorkspaceDocuments,
   listWorkspaceEntitiesGrouped,
@@ -34,15 +32,13 @@ async function safe<T>(promise: Promise<T>, fallback: T, label: string): Promise
 }
 
 export default async function WorkspaceHomePage() {
-  const [viewer, documents, entitiesByType, deliverables, suggestions, scopes, defaultScope] =
+  const [viewer, documents, entitiesByType, deliverables, suggestions] =
     await Promise.all([
       getViewerState(),
       safe(listRecentWorkspaceDocuments(20), [], "list documents"),
       safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
       safe(listRecentWorkspaceDeliverables(8), [], "list deliverables"),
       safe(buildSuggestions(3), [], "build suggestions"),
-      safe(listKnownScopes(12), ["workspace", "analyst"], "list scopes"),
-      safe(inferDefaultScope(), "workspace", "infer default scope"),
     ]);
 
   const processingCount = countProcessingDocuments(documents);
@@ -73,7 +69,7 @@ export default async function WorkspaceHomePage() {
         </section>
 
         <section className="wbeta-hero-prompt">
-          <WorkspacePrompt scopes={scopes} defaultScope={defaultScope} />
+          <WorkspacePrompt />
         </section>
 
         <p className="wbeta-hero-shortcuts">
@@ -141,7 +137,7 @@ export default async function WorkspaceHomePage() {
         </aside>
 
         <section className="wbeta-content">
-          <WorkspacePrompt scopes={scopes} defaultScope={defaultScope} />
+          <WorkspacePrompt />
 
           {deliverables.length > 0 ? (
             <section className="wbeta-section">

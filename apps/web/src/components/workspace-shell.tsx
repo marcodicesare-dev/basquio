@@ -3,13 +3,19 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/sign-out-button";
+import { WorkspaceSidebar } from "@/components/workspace-sidebar";
 import type { ViewerState } from "@/lib/supabase/auth";
+import type { ScopeCounts, ScopeTree } from "@/lib/workspace/scopes";
 
 export function WorkspaceShell({
   viewer,
+  scopeTree,
+  scopeCounts,
   children,
 }: {
   viewer: ViewerState;
+  scopeTree: ScopeTree;
+  scopeCounts: Record<string, ScopeCounts>;
   children: ReactNode;
 }) {
   const userEmail = viewer.user?.email ?? "";
@@ -45,7 +51,10 @@ export function WorkspaceShell({
         </div>
       </header>
 
-      <main className="wbeta-main">{children}</main>
+      <div className="wbeta-body">
+        <WorkspaceSidebar tree={scopeTree} counts={scopeCounts} />
+        <main className="wbeta-main">{children}</main>
+      </div>
     </div>
   );
 }
