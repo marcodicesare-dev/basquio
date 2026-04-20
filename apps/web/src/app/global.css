@@ -10263,6 +10263,511 @@ textarea {
   outline: none;
 }
 
+/* ── Memory page ────────────────────────────────────────────────── */
+
+.wbeta-memory-page {
+  width: min(1080px, calc(100% - 68px));
+  margin: 0 auto;
+  padding: 34px 0 89px;
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+@media (max-width: 980px) {
+  .wbeta-memory-page {
+    width: min(1080px, calc(100% - 42px));
+    padding: 21px 0 55px;
+  }
+}
+
+.wbeta-memory-head {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding-bottom: 21px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-memory-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-memory-title {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-memory-summary {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  max-width: 66ch;
+  margin: 0;
+}
+
+.wbeta-memory-stats {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 34px;
+}
+
+.wbeta-memory-stats li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbeta-memory-stat-num {
+  font-size: 25px;
+  font-weight: 700;
+  color: var(--text);
+  font-feature-settings: "tnum" 1;
+  line-height: 1;
+}
+
+.wbeta-memory-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wbeta-memory-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+.wbeta-memory-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 13px;
+  padding: 13px 0;
+  flex-wrap: wrap;
+}
+
+.wbeta-memory-filters {
+  display: flex;
+  gap: 13px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.wbeta-memory-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wbeta-memory-filter-grow {
+  flex: 1;
+  min-width: 200px;
+}
+
+.wbeta-memory-filter select,
+.wbeta-memory-filter input {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  outline: none;
+  transition: border-color 150ms ease-out;
+}
+
+.wbeta-memory-filter select:focus,
+.wbeta-memory-filter input:focus {
+  border-color: var(--blue);
+}
+
+.wbeta-memory-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 13px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.wbeta-memory-new-btn:hover:not(:disabled) {
+  background: #1257d8;
+}
+
+.wbeta-memory-new-btn:disabled {
+  background: var(--slate);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.wbeta-memory-new-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.wbeta-memory-empty {
+  padding: 55px 34px;
+  background: var(--canvas-stage);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  text-align: center;
+}
+
+.wbeta-memory-empty-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-memory-empty-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  max-width: 52ch;
+  margin: 0;
+}
+
+.wbeta-memory-empty-cta {
+  margin-top: 8px;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.wbeta-memory-empty-cta:hover {
+  background: #1257d8;
+}
+
+.wbeta-memory-group {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding-top: 8px;
+}
+
+.wbeta-memory-group-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-memory-group-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-memory-group-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-memory-card {
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 13px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--shadow-soft);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.wbeta-memory-card:hover {
+  border-color: var(--border-strong);
+}
+
+.wbeta-memory-card-pinned {
+  border-left: 3px solid var(--amber);
+  padding-left: 13px;
+}
+
+.wbeta-memory-card-creating {
+  border: 1px solid var(--blue);
+  box-shadow: var(--shadow-panel);
+}
+
+.wbeta-memory-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wbeta-memory-card-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wbeta-memory-card-scope {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(26, 106, 255, 0.1);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.wbeta-memory-card-scope-missing {
+  background: var(--danger);
+  color: var(--danger-text);
+}
+
+.wbeta-memory-card-scope-new {
+  background: var(--amber-soft);
+  color: var(--text);
+}
+
+.wbeta-memory-card-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-memory-card-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 150ms ease-out;
+}
+
+.wbeta-memory-card:hover .wbeta-memory-card-actions,
+.wbeta-memory-card:focus-within .wbeta-memory-card-actions {
+  opacity: 1;
+}
+
+.wbeta-memory-icon-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.wbeta-memory-icon-btn:hover,
+.wbeta-memory-icon-btn:focus-visible {
+  background: var(--canvas-stage);
+  color: var(--text);
+  outline: none;
+}
+
+.wbeta-memory-icon-btn-active {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.wbeta-memory-icon-btn-danger:hover,
+.wbeta-memory-icon-btn-danger:focus-visible {
+  background: var(--danger);
+  color: var(--danger-text);
+}
+
+.wbeta-memory-card-body {
+  font-family: var(--font-manrope), "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-width: 76ch;
+}
+
+.wbeta-memory-card-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-memory-card-textarea {
+  font-family: var(--font-manrope), "Avenir Next", "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--text);
+  resize: vertical;
+  min-height: 89px;
+  outline: none;
+  transition: border-color 150ms ease-out;
+}
+
+.wbeta-memory-card-textarea:focus {
+  border-color: var(--blue);
+}
+
+.wbeta-memory-card-editor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+  flex-wrap: wrap;
+}
+
+.wbeta-memory-card-type-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wbeta-memory-card-type-label select {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.wbeta-memory-card-editor-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wbeta-memory-card-cancel,
+.wbeta-memory-card-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.wbeta-memory-card-cancel {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+}
+
+.wbeta-memory-card-cancel:hover:not(:disabled) {
+  background: var(--canvas-stage);
+}
+
+.wbeta-memory-card-save {
+  border: none;
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.wbeta-memory-card-save:hover:not(:disabled) {
+  background: #1257d8;
+}
+
+.wbeta-memory-card-save:disabled,
+.wbeta-memory-card-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wbeta-memory-card-foot {
+  display: flex;
+  gap: 13px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
 /* ── Page (populated state) ─────────────────────────────────────── */
 
 .wbeta-page {
