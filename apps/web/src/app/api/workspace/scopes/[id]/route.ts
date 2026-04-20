@@ -4,6 +4,7 @@ import { z } from "zod";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { deleteScope, getScope, renameScope } from "@/lib/workspace/scopes";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
 
@@ -27,8 +28,11 @@ export async function GET(
 
   const { id } = await context.params;
   if (!isUuid(id)) return NextResponse.json({ error: "Invalid scope id." }, { status: 400 });
+  const workspace = await getCurrentWorkspace();
   const scope = await getScope(id);
-  if (!scope) return NextResponse.json({ error: "Scope not found." }, { status: 404 });
+  if (!scope || scope.workspace_id !== workspace.id) {
+    return NextResponse.json({ error: "Scope not found." }, { status: 404 });
+  }
   return NextResponse.json({ scope });
 }
 
@@ -54,8 +58,11 @@ export async function PATCH(
     );
   }
 
+  const workspace = await getCurrentWorkspace();
   const existing = await getScope(id);
-  if (!existing) return NextResponse.json({ error: "Scope not found." }, { status: 404 });
+  if (!existing || existing.workspace_id !== workspace.id) {
+    return NextResponse.json({ error: "Scope not found." }, { status: 404 });
+  }
   if (existing.kind === "system") {
     return NextResponse.json({ error: "System scopes cannot be renamed." }, { status: 403 });
   }
@@ -83,8 +90,11 @@ export async function DELETE(
   const { id } = await context.params;
   if (!isUuid(id)) return NextResponse.json({ error: "Invalid scope id." }, { status: 400 });
 
+  const workspace = await getCurrentWorkspace();
   const existing = await getScope(id);
-  if (!existing) return NextResponse.json({ error: "Scope not found." }, { status: 404 });
+  if (!existing || existing.workspace_id !== workspace.id) {
+    return NextResponse.json({ error: "Scope not found." }, { status: 404 });
+  }
   if (existing.kind === "system") {
     return NextResponse.json({ error: "System scopes cannot be removed." }, { status: 403 });
   }
