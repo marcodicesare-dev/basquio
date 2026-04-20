@@ -101,16 +101,7 @@ export default async function WorkspaceHomePage() {
         <WorkspaceChat />
       </section>
 
-      <WorkspaceContextRail
-        workspaceName={workspace.name}
-        stats={{
-          files: documents.length,
-          entities: totalEntityCount,
-          answers: deliverables.length,
-        }}
-        entityGroups={entityGroups}
-        recentAnswers={recentAnswers}
-      />
+      <WorkspaceContextRail entityGroups={entityGroups} recentAnswers={recentAnswers} />
     </div>
   );
 }

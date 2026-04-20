@@ -4,9 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { CaretRight } from "@phosphor-icons/react";
 
-import { WorkspaceUploadZone } from "@/components/workspace-upload-zone";
-import { SUPPORTED_UPLOAD_LABEL } from "@/lib/workspace/constants";
-
 type EntityGroupRow = {
   id: string;
   label: string;
@@ -21,12 +18,6 @@ type EntityGroup = {
 };
 
 export type WorkspaceContextRailProps = {
-  workspaceName: string;
-  stats: {
-    files: number;
-    entities: number;
-    answers: number;
-  };
   entityGroups: EntityGroup[];
   recentAnswers: Array<{
     id: string;
@@ -47,38 +38,11 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function WorkspaceContextRail({ stats, entityGroups, recentAnswers, workspaceName }: WorkspaceContextRailProps) {
+export function WorkspaceContextRail({ entityGroups, recentAnswers }: WorkspaceContextRailProps) {
+  if (entityGroups.length === 0 && recentAnswers.length === 0) return null;
+
   return (
     <aside className="wbeta-rail" aria-label="Workspace context">
-      <header className="wbeta-rail-head">
-        <div>
-          <p className="wbeta-rail-kicker">Workspace</p>
-          <h2 className="wbeta-rail-title">{workspaceName}</h2>
-        </div>
-      </header>
-
-      <ul className="wbeta-rail-stats">
-        <li>
-          <span className="wbeta-rail-stat-num">{stats.files}</span>
-          <span className="wbeta-rail-stat-label">Files</span>
-        </li>
-        <li>
-          <span className="wbeta-rail-stat-num">{stats.entities}</span>
-          <span className="wbeta-rail-stat-label">Entities</span>
-        </li>
-        <li>
-          <span className="wbeta-rail-stat-num">{stats.answers}</span>
-          <span className="wbeta-rail-stat-label">Answers</span>
-        </li>
-      </ul>
-
-      <section className="wbeta-rail-section">
-        <header className="wbeta-rail-section-head">
-          <h3 className="wbeta-rail-section-title">Add context</h3>
-        </header>
-        <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} variant="inline" />
-      </section>
-
       {recentAnswers.length > 0 ? (
         <section className="wbeta-rail-section">
           <header className="wbeta-rail-section-head">

@@ -9632,83 +9632,238 @@ textarea {
    Tokens from /docs/design-tokens.md only. Fibonacci spacing (4, 8, 13, 21, 34, 55, 89).
    ========================================================================= */
 
-/* ── Workspace shell (unified with /dashboard chrome) ──────────── */
+/* ── Workspace shell (slim, non-scrolling) ─────────────────────── */
 
-.app-frame-workspace {
-  grid-template-columns: 260px minmax(0, 1fr);
+/* Escape the .site-wrap max-width + vertical padding on workspace routes.
+   The shell manages its own padding because the sticky sidebar needs to
+   live against the viewport edges. */
+body:has(.wbeta-shell) .site-wrap {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wbeta-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 21px;
+  min-height: 100dvh;
+  width: 100%;
 }
 
 @media (max-width: 1180px) {
-  .app-frame-workspace {
-    grid-template-columns: 240px minmax(0, 1fr);
+  .wbeta-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
   }
 }
 
 @media (max-width: 980px) {
-  .app-frame-workspace {
+  .wbeta-shell {
     grid-template-columns: 1fr;
+    gap: 0;
   }
 }
 
-.sidebar-workspace {
-  padding: 21px 18px;
+.wbeta-side {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   gap: 13px;
-  border-radius: 6px;
+  padding: 16px 13px 13px;
+  min-width: 0;
 }
 
-.sidebar-workspace .sidebar-brand {
-  padding: 16px 18px;
-  position: relative;
+@media (max-width: 980px) {
+  .wbeta-side {
+    position: static;
+    height: auto;
+    border-bottom: 1px solid var(--border);
+  }
 }
 
-.sidebar-workspace .sidebar-brand-note {
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: var(--text-muted);
-  margin: 8px 0 0;
+.wbeta-side-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid var(--border);
+  min-height: 34px;
 }
 
-.sidebar-workspace .sidebar-brand-pill {
-  position: absolute;
-  top: 16px;
-  right: 18px;
+.wbeta-side-logo {
   display: inline-flex;
   align-items: center;
+  text-decoration: none;
+}
+
+.wbeta-side-logo img {
   height: 18px;
+  width: auto;
+}
+
+.wbeta-side-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
   padding: 0 6px;
   border-radius: var(--radius-pill);
   background: var(--amber-soft);
   color: var(--text);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.sidebar-workspace .brand-lockup img {
-  height: 26px;
-  width: auto;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
 }
 
 .wbeta-sidebar-nav-root {
   display: flex;
   flex-direction: column;
-  gap: 13px;
+  gap: 8px;
   min-width: 0;
-}
-
-.workspace-shell-beta {
-  display: flex;
-  min-width: 0;
+  flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .wbeta-main {
-  flex: 1;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  min-width: 0;
+  padding: 21px 21px 21px 0;
+}
+
+@media (max-width: 980px) {
+  .wbeta-main {
+    padding: 13px;
+  }
+}
+
+/* User menu pill at sidebar bottom */
+
+.wbeta-user {
+  position: relative;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.wbeta-user-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.wbeta-user-pill:hover,
+.wbeta-user-pill[aria-expanded="true"] {
+  background: var(--canvas-stage);
+  border-color: var(--border);
+}
+
+.wbeta-user-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.wbeta-user-email {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.wbeta-user-caret {
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.wbeta-user-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 20;
+}
+
+.wbeta-user-item,
+.wbeta-user-signout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+  transition: background 150ms ease-out;
+}
+
+.wbeta-user-item:hover,
+.wbeta-user-item:focus-visible {
+  background: var(--canvas-stage);
+  outline: none;
+}
+
+.wbeta-user-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.wbeta-user-signout .button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  min-height: auto;
+  height: auto;
+}
+
+.wbeta-user-signout:hover {
+  background: var(--canvas-stage);
 }
 
 .wbeta-sidebar-nav {
@@ -14792,17 +14947,17 @@ textarea {
 
 .wbeta-workspace-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: 21px;
-  height: calc(100dvh - 112px);
+  height: calc(100dvh - 42px);
   min-height: 520px;
   min-width: 0;
   align-items: stretch;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
   .wbeta-workspace-layout {
-    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-columns: minmax(0, 1fr) 260px;
   }
 }
 
@@ -14810,7 +14965,7 @@ textarea {
   .wbeta-workspace-layout {
     grid-template-columns: 1fr;
     height: auto;
-    min-height: calc(100dvh - 112px);
+    min-height: calc(100dvh - 42px);
   }
 
   .wbeta-chat-pane {
