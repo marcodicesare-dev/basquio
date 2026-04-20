@@ -89,6 +89,10 @@ const HARD_QA_BLOCKERS = new Set([
   "md_content_present",
   "xlsx_present",
   "xlsx_zip_signature",
+  "xlsx_manifest_excel_sheet_links_present",
+  "xlsx_manifest_excel_sheets_exist",
+  "xlsx_manifest_native_chart_links_present",
+  "xlsx_native_chart_xml_present",
   "pptx_zip_signature",
   "slide_count_positive",
   "slide_count_within_requested_plus_appendix_cap",
@@ -114,6 +118,7 @@ const AUTHOR_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_PHASE
 const REVISE_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_REVISE_PHASE_TIMEOUT_MS ?? "2700000", 10);
 const AUTHOR_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_REQUEST_WATCHDOG_MS ?? "0", 10);
 const REVISE_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_REVISE_REQUEST_WATCHDOG_MS ?? "0", 10);
+const NATIVE_WORKBOOK_CHART_SCRIPT_PATH = path.resolve(process.cwd(), "scripts", "native-workbook-charts.py");
 type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
@@ -189,6 +194,23 @@ type SupportEvidencePacket = {
 };
 
 type WorkbookSheetProfile = FidelitySheetInput;
+type WorkbookChartBindingRequest = {
+  position: number;
+  chartId: string;
+  chartType: string;
+  title: string;
+  xAxisLabel?: string;
+  yAxisLabel?: string;
+  categories: string[];
+  existingSheetName?: string;
+  existingAnchor?: string;
+  existingDataSignature?: string;
+};
+type WorkbookChartBinding = {
+  request: WorkbookChartBindingRequest;
+  sheet: WorkbookSheetProfile;
+  selectedHeaders: string[];
+};
 
 type FidelityContext = {
   workbookSheets: WorkbookSheetProfile[];
@@ -938,29 +960,57 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       sheetCount: parsed.datasetProfile.sheets.length,
     });
 
-    const uploadedEvidence = await Promise.all(
-      evidenceFiles.map(async (file) =>
-        client.beta.files.upload({
-          file: await toFile(file.buffer, file.file_name),
-          betas: [FILES_BETA],
-        }),
-      ),
-    );
-    const supportEvidencePackets = buildSupportEvidencePackets(parsed);
-    const uploadedSupportPackets = await Promise.all(
-      supportEvidencePackets.map(async (packet) =>
-        client.beta.files.upload({
-          file: await toFile(Buffer.from(packet.content, "utf8"), packet.filename, {
-            type: "text/markdown",
+    const uploadedEvidence = await uploadClaudeFilesSequentially({
+      client,
+      config,
+      runId,
+      attempt,
+      phase: "normalize",
+      entries: evidenceFiles.map((file) => ({
+        label: "evidence",
+        fileName: file.file_name,
+        upload: async () =>
+          client.beta.files.upload({
+            file: await toFile(file.buffer, file.file_name),
+            betas: [FILES_BETA],
           }),
-          betas: [FILES_BETA],
-        }),
-      ),
-    );
+      })),
+    });
+    const supportEvidencePackets = buildSupportEvidencePackets(parsed);
+    const uploadedSupportPackets = await uploadClaudeFilesSequentially({
+      client,
+      config,
+      runId,
+      attempt,
+      phase: "normalize",
+      entries: supportEvidencePackets.map((packet) => ({
+        label: "support_packet",
+        fileName: packet.filename,
+        upload: async () =>
+          client.beta.files.upload({
+            file: await toFile(Buffer.from(packet.content, "utf8"), packet.filename, {
+              type: "text/markdown",
+            }),
+            betas: [FILES_BETA],
+          }),
+      })),
+    });
     const uploadedTemplate = templateFile
-      ? await client.beta.files.upload({
-          file: await toFile(templateFile.buffer, templateFile.file_name),
-          betas: [FILES_BETA],
+      ? await uploadClaudeFileWithRetry({
+          client,
+          config,
+          runId,
+          attempt,
+          phase: "normalize",
+          label: "template",
+          fileName: templateFile.file_name,
+          index: 0,
+          total: 1,
+          upload: async () =>
+            client.beta.files.upload({
+              file: await toFile(templateFile.buffer, templateFile.file_name),
+              betas: [FILES_BETA],
+            }),
         })
       : null;
 
@@ -1163,6 +1213,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
 
       currentPhase = "author";
+      await assertAttemptStillOwnsRun(config, runId, attempt);
       await markPhase(config, runId, attempt, currentPhase);
       const authorModelCandidates = [MODEL, ...getAuthorFallbackModels(MODEL)];
       let isReportOnly = MODEL === "claude-haiku-4-5";
@@ -1481,6 +1532,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       }
       finalNarrativeMarkdown = requireGeneratedFile(authorFiles, "narrative_report.md");
       xlsxFile = requireGeneratedFile(authorFiles, "data_tables.xlsx");
+      ({ analysis, manifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
+        analysis,
+        manifest,
+        xlsxFile,
+      }));
       fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
       const authorClaimQa = isReportOnly
         ? null
@@ -1843,6 +1899,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
           finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
           xlsxFile = findGeneratedFile(reviseFiles, "data_tables.xlsx") ?? xlsxFile;
+          if (xlsxFile) {
+            ({ analysis, manifest: finalManifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
+              analysis,
+              manifest: finalManifest,
+              xlsxFile,
+            }));
+          }
           fidelityContext = xlsxFile ? buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run) : fidelityContext;
           const reviseClaimQa = await runClaimTraceabilityQaSafely({
             client,
@@ -2123,6 +2186,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       if (!finalDocx) {
         throw new Error("Narrative markdown artifact unavailable before publish.");
       }
+      ({ analysis, manifest: finalManifest, xlsxFile: finalXlsx } = await ensureWorkbookChartCompanionArtifacts({
+        analysis,
+        manifest: finalManifest,
+        xlsxFile: finalXlsx,
+      }));
 
       if (!isReportOnly) {
         let brandedBuffer = await sanitizePptxMedia(finalPptx!.buffer);
@@ -3050,6 +3118,83 @@ async function touchAttemptProgress(
       ).catch(() => {}),
     ]),
   ]);
+}
+
+async function uploadClaudeFilesSequentially<T>(input: {
+  client: Anthropic;
+  config: ReturnType<typeof resolveConfig>;
+  runId: string;
+  attempt: AttemptContext;
+  phase: DeckPhase;
+  entries: Array<{
+    label: string;
+    fileName: string;
+    upload: () => Promise<T>;
+  }>;
+}) {
+  const uploaded: T[] = [];
+
+  for (const [index, entry] of input.entries.entries()) {
+    uploaded.push(await uploadClaudeFileWithRetry({
+      ...input,
+      ...entry,
+      index,
+      total: input.entries.length,
+    }));
+  }
+
+  return uploaded;
+}
+
+async function uploadClaudeFileWithRetry<T>(input: {
+  client: Anthropic;
+  config: ReturnType<typeof resolveConfig>;
+  runId: string;
+  attempt: AttemptContext;
+  phase: DeckPhase;
+  label: string;
+  fileName: string;
+  index: number;
+  total: number;
+  upload: () => Promise<T>;
+}) {
+  for (let retry = 0; retry <= TRANSIENT_RETRY_DELAYS_MS.length; retry += 1) {
+    await assertAttemptStillOwnsRun(input.config, input.runId, input.attempt);
+    await touchAttemptProgress(input.config, input.runId, input.attempt, input.phase).catch(() => {});
+
+    try {
+      const uploaded = await input.upload();
+      await touchAttemptProgress(input.config, input.runId, input.attempt, input.phase).catch(() => {});
+      return uploaded;
+    } catch (error) {
+      if (!isTransientProviderError(error) || retry >= TRANSIENT_RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+
+      const baseDelay = TRANSIENT_RETRY_DELAYS_MS[Math.min(retry, TRANSIENT_RETRY_DELAYS_MS.length - 1)];
+      const jitter = Math.round(Math.random() * baseDelay * 0.3);
+      const delayMs = baseDelay + jitter;
+      const message = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300);
+
+      console.warn(
+        `[generateDeckRun] transient file upload error for ${input.label}:${input.fileName} ` +
+        `(retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}) — waiting ${delayMs}ms`,
+      );
+      await insertEvent(input.config, input.runId, input.attempt, input.phase, "file_upload_retry", {
+        label: input.label,
+        fileName: input.fileName,
+        fileIndex: input.index + 1,
+        fileTotal: input.total,
+        retry: retry + 1,
+        delayMs,
+        message,
+      }).catch(() => {});
+      await touchAttemptProgress(input.config, input.runId, input.attempt, input.phase).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw new Error(`File upload failed for ${input.fileName}.`);
 }
 
 async function strengthenFinalVisualQa(input: {
@@ -6274,6 +6419,347 @@ function extractWorkbookSheetProfiles(buffer: Buffer): WorkbookSheetProfile[] {
         .slice(0, 16),
     };
   });
+}
+
+async function ensureWorkbookChartCompanionArtifacts(input: {
+  analysis: AnalysisResult | null;
+  manifest: z.infer<typeof deckManifestSchema>;
+  xlsxFile: GeneratedFile;
+}): Promise<{
+  analysis: AnalysisResult | null;
+  manifest: z.infer<typeof deckManifestSchema>;
+  xlsxFile: GeneratedFile;
+}> {
+  const workbookSheets = extractWorkbookSheetProfiles(input.xlsxFile.buffer);
+  const requests = buildWorkbookChartBindingRequests(input.manifest, input.analysis);
+  if (requests.length === 0 || workbookSheets.length === 0) {
+    return input;
+  }
+
+  const bindings = requests
+    .map((request) => bindWorkbookSheetToChart(request, workbookSheets))
+    .filter((binding): binding is WorkbookChartBinding => Boolean(binding));
+
+  const manifestCharts = input.manifest.charts.map((chart) => {
+    const binding = bindings.find((entry) => entry.request.chartId === chart.id);
+    if (!binding) {
+      return chart;
+    }
+    return {
+      ...chart,
+      excelSheetName: binding.sheet.name,
+      dataSignature: chart.dataSignature ?? binding.sheet.dataSignature,
+    };
+  });
+
+  let nextAnalysis = input.analysis;
+  if (input.analysis) {
+    nextAnalysis = analysisSchema.parse({
+      ...input.analysis,
+      slidePlan: input.analysis.slidePlan.map((slide) => {
+        if (!slide.chart) {
+          return slide;
+        }
+        const binding = bindings.find((entry) => entry.request.chartId === slide.chart?.id);
+        if (!binding) {
+          return slide;
+        }
+        return {
+          ...slide,
+          chart: {
+            ...slide.chart,
+            excelSheetName: binding.sheet.name,
+            dataSignature: slide.chart.dataSignature ?? binding.sheet.dataSignature,
+          },
+        };
+      }),
+    });
+  }
+
+  const needsNativeCharts = bindings.some((binding) =>
+    supportsNativeExcelChart(binding.request.chartType) &&
+    binding.selectedHeaders.length > 0 &&
+    !binding.request.existingAnchor,
+  );
+  let nextXlsx = input.xlsxFile;
+  let chartAnchorById = new Map<string, string>();
+  if (needsNativeCharts) {
+    const nativeResult = await injectWorkbookNativeCharts(input.xlsxFile.buffer, bindings);
+    nextXlsx = {
+      ...input.xlsxFile,
+      buffer: nativeResult.buffer,
+    };
+    chartAnchorById = nativeResult.chartAnchorById;
+  }
+
+  const nextManifest = parseDeckManifest({
+    ...input.manifest,
+    charts: manifestCharts.map((chart) => {
+      const anchor = chartAnchorById.get(chart.id) ?? chart.excelChartCellAnchor;
+      return {
+        ...chart,
+        ...(anchor ? { excelChartCellAnchor: anchor } : {}),
+      };
+    }),
+  });
+
+  if (nextAnalysis) {
+    nextAnalysis = analysisSchema.parse({
+      ...nextAnalysis,
+      slidePlan: nextAnalysis.slidePlan.map((slide) => {
+        if (!slide.chart) {
+          return slide;
+        }
+        const anchor = chartAnchorById.get(slide.chart.id);
+        if (!anchor) {
+          return slide;
+        }
+        return {
+          ...slide,
+          chart: {
+            ...slide.chart,
+            excelChartCellAnchor: anchor,
+          },
+        };
+      }),
+    });
+  }
+
+  return {
+    analysis: nextAnalysis,
+    manifest: nextManifest,
+    xlsxFile: nextXlsx,
+  };
+}
+
+function buildWorkbookChartBindingRequests(
+  manifest: z.infer<typeof deckManifestSchema>,
+  analysis: AnalysisResult | null,
+): WorkbookChartBindingRequest[] {
+  const analysisByChartId = new Map<string, AnalysisResult["slidePlan"][number]["chart"]>();
+  const analysisByPosition = new Map<number, AnalysisResult["slidePlan"][number]["chart"]>();
+  for (const slide of analysis?.slidePlan ?? []) {
+    if (slide.chart) {
+      analysisByChartId.set(slide.chart.id, slide.chart);
+      analysisByPosition.set(slide.position, slide.chart);
+    }
+  }
+
+  const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
+  return manifest.slides.flatMap((slide) => {
+    if (!slide.chartId) {
+      return [];
+    }
+    const manifestChart = chartById.get(slide.chartId);
+    if (!manifestChart) {
+      return [];
+    }
+    const analysisChart = analysisByChartId.get(slide.chartId) ?? analysisByPosition.get(slide.position);
+    return [{
+      position: slide.position,
+      chartId: manifestChart.id,
+      chartType: manifestChart.chartType,
+      title: manifestChart.title || slide.title,
+      xAxisLabel: manifestChart.xAxisLabel,
+      yAxisLabel: manifestChart.yAxisLabel,
+      categories: extractChartCategories(analysisChart),
+      existingSheetName: manifestChart.excelSheetName,
+      existingAnchor: manifestChart.excelChartCellAnchor,
+      existingDataSignature: manifestChart.dataSignature,
+    }];
+  });
+}
+
+function extractChartCategories(chart: AnalysisResult["slidePlan"][number]["chart"] | undefined) {
+  const categories = (chart && typeof chart === "object" && "categories" in chart)
+    ? (chart as { categories?: unknown }).categories
+    : [];
+  return Array.isArray(categories)
+    ? categories.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [];
+}
+
+function bindWorkbookSheetToChart(
+  request: WorkbookChartBindingRequest,
+  workbookSheets: WorkbookSheetProfile[],
+): WorkbookChartBinding | null {
+  const preferredSheet = request.existingSheetName
+    ? workbookSheets.find((sheet) => sheet.name === request.existingSheetName)
+    : null;
+  const sheet = preferredSheet ?? selectBestWorkbookSheetForChart(request, workbookSheets);
+  if (!sheet) {
+    return null;
+  }
+
+  const selectedHeaders = selectWorkbookSeriesHeaders(request, sheet);
+  return {
+    request,
+    sheet,
+    selectedHeaders,
+  };
+}
+
+function selectBestWorkbookSheetForChart(
+  request: WorkbookChartBindingRequest,
+  workbookSheets: WorkbookSheetProfile[],
+): WorkbookSheetProfile | null {
+  const requestedCategories = new Set(request.categories.map((value) => normalizeEntityName(value)).filter(Boolean));
+  const titleTokens = new Set(tokenizeWorkbookMatchText(request.title));
+  let best: { sheet: WorkbookSheetProfile; score: number } | null = null;
+
+  for (const sheet of workbookSheets) {
+    let score = 0;
+    const rowLabelHeader = sheet.headers[0];
+    const rowLabels = sheet.rows
+      .map((row) => row[rowLabelHeader])
+      .map((value) => normalizeEntityName(typeof value === "string" || typeof value === "number" ? String(value) : ""))
+      .filter(Boolean);
+    const overlapCount = [...requestedCategories].filter((value) => rowLabels.includes(value)).length;
+    if (requestedCategories.size > 0) {
+      score += overlapCount * 12;
+      if (overlapCount === requestedCategories.size) {
+        score += 10;
+      }
+    }
+    const sheetTokens = new Set([
+      ...tokenizeWorkbookMatchText(sheet.name),
+      ...sheet.headers.flatMap((header) => tokenizeWorkbookMatchText(header)),
+    ]);
+    const titleOverlap = [...titleTokens].filter((token) => sheetTokens.has(token)).length;
+    score += titleOverlap * 2;
+    if (request.existingDataSignature && request.existingDataSignature === sheet.dataSignature) {
+      score += 20;
+    }
+    if (sheet.headers.length > 1) {
+      score += 1;
+    }
+    if (!best || score > best.score) {
+      best = { sheet, score };
+    }
+  }
+
+  return best && best.score > 0 ? best.sheet : workbookSheets[0] ?? null;
+}
+
+function selectWorkbookSeriesHeaders(
+  request: WorkbookChartBindingRequest,
+  sheet: WorkbookSheetProfile,
+): string[] {
+  const numericHeaders = sheet.headers.slice(1).filter((header) =>
+    sheet.rows.some((row) => typeof row[header] === "number" && Number.isFinite(row[header] as number)),
+  );
+  if (numericHeaders.length === 0) {
+    return [];
+  }
+
+  const ranked = [...numericHeaders].sort((left, right) =>
+    scoreWorkbookSeriesHeader(request.title, right) - scoreWorkbookSeriesHeader(request.title, left),
+  );
+  const chartType = request.chartType.trim().toLowerCase();
+  if (chartType === "scatter") {
+    return ranked.slice(0, 2);
+  }
+  if (["grouped_bar", "stacked_bar", "stacked_bar_100"].includes(chartType)) {
+    return ranked.slice(0, Math.min(3, ranked.length));
+  }
+  return ranked.slice(0, 1);
+}
+
+function scoreWorkbookSeriesHeader(title: string, header: string) {
+  const titleTokens = tokenizeWorkbookMatchText(title);
+  const headerTokens = tokenizeWorkbookMatchText(header);
+  let score = 0;
+  for (const token of headerTokens) {
+    if (titleTokens.includes(token)) {
+      score += 10;
+    }
+  }
+  const normalizedHeader = normalizeEntityName(header);
+  const normalizedTitle = normalizeEntityName(title);
+  const keywordGroups: Array<{ title: string[]; header: string[]; bonus: number }> = [
+    { title: ["quota", "share"], header: ["quota", "share", "mix"], bonus: 9 },
+    { title: ["mix", "gap"], header: ["mix", "gap", "var"], bonus: 9 },
+    { title: ["crescita", "growth", "grow", "trend"], header: ["crescita", "growth", "var"], bonus: 8 },
+    { title: ["promo", "promotion"], header: ["promo"], bonus: 8 },
+    { title: ["value", "valore", "sales", "eur"], header: ["value", "valore", "eur"], bonus: 6 },
+    { title: ["volume", "vol"], header: ["volume", "vol"], bonus: 6 },
+  ];
+  for (const group of keywordGroups) {
+    if (group.title.some((token) => normalizedTitle.includes(token)) && group.header.some((token) => normalizedHeader.includes(token))) {
+      score += group.bonus;
+    }
+  }
+  if (normalizedHeader.includes("cy")) {
+    score += 3;
+  }
+  if (normalizedHeader.includes("py")) {
+    score += 2;
+  }
+  return score;
+}
+
+function tokenizeWorkbookMatchText(value: string | undefined | null) {
+  return normalizeEntityName(value ?? "")
+    .split(" ")
+    .filter((token) => token.length >= 2);
+}
+
+async function injectWorkbookNativeCharts(
+  xlsxBuffer: Buffer,
+  bindings: WorkbookChartBinding[],
+): Promise<{
+  buffer: Buffer;
+  chartAnchorById: Map<string, string>;
+}> {
+  const chartsToInject = bindings.filter((binding) =>
+    supportsNativeExcelChart(binding.request.chartType) &&
+    binding.selectedHeaders.length > 0,
+  );
+  if (chartsToInject.length === 0) {
+    return { buffer: xlsxBuffer, chartAnchorById: new Map() };
+  }
+
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "basquio-native-xlsx-"));
+  const inputPath = path.join(tempDir, "input.xlsx");
+  const outputPath = path.join(tempDir, "output.xlsx");
+  const specPath = path.join(tempDir, "spec.json");
+
+  try {
+    await writeFile(inputPath, xlsxBuffer);
+    await writeFile(specPath, JSON.stringify({
+      charts: chartsToInject.map((binding) => ({
+        chartId: binding.request.chartId,
+        chartType: binding.request.chartType,
+        title: binding.request.title,
+        xAxisLabel: binding.request.xAxisLabel,
+        yAxisLabel: binding.request.yAxisLabel,
+        sheetName: binding.sheet.name,
+        categories: binding.request.categories,
+        selectedHeaders: binding.selectedHeaders,
+      })),
+    }));
+    const { stdout } = await execFileAsync(
+      "python3",
+      [NATIVE_WORKBOOK_CHART_SCRIPT_PATH, inputPath, specPath, outputPath],
+      { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    const outputBuffer = await readFile(outputPath);
+    const parsed = JSON.parse(stdout || "{\"charts\":[]}") as {
+      charts?: Array<{ chartId?: string; created?: boolean; anchor?: string }>;
+    };
+    const chartAnchorById = new Map<string, string>();
+    for (const chart of parsed.charts ?? []) {
+      if (chart.chartId && chart.created && chart.anchor) {
+        chartAnchorById.set(chart.chartId, chart.anchor);
+      }
+    }
+    return {
+      buffer: outputBuffer,
+      chartAnchorById,
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 function normalizeWorkbookHeader(value: unknown, index: number) {

@@ -1,5 +1,22 @@
 # Decision Log
 
+## April 21, 2026 — Make workbook-native charts deterministic
+
+Decision:
+- keep PPTX charts as raster screenshots for cross-viewer stability
+- make `data_tables.xlsx` companion charts deterministic in the worker instead of relying only on model compliance
+- require chart-bearing runs to publish workbook sheet links plus native Excel chart objects for supported chart families
+
+Why:
+- a completed production run on April 15, 2026 shipped `data_tables.xlsx` with zero `xl/charts/chart*.xml` entries even though the deck had six chart slides
+- the workbook already contained the right analysis tables, so the failure was contract enforcement rather than missing data
+- editable companion charts belong in Excel, where they do not threaten PPTX fidelity across PowerPoint, Keynote, and Google Slides
+
+Implication:
+- the worker must bind chart-bearing slides to workbook sheets deterministically from slide metadata plus workbook content
+- after author and revise, the worker should inject native Excel charts into `data_tables.xlsx` for supported families before final QA and publish
+- workbook-native chart checks become publish blockers for chart-bearing runs so this gap cannot regress silently
+
 ## April 11, 2026 — Normalize document-led evidence before authoring
 
 Decision:
