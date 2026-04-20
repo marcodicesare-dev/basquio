@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getWorkspaceDeliverable } from "@/lib/workspace/db";
 import { WorkspaceDeliverableView } from "@/components/workspace-deliverable-view";
+import { WorkspaceProvenance } from "@/components/workspace-provenance";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,14 @@ export default async function WorkspaceDeliverablePage({
       }>)
     : [];
 
+  const metadata = (deliverable.metadata ?? {}) as Record<string, unknown>;
+  const provenanceStats = {
+    chunk_count: asNumber(metadata.chunk_count),
+    fact_count: asNumber(metadata.fact_count),
+    entity_count: asNumber(metadata.entity_count),
+    memory_count: asNumber(metadata.memory_count),
+  };
+
   return (
     <div className="wbeta-deliverable-page">
       <header className="wbeta-deliverable-page-head">
@@ -53,6 +62,10 @@ export default async function WorkspaceDeliverablePage({
         ) : null}
       </header>
 
+      {deliverable.status === "ready" ? (
+        <WorkspaceProvenance citations={citations} stats={provenanceStats} />
+      ) : null}
+
       <WorkspaceDeliverableView
         deliverableId={deliverable.id}
         bodyMarkdown={deliverable.body_markdown ?? ""}
@@ -66,4 +79,8 @@ export default async function WorkspaceDeliverablePage({
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

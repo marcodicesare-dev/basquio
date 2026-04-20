@@ -14629,3 +14629,209 @@ textarea {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ── Provenance panel ───────────────────────────────────────────── */
+
+.wbeta-prov {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 13px;
+}
+
+.wbeta-prov-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 13px;
+  background: var(--canvas-stage);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.wbeta-prov-toggle:hover {
+  background: var(--surface-strong);
+  border-color: var(--border-strong);
+}
+
+.wbeta-prov-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.wbeta-prov-toggle-label {
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+}
+
+.wbeta-prov-toggle-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.wbeta-prov-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+  padding: 21px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.wbeta-prov-panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-prov-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-prov-panel-hint {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 64ch;
+}
+
+.wbeta-prov-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+}
+
+.wbeta-prov-group:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.wbeta-prov-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wbeta-prov-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+  flex: 1;
+}
+
+.wbeta-prov-group-count {
+  display: inline-flex;
+  align-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(26, 106, 255, 0.12);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 700;
+  justify-content: center;
+}
+
+.wbeta-prov-group-hint {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.wbeta-prov-citation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wbeta-prov-citation {
+  padding: 10px 13px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scroll-margin-top: 89px;
+}
+
+.wbeta-prov-citation-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wbeta-prov-citation-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-prov-citation-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(11, 12, 12, 0.06);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wbeta-prov-citation-source {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wbeta-prov-citation-excerpt {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+  font-style: italic;
+}
