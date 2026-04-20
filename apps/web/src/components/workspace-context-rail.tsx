@@ -50,7 +50,7 @@ export function WorkspaceContextRail({ entityGroups, recentAnswers }: WorkspaceC
             <span className="wbeta-rail-section-meta">{recentAnswers.length}</span>
           </header>
           <ul className="wbeta-rail-list">
-            {recentAnswers.slice(0, 6).map((a) => (
+            {recentAnswers.slice(0, 4).map((a) => (
               <li key={a.id}>
                 <Link href={`/workspace/deliverable/${a.id}`} className="wbeta-rail-item">
                   <span className="wbeta-rail-item-title">{a.title}</span>
@@ -80,8 +80,8 @@ export function WorkspaceContextRail({ entityGroups, recentAnswers }: WorkspaceC
 }
 
 function RailEntityGroup({ group }: { group: EntityGroup }) {
-  const [open, setOpen] = useState(group.count <= 4);
-  const displayRows = open ? group.rows : group.rows.slice(0, 3);
+  const [open, setOpen] = useState(false);
+  const displayRows = open ? group.rows : group.rows.slice(0, 2);
 
   return (
     <div className="wbeta-rail-group">

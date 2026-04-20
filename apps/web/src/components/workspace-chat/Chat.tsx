@@ -92,9 +92,7 @@ export function WorkspaceChat({
     regenerate();
   }, [regenerate]);
 
-  const placeholder = scopeName
-    ? `Ask about ${scopeName}.`
-    : "Ask a question or describe a deliverable.";
+  const placeholder = scopeName ? `Ask about ${scopeName}` : "Message Basquio";
 
   return (
     <section className="wbeta-ai-chat">
@@ -114,12 +112,12 @@ export function WorkspaceChat({
             </p>
           ) : null}
           <h2 className="wbeta-ai-chat-empty-title">
-            {scopeName ? `Ask about ${scopeName}.` : "Your analyst memory, always there."}
+            {scopeName ? `Ask about ${scopeName}` : "Your analyst memory, always there."}
           </h2>
           <p className="wbeta-ai-chat-empty-body">
             {scopeName
-              ? `Basquio pulls from ${scopeName} memory, uploads, and prior answers in this scope. Every claim cites its source.`
-              : "Basquio knows your clients, stakeholders, and style. Ask a question, get the answer your client expects. Every answer cites where it came from."}
+              ? `Pulls from ${scopeName} memory, uploads, and prior answers. Every claim cited.`
+              : "Basquio knows your clients, stakeholders, and style. Every answer cites where it came from."}
           </p>
         </div>
       ) : (
@@ -166,9 +164,7 @@ export function WorkspaceChat({
         />
         <div className="wbeta-ai-chat-row">
           <p className="wbeta-ai-chat-hint" aria-live="polite">
-            {isStreaming
-              ? "Generating. Cmd+Stop or click the stop button to abort."
-              : "Cmd+Enter to send. Cmd+/ for shortcuts. Answers cite sources from your workspace."}
+            {isStreaming ? "Generating" : <kbd className="wbeta-kbd">⌘ ↵</kbd>}
           </p>
           {isStreaming ? (
             <button

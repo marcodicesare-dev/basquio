@@ -86,16 +86,6 @@ export function WorkspaceSidebar({
               <span className="wbeta-sidebar-head-label">{SCOPE_KIND_LABELS[kind]}</span>
             </header>
 
-            {scopes.length === 0 && !isOpen ? (
-              <p className="wbeta-sidebar-empty">
-                {kind === "client"
-                  ? "Add the clients you cover."
-                  : kind === "category"
-                    ? "Add the categories you track."
-                    : "Add your work surfaces."}
-              </p>
-            ) : null}
-
             {scopes.length > 0 ? (
               <ul className="wbeta-sidebar-list">
                 {scopes.map((scope) => {

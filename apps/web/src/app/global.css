@@ -10976,7 +10976,25 @@ body:has(.wbeta-shell) .site-wrap {
   font-size: 11px;
   color: var(--text-muted);
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wbeta-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  letter-spacing: 0.04em;
 }
 
 .wbeta-ai-chat-send,
@@ -14947,7 +14965,7 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-workspace-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 21px;
   height: calc(100dvh - 42px);
   min-height: 520px;
@@ -14955,14 +14973,19 @@ body:has(.wbeta-shell) .site-wrap {
   align-items: stretch;
 }
 
+.wbeta-workspace-layout:has(.wbeta-rail) {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
 @media (max-width: 1280px) {
-  .wbeta-workspace-layout {
+  .wbeta-workspace-layout:has(.wbeta-rail) {
     grid-template-columns: minmax(0, 1fr) 260px;
   }
 }
 
 @media (max-width: 1080px) {
-  .wbeta-workspace-layout {
+  .wbeta-workspace-layout,
+  .wbeta-workspace-layout:has(.wbeta-rail) {
     grid-template-columns: 1fr;
     height: auto;
     min-height: calc(100dvh - 42px);
@@ -15004,10 +15027,10 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0 auto;
   border: none;
   border-radius: 0;
-  padding: 0 34px 21px;
+  padding: 0 21px 21px;
   background: transparent;
-  gap: 13px;
-  max-width: 760px;
+  gap: 8px;
+  max-width: 640px;
   width: 100%;
   align-items: flex-start;
 }
@@ -15028,7 +15051,7 @@ body:has(.wbeta-shell) .site-wrap {
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: 34px 34px 21px;
+  padding: 21px 21px 13px;
   overflow-y: auto;
   gap: 21px;
   scroll-behavior: smooth;
@@ -15036,13 +15059,13 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-chat-pane .wbeta-ai-chat-form {
   position: static;
-  width: calc(100% - 42px);
-  max-width: 760px;
-  margin: 0 auto 21px;
+  width: calc(100% - 34px);
+  max-width: 720px;
+  margin: 0 auto 17px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: 0 1px 2px rgba(11, 12, 12, 0.04);
-  padding: 13px;
+  padding: 10px 13px;
   background: var(--surface-strong);
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
