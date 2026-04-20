@@ -56,7 +56,7 @@ export function WorkspaceSidebar({
   const kinds: Array<Exclude<ScopeKind, "system">> = ["client", "category", "function"];
 
   return (
-    <aside className="wbeta-sidebar" aria-label="Workspace navigation">
+    <div className="wbeta-sidebar-nav-root" aria-label="Workspace navigation">
       <nav className="wbeta-sidebar-nav">
         <Link
           href="/workspace"
@@ -173,7 +173,7 @@ export function WorkspaceSidebar({
           <span className="wbeta-nav-label">Memory</span>
         </Link>
       </nav>
-    </aside>
+    </div>
   );
 }
 
