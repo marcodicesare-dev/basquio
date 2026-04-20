@@ -7697,7 +7697,6 @@ function supportsNativeExcelChart(chartType: string | undefined) {
     "stacked_bar_100",
     "line",
     "area",
-    "scatter",
     "pie",
     "doughnut",
   ].includes(normalized);
