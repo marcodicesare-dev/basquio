@@ -82,11 +82,6 @@ export async function POST(request: Request) {
     tools,
     messages: await convertToModelMessages(uiMessages),
     stopWhen: stepCountIs(10),
-    providerOptions: {
-      anthropic: {
-        thinking: { type: "enabled", budgetTokens: 4000 },
-      },
-    },
   });
 
   return result.toUIMessageStreamResponse({
