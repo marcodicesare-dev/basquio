@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 
-import { WorkspaceBreadcrumb } from "@/components/workspace-breadcrumb";
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { SCOPE_KIND_LABELS, type ScopeKind } from "@/lib/workspace/constants";
 import { getScopeByKindSlug } from "@/lib/workspace/scopes";
@@ -46,11 +44,7 @@ async function listScopeDeliverables(workspaceId: string, scopeId: string) {
   return data ?? [];
 }
 
-async function listScopeStakeholders(workspaceId: string, scopeSlug: string, scopeKind: RouteKind) {
-  // Stakeholders linked to this scope via entities.metadata.linked_scope_id or via
-  // a textual match in metadata.company (for client scopes). V2 task 4 lands a cleaner
-  // entity->scope link; for now we bound the query to entities whose metadata.role
-  // or metadata.company references the scope name.
+async function listScopeStakeholders(workspaceId: string, scopeName: string) {
   const db = getDb();
   const { data } = await db
     .from("entities")
@@ -63,14 +57,30 @@ async function listScopeStakeholders(workspaceId: string, scopeSlug: string, sco
     canonical_name: string;
     metadata: Record<string, unknown>;
   }>;
-  if (scopeKind !== "client") return list.slice(0, 6);
-  const needle = scopeSlug.replace(/-/g, " ");
+  const needle = scopeName.toLowerCase();
   return list
     .filter((entity) => {
       const role = String(entity.metadata?.role ?? "").toLowerCase();
-      return role.includes(needle);
+      const company = String(entity.metadata?.company ?? "").toLowerCase();
+      return company.includes(needle) || role.includes(needle);
     })
-    .slice(0, 6);
+    .slice(0, 8)
+    .map((entity) => ({
+      id: entity.id,
+      canonical_name: entity.canonical_name,
+      role: extractRoleOnly(entity.metadata, scopeName),
+    }));
+}
+
+function extractRoleOnly(metadata: Record<string, unknown>, scopeName: string): string | null {
+  const role = metadata?.role as string | undefined;
+  if (!role) return null;
+  if (role.includes(",")) {
+    const parts = role.split(",").map((s) => s.trim());
+    const rest = parts.filter((p) => p.toLowerCase() !== scopeName.toLowerCase());
+    if (rest.length > 0) return rest.join(", ");
+  }
+  return role;
 }
 
 export async function generateMetadata({
@@ -99,132 +109,128 @@ export default async function WorkspaceScopePage({
   const [memory, deliverables, stakeholders] = await Promise.all([
     listScopeMemory(workspace.id, scope.id),
     listScopeDeliverables(workspace.id, scope.id),
-    listScopeStakeholders(workspace.id, scope.slug, scope.kind as RouteKind),
+    listScopeStakeholders(workspace.id, scope.name),
   ]);
 
-  const totalMemory = memory.length;
-  const totalDeliverables = deliverables.length;
-  const totalStakeholders = stakeholders.length;
-
   return (
-    <div className="wbeta-scope-page">
-      <WorkspaceBreadcrumb
-        items={[
-          { href: "/workspace", label: "Home" },
-          { label: SCOPE_KIND_LABELS[scope.kind as RouteKind] },
-          { label: scope.name },
-        ]}
-      />
+    <div className="wbeta-workspace-layout">
+      <section className="wbeta-chat-pane" aria-label={`Conversation scoped to ${scope.name}`}>
+        <WorkspaceChat scopeId={scope.id} scopeName={scope.name} scopeKind={scope.kind} />
+      </section>
 
-      <header className="wbeta-scope-head">
-        <p className="wbeta-scope-eyebrow">{SCOPE_KIND_LABELS[scope.kind as RouteKind]}</p>
-        <h1 className="wbeta-scope-title">{scope.name}</h1>
-        <p className="wbeta-scope-summary">
-          Working inside <strong>{scope.name}</strong>. Every question you ask on this page pulls
-          context from this scope before anywhere else.
-        </p>
-      </header>
+      <aside className="wbeta-rail" aria-label={`Context for ${scope.name}`}>
+        <header className="wbeta-rail-head">
+          <div>
+            <p className="wbeta-rail-kicker">{SCOPE_KIND_LABELS[scope.kind as RouteKind]}</p>
+            <h2 className="wbeta-rail-title">{scope.name}</h2>
+          </div>
+        </header>
 
-      <WorkspaceChat
-        scopeId={scope.id}
-        scopeName={scope.name}
-        scopeKind={scope.kind}
-      />
+        <ul className="wbeta-rail-stats">
+          <li>
+            <span className="wbeta-rail-stat-num">{memory.length}</span>
+            <span className="wbeta-rail-stat-label">Memory</span>
+          </li>
+          <li>
+            <span className="wbeta-rail-stat-num">{stakeholders.length}</span>
+            <span className="wbeta-rail-stat-label">People</span>
+          </li>
+          <li>
+            <span className="wbeta-rail-stat-num">{deliverables.length}</span>
+            <span className="wbeta-rail-stat-label">Answers</span>
+          </li>
+        </ul>
 
-      <section className="wbeta-scope-panels">
-        <article className="wbeta-scope-panel">
-          <header className="wbeta-scope-panel-head">
-            <h2 className="wbeta-scope-panel-title">Memory</h2>
-            <p className="wbeta-scope-panel-meta">
-              {totalMemory > 0 ? `${totalMemory} entries` : "No memory yet"}
-            </p>
+        <section className="wbeta-rail-section">
+          <header className="wbeta-rail-section-head">
+            <h3 className="wbeta-rail-section-title">Memory</h3>
+            <span className="wbeta-rail-section-meta">
+              {memory.length > 0 ? `${memory.length} entries` : "None yet"}
+            </span>
           </header>
           {memory.length === 0 ? (
-            <p className="wbeta-scope-panel-empty">
-              Teach Basquio a rule or preference for this scope. It will be applied every time you
-              ask a question here.
+            <p className="wbeta-rail-empty">
+              Teach Basquio a rule for {scope.name}. It applies to every question here.
             </p>
           ) : (
-            <ul className="wbeta-scope-panel-list">
+            <ul className="wbeta-rail-list">
               {memory.slice(0, 5).map((entry) => (
                 <li key={entry.id}>
-                  <Link
-                    href={`/workspace/memory?entry=${entry.id}`}
-                    className="wbeta-scope-panel-row"
-                  >
-                    <span className="wbeta-scope-panel-row-kind">{entry.memory_type}</span>
-                    <span className="wbeta-scope-panel-row-body" title={entry.content as string}>
-                      {shorten(entry.content as string, 80)}
-                    </span>
+                  <Link href="/workspace/memory" className="wbeta-rail-item">
+                    <span className="wbeta-rail-item-title">{shorten(entry.content as string, 90)}</span>
+                    <span className="wbeta-rail-item-meta">{entry.memory_type}</span>
                   </Link>
                 </li>
               ))}
               {memory.length > 5 ? (
                 <li>
-                  <Link href="/workspace/memory" className="wbeta-scope-panel-more">
-                    View all <ArrowUpRight size={12} weight="bold" />
+                  <Link href="/workspace/memory" className="wbeta-rail-more">
+                    View all in memory
                   </Link>
                 </li>
               ) : null}
             </ul>
           )}
-        </article>
+        </section>
 
-        <article className="wbeta-scope-panel">
-          <header className="wbeta-scope-panel-head">
-            <h2 className="wbeta-scope-panel-title">Stakeholders</h2>
-            <p className="wbeta-scope-panel-meta">
-              {totalStakeholders > 0 ? `${totalStakeholders} linked` : "None linked yet"}
-            </p>
+        <section className="wbeta-rail-section">
+          <header className="wbeta-rail-section-head">
+            <h3 className="wbeta-rail-section-title">Stakeholders</h3>
+            <span className="wbeta-rail-section-meta">
+              {stakeholders.length > 0 ? `${stakeholders.length} linked` : "None linked"}
+            </span>
           </header>
           {stakeholders.length === 0 ? (
-            <p className="wbeta-scope-panel-empty">
-              Stakeholders appear here as Basquio extracts them from your uploads, or when you add
-              them directly from the People page.
+            <p className="wbeta-rail-empty">
+              Stakeholders appear here when Basquio extracts them from {scope.name} uploads.
             </p>
           ) : (
-            <ul className="wbeta-scope-panel-list">
+            <ul className="wbeta-rail-list">
               {stakeholders.map((person) => (
                 <li key={person.id}>
-                  <Link href={`/workspace/people/${person.id}`} className="wbeta-scope-panel-row">
-                    <span className="wbeta-scope-panel-row-name">{person.canonical_name}</span>
-                    {person.metadata?.role ? (
-                      <span className="wbeta-scope-panel-row-meta">{String(person.metadata.role)}</span>
+                  <Link href={`/workspace/people/${person.id}`} className="wbeta-rail-item">
+                    <span className="wbeta-rail-item-title">{person.canonical_name}</span>
+                    {person.role ? (
+                      <span className="wbeta-rail-item-meta">{person.role}</span>
                     ) : null}
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-        </article>
+        </section>
 
-        <article className="wbeta-scope-panel">
-          <header className="wbeta-scope-panel-head">
-            <h2 className="wbeta-scope-panel-title">Recent answers</h2>
-            <p className="wbeta-scope-panel-meta">
-              {totalDeliverables > 0 ? `${totalDeliverables} in this scope` : "Ask a question to begin"}
-            </p>
+        <section className="wbeta-rail-section">
+          <header className="wbeta-rail-section-head">
+            <h3 className="wbeta-rail-section-title">Recent answers</h3>
+            <span className="wbeta-rail-section-meta">
+              {deliverables.length > 0 ? `${deliverables.length}` : "—"}
+            </span>
           </header>
           {deliverables.length === 0 ? (
-            <p className="wbeta-scope-panel-empty">
-              Answers generated from this scope collect here with every cited source.
+            <p className="wbeta-rail-empty">
+              Answers scoped to {scope.name} collect here with cited sources.
             </p>
           ) : (
-            <ul className="wbeta-scope-panel-list">
+            <ul className="wbeta-rail-list">
               {deliverables.map((d) => (
                 <li key={d.id}>
-                  <Link href={`/workspace/deliverable/${d.id}`} className="wbeta-scope-panel-row">
-                    <span className="wbeta-scope-panel-row-body">{d.title}</span>
-                    <span className="wbeta-scope-panel-row-meta">
-                      {d.status === "ready" ? "Ready" : d.status === "generating" ? "Generating" : "Needs attention"}
+                  <Link href={`/workspace/deliverable/${d.id}`} className="wbeta-rail-item">
+                    <span className="wbeta-rail-item-title">{d.title}</span>
+                    <span className="wbeta-rail-item-meta">
+                      {d.status === "ready"
+                        ? "ready"
+                        : d.status === "generating"
+                          ? "generating"
+                          : "needs attention"}
                     </span>
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-        </article>
-      </section>
+        </section>
+      </aside>
     </div>
   );
 }

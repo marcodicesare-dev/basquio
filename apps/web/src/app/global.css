@@ -14834,11 +14834,24 @@ textarea {
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-empty {
-  margin: 0;
+  margin: 0 0 auto;
   border: none;
   border-radius: 0;
-  padding: 55px 34px 34px;
+  padding: 34px 34px 13px;
   background: transparent;
+  gap: 10px;
+  max-width: 720px;
+}
+
+.wbeta-chat-pane .wbeta-ai-chat-empty-title {
+  font-size: 28px;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.wbeta-chat-pane .wbeta-ai-chat-empty-body {
+  font-size: 14px;
+  color: var(--text-soft);
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-stream {
@@ -15128,4 +15141,28 @@ textarea {
   color: var(--text-muted);
   font-size: 10px;
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-rail-empty {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 4px 2px;
+  max-width: 32ch;
+}
+
+.wbeta-rail-more {
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue);
+  padding: 4px 10px;
+  text-decoration: none;
+}
+
+.wbeta-rail-more:hover,
+.wbeta-rail-more:focus-visible {
+  color: #1257d8;
+  outline: none;
 }

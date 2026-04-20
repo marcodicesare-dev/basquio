@@ -100,17 +100,26 @@ export function WorkspaceChat({
     <section className="wbeta-ai-chat">
       {messages.length === 0 ? (
         <div className="wbeta-ai-chat-empty">
-          <p className="wbeta-ai-chat-empty-kicker">
-            {scopeName
-              ? `Working inside ${scopeKind === "client" ? "Client" : scopeKind === "category" ? "Category" : scopeKind === "function" ? "Function" : "Workspace"}: ${scopeName}`
-              : "Workspace level"}
-          </p>
+          {scopeName ? (
+            <p className="wbeta-ai-chat-empty-kicker">
+              {scopeKind === "client"
+                ? "Client"
+                : scopeKind === "category"
+                  ? "Category"
+                  : scopeKind === "function"
+                    ? "Function"
+                    : "Scope"}
+              {" · "}
+              {scopeName}
+            </p>
+          ) : null}
           <h2 className="wbeta-ai-chat-empty-title">
-            {scopeName ? `Ask about ${scopeName}.` : "Ask anything about your work."}
+            {scopeName ? `Ask about ${scopeName}.` : "Your analyst memory, always there."}
           </h2>
           <p className="wbeta-ai-chat-empty-body">
-            Basquio pulls from your memory, your uploads, and your team&apos;s past answers. Every
-            claim cites where it came from.
+            {scopeName
+              ? `Basquio pulls from ${scopeName} memory, uploads, and prior answers in this scope. Every claim cites its source.`
+              : "Basquio knows your clients, stakeholders, and style. Ask a question, get the answer your client expects. Every answer cites where it came from."}
           </p>
         </div>
       ) : (

@@ -2,7 +2,33 @@ import Link from "next/link";
 
 import { WorkspaceBreadcrumb } from "@/components/workspace-breadcrumb";
 import { listWorkspacePeople } from "@/lib/workspace/people";
+import type { PersonRow } from "@/lib/workspace/people-types";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
+
+function resolveCompany(person: PersonRow): string | null {
+  const company = person.metadata.company as string | undefined;
+  if (company && company.trim().length > 0) return company.trim();
+  const role = person.metadata.role as string | undefined;
+  if (role && role.includes(",")) {
+    const parts = role.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+    if (parts.length >= 2) return parts[parts.length - 1];
+  }
+  return null;
+}
+
+function resolveRoleOnly(person: PersonRow): string | null {
+  const role = person.metadata.role as string | undefined;
+  if (!role) return null;
+  const company = person.metadata.company as string | undefined;
+  if (company && role.endsWith(company)) {
+    return role.slice(0, role.length - company.length).replace(/,\s*$/, "").trim() || null;
+  }
+  if (role.includes(",")) {
+    const parts = role.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+    if (parts.length >= 2) return parts.slice(0, -1).join(", ");
+  }
+  return role;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +42,15 @@ export default async function WorkspacePeoplePage() {
 
   const grouped = new Map<string, typeof people>();
   for (const person of people) {
-    const key = (person.metadata.company as string | undefined) ?? "Unlinked";
+    const key = resolveCompany(person) ?? "Unlinked";
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(person);
   }
-  const groupedEntries = Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  const groupedEntries = Array.from(grouped.entries()).sort((a, b) => {
+    if (a[0] === "Unlinked") return 1;
+    if (b[0] === "Unlinked") return -1;
+    return a[0].localeCompare(b[0]);
+  });
 
   return (
     <div className="wbeta-people-page">
@@ -57,15 +87,15 @@ export default async function WorkspacePeoplePage() {
               </header>
               <ul className="wbeta-people-list">
                 {members.map((person) => {
-                  const role = person.metadata.role as string | undefined;
+                  const roleOnly = resolveRoleOnly(person);
                   const prefs = person.metadata.preferences?.structured;
                   const prefCount = prefs ? Object.keys(prefs).filter((k) => prefs[k]).length : 0;
                   return (
                     <li key={person.id}>
                       <Link href={`/workspace/people/${person.id}`} className="wbeta-people-card">
                         <span className="wbeta-people-card-name">{person.canonical_name}</span>
-                        {role ? (
-                          <span className="wbeta-people-card-role">{role}</span>
+                        {roleOnly ? (
+                          <span className="wbeta-people-card-role">{roleOnly}</span>
                         ) : null}
                         {prefCount > 0 ? (
                           <span className="wbeta-people-card-pref">
