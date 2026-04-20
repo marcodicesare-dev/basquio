@@ -87,6 +87,181 @@ export async function markWorkspaceOnboarded(
   return data as WorkspaceRow;
 }
 
+export type CreateWorkspaceInput = {
+  organizationId: string;
+  name: string;
+  slug: string;
+  kind: WorkspaceRow["kind"];
+  templateId?: string | null;
+  visibility?: WorkspaceRow["visibility"];
+  shareToken?: string | null;
+  metadata?: Record<string, unknown>;
+  createdBy?: string | null;
+};
+
+export async function createWorkspace(input: CreateWorkspaceInput): Promise<WorkspaceRow> {
+  const db = getDb();
+  const { data, error } = await db
+    .from("workspaces")
+    .insert({
+      organization_id: input.organizationId,
+      name: input.name,
+      slug: input.slug,
+      kind: input.kind,
+      template_id: input.templateId ?? null,
+      visibility: input.visibility ?? "private",
+      share_token: input.shareToken ?? null,
+      metadata: input.metadata ?? {},
+      created_by: input.createdBy ?? null,
+    })
+    .select(
+      "id, organization_id, name, slug, kind, template_id, visibility, share_token, metadata, created_by, created_at, updated_at",
+    )
+    .single();
+  if (error) throw new Error(`createWorkspace failed: ${error.message}`);
+  return data as WorkspaceRow;
+}
+
+/**
+ * Deep-clones a template workspace into a fresh workspace for the given
+ * organization. Copies:
+ *   - workspace_scopes (maps old → new scope ids)
+ *   - entities (type, canonical_name, aliases, metadata)
+ *   - memory_entries (non-archived, with remapped workspace_scope_id)
+ *
+ * Does NOT copy deliverables, documents, or facts — those are conversation
+ * artifacts that belong to the user who generates them, not to the template.
+ *
+ * Returns the new workspace row.
+ */
+export async function cloneWorkspace(input: {
+  templateId: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  visibility?: WorkspaceRow["visibility"];
+  createdBy?: string | null;
+}): Promise<WorkspaceRow> {
+  const db = getDb();
+  const template = await getWorkspace(input.templateId);
+  if (!template) throw new Error("Template workspace not found.");
+  if (template.kind !== "demo_template") {
+    throw new Error("Only demo_template workspaces can be cloned.");
+  }
+
+  const newWorkspace = await createWorkspace({
+    organizationId: input.organizationId,
+    name: input.name,
+    slug: input.slug,
+    kind: "customer",
+    templateId: template.id,
+    visibility: input.visibility ?? "private",
+    metadata: {
+      ...template.metadata,
+      cloned_from: template.id,
+      cloned_at: new Date().toISOString(),
+    },
+    createdBy: input.createdBy ?? null,
+  });
+
+  const { data: scopes } = await db
+    .from("workspace_scopes")
+    .select("id, kind, name, slug, parent_scope_id, metadata")
+    .eq("workspace_id", template.id);
+
+  const scopeIdMap = new Map<string, string>();
+  for (const s of ((scopes ?? []) as Array<{
+    id: string;
+    kind: string;
+    name: string;
+    slug: string;
+    parent_scope_id: string | null;
+    metadata: Record<string, unknown>;
+  }>)) {
+    const { data: inserted, error: scopeErr } = await db
+      .from("workspace_scopes")
+      .insert({
+        workspace_id: newWorkspace.id,
+        kind: s.kind,
+        name: s.name,
+        slug: s.slug,
+        parent_scope_id: null,
+        metadata: { ...s.metadata, cloned_from: s.id },
+      })
+      .select("id")
+      .single();
+    if (!scopeErr && inserted) scopeIdMap.set(s.id, inserted.id as string);
+  }
+
+  // Patch parent_scope_id in a second pass once all new ids exist.
+  for (const s of ((scopes ?? []) as Array<{ id: string; parent_scope_id: string | null }>)) {
+    if (s.parent_scope_id && scopeIdMap.has(s.id) && scopeIdMap.has(s.parent_scope_id)) {
+      await db
+        .from("workspace_scopes")
+        .update({ parent_scope_id: scopeIdMap.get(s.parent_scope_id)! })
+        .eq("id", scopeIdMap.get(s.id)!);
+    }
+  }
+
+  // Clone entities (type + canonical_name + aliases + metadata)
+  const { data: entities } = await db
+    .from("entities")
+    .select("type, canonical_name, normalized_name, aliases, metadata")
+    .eq("workspace_id", template.id);
+  const entityBatch = ((entities ?? []) as Array<{
+    type: string;
+    canonical_name: string;
+    normalized_name: string;
+    aliases: string[];
+    metadata: Record<string, unknown>;
+  }>).map((e) => ({
+    workspace_id: newWorkspace.id,
+    organization_id: newWorkspace.id,
+    is_team_beta: false,
+    type: e.type,
+    canonical_name: e.canonical_name,
+    normalized_name: e.normalized_name,
+    aliases: e.aliases ?? [],
+    metadata: { ...e.metadata, cloned_from_workspace: template.id },
+  }));
+  if (entityBatch.length > 0) {
+    const { error: entErr } = await db.from("entities").insert(entityBatch);
+    if (entErr) console.error("[cloneWorkspace] entity insert partial fail", entErr.message);
+  }
+
+  // Clone memory entries (non-archived)
+  const { data: memories } = await db
+    .from("memory_entries")
+    .select("workspace_scope_id, scope, memory_type, path, content, metadata")
+    .eq("workspace_id", template.id);
+  const memoryBatch = ((memories ?? []) as Array<{
+    workspace_scope_id: string | null;
+    scope: string;
+    memory_type: string;
+    path: string;
+    content: string;
+    metadata: Record<string, unknown>;
+  }>)
+    .filter((m) => !m.metadata?.archived_at)
+    .map((m) => ({
+      workspace_id: newWorkspace.id,
+      organization_id: newWorkspace.id,
+      is_team_beta: false,
+      workspace_scope_id: m.workspace_scope_id ? scopeIdMap.get(m.workspace_scope_id) ?? null : null,
+      scope: m.scope,
+      memory_type: m.memory_type,
+      path: m.path,
+      content: m.content,
+      metadata: { ...m.metadata, cloned_from_workspace: template.id },
+    }));
+  if (memoryBatch.length > 0) {
+    const { error: memErr } = await db.from("memory_entries").insert(memoryBatch);
+    if (memErr) console.error("[cloneWorkspace] memory insert partial fail", memErr.message);
+  }
+
+  return newWorkspace;
+}
+
 export async function listWorkspaces(): Promise<WorkspaceRow[]> {
   const db = getDb();
   const { data, error } = await db
