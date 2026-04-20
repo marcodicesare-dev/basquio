@@ -14835,3 +14835,14 @@ textarea {
   margin: 0;
   font-style: italic;
 }
+
+.wbeta-deliverable-deck-btn {
+  background: var(--blue);
+  color: #ffffff;
+  border: none;
+  text-decoration: none;
+}
+
+.wbeta-deliverable-deck-btn:hover {
+  background: #1257d8;
+}

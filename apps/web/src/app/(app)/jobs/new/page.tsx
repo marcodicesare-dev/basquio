@@ -318,6 +318,61 @@ async function getTemplateFeeDraftPrefill(draftId: string, userId: string): Prom
   };
 }
 
+async function getWorkspaceDeliverablePrefill(
+  deliverableId: string,
+  userId: string,
+): Promise<RecipePrefill | null> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return null;
+
+  try {
+    const rows = await fetchRestRows<{
+      id: string;
+      title: string;
+      body_markdown: string | null;
+      prompt: string;
+      scope: string | null;
+      status: string;
+    }>({
+      supabaseUrl,
+      serviceKey,
+      table: "workspace_deliverables",
+      query: {
+        select: "id,title,body_markdown,prompt,scope,status",
+        id: `eq.${deliverableId}`,
+        limit: "1",
+      },
+    });
+    const deliverable = rows[0];
+    if (!deliverable || !deliverable.body_markdown) return null;
+    if (deliverable.status !== "ready") return null;
+
+    // Sentinel to keep us from duplicating intent accidentally later.
+    void userId;
+
+    return {
+      id: `deliverable-${deliverable.id}`,
+      recipeId: null,
+      name: `From workspace: ${deliverable.title}`,
+      brief: {
+        businessContext: deliverable.body_markdown,
+        client: deliverable.scope ?? "",
+        audience: "Executive stakeholder",
+        objective: deliverable.prompt.slice(0, 400),
+        thesis: "",
+        stakes: "",
+      },
+      templateProfileId: null,
+      targetSlideCount: 10,
+      authorModel: "claude-sonnet-4-6",
+      sourceFiles: [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default async function NewJobPage({
   searchParams,
 }: {
@@ -366,7 +421,15 @@ export default async function NewJobPage({
     ? await getTemplateFeeDraftPrefill(templateFeeDraftId, viewer.user.id)
     : null;
 
-  const activePrefill = recipePrefill ?? fromRunPrefill ?? templateFeeDraftPrefill ?? undefined;
+  // Load workspace deliverable prefill if ?deliverable= is present
+  const deliverableId = typeof params.deliverable === "string" ? params.deliverable : undefined;
+  const deliverablePrefill =
+    deliverableId && viewer.user?.id && !recipePrefill && !fromRunPrefill && !templateFeeDraftPrefill
+      ? await getWorkspaceDeliverablePrefill(deliverableId, viewer.user.id)
+      : null;
+
+  const activePrefill =
+    recipePrefill ?? fromRunPrefill ?? templateFeeDraftPrefill ?? deliverablePrefill ?? undefined;
   const pageTitle = recipePrefill
     ? `Rerun: ${recipePrefill.name}`
     : fromRunPrefill

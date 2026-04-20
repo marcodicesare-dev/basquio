@@ -168,6 +168,12 @@ export function WorkspaceDeliverableView({
       {!editing ? (
         <div className="wbeta-deliverable-actions">
           {savedAt ? <span className="wbeta-deliverable-saved">Saved.</span> : null}
+          <a
+            href={`/jobs/new?deliverable=${deliverableId}`}
+            className="wbeta-deliverable-edit-btn wbeta-deliverable-deck-btn"
+          >
+            Generate deck
+          </a>
           <button
             type="button"
             className="wbeta-deliverable-edit-btn"
