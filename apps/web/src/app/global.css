@@ -14831,16 +14831,19 @@ textarea {
   gap: 0;
   padding: 0;
   min-height: 0;
+  justify-content: center;
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-empty {
-  margin: 0 0 auto;
+  margin: 0 auto;
   border: none;
   border-radius: 0;
-  padding: 34px 34px 13px;
+  padding: 0 34px 21px;
   background: transparent;
-  gap: 10px;
-  max-width: 720px;
+  gap: 13px;
+  max-width: 760px;
+  width: 100%;
+  align-items: flex-start;
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-empty-title {
@@ -14856,6 +14859,9 @@ textarea {
 
 .wbeta-chat-pane .wbeta-ai-chat-stream {
   flex: 1;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
   padding: 34px 34px 21px;
   overflow-y: auto;
   gap: 21px;
@@ -14863,23 +14869,33 @@ textarea {
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-form {
-  position: sticky;
-  bottom: 0;
-  margin: 0;
-  border-left: none;
-  border-right: none;
-  border-bottom: none;
-  border-radius: 0;
-  box-shadow: 0 -8px 24px -12px rgba(11, 12, 12, 0.08);
-  padding: 16px 34px 21px;
+  position: static;
+  width: calc(100% - 42px);
+  max-width: 760px;
+  margin: 0 auto 21px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(11, 12, 12, 0.04);
+  padding: 13px;
   background: var(--surface-strong);
-  z-index: 4;
+}
+
+.wbeta-chat-pane .wbeta-ai-chat-textarea {
+  background: transparent;
+  border-color: transparent;
+  padding: 6px 4px;
+  font-size: 14px;
+  min-height: 44px;
+}
+
+.wbeta-chat-pane .wbeta-ai-chat-textarea:focus {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 @media (max-width: 720px) {
   .wbeta-chat-pane .wbeta-ai-chat-empty,
-  .wbeta-chat-pane .wbeta-ai-chat-stream,
-  .wbeta-chat-pane .wbeta-ai-chat-form {
+  .wbeta-chat-pane .wbeta-ai-chat-stream {
     padding-left: 21px;
     padding-right: 21px;
   }
