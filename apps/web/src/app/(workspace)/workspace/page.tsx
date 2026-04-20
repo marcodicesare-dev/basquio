@@ -13,8 +13,10 @@ import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { WorkspaceDeliverablesList } from "@/components/workspace-deliverables-list";
 import { WorkspaceSuggestions } from "@/components/workspace-suggestions";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
+import { WorkspaceOnboarding } from "@/components/workspace-onboarding";
 import { buildSuggestions } from "@/lib/workspace/suggestions";
 import { SUPPORTED_UPLOAD_LABEL } from "@/lib/workspace/constants";
+import { getCurrentWorkspace, isWorkspaceOnboarded } from "@/lib/workspace/workspaces";
 
 export const metadata = {
   title: "Workspace · Basquio",
@@ -32,9 +34,10 @@ async function safe<T>(promise: Promise<T>, fallback: T, label: string): Promise
 }
 
 export default async function WorkspaceHomePage() {
-  const [viewer, documents, entitiesByType, deliverables, suggestions] =
+  const [viewer, workspace, documents, entitiesByType, deliverables, suggestions] =
     await Promise.all([
       getViewerState(),
+      getCurrentWorkspace(),
       safe(listRecentWorkspaceDocuments(20), [], "list documents"),
       safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
       safe(listRecentWorkspaceDeliverables(8), [], "list deliverables"),
@@ -48,6 +51,15 @@ export default async function WorkspaceHomePage() {
   );
   const isEmpty = documents.length === 0 && deliverables.length === 0 && totalEntityCount === 0;
   const userEmail = viewer.user?.email ?? null;
+  const onboarded = isWorkspaceOnboarded(workspace);
+
+  if (!onboarded && isEmpty) {
+    return (
+      <div className="wbeta-page wbeta-page-onboard">
+        <WorkspaceOnboarding />
+      </div>
+    );
+  }
 
   if (isEmpty) {
     return (
@@ -57,10 +69,10 @@ export default async function WorkspaceHomePage() {
 
         <header className="wbeta-hero">
           <p className="wbeta-hero-eyebrow">Workspace</p>
-          <h1 className="wbeta-hero-title">Drop a file. Ask anything.</h1>
+          <h1 className="wbeta-hero-title">Your analyst memory, always there.</h1>
           <p className="wbeta-hero-lede">
-            Basquio reads briefs, transcripts, decks, and data exports. Then it answers questions
-            with citations and remembers what you taught it for next time.
+            Basquio knows your clients, stakeholders, and style. Ask a question, get the answer your
+            client expects. Every answer cites where it came from.
           </p>
         </header>
 

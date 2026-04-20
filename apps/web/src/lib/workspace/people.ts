@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
+import { normalizeEntityName } from "@/lib/workspace/extraction";
 import type {
   PersonDeliverable,
   PersonFact,
@@ -42,6 +43,53 @@ export async function listWorkspacePeople(
     .limit(500);
   if (error) throw new Error(`listWorkspacePeople failed: ${error.message}`);
   return (data ?? []) as PersonRow[];
+}
+
+export async function createWorkspacePerson(input: {
+  workspaceId?: string;
+  canonicalName: string;
+  aliases?: string[];
+  role?: string;
+  company?: string;
+  preferences?: StakeholderPreferences;
+  notes?: string;
+  linkedScopeId?: string | null;
+  createdBy?: string | null;
+}): Promise<PersonRow> {
+  const workspaceId = input.workspaceId ?? BASQUIO_TEAM_WORKSPACE_ID;
+  const canonical = input.canonicalName.trim();
+  if (!canonical) throw new Error("Person canonical_name is required.");
+  const normalized = normalizeEntityName(canonical);
+  const metadata: PersonRow["metadata"] = {};
+  if (input.role) metadata.role = input.role;
+  if (input.company) metadata.company = input.company;
+  if (input.preferences) metadata.preferences = input.preferences;
+  if (input.notes) metadata.notes = input.notes;
+  if (input.linkedScopeId) metadata.linked_scope_id = input.linkedScopeId;
+  if (input.createdBy) metadata.created_by = input.createdBy;
+
+  const db = getDb();
+  const { data, error } = await db
+    .from("entities")
+    .upsert(
+      {
+        workspace_id: workspaceId,
+        organization_id: workspaceId,
+        is_team_beta: true,
+        type: "person",
+        canonical_name: canonical,
+        normalized_name: normalized,
+        aliases: input.aliases ?? [],
+        metadata,
+      },
+      { onConflict: "organization_id,type,normalized_name" },
+    )
+    .select(
+      "id, workspace_id, type, canonical_name, normalized_name, aliases, metadata, created_at, updated_at",
+    )
+    .single();
+  if (error) throw new Error(`createWorkspacePerson failed: ${error.message}`);
+  return data as PersonRow;
 }
 
 export async function getWorkspacePerson(personId: string): Promise<PersonRow | null> {

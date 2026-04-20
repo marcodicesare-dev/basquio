@@ -56,6 +56,37 @@ export async function getCurrentWorkspace(): Promise<WorkspaceRow> {
   return workspace;
 }
 
+export function isWorkspaceOnboarded(workspace: WorkspaceRow): boolean {
+  const onboardedAt = workspace.metadata?.onboarded_at;
+  return typeof onboardedAt === "string" && onboardedAt.length > 0;
+}
+
+export async function markWorkspaceOnboarded(
+  workspaceId: string,
+  userId: string | null,
+  role: string | null,
+): Promise<WorkspaceRow> {
+  const db = getDb();
+  const existing = await getWorkspace(workspaceId);
+  if (!existing) throw new Error("Workspace not found.");
+  const metadata: Record<string, unknown> = {
+    ...existing.metadata,
+    onboarded_at: new Date().toISOString(),
+    onboarded_by: userId ?? existing.metadata?.onboarded_by ?? null,
+  };
+  if (role) metadata.onboarded_role = role;
+  const { data, error } = await db
+    .from("workspaces")
+    .update({ metadata, updated_at: new Date().toISOString() })
+    .eq("id", workspaceId)
+    .select(
+      "id, organization_id, name, slug, kind, template_id, visibility, share_token, metadata, created_by, created_at, updated_at",
+    )
+    .single();
+  if (error) throw new Error(`markWorkspaceOnboarded failed: ${error.message}`);
+  return data as WorkspaceRow;
+}
+
 export async function listWorkspaces(): Promise<WorkspaceRow[]> {
   const db = getDb();
   const { data, error } = await db
