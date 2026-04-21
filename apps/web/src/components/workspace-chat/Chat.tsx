@@ -76,6 +76,44 @@ export function WorkspaceChat({
     setAttachments((prev) => prev.filter((chip) => chip.localId !== localId));
   }, []);
 
+  const retryAttachment = useCallback(
+    async (localId: string) => {
+      const chip = attachments.find((c) => c.localId === localId);
+      if (!chip || !chip.documentId) return;
+      setAttachments((prev) =>
+        prev.map((c) => (c.localId === localId ? { ...c, status: "indexing", message: undefined } : c)),
+      );
+      try {
+        const response = await fetch(`/api/workspace/documents/${chip.documentId}/retry`, {
+          method: "POST",
+        });
+        if (!response.ok) {
+          const data = (await response.json().catch(() => ({}))) as { error?: string };
+          setAttachments((prev) =>
+            prev.map((c) =>
+              c.localId === localId
+                ? { ...c, status: "failed", message: data.error ?? "retry failed" }
+                : c,
+            ),
+          );
+        }
+      } catch (err) {
+        setAttachments((prev) =>
+          prev.map((c) =>
+            c.localId === localId
+              ? {
+                  ...c,
+                  status: "failed",
+                  message: err instanceof Error ? err.message : "retry failed",
+                }
+              : c,
+          ),
+        );
+      }
+    },
+    [attachments],
+  );
+
   const uploadFiles = useCallback(
     async (files: FileList | File[]) => {
       const list = Array.from(files).filter((f) => f && f.size > 0);
@@ -537,6 +575,16 @@ export function WorkspaceChat({
                   {chip.status === "failed" ? ` · ${chip.message ?? "upload failed"}` : null}
                 </span>
               </span>
+              {chip.status === "failed" && chip.documentId ? (
+                <button
+                  type="button"
+                  className="wbeta-ai-chat-chip-retry"
+                  onClick={() => retryAttachment(chip.localId)}
+                  aria-label={`Retry indexing ${chip.filename}`}
+                >
+                  Retry
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="wbeta-ai-chat-chip-remove"

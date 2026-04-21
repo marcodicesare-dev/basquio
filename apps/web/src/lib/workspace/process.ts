@@ -126,9 +126,21 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
         is_team_beta: true,
         indexed_at: indexedAtIso,
       }));
-      const { error: chunkError } = await db.from("knowledge_chunks").insert(chunkRows);
-      if (chunkError) {
-        throw new Error(`Chunk insert failed: ${chunkError.message}`);
+
+      // Batch inserts so large documents (6MB CSV → 5000+ chunks × 1536-dim
+      // vectors) don't blow the Postgres statement_timeout. Prior version used
+      // a single insert and timed out on every file > ~1 MB. The stored
+      // fts_contextual generated column recomputes per row, which adds CPU
+      // cost — smaller batches keep each statement well inside the timeout.
+      const CHUNK_INSERT_BATCH = 200;
+      for (let i = 0; i < chunkRows.length; i += CHUNK_INSERT_BATCH) {
+        const slice = chunkRows.slice(i, i + CHUNK_INSERT_BATCH);
+        const { error: chunkError } = await db.from("knowledge_chunks").insert(slice);
+        if (chunkError) {
+          throw new Error(
+            `Chunk insert failed at batch ${Math.floor(i / CHUNK_INSERT_BATCH)}: ${chunkError.message}`,
+          );
+        }
       }
       chunkRecordCount = chunkRows.length;
     }
