@@ -10,6 +10,7 @@ import {
   uploadWorkspaceFileToStorage,
 } from "@/lib/workspace/db";
 import {
+  LEGACY_DIRECT_UPLOAD_MAX_BYTES,
   MAX_UPLOAD_BYTES,
   SUPPORTED_UPLOAD_EXTENSIONS,
 } from "@/lib/workspace/constants";
@@ -51,6 +52,15 @@ export async function POST(request: Request) {
     const limitMb = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
     return NextResponse.json(
       { error: `Files cap at ${limitMb} MB. Split the file or contact Marco.` },
+      { status: 413 },
+    );
+  }
+
+  if (file.size > LEGACY_DIRECT_UPLOAD_MAX_BYTES) {
+    return NextResponse.json(
+      {
+        error: "This legacy upload path only supports very small files. Refresh the page and retry so the direct-to-storage uploader can handle the file.",
+      },
       { status: 413 },
     );
   }

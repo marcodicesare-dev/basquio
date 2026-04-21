@@ -18,7 +18,10 @@ export const BASQUIO_TEAM_ORG_ID = BASQUIO_TEAM_WORKSPACE_ID;
 
 export const KNOWLEDGE_BUCKET = "knowledge-base";
 
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+export const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 6 * 1024 * 1024;
+export const RESUMABLE_CHUNK_BYTES = 6 * 1024 * 1024;
+export const LEGACY_DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 
 export const SUPPORTED_UPLOAD_EXTENSIONS = [
   "pdf", "docx", "pptx", "xlsx", "xls", "csv",

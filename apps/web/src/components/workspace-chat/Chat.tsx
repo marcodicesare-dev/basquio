@@ -17,11 +17,12 @@ import {
   WorkspaceGenerationStatus,
   type ActiveGeneration,
 } from "@/components/workspace-generation-status";
+import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
 
 type UploadStatus =
   | { kind: "idle" }
-  | { kind: "uploading"; filename: string }
-  | { kind: "success"; filename: string }
+  | { kind: "uploading"; filename: string; progressPct: number }
+  | { kind: "success"; filename: string; deduplicated: boolean }
   | { kind: "error"; message: string };
 
 export function WorkspaceChat({
@@ -57,22 +58,18 @@ export function WorkspaceChat({
       const list = Array.from(files).filter((f) => f && f.size > 0);
       if (list.length === 0) return;
       for (const file of list) {
-        setUpload({ kind: "uploading", filename: file.name });
-        const formData = new FormData();
-        formData.append("file", file);
+        setUpload({ kind: "uploading", filename: file.name, progressPct: 0 });
         try {
-          const response = await fetch("/api/workspace/uploads", {
-            method: "POST",
-            body: formData,
+          const result = await uploadWorkspaceFile(file, {
+            onProgress(progressPct) {
+              setUpload({ kind: "uploading", filename: file.name, progressPct });
+            },
           });
-          const data = (await response.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          if (!response.ok) {
-            setUpload({ kind: "error", message: data.error ?? "Upload failed." });
-            return;
-          }
-          setUpload({ kind: "success", filename: file.name });
+          setUpload({
+            kind: "success",
+            filename: file.name,
+            deduplicated: result.deduplicated,
+          });
         } catch (uploadError) {
           const message =
             uploadError instanceof Error ? uploadError.message : "Upload failed.";
@@ -357,9 +354,11 @@ export function WorkspaceChat({
           aria-live="polite"
         >
           {upload.kind === "uploading"
-            ? `Uploading ${upload.filename}…`
+            ? `Uploading ${upload.filename}… ${upload.progressPct}%`
             : upload.kind === "success"
-              ? `Added ${upload.filename}. Basquio is indexing it in the background.`
+              ? upload.deduplicated
+                ? `Already in workspace: ${upload.filename}.`
+                : `Added ${upload.filename}. Basquio is indexing it in the background.`
               : upload.message}
         </p>
       ) : null}
