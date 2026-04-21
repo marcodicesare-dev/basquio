@@ -9,6 +9,11 @@ import {
   type EntityExtractionResult,
 } from "@/lib/workspace/extraction";
 import { chunkText, parseDocument } from "@/lib/workspace/parsing";
+import {
+  composeContextualIndexText,
+  generateContextualSummary,
+  isContextualRetrievalEnabled,
+} from "@/lib/workspace/contextual-retrieval";
 
 type ProcessOutcome = {
   documentId: string;
@@ -77,16 +82,49 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
     const chunks = chunkText(text);
     let chunkRecordCount = 0;
     if (chunks.length > 0) {
-      const embeddings = await embedTexts(chunks);
+      // Contextual Retrieval (Anthropic Sept 2024 pattern): generate a 50-100
+      // word contextual summary per chunk via Haiku, then embed the
+      // concatenated text. Best-effort — if the flag is off or the call
+      // fails for a chunk we fall back to the raw content. Runs with mild
+      // parallelism (batches of 8) to keep ingestion latency reasonable for
+      // typical workspace docs.
+      const contextualSummaries: Array<string | null> = new Array(chunks.length).fill(null);
+      if (isContextualRetrievalEnabled()) {
+        const BATCH = 8;
+        for (let i = 0; i < chunks.length; i += BATCH) {
+          const slice = chunks.slice(i, i + BATCH);
+          const summaries = await Promise.all(
+            slice.map((chunk) =>
+              generateContextualSummary({
+                documentTitle: doc.filename,
+                documentText: text,
+                chunk,
+              }).catch(() => null),
+            ),
+          );
+          for (let j = 0; j < summaries.length; j += 1) {
+            contextualSummaries[i + j] = summaries[j];
+          }
+        }
+      }
+
+      const textsToEmbed = chunks.map((content, i) =>
+        composeContextualIndexText(contextualSummaries[i], content),
+      );
+      const embeddings = await embedTexts(textsToEmbed);
+
+      const indexedAtIso = new Date().toISOString();
       const chunkRows = chunks.map((content, i) => ({
         document_id: documentId,
         chunk_index: i,
         content,
+        contextual_summary: contextualSummaries[i],
         embedding: JSON.stringify(embeddings[i]),
-        token_count: Math.ceil(content.length / 4),
+        token_count: Math.ceil(textsToEmbed[i].length / 4),
         metadata: parsed.pageCount ? { total_pages: parsed.pageCount } : {},
         organization_id: BASQUIO_TEAM_ORG_ID,
         is_team_beta: true,
+        indexed_at: indexedAtIso,
       }));
       const { error: chunkError } = await db.from("knowledge_chunks").insert(chunkRows);
       if (chunkError) {

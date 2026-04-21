@@ -68,6 +68,7 @@ export async function POST(request: Request) {
   const ctx = {
     workspaceId: workspace.id,
     currentScopeId: scope?.id ?? null,
+    conversationId: conversationId ?? null,
     userEmail: viewer.user.email ?? "unknown",
     userId: viewer.user.id,
   };

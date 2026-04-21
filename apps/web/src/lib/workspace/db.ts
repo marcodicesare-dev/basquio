@@ -18,6 +18,7 @@ export type WorkspaceDocumentRow = {
   error_message: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+  inline_excerpt: string | null;
 };
 
 function getServiceClient() {
@@ -34,7 +35,7 @@ export async function listRecentWorkspaceDocuments(limit = 20): Promise<Workspac
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
-      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at",
+      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt",
     )
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -53,7 +54,7 @@ export async function findWorkspaceDocumentByHash(hash: string): Promise<Workspa
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
-      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at",
+      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt",
     )
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -118,6 +119,31 @@ export async function uploadWorkspaceFileToStorage(
     .upload(storagePath, buffer, { contentType, upsert: false });
   if (error) {
     throw new Error(`Failed to upload file to storage: ${error.message}`);
+  }
+}
+
+/**
+ * Persist the synchronous inline text excerpt on a knowledge_document. Used by
+ * the upload endpoint so rank-1 retrieval can surface text even before Lane B
+ * ingestion has finished chunking the file.
+ *
+ * Best-effort: callers should swallow errors and keep shipping the upload.
+ */
+export async function setDocumentInlineExcerpt(
+  documentId: string,
+  excerpt: string | null,
+): Promise<void> {
+  const db = getServiceClient();
+  const { error } = await db
+    .from("knowledge_documents")
+    .update({
+      inline_excerpt: excerpt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", documentId)
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+  if (error) {
+    throw new Error(`setDocumentInlineExcerpt failed: ${error.message}`);
   }
 }
 

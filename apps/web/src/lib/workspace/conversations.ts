@@ -115,3 +115,57 @@ export async function archiveConversation(id: string): Promise<void> {
     .eq("id", id);
   if (error) throw new Error(`archiveConversation failed: ${error.message}`);
 }
+
+/**
+ * Ensure a workspace_conversations row exists for the given id. Used by upload
+ * and similar pre-chat hooks that want to reference the conversation (via FK)
+ * before the first assistant turn fires saveConversation.
+ *
+ * Idempotent: calling on an existing id is a no-op that returns the existing
+ * row. Never overwrites messages / title / scope on an existing conversation.
+ */
+export async function ensureConversationRow(input: {
+  id: string;
+  workspaceId?: string;
+  scopeId?: string | null;
+  createdBy: string;
+}): Promise<ConversationRow> {
+  const db = getDb();
+
+  const existing = await getConversation(input.id);
+  if (existing) {
+    return existing;
+  }
+
+  const workspaceId = input.workspaceId ?? BASQUIO_TEAM_WORKSPACE_ID;
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("workspace_conversations")
+    .insert({
+      id: input.id,
+      workspace_id: workspaceId,
+      workspace_scope_id: input.scopeId ?? null,
+      created_by: input.createdBy,
+      title: null,
+      summary: null,
+      messages: [],
+      last_message_at: now,
+      metadata: { seeded_by: "ensureConversationRow" },
+    })
+    .select(
+      "id, workspace_id, workspace_scope_id, created_by, title, summary, messages, last_message_at, archived_at, metadata, created_at, updated_at",
+    )
+    .single();
+
+  if (error) {
+    // Race: another request created the row between our check and insert.
+    // Re-fetch and return; the insert's unique constraint would have caught it.
+    if (error.code === "23505") {
+      const fresh = await getConversation(input.id);
+      if (fresh) return fresh;
+    }
+    throw new Error(`ensureConversationRow failed: ${error.message}`);
+  }
+
+  return data as ConversationRow;
+}

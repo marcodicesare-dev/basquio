@@ -8,6 +8,7 @@ import type { ViewerState } from "@/lib/supabase/auth";
 import { listMemoryEntries } from "@/lib/workspace/memory";
 import { getScope } from "@/lib/workspace/scopes";
 import { listWorkspacePeople } from "@/lib/workspace/people";
+import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
 
 export type { WorkspaceContextPack };
 
@@ -219,6 +220,26 @@ export async function buildWorkspaceContextPack(
     }
   }
 
+  // Dual-lane: every file the user attached to this conversation MUST land in
+  // the deck pack, regardless of whether the assistant cited it. This is the
+  // invariant from the 2026-04-21 spec §3.6: "if the chat had 3 files visible,
+  // the deck starts with 3 files." Attachments that are still indexing are
+  // allowed — the runtime worker reads the blob from source_files, it doesn't
+  // need our chunks.
+  const conversationAttachmentDocumentIds = new Set<string>();
+  if (input.conversationId) {
+    try {
+      const attachments = await listConversationAttachments(input.conversationId);
+      for (const a of attachments) {
+        if (a.status === "deleted") continue;
+        citedDocumentIds.add(a.document_id);
+        conversationAttachmentDocumentIds.add(a.document_id);
+      }
+    } catch (err) {
+      console.error("[build-context-pack] conversation attachments resolve failed", err);
+    }
+  }
+
   if (citedChunkIds.size > 0) {
     try {
       const { data } = await db
@@ -272,7 +293,14 @@ export async function buildWorkspaceContextPack(
   const sourceFiles: WorkspaceContextPack["sourceFiles"] = [];
   const citedSources: WorkspaceContextPack["citedSources"] = [];
   for (const doc of citedDocs) {
-    if (doc.status !== "indexed") {
+    // Upsert source_files for attached docs even if Lane B indexing hasn't
+    // finished yet — the runtime only needs the file identity to download the
+    // blob. Skip only the terminal failure state. Retrieval-only citations
+    // that aren't attached stay locked to indexed-only to match prior
+    // behavior (we don't want to drag broken documents into someone else's
+    // deck just because a retrieval tool cited them).
+    const isAttached = conversationAttachmentDocumentIds.has(doc.id);
+    if (doc.status === "failed" || (!isAttached && doc.status !== "indexed")) {
       citedSources.push({ documentId: doc.id, fileName: doc.filename, sourceFileId: null });
       continue;
     }

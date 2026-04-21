@@ -13,6 +13,12 @@ import type { WorkspaceScope } from "@/lib/workspace/types";
 export type AgentCallContext = {
   workspaceId: string;
   currentScopeId: string | null;
+  /**
+   * Workspace conversation id for the chat that called the tool. Used by
+   * retrieveContext to switch on the dual-lane RPC (workspace_chat_retrieval)
+   * so attachments dropped in this conversation rank 1st automatically.
+   */
+  conversationId: string | null;
   userEmail: string;
   userId: string;
 };
@@ -184,7 +190,12 @@ export function retrieveContextTool(ctx: AgentCallContext) {
           ? scopeRow.slug
           : `${scopeRow.kind}:${scopeRow.name}`
         : undefined;
-      const context = await assembleWorkspaceContext({ prompt: query, scope: legacyScope });
+      const context = await assembleWorkspaceContext({
+        prompt: query,
+        scope: legacyScope,
+        conversationId: ctx.conversationId,
+        workspaceScopeId: scopeRow?.id ?? ctx.currentScopeId ?? null,
+      });
       return {
         scope: scopeRow ? { id: scopeRow.id, name: scopeRow.name, kind: scopeRow.kind } : null,
         chunk_count: context.chunks.length,
@@ -197,6 +208,7 @@ export function retrieveContextTool(ctx: AgentCallContext) {
           filename: c.filename,
           content: c.content.slice(0, 600),
           score: c.score,
+          rank_source: c.rankSource,
         })),
         facts: context.facts.slice(0, 12).map((f) => ({
           id: f.id,

@@ -8,7 +8,7 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
-import { ArrowUp, Paperclip, Stop } from "@phosphor-icons/react";
+import { ArrowUp, Paperclip, Stop, X, CheckCircle, WarningCircle, CircleNotch } from "@phosphor-icons/react";
 
 import { ChatMessage } from "@/components/workspace-chat/ChatMessage";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
@@ -18,10 +18,17 @@ import {
   type ActiveGeneration,
 } from "@/components/workspace-generation-status";
 
+type AttachmentChip = {
+  localId: string;
+  filename: string;
+  sizeBytes: number;
+  status: "uploading" | "indexing" | "indexed" | "failed";
+  documentId?: string;
+  message?: string;
+};
+
 type UploadStatus =
   | { kind: "idle" }
-  | { kind: "uploading"; filename: string }
-  | { kind: "success"; filename: string }
   | { kind: "error"; message: string };
 
 export function WorkspaceChat({
@@ -47,43 +54,87 @@ export function WorkspaceChat({
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [upload, setUpload] = useState<UploadStatus>({ kind: "idle" });
+  const [attachments, setAttachments] = useState<AttachmentChip[]>([]);
+  const [memoryPulse, setMemoryPulse] = useState<{
+    documentCount: number;
+    entities: Array<{ id: string; type: string; canonical_name: string }>;
+    factCount: number;
+  } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
   const router = useRouter();
+
+  const updateAttachment = useCallback((localId: string, patch: Partial<AttachmentChip>) => {
+    setAttachments((prev) =>
+      prev.map((chip) => (chip.localId === localId ? { ...chip, ...patch } : chip)),
+    );
+  }, []);
+
+  const removeAttachment = useCallback((localId: string) => {
+    setAttachments((prev) => prev.filter((chip) => chip.localId !== localId));
+  }, []);
 
   const uploadFiles = useCallback(
     async (files: FileList | File[]) => {
       const list = Array.from(files).filter((f) => f && f.size > 0);
       if (list.length === 0) return;
       for (const file of list) {
-        setUpload({ kind: "uploading", filename: file.name });
+        const localId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        setAttachments((prev) => [
+          ...prev,
+          {
+            localId,
+            filename: file.name,
+            sizeBytes: file.size,
+            status: "uploading",
+          },
+        ]);
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("conversation_id", conversationIdRef.current);
+        if (scopeId) formData.append("scope_id", scopeId);
         try {
           const response = await fetch("/api/workspace/uploads", {
             method: "POST",
             body: formData,
           });
           const data = (await response.json().catch(() => ({}))) as {
+            id?: string;
+            status?: string;
             error?: string;
           };
           if (!response.ok) {
+            updateAttachment(localId, {
+              status: "failed",
+              message: data.error ?? "Upload failed.",
+            });
             setUpload({ kind: "error", message: data.error ?? "Upload failed." });
-            return;
+            continue;
           }
-          setUpload({ kind: "success", filename: file.name });
+          const nextStatus: AttachmentChip["status"] =
+            data.status === "indexed"
+              ? "indexed"
+              : data.status === "failed"
+                ? "failed"
+                : "indexing";
+          updateAttachment(localId, {
+            status: nextStatus,
+            documentId: data.id,
+            message: nextStatus === "failed" ? "indexing failed earlier" : undefined,
+          });
         } catch (uploadError) {
           const message =
             uploadError instanceof Error ? uploadError.message : "Upload failed.";
+          updateAttachment(localId, { status: "failed", message });
           setUpload({ kind: "error", message });
-          return;
+          continue;
         }
       }
       router.refresh();
       setTimeout(() => setUpload({ kind: "idle" }), 4000);
     },
-    [router],
+    [router, scopeId, updateAttachment],
   );
 
   const handleDragEnter = useCallback((event: React.DragEvent<HTMLElement>) => {
@@ -170,6 +221,132 @@ export function WorkspaceChat({
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages.length, lastAssistantStreaming]);
+
+  // Load existing attachments on mount so a returning user sees their files.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch(
+          `/api/workspace/conversations/${conversationIdRef.current}/attachments`,
+        );
+        if (!response.ok) return;
+        const data = (await response.json().catch(() => ({}))) as {
+          attachments?: Array<{
+            id: string;
+            documentId: string;
+            filename: string | null;
+            fileSizeBytes: number | null;
+            status: string | null;
+          }>;
+        };
+        if (cancelled) return;
+        setAttachments((prev) => {
+          // Keep any local-only chips that haven't round-tripped yet.
+          const existingDocIds = new Set(
+            prev.filter((c) => c.documentId).map((c) => c.documentId as string),
+          );
+          const mapped: AttachmentChip[] = (data.attachments ?? [])
+            .filter((a) => !existingDocIds.has(a.documentId))
+            .map((a) => ({
+              localId: `server-${a.documentId}`,
+              filename: a.filename ?? "attached file",
+              sizeBytes: a.fileSizeBytes ?? 0,
+              status:
+                a.status === "indexed"
+                  ? "indexed"
+                  : a.status === "failed"
+                    ? "failed"
+                    : "indexing",
+              documentId: a.documentId,
+            }));
+          return [...prev, ...mapped];
+        });
+      } catch {
+        // No-op: empty list is fine.
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Poll the attachments endpoint every 4s while any chip is still indexing, so
+  // the user sees "indexed" ticks when the background worker finishes. Stops as
+  // soon as everything is terminal.
+  useEffect(() => {
+    const pending = attachments.filter((c) => c.status === "indexing" && c.documentId);
+    if (pending.length === 0) return;
+    const pendingIds = new Set(pending.map((c) => c.documentId as string));
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(
+          `/api/workspace/conversations/${conversationIdRef.current}/attachments`,
+        );
+        if (!response.ok) return;
+        const data = (await response.json().catch(() => ({}))) as {
+          attachments?: Array<{ documentId: string; status: string | null }>;
+        };
+        const statusById = new Map(
+          (data.attachments ?? []).map((a) => [a.documentId, a.status ?? null]),
+        );
+        setAttachments((prev) =>
+          prev.map((chip) => {
+            if (!chip.documentId || !pendingIds.has(chip.documentId)) return chip;
+            const serverStatus = statusById.get(chip.documentId);
+            if (serverStatus === "indexed") return { ...chip, status: "indexed" };
+            if (serverStatus === "failed") return { ...chip, status: "failed" };
+            return chip;
+          }),
+        );
+      } catch {
+        // Ignore — next tick tries again.
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [attachments]);
+
+  // Lane C visibility: fetch the entities/facts extracted from documents attached
+  // to this conversation. Refreshes when a chip transitions to "indexed" so the
+  // user sees what just entered memory without jumping to /workspace/memory.
+  const indexedAttachmentCount = attachments.filter((c) => c.status === "indexed").length;
+  useEffect(() => {
+    if (indexedAttachmentCount === 0) {
+      setMemoryPulse(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchMemory = async () => {
+      try {
+        const response = await fetch(
+          `/api/workspace/conversations/${conversationIdRef.current}/memory`,
+        );
+        if (!response.ok) return;
+        const data = (await response.json().catch(() => ({}))) as {
+          documentCount?: number;
+          entities?: Array<{ id: string; type: string; canonical_name: string }>;
+          facts?: Array<unknown>;
+        };
+        if (cancelled) return;
+        if ((data.entities?.length ?? 0) === 0 && (data.facts?.length ?? 0) === 0) {
+          setMemoryPulse(null);
+          return;
+        }
+        setMemoryPulse({
+          documentCount: data.documentCount ?? 0,
+          entities: data.entities ?? [],
+          factCount: data.facts?.length ?? 0,
+        });
+      } catch {
+        // Ignore.
+      }
+    };
+    void fetchMemory();
+    return () => {
+      cancelled = true;
+    };
+  }, [indexedAttachmentCount]);
 
   const handleSubmit = useCallback(
     (event?: React.FormEvent<HTMLFormElement>) => {
@@ -346,21 +523,61 @@ export function WorkspaceChat({
         aria-hidden
       />
 
-      {upload.kind !== "idle" ? (
-        <p
-          className={
-            upload.kind === "error"
-              ? "wbeta-ai-chat-upload wbeta-ai-chat-upload-error"
-              : "wbeta-ai-chat-upload"
-          }
-          role="status"
-          aria-live="polite"
-        >
-          {upload.kind === "uploading"
-            ? `Uploading ${upload.filename}…`
-            : upload.kind === "success"
-              ? `Added ${upload.filename}. Basquio is indexing it in the background.`
-              : upload.message}
+      {attachments.length > 0 ? (
+        <ul className="wbeta-ai-chat-attachments" role="list" aria-label="Files attached to this conversation">
+          {attachments.map((chip) => (
+            <li key={chip.localId} className={`wbeta-ai-chat-chip wbeta-ai-chat-chip-${chip.status}`}>
+              <span className="wbeta-ai-chat-chip-icon" aria-hidden>
+                {chip.status === "uploading" || chip.status === "indexing" ? (
+                  <CircleNotch size={14} weight="bold" className="wbeta-spin" />
+                ) : chip.status === "indexed" ? (
+                  <CheckCircle size={14} weight="fill" />
+                ) : (
+                  <WarningCircle size={14} weight="fill" />
+                )}
+              </span>
+              <span className="wbeta-ai-chat-chip-body">
+                <span className="wbeta-ai-chat-chip-name" title={chip.filename}>
+                  {chip.filename}
+                </span>
+                <span className="wbeta-ai-chat-chip-meta">
+                  {formatBytes(chip.sizeBytes)}
+                  {chip.status === "uploading" ? " · uploading" : null}
+                  {chip.status === "indexing" ? " · attached, indexing for memory" : null}
+                  {chip.status === "indexed" ? " · attached" : null}
+                  {chip.status === "failed" ? ` · ${chip.message ?? "upload failed"}` : null}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="wbeta-ai-chat-chip-remove"
+                onClick={() => removeAttachment(chip.localId)}
+                aria-label={`Remove ${chip.filename} from this chat`}
+              >
+                <X size={12} weight="bold" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {memoryPulse && memoryPulse.entities.length > 0 ? (
+        <p className="wbeta-ai-chat-memory-pulse" role="status" aria-live="polite">
+          <span className="wbeta-ai-chat-memory-pulse-kicker">In workspace memory from this chat</span>
+          <span className="wbeta-ai-chat-memory-pulse-body">
+            {memoryPulse.entities
+              .slice(0, 4)
+              .map((e) => e.canonical_name)
+              .join(" · ")}
+            {memoryPulse.entities.length > 4 ? ` · +${memoryPulse.entities.length - 4} more` : ""}
+            {memoryPulse.factCount > 0 ? ` · ${memoryPulse.factCount} facts` : ""}
+          </span>
+        </p>
+      ) : null}
+
+      {upload.kind === "error" ? (
+        <p className="wbeta-ai-chat-upload wbeta-ai-chat-upload-error" role="status" aria-live="polite">
+          {upload.message}
         </p>
       ) : null}
 
@@ -388,7 +605,7 @@ export function WorkspaceChat({
             type="button"
             className="wbeta-ai-chat-attach"
             onClick={handleAttachClick}
-            disabled={isStreaming || upload.kind === "uploading"}
+            disabled={isStreaming}
             aria-label="Attach a file"
           >
             <Paperclip size={14} weight="regular" />
@@ -448,4 +665,11 @@ export function WorkspaceChat({
       />
     </section>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
