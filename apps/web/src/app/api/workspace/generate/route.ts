@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -85,6 +85,22 @@ const bodySchema = z.object({
   authorModel: z.string().optional(),
   templateProfileId: z.string().uuid().nullable().optional(),
 });
+
+function stableStringify(value: unknown): string {
+  if (typeof value === "undefined") return "null";
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
+
+function hashPack(pack: WorkspaceContextPack | null): string | null {
+  if (!pack) return null;
+  return createHash("sha256").update(stableStringify(pack)).digest("hex");
+}
 
 function composeBusinessContext(pack: WorkspaceContextPack, briefNarrative: string, briefObjective: string): string {
   const prelude = pack.renderedBriefPrelude ?? "";
@@ -240,6 +256,17 @@ export async function POST(request: Request) {
         p_notify_on_complete: true,
         p_charge_credits: chargeCredits,
         p_credit_amount: chargeCredits ? creditsNeeded : null,
+        // Workspace-pack params — required so Postgres can disambiguate
+        // against the legacy enqueue_deck_run signature. Port-louis'
+        // migration added this overload; passing the workspace fields
+        // locks in the right function.
+        p_workspace_id: pack.workspaceId,
+        p_workspace_scope_id: pack.workspaceScopeId,
+        p_conversation_id: pack.lineage.conversationId,
+        p_from_message_id: pack.lineage.messageId,
+        p_launch_source: pack.lineage.launchSource,
+        p_workspace_context_pack: pack,
+        p_workspace_context_pack_hash: hashPack(pack),
       },
     });
 
@@ -259,41 +286,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Enqueue failed.";
     return NextResponse.json({ error: message }, { status: 500 });
-  }
-
-  // Forward-compat hold: stash the pack + lineage on deck_runs.metadata so the
-  // worker can read it as soon as port-louis wires first-class pack ingestion.
-  // When port-louis' RPC migration lands with p_workspace_context_pack as a
-  // native argument, flip this to pass via RPC params and retire the metadata
-  // stash in one commit.
-  try {
-    const { createServiceSupabaseClient } = await import("@/lib/supabase/admin");
-    const db = createServiceSupabaseClient(supabaseUrl, serviceKey);
-    await db
-      .from("deck_runs")
-      .update({
-        metadata: {
-          workspace_context_pack: pack,
-          workspace_id: pack.workspaceId,
-          workspace_scope_id: pack.workspaceScopeId,
-          conversation_id: pack.lineage.conversationId,
-          from_message_id: pack.lineage.messageId,
-          launch_source: pack.lineage.launchSource,
-          brief_synthesis: {
-            title: payload.brief.title,
-            objective: payload.brief.objective,
-            narrative: payload.brief.narrative,
-            thesis: payload.brief.thesis,
-            stakes: payload.brief.stakes,
-            slideCount: payload.brief.slideCount,
-            audience: payload.brief.audience,
-          },
-        },
-      })
-      .eq("id", runId);
-  } catch (err) {
-    console.error("[workspace/generate] metadata stash failed", err);
-    // Non-fatal: run is enqueued, pack can be re-derived from lineage later.
   }
 
   return NextResponse.json(
