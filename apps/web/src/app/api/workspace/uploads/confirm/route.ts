@@ -148,6 +148,30 @@ export async function POST(request: Request) {
           uploadedBy: viewer.user.id,
         });
       }
+
+      // Backfill enrichment for existing rows that pre-date Layer A. A dedup
+      // hit used to skip the Anthropic Files API upload, which meant files
+      // uploaded before Layer A shipped never got an anthropic_file_id and
+      // the analyzeAttachedFile tool had nothing to work with. Only run when
+      // the column is still null — don't re-upload on every dedup hit.
+      if (!existing.anthropic_file_id && existing.storage_path) {
+        await enrichDocumentFromStorage({
+          supabaseUrl,
+          serviceKey,
+          bucket: payload.storageBucket,
+          storagePath: existing.storage_path,
+          extension: (existing.file_type ?? filename.split(".").pop() ?? "").toLowerCase(),
+          mediaType: payload.mediaType,
+          documentId: existing.id,
+          filename: existing.filename ?? filename,
+        }).catch((error) => {
+          console.error(
+            `[workspace/uploads/confirm] dedup-hit backfill failed for ${existing.id}`,
+            error,
+          );
+        });
+      }
+
       return NextResponse.json({
         id: existing.id,
         status: existing.status,

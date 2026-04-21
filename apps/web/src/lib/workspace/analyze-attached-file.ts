@@ -66,8 +66,13 @@ export async function analyzeAttachedFile(input: {
     };
   }
 
+  // Layer A does NOT require Lane B (chunk/embed) to have succeeded. Code
+  // execution reads the raw file directly, so status='failed' documents are
+  // still eligible as long as their blob survives and we can hand Claude an
+  // anthropic_file_id (or re-upload from Supabase Storage). Only 'deleted'
+  // docs are off-limits.
   const eligible = attachments.filter((a) => {
-    if (a.status === "deleted" || a.status === "failed") return false;
+    if (a.status === "deleted") return false;
     if (input.documentIds && !input.documentIds.includes(a.document_id)) return false;
     return true;
   });
