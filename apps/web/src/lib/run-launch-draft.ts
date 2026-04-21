@@ -1,11 +1,12 @@
 "use client";
 
-import type { GenerationRequest } from "@basquio/types";
+import type { GenerationRequest, WorkspaceContextPack } from "@basquio/types";
 
 type SourceFileDraft = NonNullable<GenerationRequest["sourceFiles"]>[number];
 
 export type RunLaunchDraft = {
   runId: string;
+  sourceRunId?: string;
   createdAt: string;
   authorModel: string;
   templateProfileId: string | null;
@@ -21,6 +22,7 @@ export type RunLaunchDraft = {
   };
   sourceFiles?: SourceFileDraft[];
   existingSourceFileIds?: string[];
+  workspaceContextPack?: WorkspaceContextPack | null;
 };
 
 function getStorageKey(runId: string) {

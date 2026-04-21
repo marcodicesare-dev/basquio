@@ -15,6 +15,8 @@
     "qa:basquio": "tsx scripts/qa-context.ts",
     "test:notify-completion": "tsx scripts/test-notify-completion.ts",
     "test:code-exec": "tsx scripts/test-code-exec.ts",
+    "test:native-workbook-charts": "tsx scripts/test-native-workbook-charts.ts",
+    "test:workspace-context-pack": "tsx scripts/test-workspace-context-pack.ts",
     "test:run": "tsx scripts/test-run.ts",
     "retry:run-attempt": "tsx scripts/retry-run-attempt.ts",
     "worker": "tsx scripts/worker.ts",

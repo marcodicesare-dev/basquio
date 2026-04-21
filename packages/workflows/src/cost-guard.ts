@@ -30,6 +30,16 @@ export function getDeckBudgetCaps(
   return MODEL_BUDGET_USD[model];
 }
 
+type FileBackedBudgetContext = {
+  phase: "author" | "revise" | "critique" | "export";
+  targetSlideCount: number;
+  fileCount: number;
+  attachmentKinds?: string[];
+  hasWorkspaceContext: boolean;
+  hasPriorRevise?: boolean;
+  priorSpendUsd: number;
+};
+
 export async function enforceDeckBudget(input: {
   client: Anthropic;
   model: keyof typeof MODEL_PRICING;
@@ -38,6 +48,7 @@ export async function enforceDeckBudget(input: {
   spentUsd: number;
   outputTokenBudget: number;
   maxUsd?: number;
+  fileBackedBudgetContext?: FileBackedBudgetContext;
 }) {
   const maxUsd = input.maxUsd ?? getDeckBudgetCaps(input.model).preFlight;
 
@@ -46,7 +57,11 @@ export async function enforceDeckBudget(input: {
   // counting only for inline-only requests and fall back to actual-usage
   // enforcement for file-backed phases.
   if (containsUncountableFileSource(input.body)) {
-    const projectedUsd = input.spentUsd + estimateUsd(input.model, 0, input.outputTokenBudget);
+    const projectedUsd = input.spentUsd + estimateFileBackedEnvelopeUsd(
+      input.model,
+      input.outputTokenBudget,
+      input.fileBackedBudgetContext,
+    );
     if (projectedUsd > maxUsd) {
       throw new Error(
         `Projected Claude cost $${projectedUsd.toFixed(3)} exceeds budget $${maxUsd.toFixed(2)}.`,
@@ -57,6 +72,7 @@ export async function enforceDeckBudget(input: {
       inputTokens: null,
       projectedUsd,
       usedCountTokens: false,
+      envelopeContext: input.fileBackedBudgetContext ?? null,
     };
   }
 
@@ -80,6 +96,7 @@ export async function enforceDeckBudget(input: {
     inputTokens: tokenCount.input_tokens,
     projectedUsd,
     usedCountTokens: true,
+    envelopeContext: null,
   };
 }
 
@@ -210,4 +227,54 @@ function containsUncountableFileSource(value: unknown): boolean {
   }
 
   return Object.values(record).some((entry) => containsUncountableFileSource(entry));
+}
+
+function estimateFileBackedEnvelopeUsd(
+  model: keyof typeof MODEL_PRICING,
+  outputTokenBudget: number,
+  context?: FileBackedBudgetContext,
+) {
+  const baselineOutputOnly = estimateUsd(model, 0, outputTokenBudget);
+  if (!context) {
+    return baselineOutputOnly;
+  }
+
+  const slideBucket =
+    context.targetSlideCount <= 10 ? "short"
+      : context.targetSlideCount <= 20 ? "standard"
+      : context.targetSlideCount <= 40 ? "deep"
+      : "long";
+  const filePressure = Math.min(0.55, Math.max(0, context.fileCount - 1) * 0.09);
+  const workspacePressure = context.hasWorkspaceContext ? 0.24 : 0;
+  const revisePressure = context.phase === "revise" ? 0.55 : 0;
+  const priorRevisePressure = context.hasPriorRevise ? 0.18 : 0;
+  const attachmentKinds = new Set((context.attachmentKinds ?? []).map((kind) => kind.trim().toLowerCase()));
+  const documentPressure =
+    (attachmentKinds.has("pdf") ? 0.1 : 0) +
+    (attachmentKinds.has("pptx") ? 0.08 : 0) +
+    (attachmentKinds.has("document") ? 0.06 : 0);
+  const slidePressure =
+    slideBucket === "short" ? 0.65
+      : slideBucket === "standard" ? 1.15
+      : slideBucket === "deep" ? 1.8
+      : 2.8;
+  const modelPressure =
+    model === "claude-haiku-4-5" ? 0.65
+      : model === "claude-sonnet-4-6" ? 1
+      : 1.65;
+  const phasePressure =
+    context.phase === "author" ? 1.2
+      : context.phase === "revise" ? 0.95
+      : context.phase === "critique" ? 0.28
+      : 0.24;
+
+  const telemetryEnvelope = roundUsd(
+    (slidePressure * modelPressure * phasePressure) +
+      filePressure +
+      workspacePressure +
+      documentPressure +
+      priorRevisePressure,
+  );
+
+  return Math.max(baselineOutputOnly, telemetryEnvelope);
 }

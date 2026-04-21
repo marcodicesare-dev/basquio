@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { inferSourceFileKind } from "@basquio/core";
-import type { GenerationRequest } from "@basquio/types";
+import {
+  type GenerationRequest,
+} from "@basquio/types";
 
 import { normalizePlanId } from "@/lib/billing-config";
 import { maybeSendLowCreditReminder } from "@/lib/engagement";
@@ -26,6 +28,14 @@ import { getTemplateFeeDraft, updateTemplateFeeDraft } from "@/lib/template-fee-
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
+import {
+  canonicalizeWorkspaceContextPack,
+  hashWorkspaceContextPack,
+  loadSourceFilesForWorkspaceContext,
+  loadPersistedRunWorkspaceContextPack,
+  parseWorkspaceContextPack,
+  resolveAuthoritativeWorkspaceContextPack,
+} from "@/lib/workspace-context-pack";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -436,8 +446,32 @@ async function queueGeneration(
         objective: pendingDraft.brief.objective ?? "Explain the business performance signal",
         thesis: pendingDraft.brief.thesis ?? "",
         stakes: pendingDraft.brief.stakes ?? "",
-      }
+    }
     : generationRequest.brief;
+  const authoritativeSourceFiles = await loadSourceFilesForWorkspaceContext({
+    supabaseUrl,
+    serviceKey,
+    sourceFileIds,
+    uploadedSourceFiles: sourceFileRows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      fileName: row.file_name,
+      storageBucket: row.storage_bucket,
+      storagePath: row.storage_path,
+    })),
+  });
+  const persistedWorkspaceContextPack = await loadPersistedRunWorkspaceContextPack({
+    supabaseUrl,
+    serviceKey,
+    runId: generationRequest.sourceRunId,
+    viewerId: viewer.id,
+  });
+  const workspaceContextPack = resolveAuthoritativeWorkspaceContextPack({
+    persistedPack: persistedWorkspaceContextPack,
+    clientPack: generationRequest.workspaceContextPack ?? null,
+    attachedSourceFiles: authoritativeSourceFiles,
+  });
+  const workspaceContextPackHash = hashWorkspaceContextPack(workspaceContextPack);
   try {
     const prefResponse = await fetch(`${supabaseUrl}/rest/v1/user_preferences?user_id=eq.${viewer.id}&select=notify_on_run_complete&limit=1`, {
       headers: {
@@ -494,6 +528,13 @@ async function queueGeneration(
           p_notify_on_complete: notifyOnComplete,
           p_charge_credits: billing.chargeCredits,
           p_credit_amount: billing.chargeCredits ? creditsNeeded : null,
+          p_workspace_id: workspaceContextPack?.workspaceId ?? null,
+          p_workspace_scope_id: workspaceContextPack?.workspaceScopeId ?? workspaceContextPack?.scope.id ?? null,
+          p_conversation_id: workspaceContextPack?.lineage.conversationId ?? null,
+          p_from_message_id: workspaceContextPack?.lineage.messageId ?? null,
+          p_launch_source: workspaceContextPack?.lineage.launchSource ?? "jobs-new",
+          p_workspace_context_pack: workspaceContextPack ?? null,
+          p_workspace_context_pack_hash: workspaceContextPackHash,
         },
       });
       const enqueueResult = enqueueRows[0];
@@ -602,14 +643,17 @@ async function parseGenerationRequest(
     const payload = (await request.json()) as Partial<GenerationRequest>;
     const brief = buildBrief(payload);
     const draftId = ((payload as Record<string, unknown>).draftId as string | undefined) ?? null;
+    const workspaceContextPack = parseValidatedWorkspaceContextPack((payload as Record<string, unknown>).workspaceContextPack);
 
     return {
       jobId: payload.jobId || draftId || createJobId(),
+      sourceRunId: payload.sourceRunId,
       organizationId: workspace.organizationId,
       projectId: workspace.projectId,
       sourceFiles: payload.sourceFiles ?? [],
       styleFile: payload.styleFile,
       brief,
+      workspaceContextPack: workspaceContextPack ?? undefined,
       businessContext: brief.businessContext,
       client: brief.client,
       audience: brief.audience,
@@ -640,9 +684,23 @@ async function parseGenerationRequest(
     thesis: String(formData.get("thesis") ?? ""),
     stakes: String(formData.get("stakes") ?? ""),
   });
+  const workspaceContextPack = parseValidatedWorkspaceContextPack(
+    (() => {
+      const raw = formData.get("workspaceContextPack");
+      if (typeof raw !== "string" || raw.trim().length === 0) {
+        return null;
+      }
+      try {
+        return JSON.parse(raw) as unknown;
+      } catch {
+        throw new InvalidGenerationRequestError("workspaceContextPack must be valid JSON.");
+      }
+    })(),
+  );
 
   return {
     jobId,
+    sourceRunId: String(formData.get("sourceRunId") ?? "") || undefined,
     organizationId: workspace.organizationId,
     projectId: workspace.projectId,
     sourceFiles: await Promise.all(
@@ -667,6 +725,7 @@ async function parseGenerationRequest(
           }
         : undefined,
     brief,
+    workspaceContextPack: workspaceContextPack ?? undefined,
     businessContext: brief.businessContext,
     client: brief.client,
     audience: brief.audience,
@@ -678,6 +737,15 @@ async function parseGenerationRequest(
     authorModel,
     recipeId: String(formData.get("recipeId") ?? "") || null,
   } as QueuedGenerationRequest;
+}
+
+function parseValidatedWorkspaceContextPack(value: unknown) {
+  const parsed = parseWorkspaceContextPack(value);
+  if (value && !parsed) {
+    throw new InvalidGenerationRequestError("workspaceContextPack is invalid.");
+  }
+
+  return parsed;
 }
 
 function validateGenerationFiles(

@@ -20,6 +20,7 @@ import {
   storySpecSchema,
   templateProfileSchema,
   validationReportSchema,
+  workspaceContextPackSchema,
 } from "../../../code/contracts";
 
 export * from "../../../code/contracts";
@@ -122,6 +123,7 @@ export const uploadedSourceFileSchema = z
 
 export const generationRequestSchema = z.object({
   jobId: z.string(),
+  sourceRunId: z.string().optional(),
   organizationId: z.string(),
   projectId: z.string(),
   sourceFiles: z.array(uploadedSourceFileSchema).default([]),
@@ -132,6 +134,7 @@ export const generationRequestSchema = z.object({
   authorModel: z.enum(["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-6", "claude-haiku-4-5"]).default("claude-sonnet-4-6"),
   recipeId: z.string().nullable().optional(),
   brief: reportBriefSchema.default({}),
+  workspaceContextPack: workspaceContextPackSchema.optional(),
   sourceFileName: z.string().optional(),
   workbookBase64: z.string().optional(),
   templateFileName: z.string().optional(),

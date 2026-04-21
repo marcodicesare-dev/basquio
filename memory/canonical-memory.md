@@ -89,7 +89,13 @@ Initial domain bias:
 - Analytical slides should surface supporting numbers on the same page whenever possible through co-located tables or explicit chart annotations.
 - High token spend in code-execution runs is often driven by repeated `pause_turn` continuation with growing container history, not only by the initial prompt size.
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
+- file-backed budget preflight must use telemetry-shaped cost envelopes rather than output-only projected spend.
+- repair routing should prefer deterministic fixes first, then a cheap Haiku lane, and only then Sonnet-class revise when structural repair or major visual redesign is still required.
+- revise acceptance must follow an ordered frontier: blocking contract issues, claim traceability, blocking visual issues, visual score, then advisory issues.
 - The primary direct-worker generation pattern should be one file-backed Claude generation turn that loads the `pptx` and `pdf` skills from the start, not a prompt-stuffed `understand` call followed by a separate `author` call.
+- workspace-origin runs must persist a typed `WorkspaceContextPack` on `deck_runs` plus a durable support packet, not only a prose workspace prelude inside `business_context`.
+- the first-class workspace lineage that must survive into deck run state is `workspace_id`, `workspace_scope_id`, `conversation_id`, `from_message_id`, and `launch_source`.
+- author, revise, and QA must all consume the same frozen `workspace-context.md` / `workspace-context.json` packet when a run originates from workspace context.
 - The current persisted direct-worker phase list is `normalize`, `understand`, `author`, `render`, `critique`, `revise`, `export`.
 - `polish` is historical and should not appear in live progress or contract schemas.
 - `container_upload` evidence files should be read inside code execution, not summarized back into the prompt as dataset inventory or column dumps.
@@ -109,6 +115,7 @@ Initial domain bias:
 - narrative markdown in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.
 - narrative markdown must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
 - When the `pptx` skill is loaded, Basquio should rely on the documented skill contract itself rather than assuming an undocumented internal presentation library implementation.
+- scatter manifests must produce native editable scatter charts in `data_tables.xlsx`; the workbook injector and the TypeScript allowlist must stay aligned.
 - In the current Anthropic API behavior, loading Skills can auto-inject the code-execution tool. Do not explicitly register another named `code_execution` tool alongside those Skills if the API reports a tool-name conflict.
 - The March 27-28 failure cluster was primarily a runtime-truth mismatch problem: speculative docs and forward-looking fixes diverged from live provider/runtime behavior faster than the code was revalidated.
 - The canonical March 28 forensic truth source is `memory/march28-48h-forensic-learnings.md`.
@@ -185,3 +192,5 @@ When architecture changes:
 - whether Basquio preview UI should use client ECharts or Recharts
 - whether Vega-Lite becomes necessary for specific analytical chart families
 - whether Basquio launches inside Loamly or as a separate repo first
+- workspace-origin reruns should prefer the persisted `deck_runs.workspace_context_pack` from the source run over browser-posted workspace context payloads.
+- server-side workspace-pack canonicalization must bind `sourceFiles` and cited source ids only to real attached `source_files` rows before enqueue.

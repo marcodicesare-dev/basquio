@@ -239,6 +239,92 @@ export const deckRunAttemptSchema = z.object({
   supersedesAttemptId: z.string().nullable().default(null),
 });
 
+export const workspaceLaunchSourceSchema = z.enum([
+  "workspace-chat",
+  "workspace-deliverable",
+  "jobs-new",
+  "other",
+]);
+
+export const workspaceScopeSchema = z.object({
+  id: z.string().nullable().default(null),
+  kind: z.string().nullable().default(null),
+  name: z.string().nullable().default(null),
+});
+
+export const workspaceStakeholderSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.string().nullable().default(null),
+  preferences: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const workspaceRulePackSchema = z.object({
+  workspace: z.array(z.string()).default([]),
+  analyst: z.array(z.string()).default([]),
+  scoped: z.array(z.string()).default([]),
+});
+
+export const workspaceCitedSourceSchema = z.object({
+  documentId: z.string(),
+  fileName: z.string(),
+  sourceFileId: z.string().nullable().default(null),
+});
+
+export const workspaceContextSourceFileSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  fileName: z.string(),
+  storageBucket: z.string(),
+  storagePath: z.string(),
+});
+
+export const workspaceContextLineageSchema = z.object({
+  conversationId: z.string().nullable().default(null),
+  messageId: z.string().nullable().default(null),
+  deliverableTitle: z.string().nullable().default(null),
+  prompt: z.string().nullable().default(null),
+  launchSource: workspaceLaunchSourceSchema.default("jobs-new"),
+});
+
+export const workspaceStyleContractSchema = z.object({
+  language: z.string().nullable().default(null),
+  tone: z.string().nullable().default(null),
+  deckLength: z.string().nullable().default(null),
+  chartPreferences: z.array(z.string()).default([]),
+});
+
+export const workspaceContextPackSchema = z.object({
+  workspaceId: z.string(),
+  workspaceScopeId: z.string().nullable().default(null),
+  deliverableId: z.string().nullable().default(null),
+  scope: workspaceScopeSchema.default({}),
+  stakeholders: z.array(workspaceStakeholderSchema).default([]),
+  rules: workspaceRulePackSchema.default({
+    workspace: [],
+    analyst: [],
+    scoped: [],
+  }),
+  citedSources: z.array(workspaceCitedSourceSchema).default([]),
+  sourceFiles: z.array(workspaceContextSourceFileSchema).default([]),
+  lineage: workspaceContextLineageSchema.default({
+    conversationId: null,
+    messageId: null,
+    deliverableTitle: null,
+    prompt: null,
+    launchSource: "jobs-new",
+  }),
+  styleContract: workspaceStyleContractSchema.default({
+    language: null,
+    tone: null,
+    deckLength: null,
+    chartPreferences: [],
+  }),
+  renderedBriefPrelude: z.string().default(""),
+  createdAt: z.string(),
+  schemaVersion: z.number().int().min(1).default(1),
+});
+
 export const runRequestUsageSchema = z.object({
   runId: z.string(),
   attemptId: z.string(),
@@ -855,6 +941,7 @@ export type EvidenceRef = z.infer<typeof evidenceRefSchema>;
 export type NumericAssertion = z.infer<typeof numericAssertionSchema>;
 export type ClaimSpec = z.infer<typeof claimSpecSchema>;
 export type ReportBrief = z.infer<typeof reportBriefSchema>;
+export type WorkspaceContextPack = z.infer<typeof workspaceContextPackSchema>;
 export type ReportOutline = z.infer<typeof reportOutlineSchema>;
 export type InsightSpec = z.infer<typeof insightSpecSchema>;
 export type StorySpec = z.infer<typeof storySpecSchema>;

@@ -19,6 +19,14 @@ import { getViewerState } from "@/lib/supabase/auth";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
+import {
+  canonicalizeWorkspaceContextPack,
+  hashWorkspaceContextPack,
+  loadSourceFilesForWorkspaceContext,
+  loadPersistedRunWorkspaceContextPack,
+  parseWorkspaceContextPack,
+  resolveAuthoritativeWorkspaceContextPack,
+} from "@/lib/workspace-context-pack";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -51,6 +59,7 @@ export async function POST(request: Request) {
     }
 
     const formData = await request.formData();
+    const sourceRunId = String(formData.get("sourceRunId") ?? "") || undefined;
     const files = formData.getAll("files") as File[];
     const brief = formData.get("brief") as string ?? "";
     const client = formData.get("client") as string ?? "";
@@ -59,6 +68,19 @@ export async function POST(request: Request) {
     const thesis = formData.get("thesis") as string ?? "";
     const stakes = formData.get("stakes") as string ?? "";
     const authorModel = requireValidAuthorModel(String(formData.get("authorModel") ?? DEFAULT_AUTHOR_MODEL));
+    const workspaceContextPack = parseValidatedWorkspaceContextPack(
+      (() => {
+        const raw = formData.get("workspaceContextPack");
+        if (typeof raw !== "string" || raw.trim().length === 0) {
+          return null;
+        }
+        try {
+          return JSON.parse(raw) as unknown;
+        } catch {
+          throw new InvalidGenerationRequestError("workspaceContextPack must be valid JSON.");
+        }
+      })(),
+    );
     const templateProfileId = await resolveOwnedTemplateProfileId({
       supabaseUrl,
       serviceKey,
@@ -105,7 +127,13 @@ export async function POST(request: Request) {
     // Upload source files to storage and create source_file records
     // Detect PPTX template files (user uploads their corporate template alongside data files)
     const sourceFileIds: string[] = [];
-    const uploadedSourceFiles: Array<{ id: string; bucket: string; storagePath: string }> = [];
+    const uploadedSourceFiles: Array<{
+      id: string;
+      kind: string;
+      fileName: string;
+      storageBucket: string;
+      storagePath: string;
+    }> = [];
     for (const file of files) {
       const fileId = randomUUID();
       const kind = normalizePersistedSourceFileKind(null, file.name);
@@ -159,7 +187,9 @@ export async function POST(request: Request) {
       sourceFileIds.push(fileId);
       uploadedSourceFiles.push({
         id: fileId,
-        bucket: "source-files",
+        kind,
+        fileName: file.name,
+        storageBucket: "source-files",
         storagePath,
       });
     }
@@ -184,6 +214,23 @@ export async function POST(request: Request) {
     }
 
     try {
+      const authoritativeSourceFiles = await loadSourceFilesForWorkspaceContext({
+        supabaseUrl,
+        serviceKey,
+        sourceFileIds,
+        uploadedSourceFiles,
+      });
+      const persistedWorkspaceContextPack = await loadPersistedRunWorkspaceContextPack({
+        supabaseUrl,
+        serviceKey,
+        runId: sourceRunId,
+        viewerId: viewer.user.id,
+      });
+      const trustedWorkspaceContextPack = resolveAuthoritativeWorkspaceContextPack({
+        persistedPack: persistedWorkspaceContextPack,
+        clientPack: workspaceContextPack,
+        attachedSourceFiles: authoritativeSourceFiles,
+      });
       const attemptId = randomUUID();
       const enqueueRows = await callRpc<Array<{
         run_id: string | null;
@@ -213,12 +260,28 @@ export async function POST(request: Request) {
           p_notify_on_complete: notifyOnComplete,
           p_charge_credits: chargeCredits,
           p_credit_amount: chargeCredits ? creditsNeeded : null,
+          p_workspace_id: trustedWorkspaceContextPack?.workspaceId ?? null,
+          p_workspace_scope_id: trustedWorkspaceContextPack?.workspaceScopeId ?? trustedWorkspaceContextPack?.scope.id ?? null,
+          p_conversation_id: trustedWorkspaceContextPack?.lineage.conversationId ?? null,
+          p_from_message_id: trustedWorkspaceContextPack?.lineage.messageId ?? null,
+          p_launch_source: trustedWorkspaceContextPack?.lineage.launchSource ?? "jobs-new",
+          p_workspace_context_pack: trustedWorkspaceContextPack ?? null,
+          p_workspace_context_pack_hash: hashWorkspaceContextPack(trustedWorkspaceContextPack),
         },
       });
       const enqueueResult = enqueueRows[0];
       if (enqueueResult?.insufficient_credits) {
         const balance = await getDetailedCreditBalance({ supabaseUrl, serviceKey, userId: viewer.user.id });
-        await cleanupQueuedV2RunSetup({ supabaseUrl, serviceKey, runId, sourceFiles: uploadedSourceFiles });
+        await cleanupQueuedV2RunSetup({
+          supabaseUrl,
+          serviceKey,
+          runId,
+          sourceFiles: uploadedSourceFiles.map((file) => ({
+            id: file.id,
+            bucket: file.storageBucket,
+            storagePath: file.storagePath,
+          })),
+        });
         return NextResponse.json({
           error: `Not enough credits. This ${targetSlideCount}-slide run needs ${creditsNeeded} credits.`,
           code: "NO_CREDITS",
@@ -235,7 +298,11 @@ export async function POST(request: Request) {
         supabaseUrl,
         serviceKey,
         runId,
-        sourceFiles: uploadedSourceFiles,
+        sourceFiles: uploadedSourceFiles.map((file) => ({
+          id: file.id,
+          bucket: file.storageBucket,
+          storagePath: file.storagePath,
+        })),
       });
       const message = error instanceof Error ? error.message : "Failed to attach attempt lineage.";
       return NextResponse.json({ error: message }, { status: 500 });
@@ -257,6 +324,15 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Generation failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function parseValidatedWorkspaceContextPack(value: unknown) {
+  const parsed = parseWorkspaceContextPack(value);
+  if (value && !parsed) {
+    throw new InvalidGenerationRequestError("workspaceContextPack is invalid.");
+  }
+
+  return parsed;
 }
 
 function requireValidTargetSlideCount(targetSlideCount: number, maxSlideCount: number = MAX_TARGET_SLIDES) {

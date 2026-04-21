@@ -1,5 +1,26 @@
 # Decision Log
 
+## April 21, 2026 — Freeze workspace context on deck runs and gate revise by frontier
+
+Decision:
+- persist a typed `WorkspaceContextPack` on `deck_runs` together with first-class lineage fields: `workspace_id`, `workspace_scope_id`, `conversation_id`, `from_message_id`, and `launch_source`
+- upload `workspace-context.md` plus `workspace-context.json` into the authoring container and persist the same pack in working papers for later inspection
+- stop replaying the full author prompt during revise; revise now carries a compact run summary plus the frozen workspace context packet
+- replace file-backed output-only preflight with telemetry-shaped cost envelopes keyed by phase, slide count, file count, and workspace-context presence
+- gate revise acceptance on an ordered frontier: blocking contract issues, claim-traceability issues, blocking visual issues, visual score, then advisory issues
+- route non-structural repair work to a cheaper Haiku revise lane when no Sonnet-class structural or major visual issues remain
+
+Why:
+- workspace-origin runs were still arriving in the worker mostly as prose inside `business_context`, which made lineage non-inspectable and context continuity fragile
+- revise could regress the deck on a higher-priority dimension, spend more money, and only later recover
+- file-backed phases skipped token counting but still used an output-only projection that was too blind to real deck cost drivers
+
+Implication:
+- workspace-generated runs are now durable workspace-aware runs rather than cold briefs with a few attached files
+- author, revise, and QA all see the same frozen workspace contract in both JSON and markdown form
+- the worker keeps the best frontier state instead of silently accepting self-inflicted regressions
+- cheap textual or claim-traceability repairs can avoid a Sonnet-class revise pass when structural redesign is not required
+
 ## April 21, 2026 — Make workbook-native charts deterministic
 
 Decision:
@@ -633,3 +654,20 @@ Accepted because:
 - preview thumbnails can be generated best-effort from the published manifest without changing the durable artifact contract
 - completion and reminder emails should be driven by durable run state plus download telemetry, not browser heuristics
 - low-credit and unfinished-setup nudges must remain specific, one-time, and evidence-backed instead of generic lifecycle spam
+
+## April 21, 2026 — Trust persisted workspace packs on reruns and canonicalize evidence bindings
+
+Decision:
+- treat `deck_runs.workspace_context_pack` as the authoritative context source for workspace-origin reruns when a rerun references a prior run
+- canonicalize any incoming `WorkspaceContextPack` against the actual attached `source_files` before enqueue so spoofed file metadata or unattached citations cannot enter run state
+- carry `sourceRunId` through the rerun launch draft and both generate APIs so runtime trust does not depend on the browser reposting the original pack faithfully
+
+Why:
+- the first workspace pack rollout still allowed reruns to rely on client-posted JSON even when the original run already had a persisted frozen pack
+- cited source ids and source-file metadata are only trustworthy if they match real `source_files` rows attached to the new run
+- workspace-native UX work in the other branch needs a stable runtime contract now, without requiring the browser to be the source of truth
+
+Implication:
+- reruns inherit the frozen workspace context from the originating run by default instead of reconstructing it from transient client state
+- the worker receives only canonical source-file references that are actually attached to the run
+- the workspace UX branch can evolve its composer without weakening runtime evidence integrity or rerun continuity

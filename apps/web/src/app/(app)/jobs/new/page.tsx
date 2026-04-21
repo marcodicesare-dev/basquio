@@ -1,4 +1,5 @@
 import { GenerationForm } from "@/components/generation-form";
+import type { WorkspaceContextPack } from "@basquio/types";
 import { normalizePlanId } from "@/lib/billing-config";
 import { getActiveSubscription, normalizeAuthorModelId, OPUS_AUTHOR_MODEL } from "@/lib/credits";
 import { getViewerState } from "@/lib/supabase/auth";
@@ -18,6 +19,7 @@ type SavedTemplateOption = {
 
 type RecipePrefill = {
   id: string;
+  sourceRunId?: string | null;
   name: string;
   /** Only set when this prefill comes from a saved recipe, not a prior run */
   recipeId: string | null;
@@ -32,6 +34,7 @@ type RecipePrefill = {
   templateProfileId: string | null;
   targetSlideCount: number;
   authorModel?: "claude-sonnet-4-6" | "claude-opus-4-7" | "claude-haiku-4-5";
+  workspaceContextPack?: WorkspaceContextPack;
   sourceFiles?: Array<{
     id: string;
     kind: string;
@@ -186,12 +189,13 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
       target_slide_count: number | null;
       author_model: "claude-sonnet-4-6" | "claude-opus-4-7" | "claude-opus-4-6" | "claude-haiku-4-5" | null;
       source_file_ids: string[];
+      workspace_context_pack: WorkspaceContextPack | null;
     }>({
       supabaseUrl,
       serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,brief,template_profile_id,requested_by,target_slide_count,author_model,source_file_ids",
+        select: "id,brief,template_profile_id,requested_by,target_slide_count,author_model,source_file_ids,workspace_context_pack",
         id: `eq.${runId}`,
         limit: "1",
       },
@@ -244,6 +248,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
 
     return {
       id: runId,
+      sourceRunId: runId,
       recipeId: null,
       name: "Previous run",
       brief: run.brief,
@@ -255,6 +260,7 @@ async function getRunPrefill(runId: string, userId: string): Promise<RecipePrefi
           : run.author_model === "claude-haiku-4-5"
           ? "claude-haiku-4-5"
           : "claude-sonnet-4-6",
+      workspaceContextPack: run.workspace_context_pack ?? undefined,
       sourceFiles,
     };
   } catch {

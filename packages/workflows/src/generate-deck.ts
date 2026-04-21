@@ -40,7 +40,12 @@ import {
   interpretTemplateSource,
   type TemplateDiagnostics,
 } from "@basquio/template-engine";
-import type { ChartSpec, SlideSpec, TemplateProfile } from "@basquio/types";
+import {
+  type ChartSpec,
+  type SlideSpec,
+  type TemplateProfile,
+  type WorkspaceContextPack,
+} from "@basquio/types";
 
 import {
   BETAS,
@@ -71,6 +76,12 @@ import { isRetryableContainerStringError, isTransientProviderError, classifyRunt
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested, notifyRunFailureIfRequested } from "./notify-completion";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
+import {
+  buildWorkspaceContextSummary,
+  buildWorkspaceContextSupportPackets,
+  hashWorkspaceContextPack,
+  parseWorkspaceContextPack,
+} from "./workspace-context";
 
 const execFileAsync = promisify(execFile);
 
@@ -223,6 +234,23 @@ type ClaimTraceabilityIssue = {
   message: string;
 };
 
+type RepairLane = "none" | "haiku" | "sonnet";
+
+type RepairIssueBuckets = {
+  deterministic: string[];
+  haiku: string[];
+  sonnet: string[];
+};
+
+type RepairFrontierState = {
+  blockingContractIssueCount: number;
+  claimTraceabilityIssueCount: number;
+  blockingVisualIssueCount: number;
+  visualScore: number;
+  advisoryIssueCount: number;
+  deckNeedsRevision: boolean;
+};
+
 function coercePositiveNumber(value: unknown) {
   const parsed = typeof value === "string" ? Number(value) : value;
   return typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -337,6 +365,38 @@ function buildSupportEvidencePackets(parsed: Awaited<ReturnType<typeof parseEvid
   });
 }
 
+function mergeSupportPackets(
+  left: SupportEvidencePacket[],
+  right: SupportEvidencePacket[],
+): SupportEvidencePacket[] {
+  const packetsByFilename = new Map<string, SupportEvidencePacket>();
+  for (const packet of [...left, ...right]) {
+    packetsByFilename.set(packet.filename, packet);
+  }
+  return [...packetsByFilename.values()];
+}
+
+function extendBusinessContextWithWorkspacePack(
+  businessContext: string,
+  workspaceContextPack: WorkspaceContextPack | null,
+) {
+  if (!workspaceContextPack) {
+    return businessContext;
+  }
+
+  const renderedPrelude = workspaceContextPack.renderedBriefPrelude.trim();
+  if (!renderedPrelude) {
+    return businessContext;
+  }
+
+  const trimmedBusinessContext = businessContext.trim();
+  if (trimmedBusinessContext.includes(renderedPrelude)) {
+    return businessContext;
+  }
+
+  return [renderedPrelude, trimmedBusinessContext].filter(Boolean).join("\n\n");
+}
+
 function sanitizeSupportPacketText(text: string | undefined, maxChars: number) {
   if (typeof text !== "string") {
     return "";
@@ -421,6 +481,13 @@ type RunRow = {
   author_model: string | null;
   template_profile_id: string | null;
   template_diagnostics: Record<string, unknown> | null;
+  workspace_id: string | null;
+  workspace_scope_id: string | null;
+  conversation_id: string | null;
+  from_message_id: string | null;
+  launch_source: "workspace-chat" | "workspace-deliverable" | "jobs-new" | "other" | null;
+  workspace_context_pack: Record<string, unknown> | null;
+  workspace_context_pack_hash: string | null;
   active_attempt_id: string | null;
   latest_attempt_id: string | null;
   latest_attempt_number: number;
@@ -850,6 +917,9 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
   try {
     const run = await loadRun(config, runId);
+    const workspaceContextPack = parseWorkspaceContextPack(run.workspace_context_pack);
+    const workspaceContextPackHash = run.workspace_context_pack_hash ?? hashWorkspaceContextPack(workspaceContextPack);
+    run.business_context = extendBusinessContextWithWorkspacePack(run.business_context, workspaceContextPack);
     authorModel = normalizeAuthorModel(run.author_model);
     let MODEL = authorModel;
     let modelBudget = getDeckBudgetCaps(MODEL, run.target_slide_count);
@@ -874,6 +944,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       );
     }
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
+    const fileBackedAttachmentKinds = [...new Set(sourceFiles.map((file) => file.kind).filter(Boolean))];
     // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
     const isTemplateFallback = attempt.recoveryReason === "template_fallback";
     const persistedTemplate = isTemplateFallback ? null : await loadTemplateProfileRow(config, run.template_profile_id);
@@ -943,8 +1014,21 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     await persistTemplateDiagnostics(config, runId, templateDiagnostics);
 
     await persistEvidenceWorkspace(config, run, parsed, templateProfile);
+    if (workspaceContextPack) {
+      const workspaceMarkdown = buildWorkspaceContextSupportPackets(workspaceContextPack).find((packet) => packet.filename.endsWith(".md"))?.content ?? "";
+      await upsertWorkingPaper(config, runId, "workspace_context_pack", {
+        hash: workspaceContextPackHash,
+        pack: workspaceContextPack,
+      });
+      await upsertWorkingPaper(config, runId, "workspace_context_support_packet", {
+        hash: workspaceContextPackHash,
+        markdown: workspaceMarkdown,
+      });
+    }
     await upsertWorkingPaper(config, runId, "execution_brief", {
       brief: run.brief,
+      workspaceContextPack,
+      workspaceContextPackHash,
       fileInventory: parsed.datasetProfile.manifest ?? {},
       templateProfile,
       templateDiagnostics,
@@ -976,7 +1060,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           }),
       })),
     });
-    const supportEvidencePackets = buildSupportEvidencePackets(parsed);
+    const supportEvidencePackets = mergeSupportPackets(
+      buildWorkspaceContextSupportPackets(workspaceContextPack).map((packet) => ({
+        filename: packet.filename,
+        content: packet.content,
+      })),
+      buildSupportEvidencePackets(parsed),
+    );
     const uploadedSupportPackets = await uploadClaudeFilesSequentially({
       client,
       config,
@@ -1123,7 +1213,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
     let claimTraceabilityIssues: ClaimTraceabilityIssue[] = [];
     let manifest: z.infer<typeof deckManifestSchema>;
     let latestResponse: Awaited<ReturnType<typeof runClaudeLoop>> | null = null;
-    let generationMessage: ReturnType<typeof buildAuthorMessage> | null = null;
     let latestContainerId: string | null = null;
     let baseContainerId: string | null = null;
 
@@ -1253,13 +1342,21 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             skills: [...candidateToolCallSummary.skills],
             stepNumber: 1,
           });
-          await enforceDeckBudget({
+          const authorBudgetGate = await enforceDeckBudget({
             client,
             model: candidateModel,
             betas: [...candidateBetas],
             spentUsd,
             maxUsd: modelBudget.preFlight,
             outputTokenBudget: authorMaxTokens,
+            fileBackedBudgetContext: {
+              phase: "author",
+              targetSlideCount: run.target_slide_count,
+              fileCount: sourceFiles.length,
+              attachmentKinds: fileBackedAttachmentKinds,
+              hasWorkspaceContext: Boolean(workspaceContextPack),
+              priorSpendUsd: spentUsd,
+            },
             body: {
               system: systemPrompt,
               messages: [candidateGenerationMessage],
@@ -1268,6 +1365,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               output_config: buildAuthoringOutputConfig(candidateModel),
             },
           });
+          await insertEvent(config, runId, attempt, "author", "cost_preflight", {
+            projectedUsd: authorBudgetGate.projectedUsd,
+            usedCountTokens: authorBudgetGate.usedCountTokens,
+            envelopeContext: authorBudgetGate.envelopeContext,
+          }).catch(() => {});
 
           await persistRequestStart(config, runId, attempt, "author", "phase_generation", candidateModel);
           let candidateResponse = await runClaudeLoop({
@@ -1355,6 +1457,11 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           }
 
           spentUsd = roundUsd(spentUsd + usageToCost(candidateModel, candidateResponse.usage));
+          await insertEvent(config, runId, attempt, "author", "cost_actual", {
+            actualUsd: usageToCost(candidateModel, candidateResponse.usage),
+            cumulativeUsd: spentUsd,
+            model: candidateModel,
+          }).catch(() => {});
           assertDeckSpendWithinBudget(spentUsd, candidateModel, {
             allowPartialOutput: candidateFiles.length > 0,
             context: `author:${candidateModel}`,
@@ -1393,7 +1500,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             modelBetas = buildClaudeBetas(MODEL);
             toolCallSummary = buildAuthoringToolCallSummary(MODEL);
             isReportOnly = candidateIsReportOnly;
-            generationMessage = candidateGenerationMessage;
             authorResponse = candidateResponse;
             authorFallbackMessages = candidateMessages;
             authorFiles = candidateFiles;
@@ -1673,9 +1779,24 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       ],
       run.target_slide_count,
     );
-    const blockingCritiqueIssues = critiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
+    const blockingCritiqueIssues = critiqueIssues.filter((issue) => isBlockingRepairIssue(issue));
     const critiqueLint = lintManifest(manifest, run.target_slide_count, fidelityContext ?? undefined);
     const critiqueContract = validateManifestContract(manifest);
+    const critiqueLintSummary = summarizeLintResult(critiqueLint);
+    const critiqueContractSummary = summarizeDeckContractResult(critiqueContract);
+    const initialRepairBuckets = bucketRepairIssues({
+      critiqueIssues,
+      claimTraceabilityIssues,
+      visualQa: initialVisualQa.report,
+    });
+    const initialFrontierState = buildRepairFrontierState({
+      lintIssues: critiqueLintSummary.actionableIssues,
+      contractIssues: critiqueContractSummary.actionableIssues,
+      claimTraceabilityIssues,
+      visualQa: initialVisualQa.report,
+      critiqueIssues,
+    });
+    const repairLane = chooseRepairLane(initialRepairBuckets, initialVisualQa.report);
     const hasBlockingCritiqueIssues = blockingCritiqueIssues.length > 0;
     const critiqueCheckpointProof = buildCheckpointProof({
       authorComplete: true,
@@ -1720,21 +1841,41 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
 
     const reviseIterationLimit = latestResponse
       ? computeReviseIterationBudget({
-          visualQa: initialVisualQa.report,
-          blockingCritiqueIssues,
+          frontierState: initialFrontierState,
+          repairLane,
         })
       : 0;
+    phaseTelemetry.repairRouting = {
+      lane: repairLane,
+      deterministicIssueCount: initialRepairBuckets.deterministic.length,
+      haikuIssueCount: initialRepairBuckets.haiku.length,
+      sonnetIssueCount: initialRepairBuckets.sonnet.length,
+      initialFrontierState,
+    };
 
-    if (reviseIterationLimit > 0 && latestResponse) {
+    if (reviseIterationLimit > 0 && latestResponse && repairLane !== "none") {
       try {
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
-        const reviseMaxTokens = getRevisePhaseMaxTokens(MODEL, run.target_slide_count);
+        const reviseModel: AuthorModel = repairLane === "haiku" ? "claude-haiku-4-5" : MODEL;
+        const reviseBudgetCaps = getDeckBudgetCaps(reviseModel, run.target_slide_count);
+        const reviseBetas = buildClaudeBetas(reviseModel);
+        const reviseToolCallSummary = buildAuthoringToolCallSummary(reviseModel);
+        const reviseMaxTokens = getRevisePhaseMaxTokens(reviseModel, run.target_slide_count);
         let activeManifest = manifest;
         let activePdf = pdfFile;
         let activeVisualQa = initialVisualQa.report;
         let activeCritiqueIssues = critiqueIssues;
         let activeBlockingCritiqueIssues = blockingCritiqueIssues;
+        let bestFrontierState = initialFrontierState;
+        let bestManifest = manifest;
+        let bestPdf = pdfFile;
+        let bestPptx = pptxFile;
+        let bestNarrativeMarkdown = finalNarrativeMarkdown;
+        let bestXlsxFile = xlsxFile;
+        let bestVisualQa = initialVisualQa.report;
+        let bestCritiqueIssues = critiqueIssues;
+        let bestBlockingCritiqueIssues = blockingCritiqueIssues;
         let reviseLoopCount = 0;
         let reviseAggregateUsage: Required<ClaudeUsage> = {
           input_tokens: 0,
@@ -1761,7 +1902,6 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           });
           const reviseMessages = [
             ...buildMinimalReviseThread({
-              generationMessage: generationMessage!,
               run,
               analysis,
               manifest: activeManifest,
@@ -1769,32 +1909,48 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             reviseMessage,
           ];
           await recordToolCall(config, runId, attempt, "revise", "code_execution", {
-            model: MODEL,
-            tools: [...toolCallSummary.tools],
-            autoInjectedTools: [...toolCallSummary.autoInjectedTools],
-            skills: [...toolCallSummary.skills],
+            model: reviseModel,
+            tools: [...reviseToolCallSummary.tools],
+            autoInjectedTools: [...reviseToolCallSummary.autoInjectedTools],
+            skills: [...reviseToolCallSummary.skills],
             stepNumber: reviseLoopCount,
           });
-          await enforceDeckBudget({
+          const reviseBudgetGate = await enforceDeckBudget({
             client,
-            model: MODEL,
-            betas: [...modelBetas],
+            model: reviseModel,
+            betas: [...reviseBetas],
             spentUsd,
-            maxUsd: modelBudget.preFlight,
+            maxUsd: reviseBudgetCaps.preFlight,
             outputTokenBudget: reviseMaxTokens,
+            fileBackedBudgetContext: {
+              phase: "revise",
+              targetSlideCount: run.target_slide_count,
+              fileCount: sourceFiles.length,
+              attachmentKinds: fileBackedAttachmentKinds,
+              hasWorkspaceContext: Boolean(workspaceContextPack),
+              hasPriorRevise: reviseLoopCount > 1,
+              priorSpendUsd: spentUsd,
+            },
               body: {
                 system: systemPrompt,
                 messages: reviseMessages,
-                tools: buildClaudeTools(MODEL),
-                thinking: buildAuthoringThinkingConfig(MODEL),
-                output_config: buildAuthoringOutputConfig(MODEL),
+                tools: buildClaudeTools(reviseModel),
+                thinking: buildAuthoringThinkingConfig(reviseModel),
+                output_config: buildAuthoringOutputConfig(reviseModel),
               },
           });
+          await insertEvent(config, runId, attempt, "revise", "cost_preflight", {
+            projectedUsd: reviseBudgetGate.projectedUsd,
+            usedCountTokens: reviseBudgetGate.usedCountTokens,
+            envelopeContext: reviseBudgetGate.envelopeContext,
+            iteration: reviseLoopCount,
+            model: reviseModel,
+          }).catch(() => {});
 
-          await persistRequestStart(config, runId, attempt, "revise", "phase_generation", MODEL);
+          await persistRequestStart(config, runId, attempt, "revise", "phase_generation", reviseModel);
           let reviseResponse = await runClaudeLoop({
             client,
-            model: MODEL,
+            model: reviseModel,
             systemPrompt,
             maxTokens: reviseMaxTokens,
             phaseLabel: "revise",
@@ -1805,13 +1961,13 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
             currentSpentUsd: spentUsd,
             targetSlideCount: run.target_slide_count,
-            betas: modelBetas,
-            container: buildAuthoringContainer(latestContainerId, MODEL),
+            betas: reviseBetas,
+            container: buildAuthoringContainer(latestContainerId, reviseModel),
             messages: reviseMessages,
-            tools: buildClaudeTools(MODEL),
-            thinking: buildAuthoringThinkingConfig(MODEL),
-            outputConfig: buildAuthoringOutputConfig(MODEL),
-            onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
+            tools: buildClaudeTools(reviseModel),
+            thinking: buildAuthoringThinkingConfig(reviseModel),
+            outputConfig: buildAuthoringOutputConfig(reviseModel),
+            onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),
           });
           let reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
           const missingReviseFiles = findMissingGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"]);
@@ -1819,13 +1975,14 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             console.warn(`[revise-retry] Missing revise files: ${missingReviseFiles.join(", ")}. Retrying revise phase once.`);
             await insertEvent(config, runId, attempt, "revise", "revise_missing_files_retry", {
               missingFiles: missingReviseFiles,
-              model: MODEL,
+              model: reviseModel,
+              repairLane,
               reviseIteration: reviseLoopCount,
             }).catch(() => {});
 
             const retryResponse = await runClaudeLoop({
               client,
-              model: MODEL,
+              model: reviseModel,
               systemPrompt,
               maxTokens: reviseMaxTokens,
               phaseLabel: "revise",
@@ -1834,10 +1991,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               maxPauseTurns: 0,
               phaseTimeoutMs: PHASE_TIMEOUTS_MS.revise,
               requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.revise,
-              currentSpentUsd: roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage)),
+              currentSpentUsd: roundUsd(spentUsd + usageToCost(reviseModel, reviseResponse.usage)),
               targetSlideCount: run.target_slide_count,
-              betas: modelBetas,
-              container: buildAuthoringContainer(reviseResponse.containerId ?? latestContainerId, MODEL),
+              betas: reviseBetas,
+              container: buildAuthoringContainer(reviseResponse.containerId ?? latestContainerId, reviseModel),
               messages: [
                 ...reviseResponse.thread,
                 {
@@ -1856,10 +2013,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
                   ],
                 },
               ],
-              tools: buildClaudeTools(MODEL),
-              thinking: buildAuthoringThinkingConfig(MODEL),
-              outputConfig: buildAuthoringOutputConfig(MODEL),
-              onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", MODEL),
+              tools: buildClaudeTools(reviseModel),
+              thinking: buildAuthoringThinkingConfig(reviseModel),
+              outputConfig: buildAuthoringOutputConfig(reviseModel),
+              onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),
             });
             const retryFiles = await downloadGeneratedFiles(client, retryResponse.fileIds);
             for (const retryFile of retryFiles) {
@@ -1881,8 +2038,14 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               requests: [...reviseResponse.requests, ...retryResponse.requests],
             };
           }
-          spentUsd = roundUsd(spentUsd + usageToCost(MODEL, reviseResponse.usage));
-          assertDeckSpendWithinBudget(spentUsd, MODEL, {
+          spentUsd = roundUsd(spentUsd + usageToCost(reviseModel, reviseResponse.usage));
+          await insertEvent(config, runId, attempt, "revise", "cost_actual", {
+            actualUsd: usageToCost(reviseModel, reviseResponse.usage),
+            cumulativeUsd: spentUsd,
+            iteration: reviseLoopCount,
+            model: reviseModel,
+          }).catch(() => {});
+          assertDeckSpendWithinBudget(spentUsd, reviseModel, {
             allowPartialOutput: reviseFiles.length > 0,
             context: `revise:${reviseLoopCount}`,
             targetSlideCount: run.target_slide_count,
@@ -1891,7 +2054,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           reviseAggregateUsage = mergeClaudeUsage(reviseAggregateUsage, reviseResponse.usage);
           reviseAggregateIterations += reviseResponse.iterations;
           reviseAggregatePauseTurns += reviseResponse.pauseTurns;
-          await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", MODEL, reviseResponse.requests);
+          await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", reviseModel, reviseResponse.requests);
           rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
           requireGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"], "revise");
           finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
@@ -1951,7 +2114,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           finalPdf = revisedQaOutcome.pdf;
           const revisedVisualQa = revisedQaOutcome.qa;
           spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-          assertDeckSpendWithinBudget(spentUsd, MODEL, {
+          assertDeckSpendWithinBudget(spentUsd, reviseModel, {
             allowPartialOutput: true,
             context: `revise:visual-qa:${reviseLoopCount}`,
             targetSlideCount: run.target_slide_count,
@@ -1989,18 +2152,66 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             ],
             run.target_slide_count,
           );
-          activeBlockingCritiqueIssues = activeCritiqueIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
+          activeBlockingCritiqueIssues = activeCritiqueIssues.filter((issue) => isBlockingRepairIssue(issue));
+          const activeFrontierState = buildRepairFrontierState({
+            lintIssues: revisedLintSummary.actionableIssues,
+            contractIssues: revisedContractSummary.actionableIssues,
+            claimTraceabilityIssues,
+            visualQa: activeVisualQa,
+            critiqueIssues: activeCritiqueIssues,
+          });
+          const frontierComparison = compareRepairFrontierState(activeFrontierState, bestFrontierState);
+          if (frontierComparison >= 0) {
+            bestFrontierState = activeFrontierState;
+            bestManifest = finalManifest;
+            bestPdf = finalPdf;
+            bestPptx = finalPptx;
+            bestNarrativeMarkdown = finalNarrativeMarkdown;
+            bestXlsxFile = xlsxFile;
+            bestVisualQa = finalVisualQa;
+            bestCritiqueIssues = activeCritiqueIssues;
+            bestBlockingCritiqueIssues = activeBlockingCritiqueIssues;
+          } else {
+            await insertEvent(config, runId, attempt, "revise", "frontier_regression_rejected", {
+              iteration: reviseLoopCount,
+              candidateFrontier: activeFrontierState,
+              bestFrontier: bestFrontierState,
+            }).catch(() => {});
+            finalManifest = bestManifest;
+            finalPdf = bestPdf;
+            finalPptx = bestPptx;
+            finalNarrativeMarkdown = bestNarrativeMarkdown;
+            xlsxFile = bestXlsxFile;
+            finalVisualQa = bestVisualQa;
+            activeManifest = bestManifest;
+            activePdf = bestPdf;
+            activeVisualQa = bestVisualQa;
+            activeCritiqueIssues = bestCritiqueIssues;
+            activeBlockingCritiqueIssues = bestBlockingCritiqueIssues;
+            break;
+          }
 
           if (!deckStillNeedsRevise({
-            visualQa: activeVisualQa,
-            blockingCritiqueIssues: activeBlockingCritiqueIssues,
+            frontierState: bestFrontierState,
           })) {
             break;
           }
         }
 
+        finalManifest = bestManifest;
+        finalPdf = bestPdf;
+        finalPptx = bestPptx;
+        finalNarrativeMarkdown = bestNarrativeMarkdown;
+        xlsxFile = bestXlsxFile;
+        finalVisualQa = bestVisualQa;
+        activeManifest = bestManifest;
+        activePdf = bestPdf;
+        activeVisualQa = bestVisualQa;
+        activeCritiqueIssues = bestCritiqueIssues;
+        activeBlockingCritiqueIssues = bestBlockingCritiqueIssues;
+
         phaseTelemetry.revise = {
-          ...buildPhaseTelemetry(MODEL, {
+          ...buildPhaseTelemetry(reviseModel, {
             usage: reviseAggregateUsage,
             iterations: reviseAggregateIterations,
             pauseTurns: reviseAggregatePauseTurns,
@@ -2008,6 +2219,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           }),
           reviseLoops: reviseLoopCount,
           reviseLoopBudget: reviseIterationLimit,
+          repairLane,
+          bestFrontierState,
         };
         phaseTelemetry.visualQaRevise = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, {
           input_tokens: reviseVisualQaAggregateUsage.input_tokens,
@@ -2448,7 +2661,7 @@ async function loadRun(config: ReturnType<typeof resolveConfig>, runId: string) 
     serviceKey: config.serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,target_slide_count,author_model,template_profile_id,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,failure_phase",
+      select: "id,organization_id,project_id,requested_by,brief,business_context,client,audience,objective,thesis,stakes,source_file_ids,target_slide_count,author_model,template_profile_id,template_diagnostics,workspace_id,workspace_scope_id,conversation_id,from_message_id,launch_source,workspace_context_pack,workspace_context_pack_hash,active_attempt_id,latest_attempt_id,latest_attempt_number,failure_phase",
       id: `eq.${runId}`,
       limit: "1",
     },
@@ -4313,7 +4526,6 @@ function buildReviseMessage(input: {
 }
 
 function buildMinimalReviseThread(input: {
-  generationMessage: Anthropic.Beta.BetaMessageParam;
   run: RunRow;
   analysis: z.infer<typeof analysisSchema> | null;
   manifest: z.infer<typeof deckManifestSchema>;
@@ -4334,13 +4546,19 @@ function buildMinimalReviseThread(input: {
     `Objective: ${input.run.objective || "Not specified"}`,
     `Thesis: ${input.analysis?.thesis || input.run.thesis || "Not specified"}`,
     `Executive summary: ${input.analysis?.executiveSummary || "Not available"}`,
+    ...(parseWorkspaceContextPack(input.run.workspace_context_pack)
+      ? [
+          "Workspace context summary:",
+          buildWorkspaceContextSummary(parseWorkspaceContextPack(input.run.workspace_context_pack)),
+          "Workspace context files already in the container: workspace-context.md, workspace-context.json.",
+        ]
+      : []),
     `Manifest summary: ${JSON.stringify(compactManifest, null, 2)}`,
     "Generated files already present in the container: deck.pptx, deck.pdf (internal QA), deck_manifest.json.",
     "Use the rendered PDF and issue list from the next user message to make local repairs without replaying the full authoring transcript.",
   ].join("\n\n");
 
   return [
-    input.generationMessage,
     {
       role: "assistant" as const,
       content: [
@@ -7272,33 +7490,155 @@ function hasMajorOrCriticalVisualIssues(visualQa: RenderedPageQaReport) {
   return visualQa.issues.some((issue) => issue.severity === "major" || issue.severity === "critical");
 }
 
-function deckStillNeedsRevise(input: {
+function classifyRepairIssue(issue: string): keyof RepairIssueBuckets {
+  const normalized = issue.toLowerCase();
+
+  if (normalized.includes("has major visual issue") || normalized.includes("has critical visual issue")) {
+    return "sonnet";
+  }
+  if (
+    normalized.includes("deck depth issue") ||
+    normalized.includes("[content_shortfall]") ||
+    normalized.includes("[content_overflow]") ||
+    normalized.includes("[appendix_overfill]") ||
+    normalized.includes("[drilldown_dimension_coverage]") ||
+    normalized.includes("[insufficient_decomposition_depth]") ||
+    normalized.includes("[chapter_depth_shallow]") ||
+    normalized.includes("[redundant_data_cut]") ||
+    normalized.includes("[competitor_tool_")
+  ) {
+    return "sonnet";
+  }
+  if (
+    normalized.includes("claim-traceability") ||
+    normalized.includes("[title_no_number]") ||
+    normalized.includes("[title_number_coverage]") ||
+    normalized.includes("writing issue") ||
+    normalized.includes("mixed-language") ||
+    normalized.includes("recommendation")
+  ) {
+    return "haiku";
+  }
+  if (
+    normalized.includes("pptx_large_image_aspect_fit") ||
+    normalized.includes("xlsx_manifest_") ||
+    normalized.includes("md_present") ||
+    normalized.includes("pptx_present")
+  ) {
+    return "deterministic";
+  }
+
+  return "sonnet";
+}
+
+function isBlockingRepairIssue(issue: string) {
+  return !isAdvisoryCritiqueIssue(issue) && classifyRepairIssue(issue) !== "deterministic";
+}
+
+function bucketRepairIssues(input: {
+  critiqueIssues: string[];
+  claimTraceabilityIssues: ClaimTraceabilityIssue[];
   visualQa: RenderedPageQaReport;
-  blockingCritiqueIssues: string[];
+}): RepairIssueBuckets {
+  const buckets: RepairIssueBuckets = {
+    deterministic: [],
+    haiku: [],
+    sonnet: [],
+  };
+
+  for (const issue of input.critiqueIssues) {
+    buckets[classifyRepairIssue(issue)].push(issue);
+  }
+
+  if (!hasMajorOrCriticalVisualIssues(input.visualQa) && input.claimTraceabilityIssues.length > 0) {
+    buckets.haiku.push(...input.claimTraceabilityIssues.map(formatClaimTraceabilityIssue));
+  }
+
+  return buckets;
+}
+
+function chooseRepairLane(buckets: RepairIssueBuckets, visualQa: RenderedPageQaReport): RepairLane {
+  if (hasMajorOrCriticalVisualIssues(visualQa) || buckets.sonnet.length > 0) {
+    return "sonnet";
+  }
+  if (buckets.haiku.length > 0) {
+    return "haiku";
+  }
+  return "none";
+}
+
+function buildRepairFrontierState(input: {
+  lintIssues: string[];
+  contractIssues: string[];
+  claimTraceabilityIssues: ClaimTraceabilityIssue[];
+  visualQa: RenderedPageQaReport;
+  critiqueIssues: string[];
+}) {
+  const advisoryIssueCount = input.critiqueIssues.filter((issue) => isAdvisoryCritiqueIssue(issue)).length;
+  const blockingVisualIssueCount = input.visualQa.issues.filter((issue) => issue.severity === "major" || issue.severity === "critical").length;
+
+  return {
+    blockingContractIssueCount: input.lintIssues.length + input.contractIssues.length,
+    claimTraceabilityIssueCount: input.claimTraceabilityIssues.length,
+    blockingVisualIssueCount,
+    visualScore: input.visualQa.score,
+    advisoryIssueCount,
+    deckNeedsRevision: input.visualQa.deckNeedsRevision,
+  };
+}
+
+function compareRepairFrontierState(candidate: RepairFrontierState, baseline: RepairFrontierState) {
+  if (candidate.blockingContractIssueCount !== baseline.blockingContractIssueCount) {
+    return candidate.blockingContractIssueCount < baseline.blockingContractIssueCount ? 1 : -1;
+  }
+  if (candidate.claimTraceabilityIssueCount !== baseline.claimTraceabilityIssueCount) {
+    return candidate.claimTraceabilityIssueCount < baseline.claimTraceabilityIssueCount ? 1 : -1;
+  }
+  if (candidate.blockingVisualIssueCount !== baseline.blockingVisualIssueCount) {
+    return candidate.blockingVisualIssueCount < baseline.blockingVisualIssueCount ? 1 : -1;
+  }
+  if (candidate.deckNeedsRevision !== baseline.deckNeedsRevision) {
+    return candidate.deckNeedsRevision ? -1 : 1;
+  }
+  if (candidate.visualScore !== baseline.visualScore) {
+    return candidate.visualScore > baseline.visualScore ? 1 : -1;
+  }
+  if (candidate.advisoryIssueCount !== baseline.advisoryIssueCount) {
+    return candidate.advisoryIssueCount < baseline.advisoryIssueCount ? 1 : -1;
+  }
+  return 0;
+}
+
+function deckStillNeedsRevise(input: {
+  frontierState: RepairFrontierState;
 }) {
   return !(
-    input.visualQa.score >= 7.5 &&
-    !input.visualQa.deckNeedsRevision &&
-    !hasMajorOrCriticalVisualIssues(input.visualQa) &&
-    input.blockingCritiqueIssues.length === 0
+    input.frontierState.visualScore >= 7.5 &&
+    !input.frontierState.deckNeedsRevision &&
+    input.frontierState.blockingContractIssueCount === 0 &&
+    input.frontierState.claimTraceabilityIssueCount === 0 &&
+    input.frontierState.blockingVisualIssueCount === 0
   );
 }
 
 function computeReviseIterationBudget(input: {
-  visualQa: RenderedPageQaReport;
-  blockingCritiqueIssues: string[];
+  frontierState: RepairFrontierState;
+  repairLane: RepairLane;
 }) {
-  if (!deckStillNeedsRevise(input)) {
+  if (input.repairLane === "none" || !deckStillNeedsRevise({ frontierState: input.frontierState })) {
     return 0;
   }
 
-  const criticalVisualCount = input.visualQa.issues.filter((issue) => issue.severity === "critical").length;
-  const majorVisualCount = input.visualQa.issues.filter((issue) => issue.severity === "major").length;
   const severityWeight =
-    (input.blockingCritiqueIssues.length * 2) +
-    (criticalVisualCount * 3) +
-    (majorVisualCount * 2) +
-    (input.visualQa.score < 5 ? 4 : input.visualQa.score < 7 ? 2 : 0);
+    (input.frontierState.blockingContractIssueCount * 3) +
+    (input.frontierState.claimTraceabilityIssueCount * 2) +
+    (input.frontierState.blockingVisualIssueCount * 3) +
+    (input.frontierState.deckNeedsRevision ? 2 : 0) +
+    (input.frontierState.visualScore < 5 ? 4 : input.frontierState.visualScore < 7 ? 2 : 0);
+
+  if (input.repairLane === "haiku") {
+    return severityWeight >= 6 ? 2 : 1;
+  }
 
   if (severityWeight >= 18) {
     return 3;
@@ -7716,6 +8056,7 @@ function supportsNativeExcelChart(chartType: string | undefined) {
     "stacked_bar_100",
     "line",
     "area",
+    "scatter",
     "pie",
     "doughnut",
   ].includes(normalized);
