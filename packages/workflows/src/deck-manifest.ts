@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  exhibitPresentationSpecSchema,
+  metricPresentationSpecSchema,
+} from "@basquio/types";
+
 export const deckManifestSchema = z.object({
   slideCount: z.number().int().min(0),
   pageCount: z.number().int().min(0).optional(),
@@ -16,6 +21,7 @@ export const deckManifestSchema = z.object({
       label: z.string(),
       value: z.string(),
       delta: z.string().optional(),
+      presentation: metricPresentationSpecSchema.optional(),
     })).optional(),
     callout: z.object({
       text: z.string(),
@@ -40,6 +46,7 @@ export const deckManifestSchema = z.object({
     categoryCount: z.number().int().min(0).optional(),
     categories: z.array(z.string()).optional(),
     seriesCount: z.number().int().min(0).optional(),
+    presentation: exhibitPresentationSpecSchema.optional(),
   })).default([]),
 }).passthrough();
 
@@ -130,6 +137,10 @@ function normalizeChart(input: unknown, index: number) {
     categoryCount: readNumber(record.categoryCount) ?? readNumber(record.category_count),
     categories: readStringArray(record.categories),
     seriesCount: readNumber(record.seriesCount) ?? readNumber(record.series_count),
+    presentation: parseOptionalSchema(
+      exhibitPresentationSpecSchema,
+      record.presentation ?? record.exhibitPresentation ?? record.exhibit_presentation,
+    ),
   };
 }
 
@@ -145,6 +156,10 @@ function normalizeMetrics(input: unknown) {
       label: readString(record.label) ?? `Metric ${index + 1}`,
       value: readString(record.value) ?? String(record.value ?? ""),
       delta: readString(record.delta),
+      presentation: parseOptionalSchema(
+        metricPresentationSpecSchema,
+        record.presentation ?? record.metricPresentation ?? record.metric_presentation,
+      ),
     };
   });
 }
@@ -206,4 +221,9 @@ function normalizeExcelSheetName(value: string | undefined) {
     .slice(0, 31);
 
   return sanitized.length > 0 ? sanitized : undefined;
+}
+
+function parseOptionalSchema<T>(schema: z.ZodType<T>, input: unknown) {
+  const result = schema.safeParse(input);
+  return result.success ? result.data : undefined;
 }

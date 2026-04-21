@@ -42,6 +42,8 @@ import {
 } from "@basquio/template-engine";
 import {
   type ChartSpec,
+  type ExhibitPresentationSpec,
+  type MetricPresentationSpec,
   type SlideSpec,
   type TemplateProfile,
   type WorkspaceContextPack,
@@ -70,6 +72,12 @@ import {
   usageToCost,
 } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
+import {
+  buildExhibitPresentationSpec,
+  buildWorkbookSheetPresentations,
+  inferMetricPresentationSpec,
+  type WorkbookSheetPresentation,
+} from "./metric-presentation";
 import { runClaimTraceabilityQa } from "./claim-traceability-qa";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
@@ -221,6 +229,8 @@ type WorkbookChartBinding = {
   request: WorkbookChartBindingRequest;
   sheet: WorkbookSheetProfile;
   selectedHeaders: string[];
+  headerPresentations: Record<string, MetricPresentationSpec>;
+  exhibitPresentation: ExhibitPresentationSpec;
 };
 
 type FidelityContext = {
@@ -435,6 +445,7 @@ const analysisSchema = z.object({
       label: z.string(),
       value: z.string(),
       delta: z.string().optional(),
+      presentation: z.record(z.string(), z.unknown()).optional(),
     }).passthrough()).optional(),
     callout: z.object({
       text: z.string(),
@@ -458,6 +469,7 @@ const analysisSchema = z.object({
       figureSize: z.any().optional().transform((value) => normalizeChartFigureSize(value)),
       sort: z.any().optional().transform((value) => normalizeChartSort(value) ?? "desc"),
       truncateLabels: z.boolean().optional(),
+      exhibitPresentation: z.record(z.string(), z.unknown()).optional(),
     }).passthrough().optional(),
   }).passthrough()).default([]),
 }).passthrough();
@@ -1641,6 +1653,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       ({ analysis, manifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
         analysis,
         manifest,
+        templateProfile,
         xlsxFile,
       }));
       fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
@@ -2066,6 +2079,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             ({ analysis, manifest: finalManifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
               analysis,
               manifest: finalManifest,
+              templateProfile,
               xlsxFile,
             }));
           }
@@ -2402,6 +2416,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       ({ analysis, manifest: finalManifest, xlsxFile: finalXlsx } = await ensureWorkbookChartCompanionArtifacts({
         analysis,
         manifest: finalManifest,
+        templateProfile,
         xlsxFile: finalXlsx,
       }));
 
@@ -5056,7 +5071,15 @@ function buildManifestFromAnalysis(analysis: AnalysisResult) {
         ? (slide as { pageIntent?: string }).pageIntent
         : undefined,
       bullets: slide.bullets,
-      metrics: slide.metrics,
+      metrics: slide.metrics?.map((metric) => ({
+        ...metric,
+        presentation:
+          metric.presentation ??
+          inferMetricPresentationSpec({
+            label: metric.label,
+            title: slide.title,
+          }),
+      })),
       callout: slide.callout,
       evidenceIds: slide.evidenceIds,
       chartId: slide.chart?.id,
@@ -5074,6 +5097,7 @@ function buildManifestFromAnalysis(analysis: AnalysisResult) {
         excelSheetName: slide.chart!.excelSheetName,
         excelChartCellAnchor: slide.chart!.excelChartCellAnchor,
         dataSignature: slide.chart!.dataSignature,
+        presentation: (slide.chart as { exhibitPresentation?: Record<string, unknown> }).exhibitPresentation,
       })),
   });
 }
@@ -5652,7 +5676,19 @@ function synthesizeAnalysisFromManifest(
       ...(slide.subtitle ? { subtitle: slide.subtitle } : {}),
       ...(slide.body ? { body: slide.body } : {}),
       ...(slide.bullets ? { bullets: slide.bullets } : {}),
-      ...(slide.metrics ? { metrics: slide.metrics } : {}),
+      ...(slide.metrics
+        ? {
+            metrics: slide.metrics.map((metric) => ({
+              ...metric,
+              presentation:
+                metric.presentation ??
+                inferMetricPresentationSpec({
+                  label: metric.label,
+                  title: slide.title,
+                }),
+            })),
+          }
+        : {}),
       ...(slide.callout ? { callout: slide.callout } : {}),
       ...(slide.evidenceIds ? { evidenceIds: slide.evidenceIds } : {}),
       ...(chart
@@ -5668,6 +5704,7 @@ function synthesizeAnalysisFromManifest(
               ...(chart.excelSheetName ? { excelSheetName: chart.excelSheetName } : {}),
               ...(chart.excelChartCellAnchor ? { excelChartCellAnchor: chart.excelChartCellAnchor } : {}),
               ...(chart.dataSignature ? { dataSignature: chart.dataSignature } : {}),
+              ...(chart.presentation ? { exhibitPresentation: chart.presentation } : {}),
               ...(typeof chart.categoryCount === "number" ? { maxCategories: chart.categoryCount } : {}),
               ...(preferredOrientation ? { preferredOrientation } : {}),
               ...(shouldTruncateChartLabels(chart.categories) ? { truncateLabels: true } : {}),
@@ -6642,6 +6679,7 @@ function extractWorkbookSheetProfiles(buffer: Buffer): WorkbookSheetProfile[] {
 async function ensureWorkbookChartCompanionArtifacts(input: {
   analysis: AnalysisResult | null;
   manifest: z.infer<typeof deckManifestSchema>;
+  templateProfile: TemplateProfile;
   xlsxFile: GeneratedFile;
 }): Promise<{
   analysis: AnalysisResult | null;
@@ -6649,13 +6687,20 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
   xlsxFile: GeneratedFile;
 }> {
   const workbookSheets = extractWorkbookSheetProfiles(input.xlsxFile.buffer);
+  if (workbookSheets.length === 0) {
+    return input;
+  }
+  const sheetPresentations = buildWorkbookSheetPresentations(workbookSheets);
+  const sheetPresentationByName = new Map(sheetPresentations.map((sheet) => [sheet.sheetName, sheet]));
   const requests = buildWorkbookChartBindingRequests(input.manifest, input.analysis);
-  if (requests.length === 0 || workbookSheets.length === 0) {
+  if (requests.length === 0 && sheetPresentations.length === 0) {
     return input;
   }
 
   const bindings = requests
-    .map((request) => bindWorkbookSheetToChart(request, workbookSheets))
+    .map((request) =>
+      bindWorkbookSheetToChart(request, workbookSheets, input.templateProfile, sheetPresentationByName),
+    )
     .filter((binding): binding is WorkbookChartBinding => Boolean(binding));
 
   const manifestCharts = input.manifest.charts.map((chart) => {
@@ -6667,6 +6712,13 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
       ...chart,
       excelSheetName: binding.sheet.name,
       dataSignature: chart.dataSignature ?? binding.sheet.dataSignature,
+      presentation: {
+        ...binding.exhibitPresentation,
+        workbookAnchor:
+          chart.presentation?.workbookAnchor ??
+          chart.excelChartCellAnchor ??
+          binding.exhibitPresentation.workbookAnchor,
+      },
     };
   });
 
@@ -6688,21 +6740,34 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
             ...slide.chart,
             excelSheetName: binding.sheet.name,
             dataSignature: slide.chart.dataSignature ?? binding.sheet.dataSignature,
+            exhibitPresentation: {
+              ...binding.exhibitPresentation,
+              workbookAnchor:
+                (slide.chart as { exhibitPresentation?: ExhibitPresentationSpec }).exhibitPresentation?.workbookAnchor ??
+                slide.chart.excelChartCellAnchor ??
+                binding.exhibitPresentation.workbookAnchor,
+            },
           },
         };
       }),
     });
   }
 
-  const needsNativeCharts = bindings.some((binding) =>
-    supportsNativeExcelChart(binding.request.chartType) &&
-    binding.selectedHeaders.length > 0 &&
-    !binding.request.existingAnchor,
-  );
+  const needsWorkbookMutation =
+    sheetPresentations.length > 0 ||
+    bindings.some((binding) =>
+      supportsNativeExcelChart(binding.request.chartType) &&
+      binding.selectedHeaders.length > 0 &&
+      !binding.request.existingAnchor,
+    );
   let nextXlsx = input.xlsxFile;
   let chartAnchorById = new Map<string, string>();
-  if (needsNativeCharts) {
-    const nativeResult = await injectWorkbookNativeCharts(input.xlsxFile.buffer, bindings);
+  if (needsWorkbookMutation) {
+    const nativeResult = await injectWorkbookNativeCharts(
+      input.xlsxFile.buffer,
+      bindings,
+      sheetPresentations,
+    );
     nextXlsx = {
       ...input.xlsxFile,
       buffer: nativeResult.buffer,
@@ -6717,6 +6782,14 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
       return {
         ...chart,
         ...(anchor ? { excelChartCellAnchor: anchor } : {}),
+        ...(chart.presentation
+          ? {
+              presentation: {
+                ...chart.presentation,
+                workbookAnchor: anchor ?? chart.presentation.workbookAnchor ?? null,
+              },
+            }
+          : {}),
       };
     }),
   });
@@ -6729,14 +6802,25 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
           return slide;
         }
         const anchor = chartAnchorById.get(slide.chart.id);
-        if (!anchor) {
+        if (!anchor && !(slide.chart as { exhibitPresentation?: ExhibitPresentationSpec }).exhibitPresentation) {
           return slide;
         }
         return {
           ...slide,
           chart: {
             ...slide.chart,
-            excelChartCellAnchor: anchor,
+            ...(anchor ? { excelChartCellAnchor: anchor } : {}),
+            ...((slide.chart as { exhibitPresentation?: ExhibitPresentationSpec }).exhibitPresentation
+              ? {
+                  exhibitPresentation: {
+                    ...(slide.chart as { exhibitPresentation?: ExhibitPresentationSpec }).exhibitPresentation,
+                    workbookAnchor:
+                      anchor ??
+                      (slide.chart as { exhibitPresentation?: ExhibitPresentationSpec }).exhibitPresentation?.workbookAnchor ??
+                      null,
+                  },
+                }
+              : {}),
           },
         };
       }),
@@ -6819,6 +6903,8 @@ function extractChartCategories(chart: AnalysisResult["slidePlan"][number]["char
 function bindWorkbookSheetToChart(
   request: WorkbookChartBindingRequest,
   workbookSheets: WorkbookSheetProfile[],
+  templateProfile: TemplateProfile,
+  sheetPresentationByName: Map<string, WorkbookSheetPresentation>,
 ): WorkbookChartBinding | null {
   const preferredSheet = request.existingSheetName
     ? workbookSheets.find((sheet) => sheet.name === request.existingSheetName)
@@ -6829,10 +6915,26 @@ function bindWorkbookSheetToChart(
   }
 
   const selectedHeaders = selectWorkbookSeriesHeaders(request, sheet);
+  const sheetPresentation = sheetPresentationByName.get(sheet.name);
+  const headerPresentations = Object.fromEntries(
+    (sheetPresentation?.columns ?? []).map((column) => [column.header, column.presentation]),
+  ) as Record<string, MetricPresentationSpec>;
   return {
     request,
     sheet,
     selectedHeaders,
+    headerPresentations,
+    exhibitPresentation: buildExhibitPresentationSpec({
+      chartId: request.chartId,
+      chartType: request.chartType,
+      title: request.title,
+      xAxisLabel: request.xAxisLabel,
+      yAxisLabel: request.yAxisLabel,
+      selectedHeaders,
+      headerPresentations,
+      templateProfile,
+      workbookAnchor: request.existingAnchor ?? null,
+    }),
   };
 }
 
@@ -6944,6 +7046,7 @@ function tokenizeWorkbookMatchText(value: string | undefined | null) {
 async function injectWorkbookNativeCharts(
   xlsxBuffer: Buffer,
   bindings: WorkbookChartBinding[],
+  sheetPresentations: WorkbookSheetPresentation[],
 ): Promise<{
   buffer: Buffer;
   chartAnchorById: Map<string, string>;
@@ -6952,7 +7055,7 @@ async function injectWorkbookNativeCharts(
     supportsNativeExcelChart(binding.request.chartType) &&
     binding.selectedHeaders.length > 0,
   );
-  if (chartsToInject.length === 0) {
+  if (chartsToInject.length === 0 && sheetPresentations.length === 0) {
     return { buffer: xlsxBuffer, chartAnchorById: new Map() };
   }
 
@@ -6964,6 +7067,13 @@ async function injectWorkbookNativeCharts(
   try {
     await writeFile(inputPath, xlsxBuffer);
     await writeFile(specPath, JSON.stringify({
+      workbookFormats: sheetPresentations.map((sheet) => ({
+        sheetName: sheet.sheetName,
+        columns: sheet.columns.map((column) => ({
+          header: column.header,
+          excelNumberFormat: column.presentation.excelNumberFormat,
+        })),
+      })),
       charts: chartsToInject.map((binding) => ({
         chartId: binding.request.chartId,
         chartType: binding.request.chartType,
@@ -6973,6 +7083,7 @@ async function injectWorkbookNativeCharts(
         sheetName: binding.sheet.name,
         categories: binding.request.categories,
         selectedHeaders: binding.selectedHeaders,
+        presentation: binding.exhibitPresentation,
       })),
     }));
     const { stdout } = await execFileAsync(
