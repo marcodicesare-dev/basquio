@@ -6536,37 +6536,56 @@ function buildWorkbookChartBindingRequests(
   manifest: z.infer<typeof deckManifestSchema>,
   analysis: AnalysisResult | null,
 ): WorkbookChartBindingRequest[] {
-  const analysisByChartId = new Map<string, AnalysisResult["slidePlan"][number]["chart"]>();
-  const analysisByPosition = new Map<number, AnalysisResult["slidePlan"][number]["chart"]>();
+  type AnalysisChart = NonNullable<AnalysisResult["slidePlan"][number]["chart"]>;
+  const analysisEntries: Array<{
+    position: number;
+    chart: AnalysisChart;
+  }> = [];
+  const analysisByChartId = new Map<string, AnalysisChart>();
+  const analysisByPosition = new Map<number, AnalysisChart>();
+  const analysisByDataSignature = new Map<string, AnalysisChart>();
+  const analysisByExcelSheetName = new Map<string, AnalysisChart>();
   for (const slide of analysis?.slidePlan ?? []) {
     if (slide.chart) {
+      analysisEntries.push({ position: slide.position, chart: slide.chart });
       analysisByChartId.set(slide.chart.id, slide.chart);
       analysisByPosition.set(slide.position, slide.chart);
+      if (slide.chart.dataSignature && !analysisByDataSignature.has(slide.chart.dataSignature)) {
+        analysisByDataSignature.set(slide.chart.dataSignature, slide.chart);
+      }
+      if (slide.chart.excelSheetName && !analysisByExcelSheetName.has(slide.chart.excelSheetName)) {
+        analysisByExcelSheetName.set(slide.chart.excelSheetName, slide.chart);
+      }
     }
   }
 
-  const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
-  return manifest.slides.flatMap((slide) => {
-    if (!slide.chartId) {
-      return [];
-    }
-    const manifestChart = chartById.get(slide.chartId);
-    if (!manifestChart) {
-      return [];
-    }
-    const analysisChart = analysisByChartId.get(slide.chartId) ?? analysisByPosition.get(slide.position);
-    return [{
-      position: slide.position,
+  return manifest.charts.map((manifestChart, index) => {
+    const slide = manifest.slides.find((entry) => entry.chartId === manifestChart.id) ?? null;
+    const analysisChart =
+      analysisByChartId.get(manifestChart.id) ??
+      (manifestChart.dataSignature ? analysisByDataSignature.get(manifestChart.dataSignature) : undefined) ??
+      (manifestChart.excelSheetName ? analysisByExcelSheetName.get(manifestChart.excelSheetName) : undefined) ??
+      analysisByPosition.get(slide?.position ?? -1) ??
+      analysisEntries.find((entry) =>
+        entry.chart.chartType === manifestChart.chartType &&
+        (
+          (manifestChart.excelSheetName && entry.chart.excelSheetName === manifestChart.excelSheetName) ||
+          (manifestChart.dataSignature && entry.chart.dataSignature === manifestChart.dataSignature)
+        )
+      )?.chart;
+
+    return {
+      position: slide?.position ?? index + 1,
       chartId: manifestChart.id,
       chartType: manifestChart.chartType,
-      title: manifestChart.title || slide.title,
+      title: manifestChart.title || slide?.title || `Chart ${index + 1}`,
       xAxisLabel: manifestChart.xAxisLabel,
       yAxisLabel: manifestChart.yAxisLabel,
       categories: extractChartCategories(analysisChart),
       existingSheetName: manifestChart.excelSheetName,
       existingAnchor: manifestChart.excelChartCellAnchor,
       existingDataSignature: manifestChart.dataSignature,
-    }];
+    };
   });
 }
 
