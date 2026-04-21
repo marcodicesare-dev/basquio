@@ -124,6 +124,8 @@ export async function POST(request: Request) {
   const authoritativeSourceFiles = await loadSourceFilesForWorkspaceContext({
     supabaseUrl,
     serviceKey,
+    organizationId: workspace.organizationRowId,
+    projectId: workspace.projectRowId,
     sourceFileIds: requestedSourceFileIds,
     uploadedSourceFiles: [],
   });
