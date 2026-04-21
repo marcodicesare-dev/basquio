@@ -3,9 +3,11 @@
 import { useCallback, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
+
 type UploadState =
   | { kind: "idle" }
-  | { kind: "uploading"; filename: string }
+  | { kind: "uploading"; filename: string; progressPct: number }
   | { kind: "success"; filename: string; deduplicated: boolean }
   | { kind: "error"; message: string };
 
@@ -24,28 +26,14 @@ export function WorkspaceUploadZone({
 
   const uploadFile = useCallback(
     async (file: File) => {
-      setState({ kind: "uploading", filename: file.name });
-
-      const formData = new FormData();
-      formData.append("file", file);
+      setState({ kind: "uploading", filename: file.name, progressPct: 0 });
 
       try {
-        const response = await fetch("/api/workspace/uploads", {
-          method: "POST",
-          body: formData,
+        const data = await uploadWorkspaceFile(file, {
+          onProgress(progressPct) {
+            setState({ kind: "uploading", filename: file.name, progressPct });
+          },
         });
-
-        const data = (await response.json().catch(() => ({}))) as {
-          id?: string;
-          status?: string;
-          deduplicated?: boolean;
-          error?: string;
-        };
-
-        if (!response.ok) {
-          setState({ kind: "error", message: data.error ?? "Upload failed. Try again." });
-          return;
-        }
 
         setState({
           kind: "success",
@@ -130,7 +118,7 @@ export function WorkspaceUploadZone({
         </span>
         <span className="wbeta-drop-sub">
           {variant === "hero"
-            ? `Or click anywhere on this card. ${supportedLabel}. Up to 25 MB.`
+            ? `Or click anywhere on this card. ${supportedLabel}. Up to 50 MB.`
             : `Or click to browse. ${supportedLabel}.`}
         </span>
       </div>
@@ -147,7 +135,7 @@ function UploadStatus({ state }: { state: UploadState }) {
     return (
       <p className="wbeta-drop-status wbeta-drop-status-busy">
         <span className="wbeta-drop-spinner" aria-hidden />
-        Uploading {state.filename}.
+        Uploading {state.filename}. {state.progressPct}%
       </p>
     );
   }

@@ -39,6 +39,80 @@ export const columnRoleSchema = z.enum([
 
 export const confidenceLevelSchema = z.enum(["HIGH", "MEDIUM", "LOW"]);
 
+export const metricSemanticFamilySchema = z.enum([
+  "sales_value",
+  "sales_volume",
+  "distribution",
+  "tdp",
+  "share",
+  "price",
+  "rotation",
+  "index",
+  "avg_assortment",
+]);
+
+export const metricDisplayUnitSchema = z.enum([
+  "raw",
+  "percent",
+  "currency",
+  "index",
+  "thousands",
+  "millions",
+  "billions",
+]);
+
+export const metricVariationDisplaySchema = z.enum([
+  "absolute",
+  "percentage",
+  "auto",
+]);
+
+export const metricPresentationSpecSchema = z.object({
+  semanticFamily: metricSemanticFamilySchema,
+  displayUnit: metricDisplayUnitSchema.default("raw"),
+  decimalPlaces: z.number().int().min(0).max(4).default(0),
+  variationDisplay: metricVariationDisplaySchema.default("auto"),
+  locale: z.string().default("en-US"),
+  excelNumberFormat: z.string().default("0"),
+  pptLabelFormat: z.string().default("0"),
+  markdownFormat: z.string().default("0"),
+});
+
+export const exhibitSeriesPresentationSchema = z.object({
+  label: z.string(),
+  header: z.string().optional(),
+  color: z.string(),
+  lineColor: z.string().optional(),
+  markerSymbol: z.enum(["none", "circle", "square", "diamond", "triangle", "x"]).default("none"),
+  markerSize: z.number().int().min(0).max(24).default(0),
+  lineWidth: z.number().positive().default(1),
+  metricPresentation: metricPresentationSpecSchema.optional(),
+});
+
+export const exhibitAxisPresentationSchema = z.object({
+  label: z.string().nullable().default(null),
+  numberFormat: z.string().nullable().default(null),
+  textColor: z.string().nullable().default(null),
+});
+
+export const exhibitPresentationSpecSchema = z.object({
+  chartFamily: z.string(),
+  legendPosition: z.enum(["top", "right", "bottom", "left", "none"]).default("bottom"),
+  series: z.array(exhibitSeriesPresentationSchema).default([]),
+  categoryAxis: exhibitAxisPresentationSchema.default({}),
+  valueAxis: exhibitAxisPresentationSchema.default({}),
+  dataLabelFormat: z.string().nullable().default(null),
+  chartBackground: z.string().nullable().default(null),
+  plotBackground: z.string().nullable().default(null),
+  gridlineColor: z.string().nullable().default(null),
+  gridlineWidth: z.number().positive().default(1),
+  brandPaletteSource: z.string().nullable().default(null),
+  templateProfileId: z.string().nullable().default(null),
+  templateProfileSource: z.string().nullable().default(null),
+  workbookAnchor: z.string().nullable().default(null),
+  screenshotChartId: z.string().nullable().default(null),
+});
+
 export const datasetColumnSchema = z.object({
   name: z.string(),
   inferredType: z.enum(["string", "number", "date", "boolean", "unknown"]),
@@ -666,6 +740,7 @@ export const chartSpecSchema = z.object({
       statistic: metricStatisticSchema,
     }),
   ).default([]),
+  presentation: exhibitPresentationSpecSchema.optional(),
 });
 
 export const templateRegionBindingSchema = z.object({
@@ -928,6 +1003,9 @@ export const qualityReportSchema = z.object({
 });
 
 export type DatasetProfile = z.infer<typeof datasetProfileSchema>;
+export type MetricSemanticFamily = z.infer<typeof metricSemanticFamilySchema>;
+export type MetricPresentationSpec = z.infer<typeof metricPresentationSpecSchema>;
+export type ExhibitPresentationSpec = z.infer<typeof exhibitPresentationSpecSchema>;
 export type PackageSemantics = z.infer<typeof packageSemanticsSchema>;
 export type PackageEntity = z.infer<typeof packageEntitySchema>;
 export type PackageRelationship = z.infer<typeof packageRelationshipSchema>;

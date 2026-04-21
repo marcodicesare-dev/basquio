@@ -116,6 +116,9 @@ Initial domain bias:
 - narrative markdown must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
 - When the `pptx` skill is loaded, Basquio should rely on the documented skill contract itself rather than assuming an undocumented internal presentation library implementation.
 - scatter manifests must produce native editable scatter charts in `data_tables.xlsx`; the workbook injector and the TypeScript allowlist must stay aligned.
+- workbook numeric precision is now a deterministic contract, not a model choice: `MetricPresentationSpec` governs NIQ-style decimal rules for workbook cells and native chart labels.
+- workbook-native chart styling now persists as `ExhibitPresentationSpec`; chart bindings alone are not enough to preserve fidelity across PPT screenshots and Excel-native companions.
+- the shipped workspace uploader lives in `.context/main-landing`, and that surface must use direct browser-to-Supabase uploads plus confirm-step row creation instead of raw multipart bodies through a Vercel function.
 - In the current Anthropic API behavior, loading Skills can auto-inject the code-execution tool. Do not explicitly register another named `code_execution` tool alongside those Skills if the API reports a tool-name conflict.
 - The March 27-28 failure cluster was primarily a runtime-truth mismatch problem: speculative docs and forward-looking fixes diverged from live provider/runtime behavior faster than the code was revalidated.
 - The canonical March 28 forensic truth source is `memory/march28-48h-forensic-learnings.md`.

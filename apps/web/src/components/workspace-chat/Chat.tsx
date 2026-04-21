@@ -17,6 +17,7 @@ import {
   WorkspaceGenerationStatus,
   type ActiveGeneration,
 } from "@/components/workspace-generation-status";
+import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
 
 type AttachmentChip = {
   localId: string;
@@ -90,37 +91,25 @@ export function WorkspaceChat({
             status: "uploading",
           },
         ]);
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("conversation_id", conversationIdRef.current);
-        if (scopeId) formData.append("scope_id", scopeId);
         try {
-          const response = await fetch("/api/workspace/uploads", {
-            method: "POST",
-            body: formData,
+          // Direct-to-storage upload flow owned by port-louis (prepare → PUT →
+          // confirm). We layer the dual-lane attachment on top: the confirm
+          // response carries the document id + status, and the confirm route
+          // (server-side) records the conversation_attachment when the
+          // conversation_id lives in this viewer's workspace.
+          const result = await uploadWorkspaceFile(file, {
+            conversationId: conversationIdRef.current,
+            scopeId: scopeId ?? null,
           });
-          const data = (await response.json().catch(() => ({}))) as {
-            id?: string;
-            status?: string;
-            error?: string;
-          };
-          if (!response.ok) {
-            updateAttachment(localId, {
-              status: "failed",
-              message: data.error ?? "Upload failed.",
-            });
-            setUpload({ kind: "error", message: data.error ?? "Upload failed." });
-            continue;
-          }
           const nextStatus: AttachmentChip["status"] =
-            data.status === "indexed"
+            result.status === "indexed"
               ? "indexed"
-              : data.status === "failed"
+              : result.status === "failed"
                 ? "failed"
                 : "indexing";
           updateAttachment(localId, {
             status: nextStatus,
-            documentId: data.id,
+            documentId: result.id,
             message: nextStatus === "failed" ? "indexing failed earlier" : undefined,
           });
         } catch (uploadError) {

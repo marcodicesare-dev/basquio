@@ -18,6 +18,8 @@ from openpyxl.chart import (
     Series,
 )
 from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.shapes import GraphicalProperties
+from openpyxl.drawing.line import LineProperties
 from openpyxl.utils import get_column_letter
 
 
@@ -38,8 +40,90 @@ def is_number(value):
     return False
 
 
+def normalize_chart_type(value):
+    return (value or "").strip().lower()
+
+
+def normalize_color(value):
+    if not value:
+        return None
+    text = str(value).strip().lstrip("#").upper()
+    if len(text) == 6 and all(char in "0123456789ABCDEF" for char in text):
+        return text
+    return None
+
+
+def legend_position_to_excel(value):
+    mapping = {
+        "top": "t",
+        "right": "r",
+        "bottom": "b",
+        "left": "l",
+    }
+    return mapping.get((value or "").strip().lower())
+
+
+def marker_symbol_to_excel(value):
+    mapping = {
+        "circle": "circle",
+        "square": "square",
+        "diamond": "diamond",
+        "triangle": "triangle",
+        "x": "x",
+    }
+    return mapping.get((value or "").strip().lower())
+
+
+def set_shape_fill(graphical_props, fill_color):
+    if not graphical_props or not fill_color:
+        return
+    try:
+        graphical_props.solidFill = fill_color
+    except Exception:
+        pass
+
+
+def set_shape_line(graphical_props, line_color):
+    if not graphical_props or not line_color:
+        return
+    try:
+        if graphical_props.ln is None:
+            graphical_props.ln = LineProperties()
+        graphical_props.line.solidFill = line_color
+    except Exception:
+        try:
+            graphical_props.ln = LineProperties(solidFill=line_color)
+        except Exception:
+            pass
+
+
+def ensure_graphical_props(target):
+    if target is None:
+        return None
+
+    for attr_name in ("graphical_properties", "graphicalProperties", "spPr"):
+        if not hasattr(target, attr_name):
+            continue
+        existing = getattr(target, attr_name)
+        if existing is None:
+            existing = GraphicalProperties()
+            setattr(target, attr_name, existing)
+        return existing
+
+    return None
+
+
+def to_excel_line_width(value):
+    if value is None:
+        return None
+    try:
+        return max(1, int(float(value) * 12700))
+    except Exception:
+        return None
+
+
 def build_chart(chart_type, title, x_axis_label, y_axis_label):
-    normalized = (chart_type or "").strip().lower()
+    normalized = normalize_chart_type(chart_type)
     if normalized == "horizontal_bar":
         chart = BarChart()
         chart.type = "bar"
@@ -77,7 +161,6 @@ def build_chart(chart_type, title, x_axis_label, y_axis_label):
         chart.type = "col"
         chart.grouping = "clustered"
 
-    chart.style = 10
     chart.width = 12
     chart.height = 7
     chart.title = title or "Basquio chart"
@@ -94,15 +177,131 @@ def build_chart(chart_type, title, x_axis_label, y_axis_label):
     except Exception:
         pass
 
-    if normalized in {"pie", "doughnut", "bar", "horizontal_bar", "grouped_bar", "stacked_bar", "stacked_bar_100"}:
+    return chart
+
+
+def apply_workbook_formats(workbook, workbook_formats):
+    for sheet_spec in workbook_formats:
+        sheet_name = sheet_spec.get("sheetName")
+        if not sheet_name or sheet_name not in workbook.sheetnames:
+            continue
+
+        worksheet = workbook[sheet_name]
+        headers = [worksheet.cell(1, index).value for index in range(1, worksheet.max_column + 1)]
+        header_to_column = {str(header): index + 1 for index, header in enumerate(headers) if header not in (None, "")}
+
+        for column_spec in sheet_spec.get("columns", []):
+            header = column_spec.get("header")
+            number_format = column_spec.get("excelNumberFormat")
+            column_index = header_to_column.get(header)
+            if not column_index or not number_format:
+                continue
+
+            for row_index in range(2, worksheet.max_row + 1):
+                cell = worksheet.cell(row_index, column_index)
+                if is_number(cell.value):
+                    cell.number_format = number_format
+
+
+def apply_chart_presentation(chart, chart_spec, requested_headers):
+    presentation = chart_spec.get("presentation") or {}
+    legend_position = legend_position_to_excel(presentation.get("legendPosition"))
+    if legend_position:
         try:
-            chart.dLbls = DataLabelList()
+            chart.legend.position = legend_position
+        except Exception:
+            pass
+
+    category_axis = presentation.get("categoryAxis") or {}
+    value_axis = presentation.get("valueAxis") or {}
+    category_axis_format = category_axis.get("numberFormat")
+    value_axis_format = value_axis.get("numberFormat")
+    data_label_format = presentation.get("dataLabelFormat")
+    chart_background = normalize_color(presentation.get("chartBackground"))
+    plot_background = normalize_color(presentation.get("plotBackground"))
+    gridline_color = normalize_color(presentation.get("gridlineColor"))
+    gridline_width = to_excel_line_width(presentation.get("gridlineWidth"))
+
+    chart_graphics = ensure_graphical_props(chart)
+    set_shape_fill(chart_graphics, chart_background)
+
+    plot_graphics = ensure_graphical_props(getattr(chart, "plot_area", None))
+    set_shape_fill(plot_graphics, plot_background)
+
+    if category_axis_format:
+        try:
+            chart.x_axis.numFmt = category_axis_format
+        except Exception:
+            pass
+
+    if value_axis_format:
+        try:
+            chart.y_axis.numFmt = value_axis_format
+        except Exception:
+            pass
+
+    for axis in [getattr(chart, "x_axis", None), getattr(chart, "y_axis", None)]:
+        if axis is None or not getattr(axis, "majorGridlines", None):
+            continue
+        gridline_graphics = ensure_graphical_props(axis.majorGridlines)
+        set_shape_line(gridline_graphics, gridline_color)
+        if gridline_graphics and gridline_width:
+            try:
+                if gridline_graphics.ln is None:
+                    gridline_graphics.ln = LineProperties()
+                gridline_graphics.ln.w = gridline_width
+            except Exception:
+                pass
+
+    if data_label_format and normalize_chart_type(chart_spec.get("chartType")) in {
+        "pie",
+        "doughnut",
+        "bar",
+        "horizontal_bar",
+        "grouped_bar",
+        "stacked_bar",
+        "stacked_bar_100",
+        "line",
+        "area",
+        "scatter",
+    }:
+        try:
+            chart.dLbls = chart.dLbls or DataLabelList()
             chart.dLbls.showVal = True
+            chart.dLbls.numFmt = data_label_format
             chart.dLbls.showLeaderLines = False
         except Exception:
             pass
 
-    return chart
+    series_styles = presentation.get("series") or []
+    for index, series in enumerate(chart.series):
+        style = series_styles[index] if index < len(series_styles) else {}
+        fill_color = normalize_color(style.get("color"))
+        line_color = normalize_color(style.get("lineColor") or style.get("color"))
+        set_shape_fill(series.graphicalProperties, fill_color)
+        set_shape_line(series.graphicalProperties, line_color)
+
+        if normalize_chart_type(chart_spec.get("chartType")) == "scatter":
+            marker_symbol = marker_symbol_to_excel(style.get("markerSymbol"))
+            marker_size = style.get("markerSize")
+            try:
+                if marker_symbol:
+                    series.marker.symbol = marker_symbol
+                if marker_size:
+                    series.marker.size = int(marker_size)
+            except Exception:
+                pass
+            try:
+                set_shape_fill(series.marker.graphicalProperties, fill_color)
+                set_shape_line(series.marker.graphicalProperties, line_color)
+            except Exception:
+                pass
+
+        if not fill_color and index < len(requested_headers):
+            fallback_color = normalize_color(series_styles[0].get("color")) if series_styles else None
+            if fallback_color:
+                set_shape_fill(series.graphicalProperties, fallback_color)
+                set_shape_line(series.graphicalProperties, fallback_color)
 
 
 def main():
@@ -117,6 +316,8 @@ def main():
     workbook = load_workbook(input_path)
     per_sheet_counts = {}
     results = []
+
+    apply_workbook_formats(workbook, spec.get("workbookFormats", []))
 
     for chart_spec in spec.get("charts", []):
         sheet_name = chart_spec.get("sheetName")
@@ -173,7 +374,7 @@ def main():
                     numeric_headers.append(str(header))
             requested_headers = numeric_headers[:3]
 
-        chart_type = (chart_spec.get("chartType") or "").strip().lower()
+        chart_type = normalize_chart_type(chart_spec.get("chartType"))
         if chart_type in {"pie", "doughnut"}:
             requested_headers = requested_headers[:1]
         elif chart_type == "scatter":
@@ -210,7 +411,10 @@ def main():
             worksheet.cell(target_row, helper_start_col, value=category_value)
             for offset, header in enumerate(requested_headers, start=1):
                 source_column = header_to_column[header]
-                worksheet.cell(target_row, helper_start_col + offset, value=worksheet.cell(source_row_index, source_column).value)
+                source_cell = worksheet.cell(source_row_index, source_column)
+                target_cell = worksheet.cell(target_row, helper_start_col + offset, value=source_cell.value)
+                if source_cell.number_format:
+                    target_cell.number_format = source_cell.number_format
 
         for column_offset in range(0, len(requested_headers) + 1):
             worksheet.column_dimensions[get_column_letter(helper_start_col + column_offset)].hidden = True
@@ -242,7 +446,16 @@ def main():
                 min_row=helper_data_start_row,
                 max_row=helper_data_start_row + len(selected_rows) - 1,
             )
-            scatter_series = Series(y_ref, xvalues=x_ref, title_from_data=False)
+            scatter_series_title = (
+                ((chart_spec.get("presentation") or {}).get("series") or [{}])[0].get("label")
+                or requested_headers[1]
+            )
+            scatter_series = Series(
+                y_ref,
+                xvalues=x_ref,
+                title=scatter_series_title,
+                title_from_data=False,
+            )
             chart.series.append(scatter_series)
         else:
             data_ref = Reference(
@@ -254,6 +467,8 @@ def main():
             )
             chart.add_data(data_ref, titles_from_data=True)
             chart.set_categories(category_ref)
+
+        apply_chart_presentation(chart, chart_spec, requested_headers)
 
         anchor_column = helper_start_col + len(requested_headers) + 2
         anchor_row = helper_start_row + 1

@@ -671,3 +671,17 @@ Implication:
 - reruns inherit the frozen workspace context from the originating run by default instead of reconstructing it from transient client state
 - the worker receives only canonical source-file references that are actually attached to the run and belong to the same organization/project boundary
 - the workspace UX branch can evolve its composer without weakening runtime evidence integrity or rerun continuity
+
+## April 21, 2026 — Direct workspace uploads and workbook presentation contracts
+
+Decision:
+- the shipped workspace uploader must stop posting raw file bodies through a Vercel function and instead use the same prepare -> direct storage upload -> confirm pattern already used by `/jobs/new`
+- Basquio workbook exports now carry deterministic `MetricPresentationSpec` and `ExhibitPresentationSpec` contracts so decimal precision, number formats, and native-chart styling are chosen by code rather than left to model drift
+
+Why:
+- the production HAR proved the old workspace upload path fails at the platform boundary with `413 FUNCTION_PAYLOAD_TOO_LARGE`, so no request-body tuning can make medium files reliable
+- Rossella’s NIQ feedback was correct: `data_tables.xlsx` had the right data lineage but not a first-class numeric or styling contract, so workbook output still required manual cleanup
+
+Implication:
+- workspace uploads up to the product cap can go browser-to-Supabase without depending on Vercel request-body limits, with resumable upload as the default above 6 MB
+- deck manifests now preserve workbook-native exhibit styling metadata alongside chart bindings, and the workbook post-processor applies shared number formats to both cells and native Excel charts

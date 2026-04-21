@@ -29,6 +29,15 @@ async function main() {
     await writeFile(
       specPath,
       JSON.stringify({
+        workbookFormats: [
+          {
+            sheetName: "Scatter Data",
+            columns: [
+              { header: "Growth", excelNumberFormat: "0.0" },
+              { header: "Share", excelNumberFormat: "0.0\"%\"" },
+            ],
+          },
+        ],
         charts: [
           {
             chartId: "scatter-growth-share",
@@ -39,6 +48,29 @@ async function main() {
             categories: ["Alpha", "Beta", "Gamma", "Delta"],
             xAxisLabel: "Growth",
             yAxisLabel: "Share",
+            presentation: {
+              legendPosition: "bottom",
+              categoryAxis: {
+                numberFormat: "0.0",
+              },
+              valueAxis: {
+                numberFormat: "0.0\"%\"",
+              },
+              dataLabelFormat: "0.0\"%\"",
+              chartBackground: "#FFFFFF",
+              plotBackground: "#F7F4EE",
+              gridlineColor: "#D6D1C4",
+              gridlineWidth: 1.25,
+              series: [
+                {
+                  label: "Share",
+                  color: "#1A6AFF",
+                  lineColor: "#1A6AFF",
+                  markerSymbol: "circle",
+                  markerSize: 8,
+                },
+              ],
+            },
           },
         ],
       }),
@@ -58,6 +90,27 @@ async function main() {
 
     const chartXml = await zip.files[chartEntries[0]]?.async("string");
     assert.ok(chartXml?.includes("scatterChart"), "expected workbook chart xml to include a scatter chart");
+    assert.ok(chartXml?.includes('legendPos val="b"'), "expected workbook chart xml to set bottom legend");
+    assert.ok(chartXml?.includes("<tx><v>Share</v></tx>"), "expected workbook scatter chart xml to carry the series label");
+    assert.ok(chartXml?.includes('numFmt formatCode="0.0&quot;%&quot;"') || chartXml?.includes('numFmt formatCode="0.0&quot;%&quot;" sourceLinked="0"'), "expected workbook chart xml to include deterministic percent formatting");
+    assert.ok(chartXml?.includes('srgbClr val="1A6AFF"'), "expected workbook chart xml to include deterministic series color");
+    assert.ok(chartXml?.includes('srgbClr val="FFFFFF"'), "expected workbook chart xml to include deterministic chart background");
+    assert.ok(chartXml?.includes('srgbClr val="F7F4EE"'), "expected workbook chart xml to include deterministic plot background");
+    assert.ok(chartXml?.includes('srgbClr val="D6D1C4"'), "expected workbook chart xml to include deterministic gridline color");
+
+    const formatProbe = await execFileAsync("python3", [
+      "-c",
+      [
+        "from openpyxl import load_workbook",
+        `wb = load_workbook(r'''${outputPath}''')`,
+        "ws = wb['Scatter Data']",
+        "print(ws['B2'].number_format)",
+        "print(ws['C2'].number_format)",
+      ].join("\n"),
+    ]);
+    const formats = formatProbe.stdout.trim().split(/\r?\n/);
+    assert.equal(formats[0], "0.0");
+    assert.equal(formats[1], '0.0"%"');
 
     process.stdout.write("native workbook scatter chart regression passed\n");
   } finally {
