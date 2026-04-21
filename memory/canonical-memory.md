@@ -193,4 +193,4 @@ When architecture changes:
 - whether Vega-Lite becomes necessary for specific analytical chart families
 - whether Basquio launches inside Loamly or as a separate repo first
 - workspace-origin reruns should prefer the persisted `deck_runs.workspace_context_pack` from the source run over browser-posted workspace context payloads.
-- server-side workspace-pack canonicalization must bind `sourceFiles` and cited source ids only to real attached `source_files` rows before enqueue.
+- server-side workspace-pack canonicalization must bind `sourceFiles` and cited source ids only to real attached `source_files` rows inside the same `organization_id` / `project_id` boundary before enqueue.

@@ -669,5 +669,5 @@ Why:
 
 Implication:
 - reruns inherit the frozen workspace context from the originating run by default instead of reconstructing it from transient client state
-- the worker receives only canonical source-file references that are actually attached to the run
+- the worker receives only canonical source-file references that are actually attached to the run and belong to the same organization/project boundary
 - the workspace UX branch can evolve its composer without weakening runtime evidence integrity or rerun continuity

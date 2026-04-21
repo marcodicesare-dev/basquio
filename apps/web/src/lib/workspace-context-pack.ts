@@ -106,6 +106,8 @@ export function canonicalizeWorkspaceContextPack(
 export async function loadSourceFilesForWorkspaceContext(input: {
   supabaseUrl: string;
   serviceKey: string;
+  organizationId: string;
+  projectId: string;
   sourceFileIds: string[];
   uploadedSourceFiles: AttachedSourceFile[];
 }) {
@@ -126,6 +128,8 @@ export async function loadSourceFilesForWorkspaceContext(input: {
       query: {
         select: "id,kind,file_name,storage_bucket,storage_path",
         id: `in.(${existingIds.join(",")})`,
+        organization_id: `eq.${input.organizationId}`,
+        project_id: `eq.${input.projectId}`,
       },
     }).catch(() => []);
 
