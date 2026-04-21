@@ -91,7 +91,7 @@ export const ChatMessage = memo(function ChatMessage({
   onRegenerate?: () => void;
   onFeedback?: (value: "up" | "down") => void;
   onSaveAsMemo?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
-  onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
+  onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null> | void;
 }) {
   const isUser = message.role === "user";
   const citations = gatherCitations(message);
@@ -135,19 +135,19 @@ export const ChatMessage = memo(function ChatMessage({
     setSaving("deck");
     setSaveMsg(null);
     try {
-      const url = await onGenerateDeck({
+      const result = await onGenerateDeck({
         text: messageToMarkdown(message),
         citations,
         messageId: message.id ?? "",
       });
-      if (url) {
-        window.location.href = url;
+      // Backwards compat: if the parent returned a URL string (old behaviour),
+      // navigate. The new drawer pattern returns "drawer-opened" or void.
+      if (typeof result === "string" && result.startsWith("/")) {
+        window.location.href = result;
         return;
       }
-      setSaveMsg("Could not start deck");
     } finally {
       setSaving(null);
-      window.setTimeout(() => setSaveMsg(null), 2400);
     }
   }
 

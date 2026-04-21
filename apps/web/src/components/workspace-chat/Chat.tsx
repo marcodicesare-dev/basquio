@@ -12,6 +12,11 @@ import { ArrowUp, Paperclip, Stop } from "@phosphor-icons/react";
 
 import { ChatMessage } from "@/components/workspace-chat/ChatMessage";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
+import { WorkspaceGenerationDrawer } from "@/components/workspace-generation-drawer";
+import {
+  WorkspaceGenerationStatus,
+  type ActiveGeneration,
+} from "@/components/workspace-generation-status";
 
 type UploadStatus =
   | { kind: "idle" }
@@ -207,6 +212,10 @@ export function WorkspaceChat({
     return text.slice(0, 1200) || "Saved from chat";
   }, [messages]);
 
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMessageId, setDrawerMessageId] = useState<string | null>(null);
+  const [activeGen, setActiveGen] = useState<ActiveGeneration | null>(null);
+
   const saveAsMemo = useCallback(
     async ({
       text,
@@ -249,15 +258,13 @@ export function WorkspaceChat({
     [deriveTitle, derivePrompt, scopeName, scopeId],
   );
 
-  const generateDeck = useCallback(
-    async (args: Parameters<typeof saveAsMemo>[0]): Promise<string | null> => {
-      const memoUrl = await saveAsMemo(args);
-      if (!memoUrl) return null;
-      const id = memoUrl.split("/").pop();
-      if (!id) return null;
-      return `/jobs/new?deliverable=${id}`;
+  const openGenerationDrawer = useCallback(
+    async ({ messageId }: { messageId: string }): Promise<string | null> => {
+      setDrawerMessageId(messageId || null);
+      setDrawerOpen(true);
+      return "drawer-opened";
     },
-    [saveAsMemo],
+    [],
   );
 
   const placeholder = scopeName ? `Ask about ${scopeName}` : "Message Basquio";
@@ -305,7 +312,9 @@ export function WorkspaceChat({
                 isStreaming={isStreaming && isLast && message.role === "assistant"}
                 onRegenerate={isLast && message.role === "assistant" ? handleRegenerate : undefined}
                 onSaveAsMemo={message.role === "assistant" && !isStreaming ? saveAsMemo : undefined}
-                onGenerateDeck={message.role === "assistant" && !isStreaming ? generateDeck : undefined}
+                onGenerateDeck={
+                  message.role === "assistant" && !isStreaming ? openGenerationDrawer : undefined
+                }
               />
             );
           })}
@@ -410,6 +419,33 @@ export function WorkspaceChat({
           )}
         </div>
       </form>
+
+      {activeGen ? (
+        <WorkspaceGenerationStatus
+          active={activeGen}
+          onDismiss={(runId) => {
+            if (activeGen?.runId === runId) setActiveGen(null);
+          }}
+        />
+      ) : null}
+
+      <WorkspaceGenerationDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        conversationId={conversationIdRef.current}
+        messageId={drawerMessageId}
+        scopeId={scopeId ?? null}
+        onLaunched={({ runId, progressUrl }) => {
+          setActiveGen({
+            runId,
+            progressUrl,
+            title: drawerMessageId
+              ? `Deck from ${scopeName ?? "workspace"}`
+              : `Workspace deck`,
+            startedAt: Date.now(),
+          });
+        }}
+      />
     </section>
   );
 }
