@@ -9,6 +9,8 @@ import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 import { createMemoryEntry, listMemoryEntries } from "@/lib/workspace/memory";
 import { getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes";
 import type { WorkspaceScope } from "@/lib/workspace/types";
+import { analyzeAttachedFile } from "@/lib/workspace/analyze-attached-file";
+import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
 
 export type AgentCallContext = {
   workspaceId: string;
@@ -286,11 +288,92 @@ export function showStakeholderCardTool(ctx: AgentCallContext) {
   });
 }
 
+/**
+ * analyzeAttachedFile: Layer A of the execution-first architecture
+ * (docs/specs/2026-04-21-file-in-chat-execution-first-architecture.md).
+ *
+ * Runs the user's question through Claude Sonnet with code_execution +
+ * container_upload on every file attached to this conversation. The sub-call
+ * reads the files with pandas/openpyxl and returns a cited markdown answer.
+ * No pgvector round trip — used for structured/tabular data where retrieval
+ * would lose the structure.
+ */
+export function analyzeAttachedFileTool(ctx: AgentCallContext) {
+  return tool({
+    description:
+      "Analyze one or more files that the user attached to THIS conversation using pandas/openpyxl inside a secure code-execution container. Prefer this over retrieveContext when the answer depends on structured data (CSV, XLSX) the user just dropped. Returns a cited markdown answer. Do NOT use for cross-workspace questions or for files not attached to this conversation.",
+    inputSchema: z.object({
+      question: z
+        .string()
+        .min(3)
+        .max(1500)
+        .describe(
+          "The user's specific question, phrased so pandas/openpyxl can produce the answer (e.g. 'quanti SKU per region', 'ROS trend per brand for Q4', 'correlation between price and sales').",
+        ),
+      document_ids: z
+        .array(z.string().uuid())
+        .max(10)
+        .optional()
+        .describe(
+          "Optional subset of document ids to analyze. Omit to use every file attached to this conversation.",
+        ),
+    }),
+    execute: async ({ question, document_ids }) => {
+      if (!ctx.conversationId) {
+        return {
+          ok: false,
+          answer: null,
+          cited_files: [] as string[],
+          reason: "no conversation id in context",
+        };
+      }
+      const result = await analyzeAttachedFile({
+        conversationId: ctx.conversationId,
+        question,
+        documentIds: document_ids,
+      });
+      return result;
+    },
+  });
+}
+
+/**
+ * listConversationFiles: quick introspection tool so the agent can check
+ * what's attached before deciding between analyzeAttachedFile vs
+ * retrieveContext. Cheap (no LLM call, just a DB read).
+ */
+export function listConversationFilesTool(ctx: AgentCallContext) {
+  return tool({
+    description:
+      "List the files attached to this conversation so you can decide whether to use analyzeAttachedFile (files are present) or retrieveContext (workspace-wide search). Returns filename, size, indexing status, and document id for each attachment.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      if (!ctx.conversationId) {
+        return { count: 0, files: [] };
+      }
+      const rows = await listConversationAttachments(ctx.conversationId).catch(() => []);
+      return {
+        count: rows.length,
+        files: rows.map((r) => ({
+          document_id: r.document_id,
+          filename: r.filename,
+          file_type: r.file_type,
+          file_size_bytes: r.file_size_bytes,
+          status: r.status,
+          attached_at: r.attached_at,
+        })),
+      };
+    },
+  });
+}
+
 export function getAllTools(ctx: AgentCallContext) {
   return {
     memory: readMemoryTool(ctx),
     teachRule: teachRuleTool(ctx),
     retrieveContext: retrieveContextTool(ctx),
+    analyzeAttachedFile: analyzeAttachedFileTool(ctx),
+    listConversationFiles: listConversationFilesTool(ctx),
     showMetricCard: showMetricCardTool(ctx),
     showStakeholderCard: showStakeholderCardTool(ctx),
   } as const;

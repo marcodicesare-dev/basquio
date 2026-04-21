@@ -3,13 +3,15 @@ import { after, NextResponse } from "next/server";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
+import { BASQUIO_TEAM_ORG_ID, BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 import { processWorkspaceDocument } from "@/lib/workspace/process";
 import { cleanOrphansForDocument, markDocumentForRetry } from "@/lib/workspace/retry";
+import { enqueueFileIngestRun } from "@/lib/workspace/ingest-queue";
 
 export const runtime = "nodejs";
-// See confirm/route.ts for the rationale — serverless budget must cover the
-// full embedding + batched chunk insert cycle for large files.
+// Retry runs the full processWorkspaceDocument inline via after(). ALSO
+// enqueues a file_ingest_runs row so the Railway worker can claim it once
+// the worker loop ships. See upload/confirm for the rollout notes.
 export const maxDuration = 800;
 
 function getDb() {
@@ -57,6 +59,16 @@ export async function POST(
 
   await cleanOrphansForDocument(id);
   await markDocumentForRetry(id);
+
+  // Dual-write: enqueue on file_ingest_runs for the future worker, and run
+  // processWorkspaceDocument inline via after() for current production.
+  await enqueueFileIngestRun({
+    documentId: id,
+    workspaceId: BASQUIO_TEAM_WORKSPACE_ID,
+    metadata: { source: "retry_endpoint", requested_at: new Date().toISOString() },
+  }).catch((error) => {
+    console.error(`[workspace/retry] enqueueFileIngestRun failed for ${id}`, error);
+  });
 
   after(async () => {
     try {

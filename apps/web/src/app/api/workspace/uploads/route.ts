@@ -19,14 +19,15 @@ import { ensureConversationRow } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 import { getScope } from "@/lib/workspace/scopes";
 import { extractInlineExcerpt } from "@/lib/workspace/inline-excerpt";
+import { setDocumentAnthropicFileId, setDocumentInlineExcerpt } from "@/lib/workspace/db";
+import { uploadFileToAnthropic } from "@/lib/workspace/anthropic-files";
+import { enqueueFileIngestRun } from "@/lib/workspace/ingest-queue";
 import { processWorkspaceDocument } from "@/lib/workspace/process";
-import { setDocumentInlineExcerpt } from "@/lib/workspace/db";
 
 export const runtime = "nodejs";
-// See confirm/route.ts for rationale. This legacy direct-upload path is only
-// used for tiny files (< LEGACY_DIRECT_UPLOAD_MAX_BYTES) so 300s is plenty,
-// but keep parity with the real flow so we never timeout before the chunk
-// insert batches finish.
+// Legacy direct-upload path for tiny files. Keeps after() driving
+// processWorkspaceDocument until the Railway worker loop ships; ALSO enqueues
+// on file_ingest_runs so the worker can pick up once it's live.
 export const maxDuration = 800;
 
 const SUPPORTED = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
@@ -192,16 +193,38 @@ export async function POST(request: Request) {
     uploadContext,
   });
 
-  // Merge 2: inline parse so the first chat turn can read the file even while
-  // Lane B chunking/embedding is still running. Best-effort only — if parsing
-  // fails we still ship the document and indexing picks it up later.
-  const inlineExcerpt = await extractInlineExcerpt(buffer, ext, file.type).catch((error) => {
+  // Execution-first enrichment: inline excerpt + Anthropic Files API id run
+  // in parallel. Either may fail; both fail silently. The upload still
+  // succeeds and Lane B (Railway worker) does the durable ingest.
+  const inlineExcerptPromise = extractInlineExcerpt(buffer, ext, file.type).catch((error) => {
     console.error(`[workspace/uploads] inline excerpt extraction failed for ${documentId}`, error);
     return null;
   });
+  const anthropicFileIdPromise = uploadFileToAnthropic({
+    buffer,
+    filename,
+    contentType: file.type,
+  }).catch((error) => {
+    console.error(`[workspace/uploads] Anthropic Files upload failed for ${documentId}`, error);
+    return null;
+  });
+
+  const [inlineExcerpt, anthropicFileId] = await Promise.all([
+    inlineExcerptPromise,
+    anthropicFileIdPromise,
+  ]);
+
   if (inlineExcerpt) {
     await setDocumentInlineExcerpt(documentId, inlineExcerpt).catch((error) => {
       console.error(`[workspace/uploads] setDocumentInlineExcerpt failed for ${documentId}`, error);
+    });
+  }
+  if (anthropicFileId) {
+    await setDocumentAnthropicFileId(documentId, anthropicFileId).catch((error) => {
+      console.error(
+        `[workspace/uploads] setDocumentAnthropicFileId failed for ${documentId}`,
+        error,
+      );
     });
   }
 
@@ -220,6 +243,19 @@ export async function POST(request: Request) {
       );
     });
   }
+
+  // Dual-write: enqueue on file_ingest_runs for the future Railway worker,
+  // and still run processWorkspaceDocument in after() for current prod.
+  await enqueueFileIngestRun({
+    documentId,
+    workspaceId: workspace.id,
+    metadata: { source: "upload_legacy", filename },
+  }).catch((error) => {
+    console.error(
+      `[workspace/uploads] enqueueFileIngestRun failed for ${documentId}`,
+      error,
+    );
+  });
 
   after(async () => {
     try {

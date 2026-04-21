@@ -19,6 +19,7 @@ export type WorkspaceDocumentRow = {
   metadata: Record<string, unknown>;
   created_at: string;
   inline_excerpt: string | null;
+  anthropic_file_id: string | null;
 };
 
 function getServiceClient() {
@@ -35,7 +36,7 @@ export async function listRecentWorkspaceDocuments(limit = 20): Promise<Workspac
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
-      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt",
+      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
     )
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -54,7 +55,7 @@ export async function findWorkspaceDocumentByHash(hash: string): Promise<Workspa
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
-      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt",
+      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
     )
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -144,6 +145,30 @@ export async function setDocumentInlineExcerpt(
     .eq("organization_id", BASQUIO_TEAM_ORG_ID);
   if (error) {
     throw new Error(`setDocumentInlineExcerpt failed: ${error.message}`);
+  }
+}
+
+/**
+ * Persist the Anthropic Files API id on a knowledge_document. This is the
+ * handle Layer A uses to mint container_upload blocks when the workspace
+ * agent calls the analyzeAttachedFile tool. Best-effort write — callers
+ * tolerate null via fallback to pgvector retrieval.
+ */
+export async function setDocumentAnthropicFileId(
+  documentId: string,
+  fileId: string | null,
+): Promise<void> {
+  const db = getServiceClient();
+  const { error } = await db
+    .from("knowledge_documents")
+    .update({
+      anthropic_file_id: fileId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", documentId)
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+  if (error) {
+    throw new Error(`setDocumentAnthropicFileId failed: ${error.message}`);
   }
 }
 

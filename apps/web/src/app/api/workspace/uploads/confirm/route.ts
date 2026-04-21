@@ -16,6 +16,7 @@ import {
 import {
   createWorkspaceDocument,
   findWorkspaceDocumentByHash,
+  setDocumentAnthropicFileId,
   setDocumentInlineExcerpt,
 } from "@/lib/workspace/db";
 import { processWorkspaceDocument } from "@/lib/workspace/process";
@@ -24,14 +25,15 @@ import { ensureConversationRow } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 import { getScope } from "@/lib/workspace/scopes";
 import { extractInlineExcerpt } from "@/lib/workspace/inline-excerpt";
+import { uploadFileToAnthropic } from "@/lib/workspace/anthropic-files";
+import { enqueueFileIngestRun } from "@/lib/workspace/ingest-queue";
 
 export const runtime = "nodejs";
-// maxDuration bounds the Vercel function wall-clock, including after() hooks
-// that run processWorkspaceDocument. A 6 MB CSV produces ~5000 chunks and
-// takes ~6-8 min end-to-end (OpenAI embeddings + batched inserts +
-// Claude entity extraction). 800s = 13.3 min is Vercel Pro's ceiling and the
-// only safe home for this workload until we move document processing onto
-// Railway alongside the deck worker.
+// Confirm still runs processWorkspaceDocument in after() for now because the
+// Railway worker loop that will consume file_ingest_runs has not shipped yet.
+// Once the worker is live, the after() hook below is removed and maxDuration
+// drops to ~120s. Until then we keep the 800s ceiling Vercel Pro allows so
+// large CSVs finish inside the serverless budget (~6-8 min end-to-end).
 export const maxDuration = 800;
 
 const SUPPORTED = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
@@ -207,10 +209,11 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    // Merge 2: inline parse so the first chat turn can read the file even while
-    // Lane B chunking/embedding is still running. We download from storage
-    // because the direct-upload flow never sent the buffer through our server.
-    await extractInlineExcerptForDocument({
+    // Sync enrichment: single storage download that produces the inline
+    // excerpt (Lane A fallback text) AND the Anthropic Files API id (Lane A
+    // code-execution handle). Best-effort — any failure here is logged and
+    // the upload still returns 200 with a queued ingest run.
+    await enrichDocumentFromStorage({
       supabaseUrl,
       serviceKey,
       bucket: payload.storageBucket,
@@ -218,9 +221,10 @@ export async function POST(request: Request) {
       extension,
       mediaType: payload.mediaType,
       documentId,
+      filename,
     }).catch((error) => {
       console.error(
-        `[workspace/uploads/confirm] inline excerpt extraction failed for ${documentId}`,
+        `[workspace/uploads/confirm] enrichDocumentFromStorage failed for ${documentId}`,
         error,
       );
     });
@@ -235,6 +239,26 @@ export async function POST(request: Request) {
         uploadedBy: viewer.user.id,
       });
     }
+
+    // Lane B (background ingestion) runs in two places during the migration to
+    // the Railway worker:
+    //   (a) enqueueFileIngestRun writes a row on file_ingest_runs so the
+    //       worker can pick it up the moment its claim loop ships.
+    //   (b) after() still drives processWorkspaceDocument inside the Vercel
+    //       function so current users are NOT blocked on the worker deploy.
+    // The worker's claim loop will add an idempotency check: "skip runs whose
+    // knowledge_documents.status is already 'indexed'." Once the worker is
+    // proven in prod, the after() block is removed and this becomes queue-only.
+    await enqueueFileIngestRun({
+      documentId,
+      workspaceId: workspace.id,
+      metadata: { source: "upload_confirm", filename },
+    }).catch((error) => {
+      console.error(
+        `[workspace/uploads/confirm] enqueueFileIngestRun failed for ${documentId}`,
+        error,
+      );
+    });
 
     after(async () => {
       try {
@@ -449,7 +473,7 @@ async function handleDedupAttach(rawBody: unknown, viewerId: string) {
   });
 }
 
-async function extractInlineExcerptForDocument(input: {
+async function enrichDocumentFromStorage(input: {
   supabaseUrl: string;
   serviceKey: string;
   bucket: string;
@@ -457,6 +481,7 @@ async function extractInlineExcerptForDocument(input: {
   extension: string;
   mediaType: string;
   documentId: string;
+  filename: string;
 }) {
   const db = createServiceSupabaseClient(input.supabaseUrl, input.serviceKey);
   const { data: blob, error } = await db.storage.from(input.bucket).download(input.storagePath);
@@ -464,10 +489,27 @@ async function extractInlineExcerptForDocument(input: {
     return;
   }
   const buffer = Buffer.from(await blob.arrayBuffer());
-  const excerpt = await extractInlineExcerpt(buffer, input.extension, input.mediaType).catch(
-    () => null,
-  );
-  if (excerpt) {
-    await setDocumentInlineExcerpt(input.documentId, excerpt).catch(() => {});
-  }
+
+  // Run both enrichments in parallel. Neither is critical to the upload's
+  // success; both write to knowledge_documents best-effort.
+  await Promise.all([
+    extractInlineExcerpt(buffer, input.extension, input.mediaType)
+      .then(async (excerpt) => {
+        if (excerpt) {
+          await setDocumentInlineExcerpt(input.documentId, excerpt).catch(() => {});
+        }
+      })
+      .catch(() => {}),
+    uploadFileToAnthropic({
+      buffer,
+      filename: input.filename,
+      contentType: input.mediaType,
+    })
+      .then(async (fileId) => {
+        if (fileId) {
+          await setDocumentAnthropicFileId(input.documentId, fileId).catch(() => {});
+        }
+      })
+      .catch(() => {}),
+  ]);
 }
