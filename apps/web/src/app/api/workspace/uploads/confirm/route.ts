@@ -71,13 +71,12 @@ export async function POST(request: Request) {
     const rawBody = await readJsonBody(request);
 
     // Two request shapes: a full confirm after a fresh upload, or a
-    // dedup-attach for a file we already have. Route by presence of
-    // `deduplicatedDocumentId`.
-    if (
-      typeof rawBody === "object" &&
-      rawBody &&
-      "deduplicatedDocumentId" in (rawBody as Record<string, unknown>)
-    ) {
+    // dedup-attach for a file we already have. Route by a string-typed
+    // `deduplicatedDocumentId` so an accidental `null` on a regular confirm
+    // doesn't fall into the dedup branch and surface a confusing 400.
+    const rawRecord =
+      typeof rawBody === "object" && rawBody ? (rawBody as Record<string, unknown>) : null;
+    if (rawRecord && typeof rawRecord.deduplicatedDocumentId === "string") {
       return handleDedupAttach(rawBody, viewer.user.id);
     }
 

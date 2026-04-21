@@ -78,14 +78,19 @@ ALTER TABLE public.knowledge_chunks
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_indexed_at
   ON public.knowledge_chunks (indexed_at DESC);
 
--- Functional GIN index matching the FTS expression used by
--- workspace_chat_retrieval. Without this, every chat turn full-scans
--- knowledge_chunks and builds a tsvector per row on the fly. Safe to create
--- concurrently later if the table grows large; the CREATE INDEX here is a
--- plain one to keep the migration atomic.
+-- Stored generated tsvector + GIN index. This is the bulletproof version of
+-- a functional index: because fts_contextual is a real column (materialized
+-- on insert / update), the GIN index is on a plain column and never depends
+-- on whether to_tsvector is treated as IMMUTABLE by the current session.
+-- It also kills per-row tsvector rebuild on every chat-turn query.
+ALTER TABLE public.knowledge_chunks
+  ADD COLUMN IF NOT EXISTS fts_contextual tsvector
+  GENERATED ALWAYS AS (
+    to_tsvector('english', COALESCE(contextual_summary, '') || ' ' || content)
+  ) STORED;
+
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_fts_contextual
-  ON public.knowledge_chunks
-  USING GIN (to_tsvector('english', COALESCE(contextual_summary, '') || ' ' || content));
+  ON public.knowledge_chunks USING GIN (fts_contextual);
 
 -- ── 4. workspace_chat_retrieval RPC ──
 --
@@ -156,10 +161,11 @@ conv_chunks_capped AS (
   LIMIT match_count
 ),
 -- Rank-2 candidate pool: broader workspace. Full-text + semantic branches feed RRF.
--- FTS indexes the concatenation of contextual_summary + content so anchor terms
--- lifted into the summary (brand names, metric names, time windows) are matched
--- by BM25 even when the chunk itself uses a pronoun or abbreviation (Anthropic
--- Contextual Retrieval, Sept 2024).
+-- FTS uses the stored fts_contextual tsvector so anchor terms lifted into the
+-- contextual summary (brand names, metric names, time windows) are matched by
+-- BM25 even when the chunk itself uses a pronoun or abbreviation (Anthropic
+-- Contextual Retrieval, Sept 2024). The tsvector is computed at insert time,
+-- so this CTE hits the GIN index directly without rebuilding per row.
 fts_docs AS (
   SELECT
     id AS chunk_id,
@@ -169,15 +175,11 @@ fts_docs AS (
     metadata,
     indexed_at,
     ROW_NUMBER() OVER (
-      ORDER BY ts_rank(
-        to_tsvector('english', COALESCE(contextual_summary, '') || ' ' || content),
-        websearch_to_tsquery(query_text)
-      ) DESC
+      ORDER BY ts_rank(fts_contextual, websearch_to_tsquery(query_text)) DESC
     ) AS rank_ix
   FROM public.knowledge_chunks
   WHERE organization_id = workspace_org_id
-    AND to_tsvector('english', COALESCE(contextual_summary, '') || ' ' || content)
-        @@ websearch_to_tsquery(query_text)
+    AND fts_contextual @@ websearch_to_tsquery(query_text)
   LIMIT match_count * 5
 ),
 fts_transcripts AS (
