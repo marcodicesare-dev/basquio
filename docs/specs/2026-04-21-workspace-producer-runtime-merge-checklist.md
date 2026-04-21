@@ -48,7 +48,7 @@ File on `main` to update after merging `port-louis`:
 Required change:
 - use the shared helper from `apps/web/src/lib/workspace-context-pack.ts`
 - parse the posted pack with `parseWorkspaceContextPack`
-- load authoritative attached `source_files`
+- load authoritative attached `source_files` filtered by the current `organization_id` and `project_id`
 - resolve the pack with `resolveAuthoritativeWorkspaceContextPack`
 - hash with `hashWorkspaceContextPack`
 - persist only the canonicalized/trusted pack to `enqueue_deck_run`
@@ -141,7 +141,7 @@ Action:
 
 ### Trust
 - `/api/workspace/generate` uses the shared canonicalization helper before `enqueue_deck_run`
-- spoofed or unattached `sourceFiles` cannot survive into `deck_runs.workspace_context_pack`
+- spoofed, cross-project, or unattached `sourceFiles` cannot survive into `deck_runs.workspace_context_pack`
 
 ### Continuity
 - workspace-origin reruns prefer the persisted pack from the source run

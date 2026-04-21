@@ -451,6 +451,8 @@ async function queueGeneration(
   const authoritativeSourceFiles = await loadSourceFilesForWorkspaceContext({
     supabaseUrl,
     serviceKey,
+    organizationId: workspace.organizationRowId,
+    projectId: workspace.projectRowId,
     sourceFileIds,
     uploadedSourceFiles: sourceFileRows.map((row) => ({
       id: row.id,
