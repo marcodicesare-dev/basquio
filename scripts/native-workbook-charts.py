@@ -243,7 +243,6 @@ def main():
                 max_row=helper_data_start_row + len(selected_rows) - 1,
             )
             scatter_series = Series(y_ref, xvalues=x_ref, title_from_data=False)
-            scatter_series.title = chart_spec.get("title") or requested_headers[1]
             chart.series.append(scatter_series)
         else:
             data_ref = Reference(

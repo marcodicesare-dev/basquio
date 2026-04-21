@@ -307,6 +307,7 @@ export function RunProgressView(input: {
           },
           body: JSON.stringify({
             jobId: launchDraft.runId,
+            sourceRunId: launchDraft.sourceRunId,
             sourceFiles: launchDraft.sourceFiles,
             existingSourceFileIds: launchDraft.existingSourceFileIds,
             templateProfileId: launchDraft.templateProfileId ?? undefined,
@@ -314,6 +315,7 @@ export function RunProgressView(input: {
             authorModel: launchDraft.authorModel,
             recipeId: launchDraft.recipeId ?? undefined,
             brief: launchDraft.brief,
+            workspaceContextPack: launchDraft.workspaceContextPack ?? undefined,
             businessContext: launchDraft.brief.businessContext,
             client: launchDraft.brief.client,
             audience: launchDraft.brief.audience,

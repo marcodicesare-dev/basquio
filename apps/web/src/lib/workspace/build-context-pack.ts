@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { WorkspaceContextPack } from "@basquio/types";
+
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 import type { ViewerState } from "@/lib/supabase/auth";
@@ -7,64 +9,7 @@ import { listMemoryEntries } from "@/lib/workspace/memory";
 import { getScope } from "@/lib/workspace/scopes";
 import { listWorkspacePeople } from "@/lib/workspace/people";
 
-/**
- * WorkspaceContextPack shape, matching the canonical contract in
- * packages/types → code/contracts.ts (owned by port-louis).
- *
- * When port-louis lands on main, this file will re-export from `@basquio/types`
- * and delete the local type. Keeping a local copy now avoids blocking on the
- * cross-worktree contract merge and makes the type the single source of
- * discipline for the pack producer.
- */
-export type WorkspaceContextPack = {
-  workspaceId: string;
-  workspaceScopeId: string | null;
-  deliverableId: string | null;
-  scope: {
-    id: string | null;
-    kind: string | null;
-    name: string | null;
-  };
-  stakeholders: Array<{
-    id: string;
-    name: string;
-    role: string | null;
-    preferences: Record<string, unknown>;
-  }>;
-  rules: {
-    workspace: string[];
-    analyst: string[];
-    scoped: string[];
-  };
-  citedSources: Array<{
-    documentId: string;
-    fileName: string;
-    sourceFileId: string | null;
-  }>;
-  sourceFiles: Array<{
-    id: string;
-    kind: string;
-    fileName: string;
-    storageBucket: string;
-    storagePath: string;
-  }>;
-  lineage: {
-    conversationId: string | null;
-    messageId: string | null;
-    deliverableTitle: string | null;
-    prompt: string | null;
-    launchSource: "workspace-chat" | "workspace-deliverable" | "jobs-new" | "other";
-  };
-  styleContract: {
-    language: string | null;
-    tone: string | null;
-    deckLength: string | null;
-    chartPreferences: string[];
-  };
-  renderedBriefPrelude: string;
-  createdAt: string;
-  schemaVersion: 1;
-};
+export type { WorkspaceContextPack };
 
 function getDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

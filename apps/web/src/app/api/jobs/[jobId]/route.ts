@@ -7,6 +7,7 @@ import {
   isTemplateDiagnostics,
   type TemplateDiagnostics,
 } from "@basquio/template-engine";
+import { workspaceContextPackSchema } from "@basquio/types";
 
 import { getViewerState } from "@/lib/supabase/auth";
 import { fetchRestRows } from "@/lib/supabase/admin";
@@ -43,6 +44,8 @@ type DeckRunRow = {
   latest_attempt_number: number;
   cost_telemetry: Record<string, unknown> | null;
   notify_on_complete: boolean;
+  workspace_context_pack: Record<string, unknown> | null;
+  workspace_context_pack_hash: string | null;
 };
 
 type DeckRunEventRow = {
@@ -263,7 +266,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     serviceKey,
     table: "deck_runs",
     query: {
-      select: "id,status,author_model,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,brief,business_context,client,audience,objective,thesis,stakes,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,cost_telemetry,notify_on_complete",
+      select: "id,status,author_model,current_phase,phase_started_at,failure_message,created_at,updated_at,completed_at,brief,business_context,client,audience,objective,thesis,stakes,template_profile_id,source_file_ids,template_diagnostics,active_attempt_id,latest_attempt_id,latest_attempt_number,cost_telemetry,notify_on_complete,workspace_context_pack,workspace_context_pack_hash",
       id: `eq.${jobId}`,
       requested_by: `eq.${viewerId}`,
       limit: "1",
@@ -409,6 +412,8 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     thesis: typeof run.brief?.thesis === "string" ? run.brief.thesis : run.thesis,
     stakes: typeof run.brief?.stakes === "string" ? run.brief.stakes : run.stakes,
   };
+  const workspaceContextPackResult = workspaceContextPackSchema.safeParse(run.workspace_context_pack ?? null);
+  const workspaceContextPack = workspaceContextPackResult.success ? workspaceContextPackResult.data : null;
   const failureGuidance = buildFailureGuidance(run, sourceFiles, recoveryEligibleStale);
   const failureClassification = rawStatus === "failed" || recoveryEligibleStale
     ? classifyFailure(run, recoveryEligibleStale)
@@ -423,6 +428,8 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
           kind: file.kind,
           fileName: file.file_name,
         })),
+        workspaceContextPack,
+        workspaceContextPackHash: run.workspace_context_pack_hash,
         templateDiagnostics,
         failureGuidance,
       }

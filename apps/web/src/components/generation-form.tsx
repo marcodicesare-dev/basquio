@@ -154,6 +154,7 @@ type RecipePrefill = {
   id: string;
   /** Only set when prefill comes from a saved recipe, not a prior run */
   recipeId: string | null;
+  sourceRunId?: string | null;
   name: string;
   brief: {
     businessContext?: string;
@@ -166,6 +167,7 @@ type RecipePrefill = {
   templateProfileId: string | null;
   targetSlideCount: number;
   authorModel?: AuthorModel;
+  workspaceContextPack?: GenerationRequest["workspaceContextPack"];
   sourceFiles?: Array<{
     id: string;
     kind: string;
@@ -551,6 +553,7 @@ export function GenerationForm({
 
   function launchRun(draft: {
     runId: string;
+    sourceRunId?: string;
     authorModel: string;
     templateProfileId: string | null;
     targetSlideCount: number;
@@ -558,9 +561,11 @@ export function GenerationForm({
     brief: BriefFields;
     sourceFiles?: Array<NonNullable<GenerationRequest["sourceFiles"]>[number]>;
     existingSourceFileIds?: string[];
+    workspaceContextPack?: GenerationRequest["workspaceContextPack"];
   }) {
     saveRunLaunchDraft({
       runId: draft.runId,
+      sourceRunId: draft.sourceRunId,
       createdAt: new Date().toISOString(),
       authorModel: draft.authorModel,
       templateProfileId: draft.templateProfileId,
@@ -569,6 +574,7 @@ export function GenerationForm({
       brief: draft.brief,
       sourceFiles: draft.sourceFiles,
       existingSourceFileIds: draft.existingSourceFileIds,
+      workspaceContextPack: draft.workspaceContextPack ?? null,
     });
 
     startTransition(() => {
@@ -870,11 +876,13 @@ export function GenerationForm({
         }
         launchRun({
           runId,
+          sourceRunId: recipePrefill?.sourceRunId ?? undefined,
           authorModel: selectedModel,
           templateProfileId: selectedTemplateId,
           targetSlideCount: effectiveTargetSlideCount,
           recipeId: recipePrefill?.recipeId ?? undefined,
           brief,
+          workspaceContextPack: recipePrefill?.workspaceContextPack,
           existingSourceFileIds: prefillSourceFiles.map((sf) => sf.id),
         });
         return;
@@ -887,11 +895,13 @@ export function GenerationForm({
       const hostedDraft = await ensureHostedEvidenceReady();
       launchRun({
         runId,
+        sourceRunId: recipePrefill?.sourceRunId ?? undefined,
         authorModel: selectedModel,
         templateProfileId: selectedTemplateId,
         targetSlideCount: effectiveTargetSlideCount,
         recipeId: recipePrefill?.recipeId ?? undefined,
         brief,
+        workspaceContextPack: recipePrefill?.workspaceContextPack,
         sourceFiles: hostedDraft.sourceFiles,
       });
     } catch (submissionError) {

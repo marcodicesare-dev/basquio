@@ -1,7 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
+
+import type { WorkspaceContextPack } from "@basquio/types";
 
 import {
   DEFAULT_AUTHOR_MODEL,
@@ -21,53 +23,16 @@ import { normalizePlanId } from "@/lib/billing-config";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
-import type { WorkspaceContextPack } from "@/lib/workspace/build-context-pack";
+import {
+  hashWorkspaceContextPack,
+  loadPersistedRunWorkspaceContextPack,
+  loadSourceFilesForWorkspaceContext,
+  parseWorkspaceContextPack,
+  resolveAuthoritativeWorkspaceContextPack,
+} from "@/lib/workspace-context-pack";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const packSchema = z.object({
-  workspaceId: z.string(),
-  workspaceScopeId: z.string().nullable(),
-  deliverableId: z.string().nullable(),
-  scope: z.object({
-    id: z.string().nullable(),
-    kind: z.string().nullable(),
-    name: z.string().nullable(),
-  }),
-  stakeholders: z.array(z.any()),
-  rules: z.object({
-    workspace: z.array(z.string()),
-    analyst: z.array(z.string()),
-    scoped: z.array(z.string()),
-  }),
-  citedSources: z.array(z.any()),
-  sourceFiles: z.array(
-    z.object({
-      id: z.string(),
-      kind: z.string(),
-      fileName: z.string(),
-      storageBucket: z.string(),
-      storagePath: z.string(),
-    }),
-  ),
-  lineage: z.object({
-    conversationId: z.string().nullable(),
-    messageId: z.string().nullable(),
-    deliverableTitle: z.string().nullable(),
-    prompt: z.string().nullable(),
-    launchSource: z.enum(["workspace-chat", "workspace-deliverable", "jobs-new", "other"]),
-  }),
-  styleContract: z.object({
-    language: z.string().nullable(),
-    tone: z.string().nullable(),
-    deckLength: z.string().nullable(),
-    chartPreferences: z.array(z.string()),
-  }),
-  renderedBriefPrelude: z.string(),
-  createdAt: z.string(),
-  schemaVersion: z.number().int(),
-});
 
 const briefSchema = z.object({
   title: z.string().min(1).max(240),
@@ -80,29 +45,28 @@ const briefSchema = z.object({
 });
 
 const bodySchema = z.object({
-  pack: packSchema,
+  // Posted pack is validated with the canonical schema server-side via
+  // parseWorkspaceContextPack and then canonicalized against real
+  // attached source_files before anything is persisted. Clients cannot
+  // spoof source_files, memory rules, or lineage — only the brief text
+  // and slide count they chose in the drawer survive verbatim.
+  pack: z.unknown(),
   brief: briefSchema,
   authorModel: z.string().optional(),
   templateProfileId: z.string().uuid().nullable().optional(),
+  /**
+   * If set, this run is a rerun from a prior workspace-origin run. The
+   * persisted pack on that run wins over the client-posted one. Port-louis
+   * owns the rerun trust rule; the workspace producer just forwards it.
+   */
+  sourceRunId: z.string().uuid().nullable().optional(),
 });
 
-function stableStringify(value: unknown): string {
-  if (typeof value === "undefined") return "null";
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
-  return `{${keys
-    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
-    .join(",")}}`;
-}
-
-function hashPack(pack: WorkspaceContextPack | null): string | null {
-  if (!pack) return null;
-  return createHash("sha256").update(stableStringify(pack)).digest("hex");
-}
-
-function composeBusinessContext(pack: WorkspaceContextPack, briefNarrative: string, briefObjective: string): string {
+function composeBusinessContext(
+  pack: WorkspaceContextPack,
+  briefNarrative: string,
+  briefObjective: string,
+): string {
   const prelude = pack.renderedBriefPrelude ?? "";
   const head = briefObjective.trim();
   const body = briefNarrative.trim();
@@ -140,15 +104,52 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unable to resolve workspace." }, { status: 500 });
   }
 
-  const pack = payload.pack as WorkspaceContextPack;
+  // Parse the client pack via the canonical schema. Anything the client
+  // shoves in beyond the schema shape is silently dropped here.
+  const clientPack = parseWorkspaceContextPack(payload.pack);
+  if (!clientPack && !payload.sourceRunId) {
+    return NextResponse.json(
+      { error: "Invalid workspace context pack. Reopen the drawer and try again." },
+      { status: 400 },
+    );
+  }
 
-  // Canonicalize: sourceFiles come from the pack the client saw, but verify
-  // each ID really belongs to source_files (and belongs to a workspace file,
-  // not some spoofed row). The prepare-generation endpoint already minted them
-  // server-side via buildWorkspaceContextPack, so in the happy path this is a
-  // no-op verification pass.
-  const sourceFileIds = Array.from(new Set(pack.sourceFiles.map((sf) => sf.id))).filter(Boolean);
-  if (sourceFileIds.length === 0) {
+  // Source file IDs come from the client pack but are trusted only after
+  // loadSourceFilesForWorkspaceContext reads the real rows from source_files.
+  // Anything not actually attached to this workspace is dropped.
+  const requestedSourceFileIds = Array.from(
+    new Set((clientPack?.sourceFiles ?? []).map((sf) => sf.id).filter(Boolean)),
+  );
+
+  const authoritativeSourceFiles = await loadSourceFilesForWorkspaceContext({
+    supabaseUrl,
+    serviceKey,
+    sourceFileIds: requestedSourceFileIds,
+    uploadedSourceFiles: [],
+  });
+
+  // Rerun continuity: if sourceRunId is set, the persisted pack wins.
+  const persistedPack = await loadPersistedRunWorkspaceContextPack({
+    supabaseUrl,
+    serviceKey,
+    runId: payload.sourceRunId ?? null,
+    viewerId: viewer.user.id,
+  });
+
+  const trustedPack = resolveAuthoritativeWorkspaceContextPack({
+    persistedPack,
+    clientPack,
+    attachedSourceFiles: authoritativeSourceFiles,
+  });
+
+  if (!trustedPack) {
+    return NextResponse.json(
+      { error: "Could not assemble a trusted workspace context pack." },
+      { status: 400 },
+    );
+  }
+
+  if (trustedPack.sourceFiles.length === 0) {
     return NextResponse.json(
       {
         error:
@@ -158,8 +159,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const authorModelRaw = payload.authorModel ?? DEFAULT_AUTHOR_MODEL;
-  const authorModel = normalizeAuthorModelId(authorModelRaw);
+  const sourceFileIds = trustedPack.sourceFiles.map((sf) => sf.id);
+  const authorModel = normalizeAuthorModelId(payload.authorModel ?? DEFAULT_AUTHOR_MODEL);
 
   const billingEnabled = !!process.env.STRIPE_SECRET_KEY;
   const hasUnlimitedUsage = hasUnlimitedAccess(viewer.user.email);
@@ -217,7 +218,11 @@ export async function POST(request: Request) {
   const runId = randomUUID();
   const attemptId = randomUUID();
 
-  const businessContext = composeBusinessContext(pack, payload.brief.narrative, payload.brief.objective);
+  const businessContext = composeBusinessContext(
+    trustedPack,
+    payload.brief.narrative,
+    payload.brief.objective,
+  );
   const chargeCredits = billingEnabled && !hasUnlimitedUsage;
 
   try {
@@ -237,14 +242,14 @@ export async function POST(request: Request) {
         p_requested_by: viewer.user.id,
         p_brief: {
           businessContext,
-          client: pack.scope.name ?? "",
+          client: trustedPack.scope.name ?? "",
           audience: payload.brief.audience,
           objective: payload.brief.objective,
           thesis: payload.brief.thesis,
           stakes: payload.brief.stakes,
         },
         p_business_context: businessContext,
-        p_client: pack.scope.name ?? "",
+        p_client: trustedPack.scope.name ?? "",
         p_audience: payload.brief.audience,
         p_objective: payload.brief.objective,
         p_thesis: payload.brief.thesis,
@@ -256,17 +261,13 @@ export async function POST(request: Request) {
         p_notify_on_complete: true,
         p_charge_credits: chargeCredits,
         p_credit_amount: chargeCredits ? creditsNeeded : null,
-        // Workspace-pack params — required so Postgres can disambiguate
-        // against the legacy enqueue_deck_run signature. Port-louis'
-        // migration added this overload; passing the workspace fields
-        // locks in the right function.
-        p_workspace_id: pack.workspaceId,
-        p_workspace_scope_id: pack.workspaceScopeId,
-        p_conversation_id: pack.lineage.conversationId,
-        p_from_message_id: pack.lineage.messageId,
-        p_launch_source: pack.lineage.launchSource,
-        p_workspace_context_pack: pack,
-        p_workspace_context_pack_hash: hashPack(pack),
+        p_workspace_id: trustedPack.workspaceId,
+        p_workspace_scope_id: trustedPack.workspaceScopeId,
+        p_conversation_id: trustedPack.lineage.conversationId,
+        p_from_message_id: trustedPack.lineage.messageId,
+        p_launch_source: trustedPack.lineage.launchSource,
+        p_workspace_context_pack: trustedPack,
+        p_workspace_context_pack_hash: hashWorkspaceContextPack(trustedPack),
       },
     });
 
