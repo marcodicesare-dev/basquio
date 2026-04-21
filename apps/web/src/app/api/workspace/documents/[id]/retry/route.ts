@@ -8,7 +8,9 @@ import { processWorkspaceDocument } from "@/lib/workspace/process";
 import { cleanOrphansForDocument, markDocumentForRetry } from "@/lib/workspace/retry";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// See confirm/route.ts for the rationale — serverless budget must cover the
+// full embedding + batched chunk insert cycle for large files.
+export const maxDuration = 800;
 
 function getDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

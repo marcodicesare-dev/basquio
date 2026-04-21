@@ -23,7 +23,11 @@ import { processWorkspaceDocument } from "@/lib/workspace/process";
 import { setDocumentInlineExcerpt } from "@/lib/workspace/db";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+// See confirm/route.ts for rationale. This legacy direct-upload path is only
+// used for tiny files (< LEGACY_DIRECT_UPLOAD_MAX_BYTES) so 300s is plenty,
+// but keep parity with the real flow so we never timeout before the chunk
+// insert batches finish.
+export const maxDuration = 800;
 
 const SUPPORTED = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
 

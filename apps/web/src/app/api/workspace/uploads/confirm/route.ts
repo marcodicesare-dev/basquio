@@ -26,7 +26,13 @@ import { getScope } from "@/lib/workspace/scopes";
 import { extractInlineExcerpt } from "@/lib/workspace/inline-excerpt";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// maxDuration bounds the Vercel function wall-clock, including after() hooks
+// that run processWorkspaceDocument. A 6 MB CSV produces ~5000 chunks and
+// takes ~6-8 min end-to-end (OpenAI embeddings + batched inserts +
+// Claude entity extraction). 800s = 13.3 min is Vercel Pro's ceiling and the
+// only safe home for this workload until we move document processing onto
+// Railway alongside the deck worker.
+export const maxDuration = 800;
 
 const SUPPORTED = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
 
