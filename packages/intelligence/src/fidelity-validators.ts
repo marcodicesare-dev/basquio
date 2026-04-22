@@ -1,6 +1,7 @@
 import { validateBarOrdering } from "./bar-order-validator";
 import { validateBubbleLegend } from "./bubble-size-legend-validator";
 import { validateChartRepetition } from "./chart-repetition-validator";
+import { validateClaimChartAlignment } from "./claim-chart-alignment-validator";
 import { validateEntityGrounding } from "./entity-grounding-validator";
 import { validatePeriodOrdering } from "./period-order-validator";
 import { validateRequiredDeltaColumns } from "./required-delta-validator";
@@ -52,6 +53,7 @@ export function lintDeckFidelity(input: {
     violations.push(...validateBubbleLegend(slide));
     violations.push(...validateSingleSourceLine(slide));
     violations.push(...validateTitleClaims(slide, sheet));
+    violations.push(...validateClaimChartAlignment(slide, sheet));
     violations.push(...validateEntityGrounding(slide, knownEntities));
   }
 

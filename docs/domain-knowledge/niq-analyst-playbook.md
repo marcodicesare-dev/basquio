@@ -235,6 +235,12 @@ Before planning slides, check which motifs apply. The detected motifs should dri
 - **Recommendation:** competitive response (distribution, pricing, innovation)
 - **Chart:** grouped_bar (share CY vs PY by segment)
 
+### 8. Promo Mechanics Gap
+- **Signal:** focal brand lags competitor on WD Promo, display, folder, or discount tiers
+- **Story:** "The opportunity is not generic promotion, it is a specific promo mechanic gap"
+- **Recommendation:** change the promo mechanic that is under-indexed, not only the spend level
+- **Chart:** grouped_bar or paired panels plus evidence table on WD Promo / discount / promo sales
+
 ---
 
 ## 7. Analytical Recipes
@@ -258,6 +264,60 @@ Only after LEVEL 3 should the deck recommend a pricing, assortment, promo, or di
 
 Bad pattern:
 - Segment down
+  - Recommendation immediately after a topline chart
+
+Good pattern:
+- Segment down
+- Channel localizes the issue
+- Driver metric proves the issue
+- Recommendation compresses the evidence
+
+## 18. Promo Storytelling Contract
+
+For promotion-led briefs, use the following order unless the data genuinely lacks the fields:
+
+1. category baseline
+2. value vs volume vs average price
+3. promo vs no-promo
+4. discount tiers
+5. channel / retailer / area localization
+6. focal brand vs competitor
+7. WD Promo / display / folder mechanics
+8. only then a short synthesis
+
+SCQA may wrap the story, but it must not replace this drill-down.
+
+## 19. Claim-To-Exhibit Binding
+
+If the slide says the issue is:
+
+- rotation / ROS / productivity
+- price-led growth
+- distribution opportunity
+
+then the hero chart must show that metric or a direct causal driver of it.
+
+Bad:
+- title says "productivity gap"
+- chart shows sales value
+- side note shows productivity
+
+Good:
+- title says "productivity gap"
+- chart or table directly shows rotation / ROS / sales per point
+
+## 20. Client-Friendly Copy Does Not Override Intelligence
+
+Client-friendly copy is good.
+
+But these are non-negotiable:
+
+- no invented targets
+- no invented competitor motives
+- no focal-brand disappearance on player slides
+- no value-led story when price inflation makes volume the real signal
+- no distribution recommendation without productivity proof
+- no redundant slide that only rewrites commentary on the same analytical cut
 - Segment still down in another chart
 - Generic recommendation
 

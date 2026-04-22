@@ -41,6 +41,58 @@ const VARIATION_TOKENS = [
   "uplift",
   "lift",
 ];
+type MetricPolicyRule = {
+  semanticFamily: MetricSemanticFamily;
+  decimals: number;
+  displayUnit?: MetricPresentationSpec["displayUnit"];
+};
+
+const NIQ_POLICY_RULES: Array<{ matches: string[]; rule: MetricPolicyRule }> = [
+  {
+    matches: ["wd promo", "promo wd", "weighted distribution", "numeric distribution", "distr pond", "distr num", "distribution", "distribuzione", "ponderata", "numerica"],
+    rule: { semanticFamily: "distribution", decimals: 0, displayUnit: "percent" },
+  },
+  {
+    matches: ["promo pressure", "promo intensity", "promotional pressure", "pressione promo"],
+    rule: { semanticFamily: "distribution", decimals: 0, displayUnit: "percent" },
+  },
+  {
+    matches: ["tdp", "total distribution points"],
+    rule: { semanticFamily: "tdp", decimals: 0, displayUnit: "percent" },
+  },
+  {
+    matches: ["intensity index", "promo intensity index", "int idx", "int idx val", "int idx vol"],
+    rule: { semanticFamily: "index", decimals: 1, displayUnit: "index" },
+  },
+  {
+    matches: ["price index", "idx pr", "indice prezzo", "promo effectiveness index", "efficacia promo", "index", "indice", "indici"],
+    rule: { semanticFamily: "index", decimals: 0, displayUnit: "index" },
+  },
+  {
+    matches: ["quote", "quota", "share", "mix gap", "mix", "% discount", "discount", "price reduction", "lift"],
+    rule: { semanticFamily: "share", decimals: 1, displayUnit: "percent" },
+  },
+  {
+    matches: ["avg no promo price", "avg promo price", "avg price", "prezzo medio", "price", "pricing", "prezzo"],
+    rule: { semanticFamily: "price", decimals: 2, displayUnit: "currency" },
+  },
+  {
+    matches: ["n medio ref", "numero medio di referenze", "avg refs", "avg reference", "referenze", "assortment", "reference count"],
+    rule: { semanticFamily: "avg_assortment", decimals: 1, displayUnit: "raw" },
+  },
+  {
+    matches: ["sales per point", "value per distribution point", "productivity", "ros", "rotation", "rotazione", "rotazioni", "velocity"],
+    rule: { semanticFamily: "rotation", decimals: 1, displayUnit: "raw" },
+  },
+  {
+    matches: ["vol promo sales", "promo volume", "volume sales", "sales volume", "v all", "volumi", "volume", "ltrs", "kg", "qty", "quantity", "confezioni", "packs", "units"],
+    rule: { semanticFamily: "sales_volume", decimals: 0, displayUnit: "raw" },
+  },
+  {
+    matches: ["promo sales value", "no promo sales value", "sales value", "v valore", "v valore any promo", "vendite", "value", "valore", "revenue", "eur"],
+    rule: { semanticFamily: "sales_value", decimals: 0, displayUnit: "raw" },
+  },
+];
 const SCALE_TOKEN_MAP = [
   { token: "thousand", unit: "thousands" },
   { token: "thousands", unit: "thousands" },
@@ -63,10 +115,11 @@ export function inferMetricPresentationSpec(input: MetricPresentationInput): Met
   const normalizedTitle = normalizeMetricText(input.title ?? "");
   const combined = `${normalizedLabel} ${normalizedTitle}`.trim();
   const baseText = removeVariationTokens(combined);
-  const semanticFamily = inferSemanticFamily(combined, baseText);
-  const displayUnit = inferDisplayUnit(semanticFamily, combined);
-  const decimalPlaces = inferDecimalPlaces(semanticFamily, combined, displayUnit);
-  const variationDisplay = hasVariationToken(combined) ? "auto" : "absolute";
+  const metricRule = resolveMetricPolicy(baseText);
+  const semanticFamily = metricRule?.semanticFamily ?? inferSemanticFamily(combined, baseText);
+  const displayUnit = inferDisplayUnit(metricRule, semanticFamily, combined);
+  const decimalPlaces = inferDecimalPlaces(metricRule, semanticFamily, displayUnit, combined);
+  const variationDisplay = inferVariationDisplay(combined, displayUnit);
   const excelNumberFormat = buildExcelNumberFormat(displayUnit, decimalPlaces);
   const valueFormat = buildHumanNumberFormat(displayUnit, decimalPlaces);
 
@@ -182,27 +235,39 @@ export function buildExhibitPresentationSpec(input: {
   };
 }
 
+function resolveMetricPolicy(baseText: string): MetricPolicyRule | null {
+  for (const entry of NIQ_POLICY_RULES) {
+    if (entry.matches.some((token) => baseText.includes(token))) {
+      return entry.rule;
+    }
+  }
+  return null;
+}
+
 function inferSemanticFamily(combined: string, baseText: string): MetricSemanticFamily {
+  if (containsAny(baseText, ["wd promo", "weighted distribution", "numeric distribution", "distribution", "distribuzione", "ponderata", "numerica"])) {
+    return "distribution";
+  }
+  if (containsAny(baseText, ["promo pressure", "promo intensity"])) {
+    return "distribution";
+  }
   if (containsAny(baseText, ["price", "prezzo", "prezzi", "pricing"])) {
     return "price";
-  }
-  if (containsAny(baseText, ["share", "quota", "quote", "mix"])) {
-    return "share";
-  }
-  if (containsAny(baseText, ["distribution", "distribuzione", "ponderata", "numerica", "numeric", "promo", "promotion"])) {
-    return "distribution";
   }
   if (containsAny(baseText, ["tdp"])) {
     return "tdp";
   }
-  if (containsAny(baseText, ["rotation", "rotazione", "rotazioni"])) {
+  if (containsAny(baseText, ["sales per point", "value per distribution point", "productivity", "ros", "rotation", "rotazione", "rotazioni", "velocity"])) {
     return "rotation";
   }
   if (containsAny(baseText, ["referenze", "assortment", "referenze medie", "reference count"])) {
     return "avg_assortment";
   }
-  if (containsAny(baseText, ["intensity", "index", "indice", "indici", "efficacia"])) {
+  if (containsAny(baseText, ["intensity index", "int idx", "price index", "idx pr", "index", "indice", "indici", "efficacia"])) {
     return "index";
+  }
+  if (containsAny(baseText, ["share", "quota", "quote", "mix"])) {
+    return "share";
   }
   if (containsAny(baseText, ["volume", "volumi", "qty", "quantity", "confezione", "packs", "units"])) {
     return "sales_volume";
@@ -214,12 +279,17 @@ function inferSemanticFamily(combined: string, baseText: string): MetricSemantic
 }
 
 function inferDisplayUnit(
+  metricRule: MetricPolicyRule | null,
   semanticFamily: MetricSemanticFamily,
   combined: string,
 ): MetricPresentationSpec["displayUnit"] {
   const scaledUnit = detectScaledUnit(combined);
   if (scaledUnit) {
     return scaledUnit;
+  }
+
+  if (metricRule?.displayUnit) {
+    return metricRule.displayUnit;
   }
 
   if (semanticFamily === "share" || semanticFamily === "distribution") {
@@ -235,12 +305,17 @@ function inferDisplayUnit(
 }
 
 function inferDecimalPlaces(
+  metricRule: MetricPolicyRule | null,
   semanticFamily: MetricSemanticFamily,
-  combined: string,
   displayUnit: MetricPresentationSpec["displayUnit"],
+  combined: string,
 ) {
   if (displayUnit === "thousands" || displayUnit === "millions" || displayUnit === "billions") {
     return 1;
+  }
+
+  if (metricRule) {
+    return metricRule.decimals;
   }
 
   if (semanticFamily === "price") {
@@ -256,6 +331,25 @@ function inferDecimalPlaces(
     return 0;
   }
   return 0;
+}
+
+function inferVariationDisplay(
+  combined: string,
+  displayUnit: MetricPresentationSpec["displayUnit"],
+): MetricPresentationSpec["variationDisplay"] {
+  if (!hasVariationToken(combined)) {
+    return "absolute";
+  }
+
+  if (containsAny(combined, ["var %", "var%", "growth", "crescita", "yoy", "vs py", "vs ly"])) {
+    return "percentage";
+  }
+
+  if (displayUnit === "percent" && !containsAny(combined, ["share", "quota", "discount", "price reduction"])) {
+    return "absolute";
+  }
+
+  return "auto";
 }
 
 function buildExcelNumberFormat(

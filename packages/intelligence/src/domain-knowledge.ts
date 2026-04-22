@@ -268,6 +268,8 @@ Quality rules: S & C must be specific (not generic). Only ONE answer per SCQA. A
 Bad: "Decline is due to distribution loss"
 Good: "Gaining back z% of buyers at Retailer A through bigger pack launch would boost sales by x%"
 
+SCQA is the wrapper, not the analytical engine. For NielsenIQ promo work, the body of the deck must still drill down mechanically across market, channel, retailer/area, format, competitor, promo mechanic, and productivity.
+
 ### Pyramid Principle (Barbara Minto)
 Level 1: ANSWER (exec summary title) → Level 2: 3-4 POVs → Level 3: Evidence slides (chart-led)
 
@@ -288,6 +290,8 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 - Recommendations prioritized by: Prize × Feasibility × Ease × Time × Fit
 - FMCG levers: distribution expansion, pricing/pack architecture, promo optimization, portfolio rebalancing, hero renovation, tail pruning
 - For decks above 40 slides, each chapter should reach at least L3 depth before recommending action.
+- For promo briefs, use the cascade: category baseline -> value vs volume vs price -> promo vs no-promo -> discount tiers -> localization -> focal brand vs competitor -> WD Promo/display/folder -> short synthesis.
+- Keep analytical branches contiguous. Do not jump from segments to channels and then back to segments unless the revisit is explicit synthesis/comparison or a clearly deeper follow-up.
 
 ### Exhibit Selection Rules (for chart planning — ABSOLUTE, no exceptions)
 | Question | CORRECT Chart | FORBIDDEN |
@@ -314,6 +318,7 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 - Title IS the insight (not a topic label). Bad: "Category Overview". Good: "Cat wet is the largest pool at €781M but brand has near-zero presence"
 - Chart IS the hero (60%+ of slide area). Max 2-3 supporting bullets.
 - Body explains WHY, not WHAT. The chart shows WHAT.
+- Client-friendly copy is allowed only after the slide passes intelligence non-negotiables. Friendliness never overrides evidence depth.
 
 ### Exhibit Selection Rules (ABSOLUTE — No Exceptions)
 | Question | CORRECT Chart | FORBIDDEN |
@@ -337,6 +342,11 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 - Share without specifying the denominator
 - More than 1 text-only slide per deck
 - Never hardcode currency symbols — infer from data
+- Never invent a growth target or strategic objective not present in the brief or directly derivable from evidence
+- Never chart sales value when the slide claim is a rotation or productivity problem
+- Never state a distribution opportunity without rotation, ROS, or productivity proof
+- Never let the focal brand disappear from a competitor / supplier slide
+- Never hop across analytical branches in a way that breaks the storyline; finish one branch before switching unless the later revisit is explicit synthesis/comparison or a deeper follow-up
 
 ### KPI Label Translation (Italian → English)
 V. Valore → Sales Value, V. Confezioni → Units, Quota Val. → Value Share,

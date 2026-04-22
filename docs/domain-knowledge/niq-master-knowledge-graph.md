@@ -172,6 +172,12 @@ Value = Penetration * Frequency * Basket Size * Price
 - Recommendation: rebuild baseline through innovation, distribution, or brand investment
 - Exhibit: promo_baseline_stack over time
 
+### 4b. promo_mechanics_gap
+- Signal: focal brand loses because WD Promo, display, folder, or discount depth lags the main competitor
+- Story: "The gap sits in promo mechanics, not generic promo support"
+- Recommendation: close the specific mechanic gap first
+- Exhibit: paired comparison with WD Promo / discount / promo sales evidence
+
 ### 5. portfolio_mismatch
 - Signal: brand segment mix differs from category by >5pp
 - Story: "Brand portfolio doesn't match where the category is growing"
@@ -202,3 +208,44 @@ Every recommendation must use a specific FMCG lever:
 6. **Tail Pruning**: "Delist bottom [N] SKUs (< €[X]K value) to fund [action]"
 7. **Pricing**: "Adjust price index from [X] to [Y] to close gap with [competitor]"
 8. **Channel Strategy**: "Develop [channel]-specific pack/price for Discount/Online"
+
+## Promo Storytelling Rules
+
+For promotion-led analysis:
+
+1. start from category baseline
+2. test value versus volume
+3. if prices distort value, pivot the commercial story to volume
+4. decompose promo versus no-promo
+5. decompose discount tiers
+6. localize by channel / retailer / area / format
+7. compare focal brand versus competitor
+8. show promo mechanics such as WD Promo / display / folder
+9. only then state the opportunity
+
+## Claim-To-Chart Rules
+
+If the business claim is about:
+
+- rotation / productivity / ROS
+- price-led growth
+- distribution opportunity
+
+the hero exhibit must show that metric or a direct causal driver.
+
+Text cannot rescue a mismatched chart.
+
+## Decimal Truth
+
+Use the deterministic NIQ decimal policy:
+
+- value / volume / packs: 0 unless scaled
+- distribution / promo pressure / TDP: 0
+- intensity index: 1
+- share and discount depth: 1
+- prices: 2
+- average refs: 1
+- indices: 0
+- rotation / ROS / productivity: 1
+
+Variations inherit base precision.

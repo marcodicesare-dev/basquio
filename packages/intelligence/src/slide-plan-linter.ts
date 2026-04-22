@@ -46,12 +46,14 @@ export type SlidePlanLintResult = {
   contentSlideCount: number;
   appendixSlideCount: number;
   appendixCap: number;
+  storylineIslands: Array<{ chapter: string; primaryDimension: string; positions: [number, number] }>;
 };
 
 type EnrichedSlide = SlidePlanLintInput & {
   text: string;
   tokens: Set<string>;
   dimensions: string[];
+  metricFamilies: string[];
   primaryDimension: string;
   decompositionLevel: number;
   chapter: string;
@@ -65,6 +67,15 @@ const STOPWORDS = new Set([
   "slide", "slides", "sono", "that", "their", "there", "these", "this", "through", "totale",
   "trend", "with", "without", "your",
 ]);
+
+const METRIC_FAMILY_DEFINITIONS: Array<{ id: string; keywords: string[] }> = [
+  { id: "sales", keywords: ["sales", "vendite", "value", "valore", "volume", "volumi", "units", "confezioni"] },
+  { id: "share", keywords: ["share", "quota", "mix"] },
+  { id: "price", keywords: ["price", "prezzo", "inflation", "inflazione", "price-led"] },
+  { id: "distribution", keywords: ["distribution", "distribuzione", "wd", "availability", "acv", "listings"] },
+  { id: "rotation", keywords: ["rotation", "rotazione", "rotazioni", "ros", "velocity", "productivity", "produttiv"] },
+  { id: "promo", keywords: ["promo", "promotion", "promotional", "discount", "folder", "display", "baseline", "incremental"] },
+];
 
 const DIMENSION_DEFINITIONS: Array<{ id: string; keywords: string[] }> = [
   { id: "segment", keywords: ["segment", "segments", "comparto", "famiglia", "family", "sub-segment", "wet", "dry", "reconstituted"] },
@@ -145,12 +156,14 @@ export function lintSlidePlan(
       }
 
       const sharedDimensions = left.dimensions.filter((dimension) => right.dimensions.includes(dimension));
+      const sharedMetricFamilies = left.metricFamilies.filter((family) => right.metricFamilies.includes(family));
       pairViolations.push({
-        rule: "redundant_data_cut",
+        rule: "redundant_analytical_cut",
         severity: similarity >= 0.82 ? "critical" : "major",
         message:
           `Slides ${left.position} and ${right.position} appear to answer the same leaf question ` +
-          `(${sharedDimensions.join(", ") || "same content cut"}). Replace broadening with a deeper drill-down.`,
+          `(${[...sharedDimensions, ...sharedMetricFamilies].join(", ") || "same content cut"}). ` +
+          `Replace broadening with a deeper drill-down or a different causal metric.`,
         positions: [left.position, right.position],
         similarity: Number(similarity.toFixed(2)),
         sharedDimensions,
@@ -165,6 +178,7 @@ export function lintSlidePlan(
   const analyticalSlides = slides.filter((slide) => !isStructuralSlide(slide));
   const appendixSlides = analyticalSlides.filter((slide) => isAppendixSlide(slide));
   const contentSlides = analyticalSlides.filter((slide) => !isAppendixSlide(slide));
+  const storylineIslands = buildStorylineIslands(contentSlides);
   const appendixCap = computeAppendixCap(targetSlideCount);
   const deepestLevel = analyticalSlides.reduce(
     (maxLevel, slide) => Math.max(maxLevel, slide.decompositionLevel),
@@ -240,6 +254,9 @@ export function lintSlidePlan(
     });
   }
 
+  const storylineBacktrackingViolations = detectStorylineBacktracking(contentSlides, storylineIslands);
+  deckViolations.push(...storylineBacktrackingViolations);
+
   return {
     passed: pairViolations.every((violation) => violation.severity !== "critical")
       && deckViolations.every((violation) => violation.severity !== "critical"),
@@ -252,6 +269,7 @@ export function lintSlidePlan(
     contentSlideCount: contentSlides.length,
     appendixSlideCount: appendixSlides.length,
     appendixCap,
+    storylineIslands,
   };
 }
 
@@ -270,6 +288,7 @@ function enrichSlide(slide: SlidePlanLintInput): EnrichedSlide {
     text,
     tokens: tokenize(text),
     dimensions,
+    metricFamilies: inferMetricFamilies(text),
     primaryDimension: inferPrimaryDimension(dimensions),
     decompositionLevel: inferDecompositionLevel(slide, dimensions, text),
     chapter: inferChapter(dimensions, slide, text),
@@ -336,12 +355,12 @@ function inferChapter(dimensions: string[], slide: SlidePlanLintInput, text: str
   const normalized = normalize(text);
   if (dimensions.includes("recommendation")) return "Recommendations";
   if (dimensions.includes("methodology")) return "Appendix";
-  if (/market|category|overview|summary/.test(normalized)) return "Market";
+  if ((slide.role ?? "").toLowerCase().includes("summary")) return "Market";
   if (dimensions.some((dimension) => ["segment", "format", "flavour"].includes(dimension))) return "Segments";
   if (dimensions.some((dimension) => ["brand", "sku"].includes(dimension))) return "Brand & Portfolio";
   if (dimensions.some((dimension) => ["channel", "retailer", "distribution"].includes(dimension))) return "Channels & Retailers";
   if (dimensions.some((dimension) => ["price", "promo", "sensitivity"].includes(dimension))) return "Commercial Levers";
-  if ((slide.role ?? "").toLowerCase().includes("summary")) return "Market";
+  if (/market|category|overview|summary/.test(normalized)) return "Market";
   return "General";
 }
 
@@ -356,8 +375,11 @@ function tokenize(text: string) {
 function computeDataCutSimilarity(left: EnrichedSlide, right: EnrichedSlide) {
   const tokenSimilarity = jaccard(left.tokens, right.tokens);
   const sharedDimensions = left.dimensions.filter((dimension) => right.dimensions.includes(dimension));
+  const sharedMetricFamilies = left.metricFamilies.filter((family) => right.metricFamilies.includes(family));
   const sharedDimensionScore = sharedDimensions.length / Math.max(left.dimensions.length, right.dimensions.length, 1);
+  const sharedMetricScore = sharedMetricFamilies.length / Math.max(left.metricFamilies.length, right.metricFamilies.length, 1, 1);
   const samePrimary = left.primaryDimension === right.primaryDimension ? 0.18 : 0;
+  const sameMetricFocus = sharedMetricFamilies.length > 0 ? 0.12 : 0;
   const sameLevel = left.decompositionLevel === right.decompositionLevel ? 0.12 : 0;
   const sameIntent = left.pageIntentNormalized && left.pageIntentNormalized === right.pageIntentNormalized ? 0.05 : 0;
   const sameFocalObject = left.focalObject && right.focalObject && normalize(left.focalObject) === normalize(right.focalObject) ? 0.08 : 0;
@@ -371,12 +393,22 @@ function computeDataCutSimilarity(left: EnrichedSlide, right: EnrichedSlide) {
   return clamp01(
     tokenSimilarity * 0.52 +
     sharedDimensionScore * 0.25 +
+    sharedMetricScore * 0.12 +
     samePrimary +
+    sameMetricFocus +
     sameLevel +
     sameIntent +
     sameFocalObject -
     progressiveDisclosureDiscount,
   );
+}
+
+function inferMetricFamilies(text: string) {
+  const haystack = normalize(text);
+  const matched = METRIC_FAMILY_DEFINITIONS
+    .filter((definition) => definition.keywords.some((keyword) => haystack.includes(keyword)))
+    .map((definition) => definition.id);
+  return matched.length > 0 ? matched : ["general"];
 }
 
 function jaccard(left: Set<string>, right: Set<string>) {
@@ -441,4 +473,107 @@ function normalize(text: string) {
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
+}
+
+type StorylineIsland = {
+  chapter: string;
+  primaryDimension: string;
+  positions: [number, number];
+  slides: EnrichedSlide[];
+};
+
+function buildStorylineIslands(slides: EnrichedSlide[]): StorylineIsland[] {
+  const islands: StorylineIsland[] = [];
+
+  for (const slide of slides) {
+    const chapter = slide.chapter;
+    const primaryDimension = slide.primaryDimension;
+    const previous = islands[islands.length - 1];
+    const sameBranchAsPrevious = previous
+      && previous.primaryDimension === primaryDimension
+      && previous.chapter === chapter;
+    if (sameBranchAsPrevious) {
+      previous.positions = [previous.positions[0], slide.position];
+      previous.slides.push(slide);
+      continue;
+    }
+
+    islands.push({
+      chapter,
+      primaryDimension,
+      positions: [slide.position, slide.position],
+      slides: [slide],
+    });
+  }
+
+  return islands;
+}
+
+function detectStorylineBacktracking(
+  slides: EnrichedSlide[],
+  islands: StorylineIsland[],
+): SlidePlanDeckViolation[] {
+  if (slides.length < 5) {
+    return [];
+  }
+
+  const violations: SlidePlanDeckViolation[] = [];
+  const seenByKey = new Map<string, StorylineIsland>();
+
+  for (const island of islands) {
+    if (isExecutiveSummaryIsland(island)) {
+      continue;
+    }
+    const key = island.primaryDimension === "general"
+      ? `${island.chapter}::general`
+      : island.primaryDimension;
+    const previous = seenByKey.get(key);
+    if (!previous) {
+      seenByKey.set(key, island);
+      continue;
+    }
+
+    if (isExplicitSynthesisIsland(island) || isDeeperFollowUp(previous, island)) {
+      seenByKey.set(key, island);
+      continue;
+    }
+
+    violations.push({
+      rule: "storyline_backtracking",
+      severity: "major",
+      message:
+        `Deck returns to ${island.chapter} / ${island.primaryDimension} at slides ${island.positions[0]}-${island.positions[1]} ` +
+        `after already leaving that branch at slides ${previous.positions[0]}-${previous.positions[1]}. ` +
+        `Keep each analytical branch contiguous unless the later revisit is an explicit synthesis/comparison or a clearly deeper follow-up.`,
+    });
+    seenByKey.set(key, island);
+  }
+
+  return violations;
+}
+
+function isExplicitSynthesisIsland(island: StorylineIsland) {
+  return island.slides.every((slide) => {
+    const text = normalize([
+      slide.title,
+      slide.body,
+      slide.governingThought,
+      slide.pageIntent,
+    ].filter(Boolean).join(" "));
+    return /\b(compare|comparison|versus|vs\b|synthesis|implication|trade-off|tradeoff|recap|wrap-up|wrap up)\b/.test(text);
+  });
+}
+
+function isDeeperFollowUp(previous: StorylineIsland, current: StorylineIsland) {
+  const previousDepth = Math.max(...previous.slides.map((slide) => slide.decompositionLevel));
+  const currentDepth = Math.max(...current.slides.map((slide) => slide.decompositionLevel));
+  return currentDepth >= previousDepth + 1;
+}
+
+function isExecutiveSummaryIsland(island: StorylineIsland) {
+  return island.slides.every((slide) => {
+    const role = (slide.role ?? "").toLowerCase();
+    const layout = (slide.layoutId ?? slide.slideArchetype ?? "").toLowerCase();
+    return role === "exec-summary" || layout === "exec-summary" || slide.position === 2;
+  });
 }

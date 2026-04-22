@@ -53,10 +53,10 @@ export async function enforceDeckBudget(input: {
   const maxUsd = input.maxUsd ?? getDeckBudgetCaps(input.model).preFlight;
 
   // Anthropic's token-counting endpoint rejects Files API references such as
-  // `source: { type: "file", file_id }` and container uploads. Use token
-  // counting only for inline-only requests and fall back to actual-usage
-  // enforcement for file-backed phases.
-  if (containsUncountableFileSource(input.body)) {
+  // `source: { type: "file", file_id }`, container uploads, and server tools.
+  // Use token counting only for inline-only requests and fall back to
+  // actual-usage enforcement for file-backed or tool-backed phases.
+  if (containsUncountableRequestSurface(input.body)) {
     const projectedUsd = input.spentUsd + estimateFileBackedEnvelopeUsd(
       input.model,
       input.outputTokenBudget,
@@ -76,11 +76,36 @@ export async function enforceDeckBudget(input: {
     };
   }
 
-  const tokenCount = await input.client.beta.messages.countTokens({
-    model: input.model,
-    betas: input.betas as Anthropic.Beta.AnthropicBeta[],
-    ...input.body,
-  });
+  let tokenCount: Awaited<ReturnType<Anthropic["beta"]["messages"]["countTokens"]>>;
+  try {
+    tokenCount = await input.client.beta.messages.countTokens({
+      model: input.model,
+      betas: input.betas as Anthropic.Beta.AnthropicBeta[],
+      ...input.body,
+    });
+  } catch (error) {
+    if (!isCountTokensUnsupportedError(error)) {
+      throw error;
+    }
+
+    const projectedUsd = input.spentUsd + estimateFileBackedEnvelopeUsd(
+      input.model,
+      input.outputTokenBudget,
+      input.fileBackedBudgetContext,
+    );
+    if (projectedUsd > maxUsd) {
+      throw new Error(
+        `Projected Claude cost $${projectedUsd.toFixed(3)} exceeds budget $${maxUsd.toFixed(2)}.`,
+      );
+    }
+
+    return {
+      inputTokens: null,
+      projectedUsd,
+      usedCountTokens: false,
+      envelopeContext: input.fileBackedBudgetContext ?? null,
+    };
+  }
 
   const projectedUsd =
     input.spentUsd +
@@ -198,13 +223,13 @@ export async function getPriorAttemptsCost(input: {
   );
 }
 
-function containsUncountableFileSource(value: unknown): boolean {
+function containsUncountableRequestSurface(value: unknown): boolean {
   if (!value || typeof value !== "object") {
     return false;
   }
 
   if (Array.isArray(value)) {
-    return value.some((item) => containsUncountableFileSource(item));
+    return value.some((item) => containsUncountableRequestSurface(item));
   }
 
   const record = value as Record<string, unknown>;
@@ -226,7 +251,39 @@ function containsUncountableFileSource(value: unknown): boolean {
     return true;
   }
 
-  return Object.values(record).some((entry) => containsUncountableFileSource(entry));
+  if (hasUnsupportedCountTokensServerTool(record)) {
+    return true;
+  }
+
+  return Object.values(record).some((entry) => containsUncountableRequestSurface(entry));
+}
+
+function hasUnsupportedCountTokensServerTool(record: Record<string, unknown>) {
+  const type = typeof record.type === "string" ? record.type : null;
+  const name = typeof record.name === "string" ? record.name : null;
+  return (
+    type?.startsWith("code_execution_") === true ||
+    type?.startsWith("web_fetch_") === true ||
+    name === "code_execution" ||
+    name === "web_fetch"
+  );
+}
+
+function isCountTokensUnsupportedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("count_tokens endpoint") ||
+    normalized.includes("count tokens endpoint") ||
+    (
+      normalized.includes("count_tokens") &&
+      (
+        normalized.includes("server tools are not supported") ||
+        normalized.includes("web_fetch") ||
+        normalized.includes("code_execution")
+      )
+    )
+  );
 }
 
 function estimateFileBackedEnvelopeUsd(

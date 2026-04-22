@@ -247,6 +247,7 @@ Why:
 
 - the production run `bfab7641-1e6b-4366-a6a0-8d86f3534e23` crashed because the worker called the token-counting endpoint on a file-backed request
 - Anthropic accepts those file references in the Messages API, but rejects them in the token-counting endpoint with `invalid_request_error: File sources are not supported in the token counting endpoint.`
+- the production run `5e270fed-6525-411d-aae6-46bcec26fc22` later proved the same endpoint is also invalid for server-tool requests that register `code_execution_*` or `web_fetch_*`, even when the request body itself is text-only
 
 Implication:
 
@@ -706,3 +707,22 @@ Why:
 Implication:
 - workspace uploads up to the product cap can go browser-to-Supabase without depending on Vercel request-body limits, with resumable upload as the default above 6 MB
 - deck manifests now preserve workbook-native exhibit styling metadata alongside chart bindings, and the workbook post-processor applies shared number formats to both cells and native Excel charts
+
+## April 22, 2026 — Client-friendly copy is gated by intelligence non-negotiables
+
+Decision:
+- keep client-friendly copy as a presentation objective, but make it strictly subordinate to intelligence non-negotiables
+- harden NIQ / promo decks around explicit contracts: promo drill-down sequence, inflation-aware value-to-volume pivot, claim-to-chart metric binding, redundancy control, and deterministic NIQ decimal policy
+- enforce storyline branch contiguity so analytical chapters do not hop from one branch to another and then back unless the revisit is an explicit synthesis/comparison or a clearly deeper follow-up
+- use eval-driven hardening logic: code-based checks first, then rubric-based model grading, with regression cases treated as blockers instead of style improvements being accepted on vibe
+
+Why:
+- the recent quality regression proved that making copy more polished can silently weaken analytical depth if style and intelligence are optimized in the same undifferentiated prompt layer
+- Rossella’s feedback showed the failure modes clearly: wrong metric on the chart, repeated analytical cuts, promo analysis that skips mechanics, and slide claims that are better written than they are evidenced
+- current best-practice guidance from OpenAI and Anthropic converges on the same operating model: task-specific evals, multidimensional scorecards, automated grading where possible, and continuous regression testing on every change
+
+Implication:
+- Basquio should never accept a quality hardening pass just because the copy sounds nicer; the change must preserve claim/evidence coherence and analytical depth
+- prompt changes alone are not sufficient; deterministic validators and explicit domain policies must carry the non-negotiable rules
+- NIQ decimal rules and promo-storytelling mechanics now belong in the knowledge and validation layer, not only in agent memory or ad hoc instructions
+- narrative linearity is not a soft editorial preference; branch backtracking is a planner defect and should fail plan lint before authoring

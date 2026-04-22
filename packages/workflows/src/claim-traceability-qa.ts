@@ -207,7 +207,7 @@ function shouldJudgeSlide(slide: JudgeSlide) {
     return true;
   }
 
-  return /\b(adult|adults|premium|underwhelming|deludente|should|must-win|must win|expand|activation|promo|targets?|for adults|opportunity|recommend|win in|focus on|priorit(?:y|ize)|claim|positioned)\b/i.test(text);
+  return /\b(adult|adults|premium|underwhelming|deludente|should|must-win|must win|expand|activation|promo|targets?|for adults|opportunity|recommend|win in|focus on|priorit(?:y|ize)|claim|positioned|player|manufacturer|supplier|competitor|rotation|productivity|price-led|inflation)\b/i.test(text);
 }
 
 function buildClaimTraceabilityPrompt(input: {
@@ -228,11 +228,14 @@ function buildClaimTraceabilityPrompt(input: {
     "Numeric headline verification is already handled elsewhere. Do not flag pure numeric mismatches unless the unsupported wording depends on them.",
     "Recommendation slides are held to the same standard: if the recommendation states an underperformance, demographic target, pricing tier, activation gap, or retailer-specific action without support, flag it.",
     "Entity grounding is checked separately. Focus here on unsupported qualitative reasoning and unsupported recommendation wording.",
+    "Also flag these non-negotiable failures when they appear in the text: invented growth targets not present in the brief, invented competitor motives, distribution opportunities without visible productivity logic, and competitor/player commentary that never explicitly positions the focal brand.",
     "",
     "Support rules:",
     "- Supported: directly observable in the linked sheet or explicitly cited from another slide using `cfr. slide N`.",
     "- Supported: explicitly marked as `(brief)` in the text.",
     "- Unsupported: demographic inferences, psychographic claims, channel/retailer prescriptions, or strategic diagnoses with no visible evidence.",
+    "- Unsupported: titles or recommendations that create a client target such as '+10%' when the brief does not contain that target and the deck does not derive it visibly.",
+    "- Unsupported: statements that a brand grows because it is premium / Italian / for adults / strategic / visible unless that causal wording is evidenced in the data or explicitly comes from the brief.",
     "- Be conservative. If the evidence is ambiguous, do not flag.",
     "",
     "Brief context:",

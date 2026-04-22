@@ -123,6 +123,8 @@ const HARD_QA_BLOCKERS = new Set([
 const DECK_PLAN_MECE_CHECK = (process.env.DECK_PLAN_MECE_CHECK ?? "true").trim().toLowerCase() !== "false";
 const ALWAYS_ACTIONABLE_PLAN_RULES = new Set([
   "redundant_data_cut",
+  "redundant_analytical_cut",
+  "storyline_backtracking",
   "content_shortfall",
   "content_overflow",
   "appendix_overfill",
@@ -3984,9 +3986,13 @@ function buildAuthorMessage(
         "- Follow the NIQ Analyst Playbook from the system prompt: recognize Italian column names, compute ALL applicable derivatives (growth, share, price index, mix gap) before forming findings, and detect diagnostic motifs.",
         "- Frame the analysis around the TRUE commercial question, not a generic summary. Classify each finding as connection, contradiction, or curiosity.",
         "- Recommendations must be traceable to the data in this run. Do not invent geographies, channels, or opportunities that are not directly supported by the evidence.",
+        "- For NielsenIQ promo work, SCQA is only the narrative wrapper. The real body of the deck must drill down mechanically across market, channel, retailer/area, format, competitor, promo mechanic, and productivity.",
+        "- Keep analytical branches contiguous. Do not move from segments to channels and then back to segments unless the later revisit is an explicit synthesis/comparison or a clearly deeper follow-up.",
         "- BEFORE writing any number, verify that the sum of supplier-level values per channel matches the channel category total within ±2%. If it does not, you are double-counting NielsenIQ hierarchical subtotal rows.",
         "- NielsenIQ exports contain subtotal rows at category, supplier, brand, and item level. For category totals use only rows where FORNITORE, MARCA, and ITEM are blank. For supplier totals use only rows where FORNITORE is present and MARCA and ITEM are blank.",
         "- If the brief is about promotions, benchmark the focal brand against key competitors and call out what others are doing, not only what the focal brand is doing.",
+        "- If the brief is about promotions, follow this sequence unless data is missing: category baseline -> value vs volume vs price -> promo vs no-promo -> discount tiers -> channel/format/localization -> focal brand vs competitor -> WD Promo/display/folder mechanics -> short synthesis.",
+        "- If prices materially inflate value growth, show that explicitly and pivot the commercial story to volume. Do not let price inflation hide weak volume dynamics.",
         "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
         "- When the brief asks for both geography and brand, retailer, or channel analysis, include cross-tab analysis at the intersection. Use at least one brand x geography or channel x geography heatmap, table, or grouped comparison instead of world totals only.",
         ...(routeContext ? [routeContext] : []),
@@ -4080,10 +4086,14 @@ function buildAuthorMessage(
             : []),
           "- Follow the loaded pptx skill for the deck artifact generation.",
           "- CLIENT-FACING TONE: the client is paying for this deck. Lead with strengths, frame challenges as market dynamics, quantify the upside before the downside, and never attack the client's hero product or format.",
+          "- CLIENT-FRIENDLY COPY IS NOT A LICENSE TO LOWER ANALYTICAL QUALITY. If there is a conflict, preserve evidence depth, metric accuracy, and focal-brand clarity first, then make the copy friendlier without weakening the claim.",
           "- BEFORE committing each slide to PPTX, self-score it against this rubric and revise in-place until it passes: TITLE = full-sentence insight with at least one number and max 14 words; BODY = no AI slop, active voice, evidence-led; EVIDENCE = chart/table/source actually support the claim; STRUCTURE = approved archetype and no duplicate question; RECOMMENDATIONS = opportunity first, lever second, rationale tied to visible evidence.",
           "- Treat the rubric as blocking inside the author turn. If a planned slide fails any dimension, rewrite the slide before adding it to the deck instead of hoping revise will fix it later.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
           "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
+          "- CLAIM-TO-CHART BINDING: if the slide says the issue is rotation, productivity, ROS, price-led growth, or a distribution opportunity, the hero exhibit must show that metric or a direct causal driver. Do not chart sales value and bury productivity in a side note.",
+          "- STORYLINE CONTIGUITY: finish one analytical branch before switching to another. If you revisit an earlier branch later in the deck, it must be an explicit synthesis/comparison or a deeper follow-up, not a lateral jump.",
+          "- REDUNDANCY RULE: if a later slide only improves the commentary while keeping the same analytical cut, collapse it and replace it with a deeper or more causal exhibit.",
           "- Speaker notes are part of the deliverable quality bar. For each substantive non-cover slide, write 200-400 words covering TALK TRACK, DATA CONTEXT, skeptical pushback, anticipated questions, and a transition.",
           ...(files?.uploadedTemplate
             ? [
@@ -4110,6 +4120,8 @@ function buildAuthorMessage(
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
           "- If a slide promises a comparison set with an explicit count such as 4 provinces, 3 channels, or 5 segments, cover all of them explicitly or change the claim.",
           "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
+          "- Never invent a growth target, market-share target, or strategy objective unless it is explicitly present in the brief or directly derivable from the visible evidence.",
+          "- On player, manufacturer, or competitor slides, keep the focal brand explicitly visible and say what the comparison means for it.",
           "- Preserve source labels exactly: use the input label or the canonical NIQ English label, never invented synonyms like ACV when the source says Distr. Pond.",
           "- Tables with PY and CY must be ordered past-to-present (PY before CY), and any share or price table must include the relevant delta columns when those metrics are shown.",
           "- Bubble charts must declare the bubble-size dimension explicitly in both metadata and visible title text (`bolla = ...` or `bubble = ...`).",
@@ -6209,7 +6221,11 @@ function isActionablePlanPairViolation(
     return false;
   }
 
-  return DECK_PLAN_MECE_CHECK && (ALWAYS_ACTIONABLE_PLAN_RULES.has(violation.rule) || meceCheckEnabled);
+  if (ALWAYS_ACTIONABLE_PLAN_RULES.has(violation.rule)) {
+    return true;
+  }
+
+  return DECK_PLAN_MECE_CHECK && meceCheckEnabled;
 }
 
 function isActionablePlanDeckViolation(
@@ -7616,6 +7632,7 @@ function classifyRepairIssue(issue: string): keyof RepairIssueBuckets {
     normalized.includes("[insufficient_decomposition_depth]") ||
     normalized.includes("[chapter_depth_shallow]") ||
     normalized.includes("[redundant_data_cut]") ||
+    normalized.includes("[redundant_analytical_cut]") ||
     normalized.includes("[competitor_tool_")
   ) {
     return "sonnet";
@@ -7791,6 +7808,7 @@ function isAdvisoryCritiqueIssue(issue: string) {
   if (n.includes("[title_no_number]")) return false;
   if (n.includes("[title_number_coverage]")) return false;
   if (n.includes("redundancy issue [redundant_data_cut]")) return false;
+  if (n.includes("redundancy issue [redundant_analytical_cut]")) return false;
   if (n.includes("deck depth issue [drilldown_dimension_coverage]")) return false;
   if (n.includes("deck depth issue [insufficient_decomposition_depth]")) return false;
   if (n.includes("deck plan issue [content_shortfall]")) return false;
