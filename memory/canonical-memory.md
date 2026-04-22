@@ -128,6 +128,16 @@ Initial domain bias:
 - PPTX publish validation should trust the `presentation.xml` slide list over orphaned zip slide parts, and chart-image aspect checks must not treat normal chart-canvas padding as distortion.
 - Git-connected Railway worker deployments install the full pnpm workspace graph from the repo root. The repo itself must declare any native build prerequisites needed by workspace dependencies instead of relying on dashboard-only packages or manual snapshot deploy rituals.
 
+## Production Incident Memory: April 21, 2026 — Discord bot silent death
+
+- The Railway project `basquio-bot` hosts more than one service. The Discord bot AND the deck worker were both deployed inside it, both reading the SAME root `railway.toml`.
+- Three commits on Apr 21 00:22-01:37 UTC (`7792727`, `d77142e`, `cbb6445`) hardened the deck worker by rewriting the root `railway.toml` start command from `pnpm worker` to `node --import tsx scripts/worker.ts`, switching to `Dockerfile.worker`, and expanding watchPatterns.
+- The Discord bot service redeployed automatically with the new (deck-worker) start command. It crash-looped because the deck worker code requires `NEXT_PUBLIC_SUPABASE_URL` and the bot service had `SUPABASE_URL` set instead. 77+ restart attempts logged in the next hour.
+- The bot stopped recording at Apr 20 21:14 UTC (last successful transcript). The 2-hour Apr 21 strategy session was never captured: no audio in `voice-recordings` storage, no row in `transcripts`, no recovery possible.
+- Lesson: every Railway service must own a service-scoped config under its own subdirectory. Root `railway.toml` is reserved for the deck worker. The Discord bot's config lives at `apps/bot/railway.toml` from this incident forward.
+- See `rules/canonical-rules.md` → "Railway / Multi-Service Deploy Rules" for the full audit-before-touch checklist.
+- Watchdog requirement: any long-lived service (Discord bot, deck worker) must have a heartbeat alarm. A 30-minute silence on the bot's transcript table or worker's claim table fires an alert. Silent death over a full night is unacceptable.
+
 ## Production Incident Memory: March 21-22, 2026
 
 - The March 21 run `10669fc3-917b-4a4e-84cf-a3ae07493839` did not fail because the analyst could not reason. It failed because the planner emitted a hallucinated chart sheet key (`→` separators plus duplicated filename), all 10 charts loaded zero rows, and the author fell into guaranteed fallback mode.

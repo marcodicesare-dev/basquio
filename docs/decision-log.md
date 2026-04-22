@@ -1,5 +1,26 @@
 # Decision Log
 
+## April 21, 2026 — Service-scoped Railway configs (post-Discord-bot-silent-death forensic)
+
+Decision:
+- The repo root `railway.toml` is the deck worker config exclusively. Builds `Dockerfile.worker`. Runs `scripts/worker.ts`.
+- Every other Railway service in the `basquio-bot` project must ship a service-scoped config under its own subdirectory. Discord bot lives at `apps/bot/railway.toml` pinned to `apps/bot/Dockerfile` and `tsx src/index.ts`.
+- Watch patterns are service-scoped. Editing one service's config never re-deploys another.
+- Add a heartbeat watchdog for every long-lived service. Silent death across a full night must alert.
+- Audit-before-touch checklist for any `railway.toml`/`Dockerfile.*` change is recorded in `rules/canonical-rules.md` → "Railway / Multi-Service Deploy Rules".
+
+Why:
+- Apr 21 00:22 UTC, three commits hardening the deck worker (`7792727`, `d77142e`, `cbb6445`) rewrote the root `railway.toml`. Both Railway services in the `basquio-bot` project (deck worker AND Discord bot) consumed the SAME root config because neither had a service-scoped override.
+- The Discord bot's service redeployed with the deck worker's start command. It crash-looped on `NEXT_PUBLIC_SUPABASE_URL is required` because the Discord bot's env vars use `SUPABASE_URL` (no `NEXT_PUBLIC_` prefix). 77+ restart attempts over the next hour.
+- Last successful Discord transcript landed at Apr 20 21:14 UTC. The 2-hour Apr 21 strategy call was never captured. No audio file in `voice-recordings`. No row in `transcripts`. Permanently lost.
+- Strategic content lost from that call (per Marco's recall): exists only in human memory. Reconstruction is on the team, not on tooling.
+
+Cross-references:
+- Rule text: `rules/canonical-rules.md` → "Railway / Multi-Service Deploy Rules (CRITICAL — learned April 21, 2026 forensic)"
+- Memory entry: `memory/canonical-memory.md` → "Production Incident Memory: April 21, 2026 — Discord bot silent death"
+- CLAUDE.md update: "Railway multi-service deploy isolation"
+- Bot operator notes: `apps/bot/README.md` → "Railway deploy contract"
+
 ## April 21, 2026 — Freeze workspace context on deck runs and gate revise by frontier
 
 Decision:

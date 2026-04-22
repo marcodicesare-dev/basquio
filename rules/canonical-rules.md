@@ -87,3 +87,23 @@
 - Supabase-backed runtime queries must be validated against the migration-defined schema before release.
 - Historical audits or briefs that become non-canonical must be marked as archival at the top and redirected to the current truth source.
 - Do not promote forward-looking SDK features or research claims to canonical runtime guidance without live validation.
+
+## Railway / Multi-Service Deploy Rules (CRITICAL — learned April 21, 2026 forensic)
+
+### The bot-killing root-railway.toml incident
+The Discord bot died silently for ~24 hours starting Apr 21 00:22 UTC because three commits hardening the deck worker (`7792727` Harden worker recovery, `d77142e` Fix Railway worker config ingestion, `cbb6445` Watch worker Dockerfile for Railway deploys) rewrote the **root** `railway.toml`. The Railway project `basquio-bot` has TWO services in it (the deck worker AND the Discord bot). Both services were using the root `railway.toml` because neither had a service-scoped config. When the worker config flipped its `startCommand` to `node --import tsx scripts/worker.ts`, the Discord bot service ALSO redeployed with that command, crash-looped on `NEXT_PUBLIC_SUPABASE_URL is required` (it has `SUPABASE_URL` set, not the `NEXT_PUBLIC_` prefix the deck worker code requires), and stopped recording. The 2-hour Apr 21 strategy call was lost and unrecoverable — no audio, no transcript, nothing in storage.
+
+### The rules
+- **Every Railway service MUST have a service-scoped config file at its app subdirectory.** Examples: `apps/bot/railway.toml` for the Discord bot, `apps/web/railway.toml` if the web ever moves to Railway. Do NOT rely on a single root `railway.toml` shared between services.
+- **The root `railway.toml` is reserved for the deck worker only.** It builds `Dockerfile.worker` and runs `scripts/worker.ts`. If you add a third service, give it its own subdir config — never extend the root one.
+- **Service-scoped configs must pin `dockerfilePath` to the service's own Dockerfile** (`apps/bot/Dockerfile`, etc.) and the start command appropriate to that service.
+- **Watch patterns must be service-scoped.** The bot's `watchPatterns` should include `apps/bot/**` and the shared deps it cares about; the deck worker's should include `scripts/**`, `packages/**`, etc. Never let one service's deploy retrigger because of a change in an unrelated service's directory.
+- **Never change a service's start command without checking what other services in the same Railway project consume the same config.** `railway variables --service <name>` + `railway logs --service <name>` confirm what's actually running. Do this before pushing any deploy-affecting change.
+- **Add a heartbeat watchdog for every long-lived service.** A 30-min silence on the Discord bot transcript table (or equivalent for any other always-on service) must alert. Silent-death across a full night is unacceptable.
+- **A retired service config must explicitly stay archived, not deleted.** If we ever sunset the deck worker's root config, leave the file with a comment block pointing each service to its scoped config. Deleting silently re-breaks deploys for any service that was implicitly inheriting it.
+
+### Audit-before-touch checklist for any railway.toml or Dockerfile.* change
+1. Run `railway list` to see all projects; `railway variables --service <name>` for each service in the affected project.
+2. Confirm which services share the file you're about to edit. If more than one, your change must NOT alter `startCommand`, `builder`, or `dockerfilePath` for the others.
+3. Tail `railway logs --service <name>` for each affected service for 60 seconds AFTER the deploy completes. If any starts crash-looping, roll back immediately.
+4. Update CLAUDE.md, this file, `memory/canonical-memory.md`, and `docs/decision-log.md` in the same commit if the change alters service-to-config mapping.

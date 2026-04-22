@@ -1,3 +1,19 @@
+# DECK WORKER service config — DO NOT use for any other service.
+#
+# This file is consumed ONLY by the deck-worker service on Railway. It builds
+# Dockerfile.worker and runs scripts/worker.ts.
+#
+# IMPORTANT: do NOT add a second service to this config. The Discord bot has
+# its own config at apps/bot/railway.toml — see apps/bot/README.md and
+# docs/decision-log.md "Service-scoped Railway configs" for the forensic on
+# why mixing services in one config killed the Discord bot for 24 hours on
+# Apr 21 2026.
+#
+# Audit-before-touch checklist for any change to this file or Dockerfile.worker:
+#   1. railway list                            (confirm services that exist)
+#   2. railway variables --service <name>      (env per service)
+#   3. railway logs --service <name>           (tail post-deploy for crash loops)
+
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.worker"

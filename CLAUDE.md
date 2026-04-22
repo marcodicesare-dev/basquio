@@ -53,6 +53,14 @@ The worker (`scripts/worker.ts`) polls Supabase every 5s for `status="queued"` r
 - Railway production config should use focused `watchPatterns` so unrelated UI-only commits do not redeploy the worker service mid-run.
 - Railway production config should set deployment overlap and drain windows long enough for shutdown handoff RPCs to complete.
 
+### Railway multi-service deploy isolation (CRITICAL — Apr 21 2026 forensic, see rules/canonical-rules.md)
+The Railway project `basquio-bot` hosts MORE than one service: the deck worker AND the Discord bot. They MUST use separate config files.
+- **Root `railway.toml` is the deck worker config only.** It builds `Dockerfile.worker` and runs `scripts/worker.ts`.
+- **`apps/bot/railway.toml` is the Discord bot config.** Pinned to `apps/bot/Dockerfile`, runs `tsx src/index.ts`. Service-scoped watchPatterns include `apps/bot/**` only.
+- **Never let one root file silently apply to multiple services.** Doing so killed the Discord bot for ~24 hours and caused permanent loss of a 2-hour strategy call (no audio recorded, nothing to recover).
+- Before editing `railway.toml`, `Dockerfile.worker`, or `apps/bot/Dockerfile`: run `railway list`, then `railway variables --service <name>` and `railway logs --service <name>` for every service that consumes the file. Confirm no crash loop after deploy.
+- Long-lived services (Discord bot, deck worker) need a heartbeat watchdog. Silent death across a full night is unacceptable.
+
 ### Data access
 Evidence files are uploaded to Claude via Files API `container_upload`. Claude reads them via pandas/openpyxl in code execution. No preloading into memory.
 

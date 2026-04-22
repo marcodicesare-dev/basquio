@@ -1,0 +1,32 @@
+# Discord bot service config — DO NOT INHERIT FROM ROOT.
+#
+# Background: on Apr 21 2026 the deck-worker root railway.toml silently took
+# over this service when its startCommand changed, crash-looped the Discord
+# bot for ~24 hours, and caused permanent loss of a 2-hour strategy call
+# (no audio, no transcript). See docs/decision-log.md "Service-scoped
+# Railway configs" and rules/canonical-rules.md "Railway / Multi-Service
+# Deploy Rules".
+#
+# Rules:
+# - This file is the source of truth for the basquio-bot Railway service.
+# - In the Railway dashboard, basquio-bot service must have "Config-as-Code
+#   Path" set to apps/bot/railway.toml.
+# - watchPatterns are intentionally narrow. The bot must NEVER redeploy
+#   because of a deck-worker change in scripts/** or packages/**.
+# - The Dockerfile path is pinned to apps/bot/Dockerfile.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/bot/Dockerfile"
+watchPatterns = [
+  "apps/bot/**",
+  "packages/types/**",
+  "code/contracts.ts",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+]
+
+[deploy]
+restartPolicyType = "always"
+overlapSeconds = 30
+drainingSeconds = 30
