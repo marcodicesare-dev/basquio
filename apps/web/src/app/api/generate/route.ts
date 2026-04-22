@@ -29,7 +29,6 @@ import { resolveOwnedTemplateProfileId } from "@/lib/template-profiles";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 import {
-  canonicalizeWorkspaceContextPack,
   hashWorkspaceContextPack,
   loadSourceFilesForWorkspaceContext,
   loadPersistedRunWorkspaceContextPack,
