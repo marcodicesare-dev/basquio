@@ -15,6 +15,10 @@ WORKDIR /app
 COPY . .
 
 RUN pnpm install --frozen-lockfile \
-  && pnpm run build
+  && pnpm run build \
+  && chmod +x scripts/railway-entrypoint.sh
 
-CMD ["node", "--import", "tsx", "scripts/worker.ts"]
+# Dispatcher picks between the deck worker and the Discord bot based on
+# env vars that exist on exactly one service each. See the script for
+# the full logic + Apr 21 2026 incident forensic.
+CMD ["bash", "scripts/railway-entrypoint.sh"]

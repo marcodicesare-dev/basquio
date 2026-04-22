@@ -35,7 +35,13 @@ watchPatterns = [
 ]
 
 [deploy]
-startCommand = "node --import tsx scripts/worker.ts"
+# Dispatcher — see scripts/railway-entrypoint.sh. Picks between Discord bot
+# (DISCORD_BOT_TOKEN present) and deck worker (otherwise). This file is the
+# root config both services currently share. The proper long-term fix is
+# per-service Config-as-Code Paths (apps/bot/railway.toml for the bot),
+# but the dispatcher guarantees correctness even if the dashboard setting
+# is wrong — see docs/decision-log.md "Service-scoped Railway configs".
+startCommand = "bash scripts/railway-entrypoint.sh"
 restartPolicyType = "always"
 overlapSeconds = 90
 drainingSeconds = 60
