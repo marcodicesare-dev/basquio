@@ -88,11 +88,11 @@ async function runFiberContactCheck(apiKey: string, email: string) {
       ok: true,
       profile: result.profile
         ? {
-            full_name: result.profile.full_name ?? null,
+            full_name: result.profile.name ?? null,
             headline: result.profile.headline ?? null,
-            current_company: result.profile.current_company ?? null,
-            current_title: result.profile.current_title ?? null,
-            linkedin_url: result.profile.linkedin_url ?? null,
+            current_company: result.profile.current_job?.company_name ?? null,
+            current_title: result.profile.current_job?.title ?? null,
+            linkedin_url: result.profile.url ?? null,
           }
         : null,
       chargeInfo: result.chargeInfo,

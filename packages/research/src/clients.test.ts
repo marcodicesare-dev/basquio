@@ -126,10 +126,10 @@ async function testFiberHappyPath() {
         output: {
           data: [
             {
-              linkedin_url: "https://www.linkedin.com/in/mariarossi",
-              full_name: "Maria Rossi",
+              url: "https://www.linkedin.com/in/mariarossi",
+              name: "Maria Rossi",
               headline: "Head of Insights at Kellanova Italia",
-              current_company: "Kellanova",
+              current_job: { company_name: "Kellanova", title: "Head of Insights" },
             },
           ],
         },
@@ -150,7 +150,7 @@ async function testFiberHappyPath() {
     {
       body: {
         output: {
-          data: [{ full_name: "Giuseppe Verdi" }],
+          data: [{ name: "Giuseppe Verdi" }],
           total: 1,
           next_page_token: null,
         },
@@ -163,7 +163,7 @@ async function testFiberHappyPath() {
     const client = createFiberClient({ apiKey: "test-key" });
 
     const lookup = await client.lookupByEmail("maria@kellanova.com");
-    assert.equal(lookup.profile?.full_name, "Maria Rossi");
+    assert.equal(lookup.profile?.name, "Maria Rossi");
     assert.equal(lookup.chargeInfo?.credits_used, 1);
 
     const posts = await client.fetchProfilePosts("https://www.linkedin.com/in/mariarossi");
@@ -240,8 +240,8 @@ async function testSchemaDriftTolerance() {
         output: {
           data: [
             {
-              linkedin_url: "https://www.linkedin.com/in/x",
-              full_name: "X",
+              url: "https://www.linkedin.com/in/x",
+              name: "X",
               extra_new_field: "fiber added this after the script was written",
             },
           ],
@@ -256,7 +256,7 @@ async function testSchemaDriftTolerance() {
     const result = await client.lookupByEmail("x@example.com");
     // Parser MUST tolerate unknown fields. The contract is that known
     // fields are typed; unknown fields are ignored and do not throw.
-    assert.equal(result.profile?.full_name, "X");
+    assert.equal(result.profile?.name, "X");
   } finally {
     scripted.restore();
   }

@@ -16,10 +16,10 @@ async function main() {
     const r = await client.lookupByEmail("marcodicesare1992@gmail.com");
     console.log("profile found:", !!r.profile);
     if (r.profile) {
-      console.log("name:", r.profile.full_name);
+      console.log("name:", r.profile.name);
       console.log("headline:", r.profile.headline);
-      console.log("company:", r.profile.current_company);
-      console.log("linkedin:", r.profile.linkedin_url);
+      console.log("company:", r.profile.current_job?.company_name);
+      console.log("linkedin:", r.profile.url);
     }
     console.log("charge:", JSON.stringify(r.chargeInfo));
   } catch (e) {
@@ -31,7 +31,7 @@ async function main() {
     const r = await client.peopleSearch({ keywords: "Marco Di Cesare Basquio", limit: 3 });
     console.log("total:", r.total, "results:", r.results.length);
     for (const p of r.results.slice(0, 3)) {
-      console.log(`  - ${p.full_name ?? "?"} | ${p.current_title ?? "?"} @ ${p.current_company ?? "?"} | ${p.linkedin_url ?? "?"}`);
+      console.log(`  - ${p.name ?? "?"} | ${p.current_job?.title ?? "?"} @ ${p.current_job?.company_name ?? "?"} | ${p.url ?? "?"}`);
     }
     console.log("charge:", JSON.stringify(r.chargeInfo));
   } catch (e) {
