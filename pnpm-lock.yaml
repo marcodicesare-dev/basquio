@@ -60,6 +60,9 @@ importers:
       lefthook:
         specifier: ^1.13.6
         version: 1.13.6
+      server-only:
+        specifier: ^0.0.1
+        version: 0.0.1
       tsx:
         specifier: ^4.19.3
         version: 4.21.0
@@ -4640,6 +4643,9 @@ packages:
   serialize-error-cjs@0.1.4:
     resolution: {integrity: sha512-6a6dNqipzbCPlTFgztfNP2oG+IGcflMe/01zSzGrQcxGMKbIjOemBBD85pH92klWaJavAUWxAh9Z0aU28zxW6A==}
     deprecated: Rolling release, please update to 0.2.0
+
+  server-only@0.0.1:
+    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}
 
   set-blocking@2.0.0:
     resolution: {integrity: sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw==}
@@ -10128,6 +10134,8 @@ snapshots:
   semver@7.7.4: {}
 
   serialize-error-cjs@0.1.4: {}
+
+  server-only@0.0.1: {}
 
   set-blocking@2.0.0: {}
 
