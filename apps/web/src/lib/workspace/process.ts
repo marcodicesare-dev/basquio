@@ -201,7 +201,7 @@ type PersistResult = {
   totalMentionCount: number;
 };
 
-async function persistExtraction(
+export async function persistExtraction(
   documentId: string,
   extraction: EntityExtractionResult,
 ): Promise<PersistResult> {

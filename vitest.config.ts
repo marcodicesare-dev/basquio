@@ -78,6 +78,13 @@ export default defineConfig({
       "@basquio/types": path.resolve(__dirname, "packages/types/src/index.ts"),
       "@basquio/workflows": path.resolve(__dirname, "packages/workflows/src/index.ts"),
       "@/": path.resolve(__dirname, "apps/web/src/"),
+      // Next.js "server-only" is a no-op module that only exists to
+      // assert build-time boundaries. Under Vitest there is no such
+      // boundary, so alias it to an empty shim rather than failing to
+      // resolve. Same trick for "client-only" when a test ever needs
+      // to import a module that declares it.
+      "server-only": path.resolve(__dirname, "vitest-shims/server-only.ts"),
+      "client-only": path.resolve(__dirname, "vitest-shims/server-only.ts"),
     },
   },
 });

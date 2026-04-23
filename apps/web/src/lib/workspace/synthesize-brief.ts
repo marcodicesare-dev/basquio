@@ -59,11 +59,37 @@ function buildUserPrompt(input: {
   const contextLines: string[] = [];
   if (pack.scope.name) contextLines.push(`Scope: ${pack.scope.kind ?? "scope"}:${pack.scope.name}`);
   if (pack.stakeholders.length > 0) {
-    contextLines.push(
-      `Stakeholders: ${pack.stakeholders
-        .map((s) => `${s.name}${s.role ? ` (${s.role})` : ""}`)
-        .join(", ")}`,
-    );
+    // Full stakeholder preferences block per spec §6.10. The
+    // pre-flattened styleContract is still handy for fallbacks, but
+    // the structured preferences carry per-stakeholder nuance
+    // (chart, tone, review cadence) that the flattening drops.
+    contextLines.push("Stakeholder preferences:");
+    for (const s of pack.stakeholders) {
+      const prefs = (s as typeof s & {
+        preferences?: {
+          free_text?: string | null;
+          structured?: {
+            chart_preference?: string | null;
+            deck_length?: string | null;
+            language?: string | null;
+            tone?: string | null;
+            review_day?: string | null;
+          } | null;
+        } | null;
+      }).preferences;
+      const structured = prefs?.structured ?? null;
+      const bits = [
+        structured?.chart_preference ? `chart: ${structured.chart_preference}` : null,
+        structured?.deck_length ? `deck length: ${structured.deck_length}` : null,
+        structured?.language ? `language: ${structured.language}` : null,
+        structured?.tone ? `tone: ${structured.tone}` : null,
+        structured?.review_day ? `review day: ${structured.review_day}` : null,
+      ].filter(Boolean);
+      const line = `- ${s.name}${s.role ? ` (${s.role})` : ""}`;
+      const details = bits.length > 0 ? ` | ${bits.join("; ")}` : "";
+      const free = prefs?.free_text ? ` | free text: ${prefs.free_text.slice(0, 240)}` : "";
+      contextLines.push(`${line}${details}${free}`);
+    }
   }
   if (pack.styleContract.deckLength) {
     contextLines.push(`House deck length: ${pack.styleContract.deckLength}`);
@@ -73,6 +99,14 @@ function buildUserPrompt(input: {
   }
   if (pack.styleContract.chartPreferences.length > 0) {
     contextLines.push(`Chart preferences: ${pack.styleContract.chartPreferences.join("; ")}`);
+  }
+  // renderedBriefPrelude is built by the pack but never consumed today.
+  // Inject it as an additional context section when present so the
+  // synthesizer can see it. Spec §6.10.
+  if (pack.renderedBriefPrelude && pack.renderedBriefPrelude.trim().length > 0) {
+    contextLines.push("");
+    contextLines.push("Brief prelude:");
+    contextLines.push(pack.renderedBriefPrelude.trim().slice(0, 2000));
   }
 
   // Trim the conversation to the last ~6 turns to keep tokens low. Keep the
