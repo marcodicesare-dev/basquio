@@ -71,6 +71,7 @@
 - Checkpoint recovery is invalid unless the checkpoint contains the full durable artifact set and the recovered analysis belongs to the same attempt as the checkpoint.
 - Include `web_fetch_20260209` in the tools array for free code execution compute.
 - If the loaded Anthropic Skills auto-inject code execution, do not also register a second named `code_execution` tool that collides with the injected one.
+- Opaque provider/tool interruption markers such as `terminated`, `container_expired`, `execution_time_exceeded`, `too_many_requests`, and tool-result `unavailable` are retryable provider failures. Do not file them under `internal_processing_error`.
 - The generation call should be a SINGLE turn, not an understand/author split. Multi-turn accumulates tool output and multiplies costs.
 - The single-turn file-backed path should be materially cheaper than the split understand/author path. Confirm real cost with live usage telemetry instead of assuming a fixed deck price from prompt theory alone.
 - If a smoke test uses > 50K input tokens before meaningful deck output, the prompt or continuation pattern is wrong.
@@ -105,6 +106,7 @@ The Discord bot died silently for ~24 hours starting Apr 21 00:22 UTC because th
 - **The root `railway.toml` is reserved for the deck worker only.** It builds `Dockerfile.worker` and runs `scripts/worker.ts`. If you add a third service, give it its own subdir config — never extend the root one.
 - **Service-scoped configs must pin `dockerfilePath` to the service's own Dockerfile** (`apps/bot/Dockerfile`, etc.) and the start command appropriate to that service.
 - **Watch patterns must be service-scoped.** The bot's `watchPatterns` should include `apps/bot/**` and the shared deps it cares about; the deck worker's should include `scripts/**`, `packages/**`, etc. Never let one service's deploy retrigger because of a change in an unrelated service's directory.
+- **The deck worker build must be worker-scoped too.** `Dockerfile.worker` must not run `pnpm run build` for the Next app or depend on broad `apps/web/**` watch paths unless the worker intentionally imports them. Unrelated web build failures must never block worker recovery deploys.
 - **Never change a service's start command without checking what other services in the same Railway project consume the same config.** `railway variables --service <name>` + `railway logs --service <name>` confirm what's actually running. Do this before pushing any deploy-affecting change.
 - **Add a heartbeat watchdog for every long-lived service.** A 30-min silence on the Discord bot transcript table (or equivalent for any other always-on service) must alert. Silent-death across a full night is unacceptable.
 - **A retired service config must explicitly stay archived, not deleted.** If we ever sunset the deck worker's root config, leave the file with a comment block pointing each service to its scoped config. Deleting silently re-breaks deploys for any service that was implicitly inheriting it.

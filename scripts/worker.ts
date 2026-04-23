@@ -14,7 +14,7 @@ import {
   type FileIngestQueue,
 } from "../packages/workflows/src/file-ingest-consumer";
 import { loadBasquioScriptEnv } from "./load-app-env";
-import { refundCredit } from "../apps/web/src/lib/credits";
+import { refundCredit } from "../packages/workflows/src/credits";
 import {
   claimFileIngestRun,
   completeFileIngestRun,

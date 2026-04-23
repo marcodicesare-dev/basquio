@@ -28,9 +28,6 @@ watchPatterns = [
   "railway.toml",
   "scripts/**",
   "packages/**",
-  "apps/web/package.json",
-  "apps/web/src/lib/**",
-  "apps/web/src/app/api/**",
   "supabase/**",
 ]
 

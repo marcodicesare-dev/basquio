@@ -192,9 +192,14 @@ export function isTransientProviderError(error: unknown): boolean {
   const name = error.name?.toLowerCase() ?? "";
 
   if (isRetryableContainerStringError(error)) return true;
+  if (msg === "terminated" || msg.includes("execution environment terminated")) return true;
   if (msg.includes("overloaded") || msg.includes("overloaded_error")) return true;
   if (msg.includes("api_error") || msg.includes("internal server error")) return true;
   if (msg.includes("rate_limit") || msg.includes("rate limit")) return true;
+  if (msg.includes("too_many_requests")) return true;
+  if (msg.includes("container_expired")) return true;
+  if (msg.includes("execution_time_exceeded") || msg.includes("code_execution_exceeded")) return true;
+  if (msg.includes("tool_result_error") && msg.includes("unavailable")) return true;
   if (/\b(429|500|529|502|503|504)\b/.test(msg)) return true;
   if (msg.includes("stream ended") || msg.includes("did not return")) return true;
   if (msg.includes("request ended without sending any chunks")) return true;
@@ -281,11 +286,18 @@ function isUnsupportedInputError(error: unknown): boolean {
 
 function matchesTransientProvider(msg: string): boolean {
   return msg.includes(RETRYABLE_CONTAINER_STRING_ERROR) ||
+    msg === "terminated" ||
+    msg.includes("execution environment terminated") ||
     msg.includes("upstream error") || msg.includes("upstream infrastructure") ||
     msg.includes("connection error") || msg.includes("overloaded") ||
     msg.includes("500") || msg.includes("internal server error") || msg.includes("api_error") ||
     msg.includes("529") || msg.includes("502") || msg.includes("503") ||
-    msg.includes("rate limit") || msg.includes("stream ended") ||
+    msg.includes("rate limit") || msg.includes("too_many_requests") ||
+    msg.includes("container_expired") ||
+    msg.includes("execution_time_exceeded") ||
+    msg.includes("code_execution_exceeded") ||
+    (msg.includes("tool_result_error") && msg.includes("unavailable")) ||
+    msg.includes("stream ended") ||
     msg.includes("did not return") || msg.includes("request ended without sending any chunks");
 }
 

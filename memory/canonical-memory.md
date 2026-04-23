@@ -189,12 +189,14 @@ Template fidelity lesson:
 - imported client PPTX `brandTokens.injection.masterBackground` is advisory only; treat it as live deck canvas only if it matches palette hints or is clearly brand-aligned. Neutral placeholder fills must be ignored at extraction time and again at render time.
 - the current manifest is not rich enough to rebuild final slides from metadata alone; manifest-only recomposition can preserve geometry while destroying actual slide content
 - until full rendered slide content is carried explicitly, prefer clean prompt palette injection over post-hoc PPTX reconstruction
+- the worker deploy boundary must stay separate from the Next web build. `Dockerfile.worker` must not depend on `pnpm run build`, and worker runtime helpers must not live under `apps/web` unless the worker service intentionally accepts web-coupled deploys.
 - free-plan custom-template runs must persist a durable checkout draft before redirecting to Stripe so `/jobs/new` can resume safely after payment without losing uploaded files or the brief
 - the completion surface should show durable slide previews before download; preview thumbnails are best-effort assets derived at publish time and stored on `artifact_manifests_v2.preview_assets`
 - `artifact_download_events` is the durable truth for whether a completed run was actually opened, and reminder emails should key off that instead of page visits
 - reminder UX should stay tied to concrete user states: completed-with-no-download, uploaded-template/no-run, and low-credit after a successful debit
 - sample-data onboarding is a valid acquisition path for Basquio because many signups arrive without a workbook ready; the sample run should live directly inside `/jobs/new`, not on a detached marketing flow
 - a full-deck author turn that spends model time but returns no required files should get one bounded missing-file retry on Opus/Sonnet as well as Haiku; do not treat that recovery path as Haiku-only
+- bare provider/tool interruption markers such as `terminated`, `container_expired`, `execution_time_exceeded`, `too_many_requests`, and tool-result `unavailable` are transient provider failures and must flow into the superseding-attempt recovery path, not the terminal internal-error bucket
 
 When architecture changes:
 

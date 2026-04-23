@@ -332,6 +332,30 @@ function normalizeChartSort(value: unknown): "desc" | "asc" | "none" | undefined
   return "desc";
 }
 
+function normalizeClaudeStreamError(streamError: unknown) {
+  if (!(streamError instanceof Error)) {
+    return streamError;
+  }
+
+  const normalizedMessage = streamError.message.trim().toLowerCase();
+  if (normalizedMessage !== "terminated") {
+    return streamError;
+  }
+
+  const normalizedError = new Error(
+    "Claude execution environment terminated before completing the turn.",
+  );
+  normalizedError.name = streamError.name || "ProviderExecutionTerminatedError";
+  if ("cause" in Error.prototype) {
+    try {
+      (normalizedError as Error & { cause?: unknown }).cause = streamError;
+    } catch {
+      // Ignore platforms where Error.cause is read-only.
+    }
+  }
+  return normalizedError;
+}
+
 function buildSupportEvidencePackets(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>): SupportEvidencePacket[] {
   return parsed.normalizedWorkbook.files.flatMap((file, index) => {
     if (file.kind === "workbook") {
@@ -5101,6 +5125,7 @@ async function runClaudeLoop(input: {
           }
           break;
         } catch (streamError) {
+          streamError = normalizeClaudeStreamError(streamError);
           if (externalAbortSignal?.aborted) {
             throw new WorkerShutdownInterruptError(input.phaseLabel ?? "request");
           } else if (controller?.signal.aborted) {

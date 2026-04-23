@@ -800,3 +800,36 @@ Implication:
 - existing saved template profiles with junk master-background tokens can no longer poison newly generated decks
 - future imported template profiles should persist only brand-aligned master backgrounds
 - `data_tables.xlsx` should now read as a consulting artifact: easier to scan, less chart clutter, and no more chart-vs-table collisions from crude anchoring
+
+## April 23, 2026 — Bare provider/tool termination must auto-recover, not hard-fail
+
+Decision:
+- treat opaque provider/tool interruption strings such as `terminated`, `container_expired`, `execution_time_exceeded`, `too_many_requests`, and tool-result `unavailable` as `transient_provider`
+- normalize a bare `terminated` stream error close to the Claude request loop so worker-level failure classification sees a provider/tool interruption instead of an undifferentiated internal error
+- rely on the existing superseding-attempt recovery path once the failure is classified correctly, instead of introducing a separate ad hoc retry path
+
+Why:
+- the Apr 23 Rossella rerun `ec91f0d0-...` failed in `author` before any completed provider usage existed, with the worker logging only `terminated`
+- the same failure signature already existed on Apr 11, Apr 15, and Apr 21 across Sonnet 4.6, Opus 4.6, and Opus 4.7 deployments, so the root defect was not the latest render/template commit and not the model switch alone
+- Anthropic's current code-execution docs explicitly document retryable tool/container error codes such as `unavailable`, `execution_time_exceeded`, `container_expired`, and `too_many_requests`
+
+Implication:
+- transient provider/tool interruptions should create a superseding attempt automatically instead of burning the run as `internal_processing_error`
+- postmortems can distinguish true logic/output failures from provider/tool execution interruptions
+
+## April 23, 2026 — Worker deploys must be isolated from the web app build
+
+Decision:
+- the Railway worker image must not run the web app build as part of `Dockerfile.worker`
+- worker-only runtime dependencies such as credit-refund recovery must live under the worker/runtime packages, not under `apps/web`
+- worker watch patterns must exclude broad `apps/web/**` paths unless the worker actually imports those files at runtime
+
+Why:
+- the previous worker image still ran `pnpm run build`, which only builds `@basquio/web`; that meant unrelated Next/web regressions could block deployment of worker-only resilience fixes
+- the worker still imported `refundCredit` from `apps/web/src/lib/credits`, so the deploy boundary between long-running generation and the web app was not actually clean
+- a system with the product promise “a run must never fail” cannot keep the critical recovery service coupled to unrelated frontend build health
+
+Implication:
+- worker releases now exercise only worker/runtime code paths during container build
+- worker redeploys should no longer trigger for arbitrary web-route changes
+- the web app can still share billing logic conceptually, but the worker owns the minimal recovery code it needs to refund failed runs without depending on Next build correctness
