@@ -133,6 +133,18 @@ export type FetcherStats = {
   urlsFetched: number;
   budgetExceeded: boolean;
   budgetCapReason: BudgetCapReason | null;
+  /**
+   * Count of graph:* EvidenceRefs seeded from the planner's Step 1
+   * graph-coverage output. Lets operators see the cost-saved-by-graph
+   * signal and lets the research_runs telemetry row surface the mix.
+   * Populated by executePlan in packages/research/src/fetcher.ts (B4c).
+   */
+  evidenceRefsFromGraph: number;
+  /**
+   * Count of firecrawl:* EvidenceRefs produced this run (not counting
+   * the seeded graph refs). Complements evidenceRefsFromGraph.
+   */
+  evidenceRefsFromFirecrawl: number;
 };
 
 // ── Main entry point ───────────────────────────────────────────────
@@ -162,8 +174,24 @@ export async function executePlan(
     urlsFetched: 0,
     budgetExceeded: false,
     budgetCapReason: null,
+    evidenceRefsFromGraph: 0,
+    evidenceRefsFromFirecrawl: 0,
   };
+  // B4c: seed the returned evidence with the planner's graph-coverage
+  // refs (id prefix `graph:fact:*` or `graph:chunk:*`). These have
+  // already been validated by materializeGraphEvidenceRefs in planner.ts
+  // and live in the analyticsResult.evidenceRefs set so the intelligence
+  // validator accepts citations to them. Deduping at this layer guards
+  // the edge case where a planner + fetcher cycle ever produces
+  // overlapping ids.
+  const seenIds = new Set<string>();
   const allRefs: EvidenceRef[] = [];
+  for (const ref of input.plan.existingGraphRefs) {
+    if (seenIds.has(ref.id)) continue;
+    seenIds.add(ref.id);
+    allRefs.push(ref);
+    stats.evidenceRefsFromGraph += 1;
+  }
 
   for (const query of input.plan.queries) {
     if (signal?.aborted) break;
@@ -192,7 +220,12 @@ export async function executePlan(
           now,
           linkedQueryCtrl.signal,
         );
-        allRefs.push(...refs);
+        for (const ref of refs) {
+          if (seenIds.has(ref.id)) continue;
+          seenIds.add(ref.id);
+          allRefs.push(ref);
+          stats.evidenceRefsFromFirecrawl += 1;
+        }
         stats.queriesCompleted += 1;
       } finally {
         clearTimeout(perQueryTimer);

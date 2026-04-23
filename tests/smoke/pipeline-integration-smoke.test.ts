@@ -207,6 +207,14 @@ describe("pipeline integration smoke (research -> author system prompt)", () => 
     expect(blocks).toHaveLength(2);
     const [staticBlock, dynamicBlock] = blocks;
 
+    // B4c: both firecrawl: and graph: ids must travel through the
+    // prompt boundary unchanged. This smoke asserts the firecrawl
+    // path; the executePlan graph-seed path is covered in
+    // packages/research/src/fetcher-graph-seed.test.ts.
+    for (const ref of externalEvidence) {
+      expect(ref.id).toMatch(/^(firecrawl:[a-f0-9]{64}|graph:(fact|chunk):[^\s]+)$/);
+    }
+
     // Static block keeps its ephemeral cache breakpoint so every run
     // hits the prompt cache; the dynamic block must NOT be cached.
     expect(staticBlock.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });

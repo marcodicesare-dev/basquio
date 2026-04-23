@@ -235,20 +235,31 @@ export async function runResearchPhase(
       signal,
     );
 
-    const mergedRefs = [...plan.existingGraphRefs, ...result.evidenceRefs];
+    // B4c: the fetcher now seeds result.evidenceRefs with the plan's
+    // existingGraphRefs, so result.evidenceRefs is the complete merged
+    // set (graph:* + firecrawl:*) with duplicates dropped. No extra
+    // concat needed at this layer. The graph/firecrawl split is
+    // stashed into the plan json so operators can see the cost-
+    // saved-by-graph signal without a schema change.
     await updateResearchRun(restConfig, researchRunId, {
       status: "completed",
       scrapes_attempted: result.stats.scrapesAttempted,
       scrapes_succeeded: result.stats.scrapesSucceeded,
       firecrawl_cost_usd: result.stats.firecrawlUsd,
-      evidence_ref_count: mergedRefs.length,
+      evidence_ref_count: result.evidenceRefs.length,
+      plan: {
+        ...plan,
+        existingGraphRefs: plan.existingGraphRefs.length,
+        evidence_refs_from_graph: result.stats.evidenceRefsFromGraph,
+        evidence_refs_from_firecrawl: result.stats.evidenceRefsFromFirecrawl,
+      },
       completed_at: new Date().toISOString(),
     });
 
     return {
       researchRunId,
       plan,
-      evidenceRefs: mergedRefs,
+      evidenceRefs: result.evidenceRefs,
       stats: result.stats,
       degraded: false,
       degradedReason: null,
@@ -290,6 +301,8 @@ function zeroStats(): FetcherStats {
     urlsFetched: 0,
     budgetExceeded: false,
     budgetCapReason: null,
+    evidenceRefsFromGraph: 0,
+    evidenceRefsFromFirecrawl: 0,
   };
 }
 
