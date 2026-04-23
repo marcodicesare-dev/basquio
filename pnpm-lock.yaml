@@ -412,6 +412,12 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
+      mammoth:
+        specifier: ^1.12.0
+        version: 1.12.0
+      openai:
+        specifier: ^4.104.0
+        version: 4.104.0(ws@8.19.0)(zod@3.25.76)
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1

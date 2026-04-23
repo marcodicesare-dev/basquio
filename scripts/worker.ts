@@ -21,8 +21,8 @@ import {
   heartbeatFileIngestRun,
   markFileIngestRunIndexing,
   recoverStaleFileIngestRuns,
-} from "../apps/web/src/lib/workspace/ingest-queue";
-import { processWorkspaceDocument } from "../apps/web/src/lib/workspace/process";
+} from "../packages/workflows/src/workspace/ingest-queue";
+import { processWorkspaceDocument } from "../packages/workflows/src/workspace/process";
 
 loadBasquioScriptEnv();
 

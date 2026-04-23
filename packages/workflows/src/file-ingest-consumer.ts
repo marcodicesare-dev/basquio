@@ -5,7 +5,7 @@
  * second, independent poll loop alongside the deck_run claim loop.
  * Polls `file_ingest_runs` via claim_file_ingest_run RPC; for each
  * claimed row it invokes the provided processor (processWorkspaceDocument
- * from apps/web/src/lib/workspace/process.ts) with a heartbeat running
+ * from packages/workflows/src/workspace/process.ts) with a heartbeat running
  * every HEARTBEAT_INTERVAL_MS so the stale-run recovery RPC leaves
  * in-progress work alone.
  *
