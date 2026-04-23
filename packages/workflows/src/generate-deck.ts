@@ -3409,7 +3409,7 @@ async function markPhase(
   phase: DeckPhase,
 ) {
   const now = new Date().toISOString();
-  await Promise.all([
+  const [runRows, attemptRows] = await Promise.all([
     patchRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
@@ -3429,20 +3429,28 @@ async function markPhase(
         latest_attempt_id: attempt.id,
         latest_attempt_number: attempt.attemptNumber,
       },
+      select: "id",
     }),
     patchRestRows({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_run_attempts",
-      query: { id: `eq.${attempt.id}` },
+      query: {
+        id: `eq.${attempt.id}`,
+        superseded_by_attempt_id: "is.null",
+      },
       payload: {
         status: "running",
         updated_at: now,
         failure_message: null,
         failure_phase: null,
       },
+      select: "id",
     }),
   ]);
+  if (!runRows[0] || !attemptRows[0]) {
+    throw new AttemptOwnershipLostError(runId, attempt.id);
+  }
   await insertEvent(config, runId, attempt, phase, "phase_started", {});
 }
 
@@ -3456,7 +3464,7 @@ async function completePhase(
 ) {
   await touchAttemptProgress(config, runId, attempt, phase);
 
-  await patchRestRows({
+  const runRows = await patchRestRows({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
     table: "deck_runs",
@@ -3467,17 +3475,25 @@ async function completePhase(
     payload: {
       updated_at: new Date().toISOString(),
     },
+    select: "id",
   });
-  await patchRestRows({
+  const attemptRows = await patchRestRows({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
     table: "deck_run_attempts",
-    query: { id: `eq.${attempt.id}` },
+    query: {
+      id: `eq.${attempt.id}`,
+      superseded_by_attempt_id: "is.null",
+    },
     payload: {
       updated_at: new Date().toISOString(),
       last_meaningful_event_at: new Date().toISOString(),
     },
-  }).catch(() => {});
+    select: "id",
+  }).catch(() => []);
+  if (!runRows[0] || !attemptRows[0]) {
+    throw new AttemptOwnershipLostError(runId, attempt.id);
+  }
   await insertEvent(config, runId, attempt, phase, "phase_completed", payload, usage);
 }
 
@@ -3488,32 +3504,35 @@ async function touchAttemptProgress(
   phase?: string,
 ) {
   const now = new Date().toISOString();
-  await Promise.all([
-    patchRestRows({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_run_attempts",
-      query: {
-        id: `eq.${attempt.id}`,
+  const attemptRows = await patchRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      id: `eq.${attempt.id}`,
+      superseded_by_attempt_id: "is.null",
+    },
+    payload: {
+      updated_at: now,
+      last_meaningful_event_at: now,
+    },
+    select: "id",
+  }).catch(() => []);
+  if (!attemptRows[0]) {
+    throw new AttemptOwnershipLostError(runId, attempt.id);
+  }
+  if (phase !== undefined) {
+    await insertEvent(
+      config,
+      runId,
+      attempt,
+      phase as DeckPhase,
+      "meaningful_progress",
+      {
+        phase,
       },
-      payload: {
-        updated_at: now,
-        last_meaningful_event_at: now,
-      },
-    }).catch(() => {}),
-    ...(phase === undefined ? [] : [
-      insertEvent(
-        config,
-        runId,
-        attempt,
-        phase as DeckPhase,
-        "meaningful_progress",
-        {
-          phase,
-        },
-      ).catch(() => {}),
-    ]),
-  ]);
+    ).catch(() => {});
+  }
 }
 
 async function uploadClaudeFilesSequentially<T>(input: {

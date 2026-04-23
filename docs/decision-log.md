@@ -767,3 +767,18 @@ Implication:
 - deploy-triggered interruptions should now either drain naturally or supersede cleanly, without a window where old and new attempts both keep billing
 - a “resume from checkpoint” path is now a real publish path, not a partial artifact shortcut
 - attempt lineage remains internally consistent across recovery, export, and postmortem tooling
+
+## April 23, 2026 — Superseded attempts must be terminalized, not left as ghost-running rows
+
+Decision:
+- any recovery path that supersedes an older attempt must stamp the old attempt with a terminal `completed_at`
+- if a worker loses attempt ownership to a newer active attempt, it must finalize the old attempt row as superseded instead of only closing request-usage rows
+- the `recover_deck_run_attempt` RPC must set `completed_at` on the old attempt when it transitions that attempt into a terminal state
+
+Why:
+- the previous shutdown/recovery hardening closed the spend window, but older attempts could still remain `status = running` or `completed_at = null` after being superseded
+- that created ghost-running lineage in incident forensics and made checkpoint/recovery audits harder to trust even when the live worker behavior was otherwise correct
+
+Implication:
+- superseded attempts now leave one coherent lineage trail: terminal attempt row, closed request rows, and a single active owner for the run
+- postmortems and spend audits can distinguish real active work from historical superseded attempts without manual cleanup

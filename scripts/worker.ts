@@ -219,11 +219,21 @@ async function processRun(
     );
   } catch (error) {
     if (error instanceof AttemptOwnershipLostError) {
+      const now = new Date().toISOString();
       await closeOpenRequestUsageRows({
         config,
         attemptId: attempt.id,
         status: "superseded",
+        completedAt: now,
         note: "Attempt lost ownership to a newer active attempt.",
+      });
+      await finalizeSupersededAttempt({
+        config,
+        attemptId: attempt.id,
+        completedAt: now,
+        status: "failed",
+        failurePhase: "attempt_superseded",
+        failureMessage: "Attempt lost ownership to a newer active attempt.",
       });
       console.warn(
         `[basquio-worker] attempt ${attempt.id} for run ${attempt.run_id} lost ownership to a newer attempt; stopping old worker path`,
@@ -272,6 +282,12 @@ async function processRun(
         if (!recoveryRows[0]) {
           throw new Error("superseding attempt was not created");
         }
+        await finalizeSupersededAttempt({
+          config,
+          attemptId: attempt.id,
+          completedAt: now,
+          status: "failed",
+        });
 
         console.log(
           `[basquio-worker] ${failureClass} on run ${attempt.run_id} — created superseding attempt ${newAttemptNumber}/${MAX_TRANSIENT_ATTEMPTS}`,
@@ -318,6 +334,12 @@ async function processRun(
           if (!fallbackRows[0]) {
             throw new Error("template fallback attempt was not created");
           }
+          await finalizeSupersededAttempt({
+            config,
+            attemptId: attempt.id,
+            completedAt: now,
+            status: "failed",
+          });
 
           console.log(`[basquio-worker] template-backed run ${attempt.run_id} failed — created template_fallback attempt`);
         } catch (fallbackError) {
@@ -423,6 +445,15 @@ async function recoverAttemptForShutdown(
       p_failure_message: "Worker shutdown interrupted the run; Basquio automatically requeued it.",
     },
   });
+
+  if (recoveryRows[0]) {
+    await finalizeSupersededAttempt({
+      config,
+      attemptId: attempt.id,
+      completedAt: now,
+      status: "failed",
+    });
+  }
 
   return recoveryRows[0] ?? null;
 }
@@ -673,6 +704,7 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
         query: { id: `eq.${attempt.id}`, status: "eq.queued" },
         payload: {
           status: "failed",
+          completed_at: now,
           failure_phase: "queue_integrity",
           failure_message: "Stale queued attempt no longer referenced by parent run.",
           updated_at: now,
@@ -725,6 +757,16 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
       recoveryFailures.push(`${attempt.run_id}: no superseding attempt created`);
       continue;
     }
+    await finalizeSupersededAttempt({
+      config,
+      attemptId: attempt.id,
+      completedAt: now,
+      status: "failed",
+    }).catch((error) => {
+      recoveryFailures.push(
+        `${attempt.run_id}: failed to stamp superseded attempt terminal state (${error instanceof Error ? error.message : String(error)})`,
+      );
+    });
     recoveredRunIds.push(attempt.run_id);
   }
 
@@ -736,6 +778,42 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
   if (recoveryFailures.length > 0) {
     console.warn(`[basquio-worker] stale recovery failures: ${recoveryFailures.join(" | ")}`);
   }
+}
+
+async function finalizeSupersededAttempt(input: {
+  config: ReturnType<typeof resolveConfig>;
+  attemptId: string;
+  completedAt: string;
+  status?: "failed" | "completed";
+  failurePhase?: string;
+  failureMessage?: string;
+}) {
+  const payload: Record<string, string> = {
+    updated_at: input.completedAt,
+    completed_at: input.completedAt,
+  };
+
+  if (input.status) {
+    payload.status = input.status;
+  }
+  if (input.failurePhase) {
+    payload.failure_phase = input.failurePhase;
+  }
+  if (input.failureMessage) {
+    payload.failure_message = input.failureMessage;
+  }
+
+  await patchRestRows({
+    supabaseUrl: input.config.supabaseUrl,
+    serviceKey: input.config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      id: `eq.${input.attemptId}`,
+      superseded_by_attempt_id: "not.is.null",
+      completed_at: "is.null",
+    },
+    payload,
+  }).catch(() => []);
 }
 
 async function claimNextQueuedAttempt(
@@ -843,6 +921,7 @@ function startHeartbeat(config: ReturnType<typeof resolveConfig>, attempt: Queue
         query: {
           id: `eq.${attempt.id}`,
           status: "eq.running",
+          superseded_by_attempt_id: "is.null",
         },
         payload: {
           updated_at: now,

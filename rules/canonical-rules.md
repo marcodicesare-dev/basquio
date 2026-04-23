@@ -66,6 +66,7 @@
 - Each `pause_turn` continuation re-sends the FULL message history as input tokens. Minimize continuations.
 - For Claude 4.6+ / Opus 4.7, a `pause_turn` continuation must end with a user continuation message, not a trailing assistant-prefill turn.
 - In-flight `deck_run_request_usage` rows must be marked terminal on attempt failure, supersession, or worker shutdown. Do not leave open request sentinels behind as permanent telemetry noise.
+- Any attempt superseded by recovery or ownership loss must also be stamped with terminal `completed_at`. Superseded attempts are historical lineage, never live lineage.
 - `SIGTERM` handling must drain before recovery. Stop claiming new work immediately, keep run heartbeats alive during the drain window, then abort/supersede only the attempts still in flight after the timeout.
 - Checkpoint recovery is invalid unless the checkpoint contains the full durable artifact set and the recovered analysis belongs to the same attempt as the checkpoint.
 - Include `web_fetch_20260209` in the tools array for free code execution compute.
