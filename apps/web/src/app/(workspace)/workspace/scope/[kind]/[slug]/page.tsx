@@ -1,8 +1,14 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
-import { SCOPE_KIND_LABELS, type ScopeKind } from "@/lib/workspace/constants";
+import {
+  ScopeLanding,
+  type ScopeDeliverable,
+  type ScopeStakeholder,
+  type WorkspaceKnowsSummary,
+} from "@/components/scope-landing";
+import { WorkspaceMemoryAside } from "@/components/workspace-memory-aside";
+import { BASQUIO_TEAM_ORG_ID, type ScopeKind } from "@/lib/workspace/constants";
 import { listConversations } from "@/lib/workspace/conversations";
 import { getScopeByKindSlug } from "@/lib/workspace/scopes";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
@@ -93,6 +99,43 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+async function countScopeFacts(workspaceId: string, scopeName: string): Promise<number> {
+  const db = getDb();
+  const { count } = await db
+    .from("facts")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .ilike("evidence", `%${scopeName}%`);
+  return count ?? 0;
+}
+
+async function countScrapedArticlesForScope(workspaceId: string): Promise<number> {
+  const db = getDb();
+  const { count } = await db
+    .from("knowledge_documents")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("is_team_beta", true)
+    .eq("kind", "scraped_article");
+  return count ?? 0;
+}
+
+async function lastResearchLabel(workspaceId: string, scopeId: string): Promise<string | null> {
+  const db = getDb();
+  const { data } = await db
+    .from("research_runs")
+    .select("completed_at, scrapes_succeeded")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "completed")
+    .order("completed_at", { ascending: false, nullsFirst: false })
+    .limit(1);
+  const row = (data ?? [])[0] as { completed_at: string | null; scrapes_succeeded: number | null } | undefined;
+  if (!row?.completed_at) return null;
+  const when = relativeTime(row.completed_at);
+  const sources = row.scrapes_succeeded ?? 0;
+  return `${when}, ${sources} source${sources === 1 ? "" : "s"}`;
+}
+
 export default async function WorkspaceScopePage({
   params,
 }: {
@@ -105,98 +148,51 @@ export default async function WorkspaceScopePage({
   const scope = await getScopeByKindSlug(workspace.id, kind as RouteKind, slug);
   if (!scope) notFound();
 
-  const [memory, conversations, stakeholders] = await Promise.all([
+  const [memory, conversations, stakeholdersRaw, factsCount, articlesCount, researchLabel] = await Promise.all([
     listScopeMemory(workspace.id, scope.id),
-    listConversations({ workspaceId: workspace.id, scopeId: scope.id, limit: 8 }).catch(() => []),
+    listConversations({ workspaceId: workspace.id, scopeId: scope.id, limit: 5 }).catch(() => []),
     listScopeStakeholders(workspace.id, scope.id, scope.name),
+    countScopeFacts(workspace.id, scope.name).catch(() => 0),
+    countScrapedArticlesForScope(workspace.id).catch(() => 0),
+    lastResearchLabel(workspace.id, scope.id).catch(() => null),
   ]);
 
+  const stakeholders: ScopeStakeholder[] = stakeholdersRaw.map((p) => ({
+    id: p.id,
+    name: p.canonical_name,
+    role: p.role ?? null,
+    preferenceQuote: null,
+  }));
+
+  const deliverables: ScopeDeliverable[] = conversations.map((c) => ({
+    id: c.id,
+    title: c.title ?? "Untitled chat",
+    updatedAt: relativeTime(c.last_message_at),
+    href: `/workspace/chat/${c.id}`,
+  }));
+
+  const workspaceKnows: WorkspaceKnowsSummary = {
+    rulesCount: memory.length,
+    factsCount,
+    articlesCount,
+    lastResearchLabel: researchLabel,
+  };
+
   return (
-    <div className="wbeta-workspace-layout">
-      <section className="wbeta-chat-pane" aria-label={`Conversation scoped to ${scope.name}`}>
-        <WorkspaceChat scopeId={scope.id} scopeName={scope.name} scopeKind={scope.kind} />
-      </section>
-
-      <aside className="wbeta-rail" aria-label={`Context for ${scope.name}`}>
-        <section className="wbeta-rail-section">
-          <header className="wbeta-rail-section-head">
-            <h3 className="wbeta-rail-section-title">Recent chats</h3>
-            <Link
-              href={`/workspace/scope/${scope.kind}/${scope.slug}`}
-              className="wbeta-rail-new-chat"
-              aria-label="New chat"
-            >
-              New
-            </Link>
-          </header>
-          {conversations.length === 0 ? (
-            <p className="wbeta-rail-empty">
-              No chats yet. Ask a question and it will show up here.
-            </p>
-          ) : (
-            <ul className="wbeta-rail-list">
-              {conversations.map((c) => (
-                <li key={c.id}>
-                  <Link href={`/workspace/chat/${c.id}`} className="wbeta-rail-item">
-                    <span className="wbeta-rail-item-title">{c.title ?? "Untitled"}</span>
-                    <span className="wbeta-rail-item-meta">{relativeTime(c.last_message_at)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="wbeta-rail-section">
-          <header className="wbeta-rail-section-head">
-            <h3 className="wbeta-rail-section-title">Memory</h3>
-            <span className="wbeta-rail-section-meta">{memory.length || "None"}</span>
-          </header>
-          {memory.length === 0 ? (
-            <p className="wbeta-rail-empty">
-              Teach Basquio a rule for {scope.name}. It applies here.
-            </p>
-          ) : (
-            <ul className="wbeta-rail-list">
-              {memory.map((entry) => (
-                <li key={entry.id}>
-                  <Link href="/workspace/memory" className="wbeta-rail-item">
-                    <span className="wbeta-rail-item-title">{shorten(entry.content as string, 90)}</span>
-                    <span className="wbeta-rail-item-meta">{entry.memory_type}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {stakeholders.length > 0 ? (
-          <section className="wbeta-rail-section">
-            <header className="wbeta-rail-section-head">
-              <h3 className="wbeta-rail-section-title">Stakeholders</h3>
-              <span className="wbeta-rail-section-meta">{stakeholders.length}</span>
-            </header>
-            <ul className="wbeta-rail-list">
-              {stakeholders.map((person) => (
-                <li key={person.id}>
-                  <Link href={`/workspace/people/${person.id}`} className="wbeta-rail-item">
-                    <span className="wbeta-rail-item-title">{person.canonical_name}</span>
-                    {person.role ? (
-                      <span className="wbeta-rail-item-meta">{person.role}</span>
-                    ) : null}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </aside>
+    <div className="wbeta-scope-three-col">
+      <div className="wbeta-scope-main">
+        <ScopeLanding
+          scope={scope}
+          stakeholders={stakeholders}
+          workspaceKnows={workspaceKnows}
+          deliverables={deliverables}
+          chat={<WorkspaceChat scopeId={scope.id} scopeName={scope.name} scopeKind={scope.kind} />}
+        />
+      </div>
+      <div className="wbeta-scope-aside">
+        <WorkspaceMemoryAside workspaceId={workspace.id} />
+      </div>
     </div>
   );
 }
 
-function shorten(text: string, limit: number): string {
-  const firstLine = text.split("\n").find((line) => line.trim().length > 0) ?? text;
-  if (firstLine.length <= limit) return firstLine.trim();
-  return firstLine.slice(0, limit - 1).trim() + "…";
-}
