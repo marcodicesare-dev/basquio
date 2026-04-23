@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 
+import { describe, it } from "vitest";
+
 import {
   createResearchPlan,
   type GraphCoverageResult,
@@ -7,7 +9,7 @@ import {
   type PlannerInput,
   type ResearchPlan,
   type SourceCatalogEntry,
-} from "../packages/research/src/index";
+} from "./index";
 
 /**
  * Smoke tests for the graph-first planner.
@@ -504,22 +506,16 @@ async function test11OnStageObserverFires() {
   assert.ok(!stages.includes("haiku_gap"), "haiku_gap must not fire on skip path");
 }
 
-async function main() {
-  await test1EmptyGraphGeneratesFullQueries();
-  await test2CoveredGraphSkipsHaiku();
-  await test3PartialCoverageAsksForGaps();
-  await test4StaleCoverageStillCallsHaiku();
-  await test5BudgetTrimsLowestPriorityQueries();
-  await test6InvalidHaikuJsonRaises();
-  await test7TolerantJsonParseHandlesCodeFence();
-  await test8LowTrustChunksFilteredOut();
-  await test9UsdBoundTrimExercised();
-  await test10StandardTierTuningFitsMoreQueries();
-  await test11OnStageObserverFires();
-  console.log("research planner: graph-first + haiku gap queries + budget trim ok");
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
+describe("research planner", () => {
+  it("empty graph generates full queries", test1EmptyGraphGeneratesFullQueries);
+  it("covered graph skips Haiku", test2CoveredGraphSkipsHaiku);
+  it("partial coverage asks for gaps", test3PartialCoverageAsksForGaps);
+  it("stale coverage still calls Haiku", test4StaleCoverageStillCallsHaiku);
+  it("budget trims lowest-priority queries", test5BudgetTrimsLowestPriorityQueries);
+  it("invalid Haiku JSON raises SyntaxError", test6InvalidHaikuJsonRaises);
+  it("tolerant JSON parse handles code-fenced Haiku output", test7TolerantJsonParseHandlesCodeFence);
+  it("low-trust chunks filtered out", test8LowTrustChunksFilteredOut);
+  it("USD-bound trim exercised (Hobby default)", test9UsdBoundTrimExercised);
+  it("Standard-tier tuning fits more queries under same USD cap", test10StandardTierTuningFitsMoreQueries);
+  it("onStage observer fires for graph_coverage", test11OnStageObserverFires);
 });

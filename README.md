@@ -33,12 +33,33 @@ Run this before implementation work and before merging architecture changes:
 pnpm qa:basquio
 ```
 
+`qa:basquio` runs the context-QA context check plus the full Vitest suite (50+ unit tests across research, intelligence, workflows).
+
 Recommended companion checks before shipping code:
 
 ```bash
-pnpm typecheck:fast
-pnpm lint:fast
+pnpm typecheck         # tsc --noEmit across the monorepo
+pnpm lint              # next lint on apps/web
+pnpm test              # vitest in watch mode
+pnpm test:run          # vitest single run
+pnpm test:coverage     # vitest with v8 coverage (thresholds enforced)
+pnpm qa:catalog        # linked-remote catalog sanity check
 ```
+
+## Git hooks (Lefthook)
+
+Pre-commit and pre-push hooks run automatically via [Lefthook](https://github.com/evilmartians/lefthook). `pnpm install` wires them through the `postinstall` script. If the automatic install fails (older lefthook versions, monorepo quirks), run the manual fallback:
+
+```bash
+pnpm lefthook install
+```
+
+What the hooks enforce:
+
+- **pre-commit**: em-dash audit (no U+2014 in staged diff), secret scan (no `sk-ant-api03-`, `sk_live_`, `fc-`, or JWT-like tokens), NIQ hardening guard (22406d5 files are hands-off), type-check, Vitest run.
+- **pre-push**: if any `supabase/migrations/**` staged, run `pnpm qa:catalog`; outgoing-commit secret scan as a second line of defense.
+
+Emergency bypass (**use sparingly**): `LEFTHOOK=0 git commit ...`. If you need to touch the NIQ hardening surface with Marco's green light, prefer `BASQUIO_NIQ_GUARD_OVERRIDE=1 git commit ...`.
 
 ## Pack Structure
 

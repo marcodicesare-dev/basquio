@@ -1,17 +1,16 @@
 import assert from "node:assert/strict";
 
+import { describe, it } from "vitest";
+
 import {
-  createResearchPlan,
   executePlan,
   type FirecrawlClient,
   type FirecrawlBatchScrapeStatus,
   type FirecrawlMapResponse,
-  type GraphCoverageResult,
   type HaikuCallFn,
-  type PlannerInput,
   type RestConfig,
   type SourceCatalogEntry,
-} from "../packages/research/src/index";
+} from "./index";
 
 /**
  * Unit tests for the R7 content-quality filters added 2026-04-23 after
@@ -78,8 +77,8 @@ function buildItalianCatalog(): SourceCatalogEntry[] {
 }
 
 function buildPlan(
-  queryOverrides: Partial<import("../packages/research/src/types").ResearchQuery> = {},
-): import("../packages/research/src/types").ResearchPlan {
+  queryOverrides: Partial<import("./types").ResearchQuery> = {},
+): import("./types").ResearchPlan {
   return {
     existingGraphRefs: [],
     queries: [
@@ -445,18 +444,12 @@ async function testTopicOverlapGateMidStringDoesNotMatch() {
   assert.equal(mapCalls, 0, '"pet" must not match "competitor" (mid-string substring, no prefix/suffix)');
 }
 
-async function main() {
-  await testSitemapUrlsRejectedByGlobalDeny();
-  await testStaleUrlRejectedByPathYearFilter();
-  await testZeroKeywordScoreUrlsDropped();
-  await testTopicOverlapGateRejectsFoodSourceOnHotelBrief();
-  await testTopicOverlapGateKeepsFoodSourceOnFoodBrief();
-  await testTopicOverlapGate3CharPrefixMatches();
-  await testTopicOverlapGateMidStringDoesNotMatch();
-  console.log("research filters: sitemap deny + freshness + keyword threshold + topic overlap ok");
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+describe("research R7 filters", () => {
+  it("global deny rejects sitemap URLs", testSitemapUrlsRejectedByGlobalDeny);
+  it("URL-path year filter rejects stale articles", testStaleUrlRejectedByPathYearFilter);
+  it("zero-keyword-score URLs drop", testZeroKeywordScoreUrlsDropped);
+  it("topic-overlap gate rejects food source on hotel brief", testTopicOverlapGateRejectsFoodSourceOnHotelBrief);
+  it("topic-overlap gate keeps food source on food brief", testTopicOverlapGateKeepsFoodSourceOnFoodBrief);
+  it('topic-overlap gate 3-char prefix match ("pet" -> "petfood")', testTopicOverlapGate3CharPrefixMatches);
+  it('topic-overlap gate mid-string non-match ("pet" !~ "competitor")', testTopicOverlapGateMidStringDoesNotMatch);
 });

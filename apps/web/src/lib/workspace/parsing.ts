@@ -47,7 +47,18 @@ export async function parseDocument(
 }
 
 async function parsePdf(buffer: Buffer): Promise<ParseResult> {
-  const { PDFParse } = await import("pdf-parse");
+  // pdf-parse v2 exposes a `PDFParse` class. Root node_modules carries
+  // @types/pdf-parse (v1 types) which shadow the v2 built-in types, so
+  // cast the dynamic import to the v2 runtime shape. When the canary
+  // tsc gate stabilises, drop @types/pdf-parse from root and remove
+  // this cast.
+  type PdfParseModule = {
+    PDFParse: new (opts: { data: Uint8Array }) => {
+      getText(): Promise<{ text?: string }>;
+      destroy(): Promise<void>;
+    };
+  };
+  const { PDFParse } = (await import("pdf-parse")) as unknown as PdfParseModule;
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
     const result = await parser.getText();

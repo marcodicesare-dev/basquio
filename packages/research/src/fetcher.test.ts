@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 
+import { describe, it } from "vitest";
+
 import {
   canonicalizeUrl,
   hashContent,
   hashUrl,
-} from "../packages/research/src/dedupe";
+} from "./dedupe";
 import {
   DAY_4_FIRECRAWL_USD_CAP,
   DAY_4_SMOKE_BUDGET,
@@ -12,12 +14,12 @@ import {
   creditsToUsd,
   newCostAccumulator,
   recordCost,
-} from "../packages/research/src/budget";
+} from "./budget";
 import {
   scrapeToEvidenceRef,
   type SourceCatalogScrape,
-} from "../packages/research/src/evidence-adapter";
-import type { SourceCatalogEntry } from "../packages/research/src/types";
+} from "./evidence-adapter";
+import type { SourceCatalogEntry } from "./types";
 
 /**
  * Day 4 unit tests for the research fetcher's pure building blocks:
@@ -220,26 +222,26 @@ function testEvidenceRefIdFormatGraphVsFirecrawl() {
   assert.match(ref.id, /^firecrawl:/, "scraped refs use firecrawl: prefix per spec §5.4");
 }
 
-// ── main ───────────────────────────────────────────────────────────
+describe("research fetcher building blocks", () => {
+  describe("dedupe", () => {
+    it("canonicalizes URLs (trailing slash, utm, fragment)", testDedupeHandlesBasicCanonicalization);
+    it("hashUrl is deterministic under canonicalization", testHashUrlDeterministic);
+    it("hashContent normalizes whitespace and boilerplate", testHashContentDeterministic);
+    it("canonicalizeUrl rejects garbage", testHashUrlRejectsGarbage);
+  });
 
-function main() {
-  testDedupeHandlesBasicCanonicalization();
-  testHashUrlDeterministic();
-  testHashContentDeterministic();
-  testHashUrlRejectsGarbage();
+  describe("budget", () => {
+    it("within envelope passes", testBudgetWithinEnvelope);
+    it("max_urls cap trips correctly", testBudgetMaxUrlsCap);
+    it("max_firecrawl_usd cap trips correctly", testBudgetFirecrawlCap);
+    it("max_total_usd cap trips correctly", testBudgetTotalCap);
+    it("creditsToUsd applies the conversion rate", testCreditsToUsd);
+  });
 
-  testBudgetWithinEnvelope();
-  testBudgetMaxUrlsCap();
-  testBudgetFirecrawlCap();
-  testBudgetTotalCap();
-  testCreditsToUsd();
-
-  testEvidenceRefShape();
-  testEvidenceRefSummaryFallsBackToFirstLine();
-  testEvidenceRefConfidenceClampedFromTrustScore();
-  testEvidenceRefIdFormatGraphVsFirecrawl();
-
-  console.log("research fetcher: dedupe + budget + evidence-adapter ok");
-}
-
-main();
+  describe("evidence-adapter", () => {
+    it("evidence ref has correct shape (id + confidence + dimensions)", testEvidenceRefShape);
+    it("summary falls back to first non-heading line when title is null", testEvidenceRefSummaryFallsBackToFirstLine);
+    it("confidence clamps to [0,1] from trust score", testEvidenceRefConfidenceClampedFromTrustScore);
+    it("id uses firecrawl: prefix per spec §5.4", testEvidenceRefIdFormatGraphVsFirecrawl);
+  });
+});

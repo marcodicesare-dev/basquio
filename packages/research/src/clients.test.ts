@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 
+import { describe, it } from "vitest";
+
 import {
   ApiError,
   RateLimiter,
   createFiberClient,
   createFirecrawlClient,
   withRetries,
-} from "../packages/research/src/index";
+} from "./index";
 
 /**
  * Smoke tests for packages/research Day 2 HTTP clients. Replaces
@@ -323,20 +325,14 @@ async function testRateLimiterSurvivesThrow() {
   assert.equal(second, "ok");
 }
 
-async function main() {
-  await testFirecrawlHappyPath();
-  await testFiberHappyPath();
-  await testRetryOn429();
-  await testAuthErrorNonRetryable();
-  await testSchemaDriftTolerance();
-  testMissingApiKeyThrows();
-  await testWithRetriesExhaustsBudget();
-  await testRateLimiterSerializes();
-  await testRateLimiterSurvivesThrow();
-  console.log("research clients: firecrawl + fiber + http helpers ok");
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
+describe("research clients", () => {
+  it("Firecrawl happy path (map + scrape + batch-scrape + poll)", testFirecrawlHappyPath);
+  it("Fiber happy path (lookup + posts + people-search)", testFiberHappyPath);
+  it("retries 429 with Retry-After honored", testRetryOn429);
+  it("treats 401 as non-retryable", testAuthErrorNonRetryable);
+  it("tolerates schema drift (unknown fields)", testSchemaDriftTolerance);
+  it("throws at construction on missing apiKey", testMissingApiKeyThrows);
+  it("exhausts retry budget and rethrows", testWithRetriesExhaustsBudget);
+  it("RateLimiter serializes concurrent schedule calls", testRateLimiterSerializes);
+  it("RateLimiter chain survives a throwing op", testRateLimiterSurvivesThrow);
 });
