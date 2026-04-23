@@ -42,7 +42,13 @@ import { fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from ".
 
 export type ResearchPhaseInput = {
   workspaceId: string;
-  deckRunId: string;
+  /**
+   * Deck run id. Nullable so smoke harnesses that exercise the research
+   * phase standalone (no real deck_runs row) can still write a
+   * research_runs telemetry row; the column's FK is ON DELETE SET NULL
+   * and accepts null at insert time.
+   */
+  deckRunId: string | null;
   conversationId: string | null;
   briefSummary: string;
   briefKeywords: string[];
@@ -351,7 +357,7 @@ async function insertResearchRun(
   input: {
     id: string;
     workspaceId: string;
-    deckRunId: string;
+    deckRunId: string | null;
     conversationId: string | null;
     briefSummary: string;
     status: string;

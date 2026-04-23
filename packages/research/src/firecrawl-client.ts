@@ -122,17 +122,22 @@ export type FirecrawlBatchScrapeKickoff = {
   url: string;
 };
 
+/**
+ * Batch-scrape status response. Shape verified against live Firecrawl
+ * v2 on 2026-04-23 Day 4 smoke probe: `data` is a flat array of scrape
+ * results, each with `markdown` / `html` / etc. directly on the item
+ * (no nested `.data`) and the source URL available at
+ * `metadata.sourceURL`. Earlier type (nested `{url, data}`) caused the
+ * Day 4 smoke to persist zero scrapes despite successful fetches.
+ */
 export type FirecrawlBatchScrapeStatus = {
   success: boolean;
   status: "scraping" | "completed" | "failed" | "cancelled";
   total: number;
   completed: number;
   creditsUsed?: number;
-  data?: Array<{
-    url: string;
-    data?: FirecrawlScrapeData;
-    error?: string;
-  }>;
+  expiresAt?: string;
+  data?: Array<FirecrawlScrapeData & { error?: string | null }>;
 };
 
 export type FirecrawlCrawlRequest = {
@@ -269,11 +274,11 @@ export function createFirecrawlClient(options: FirecrawlClientOptions) {
      */
     batchScrape(req: FirecrawlBatchScrapeRequest): Promise<FirecrawlBatchScrapeKickoff> {
       const { signal, ...body } = req;
-      return call<FirecrawlBatchScrapeKickoff>("/v2/batch-scrape", body as Record<string, unknown>, signal);
+      return call<FirecrawlBatchScrapeKickoff>("/v2/batch/scrape", body as Record<string, unknown>, signal);
     },
 
     batchScrapeStatus(id: string, signal?: AbortSignal): Promise<FirecrawlBatchScrapeStatus> {
-      return get<FirecrawlBatchScrapeStatus>(`/v2/batch-scrape/${encodeURIComponent(id)}`, signal);
+      return get<FirecrawlBatchScrapeStatus>(`/v2/batch/scrape/${encodeURIComponent(id)}`, signal);
     },
 
     /**

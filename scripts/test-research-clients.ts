@@ -74,14 +74,16 @@ async function testFirecrawlHappyPath() {
   const scripted = installScriptedFetch([
     { body: { success: true, links: [{ url: "https://mark-up.it/news/1" }] } },
     { body: { success: true, data: { markdown: "# sample" } } },
-    { body: { success: true, id: "batch-123", url: "https://api.firecrawl.dev/v2/batch-scrape/batch-123" } },
+    { body: { success: true, id: "batch-123", url: "https://api.firecrawl.dev/v2/batch/scrape/batch-123" } },
     {
       body: {
         success: true,
         status: "completed",
         total: 1,
         completed: 1,
-        data: [{ url: "https://mark-up.it/news/1", data: { markdown: "# done" } }],
+        // v2 batch-scrape returns scrape data flat (not nested) with
+        // source URL at metadata.sourceURL. Verified live 2026-04-23.
+        data: [{ markdown: "# done", metadata: { sourceURL: "https://mark-up.it/news/1" } }],
       },
     },
   ]);
@@ -101,13 +103,14 @@ async function testFirecrawlHappyPath() {
 
     const status = await client.batchScrapeStatus(kickoff.id);
     assert.equal(status.status, "completed");
-    assert.equal(status.data?.[0]?.data?.markdown, "# done");
+    assert.equal(status.data?.[0]?.markdown, "# done");
+    assert.equal(status.data?.[0]?.metadata?.sourceURL, "https://mark-up.it/news/1");
 
     assert.equal(scripted.calls.length, 4);
     assert.equal(scripted.calls[0]?.url, "https://api.firecrawl.dev/v2/map");
     assert.equal(scripted.calls[1]?.url, "https://api.firecrawl.dev/v2/scrape");
-    assert.equal(scripted.calls[2]?.url, "https://api.firecrawl.dev/v2/batch-scrape");
-    assert.equal(scripted.calls[3]?.url, "https://api.firecrawl.dev/v2/batch-scrape/batch-123");
+    assert.equal(scripted.calls[2]?.url, "https://api.firecrawl.dev/v2/batch/scrape");
+    assert.equal(scripted.calls[3]?.url, "https://api.firecrawl.dev/v2/batch/scrape/batch-123");
     assert.equal(scripted.calls[3]?.method, "GET");
   } finally {
     scripted.restore();

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
@@ -127,13 +126,12 @@ async function main() {
 
   const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-  const fakeDeckRunId = randomUUID();
   const startedAt = Date.now();
 
   const result = await runResearchPhase(
     {
       workspaceId: args.workspace,
-      deckRunId: fakeDeckRunId,
+      deckRunId: null,
       conversationId: null,
       briefSummary: args.brief,
       briefKeywords: args.keywords,

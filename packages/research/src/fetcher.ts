@@ -444,16 +444,28 @@ async function runFirecrawlBranch(
     urlsFetched: toScrape.length,
   });
 
-  // Step 7: per-result dual-write.
+  // Step 7: per-result dual-write. Firecrawl v2 batch-scrape returns
+  // `data[i]` as the FirecrawlScrapeData shape directly (markdown,
+  // metadata, links, etc.) with the source URL at `metadata.sourceURL`
+  // or `metadata.url`. Match against `toScrape` entries by canonical
+  // url_hash so trailing-slash and minor canonicalization differences
+  // from Firecrawl do not break the join.
   const results = completed.data ?? [];
   for (const result of results) {
     if (signal.aborted) break;
-    const plan = toScrape.find((t) => t.url === result.url);
+    const resultUrl = firstDefinedString(
+      typeof result.metadata?.sourceURL === "string" ? result.metadata.sourceURL : null,
+      typeof result.metadata?.url === "string" ? (result.metadata.url as string) : null,
+    );
+    const resultHash = resultUrl ? safeHashUrl(resultUrl) : null;
+    const plan = resultHash
+      ? toScrape.find((t) => t.urlHash === resultHash)
+      : null;
     if (!plan) {
       stats.scrapesFailed += 1;
       continue;
     }
-    if (result.error || !result.data?.markdown) {
+    if (result.error || !result.markdown) {
       stats.scrapesFailed += 1;
       continue;
     }
@@ -463,7 +475,7 @@ async function runFirecrawlBranch(
         source: plan.source,
         url: plan.url,
         urlHash: plan.urlHash,
-        scrapeData: result.data,
+        scrapeData: result,
         input,
         deps,
         now,
@@ -803,6 +815,13 @@ function safeHashUrl(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+function firstDefinedString(...values: Array<string | null | undefined>): string | null {
+  for (const v of values) {
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return null;
 }
 
 function safeRegex(source: string): RegExp | null {
