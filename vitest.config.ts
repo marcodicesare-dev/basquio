@@ -22,6 +22,10 @@ import { defineConfig } from "vitest/config";
  * FIBER values. The stubs are explicit test strings, never real keys.
  */
 export default defineConfig({
+  esbuild: {
+    jsx: "automatic",
+    jsxImportSource: "react",
+  },
   test: {
     globals: false,
     environment: "node",
@@ -77,6 +81,7 @@ export default defineConfig({
       "@basquio/template-engine": path.resolve(__dirname, "packages/template-engine/src/index.ts"),
       "@basquio/types": path.resolve(__dirname, "packages/types/src/index.ts"),
       "@basquio/workflows": path.resolve(__dirname, "packages/workflows/src/index.ts"),
+      "@": path.resolve(__dirname, "apps/web/src"),
       "@/": path.resolve(__dirname, "apps/web/src/"),
       // Next.js "server-only" is a no-op module that only exists to
       // assert build-time boundaries. Under Vitest there is no such

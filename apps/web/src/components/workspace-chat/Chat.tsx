@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useRouter } from "next/navigation";
+import TextareaAutosize from "react-textarea-autosize";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
@@ -246,6 +247,35 @@ export function WorkspaceChat({
     isStreaming && lastMessage?.role === "assistant";
 
   useEffect(() => {
+    if (!isStreaming) return;
+    if (
+      typeof performance === "undefined" ||
+      typeof requestAnimationFrame === "undefined" ||
+      typeof cancelAnimationFrame === "undefined"
+    ) {
+      return;
+    }
+    let last = performance.now();
+    const frames: number[] = [];
+    let raf = 0;
+    const tick = (time: number) => {
+      frames.push(time - last);
+      last = time;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (frames.length === 0) return;
+      const avg = frames.reduce((sum, frame) => sum + frame, 0) / frames.length;
+      const slow = frames.filter((frame) => frame > 16.67).length;
+      console.log(
+        `[stream-perf] avg ${avg.toFixed(1)}ms, ${slow}/${frames.length} frames >16.67ms`,
+      );
+    };
+  }, [isStreaming]);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages.length, lastAssistantStreaming]);
 
@@ -387,6 +417,13 @@ export function WorkspaceChat({
     [draft, isStreaming, sendMessage],
   );
 
+  const handleSendFollowUp = useCallback(
+    (text: string) => {
+      sendMessage({ text });
+    },
+    [sendMessage],
+  );
+
   const handleRegenerate = useCallback(() => {
     setError(null);
     regenerate();
@@ -521,9 +558,7 @@ export function WorkspaceChat({
                 }
                 onSendFollowUp={
                   !isStreaming
-                    ? (text: string) => {
-                        sendMessage({ text });
-                      }
+                    ? handleSendFollowUp
                     : undefined
                 }
               />
@@ -629,7 +664,7 @@ export function WorkspaceChat({
         <label className="wbeta-ai-chat-label" htmlFor="wbeta-ai-input">
           Message
         </label>
-        <textarea
+        <TextareaAutosize
           id="wbeta-ai-input"
           className="wbeta-ai-chat-textarea"
           placeholder={placeholder}
@@ -641,7 +676,8 @@ export function WorkspaceChat({
               handleSubmit();
             }
           }}
-          rows={3}
+          minRows={1}
+          maxRows={10}
           disabled={isStreaming}
         />
         <div className="wbeta-ai-chat-row">

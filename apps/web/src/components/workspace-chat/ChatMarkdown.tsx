@@ -12,14 +12,19 @@ import type { CitationInline } from "@/components/workspace-chat/CitationChip";
 
 const CITATION_RE = /\[s(\d+)\]/g;
 
-function splitCitations(text: string, onCitation: (label: string) => ReactNode): ReactNode[] {
+function splitCitations(
+  text: string,
+  onCitation: (label: string, matchIndex: number) => ReactNode,
+): ReactNode[] {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
+  let citationIndex = 0;
   let match: RegExpExecArray | null;
   CITATION_RE.lastIndex = 0;
   while ((match = CITATION_RE.exec(text)) !== null) {
     if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
-    nodes.push(onCitation(`s${match[1]}`));
+    nodes.push(onCitation(`s${match[1]}`, citationIndex));
+    citationIndex += 1;
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
@@ -28,8 +33,8 @@ function splitCitations(text: string, onCitation: (label: string) => ReactNode):
 
 function renderChildren(children: ReactNode, citations: CitationInline[]): ReactNode {
   if (typeof children === "string") {
-    return splitCitations(children, (label) => (
-      <CitationChip key={`${label}-${Math.random()}`} label={label} citations={citations} />
+    return splitCitations(children, (label, matchIndex) => (
+      <CitationChip key={`${label}-${matchIndex}`} label={label} citations={citations} />
     ));
   }
   if (Array.isArray(children)) {
@@ -37,8 +42,8 @@ function renderChildren(children: ReactNode, citations: CitationInline[]): React
       if (typeof child === "string") {
         return (
           <span key={i}>
-            {splitCitations(child, (label) => (
-              <CitationChip key={`${label}-${i}`} label={label} citations={citations} />
+            {splitCitations(child, (label, matchIndex) => (
+              <CitationChip key={`${label}-${matchIndex}`} label={label} citations={citations} />
             ))}
           </span>
         );
@@ -49,13 +54,16 @@ function renderChildren(children: ReactNode, citations: CitationInline[]): React
   return children;
 }
 
+type ChatMarkdownProps = {
+  source: string;
+  citations?: CitationInline[];
+  isStreaming?: boolean;
+};
+
 export const ChatMarkdown = memo(function ChatMarkdown({
   source,
   citations,
-}: {
-  source: string;
-  citations?: CitationInline[];
-}) {
+}: ChatMarkdownProps) {
   const cites = citations ?? [];
   const components: Components = {
     p({ children }) {
@@ -145,4 +153,34 @@ export const ChatMarkdown = memo(function ChatMarkdown({
       </ReactMarkdown>
     </div>
   );
-});
+}, areChatMarkdownPropsEqual);
+
+function areChatMarkdownPropsEqual(prev: ChatMarkdownProps, next: ChatMarkdownProps) {
+  if ((prev.isStreaming ?? false) !== (next.isStreaming ?? false)) return false;
+  if (next.isStreaming) {
+    return (
+      prev.source.length === next.source.length &&
+      prev.source.slice(0, 32) === next.source.slice(0, 32) &&
+      (prev.citations?.length ?? 0) === (next.citations?.length ?? 0)
+    );
+  }
+  return prev.source === next.source && citationsEqual(prev.citations, next.citations);
+}
+
+function citationsEqual(prev?: CitationInline[], next?: CitationInline[]) {
+  if (prev === next) return true;
+  if ((prev?.length ?? 0) !== (next?.length ?? 0)) return false;
+  const prevCitations = prev ?? [];
+  const nextCitations = next ?? [];
+  return prevCitations.every((citation, index) => {
+    const other = nextCitations[index];
+    return (
+      citation.label === other.label &&
+      citation.source_type === other.source_type &&
+      citation.source_id === other.source_id &&
+      citation.filename === other.filename &&
+      citation.excerpt === other.excerpt &&
+      citation.score === other.score
+    );
+  });
+}

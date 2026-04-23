@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   CaretDown,
   CaretRight,
@@ -46,8 +46,6 @@ type Part = {
   [k: string]: unknown;
 };
 
-const CITATION_RE = /\[s(\d+)\]/g;
-
 function extractCitationsFromOutput(output: unknown): CitationInline[] {
   if (!output || typeof output !== "object") return [];
   const chunks = (output as { chunks?: Array<{ label: string; source_type?: string; source_id?: string; filename?: string | null; content?: string }> }).chunks;
@@ -83,16 +81,7 @@ function messageToMarkdown(message: UIMessage): string {
     .join("\n\n");
 }
 
-export const ChatMessage = memo(function ChatMessage({
-  message,
-  isStreaming,
-  onCopy,
-  onRegenerate,
-  onFeedback,
-  onSaveAsMemo,
-  onGenerateDeck,
-  onSendFollowUp,
-}: {
+type ChatMessageProps = {
   message: UIMessage;
   isStreaming: boolean;
   onCopy?: (text: string) => void;
@@ -108,7 +97,18 @@ export const ChatMessage = memo(function ChatMessage({
    * re-invokes the tool with dry_run: false plus the cached id.
    */
   onSendFollowUp?: (text: string) => void;
-}) {
+};
+
+export const ChatMessage = memo(function ChatMessage({
+  message,
+  isStreaming,
+  onCopy,
+  onRegenerate,
+  onFeedback,
+  onSaveAsMemo,
+  onGenerateDeck,
+  onSendFollowUp,
+}: ChatMessageProps) {
   const isUser = message.role === "user";
   const citations = gatherCitations(message);
   const [copiedAt, setCopiedAt] = useState<number | null>(null);
@@ -167,10 +167,12 @@ export const ChatMessage = memo(function ChatMessage({
     }
   }
 
+  const parts = useMemo(() => (message.parts ?? []) as unknown as Part[], [message]);
+  const lastPartIndex = parts.length - 1;
+
   return (
     <article className={isUser ? "wbeta-ai-msg wbeta-ai-msg-user" : "wbeta-ai-msg wbeta-ai-msg-asst"}>
-      {(message.parts ?? []).map((rawPart, i) => {
-        const part = rawPart as Part;
+      {parts.map((part, i) => {
         if (part.type === "text") {
           const text = part.text ?? "";
           if (!text) return null;
@@ -181,10 +183,17 @@ export const ChatMessage = memo(function ChatMessage({
               </p>
             );
           }
+          const shouldRenderStreamingText = isStreaming && i === lastPartIndex;
           return (
             <div key={i} className="wbeta-ai-asst-block">
-              <ChatMarkdown source={text} citations={citations} />
-              {isStreaming ? <span className="wbeta-ai-cursor" aria-hidden /> : null}
+              {shouldRenderStreamingText ? (
+                <div className="wbeta-ai-streaming-text">
+                  {text}
+                  <span className="wbeta-ai-cursor" aria-hidden />
+                </div>
+              ) : (
+                <ChatMarkdown source={text} citations={citations} />
+              )}
             </div>
           );
         }
@@ -404,7 +413,49 @@ export const ChatMessage = memo(function ChatMessage({
       ) : null}
     </article>
   );
-});
+}, areChatMessagePropsEqual);
+
+function areChatMessagePropsEqual(prev: ChatMessageProps, next: ChatMessageProps) {
+  if (prev.isStreaming !== next.isStreaming) return false;
+  if (next.isStreaming) {
+    return streamingMessageSignature(prev.message) === streamingMessageSignature(next.message);
+  }
+  return (
+    messagesDeepEqual(prev.message, next.message) &&
+    prev.onCopy === next.onCopy &&
+    prev.onRegenerate === next.onRegenerate &&
+    prev.onFeedback === next.onFeedback &&
+    prev.onSaveAsMemo === next.onSaveAsMemo &&
+    prev.onGenerateDeck === next.onGenerateDeck &&
+    prev.onSendFollowUp === next.onSendFollowUp
+  );
+}
+
+function streamingMessageSignature(message: UIMessage) {
+  const parts = (message.parts ?? []) as unknown as Part[];
+  const last = parts.at(-1);
+  return [
+    message.id ?? "",
+    message.role,
+    parts.length,
+    last?.type ?? "",
+    last?.state ?? "",
+    last?.text?.length ?? 0,
+  ].join(":");
+}
+
+function messagesDeepEqual(prev: UIMessage, next: UIMessage) {
+  if (prev === next) return true;
+  return stableStringify(prev) === stableStringify(next);
+}
+
+function stableStringify(value: unknown) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
 
 function ReasoningBlock({ text, isStreaming }: { text: string; isStreaming: boolean }) {
   const [open, setOpen] = useState(false);
