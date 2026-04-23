@@ -6875,7 +6875,7 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
   if (workbookSheets.length === 0) {
     return input;
   }
-  const sheetPresentations = buildWorkbookSheetPresentations(workbookSheets);
+  const sheetPresentations = buildWorkbookSheetPresentations(workbookSheets, input.templateProfile);
   const sheetPresentationByName = new Map(sheetPresentations.map((sheet) => [sheet.sheetName, sheet]));
   const requests = buildWorkbookChartBindingRequests(input.manifest, input.analysis);
   if (requests.length === 0 && sheetPresentations.length === 0) {
@@ -7254,8 +7254,14 @@ async function injectWorkbookNativeCharts(
     await writeFile(specPath, JSON.stringify({
       workbookFormats: sheetPresentations.map((sheet) => ({
         sheetName: sheet.sheetName,
+        freezePane: sheet.freezePane,
+        tableStyleName: sheet.tableStyleName,
+        headerFillColor: sheet.headerFillColor,
+        headerTextColor: sheet.headerTextColor,
+        showGridLines: sheet.showGridLines,
         columns: sheet.columns.map((column) => ({
           header: column.header,
+          widthChars: column.widthChars,
           excelNumberFormat: column.presentation.excelNumberFormat,
         })),
       })),

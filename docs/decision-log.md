@@ -782,3 +782,21 @@ Why:
 Implication:
 - superseded attempts now leave one coherent lineage trail: terminal attempt row, closed request rows, and a single active owner for the run
 - postmortems and spend audits can distinguish real active work from historical superseded attempts without manual cleanup
+
+## April 23, 2026 — Imported master backgrounds are advisory; workbook-native charts need a presentation shell
+
+Decision:
+- extracted PPTX master backgrounds are no longer treated as authoritative deck canvas tokens
+- Basquio now injects a master background only when it is brand-aligned, using palette hints and a neutral-placeholder guard at both template-extraction time and render time
+- the native Excel companion is now treated as a user-facing consulting workbook, not just a native-chart side effect
+- workbook post-processing must apply a deterministic shell: README/index, freeze panes, styled headers, styled Excel tables, explicit column widths, reserved right-panel chart placement, and helper columns pushed beyond the visible chart panel
+
+Why:
+- Rossella’s fresh rerun showed a full-deck grey surface caused by blindly injecting an extracted neutral `masterBackground`
+- the same rerun also showed that analytically linked Excel charts were still visually low-grade because the workbook path had no real layout contract beyond number formats and a fixed chart anchor near hidden helper columns
+- current library docs support both explicit chart anchors and table styling, so the limitation was our architecture, not the file format libraries
+
+Implication:
+- existing saved template profiles with junk master-background tokens can no longer poison newly generated decks
+- future imported template profiles should persist only brand-aligned master backgrounds
+- `data_tables.xlsx` should now read as a consulting artifact: easier to scan, less chart clutter, and no more chart-vs-table collisions from crude anchoring

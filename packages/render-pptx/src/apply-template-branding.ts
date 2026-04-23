@@ -30,6 +30,7 @@ export interface InjectionPayload {
     x: number; y: number; w: number; h: number;
     fill: string; // hex without #
   }>;
+  paletteHints: string[];
   masterBackground: string | null; // hex without #
 }
 
@@ -138,8 +139,12 @@ async function injectMasterElements(
     const elementsToInsert: string[] = [];
 
     // Master background
-    if (injection.masterBackground) {
-      masterXml = injectMasterBackground(masterXml, injection.masterBackground);
+    const masterBackground = resolveInjectableMasterBackground(
+      injection.masterBackground,
+      injection.paletteHints,
+    );
+    if (masterBackground) {
+      masterXml = injectMasterBackground(masterXml, masterBackground);
     }
 
     // Decorative shapes (inserted before logo for correct z-order)
@@ -189,6 +194,70 @@ function injectMasterBackground(masterXml: string, bgColor: string): string {
 
   // Insert before <p:spTree>
   return masterXml.replace(/<p:spTree>/, `${bgXml}<p:spTree>`);
+}
+
+function resolveInjectableMasterBackground(
+  background: string | null,
+  paletteHints: string[],
+) {
+  const normalizedBackground = normalizeHexColor(background);
+  if (!normalizedBackground) {
+    return null;
+  }
+
+  const normalizedHints = paletteHints
+    .map((value) => normalizeHexColor(value))
+    .filter((value): value is string => Boolean(value));
+
+  if (normalizedHints.includes(normalizedBackground)) {
+    return normalizedBackground;
+  }
+
+  if (normalizedHints.some((value) => colorDistance(normalizedBackground, value) <= 26)) {
+    return normalizedBackground;
+  }
+
+  if (isLikelyPlaceholderNeutral(normalizedBackground)) {
+    console.info(`[PGTI] Skipping placeholder-like master background ${normalizedBackground}`);
+    return null;
+  }
+
+  return normalizedBackground;
+}
+
+function normalizeHexColor(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.replace(/^#/, "").trim().toUpperCase();
+  return /^[0-9A-F]{6}$/.test(normalized) ? normalized : null;
+}
+
+function isLikelyPlaceholderNeutral(hex: string) {
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  const channelSpread = Math.max(red, green, blue) - Math.min(red, green, blue);
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return channelSpread <= 14 && luminance > 0.15 && luminance < 0.88;
+}
+
+function colorDistance(left: string, right: string) {
+  const [leftR, leftG, leftB] = hexToRgb(left);
+  const [rightR, rightG, rightB] = hexToRgb(right);
+  return Math.sqrt(
+    ((leftR - rightR) ** 2) +
+    ((leftG - rightG) ** 2) +
+    ((leftB - rightB) ** 2),
+  );
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ];
 }
 
 function buildDecorativeShapeXml(shape: {

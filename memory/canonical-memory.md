@@ -186,6 +186,7 @@ Template fidelity lesson:
 
 - imported client PPTX profiles must not inherit Basquio defaults; if `coverBg`, logo paths, or callout colors look like house-style values, the extractor is contaminated
 - imported client PPTX profiles may carry extracted `brandTokens.logo.imageBase64`, `brandTokens.logo.position`, and `brandTokens.decorativeShapes`; those fields are part of the live template-fidelity contract and must not be stripped from the schema
+- imported client PPTX `brandTokens.injection.masterBackground` is advisory only; treat it as live deck canvas only if it matches palette hints or is clearly brand-aligned. Neutral placeholder fills must be ignored at extraction time and again at render time.
 - the current manifest is not rich enough to rebuild final slides from metadata alone; manifest-only recomposition can preserve geometry while destroying actual slide content
 - until full rendered slide content is carried explicitly, prefer clean prompt palette injection over post-hoc PPTX reconstruction
 - free-plan custom-template runs must persist a durable checkout draft before redirecting to Stripe so `/jobs/new` can resume safely after payment without losing uploaded files or the brief
@@ -217,3 +218,4 @@ When architecture changes:
 - deterministic NIQ decimal policy must override heuristic formatting when the metric family is known: value/volume/packs 0 unless scaled, distribution/promo pressure/TDP 0, intensity index 1, shares and discount depth 1, prices 2, indices 0, rotation/ROS/productivity 1, with variations inheriting base precision.
 - quality hardening should follow eval-driven development: automated/code-based checks first, LLM judges only with explicit rubrics, and regression cases treated as release blockers rather than allowing style wins to hide intelligence regressions.
 - superseded attempts are terminal lineage, not active lineage. Any recovery or ownership-loss path must stamp the old attempt row with `completed_at` and close request rows so forensic audits never show ghost-running attempts after handoff.
+- workbook-native charts are not enough on their own; `data_tables.xlsx` is a user-facing consulting artifact and requires a deterministic presentation shell: README/index sheet, freeze panes, styled headers, styled Excel tables, explicit column widths, hidden helper ranges outside the visible chart panel, and reserved right-panel chart placement to avoid overlaps.

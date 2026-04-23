@@ -262,7 +262,13 @@ async function parsePptxTemplate(input: {
   const decorativeShapes = await extractDecorativeShapes(zip);
   const masterDecorativeShapes = await extractMasterDecorativeShapes(zip);
   const theme = extractTheme(themeXml, coverBg);
-  const injectionPayload = extractInjectionPayload(themeXml, coverLogo, masterDecorativeShapes, zip);
+  const injectionPayload = extractInjectionPayload(
+    themeXml,
+    coverLogo,
+    masterDecorativeShapes,
+    zip,
+    Object.values(theme.palette),
+  );
   const layouts = await Promise.all(
     layoutEntries.map(async (entry) =>
       extractLayout(
@@ -733,6 +739,7 @@ async function extractInjectionPayload(
   coverLogo: { imageBase64?: string; position?: { x: number; y: number; w: number; h: number } },
   masterShapes: NonNullable<TemplateProfile["brandTokens"]>["decorativeShapes"],
   zip: JSZip,
+  paletteHints: string[],
 ) {
   // Extract raw XML fragments for deterministic injection
   const colorSchemeMatch = themeXml.match(/<a:clrScheme\b[^>]*>[\s\S]*?<\/a:clrScheme>/i);
@@ -748,7 +755,8 @@ async function extractInjectionPayload(
     }
   }
 
-  const masterBg = await extractMasterBackground(zip);
+  const extractedMasterBackground = await extractMasterBackground(zip);
+  const masterBg = sanitizeMasterBackground(extractedMasterBackground, paletteHints);
 
   // Always return a payload if there's ANYTHING to inject — theme, logo, shapes, or background.
   // A template with a logo but no theme XML still needs deterministic injection.
@@ -767,8 +775,66 @@ async function extractInjectionPayload(
       x: s.x, y: s.y, w: s.w, h: s.h,
       fill: s.fill.replace(/^#/, ""),
     })),
+    paletteHints: paletteHints.map((value) => value.replace(/^#/, "").toUpperCase()),
     masterBackground: masterBg?.replace(/^#/, "") ?? null,
   };
+}
+
+function sanitizeMasterBackground(background: string | null, paletteHints: string[]) {
+  const normalizedBackground = normalizeHex(background);
+  if (!normalizedBackground) {
+    return null;
+  }
+
+  const normalizedHints = paletteHints
+    .map((value) => normalizeHex(value))
+    .filter((value): value is string => Boolean(value));
+
+  if (normalizedHints.includes(normalizedBackground)) {
+    return `#${normalizedBackground}`;
+  }
+  if (normalizedHints.some((value) => colorDistance(normalizedBackground, value) <= 26)) {
+    return `#${normalizedBackground}`;
+  }
+  if (isLikelyPlaceholderNeutral(normalizedBackground)) {
+    return null;
+  }
+  return `#${normalizedBackground}`;
+}
+
+function normalizeHex(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.replace(/^#/, "").trim().toUpperCase();
+  return /^[0-9A-F]{6}$/.test(normalized) ? normalized : null;
+}
+
+function isLikelyPlaceholderNeutral(hex: string) {
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  const channelSpread = Math.max(red, green, blue) - Math.min(red, green, blue);
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return channelSpread <= 14 && luminance > 0.15 && luminance < 0.88;
+}
+
+function colorDistance(left: string, right: string) {
+  const [leftR, leftG, leftB] = hexToRgb(left);
+  const [rightR, rightG, rightB] = hexToRgb(right);
+  return Math.sqrt(
+    ((leftR - rightR) ** 2) +
+    ((leftG - rightG) ** 2) +
+    ((leftB - rightB) ** 2),
+  );
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ];
 }
 
 function inferSlideMetrics(raw: string) {

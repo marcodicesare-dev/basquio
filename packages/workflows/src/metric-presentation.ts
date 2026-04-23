@@ -21,8 +21,14 @@ type WorkbookSheetLike = {
 
 type WorkbookSheetPresentation = {
   sheetName: string;
+  freezePane: string;
+  tableStyleName: string;
+  headerFillColor: string;
+  headerTextColor: string;
+  showGridLines: boolean;
   columns: Array<{
     header: string;
+    widthChars: number;
     presentation: MetricPresentationSpec;
   }>;
 };
@@ -135,7 +141,10 @@ export function inferMetricPresentationSpec(input: MetricPresentationInput): Met
   };
 }
 
-export function buildWorkbookSheetPresentation(sheet: WorkbookSheetLike): WorkbookSheetPresentation {
+export function buildWorkbookSheetPresentation(
+  sheet: WorkbookSheetLike,
+  templateProfile?: TemplateProfile,
+): WorkbookSheetPresentation {
   const columns = sheet.headers
     .filter((header, index) =>
       index > 0 &&
@@ -143,22 +152,33 @@ export function buildWorkbookSheetPresentation(sheet: WorkbookSheetLike): Workbo
     )
     .map((header) => ({
       header,
+      widthChars: inferWorkbookColumnWidth(sheet, header),
       presentation: inferMetricPresentationSpec({
         label: header,
         title: sheet.name,
       }),
     }));
 
+  const palette = templateProfile?.brandTokens?.palette;
+  const headerFillColor = palette?.accent ?? "#1A6AFF";
+  const headerTextColor = pickReadableHeaderTextColor(headerFillColor);
+
   return {
     sheetName: sheet.name,
+    freezePane: sheet.headers.length > 1 ? "B2" : "A2",
+    tableStyleName: "TableStyleMedium2",
+    headerFillColor,
+    headerTextColor,
+    showGridLines: false,
     columns,
   };
 }
 
 export function buildWorkbookSheetPresentations(
   sheets: WorkbookSheetLike[],
+  templateProfile?: TemplateProfile,
 ): WorkbookSheetPresentation[] {
-  return sheets.map((sheet) => buildWorkbookSheetPresentation(sheet)).filter((sheet) => sheet.columns.length > 0);
+  return sheets.map((sheet) => buildWorkbookSheetPresentation(sheet, templateProfile));
 }
 
 export function buildExhibitPresentationSpec(input: {
@@ -230,9 +250,48 @@ export function buildExhibitPresentationSpec(input: {
         : "basquio-default",
     templateProfileId: input.templateProfile.id,
     templateProfileSource: input.templateProfile.sourceType,
+    workbookPresentation: {
+      freezePane: "B2",
+      tableStyleName: "TableStyleMedium2",
+      chartPlacement: "right-panel",
+      chartPanelMinWidthColumns: normalizeChartType(input.chartType) === "scatter" ? 9 : 8,
+      chartPanelMinHeightRows:
+        normalizeChartType(input.chartType) === "pie" || normalizeChartType(input.chartType) === "doughnut"
+          ? 16
+          : 18,
+      showGridLines: false,
+    },
     workbookAnchor: input.workbookAnchor ?? null,
     screenshotChartId: input.chartId,
   };
+}
+
+function inferWorkbookColumnWidth(sheet: WorkbookSheetLike, header: string) {
+  const headerWidth = header.trim().length;
+  const sampleWidths = sheet.rows.slice(0, 24).map((row) => {
+    const value = row[header];
+    if (value === null || value === undefined) {
+      return 0;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(Math.abs(value)).length + 2;
+    }
+    return String(value).trim().length;
+  });
+  const maxWidth = Math.max(headerWidth, ...sampleWidths);
+  return Math.max(12, Math.min(28, maxWidth + 2));
+}
+
+function pickReadableHeaderTextColor(fillColor: string) {
+  const normalized = fillColor.replace(/^#/, "");
+  if (normalized.length !== 6) {
+    return "#FFFFFF";
+  }
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return luminance > 0.62 ? "#0B0C0C" : "#FFFFFF";
 }
 
 function resolveMetricPolicy(baseText: string): MetricPolicyRule | null {

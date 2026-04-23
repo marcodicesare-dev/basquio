@@ -82,7 +82,9 @@
 - Every generated narrative object must be schema-validated.
 - Confidence and uncertainty must be represented explicitly.
 - Brand colors, typography, spacing, and logo constraints must come from a file-backed contract, not only hardcoded theme values.
+- Imported template master-background tokens are advisory, not authoritative. Do not let a neutral extracted master fill become the live deck canvas unless it is clearly brand-aligned.
 - The AI should decide what to compute; code should compute the numbers.
+- `data_tables.xlsx` is a user-facing deliverable. Native chart injection alone is insufficient; the workbook must preserve a readable consulting shell with freeze panes, styled tables, deterministic widths, and collision-free chart placement.
 
 ## Change Management Rules
 

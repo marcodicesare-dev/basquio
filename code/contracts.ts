@@ -95,6 +95,15 @@ export const exhibitAxisPresentationSchema = z.object({
   textColor: z.string().nullable().default(null),
 });
 
+export const exhibitWorkbookPresentationSchema = z.object({
+  freezePane: z.string().nullable().default("B2"),
+  tableStyleName: z.string().nullable().default("TableStyleMedium2"),
+  chartPlacement: z.enum(["right-panel"]).default("right-panel"),
+  chartPanelMinWidthColumns: z.number().int().min(6).max(20).default(8),
+  chartPanelMinHeightRows: z.number().int().min(10).max(40).default(18),
+  showGridLines: z.boolean().default(false),
+});
+
 export const exhibitPresentationSpecSchema = z.object({
   chartFamily: z.string(),
   legendPosition: z.enum(["top", "right", "bottom", "left", "none"]).default("bottom"),
@@ -109,6 +118,7 @@ export const exhibitPresentationSpecSchema = z.object({
   brandPaletteSource: z.string().nullable().default(null),
   templateProfileId: z.string().nullable().default(null),
   templateProfileSource: z.string().nullable().default(null),
+  workbookPresentation: exhibitWorkbookPresentationSchema.default({}),
   workbookAnchor: z.string().nullable().default(null),
   screenshotChartId: z.string().nullable().default(null),
 });
@@ -908,6 +918,7 @@ export const templateBrandTokensSchema = z.object({
         fill: z.string(),
       }),
     ).default([]),
+    paletteHints: z.array(z.string()).default([]),
     masterBackground: z.string().nullable(),
   }).optional(),
 });
