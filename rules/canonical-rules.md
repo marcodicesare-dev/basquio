@@ -64,6 +64,7 @@
 
 - `container_upload` files cost 0 input tokens. NEVER duplicate file data in the message text.
 - Each `pause_turn` continuation re-sends the FULL message history as input tokens. Minimize continuations.
+- For Claude 4.6+ / Opus 4.7, a `pause_turn` continuation must end with a user continuation message, not a trailing assistant-prefill turn.
 - Include `web_fetch_20260209` in the tools array for free code execution compute.
 - If the loaded Anthropic Skills auto-inject code execution, do not also register a second named `code_execution` tool that collides with the injected one.
 - The generation call should be a SINGLE turn, not an understand/author split. Multi-turn accumulates tool output and multiplies costs.

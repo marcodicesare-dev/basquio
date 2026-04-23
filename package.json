@@ -15,6 +15,7 @@
     "qa:basquio": "tsx scripts/qa-context.ts",
     "test:notify-completion": "tsx scripts/test-notify-completion.ts",
     "test:code-exec": "tsx scripts/test-code-exec.ts",
+    "test:anthropic-message-thread": "tsx scripts/test-anthropic-message-thread.ts",
     "test:cost-guard": "tsx scripts/test-cost-guard.ts",
     "test:eval-harness": "tsx scripts/test-eval-harness.ts",
     "test:metric-presentation": "tsx scripts/test-metric-presentation.ts",

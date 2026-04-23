@@ -174,13 +174,20 @@ Why:
 - Public Anthropic docs confirm the `pptx` skill exists and is intended for creating and editing presentations, but they do not require Basquio to depend on an undocumented internal implementation detail.
 - Hardcoding a different presentation library contract in the prompt creates conflicting guidance and makes the worker less resilient to skill evolution.
 
-### Do NOT add user "Continue" messages on pause_turn
+### March 23, 2026 guidance superseded on Apr 23, 2026 — pause_turn continuations must end with user
 
 Decision:
-- When handling `pause_turn`, append the assistant response and re-send. Do NOT add a user message saying "Continue."
+- For Claude 4.6+ / Opus 4.7, a `pause_turn` continuation must append the assistant history and then add a short user continuation message.
+- Do not send a follow-up request whose last message is `assistant`.
 
 Why:
-- SDK docs explicitly say: "Do NOT add an extra user message like 'Continue.' — the API detects the trailing server_tool_use block and knows to resume automatically."
+- Anthropic's current prompt-engineering guidance for Claude 4.6+ says to migrate away from prefilled last-assistant responses.
+- Production run `7cb2e67c-c4cb-4edc-b351-e467ef5b81ad` failed in `author` with: `This model does not support assistant message prefill. The conversation must end with a user message.`
+- The older "just resend the assistant turn" assumption is no longer safe on the live model contract Basquio uses in production.
+
+Implication:
+- `runClaudeLoop()` pause-turn continuation must preserve assistant history for context, but the next request must end with an explicit user continuation instruction.
+- Any future docs or prompts that recommend trailing-assistant continuation are stale unless revalidated against the live Anthropic contract.
 
 ### Move long-running execution off Vercel request routes
 

@@ -64,6 +64,10 @@ import {
   OPUS_AUTHOR_MODEL,
 } from "./anthropic-execution-contract";
 import {
+  appendAssistantTurn,
+  appendPauseTurnContinuation,
+} from "./anthropic-message-thread";
+import {
   assertDeckSpendWithinBudget,
   enforceDeckBudget,
   getDeckBudgetCaps,
@@ -3875,54 +3879,6 @@ function sanitizeFailureMessage(raw: string): string {
     return raw.slice(0, 500);
   }
   return raw;
-}
-
-function appendAssistantTurn(
-  messages: Anthropic.Beta.BetaMessageParam[],
-  message: Anthropic.Beta.BetaMessage,
-): Anthropic.Beta.BetaMessageParam[] {
-  // Strip orphaned tool_use blocks that lack a matching tool_result in the same message.
-  // This happens when code execution is interrupted during a pause_turn — the assistant
-  // message contains the tool_use but the API never appended the tool_result.
-  const content = message.content as Anthropic.Beta.BetaContentBlockParam[];
-  const resultToolIds = new Set<string>();
-  for (const block of content) {
-    const b = block as unknown as Record<string, unknown>;
-    if (
-      typeof b.type === "string" &&
-      b.type.endsWith("_tool_result") &&
-      typeof b.tool_use_id === "string"
-    ) {
-      resultToolIds.add(b.tool_use_id);
-    }
-  }
-  const safeContent = content.filter((block) => {
-    const b = block as unknown as Record<string, unknown>;
-    if (
-      typeof b.type === "string" &&
-      b.type.endsWith("_tool_use") &&
-      typeof b.id === "string" &&
-      !resultToolIds.has(b.id)
-    ) {
-      return false;
-    }
-    return true;
-  });
-
-  return [
-    ...messages,
-    {
-      role: "assistant",
-      content: safeContent.length > 0 ? safeContent : content,
-    },
-  ];
-}
-
-function appendPauseTurnContinuation(
-  messages: Anthropic.Beta.BetaMessageParam[],
-  message: Anthropic.Beta.BetaMessage,
-): Anthropic.Beta.BetaMessageParam[] {
-  return appendAssistantTurn(messages, message);
 }
 
 function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvidencePackage>>) {

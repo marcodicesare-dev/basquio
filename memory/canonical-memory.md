@@ -88,6 +88,7 @@ Initial domain bias:
 - Recommendation quality is its own reusable knowledge surface and must stay evidence-anchored, quantified only when directly supported, and specific about the lever, target, and expected gain.
 - Analytical slides should surface supporting numbers on the same page whenever possible through co-located tables or explicit chart annotations.
 - High token spend in code-execution runs is often driven by repeated `pause_turn` continuation with growing container history, not only by the initial prompt size.
+- For Claude 4.6+ / Opus 4.7, `pause_turn` continuations must not end on an assistant message; Basquio must append assistant history and then an explicit user continuation prompt to stay on the live Anthropic contract.
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
 - file-backed budget preflight must use telemetry-shaped cost envelopes rather than output-only projected spend.
 - repair routing should prefer deterministic fixes first, then a cheap Haiku lane, and only then Sonnet-class revise when structural repair or major visual redesign is still required.
