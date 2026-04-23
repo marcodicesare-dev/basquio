@@ -15,6 +15,27 @@ loadBasquioScriptEnv();
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+function dedupeRequestUsageRows(rows: Array<Record<string, unknown>>) {
+  const deduped = new Map<string, Record<string, unknown>>();
+
+  for (const row of rows) {
+    const requestId = typeof row.anthropic_request_id === "string" ? row.anthropic_request_id.trim() : "";
+    const attemptNumber = String(row.attempt_number ?? "");
+    const rowId = String(row.id ?? "");
+    const key = requestId ? `${attemptNumber}:${requestId}` : rowId;
+    const existing = deduped.get(key);
+    const currentKind = String(row.request_kind ?? "");
+    const existingKind = String(existing?.request_kind ?? "");
+    const preferCurrent = !existing || currentKind !== "request_record" || existingKind === "request_record";
+
+    if (preferCurrent) {
+      deduped.set(key, row);
+    }
+  }
+
+  return [...deduped.values()];
+}
+
 async function auditRun(runId: string) {
   console.log(`\n=== Run Audit: ${runId} ===\n`);
 
@@ -95,11 +116,13 @@ async function auditRun(runId: string) {
       limit: "50",
     },
   });
+  const dedupedRequests = dedupeRequestUsageRows(requests);
 
-  if (requests.length === 0) {
+  if (dedupedRequests.length === 0) {
     console.log("  No request usage records.");
   }
-  for (const req of requests) {
+  console.log(`  deduped view: ${dedupedRequests.length} logical requests (${requests.length} raw rows)`);
+  for (const req of dedupedRequests) {
     const usage = req.usage as Record<string, number> | null;
     console.log(`  [${req.phase}/${req.request_kind}] ${req.model} | tokens: ${usage?.totalTokens ?? 0} | req: ${req.anthropic_request_id ?? "none"}`);
   }

@@ -84,6 +84,7 @@ import {
 } from "./metric-presentation";
 import { runClaimTraceabilityQa } from "./claim-traceability-qa";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
+import { closeOpenRequestUsageRows } from "./request-usage-lifecycle";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested, notifyRunFailureIfRequested } from "./notify-completion";
@@ -592,6 +593,8 @@ type ArtifactCheckpoint = {
   phase: "author" | "critique" | "revise";
   pptxStoragePath: string;
   pdfStoragePath: string;
+  mdStoragePath: string;
+  xlsxStoragePath: string;
   manifestJson: Record<string, unknown>;
   savedAt: string;
   attemptId: string;
@@ -671,6 +674,43 @@ export class AttemptOwnershipLostError extends Error {
     super(`Run ${runId} is no longer owned by attempt ${attemptId}.`);
     this.name = "AttemptOwnershipLostError";
   }
+}
+
+export class WorkerShutdownInterruptError extends Error {
+  constructor(phase: string) {
+    super(`Worker shutdown interrupted the ${phase} phase before the provider request completed.`);
+    this.name = "WorkerShutdownInterruptError";
+  }
+}
+
+function throwIfWorkerShutdownRequested(signal: AbortSignal | null | undefined, phase: string) {
+  if (signal?.aborted) {
+    throw new WorkerShutdownInterruptError(phase);
+  }
+}
+
+async function waitWithOptionalAbort(ms: number, signal: AbortSignal | null | undefined, phase: string) {
+  if (!signal) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    return;
+  }
+
+  throwIfWorkerShutdownRequested(signal, phase);
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      reject(new WorkerShutdownInterruptError(phase));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function hasPdfHeader(buffer: Buffer) {
@@ -915,8 +955,19 @@ async function runClaimTraceabilityQaSafely(input: {
   }
 }
 
-export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<AttemptContext>) {
+const RECOVERY_ATTEMPT_REUSE_REASONS = new Set([
+  "stale_timeout",
+  "transient_provider_retry",
+  "transient_network_retry",
+  "worker_shutdown",
+]);
+
+export async function generateDeckRun(
+  runId: string,
+  suppliedAttempt?: (Partial<AttemptContext> & { abortSignal?: AbortSignal | null }),
+) {
   const config = resolveConfig();
+  const externalAbortSignal = suppliedAttempt?.abortSignal ?? null;
   const client = new Anthropic({
     apiKey: config.anthropicApiKey,
     maxRetries: 2,
@@ -1168,9 +1219,16 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       "did not generate required file",
     ];
 
-    const existingCheckpoint = await loadArtifactCheckpoint(config, runId, { requireResumeReady: true });
+    const existingCheckpoint = attempt.attemptNumber > 1
+      ? await loadArtifactCheckpoint(config, runId, {
+          preferResumeReady: true,
+          attemptNumber: attempt.attemptNumber - 1,
+        })
+      : null;
     let checkpointArtifacts = existingCheckpoint ? await loadCheckpointArtifacts(config, existingCheckpoint) : null;
-    const recoveredAnalysis = await loadRecoveredAnalysis(config, runId);
+    const recoveredAnalysis = await loadRecoveredAnalysis(config, runId, {
+      attemptId: existingCheckpoint?.attemptId ?? null,
+    });
 
     // Determine if the previous failure class qualifies for checkpoint resume.
     // The worker clears failure_phase on the parent run when requeueing, so we
@@ -1245,6 +1303,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       console.log(`[generateDeckRun] recovering from ${existingCheckpoint.phase} checkpoint for run ${runId}`);
       pptxFile = checkpointArtifacts!.pptx;
       pdfFile = checkpointArtifacts!.pdf;
+      finalNarrativeMarkdown = checkpointArtifacts!.md;
+      xlsxFile = checkpointArtifacts!.xlsx;
       manifest = checkpointArtifacts!.manifest;
       analysis = recoveredAnalysis;
       phaseTelemetry.checkpointRecovery = {
@@ -1273,6 +1333,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       console.log(`[generateDeckRun] recovering from author checkpoint for run ${runId}`);
       pptxFile = checkpointArtifacts!.pptx;
       pdfFile = checkpointArtifacts!.pdf;
+      finalNarrativeMarkdown = checkpointArtifacts!.md;
+      xlsxFile = checkpointArtifacts!.xlsx;
       manifest = checkpointArtifacts!.manifest;
       analysis = recoveredAnalysis;
       phaseTelemetry.checkpointRecovery = {
@@ -1291,7 +1353,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         });
       }
     } else {
-      const isRecoveryAttempt = attempt.recoveryReason === "stale_timeout" || attempt.recoveryReason === "transient_provider_retry";
+      const isRecoveryAttempt = RECOVERY_ATTEMPT_REUSE_REASONS.has(attempt.recoveryReason ?? "");
       const recoveredAnalysisForSplit = isRecoveryAttempt ? recoveredAnalysis : null;
       const questionRoutes = routeQuestion(buildBriefText(run));
 
@@ -1409,6 +1471,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             tools: buildClaudeTools(candidateModel),
             outputConfig: buildAuthoringOutputConfig(candidateModel),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
+            abortSignal: externalAbortSignal,
           });
           const requiredAuthorFiles = candidateIsReportOnly
             ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
@@ -1459,6 +1522,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               thinking: buildAuthoringThinkingConfig(candidateModel),
               outputConfig: buildAuthoringOutputConfig(candidateModel),
               onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
+              abortSignal: externalAbortSignal,
             });
             candidateFiles = mergeGeneratedFiles(candidateFiles, await downloadGeneratedFiles(client, retryResponse.fileIds));
             candidateResponse = {
@@ -1601,9 +1665,22 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         applyChartPreprocessingConstraints(analysis);
         const resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
         phaseTelemetry.understandPlanLint = resolvedPlanLint.summary;
-        await upsertWorkingPaper(config, runId, "analysis_result", analysis);
-        await upsertWorkingPaper(config, runId, "deck_plan", { slidePlan: analysis.slidePlan });
-        await upsertWorkingPaper(config, runId, "deck_plan_validation", resolvedPlanLint.result).catch(() => {});
+        await assertAttemptStillOwnsRun(config, runId, attempt);
+        await upsertWorkingPaper(config, runId, "analysis_result", {
+          ...analysis,
+          _attemptId: attempt.id,
+          _attemptNumber: attempt.attemptNumber,
+        });
+        await upsertWorkingPaper(config, runId, "deck_plan", {
+          slidePlan: analysis.slidePlan,
+          _attemptId: attempt.id,
+          _attemptNumber: attempt.attemptNumber,
+        });
+        await upsertWorkingPaper(config, runId, "deck_plan_validation", {
+          ...resolvedPlanLint.result,
+          _attemptId: attempt.id,
+          _attemptNumber: attempt.attemptNumber,
+        }).catch(() => {});
         await insertEvent(config, runId, attempt, "understand", "plan_validation", {
           ...resolvedPlanLint.summary,
           actionableIssues: resolvedPlanLint.actionableIssues.slice(0, 8),
@@ -1611,6 +1688,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
         await upsertWorkingPaper(config, runId, "analysis_checkpoint", {
           ...analysis,
           checkpointedAt: new Date().toISOString(),
+          _attemptId: attempt.id,
+          _attemptNumber: attempt.attemptNumber,
         }).catch((checkpointError) => {
           console.warn(`[generateDeckRun] failed to persist analysis checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
         });
@@ -1728,7 +1807,17 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       // A1: Persist durable artifact checkpoint after author success
       if (!isReportOnly && pptxFile && pdfFile) {
         await assertAttemptStillOwnsRun(config, runId, attempt);
-        await persistArtifactCheckpoint(config, runId, attempt, "author", pptxFile, pdfFile, manifest, {
+        await persistArtifactCheckpoint(
+          config,
+          runId,
+          attempt,
+          "author",
+          pptxFile,
+          pdfFile,
+          finalNarrativeMarkdown!,
+          xlsxFile!,
+          manifest,
+          {
           resumeReady: false,
           proof: {
             authorComplete: true,
@@ -1739,7 +1828,8 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             contractPassed: false,
             deckNeedsRevision: true,
           },
-        }).catch((checkpointError) => {
+          },
+        ).catch((checkpointError) => {
           console.warn(`[generateDeckRun] failed to persist author checkpoint: ${checkpointError instanceof Error ? checkpointError.message : String(checkpointError)}`);
         });
       }
@@ -1840,7 +1930,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       initialVisualQa.usage,
     );
     await assertAttemptStillOwnsRun(config, runId, attempt);
-    await persistArtifactCheckpoint(config, runId, attempt, "critique", pptxFile!, pdfFile!, manifest, {
+    await persistArtifactCheckpoint(config, runId, attempt, "critique", pptxFile!, pdfFile!, finalNarrativeMarkdown!, xlsxFile!, manifest, {
       resumeReady:
         critiqueCheckpointProof.visualQaGreen &&
         critiqueCheckpointProof.lintPassed &&
@@ -1987,6 +2077,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
             thinking: buildAuthoringThinkingConfig(reviseModel),
             outputConfig: buildAuthoringOutputConfig(reviseModel),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),
+            abortSignal: externalAbortSignal,
           });
           let reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
           const missingReviseFiles = findMissingGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"]);
@@ -2036,6 +2127,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
               thinking: buildAuthoringThinkingConfig(reviseModel),
               outputConfig: buildAuthoringOutputConfig(reviseModel),
               onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),
+              abortSignal: externalAbortSignal,
             });
             const retryFiles = await downloadGeneratedFiles(client, retryResponse.fileIds);
             for (const retryFile of retryFiles) {
@@ -2280,7 +2372,7 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
           deckNeedsRevision: finalVisualQa.deckNeedsRevision,
         });
         await assertAttemptStillOwnsRun(config, runId, attempt);
-        await persistArtifactCheckpoint(config, runId, attempt, "revise", finalPptx!, finalPdf, finalManifest, {
+        await persistArtifactCheckpoint(config, runId, attempt, "revise", finalPptx!, finalPdf, finalNarrativeMarkdown!, xlsxFile!, finalManifest, {
           resumeReady:
             reviseCheckpointProof.visualQaGreen &&
             reviseCheckpointProof.lintPassed &&
@@ -2619,6 +2711,10 @@ export async function generateDeckRun(runId: string, suppliedAttempt?: Partial<A
       console.warn(`[generateDeckRun] ${error.message} Skipping finalization for superseded attempt.`);
       throw error;
     }
+    if (error instanceof WorkerShutdownInterruptError) {
+      console.warn(`[generateDeckRun] ${error.message} Skipping failure finalization because shutdown recovery will supersede the attempt.`);
+      throw error;
+    }
     const rawMessage = error instanceof Error ? error.message : "Deck generation failed.";
     const message = sanitizeFailureMessage(rawMessage);
     const failureClass = classifyRuntimeError(error);
@@ -2929,6 +3025,9 @@ async function loadTemplateProfileRow(
 async function loadRecoveredAnalysis(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
+  options: {
+    attemptId?: string | null;
+  } = {},
 ) {
   for (const paperType of ["analysis_checkpoint", "analysis_result"] as const) {
     const rows = await fetchRestRows<WorkingPaperRow>({
@@ -2940,21 +3039,30 @@ async function loadRecoveredAnalysis(
         run_id: `eq.${runId}`,
         paper_type: `eq.${paperType}`,
         order: "version.desc",
-        limit: "1",
+        limit: "20",
       },
     }).catch(() => []);
 
-    const content = rows[0]?.content;
-    if (!content) {
-      continue;
-    }
+    for (const row of rows) {
+      const content = row.content;
+      if (!content) {
+        continue;
+      }
 
-    try {
-      const parsed = analysisSchema.parse(content);
-      enforceAnalysisExhibitRules(parsed);
-      return parsed;
-    } catch {
-      continue;
+      if (options.attemptId) {
+        const contentAttemptId = typeof content._attemptId === "string" ? content._attemptId : null;
+        if (contentAttemptId !== options.attemptId) {
+          continue;
+        }
+      }
+
+      try {
+        const parsed = analysisSchema.parse(content);
+        enforceAnalysisExhibitRules(parsed);
+        return parsed;
+      } catch {
+        continue;
+      }
     }
   }
 
@@ -3089,6 +3197,8 @@ async function persistArtifactCheckpoint(
   phase: "author" | "critique" | "revise",
   pptx: GeneratedFile,
   pdf: GeneratedFile,
+  narrativeMarkdown: GeneratedFile,
+  xlsx: GeneratedFile,
   manifest: Record<string, unknown>,
   metadata?: {
     resumeReady?: boolean;
@@ -3101,10 +3211,12 @@ async function persistArtifactCheckpoint(
   const checkpointKey = `${attempt.attemptNumber}-${attempt.id}-${phase}`;
   const pptxPath = `deck-runs/${runId}/checkpoints/${checkpointKey}/deck.pptx`;
   const pdfPath = `deck-runs/${runId}/checkpoints/${checkpointKey}/deck.pdf`;
+  const mdPath = `deck-runs/${runId}/checkpoints/${checkpointKey}/narrative_report.md`;
+  const xlsxPath = `deck-runs/${runId}/checkpoints/${checkpointKey}/data_tables.xlsx`;
 
   // Both uploads must succeed before we write the checkpoint record.
   // A dangling record pointing to missing files is worse than no checkpoint.
-  const [pptxResult, pdfResult] = await Promise.all([
+  const [pptxResult, pdfResult, mdResult, xlsxResult] = await Promise.all([
     uploadToStorage({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
@@ -3123,16 +3235,36 @@ async function persistArtifactCheckpoint(
       contentType: "application/pdf",
       upsert: true,
     }).then(() => true).catch(() => false),
+    uploadToStorage({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      bucket: "artifacts",
+      storagePath: mdPath,
+      body: narrativeMarkdown.buffer,
+      contentType: "text/markdown; charset=utf-8",
+      upsert: true,
+    }).then(() => true).catch(() => false),
+    uploadToStorage({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      bucket: "artifacts",
+      storagePath: xlsxPath,
+      body: xlsx.buffer,
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      upsert: true,
+    }).then(() => true).catch(() => false),
   ]);
 
-  if (!pptxResult || !pdfResult) {
-    throw new Error(`Checkpoint upload failed: pptx=${pptxResult}, pdf=${pdfResult}`);
+  if (!pptxResult || !pdfResult || !mdResult || !xlsxResult) {
+    throw new Error(`Checkpoint upload failed: pptx=${pptxResult}, pdf=${pdfResult}, md=${mdResult}, xlsx=${xlsxResult}`);
   }
 
   const checkpoint: ArtifactCheckpoint = {
     phase,
     pptxStoragePath: pptxPath,
     pdfStoragePath: pdfPath,
+    mdStoragePath: mdPath,
+    xlsxStoragePath: xlsxPath,
     manifestJson: manifest,
     savedAt: timestamp,
     attemptId: attempt.id,
@@ -3153,6 +3285,7 @@ async function loadArtifactCheckpoint(
   options: {
     requireResumeReady?: boolean;
     preferResumeReady?: boolean;
+    attemptNumber?: number;
   } = {},
 ): Promise<ArtifactCheckpoint | null> {
   const rows = await fetchRestRows<WorkingPaperRow>({
@@ -3171,24 +3304,33 @@ async function loadArtifactCheckpoint(
   const checkpoints = rows
     .map((row) => normalizeArtifactCheckpoint(row.content))
     .filter((checkpoint): checkpoint is ArtifactCheckpoint => checkpoint !== null);
+  const scopedCheckpoints = typeof options.attemptNumber === "number"
+    ? checkpoints.filter((checkpoint) => checkpoint.attemptNumber === options.attemptNumber)
+    : checkpoints;
 
   if (options.requireResumeReady) {
-    return checkpoints.find((checkpoint) => checkpoint.resumeReady) ?? null;
+    return scopedCheckpoints.find((checkpoint) => checkpoint.resumeReady) ?? null;
   }
 
   if (options.preferResumeReady) {
-    return checkpoints.find((checkpoint) => checkpoint.resumeReady) ?? checkpoints[0] ?? null;
+    return scopedCheckpoints.find((checkpoint) => checkpoint.resumeReady) ?? scopedCheckpoints[0] ?? null;
   }
 
-  return checkpoints[0] ?? null;
+  return scopedCheckpoints[0] ?? null;
 }
 
 async function loadCheckpointArtifacts(
   config: ReturnType<typeof resolveConfig>,
   checkpoint: ArtifactCheckpoint,
-): Promise<{ pptx: GeneratedFile; pdf: GeneratedFile; manifest: z.infer<typeof deckManifestSchema> } | null> {
+): Promise<{
+  pptx: GeneratedFile;
+  pdf: GeneratedFile;
+  md: GeneratedFile;
+  xlsx: GeneratedFile;
+  manifest: z.infer<typeof deckManifestSchema>;
+} | null> {
   try {
-    const [pptxBuffer, pdfBuffer] = await Promise.all([
+    const [pptxBuffer, pdfBuffer, mdBuffer, xlsxBuffer] = await Promise.all([
       downloadFromStorage({
         supabaseUrl: config.supabaseUrl,
         serviceKey: config.serviceKey,
@@ -3200,6 +3342,18 @@ async function loadCheckpointArtifacts(
         serviceKey: config.serviceKey,
         bucket: "artifacts",
         storagePath: checkpoint.pdfStoragePath,
+      }),
+      downloadFromStorage({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        bucket: "artifacts",
+        storagePath: checkpoint.mdStoragePath,
+      }),
+      downloadFromStorage({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        bucket: "artifacts",
+        storagePath: checkpoint.xlsxStoragePath,
       }),
     ]);
 
@@ -3213,6 +3367,8 @@ async function loadCheckpointArtifacts(
     return {
       pptx: { fileId: "checkpoint", fileName: "deck.pptx", buffer: pptxBuffer, mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" },
       pdf: { fileId: "checkpoint", fileName: "deck.pdf", buffer: pdfBuffer, mimeType: "application/pdf" },
+      md: { fileId: "checkpoint", fileName: "narrative_report.md", buffer: mdBuffer, mimeType: "text/markdown; charset=utf-8" },
+      xlsx: { fileId: "checkpoint", fileName: "data_tables.xlsx", buffer: xlsxBuffer, mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
       manifest,
     };
   } catch {
@@ -3607,6 +3763,15 @@ async function finalizeFailure(
       }).then((rows) => rows[0]?.active_attempt_id === attempt.id).catch(() => false)
     : true;
   const now = new Date().toISOString();
+  if (attempt) {
+    await closeOpenRequestUsageRows({
+      config,
+      attemptId: attempt.id,
+      status: "failed",
+      completedAt: now,
+      note: failureMessage.slice(0, 300),
+    });
+  }
   const attemptCostTelemetry = {
     model,
     estimatedCostUsd: extraTelemetry.estimatedCostUsd ?? 0,
@@ -4699,6 +4864,7 @@ async function runClaudeLoop(input: {
   maxPauseTurns?: number;
   phaseTimeoutMs?: number | null;
   requestWatchdogMs?: number | null;
+  abortSignal?: AbortSignal | null;
   currentSpentUsd?: number;
   targetSlideCount?: number;
   circuitKey?: string;
@@ -4721,6 +4887,7 @@ async function runClaudeLoop(input: {
     typeof input.phaseTimeoutMs === "number" && input.phaseTimeoutMs > 0
       ? input.phaseTimeoutMs
       : null;
+  const externalAbortSignal = input.abortSignal ?? null;
   const controller = phaseTimeoutMs ? new AbortController() : null;
   const timeoutHandle = phaseTimeoutMs
     ? setTimeout(() => controller?.abort(), phaseTimeoutMs)
@@ -4731,6 +4898,7 @@ async function runClaudeLoop(input: {
 
   try {
     for (let iteration = 0; iteration < 8; iteration += 1) {
+      throwIfWorkerShutdownRequested(externalAbortSignal, input.phaseLabel ?? "request");
       if (circuitState && input.circuitKey) {
         assertCircuitClosed(circuitState, input.circuitKey);
       }
@@ -4788,9 +4956,17 @@ async function runClaudeLoop(input: {
           ? setTimeout(() => requestController.abort(), requestTimeoutMs)
           : null;
         try {
-          const signal = controller
-            ? AbortSignal.any([controller.signal, requestController.signal])
-            : requestController.signal;
+          throwIfWorkerShutdownRequested(externalAbortSignal, input.phaseLabel ?? "request");
+          const signalParts = [requestController.signal];
+          if (controller) {
+            signalParts.push(controller.signal);
+          }
+          if (externalAbortSignal) {
+            signalParts.push(externalAbortSignal);
+          }
+          const signal = signalParts.length === 1
+            ? signalParts[0]!
+            : AbortSignal.any(signalParts);
           const stream = input.client.beta.messages.stream(
             streamBody,
             { signal },
@@ -4804,7 +4980,9 @@ async function runClaudeLoop(input: {
           }
           break;
         } catch (streamError) {
-          if (controller?.signal.aborted) {
+          if (externalAbortSignal?.aborted) {
+            throw new WorkerShutdownInterruptError(input.phaseLabel ?? "request");
+          } else if (controller?.signal.aborted) {
             const phaseTimeoutError = new Error(
               `Claude ${input.phaseLabel ?? "request"} timed out after ${phaseTimeoutMs ?? requestTimeoutMs ?? 0}ms.`,
             );
@@ -4841,7 +5019,7 @@ async function runClaudeLoop(input: {
             if (input.onRequestRecord) {
               await input.onRequestRecord(retryRecord).catch(() => {});
             }
-            await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
+            await waitWithOptionalAbort(baseDelay + jitter, externalAbortSignal, input.phaseLabel ?? "request");
             continue;
           }
           if (isTransientProviderError(streamError)) {
@@ -4915,6 +5093,7 @@ async function runClaudeLoop(input: {
         break;
       }
 
+      throwIfWorkerShutdownRequested(externalAbortSignal, input.phaseLabel ?? "request");
       messages = appendPauseTurnContinuation(messages, finalMessage);
     }
   } finally {
@@ -5824,7 +6003,14 @@ function buildCheckpointProof(
 }
 
 function normalizeArtifactCheckpoint(content: Record<string, unknown> | null): ArtifactCheckpoint | null {
-  if (!content || !content.phase || !content.pptxStoragePath || !content.pdfStoragePath) {
+  if (
+    !content ||
+    !content.phase ||
+    !content.pptxStoragePath ||
+    !content.pdfStoragePath ||
+    !content.mdStoragePath ||
+    !content.xlsxStoragePath
+  ) {
     return null;
   }
 
@@ -5845,6 +6031,8 @@ function normalizeArtifactCheckpoint(content: Record<string, unknown> | null): A
     phase: content.phase as ArtifactCheckpoint["phase"],
     pptxStoragePath: String(content.pptxStoragePath),
     pdfStoragePath: String(content.pdfStoragePath),
+    mdStoragePath: String(content.mdStoragePath),
+    xlsxStoragePath: String(content.xlsxStoragePath),
     manifestJson: (content.manifestJson ?? {}) as Record<string, unknown>,
     savedAt: String(content.savedAt ?? new Date(0).toISOString()),
     attemptId: String(content.attemptId ?? ""),

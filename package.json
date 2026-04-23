@@ -20,6 +20,7 @@
     "test:eval-harness": "tsx scripts/test-eval-harness.ts",
     "test:metric-presentation": "tsx scripts/test-metric-presentation.ts",
     "test:native-workbook-charts": "tsx scripts/test-native-workbook-charts.ts",
+    "test:request-usage-lifecycle": "tsx scripts/test-request-usage-lifecycle.ts",
     "test:slide-plan-linter": "tsx scripts/test-slide-plan-linter.ts",
     "test:workspace-context-pack": "tsx scripts/test-workspace-context-pack.ts",
     "test:run": "tsx scripts/test-run.ts",

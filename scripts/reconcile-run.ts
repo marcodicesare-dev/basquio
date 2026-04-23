@@ -37,6 +37,28 @@ type RequestUsageRow = {
   completed_at: string | null;
 };
 
+function dedupeRequestUsageRows(rows: RequestUsageRow[]) {
+  const deduped = new Map<string, RequestUsageRow>();
+
+  for (const row of rows) {
+    const requestId = row.anthropic_request_id?.trim() ?? "";
+    const key = requestId
+      ? `${row.attempt_id}:${requestId}`
+      : `${row.id}`;
+    const existing = deduped.get(key);
+    const preferCurrent =
+      !existing ||
+      row.request_kind !== "request_record" ||
+      existing.request_kind === "request_record";
+
+    if (preferCurrent) {
+      deduped.set(key, row);
+    }
+  }
+
+  return [...deduped.values()];
+}
+
 type AttemptRow = {
   id: string;
   attempt_number: number;
@@ -113,12 +135,13 @@ async function main() {
       limit: "200",
     },
   });
+  const dedupedRequests = dedupeRequestUsageRows(requests);
 
-  console.log(`\n── Requests (${requests.length}) ──`);
+  console.log(`\n── Requests (${dedupedRequests.length} deduped / ${requests.length} raw) ──`);
 
   // Group by attempt
   const byAttempt = new Map<number, RequestUsageRow[]>();
-  for (const req of requests) {
+  for (const req of dedupedRequests) {
     const list = byAttempt.get(req.attempt_number) ?? [];
     list.push(req);
     byAttempt.set(req.attempt_number, list);

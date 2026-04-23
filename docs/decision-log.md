@@ -189,6 +189,21 @@ Implication:
 - `runClaudeLoop()` pause-turn continuation must preserve assistant history for context, but the next request must end with an explicit user continuation instruction.
 - Any future docs or prompts that recommend trailing-assistant continuation are stale unless revalidated against the live Anthropic contract.
 
+### Apr 23, 2026 — request lifecycle must close cleanly on failure, supersession, and shutdown
+
+Decision:
+- `deck_run_request_usage` rows are part of the execution contract, not best-effort telemetry.
+- Any in-flight request sentinel opened before a Claude call must be closed when an attempt fails, is superseded, or is interrupted by worker shutdown.
+
+Why:
+- Production run `7cb2e67c-c4cb-4edc-b351-e467ef5b81ad` showed that deploy-time recovery can legitimately supersede a running attempt while a provider request is still open.
+- Leaving `completed_at = null` request rows behind forever does not break recovery immediately, but it pollutes telemetry and weakens stale-run reasoning.
+- Production-grade execution needs request state, attempt state, and recovery lineage to agree.
+
+Implication:
+- `finalizeFailure()` must mark open request rows as terminal.
+- worker shutdown handoff and ownership-loss paths must explicitly close in-flight request rows with an interruption/superseded status before handing off or exiting.
+
 ### Move long-running execution off Vercel request routes
 
 Decision:
@@ -733,3 +748,22 @@ Implication:
 - prompt changes alone are not sufficient; deterministic validators and explicit domain policies must carry the non-negotiable rules
 - NIQ decimal rules and promo-storytelling mechanics now belong in the knowledge and validation layer, not only in agent memory or ad hoc instructions
 - narrative linearity is not a soft editorial preference; branch backtracking is a planner defect and should fail plan lint before authoring
+
+## April 23, 2026 — Shutdown/recovery must preserve attempt integrity, not just availability
+
+Decision:
+- Railway worker shutdown now uses a two-stage policy: stop claiming immediately, keep heartbeats during a bounded drain window, and only abort/supersede in-flight runs after the drain timeout expires
+- Claude author/revise loops must accept a worker abort signal and throw a shutdown-specific interrupt before another provider continuation or retry is issued
+- checkpoint resume is only valid when the checkpoint carries the full durable artifact set (`deck.pptx`, `deck.pdf`, `narrative_report.md`, `data_tables.xlsx`) and recovered analysis matches the same attempt that produced the checkpoint
+- stale recovery must close open request-usage sentinel rows and must not supersede an attempt while there is still a reasonably fresh in-flight phase request
+- forensic audit scripts must dedupe shadow `request_record` rows from phase-level usage rows before summing or presenting token spend
+
+Why:
+- the prior worker design could hand off a run on SIGTERM before the live Claude request was actually canceled, which allowed overlapping attempts and duplicate provider spend
+- the previous checkpoint lane could publish artifacts from one attempt while loading analysis from a different attempt, and could not actually skip to export because `data_tables.xlsx` was missing from checkpoint storage
+- leaving open request rows behind after stale or shutdown recovery polluted telemetry and made incident forensics untrustworthy
+
+Implication:
+- deploy-triggered interruptions should now either drain naturally or supersede cleanly, without a window where old and new attempts both keep billing
+- a “resume from checkpoint” path is now a real publish path, not a partial artifact shortcut
+- attempt lineage remains internally consistent across recovery, export, and postmortem tooling

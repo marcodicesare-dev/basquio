@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { AttemptOwnershipLostError, generateDeckRun } from "../packages/workflows/src/generate-deck";
+import {
+  AttemptOwnershipLostError,
+  generateDeckRun,
+  WorkerShutdownInterruptError,
+} from "../packages/workflows/src/generate-deck";
 import { classifyRuntimeError } from "../packages/workflows/src/failure-classifier";
+import { closeOpenRequestUsageRows } from "../packages/workflows/src/request-usage-lifecycle";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
@@ -18,6 +23,17 @@ const HEARTBEAT_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_HEARTBE
 const RECOVERY_INTERVAL_MS = Number.parseInt(process.env.BASQUIO_WORKER_RECOVERY_INTERVAL_MS ?? "60000", 10);
 const MAX_CONCURRENT_RUNS = Math.max(1, Number.parseInt(process.env.BASQUIO_WORKER_MAX_CONCURRENCY ?? "10", 10));
 const SHUTDOWN_DRAIN_TIMEOUT_MS = Math.max(5_000, Number.parseInt(process.env.BASQUIO_WORKER_SHUTDOWN_DRAIN_TIMEOUT_MS ?? "55000", 10));
+const ACTIVE_REQUEST_GRACE_MS = Math.max(
+  15 * 60_000,
+  Number.parseInt(
+    process.env.BASQUIO_WORKER_ACTIVE_REQUEST_GRACE_MS ??
+      String(Math.max(
+        Number.parseInt(process.env.BASQUIO_AUTHOR_PHASE_TIMEOUT_MS ?? "3300000", 10),
+        Number.parseInt(process.env.BASQUIO_REVISE_PHASE_TIMEOUT_MS ?? "2700000", 10),
+      ) + 5 * 60_000),
+    10,
+  ),
+);
 const SHUTDOWN_RECOVERY_REASON = "worker_shutdown";
 const WORKER_RPC_TIMEOUT_MS = 30_000;
 
@@ -41,6 +57,7 @@ type ActiveRunState = {
   attempt: QueuedRunRow;
   promise: Promise<void>;
   stopHeartbeat: () => void;
+  abortController: AbortController;
 };
 
 function getMeaningfulStaleMinutesForPhase(phase: string | null | undefined) {
@@ -61,21 +78,6 @@ async function main() {
   let shuttingDown = false;
   const activeRuns = new Map<string, ActiveRunState>();
   let recoveryInFlight = false;
-  let shutdownHandoffPromise: Promise<void> | null = null;
-
-  const ensureShutdownHandoff = () => {
-    if (shutdownHandoffPromise || activeRuns.size === 0) {
-      return shutdownHandoffPromise;
-    }
-
-    shutdownHandoffPromise = handoffActiveRuns(config, activeRuns)
-      .catch((error) => {
-        console.error(
-          `[basquio-worker] shutdown handoff error: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      });
-    return shutdownHandoffPromise;
-  };
 
   const requestShutdown = (signal: string) => {
     if (shuttingDown) {
@@ -84,7 +86,6 @@ async function main() {
 
     shuttingDown = true;
     console.warn(`[basquio-worker] received ${signal}; stopping claims and draining ${activeRuns.size} active runs`);
-    void ensureShutdownHandoff();
   };
 
   process.on("SIGTERM", () => requestShutdown("SIGTERM"));
@@ -137,12 +138,13 @@ async function main() {
           `[basquio-worker] claimed run ${attempt.run_id} attempt ${attempt.attempt_number} (${activeRuns.size + 1}/${MAX_CONCURRENT_RUNS})`,
         );
         const stopHeartbeat = startHeartbeat(config, attempt);
-        const promise = processRun(config, attempt, startedAt)
+        const abortController = new AbortController();
+        const promise = processRun(config, attempt, startedAt, abortController.signal)
           .finally(() => {
             stopHeartbeat();
             activeRuns.delete(attempt.run_id);
           });
-        activeRuns.set(attempt.run_id, { attempt, promise, stopHeartbeat });
+        activeRuns.set(attempt.run_id, { attempt, promise, stopHeartbeat, abortController });
       }
 
       // Process queued template import jobs (lightweight, no heartbeat needed)
@@ -164,12 +166,6 @@ async function main() {
   clearInterval(recoveryTimer);
 
   if (activeRuns.size > 0) {
-    console.warn(`[basquio-worker] handing off ${activeRuns.size} active runs before shutdown`);
-    shutdownHandoffPromise ??= handoffActiveRuns(config, activeRuns);
-    await shutdownHandoffPromise;
-  }
-
-  if (activeRuns.size > 0) {
     console.log(`[basquio-worker] waiting up to ${SHUTDOWN_DRAIN_TIMEOUT_MS}ms for ${activeRuns.size} active runs to finish`);
     await Promise.race([
       Promise.allSettled([...activeRuns.values()].map((entry) => entry.promise)),
@@ -178,13 +174,18 @@ async function main() {
   }
 
   if (activeRuns.size > 0) {
-    console.warn(`[basquio-worker] shutdown drain timed out; leaving ${activeRuns.size} in-flight attempts for stale recovery`);
-    for (const [runId, { attempt, stopHeartbeat }] of activeRuns) {
-      stopHeartbeat();
-      console.warn(
-        `[basquio-worker] did not requeue attempt ${attempt.id} for run ${runId}; duplicate execution is worse than waiting for stale recovery`,
-      );
+    const interruptedRuns = new Map(activeRuns);
+    console.warn(
+      `[basquio-worker] shutdown drain timed out; aborting and handing off ${interruptedRuns.size} in-flight attempts`,
+    );
+    for (const { abortController } of interruptedRuns.values()) {
+      abortController.abort();
     }
+    await handoffActiveRuns(config, interruptedRuns);
+    await Promise.race([
+      Promise.allSettled([...interruptedRuns.values()].map((entry) => entry.promise)),
+      sleep(Math.min(10_000, SHUTDOWN_DRAIN_TIMEOUT_MS)),
+    ]);
   }
 
   console.log("[basquio-worker] shutdown complete");
@@ -194,19 +195,33 @@ async function processRun(
   config: ReturnType<typeof resolveConfig>,
   attempt: QueuedRunRow,
   startedAt: number,
+  abortSignal: AbortSignal,
 ) {
   try {
     await generateDeckRun(attempt.run_id, {
       id: attempt.id,
       attemptNumber: attempt.attempt_number,
+      abortSignal,
     });
     console.log(
       `[basquio-worker] completed run ${attempt.run_id} attempt ${attempt.attempt_number} in ${Math.round((Date.now() - startedAt) / 1000)}s`,
     );
   } catch (error) {
     if (error instanceof AttemptOwnershipLostError) {
+      await closeOpenRequestUsageRows({
+        config,
+        attemptId: attempt.id,
+        status: "superseded",
+        note: "Attempt lost ownership to a newer active attempt.",
+      });
       console.warn(
         `[basquio-worker] attempt ${attempt.id} for run ${attempt.run_id} lost ownership to a newer attempt; stopping old worker path`,
+      );
+      return;
+    }
+    if (error instanceof WorkerShutdownInterruptError) {
+      console.warn(
+        `[basquio-worker] run ${attempt.run_id} attempt ${attempt.attempt_number} interrupted for shutdown; awaiting superseding attempt handoff`,
       );
       return;
     }
@@ -373,6 +388,13 @@ async function recoverAttemptForShutdown(
   attempt: QueuedRunRow,
 ) {
   const now = new Date().toISOString();
+  await closeOpenRequestUsageRows({
+    config,
+    attemptId: attempt.id,
+    status: "interrupted_shutdown",
+    completedAt: now,
+    note: "Worker shutdown interrupted the in-flight provider request before completion.",
+  });
   const recoveryRows = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
     supabaseUrl: config.supabaseUrl,
     serviceKey: config.serviceKey,
@@ -518,6 +540,31 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
       continue;
     }
 
+    const activePhaseRequests = await fetchRestRows<ActivePhaseRequestRow>({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_run_request_usage",
+      query: {
+        select: "started_at,completed_at",
+        attempt_id: `eq.${attempt.id}`,
+        request_kind: "eq.phase_generation",
+        completed_at: "is.null",
+        order: "started_at.desc",
+        limit: "1",
+        ...(runRow.current_phase ? { phase: `eq.${runRow.current_phase}` } : {}),
+      },
+    }).catch(() => []);
+
+    const activeRequest = activePhaseRequests[0];
+    const activeRequestStartedAt = Date.parse(activeRequest?.started_at ?? "");
+    const activeRequestWithinGrace =
+      Boolean(activeRequest) &&
+      Number.isFinite(activeRequestStartedAt) &&
+      activeRequestStartedAt >= Date.now() - ACTIVE_REQUEST_GRACE_MS;
+    if (activeRequestWithinGrace) {
+      continue;
+    }
+
     const updatedAt = Date.parse(attempt.updated_at);
     const workerLikelyDead = !Number.isFinite(updatedAt) || updatedAt < Date.now() - STALE_RUN_MINUTES * 60_000;
     if (workerLikelyDead) {
@@ -535,27 +582,6 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
     if (!Number.isFinite(progressAt) || progressAt >= staleBefore) {
       continue;
     }
-
-    const activePhaseRequests = await fetchRestRows<ActivePhaseRequestRow>({
-      supabaseUrl: config.supabaseUrl,
-      serviceKey: config.serviceKey,
-      table: "deck_run_request_usage",
-      query: {
-        select: "started_at,completed_at",
-        attempt_id: `eq.${attempt.id}`,
-        request_kind: "eq.phase_generation",
-        completed_at: "is.null",
-        order: "started_at.desc",
-        limit: "1",
-        ...(runRow.current_phase ? { phase: `eq.${runRow.current_phase}` } : {}),
-      },
-    }).catch(() => []);
-
-    const activeRequest = activePhaseRequests[0];
-    if (activeRequest) {
-      continue;
-    }
-
     staleAttempts.push({
       id: attempt.id,
       run_id: attempt.run_id,
@@ -647,6 +673,14 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
   for (const attempt of staleAttempts) {
     const newAttemptId = randomUUID();
     const newAttemptNumber = attempt.attempt_number + 1;
+
+    await closeOpenRequestUsageRows({
+      config,
+      attemptId: attempt.id,
+      status: "stale_timeout",
+      completedAt: now,
+      note: "Attempt was automatically recovered after stale timeout.",
+    });
 
     const recovered = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
       supabaseUrl: config.supabaseUrl,
