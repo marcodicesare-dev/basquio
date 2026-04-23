@@ -154,13 +154,15 @@ Procedural memory is what makes Basquio "learn the analyst" over time. Each succ
 
 ## 5. Ingestion layer — communications channels
 
-**Locked stack per [Apr 19 2026 research](strategy-basquio-motions.md#references):**
+**Locked stack per [Apr 19 2026 research](strategy-basquio-motions.md#references).**
 
-### Email + Calendar + Drive
+**Priority update 2026-04-23:** Email, Teams, and Calendar integration moves from V2 (post-€10k MRR) to **V1.5**, shipping immediately after chat + research + shell UX lands. Rationale: Rossella's structured Workspace.xlsx feedback (2026-04-22) positioned inbox and calendar as core enterprise knowledge sources rather than nice-to-have. The analyst's client context lives in their inbox. Pulling this forward makes Basquio a daily-use assistant, not a one-shot analysis tool. CASA cost estimate unchanged.
 
-- **Microsoft 365** (Outlook + Teams mail + OneDrive + SharePoint + Outlook Calendar): single Microsoft Graph integration covers all. Subscription-based change notifications (TTL ~3 days, requires refresh jobs). Delegated or application permissions. ([Graph subscription docs](https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0), [change-notifications overview](https://learn.microsoft.com/en-us/graph/change-notifications-overview))
-- **Gmail + Google Calendar + Drive**: Gmail API with `gmail.metadata` scope first (labels + headers, no bodies) to minimize privacy footprint; upgrade to `gmail.readonly` only when user opts in per specific label. Drive uses `changes.watch` with `pageToken`. Reconcile via `pageToken` polling — [known webhook reliability gap](https://discuss.google.dev/t/google-drive-webhooks-only-send-the-initial-sync-never-update-am-i-missing-something-obvious/288347).
-- **Gmail CASA assessment required** for commercial production use of restricted scopes: $500-$75K per assessor, annual renewal ([GMass verification writeup](https://www.gmass.co/blog/google-oauth-verification-security-assessment/), [Nylas guide](https://developer.nylas.com/docs/provider-guides/google/google-verification-security-assessment-guide/)). Budget €5-15k for first CASA pass before Motion 2 enterprise launch.
+### Email + Calendar + Drive (V1.5 priority as of 2026-04-23)
+
+- **Microsoft 365** (Outlook + Teams mail + OneDrive + SharePoint + Outlook Calendar): **primary path.** Single Microsoft Graph integration covers all four surfaces, which matches the Italian mid-market buyer profile. Subscription-based change notifications (TTL ~3 days, requires refresh jobs). Delegated or application permissions. ([Graph subscription docs](https://learn.microsoft.com/en-us/graph/api/subscription-post-subscriptions?view=graph-rest-1.0), [change-notifications overview](https://learn.microsoft.com/en-us/graph/change-notifications-overview))
+- **Gmail + Google Calendar + Drive**: **secondary path.** Gmail API with `gmail.metadata` scope first (labels + headers, no bodies) to minimize privacy footprint; upgrade to `gmail.readonly` only when user opts in per specific label. Drive uses `changes.watch` with `pageToken`. Reconcile via `pageToken` polling (see the [known webhook reliability gap](https://discuss.google.dev/t/google-drive-webhooks-only-send-the-initial-sync-never-update-am-i-missing-something-obvious/288347)).
+- **Gmail CASA assessment required** for commercial production use of restricted scopes: $500-$75K per assessor, annual renewal ([GMass verification writeup](https://www.gmass.co/blog/google-oauth-verification-security-assessment/), [Nylas guide](https://developer.nylas.com/docs/provider-guides/google/google-verification-security-assessment-guide/)). Budget €5-15k for first CASA pass before Motion 2 enterprise launch. CASA cost carries into V1.5.
 
 ### Slack
 
@@ -292,10 +294,17 @@ Marco ships in hours and days, not weeks. This plan respects that.
 - Deploy to Veronica + Fra workspaces
 - Dogfood for 1 week. Fix what breaks.
 
-### What ships post-V1 (V2 scope, triggered by €10K MRR or clear user demand)
+### What ships in V1.5 (immediately after chat + research + shell UX lands, per 2026-04-23 re-prioritization)
 
-- Microsoft Graph connector (Outlook + OneDrive + Calendar + Teams mail — single integration covers all)
-- Gmail connector with `gmail.metadata` scope (body read only on explicit label opt-in)
+- **Microsoft Graph connector** (Outlook + OneDrive + Calendar + Teams mail, single integration covers all). Primary path for Italian mid-market Microsoft 365 shops.
+- **Gmail connector** with `gmail.metadata` scope (body read only on explicit label opt-in). Secondary path.
+- **Google Calendar + Drive** via the same OAuth consent flow.
+- CASA assessment kickoff for Gmail restricted scopes, budget €5-15k for first pass.
+
+These three were previously listed under V2; the re-prioritization was driven by Rossella's 2026-04-22 Workspace.xlsx feedback that framed inbox and calendar as core enterprise context, not optional.
+
+### What ships post-V1.5 (V2 scope, triggered by €10K MRR or clear user demand)
+
 - Slack connector (after Slack Marketplace approval — mandatory for backfill per [May 2025 rate-limit regression](https://api.slack.com/changelog/2025-05-terms-rate-limit-update-and-faq))
 - [Recall.ai](https://www.recall.ai/) meeting bot integration for auto-capture
 - Entity resolution cascade (exact → fuzzy → phonetic → embedding → LLM tiebreak)
@@ -304,6 +313,7 @@ Marco ships in hours and days, not weeks. This plan respects that.
 - DPA template library (bilingual IT/EN)
 - SOC 2 Type I kickoff
 - Team admin UI (seat management, scope retention config, audit log)
+- Coresignal-powered LinkedIn webhook alerts ($1k-3k per month; deferred until Fiber surfaces evidence this is user-demanded)
 
 ---
 

@@ -132,11 +132,23 @@ normalize → understand → author → render → critique → revise → expor
 
 `understand` takes the analytics result and plans slides. `author` generates the deck. This spec inserts a new `research` phase between `normalize` and `understand` (details in §5).
 
-### 2.9 Firecrawl existing integration
+### 2.9 External intelligence clients (Firecrawl and Fiber)
+
+**Firecrawl (trade press + open web).**
 
 - `scripts/contact-enrichment.ts:868-919` — `firecrawlLinkedinFallback()` calls `https://api.firecrawl.dev/v2/search` with Bearer token from `getFirecrawlApiKey()`. Rate limiter via `firecrawlLimiter`. Pattern reusable.
 - `scripts/research-weak-contacts.ts:197-200` and `scripts/enrichment-pass2.ts:114-123` — same pattern.
 - Firecrawl is NOT in the deck pipeline today. `packages/workflows/src/anthropic-execution-contract.ts:40-59` builds `[web_fetch_20260209]` only (plus `code_execution_20250825` explicit for Haiku).
+
+**Fiber AI (LinkedIn intelligence, ToS-safe).**
+
+- `scripts/contact-enrichment.ts:809-863`: `lookupFiberByEmail()` and `lookupFiberPosts()` call Fiber endpoints with `FIBER_API_KEY` from env, base URL `process.env.FIBER_BASE_URL ?? "https://api.fiber.ai"`. Rate-limited via `fiberLimiter`. Retry discipline via `withRetries()`.
+- `scripts/enrichment-pass2.ts:644-722`: uses three endpoints, `/v1/email-to-person/single`, `/v1/validate-email/single`, `/v1/linkedin-live-fetch/profile-posts`.
+- `scripts/enrich-fra-contacts.ts:813`: same pattern as contact-enrichment.ts.
+- Fiber covers 850M profiles plus 40M companies plus a real-time posts endpoint plus an MCP server. Pricing 300 to 2,400 USD per month. Bearer token API.
+- Fiber is NOT in the workspace pipeline today. §5.7 below covers the routing plan.
+
+**Critical ToS posture (verified 2026-04-23).** Firecrawl-stealth-scraping of LinkedIn is ToS-risky. Proxycurl was shut down July 2025 after a LinkedIn lawsuit. Apollo and Seamless were banned March 2025. The hiQ v LinkedIn precedent was neutralized by the 2022 settlement. Fiber stays on the right side of the legal line by operating as a LinkedIn-partnered API rather than scraping public pages. Any LinkedIn data path in the research package MUST route through Fiber, not Firecrawl. See §5.7.
 
 ### 2.10 Scoping
 
@@ -158,7 +170,7 @@ Four migrations. All additive, no table rewrites.
 - `research_runs` — telemetry per research execution
 - `knowledge_documents` column extension — foreign key to `source_catalog` for provenance
 
-**Plus one seed migration** with 18 active + 6 paused Italian sources.
+**Plus one seed migration** with 18 verified-active + 7 pending-verification (paused) + 6 permanently-paused Italian sources.
 
 ### 3.1 Migration: `20260423000000_source_catalog.sql`
 
@@ -171,7 +183,7 @@ CREATE TABLE public.source_catalog (
   tier INT NOT NULL CHECK (tier BETWEEN 1 AND 5),
   language TEXT NOT NULL,
   source_type TEXT NOT NULL CHECK (source_type IN (
-    'trade_press','retailer','association','stats','market_research','brand','news','cross_reference'
+    'trade_press','retailer','association','stats','market_research','brand','news','cross_reference','linkedin_fiber'
   )),
   domain_tags TEXT[] NOT NULL DEFAULT '{}',
   crawl_patterns JSONB NOT NULL DEFAULT '{}',
@@ -286,7 +298,7 @@ The `kind` index supports the graph-first planner's filter on `kind='scraped_art
 
 ### 3.5 Seed migration: `20260423000400_source_catalog_seed.sql`
 
-Insert 24 Italian FMCG/CPG sources into `source_catalog` scoped to `BASQUIO_TEAM_WORKSPACE_ID`: **18 active** + **6 paused**. The 18 active are verified scrapable with Firecrawl on 2026-04-22; the 6 paused need enhanced-proxy or chunking strategies before they can be enabled.
+Insert 31 Italian and UK FMCG/CPG sources into `source_catalog` scoped to `BASQUIO_TEAM_WORKSPACE_ID`: **18 verified-active** plus **7 pending-verification (seeded paused)** plus **6 permanently paused**. The 18 active are verified scrapable with Firecrawl on 2026-04-22. The 7 pending were named by Rossella on 2026-04-23 and must pass a Day 2 scrapability smoke run before flipping to active. The 6 permanently paused need enhanced-proxy or chunking strategies before they can be enabled.
 
 **Active (18):**
 
@@ -312,6 +324,22 @@ Insert 24 Italian FMCG/CPG sources into `source_catalog` scoped to `BASQUIO_TEAM
 | 5 | foodnavigator.com | cross_reference | en | https://foodnavigator.com | `/Article/.*` |
 
 Trust scores: Tier 1-2 → 85, Tier 3 → 90 (official stats), Tier 4 → 75, Tier 5 → 65. `domain_tags` seeded per source (e.g., gdo, retail, horeca, private_label, innovation, regulatory, beverage, fresh, ingredients).
+
+**Active (+7 added 2026-04-23 from Rossella structured feedback, pending crawl verification):**
+
+Seed all seven with `status='paused'` and `metadata.paused_reason = 'pending_verification_2026-04-23'`. The Day 2 fetcher work flips each to `status='active'` only after a successful `/v2/map` + `/v2/batch-scrape` smoke run against the source. If scrapability fails, keep as paused with the real reason and route to the implementation agent's watch list.
+
+| Tier | Host | Source type | Language | URL | Crawl allow (default, refine on verification) |
+|---|---|---|---|---|---|
+| 1 | cibuslink.it | trade_press | it | https://cibuslink.it | `/news/.*`, `/articoli/.*` |
+| 2 | ilsole24ore.com | news | it | https://ilsole24ore.com | `/art/.*`, `/notizie/.*` |
+| 1 | distribuzionemoderna.info | trade_press | it | https://distribuzionemoderna.info | `/news/.*`, `/articoli/.*` |
+| 1 | gdonews.it | trade_press | it | https://gdonews.it | `/news/.*`, `/notizie/.*` |
+| 1 | largoconsumo.info | trade_press | it | https://largoconsumo.info | `/news/.*`, `/articoli/.*` |
+| 5 | thegrocer.co.uk | cross_reference | en | https://thegrocer.co.uk | `/news/.*`, `/article/.*` |
+| 5 | retail-week.com | cross_reference | en | https://retail-week.com | `/news/.*`, `/article/.*` |
+
+Rossella/Veronica async review window: 7 days from this spec patch. Expected swaps include replacing lower-trust rows with sources they actually cite inside NIQ/Mondelez.
 
 **Paused (6) — verified problematic 2026-04-22, inserted with `status='paused'` and `metadata.paused_reason` for observability:**
 
@@ -456,6 +484,7 @@ packages/research/
 │   ├── planner.ts           # Haiku call, outputs ResearchPlan
 │   ├── planner-prompt.ts    # System prompt for planner
 │   ├── firecrawl-client.ts  # Wrapper around Firecrawl v2 endpoints
+│   ├── fiber-client.ts      # Wrapper around Fiber AI endpoints (LinkedIn intelligence)
 │   ├── fetcher.ts           # Executes the plan, returns FetchedEvidence[]
 │   ├── cache.ts             # source_catalog_scrapes read/write
 │   ├── dedupe.ts            # url_hash + content_hash dedup
@@ -667,9 +696,48 @@ External scraped evidence does NOT override the NIQ promo storytelling contract,
 
 Claude 4.5/4.6 respects XML tags per Anthropic prompting guide. Reference: `docs/working-rules.md` "Claude 4.6 respects XML tags reduce misinterpretation."
 
+### 5.7 LinkedIn intelligence: Fiber primary, not Firecrawl
+
+**Architectural rule.** Any research plan that needs LinkedIn data routes through Fiber, not Firecrawl. `source_catalog` rows with `source_type = 'linkedin_fiber'` are resolved by the fetcher via `fiber-client.ts`, bypassing the `/v2/map` + `/v2/batch-scrape` Firecrawl path entirely.
+
+**Rationale.** See §2.9 "Critical ToS posture." Firecrawl-stealth-scraping of LinkedIn is ToS-risky; Proxycurl, Apollo, and Seamless were all taken offline in 2025 by LinkedIn enforcement actions. Fiber operates as a LinkedIn-partnered API and is already integrated across three scripts in this repo. This is not a scope choice; it is a legal posture choice.
+
+**`fiber-client.ts` contract.**
+
+Extract the HTTP pattern from `scripts/contact-enrichment.ts:809-863` into `packages/research/src/fiber-client.ts`. Three endpoints for v1:
+
+```ts
+interface FiberClient {
+  lookupByEmail(email: string): Promise<FiberProfile | null>;
+  fetchProfilePosts(linkedinUrl: string): Promise<FiberPost[]>;
+  peopleSearch(query: FiberPeopleSearchQuery): Promise<FiberProfile[]>;
+}
+```
+
+- `/v1/email-to-person/single`: takes an email, returns a profile with role, company, headline, linkedin_url, entity_urn.
+- `/v1/linkedin-live-fetch/profile-posts`: takes a linkedinUrl, returns recent posts as `FiberPost[]`.
+- `/v1/people-search`: takes a structured query, returns a profile list. New v1 addition, not yet wired elsewhere in the repo; mirror the existing POST-JSON + retry + rate-limit discipline.
+
+Env var: `FIBER_API_KEY`. If unset, the research package's config validator disables every `source_catalog` row with `source_type = 'linkedin_fiber'` and logs a clear error; the rest of the catalog continues to work.
+
+**Stakeholder auto-enrichment path.** When the `createStakeholder` chat tool (§6.4) creates a new stakeholder with an `email` field, fire a background `fiber-client.lookupByEmail()` via the existing `after()` pattern from `apps/web/src/app/api/workspace/uploads/confirm/route.ts:276-293`. On success, populate `entities.metadata` with `role`, `company`, `headline`, `linkedin_url`, `entity_urn` from the Fiber response. This makes `createStakeholder` feel magical without changing the tool signature. Fiber charge info is persisted on `entities.metadata.fiber_charge_info` so cost telemetry can roll up per workspace.
+
+**Explicit v1 non-goal: webhook-driven LinkedIn alerts.** Fiber has no job-move / company-change webhook. That surface is Coresignal territory ($1k-3k per month) and is out of scope until post-revenue. If a user asks for "notify me when Maria changes jobs," the correct v1 answer is "not yet." Do NOT add a polling-based substitute; it will appear cheap but quickly exceed the Coresignal price point on any meaningful follower count.
+
+**Coexistence with Firecrawl.** Firecrawl remains the primary tool for trade press, association news, stats bodies, and the seed catalog's non-LinkedIn sources. The fetcher's per-query source routing determines client selection:
+
+```ts
+function selectClient(source: SourceCatalogEntry): "firecrawl" | "fiber" {
+  if (source.source_type === "linkedin_fiber") return "fiber";
+  return "firecrawl";
+}
+```
+
+No LinkedIn URL ever reaches the Firecrawl `/v2/scrape` endpoint through this package.
+
 ---
 
-## 6. Chat tool registry: existing + 6 new
+## 6. Chat tool registry: existing + 8 new entries
 
 This section covers Stream A (chat-as-ingest-and-edit). All new tools follow the AI SDK v6 `tool()` pattern from `agent-tools.ts`, registered in `getAllTools()` at line 370.
 
@@ -975,11 +1043,12 @@ export function getAllTools(ctx: AgentCallContext) {
     scrapeUrl: scrapeUrlTool(ctx),
     draftBrief: draftBriefTool(ctx),
     explainBasquio: explainBasquioTool(ctx),
+    suggestServices: suggestServicesTool(ctx),
   } as const;
 }
 ```
 
-Total: 13 tools. Keep `teachRule` for backward compatibility and the simple-save path.
+Registry count: 15 entries (14 tool families). Breakdown: 7 existing (memory, teachRule, retrieveContext, analyzeAttachedFile, listConversationFiles, showMetricCard, showStakeholderCard) plus 8 new entries (editRule, editStakeholder, createStakeholder, saveFromPaste, scrapeUrl, draftBrief, explainBasquio, suggestServices). Family count is 14 because `editRule` is the superset over the existing `teachRule`, which stays in the registry for backward compatibility; the two are counted as one family.
 
 ### 6.10 Brief synthesis upgrade
 
@@ -1000,6 +1069,78 @@ ${pack.stakeholders.map(s => `
 ```
 
 Also inject the `renderedBriefPrelude` from the pack as an additional context section if the prelude is non-empty. Currently the prelude is built but not consumed by the synthesizer.
+
+### 6.11 Tool: `suggestServices`
+
+**Purpose:** Analyst asks "what should I propose to Maria next quarter?" or "what NIQ services could I sell into this scope?" and chat returns 3-5 concrete service recommendations anchored to the scope's actual data and stakeholder context. Mirrors Rossella's stated workflow in Discord 2026-04-21: "Basquio bot vorrei usarlo per capire come vendere servizi ai clienti. Gli darei in knowledge i servizi NIQ, poi sulla base dei dati excel gli chiederei qual è il gap che il servizio x mi aiuterebbe a colmare."
+
+Two audiences with different framing:
+
+- **niq_analyst_selling** (default). Framing: which NIQ services to pitch into this client.
+- **brand_side_commissioning**. Framing: which research services to commission for this brand.
+
+**Input schema:**
+
+```ts
+z.object({
+  scope_id: z.string().uuid().optional(),
+  data_summary_hint: z.string().max(500).optional(),
+  audience: z.enum(["niq_analyst_selling","brand_side_commissioning"]).default("niq_analyst_selling")
+})
+```
+
+**Handler logic:**
+
+1. Build a `WorkspaceContextPack` via `buildWorkspaceContextPack()` using the given `scope_id` or the chat's current scope.
+2. Load the NIQ services catalog from `docs/domain-knowledge/niq-services-catalog.md` (see §6.12 for the file contract). Parse the markdown table into typed rows.
+3. Call Haiku with a prompt that combines: scope context, stakeholder preferences, uploaded data summary if any, and the NIQ services catalog. Prompt enforces Zod-valid output of 3-5 service recommendations.
+4. Return `{recommendations: ServiceRecommendation[], catalog_review_pending: boolean}` where `catalog_review_pending` is `true` until Rossella/Fra sign off on the catalog (see §6.12).
+
+Zod-typed recommendation shape:
+
+```ts
+type ServiceRecommendation = {
+  service_name: string;          // from catalog
+  rationale: string;              // 1-2 sentences, anchored to data in the scope
+  evidence_hooks: string[];       // which facts/entities/files support this
+  typical_deliverable: string;    // from catalog
+  priority: "high" | "medium" | "low";
+};
+```
+
+**Rendering:** New `ServiceSuggestionCard` component in `ToolChips.tsx`. Each recommendation renders as one row with:
+
+- Service name (bold)
+- Rationale (1-2 sentence summary)
+- Evidence chips (clickable, drill into the source)
+- `[Draft brief for this service]` button. Launches `draftBrief` pre-populated with the service as the topic and the scope as scope_id.
+- Priority pill on the right.
+
+Footer when `catalog_review_pending === true`: "Catalog pending NIQ-side review." Text only, no icon.
+
+**Empty / edge cases:**
+
+- Scope has zero stakeholders and zero files: Haiku cannot anchor; tool returns `{recommendations: [], message: "Not enough scope context to recommend services. Drop a file or add a stakeholder first."}`.
+- Catalog file missing: tool returns an actionable error pointing to §6.12.
+- User selects a recommendation and clicks `[Draft brief]`: `draftBrief` fires with `topic = recommendation.service_name` and `extra_instructions` prefilled with the rationale and evidence hooks.
+
+**Cost guard:** Haiku call per tool invocation, roughly $0.02. No additional external-tool calls. No rate limit required at v1; add one if abuse materializes.
+
+### 6.12 New knowledge pack: NIQ services catalog
+
+**File:** `docs/domain-knowledge/niq-services-catalog.md`. Read-only markdown table with columns:
+
+- `service_name`
+- `description`
+- `typical_data_inputs`
+- `typical_analyst_question`
+- `typical_deliverable`
+
+**v1 stub contents.** Seed from the public NIQ product list: Retail Measurement Services, Consumer Panel Services, Custom Intelligence, Brand Track, Innovation New Product, Shopper Trends, Concept Test, Price Architecture, Promotional Effectiveness, Distribution Health Check. 10 rows minimum, 30 rows maximum.
+
+**Review process.** Ship with a top-of-file "Catalog pending NIQ-side review (2026-04-23). Rossella/Fra window: 7 days. Until signed off, `suggestServices` renders a footer indicating this." Remove the top-of-file notice and flip the `suggestServices` tool's `catalog_review_pending` flag only after Rossella/Fra confirm the catalog matches their internal service list.
+
+**Loading.** At build or first-request, parse the markdown table via a small table-to-JSON utility colocated in `packages/research/src/niq-services-catalog.ts`. Cache in memory per worker; re-parse on file change in dev.
 
 ---
 
@@ -1104,7 +1245,7 @@ Pattern lifted from Anthropic Memory Tool UI (March 2026 GA) and Claude Projects
 - [ ] A scrape failure on 1 of 20 URLs is logged but not fatal; deck still ships with 19.
 - [ ] `insights.ts:115-152` validator drops any insight whose `evidenceIds` cite a URL that is NOT in the evidence set. No hallucinated URLs can appear in the final deck.
 
-### 8.7 Workspace knowledge persistence (dual-write verification)
+### 8.5 Workspace knowledge persistence (dual-write verification)
 
 - [ ] After a research run completes, every scraped article has a corresponding `knowledge_documents` row with `kind='scraped_article'`.
 - [ ] The scraped markdown is in Supabase Storage at `workspace-scraped/{workspace_id}/{url_hash}.md`.
@@ -1115,14 +1256,14 @@ Pattern lifted from Anthropic Memory Tool UI (March 2026 GA) and Claude Projects
 - [ ] Deleting a `source_catalog` source does NOT delete historical `knowledge_documents` rows derived from it (per `ON DELETE SET NULL` on the source_catalog_id column in knowledge_documents). Historical knowledge is preserved; the source is just no longer used for future scrapes.
 - [ ] An entity extracted from a scraped article has lower default `confidence` on derived facts than entities from uploaded files (trust_score-derived), so the deck's author prompt can weight them appropriately.
 
-### 8.5 UI surfaces
+### 8.6 UI surfaces
 
 - [ ] `/workspace/sources` lists 18 active catalog entries (the v1 seed) with the expected fields.
 - [ ] Deck generation status page shows a collapsible Research row with live telemetry.
 - [ ] Approval cards render correctly in streaming mode (partial input → output states).
 - [ ] No em dashes appear in any new UI copy. No emojis.
 
-### 8.6 Cost and performance
+### 8.7 Cost and performance
 
 - [ ] Per-deck Firecrawl cost stays under `$2.00` by default (configurable).
 - [ ] Planner latency under 10 seconds for typical briefs.
@@ -1140,7 +1281,7 @@ Sequential where dependencies exist, parallel where not. Estimates assume one im
 
 **Day 1 — migrations and seed**
 - Ship 3 migrations: `source_catalog`, `source_catalog_scrapes`, `research_runs`
-- Ship seed migration with 18 active + 3 paused Italian sources
+- Ship seed migration with 18 verified-active + 7 pending-verification (paused) + 6 permanently-paused Italian/UK sources
 - Verify: catalog visible via `SELECT * FROM source_catalog` for team workspace
 
 **Day 2 — research package skeleton**
@@ -1181,9 +1322,10 @@ Sequential where dependencies exist, parallel where not. Estimates assume one im
 - Ship `editRule`, `RuleEditApprovalCard`
 - Keep `teachRule` for backward compat
 
-**Day 8 — brief tool + explain**
+**Day 8: brief tool + explain + suggest services**
 - Ship `draftBrief`, `BriefDraftCard` with research-plan preview
 - Ship `explainBasquio`, `ExplainBasquioCard`
+- Ship `suggestServices`, `ServiceSuggestionCard`, and the `packages/research/src/niq-services-catalog.ts` parser that loads `docs/domain-knowledge/niq-services-catalog.md`. Wire the `[Draft brief for this service]` button to `draftBrief`.
 - Upgrade `synthesizeBrief` to use `preferences.structured` fully
 
 **Day 9 — UI surfaces**
@@ -1222,7 +1364,7 @@ Sequential where dependencies exist, parallel where not. Estimates assume one im
 
 **R5: Approval-card UX feels heavy if users do 20 pastes an hour.** Mitigation: add a per-user preference "auto-approve extractions from trusted sources" (e.g., own email) in v2. For v1 the approval is the safety.
 
-**R6: `per-user private workspace` is not in this spec.** Marco's dogfood use (Lumina / Loamly corpus) needs that before he can ingest non-Basquio content without polluting the team workspace. If he wants it first, land it as a separate half-day PR before this spec runs.
+**R6 RESOLVED (2026-04-23):** per-user private workspace shipped on this branch as a Day 0 prerequisite (PR #97 / commit 16b58c8, migration `20260423130000_private_workspaces.sql` + `ensurePrivateWorkspace` helper gated by `isTeamBetaEmail`). No route wires the helper yet; the workspace switcher lands in the shell-UX spec follow-up.
 
 **R8: Coexistence with the NIQ promo / decimal hardening commit.** The `22406d5` commit (Apr 22 22:38) added 11 new prompt bullets and two domain-knowledge packs covering promo storytelling, claim-chart binding, and decimal policy. This spec's system-prompt injection is additive and coexists with those. But the implementation agent must verify after edit that:
 - All 11 existing promo/decimal bullets are still present in `system-prompt.ts:1310+`.
@@ -1242,6 +1384,8 @@ Mitigation plan:
 
 The graph-first optimization is the cost lever that makes this system scale. Without it, every deck pays full scrape cost forever. With it, scrape cost decays toward zero per-workspace as the graph matures. Extraction quality is the hinge.
 
+**R9: Fiber AI ToS stability and rate limits.** Fiber is currently LinkedIn-partnered and the right legal posture for v1, but the LinkedIn enforcement landscape shifted three times in 2025 (Proxycurl shut down July, Apollo and Seamless banned March). Mitigation: (a) if Fiber goes offline, the `linkedin_fiber` source_type rows are disabled catalog-wide by the research package's config validator and the workspace degrades gracefully without LinkedIn intelligence; (b) audit rate-limit usage monthly via Fiber's chargeInfo payload so we detect quota squeeze early. Webhook-driven job-move alerts are explicitly out of scope until post-revenue (Coresignal territory, $1k-3k per month).
+
 **Q1: What's the Firecrawl account tier?** The spec assumes Standard or higher (50 concurrent browsers, 500 scrape req/min, 50 crawl req/min). Verify before Day 2.
 
 **Q2: Who approves the v1 catalog seed?** The 18 sources in §3.4 are Agent-verified scrapable on 2026-04-22. Rossella or Veronica should sanity-check the list once before the seed migration ships. They may swap out lower-trust-score sources for ones they actually cite at NIQ/Mondelez/Victorinox.
@@ -1252,18 +1396,23 @@ The graph-first optimization is the cost lever that makes this system scale. Wit
 
 **Q5: Does port-louis (deck generation service) consume `renderedBriefPrelude` from the pack today?** Audit shows the prelude is built but its downstream use is not visible. Verify during Day 5 integration. If unused, this spec removes the need for it by injecting the `<external_evidence>` block directly.
 
+**Q6: NIQ services catalog review owners.** The v1 stub in `docs/domain-knowledge/niq-services-catalog.md` ships with a pending-review top-of-file notice and a 7-day window for Rossella and Francesco to replace public NIQ product names with their internal service list. The `suggestServices` tool renders a footer noting the pending review until the notice is removed. Blocker for marking `suggestServices` production-ready: Rossella and Francesco sign-off.
+
+**Q7: Microsoft Graph / Gmail / Calendar connectors moved from V2 to V1.5.** Per motion2-workspace-architecture.md §5 update on 2026-04-23: email, Teams, and calendar ingestion is no longer post-€10k-MRR. It ships immediately after chat + research + shell UX lands, because Rossella's Workspace.xlsx feedback positioned these as core enterprise knowledge sources rather than nice-to-have. Not a v1 blocker. Added to the backlog with priority upgrade; the existing CASA assessment cost estimate remains valid.
+
 ---
 
 ## 11. Summary for the implementation agent
 
 You are building a coupled chat-and-research layer on top of an already-shipped workspace. Do not rebuild what exists. Extend:
 
-- 6 new chat tools + 6 approval-card UI components + 1 system prompt revision
-- 1 new package `packages/research/` with planner + fetcher + evidence adapter
-- 3 migrations: source_catalog, source_catalog_scrapes, research_runs + 1 seed migration
+- 8 new chat tool entries (14 tool families total after keeping teachRule for backward compat) plus 8 approval/result-card UI components plus 1 system prompt revision. New entries: saveFromPaste, scrapeUrl, editRule, editStakeholder, createStakeholder, draftBrief, explainBasquio, suggestServices.
+- 1 new package `packages/research/` with planner + fetcher + evidence adapter + Firecrawl client + Fiber client + NIQ services catalog parser
+- 3 migrations: source_catalog (with `linkedin_fiber` source_type), source_catalog_scrapes, research_runs + 1 seed migration (18 verified active sources + 7 Rossella-named sources pending verification + 6 paused)
 - 1 new phase `research` in `generate-deck.ts` between normalize and understand
 - 1 source catalog viewer page + 1 telemetry row + 1 memory mini-panel
 - 1 upgrade to `synthesizeBrief` to actually use `preferences.structured`
+- 1 new knowledge pack `docs/domain-knowledge/niq-services-catalog.md` (stub shipped 2026-04-23, pending Rossella and Francesco review)
 
 Existing contract you must honor:
 
