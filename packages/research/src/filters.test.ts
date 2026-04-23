@@ -144,13 +144,11 @@ function buildStubRest(): RestConfig {
   // Supabase REST stub. Mirrors the response shapes the fetcher expects
   // from each call site:
   //   - source_catalog_scrapes lookups return [] (no cache hit).
-  //   - source_catalog_scrapes upserts return [{id}] so insertScrapeCacheRow
-  //     resolves to a fake row id.
-  //   - knowledge_documents + file_ingest_runs upserts return [] because
-  //     the fetcher uses Prefer: return=minimal on those paths.
+  //   - /rpc/ensure_scrape_persisted returns a row with the three ids
+  //     the persistScrapeAtomic wrapper unpacks (B4a).
   //   - Storage upload requests (not REST) are bypassed by uploadStorage
   //     being its own injected function in FetcherDeps.
-  let fakeRowCounter = 0;
+  let rowCounter = 0;
   return {
     supabaseUrl: "http://stub",
     serviceKey: "stub-key",
@@ -158,12 +156,18 @@ function buildStubRest(): RestConfig {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const method = (init?.method ?? "GET").toUpperCase();
       const path = new URL(url).pathname;
-      if (path.endsWith("/source_catalog_scrapes") && method === "POST") {
-        fakeRowCounter += 1;
-        return new Response(JSON.stringify([{ id: `stub-${fakeRowCounter}` }]), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+      if (path.endsWith("/rpc/ensure_scrape_persisted") && method === "POST") {
+        rowCounter += 1;
+        return new Response(
+          JSON.stringify([
+            {
+              knowledge_document_id: `k-${rowCounter}`,
+              cache_row_id: `c-${rowCounter}`,
+              file_ingest_run_id: `f-${rowCounter}`,
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
       return new Response(JSON.stringify([]), {
         status: 200,

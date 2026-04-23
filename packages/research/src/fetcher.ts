@@ -44,9 +44,9 @@ import {
   type SourceCatalogScrape,
 } from "./evidence-adapter";
 import {
-  insertScrapeCacheRow,
   lookupCacheByContentHash,
   lookupCacheByUrlHash,
+  persistScrapeAtomic,
   type RestConfig,
 } from "./cache";
 import type {
@@ -589,54 +589,42 @@ async function persistScrape(args: {
     upsert: true,
   });
 
-  // Step 7d: write knowledge_documents row (kind='scraped_article').
+  // Steps 7d-7f: single atomic RPC covering knowledge_documents insert,
+  // source_catalog_scrapes upsert, and file_ingest_runs enqueue. Spec
+  // §5.3 calls this out as one logical unit; prior code ran the three
+  // inserts sequentially and could leave orphan rows on a mid-sequence
+  // failure. Migration 20260424120000_transactional_scrape_persistence.sql.
   const knowledgeDocId = randomUUID();
-  await insertKnowledgeDocument(deps.rest, {
-    id: knowledgeDocId,
+  const persisted = await persistScrapeAtomic(deps.rest, {
+    knowledgeDocumentId: knowledgeDocId,
     workspaceId: input.workspaceId,
+    organizationId: input.workspaceId,
     filename: title ?? url,
     fileType: "md",
-    storagePath,
     fileSizeBytes: Buffer.byteLength(markdown, "utf-8"),
+    storagePath,
     contentHash,
     kind: "scraped_article",
     sourceCatalogId: source.id,
     sourceUrl: url,
     sourcePublishedAt: publishedAt,
     sourceTrustScore: source.trustScore,
-  });
-
-  // Step 7e: write source_catalog_scrapes row linked to the knowledge doc.
-  const cacheRow = await insertScrapeCacheRow(deps.rest, {
-    sourceId: source.id,
-    workspaceId: input.workspaceId,
-    url,
-    urlHash,
-    contentHash,
-    title,
-    publishedAt,
-    contentMarkdown: markdown,
-    language: source.language,
+    scrapeUrl: url,
+    scrapeUrlHash: urlHash,
+    scrapeTitle: title,
+    scrapeContentMarkdown: markdown,
+    scrapeLanguage: source.language,
     fetcherEndpoint: "batch-scrape",
     fetcherCreditsUsed: 1,
-    knowledgeDocumentId: knowledgeDocId,
-  });
-
-  // Step 7f: enqueue async extraction. The worker's file_ingest_runs
-  // consumer will pick this up once shipped; until then the row sits
-  // queued safely and the scrape evidence is still usable via the
-  // markdown stored on knowledge_documents.
-  await enqueueFileIngestRun(deps.rest, {
-    documentId: knowledgeDocId,
-    workspaceId: input.workspaceId,
   });
 
   deps.onStage?.("scrape_persisted", {
     url,
     urlHash,
     contentHash,
-    knowledgeDocumentId: knowledgeDocId,
-    cacheRowId: cacheRow.id,
+    knowledgeDocumentId: persisted.knowledgeDocumentId,
+    cacheRowId: persisted.cacheRowId,
+    fileIngestRunId: persisted.fileIngestRunId,
     queryId: query.id,
     source: source.host,
   });
@@ -656,105 +644,6 @@ async function persistScrape(args: {
 }
 
 // ── Supabase REST helpers (local to the fetcher) ────────────────────
-
-async function insertKnowledgeDocument(
-  rest: RestConfig,
-  input: {
-    id: string;
-    workspaceId: string;
-    filename: string;
-    fileType: string;
-    storagePath: string;
-    fileSizeBytes: number;
-    contentHash: string;
-    kind: "scraped_article";
-    sourceCatalogId: string;
-    sourceUrl: string;
-    sourcePublishedAt: Date | null;
-    sourceTrustScore: number;
-  },
-): Promise<void> {
-  const url = new URL(`/rest/v1/knowledge_documents`, rest.supabaseUrl);
-  url.searchParams.set("on_conflict", "id");
-
-  const body = [
-    {
-      id: input.id,
-      workspace_id: input.workspaceId,
-      organization_id: input.workspaceId,
-      filename: input.filename,
-      file_type: input.fileType,
-      file_size_bytes: input.fileSizeBytes,
-      storage_path: input.storagePath,
-      uploaded_by: "basquio-research",
-      uploaded_by_discord_id: "basquio-research",
-      content_hash: input.contentHash,
-      status: "processing",
-      metadata: {
-        seeded_by: "packages/research/fetcher",
-      },
-      kind: input.kind,
-      source_catalog_id: input.sourceCatalogId,
-      source_url: input.sourceUrl,
-      source_published_at: input.sourcePublishedAt?.toISOString() ?? null,
-      source_trust_score: input.sourceTrustScore,
-    },
-  ];
-
-  const response = await (rest.fetchImpl ?? fetch)(url.toString(), {
-    method: "POST",
-    headers: buildHeaders(rest.serviceKey, {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=minimal",
-    }),
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`insertKnowledgeDocument failed ${response.status}: ${text}`);
-  }
-}
-
-async function enqueueFileIngestRun(
-  rest: RestConfig,
-  input: { documentId: string; workspaceId: string },
-): Promise<void> {
-  const url = new URL(`/rest/v1/file_ingest_runs`, rest.supabaseUrl);
-  url.searchParams.set("on_conflict", "document_id");
-  const response = await (rest.fetchImpl ?? fetch)(url.toString(), {
-    method: "POST",
-    headers: buildHeaders(rest.serviceKey, {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=minimal",
-    }),
-    body: JSON.stringify([
-      {
-        document_id: input.documentId,
-        workspace_id: input.workspaceId,
-        status: "queued",
-        claimed_by: null,
-        claimed_at: null,
-        error_message: null,
-        metadata: { enqueued_by: "packages/research/fetcher" },
-      },
-    ]),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`enqueueFileIngestRun failed ${response.status}: ${text}`);
-  }
-}
-
-function buildHeaders(serviceKey: string, extra: Record<string, string>): Headers {
-  const headers = new Headers(extra);
-  headers.set("apikey", serviceKey);
-  if (serviceKey.split(".").length === 3 && !serviceKey.startsWith("sb_secret_")) {
-    headers.set("Authorization", `Bearer ${serviceKey}`);
-  }
-  return headers;
-}
 
 // ── Polling ─────────────────────────────────────────────────────────
 

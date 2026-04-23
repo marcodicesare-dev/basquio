@@ -113,6 +113,87 @@ export type ScrapeCacheInsert = {
   knowledgeDocumentId: string | null;
 };
 
+export type PersistScrapeAtomicInput = {
+  knowledgeDocumentId: string;
+  workspaceId: string;
+  organizationId: string;
+  filename: string;
+  fileType: string;
+  fileSizeBytes: number;
+  storagePath: string;
+  contentHash: string;
+  kind: "scraped_article" | "chat_paste" | "chat_url" | "uploaded_file";
+  sourceCatalogId: string;
+  sourceUrl: string;
+  sourcePublishedAt: Date | null;
+  sourceTrustScore: number;
+  scrapeUrl: string;
+  scrapeUrlHash: string;
+  scrapeTitle: string | null;
+  scrapeContentMarkdown: string;
+  scrapeContentTokens?: number;
+  scrapeLanguage: string | null;
+  fetcherEndpoint: ScrapeCacheInsert["fetcherEndpoint"];
+  fetcherCreditsUsed?: number;
+  documentMetadata?: Record<string, unknown>;
+};
+
+export type PersistScrapeAtomicResult = {
+  knowledgeDocumentId: string;
+  cacheRowId: string;
+  fileIngestRunId: string;
+};
+
+/**
+ * Atomic 3-write RPC per B4a. Invokes the
+ * `public.ensure_scrape_persisted` Postgres function so the
+ * knowledge_documents insert, source_catalog_scrapes upsert, and
+ * file_ingest_runs enqueue all commit together or all roll back.
+ * Replaces the prior sequential `insertKnowledgeDocument` +
+ * `insertScrapeCacheRow` + `enqueueFileIngestRun` pattern that could
+ * leave orphan rows when the middle step failed.
+ */
+export async function persistScrapeAtomic(
+  config: RestConfig,
+  input: PersistScrapeAtomicInput,
+): Promise<PersistScrapeAtomicResult> {
+  const url = new URL(`/rest/v1/rpc/ensure_scrape_persisted`, config.supabaseUrl);
+  const body = {
+    p_knowledge_document_id: input.knowledgeDocumentId,
+    p_workspace_id: input.workspaceId,
+    p_organization_id: input.organizationId,
+    p_filename: input.filename,
+    p_file_type: input.fileType,
+    p_file_size_bytes: input.fileSizeBytes,
+    p_storage_path: input.storagePath,
+    p_content_hash: input.contentHash,
+    p_kind: input.kind,
+    p_source_catalog_id: input.sourceCatalogId,
+    p_source_url: input.sourceUrl,
+    p_source_published_at: input.sourcePublishedAt?.toISOString() ?? null,
+    p_source_trust_score: input.sourceTrustScore,
+    p_scrape_url: input.scrapeUrl,
+    p_scrape_url_hash: input.scrapeUrlHash,
+    p_scrape_title: input.scrapeTitle,
+    p_scrape_content_markdown: input.scrapeContentMarkdown,
+    p_scrape_content_tokens: input.scrapeContentTokens ?? null,
+    p_scrape_language: input.scrapeLanguage,
+    p_fetcher_endpoint: input.fetcherEndpoint,
+    p_fetcher_credits_used: input.fetcherCreditsUsed ?? null,
+    p_document_metadata: input.documentMetadata ?? { seeded_by: "packages/research/fetcher" },
+  };
+  const rows = await restPost<
+    Array<{ knowledge_document_id: string; cache_row_id: string; file_ingest_run_id: string }>
+  >(url, body, config, { Prefer: "return=representation" });
+  const row = rows[0];
+  if (!row) throw new Error("persistScrapeAtomic: RPC returned no row");
+  return {
+    knowledgeDocumentId: row.knowledge_document_id,
+    cacheRowId: row.cache_row_id,
+    fileIngestRunId: row.file_ingest_run_id,
+  };
+}
+
 /**
  * Write a scrape into the cache. `expires_at` falls to the table
  * default `now() + interval '24 hours'`. Upsert on `url_hash` so a

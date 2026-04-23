@@ -120,12 +120,18 @@ function stubRest(): RestConfig {
         typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const method = (init?.method ?? "GET").toUpperCase();
       const path = new URL(url).pathname;
-      if (path.endsWith("/source_catalog_scrapes") && method === "POST") {
+      if (path.endsWith("/rpc/ensure_scrape_persisted") && method === "POST") {
         id += 1;
-        return new Response(JSON.stringify([{ id: `stub-${id}` }]), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify([
+            {
+              knowledge_document_id: `k-${id}`,
+              cache_row_id: `c-${id}`,
+              file_ingest_run_id: `f-${id}`,
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
       return new Response(JSON.stringify([]), {
         status: 200,
