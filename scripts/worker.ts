@@ -8,8 +8,21 @@ import { classifyRuntimeError } from "../packages/workflows/src/failure-classifi
 import { closeOpenRequestUsageRows } from "../packages/workflows/src/request-usage-lifecycle";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
+import {
+  runFileIngestLoop,
+  sweepStaleFileIngestRuns,
+  type FileIngestQueue,
+} from "../packages/workflows/src/file-ingest-consumer";
 import { loadBasquioScriptEnv } from "./load-app-env";
 import { refundCredit } from "../packages/workflows/src/credits";
+import {
+  claimFileIngestRun,
+  completeFileIngestRun,
+  heartbeatFileIngestRun,
+  markFileIngestRunIndexing,
+  recoverStaleFileIngestRuns,
+} from "../packages/workflows/src/workspace/ingest-queue";
+import { processWorkspaceDocument } from "../packages/workflows/src/workspace/process";
 
 loadBasquioScriptEnv();
 
@@ -105,6 +118,44 @@ async function main() {
   console.log(`[basquio-worker] starting (max concurrency ${MAX_CONCURRENT_RUNS})`);
   await recoverStaleAttempts(config);
 
+  // File-ingest consumer: independent poll loop claiming file_ingest_runs
+  // rows produced by chat uploads, research scrapes, and the transactional
+  // dual-write RPC (B4a). Shares the worker's shutdown signal but has
+  // its own claim + heartbeat + terminal-state flow. The deck_run loop
+  // and this loop never touch the same rows; the recovery RPC below
+  // is a separate table. Per Apr 21 forensic: new service topology
+  // changes are out of scope, so the consumer rides inline in this
+  // process. See docs/railway-services.md.
+  const fileIngestQueue: FileIngestQueue = {
+    claim: (workerId) => claimFileIngestRun(workerId),
+    markIndexing: (runId) => markFileIngestRunIndexing(runId),
+    heartbeat: (runId) => heartbeatFileIngestRun(runId),
+    complete: (input) =>
+      completeFileIngestRun({
+        runId: input.runId,
+        status: input.status,
+        errorMessage: input.errorMessage ?? null,
+        metadata: input.metadata,
+      }),
+    recoverStale: (minutes) => recoverStaleFileIngestRuns(minutes),
+  };
+  const fileIngestWorkerId = `file-ingest-${randomUUID().slice(0, 8)}`;
+  const fileIngestLoop = runFileIngestLoop({
+    workerId: fileIngestWorkerId,
+    queue: fileIngestQueue,
+    processor: async ({ documentId }) => {
+      const outcome = await processWorkspaceDocument(documentId);
+      return outcome.status === "indexed" ? "indexed" : "failed";
+    },
+    pollIntervalMs: POLL_INTERVAL_MS,
+    heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
+    isShuttingDown: () => shuttingDown,
+    log: (msg) => console.log(msg),
+    errorLog: (msg) => console.error(msg),
+  });
+  // Fire-and-forget: the loop returns when shuttingDown flips. We
+  // awaitable-reference it during the shutdown drain below.
+
   const recoveryTimer = setInterval(() => {
     if (recoveryInFlight) {
       return;
@@ -121,6 +172,16 @@ async function main() {
       });
   }, RECOVERY_INTERVAL_MS);
   recoveryTimer.unref?.();
+
+  // File-ingest stale sweep. Runs alongside the deck_run recovery tick
+  // above so operators see both rescue streams in one log surface.
+  const fileIngestRecoveryTimer = setInterval(() => {
+    void sweepStaleFileIngestRuns(fileIngestQueue, 30).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[basquio-worker] file-ingest recovery error: ${message}`);
+    });
+  }, RECOVERY_INTERVAL_MS);
+  fileIngestRecoveryTimer.unref?.();
 
   for (;;) {
     if (shuttingDown) {
@@ -175,6 +236,13 @@ async function main() {
   }
 
   clearInterval(recoveryTimer);
+  clearInterval(fileIngestRecoveryTimer);
+
+  // Drain the file-ingest loop alongside deck runs. The loop returns
+  // when isShuttingDown is true; since shuttingDown is already set
+  // here, awaiting its promise just lets any in-flight processor call
+  // finish before we exit. Cap the wait at the same drain budget.
+  await Promise.race([fileIngestLoop.catch(() => undefined), sleep(SHUTDOWN_DRAIN_TIMEOUT_MS)]);
 
   if (activeRuns.size > 0) {
     console.log(`[basquio-worker] waiting up to ${SHUTDOWN_DRAIN_TIMEOUT_MS}ms for ${activeRuns.size} active runs to finish`);

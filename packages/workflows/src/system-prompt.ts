@@ -1208,14 +1208,52 @@ type PromptPalette = {
   chartSequence: string[];
 };
 
+/**
+ * External evidence reference for the `<external_evidence>` XML block
+ * per docs/specs/2026-04-22-workspace-chat-and-research-layer-spec.md §5.6.
+ *
+ * The research phase produces these from scraped trade press (Firecrawl
+ * path, id prefix `firecrawl:`) and from prior-scrape knowledge-graph
+ * entries (id prefix `graph:`). When passed here, the block is appended
+ * to the dynamic per-run system prompt so Claude can cite them with the
+ * exact `[firecrawl:<hash>]` or `[graph:<id>]` id format.
+ *
+ * Shape matches the llmEvidenceRefSchema in
+ * packages/intelligence/src/insights.ts:26-39 so the intelligence
+ * validator accepts these citations when they flow through
+ * rankInsights.
+ */
+export type ExternalEvidenceSummary = {
+  id: string;
+  fileName: string;
+  summary: string;
+  confidence: number;
+  sourceLocation: string;
+};
+
 export async function buildBasquioSystemPrompt(input: {
   templateProfile: TemplateProfile;
   briefLanguageHint: string;
   authorModel: "claude-sonnet-4-6" | "claude-haiku-4-5" | "claude-opus-4-7";
+  /**
+   * Per-run external evidence from the research phase. When present and
+   * non-empty, rendered as a `<external_evidence>` XML block appended
+   * to the dynamic prompt portion. Absent or empty leaves the prompt
+   * behavior unchanged. Spec §5.6 + R8: this is additive; every
+   * existing promo/decimal bullet and knowledge pack file stays in
+   * place regardless of this parameter.
+   */
+  externalEvidence?: ExternalEvidenceSummary[];
 }): Promise<Array<Anthropic.Beta.BetaTextBlockParam>> {
   const hasCustomTemplate = input.templateProfile.sourceType !== "system";
 
   if (input.authorModel === "claude-haiku-4-5") {
+    // Haiku report-only branch ignores externalEvidence by design:
+    // the Haiku tier produces narrative + workbook only, no deck,
+    // and the scraped evidence surface lands in the deck author
+    // prompt used by Sonnet/Opus. If a future run switches Haiku to
+    // deck authoring with research enabled, this branch needs the
+    // same dynamic-block treatment as the Sonnet/Opus path below.
     const staticBlock = buildHaikuReportOnlySystemPrompt({
       hasCustomTemplate,
     });
@@ -1471,12 +1509,16 @@ export async function buildBasquioSystemPrompt(input: {
     staticKnowledge,
   ].join("\n");
 
-  const dynamicBlock = [
+  const dynamicParts: string[] = [
     "Template summary:",
     templateSummary,
     "",
     `Language requirement: ${input.briefLanguageHint}`,
-  ].join("\n");
+  ];
+  if (input.externalEvidence && input.externalEvidence.length > 0) {
+    dynamicParts.push("", renderExternalEvidenceBlock(input.externalEvidence));
+  }
+  const dynamicBlock = dynamicParts.join("\n");
 
   return [
     {
@@ -1529,6 +1571,36 @@ function buildHaikuReportOnlySystemPrompt(input: {
         ]
       : []),
   ].join("\n");
+}
+
+/**
+ * Render the `<external_evidence>` XML block described in spec §5.6.
+ * Appended to the dynamic per-run prompt so Claude sees the scraped
+ * evidence pool alongside the template summary. The intelligence
+ * non-negotiable rules (promo drill-down, decimal policy, claim-chart
+ * binding) from 22406d5 remain enforced by the static knowledge pack;
+ * this block is additive and must not override any of those.
+ */
+function renderExternalEvidenceBlock(entries: ExternalEvidenceSummary[]): string {
+  const lines: string[] = [];
+  lines.push("<external_evidence>");
+  lines.push(
+    "The following external sources were retrieved by the research layer before this run. Cite them with the exact id format shown below. Each id begins with `firecrawl:` (new scrape this run) or `graph:` (prior scrape, already extracted into the workspace knowledge graph).",
+  );
+  lines.push("");
+  lines.push(
+    "You MAY NOT cite any URL or source that does not appear in this list. External scraped evidence does NOT override the NIQ promo storytelling contract, the claim-to-chart binding rule, the storyline contiguity rule, or the decimal policy; it supplements the uploaded-file evidence that governs the same rules.",
+  );
+  lines.push("");
+  for (const entry of entries) {
+    const confidencePct = Math.round(entry.confidence * 100);
+    const summary = entry.summary.replace(/\s+/g, " ").slice(0, 240);
+    lines.push(
+      `- id=[${entry.id}] confidence=${confidencePct}% source=${entry.sourceLocation} summary=${summary}`,
+    );
+  }
+  lines.push("</external_evidence>");
+  return lines.join("\n");
 }
 
 async function loadKnowledgePack(mode: "deck" = "deck") {

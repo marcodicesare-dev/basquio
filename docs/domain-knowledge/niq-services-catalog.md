@@ -1,0 +1,28 @@
+# NIQ services catalog
+
+> Catalog pending NIQ-side review (2026-04-23). Rossella and Francesco window: 7 days from this date. Until signed off, the `suggestServices` chat tool renders a footer noting this review status and clients should not rely on the catalog as a definitive service list.
+
+This knowledge pack feeds the `suggestServices` chat tool (see `docs/specs/2026-04-22-workspace-chat-and-research-layer-spec.md` §6.11 and §6.12). Rows are parsed into typed records at runtime by `packages/research/src/niq-services-catalog.ts`. The tool passes these rows to Haiku alongside the scope context and stakeholder preferences so recommendations anchor to real NIQ offerings rather than generic consulting advice.
+
+Rows below are the public v1 stub. Rossella and Francesco replace them with NIQ-internal service names and sharper descriptions when they review. Keep columns stable; adding columns requires updating the runtime parser in the same commit.
+
+| service_name | description | typical_data_inputs | typical_analyst_question | typical_deliverable |
+|---|---|---|---|---|
+| Retail Measurement Services | Continuous measurement of sales value, volume, distribution, and price across grocery, drug, mass, and specialty retail. The core NIQ POS panel. | Retailer POS scans, channel breakouts, weekly aggregations by category and segment. | Where am I winning or losing share and why, by channel and retailer? | Quarterly channel and retailer read with share, distribution, promo pressure, and price trend by segment. |
+| Consumer Panel Services | Household purchase panel tracking who buys what, how often, from where, and how buying patterns shift over time. | Household-level purchase records, demographic cuts, trip frequency, basket composition. | Who are my buyers, what else do they buy, and what keeps them coming back? | Buyer profile deck with penetration, frequency, buying rate, repeat rate, and loyalty cuts by segment. |
+| Custom Intelligence | Bespoke analytical engagements that combine NIQ data assets with client questions that do not fit a standard syndicated report. | Any mix of RMS, CPS, shopper, and third-party data plus client-provided data. | What is the root cause of this specific growth or decline pattern, and how do I act on it? | Custom study with tailored methodology, findings, and recommendations. |
+| Brand Track | Continuous brand-health measurement covering awareness, consideration, usage, and equity attributes. | Survey waves, demographic cuts, competitive set, longitudinal equity metrics. | Is my brand strengthening or eroding, and against whom? | Brand-health dashboard with attribute scorecards and competitor benchmarks. |
+| Innovation New Product | Pre-launch and post-launch measurement of new product performance and concept-to-market diagnostics. | Concept test results, launch-week POS scans, distribution build curves, trial and repeat decomposition. | Is this launch on track against the original concept test forecast? | Launch scorecard with trial, repeat, distribution curve, and repair recommendations. |
+| Shopper Trends | Shopper behavior measurement at the point of purchase and across the path to purchase. | Trip-level data, shopper surveys, path-to-purchase studies, in-store observation. | How does the shopper decide, and where in the journey am I losing them? | Shopper journey map with friction points and intervention opportunities by segment. |
+| Concept Test | Pre-launch concept evaluation against a normed database to predict in-market performance. | Concept stimulus, target audience panel, norms database. | Will this concept work, and how does it compare to my top quartile launches? | Concept score deck with pass-fail rating, optimization levers, and forecast against norms. |
+| Price Architecture | Price elasticity, price-pack architecture, and promotional price-point modeling across a category and competitive set. | POS scans with price points, pack sizes, promo flags, elasticity coefficients. | What happens to my volume and share if I raise everyday price by X percent? | Price-volume elasticity model with scenario simulator and pack-price optimization recommendations. |
+| Promotional Effectiveness | Decomposition of base versus incremental sales, promo lift by mechanic, ROI, and trade-spend efficiency. | Weekly POS with promo flags, trade-spend records, display and feature tags. | Which promos actually drive incremental sales and which just subsidize loyal buyers? | Promo ROI deck with mechanic-level lift, productivity cuts, and reallocation recommendations. |
+| Distribution Health Check | Distribution gap, productivity, and fair-share analysis across retailers, channels, and formats. | POS with numeric and weighted distribution, sales per point, channel shares, fair-share benchmarks. | Where is my distribution opportunity, and is my existing distribution productive enough to justify expansion? | Distribution-productivity scatter plus a retailer-by-retailer opportunity list with supporting rotation data. |
+
+## Review instructions for Rossella and Francesco
+
+1. Replace `service_name` values with the NIQ-internal naming each team uses in pitches.
+2. Tighten `description` lines to match how each service is actually sold (one or two sentences, no marketing copy).
+3. Extend or contract the list to match the 20-30 most commonly used services in the Italian mid-market context.
+4. Delete rows that NIQ no longer sells or has rebranded.
+5. When the catalog is signed off, remove the top-of-file review notice and ping the implementation agent to flip the `catalog_review_pending` flag in the `suggestServices` tool handler.

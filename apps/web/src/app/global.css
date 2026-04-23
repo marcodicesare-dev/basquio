@@ -11624,6 +11624,199 @@ body:has(.wbeta-shell) .site-wrap {
   text-underline-offset: 2px;
 }
 
+/* ── Approval cards (saveFromPaste, scrapeUrl, editStakeholder, ──
+   createStakeholder, editRule, draftBrief, suggestServices) ── */
+
+.wbeta-ai-approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wbeta-ai-approval-head {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.wbeta-ai-approval-body {
+  padding-left: 28px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-approval-list {
+  padding-left: 28px;
+  margin: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.wbeta-ai-approval-list > li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wbeta-ai-approval-kind {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.wbeta-ai-approval-muted {
+  padding-left: 28px;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0;
+}
+
+.wbeta-ai-approval-actions {
+  display: flex;
+  gap: 6px;
+  padding-left: 28px;
+  padding-top: 2px;
+}
+
+.wbeta-ai-approval-btn-primary {
+  background: var(--text);
+  color: var(--surface);
+  border-color: var(--text);
+}
+
+.wbeta-ai-approval-btn-primary:hover:not(:disabled),
+.wbeta-ai-approval-btn-primary:focus-visible:not(:disabled) {
+  background: var(--text);
+  color: var(--surface);
+  opacity: 0.9;
+}
+
+.wbeta-ai-approval-diff {
+  margin: 0;
+  padding: 0 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.wbeta-ai-approval-diff-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.wbeta-ai-approval-diff-row dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-ai-approval-diff-row dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.wbeta-ai-approval-diff-row del {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* ── Service suggestion card ──────────────────────────────────── */
+
+.wbeta-ai-service-list {
+  padding-left: 28px;
+  gap: 12px;
+}
+
+.wbeta-ai-service-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+}
+
+.wbeta-ai-service-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wbeta-ai-service-name {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.wbeta-ai-service-priority {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.wbeta-ai-service-priority-high {
+  background: var(--blue);
+  color: var(--surface);
+  border-color: var(--blue);
+}
+
+.wbeta-ai-service-priority-medium {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.wbeta-ai-service-priority-low {
+  opacity: 0.75;
+}
+
+.wbeta-ai-service-rationale {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-service-evidence {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  list-style: disc;
+}
+
 /* ── Metric card (generative UI) ───────────────────────────────── */
 
 .wbeta-ai-metric-card {
@@ -14986,7 +15179,432 @@ body:has(.wbeta-shell) .site-wrap {
   background: #1257d8;
 }
 
-/* ── Workspace chat-primary layout (home + scope pages) ─────────── */
+/* ── Scope three-column layout (B5, spec §4.3 + §4.4) ─────────── */
+
+.wbeta-scope-three-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  min-height: calc(100dvh - 42px);
+  min-width: 0;
+  align-items: start;
+}
+
+.wbeta-scope-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wbeta-scope-aside {
+  position: sticky;
+  top: 21px;
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+@media (max-width: 1280px) {
+  .wbeta-scope-three-col {
+    grid-template-columns: minmax(0, 1fr) 288px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .wbeta-scope-three-col {
+    grid-template-columns: 1fr;
+  }
+  .wbeta-scope-aside {
+    position: static;
+    max-height: none;
+    order: 2;
+  }
+}
+
+/* ── Scope landing body (stakeholders + knows + deliverables + chat) ── */
+
+.wbeta-scope-landing {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0;
+}
+
+.wbeta-scope-landing-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+
+.wbeta-scope-landing-title {
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-scope-landing-caption {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.wbeta-scope-landing-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wbeta-scope-landing-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-scope-landing-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  margin: 0;
+  text-transform: none;
+}
+
+.wbeta-scope-landing-see-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.wbeta-scope-landing-see-all:hover {
+  color: var(--text);
+}
+
+/* Stakeholder cards */
+.wbeta-scope-landing-stakeholders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.wbeta-scope-landing-stakeholder-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: 12px 14px;
+  transition: border-color 120ms;
+}
+
+.wbeta-scope-landing-stakeholder-card:hover {
+  border-color: var(--text-muted);
+}
+
+.wbeta-scope-landing-stakeholder-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.wbeta-scope-landing-stakeholder-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.wbeta-scope-landing-stakeholder-role {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.wbeta-scope-landing-stakeholder-pref {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* Workspace-knows rows */
+.wbeta-scope-landing-knows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-scope-landing-knows-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.wbeta-scope-landing-knows-row:hover:not(.wbeta-scope-landing-knows-row-static) {
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+
+.wbeta-scope-landing-knows-row-static {
+  cursor: default;
+}
+
+.wbeta-scope-landing-knows-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--surface-raised);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.wbeta-scope-landing-empty-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-raised);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+/* Recent deliverables */
+.wbeta-scope-landing-deliverables {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbeta-scope-landing-deliverable-row {
+  border-radius: 6px;
+}
+
+.wbeta-scope-landing-deliverable-link {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.wbeta-scope-landing-deliverable-link:hover {
+  background: var(--surface-raised);
+}
+
+.wbeta-scope-landing-deliverable-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-scope-landing-deliverable-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* Chat at the bottom */
+.wbeta-scope-landing-chat {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+  min-height: 360px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wbeta-scope-landing-chat > .wbeta-ai-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Workspace memory aside (spec §4.4.1) ───────────────────── */
+
+.wbeta-memory-aside {
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wbeta-memory-aside-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-memory-aside-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wbeta-memory-aside-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-memory-aside-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  padding-left: 22px;
+}
+
+.wbeta-memory-aside-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbeta-memory-aside-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px;
+  border-radius: 6px;
+}
+
+.wbeta-memory-aside-item:hover {
+  background: var(--surface-raised);
+}
+
+.wbeta-memory-aside-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wbeta-memory-aside-item-label {
+  font-size: 12px;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.wbeta-memory-aside-item-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.wbeta-memory-aside-item-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.wbeta-memory-aside-item:hover .wbeta-memory-aside-item-actions {
+  opacity: 1;
+}
+
+.wbeta-memory-aside-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.wbeta-memory-aside-action:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.wbeta-memory-aside-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.wbeta-memory-aside-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-memory-aside-foot {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.wbeta-memory-aside-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.wbeta-memory-aside-link:hover {
+  color: var(--text);
+}
+
+/* ── Workspace chat-primary layout (home + legacy scope pages) ─── */
 
 .wbeta-workspace-layout {
   display: grid;

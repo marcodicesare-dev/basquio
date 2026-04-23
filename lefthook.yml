@@ -1,0 +1,63 @@
+# Lefthook: local pre-commit + pre-push gates for Basquio.
+#
+# Scope per Marco's Sub-Batch A instruction: pre-commit is maximal
+# (lint + typecheck + vitest + em-dash + NIQ guard + secret scan) so
+# bad commits never reach the stack. Pre-push adds migration safety
+# when supabase/migrations/** is staged.
+#
+# Philosophy: every command is fast (< 30s on a clean repo) so running
+# the whole suite on every commit does not slow the shipping cadence.
+# When a command is slower than that, move it to pre-push or nightly.
+#
+# Installation: `pnpm install` runs `lefthook install` automatically
+# via the root package.json `postinstall` hook. Manual fallback:
+# `pnpm lefthook install`.
+#
+# Override: set LEFTHOOK=0 to skip (for emergencies only). Never push
+# to main with the skip.
+
+pre-commit:
+  parallel: true
+  commands:
+    em-dash-audit:
+      run: bash scripts/guard-em-dash.sh
+      stage_fixed: false
+    secret-scan:
+      run: bash scripts/guard-secret-scan.sh
+      stage_fixed: false
+    niq-hardening-guard:
+      run: bash scripts/guard-niq-hardening.sh
+      stage_fixed: false
+    type-check:
+      run: npx tsc --noEmit
+      glob: "*.{ts,tsx}"
+      stage_fixed: false
+    unit-test:
+      run: pnpm vitest run --reporter=dot
+      glob: "{packages,apps,scripts,tests}/**/*.{ts,tsx}"
+      stage_fixed: false
+
+pre-push:
+  commands:
+    migration-safety:
+      run: |
+        if git diff --name-only HEAD @{upstream} 2>/dev/null | grep -q '^supabase/migrations/'; then
+          echo "pre-push: supabase/migrations/** changed, running qa:catalog"
+          pnpm qa:catalog
+        else
+          echo "pre-push: no migrations touched, skipping qa:catalog"
+        fi
+    secret-scan:
+      run: |
+        # Re-run against the outgoing diff so anything staged+committed
+        # locally without triggering pre-commit still gets caught.
+        range=$(git rev-parse @{upstream}..HEAD 2>/dev/null || echo HEAD~1..HEAD)
+        added=$(git log -p --unified=0 $range | awk '/^\+[^+]/' || true)
+        patterns='(sk-ant-api03-[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9_-]{20,}|sk_test_[A-Za-z0-9_-]{20,}|fc-[a-f0-9]{32}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})'
+        if printf '%s' "$added" | grep -E -n "$patterns" >/dev/null 2>&1; then
+          echo "pre-push secret-scan: possible API key in outgoing commits"
+          printf '%s' "$added" | grep -E -n "$patterns" | head -5
+          echo ""
+          echo "Rewrite history or rotate the leaked key before pushing."
+          exit 1
+        fi

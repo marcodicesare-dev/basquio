@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import { isTeamBetaEmail } from "@/lib/team-beta";
 import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 
 export type WorkspaceRow = {
@@ -293,4 +294,65 @@ export async function listWorkspaces(): Promise<WorkspaceRow[]> {
     .order("created_at", { ascending: true });
   if (error) throw new Error(`listWorkspaces failed: ${error.message}`);
   return (data ?? []) as WorkspaceRow[];
+}
+
+/**
+ * Resolve the authenticated user's personal workspace, creating it on first
+ * call. Wraps the `ensure_private_workspace` RPC from migration 20260423130000.
+ *
+ * Identity: visibility='private', kind='customer', metadata.is_personal=true,
+ * created_by=userId. One workspace per user, enforced by partial unique index.
+ *
+ * This sits alongside getCurrentWorkspace() (which returns the team singleton)
+ * and does NOT replace it. The UI layer decides which surface a given request
+ * targets. The chat+research spec shell-UX work wires the actual switcher. No
+ * route consumes this helper at Day 0; subsequent days of the shell-UX spec
+ * wire the workspace switcher that routes between team and personal surfaces.
+ *
+ * Access gate: mirrors the team-access-mode policy. Only team-beta emails
+ * (@basquio.com plus the unlimited-access allowlist) can own a private
+ * workspace. Non-team callers get a 404-equivalent error so the database
+ * never acquires orphan private workspaces for unauthorized identities.
+ */
+export async function ensurePrivateWorkspace(
+  userId: string,
+  userEmail: string | null,
+): Promise<WorkspaceRow> {
+  if (!userId) throw new Error("ensurePrivateWorkspace requires a userId.");
+  if (!isTeamBetaEmail(userEmail)) {
+    throw new Error("ensurePrivateWorkspace is not available for this account.");
+  }
+  const db = getDb();
+  const { data: rpcData, error: rpcError } = await db.rpc("ensure_private_workspace", {
+    p_user_id: userId,
+    p_user_email: userEmail,
+  });
+  if (rpcError) {
+    throw new Error(`ensurePrivateWorkspace RPC failed: ${rpcError.message}`);
+  }
+  const workspaceId = extractUuidFromRpcResult(rpcData);
+  if (!workspaceId) {
+    throw new Error("ensurePrivateWorkspace RPC returned no workspace id.");
+  }
+  const workspace = await getWorkspace(workspaceId);
+  if (!workspace) {
+    throw new Error(
+      `ensurePrivateWorkspace resolved id ${workspaceId} but the row is missing.`,
+    );
+  }
+  return workspace;
+}
+
+function extractUuidFromRpcResult(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.length > 0) {
+    const first = value[0];
+    if (typeof first === "string") return first;
+    if (first && typeof first === "object") {
+      const record = first as Record<string, unknown>;
+      const candidate = record.ensure_private_workspace ?? record.id ?? null;
+      if (typeof candidate === "string") return candidate;
+    }
+  }
+  return null;
 }

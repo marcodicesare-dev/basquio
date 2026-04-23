@@ -519,6 +519,13 @@ export function WorkspaceChat({
                 onGenerateDeck={
                   message.role === "assistant" && !isStreaming ? openGenerationDrawer : undefined
                 }
+                onSendFollowUp={
+                  !isStreaming
+                    ? (text: string) => {
+                        sendMessage({ text });
+                      }
+                    : undefined
+                }
               />
             );
           })}

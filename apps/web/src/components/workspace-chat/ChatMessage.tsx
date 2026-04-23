@@ -15,10 +15,17 @@ import type { UIMessage } from "ai";
 
 import { ChatMarkdown } from "@/components/workspace-chat/ChatMarkdown";
 import {
+  BriefDraftCard,
+  ExplainBasquioCard,
+  ExtractionApprovalCard,
   MemoryReadChip,
   MetricCard,
   RetrieveContextChip,
+  RuleEditApprovalCard,
+  ServiceSuggestionCard,
   StakeholderCard,
+  StakeholderCreateApprovalCard,
+  StakeholderEditApprovalCard,
   TeachRuleCard,
 } from "@/components/workspace-chat/ToolChips";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
@@ -84,6 +91,7 @@ export const ChatMessage = memo(function ChatMessage({
   onFeedback,
   onSaveAsMemo,
   onGenerateDeck,
+  onSendFollowUp,
 }: {
   message: UIMessage;
   isStreaming: boolean;
@@ -92,6 +100,14 @@ export const ChatMessage = memo(function ChatMessage({
   onFeedback?: (value: "up" | "down") => void;
   onSaveAsMemo?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
   onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null> | void;
+  /**
+   * Approval-card follow-up: cards fire a new user chat turn when the
+   * user clicks [Save all] / [Update] / [Create] / [Open in drawer] /
+   * [Draft brief for this service]. The parent chat wires this to
+   * useChat().sendMessage so the model sees the follow-up turn and
+   * re-invokes the tool with dry_run: false plus the cached id.
+   */
+  onSendFollowUp?: (text: string) => void;
 }) {
   const isUser = message.role === "user";
   const citations = gatherCitations(message);
@@ -227,6 +243,75 @@ export const ChatMessage = memo(function ChatMessage({
                   state={state}
                   input={toolPart.input as Parameters<typeof StakeholderCard>[0]["input"]}
                   output={toolPart.output as Parameters<typeof StakeholderCard>[0]["output"]}
+                />
+              );
+            case "saveFromPaste":
+            case "scrapeUrl":
+              return (
+                <ExtractionApprovalCard
+                  key={i}
+                  state={state}
+                  toolName={toolName}
+                  input={toolPart.input as Parameters<typeof ExtractionApprovalCard>[0]["input"]}
+                  output={toolPart.output as Parameters<typeof ExtractionApprovalCard>[0]["output"]}
+                  errorText={toolPart.errorText}
+                  onSendFollowUp={onSendFollowUp}
+                />
+              );
+            case "editStakeholder":
+              return (
+                <StakeholderEditApprovalCard
+                  key={i}
+                  state={state}
+                  output={toolPart.output as Parameters<typeof StakeholderEditApprovalCard>[0]["output"]}
+                  errorText={toolPart.errorText}
+                  onSendFollowUp={onSendFollowUp}
+                />
+              );
+            case "createStakeholder":
+              return (
+                <StakeholderCreateApprovalCard
+                  key={i}
+                  state={state}
+                  output={toolPart.output as Parameters<typeof StakeholderCreateApprovalCard>[0]["output"]}
+                  errorText={toolPart.errorText}
+                  onSendFollowUp={onSendFollowUp}
+                />
+              );
+            case "editRule":
+              return (
+                <RuleEditApprovalCard
+                  key={i}
+                  state={state}
+                  input={toolPart.input as Parameters<typeof RuleEditApprovalCard>[0]["input"]}
+                  output={toolPart.output as Parameters<typeof RuleEditApprovalCard>[0]["output"]}
+                  errorText={toolPart.errorText}
+                />
+              );
+            case "draftBrief":
+              return (
+                <BriefDraftCard
+                  key={i}
+                  state={state}
+                  output={toolPart.output as Parameters<typeof BriefDraftCard>[0]["output"]}
+                  onSendFollowUp={onSendFollowUp}
+                />
+              );
+            case "explainBasquio":
+              return (
+                <ExplainBasquioCard
+                  key={i}
+                  state={state}
+                  output={toolPart.output as Parameters<typeof ExplainBasquioCard>[0]["output"]}
+                />
+              );
+            case "suggestServices":
+              return (
+                <ServiceSuggestionCard
+                  key={i}
+                  state={state}
+                  output={toolPart.output as Parameters<typeof ServiceSuggestionCard>[0]["output"]}
+                  onSendFollowUp={onSendFollowUp}
                 />
               );
             default:

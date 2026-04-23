@@ -1,0 +1,94 @@
+name: Nightly canary
+
+# Per Marco's Sub-Batch A scope: ONE workflow, scheduled + manual only.
+# No per-PR triggers, no per-push triggers, no matrix. Marco sets GitHub
+# notifications to "failed workflows only" so success is silent and
+# any failure pages the team exactly once per night.
+#
+# Trigger manually for on-demand verification:
+#   gh workflow run canary.yml
+
+on:
+  schedule:
+    # 03:00 UTC daily. Runs after US East Coast midnight, before any
+    # Europe-morning work. Cron is in UTC.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: canary-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Basquio canary (lint + typecheck + vitest + catalog + semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      # Stub values so modules that read process.env at import don't crash.
+      # Real live-call tests do NOT run in CI. Any integration check that
+      # needs a real key belongs in scripts/smoke-*.ts and only runs
+      # locally.
+      ANTHROPIC_API_KEY: test-anthropic-key
+      FIRECRAWL_API_KEY: test-firecrawl-key
+      FIBER_API_KEY: test-fiber-key
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Vitest (with coverage)
+        run: pnpm test:coverage
+
+      - name: Context QA
+        run: pnpm qa:basquio
+
+      - name: Semgrep security scan
+        uses: semgrep/semgrep-action@v1
+        with:
+          # Multi-line form so both rulesets are applied. A single
+          # space-separated string was silently interpreted as one
+          # ruleset lookup by the action in prior runs.
+          config: |
+            p/security-audit
+            p/typescript
+        # Semgrep surfaces findings in the run summary. Do not block the
+        # workflow on INFO-level findings; WARNING and ERROR fail the
+        # step by default.
+        continue-on-error: false
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -23,12 +23,21 @@
 
 set -euo pipefail
 
+# --conditions=react-server makes Node's resolver treat the runtime as a
+# React Server Component context, which resolves the `server-only` marker
+# package to its empty entry instead of the client-guard entry that
+# throws. The deck worker (and the new file-ingest consumer B4b) imports
+# several apps/web modules that declare `import "server-only"` to
+# enforce the Next.js boundary; without this condition the worker
+# crashes on module load.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --conditions=react-server"
+
 if [ -n "${DISCORD_BOT_TOKEN:-}" ]; then
-  echo "[railway-entrypoint] DISCORD_BOT_TOKEN detected — starting Discord bot"
+  echo "[railway-entrypoint] DISCORD_BOT_TOKEN detected. Starting Discord bot."
   cd /app/apps/bot
   exec node --import tsx src/index.ts
 fi
 
-echo "[railway-entrypoint] no DISCORD_BOT_TOKEN — starting deck worker"
+echo "[railway-entrypoint] no DISCORD_BOT_TOKEN. Starting deck worker + file-ingest consumer."
 cd /app
 exec node --import tsx scripts/worker.ts

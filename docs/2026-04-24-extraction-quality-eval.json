@@ -1,0 +1,3518 @@
+{
+  "generatedAt": "2026-04-23T19:40:02.120Z",
+  "sample_size": 20,
+  "results": [
+    {
+      "id": "bb767ffc-7871-4292-8e9f-c498768768b3",
+      "url": "https://www.nielsen.com/insights/topic/marketing-performance",
+      "title": "Marketing performance Archives | Nielsen",
+      "language": "en",
+      "contentLength": 13049,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Nielsen",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Why Strategy Matters More Than Tools for Measurement in Marketing",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Marketing ROI Blueprint 2025",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Virtual Panel Discussion: Reach, Resonance, Results",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Nielsen & Spotify Case Study Brazil Podcast Listeners",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Spotify",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Webinar: Brand vs. Performance Marketing",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "The Full-Funnel Advantage: Balancing Short-Term Goals with Long-Term Impact",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Beyond Disability: Inclusive Marketing in an Intersectional World",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Webinar: Outcomes, Not Output: Measuring Impact Across the Full Marketing Funnel",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "The Cowboy Carter Effect: Increasing Young Black Listeners' Engagement with Country Music",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "EMEA",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "APAC",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Brazil",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Marketing ROI",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Performance Marketing",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Brand Marketing",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "Why Strategy Matters More Than Tools for Measurement in Marketing",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "Marketing ROI Blueprint 2025",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "Virtual Panel Discussion: Reach, Resonance, Results",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Spotify",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "Nielsen",
+          "confidence": 0.85
+        },
+        {
+          "subject": "Nielsen & Spotify Case Study Brazil Podcast Listeners",
+          "subject_type": "deliverable",
+          "predicate": "focuses_on_location",
+          "object": "Brazil",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "Webinar: Brand vs. Performance Marketing",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "The Full-Funnel Advantage: Balancing Short-Term Goals with Long-Term Impact",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "Beyond Disability: Inclusive Marketing in an Intersectional World",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "Webinar: Outcomes, Not Output: Measuring Impact Across the Full Marketing Funnel",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Webinar: Outcomes, Not Output: Measuring Impact Across the Full Marketing Funnel",
+          "subject_type": "deliverable",
+          "predicate": "covers_region",
+          "object": "EMEA",
+          "confidence": 0.85
+        },
+        {
+          "subject": "Webinar: Outcomes, Not Output: Measuring Impact Across the Full Marketing Funnel",
+          "subject_type": "deliverable",
+          "predicate": "covers_region",
+          "object": "APAC",
+          "confidence": 0.85
+        },
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "published_insight",
+          "object": "The Cowboy Carter Effect: Increasing Young Black Listeners' Engagement with Country Music",
+          "confidence": 0.9
+        }
+      ],
+      "elapsedMs": 26535
+    },
+    {
+      "id": "3e4d21e2-16da-48ac-a1fc-7fcbf445943c",
+      "url": "https://www.euromonitor.com/newsroom/press-releases/april-2026/one-in-five-dollars-spent-on-global-foodservice-delivery-in-2025",
+      "title": "Global foodservice delivery in 2025 | Euromonitor International - Euromonitor.com",
+      "language": "en",
+      "contentLength": 5521,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Euromonitor International",
+          "role": null
+        },
+        {
+          "type": "person",
+          "canonical_name": "Nik Allen",
+          "role": "Head of Global Insights for Consumer Foodservice, Euromonitor International"
+        },
+        {
+          "type": "category",
+          "canonical_name": "Consumer Foodservice",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Foodservice Delivery",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Specialist Coffee and Tea",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "Asia Pacific",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "North America",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "Turkey",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "Egypt",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "Nigeria",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "China",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "India",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "Philippines",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "London",
+          "role": null
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "World Market for Consumer Foodservice 2026",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Delivery Market Share",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Global Foodservice Market Value",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Delivery Fees Percentage",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Market Growth Rate",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Specialist Coffee and Tea Market Value",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Coffee and Tea Market Growth Rate",
+          "role": null
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Foodservice Delivery",
+          "subject_type": "category",
+          "predicate": "market_share_in_period",
+          "object": {
+            "period": "2025",
+            "value": 22,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Foodservice Delivery",
+          "subject_type": "category",
+          "predicate": "market_share_in_period",
+          "object": {
+            "period": "2019",
+            "value": 9,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Consumer Foodservice",
+          "subject_type": "category",
+          "predicate": "total_market_value_in_period",
+          "object": {
+            "period": "2025",
+            "value": 3.36,
+            "unit": "USD trillion"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Consumer Foodservice",
+          "subject_type": "category",
+          "predicate": "yoy_growth_in_period",
+          "object": {
+            "period": "2025",
+            "value": 4,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Asia Pacific",
+          "subject_type": "region",
+          "predicate": "regional_share_in_period",
+          "object": {
+            "period": "2025",
+            "value": 40,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Foodservice Delivery",
+          "subject_type": "category",
+          "predicate": "projected_market_value",
+          "object": {
+            "period": "2029",
+            "value": 1,
+            "unit": "USD trillion"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "Turkey",
+          "subject_type": "region",
+          "predicate": "foodservice_growth_rate_in_period",
+          "object": {
+            "period": "2025",
+            "value": 32,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Egypt",
+          "subject_type": "region",
+          "predicate": "foodservice_growth_rate_in_period",
+          "object": {
+            "period": "2025",
+            "value": 27,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Nigeria",
+          "subject_type": "region",
+          "predicate": "foodservice_growth_rate_in_period",
+          "object": {
+            "period": "2025",
+            "value": 19,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "China",
+          "subject_type": "region",
+          "predicate": "coffee_tea_outlet_expansion_since_2020",
+          "object": {
+            "value": 73000,
+            "unit": "outlets"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Specialist Coffee and Tea",
+          "subject_type": "category",
+          "predicate": "market_value_in_period",
+          "object": {
+            "period": "2025",
+            "value": 133,
+            "unit": "USD billion"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Specialist Coffee and Tea",
+          "subject_type": "category",
+          "predicate": "projected_cagr",
+          "object": {
+            "period": "2025-2030",
+            "value": 5,
+            "unit": "%"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "Delivery Fees Percentage",
+          "subject_type": "metric",
+          "predicate": "value_in_period",
+          "object": {
+            "period": "2019",
+            "value": 9,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Delivery Fees Percentage",
+          "subject_type": "metric",
+          "predicate": "value_in_period",
+          "object": {
+            "period": "2025",
+            "value": 14,
+            "unit": "%"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "Nik Allen",
+          "subject_type": "person",
+          "predicate": "quoted_on_topic",
+          "object": "Consumers crave convenience but remain deeply value-minded",
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 15237
+    },
+    {
+      "id": "ece61a55-d5f7-4204-907b-e53b0f05ee3c",
+      "url": "https://www.freshplaza.it/article/9796298/mele-e-kiwi-italiani-in-vietnam-risultati-positivi-dalla-visita-congiunta-della-delegazione-di-hanoi",
+      "title": "Mele e kiwi italiani in Vietnam: risultati positivi dalla visita congiunta della delegazione di Hanoi",
+      "language": "it",
+      "contentLength": 8696,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "CSO Italy",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Vietnam",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Hanoi",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Mele",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Kiwi",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "Simona Rubbi",
+          "role": "Head of Legislation and Certifications Service, CSO Italy"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Renzo Moro",
+          "role": "Agricultural Attaché, Italian Embassy in Hanoi"
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Rivoira",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Agrintesa",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Kiwi Uno",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Granfrutta Zani",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "AFE Salvi",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Cisterna di Latina",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Servizio Fitosanitario Regione Emilia Romagna",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Emilia Romagna",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Roma",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "MASAF",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Servizio Fitosanitario Nazionale",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Ambasciata d'Italia ad Hanoi",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Servizio Fitosanitario Piemonte",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Piemonte",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "Vietnamese Delegation Visit",
+          "role": ""
+        }
+      ],
+      "facts": [],
+      "elapsedMs": 28272
+    },
+    {
+      "id": "6272637c-26da-4067-88c1-5936a12cabf8",
+      "url": "https://centromarca.it/news/industria-di-marca-contesto-italiano-scenari-economici",
+      "title": "Industria di Marca, contesto italiano, scenari economici - Centromarca",
+      "language": "it",
+      "contentLength": 1772,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Centromarca",
+          "role": null
+        },
+        {
+          "type": "person",
+          "canonical_name": "Nando Pagnoncelli",
+          "role": "President of Ipsos research company"
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Ipsos",
+          "role": null
+        },
+        {
+          "type": "person",
+          "canonical_name": "Francesco Daveri",
+          "role": "Economist at SDA Bocconi School of Management"
+        },
+        {
+          "type": "organization",
+          "canonical_name": "SDA Bocconi School of Management",
+          "role": null
+        },
+        {
+          "type": "event",
+          "canonical_name": "Incontri Idm – Gdo",
+          "role": null
+        },
+        {
+          "type": "channel",
+          "canonical_name": "GDO",
+          "role": null
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Incontri Idm – Gdo",
+          "subject_type": "event",
+          "predicate": "edition_number",
+          "object": 29,
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 5605
+    },
+    {
+      "id": "0ba52ac6-2f9c-4a0e-884e-0f9bf3183e74",
+      "url": "https://centromarca.it/news/lindustria-alimentare-italiana-oltre-il-covid-19",
+      "title": "Disponibile il volume \"L’industria alimentare italiana oltre il Covid-19 – Competitività, impatti socio-economici, prospettive\" - Centromarca",
+      "language": "it",
+      "contentLength": 1933,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Centromarca",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Nomisma",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "IBC",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Food & Beverage",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "L'industria alimentare italiana oltre il Covid-19 – Competitività, impatti socio-economici, prospettive",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "L'industria alimentare italiana oltre il Covid-19 – Competitività, impatti socio-economici, prospettive",
+          "subject_type": "deliverable",
+          "predicate": "authored_by",
+          "object": null,
+          "confidence": 1
+        },
+        {
+          "subject": "L'industria alimentare italiana oltre il Covid-19 – Competitività, impatti socio-economici, prospettive",
+          "subject_type": "deliverable",
+          "predicate": "commissioned_by",
+          "object": null,
+          "confidence": 1
+        },
+        {
+          "subject": "L'industria alimentare italiana oltre il Covid-19 – Competitività, impatti socio-economici, prospettive",
+          "subject_type": "deliverable",
+          "predicate": "commissioned_by",
+          "object": null,
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 5875
+    },
+    {
+      "id": "a7c4bdf0-2bb8-45c4-8422-59100343f0c6",
+      "url": "https://www.freshplaza.it/article/9796275/la-rilevanza-dei-mandarini-italiani-e-israeliani-e-aumentata-sul-mercato-tedesco",
+      "title": "La rilevanza dei mandarini italiani e israeliani è aumentata sul mercato tedesco",
+      "language": "it",
+      "contentLength": 8962,
+      "entities": [
+        {
+          "type": "location",
+          "canonical_name": "Germany",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Italy",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Israel",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Spain",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Turkey",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Morocco",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Greece",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Portugal",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Algarve",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "South Africa",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Peru",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Chile",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "France",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Belgium",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Netherlands",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Citrus Fruits",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Clementines",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Mandarins",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Satsuma",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Minneola",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Apples",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Pears",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Table Grapes",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Oranges",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Navelina",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Lemons",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Primofiore",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Bananas",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Cauliflower",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Lettuce",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Cucumbers",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Tomatoes",
+          "role": null
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Peppers",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Mioro",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "BLE",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "FreshPlaza",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Market Share",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Price Levels",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Availability",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Demand",
+          "role": null
+        },
+        {
+          "type": "document",
+          "canonical_name": "BLE Market Report Week 50",
+          "role": null
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Italy",
+          "subject_type": "location",
+          "predicate": "increased_relevance_mandarin_market",
+          "object": "Italian mandarin imports gained relevance in German market",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Israel",
+          "subject_type": "location",
+          "predicate": "increased_relevance_mandarin_market",
+          "object": "Israeli mandarin imports gained relevance in German market",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Minneola",
+          "subject_type": "brand",
+          "predicate": "quality_organoleptic",
+          "object": "impeccable",
+          "confidence": 1
+        },
+        {
+          "subject": "Mioro",
+          "subject_type": "brand",
+          "predicate": "quality_characteristics",
+          "object": "superior quality, sweet and aromatic",
+          "confidence": 1
+        },
+        {
+          "subject": "Clementines",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance_spanish",
+          "object": "Spanish lots continued to form the base of assortment",
+          "confidence": 1
+        },
+        {
+          "subject": "Satsuma",
+          "subject_type": "sub_category",
+          "predicate": "market_importance_change",
+          "object": "slightly gained importance",
+          "confidence": 0.9
+        },
+        {
+          "subject": "South Africa",
+          "subject_type": "location",
+          "predicate": "mandarin_supply_decline",
+          "object": "some South African mandarin lots still present but declining",
+          "confidence": 0.85
+        },
+        {
+          "subject": "Peru",
+          "subject_type": "location",
+          "predicate": "mandarin_supply",
+          "object": "residual volumes of mandarin imports",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Mandarins",
+          "subject_type": "sub_category",
+          "predicate": "price_trend",
+          "object": "downward trend",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Mandarins",
+          "subject_type": "sub_category",
+          "predicate": "price_reason_demand_saturation",
+          "object": "demand saturation after Saint Nicholas day",
+          "confidence": 0.9
+        },
+        {
+          "subject": "South Africa",
+          "subject_type": "location",
+          "predicate": "mandarin_quality_decline",
+          "object": "quality no longer consistently convincing",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Apples",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance_domestic",
+          "object": "domestic origin lots continued to dominate assortment",
+          "confidence": 1
+        },
+        {
+          "subject": "Apples",
+          "subject_type": "sub_category",
+          "predicate": "demand_driver",
+          "object": "Christmas markets",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Table Grapes",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance_shift",
+          "object": "Peruvian imports displaced Italian lots at top of assortment",
+          "confidence": 1
+        },
+        {
+          "subject": "Table Grapes",
+          "subject_type": "sub_category",
+          "predicate": "demand_status",
+          "object": "favorable demand",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Navelina",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance",
+          "object": "dominated orange assortment",
+          "confidence": 1
+        },
+        {
+          "subject": "Navelina",
+          "subject_type": "sub_category",
+          "predicate": "availability_trend",
+          "object": "availability further increased",
+          "confidence": 1
+        },
+        {
+          "subject": "South Africa",
+          "subject_type": "location",
+          "predicate": "orange_supply_decline",
+          "object": "importance of South African orange imports continued to diminish",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Primofiore",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance",
+          "object": "dominated lemon supply and sometimes enjoyed near-monopoly",
+          "confidence": 1
+        },
+        {
+          "subject": "Primofiore",
+          "subject_type": "sub_category",
+          "predicate": "demand_status",
+          "object": "sustained interest",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Bananas",
+          "subject_type": "sub_category",
+          "predicate": "supply_demand_balance",
+          "object": "well balanced",
+          "confidence": 1
+        },
+        {
+          "subject": "Bananas",
+          "subject_type": "sub_category",
+          "predicate": "price_stability",
+          "object": "merchants maintained previous prices in most cases",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Cauliflower",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance",
+          "object": "French and Italian arrivals dominated market",
+          "confidence": 1
+        },
+        {
+          "subject": "Cauliflower",
+          "subject_type": "sub_category",
+          "predicate": "secondary_supply",
+          "object": "occasional supplies from Belgium, Netherlands, and Spain",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Lettuce",
+          "subject_type": "sub_category",
+          "predicate": "supply_origin",
+          "object": "primarily from Belgium and Italy with minimal German origin",
+          "confidence": 1
+        },
+        {
+          "subject": "Lettuce",
+          "subject_type": "sub_category",
+          "predicate": "belgian_price_increase",
+          "object": "Belgian lots recorded price increases linked to cost increases",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Lettuce",
+          "subject_type": "sub_category",
+          "predicate": "price_impact_demand",
+          "object": "price increases immediately reduced disposal possibilities",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Cucumbers",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance",
+          "object": "long cucumbers of Spanish origin dominated market",
+          "confidence": 1
+        },
+        {
+          "subject": "Cucumbers",
+          "subject_type": "sub_category",
+          "predicate": "availability_constraint",
+          "object": "availability notably reduced due to weather-related cultivation difficulties",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Cucumbers",
+          "subject_type": "sub_category",
+          "predicate": "price_increase",
+          "object": "considerable increase in entry prices",
+          "confidence": 1
+        },
+        {
+          "subject": "Tomatoes",
+          "subject_type": "sub_category",
+          "predicate": "market_activity",
+          "object": "irregular trade activity",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Tomatoes",
+          "subject_type": "sub_category",
+          "predicate": "demand_status",
+          "object": "overall positive demand",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Tomatoes",
+          "subject_type": "sub_category",
+          "predicate": "price_quality_correlation",
+          "object": "when quality was good, previous quotations were generally maintained",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Peppers",
+          "subject_type": "sub_category",
+          "predicate": "market_dominance",
+          "object": "Spanish arrivals dominated over Turkish in week 50",
+          "confidence": 1
+        },
+        {
+          "subject": "Peppers",
+          "subject_type": "sub_category",
+          "predicate": "price_level",
+          "object": "high price levels maintained from previous week",
+          "confidence": 1
+        },
+        {
+          "subject": "Peppers",
+          "subject_type": "sub_category",
+          "predicate": "buyer_caution",
+          "object": "certain caution from buyers due to elevated price levels",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Pears",
+          "subject_type": "sub_category",
+          "predicate": "demand_status",
+          "object": "rather moderate interest",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Pears",
+          "subject_type": "sub_category",
+          "predicate": "supply_merchant_adjustment",
+          "object": "merchants slightly reduced supplies to maintain supply-demand balance",
+          "confidence": 0.95
+        }
+      ],
+      "elapsedMs": 42224
+    },
+    {
+      "id": "1aa09487-6cbd-404c-b8e3-63670a70569c",
+      "url": "https://www.just-food.com/news/uks-batch-ventures-invests-in-local-biscotti-maker-the-artful-baker",
+      "title": "UK's Batch Ventures invests in local biscotti maker The Artful Baker - Just Food",
+      "language": "en",
+      "contentLength": 11973,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Batch Ventures",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Warburtons",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Mission Ventures",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "The Artful Baker",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Great British Biscotti Co",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Dorset",
+          "role": null
+        },
+        {
+          "type": "person",
+          "canonical_name": "Jonathan Warburton",
+          "role": "Chairman, Warburtons"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Paul Rostand",
+          "role": "Founder and CEO, The Artful Baker"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Paddy Willis",
+          "role": "CEO, Mission Ventures"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Nigel Parrott",
+          "role": "Founder, Ape Snacks"
+        },
+        {
+          "type": "person",
+          "canonical_name": "John Stapleton",
+          "role": "Founder, New Covent Garden Soup Company and Little Dish"
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Plum Baby",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Ape Snacks",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "New Covent Garden Soup Company",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Little Dish",
+          "role": null
+        },
+        {
+          "type": "retailer",
+          "canonical_name": "Hotel Chocolat",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Biscotti",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Big Society Capital",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Impact on Urban Health",
+          "role": null
+        },
+        {
+          "type": "channel",
+          "canonical_name": "foodservice",
+          "role": null
+        },
+        {
+          "type": "channel",
+          "canonical_name": "independents",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "United Kingdom",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "United States",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Norway",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Italy",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Germany",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Canada",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "United Arab Emirates",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Kuwait",
+          "role": null
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Batch Ventures",
+          "subject_type": "organization",
+          "predicate": "invested_in",
+          "object": "six-figure investment",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Batch Ventures",
+          "subject_type": "organization",
+          "predicate": "formed",
+          "object": "July 2023",
+          "confidence": 0.8
+        },
+        {
+          "subject": "The Artful Baker",
+          "subject_type": "brand",
+          "predicate": "founded",
+          "object": "2013",
+          "confidence": 0.9
+        },
+        {
+          "subject": "The Artful Baker",
+          "subject_type": "brand",
+          "predicate": "supplies_white_label_to",
+          "object": "white-label biscotti",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Jonathan Warburton",
+          "subject_type": "person",
+          "predicate": "reports_positive_view_of",
+          "object": "impressed with quality of products and level of innovation",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Mission Ventures",
+          "subject_type": "organization",
+          "predicate": "set_up_by",
+          "object": "entrepreneurs who established and sold their own food businesses",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Mission Ventures",
+          "subject_type": "organization",
+          "predicate": "set_up",
+          "object": "accelerator for food and drink SMEs",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Mission Ventures",
+          "subject_type": "organization",
+          "predicate": "delivery_partner_for",
+          "object": "Good Food Fund",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Big Society Capital",
+          "subject_type": "organization",
+          "predicate": "backed",
+          "object": "Good Food Fund",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Impact on Urban Health",
+          "subject_type": "organization",
+          "predicate": "backed",
+          "object": "Good Food Fund",
+          "confidence": 0.8
+        }
+      ],
+      "elapsedMs": 21153
+    },
+    {
+      "id": "f5ba2989-eb8e-4127-a259-2842ea896d47",
+      "url": "https://www.just-food.com/news/covid-19-and-the-food-industry-in-2021-daily-updates-wednesday-10-march-free-to-read",
+      "title": "Covid-19 and the food industry in 2021 – daily updates, Wednesday 10 March (free to read) - Just Food",
+      "language": "en",
+      "contentLength": 79392,
+      "entities": [],
+      "facts": [],
+      "elapsedMs": 45629
+    },
+    {
+      "id": "ea4d6f3a-6dc5-46d8-961d-24d5e2d008c3",
+      "url": "https://www.just-food.com/news/usa-otis-spunkmeyer-acquires-chippery",
+      "title": "USA: Otis Spunkmeyer acquires Chippery - Just Food",
+      "language": "en",
+      "contentLength": 7526,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Otis Spunkmeyer",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Van-Merkel",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Chippery",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "John Schiavo",
+          "role": "President and Chief Executive Officer of Otis Spunkmeyer"
+        },
+        {
+          "type": "location",
+          "canonical_name": "Austin, Texas",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "United States",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Frozen Sweet Baked Goods",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Foodservice",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Retail",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Otis Spunkmeyer",
+          "subject_type": "organization",
+          "predicate": "acquired",
+          "object": null,
+          "confidence": 1
+        },
+        {
+          "subject": "Chippery",
+          "subject_type": "brand",
+          "predicate": "facility_location",
+          "object": null,
+          "confidence": 1
+        },
+        {
+          "subject": "John Schiavo",
+          "subject_type": "person",
+          "predicate": "role_at_organization",
+          "object": "President and Chief Executive Officer",
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 11742
+    },
+    {
+      "id": "54b3a742-ac19-4192-836b-ccdf80f0d5a2",
+      "url": "https://www.just-food.com/news/french-popcorn-firm-natais-eyes-growth-in-emerging-markets/",
+      "title": "French popcorn firm Natais eyes growth in emerging markets - Just Food",
+      "language": "en",
+      "contentLength": 14294,
+      "entities": [
+        {
+          "type": "brand",
+          "canonical_name": "Nataïs",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "AUA Private Equity Partners",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Weaver Popcorn",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Popcorn",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Toulouse",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "France",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Asia",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Russia",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Gulf States",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "North Africa",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Germany",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "United Kingdom",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Ireland",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Portugal",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Western Europe",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Market Share",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Export Volume",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Annual Turnover",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Global Marketed Volume",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Bulk Popcorn",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Microwaveable Packets",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Just Food",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Nataïs",
+          "subject_type": "brand",
+          "predicate": "headquartered_in",
+          "object": "Toulouse",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Nataïs",
+          "subject_type": "brand",
+          "predicate": "major_market_in",
+          "object": "France",
+          "confidence": 1
+        },
+        {
+          "subject": "Nataïs",
+          "subject_type": "brand",
+          "predicate": "major_market_in",
+          "object": "Western Europe",
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 22550
+    },
+    {
+      "id": "394d1f61-da7f-4151-b5dc-b8485b3223b4",
+      "url": "https://www.just-food.com/news/usa-ahold-announces-new-acquisition-in-u-s-foodservice-sector-pya-monarch-with-usd-3-billion-in-sales-teams-up-with-ahold-subsidiary-u-s-foodservice",
+      "title": "USA: Ahold Announces New Acquisition in U.S. Foodservice Sector; PYA/Monarch, With USD 3 billion in Sales, Teams Up With Ahold Subsidiary U.S. Foodservice - Just Food",
+      "language": "en",
+      "contentLength": 19913,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Royal Ahold",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "U.S. Foodservice",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "PYA/Monarch",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Sara Lee Corporation",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "Cees van der Hoeven",
+          "role": "President & CEO, Royal Ahold"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Bob Tobin",
+          "role": "Chairman, Ahold USA"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Jim Miller",
+          "role": "President & CEO, U.S. Foodservice"
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Stop & Shop",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Giant of Landover",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Giant of Carlisle",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "BI-LO",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Tops",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Peapod",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Ruby Tuesday",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Pizzeria Uno",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Ryans",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Applebees",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Subway",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Foodservice",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Retail",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "E-commerce",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "United States",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Southeast",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Amsterdam",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "New York Stock Exchange",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Zurich",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Switzerland",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Europe",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Latin America",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Asia",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Sales",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "EBITDA Multiple",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "Ahold Acquisition of U.S. Foodservice",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "PYA/Monarch Leveraged Buyout",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "PYA/Monarch",
+          "subject_type": "organization",
+          "predicate": "sales_value",
+          "object": {
+            "value": 3,
+            "unit": "billion USD"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "acquisition_price",
+          "object": {
+            "value": 1.57,
+            "unit": "billion USD"
+          },
+          "confidence": 1
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "expected_closing_period",
+          "object": "Q4 2000",
+          "confidence": 1
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "combined_us_foodservice_sales_2001",
+          "object": {
+            "value": 12,
+            "unit": "billion USD"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "PYA/Monarch",
+          "subject_type": "organization",
+          "predicate": "distribution_centers",
+          "object": 15,
+          "confidence": 1
+        },
+        {
+          "subject": "PYA/Monarch",
+          "subject_type": "organization",
+          "predicate": "employee_count",
+          "object": 4850,
+          "confidence": 1
+        },
+        {
+          "subject": "PYA/Monarch",
+          "subject_type": "organization",
+          "predicate": "product_count",
+          "object": 38000,
+          "confidence": 0.8
+        },
+        {
+          "subject": "PYA/Monarch",
+          "subject_type": "organization",
+          "predicate": "customer_count",
+          "object": 40000,
+          "confidence": 0.8
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "synergy_savings_year_one",
+          "object": {
+            "value": 30,
+            "unit": "million USD"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "synergy_savings_year_two",
+          "object": {
+            "value": 60,
+            "unit": "million USD"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "active_in_us_since",
+          "object": 1977,
+          "confidence": 1
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "us_store_count",
+          "object": 1100,
+          "confidence": 1
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "us_annualized_sales",
+          "object": {
+            "value": 30,
+            "unit": "billion USD"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "annualized_sales",
+          "object": {
+            "value": 8,
+            "unit": "billion USD"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "distribution_and_marketing_centers",
+          "object": 40,
+          "confidence": 1
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "product_items",
+          "object": 43000,
+          "confidence": 0.8
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "customer_count",
+          "object": 143000,
+          "confidence": 0.8
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "employee_count",
+          "object": 14000,
+          "confidence": 0.8
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "store_count_global",
+          "object": 7000,
+          "confidence": 0.8
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "global_annualized_sales",
+          "object": {
+            "value": 50,
+            "unit": "billion USD"
+          },
+          "confidence": 0.8
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "weekly_customers",
+          "object": 30000000,
+          "confidence": 1
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "countries_operating",
+          "object": 23,
+          "confidence": 1
+        },
+        {
+          "subject": "Royal Ahold",
+          "subject_type": "organization",
+          "predicate": "global_employee_count",
+          "object": 350000,
+          "confidence": 0.8
+        },
+        {
+          "subject": "U.S. Foodservice",
+          "subject_type": "organization",
+          "predicate": "institutional_customer_count",
+          "object": 200000,
+          "confidence": 0.8
+        }
+      ],
+      "elapsedMs": 29927
+    },
+    {
+      "id": "856d5b83-8904-4c7c-8bed-ae125d30a641",
+      "url": "https://www.euromonitor.com/article/8-ways-identify-market-opportunities-business-growth-jp",
+      "title": "市場機会を特定するための分析手法8選 - Euromonitor.com",
+      "language": "en",
+      "contentLength": 11047,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Euromonitor International",
+          "role": null
+        },
+        {
+          "type": "person",
+          "canonical_name": "Andres Chehtman",
+          "role": "Author/Analyst at Euromonitor International"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Emil Fazira",
+          "role": "Author at Euromonitor International"
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Coca-Cola",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Pepsi",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Netflix",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Hulu",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Mondelez",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Toblerone Truffles",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Mars",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Hotel Chocolat",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Nestlé",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Grupo CRM",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "IKEA",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Sodimac",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Tropicana",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Marvel Comics",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Nespresso",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Dolce Gusto",
+          "role": null
+        },
+        {
+          "type": "organization",
+          "canonical_name": "easyGroup",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "easyJet",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "easyBus",
+          "role": null
+        },
+        {
+          "type": "brand",
+          "canonical_name": "easyCar",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Snack Salati",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Chocolate Spread",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Protein Snack Bars",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Yogurt",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Cooking Oil",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Baby Food",
+          "role": null
+        },
+        {
+          "type": "category",
+          "canonical_name": "Alternative Meat",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "London",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Bengaluru",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Cape Town",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Chicago",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Dubai",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Düsseldorf",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Hong Kong",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Santiago",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "São Paulo",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Seoul",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Shanghai",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Singapore",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Sydney",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Tokyo",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Vilnius",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Mexico City",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Chile",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "China",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "United States",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Mexico",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "Brazil",
+          "role": null
+        },
+        {
+          "type": "location",
+          "canonical_name": "United Kingdom",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "Western Europe",
+          "role": null
+        },
+        {
+          "type": "region",
+          "canonical_name": "North America",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Market Share",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Sales Value",
+          "role": null
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Growth Rate",
+          "role": null
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Discount Store",
+          "role": null
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Convenience Store",
+          "role": null
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Hypermarket",
+          "role": null
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Live Streaming E-commerce",
+          "role": null
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Voice of the Consumer Lifestyles Survey 2026",
+          "role": null
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Euromonitor International",
+          "subject_type": "organization",
+          "predicate": "has_headquarters_in",
+          "object": "London",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Mondelez",
+          "subject_type": "brand",
+          "predicate": "launched_product",
+          "object": "Toblerone Truffles",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Mars",
+          "subject_type": "brand",
+          "predicate": "acquired_brand",
+          "object": "Hotel Chocolat",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Nestlé",
+          "subject_type": "brand",
+          "predicate": "acquired_company",
+          "object": "Grupo CRM",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Discount Store",
+          "subject_type": "channel",
+          "predicate": "growth_rate_5_years",
+          "object": {
+            "period": "past 5 years",
+            "value": 28,
+            "unit": "%"
+          },
+          "confidence": 0.9
+        },
+        {
+          "subject": "Convenience Store",
+          "subject_type": "channel",
+          "predicate": "growth_rate_5_years",
+          "object": {
+            "period": "past 5 years",
+            "value": 17,
+            "unit": "%"
+          },
+          "confidence": 0.9
+        },
+        {
+          "subject": "Hypermarket",
+          "subject_type": "channel",
+          "predicate": "growth_rate_5_years",
+          "object": {
+            "period": "past 5 years",
+            "value": -2,
+            "unit": "%"
+          },
+          "confidence": 0.9
+        },
+        {
+          "subject": "Live Streaming E-commerce",
+          "subject_type": "channel",
+          "predicate": "sales_value_in_market",
+          "object": {
+            "value": 450,
+            "unit": "billion USD",
+            "market": "China",
+            "year": 2024
+          },
+          "confidence": 0.85
+        },
+        {
+          "subject": "Live Streaming E-commerce",
+          "subject_type": "channel",
+          "predicate": "market_share_in_region",
+          "object": {
+            "value": 14.5,
+            "unit": "%",
+            "market": "China",
+            "year": 2024
+          },
+          "confidence": 0.85
+        },
+        {
+          "subject": "IKEA",
+          "subject_type": "brand",
+          "predicate": "market_entry",
+          "object": "Chile",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Sodimac",
+          "subject_type": "brand",
+          "predicate": "store_count_in_market",
+          "object": {
+            "value": 74,
+            "location": "Chile"
+          },
+          "confidence": 0.85
+        },
+        {
+          "subject": "easyGroup",
+          "subject_type": "organization",
+          "predicate": "founded_brand",
+          "object": "easyJet",
+          "confidence": 0.9
+        },
+        {
+          "subject": "easyGroup",
+          "subject_type": "organization",
+          "predicate": "founded_brand",
+          "object": "easyBus",
+          "confidence": 0.9
+        },
+        {
+          "subject": "easyGroup",
+          "subject_type": "organization",
+          "predicate": "founded_brand",
+          "object": "easyCar",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Euromonitor International",
+          "subject_type": "organization",
+          "predicate": "published_survey",
+          "object": "Voice of the Consumer Lifestyles Survey 2026",
+          "confidence": 0.85
+        },
+        {
+          "subject": "Euromonitor International",
+          "subject_type": "organization",
+          "predicate": "conducted_survey",
+          "object": "Generative AI expectations study",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Business Professional",
+          "subject_type": "person",
+          "predicate": "expectation_on_generative_ai",
+          "object": {
+            "value": 49,
+            "unit": "%",
+            "expectation": "AI will improve customer experience through better purchase proposals"
+          },
+          "confidence": 0.75
+        },
+        {
+          "subject": "United States",
+          "subject_type": "location",
+          "predicate": "approved_cultured_chicken",
+          "object": "Cultured chicken meat",
+          "confidence": 0.85
+        },
+        {
+          "subject": "Singapore",
+          "subject_type": "location",
+          "predicate": "approved_cultured_chicken",
+          "object": "Cultured chicken meat",
+          "confidence": 0.85
+        },
+        {
+          "subject": "Mexico",
+          "subject_type": "location",
+          "predicate": "implemented_regulation",
+          "object": "Black label on unhealthy foods",
+          "confidence": 0.9
+        },
+        {
+          "subject": "Cooking Oil",
+          "subject_type": "category",
+          "predicate": "price_trend",
+          "object": "Sunflower oil prices rising",
+          "confidence": 0.85
+        }
+      ],
+      "elapsedMs": 33443
+    },
+    {
+      "id": "3b60296a-2039-4635-a2df-856649ca8970",
+      "url": "https://www.euromonitor.com/article/three-trends-driving-the-global-luxury-goods-market-in-2023",
+      "title": "Global Luxury Goods Market: 3 Trends Driving Growth in 2023 - Euromonitor.com",
+      "language": "en",
+      "contentLength": 14132,
+      "entities": [
+        {
+          "type": "person",
+          "canonical_name": "Fflur Roberts",
+          "role": "Global Industry Expert, Euromonitor International"
+        }
+      ],
+      "facts": [],
+      "elapsedMs": 37006
+    },
+    {
+      "id": "149fbdd6-c149-4415-b1f5-9249330df05b",
+      "url": "https://www.euromonitor.com/press/press-releases/jan-2023/euromonitor-reveals-top-10-global-consumer-trends-in-2023",
+      "title": "Euromonitor reveals top 10 global consumer trends in 2023 - Euromonitor.com",
+      "language": "en",
+      "contentLength": 7797,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Euromonitor International",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "London",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "United Kingdom",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "Alison Angus",
+          "role": "Head of Innovation Practice, Euromonitor International"
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Top 10 Global Consumer Trends 2023",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "Emil Fazira",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Euromonitor International",
+          "subject_type": "organization",
+          "predicate": "released_deliverable",
+          "object": "Top 10 Global Consumer Trends 2023",
+          "confidence": 1
+        },
+        {
+          "subject": "Alison Angus",
+          "subject_type": "person",
+          "predicate": "works_at",
+          "object": "Euromonitor International",
+          "confidence": 1
+        },
+        {
+          "subject": "Euromonitor International",
+          "subject_type": "organization",
+          "predicate": "headquartered_in",
+          "object": "London, United Kingdom",
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 21260
+    },
+    {
+      "id": "1b5e024d-f591-467a-89e1-7a0a4a5c408b",
+      "url": "https://www.euromonitor.com/article/embedded-finance-powered-transformation-across-travel--airlines-surface-travel-attractions-and-wellness",
+      "title": "Embedded Finance Powered Transformation Across Travel – Airlines, Surface Travel, Attractions and Wellness - Euromonitor.com",
+      "language": "en",
+      "contentLength": 15442,
+      "entities": [
+        {
+          "type": "person",
+          "canonical_name": "David Zhang",
+          "role": "Author"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Prudence Lai",
+          "role": "Author"
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Euromonitor International",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "International Air Transport Association",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Malaysia Airlines",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Southwest Airlines",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "PayPal",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Singapore Airlines",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Mastercard",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Cathay Pacific",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Pay Cargo",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "SBI",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Keio",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Rakuten Bank",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "East Japan Railway",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Quadrac",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Apple Pay",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "UnionPay",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Nexi",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Tencent",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Ant Group",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "WeChat Pay",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "AliPay",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Octopus",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "CabCab",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Wonder",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Merlin Entertainments",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Legoland",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Adyen",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Universal Studio",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Ticketmaster",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "FestiPay",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "F1 Bahrain International Circuit",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Collinson Group",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Visa",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Revolut",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "iCoupon",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "JCB",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Sunway Healthcare",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "ICB",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "IATApay",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "MHPay",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "KrisFlyer",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "Priceless",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "AliPay+",
+          "role": ""
+        },
+        {
+          "type": "brand",
+          "canonical_name": "SmartDelay+",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Airlines",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Surface Transport",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Attractions",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Wellness",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "CAGR 2023-2028",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Asia Pacific",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Europe",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Hong Kong",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Japan",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Singapore",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Italy",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Germany",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Indonesia",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Malaysia",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "South Korea",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "China",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Thailand",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Kumamoto",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "UEFA Europe 2024",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Online",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Mobile Payment",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Contactless Card",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Malaysia Airlines",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "IATApay",
+          "confidence": 1
+        },
+        {
+          "subject": "Malaysia Airlines",
+          "subject_type": "organization",
+          "predicate": "launched_payment_method",
+          "object": "MHPay",
+          "confidence": 1
+        },
+        {
+          "subject": "Southwest Airlines",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "PayPal",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Singapore Airlines",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "Mastercard",
+          "confidence": 1
+        },
+        {
+          "subject": "Mastercard",
+          "subject_type": "organization",
+          "predicate": "extended_platform_to",
+          "object": "KrisFlyer",
+          "confidence": 1
+        },
+        {
+          "subject": "Cathay Pacific",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "Pay Cargo",
+          "confidence": 1
+        },
+        {
+          "subject": "SBI",
+          "subject_type": "organization",
+          "predicate": "offered_embedded_banking_to",
+          "object": "Keio",
+          "confidence": 1
+        },
+        {
+          "subject": "Rakuten Bank",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "East Japan Railway",
+          "confidence": 1
+        },
+        {
+          "subject": "UnionPay",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "Nexi",
+          "confidence": 1
+        },
+        {
+          "subject": "Tencent",
+          "subject_type": "organization",
+          "predicate": "established_partnership_with",
+          "object": "Ant Group",
+          "confidence": 1
+        },
+        {
+          "subject": "Ant Group",
+          "subject_type": "organization",
+          "predicate": "expanded_merchant_network_at",
+          "object": "Universal Studio",
+          "confidence": 0.8
+        },
+        {
+          "subject": "Merlin Entertainments",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "Adyen",
+          "confidence": 1
+        },
+        {
+          "subject": "Ticketmaster",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "PayPal",
+          "confidence": 1
+        },
+        {
+          "subject": "FestiPay",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "F1 Bahrain International Circuit",
+          "confidence": 1
+        },
+        {
+          "subject": "Collinson Group",
+          "subject_type": "organization",
+          "predicate": "operates_service",
+          "object": "SmartDelay+",
+          "confidence": 1
+        },
+        {
+          "subject": "JCB",
+          "subject_type": "organization",
+          "predicate": "partnered_with",
+          "object": "Sunway Healthcare",
+          "confidence": 1
+        },
+        {
+          "subject": "ICB",
+          "subject_type": "organization",
+          "predicate": "enabled_payment_acceptance",
+          "object": "UnionPay",
+          "confidence": 1
+        },
+        {
+          "subject": "ICB",
+          "subject_type": "organization",
+          "predicate": "enabled_payment_acceptance",
+          "object": "AliPay+",
+          "confidence": 1
+        },
+        {
+          "subject": "International Air Transport Association",
+          "subject_type": "organization",
+          "predicate": "launched_platform",
+          "object": "IATApay",
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 41811
+    },
+    {
+      "id": "994ea68d-da69-4e53-9439-f289dbb91b03",
+      "url": "https://www.euromonitor.com/newsroom/press-releases/april-2026/gen-alpha-drives-family-decisions",
+      "title": "Gen Alpha's increasing influence over family decisions | Euromonitor - Euromonitor.com",
+      "language": "en",
+      "contentLength": 5312,
+      "entities": [
+        {
+          "type": "person",
+          "canonical_name": "Emil Fazira",
+          "role": "Asia Pacific Insight Manager"
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Euromonitor International",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Fancl",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Health and Beauty",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Grocery",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Travel",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Household Appliances",
+          "role": ""
+        },
+        {
+          "type": "sub_category",
+          "canonical_name": "Facial Cleanser",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Asia Pacific",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "Southeast Asia",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Singapore",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Japan",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "South Korea",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "India",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Decoding Gen Alpha as Asia's Next Growth Engine",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Voice of the Consumer: Beauty Survey",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Household spending",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Market share",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Daily usage rate",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Euromonitor International",
+          "subject_type": "organization",
+          "predicate": "published_report",
+          "object": "Decoding Gen Alpha as Asia's Next Growth Engine",
+          "confidence": 1
+        },
+        {
+          "subject": "Emil Fazira",
+          "subject_type": "person",
+          "predicate": "works_at",
+          "object": "Euromonitor International",
+          "confidence": 1
+        },
+        {
+          "subject": "Euromonitor International",
+          "subject_type": "organization",
+          "predicate": "published_survey",
+          "object": "Voice of the Consumer: Beauty Survey",
+          "confidence": 1
+        }
+      ],
+      "elapsedMs": 21037
+    },
+    {
+      "id": "73536bf1-62de-4f4f-a80b-92c75dc536d5",
+      "url": "https://www.nielsen.com/insights/2026/the-impact-of-ai-on-measurement",
+      "title": "The Impact of AI on Measurement | Nielsen",
+      "language": "en",
+      "contentLength": 7123,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Nielsen",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Gracenote",
+          "role": ""
+        }
+      ],
+      "facts": [],
+      "elapsedMs": 4121
+    },
+    {
+      "id": "d876ea23-776a-4b9d-9616-eef7f57a8591",
+      "url": "https://www.nielsen.com/news-center/2026/locality-and-nielsen-announce-landmark-integration-of-media-data-engine-transforming-local-tv-measurement",
+      "title": "Locality and Nielsen Announce Landmark Integration of Media Data Engine, Transforming Local TV Measurement | Nielsen",
+      "language": "en",
+      "contentLength": 13950,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Locality",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Nielsen",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "Ann Hailer",
+          "role": "President of Broadcast at Locality"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Paul LeFort",
+          "role": "Managing Director of Nielsen's Local TV Client Services"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Michael Collins",
+          "role": "CEO of Locality"
+        },
+        {
+          "type": "event",
+          "canonical_name": "Locality and Nielsen Integration Announcement",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "Demographic Audience Delivery Timeline",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "U.S. Local Markets Coverage",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "United States",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "New York",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Local Television",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "Streaming",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "One Equity Partners",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Media Data Engine (MDE)",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "LocalX",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Darwin",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Audience Engine",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Collective",
+          "role": ""
+        }
+      ],
+      "facts": [],
+      "elapsedMs": 18724
+    },
+    {
+      "id": "58786ea4-a48a-4289-b3ee-ea3201b459b7",
+      "url": "https://www.nielsen.com/insights/2025/tops-of-sports-2026",
+      "title": "Tops of Sports - Media trends shaping sports marketing for 2026 | Nielsen",
+      "language": "en",
+      "contentLength": 16501,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Nielsen",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "Gracenote",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "Super Bowl LX",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "Super Bowl LIX",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "Winter Olympics",
+          "role": ""
+        },
+        {
+          "type": "event",
+          "canonical_name": "FIFA World Cup 2026",
+          "role": ""
+        },
+        {
+          "type": "region",
+          "canonical_name": "United States",
+          "role": ""
+        },
+        {
+          "type": "deliverable",
+          "canonical_name": "Tops of Sports Report",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "viewership",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "total viewing minutes",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "media value",
+          "role": ""
+        },
+        {
+          "type": "metric",
+          "canonical_name": "fanbase size",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Soccer",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Baseball",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Golf",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Basketball",
+          "role": ""
+        },
+        {
+          "type": "category",
+          "canonical_name": "Softball",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "broadcast",
+          "role": ""
+        },
+        {
+          "type": "channel",
+          "canonical_name": "streaming",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "NBA",
+          "role": ""
+        },
+        {
+          "type": "organization",
+          "canonical_name": "MLB",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "Shohei Ohtani",
+          "role": "Professional baseball player"
+        },
+        {
+          "type": "organization",
+          "canonical_name": "L.A. Dodgers",
+          "role": ""
+        }
+      ],
+      "facts": [],
+      "elapsedMs": 22528
+    },
+    {
+      "id": "6e3b67c7-8fdb-4710-bdef-ca507790ecf2",
+      "url": "https://www.nielsen.com/news-center/2026/nielsen-helps-new-zealand-brands-expand-internationally-with-greater-clarity-and-confidence",
+      "title": "Nielsen helps New Zealand brands expand internationally with greater clarity and confidence | Nielsen",
+      "language": "en",
+      "contentLength": 12614,
+      "entities": [
+        {
+          "type": "organization",
+          "canonical_name": "Nielsen",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "New Zealand",
+          "role": ""
+        },
+        {
+          "type": "location",
+          "canonical_name": "Auckland",
+          "role": ""
+        },
+        {
+          "type": "person",
+          "canonical_name": "Amanda Gill",
+          "role": "Senior Manager for Nielsen New Business NZ"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Helene Maurer",
+          "role": "Commercial Director, NZ Agencies & Advertisers"
+        },
+        {
+          "type": "person",
+          "canonical_name": "Dan Chapman",
+          "role": "Associate Director, Communications, Nielsen APAC"
+        },
+        {
+          "type": "region",
+          "canonical_name": "APAC",
+          "role": ""
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Nielsen",
+          "subject_type": "organization",
+          "predicate": "serves_market",
+          "object": "New Zealand",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Amanda Gill",
+          "subject_type": "person",
+          "predicate": "employed_by",
+          "object": "Nielsen",
+          "confidence": 0.95
+        },
+        {
+          "subject": "Dan Chapman",
+          "subject_type": "person",
+          "predicate": "employed_by",
+          "object": "Nielsen",
+          "confidence": 0.95
+        }
+      ],
+      "elapsedMs": 10349
+    }
+  ]
+}

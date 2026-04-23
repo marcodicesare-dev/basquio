@@ -11,6 +11,17 @@ import { getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes
 import type { WorkspaceScope } from "@/lib/workspace/types";
 import { analyzeAttachedFile } from "@/lib/workspace/analyze-attached-file";
 import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
+import { saveFromPasteTool, scrapeUrlTool } from "@/lib/workspace/agent-tools-ingest";
+import {
+  createStakeholderTool,
+  editStakeholderTool,
+} from "@/lib/workspace/agent-tools-people-edit";
+import {
+  draftBriefTool,
+  editRuleTool,
+  explainBasquioTool,
+  suggestServicesTool,
+} from "@/lib/workspace/agent-tools-editorial";
 
 export type AgentCallContext = {
   workspaceId: string;
@@ -371,10 +382,18 @@ export function getAllTools(ctx: AgentCallContext) {
   return {
     memory: readMemoryTool(ctx),
     teachRule: teachRuleTool(ctx),
+    editRule: editRuleTool(ctx),
     retrieveContext: retrieveContextTool(ctx),
     analyzeAttachedFile: analyzeAttachedFileTool(ctx),
     listConversationFiles: listConversationFilesTool(ctx),
     showMetricCard: showMetricCardTool(ctx),
     showStakeholderCard: showStakeholderCardTool(ctx),
+    editStakeholder: editStakeholderTool(ctx),
+    createStakeholder: createStakeholderTool(ctx),
+    saveFromPaste: saveFromPasteTool(ctx),
+    scrapeUrl: scrapeUrlTool(ctx),
+    draftBrief: draftBriefTool(ctx),
+    explainBasquio: explainBasquioTool(ctx),
+    suggestServices: suggestServicesTool(ctx),
   } as const;
 }
