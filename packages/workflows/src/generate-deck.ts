@@ -1012,6 +1012,7 @@ export async function generateDeckRun(
         `Run has already spent $${priorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget for ${MODEL} is $${modelBudget.crossAttempt.toFixed(2)}.`,
       );
     }
+    throwIfWorkerShutdownRequested(externalAbortSignal, "normalize");
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
     const fileBackedAttachmentKinds = [...new Set(sourceFiles.map((file) => file.kind).filter(Boolean))];
     // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
@@ -1040,6 +1041,7 @@ export async function generateDeckRun(
     currentPhase = "normalize";
     await markPhase(config, runId, attempt, currentPhase);
 
+    throwIfWorkerShutdownRequested(externalAbortSignal, currentPhase);
     const parsed = await parseEvidencePackage({
       datasetId: runId,
       files: evidenceFiles.map((file) => ({
@@ -1056,6 +1058,7 @@ export async function generateDeckRun(
       }).catch(() => {});
     }
 
+    throwIfWorkerShutdownRequested(externalAbortSignal, currentPhase);
     const templateProfile = templateFile
       ? await interpretTemplateSource({
           id: run.template_profile_id ?? `${runId}-template`,
@@ -1080,6 +1083,7 @@ export async function generateDeckRun(
           })
         : buildNoTemplateDiagnostics();
 
+    throwIfWorkerShutdownRequested(externalAbortSignal, currentPhase);
     await persistTemplateDiagnostics(config, runId, templateDiagnostics);
 
     await persistEvidenceWorkspace(config, run, parsed, templateProfile);
@@ -1103,6 +1107,7 @@ export async function generateDeckRun(
       templateDiagnostics,
     });
 
+    throwIfWorkerShutdownRequested(externalAbortSignal, currentPhase);
     const evidenceValidationError = validateAnalyticalEvidence(parsed);
     if (evidenceValidationError) {
       throw new Error(evidenceValidationError);
@@ -3275,6 +3280,7 @@ async function persistArtifactCheckpoint(
     proof: buildCheckpointProof(metadata?.proof),
   };
 
+  await assertAttemptStillOwnsRun(config, runId, attempt);
   await upsertWorkingPaper(config, runId, "artifact_checkpoint", checkpoint);
   return checkpoint;
 }

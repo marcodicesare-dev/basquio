@@ -34,6 +34,17 @@ const ACTIVE_REQUEST_GRACE_MS = Math.max(
     10,
   ),
 );
+const LIVE_PHASE_STALE_MS = Math.max(
+  30 * 60_000,
+  Number.parseInt(
+    process.env.BASQUIO_WORKER_LIVE_PHASE_STALE_MS ??
+      String(Math.max(
+        Number.parseInt(process.env.BASQUIO_AUTHOR_PHASE_TIMEOUT_MS ?? "3300000", 10),
+        Number.parseInt(process.env.BASQUIO_REVISE_PHASE_TIMEOUT_MS ?? "2700000", 10),
+      )),
+    10,
+  ),
+);
 const SHUTDOWN_RECOVERY_REASON = "worker_shutdown";
 const WORKER_RPC_TIMEOUT_MS = 30_000;
 
@@ -524,12 +535,13 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
       id: string;
       current_phase: string | null;
       active_attempt_id: string | null;
+      phase_started_at: string | null;
     }>({
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_runs",
       query: {
-        select: "id,current_phase,active_attempt_id",
+        select: "id,current_phase,active_attempt_id,phase_started_at",
         id: `eq.${attempt.run_id}`,
         limit: "1",
       },
@@ -580,6 +592,13 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
     const staleBefore = Date.now() - staleMinutes * 60_000;
     const progressAt = Date.parse(attempt.last_meaningful_event_at ?? attempt.updated_at);
     if (!Number.isFinite(progressAt) || progressAt >= staleBefore) {
+      continue;
+    }
+    const phaseStartedAt = Date.parse(runRow.phase_started_at ?? "");
+    const livePhaseExceeded =
+      !Number.isFinite(phaseStartedAt) ||
+      phaseStartedAt < Date.now() - LIVE_PHASE_STALE_MS;
+    if (!livePhaseExceeded) {
       continue;
     }
     staleAttempts.push({
