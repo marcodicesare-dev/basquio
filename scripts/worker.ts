@@ -9,7 +9,7 @@ import { closeOpenRequestUsageRows } from "../packages/workflows/src/request-usa
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
 import { loadBasquioScriptEnv } from "./load-app-env";
-import { refundCredit } from "../apps/web/src/lib/credits";
+import { refundCredit } from "../packages/workflows/src/credits";
 
 loadBasquioScriptEnv();
 

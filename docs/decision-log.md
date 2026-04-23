@@ -816,3 +816,20 @@ Why:
 Implication:
 - transient provider/tool interruptions should create a superseding attempt automatically instead of burning the run as `internal_processing_error`
 - postmortems can distinguish true logic/output failures from provider/tool execution interruptions
+
+## April 23, 2026 — Worker deploys must be isolated from the web app build
+
+Decision:
+- the Railway worker image must not run the web app build as part of `Dockerfile.worker`
+- worker-only runtime dependencies such as credit-refund recovery must live under the worker/runtime packages, not under `apps/web`
+- worker watch patterns must exclude broad `apps/web/**` paths unless the worker actually imports those files at runtime
+
+Why:
+- the previous worker image still ran `pnpm run build`, which only builds `@basquio/web`; that meant unrelated Next/web regressions could block deployment of worker-only resilience fixes
+- the worker still imported `refundCredit` from `apps/web/src/lib/credits`, so the deploy boundary between long-running generation and the web app was not actually clean
+- a system with the product promise “a run must never fail” cannot keep the critical recovery service coupled to unrelated frontend build health
+
+Implication:
+- worker releases now exercise only worker/runtime code paths during container build
+- worker redeploys should no longer trigger for arbitrary web-route changes
+- the web app can still share billing logic conceptually, but the worker owns the minimal recovery code it needs to refund failed runs without depending on Next build correctness

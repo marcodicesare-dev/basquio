@@ -189,6 +189,7 @@ Template fidelity lesson:
 - imported client PPTX `brandTokens.injection.masterBackground` is advisory only; treat it as live deck canvas only if it matches palette hints or is clearly brand-aligned. Neutral placeholder fills must be ignored at extraction time and again at render time.
 - the current manifest is not rich enough to rebuild final slides from metadata alone; manifest-only recomposition can preserve geometry while destroying actual slide content
 - until full rendered slide content is carried explicitly, prefer clean prompt palette injection over post-hoc PPTX reconstruction
+- the worker deploy boundary must stay separate from the Next web build. `Dockerfile.worker` must not depend on `pnpm run build`, and worker runtime helpers must not live under `apps/web` unless the worker service intentionally accepts web-coupled deploys.
 - free-plan custom-template runs must persist a durable checkout draft before redirecting to Stripe so `/jobs/new` can resume safely after payment without losing uploaded files or the brief
 - the completion surface should show durable slide previews before download; preview thumbnails are best-effort assets derived at publish time and stored on `artifact_manifests_v2.preview_assets`
 - `artifact_download_events` is the durable truth for whether a completed run was actually opened, and reminder emails should key off that instead of page visits

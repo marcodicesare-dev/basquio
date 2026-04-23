@@ -175,6 +175,41 @@ export async function upsertRestRows<T>(input: {
   return (await response.json()) as T[];
 }
 
+export async function insertRestRow<T = unknown>(input: {
+  supabaseUrl: string;
+  serviceKey: string;
+  table: string;
+  row: Record<string, unknown>;
+  select?: string;
+}) {
+  const url = new URL(`/rest/v1/${input.table}`, input.supabaseUrl);
+
+  if (input.select) {
+    url.searchParams.set("select", input.select);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: buildServiceHeaders(input.serviceKey, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: input.select ? "return=representation" : "return=minimal",
+    }),
+    body: JSON.stringify(input.row),
+    signal: AbortSignal.timeout(SUPABASE_FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readStorageError(response, `Unable to insert into ${input.table}.`));
+  }
+
+  if (!input.select || response.status === 204) {
+    return null;
+  }
+
+  return (await response.json()) as T;
+}
+
 export async function patchRestRows<T>(input: {
   supabaseUrl: string;
   serviceKey: string;
