@@ -10941,12 +10941,10 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-ai-chat-textarea {
   width: 100%;
-  resize: vertical;
-  min-height: 55px;
   font: inherit;
   font-size: 15px;
   line-height: 1.5;
-  padding: 10px 13px;
+  padding: 14px 16px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--canvas);
@@ -11088,6 +11086,15 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-asst-block {
   display: block;
   max-width: 80ch;
+}
+
+.wbeta-ai-streaming-text {
+  max-width: 80ch;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
 }
 
 .wbeta-ai-cursor {
