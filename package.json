@@ -23,6 +23,7 @@
     "test:research-clients": "tsx scripts/test-research-clients.ts",
     "test:research-planner": "tsx scripts/test-research-planner.ts",
     "test:research-fetcher": "tsx scripts/test-research-fetcher.ts",
+    "test:research-filters": "tsx scripts/test-research-filters.ts",
     "smoke:research": "tsx scripts/smoke-test-research-layer.ts",
     "test:native-workbook-charts": "tsx scripts/test-native-workbook-charts.ts",
     "test:template-branding": "tsx scripts/test-template-branding.ts",

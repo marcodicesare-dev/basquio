@@ -135,7 +135,60 @@ Verified during this smoke pass:
 - `packages/intelligence/src/slide-plan-linter.ts` zero edits.
 - All four NIQ eval harness tests green after Day 4 fixes.
 
-## Four follow-ups to land before flag flips default-on
+## R7 addendum (2026-04-23 evening, same day, production-grade fixes)
+
+Per Marco's explicit instruction ("ship fixes no band-aid production-grade A++ before next finisher"), the four R7 gaps were not deferred to Week 1. They shipped same-day.
+
+### What changed
+
+**Migrations (applied to linked remote):**
+- `20260423200000_source_catalog_r7_filters.sql`: sets `crawl_deny` on every seed row (sitemap, feed, tag, category, author, archive) when absent; enriches Tier 4/5 `domain_tags` with `['food','consumer','retail','fmcg','cpg']`; adds `['fmcg','cpg','italia']` to Italian Tier 1/2.
+- `20260423210000_source_catalog_topic_deny.sql`: idempotent jsonb-agg follow-up adding `/topic/.*` and `/topics/.*` after Brief B R7 smoke surfaced a Nielsen archive page at `/insights/topic/marketing-performance` that slipped through.
+
+**Fetcher (`packages/research/src/fetcher.ts`):**
+- `GLOBAL_CRAWL_DENY_PATTERNS`: runtime deny applied before per-source patterns. Sitemaps, feeds, tags, topics, categories, authors, archives, paginated index pages. Defense in depth alongside the migration.
+- `isPathFreshEnough`: extracts `/YYYY[/MM[/DD]]/` from URL paths. Articles older than the query's `freshness_window_days` drop pre-scrape. Post-scrape `metadata.publishedTime` is the second line of defense in `persistScrape`.
+- `rankLinksByKeyword`: drops purely-numeric query terms (year stamps scored spuriously on URL date segments) AND filters to `score >= MIN_KEYWORD_SCORE` (1).
+- `sourceHasTopicOverlap`: the brief-topic vs source-topic gate. Source signature = `domain_tags + source_type + host tokens (length >= 3)`. Brief signature = tokenized `query.text` (length >= 3, non-numeric, non-stopword). Match on exact equality OR prefix-or-suffix match (not mid-string, so "pet" matches "petfood" but not "competitor").
+- `TOPIC_STOPWORDS`: English + Italian + French/Spanish stragglers. Expanded after adversarial review flagged missing Italian articles.
+
+**Tests (`scripts/test-research-filters.ts`):** 7 cases covering sitemap global deny, URL-path freshness, zero-keyword-score drop, topic overlap reject (food source on hotel brief), topic overlap keep (food source on food brief), 3-char prefix match (pet → petfood), mid-string non-match (pet ≠ competitor).
+
+### Re-smoke results
+
+Both briefs re-run post-R7 against live Firecrawl. Detail: [brief-a-r7.md](2026-04-23-day4-smoke-brief-a-r7.md), [brief-b-r7-v2.md](2026-04-23-day4-smoke-brief-b-r7-v2.md).
+
+**Brief A (Kellanova Snack Salati) before / after R7:**
+
+| Metric | Before | After |
+|---|---|---|
+| Evidence refs | 12 | 5 |
+| Scrapes succeeded | 8 | 4 |
+| Cost (Firecrawl) | $0.2394 | $0.1512 |
+| Sitemap index pages scraped | 3 | 0 |
+| Off-topic environmental articles | 2 | 0 |
+| Stale 2021 articles | 1 | 0 |
+
+New R7 scrapes on Brief A are Italian food-industry content: Centromarca industry-of-brands scenarios, Centromarca industria alimentare post-Covid competitiveness, freshplaza Italian fruit export news. Not perfect (the fruit export articles are tangential to snack salati) but a legitimate FMCG operating context.
+
+**Brief B (Hotel AI EMEA) before / after R7:**
+
+| Metric | Before | After |
+|---|---|---|
+| Evidence refs | 15 | 0 |
+| Scrapes succeeded | 15 | 0 |
+| Cost (Firecrawl) | $0.1449 | $0.0000 |
+| Food/CPG articles falsely cited | 15 | 0 |
+
+The topic-overlap gate rejects every catalog source upfront (no map call fires) because the hotel-AI brief has zero domain_tag overlap with food-CPG sources. research_runs marked completed, zero spend, honest degradation.
+
+### Adversarial sub-agent review caught + folded pre-push
+
+Two SHOULD-FIXes surfaced and were folded in before this commit:
+1. Comment in `buildBriefTopicTerms` claimed "query text, keywords, and intent" but only used `query.text`. Comment rewritten to match the code with rationale (planner already composes keywords into query.text at generation time).
+2. Partial-match floor `overlap.length < 4` would drop "pet" → "petfood". Replaced with prefix-or-suffix match: catches legitimate 3-char category roots (pet, oil, tea, pane) while still rejecting mid-string false positives (pet inside competitor, it inside management). Two new tests cover both directions.
+
+## Follow-ups that remain for Week 1+ (R7 batch above is DONE)
 
 Priority order:
 

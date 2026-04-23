@@ -241,10 +241,20 @@ async function executeOneQuery(
   now: () => Date,
   signal: AbortSignal,
 ): Promise<EvidenceRef[]> {
-  const eligibleSources = input.catalog.filter((row) =>
-    isSourceEligible(row, query, deps.firecrawl !== undefined, deps.fiber !== undefined),
-  );
-  if (eligibleSources.length === 0) return [];
+  const briefTopicTerms = buildBriefTopicTerms(query);
+  const eligibleSources = input.catalog
+    .filter((row) => isSourceEligible(row, query, deps.firecrawl !== undefined, deps.fiber !== undefined))
+    // Topic-overlap gate: reject sources whose domain_tags + host +
+    // source_type share zero terms with the brief. Keeps hotel-AI
+    // queries from firing against food catalog sources.
+    .filter((row) => sourceHasTopicOverlap(row, briefTopicTerms));
+  if (eligibleSources.length === 0) {
+    deps.onStage?.("query_end", {
+      queryId: query.id,
+      dropped: "no eligible sources after tier/type/language/topic filters",
+    });
+    return [];
+  }
 
   // Partition by client type. LinkedIn sources always go to Fiber,
   // everything else goes to Firecrawl (spec §5.7).
@@ -343,14 +353,22 @@ async function runFirecrawlBranch(
     }),
   );
 
-  // Step 2: filter by per-source crawl patterns and keyword score.
+  // Step 2: filter by per-source crawl patterns + global deny + URL-path
+  // freshness, then rank by keyword match with a minimum-score threshold.
+  const freshnessCutoff = query.freshness_window_days
+    ? new Date(now().getTime() - query.freshness_window_days * 24 * 60 * 60 * 1000)
+    : null;
   const candidateUrls: Array<{ source: SourceCatalogEntry; link: FirecrawlMapLink }> = [];
   for (const { source, links } of mapResults) {
-    const filtered = filterLinksForSource(links, source);
+    const filtered = filterLinksForSource(links, source, freshnessCutoff);
     const ranked = rankLinksByKeyword(filtered, query.text).slice(0, query.max_results_per_source);
     for (const link of ranked) candidateUrls.push({ source, link });
   }
-  deps.onStage?.("map_filtered", { queryId: query.id, count: candidateUrls.length });
+  deps.onStage?.("map_filtered", {
+    queryId: query.id,
+    count: candidateUrls.length,
+    freshnessCutoff: freshnessCutoff?.toISOString() ?? null,
+  });
 
   // Step 3: dedupe across sources by url_hash.
   const seenUrlHashes = new Set<string>();
@@ -450,6 +468,9 @@ async function runFirecrawlBranch(
   // or `metadata.url`. Match against `toScrape` entries by canonical
   // url_hash so trailing-slash and minor canonicalization differences
   // from Firecrawl do not break the join.
+  const postScrapeFreshnessCutoff = query.freshness_window_days
+    ? new Date(now().getTime() - query.freshness_window_days * 24 * 60 * 60 * 1000)
+    : null;
   const results = completed.data ?? [];
   for (const result of results) {
     if (signal.aborted) break;
@@ -468,6 +489,27 @@ async function runFirecrawlBranch(
     if (result.error || !result.markdown) {
       stats.scrapesFailed += 1;
       continue;
+    }
+    // Post-scrape freshness check: if metadata.publishedTime is parseable
+    // and older than the cutoff, reject the article before persisting.
+    if (postScrapeFreshnessCutoff) {
+      const publishedRaw = stringFromMetadata(result.metadata, [
+        "publishedTime",
+        "article:published_time",
+        "datePublished",
+      ]);
+      if (publishedRaw) {
+        const published = safeDate(publishedRaw);
+        if (published && published.getTime() < postScrapeFreshnessCutoff.getTime()) {
+          stats.scrapesFailed += 1;
+          deps.onStage?.("scrape_persisted", {
+            url: resultUrl,
+            reason: "rejected: article older than freshness window",
+            publishedAt: publishedRaw,
+          });
+          continue;
+        }
+      }
     }
     try {
       const ref = await persistScrape({
@@ -753,6 +795,44 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 // ── Source eligibility + link filtering ─────────────────────────────
 
+/**
+ * Global deny patterns applied to EVERY source regardless of its
+ * per-source crawl_deny list. Defense in depth: even when a migration
+ * misses a pattern on one source, these stop index pages (sitemaps,
+ * feeds, tag/category archives, author pages) from being scraped as
+ * articles. Matches the R7 migration 20260423200000 that sets the
+ * same defaults on every existing seed row.
+ */
+const GLOBAL_CRAWL_DENY_PATTERNS: RegExp[] = [
+  /\/sitemap\//i,
+  /\/sitemap\.xml$/i,
+  /\/feed\//i,
+  /\/rss\//i,
+  /\/tag\//i,
+  /\/tags\//i,
+  /\/topic\//i,
+  /\/topics\//i,
+  /\/category\//i,
+  /\/categorie\//i,
+  /\/categoria\//i,
+  /\/author\//i,
+  /\/autore\//i,
+  /\/archive\//i,
+  /\/archivio\//i,
+  /\/page\/\d+/i,
+  /\/pagina\/\d+/i,
+];
+
+/**
+ * Minimum number of brief-keyword hits a candidate URL must score on
+ * its title + description + URL path to be kept. Below this, the URL
+ * drops out even if it passed regex filters. Set conservatively to 1
+ * so sources with short descriptions still get their best matches
+ * through; raise to 2 to be stricter when smoke data shows too much
+ * noise.
+ */
+const MIN_KEYWORD_SCORE = 1;
+
 function isSourceEligible(
   source: SourceCatalogEntry,
   query: ResearchQuery,
@@ -767,9 +847,109 @@ function isSourceEligible(
   return firecrawlAvailable;
 }
 
+/**
+ * Topic-overlap gate. Returns true when the source's domain_tags,
+ * host words, and source_type have ANY term in common with the brief's
+ * topic terms. False when a brief about hotels hits a food-focused
+ * catalog source.
+ *
+ * Day 4 smoke Brief B (hotel AI EMEA) exposed this gap: the planner
+ * correctly tier-masked to 4/5 English sources, but the fetcher then
+ * scraped 15 food articles from just-food / euromonitor / nielsen
+ * because nothing rejected them on topical relevance.
+ */
+function sourceHasTopicOverlap(
+  source: SourceCatalogEntry,
+  briefTopicTerms: Set<string>,
+): boolean {
+  if (briefTopicTerms.size === 0) return true;
+  const sourceSignature = new Set<string>();
+  const addSig = (raw: string) => {
+    const t = raw.toLowerCase();
+    // Drop 1-2 char tokens (country TLD suffixes like ".it", "uk" are
+    // substrings of many English words and cause false positives on
+    // the partial-match check below).
+    if (t.length >= 3) sourceSignature.add(t);
+  };
+  for (const tag of source.domainTags) addSig(tag);
+  addSig(source.sourceType);
+  for (const part of source.host.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
+    addSig(part);
+  }
+  for (const term of briefTopicTerms) {
+    if (term.length < 3) continue;
+    if (sourceSignature.has(term)) return true;
+    for (const sig of sourceSignature) {
+      if (term.length < 3 || sig.length < 3) continue;
+      // Prefix/suffix match only, not mid-string. Catches legitimate
+      // category roots like "pet" / "petfood", "oil" / "oilseed",
+      // "tea" / "teaware", "pane" / "panetteria" without firing on
+      // coincidental substrings like "pet" appearing inside
+      // "competitor" or "it" inside "management".
+      const smaller = term.length < sig.length ? term : sig;
+      const larger = term.length < sig.length ? sig : term;
+      if (larger.startsWith(smaller) || larger.endsWith(smaller)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Derive the brief's topic-term set from the query's search text.
+ * Lowercased, tokenized on non-alphanumeric (including accented Latin
+ * characters), stopwords stripped, minimum length 3. Keywords and
+ * intent are not added here because the planner has already composed
+ * them into `query.text` at generation time; re-tokenizing the raw
+ * keyword list would duplicate signal without adding new terms.
+ */
+function buildBriefTopicTerms(query: ResearchQuery): Set<string> {
+  const text = query.text.toLowerCase();
+  const tokens = text.split(/[^a-zà-ÿ0-9]+/u).filter((t) => t.length >= 3 && !TOPIC_STOPWORDS.has(t));
+  return new Set(tokens);
+}
+
+const TOPIC_STOPWORDS = new Set([
+  // English
+  "and",
+  "the",
+  "for",
+  "from",
+  "with",
+  "into",
+  "about",
+  "this",
+  "that",
+  "these",
+  "those",
+  // Italian
+  "per",
+  "con",
+  "che",
+  "del",
+  "dei",
+  "delle",
+  "della",
+  "dello",
+  "degli",
+  "sul",
+  "sulla",
+  "alla",
+  "alle",
+  "agli",
+  "nel",
+  "nella",
+  "una",
+  "uno",
+  // French / Spanish stragglers
+  "des",
+  "les",
+  "sur",
+]);
+
 function filterLinksForSource(
   links: FirecrawlMapLink[],
   source: SourceCatalogEntry,
+  freshnessCutoff: Date | null,
 ): FirecrawlMapLink[] {
   const patterns = source.crawlPatterns as {
     crawl_allow?: string[];
@@ -780,26 +960,61 @@ function filterLinksForSource(
   return links.filter((link) => {
     const path = safePath(link.url);
     if (path === null) return false;
+    // Global deny: sitemap, feed, tag/category, author, archive pages.
+    // These are URL index pages, not articles, even when the per-source
+    // regex list missed them.
+    if (GLOBAL_CRAWL_DENY_PATTERNS.some((r) => r.test(path))) return false;
     if (allowRegexes.length > 0 && !allowRegexes.some((r) => r.test(path))) return false;
     if (denyRegexes.some((r) => r.test(path))) return false;
+    // Freshness filter: if the URL path embeds a year (or year/month)
+    // and that date is older than the cutoff, drop it. URLs without a
+    // parseable date pass through; post-scrape metadata.publishedTime
+    // is the next line of defense in persistScrape.
+    if (freshnessCutoff && !isPathFreshEnough(path, freshnessCutoff)) return false;
     return true;
   });
+}
+
+/**
+ * Try to extract a `YYYY[/MM[/DD]]` date from the URL path. If extracted
+ * and the date is older than the cutoff, return false. If the path has
+ * no parseable date, return true (caller cannot pre-filter; rely on
+ * metadata.publishedTime during persist).
+ */
+function isPathFreshEnough(path: string, cutoff: Date): boolean {
+  const match = path.match(/\/(20\d{2})(?:\/(\d{1,2}))?(?:\/(\d{1,2}))?(?:\/|$)/);
+  if (!match) return true;
+  const year = Number.parseInt(match[1]!, 10);
+  const month = match[2] ? Number.parseInt(match[2], 10) : 1;
+  const day = match[3] ? Number.parseInt(match[3], 10) : 1;
+  if (!Number.isFinite(year) || year < 2000 || year > 2100) return true;
+  const urlDate = new Date(Date.UTC(year, Math.max(0, Math.min(11, month - 1)), Math.max(1, Math.min(28, day))));
+  return urlDate.getTime() >= cutoff.getTime();
 }
 
 function rankLinksByKeyword(links: FirecrawlMapLink[], queryText: string): FirecrawlMapLink[] {
   const terms = queryText
     .toLowerCase()
     .split(/\s+/)
-    .filter((t) => t.length >= 3);
+    // Drop purely-numeric terms (year stamps like "2026" score
+    // spuriously against URL date segments) and short tokens.
+    .filter((t) => t.length >= 3 && !/^\d+$/.test(t));
   if (terms.length === 0) return links;
   const scored = links.map((link) => {
+    // Score on title + description (semantic signals) and URL path
+    // (slug signals). Numeric date segments in the URL do not contribute
+    // because all-digit query terms were filtered above.
     const blob = [link.title, link.description, link.url].filter(Boolean).join(" ").toLowerCase();
     let score = 0;
     for (const term of terms) if (blob.includes(term)) score += 1;
     return { link, score };
   });
-  scored.sort((a, b) => b.score - a.score);
-  return scored.map((s) => s.link);
+  // Minimum keyword-score threshold. A URL with zero keyword hits on
+  // its title + description + URL path is not a plausible scrape target,
+  // even if the per-source crawl_allow regex lets it through.
+  const qualified = scored.filter((s) => s.score >= MIN_KEYWORD_SCORE);
+  qualified.sort((a, b) => b.score - a.score);
+  return qualified.map((s) => s.link);
 }
 
 function getSourceCrawlLimit(source: SourceCatalogEntry): number {
