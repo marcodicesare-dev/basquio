@@ -64,3 +64,39 @@ export type {
   FiberPostsResponse,
   FiberProfile,
 } from "./fiber-client";
+
+export { createResearchPlan } from "./planner";
+export type { PlannerDeps } from "./planner";
+
+export {
+  PLANNER_SYSTEM_PROMPT,
+  buildPlannerUserMessage,
+  defaultFreshnessWindowForIntent,
+} from "./planner-prompt";
+
+export {
+  DEFAULT_PLANNER_TUNING,
+  evidenceRefSchema,
+  haikuPlanOutputSchema,
+  researchPlanSchema,
+  researchQuerySchema,
+  researchQueryIntentSchema,
+  researchQueryGapReasonSchema,
+  sourceCatalogEntrySchema,
+} from "./types";
+export type {
+  EvidenceRef,
+  GraphCoverageHit,
+  GraphCoverageResult,
+  GraphQueryFn,
+  HaikuCallFn,
+  HaikuPlanOutput,
+  PlannerInput,
+  PlannerTuning,
+  ResearchBudget,
+  ResearchPlan,
+  ResearchQuery,
+  ResearchQueryGapReason,
+  ResearchQueryIntent,
+  SourceCatalogEntry,
+} from "./types";
