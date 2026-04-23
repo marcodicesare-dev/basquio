@@ -232,8 +232,8 @@ CREATE TABLE public.source_catalog_scrapes (
   content_tokens INT,
   language TEXT,
   metadata JSONB NOT NULL DEFAULT '{}',
-  firecrawl_endpoint TEXT NOT NULL CHECK (firecrawl_endpoint IN ('scrape','crawl','batch-scrape','map','search')),
-  firecrawl_credits_used NUMERIC(10,4),
+  fetcher_endpoint TEXT NOT NULL CHECK (fetcher_endpoint IN ('scrape','crawl','batch-scrape','map','search','fiber')),
+  fetcher_credits_used NUMERIC(10,4),
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ NOT NULL,
   UNIQUE (url_hash)
