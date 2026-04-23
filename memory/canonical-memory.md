@@ -195,6 +195,7 @@ Template fidelity lesson:
 - reminder UX should stay tied to concrete user states: completed-with-no-download, uploaded-template/no-run, and low-credit after a successful debit
 - sample-data onboarding is a valid acquisition path for Basquio because many signups arrive without a workbook ready; the sample run should live directly inside `/jobs/new`, not on a detached marketing flow
 - a full-deck author turn that spends model time but returns no required files should get one bounded missing-file retry on Opus/Sonnet as well as Haiku; do not treat that recovery path as Haiku-only
+- bare provider/tool interruption markers such as `terminated`, `container_expired`, `execution_time_exceeded`, `too_many_requests`, and tool-result `unavailable` are transient provider failures and must flow into the superseding-attempt recovery path, not the terminal internal-error bucket
 
 When architecture changes:
 

@@ -71,6 +71,7 @@
 - Checkpoint recovery is invalid unless the checkpoint contains the full durable artifact set and the recovered analysis belongs to the same attempt as the checkpoint.
 - Include `web_fetch_20260209` in the tools array for free code execution compute.
 - If the loaded Anthropic Skills auto-inject code execution, do not also register a second named `code_execution` tool that collides with the injected one.
+- Opaque provider/tool interruption markers such as `terminated`, `container_expired`, `execution_time_exceeded`, `too_many_requests`, and tool-result `unavailable` are retryable provider failures. Do not file them under `internal_processing_error`.
 - The generation call should be a SINGLE turn, not an understand/author split. Multi-turn accumulates tool output and multiplies costs.
 - The single-turn file-backed path should be materially cheaper than the split understand/author path. Confirm real cost with live usage telemetry instead of assuming a fixed deck price from prompt theory alone.
 - If a smoke test uses > 50K input tokens before meaningful deck output, the prompt or continuation pattern is wrong.

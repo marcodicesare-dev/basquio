@@ -800,3 +800,19 @@ Implication:
 - existing saved template profiles with junk master-background tokens can no longer poison newly generated decks
 - future imported template profiles should persist only brand-aligned master backgrounds
 - `data_tables.xlsx` should now read as a consulting artifact: easier to scan, less chart clutter, and no more chart-vs-table collisions from crude anchoring
+
+## April 23, 2026 — Bare provider/tool termination must auto-recover, not hard-fail
+
+Decision:
+- treat opaque provider/tool interruption strings such as `terminated`, `container_expired`, `execution_time_exceeded`, `too_many_requests`, and tool-result `unavailable` as `transient_provider`
+- normalize a bare `terminated` stream error close to the Claude request loop so worker-level failure classification sees a provider/tool interruption instead of an undifferentiated internal error
+- rely on the existing superseding-attempt recovery path once the failure is classified correctly, instead of introducing a separate ad hoc retry path
+
+Why:
+- the Apr 23 Rossella rerun `ec91f0d0-...` failed in `author` before any completed provider usage existed, with the worker logging only `terminated`
+- the same failure signature already existed on Apr 11, Apr 15, and Apr 21 across Sonnet 4.6, Opus 4.6, and Opus 4.7 deployments, so the root defect was not the latest render/template commit and not the model switch alone
+- Anthropic's current code-execution docs explicitly document retryable tool/container error codes such as `unavailable`, `execution_time_exceeded`, `container_expired`, and `too_many_requests`
+
+Implication:
+- transient provider/tool interruptions should create a superseding attempt automatically instead of burning the run as `internal_processing_error`
+- postmortems can distinguish true logic/output failures from provider/tool execution interruptions
