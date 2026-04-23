@@ -11624,6 +11624,199 @@ body:has(.wbeta-shell) .site-wrap {
   text-underline-offset: 2px;
 }
 
+/* ── Approval cards (saveFromPaste, scrapeUrl, editStakeholder, ──
+   createStakeholder, editRule, draftBrief, suggestServices) ── */
+
+.wbeta-ai-approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wbeta-ai-approval-head {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.wbeta-ai-approval-body {
+  padding-left: 28px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-approval-list {
+  padding-left: 28px;
+  margin: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.wbeta-ai-approval-list > li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wbeta-ai-approval-kind {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.wbeta-ai-approval-muted {
+  padding-left: 28px;
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0;
+}
+
+.wbeta-ai-approval-actions {
+  display: flex;
+  gap: 6px;
+  padding-left: 28px;
+  padding-top: 2px;
+}
+
+.wbeta-ai-approval-btn-primary {
+  background: var(--text);
+  color: var(--surface);
+  border-color: var(--text);
+}
+
+.wbeta-ai-approval-btn-primary:hover:not(:disabled),
+.wbeta-ai-approval-btn-primary:focus-visible:not(:disabled) {
+  background: var(--text);
+  color: var(--surface);
+  opacity: 0.9;
+}
+
+.wbeta-ai-approval-diff {
+  margin: 0;
+  padding: 0 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.wbeta-ai-approval-diff-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.wbeta-ai-approval-diff-row dt {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-ai-approval-diff-row dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.wbeta-ai-approval-diff-row del {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* ── Service suggestion card ──────────────────────────────────── */
+
+.wbeta-ai-service-list {
+  padding-left: 28px;
+  gap: 12px;
+}
+
+.wbeta-ai-service-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+}
+
+.wbeta-ai-service-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wbeta-ai-service-name {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.wbeta-ai-service-priority {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.wbeta-ai-service-priority-high {
+  background: var(--blue);
+  color: var(--surface);
+  border-color: var(--blue);
+}
+
+.wbeta-ai-service-priority-medium {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.wbeta-ai-service-priority-low {
+  opacity: 0.75;
+}
+
+.wbeta-ai-service-rationale {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-ai-service-evidence {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  list-style: disc;
+}
+
 /* ── Metric card (generative UI) ───────────────────────────────── */
 
 .wbeta-ai-metric-card {
