@@ -367,6 +367,9 @@ importers:
       '@basquio/render-pptx':
         specifier: workspace:*
         version: link:../render-pptx
+      '@basquio/research':
+        specifier: workspace:*
+        version: link:../research
       '@basquio/scene-graph':
         specifier: workspace:*
         version: link:../scene-graph

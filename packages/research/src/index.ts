@@ -68,6 +68,51 @@ export type {
 export { createResearchPlan } from "./planner";
 export type { PlannerDeps } from "./planner";
 
+export { executePlan } from "./fetcher";
+export type {
+  FetcherDeps,
+  FetcherInput,
+  FetcherResult,
+  FetcherStage,
+  FetcherStats,
+} from "./fetcher";
+
+export {
+  DAY_4_FIRECRAWL_USD_CAP,
+  DAY_4_SMOKE_BUDGET,
+  FIRECRAWL_USD_PER_CREDIT,
+  SPEC_STABLE_BUDGET,
+  SPEC_STABLE_FIRECRAWL_USD_CAP,
+  checkBudget,
+  creditsToUsd,
+  newCostAccumulator,
+  recordCost,
+} from "./budget";
+export type { BudgetCapReason, BudgetVerdict, CostAccumulator } from "./budget";
+
+export {
+  canonicalizeUrl,
+  hashContent,
+  hashUrl,
+} from "./dedupe";
+
+export {
+  scrapeToEvidenceRef,
+  scrapesToEvidenceRefs,
+} from "./evidence-adapter";
+export type { SourceCatalogScrape } from "./evidence-adapter";
+
+export {
+  insertScrapeCacheRow,
+  lookupCacheByContentHash,
+  lookupCacheByUrlHash,
+} from "./cache";
+export type {
+  CacheHit,
+  RestConfig,
+  ScrapeCacheInsert,
+} from "./cache";
+
 export {
   PLANNER_SYSTEM_PROMPT,
   buildPlannerUserMessage,

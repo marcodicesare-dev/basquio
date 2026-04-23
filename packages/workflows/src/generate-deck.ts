@@ -88,6 +88,8 @@ import { closeOpenRequestUsageRows } from "./request-usage-lifecycle";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
 import { buildBasquioSystemPrompt } from "./system-prompt";
 import { notifyRunCompletionIfRequested, notifyRunFailureIfRequested } from "./notify-completion";
+import { runResearchPhase, type ResearchPhaseResult } from "./research-phase";
+import type { EvidenceRef, HaikuCallFn } from "@basquio/research";
 import { deleteRestRows, downloadFromStorage, fetchRestRows, patchRestRows, upsertRestRows, uploadToStorage } from "./supabase";
 import {
   buildWorkspaceContextSummary,
@@ -145,9 +147,22 @@ const REVISE_PHASE_TIMEOUT_MS = Number.parseInt(process.env.BASQUIO_REVISE_PHASE
 const AUTHOR_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_AUTHOR_REQUEST_WATCHDOG_MS ?? "0", 10);
 const REVISE_REQUEST_WATCHDOG_MS = Number.parseInt(process.env.BASQUIO_REVISE_REQUEST_WATCHDOG_MS ?? "0", 10);
 const NATIVE_WORKBOOK_CHART_SCRIPT_PATH = path.resolve(process.cwd(), "scripts", "native-workbook-charts.py");
-type ClaudePhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
+type ClaudePhase =
+  | "normalize"
+  | "research"
+  | "understand"
+  | "author"
+  | "render"
+  | "critique"
+  | "revise"
+  | "export";
 const PHASE_TIMEOUTS_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
+  // Research phase (spec §5.5): catalog load + planner (Haiku) + fetcher
+  // (Firecrawl + optional Fiber) with a Day-4 smoke budget of 15 URLs.
+  // 10 minutes is generous for the 15-URL envelope; post-smoke the cap
+  // can relax when the spec-default 50-URL budget comes back.
+  research: 10 * 60_000,
   understand: 10 * 60_000,
   // Large code-execution turns routinely run 30-40 minutes on valid decks.
   // Keep a long phase cap, but avoid a short per-request watchdog that kills healthy runs.
@@ -167,6 +182,7 @@ const MAX_PAUSE_TURNS_PER_PHASE = {
 } as const;
 const REQUEST_WATCHDOG_BY_PHASE_MS: Record<ClaudePhase, number | null> = {
   normalize: 120_000,
+  research: 10 * 60_000,
   understand: 10 * 60_000,
   author: AUTHOR_REQUEST_WATCHDOG_MS > 0 ? AUTHOR_REQUEST_WATCHDOG_MS : null,
   revise: REVISE_REQUEST_WATCHDOG_MS > 0 ? REVISE_REQUEST_WATCHDOG_MS : null,
@@ -569,7 +585,15 @@ type GeneratedFile = {
   mimeType: string;
 };
 
-type DeckPhase = "normalize" | "understand" | "author" | "render" | "critique" | "revise" | "export";
+type DeckPhase =
+  | "normalize"
+  | "research"
+  | "understand"
+  | "author"
+  | "render"
+  | "critique"
+  | "revise"
+  | "export";
 
 // ─── ARTIFACT CHECKPOINT CONTRACT ────────────────────────────────
 // Checkpointable outputs by phase:
@@ -1118,6 +1142,68 @@ export async function generateDeckRun(
       sheetCount: parsed.datasetProfile.sheets.length,
     });
 
+    // ── Research phase (spec §5.5) ─────────────────────────────────
+    // Feature-flagged behind BASQUIO_RESEARCH_PHASE_ENABLED so production
+    // runs do not spend Firecrawl credits until the path is explicitly
+    // enabled. The smoke test flips the flag for one run; later days
+    // flip it to the default after stability is proved. Non-fatal: a
+    // failure here degrades gracefully and the deck proceeds with
+    // uploaded-file evidence only.
+    let researchEvidenceRefs: EvidenceRef[] = [];
+    let researchPhaseResult: ResearchPhaseResult | null = null;
+    if (process.env.BASQUIO_RESEARCH_PHASE_ENABLED === "true" && run.workspace_id) {
+      const researchPhaseStartedAt = Date.now();
+      try {
+        currentPhase = "research";
+        await markPhase(config, runId, attempt, currentPhase);
+        throwIfWorkerShutdownRequested(externalAbortSignal, currentPhase);
+        researchPhaseResult = await runResearchPhase(
+          {
+            workspaceId: run.workspace_id,
+            deckRunId: runId,
+            conversationId: workspaceContextPack?.lineage?.conversationId ?? null,
+            briefSummary: extractBriefSummaryForResearch(run.brief),
+            briefKeywords: extractBriefKeywordsForResearch(run.brief, workspaceContextPack),
+            workspaceContextPack,
+            callHaiku: buildHaikuCallFnForResearch(client),
+            graphQuery: async () => ({ hits: [] }),
+          },
+          {
+            supabaseUrl: config.supabaseUrl,
+            serviceKey: config.serviceKey,
+            firecrawlApiKey: process.env.FIRECRAWL_API_KEY ?? null,
+            fiberApiKey: process.env.FIBER_API_KEY ?? null,
+          },
+          externalAbortSignal ?? undefined,
+        );
+        researchEvidenceRefs = researchPhaseResult.evidenceRefs;
+        await completePhase(config, runId, attempt, "research", {
+          researchRunId: researchPhaseResult.researchRunId,
+          evidenceRefCount: researchEvidenceRefs.length,
+          queriesAttempted: researchPhaseResult.stats.queriesAttempted,
+          queriesCompleted: researchPhaseResult.stats.queriesCompleted,
+          scrapesSucceeded: researchPhaseResult.stats.scrapesSucceeded,
+          firecrawlUsd: researchPhaseResult.stats.firecrawlUsd,
+          degraded: researchPhaseResult.degraded,
+          degradedReason: researchPhaseResult.degradedReason,
+          elapsedMs: Date.now() - researchPhaseStartedAt,
+        });
+      } catch (error) {
+        await insertEvent(config, runId, attempt, "research", "phase_error", {
+          error: error instanceof Error ? error.message : String(error),
+          elapsedMs: Date.now() - researchPhaseStartedAt,
+        }).catch(() => {});
+        // Close out the phase even on failure so operator telemetry
+        // does not leave research stuck in "started". The deck
+        // continues with uploaded-file evidence only.
+        await completePhase(config, runId, attempt, "research", {
+          degraded: true,
+          degradedReason: error instanceof Error ? error.message : String(error),
+          elapsedMs: Date.now() - researchPhaseStartedAt,
+        }).catch(() => {});
+      }
+    }
+
     const uploadedEvidence = await uploadClaudeFilesSequentially({
       client,
       config,
@@ -1182,6 +1268,16 @@ export async function generateDeckRun(
       templateProfile,
       briefLanguageHint: inferLanguageHint(run),
       authorModel: MODEL,
+      externalEvidence:
+        researchEvidenceRefs.length > 0
+          ? researchEvidenceRefs.map((ref) => ({
+              id: ref.id,
+              fileName: ref.fileName,
+              summary: ref.summary,
+              confidence: ref.confidence,
+              sourceLocation: ref.sourceLocation,
+            }))
+          : undefined,
     });
     const isReportOnly = MODEL === "claude-haiku-4-5";
     assertRequestedDeckSizeSupported(run.target_slide_count, isReportOnly ? "report_only" : "deck");
@@ -9568,5 +9664,131 @@ function buildTemplateQaContext(templateProfile: TemplateProfile) {
     background: templateProfile.brandTokens?.palette.coverBg ?? templateProfile.brandTokens?.palette.background ?? null,
     clientLabel: templateProfile.templateName?.replace(/\.pptx$/i, "") ?? null,
     logoExpected: Boolean(templateProfile.brandTokens?.logo?.imageBase64),
+  };
+}
+
+// ── Research-phase helpers (spec §5.5, Day 4 scope) ────────────────
+
+/**
+ * Extract a one-line brief summary for the research planner. Pulls from
+ * the most specific field present on `run.brief`, falling back to a
+ * concatenation when nothing explicit is set. Never returns empty; the
+ * planner needs at least something to anchor the keyword extraction.
+ */
+function extractBriefSummaryForResearch(brief: unknown): string {
+  if (!brief || typeof brief !== "object") return "Deck run without explicit brief";
+  const record = brief as Record<string, unknown>;
+  const candidates = [
+    record.title,
+    record.objective,
+    record.thesis,
+    record.narrative,
+    record.description,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim().slice(0, 1000);
+    }
+  }
+  return "Deck run without explicit brief";
+}
+
+/**
+ * Keyword extraction for the research planner. Rough heuristic: tokenize
+ * the brief text, drop short/stop tokens, keep the first N unique. Day 4
+ * ships this minimal version; Day 5+ may upgrade to an LLM extraction
+ * once the planner itself is in production use.
+ *
+ * Also pulls named entities from the workspace context pack when
+ * available so the keyword set reflects workspace knowledge the analyst
+ * already named.
+ */
+function extractBriefKeywordsForResearch(
+  brief: unknown,
+  workspaceContextPack: WorkspaceContextPack | null,
+): string[] {
+  const textParts: string[] = [];
+  if (brief && typeof brief === "object") {
+    const record = brief as Record<string, unknown>;
+    for (const field of ["title", "objective", "thesis", "narrative", "description"] as const) {
+      const value = record[field];
+      if (typeof value === "string") textParts.push(value);
+    }
+  }
+  if (workspaceContextPack?.scope?.name) textParts.push(workspaceContextPack.scope.name);
+  if (workspaceContextPack?.stakeholders) {
+    for (const s of workspaceContextPack.stakeholders) textParts.push(s.name);
+  }
+  const combined = textParts.join(" ").toLowerCase();
+  const tokens = combined
+    .split(/[^a-zà-ÿ0-9]+/u)
+    .filter((t) => t.length >= 4 && !RESEARCH_STOPWORDS.has(t));
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const token of tokens) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    unique.push(token);
+    if (unique.length >= 12) break;
+  }
+  return unique;
+}
+
+const RESEARCH_STOPWORDS = new Set([
+  "this",
+  "that",
+  "with",
+  "from",
+  "they",
+  "have",
+  "been",
+  "will",
+  "what",
+  "when",
+  "where",
+  "which",
+  "their",
+  "these",
+  "those",
+  "into",
+  "about",
+  "della",
+  "dello",
+  "delle",
+  "degli",
+  "quali",
+  "quale",
+  "come",
+  "dove",
+  "quando",
+  "sono",
+  "essere",
+  "avere",
+  "anche",
+]);
+
+/**
+ * Adapter that lets the research planner call Haiku via the existing
+ * Anthropic SDK client. The planner passes a system+user pair and
+ * expects a raw JSON string. Day 4 uses claude-haiku-4-5 for cost and
+ * a conservative max_tokens cap; medium effort is the default for
+ * Claude 4.x planning calls.
+ */
+function buildHaikuCallFnForResearch(client: Anthropic): HaikuCallFn {
+  return async ({ system, user, signal }) => {
+    const response = await client.messages.create(
+      {
+        model: "claude-haiku-4-5",
+        max_tokens: 4096,
+        system,
+        messages: [{ role: "user", content: user }],
+      },
+      { signal: signal ?? undefined },
+    );
+    const content = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+    return content;
   };
 }
