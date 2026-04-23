@@ -311,6 +311,12 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0
 
+  packages/research:
+    dependencies:
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+
   packages/scene-graph:
     dependencies:
       '@basquio/types':

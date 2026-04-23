@@ -1,0 +1,14 @@
+{
+  "name": "@basquio/research",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./firecrawl": "./src/firecrawl-client.ts",
+    "./fiber": "./src/fiber-client.ts",
+    "./http": "./src/http.ts"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  }
+}

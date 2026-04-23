@@ -19,6 +19,7 @@
     "test:cost-guard": "tsx scripts/test-cost-guard.ts",
     "test:eval-harness": "tsx scripts/test-eval-harness.ts",
     "test:metric-presentation": "tsx scripts/test-metric-presentation.ts",
+    "test:research-clients": "tsx scripts/test-research-clients.ts",
     "test:native-workbook-charts": "tsx scripts/test-native-workbook-charts.ts",
     "test:template-branding": "tsx scripts/test-template-branding.ts",
     "test:request-usage-lifecycle": "tsx scripts/test-request-usage-lifecycle.ts",
