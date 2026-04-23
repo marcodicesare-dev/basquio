@@ -120,6 +120,18 @@ export {
 } from "./planner-prompt";
 
 export {
+  NiqServicesCatalogNotFoundError,
+  clearNiqServicesCatalogCache,
+  loadNiqServicesCatalog,
+  parseNiqServicesCatalog,
+} from "./niq-services-catalog";
+export type {
+  LoadNiqServicesCatalogOptions,
+  NiqServiceEntry,
+  NiqServicesCatalog,
+} from "./niq-services-catalog";
+
+export {
   DEFAULT_PLANNER_TUNING,
   evidenceRefSchema,
   haikuPlanOutputSchema,
