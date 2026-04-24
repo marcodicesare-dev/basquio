@@ -64,6 +64,35 @@ describe("ChatMessage inline suggestions", () => {
 
     expect(onSendFollowUp).toHaveBeenCalledWith("Turn this into a slide outline.");
   });
+
+  it("strips streamed model suggestion blocks and turns them into chips", () => {
+    const onSendFollowUp = vi.fn();
+    render(
+      React.createElement(ChatMessage, {
+        message: assistantMessage(
+          "m3",
+          `Workspace chat is live and ready.
+
+<suggestions>
+- <label>Build slide</label><prompt>Turn this into a slide outline.</prompt>
+- <label>Check memory</label><prompt>Compare this answer with saved memory.</prompt>
+</suggestions>`,
+        ),
+        isStreaming: false,
+        showInlineSuggestions: true,
+        onSendFollowUp,
+      }),
+    );
+
+    expect(screen.getByText("Workspace chat is live and ready.")).not.toBeNull();
+    expect(screen.queryByText(/Build slide/)).toBeNull();
+    expect(screen.queryByText(/Check memory/)).toBeNull();
+
+    const chip = screen.getByRole("button", { name: /turn this into a slide outline/i });
+    fireEvent.click(chip);
+
+    expect(onSendFollowUp).toHaveBeenCalledWith("Turn this into a slide outline.");
+  });
 });
 
 function assistantMessage(id: string, text: string): UIMessage {

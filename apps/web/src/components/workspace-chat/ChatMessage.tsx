@@ -81,11 +81,18 @@ function gatherCitations(message: UIMessage): CitationInline[] {
 }
 
 function messageToMarkdown(message: UIMessage): string {
+  return parseFollowUpSuggestions(messageText(message)).text;
+}
+
+function messageText(message: UIMessage): string {
   const parts = (message.parts ?? []) as unknown as Part[];
-  const text = parts
+  return parts
     .filter((p) => p.type === "text")
     .map((p) => p.text ?? "")
     .join("\n\n");
+}
+
+function assistantVisibleText(text: string): string {
   return parseFollowUpSuggestions(text).text;
 }
 
@@ -179,7 +186,12 @@ export const ChatMessage = memo(function ChatMessage({
 
   const parts = useMemo(() => (message.parts ?? []) as unknown as Part[], [message]);
   const hasAssistantText = useMemo(
-    () => parts.some((part) => part.type === "text" && (part.text ?? "").trim().length > 0),
+    () =>
+      parts.some(
+        (part) =>
+          part.type === "text" &&
+          assistantVisibleText(part.text ?? "").trim().length > 0,
+      ),
     [parts],
   );
   const lastPartIndex = parts.length - 1;
@@ -216,16 +228,18 @@ export const ChatMessage = memo(function ChatMessage({
               </p>
             );
           }
+          const visibleText = assistantVisibleText(text);
+          if (!visibleText) return null;
           const shouldRenderStreamingText = isStreaming && i === lastPartIndex;
           return (
             <div key={i} className="wbeta-ai-asst-block">
               {shouldRenderStreamingText ? (
                 <div className="wbeta-ai-streaming-text">
-                  {text}
+                  {visibleText}
                   <span className="wbeta-ai-cursor" aria-hidden />
                 </div>
               ) : (
-                <ChatMarkdown source={text} citations={citations} />
+                <ChatMarkdown source={visibleText} citations={citations} />
               )}
             </div>
           );
@@ -616,7 +630,12 @@ function deriveInlineSuggestions(
 }
 
 function deriveMetadataInlineSuggestions(message: UIMessage): WorkspaceSuggestion[] {
-  return suggestionsFromMessageMetadata(message).map((suggestion, index) => ({
+  const metadataSuggestions = suggestionsFromMessageMetadata(message);
+  const suggestions = metadataSuggestions.length > 0
+    ? metadataSuggestions
+    : parseFollowUpSuggestions(messageText(message)).suggestions;
+
+  return suggestions.map((suggestion, index) => ({
     id: `inline-model-${message.id ?? "assistant"}-${index}`,
     kind: "investigate",
     prompt: suggestion.prompt,
