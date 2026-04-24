@@ -8,11 +8,7 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 
-import { WorkspaceSuggestionSurface } from "@/components/workspace-suggestions";
 import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
-import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
-
-export type WorkspaceHomeSuggestion = WorkspaceSuggestion;
 
 export type WorkspaceHomeScope = {
   id: string;
@@ -52,7 +48,6 @@ export function WorkspaceHomeDashboard({
   greeting,
   learnedCount,
   state,
-  suggestions,
   activeScopes,
   conversations,
   entityGroups,
@@ -64,7 +59,6 @@ export function WorkspaceHomeDashboard({
   greeting: string;
   learnedCount: number;
   state: WorkspaceHomeState;
-  suggestions: WorkspaceHomeSuggestion[];
   activeScopes: WorkspaceHomeScope[];
   conversations: WorkspaceHomeConversation[];
   entityGroups: WorkspaceHomeEntityGroup[];
@@ -95,6 +89,8 @@ export function WorkspaceHomeDashboard({
     );
   }
 
+  const visibleScopes = activeScopes.slice(0, 3);
+
   return (
     <div className="wbeta-home">
       <header className="wbeta-home-hero">
@@ -111,60 +107,13 @@ export function WorkspaceHomeDashboard({
             )}
           </p>
         </div>
-        <Link className="wbeta-home-primary" href="#workspace-chat">
-          <ChatText size={15} weight="bold" />
-          <span>{copy.askAcrossWorkspace}</span>
-        </Link>
       </header>
 
-      {state === "sparse" ? <SparseWorkspacePanel copy={copy} /> : null}
-
-      <WorkspaceSuggestionSurface
-        title={copy.suggestedToday}
-        countLabel={`${Math.min(suggestions.length, 3)} ready`}
-        placement="home"
-        suggestions={suggestions}
-      />
-
-      <section className="wbeta-home-section" aria-labelledby="active-scopes">
-        <div className="wbeta-home-section-head">
-          <h2 id="active-scopes">{copy.activeScopes}</h2>
-          <span>{activeScopes.length > 0 ? `${copy.top} ${activeScopes.length}` : copy.noScopes}</span>
-        </div>
-        {activeScopes.length > 0 ? (
-          <div className="wbeta-home-scope-grid">
-            {activeScopes.map((scope) => (
-              <Link key={scope.id} href={scope.href} className="wbeta-home-scope-card">
-                <span className="wbeta-home-scope-kind">{scope.kind}</span>
-                <strong>{scope.name}</strong>
-                {scope.lastActivityLabel ? (
-                  <span className="wbeta-home-scope-updated">
-                    {copy.updated} {scope.lastActivityLabel}
-                  </span>
-                ) : null}
-                <dl>
-                  <div>
-                    <dt>Memory</dt>
-                    <dd>{scope.memoryCount}</dd>
-                  </div>
-                  <div>
-                    <dt>Facts</dt>
-                    <dd>{scope.factCount}</dd>
-                  </div>
-                  <div>
-                    <dt>Deliverables</dt>
-                    <dd>{scope.deliverableCount}</dd>
-                  </div>
-                </dl>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <p className="wbeta-home-empty-line">
-            Add a client, category, or function in the sidebar to create your first scope.
-          </p>
-        )}
+      <section id="workspace-chat" className="wbeta-home-chat wbeta-home-chat-primary" aria-label="Workspace chat">
+        {chat}
       </section>
+
+      {state === "sparse" ? <SparseWorkspacePanel copy={copy} /> : null}
 
       <div className="wbeta-home-two-col">
         <section className="wbeta-home-section" aria-labelledby="recent-chats-home">
@@ -212,6 +161,46 @@ export function WorkspaceHomeDashboard({
         </section>
       </div>
 
+      <section className="wbeta-home-section" aria-labelledby="active-scopes">
+        <div className="wbeta-home-section-head">
+          <h2 id="active-scopes">{copy.activeScopes}</h2>
+          <span>{visibleScopes.length > 0 ? `${copy.top} ${visibleScopes.length}` : copy.noScopes}</span>
+        </div>
+        {visibleScopes.length > 0 ? (
+          <div className="wbeta-home-scope-grid">
+            {visibleScopes.map((scope) => (
+              <Link key={scope.id} href={scope.href} className="wbeta-home-scope-card">
+                <span className="wbeta-home-scope-kind">{scope.kind}</span>
+                <strong>{scope.name}</strong>
+                {scope.lastActivityLabel ? (
+                  <span className="wbeta-home-scope-updated">
+                    {copy.updated} {scope.lastActivityLabel}
+                  </span>
+                ) : null}
+                <dl>
+                  <div>
+                    <dt>Memory</dt>
+                    <dd>{scope.memoryCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Facts</dt>
+                    <dd>{scope.factCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Deliverables</dt>
+                    <dd>{scope.deliverableCount}</dd>
+                  </div>
+                </dl>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="wbeta-home-empty-line">
+            Add a client, category, or function in the sidebar to create your first scope.
+          </p>
+        )}
+      </section>
+
       <section className="wbeta-home-section" aria-labelledby="this-week-home">
         <div className="wbeta-home-section-head">
           <h2 id="this-week-home">{copy.thisWeek}</h2>
@@ -241,9 +230,6 @@ export function WorkspaceHomeDashboard({
         )}
       </section>
 
-      <section id="workspace-chat" className="wbeta-home-chat" aria-label="Workspace chat">
-        {chat}
-      </section>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import React, { type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,23 +33,17 @@ describe("WorkspaceHomeDashboard", () => {
     expect(screen.getByText("Updated 2h")).not.toBeNull();
     expect(screen.getByText("Retailer margin readout")).not.toBeNull();
     expect(screen.getByTestId("workspace-chat")).not.toBeNull();
-    expect(screen.getAllByText("Use in chat")).toHaveLength(3);
-    expect(screen.queryByText("Fourth suggestion")).toBeNull();
+    expect(screen.queryByText("Suggested for today")).toBeNull();
   });
 
-  it("dispatches a composer prefill event from suggested prompts", () => {
-    const listener = vi.fn();
-    window.addEventListener("basquio:workspace-prompt", listener);
+  it("places workspace chat directly after the greeting", () => {
     render(React.createElement(WorkspaceHomeDashboard, baseProps()));
 
-    fireEvent.click(screen.getAllByText("Use in chat")[0]);
+    const home = document.querySelector(".wbeta-home");
+    const chat = screen.getByTestId("workspace-chat").parentElement;
 
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect((listener.mock.calls[0][0] as CustomEvent).detail.prompt).toBe(
-      "Find the pressure on Affinity Petcare margins.",
-    );
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    window.removeEventListener("basquio:workspace-prompt", listener);
+    expect(home?.children[0]?.classList.contains("wbeta-home-hero")).toBe(true);
+    expect(home?.children[1]).toBe(chat);
   });
 
   it("shows sparse workspace guidance when core context is missing", () => {
@@ -87,7 +81,6 @@ describe("WorkspaceHomeDashboard", () => {
           activeScopes: [],
           conversations: [],
           entityGroups: [],
-          suggestions: [],
         }),
       ),
     );
@@ -105,32 +98,6 @@ function baseProps(overrides: Partial<DashboardProps> = {}): DashboardProps {
     greeting: "Good morning, Marco",
     learnedCount: 7,
     state: "populated",
-    suggestions: [
-      {
-        id: "s1",
-        kind: "investigate",
-        prompt: "Find the pressure on Affinity Petcare margins.",
-        reason: "Combines recent chats with client memory.",
-      },
-      {
-        id: "s2",
-        kind: "summarize",
-        prompt: "Summarize last week's category updates.",
-        reason: "Uses the newest documents in the workspace.",
-      },
-      {
-        id: "s3",
-        kind: "narrate",
-        prompt: "Draft the executive storyline for retail growth.",
-        reason: "Starts from saved stakeholder preferences.",
-      },
-      {
-        id: "s4",
-        kind: "retry",
-        prompt: "Fourth suggestion",
-        reason: "This should stay hidden on the home dashboard.",
-      },
-    ],
     activeScopes: [
       {
         id: "scope-1",

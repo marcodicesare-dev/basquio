@@ -140,6 +140,17 @@ export default async function WorkspaceHomePage() {
     : 0;
   const weeklyLearnedCount =
     activity.recentDocumentCount + activity.recentMemoryCount + activity.recentFactCount;
+  const homeSuggestions =
+    suggestions.length > 0
+      ? suggestions
+      : [
+          {
+            id: "fallback-ask",
+            kind: "investigate" as const,
+            prompt: "Ask what changed across my clients this week.",
+            reason: "Uses recent workspace chats, memory, and indexed documents.",
+          },
+        ];
   const state =
     !onboarded && isEmpty
       ? "brand-new"
@@ -156,18 +167,6 @@ export default async function WorkspaceHomePage() {
         greeting={buildGreeting(userName, locale)}
         learnedCount={weeklyLearnedCount}
         state={state}
-        suggestions={
-          suggestions.length > 0
-            ? suggestions
-            : [
-                {
-                  id: "fallback-ask",
-                  kind: "investigate",
-                  prompt: "Ask what changed across my clients this week.",
-                  reason: "Uses recent workspace chats, memory, and indexed documents.",
-                },
-              ]
-        }
         activeScopes={activeScopes}
         conversations={recentConversations}
         entityGroups={entityGroups}
@@ -182,7 +181,14 @@ export default async function WorkspaceHomePage() {
           ),
           visible: firstActivityAgeDays >= 7,
         }}
-        chat={<WorkspaceChat locale={locale} />}
+        chat={
+          <WorkspaceChat
+            locale={locale}
+            promptSuggestions={homeSuggestions}
+            compactEmpty
+            contextGreeting="Ask across clients, memory, and recent work."
+          />
+        }
         locale={locale}
       />
     </>
