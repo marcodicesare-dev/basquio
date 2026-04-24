@@ -53,7 +53,7 @@ const cachedBuildSuggestions = unstable_cache(
   ): Promise<WorkspaceSuggestion[]> => {
     return buildSuggestionsUncached({ maxItems, scopeId, scopeName, locale });
   },
-  ["workspace-suggestions-v2"],
+  ["workspace-suggestions-v3"],
   { revalidate: 300 },
 );
 
