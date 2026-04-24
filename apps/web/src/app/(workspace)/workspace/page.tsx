@@ -10,6 +10,7 @@ import {
 } from "@/lib/workspace/db";
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
+import { resolveWorkspaceLocale } from "@/i18n";
 import { listConversations } from "@/lib/workspace/conversations";
 import { listMemoryEntries } from "@/lib/workspace/memory";
 import { countByScope, listScopes } from "@/lib/workspace/scopes";
@@ -137,7 +138,7 @@ export default async function WorkspaceHomePage() {
         ? "sparse"
         : "populated";
   const userName = formatUserName(viewer.user?.email ?? "");
-  const locale = resolveLocale(headersList.get("accept-language"));
+  const locale = resolveWorkspaceLocale(headersList.get("accept-language"));
 
   return (
     <>
@@ -172,15 +173,11 @@ export default async function WorkspaceHomePage() {
           ),
           visible: firstActivityAgeDays >= 7,
         }}
-        chat={<WorkspaceChat />}
+        chat={<WorkspaceChat locale={locale} />}
+        locale={locale}
       />
     </>
   );
-}
-
-function resolveLocale(acceptLanguage: string | null): "en" | "it" {
-  if (!acceptLanguage) return "en";
-  return acceptLanguage.toLowerCase().startsWith("it") ? "it" : "en";
 }
 
 function buildGreeting(name: string, locale: "en" | "it"): string {

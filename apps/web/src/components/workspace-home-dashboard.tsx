@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 
 import { WorkspaceSuggestionSurface } from "@/components/workspace-suggestions";
+import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
 export type WorkspaceHomeSuggestion = WorkspaceSuggestion;
@@ -57,6 +58,7 @@ export function WorkspaceHomeDashboard({
   weeklyStats,
   chat,
   setup,
+  locale = "en",
 }: {
   greeting: string;
   learnedCount: number;
@@ -68,19 +70,18 @@ export function WorkspaceHomeDashboard({
   weeklyStats: WorkspaceHomeWeeklyStats;
   chat: ReactNode;
   setup?: ReactNode;
+  locale?: WorkspaceLocale;
 }) {
+  const copy = getWorkspaceCopy(locale).home;
   if (state === "brand-new") {
     return (
       <div className="wbeta-home wbeta-home-empty-wrap">
         <section className="wbeta-home-empty-card" aria-labelledby="workspace-empty-title">
-          <p className="wbeta-home-eyebrow">Workspace home</p>
-          <h1 id="workspace-empty-title">Welcome to Basquio</h1>
-          <p>
-            Your workspace will remember your clients, your stakeholders, and your style.
-            Every answer cites where it came from.
-          </p>
+          <p className="wbeta-home-eyebrow">{copy.eyebrow}</p>
+          <h1 id="workspace-empty-title">{copy.welcomeTitle}</h1>
+          <p>{copy.welcomeBody}</p>
           <Link className="wbeta-home-primary" href="/onboarding/1">
-            <span>Set up workspace</span>
+            <span>{copy.setupWorkspace}</span>
             <ArrowRight size={14} weight="bold" />
           </Link>
         </section>
@@ -97,29 +98,28 @@ export function WorkspaceHomeDashboard({
     <div className="wbeta-home">
       <header className="wbeta-home-hero">
         <div>
-          <p className="wbeta-home-eyebrow">Workspace home</p>
+          <p className="wbeta-home-eyebrow">{copy.eyebrow}</p>
           <h1>{greeting}</h1>
           <p className="wbeta-home-learned">
             {learnedCount > 0 ? (
               <>
-                This week, Basquio learned <strong>{learnedCount}</strong> new things about your
-                clients.
+                {copy.learnedPrefix} <strong>{learnedCount}</strong> {copy.learnedSuffix}
               </>
             ) : (
-              "Basquio is ready to learn from your next file, rule, or chat."
+              copy.readyToLearn
             )}
           </p>
         </div>
         <Link className="wbeta-home-primary" href="#workspace-chat">
           <ChatText size={15} weight="bold" />
-          <span>Ask across workspace</span>
+          <span>{copy.askAcrossWorkspace}</span>
         </Link>
       </header>
 
-      {state === "sparse" ? <SparseWorkspacePanel /> : null}
+      {state === "sparse" ? <SparseWorkspacePanel copy={copy} /> : null}
 
       <WorkspaceSuggestionSurface
-        title="Suggested for today"
+        title={copy.suggestedToday}
         countLabel={`${Math.min(suggestions.length, 3)} ready`}
         placement="home"
         suggestions={suggestions}
@@ -127,8 +127,8 @@ export function WorkspaceHomeDashboard({
 
       <section className="wbeta-home-section" aria-labelledby="active-scopes">
         <div className="wbeta-home-section-head">
-          <h2 id="active-scopes">Active scopes</h2>
-          <span>{activeScopes.length > 0 ? `Top ${activeScopes.length}` : "No scopes yet"}</span>
+          <h2 id="active-scopes">{copy.activeScopes}</h2>
+          <span>{activeScopes.length > 0 ? `${copy.top} ${activeScopes.length}` : copy.noScopes}</span>
         </div>
         {activeScopes.length > 0 ? (
           <div className="wbeta-home-scope-grid">
@@ -163,8 +163,8 @@ export function WorkspaceHomeDashboard({
       <div className="wbeta-home-two-col">
         <section className="wbeta-home-section" aria-labelledby="recent-chats-home">
           <div className="wbeta-home-section-head">
-            <h2 id="recent-chats-home">Recent chats</h2>
-            <Link href="/workspace">New chat</Link>
+            <h2 id="recent-chats-home">{copy.recentChats}</h2>
+            <Link href="/workspace">{copy.newChat}</Link>
           </div>
           {conversations.length > 0 ? (
             <ul className="wbeta-home-list">
@@ -186,8 +186,8 @@ export function WorkspaceHomeDashboard({
 
         <section className="wbeta-home-section" aria-labelledby="memory-visible-home">
           <div className="wbeta-home-section-head">
-            <h2 id="memory-visible-home">What Basquio knows</h2>
-            <Link href="/workspace/memory">Open memory</Link>
+            <h2 id="memory-visible-home">{copy.whatBasquioKnows}</h2>
+            <Link href="/workspace/memory">{copy.openMemory}</Link>
           </div>
           {entityGroups.length > 0 ? (
             <ul className="wbeta-home-chip-list">
@@ -208,30 +208,30 @@ export function WorkspaceHomeDashboard({
 
       <section className="wbeta-home-section" aria-labelledby="this-week-home">
         <div className="wbeta-home-section-head">
-          <h2 id="this-week-home">This week</h2>
-          <span>{weeklyStats.visible ? "Current" : "Building baseline"}</span>
+          <h2 id="this-week-home">{copy.thisWeek}</h2>
+          <span>{weeklyStats.visible ? copy.current : copy.buildingBaseline}</span>
         </div>
         {weeklyStats.visible ? (
           <ul className="wbeta-home-stat-list">
             <li>
               <FileText size={15} weight="regular" />
-              <span>{weeklyStats.deliverables} deliverables shipped</span>
+              <span>{weeklyStats.deliverables} {copy.deliverablesShipped}</span>
             </li>
             <li>
               <Lightbulb size={15} weight="regular" />
-              <span>{weeklyStats.facts} stakeholder facts updated</span>
+              <span>{weeklyStats.facts} {copy.stakeholderFactsUpdated}</span>
             </li>
             <li>
               <Folders size={15} weight="regular" />
-              <span>{weeklyStats.documents} documents added to memory</span>
+              <span>{weeklyStats.documents} {copy.documentsAdded}</span>
             </li>
             <li>
               <ChatText size={15} weight="regular" />
-              <span>{weeklyStats.estimatedHoursSaved} hours saved, estimated</span>
+              <span>{weeklyStats.estimatedHoursSaved} {copy.hoursSaved}</span>
             </li>
           </ul>
         ) : (
-          <p className="wbeta-home-empty-line">Stats appear after a week of activity.</p>
+          <p className="wbeta-home-empty-line">{copy.statsBaseline}</p>
         )}
       </section>
 
@@ -242,25 +242,25 @@ export function WorkspaceHomeDashboard({
   );
 }
 
-function SparseWorkspacePanel() {
+function SparseWorkspacePanel({ copy }: { copy: ReturnType<typeof getWorkspaceCopy>["home"] }) {
   return (
     <section className="wbeta-home-sparse" aria-labelledby="sparse-workspace-title">
       <div>
-        <p className="wbeta-home-eyebrow">Missing context</p>
-        <h2 id="sparse-workspace-title">Add the pieces that make answers feel yours.</h2>
+        <p className="wbeta-home-eyebrow">{copy.missingContext}</p>
+        <h2 id="sparse-workspace-title">{copy.sparseTitle}</h2>
       </div>
       <div className="wbeta-home-sparse-grid">
         <Link href="/workspace/people">
-          <strong>Add a stakeholder</strong>
-          <span>Tell Basquio who reads the work and what they care about.</span>
+          <strong>{copy.addStakeholder}</strong>
+          <span>{copy.addStakeholderBody}</span>
         </Link>
         <a href="#workspace-chat">
-          <strong>Upload one brief</strong>
-          <span>Drop an old deck, export, transcript, or category note into chat.</span>
+          <strong>{copy.uploadBrief}</strong>
+          <span>{copy.uploadBriefBody}</span>
         </a>
         <Link href="/workspace/memory">
-          <strong>Teach one rule</strong>
-          <span>Save the KPI, tone, or citation convention Basquio should never forget.</span>
+          <strong>{copy.teachRule}</strong>
+          <span>{copy.teachRuleBody}</span>
         </Link>
       </div>
     </section>

@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CaretDown, CaretUp, Gear, HouseLine, SignOut } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, Gear, HouseLine, List, SignOut, X } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/sign-out-button";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
+import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import type { ViewerState } from "@/lib/supabase/auth";
 import type { ScopeCounts, ScopeTree } from "@/lib/workspace/scopes";
 
@@ -15,21 +16,33 @@ export function WorkspaceShell({
   viewer,
   scopeTree,
   scopeCounts,
+  locale = "en",
   children,
 }: {
   viewer: ViewerState;
   scopeTree: ScopeTree;
   scopeCounts: Record<string, ScopeCounts>;
+  locale?: WorkspaceLocale;
   children: ReactNode;
 }) {
   const userEmail = viewer.user?.email ?? "";
   const userInitial = userEmail.slice(0, 1).toUpperCase() || "?";
+  const copy = getWorkspaceCopy(locale);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="wbeta-shell">
-      <aside className="wbeta-side" aria-label="Workspace">
+      <aside
+        className={mobileOpen ? "wbeta-side wbeta-side-mobile-open" : "wbeta-side"}
+        aria-label={copy.shell.workspaceLabel}
+      >
         <header className="wbeta-side-brand">
-          <Link href="/workspace" className="wbeta-side-logo" aria-label="Basquio workspace home">
+          <Link
+            href="/workspace"
+            className="wbeta-side-logo"
+            aria-label={copy.shell.homeAria}
+            onClick={() => setMobileOpen(false)}
+          >
             <Image
               src="/brand/svg/logo/basquio-logo-light-bg-blue.svg"
               alt="Basquio"
@@ -38,12 +51,29 @@ export function WorkspaceShell({
               priority
             />
           </Link>
-          <span className="wbeta-side-chip" aria-label="Beta">beta</span>
+          <div className="wbeta-side-brand-actions">
+            <span className="wbeta-side-chip" aria-label={copy.shell.beta}>{copy.shell.beta}</span>
+            <button
+              type="button"
+              className="wbeta-mobile-nav-toggle"
+              onClick={() => setMobileOpen((open) => !open)}
+              aria-expanded={mobileOpen}
+              aria-controls="wbeta-workspace-nav"
+              aria-label={mobileOpen ? copy.shell.closeMenu : copy.shell.menu}
+            >
+              {mobileOpen ? <X size={16} weight="bold" /> : <List size={16} weight="bold" />}
+            </button>
+          </div>
         </header>
 
-        <WorkspaceSidebar tree={scopeTree} counts={scopeCounts} />
+        <WorkspaceSidebar
+          tree={scopeTree}
+          counts={scopeCounts}
+          copy={copy.sidebar}
+          onNavigate={() => setMobileOpen(false)}
+        />
 
-        <UserMenu email={userEmail} initial={userInitial} />
+        <UserMenu email={userEmail} initial={userInitial} copy={copy.shell} />
       </aside>
 
       {/* Routes opt into the three-tier scope layout (main + memory aside)
@@ -55,7 +85,15 @@ export function WorkspaceShell({
   );
 }
 
-function UserMenu({ email, initial }: { email: string; initial: string }) {
+function UserMenu({
+  email,
+  initial,
+  copy,
+}: {
+  email: string;
+  initial: string;
+  copy: ReturnType<typeof getWorkspaceCopy>["shell"];
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -97,11 +135,11 @@ function UserMenu({ email, initial }: { email: string; initial: string }) {
         <div className="wbeta-user-menu" role="menu">
           <Link href="/dashboard" className="wbeta-user-item" role="menuitem" prefetch={false}>
             <HouseLine size={14} weight="regular" />
-            <span>App home</span>
+            <span>{copy.appHome}</span>
           </Link>
           <Link href="/settings" className="wbeta-user-item" role="menuitem" prefetch={false}>
             <Gear size={14} weight="regular" />
-            <span>Settings</span>
+            <span>{copy.settings}</span>
           </Link>
           <div className="wbeta-user-sep" aria-hidden />
           <div className="wbeta-user-signout" role="menuitem">

@@ -97,6 +97,48 @@ describe("WorkspaceSidebar", () => {
     expect(startViewTransition).toHaveBeenCalledTimes(0);
     expect(mocks.push).toHaveBeenCalledWith("/workspace/scope/client/affinity-petcare");
   });
+
+  it("renders localized chrome labels and closes mobile navigation on route clicks", () => {
+    const onNavigate = vi.fn();
+    render(
+      React.createElement(WorkspaceSidebar, {
+        tree: {
+          client: [scope("scope-1", "client", "Affinity Petcare", "affinity-petcare")],
+          category: [],
+          function: [],
+          system: [],
+        },
+        counts: {},
+        copy: {
+          home: "Home",
+          clients: "Clienti",
+          categories: "Categorie",
+          functions: "Funzioni",
+          people: "Persone",
+          memory: "Memoria",
+          newClient: "Nuovo cliente",
+          newCategory: "Nuova categoria",
+          newFunction: "Nuova funzione",
+          clientName: "Nome cliente",
+          categoryName: "Nome categoria",
+          functionName: "Nome funzione",
+          add: "Aggiungi",
+          adding: "Aggiungo",
+          cancel: "Annulla",
+          items: "elementi",
+        },
+        onNavigate,
+      }),
+    );
+
+    expect(screen.getByText("Clienti")).not.toBeNull();
+    expect(screen.getByText("Nuovo cliente")).not.toBeNull();
+
+    fireEvent.click(screen.getByText("Affinity Petcare"));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(mocks.push).toHaveBeenCalledWith("/workspace/scope/client/affinity-petcare");
+  });
 });
 
 function scope(id: string, kind: WorkspaceScope["kind"], name: string, slug: string): WorkspaceScope {

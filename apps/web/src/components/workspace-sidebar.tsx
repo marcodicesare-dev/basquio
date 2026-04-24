@@ -17,6 +17,43 @@ import type { WorkspaceScope, ScopeCounts } from "@/lib/workspace/types";
 import { SCOPE_KIND_LABELS, type ScopeKind } from "@/lib/workspace/constants";
 
 type SidebarScopeTree = Record<ScopeKind, WorkspaceScope[]>;
+type SidebarCopy = {
+  home: string;
+  clients: string;
+  categories: string;
+  functions: string;
+  people: string;
+  memory: string;
+  newClient: string;
+  newCategory: string;
+  newFunction: string;
+  clientName: string;
+  categoryName: string;
+  functionName: string;
+  add: string;
+  adding: string;
+  cancel: string;
+  items: string;
+};
+
+const DEFAULT_COPY: SidebarCopy = {
+  home: "Home",
+  clients: "Clients",
+  categories: "Categories",
+  functions: "Functions",
+  people: "People",
+  memory: "Memory",
+  newClient: "New client",
+  newCategory: "New category",
+  newFunction: "New function",
+  clientName: "Client name",
+  categoryName: "Category name",
+  functionName: "Function name",
+  add: "Add",
+  adding: "Adding",
+  cancel: "Cancel",
+  items: "items",
+};
 
 const KIND_ICON: Record<Exclude<ScopeKind, "system">, typeof Buildings> = {
   client: Buildings,
@@ -24,18 +61,16 @@ const KIND_ICON: Record<Exclude<ScopeKind, "system">, typeof Buildings> = {
   function: Briefcase,
 };
 
-const KIND_NEW_LABEL: Record<Exclude<ScopeKind, "system">, string> = {
-  client: "New client",
-  category: "New category",
-  function: "New function",
-};
-
 export function WorkspaceSidebar({
   tree,
   counts,
+  copy = DEFAULT_COPY,
+  onNavigate,
 }: {
   tree: SidebarScopeTree;
   counts: Record<string, ScopeCounts>;
+  copy?: SidebarCopy;
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -68,14 +103,16 @@ export function WorkspaceSidebar({
         }
       ).startViewTransition;
       if (startViewTransition && !reducedMotion) {
+        onNavigate?.();
         startViewTransition(() => {
           router.push(href);
         });
         return;
       }
+      onNavigate?.();
       router.push(href);
     },
-    [router],
+    [onNavigate, router],
   );
 
   function scopeHref(scope: WorkspaceScope) {
@@ -89,7 +126,7 @@ export function WorkspaceSidebar({
   const kinds: Array<Exclude<ScopeKind, "system">> = ["client", "category", "function"];
 
   return (
-    <div className="wbeta-sidebar-nav-root" aria-label="Workspace navigation">
+    <div id="wbeta-workspace-nav" className="wbeta-sidebar-nav-root" aria-label="Workspace navigation">
       <nav className="wbeta-sidebar-nav">
         <Link
           href="/workspace"
@@ -100,7 +137,7 @@ export function WorkspaceSidebar({
           <span className="wbeta-nav-icon" aria-hidden>
             <House size={16} weight={homeActive ? "fill" : "regular"} />
           </span>
-          <span className="wbeta-nav-label">Home</span>
+          <span className="wbeta-nav-label">{copy.home}</span>
         </Link>
       </nav>
 
@@ -114,7 +151,7 @@ export function WorkspaceSidebar({
               <span className="wbeta-sidebar-head-icon" aria-hidden>
                 <Icon size={14} weight="regular" />
               </span>
-              <span className="wbeta-sidebar-head-label">{SCOPE_KIND_LABELS[kind]}</span>
+              <span className="wbeta-sidebar-head-label">{kindLabel(kind, copy)}</span>
             </header>
 
             {scopes.length > 0 ? (
@@ -139,7 +176,7 @@ export function WorkspaceSidebar({
                       >
                         <span className="wbeta-sidebar-item-name">{scope.name}</span>
                         {badge > 0 ? (
-                          <span className="wbeta-sidebar-item-badge" aria-label={`${badge} items`}>
+                          <span className="wbeta-sidebar-item-badge" aria-label={`${badge} ${copy.items}`}>
                             {badge}
                           </span>
                         ) : null}
@@ -153,6 +190,7 @@ export function WorkspaceSidebar({
             {isOpen ? (
               <NewScopeForm
                 kind={kind}
+                copy={copy}
                 onCancel={() => setOpenForm(null)}
                 onCreated={(scope) => {
                   setOpenForm(null);
@@ -169,7 +207,7 @@ export function WorkspaceSidebar({
                 <span className="wbeta-sidebar-new-icon" aria-hidden>
                   <Plus size={13} weight="bold" />
                 </span>
-                <span>{KIND_NEW_LABEL[kind]}</span>
+                <span>{newLabel(kind, copy)}</span>
               </button>
             )}
           </section>
@@ -186,7 +224,7 @@ export function WorkspaceSidebar({
           <span className="wbeta-nav-icon" aria-hidden>
             <UsersThree size={16} weight={peopleActive ? "fill" : "regular"} />
           </span>
-          <span className="wbeta-nav-label">People</span>
+          <span className="wbeta-nav-label">{copy.people}</span>
         </Link>
         <Link
           href="/workspace/memory"
@@ -197,7 +235,7 @@ export function WorkspaceSidebar({
           <span className="wbeta-nav-icon" aria-hidden>
             <Sparkle size={16} weight={memoryActive ? "fill" : "regular"} />
           </span>
-          <span className="wbeta-nav-label">Memory</span>
+          <span className="wbeta-nav-label">{copy.memory}</span>
         </Link>
       </nav>
     </div>
@@ -206,10 +244,12 @@ export function WorkspaceSidebar({
 
 function NewScopeForm({
   kind,
+  copy,
   onCancel,
   onCreated,
 }: {
   kind: Exclude<ScopeKind, "system">;
+  copy: SidebarCopy;
   onCancel: () => void;
   onCreated: (scope: WorkspaceScope) => void;
 }) {
@@ -254,7 +294,9 @@ function NewScopeForm({
       <input
         className="wbeta-sidebar-input"
         type="text"
-        placeholder={kind === "client" ? "Client name" : kind === "category" ? "Category name" : "Function name"}
+        placeholder={
+          kind === "client" ? copy.clientName : kind === "category" ? copy.categoryName : copy.functionName
+        }
         value={name}
         onChange={(event) => setName(event.target.value)}
         autoFocus
@@ -274,19 +316,32 @@ function NewScopeForm({
           onClick={onCancel}
           disabled={busy || pending}
         >
-          Cancel
+          {copy.cancel}
         </button>
         <button
           type="submit"
           className="wbeta-sidebar-newform-save"
           disabled={!name.trim() || busy || pending}
         >
-          {busy || pending ? "Adding" : "Add"}
+          {busy || pending ? copy.adding : copy.add}
         </button>
       </div>
       {error ? <p className="wbeta-sidebar-newform-error">{error}</p> : null}
     </form>
   );
+}
+
+function kindLabel(kind: Exclude<ScopeKind, "system">, copy: SidebarCopy) {
+  if (kind === "client") return copy.clients;
+  if (kind === "category") return copy.categories;
+  if (kind === "function") return copy.functions;
+  return SCOPE_KIND_LABELS[kind];
+}
+
+function newLabel(kind: Exclude<ScopeKind, "system">, copy: SidebarCopy) {
+  if (kind === "client") return copy.newClient;
+  if (kind === "category") return copy.newCategory;
+  return copy.newFunction;
 }
 
 // Export the SidebarScopeTree type for parent-server-fetch convenience.

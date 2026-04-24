@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { resolveWorkspaceLocale } from "@/i18n";
 import { buildSignInPath, getViewerState } from "@/lib/supabase/auth";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { countByScope, listScopesGrouped, type ScopeCounts } from "@/lib/workspace/scopes";
@@ -12,6 +13,7 @@ export const metadata = {
 };
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
+  const headersList = await headers();
   const viewer = await getViewerState();
 
   if (!viewer.configured) {
@@ -19,7 +21,6 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   }
 
   if (!viewer.user) {
-    const headersList = await headers();
     const currentPath = headersList.get("x-next-url") ?? headersList.get("x-invoke-path") ?? "/workspace";
     redirect(buildSignInPath(currentPath));
   }
@@ -39,7 +40,12 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   }
 
   return (
-    <WorkspaceShell viewer={viewer} scopeTree={scopeTree} scopeCounts={scopeCounts}>
+    <WorkspaceShell
+      viewer={viewer}
+      scopeTree={scopeTree}
+      scopeCounts={scopeCounts}
+      locale={resolveWorkspaceLocale(headersList.get("accept-language"))}
+    >
       {children}
     </WorkspaceShell>
   );

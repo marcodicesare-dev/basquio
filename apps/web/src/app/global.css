@@ -9695,6 +9695,12 @@ body:has(.wbeta-shell) .site-wrap {
   min-height: 34px;
 }
 
+.wbeta-side-brand-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .wbeta-side-logo {
   display: inline-flex;
   align-items: center;
@@ -9721,6 +9727,19 @@ body:has(.wbeta-shell) .site-wrap {
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
 }
 
+.wbeta-mobile-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  color: var(--text);
+  cursor: pointer;
+}
+
 .wbeta-sidebar-nav-root {
   display: flex;
   flex-direction: column;
@@ -9742,6 +9761,57 @@ body:has(.wbeta-shell) .site-wrap {
 @media (max-width: 980px) {
   .wbeta-main {
     padding: 13px;
+  }
+}
+
+@media (max-width: 639px) {
+  .wbeta-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .wbeta-side {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: auto;
+    padding: 10px 13px;
+    background: rgba(247, 248, 246, 0.96);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+  }
+
+  .wbeta-side-brand {
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .wbeta-mobile-nav-toggle {
+    display: inline-flex;
+  }
+
+  .wbeta-side .wbeta-sidebar-nav-root,
+  .wbeta-side .wbeta-user {
+    display: none;
+  }
+
+  .wbeta-side-mobile-open {
+    gap: 13px;
+  }
+
+  .wbeta-side-mobile-open .wbeta-sidebar-nav-root {
+    display: flex;
+    max-height: calc(100dvh - 88px);
+    padding-top: 13px;
+    overflow-y: auto;
+  }
+
+  .wbeta-side-mobile-open .wbeta-user {
+    display: block;
+  }
+
+  .wbeta-main {
+    padding: 13px 13px calc(76px + env(safe-area-inset-bottom));
   }
 }
 
@@ -10912,7 +10982,7 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-chat-stream {
   display: flex;
   flex-direction: column;
-  gap: 21px;
+  gap: 24px;
 }
 
 .wbeta-ai-chat-form {
@@ -10927,6 +10997,28 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 13px;
   box-shadow: var(--shadow-panel);
   z-index: 5;
+}
+
+@media (max-width: 639px) {
+  .wbeta-ai-chat-form,
+  .wbeta-chat-pane .wbeta-ai-chat-form,
+  .wbeta-home-chat .wbeta-ai-chat-form,
+  .wbeta-scope-landing-chat .wbeta-ai-chat-form {
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    width: 100%;
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+
+  .wbeta-ai-chat-row {
+    gap: 8px;
+  }
+
+  .wbeta-ai-chat-send,
+  .wbeta-ai-chat-stop,
+  .wbeta-ai-chat-attach {
+    min-height: 44px;
+  }
 }
 
 .wbeta-ai-chat-label {
@@ -11062,7 +11154,7 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-msg {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .wbeta-ai-msg-user {
@@ -11086,6 +11178,45 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-asst-block {
   display: block;
   max-width: 80ch;
+}
+
+.wbeta-ai-tool-frame {
+  max-width: 80ch;
+}
+
+.wbeta-ai-tool-frame-compact {
+  max-width: 62ch;
+}
+
+.wbeta-ai-tool-frame-compact summary {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.wbeta-ai-tool-frame-compact summary::-webkit-details-marker {
+  display: none;
+}
+
+.wbeta-ai-tool-frame-compact summary span:last-child {
+  color: var(--blue);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.wbeta-ai-tool-frame-expanded {
+  margin-top: 8px;
 }
 
 .wbeta-ai-streaming-text {
@@ -15520,6 +15651,10 @@ body:has(.wbeta-shell) .site-wrap {
   min-width: 0;
 }
 
+.wbeta-mobile-memory-sheet {
+  display: none;
+}
+
 @media (max-width: 1280px) {
   .wbeta-scope-three-col {
     grid-template-columns: minmax(0, 1fr) 288px;
@@ -15534,6 +15669,62 @@ body:has(.wbeta-shell) .site-wrap {
     position: static;
     max-height: none;
     order: 2;
+  }
+}
+
+@media (max-width: 639px) {
+  .wbeta-scope-three-col {
+    min-height: auto;
+  }
+
+  .wbeta-scope-aside {
+    display: none;
+  }
+
+  .wbeta-mobile-memory-sheet {
+    display: block;
+    position: fixed;
+    left: 13px;
+    right: 13px;
+    bottom: calc(13px + env(safe-area-inset-bottom));
+    z-index: 40;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-strong);
+    box-shadow: var(--shadow-panel);
+    overflow: hidden;
+  }
+
+  .wbeta-mobile-memory-sheet summary {
+    min-height: 44px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .wbeta-mobile-memory-sheet summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .wbeta-mobile-memory-sheet[open] {
+    max-height: min(70dvh, 520px);
+  }
+
+  .wbeta-mobile-memory-sheet-body {
+    max-height: calc(70dvh - 44px);
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+  }
+
+  .wbeta-mobile-memory-sheet .wbeta-memory-aside {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 
@@ -16401,7 +16592,7 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 21px 0 13px;
   overflow-y: auto;
   overflow-x: hidden;
-  gap: 21px;
+  gap: 24px;
   scrollbar-gutter: stable;
 }
 
@@ -16421,6 +16612,17 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0 auto 17px;
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(11, 12, 12, 0.04);
+}
+
+@media (max-width: 639px) {
+  .wbeta-home-chat .wbeta-ai-chat-form,
+  .wbeta-chat-pane .wbeta-ai-chat-form,
+  .wbeta-scope-landing-chat .wbeta-ai-chat-form {
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    width: 100%;
+    margin: 0 0 env(safe-area-inset-bottom);
+  }
 }
 
 .wbeta-home-empty-wrap {
@@ -16539,7 +16741,7 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 21px 0 13px;
   overflow-y: auto;
   overflow-x: hidden;
-  gap: 21px;
+  gap: 24px;
   scroll-behavior: smooth;
   /* Offset the gutter so the scrollbar sits flush with the pane's right edge
      while content stays visually centered within a 760px reading column. */

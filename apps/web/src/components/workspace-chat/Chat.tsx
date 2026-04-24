@@ -18,6 +18,7 @@ import {
   WorkspaceGenerationStatus,
   type ActiveGeneration,
 } from "@/components/workspace-generation-status";
+import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
 
 type AttachmentChip = {
@@ -37,15 +38,18 @@ export function WorkspaceChat({
   scopeId,
   scopeName,
   scopeKind,
+  locale = "en",
   conversationId: initialConversationId,
   initialMessages,
 }: {
   scopeId?: string | null;
   scopeName?: string | null;
   scopeKind?: string | null;
+  locale?: WorkspaceLocale;
   conversationId?: string;
   initialMessages?: UIMessage[];
 }) {
+  const copy = getWorkspaceCopy(locale).chat;
   const conversationIdRef = useRef(
     initialConversationId ??
       (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID?.()
@@ -529,7 +533,7 @@ export function WorkspaceChat({
     [],
   );
 
-  const placeholder = scopeName ? `Ask about ${scopeName}` : "Message Basquio";
+  const placeholder = scopeName ? `${copy.askAbout} ${scopeName}` : "Message Basquio";
 
   return (
     <section
@@ -555,12 +559,12 @@ export function WorkspaceChat({
             </p>
           ) : null}
           <h2 className="wbeta-ai-chat-empty-title">
-            {scopeName ? `Ask about ${scopeName}` : "Your analyst memory, always there."}
+            {scopeName ? `${copy.askAbout} ${scopeName}` : copy.workspaceEmptyTitle}
           </h2>
           <p className="wbeta-ai-chat-empty-body">
             {scopeName
               ? `Pulls from ${scopeName} memory, uploads, and prior answers. Every claim cited.`
-              : "Basquio knows your clients, stakeholders, and style. Every answer cites where it came from."}
+              : copy.workspaceEmptyBody}
           </p>
         </div>
       ) : (
@@ -684,7 +688,7 @@ export function WorkspaceChat({
 
       <form className="wbeta-ai-chat-form" onSubmit={handleSubmit}>
         <label className="wbeta-ai-chat-label" htmlFor="wbeta-ai-input">
-          Message
+          {copy.message}
         </label>
         <TextareaAutosize
           ref={inputRef}
@@ -709,32 +713,32 @@ export function WorkspaceChat({
             className="wbeta-ai-chat-attach"
             onClick={handleAttachClick}
             disabled={isStreaming}
-            aria-label="Attach a file"
+            aria-label={copy.attachFile}
           >
             <Paperclip size={14} weight="regular" />
           </button>
           <p className="wbeta-ai-chat-hint" aria-live="polite">
-            {isStreaming ? "Generating" : <kbd className="wbeta-kbd">⌘ ↵</kbd>}
+            {isStreaming ? copy.generating : <kbd className="wbeta-kbd">⌘ ↵</kbd>}
           </p>
           {isStreaming ? (
             <button
               type="button"
               className="wbeta-ai-chat-stop"
               onClick={() => stop()}
-              aria-label="Stop generation"
+              aria-label={copy.stopGeneration}
             >
               <Stop size={13} weight="fill" />
-              Stop
+              {copy.stop}
             </button>
           ) : (
             <button
               type="submit"
               className="wbeta-ai-chat-send"
               disabled={!draft.trim()}
-              aria-label="Send message"
+              aria-label={copy.sendMessage}
             >
               <ArrowUp size={14} weight="bold" />
-              Send
+              {copy.send}
             </button>
           )}
         </div>

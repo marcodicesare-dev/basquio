@@ -9,6 +9,7 @@ import {
   type WorkspaceKnowsSummary,
 } from "@/components/scope-landing";
 import { WorkspaceMemoryAside } from "@/components/workspace-memory-aside";
+import { getWorkspaceCopy, resolveWorkspaceLocale } from "@/i18n";
 import { BASQUIO_TEAM_ORG_ID, type ScopeKind } from "@/lib/workspace/constants";
 import { listConversations } from "@/lib/workspace/conversations";
 import { getScopeByKindSlug } from "@/lib/workspace/scopes";
@@ -145,6 +146,8 @@ export default async function WorkspaceScopePage({
 }) {
   const { kind, slug } = await params;
   const headersList = await headers();
+  const locale = resolveWorkspaceLocale(headersList.get("accept-language"));
+  const copy = getWorkspaceCopy(locale).scope;
   if (!ALLOWED.includes(kind as RouteKind)) notFound();
 
   const workspace = await getCurrentWorkspace();
@@ -162,7 +165,7 @@ export default async function WorkspaceScopePage({
       maxItems: 3,
       scopeId: scope.id,
       scopeName: scope.name,
-      locale: resolveLocale(headersList.get("accept-language")),
+      locale,
     }).catch(() => []),
   ]);
 
@@ -207,17 +210,19 @@ export default async function WorkspaceScopePage({
                   },
                 ]
           }
-          chat={<WorkspaceChat scopeId={scope.id} scopeName={scope.name} scopeKind={scope.kind} />}
+          chat={<WorkspaceChat scopeId={scope.id} scopeName={scope.name} scopeKind={scope.kind} locale={locale} />}
+          locale={locale}
         />
       </div>
       <div className="wbeta-scope-aside">
         <WorkspaceMemoryAside workspaceId={workspace.id} />
       </div>
+      <details className="wbeta-mobile-memory-sheet">
+        <summary>{copy.workspaceKnows}</summary>
+        <div className="wbeta-mobile-memory-sheet-body">
+          <WorkspaceMemoryAside workspaceId={workspace.id} />
+        </div>
+      </details>
     </div>
   );
-}
-
-function resolveLocale(acceptLanguage: string | null): "en" | "it" {
-  if (!acceptLanguage) return "en";
-  return acceptLanguage.toLowerCase().startsWith("it") ? "it" : "en";
 }

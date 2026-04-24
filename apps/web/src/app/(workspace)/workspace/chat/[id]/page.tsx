@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import type { UIMessage } from "ai";
 
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { WorkspaceContextRail } from "@/components/workspace-context-rail";
+import { resolveWorkspaceLocale } from "@/i18n";
 import { getConversation, listConversations } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
@@ -25,6 +27,8 @@ export default async function WorkspaceChatPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const headersList = await headers();
+  const locale = resolveWorkspaceLocale(headersList.get("accept-language"));
   if (!isUuid(id)) notFound();
 
   const workspace = await getCurrentWorkspace();
@@ -45,6 +49,7 @@ export default async function WorkspaceChatPage({
           conversationId={convo.id}
           initialMessages={initialMessages}
           scopeId={convo.workspace_scope_id ?? undefined}
+          locale={locale}
         />
       </section>
 

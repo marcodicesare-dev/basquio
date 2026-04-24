@@ -173,6 +173,17 @@ export const ChatMessage = memo(function ChatMessage({
 
   const parts = useMemo(() => (message.parts ?? []) as unknown as Part[], [message]);
   const lastPartIndex = parts.length - 1;
+  const toolPartOrdinals = useMemo(() => {
+    const ordinals = new Map<number, number>();
+    let count = 0;
+    parts.forEach((part, index) => {
+      if (part.type?.startsWith("tool-")) {
+        count += 1;
+        ordinals.set(index, count);
+      }
+    });
+    return ordinals;
+  }, [parts]);
   const inlineSuggestions = useMemo(
     () => deriveInlineSuggestions(message, citations, Boolean(scopeSignal(message))),
     [message, citations],
@@ -214,122 +225,116 @@ export const ChatMessage = memo(function ChatMessage({
           const toolPart = part as unknown as ToolPart;
           const toolName = part.type.slice(5);
           const state = (toolPart.state as string) || "input-available";
+          const toolOrdinal = toolPartOrdinals.get(i) ?? 0;
+          const frame = (node: React.ReactNode) => (
+            <ToolFrame key={i} compact={toolOrdinal > 3} label={toolFrameLabel(toolName)}>
+              {node}
+            </ToolFrame>
+          );
           switch (toolName) {
             case "memory":
-              return (
+              return frame(
                 <MemoryReadChip
-                  key={i}
                   state={state}
                   input={toolPart.input as Parameters<typeof MemoryReadChip>[0]["input"]}
                   output={toolPart.output as Parameters<typeof MemoryReadChip>[0]["output"]}
                   errorText={toolPart.errorText}
-                />
+                />,
               );
             case "retrieveContext":
-              return (
+              return frame(
                 <RetrieveContextChip
-                  key={i}
                   state={state}
                   input={toolPart.input as Parameters<typeof RetrieveContextChip>[0]["input"]}
                   output={toolPart.output as Parameters<typeof RetrieveContextChip>[0]["output"]}
                   errorText={toolPart.errorText}
-                />
+                />,
               );
             case "teachRule":
-              return (
+              return frame(
                 <TeachRuleCard
-                  key={i}
                   state={state}
                   input={toolPart.input as Parameters<typeof TeachRuleCard>[0]["input"]}
                   output={toolPart.output as Parameters<typeof TeachRuleCard>[0]["output"]}
                   errorText={toolPart.errorText}
-                />
+                />,
               );
             case "showMetricCard":
-              return (
+              return frame(
                 <MetricCard
-                  key={i}
                   state={state}
                   input={toolPart.input as Parameters<typeof MetricCard>[0]["input"]}
-                />
+                />,
               );
             case "showStakeholderCard":
-              return (
+              return frame(
                 <StakeholderCard
-                  key={i}
                   state={state}
                   input={toolPart.input as Parameters<typeof StakeholderCard>[0]["input"]}
                   output={toolPart.output as Parameters<typeof StakeholderCard>[0]["output"]}
-                />
+                />,
               );
             case "saveFromPaste":
             case "scrapeUrl":
-              return (
+              return frame(
                 <ExtractionApprovalCard
-                  key={i}
                   state={state}
                   toolName={toolName}
                   input={toolPart.input as Parameters<typeof ExtractionApprovalCard>[0]["input"]}
                   output={toolPart.output as Parameters<typeof ExtractionApprovalCard>[0]["output"]}
                   errorText={toolPart.errorText}
                   onSendFollowUp={onSendFollowUp}
-                />
+                />,
               );
             case "editStakeholder":
-              return (
+              return frame(
                 <StakeholderEditApprovalCard
-                  key={i}
                   state={state}
                   output={toolPart.output as Parameters<typeof StakeholderEditApprovalCard>[0]["output"]}
                   errorText={toolPart.errorText}
                   onSendFollowUp={onSendFollowUp}
-                />
+                />,
               );
             case "createStakeholder":
-              return (
+              return frame(
                 <StakeholderCreateApprovalCard
-                  key={i}
                   state={state}
                   output={toolPart.output as Parameters<typeof StakeholderCreateApprovalCard>[0]["output"]}
                   errorText={toolPart.errorText}
                   onSendFollowUp={onSendFollowUp}
-                />
+                />,
               );
             case "editRule":
-              return (
+              return frame(
                 <RuleEditApprovalCard
-                  key={i}
                   state={state}
                   input={toolPart.input as Parameters<typeof RuleEditApprovalCard>[0]["input"]}
                   output={toolPart.output as Parameters<typeof RuleEditApprovalCard>[0]["output"]}
                   errorText={toolPart.errorText}
-                />
+                />,
               );
             case "draftBrief":
-              return (
+              return frame(
                 <BriefDraftCard
-                  key={i}
                   state={state}
                   output={toolPart.output as Parameters<typeof BriefDraftCard>[0]["output"]}
                   onSendFollowUp={onSendFollowUp}
-                />
+                />,
               );
             case "explainBasquio":
-              return (
+              return frame(
                 <ExplainBasquioCard
-                  key={i}
                   state={state}
                   output={toolPart.output as Parameters<typeof ExplainBasquioCard>[0]["output"]}
-                />
+                />,
               );
             case "suggestServices":
-              return (
+              return frame(
                 <ServiceSuggestionCard
-                  key={i}
                   state={state}
                   output={toolPart.output as Parameters<typeof ServiceSuggestionCard>[0]["output"]}
                   onSendFollowUp={onSendFollowUp}
-                />
+                />,
               );
             default:
               return null;
@@ -470,6 +475,44 @@ function stableStringify(value: unknown) {
     return JSON.stringify(value);
   } catch {
     return "";
+  }
+}
+
+function ToolFrame({
+  compact,
+  label,
+  children,
+}: {
+  compact: boolean;
+  label: string;
+  children: React.ReactNode;
+}) {
+  if (!compact) {
+    return <div className="wbeta-ai-tool-frame">{children}</div>;
+  }
+  return (
+    <details className="wbeta-ai-tool-frame wbeta-ai-tool-frame-compact">
+      <summary>
+        <span>{label}</span>
+        <span>Show all</span>
+      </summary>
+      <div className="wbeta-ai-tool-frame-expanded">{children}</div>
+    </details>
+  );
+}
+
+function toolFrameLabel(toolName: string) {
+  switch (toolName) {
+    case "showStakeholderCard":
+      return "More stakeholder detail";
+    case "showMetricCard":
+      return "More metric detail";
+    case "retrieveContext":
+      return "More cited context";
+    case "suggestServices":
+      return "More service ideas";
+    default:
+      return "More workspace detail";
   }
 }
 

@@ -3,6 +3,7 @@ import { ArrowRight, Sparkle, UsersThree } from "@phosphor-icons/react/dist/ssr"
 import type { ReactNode } from "react";
 
 import { WorkspaceSuggestionSurface } from "@/components/workspace-suggestions";
+import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
 /**
@@ -53,6 +54,7 @@ export function ScopeLanding({
   deliverables,
   suggestions = [],
   chat,
+  locale = "en",
 }: {
   scope: { id: string; name: string; kind: string };
   stakeholders: ScopeStakeholder[];
@@ -60,10 +62,19 @@ export function ScopeLanding({
   deliverables: ScopeDeliverable[];
   suggestions?: WorkspaceSuggestion[];
   chat: ReactNode;
+  locale?: WorkspaceLocale;
 }) {
+  const copy = getWorkspaceCopy(locale).scope;
   const stakeholderCount = stakeholders.length;
   const deliverableCount = deliverables.length;
-  const kindLabel = scope.kind.charAt(0).toUpperCase() + scope.kind.slice(1);
+  const kindLabel =
+    scope.kind === "client"
+      ? copy.client
+      : scope.kind === "category"
+        ? copy.category
+        : scope.kind === "function"
+          ? copy.function
+          : scope.kind.charAt(0).toUpperCase() + scope.kind.slice(1);
 
   return (
     <div className="wbeta-scope-landing">
@@ -80,13 +91,13 @@ export function ScopeLanding({
         <section className="wbeta-scope-landing-section" aria-labelledby="stakeholders-h">
           <header className="wbeta-scope-landing-section-head">
             <h2 id="stakeholders-h" className="wbeta-scope-landing-section-title">
-              Stakeholders
+              {copy.stakeholders}
             </h2>
             <Link
               className="wbeta-scope-landing-see-all"
               href={`/workspace/people?scope=${scope.id}`}
             >
-              See all ({stakeholderCount})
+              {copy.seeAll} ({stakeholderCount})
               <ArrowRight size={12} weight="regular" />
             </Link>
           </header>
@@ -116,7 +127,7 @@ export function ScopeLanding({
       <section className="wbeta-scope-landing-section" aria-labelledby="knows-h">
         <header className="wbeta-scope-landing-section-head">
           <h2 id="knows-h" className="wbeta-scope-landing-section-title">
-            Workspace knows
+            {copy.workspaceKnows}
           </h2>
           <Sparkle size={14} weight="regular" />
         </header>
@@ -127,7 +138,7 @@ export function ScopeLanding({
                 {workspaceKnows.rulesCount}
               </span>
               <span>
-                rule{workspaceKnows.rulesCount === 1 ? "" : "s"} apply to this scope
+                {workspaceKnows.rulesCount === 1 ? copy.ruleApplies : copy.rulesApply}
               </span>
             </Link>
           </li>
@@ -137,7 +148,7 @@ export function ScopeLanding({
                 {workspaceKnows.factsCount}
               </span>
               <span>
-                fact{workspaceKnows.factsCount === 1 ? "" : "s"} about {scope.name}
+                {workspaceKnows.factsCount === 1 ? copy.factAbout : copy.factsAbout} {scope.name}
               </span>
             </span>
           </li>
@@ -147,7 +158,7 @@ export function ScopeLanding({
                 {workspaceKnows.articlesCount}
               </span>
               <span>
-                article{workspaceKnows.articlesCount === 1 ? "" : "s"} in the knowledge graph
+                {workspaceKnows.articlesCount === 1 ? copy.articleInGraph : copy.articlesInGraph}
               </span>
             </span>
           </li>
@@ -157,7 +168,7 @@ export function ScopeLanding({
                 <span className="wbeta-scope-landing-knows-count">
                   <Sparkle size={12} weight="fill" />
                 </span>
-                <span>Last research: {workspaceKnows.lastResearchLabel}</span>
+                <span>{copy.lastResearch}: {workspaceKnows.lastResearchLabel}</span>
               </span>
             </li>
           ) : null}
@@ -165,13 +176,13 @@ export function ScopeLanding({
         {stakeholders.length === 0 ? (
           <p className="wbeta-scope-landing-empty-hint">
             <UsersThree size={14} weight="regular" aria-hidden />
-            Add your first stakeholder to get personalised briefs.
+            {copy.stakeholderHint}
           </p>
         ) : null}
       </section>
 
       <WorkspaceSuggestionSurface
-        title="Suggested next"
+        title={copy.suggestedNext}
         countLabel={suggestions.length > 0 ? `${Math.min(suggestions.length, 3)} ready` : undefined}
         placement="scope"
         suggestions={suggestions}
@@ -181,13 +192,13 @@ export function ScopeLanding({
         <section className="wbeta-scope-landing-section" aria-labelledby="deliverables-h">
           <header className="wbeta-scope-landing-section-head">
             <h2 id="deliverables-h" className="wbeta-scope-landing-section-title">
-              Recent deliverables
+              {copy.recentDeliverables}
             </h2>
             <Link
               className="wbeta-scope-landing-see-all"
               href={`/workspace/memory?scope=${scope.id}`}
             >
-              See all ({deliverableCount})
+              {copy.seeAll} ({deliverableCount})
               <ArrowRight size={12} weight="regular" />
             </Link>
           </header>
@@ -204,7 +215,7 @@ export function ScopeLanding({
         </section>
       ) : null}
 
-      <div className="wbeta-scope-landing-chat" role="region" aria-label="Chat composer">
+      <div className="wbeta-scope-landing-chat" role="region" aria-label={copy.chatComposer}>
         {chat}
       </div>
     </div>
