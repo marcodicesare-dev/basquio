@@ -1,16 +1,21 @@
+import { headers } from "next/headers";
+
 import { getViewerState } from "@/lib/supabase/auth";
+import { WorkspaceHomeDashboard } from "@/components/workspace-home-dashboard";
 import {
-  countProcessingDocuments,
+  getWorkspaceHomeActivity,
   listRecentWorkspaceDeliverables,
   listRecentWorkspaceDocuments,
   listWorkspaceEntitiesGrouped,
 } from "@/lib/workspace/db";
-import { WorkspaceAutoRefresh } from "@/components/workspace-auto-refresh";
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
-import { WorkspaceContextRail } from "@/components/workspace-context-rail";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
 import { WorkspaceOnboarding } from "@/components/workspace-onboarding";
 import { listConversations } from "@/lib/workspace/conversations";
+import { listMemoryEntries } from "@/lib/workspace/memory";
+import { countByScope, listScopes } from "@/lib/workspace/scopes";
+import { buildSuggestions } from "@/lib/workspace/suggestions";
+import type { ScopeCounts } from "@/lib/workspace/types";
 import { getCurrentWorkspace, isWorkspaceOnboarded } from "@/lib/workspace/workspaces";
 
 export const metadata = {
@@ -45,29 +50,42 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
 };
 
 export default async function WorkspaceHomePage() {
-  const [workspace, documents, entitiesByType, deliverables, conversations] = await Promise.all([
+  const headersList = await headers();
+  const [viewer, workspace, documents, entitiesByType, deliverables, conversations, memory, scopes, countsMap, suggestions, activity] = await Promise.all([
+    getViewerState(),
     getCurrentWorkspace(),
-    safe(listRecentWorkspaceDocuments(20), [], "list documents"),
+    safe(listRecentWorkspaceDocuments(50), [], "list documents"),
     safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
-    safe(listRecentWorkspaceDeliverables(8), [], "list deliverables"),
+    safe(listRecentWorkspaceDeliverables(25), [], "list deliverables"),
     safe(listConversations({ limit: 15 }), [], "list conversations"),
+    safe(listMemoryEntries({ limit: 200 }), [], "list memory"),
+    safe(listScopes(), [], "list scopes"),
+    safe(countByScope(), new Map<string, ScopeCounts>(), "count scopes"),
+    safe(buildSuggestions(3), [], "build suggestions"),
+    safe(
+      getWorkspaceHomeActivity(7),
+      {
+        recentDocumentCount: 0,
+        recentMemoryCount: 0,
+        recentFactCount: 0,
+        recentDeliverableCount: 0,
+        firstActivityAt: null,
+      },
+      "load activity",
+    ),
   ]);
 
-  const processingCount = countProcessingDocuments(documents);
   const totalEntityCount = Object.values(entitiesByType).reduce(
     (sum, group) => sum + group.length,
     0,
   );
-  const isEmpty = documents.length === 0 && deliverables.length === 0 && totalEntityCount === 0;
+  const isEmpty =
+    scopes.length === 0 &&
+    documents.length === 0 &&
+    deliverables.length === 0 &&
+    memory.length === 0 &&
+    totalEntityCount === 0;
   const onboarded = isWorkspaceOnboarded(workspace);
-
-  if (!onboarded && isEmpty) {
-    return (
-      <div className="wbeta-page wbeta-page-onboard">
-        <WorkspaceOnboarding />
-      </div>
-    );
-  }
 
   const entityGroups = Object.entries(entitiesByType)
     .filter(([, rows]) => rows.length > 0)
@@ -81,22 +99,112 @@ export default async function WorkspaceHomePage() {
   const recentConversations = conversations.map((c) => ({
     id: c.id,
     title: c.title ?? "Untitled",
-    lastMessageAt: c.last_message_at,
+    lastMessageLabel: formatRelative(c.last_message_at),
+    href: `/workspace/chat/${c.id}`,
   }));
 
+  const activeScopes = scopes
+    .filter((scope) => scope.kind !== "system")
+    .map((scope) => {
+      const counts = countsMap.get(scope.id) ?? {
+        scope_id: scope.id,
+        memory_count: 0,
+        deliverable_count: 0,
+        fact_count: 0,
+      };
+      return {
+        id: scope.id,
+        name: scope.name,
+        kind: scope.kind,
+        href: `/workspace/scope/${scope.kind}/${scope.slug}`,
+        memoryCount: counts.memory_count,
+        factCount: counts.fact_count,
+        deliverableCount: counts.deliverable_count,
+        total: counts.memory_count + counts.fact_count + counts.deliverable_count,
+      };
+    })
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+    .slice(0, 6);
+
+  const firstActivityAgeDays = activity.firstActivityAt
+    ? (Date.now() - new Date(activity.firstActivityAt).getTime()) / (24 * 60 * 60 * 1000)
+    : 0;
+  const weeklyLearnedCount =
+    activity.recentDocumentCount + activity.recentMemoryCount + activity.recentFactCount;
+  const state =
+    !onboarded && isEmpty
+      ? "brand-new"
+      : isEmpty || memory.length < 3 || documents.length === 0
+        ? "sparse"
+        : "populated";
+  const userName = formatUserName(viewer.user?.email ?? "");
+  const locale = resolveLocale(headersList.get("accept-language"));
+
   return (
-    <div className="wbeta-workspace-layout">
-      <WorkspaceAutoRefresh processingCount={processingCount} />
+    <>
       <WorkspaceShortcuts />
-
-      <section className="wbeta-chat-pane" aria-label="Workspace conversation">
-        <WorkspaceChat />
-      </section>
-
-      <WorkspaceContextRail
+      <WorkspaceHomeDashboard
+        greeting={buildGreeting(userName, locale)}
+        learnedCount={weeklyLearnedCount}
+        state={state}
+        suggestions={
+          suggestions.length > 0
+            ? suggestions
+            : [
+                {
+                  id: "fallback-ask",
+                  kind: "investigate",
+                  prompt: "Ask what changed across my clients this week.",
+                  reason: "Uses recent workspace chats, memory, and indexed documents.",
+                },
+              ]
+        }
+        activeScopes={activeScopes}
+        conversations={recentConversations}
         entityGroups={entityGroups}
-        recentConversations={recentConversations}
+        weeklyStats={{
+          deliverables: activity.recentDeliverableCount,
+          facts: activity.recentFactCount,
+          documents: activity.recentDocumentCount,
+          memories: activity.recentMemoryCount,
+          estimatedHoursSaved: Math.max(
+            1,
+            activity.recentDeliverableCount * 2 + activity.recentDocumentCount,
+          ),
+          visible: firstActivityAgeDays >= 7,
+        }}
+        chat={<WorkspaceChat />}
+        setup={!onboarded && isEmpty ? <WorkspaceOnboarding /> : null}
       />
-    </div>
+    </>
   );
+}
+
+function resolveLocale(acceptLanguage: string | null): "en" | "it" {
+  if (!acceptLanguage) return "en";
+  return acceptLanguage.toLowerCase().startsWith("it") ? "it" : "en";
+}
+
+function buildGreeting(name: string, locale: "en" | "it"): string {
+  const hour = new Date().getHours();
+  if (locale === "it") {
+    const base = hour < 12 ? "Buongiorno" : hour < 18 ? "Buon pomeriggio" : "Buonasera";
+    return `${base}, ${name}`;
+  }
+  const base = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  return `${base}, ${name}`;
+}
+
+function formatUserName(email: string): string {
+  const local = email.split("@")[0] ?? "";
+  const first = local.split(/[._-]/)[0] ?? "there";
+  return first ? first.charAt(0).toUpperCase() + first.slice(1) : "there";
+}
+
+function formatRelative(iso: string): string {
+  const diffSec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h`;
+  return `${Math.floor(diffSec / 86400)}d`;
 }

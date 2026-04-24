@@ -1,7 +1,10 @@
 import "server-only";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
+import {
+  BASQUIO_TEAM_ORG_ID,
+  BASQUIO_TEAM_WORKSPACE_ID,
+} from "@/lib/workspace/constants";
 
 export type WorkspaceDocumentRow = {
   id: string;
@@ -396,6 +399,121 @@ export async function listRecentWorkspaceDeliverables(limit = 10): Promise<Works
     throw new Error(`Failed to list deliverables: ${error.message}`);
   }
   return (data ?? []) as WorkspaceDeliverableRow[];
+}
+
+export type WorkspaceHomeActivity = {
+  recentDocumentCount: number;
+  recentMemoryCount: number;
+  recentFactCount: number;
+  recentDeliverableCount: number;
+  firstActivityAt: string | null;
+};
+
+export async function getWorkspaceHomeActivity(days = 7): Promise<WorkspaceHomeActivity> {
+  const db = getServiceClient();
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const [
+    recentDocuments,
+    recentMemory,
+    recentFacts,
+    recentDeliverables,
+    firstDocument,
+    firstMemory,
+    firstFact,
+    firstDeliverable,
+  ] = await Promise.all([
+    db
+      .from("knowledge_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("is_team_beta", true)
+      .neq("status", "deleted")
+      .gte("created_at", since),
+    db
+      .from("memory_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+      .eq("is_team_beta", true)
+      .gte("updated_at", since),
+    db
+      .from("facts")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+      .eq("is_team_beta", true)
+      .is("superseded_by", null)
+      .gte("ingested_at", since),
+    db
+      .from("workspace_deliverables")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+      .eq("is_team_beta", true)
+      .neq("status", "archived")
+      .gte("created_at", since),
+    db
+      .from("knowledge_documents")
+      .select("created_at")
+      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("is_team_beta", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .from("memory_entries")
+      .select("created_at")
+      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+      .eq("is_team_beta", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .from("facts")
+      .select("ingested_at")
+      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+      .eq("is_team_beta", true)
+      .order("ingested_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    db
+      .from("workspace_deliverables")
+      .select("created_at")
+      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+      .eq("is_team_beta", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const errors = [
+    recentDocuments.error,
+    recentMemory.error,
+    recentFacts.error,
+    recentDeliverables.error,
+    firstDocument.error,
+    firstMemory.error,
+    firstFact.error,
+    firstDeliverable.error,
+  ].filter(Boolean);
+  if (errors.length > 0) {
+    throw new Error(`Failed to load workspace home activity: ${errors[0]?.message}`);
+  }
+
+  const firstDates = [
+    (firstDocument.data as { created_at?: string } | null)?.created_at,
+    (firstMemory.data as { created_at?: string } | null)?.created_at,
+    (firstFact.data as { ingested_at?: string } | null)?.ingested_at,
+    (firstDeliverable.data as { created_at?: string } | null)?.created_at,
+  ].filter((date): date is string => Boolean(date));
+
+  firstDates.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+  return {
+    recentDocumentCount: recentDocuments.count ?? 0,
+    recentMemoryCount: recentMemory.count ?? 0,
+    recentFactCount: recentFacts.count ?? 0,
+    recentDeliverableCount: recentDeliverables.count ?? 0,
+    firstActivityAt: firstDates[0] ?? null,
+  };
 }
 
 export async function getWorkspaceDeliverable(
