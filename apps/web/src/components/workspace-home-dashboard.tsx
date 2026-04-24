@@ -22,6 +22,7 @@ export type WorkspaceHomeScope = {
   memoryCount: number;
   factCount: number;
   deliverableCount: number;
+  lastActivityLabel?: string;
 };
 
 export type WorkspaceHomeConversation = {
@@ -136,6 +137,11 @@ export function WorkspaceHomeDashboard({
               <Link key={scope.id} href={scope.href} className="wbeta-home-scope-card">
                 <span className="wbeta-home-scope-kind">{scope.kind}</span>
                 <strong>{scope.name}</strong>
+                {scope.lastActivityLabel ? (
+                  <span className="wbeta-home-scope-updated">
+                    {copy.updated} {scope.lastActivityLabel}
+                  </span>
+                ) : null}
                 <dl>
                   <div>
                     <dt>Memory</dt>

@@ -146,41 +146,65 @@ export async function countByScope(
   const [memoryRes, deliverableRes, factRes] = await Promise.all([
     db
       .from("memory_entries")
-      .select("workspace_scope_id")
+      .select("workspace_scope_id, updated_at")
       .eq("workspace_id", workspaceId)
       .not("workspace_scope_id", "is", null),
     db
       .from("workspace_deliverables")
-      .select("workspace_scope_id")
+      .select("workspace_scope_id, updated_at")
       .eq("workspace_id", workspaceId)
       .neq("status", "archived")
       .not("workspace_scope_id", "is", null),
     db
       .from("facts")
-      .select("workspace_scope_id")
+      .select("workspace_scope_id, ingested_at")
       .eq("workspace_id", workspaceId)
       .is("superseded_by", null)
       .not("workspace_scope_id", "is", null),
   ]);
 
   const counts = new Map<string, ScopeCounts>();
-  function bump(scopeId: string, field: keyof Omit<ScopeCounts, "scope_id">) {
+  function bump(
+    scopeId: string,
+    field: keyof Omit<ScopeCounts, "scope_id" | "last_activity_at">,
+    activityAt?: string | null,
+  ) {
     let row = counts.get(scopeId);
     if (!row) {
-      row = { scope_id: scopeId, memory_count: 0, deliverable_count: 0, fact_count: 0 };
+      row = {
+        scope_id: scopeId,
+        memory_count: 0,
+        deliverable_count: 0,
+        fact_count: 0,
+        last_activity_at: null,
+      };
       counts.set(scopeId, row);
     }
     row[field] += 1;
+    if (activityAt) {
+      const previous = row.last_activity_at ? new Date(row.last_activity_at).getTime() : 0;
+      const next = new Date(activityAt).getTime();
+      if (next > previous) row.last_activity_at = activityAt;
+    }
   }
 
-  for (const row of (memoryRes.data ?? []) as Array<{ workspace_scope_id: string }>) {
-    bump(row.workspace_scope_id, "memory_count");
+  for (const row of (memoryRes.data ?? []) as Array<{
+    workspace_scope_id: string;
+    updated_at: string | null;
+  }>) {
+    bump(row.workspace_scope_id, "memory_count", row.updated_at);
   }
-  for (const row of (deliverableRes.data ?? []) as Array<{ workspace_scope_id: string }>) {
-    bump(row.workspace_scope_id, "deliverable_count");
+  for (const row of (deliverableRes.data ?? []) as Array<{
+    workspace_scope_id: string;
+    updated_at: string | null;
+  }>) {
+    bump(row.workspace_scope_id, "deliverable_count", row.updated_at);
   }
-  for (const row of (factRes.data ?? []) as Array<{ workspace_scope_id: string }>) {
-    bump(row.workspace_scope_id, "fact_count");
+  for (const row of (factRes.data ?? []) as Array<{
+    workspace_scope_id: string;
+    ingested_at: string | null;
+  }>) {
+    bump(row.workspace_scope_id, "fact_count", row.ingested_at);
   }
   return counts;
 }

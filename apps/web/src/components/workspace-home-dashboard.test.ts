@@ -30,6 +30,7 @@ describe("WorkspaceHomeDashboard", () => {
     expect(screen.getByText("Good morning, Marco")).not.toBeNull();
     expect(screen.getByText("7")).not.toBeNull();
     expect(screen.getByText("Affinity Petcare")).not.toBeNull();
+    expect(screen.getByText("Updated 2h")).not.toBeNull();
     expect(screen.getByText("Retailer margin readout")).not.toBeNull();
     expect(screen.getByTestId("workspace-chat")).not.toBeNull();
     expect(screen.getAllByText("Use in chat")).toHaveLength(3);
@@ -139,6 +140,7 @@ function baseProps(overrides: Partial<DashboardProps> = {}): DashboardProps {
         memoryCount: 2,
         factCount: 8,
         deliverableCount: 1,
+        lastActivityLabel: "2h",
       },
     ],
     conversations: [

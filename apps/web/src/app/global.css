@@ -16377,6 +16377,12 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text);
 }
 
+.wbeta-home-scope-updated {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .wbeta-home-suggestion p,
 .wbeta-home-sparse-grid span {
   color: var(--text-soft);

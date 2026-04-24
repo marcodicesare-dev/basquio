@@ -36,6 +36,7 @@ export const workspaceEn = {
     suggestedToday: "Suggested for today",
     activeScopes: "Active scopes",
     top: "Top",
+    updated: "Updated",
     noScopes: "No scopes yet",
     recentChats: "Recent chats",
     newChat: "New chat",

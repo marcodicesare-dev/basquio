@@ -181,13 +181,6 @@ export function ScopeLanding({
         ) : null}
       </section>
 
-      <WorkspaceSuggestionSurface
-        title={copy.suggestedNext}
-        countLabel={suggestions.length > 0 ? `${Math.min(suggestions.length, 3)} ready` : undefined}
-        placement="scope"
-        suggestions={suggestions}
-      />
-
       {deliverables.length > 0 ? (
         <section className="wbeta-scope-landing-section" aria-labelledby="deliverables-h">
           <header className="wbeta-scope-landing-section-head">
@@ -214,6 +207,13 @@ export function ScopeLanding({
           </ul>
         </section>
       ) : null}
+
+      <WorkspaceSuggestionSurface
+        title={copy.suggestedNext}
+        countLabel={suggestions.length > 0 ? `${Math.min(suggestions.length, 3)} ready` : undefined}
+        placement="scope"
+        suggestions={suggestions}
+      />
 
       <div className="wbeta-scope-landing-chat" role="region" aria-label={copy.chatComposer}>
         {chat}

@@ -27,6 +27,7 @@ export type ScopeCounts = {
   memory_count: number;
   deliverable_count: number;
   fact_count: number;
+  last_activity_at?: string | null;
 };
 
 export type WorkspaceKind = "team_beta" | "demo_template" | "customer";

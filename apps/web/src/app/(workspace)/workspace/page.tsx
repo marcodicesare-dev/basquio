@@ -111,7 +111,9 @@ export default async function WorkspaceHomePage() {
         memory_count: 0,
         deliverable_count: 0,
         fact_count: 0,
+        last_activity_at: null,
       };
+      const lastActivityAt = counts.last_activity_at ?? scope.created_at;
       return {
         id: scope.id,
         name: scope.name,
@@ -120,10 +122,17 @@ export default async function WorkspaceHomePage() {
         memoryCount: counts.memory_count,
         factCount: counts.fact_count,
         deliverableCount: counts.deliverable_count,
+        lastActivityAt,
+        lastActivityLabel: formatRelative(lastActivityAt),
         total: counts.memory_count + counts.fact_count + counts.deliverable_count,
       };
     })
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime() ||
+        b.total - a.total ||
+        a.name.localeCompare(b.name),
+    )
     .slice(0, 6);
 
   const firstActivityAgeDays = activity.firstActivityAt
