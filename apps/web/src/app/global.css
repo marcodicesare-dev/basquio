@@ -16602,6 +16602,8 @@ body:has(.wbeta-shell) .site-wrap {
 
 @media (max-width: 1080px) {
   .wbeta-scope-chat-layout {
+    align-content: start;
+    align-items: start;
     gap: 13px;
   }
 
@@ -16612,6 +16614,8 @@ body:has(.wbeta-shell) .site-wrap {
   .wbeta-scope-mobile-context {
     display: block;
     order: -1;
+    align-self: start;
+    width: 100%;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: #ffffff;
@@ -16628,6 +16632,10 @@ body:has(.wbeta-shell) .site-wrap {
     padding: 0 14px;
     list-style: none;
     cursor: pointer;
+  }
+
+  .wbeta-scope-chat-pane {
+    width: 100%;
   }
 
   .wbeta-scope-mobile-context summary::-webkit-details-marker {
