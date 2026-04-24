@@ -14,6 +14,7 @@ import {
 import type { UIMessage } from "ai";
 
 import { ChatMarkdown } from "@/components/workspace-chat/ChatMarkdown";
+import { WorkspaceInlineSuggestions } from "@/components/workspace-suggestions";
 import {
   BriefDraftCard,
   ExplainBasquioCard,
@@ -29,6 +30,7 @@ import {
   TeachRuleCard,
 } from "@/components/workspace-chat/ToolChips";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
+import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
 type ToolPart = {
   type: string;
@@ -89,6 +91,7 @@ type ChatMessageProps = {
   onFeedback?: (value: "up" | "down") => void;
   onSaveAsMemo?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
   onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null> | void;
+  showInlineSuggestions?: boolean;
   /**
    * Approval-card follow-up: cards fire a new user chat turn when the
    * user clicks [Save all] / [Update] / [Create] / [Open in drawer] /
@@ -107,6 +110,7 @@ export const ChatMessage = memo(function ChatMessage({
   onFeedback,
   onSaveAsMemo,
   onGenerateDeck,
+  showInlineSuggestions = false,
   onSendFollowUp,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
@@ -169,6 +173,10 @@ export const ChatMessage = memo(function ChatMessage({
 
   const parts = useMemo(() => (message.parts ?? []) as unknown as Part[], [message]);
   const lastPartIndex = parts.length - 1;
+  const inlineSuggestions = useMemo(
+    () => deriveInlineSuggestions(message, citations, Boolean(scopeSignal(message))),
+    [message, citations],
+  );
 
   return (
     <article className={isUser ? "wbeta-ai-msg wbeta-ai-msg-user" : "wbeta-ai-msg wbeta-ai-msg-asst"}>
@@ -330,6 +338,13 @@ export const ChatMessage = memo(function ChatMessage({
         return null;
       })}
 
+      {!isUser && showInlineSuggestions ? (
+        <WorkspaceInlineSuggestions
+          suggestions={inlineSuggestions}
+          onSend={onSendFollowUp}
+        />
+      ) : null}
+
       {!isUser && !isStreaming ? (
         <div className="wbeta-ai-actions">
           <button
@@ -427,6 +442,7 @@ function areChatMessagePropsEqual(prev: ChatMessageProps, next: ChatMessageProps
     prev.onFeedback === next.onFeedback &&
     prev.onSaveAsMemo === next.onSaveAsMemo &&
     prev.onGenerateDeck === next.onGenerateDeck &&
+    prev.showInlineSuggestions === next.showInlineSuggestions &&
     prev.onSendFollowUp === next.onSendFollowUp
   );
 }
@@ -455,6 +471,45 @@ function stableStringify(value: unknown) {
   } catch {
     return "";
   }
+}
+
+function deriveInlineSuggestions(
+  message: UIMessage,
+  citations: CitationInline[],
+  hasScopeSignal: boolean,
+): WorkspaceSuggestion[] {
+  const id = message.id ?? "assistant";
+  const cited = citations.length > 0;
+  return [
+    {
+      id: `inline-memo-${id}`,
+      kind: "summarize",
+      prompt: cited
+        ? "Turn the last answer into a concise cited memo."
+        : "Turn the last answer into a concise memo.",
+      reason: "Moves the useful answer into a reusable workspace artifact.",
+    },
+    {
+      id: `inline-compare-${id}`,
+      kind: "investigate",
+      prompt: hasScopeSignal
+        ? "Compare this answer with the saved scope memory."
+        : "Compare this answer with my saved workspace memory.",
+      reason: "Checks the answer against what Basquio already knows.",
+    },
+    {
+      id: `inline-deck-${id}`,
+      kind: "narrate",
+      prompt: "Draft the next presentation outline from this answer.",
+      reason: "Turns the analysis into the next executive deliverable.",
+    },
+  ];
+}
+
+function scopeSignal(message: UIMessage): string | null {
+  const text = messageToMarkdown(message).toLowerCase();
+  if (text.includes("scope") || text.includes("client") || text.includes("category")) return "scope";
+  return null;
 }
 
 function ReasoningBlock({ text, isStreaming }: { text: string; isStreaming: boolean }) {

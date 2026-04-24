@@ -2,6 +2,9 @@ import Link from "next/link";
 import { ArrowRight, Sparkle, UsersThree } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 
+import { WorkspaceSuggestionSurface } from "@/components/workspace-suggestions";
+import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
+
 /**
  * Scope landing layout per shell spec §4.3.1.
  *
@@ -48,12 +51,14 @@ export function ScopeLanding({
   stakeholders,
   workspaceKnows,
   deliverables,
+  suggestions = [],
   chat,
 }: {
   scope: { id: string; name: string; kind: string };
   stakeholders: ScopeStakeholder[];
   workspaceKnows: WorkspaceKnowsSummary;
   deliverables: ScopeDeliverable[];
+  suggestions?: WorkspaceSuggestion[];
   chat: ReactNode;
 }) {
   const stakeholderCount = stakeholders.length;
@@ -164,6 +169,13 @@ export function ScopeLanding({
           </p>
         ) : null}
       </section>
+
+      <WorkspaceSuggestionSurface
+        title="Suggested next"
+        countLabel={suggestions.length > 0 ? `${Math.min(suggestions.length, 3)} ready` : undefined}
+        placement="scope"
+        suggestions={suggestions}
+      />
 
       {deliverables.length > 0 ? (
         <section className="wbeta-scope-landing-section" aria-labelledby="deliverables-h">

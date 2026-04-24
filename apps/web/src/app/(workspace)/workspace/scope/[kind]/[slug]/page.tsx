@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import {
@@ -11,6 +12,7 @@ import { WorkspaceMemoryAside } from "@/components/workspace-memory-aside";
 import { BASQUIO_TEAM_ORG_ID, type ScopeKind } from "@/lib/workspace/constants";
 import { listConversations } from "@/lib/workspace/conversations";
 import { getScopeByKindSlug } from "@/lib/workspace/scopes";
+import { buildSuggestions } from "@/lib/workspace/suggestions";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 
@@ -142,19 +144,26 @@ export default async function WorkspaceScopePage({
   params: Promise<{ kind: string; slug: string }>;
 }) {
   const { kind, slug } = await params;
+  const headersList = await headers();
   if (!ALLOWED.includes(kind as RouteKind)) notFound();
 
   const workspace = await getCurrentWorkspace();
   const scope = await getScopeByKindSlug(workspace.id, kind as RouteKind, slug);
   if (!scope) notFound();
 
-  const [memory, conversations, stakeholdersRaw, factsCount, articlesCount, researchLabel] = await Promise.all([
+  const [memory, conversations, stakeholdersRaw, factsCount, articlesCount, researchLabel, suggestions] = await Promise.all([
     listScopeMemory(workspace.id, scope.id),
     listConversations({ workspaceId: workspace.id, scopeId: scope.id, limit: 5 }).catch(() => []),
     listScopeStakeholders(workspace.id, scope.id, scope.name),
     countScopeFacts(workspace.id, scope.name).catch(() => 0),
     countScrapedArticlesForScope(workspace.id).catch(() => 0),
     lastResearchLabel(workspace.id, scope.id).catch(() => null),
+    buildSuggestions({
+      maxItems: 3,
+      scopeId: scope.id,
+      scopeName: scope.name,
+      locale: resolveLocale(headersList.get("accept-language")),
+    }).catch(() => []),
   ]);
 
   const stakeholders: ScopeStakeholder[] = stakeholdersRaw.map((p) => ({
@@ -186,6 +195,18 @@ export default async function WorkspaceScopePage({
           stakeholders={stakeholders}
           workspaceKnows={workspaceKnows}
           deliverables={deliverables}
+          suggestions={
+            suggestions.length > 0
+              ? suggestions
+              : [
+                  {
+                    id: `fallback-${scope.id}`,
+                    kind: "investigate",
+                    prompt: `Ask what changed in ${scope.name} this week.`,
+                    reason: "Uses scoped chats, memory, and indexed documents.",
+                  },
+                ]
+          }
           chat={<WorkspaceChat scopeId={scope.id} scopeName={scope.name} scopeKind={scope.kind} />}
         />
       </div>
@@ -196,3 +217,7 @@ export default async function WorkspaceScopePage({
   );
 }
 
+function resolveLocale(acceptLanguage: string | null): "en" | "it" {
+  if (!acceptLanguage) return "en";
+  return acceptLanguage.toLowerCase().startsWith("it") ? "it" : "en";
+}

@@ -577,6 +577,7 @@ export function WorkspaceChat({
                 onGenerateDeck={
                   message.role === "assistant" && !isStreaming ? openGenerationDrawer : undefined
                 }
+                showInlineSuggestions={isLast && message.role === "assistant" && !isStreaming}
                 onSendFollowUp={
                   !isStreaming
                     ? handleSendFollowUp

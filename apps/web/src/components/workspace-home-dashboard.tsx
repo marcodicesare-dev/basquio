@@ -8,14 +8,10 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 
-import { WorkspaceHomePromptAction } from "@/components/workspace-home-prompt-action";
+import { WorkspaceSuggestionSurface } from "@/components/workspace-suggestions";
+import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
-export type WorkspaceHomeSuggestion = {
-  id: string;
-  kind: "summarize" | "investigate" | "narrate" | "retry";
-  prompt: string;
-  reason: string;
-};
+export type WorkspaceHomeSuggestion = WorkspaceSuggestion;
 
 export type WorkspaceHomeScope = {
   id: string;
@@ -49,13 +45,6 @@ export type WorkspaceHomeWeeklyStats = {
 };
 
 export type WorkspaceHomeState = "brand-new" | "sparse" | "populated";
-
-const KIND_LABELS: Record<WorkspaceHomeSuggestion["kind"], string> = {
-  summarize: "Summarize",
-  investigate: "Investigate",
-  narrate: "Narrate",
-  retry: "Retry",
-};
 
 export function WorkspaceHomeDashboard({
   greeting,
@@ -129,28 +118,12 @@ export function WorkspaceHomeDashboard({
 
       {state === "sparse" ? <SparseWorkspacePanel /> : null}
 
-      <section className="wbeta-home-section" aria-labelledby="suggested-today">
-        <div className="wbeta-home-section-head">
-          <h2 id="suggested-today">Suggested for today</h2>
-          <span>{suggestions.length} ready</span>
-        </div>
-        {suggestions.length > 0 ? (
-          <div className="wbeta-home-suggestion-grid">
-            {suggestions.slice(0, 3).map((suggestion) => (
-              <article key={suggestion.id} className="wbeta-home-suggestion">
-                <span className="wbeta-home-suggestion-kind">{KIND_LABELS[suggestion.kind]}</span>
-                <h3>{suggestion.prompt}</h3>
-                <p>{suggestion.reason}</p>
-                <WorkspaceHomePromptAction prompt={suggestion.prompt} />
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="wbeta-home-empty-line">
-            Suggestions appear after Basquio sees a file, a memory, or a recent chat.
-          </p>
-        )}
-      </section>
+      <WorkspaceSuggestionSurface
+        title="Suggested for today"
+        countLabel={`${Math.min(suggestions.length, 3)} ready`}
+        placement="home"
+        suggestions={suggestions}
+      />
 
       <section className="wbeta-home-section" aria-labelledby="active-scopes">
         <div className="wbeta-home-section-head">

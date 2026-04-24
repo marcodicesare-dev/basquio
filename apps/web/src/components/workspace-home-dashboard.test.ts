@@ -10,6 +10,7 @@ type DashboardProps = ComponentProps<typeof WorkspaceHomeDashboard>;
 const scrollIntoView = vi.fn();
 
 beforeEach(() => {
+  window.localStorage.clear();
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
     configurable: true,
     value: scrollIntoView,
@@ -19,6 +20,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   scrollIntoView.mockClear();
+  window.localStorage.clear();
 });
 
 describe("WorkspaceHomeDashboard", () => {
