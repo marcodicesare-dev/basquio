@@ -48,6 +48,36 @@ export function WorkspaceSidebar({
   // so deliverable detail pages still read as "you are inside workspace".
   const homeActive = !peopleActive && !memoryActive && !scopeActiveAny;
 
+  const navigateWithTransition = useCallback(
+    (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey ||
+        event.button !== 0
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const startViewTransition = (
+        document as Document & {
+          startViewTransition?: (callback: () => void) => void;
+        }
+      ).startViewTransition;
+      if (startViewTransition && !reducedMotion) {
+        startViewTransition(() => {
+          router.push(href);
+        });
+        return;
+      }
+      router.push(href);
+    },
+    [router],
+  );
+
   function scopeHref(scope: WorkspaceScope) {
     return `/workspace/scope/${scope.kind}/${scope.slug}`;
   }
@@ -65,6 +95,7 @@ export function WorkspaceSidebar({
           href="/workspace"
           className={homeActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
           aria-current={homeActive ? "page" : undefined}
+          onClick={navigateWithTransition("/workspace")}
         >
           <span className="wbeta-nav-icon" aria-hidden>
             <House size={16} weight={homeActive ? "fill" : "regular"} />
@@ -104,6 +135,7 @@ export function WorkspaceSidebar({
                             : "wbeta-sidebar-item"
                         }
                         aria-current={active ? "page" : undefined}
+                        onClick={navigateWithTransition(scopeHref(scope))}
                       >
                         <span className="wbeta-sidebar-item-name">{scope.name}</span>
                         {badge > 0 ? (
@@ -149,6 +181,7 @@ export function WorkspaceSidebar({
           href="/workspace/people"
           className={peopleActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
           aria-current={peopleActive ? "page" : undefined}
+          onClick={navigateWithTransition("/workspace/people")}
         >
           <span className="wbeta-nav-icon" aria-hidden>
             <UsersThree size={16} weight={peopleActive ? "fill" : "regular"} />
@@ -159,6 +192,7 @@ export function WorkspaceSidebar({
           href="/workspace/memory"
           className={memoryActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
           aria-current={memoryActive ? "page" : undefined}
+          onClick={navigateWithTransition("/workspace/memory")}
         >
           <span className="wbeta-nav-icon" aria-hidden>
             <Sparkle size={16} weight={memoryActive ? "fill" : "regular"} />

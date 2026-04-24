@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { WorkspaceSkeleton } from "@/components/workspace-skeleton";
 import type { EntityWithCount } from "@/lib/workspace/db";
 
 const TYPE_ORDER: ReadonlyArray<{ type: string; label: string }> = [
@@ -236,14 +237,18 @@ function EntitySideSheet({
               ) : null}
             </>
           ) : (
-            <h3 className="wbeta-sheet-title" id={`wbeta-sheet-title-${entityId}`}>
-              Loading.
-            </h3>
+            <div className="wbeta-sheet-title-skeleton" id={`wbeta-sheet-title-${entityId}`}>
+              <WorkspaceSkeleton density="line" width="64%" label="Loading entity title" />
+              <WorkspaceSkeleton density="line" width="38%" label="Loading entity metadata" />
+            </div>
           )}
         </header>
 
         {loading ? (
-          <p className="wbeta-sheet-state">Loading details.</p>
+          <div className="wbeta-sheet-loading" role="status" aria-label="Loading entity details">
+            <WorkspaceSkeleton density="card" height={84} label="Loading facts" />
+            <WorkspaceSkeleton density="grid" rows={2} cols={2} cellHeight={48} label="Loading citations" />
+          </div>
         ) : error ? (
           <p className="wbeta-sheet-state wbeta-sheet-state-err">{error}</p>
         ) : detail ? (

@@ -177,7 +177,7 @@ export function WorkspaceGenerationStatus({
 
   return (
     <div className="wbeta-genstatus" role="status" aria-live="polite">
-      <div className="wbeta-genstatus-icon wbeta-genstatus-icon-spin">
+      <div className="wbeta-genstatus-icon wbeta-genstatus-icon-pulse">
         <Sparkle size={14} weight="fill" />
       </div>
       <div className="wbeta-genstatus-body">

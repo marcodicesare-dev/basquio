@@ -9,7 +9,7 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
-import { ArrowUp, Paperclip, Stop, X, CheckCircle, WarningCircle, CircleNotch } from "@phosphor-icons/react";
+import { ArrowUp, Paperclip, Stop, X, CheckCircle, WarningCircle } from "@phosphor-icons/react";
 
 import { ChatMessage } from "@/components/workspace-chat/ChatMessage";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
@@ -619,7 +619,7 @@ export function WorkspaceChat({
             <li key={chip.localId} className={`wbeta-ai-chat-chip wbeta-ai-chat-chip-${chip.status}`}>
               <span className="wbeta-ai-chat-chip-icon" aria-hidden>
                 {chip.status === "uploading" || chip.status === "indexing" ? (
-                  <CircleNotch size={14} weight="bold" className="wbeta-spin" />
+                  <Paperclip size={14} weight="thin" className="wbeta-ai-chat-chip-icon-pulse" />
                 ) : chip.status === "indexed" ? (
                   <CheckCircle size={14} weight="fill" />
                 ) : (

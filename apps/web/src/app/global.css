@@ -12549,27 +12549,16 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text-soft);
 }
 
+.wbeta-drop-status-busy .wbeta-skeleton-line {
+  flex-shrink: 0;
+}
+
 .wbeta-drop-status-ok {
   color: var(--text);
 }
 
 .wbeta-drop-status-err {
   color: var(--danger-text);
-}
-
-.wbeta-drop-spinner {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--blue);
-  animation: wbeta-spin 0.8s linear infinite;
-}
-
-@keyframes wbeta-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 /* Document list */
@@ -12962,6 +12951,18 @@ body:has(.wbeta-shell) .site-wrap {
   font-size: 14px;
   color: var(--text-soft);
   margin: 0;
+}
+
+.wbeta-sheet-title-skeleton {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  max-width: 260px;
+}
+
+.wbeta-sheet-loading {
+  display: grid;
+  gap: 13px;
 }
 
 .wbeta-sheet-state-err {
@@ -15707,6 +15708,61 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text);
 }
 
+/* Shared workspace skeletons */
+
+.wbeta-skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: rgba(93, 101, 107, 0.26);
+  opacity: 0.38;
+  animation: wbeta-skeleton-pulse 800ms ease-in-out infinite alternate;
+}
+
+.wbeta-skeleton-line {
+  height: 14px;
+}
+
+.wbeta-skeleton-card {
+  min-height: 72px;
+}
+
+.wbeta-skeleton-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.wbeta-skeleton-cell {
+  width: 100%;
+}
+
+@keyframes wbeta-skeleton-pulse {
+  from {
+    opacity: 0.3;
+  }
+
+  to {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wbeta-skeleton {
+    animation: none;
+    opacity: 0.4;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0ms;
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
 /* ── Workspace chat-primary layout (home + legacy scope pages) ─── */
 
 /* Workspace home dashboard */
@@ -16700,6 +16756,10 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text);
 }
 
+.wbeta-ai-chat-chip-icon-pulse {
+  animation: wbeta-skeleton-pulse 800ms ease-in-out infinite alternate;
+}
+
 .wbeta-ai-chat-chip-indexed .wbeta-ai-chat-chip-icon {
   color: var(--accent, #0a7c3a);
 }
@@ -16770,15 +16830,6 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-chat-chip-remove:hover {
   opacity: 1;
   background: var(--border);
-}
-
-@keyframes wbeta-spin-kf {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.wbeta-spin {
-  animation: wbeta-spin-kf 900ms linear infinite;
 }
 
 /* Lane C pulse: entities/facts just extracted from files attached to this chat. */
@@ -16869,7 +16920,7 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1.25;
   color: var(--text);
 }
@@ -16906,11 +16957,10 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-gen-loading {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  display: grid;
+  gap: 13px;
   padding: 16px;
-  background: var(--canvas);
+  background: #ffffff;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-soft);
@@ -16922,15 +16972,9 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0;
 }
 
-.wbeta-gen-spin {
-  animation: wbeta-gen-spin 1.8s linear infinite;
-  color: var(--blue);
-  flex-shrink: 0;
-}
-
-@keyframes wbeta-gen-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.wbeta-gen-loading-copy {
+  display: grid;
+  gap: 8px;
 }
 
 .wbeta-gen-error {
@@ -17264,8 +17308,8 @@ body:has(.wbeta-shell) .site-wrap {
   flex-shrink: 0;
 }
 
-.wbeta-genstatus-icon-spin {
-  animation: wbeta-gen-spin 1.8s linear infinite;
+.wbeta-genstatus-icon-pulse {
+  animation: wbeta-skeleton-pulse 800ms ease-in-out infinite alternate;
 }
 
 .wbeta-genstatus-ready .wbeta-genstatus-icon {

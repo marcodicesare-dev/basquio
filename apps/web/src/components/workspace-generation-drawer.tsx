@@ -12,6 +12,8 @@ import {
   X,
 } from "@phosphor-icons/react";
 
+import { WorkspaceSkeleton } from "@/components/workspace-skeleton";
+
 type PackSourceFile = {
   id: string;
   kind: string;
@@ -220,7 +222,7 @@ export function WorkspaceGenerationDrawer({
               <Sparkle size={12} weight="fill" /> Generate deck
             </p>
             <h2 className="wbeta-gen-title">
-              {brief?.title ?? (loading ? "Preparing brief…" : "New deck")}
+              {brief?.title ?? (loading ? "Preparing brief" : "New deck")}
             </h2>
           </div>
           <button
@@ -236,9 +238,13 @@ export function WorkspaceGenerationDrawer({
 
         <div className="wbeta-gen-body">
           {loading ? (
-            <div className="wbeta-gen-loading">
-              <Sparkle size={14} weight="fill" className="wbeta-gen-spin" />
-              <p>Synthesizing the brief from the conversation, memory, and stakeholder preferences…</p>
+            <div className="wbeta-gen-loading" role="status" aria-label="Preparing generation brief">
+              <WorkspaceSkeleton density="card" height={96} label="Preparing generation brief" />
+              <div className="wbeta-gen-loading-copy">
+                <WorkspaceSkeleton density="line" width="62%" label="Preparing generation title" />
+                <WorkspaceSkeleton density="line" width="44%" label="Preparing generation source list" />
+                <p>Reading the conversation, workspace memory, and stakeholder preferences.</p>
+              </div>
             </div>
           ) : loadError ? (
             <div className="wbeta-gen-error" role="alert">
@@ -449,7 +455,7 @@ export function WorkspaceGenerationDrawer({
             >
               {launching ? (
                 <>
-                  <Sparkle size={13} weight="fill" className="wbeta-gen-spin" /> Starting…
+                  <Sparkle size={13} weight="fill" /> Starting
                 </>
               ) : (
                 <>

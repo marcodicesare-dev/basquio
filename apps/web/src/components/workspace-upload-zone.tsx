@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { WorkspaceSkeleton } from "@/components/workspace-skeleton";
 import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
 
 type UploadState =
@@ -134,8 +135,8 @@ function UploadStatus({ state }: { state: UploadState }) {
   if (state.kind === "uploading") {
     return (
       <p className="wbeta-drop-status wbeta-drop-status-busy">
-        <span className="wbeta-drop-spinner" aria-hidden />
-        Uploading {state.filename}. {state.progressPct}%
+        <WorkspaceSkeleton density="line" width={72} label={`Uploading ${state.filename}`} />
+        <span>Uploading {state.filename}. {state.progressPct}%</span>
       </p>
     );
   }
