@@ -107,14 +107,14 @@ export function WorkspaceSidebar({
         return;
       }
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const startViewTransition = (
+      const transitionDocument = (
         document as Document & {
           startViewTransition?: (callback: () => void) => void;
         }
-      ).startViewTransition;
+      );
       onNavigate?.();
-      if (startViewTransition && !reducedMotion) {
-        startViewTransition(() => {});
+      if (transitionDocument.startViewTransition && !reducedMotion) {
+        transitionDocument.startViewTransition(() => {});
       }
     },
     [onNavigate],
