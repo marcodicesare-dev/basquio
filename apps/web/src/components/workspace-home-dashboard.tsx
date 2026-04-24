@@ -8,6 +8,8 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 
+import { WorkspaceHomePromptAction } from "@/components/workspace-home-prompt-action";
+
 export type WorkspaceHomeSuggestion = {
   id: string;
   kind: "summarize" | "investigate" | "narrate" | "retry";
@@ -139,10 +141,7 @@ export function WorkspaceHomeDashboard({
                 <span className="wbeta-home-suggestion-kind">{KIND_LABELS[suggestion.kind]}</span>
                 <h3>{suggestion.prompt}</h3>
                 <p>{suggestion.reason}</p>
-                <a href="#workspace-chat">
-                  Use in chat
-                  <ArrowRight size={12} weight="bold" />
-                </a>
+                <WorkspaceHomePromptAction prompt={suggestion.prompt} />
               </article>
             ))}
           </div>

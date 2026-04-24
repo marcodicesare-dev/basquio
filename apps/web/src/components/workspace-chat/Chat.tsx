@@ -63,6 +63,7 @@ export function WorkspaceChat({
     factCount: number;
   } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
   const router = useRouter();
@@ -278,6 +279,26 @@ export function WorkspaceChat({
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages.length, lastAssistantStreaming]);
+
+  useEffect(() => {
+    const handleWorkspacePrompt = (event: Event) => {
+      const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt?.trim();
+      if (!prompt || isStreaming) return;
+      setDraft(prompt);
+      const focusInput = () => {
+        inputRef.current?.focus();
+      };
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(focusInput);
+      } else {
+        focusInput();
+      }
+    };
+    window.addEventListener("basquio:workspace-prompt", handleWorkspacePrompt);
+    return () => {
+      window.removeEventListener("basquio:workspace-prompt", handleWorkspacePrompt);
+    };
+  }, [isStreaming]);
 
   // Load existing attachments on mount so a returning user sees their files.
   useEffect(() => {
@@ -665,6 +686,7 @@ export function WorkspaceChat({
           Message
         </label>
         <TextareaAutosize
+          ref={inputRef}
           id="wbeta-ai-input"
           className="wbeta-ai-chat-textarea"
           placeholder={placeholder}

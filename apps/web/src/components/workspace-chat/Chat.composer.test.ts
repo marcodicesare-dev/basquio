@@ -25,13 +25,14 @@ vi.mock("@ai-sdk/react", () => ({
   }),
 }));
 
-vi.mock("react-textarea-autosize", () => ({
-  default: (props: Record<string, unknown>) => {
+vi.mock("react-textarea-autosize", () => {
+  const TextareaAutosizeMock = React.forwardRef<HTMLTextAreaElement, Record<string, unknown>>((props, ref) => {
     mocks.textareaProps.push(props);
     const value = String(props.value ?? "");
     const lineCount = Math.max(1, value.split("\n").length);
     const rows = Math.min(Number(props.maxRows ?? 10), Math.max(Number(props.minRows ?? 1), lineCount));
     return React.createElement("textarea", {
+      ref,
       id: props.id,
       className: props.className,
       placeholder: props.placeholder,
@@ -42,8 +43,10 @@ vi.mock("react-textarea-autosize", () => ({
       onChange: props.onChange,
       onKeyDown: props.onKeyDown,
     });
-  },
-}));
+  });
+  TextareaAutosizeMock.displayName = "TextareaAutosizeMock";
+  return { default: TextareaAutosizeMock };
+});
 
 vi.mock("@/components/workspace-generation-drawer", () => ({
   WorkspaceGenerationDrawer: () => null,
@@ -86,5 +89,20 @@ describe("WorkspaceChat composer", () => {
     const grownHeight = parseFloat(textarea.style.height);
     expect(grownHeight).toBeGreaterThan(initialHeight * 3);
     expect(grownHeight).toBeLessThanOrEqual(initialHeight * 10);
+  });
+
+  it("prefills the composer from workspace home suggested prompts", () => {
+    render(React.createElement(WorkspaceChat, {}));
+
+    fireEvent(
+      window,
+      new CustomEvent("basquio:workspace-prompt", {
+        detail: { prompt: "Summarize Affinity Petcare margin pressure." },
+      }),
+    );
+
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
+      "Summarize Affinity Petcare margin pressure.",
+    );
   });
 });

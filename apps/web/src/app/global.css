@@ -15711,11 +15711,8 @@ body:has(.wbeta-shell) .site-wrap {
   display: flex;
   flex-direction: column;
   gap: 13px;
-  padding: 21px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-strong);
-  box-shadow: var(--shadow-soft);
+  padding: 21px 0 0;
+  border-top: 1px solid var(--border);
 }
 
 .wbeta-home-section-head {
@@ -15774,7 +15771,7 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--canvas);
+  background: #ffffff;
   color: var(--text);
   text-decoration: none;
   transition: border-color 150ms ease-out, background 150ms ease-out, transform 80ms ease-out;
@@ -15787,7 +15784,7 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-home-sparse-grid a:hover,
 .wbeta-home-sparse-grid a:focus-visible {
   border-color: var(--border-strong);
-  background: var(--surface-strong);
+  background: #f7faff;
   outline: none;
 }
 
@@ -15802,7 +15799,7 @@ body:has(.wbeta-shell) .site-wrap {
   width: fit-content;
   padding: 2px 8px;
   border-radius: var(--radius-pill);
-  background: rgba(26, 106, 255, 0.08);
+  background: #eaf1ff;
   color: var(--blue);
   font-size: 10px;
   font-weight: 700;
@@ -15832,16 +15829,27 @@ body:has(.wbeta-shell) .site-wrap {
   line-height: 1.5;
 }
 
-.wbeta-home-suggestion a {
+.wbeta-home-suggestion-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   width: fit-content;
   margin-top: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--blue);
   font-size: 12px;
   font-weight: 700;
+  font-family: inherit;
   text-decoration: none;
+  cursor: pointer;
+}
+
+.wbeta-home-suggestion-action:hover,
+.wbeta-home-suggestion-action:focus-visible {
+  color: #1257d8;
+  outline: none;
 }
 
 .wbeta-home-scope-card dl {
@@ -15913,7 +15921,7 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-home-list a:hover,
 .wbeta-home-list a:focus-visible {
-  background: var(--canvas);
+  background: #f7faff;
   outline: none;
 }
 
@@ -15946,7 +15954,7 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: var(--canvas);
+  background: #ffffff;
   font-size: 12px;
 }
 
@@ -15982,7 +15990,7 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 13px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--canvas);
+  background: #ffffff;
   color: var(--text);
   font-size: 13px;
   font-weight: 600;

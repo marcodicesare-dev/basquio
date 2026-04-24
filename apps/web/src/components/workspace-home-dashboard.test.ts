@@ -1,15 +1,24 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React, { type ComponentProps } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceHomeDashboard } from "@/components/workspace-home-dashboard";
 
 type DashboardProps = ComponentProps<typeof WorkspaceHomeDashboard>;
+const scrollIntoView = vi.fn();
+
+beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoView,
+  });
+});
 
 afterEach(() => {
   cleanup();
+  scrollIntoView.mockClear();
 });
 
 describe("WorkspaceHomeDashboard", () => {
@@ -23,6 +32,21 @@ describe("WorkspaceHomeDashboard", () => {
     expect(screen.getByTestId("workspace-chat")).not.toBeNull();
     expect(screen.getAllByText("Use in chat")).toHaveLength(3);
     expect(screen.queryByText("Fourth suggestion")).toBeNull();
+  });
+
+  it("dispatches a composer prefill event from suggested prompts", () => {
+    const listener = vi.fn();
+    window.addEventListener("basquio:workspace-prompt", listener);
+    render(React.createElement(WorkspaceHomeDashboard, baseProps()));
+
+    fireEvent.click(screen.getAllByText("Use in chat")[0]);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect((listener.mock.calls[0][0] as CustomEvent).detail.prompt).toBe(
+      "Find the pressure on Affinity Petcare margins.",
+    );
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    window.removeEventListener("basquio:workspace-prompt", listener);
   });
 
   it("shows sparse workspace guidance when core context is missing", () => {
