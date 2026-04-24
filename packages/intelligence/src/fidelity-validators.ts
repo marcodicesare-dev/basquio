@@ -4,9 +4,11 @@ import { validateChartRepetition } from "./chart-repetition-validator";
 import { validateClaimChartAlignment } from "./claim-chart-alignment-validator";
 import { validateEntityGrounding } from "./entity-grounding-validator";
 import { validatePeriodOrdering } from "./period-order-validator";
+import { validatePromoMechanicCoverage } from "./promo-mechanics-validator";
 import { validateRequiredDeltaColumns } from "./required-delta-validator";
 import { validateSingleSourceLine } from "./source-line-validator";
 import { validateSourceLabels } from "./source-label-validator";
+import { validateNativeTableDeclaration } from "./table-structure-validator";
 import { validateTitleClaims } from "./title-claim-verifier";
 import { normalizeEntity } from "./fidelity/helpers";
 import type {
@@ -28,6 +30,7 @@ export type {
 export function lintDeckFidelity(input: {
   slides: FidelitySlideInput[];
   sheets: FidelitySheetInput[];
+  sourceHeaders?: string[];
   knownEntities?: string[];
   clientName?: string;
 }): FidelityLintResult {
@@ -54,6 +57,8 @@ export function lintDeckFidelity(input: {
     violations.push(...validateSingleSourceLine(slide));
     violations.push(...validateTitleClaims(slide, sheet));
     violations.push(...validateClaimChartAlignment(slide, sheet));
+    violations.push(...validatePromoMechanicCoverage(slide, sheet, input.sourceHeaders));
+    violations.push(...validateNativeTableDeclaration(slide));
     violations.push(...validateEntityGrounding(slide, knownEntities));
   }
 

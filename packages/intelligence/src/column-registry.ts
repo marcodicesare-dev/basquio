@@ -1,5 +1,5 @@
 /**
- * NIQ Column Registry — canonical mapping from Italian NIQ fact names to semantic keys.
+ * NIQ Column Registry, canonical mapping from Italian NIQ fact names to semantic keys.
  *
  * Built from "New Lista Fatti" (7,296 NIQ fact definitions).
  * The core ~60 facts that appear in 90%+ of FMCG datasets are hardcoded here.
@@ -87,6 +87,10 @@ const CORE_FACTS: ColumnRegistryEntry[] = [
   { semanticKey: "promo_units_cy", canonicalName: "Promo Units", aliases: ["V. Conf. Any Promo", "V.Conf. Any Promo", "Promo Units"], folder: "Promo Sales", role: "measure", period: "cy", unit: "units", formula: null },
   { semanticKey: "promo_units_py", canonicalName: "Promo Units PY", aliases: ["V. Conf. Any Promo Anno prec.", "V.Conf. Any Promo Anno prec."], folder: "Promo Sales", role: "measure", period: "py", unit: "units", formula: null },
   { semanticKey: "promo_intensity", canonicalName: "Promo Intensity", aliases: ["Any Promo Int.Idx Val.", "Promo Intensity", "Promo Int."], folder: "Promo Share", role: "measure", period: null, unit: "percent", formula: "Promo Value / Total Value × 100" },
+  { semanticKey: "promo_weighted_dist_cy", canonicalName: "Weighted Distribution Any Promo", aliases: ["Weighted Distribution Any Promo", "WD Promo", "WD_Promo", "WDPromo", "Dist. Pond. Any Promo", "Distr. Pond. Any Promo", "DP Promo"], folder: "Promo Distribution", role: "measure", period: "cy", unit: "percent", formula: null },
+  { semanticKey: "promo_display_only_share", canonicalName: "Display Only Promo Share", aliases: ["Importance of Sales (ALL) Display Only", "Display Only"], folder: "Promo Mechanics", role: "measure", period: "cy", unit: "percent", formula: null },
+  { semanticKey: "promo_folder_only_share", canonicalName: "Folder Only Promo Share", aliases: ["Importance of Sales (ALL) Folder Only", "Folder Only", "Leaflet Only"], folder: "Promo Mechanics", role: "measure", period: "cy", unit: "percent", formula: null },
+  { semanticKey: "promo_comm_in_store_only_share", canonicalName: "Communication In Store Only Promo Share", aliases: ["Importance of Sales (ALL) Comm. In Store Only", "Importance of Sales (ALL) Communication In Store Only", "Comm. In Store Only", "Communication In Store Only"], folder: "Promo Mechanics", role: "measure", period: "cy", unit: "percent", formula: null },
 
   // ── STANDARD DIMENSIONS ──
   { semanticKey: "dim_channel", canonicalName: "Channel", aliases: ["GROCERY", "Grocery", "Channel", "Canale"], folder: "Dimension", role: "dimension", period: null, unit: null, formula: null },

@@ -179,7 +179,7 @@ const STAGE_PAYLOADS: Record<DomainKnowledgeStage, string> = {
 Frame the work around the TRUE COMMERCIAL QUESTION, not a generic summary.
 Classify every finding as: connection (confirms hypothesis), contradiction (challenges assumptions), or curiosity (unexpected signal).
 
-### Core 20 KPIs — Know These By Name
+### Core 20 KPIs, Know These By Name
 | Italian Alias | English Name | Key | Formula |
 |---|---|---|---|
 | V. Valore | Sales Value | sales_value | base fact |
@@ -216,9 +216,9 @@ Classify every finding as: connection (confirms hypothesis), contradiction (chal
 
 ### FMCG Action Levers
 share, distribution, rotation, promotion, pack/format, retailer, channel, buyer, loyalty.
-Do NOT hardcode currency symbols — infer from data.
+Do NOT hardcode currency symbols, infer from data.
 
-### Consumer Panel (CPS) KPIs — When Shopper Data Present
+### Consumer Panel (CPS) KPIs, When Shopper Data Present
 | KPI | Key | Formula |
 |---|---|---|
 | Penetration | penetration_pct | % households buying in period |
@@ -231,7 +231,7 @@ Do NOT hardcode currency symbols — infer from data.
 Dupont decomposition: Value = Penetration * Frequency * Basket * Price
 Use to explain WHY value changed (fewer buyers? less often? smaller baskets?).
 
-### Price & Promo Modeling — When Promo/Pricing Data Present
+### Price & Promo Modeling, When Promo/Pricing Data Present
 - Baseline Sales: modeled sales without any promotion
 - Incremental Sales: additional volume from promo activity
 - Promo Lift: incremental / baseline (diminishing returns above 2x)
@@ -239,13 +239,13 @@ Use to explain WHY value changed (fewer buyers? less often? smaller baskets?).
 - Price Elasticity: % volume change / % price change (>|1| = elastic, respond to promo)
 - EDLP: regular price IS the competitive price (Discount channel strategy)
 
-### Innovation / Launch — When New Product Data Present
+### Innovation / Launch, When New Product Data Present
 - Trial Volume: projected first-year buyers
 - Repeat Rate: % of triers who repurchase
 - Incrementality: % of launch volume NEW to category (vs. cannibalization)
 - Source of Volume: from competitor, from adjacent category, or new occasions
 
-### Client Need Routing — Match Question to Right Analysis
+### Client Need Routing, Match Question to Right Analysis
 | Client Question | Primary Analysis | Key Metrics |
 |---|---|---|
 | How is my category performing? | RMS tracking | Value, Volume, Share, Growth |
@@ -290,10 +290,10 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 - Recommendations prioritized by: Prize × Feasibility × Ease × Time × Fit
 - FMCG levers: distribution expansion, pricing/pack architecture, promo optimization, portfolio rebalancing, hero renovation, tail pruning
 - For decks above 40 slides, each chapter should reach at least L3 depth before recommending action.
-- For promo briefs, use the cascade: category baseline -> value vs volume vs price -> promo vs no-promo -> discount tiers -> localization -> focal brand vs competitor -> WD Promo/display/folder -> short synthesis.
+- For promo briefs, use the cascade: category baseline -> value vs volume vs price -> promo vs no-promo -> discount tiers -> localization -> focal brand vs competitor -> WD Promo/display/folder/communication-in-store mechanics -> short synthesis.
 - Keep analytical branches contiguous. Do not jump from segments to channels and then back to segments unless the revisit is explicit synthesis/comparison or a clearly deeper follow-up.
 
-### Exhibit Selection Rules (for chart planning — ABSOLUTE, no exceptions)
+### Exhibit Selection Rules (for chart planning, ABSOLUTE, no exceptions)
 | Question | CORRECT Chart | FORBIDDEN |
 |---|---|---|
 | How big is each segment? | horizontal_bar (ranked) | pie (>5), line |
@@ -308,7 +308,7 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 ### Anti-Patterns (MUST NEVER plan these)
 - Line chart for categorical/unordered comparisons
 - Line chart for 2-period CY/PY data
-- Memo slides when a chart proves the point — ALWAYS plan a chart
+- Memo slides when a chart proves the point, ALWAYS plan a chart
 - More than 1 text-only analytical slide per deck
 - Every analytical slide (positions 3 through N-1) MUST have a chartId`,
 
@@ -320,7 +320,7 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 - Body explains WHY, not WHAT. The chart shows WHAT.
 - Client-friendly copy is allowed only after the slide passes intelligence non-negotiables. Friendliness never overrides evidence depth.
 
-### Exhibit Selection Rules (ABSOLUTE — No Exceptions)
+### Exhibit Selection Rules (ABSOLUTE, No Exceptions)
 | Question | CORRECT Chart | FORBIDDEN |
 |---|---|---|
 | How big is each segment? | horizontal_bar (ranked) | pie (>5), line |
@@ -337,11 +337,11 @@ Only use INDUCTIVE if brief explicitly says "walk me through the analysis."
 ### Anti-Patterns (MUST NEVER happen)
 - Line chart for categorical/unordered comparisons
 - Line chart for 2-period CY/PY data
-- Raw SKU codes (P-008294-001) as labels — use product names
+- Raw SKU codes (P-008294-001) as labels, use product names
 - Memo slides when a chart proves the point
 - Share without specifying the denominator
 - More than 1 text-only slide per deck
-- Never hardcode currency symbols — infer from data
+- Never hardcode currency symbols, infer from data
 - Never invent a growth target or strategic objective not present in the brief or directly derivable from evidence
 - Never chart sales value when the slide claim is a rotation or productivity problem
 - Never state a distribution opportunity without rotation, ROS, or productivity proof
@@ -438,7 +438,7 @@ Distribution expansion, pricing/pack, promo optimization, portfolio rebalancing,
 
 ### Story Architecture
 - Does the deck ask the TRUE commercial question? (not "what happened" but "what should we do")
-- Is the structure DEDUCTIVE? (answer on slide 2, then proof) — flag if answer is buried at the end
+- Is the structure DEDUCTIVE? (answer on slide 2, then proof), flag if answer is buried at the end
 - Are 3-4 POVs clearly separated from descriptive evidence?
 - Does the title read-through tell the complete SCQA story?
 

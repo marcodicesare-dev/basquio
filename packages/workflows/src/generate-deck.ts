@@ -96,6 +96,8 @@ import {
   validatePlanSheetNames,
   type PlanSheetNameReport,
 } from "./plan-sheet-name-validator";
+import { evaluateNativeTableCoverage } from "./pptx-table-qa";
+import { collectBlockingEvidenceFailures } from "./publish-gate";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { closeOpenRequestUsageRows } from "./request-usage-lifecycle";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
@@ -138,6 +140,7 @@ const HARD_QA_BLOCKERS = new Set([
   "content_slide_count_matches_request",
   "appendix_slide_count_within_cap",
   "report_only_manifest_zero_slides",
+  "pptx_manifest_native_tables_present",
   "pptx_zip_parse_failed",
 ]);
 const DECK_PLAN_MECE_CHECK = (process.env.DECK_PLAN_MECE_CHECK ?? "true").trim().toLowerCase() !== "false";
@@ -271,6 +274,7 @@ type WorkbookChartBinding = {
 
 type FidelityContext = {
   workbookSheets: WorkbookSheetProfile[];
+  sourceHeaders: string[];
   knownEntities: string[];
 };
 
@@ -4686,7 +4690,10 @@ function buildAuthorMessage(
         "- BEFORE writing any number, verify that the sum of supplier-level values per channel matches the channel category total within ±2%. If it does not, you are double-counting NielsenIQ hierarchical subtotal rows.",
         "- NielsenIQ exports contain subtotal rows at category, supplier, brand, and item level. For category totals use only rows where FORNITORE, MARCA, and ITEM are blank. For supplier totals use only rows where FORNITORE is present and MARCA and ITEM are blank.",
         "- If the brief is about promotions, benchmark the focal brand against key competitors and call out what others are doing, not only what the focal brand is doing.",
-        "- If the brief is about promotions, follow this sequence unless data is missing: category baseline -> value vs volume vs price -> promo vs no-promo -> discount tiers -> channel/format/localization -> focal brand vs competitor -> WD Promo/display/folder mechanics -> short synthesis.",
+        "- If the brief is about promotions, follow this sequence unless data is missing: category baseline -> value vs volume vs price -> promo vs no-promo -> discount tiers -> channel/format/localization -> focal brand vs competitor -> WD Promo/display/folder/communication-in-store mechanics -> short synthesis.",
+        "- If the source workbook includes Communication In Store or Comm. In Store Only, include that mechanic in the promo-mechanics exhibit instead of showing only price-cut or display mechanics.",
+        "- If commentary mentions WD Promo, DP promo, display, folder, or Communication In Store, the linked hero exhibit must show that same metric or mechanic directly.",
+        "- When a slide uses a table archetype or a supporting grid of exact numbers, render it as a native editable PowerPoint table with slide.addTable(), set hasDataTable: true in deck_manifest.json, and never fake the table with separate text boxes.",
         "- If prices materially inflate value growth, show that explicitly and pivot the commercial story to volume. Do not let price inflation hide weak volume dynamics.",
         "- Structure the executive storyline as SCQA (Situation/Complication/Question/Answer). Default DEDUCTIVE: the answer goes on slide 2.",
         "- When the brief asks for both geography and brand, retailer, or channel analysis, include cross-tab analysis at the intersection. Use at least one brand x geography or channel x geography heatmap, table, or grouped comparison instead of world totals only.",
@@ -7377,6 +7384,7 @@ function buildFidelityContext(
 ): FidelityContext {
   return {
     workbookSheets: workbookBuffer ? extractWorkbookSheetProfiles(workbookBuffer) : [],
+    sourceHeaders: extractSourceWorkbookHeaders(parsed),
     knownEntities: buildKnownEntityCatalog(parsed, run),
   };
 }
@@ -7921,6 +7929,27 @@ function buildKnownEntityCatalog(
   return [...entities];
 }
 
+function extractSourceWorkbookHeaders(
+  parsed: Awaited<ReturnType<typeof parseEvidencePackage>>,
+) {
+  const headers = new Set<string>();
+
+  for (const sheet of parsed.normalizedWorkbook.sheets) {
+    if (sheet.sourceRole !== "main-fact-table") {
+      continue;
+    }
+
+    for (const column of sheet.columns) {
+      const header = column.name?.trim();
+      if (header) {
+        headers.add(header);
+      }
+    }
+  }
+
+  return [...headers];
+}
+
 function normalizeEntityName(value: string) {
   return value
     .toLowerCase()
@@ -7940,12 +7969,15 @@ function manifestToFidelityInput(
     return {
       position: slide.position,
       title: slide.title,
+      ...(slide.layoutId ? { layoutId: slide.layoutId } : {}),
+      ...(slide.slideArchetype ? { slideArchetype: slide.slideArchetype } : {}),
       ...(slide.body ? { body: slide.body } : {}),
       ...(slide.bullets ? { bullets: slide.bullets } : {}),
       ...(slide.callout ? { callout: { text: slide.callout.text } } : {}),
       ...(slide.metrics ? { metrics: slide.metrics } : {}),
       ...(slide.evidenceIds ? { evidenceIds: slide.evidenceIds } : {}),
       ...(slide.pageIntent ? { pageIntent: slide.pageIntent } : {}),
+      ...(typeof slide.hasDataTable === "boolean" ? { hasDataTable: slide.hasDataTable } : {}),
       ...(chart
         ? {
             chart: {
@@ -8094,6 +8126,7 @@ function lintManifest(
     ? lintDeckFidelity({
         slides: manifestToFidelityInput(manifest),
         sheets: fidelityContext.workbookSheets,
+        sourceHeaders: fidelityContext.sourceHeaders,
         knownEntities: fidelityContext.knownEntities,
       })
     : { passed: true, violations: [] as FidelityViolation[] };
@@ -8286,7 +8319,13 @@ function collectPublishGateFailures(input: {
   contract: ReturnType<typeof validateManifestContract>;
   claimIssues?: ClaimTraceabilityIssue[];
 }) {
-  const blockingFailures = input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check));
+  const blockingFailures = [
+    ...input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check)),
+    ...collectBlockingEvidenceFailures({
+      fidelityViolations: input.lint.fidelity.violations,
+      claimIssues: input.claimIssues,
+    }),
+  ];
   const advisories = [
     ...input.qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
     ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
@@ -8807,6 +8846,7 @@ async function validateArtifactChecks(
       const vectorMediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\/.+\.(svg|emf|wmf)$/i.test(name)).length;
       const nativeChartXmlCount = Object.keys(zip.files).filter((name) => /^ppt\/charts\/chart\d+\.xml$/i.test(name)).length;
       const aspectMismatchFindings = await collectLargePictureAspectMismatchFindings(zip, manifest);
+      const nativeTableCoverage = await evaluateNativeTableCoverage(zip, manifest);
 
       // Structural integrity checks that cause PowerPoint repair dialog
       const structuralFindings = await validatePptxStructuralIntegrity(zip);
@@ -8846,6 +8886,15 @@ async function validateArtifactChecks(
           detail: structuralFindings.length === 0
             ? "no structural integrity issues"
             : structuralFindings.slice(0, 5).join("; "),
+        },
+        {
+          name: "pptx_manifest_native_tables_present",
+          passed: nativeTableCoverage.slidesMissingNativeTables.length === 0,
+          detail: nativeTableCoverage.slidesExpectingNativeTables.length === 0
+            ? "manifest has no native table requirements"
+            : nativeTableCoverage.slidesMissingNativeTables.length === 0
+              ? `native tables present on slides ${nativeTableCoverage.slidesExpectingNativeTables.join(", ")}`
+              : `missing native PowerPoint tables on slides ${nativeTableCoverage.slidesMissingNativeTables.join(", ")}`,
         },
       ];
       allChecks.push(...extraChecks);

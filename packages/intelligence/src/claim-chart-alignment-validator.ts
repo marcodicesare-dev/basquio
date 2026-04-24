@@ -10,6 +10,19 @@ import type {
 const ROTATION_TOKENS = ["rotation", "rotazioni", "rotazione", "ros", "velocity", "productivity", "produttiv"];
 const PRICE_TOKENS = ["price", "prezzo", "pricing", "inflation", "inflazione", "price-led", "guidato da prezzo"];
 const DISTRIBUTION_TOKENS = ["distribution", "distribuzione", "wd", "weighted distribution", "numeric distribution", "availability", "listings"];
+const PROMO_DISTRIBUTION_TOKENS = [
+  "wd promo",
+  "wd_promo",
+  "wdpromo",
+  "dp promo",
+  "weighted distribution any promo",
+  "weighted distribution promo",
+];
+const COMM_IN_STORE_TOKENS = [
+  "comm in store",
+  "comm. in store",
+  "communication in store",
+];
 const PRODUCTIVITY_PROOF_TOKENS = [
   ...ROTATION_TOKENS,
   "sales per point",
@@ -31,6 +44,7 @@ export function validateClaimChartAlignment(
     slide.body ?? "",
     ...(slide.bullets ?? []),
     slide.callout?.text ?? "",
+    slide.pageIntent ?? "",
   ].join(" "));
   const chartText = normalizeLabel([
     slide.chart.title ?? "",
@@ -74,6 +88,28 @@ export function validateClaimChartAlignment(
       severity: "major",
       position: slide.position,
       message: "Distribution opportunity claim lacks direct productivity proof in the linked chart data. Show distribution plus rotation/ROS/productivity evidence.",
+    });
+  }
+
+  const talksAboutPromoDistribution = containsAny(text, PROMO_DISTRIBUTION_TOKENS);
+  const chartShowsPromoDistribution = containsAny(chartText, PROMO_DISTRIBUTION_TOKENS);
+  if (talksAboutPromoDistribution && !chartShowsPromoDistribution) {
+    violations.push({
+      rule: "claim_chart_metric_mismatch",
+      severity: "major",
+      position: slide.position,
+      message: "Slide commentary mentions WD Promo or DP promo, but the linked chart data does not show a promo distribution metric.",
+    });
+  }
+
+  const talksAboutCommunicationMechanic = containsAny(text, COMM_IN_STORE_TOKENS);
+  const chartShowsCommunicationMechanic = containsAny(chartText, COMM_IN_STORE_TOKENS);
+  if (talksAboutCommunicationMechanic && !chartShowsCommunicationMechanic) {
+    violations.push({
+      rule: "claim_chart_metric_mismatch",
+      severity: "major",
+      position: slide.position,
+      message: "Slide commentary mentions Communication In Store, but the linked chart data does not show that promo mechanic.",
     });
   }
 

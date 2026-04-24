@@ -14,12 +14,15 @@ export type FidelityChartInput = {
 export type FidelitySlideInput = {
   position: number;
   title: string;
+  layoutId?: string;
+  slideArchetype?: string;
   body?: string;
   bullets?: string[];
   callout?: { text?: string };
   metrics?: FidelityMetricsInput;
   evidenceIds?: string[];
   pageIntent?: string;
+  hasDataTable?: boolean;
   chart?: FidelityChartInput;
 };
 
