@@ -507,6 +507,24 @@ export function WorkspaceChat({
     [isBusy],
   );
 
+  const handleComposerKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key !== "Enter") return;
+      const nativeEvent = event.nativeEvent;
+      if (
+        nativeEvent.isComposing ||
+        nativeEvent.keyCode === 229 ||
+        nativeEvent.which === 229
+      ) {
+        return;
+      }
+      if (event.shiftKey && !event.metaKey && !event.ctrlKey) return;
+      event.preventDefault();
+      handleSubmit();
+    },
+    [handleSubmit],
+  );
+
   const handleStop = useCallback(() => {
     setPendingTurn(null);
     stop();
@@ -815,12 +833,7 @@ export function WorkspaceChat({
           placeholder={placeholder}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-              event.preventDefault();
-              handleSubmit();
-            }
-          }}
+          onKeyDown={handleComposerKeyDown}
           minRows={1}
           maxRows={10}
           disabled={isBusy}
@@ -836,7 +849,7 @@ export function WorkspaceChat({
             <Paperclip size={14} weight="regular" />
           </button>
           <p className="wbeta-ai-chat-hint" aria-live="polite">
-            {isBusy ? copy.generating : <kbd className="wbeta-kbd">⌘ ↵</kbd>}
+            {isBusy ? copy.generating : <kbd className="wbeta-kbd">↵</kbd>}
           </p>
           {isBusy ? (
             <button

@@ -110,6 +110,47 @@ describe("WorkspaceChat composer", () => {
     );
   });
 
+  it("submits on Enter without requiring Command Enter", () => {
+    render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: "What changed in this account?" },
+    });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(mocks.sendMessage).toHaveBeenCalledWith({ text: "What changed in this account?" });
+  });
+
+  it("keeps Shift Enter for multiline drafting", () => {
+    render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: "Line one" },
+    });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter", shiftKey: true });
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not submit while an IME composition Enter event is resolving", () => {
+    render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: "入力中" },
+    });
+    fireEvent.keyDown(textarea, {
+      key: "Enter",
+      code: "Enter",
+      keyCode: 229,
+      which: 229,
+    });
+
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("shows an immediate thinking state after a submitted prompt", () => {
     const { rerender } = render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
