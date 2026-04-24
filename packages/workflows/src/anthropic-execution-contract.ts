@@ -6,6 +6,7 @@ export const CODE_EXEC_BETA = "code-execution-2025-08-25";
 export const BETAS = [FILES_BETA, SKILLS_BETA, CODE_EXEC_BETA] as const;
 export const OPUS_AUTHOR_MODEL = "claude-opus-4-7" as const;
 export type ClaudeAuthorModel = "claude-sonnet-4-6" | "claude-haiku-4-5" | typeof OPUS_AUTHOR_MODEL;
+export type WebFetchMode = "off" | "enrich";
 
 export function normalizeClaudeAuthorModel(model: string | null | undefined): ClaudeAuthorModel {
   if (model === "claude-opus-4-6" || model === OPUS_AUTHOR_MODEL) {
@@ -29,9 +30,13 @@ export function buildClaudeBetas(model: ClaudeAuthorModel): Anthropic.Beta.Anthr
     : [FILES_BETA, SKILLS_BETA, CODE_EXEC_BETA];
 }
 
-export function buildAuthoringToolCallSummary(model: ClaudeAuthorModel) {
+export function buildAuthoringToolCallSummary(
+  model: ClaudeAuthorModel,
+  options: { webFetchMode?: WebFetchMode } = {},
+) {
+  const webFetchMode = options.webFetchMode ?? "enrich";
   return {
-    tools: [...AUTHORING_TOOL_CALL_SUMMARY.tools],
+    tools: webFetchMode === "enrich" ? [...AUTHORING_TOOL_CALL_SUMMARY.tools] : [],
     autoInjectedTools: [...AUTHORING_TOOL_CALL_SUMMARY.autoInjectedTools],
     skills: model === "claude-haiku-4-5" ? [] : [...AUTHORING_TOOL_CALL_SUMMARY.skills],
   } as const;
@@ -39,7 +44,9 @@ export function buildAuthoringToolCallSummary(model: ClaudeAuthorModel) {
 
 export function buildClaudeTools(
   model: ClaudeAuthorModel = "claude-sonnet-4-6",
+  options: { webFetchMode?: WebFetchMode } = {},
 ): Anthropic.Beta.BetaToolUnion[] {
+  const webFetchMode = options.webFetchMode ?? "enrich";
   const tools: Anthropic.Beta.BetaToolUnion[] = [];
 
   // Haiku: no skills → code_execution must be EXPLICITLY in the tools array.
@@ -49,11 +56,13 @@ export function buildClaudeTools(
     tools.push({ type: "code_execution_20250825", name: "code_execution" });
   }
 
-  tools.push(
-    model === "claude-haiku-4-5"
-      ? { type: "web_fetch_20260209", name: "web_fetch", allowed_callers: ["direct"] }
-      : { type: "web_fetch_20260209", name: "web_fetch" },
-  );
+  if (webFetchMode === "enrich") {
+    tools.push(
+      model === "claude-haiku-4-5"
+        ? { type: "web_fetch_20260209", name: "web_fetch", allowed_callers: ["direct"] }
+        : { type: "web_fetch_20260209", name: "web_fetch" },
+    );
+  }
 
   return tools;
 }
