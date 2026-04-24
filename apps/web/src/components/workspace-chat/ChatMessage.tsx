@@ -231,8 +231,7 @@ export const ChatMessage = memo(function ChatMessage({
             <div key={i} className="wbeta-ai-asst-block">
               {shouldRenderStreamingText ? (
                 <div className="wbeta-ai-streaming-text">
-                  {visibleText}
-                  <span className="wbeta-ai-cursor" aria-hidden />
+                  <ChatMarkdown source={visibleText} citations={citations} isStreaming />
                 </div>
               ) : (
                 <ChatMarkdown source={visibleText} citations={citations} />

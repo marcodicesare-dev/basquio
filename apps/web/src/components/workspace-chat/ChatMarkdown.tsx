@@ -63,6 +63,7 @@ type ChatMarkdownProps = {
 export const ChatMarkdown = memo(function ChatMarkdown({
   source,
   citations,
+  isStreaming = false,
 }: ChatMarkdownProps) {
   const cites = citations ?? [];
   const components: Components = {
@@ -143,7 +144,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({
   };
 
   return (
-    <div className="wbeta-ai-md">
+    <div className={isStreaming ? "wbeta-ai-md wbeta-ai-md-streaming" : "wbeta-ai-md"}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}

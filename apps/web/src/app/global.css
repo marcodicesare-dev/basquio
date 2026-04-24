@@ -11265,14 +11265,16 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-ai-streaming-text {
   max-width: 80ch;
-  white-space: pre-wrap;
   word-wrap: break-word;
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--text);
 }
 
-.wbeta-ai-cursor {
+.wbeta-ai-md-streaming .wbeta-ai-p:last-child::after,
+.wbeta-ai-md-streaming .wbeta-ai-li:last-child::after,
+.wbeta-ai-md-streaming .wbeta-ai-h1:last-child::after,
+.wbeta-ai-md-streaming .wbeta-ai-h2:last-child::after,
+.wbeta-ai-md-streaming .wbeta-ai-h3:last-child::after,
+.wbeta-ai-md-streaming .wbeta-ai-h4:last-child::after {
+  content: "";
   display: inline-block;
   width: 7px;
   height: 15px;

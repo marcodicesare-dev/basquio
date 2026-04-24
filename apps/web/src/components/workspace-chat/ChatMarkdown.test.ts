@@ -11,6 +11,19 @@ afterEach(() => {
 });
 
 describe("ChatMarkdown", () => {
+  it("formats markdown while the assistant answer is still streaming", () => {
+    const { container } = render(
+      React.createElement(ChatMarkdown, {
+        source: "## Live heading\n\nThis is **bold** while streaming.",
+        isStreaming: true,
+      }),
+    );
+
+    expect(container.querySelector(".wbeta-ai-md-streaming")).not.toBeNull();
+    expect(container.querySelector(".wbeta-ai-h2")?.textContent).toBe("Live heading");
+    expect(container.querySelector("strong")?.textContent).toBe("bold");
+  });
+
   it("keeps citation chip DOM identities stable across equivalent rerenders", () => {
     const source = "Margin story cites [s1] and channel story cites [s2].";
     const citations = [

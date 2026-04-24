@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 
 const mocks = vi.hoisted(() => ({
-  chatMarkdown: vi.fn(() => null),
+  chatMarkdown: vi.fn(({ source }: { source: string }) => source),
 }));
 
 vi.mock("@/components/workspace-chat/ChatMarkdown", () => ({

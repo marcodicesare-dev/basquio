@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("ChatMessage streaming render", () => {
-  it("does not invoke ReactMarkdown while the last assistant text part is streaming", () => {
+  it("renders streaming assistant text through the markdown pipeline", () => {
     const message = assistantMessage("m1", "Here is **markdown** while streaming.");
 
     const { rerender, container } = render(
@@ -31,11 +31,13 @@ describe("ChatMessage streaming render", () => {
     expect(container.querySelector(".wbeta-ai-streaming-text")?.textContent).toContain(
       "Here is **markdown** while streaming.",
     );
-    expect(mocks.reactMarkdown).toHaveBeenCalledTimes(0);
+    expect(container.querySelector(".wbeta-ai-md-streaming")).not.toBeNull();
+    expect(mocks.reactMarkdown).toHaveBeenCalledTimes(1);
 
     rerender(React.createElement(ChatMessage, { message, isStreaming: false }));
 
-    expect(mocks.reactMarkdown).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".wbeta-ai-md-streaming")).toBeNull();
+    expect(mocks.reactMarkdown).toHaveBeenCalledTimes(2);
   });
 
   it("collapses streamed reasoning once answer text is present", () => {
