@@ -53,6 +53,7 @@ function isTextyExtension(ext: string, contentType?: string): boolean {
   const TEXTY = new Set([
     "pdf",
     "docx",
+    "pptx",
     "xlsx",
     "xls",
     "csv",

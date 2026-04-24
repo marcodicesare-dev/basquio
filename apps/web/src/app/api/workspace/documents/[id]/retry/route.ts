@@ -1,18 +1,20 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { BASQUIO_TEAM_ORG_ID, BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
-import { processWorkspaceDocument } from "@/lib/workspace/process";
-import { cleanOrphansForDocument, markDocumentForRetry } from "@/lib/workspace/retry";
+import {
+  cleanOrphansForDocument,
+  markDocumentForRetry,
+  markDocumentIndexingFailed,
+} from "@/lib/workspace/retry";
 import { enqueueFileIngestRun } from "@/lib/workspace/ingest-queue";
 
 export const runtime = "nodejs";
-// Retry runs the full processWorkspaceDocument inline via after(). ALSO
-// enqueues a file_ingest_runs row so the Railway worker can claim it once
-// the worker loop ships. See upload/confirm for the rollout notes.
-export const maxDuration = 800;
+// Retry only resets the memory-indexing lane. The Railway file-ingest worker
+// owns chunking, embeddings, and entity extraction.
+export const maxDuration = 60;
 
 function getDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -60,23 +62,27 @@ export async function POST(
   await cleanOrphansForDocument(id);
   await markDocumentForRetry(id);
 
-  // Dual-write: enqueue on file_ingest_runs for the future worker, and run
-  // processWorkspaceDocument inline via after() for current production.
-  await enqueueFileIngestRun({
-    documentId: id,
-    workspaceId: BASQUIO_TEAM_WORKSPACE_ID,
-    metadata: { source: "retry_endpoint", requested_at: new Date().toISOString() },
-  }).catch((error) => {
+  // Queue memory indexing. The attached file remains usable in chat while this
+  // runs, because Lane A reads from Supabase Storage / Anthropic Files.
+  try {
+    await enqueueFileIngestRun({
+      documentId: id,
+      workspaceId: BASQUIO_TEAM_WORKSPACE_ID,
+      metadata: { source: "retry_endpoint", requested_at: new Date().toISOString() },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "memory indexing queue failed";
     console.error(`[workspace/retry] enqueueFileIngestRun failed for ${id}`, error);
-  });
-
-  after(async () => {
-    try {
-      await processWorkspaceDocument(id);
-    } catch (error) {
-      console.error(`[workspace] retry failed for document ${id}`, error);
-    }
-  });
+    await markDocumentIndexingFailed(id, `Memory indexing queue failed: ${message}`).catch(
+      (markError) => {
+        console.error(`[workspace/retry] markDocumentIndexingFailed failed for ${id}`, markError);
+      },
+    );
+    return NextResponse.json(
+      { error: "Memory indexing could not be queued. Try again." },
+      { status: 503 },
+    );
+  }
 
   return NextResponse.json({ id, status: "processing" });
 }

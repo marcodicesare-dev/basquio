@@ -27,7 +27,7 @@ type AttachmentChip = {
   localId: string;
   filename: string;
   sizeBytes: number;
-  status: "uploading" | "indexing" | "indexed" | "failed";
+  status: "uploading" | "indexing" | "indexed" | "indexing-failed" | "upload-failed";
   documentId?: string;
   message?: string;
 };
@@ -99,7 +99,9 @@ export function WorkspaceChat({
       const chip = attachments.find((c) => c.localId === localId);
       if (!chip || !chip.documentId) return;
       setAttachments((prev) =>
-        prev.map((c) => (c.localId === localId ? { ...c, status: "indexing", message: undefined } : c)),
+        prev.map((c) =>
+          c.localId === localId ? { ...c, status: "indexing", message: undefined } : c,
+        ),
       );
       try {
         const response = await fetch(`/api/workspace/documents/${chip.documentId}/retry`, {
@@ -110,7 +112,7 @@ export function WorkspaceChat({
           setAttachments((prev) =>
             prev.map((c) =>
               c.localId === localId
-                ? { ...c, status: "failed", message: data.error ?? "retry failed" }
+                ? { ...c, status: "indexing-failed", message: data.error ?? "retry failed" }
                 : c,
             ),
           );
@@ -121,7 +123,7 @@ export function WorkspaceChat({
             c.localId === localId
               ? {
                   ...c,
-                  status: "failed",
+                  status: "indexing-failed",
                   message: err instanceof Error ? err.message : "retry failed",
                 }
               : c,
@@ -157,21 +159,21 @@ export function WorkspaceChat({
             conversationId: conversationIdRef.current,
             scopeId: scopeId ?? null,
           });
-          const nextStatus: AttachmentChip["status"] =
-            result.status === "indexed"
-              ? "indexed"
-              : result.status === "failed"
-                ? "failed"
-                : "indexing";
+          const nextStatus = mapAttachmentStatus(result.status);
+          const attachmentFailed = result.attachedToConversation === false;
           updateAttachment(localId, {
-            status: nextStatus,
+            status: attachmentFailed ? "upload-failed" : nextStatus,
             documentId: result.id,
-            message: nextStatus === "failed" ? "indexing failed earlier" : undefined,
+            message: attachmentFailed
+              ? "saved to workspace, chat attach failed"
+              : nextStatus === "indexing-failed"
+                ? "memory indexing needs retry"
+                : undefined,
           });
         } catch (uploadError) {
           const message =
             uploadError instanceof Error ? uploadError.message : "Upload failed.";
-          updateAttachment(localId, { status: "failed", message });
+          updateAttachment(localId, { status: "upload-failed", message });
           setUpload({ kind: "error", message });
           continue;
         }
@@ -395,11 +397,7 @@ export function WorkspaceChat({
               filename: a.filename ?? "attached file",
               sizeBytes: a.fileSizeBytes ?? 0,
               status:
-                a.status === "indexed"
-                  ? "indexed"
-                  : a.status === "failed"
-                    ? "failed"
-                    : "indexing",
+                mapAttachmentStatus(a.status),
               documentId: a.documentId,
             }));
           return [...prev, ...mapped];
@@ -438,7 +436,13 @@ export function WorkspaceChat({
             if (!chip.documentId || !pendingIds.has(chip.documentId)) return chip;
             const serverStatus = statusById.get(chip.documentId);
             if (serverStatus === "indexed") return { ...chip, status: "indexed" };
-            if (serverStatus === "failed") return { ...chip, status: "failed" };
+            if (serverStatus === "failed") {
+              return {
+                ...chip,
+                status: "indexing-failed",
+                message: "memory indexing needs retry",
+              };
+            }
             return chip;
           }),
         );
@@ -788,12 +792,15 @@ export function WorkspaceChat({
                 <span className="wbeta-ai-chat-chip-meta">
                   {formatBytes(chip.sizeBytes)}
                   {chip.status === "uploading" ? " · uploading" : null}
-                  {chip.status === "indexing" ? " · attached, indexing for memory" : null}
-                  {chip.status === "indexed" ? " · attached" : null}
-                  {chip.status === "failed" ? ` · ${chip.message ?? "upload failed"}` : null}
+                  {chip.status === "indexing" ? " · attached, memory indexing" : null}
+                  {chip.status === "indexed" ? " · attached, in memory" : null}
+                  {chip.status === "indexing-failed"
+                    ? ` · attached, ${chip.message ?? "memory indexing needs retry"}`
+                    : null}
+                  {chip.status === "upload-failed" ? ` · ${chip.message ?? "upload failed"}` : null}
                 </span>
               </span>
-              {chip.status === "failed" && chip.documentId ? (
+              {chip.status === "indexing-failed" && chip.documentId ? (
                 <button
                   type="button"
                   className="wbeta-ai-chat-chip-retry"
@@ -967,4 +974,10 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function mapAttachmentStatus(status: string | null | undefined): AttachmentChip["status"] {
+  if (status === "indexed") return "indexed";
+  if (status === "failed") return "indexing-failed";
+  return "indexing";
 }

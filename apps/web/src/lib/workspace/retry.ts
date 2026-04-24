@@ -51,3 +51,19 @@ export async function markDocumentForRetry(documentId: string): Promise<void> {
     .eq("id", documentId)
     .eq("organization_id", BASQUIO_TEAM_ORG_ID);
 }
+
+export async function markDocumentIndexingFailed(
+  documentId: string,
+  message: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .from("knowledge_documents")
+    .update({
+      status: "failed",
+      error_message: message.slice(0, 500),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", documentId)
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+}

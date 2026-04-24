@@ -247,6 +247,8 @@ function guessContentType(ext: string): string {
   if (lower === "pdf") return "application/pdf";
   if (lower === "docx")
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower === "pptx")
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (lower === "xlsx")
     return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   if (lower === "xls") return "application/vnd.ms-excel";

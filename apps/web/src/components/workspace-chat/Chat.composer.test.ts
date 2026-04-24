@@ -69,6 +69,9 @@ vi.mock("@/lib/workspace/upload-client", () => ({
 }));
 
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
+import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
+
+const uploadWorkspaceFileMock = vi.mocked(uploadWorkspaceFile);
 
 afterEach(() => {
   cleanup();
@@ -76,6 +79,7 @@ afterEach(() => {
   mocks.sendMessage.mockClear();
   mocks.stop.mockClear();
   mocks.regenerate.mockClear();
+  uploadWorkspaceFileMock.mockReset();
   scrollIntoView.mockClear();
   mocks.status = "ready";
   mocks.messages = [];
@@ -292,5 +296,57 @@ describe("WorkspaceChat composer", () => {
     );
     expect(renderedMessages.at(-2)).toContain("What changed now?");
     expect(renderedMessages.at(-1)).toContain("Reading Affinity Petcare context");
+  });
+
+  it("keeps an uploaded file attached when memory indexing fails", async () => {
+    uploadWorkspaceFileMock.mockResolvedValue({
+      id: "d135e80d-2f1a-4760-95c3-a8393ef2dd68",
+      status: "failed",
+      deduplicated: true,
+      fileName: "2026_Tablets shifting FY 2025.pptx",
+      attachedToConversation: true,
+    });
+
+    render(React.createElement(WorkspaceChat, { scopeName: "MDLZ" }));
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    const file = new File(["fake deck"], "2026_Tablets shifting FY 2025.pptx", {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(uploadWorkspaceFileMock).toHaveBeenCalledWith(file, {
+        conversationId: expect.any(String),
+        scopeId: null,
+      });
+    });
+
+    expect(await screen.findByText("2026_Tablets shifting FY 2025.pptx")).not.toBeNull();
+    expect(screen.getByText(/attached, memory indexing needs retry/i)).not.toBeNull();
+    expect(screen.queryByText(/upload failed/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /retry indexing 2026_Tablets/i })).not.toBeNull();
+  });
+
+  it("does not label a file as attached when conversation attachment fails", async () => {
+    uploadWorkspaceFileMock.mockResolvedValue({
+      id: "5a7f5d9d-8e49-405b-8a78-61563a071776",
+      status: "processing",
+      deduplicated: false,
+      fileName: "NIQ Shifting Analysis - Product Template Guide.pdf",
+      attachedToConversation: false,
+    });
+
+    render(React.createElement(WorkspaceChat, { scopeName: "MDLZ" }));
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    const file = new File(["fake pdf"], "NIQ Shifting Analysis - Product Template Guide.pdf", {
+      type: "application/pdf",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText("NIQ Shifting Analysis - Product Template Guide.pdf")).not.toBeNull();
+    expect(screen.getByText(/saved to workspace, chat attach failed/i)).not.toBeNull();
+    expect(screen.queryByText(/attached, memory indexing/i)).toBeNull();
   });
 });

@@ -17374,7 +17374,13 @@ body:has(.wbeta-shell) .site-wrap {
   border-color: color-mix(in oklab, var(--accent, #0a7c3a) 40%, var(--border));
 }
 
-.wbeta-ai-chat-chip-failed {
+.wbeta-ai-chat-chip-indexing-failed {
+  background: var(--amber-soft);
+  color: var(--text);
+  border-color: color-mix(in oklab, var(--amber, #f0cc27) 55%, var(--border));
+}
+
+.wbeta-ai-chat-chip-upload-failed {
   background: var(--danger);
   color: var(--danger-text);
   border-color: var(--danger-text, #b91c1c);
@@ -17394,7 +17400,11 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--accent, #0a7c3a);
 }
 
-.wbeta-ai-chat-chip-failed .wbeta-ai-chat-chip-icon {
+.wbeta-ai-chat-chip-indexing-failed .wbeta-ai-chat-chip-icon {
+  color: color-mix(in oklab, var(--amber, #f0cc27) 70%, #8a6a00);
+}
+
+.wbeta-ai-chat-chip-upload-failed .wbeta-ai-chat-chip-icon {
   color: var(--danger-text, #b91c1c);
 }
 

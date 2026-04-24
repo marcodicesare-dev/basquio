@@ -730,6 +730,22 @@ Implication:
 - workspace uploads up to the product cap can go browser-to-Supabase without depending on Vercel request-body limits, with resumable upload as the default above 6 MB
 - deck manifests now preserve workbook-native exhibit styling metadata alongside chart bindings, and the workbook post-processor applies shared number formats to both cells and native Excel charts
 
+## April 24, 2026 - Workspace chat upload lanes stay separate
+
+Decision:
+- chat uploads must render as attached as soon as the storage object and conversation attachment row exist
+- memory indexing failures must never be presented as upload failures
+- the confirm endpoint queues `file_ingest_runs` for the Railway worker and must not run chunking, embeddings, or entity extraction inside Vercel `after()`
+- supported workspace upload types must have matching parsers for the memory lane when a text projection is possible, including PDF and PPTX
+
+Why:
+- production logs for Giulia showed Supabase Storage PUT, upload confirm, and retry requests all returning 200 while the UI still showed a red indexing failure chip
+- the actual failures were downstream memory-lane defects: PDF parsing called the wrong `pdf-parse` runtime API, and PPTX was accepted by the uploader but had no parser in `workspace/parsing`
+
+Implication:
+- the user mental model is "the file is in this chat now"; background memory enrichment is separate, async, and retryable
+- the chat can still answer against an attached file through Layer A even when Layer B has not indexed it yet
+
 ## April 22, 2026 — Client-friendly copy is gated by intelligence non-negotiables
 
 Decision:

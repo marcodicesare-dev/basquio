@@ -19,7 +19,6 @@ import {
   setDocumentAnthropicFileId,
   setDocumentInlineExcerpt,
 } from "@/lib/workspace/db";
-import { processWorkspaceDocument } from "@/lib/workspace/process";
 import { recordConversationAttachment } from "@/lib/workspace/conversation-attachments";
 import { ensureConversationRow } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
@@ -27,14 +26,14 @@ import { getScope } from "@/lib/workspace/scopes";
 import { extractInlineExcerpt } from "@/lib/workspace/inline-excerpt";
 import { uploadFileToAnthropic } from "@/lib/workspace/anthropic-files";
 import { enqueueFileIngestRun } from "@/lib/workspace/ingest-queue";
+import { markDocumentIndexingFailed } from "@/lib/workspace/retry";
 
 export const runtime = "nodejs";
-// Confirm still runs processWorkspaceDocument in after() for now because the
-// Railway worker loop that will consume file_ingest_runs has not shipped yet.
-// Once the worker is live, the after() hook below is removed and maxDuration
-// drops to ~120s. Until then we keep the 800s ceiling Vercel Pro allows so
-// large CSVs finish inside the serverless budget (~6-8 min end-to-end).
-export const maxDuration = 800;
+// Confirm owns the fast lane only: validate the object, create the document,
+// attach it to the chat, enqueue memory indexing, and return. Heavy chunking
+// lives in the Railway file-ingest worker. Anthropic Files + inline excerpt
+// enrichment are best-effort after() work and never block the upload response.
+export const maxDuration = 120;
 
 const SUPPORTED = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
 
@@ -155,20 +154,22 @@ export async function POST(request: Request) {
       // the analyzeAttachedFile tool had nothing to work with. Only run when
       // the column is still null — don't re-upload on every dedup hit.
       if (!existing.anthropic_file_id && existing.storage_path) {
-        await enrichDocumentFromStorage({
-          supabaseUrl,
-          serviceKey,
-          bucket: payload.storageBucket,
-          storagePath: existing.storage_path,
-          extension: (existing.file_type ?? filename.split(".").pop() ?? "").toLowerCase(),
-          mediaType: payload.mediaType,
-          documentId: existing.id,
-          filename: existing.filename ?? filename,
-        }).catch((error) => {
-          console.error(
-            `[workspace/uploads/confirm] dedup-hit backfill failed for ${existing.id}`,
-            error,
-          );
+        after(async () => {
+          await enrichDocumentFromStorage({
+            supabaseUrl,
+            serviceKey,
+            bucket: payload.storageBucket,
+            storagePath: existing.storage_path,
+            extension: (existing.file_type ?? filename.split(".").pop() ?? "").toLowerCase(),
+            mediaType: payload.mediaType,
+            documentId: existing.id,
+            filename: existing.filename ?? filename,
+          }).catch((error) => {
+            console.error(
+              `[workspace/uploads/confirm] dedup-hit backfill failed for ${existing.id}`,
+              error,
+            );
+          });
         });
       }
 
@@ -233,26 +234,6 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    // Sync enrichment: single storage download that produces the inline
-    // excerpt (Lane A fallback text) AND the Anthropic Files API id (Lane A
-    // code-execution handle). Best-effort — any failure here is logged and
-    // the upload still returns 200 with a queued ingest run.
-    await enrichDocumentFromStorage({
-      supabaseUrl,
-      serviceKey,
-      bucket: payload.storageBucket,
-      storagePath: payload.storagePath,
-      extension,
-      mediaType: payload.mediaType,
-      documentId,
-      filename,
-    }).catch((error) => {
-      console.error(
-        `[workspace/uploads/confirm] enrichDocumentFromStorage failed for ${documentId}`,
-        error,
-      );
-    });
-
     let attachedToConversation = false;
     if (payload.conversationId && conversationAttachable) {
       attachedToConversation = await recordAttachmentSafely({
@@ -264,37 +245,58 @@ export async function POST(request: Request) {
       });
     }
 
-    // Lane B (background ingestion) runs in two places during the migration to
-    // the Railway worker:
-    //   (a) enqueueFileIngestRun writes a row on file_ingest_runs so the
-    //       worker can pick it up the moment its claim loop ships.
-    //   (b) after() still drives processWorkspaceDocument inside the Vercel
-    //       function so current users are NOT blocked on the worker deploy.
-    // The worker's claim loop will add an idempotency check: "skip runs whose
-    // knowledge_documents.status is already 'indexed'." Once the worker is
-    // proven in prod, the after() block is removed and this becomes queue-only.
-    await enqueueFileIngestRun({
+    // Lane A enrichment is intentionally off the critical path. The chat
+    // attachment row above makes the file usable immediately; if this best-
+    // effort cache is missing on the first question, analyzeAttachedFile can
+    // re-upload from Supabase Storage.
+    after(async () => {
+      await enrichDocumentFromStorage({
+        supabaseUrl,
+        serviceKey,
+        bucket: payload.storageBucket,
+        storagePath: payload.storagePath,
+        extension,
+        mediaType: payload.mediaType,
+        documentId,
+        filename,
+      }).catch((error) => {
+        console.error(
+          `[workspace/uploads/confirm] enrichDocumentFromStorage failed for ${documentId}`,
+          error,
+        );
+      });
+    });
+
+    // Lane B runs in the Railway worker. The upload response must not wait for
+    // chunking, embeddings, entity extraction, or vector inserts.
+    const queuedForIndexing = await enqueueFileIngestRun({
       documentId,
       workspaceId: workspace.id,
       metadata: { source: "upload_confirm", filename },
-    }).catch((error) => {
-      console.error(
-        `[workspace/uploads/confirm] enqueueFileIngestRun failed for ${documentId}`,
-        error,
-      );
-    });
-
-    after(async () => {
-      try {
-        await processWorkspaceDocument(documentId);
-      } catch (error) {
-        console.error(`[workspace] background processing failed for ${documentId}`, error);
-      }
-    });
+    })
+      .then(() => true)
+      .catch(async (error) => {
+        const message =
+          error instanceof Error ? error.message : "memory indexing queue failed";
+        console.error(
+          `[workspace/uploads/confirm] enqueueFileIngestRun failed for ${documentId}`,
+          error,
+        );
+        await markDocumentIndexingFailed(
+          documentId,
+          `Memory indexing queue failed: ${message}`,
+        ).catch((markError) => {
+          console.error(
+            `[workspace/uploads/confirm] markDocumentIndexingFailed failed for ${documentId}`,
+            markError,
+          );
+        });
+        return false;
+      });
 
     return NextResponse.json({
       id: documentId,
-      status: "processing",
+      status: queuedForIndexing ? "processing" : "failed",
       deduplicated: false,
       fileName: filename,
       attachedToConversation,
