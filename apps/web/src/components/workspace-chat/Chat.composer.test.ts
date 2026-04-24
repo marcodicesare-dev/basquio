@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 
@@ -12,6 +12,12 @@ const mocks = vi.hoisted(() => ({
   status: "ready" as string,
   messages: [] as Array<unknown>,
 }));
+const scrollIntoView = vi.fn();
+
+Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+  configurable: true,
+  value: scrollIntoView,
+});
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
@@ -70,6 +76,7 @@ afterEach(() => {
   mocks.sendMessage.mockClear();
   mocks.stop.mockClear();
   mocks.regenerate.mockClear();
+  scrollIntoView.mockClear();
   mocks.status = "ready";
   mocks.messages = [];
 });
@@ -187,8 +194,77 @@ describe("WorkspaceChat composer", () => {
     rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
     expect(screen.getByText("What changed in this account?")).not.toBeNull();
-    expect(screen.getByText("Reading Affinity Petcare memory")).not.toBeNull();
+    expect(screen.getByText("Reading Affinity Petcare context")).not.toBeNull();
     expect(screen.getByText(/^\d+\.\ds$/)).not.toBeNull();
+  });
+
+  it("keeps activity visible while an assistant placeholder has no text", async () => {
+    const { rerender } = render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "What is the next move?" },
+    });
+    fireEvent.submit(document.querySelector(".wbeta-ai-chat-form") as HTMLFormElement);
+
+    mocks.status = "streaming";
+    mocks.messages = [
+      {
+        id: "user-2",
+        role: "user",
+        parts: [{ type: "text", text: "What is the next move?" }],
+      },
+      {
+        id: "assistant-2",
+        role: "assistant",
+        parts: [],
+      },
+    ];
+    rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Reading Affinity Petcare context")).not.toBeNull();
+    });
+    expect(screen.getAllByText("What is the next move?")).toHaveLength(1);
+  });
+
+  it("keeps the composer in view as a streaming answer grows", async () => {
+    const { rerender } = render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+    scrollIntoView.mockClear();
+
+    mocks.status = "streaming";
+    mocks.messages = [
+      {
+        id: "user-3",
+        role: "user",
+        parts: [{ type: "text", text: "Summarize the account." }],
+      },
+      {
+        id: "assistant-3",
+        role: "assistant",
+        parts: [{ type: "text", text: "First token." }],
+      },
+    ];
+    rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "end", behavior: "auto" });
+    });
+    const firstCallCount = scrollIntoView.mock.calls.length;
+
+    mocks.messages = [
+      mocks.messages[0],
+      {
+        id: "assistant-3",
+        role: "assistant",
+        parts: [{ type: "text", text: "First token. More streamed answer text." }],
+      },
+    ];
+    rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    await waitFor(() => {
+      expect(scrollIntoView.mock.calls.length).toBeGreaterThan(firstCallCount);
+    });
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "end", behavior: "auto" });
   });
 
   it("appends the pending turn at the bottom of an existing chat", () => {
@@ -215,6 +291,6 @@ describe("WorkspaceChat composer", () => {
       (message) => message.textContent ?? "",
     );
     expect(renderedMessages.at(-2)).toContain("What changed now?");
-    expect(renderedMessages.at(-1)).toContain("Reading Affinity Petcare memory");
+    expect(renderedMessages.at(-1)).toContain("Reading Affinity Petcare context");
   });
 });

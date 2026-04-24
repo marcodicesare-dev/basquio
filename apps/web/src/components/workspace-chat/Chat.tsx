@@ -67,6 +67,7 @@ export function WorkspaceChat({
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pendingTurn, setPendingTurn] = useState<{ text: string; startedAt: number } | null>(null);
+  const [activeTurnStartedAt, setActiveTurnStartedAt] = useState<number | null>(null);
   const [pendingElapsed, setPendingElapsed] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [upload, setUpload] = useState<UploadStatus>({ kind: "idle" });
@@ -77,6 +78,7 @@ export function WorkspaceChat({
     factCount: number;
   } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
@@ -253,6 +255,7 @@ export function WorkspaceChat({
     onError: (err) => {
       setError(err?.message ?? "Something went wrong.");
       setPendingTurn(null);
+      setActiveTurnStartedAt(null);
       stop();
     },
   });
@@ -262,12 +265,21 @@ export function WorkspaceChat({
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
   const lastAssistantStreaming =
     isStreaming && lastMessage?.role === "assistant";
+  const lastAssistantTextLength = lastAssistantStreaming && lastMessage ? messageText(lastMessage).length : 0;
   const pendingUserAlreadyRendered = pendingTurn
-    ? lastMessage?.role === "user" && messageText(lastMessage).trim() === pendingTurn.text
+    ? messages
+        .slice(-3)
+        .some((message) => message.role === "user" && messageText(message).trim() === pendingTurn.text)
     : false;
   const showPendingUser = Boolean(pendingTurn) && !pendingUserAlreadyRendered;
-  const showAssistantPending = Boolean(pendingTurn);
-  const hasConversation = messages.length > 0 || showPendingUser || showAssistantPending;
+  const showAssistantActivity = isBusy;
+  const activityCopy = getActivityCopy({
+    elapsed: pendingElapsed,
+    hasPendingTurn: Boolean(pendingTurn),
+    lastMessage,
+    scopeName,
+  });
+  const hasConversation = messages.length > 0 || showPendingUser || showAssistantActivity;
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -282,7 +294,8 @@ export function WorkspaceChat({
     const frames: number[] = [];
     let raf = 0;
     const tick = (time: number) => {
-      frames.push(time - last);
+      const delta = time - last;
+      if (delta >= 0) frames.push(delta);
       last = time;
       raf = requestAnimationFrame(tick);
     };
@@ -299,27 +312,37 @@ export function WorkspaceChat({
   }, [isStreaming]);
 
   useEffect(() => {
-    if (!pendingTurn) {
+    const startedAt = activeTurnStartedAt ?? pendingTurn?.startedAt ?? null;
+    if (!startedAt || (!isStreaming && !pendingTurn)) {
       setPendingElapsed(0);
       return;
     }
     const update = () => {
-      setPendingElapsed((performance.now() - pendingTurn.startedAt) / 1000);
+      setPendingElapsed((performance.now() - startedAt) / 1000);
     };
     update();
     const interval = window.setInterval(update, 150);
     return () => window.clearInterval(interval);
-  }, [pendingTurn]);
+  }, [activeTurnStartedAt, isStreaming, pendingTurn]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
-  }, [messages.length, lastAssistantStreaming, showAssistantPending]);
+    (composerRef.current ?? endRef.current)?.scrollIntoView?.({
+      block: "end",
+      behavior: isStreaming ? "auto" : "smooth",
+    });
+  }, [isStreaming, lastAssistantStreaming, lastAssistantTextLength, messages.length, showAssistantActivity]);
 
   useEffect(() => {
-    if (lastMessage?.role === "assistant") {
+    if (pendingUserAlreadyRendered) {
       setPendingTurn(null);
     }
-  }, [lastMessage?.id, lastMessage?.role]);
+  }, [pendingUserAlreadyRendered]);
+
+  useEffect(() => {
+    if (status === "ready" || status === "error") {
+      setActiveTurnStartedAt(null);
+    }
+  }, [status]);
 
   useEffect(() => {
     const handleWorkspacePrompt = (event: Event) => {
@@ -473,12 +496,15 @@ export function WorkspaceChat({
       const trimmed = draft.trim();
       if (!trimmed || isBusy) return;
       setError(null);
-      setPendingTurn({ text: trimmed, startedAt: performance.now() });
+      const startedAt = performance.now();
+      setActiveTurnStartedAt(startedAt);
+      setPendingTurn({ text: trimmed, startedAt });
       try {
         sendMessage({ text: trimmed });
         setDraft("");
       } catch (sendError) {
         setPendingTurn(null);
+        setActiveTurnStartedAt(null);
         throw sendError;
       }
     },
@@ -488,7 +514,9 @@ export function WorkspaceChat({
   const handleSendFollowUp = useCallback(
     (text: string) => {
       if (isBusy) return;
-      setPendingTurn({ text, startedAt: performance.now() });
+      const startedAt = performance.now();
+      setActiveTurnStartedAt(startedAt);
+      setPendingTurn({ text, startedAt });
       sendMessage({ text });
     },
     [isBusy, sendMessage],
@@ -528,6 +556,7 @@ export function WorkspaceChat({
 
   const handleStop = useCallback(() => {
     setPendingTurn(null);
+    setActiveTurnStartedAt(null);
     stop();
   }, [stop]);
 
@@ -696,7 +725,7 @@ export function WorkspaceChat({
               <p className="wbeta-ai-user-bubble">{pendingTurn.text}</p>
             </article>
           ) : null}
-          {showAssistantPending ? (
+          {showAssistantActivity ? (
             <div className="wbeta-ai-msg wbeta-ai-msg-asst wbeta-ai-msg-pending-asst" role="status" aria-live="polite">
               <div className="wbeta-ai-thinking">
                 <span className="wbeta-ai-thinking-pulse" aria-hidden>
@@ -705,7 +734,7 @@ export function WorkspaceChat({
                   <span />
                 </span>
                 <span className="wbeta-ai-thinking-copy">
-                  Reading {scopeName ? `${scopeName} memory` : "workspace memory"}
+                  {activityCopy}
                 </span>
                 <span className="wbeta-ai-thinking-time">{pendingElapsed.toFixed(1)}s</span>
               </div>
@@ -823,7 +852,7 @@ export function WorkspaceChat({
         </div>
       ) : null}
 
-      <form className="wbeta-ai-chat-form" onSubmit={handleSubmit}>
+      <form ref={composerRef} className="wbeta-ai-chat-form" onSubmit={handleSubmit}>
         <label className="wbeta-ai-chat-label" htmlFor="wbeta-ai-input">
           {copy.message}
         </label>
@@ -904,6 +933,26 @@ export function WorkspaceChat({
       />
     </section>
   );
+}
+
+function getActivityCopy({
+  elapsed,
+  hasPendingTurn,
+  lastMessage,
+  scopeName,
+}: {
+  elapsed: number;
+  hasPendingTurn: boolean;
+  lastMessage?: UIMessage;
+  scopeName?: string | null;
+}): string {
+  if (!hasPendingTurn && lastMessage?.role === "assistant" && messageText(lastMessage).trim().length > 0) {
+    return "Writing answer";
+  }
+  const subject = scopeName ? `${scopeName} context` : "workspace context";
+  if (elapsed >= 8) return `Still working through ${subject}`;
+  if (elapsed >= 3) return `Searching ${subject}`;
+  return `Reading ${subject}`;
 }
 
 function messageText(message: UIMessage): string {

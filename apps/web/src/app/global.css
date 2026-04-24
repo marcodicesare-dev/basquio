@@ -15743,8 +15743,10 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-chat-pane.wbeta-scope-chat-pane > .wbeta-ai-chat:has(.wbeta-ai-chat-stream) {
-  padding-top: 0;
-  padding-bottom: 0;
+  justify-content: flex-start;
+  overflow-y: auto;
+  padding-top: clamp(24px, 5dvh, 56px);
+  padding-bottom: 18px;
 }
 
 .wbeta-chat-pane.wbeta-scope-chat-pane .wbeta-ai-chat-empty-compact {
@@ -16803,6 +16805,18 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-chat-pane .wbeta-ai-chat-textarea:focus {
   border-color: transparent;
   box-shadow: none;
+}
+
+.wbeta-chat-pane.wbeta-scope-chat-pane .wbeta-ai-chat-stream {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.wbeta-chat-pane.wbeta-scope-chat-pane .wbeta-ai-chat-form {
+  flex-shrink: 0;
+  margin-top: 18px;
 }
 
 @media (max-width: 720px) {
