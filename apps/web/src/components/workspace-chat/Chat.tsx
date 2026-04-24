@@ -65,6 +65,8 @@ export function WorkspaceChat({
   );
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pendingTurn, setPendingTurn] = useState<{ text: string; startedAt: number } | null>(null);
+  const [pendingElapsed, setPendingElapsed] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [upload, setUpload] = useState<UploadStatus>({ kind: "idle" });
   const [attachments, setAttachments] = useState<AttachmentChip[]>([]);
@@ -249,14 +251,22 @@ export function WorkspaceChat({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onError: (err) => {
       setError(err?.message ?? "Something went wrong.");
+      setPendingTurn(null);
       stop();
     },
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
+  const isBusy = isStreaming || Boolean(pendingTurn);
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
   const lastAssistantStreaming =
     isStreaming && lastMessage?.role === "assistant";
+  const pendingUserAlreadyRendered = pendingTurn
+    ? lastMessage?.role === "user" && messageText(lastMessage).trim() === pendingTurn.text
+    : false;
+  const showPendingUser = Boolean(pendingTurn) && !pendingUserAlreadyRendered;
+  const showAssistantPending = Boolean(pendingTurn);
+  const hasConversation = messages.length > 0 || showPendingUser || showAssistantPending;
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -288,13 +298,32 @@ export function WorkspaceChat({
   }, [isStreaming]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [messages.length, lastAssistantStreaming]);
+    if (!pendingTurn) {
+      setPendingElapsed(0);
+      return;
+    }
+    const update = () => {
+      setPendingElapsed((performance.now() - pendingTurn.startedAt) / 1000);
+    };
+    update();
+    const interval = window.setInterval(update, 150);
+    return () => window.clearInterval(interval);
+  }, [pendingTurn]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
+  }, [messages.length, lastAssistantStreaming, showAssistantPending]);
+
+  useEffect(() => {
+    if (lastMessage?.role === "assistant") {
+      setPendingTurn(null);
+    }
+  }, [lastMessage?.id, lastMessage?.role]);
 
   useEffect(() => {
     const handleWorkspacePrompt = (event: Event) => {
       const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt?.trim();
-      if (!prompt || isStreaming) return;
+      if (!prompt || isBusy) return;
       setDraft(prompt);
       const focusInput = () => {
         inputRef.current?.focus();
@@ -309,7 +338,7 @@ export function WorkspaceChat({
     return () => {
       window.removeEventListener("basquio:workspace-prompt", handleWorkspacePrompt);
     };
-  }, [isStreaming]);
+  }, [isBusy]);
 
   // Load existing attachments on mount so a returning user sees their files.
   useEffect(() => {
@@ -441,24 +470,32 @@ export function WorkspaceChat({
     (event?: React.FormEvent<HTMLFormElement>) => {
       if (event) event.preventDefault();
       const trimmed = draft.trim();
-      if (!trimmed || isStreaming) return;
+      if (!trimmed || isBusy) return;
       setError(null);
-      sendMessage({ text: trimmed });
-      setDraft("");
+      setPendingTurn({ text: trimmed, startedAt: performance.now() });
+      try {
+        sendMessage({ text: trimmed });
+        setDraft("");
+      } catch (sendError) {
+        setPendingTurn(null);
+        throw sendError;
+      }
     },
-    [draft, isStreaming, sendMessage],
+    [draft, isBusy, sendMessage],
   );
 
   const handleSendFollowUp = useCallback(
     (text: string) => {
+      if (isBusy) return;
+      setPendingTurn({ text, startedAt: performance.now() });
       sendMessage({ text });
     },
-    [sendMessage],
+    [isBusy, sendMessage],
   );
 
   const handlePromptSuggestion = useCallback(
     (prompt: string) => {
-      if (isStreaming) return;
+      if (isBusy) return;
       setDraft(prompt);
       const focusInput = () => inputRef.current?.focus();
       if (typeof requestAnimationFrame === "function") {
@@ -467,8 +504,13 @@ export function WorkspaceChat({
         focusInput();
       }
     },
-    [isStreaming],
+    [isBusy],
   );
+
+  const handleStop = useCallback(() => {
+    setPendingTurn(null);
+    stop();
+  }, [stop]);
 
   const handleRegenerate = useCallback(() => {
     setError(null);
@@ -565,7 +607,7 @@ export function WorkspaceChat({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {messages.length === 0 ? (
+      {!hasConversation ? (
         <div
           className={
             compactEmpty
@@ -608,7 +650,7 @@ export function WorkspaceChat({
           )}
         </div>
       ) : (
-        <div className="wbeta-ai-chat-stream" role="log" aria-live="polite" aria-busy={isStreaming}>
+        <div className="wbeta-ai-chat-stream" role="log" aria-live="polite" aria-busy={isBusy}>
           {messages.map((message, i) => {
             const isLast = i === messages.length - 1;
             return (
@@ -630,6 +672,26 @@ export function WorkspaceChat({
               />
             );
           })}
+          {showPendingUser && pendingTurn ? (
+            <article className="wbeta-ai-msg wbeta-ai-msg-user wbeta-ai-msg-pending-user">
+              <p className="wbeta-ai-user-bubble">{pendingTurn.text}</p>
+            </article>
+          ) : null}
+          {showAssistantPending ? (
+            <div className="wbeta-ai-msg wbeta-ai-msg-asst wbeta-ai-msg-pending-asst" role="status" aria-live="polite">
+              <div className="wbeta-ai-thinking">
+                <span className="wbeta-ai-thinking-pulse" aria-hidden>
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="wbeta-ai-thinking-copy">
+                  Reading {scopeName ? `${scopeName} memory` : "workspace memory"}
+                </span>
+                <span className="wbeta-ai-thinking-time">{pendingElapsed.toFixed(1)}s</span>
+              </div>
+            </div>
+          ) : null}
           <div ref={endRef} />
         </div>
       )}
@@ -734,7 +796,7 @@ export function WorkspaceChat({
               type="button"
               className="wbeta-ai-chat-prompt-pill"
               onClick={() => handlePromptSuggestion(suggestion.prompt)}
-              disabled={isStreaming}
+              disabled={isBusy}
             >
               {compactPrompt(suggestion.prompt)}
             </button>
@@ -761,26 +823,26 @@ export function WorkspaceChat({
           }}
           minRows={1}
           maxRows={10}
-          disabled={isStreaming}
+          disabled={isBusy}
         />
         <div className="wbeta-ai-chat-row">
           <button
             type="button"
             className="wbeta-ai-chat-attach"
             onClick={handleAttachClick}
-            disabled={isStreaming}
+            disabled={isBusy}
             aria-label={copy.attachFile}
           >
             <Paperclip size={14} weight="regular" />
           </button>
           <p className="wbeta-ai-chat-hint" aria-live="polite">
-            {isStreaming ? copy.generating : <kbd className="wbeta-kbd">⌘ ↵</kbd>}
+            {isBusy ? copy.generating : <kbd className="wbeta-kbd">⌘ ↵</kbd>}
           </p>
-          {isStreaming ? (
+          {isBusy ? (
             <button
               type="button"
               className="wbeta-ai-chat-stop"
-              onClick={() => stop()}
+              onClick={handleStop}
               aria-label={copy.stopGeneration}
             >
               <Stop size={13} weight="fill" />
@@ -832,6 +894,13 @@ export function WorkspaceChat({
 
 function compactPrompt(prompt: string): string {
   return prompt.length > 56 ? `${prompt.slice(0, 53).trim()}...` : prompt;
+}
+
+function messageText(message: UIMessage): string {
+  return (message.parts ?? [])
+    .filter((part) => part.type === "text")
+    .map((part) => ("text" in part && typeof part.text === "string" ? part.text : ""))
+    .join("\n\n");
 }
 
 function formatBytes(bytes: number): string {

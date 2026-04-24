@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   stop: vi.fn(),
   regenerate: vi.fn(),
+  status: "ready" as string,
+  messages: [] as Array<unknown>,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -17,9 +19,9 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@ai-sdk/react", () => ({
   useChat: () => ({
-    messages: [],
+    messages: mocks.messages,
     sendMessage: mocks.sendMessage,
-    status: "ready",
+    status: mocks.status,
     stop: mocks.stop,
     regenerate: mocks.regenerate,
   }),
@@ -68,6 +70,8 @@ afterEach(() => {
   mocks.sendMessage.mockClear();
   mocks.stop.mockClear();
   mocks.regenerate.mockClear();
+  mocks.status = "ready";
+  mocks.messages = [];
 });
 
 describe("WorkspaceChat composer", () => {
@@ -104,5 +108,49 @@ describe("WorkspaceChat composer", () => {
     expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
       "Summarize Affinity Petcare margin pressure.",
     );
+  });
+
+  it("shows an immediate thinking state after a submitted prompt", () => {
+    const { rerender } = render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "What changed in this account?" },
+    });
+    fireEvent.submit(document.querySelector(".wbeta-ai-chat-form") as HTMLFormElement);
+    expect(mocks.sendMessage).toHaveBeenCalledWith({ text: "What changed in this account?" });
+
+    mocks.status = "submitted";
+    rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    expect(screen.getByText("What changed in this account?")).not.toBeNull();
+    expect(screen.getByText("Reading Affinity Petcare memory")).not.toBeNull();
+    expect(screen.getByText(/^\d+\.\ds$/)).not.toBeNull();
+  });
+
+  it("appends the pending turn at the bottom of an existing chat", () => {
+    mocks.messages = [
+      {
+        id: "user-1",
+        role: "user",
+        parts: [{ type: "text", text: "Earlier question" }],
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Earlier answer" }],
+      },
+    ];
+    render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
+
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "What changed now?" },
+    });
+    fireEvent.submit(document.querySelector(".wbeta-ai-chat-form") as HTMLFormElement);
+
+    const renderedMessages = Array.from(document.querySelectorAll(".wbeta-ai-msg")).map(
+      (message) => message.textContent ?? "",
+    );
+    expect(renderedMessages.at(-2)).toContain("What changed now?");
+    expect(renderedMessages.at(-1)).toContain("Reading Affinity Petcare memory");
   });
 });
