@@ -90,10 +90,10 @@ export function WorkspaceHomeDashboard({
             Your workspace will remember your clients, your stakeholders, and your style.
             Every answer cites where it came from.
           </p>
-          <a className="wbeta-home-primary" href="#workspace-setup">
+          <Link className="wbeta-home-primary" href="/onboarding/1">
             <span>Set up workspace</span>
             <ArrowRight size={14} weight="bold" />
-          </a>
+          </Link>
         </section>
         {setup ? (
           <section id="workspace-setup" className="wbeta-home-setup">

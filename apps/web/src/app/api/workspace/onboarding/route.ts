@@ -91,6 +91,7 @@ export async function POST(request: Request) {
     null;
 
   const createdScopes: Array<{ kind: string; name: string; slug: string; id: string }> = [];
+  const targetScopes: Array<{ kind: string; name: string; slug: string; id: string }> = [];
   const scopeByInputSlug = new Map<string, string>();
 
   if (!payload.skipped) {
@@ -101,6 +102,12 @@ export async function POST(request: Request) {
       const existing = existingByKey.get(key);
       if (existing) {
         scopeByInputSlug.set(key, existing.id);
+        targetScopes.push({
+          kind: existing.kind,
+          name: existing.name,
+          slug: existing.slug,
+          id: existing.id,
+        });
         continue;
       }
       const scope = await createScope({
@@ -115,7 +122,9 @@ export async function POST(request: Request) {
       });
       if (scope) {
         scopeByInputSlug.set(key, scope.id);
-        createdScopes.push({ kind: scope.kind, name: scope.name, slug: scope.slug, id: scope.id });
+        const summary = { kind: scope.kind, name: scope.name, slug: scope.slug, id: scope.id };
+        createdScopes.push(summary);
+        targetScopes.push(summary);
       }
     }
 
@@ -194,6 +203,12 @@ export async function POST(request: Request) {
     workspace_id: updated.id,
     onboarded_at: updated.metadata?.onboarded_at ?? null,
     scopes_created: createdScopes.length,
+    first_scope: targetScopes[0]
+      ? {
+          kind: targetScopes[0].kind,
+          slug: targetScopes[0].slug,
+        }
+      : null,
     skipped: payload.skipped,
   });
 }

@@ -75,7 +75,7 @@ describe("WorkspaceHomeDashboard", () => {
     expect(screen.getByText("Stats appear after a week of activity.")).not.toBeNull();
   });
 
-  it("renders the brand-new onboarding state without the chat surface", () => {
+  it("renders the brand-new onboarding entry without the chat surface", () => {
     render(
       React.createElement(
         WorkspaceHomeDashboard,
@@ -85,14 +85,14 @@ describe("WorkspaceHomeDashboard", () => {
           conversations: [],
           entityGroups: [],
           suggestions: [],
-          setup: React.createElement("div", { "data-testid": "workspace-setup" }, "Setup flow"),
         }),
       ),
     );
 
     expect(screen.getByText("Welcome to Basquio")).not.toBeNull();
-    expect(screen.getByText("Set up workspace")).not.toBeNull();
-    expect(screen.getByTestId("workspace-setup")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Set up workspace" }).getAttribute("href")).toBe(
+      "/onboarding/1",
+    );
     expect(screen.queryByTestId("workspace-chat")).toBeNull();
   });
 });

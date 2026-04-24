@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -17,7 +17,7 @@ import {
 import { WorkspaceUploadZone } from "@/components/workspace-upload-zone";
 import { SUPPORTED_UPLOAD_LABEL } from "@/lib/workspace/constants";
 
-type Role = "analyst" | "consultant" | "trade_marketing" | "other";
+type OnboardingStep = 1 | 2 | 3;
 type ScopeKind = "client" | "category" | "function";
 
 type ScopeInput = {
@@ -34,33 +34,32 @@ type StakeholderInput = {
   preference: string;
 };
 
-const ROLE_OPTIONS: Array<{ value: Role; label: string; hint: string }> = [
-  {
-    value: "analyst",
-    label: "Internal analyst",
-    hint: "Category, brand, or insights team inside a CPG company.",
-  },
-  {
-    value: "consultant",
-    label: "Agency consultant",
-    hint: "You answer CPG questions for multiple clients on retainer.",
-  },
-  {
-    value: "trade_marketing",
-    label: "Trade marketing",
-    hint: "You build decks for account, retailer, and distributor conversations.",
-  },
-  {
-    value: "other",
-    label: "Something else",
-    hint: "Tell us in one line.",
-  },
-];
+type DraftState = {
+  scopes: ScopeInput[];
+  stakeholders: StakeholderInput[];
+};
 
-const SCOPE_KIND_META: Record<ScopeKind, { label: string; icon: typeof Buildings; placeholder: string }> = {
-  client: { label: "Client", icon: Buildings, placeholder: "e.g., Mulino Bianco" },
-  category: { label: "Category", icon: Briefcase, placeholder: "e.g., Snack Salati" },
-  function: { label: "Function", icon: UsersThree, placeholder: "e.g., Category Management" },
+const DRAFT_KEY = "basquio:workspace-onboarding-draft";
+
+const SCOPE_KIND_META: Record<ScopeKind, { label: string; icon: typeof Buildings; placeholder: string; hint: string }> = {
+  client: {
+    label: "Client",
+    icon: Buildings,
+    placeholder: "e.g., Mulino Bianco",
+    hint: "A client, retailer, or business unit you answer questions for.",
+  },
+  category: {
+    label: "Category",
+    icon: Briefcase,
+    placeholder: "e.g., Snack Salati",
+    hint: "A category, segment, or market you keep tracking.",
+  },
+  function: {
+    label: "Function",
+    icon: UsersThree,
+    placeholder: "e.g., Trade marketing",
+    hint: "A team or workstream with its own operating rules.",
+  },
 };
 
 function slugify(input: string): string {
@@ -76,39 +75,90 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function WorkspaceOnboarding() {
+function defaultDraft(): DraftState {
+  return {
+    scopes: [{ id: uid(), kind: "client", name: "" }],
+    stakeholders: [],
+  };
+}
+
+function readDraft(): DraftState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DraftState>;
+    return {
+      scopes: Array.isArray(parsed.scopes) ? parsed.scopes : defaultDraft().scopes,
+      stakeholders: Array.isArray(parsed.stakeholders) ? parsed.stakeholders : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function WorkspaceOnboarding({
+  initialStep = 1,
+  routed = false,
+}: {
+  initialStep?: OnboardingStep;
+  routed?: boolean;
+}) {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [role, setRole] = useState<Role | null>(null);
-  const [roleOther, setRoleOther] = useState("");
-  const [scopes, setScopes] = useState<ScopeInput[]>([]);
+  const [step, setStep] = useState<OnboardingStep>(initialStep);
+  const [scopes, setScopes] = useState<ScopeInput[]>(() => defaultDraft().scopes);
   const [stakeholders, setStakeholders] = useState<StakeholderInput[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canAdvance1 = role !== null && (role !== "other" || roleOther.trim().length > 0);
-  const canAdvance2 = scopes.some((s) => s.name.trim().length > 0);
+  useEffect(() => {
+    setStep(initialStep);
+  }, [initialStep]);
+
+  useEffect(() => {
+    const draft = readDraft();
+    if (draft) {
+      setScopes(draft.scopes.length > 0 ? draft.scopes : defaultDraft().scopes);
+      setStakeholders(draft.stakeholders);
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || typeof window === "undefined") return;
+    window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ scopes, stakeholders }));
+  }, [hydrated, scopes, stakeholders]);
 
   const namedScopes = useMemo(
-    () => scopes.filter((s) => s.name.trim().length > 0),
+    () => scopes.filter((scope) => scope.name.trim().length > 0),
     [scopes],
   );
+
+  const canContinueStep1 = namedScopes.length > 0;
+
+  function goTo(nextStep: OnboardingStep) {
+    setStep(nextStep);
+    if (routed) {
+      router.push(`/onboarding/${nextStep}`);
+    }
+  }
 
   function addScope(kind: ScopeKind) {
     setScopes((prev) => [...prev, { id: uid(), kind, name: "" }]);
   }
+
   function updateScope(id: string, name: string) {
-    setScopes((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
-  }
-  function removeScope(id: string) {
-    setScopes((prev) => prev.filter((s) => s.id !== id));
-    setStakeholders((prev) => prev.filter((h) => h.scopeKey !== scopeKeyFor(id)));
+    setScopes((prev) => prev.map((scope) => (scope.id === id ? { ...scope, name } : scope)));
   }
 
-  function scopeKeyFor(scopeId: string): string {
-    const scope = scopes.find((s) => s.id === scopeId);
-    if (!scope) return "";
-    return `${scope.kind}:${slugify(scope.name)}`;
+  function removeScope(id: string) {
+    const removedScope = scopes.find((scope) => scope.id === id);
+    setScopes((prev) => prev.filter((scope) => scope.id !== id));
+    if (removedScope) {
+      const removedKey = `${removedScope.kind}:${slugify(removedScope.name)}`;
+      setStakeholders((prev) => prev.filter((person) => person.scopeKey !== removedKey));
+    }
   }
 
   function addStakeholder(scopeKey: string) {
@@ -117,11 +167,15 @@ export function WorkspaceOnboarding() {
       { id: uid(), scopeKey, name: "", role: "", preference: "" },
     ]);
   }
+
   function updateStakeholder(id: string, patch: Partial<StakeholderInput>) {
-    setStakeholders((prev) => prev.map((h) => (h.id === id ? { ...h, ...patch } : h)));
+    setStakeholders((prev) =>
+      prev.map((person) => (person.id === id ? { ...person, ...patch } : person)),
+    );
   }
+
   function removeStakeholder(id: string) {
-    setStakeholders((prev) => prev.filter((h) => h.id !== id));
+    setStakeholders((prev) => prev.filter((person) => person.id !== id));
   }
 
   async function submit(skipped: boolean) {
@@ -129,20 +183,20 @@ export function WorkspaceOnboarding() {
     setBusy(true);
     setError(null);
     try {
-      const scopePayload = namedScopes.map((s) => ({
-        kind: s.kind,
-        name: s.name.trim(),
+      const scopePayload = namedScopes.map((scope) => ({
+        kind: scope.kind,
+        name: scope.name.trim(),
       }));
       const stakeholderPayload = stakeholders
-        .filter((h) => h.name.trim().length > 0)
-        .map((h) => {
-          const [kind, slug] = h.scopeKey.split(":");
+        .filter((person) => person.name.trim().length > 0)
+        .map((person) => {
+          const [kind, slug] = person.scopeKey.split(":");
           return {
             scope_kind: kind as ScopeKind,
             scope_slug: slug,
-            name: h.name.trim(),
-            role: h.role.trim() || undefined,
-            preference: h.preference.trim() || undefined,
+            name: person.name.trim(),
+            role: person.role.trim() || undefined,
+            preference: person.preference.trim() || undefined,
           };
         });
 
@@ -150,16 +204,27 @@ export function WorkspaceOnboarding() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          role: role ?? "other",
-          role_other: roleOther.trim() || undefined,
+          role: "other",
+          role_other: "Workspace setup",
           scopes: skipped ? [] : scopePayload,
           stakeholders: skipped ? [] : stakeholderPayload,
           skipped,
         }),
       });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        first_scope?: { kind: ScopeKind; slug: string } | null;
+      };
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? "Could not complete onboarding.");
+      }
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(DRAFT_KEY);
+      }
+      if (!skipped && body.first_scope) {
+        router.push(`/workspace/scope/${body.first_scope.kind}/${body.first_scope.slug}`);
+      } else {
+        router.push("/workspace");
       }
       router.refresh();
     } catch (cause) {
@@ -173,31 +238,31 @@ export function WorkspaceOnboarding() {
     <div className="wbeta-onboard">
       <header className="wbeta-onboard-head">
         <p className="wbeta-onboard-eyebrow">Set up your workspace</p>
-        <h1 className="wbeta-onboard-title">
-          Basquio is a memory, not a chatbot. Four questions and you are ready.
-        </h1>
+        <h1 className="wbeta-onboard-title">Basquio gets useful when it knows the work.</h1>
         <p className="wbeta-onboard-lede">
-          Every answer Basquio writes will lean on what you teach it here. Skip any step you want,
-          you can always teach more later.
+          Three small inputs create the base layer: the scopes you analyze, one real file, and one
+          stakeholder Basquio should write for.
         </p>
       </header>
 
       <ol className="wbeta-onboard-stepper" aria-label="Onboarding progress">
-        {[1, 2, 3, 4].map((n) => (
+        {([1, 2, 3] as OnboardingStep[]).map((item) => (
           <li
-            key={n}
+            key={item}
             className={
-              n < step
+              item < step
                 ? "wbeta-onboard-step wbeta-onboard-step-done"
-                : n === step
-                ? "wbeta-onboard-step wbeta-onboard-step-active"
-                : "wbeta-onboard-step"
+                : item === step
+                  ? "wbeta-onboard-step wbeta-onboard-step-active"
+                  : "wbeta-onboard-step"
             }
-            aria-current={n === step ? "step" : undefined}
+            aria-current={item === step ? "step" : undefined}
           >
-            <span className="wbeta-onboard-step-num">{n < step ? <Check size={12} weight="bold" /> : n}</span>
+            <span className="wbeta-onboard-step-num">
+              {item < step ? <Check size={12} weight="bold" /> : item}
+            </span>
             <span className="wbeta-onboard-step-label">
-              {n === 1 ? "Role" : n === 2 ? "Scopes" : n === 3 ? "Stakeholders" : "Seed files"}
+              {item === 1 ? "Scopes" : item === 2 ? "Seed file" : "Stakeholder"}
             </span>
           </li>
         ))}
@@ -210,58 +275,15 @@ export function WorkspaceOnboarding() {
       ) : null}
 
       {step === 1 ? (
-        <section className="wbeta-onboard-panel">
-          <h2 className="wbeta-onboard-step-title">Which hat do you wear most?</h2>
+        <section className="wbeta-onboard-panel" aria-labelledby="onboard-scopes-title">
+          <p className="wbeta-onboard-step-count">Step 1 of 3</p>
+          <h2 id="onboard-scopes-title" className="wbeta-onboard-step-title">
+            What do you analyze?
+          </h2>
           <p className="wbeta-onboard-step-hint">
-            We tune tone, depth, and defaults to this. You can change it any time.
-          </p>
-          <div className="wbeta-onboard-roles">
-            {ROLE_OPTIONS.map((opt) => {
-              const active = role === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  className={
-                    active
-                      ? "wbeta-onboard-role wbeta-onboard-role-active"
-                      : "wbeta-onboard-role"
-                  }
-                  onClick={() => setRole(opt.value)}
-                  aria-pressed={active}
-                >
-                  <span className="wbeta-onboard-role-label">{opt.label}</span>
-                  <span className="wbeta-onboard-role-hint">{opt.hint}</span>
-                </button>
-              );
-            })}
-          </div>
-          {role === "other" ? (
-            <label className="wbeta-onboard-field wbeta-onboard-field-wide">
-              <span>One-line description of your role</span>
-              <input
-                type="text"
-                value={roleOther}
-                onChange={(e) => setRoleOther(e.target.value)}
-                placeholder="e.g., Head of Insights at a retailer"
-                maxLength={200}
-              />
-            </label>
-          ) : null}
-        </section>
-      ) : null}
-
-      {step === 2 ? (
-        <section className="wbeta-onboard-panel">
-          <h2 className="wbeta-onboard-step-title">Which clients or categories do you work on?</h2>
-          <p className="wbeta-onboard-step-hint">
-            Each one becomes a scope. Memory and files can be attached per scope, so answers stay
-            on the right brand.
+            Name one client, category, or function. You can add more later from the sidebar.
           </p>
           <div className="wbeta-onboard-scope-list">
-            {scopes.length === 0 ? (
-              <p className="wbeta-onboard-empty">Add your first scope below.</p>
-            ) : null}
             {scopes.map((scope) => {
               const Icon = SCOPE_KIND_META[scope.kind].icon;
               return (
@@ -273,8 +295,9 @@ export function WorkspaceOnboarding() {
                     type="text"
                     value={scope.name}
                     placeholder={SCOPE_KIND_META[scope.kind].placeholder}
-                    onChange={(e) => updateScope(scope.id, e.target.value)}
+                    onChange={(event) => updateScope(scope.id, event.target.value)}
                     maxLength={120}
+                    aria-label={`${SCOPE_KIND_META[scope.kind].label} name`}
                   />
                   <button
                     type="button"
@@ -295,12 +318,15 @@ export function WorkspaceOnboarding() {
                 <button
                   key={kind}
                   type="button"
-                  className="wbeta-onboard-add-btn"
+                  className="wbeta-onboard-kind-card"
                   onClick={() => addScope(kind)}
                 >
+                  <Icon size={16} weight="regular" />
+                  <span>
+                    <strong>{SCOPE_KIND_META[kind].label}</strong>
+                    {SCOPE_KIND_META[kind].hint}
+                  </span>
                   <Plus size={12} weight="bold" />
-                  <Icon size={13} weight="regular" />
-                  Add {SCOPE_KIND_META[kind].label.toLowerCase()}
                 </button>
               );
             })}
@@ -308,23 +334,42 @@ export function WorkspaceOnboarding() {
         </section>
       ) : null}
 
-      {step === 3 ? (
-        <section className="wbeta-onboard-panel">
-          <h2 className="wbeta-onboard-step-title">Who are the key stakeholders?</h2>
+      {step === 2 ? (
+        <section className="wbeta-onboard-panel" aria-labelledby="onboard-file-title">
+          <p className="wbeta-onboard-step-count">Step 2 of 3</p>
+          <h2 id="onboard-file-title" className="wbeta-onboard-step-title">
+            Drop one thing that represents your work.
+          </h2>
           <p className="wbeta-onboard-step-hint">
-            One line per person is enough. Basquio tailors every answer that cites them to their
-            preferences.
+            An old deck, category brief, NIQ export, transcript, or markdown note is enough.
+            Basquio will read it in the background and start building workspace memory.
+          </p>
+          <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} variant="hero" />
+          <p className="wbeta-onboard-help">
+            You can continue while parsing runs. Upload failures stay inline with retry paths.
+          </p>
+        </section>
+      ) : null}
+
+      {step === 3 ? (
+        <section className="wbeta-onboard-panel" aria-labelledby="onboard-stakeholder-title">
+          <p className="wbeta-onboard-step-count">Step 3 of 3</p>
+          <h2 id="onboard-stakeholder-title" className="wbeta-onboard-step-title">
+            Who do you write for?
+          </h2>
+          <p className="wbeta-onboard-step-hint">
+            Add one stakeholder so Basquio can tune brief depth, charts, and tone to the reader.
           </p>
           {namedScopes.length === 0 ? (
             <p className="wbeta-onboard-empty">
-              Go back to step 2 to add a scope first, or skip this step.
+              Go back to step 1 to add a scope first, or skip this setup and teach Basquio in chat.
             </p>
           ) : (
             <div className="wbeta-onboard-stakeholders">
               {namedScopes.map((scope) => {
                 const Icon = SCOPE_KIND_META[scope.kind].icon;
                 const scopeKey = `${scope.kind}:${slugify(scope.name)}`;
-                const rows = stakeholders.filter((h) => h.scopeKey === scopeKey);
+                const rows = stakeholders.filter((person) => person.scopeKey === scopeKey);
                 return (
                   <div key={scope.id} className="wbeta-onboard-stakeholder-group">
                     <header className="wbeta-onboard-stakeholder-head">
@@ -335,7 +380,9 @@ export function WorkspaceOnboarding() {
                       </span>
                     </header>
                     {rows.length === 0 ? (
-                      <p className="wbeta-onboard-empty-small">No stakeholders yet for this scope.</p>
+                      <p className="wbeta-onboard-empty-small">
+                        Tell the chat later, or add one person now.
+                      </p>
                     ) : (
                       rows.map((row) => (
                         <div key={row.id} className="wbeta-onboard-stakeholder-row">
@@ -344,7 +391,9 @@ export function WorkspaceOnboarding() {
                             <input
                               type="text"
                               value={row.name}
-                              onChange={(e) => updateStakeholder(row.id, { name: e.target.value })}
+                              onChange={(event) =>
+                                updateStakeholder(row.id, { name: event.target.value })
+                              }
                               placeholder="e.g., Elena Bianchi"
                               maxLength={200}
                             />
@@ -354,18 +403,22 @@ export function WorkspaceOnboarding() {
                             <input
                               type="text"
                               value={row.role}
-                              onChange={(e) => updateStakeholder(row.id, { role: e.target.value })}
+                              onChange={(event) =>
+                                updateStakeholder(row.id, { role: event.target.value })
+                              }
                               placeholder="e.g., Head of Category"
                               maxLength={200}
                             />
                           </label>
                           <label className="wbeta-onboard-field wbeta-onboard-field-wide">
-                            <span>One-line preference</span>
+                            <span>They prefer</span>
                             <input
                               type="text"
                               value={row.preference}
-                              onChange={(e) => updateStakeholder(row.id, { preference: e.target.value })}
-                              placeholder="e.g., prefers waterfall over bar charts for competitive decomp"
+                              onChange={(event) =>
+                                updateStakeholder(row.id, { preference: event.target.value })
+                              }
+                              placeholder="e.g., prefers 52-week reads and waterfall charts"
                               maxLength={600}
                             />
                           </label>
@@ -395,20 +448,6 @@ export function WorkspaceOnboarding() {
         </section>
       ) : null}
 
-      {step === 4 ? (
-        <section className="wbeta-onboard-panel">
-          <h2 className="wbeta-onboard-step-title">Seed the workspace with one to three files.</h2>
-          <p className="wbeta-onboard-step-hint">
-            A prior brief, a transcript, a deck, or a data export. Basquio reads them all and turns
-            them into memory. Skip and upload later if you want.
-          </p>
-          <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} variant="hero" />
-          <p className="wbeta-onboard-help">
-            Uploads run in the background. You can move to the workspace as soon as you finish.
-          </p>
-        </section>
-      ) : null}
-
       <footer className="wbeta-onboard-foot">
         <button
           type="button"
@@ -423,20 +462,21 @@ export function WorkspaceOnboarding() {
             <button
               type="button"
               className="wbeta-onboard-back"
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
+              onClick={() => goTo((step - 1) as OnboardingStep)}
               disabled={busy}
             >
               <ArrowLeft size={13} weight="bold" /> Back
             </button>
           ) : null}
-          {step < 4 ? (
+          {step < 3 ? (
             <button
               type="button"
               className="wbeta-onboard-next"
-              onClick={() => setStep((s) => Math.min(4, s + 1))}
-              disabled={busy || (step === 1 && !canAdvance1) || (step === 2 && !canAdvance2)}
+              onClick={() => goTo((step + 1) as OnboardingStep)}
+              disabled={busy || (step === 1 && !canContinueStep1)}
             >
-              Continue <ArrowRight size={13} weight="bold" />
+              {step === 2 ? "Continue without waiting" : "Continue"}
+              <ArrowRight size={13} weight="bold" />
             </button>
           ) : (
             <button
@@ -445,7 +485,7 @@ export function WorkspaceOnboarding() {
               onClick={() => submit(false)}
               disabled={busy}
             >
-              {busy ? "Finishing…" : "Finish setup"}
+              {busy ? "Finishing" : "Finish setup"}
             </button>
           )}
         </div>

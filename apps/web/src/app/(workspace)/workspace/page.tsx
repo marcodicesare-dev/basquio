@@ -10,7 +10,6 @@ import {
 } from "@/lib/workspace/db";
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { WorkspaceShortcuts } from "@/components/workspace-shortcuts";
-import { WorkspaceOnboarding } from "@/components/workspace-onboarding";
 import { listConversations } from "@/lib/workspace/conversations";
 import { listMemoryEntries } from "@/lib/workspace/memory";
 import { countByScope, listScopes } from "@/lib/workspace/scopes";
@@ -174,7 +173,6 @@ export default async function WorkspaceHomePage() {
           visible: firstActivityAgeDays >= 7,
         }}
         chat={<WorkspaceChat />}
-        setup={!onboarded && isEmpty ? <WorkspaceOnboarding /> : null}
       />
     </>
   );
