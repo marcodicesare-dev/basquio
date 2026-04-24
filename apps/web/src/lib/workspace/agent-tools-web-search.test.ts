@@ -96,10 +96,16 @@ describe("webSearchTool", () => {
           {
             url: "https://example.com/coffee",
             title: "Italy coffee report",
+            citation: "Italy coffee report | https://example.com/coffee | 2026-03-01T00:00:00Z",
             published_at: "2026-03-01T00:00:00Z",
             markdown: "Coffee markdown body",
           },
         ],
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        citation_instruction: expect.stringContaining("cite the exact URL"),
       }),
     );
     expect(mocks.insert).toHaveBeenCalledWith(
@@ -137,6 +143,7 @@ describe("webSearchTool", () => {
           {
             url: "https://example.com/live-shape",
             title: "Live shape result",
+            citation: "Live shape result | https://example.com/live-shape | 2026-04-01T00:00:00Z",
             published_at: "2026-04-01T00:00:00Z",
             markdown: "Live markdown body",
           },

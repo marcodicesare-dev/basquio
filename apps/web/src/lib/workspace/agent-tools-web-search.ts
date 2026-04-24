@@ -101,6 +101,8 @@ export function webSearchTool(ctx: AgentCallContext) {
 
         return {
           budget_remaining: WEB_SEARCH_HARD_CAP - currentCount - 1,
+          citation_instruction:
+            "When using these webSearch results, cite the exact URL from each result in the final answer. Do not cite only the source domain.",
           warning:
             currentCount + 1 >= WEB_SEARCH_SOFT_WARN
               ? `Approaching web search cap (${currentCount + 1}/${WEB_SEARCH_HARD_CAP}). Summarize findings efficiently.`
@@ -111,6 +113,7 @@ export function webSearchTool(ctx: AgentCallContext) {
             return {
               url: result.url,
               title: result.title ?? stringMetadata(metadata, "title"),
+              citation: resultCitation(result, metadata),
               published_at: publishedAt(metadata),
               markdown: resultMarkdown(result).slice(0, 15_000),
             };
@@ -156,6 +159,12 @@ function resultMetadata(result: FirecrawlSearchResultLike): Record<string, unkno
 
 function resultMarkdown(result: FirecrawlSearchResultLike): string {
   return result.data?.markdown ?? result.markdown ?? "";
+}
+
+function resultCitation(result: FirecrawlSearchResultLike, metadata: Record<string, unknown>): string {
+  const title = result.title ?? stringMetadata(metadata, "title") ?? result.url;
+  const date = publishedAt(metadata);
+  return date ? `${title} | ${result.url} | ${date}` : `${title} | ${result.url}`;
 }
 
 export async function countConversationSearches(conversationId: string): Promise<number> {
