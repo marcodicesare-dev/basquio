@@ -7,7 +7,6 @@ import {
   type ScopeDeliverable,
   type ScopeStakeholder,
   type WorkspaceKnowsSummary,
-  buildContextLine,
 } from "@/components/scope-chat-shell";
 import type { ScopeCommandAction } from "@/components/scope-command-palette";
 import { WorkspaceMemoryAside } from "@/components/workspace-memory-aside";
@@ -104,6 +103,22 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function relativeResearchTime(iso: string): string {
+  const diff = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) {
+    const minutes = Math.floor(diff / 60);
+    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  }
+  if (diff < 86400) {
+    const hours = Math.floor(diff / 3600);
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+  const days = Math.floor(diff / 86400);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 async function countScopeFacts(workspaceId: string, scopeName: string): Promise<number> {
   const db = getDb();
   const { count } = await db
@@ -136,9 +151,10 @@ async function lastResearchLabel(workspaceId: string): Promise<string | null> {
     .limit(1);
   const row = (data ?? [])[0] as { completed_at: string | null; scrapes_succeeded: number | null } | undefined;
   if (!row?.completed_at) return null;
-  const when = relativeTime(row.completed_at);
+  const when = relativeResearchTime(row.completed_at);
   const sources = row.scrapes_succeeded ?? 0;
-  return `${when}, ${sources} source${sources === 1 ? "" : "s"}`;
+  if (sources <= 0) return when;
+  return `${when} from ${sources} source${sources === 1 ? "" : "s"}`;
 }
 
 export default async function WorkspaceScopePage({
@@ -224,7 +240,7 @@ export default async function WorkspaceScopePage({
           scopeKind={scope.kind}
           locale={locale}
           compactEmpty
-          contextGreeting={buildContextLine(scope.name, workspaceKnows)}
+          contextGreeting={`What should we work through for ${scope.name}?`}
           promptSuggestions={effectiveSuggestions}
         />
       }
@@ -261,7 +277,7 @@ function buildCommandActions({
       group: "Open",
       label: `${scopeName} memory`,
       href: "/workspace/memory",
-      hint: "Saved rules and facts",
+      hint: "Saved context",
     },
     {
       id: "people",

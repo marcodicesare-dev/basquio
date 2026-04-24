@@ -149,7 +149,7 @@ async function buildSuggestionsUncached({
   }
 
   for (const memory of memories.slice(0, 2)) {
-    const label = memory.path || memory.memory_type;
+    const label = formatMemoryLabel(memory.path || memory.memory_type);
     const prompt = scopeName
       ? text(locale, "memory-scope-prompt", { label, scopeName })
       : text(locale, "memory-home-prompt", { label });
@@ -165,7 +165,7 @@ async function buildSuggestionsUncached({
   }
 
   for (const doc of docs.slice(0, 3)) {
-    const prompt = text(locale, "summarize-doc", { filename: doc.filename });
+    const prompt = text(locale, "summarize-doc", { filename: formatMemoryLabel(doc.filename) });
     if (promptsCovered.has(prompt.toLowerCase())) continue;
     suggestions.push({
       id: `summarize-${doc.id}`,
@@ -208,6 +208,24 @@ function formatRelative(iso: string, locale: "en" | "it"): string {
   return locale === "it" ? `${days} g fa` : `${days}d ago`;
 }
 
+function formatMemoryLabel(value: string): string {
+  const leaf = value.split("/").filter(Boolean).pop() ?? value;
+  const withoutExtension = leaf.replace(/\.[a-z0-9]+$/i, "");
+  const cleaned = withoutExtension
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "saved context";
+  return cleaned
+    .split(" ")
+    .map((word, index) => {
+      if (/^[A-Z0-9]{2,}$/.test(word)) return word;
+      const lower = word.toLowerCase();
+      return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    })
+    .join(" ");
+}
+
 function text(
   locale: "en" | "it",
   key:
@@ -231,15 +249,15 @@ function text(
       case "use-in-chat":
         return "Usa in chat";
       case "memory-scope-prompt":
-        return `Applica ${v("label")} al prossimo brief per ${v("scopeName")}.`;
+        return `Usa ${v("label")} nel prossimo brief per ${v("scopeName")}.`;
       case "memory-home-prompt":
-        return `Mostrami come usare ${v("label")} nel prossimo lavoro.`;
+        return `Usa ${v("label")} nel prossimo lavoro.`;
       case "memory-reason":
-        return `Aggiornato ${v("age")}. Buon momento per trasformarlo in azione.`;
+        return `Memoria salvata ${v("age")}.`;
       case "summarize-doc":
-        return `Riassumi i punti chiave in ${v("filename")}.`;
+        return `Riassumi ${v("filename")}.`;
       case "indexed-reason":
-        return `Indicizzato ${v("age")}. Nessun riassunto ancora salvato.`;
+        return `Indicizzato ${v("age")}.`;
       case "brand-narrative":
         return `Scrivi la narrativa Q1 per ${v("name")}.`;
       case "category-map":
@@ -254,15 +272,15 @@ function text(
     case "use-in-chat":
       return "Use in chat";
     case "memory-scope-prompt":
-      return `Apply ${v("label")} to the next ${v("scopeName")} brief.`;
+      return `Use ${v("label")} for the next ${v("scopeName")} brief.`;
     case "memory-home-prompt":
-      return `Show me how to use ${v("label")} in the next piece of work.`;
+      return `Use ${v("label")} in the next piece of work.`;
     case "memory-reason":
-      return `Updated ${v("age")}. Good moment to turn it into action.`;
+      return `Saved memory updated ${v("age")}.`;
     case "summarize-doc":
-      return `Summarize the key findings in ${v("filename")}.`;
+      return `Summarize ${v("filename")}.`;
     case "indexed-reason":
-      return `Indexed ${v("age")}. No summary deliverable yet.`;
+      return `Indexed ${v("age")}.`;
     case "brand-narrative":
       return `Write the Q1 narrative for ${v("name")}.`;
     case "category-map":

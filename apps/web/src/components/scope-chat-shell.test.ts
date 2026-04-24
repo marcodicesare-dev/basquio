@@ -76,10 +76,10 @@ describe("ScopeChatShell", () => {
         rulesCount: 4,
         factsCount: 0,
         articlesCount: 0,
-        lastResearchLabel: "21h, 0 sources",
+        lastResearchLabel: "21 hours ago",
       }),
     ).toBe(
-      "Ask about Affinity Petcare. I will use saved context and recent work. Last updated 21h, 0 sources.",
+      "Ask about Affinity Petcare. I will use saved context and recent work. Last updated 21 hours ago.",
     );
   });
 });
