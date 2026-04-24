@@ -35,7 +35,7 @@ describe("ScopeCommandPalette", () => {
           },
           {
             id: "deliverable",
-            group: "Deliverable",
+            group: "Chat",
             label: "Retailer readout",
             href: "/workspace/chat/chat-1",
           },
@@ -43,11 +43,13 @@ describe("ScopeCommandPalette", () => {
       }),
     );
 
-    const trigger = screen.getByRole("button", { name: "Open Affinity Petcare command palette" });
+    const trigger = screen.getByRole("button", {
+      name: "Open workspace search for Affinity Petcare",
+    });
     trigger.focus();
     fireEvent.click(trigger);
 
-    const input = await screen.findByLabelText("Search workspace commands");
+    const input = await screen.findByLabelText("Search workspace");
     await waitFor(() => expect(document.activeElement).toBe(input));
 
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowDown" });
@@ -55,7 +57,7 @@ describe("ScopeCommandPalette", () => {
     expect(mocks.push).toHaveBeenCalledWith("/workspace/chat/chat-1");
 
     fireEvent.click(trigger);
-    const reopenedInput = await screen.findByLabelText("Search workspace commands");
+    const reopenedInput = await screen.findByLabelText("Search workspace");
     await waitFor(() => expect(document.activeElement).toBe(reopenedInput));
 
     const links = screen.getAllByRole("link");

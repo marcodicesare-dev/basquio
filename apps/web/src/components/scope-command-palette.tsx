@@ -9,7 +9,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Command, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { MagnifyingGlass, X } from "@phosphor-icons/react";
 
 export type ScopeCommandAction = {
   id: string;
@@ -133,10 +133,11 @@ export function ScopeCommandPalette({
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Open ${scopeName} command palette`}
+        aria-label={`Open workspace search for ${scopeName}`}
       >
-        <Command size={14} weight="bold" />
-        <span>⌘K</span>
+        <MagnifyingGlass size={14} weight="bold" aria-hidden />
+        <span className="wbeta-scope-chat-command-label">Search</span>
+        <kbd className="wbeta-scope-chat-command-kbd">⌘K</kbd>
       </button>
 
       {open ? (
@@ -146,7 +147,7 @@ export function ScopeCommandPalette({
             className="wbeta-command-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Workspace command palette"
+            aria-label="Workspace search"
             onKeyDown={handleDialogKeyDown}
             onMouseDown={(event) => event.stopPropagation()}
           >
@@ -156,12 +157,12 @@ export function ScopeCommandPalette({
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Switch scopes, open memory, jump to deliverables"
-                aria-label="Search workspace commands"
+                placeholder="Search scopes, chats, people, and memory"
+                aria-label="Search workspace"
                 aria-controls="scope-command-results"
                 aria-activedescendant={activeAction ? `scope-command-${activeAction.id}` : undefined}
               />
-              <button type="button" onClick={closePalette} aria-label="Close command palette">
+              <button type="button" onClick={closePalette} aria-label="Close workspace search">
                 <X size={14} weight="bold" />
               </button>
             </div>
@@ -188,7 +189,7 @@ export function ScopeCommandPalette({
               ))}
             </ul>
             {filtered.length === 0 ? (
-              <p className="wbeta-command-empty">No matching command.</p>
+              <p className="wbeta-command-empty">No results.</p>
             ) : null}
           </div>
         </div>

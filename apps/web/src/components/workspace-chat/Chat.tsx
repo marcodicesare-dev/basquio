@@ -637,7 +637,7 @@ export function WorkspaceChat({
             <p className="wbeta-ai-chat-empty-body">
               {contextGreeting ??
                 (scopeName
-                  ? `Ready with ${scopeName} memory. What is on your mind?`
+                  ? `Ask about ${scopeName}. I will use this scope's saved context.`
                   : copy.workspaceEmptyBody)}
             </p>
           ) : (
@@ -661,7 +661,7 @@ export function WorkspaceChat({
               <p className="wbeta-ai-chat-empty-body">
                 {contextGreeting ??
                   (scopeName
-                    ? `Pulls from ${scopeName} memory, uploads, and prior answers. Every claim cited.`
+                    ? `Uses saved context, uploads, and prior answers for ${scopeName}. Every claim cites its source.`
                     : copy.workspaceEmptyBody)}
               </p>
             </>

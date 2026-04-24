@@ -199,7 +199,7 @@ export default async function WorkspaceScopePage({
             id: `fallback-${scope.id}`,
             kind: "investigate" as const,
             prompt: `Ask what changed in ${scope.name} this week.`,
-            reason: "Uses scoped chats, memory, and indexed documents.",
+            reason: "Uses this scope's chats and saved context.",
           },
         ];
   const commandActions = buildCommandActions({
@@ -261,18 +261,18 @@ function buildCommandActions({
       group: "Open",
       label: `${scopeName} memory`,
       href: "/workspace/memory",
-      hint: "Rules, facts, source notes",
+      hint: "Saved rules and facts",
     },
     {
       id: "people",
       group: "Open",
-      label: `${scopeName} stakeholders`,
+      label: `${scopeName} people`,
       href: `/workspace/people?scope=${scopeId}`,
       hint: "People and preferences",
     },
     ...deliverables.slice(0, 5).map((deliverable) => ({
       id: `deliverable-${deliverable.id}`,
-      group: "Deliverable",
+      group: "Chat",
       label: deliverable.title,
       href: deliverable.href,
       hint: deliverable.updatedAt,

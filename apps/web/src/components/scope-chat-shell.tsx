@@ -64,8 +64,7 @@ export function ScopeChatShell({
         <summary>
           <span>{scope.name}</span>
           <small>
-            {workspaceKnows.rulesCount} rules · {workspaceKnows.factsCount} facts ·{" "}
-            {deliverables.length} deliverables
+            Saved context · {deliverables.length} recent chat{deliverables.length === 1 ? "" : "s"}
           </small>
         </summary>
         <div className="wbeta-scope-mobile-context-body">
@@ -134,17 +133,14 @@ function buildCaption({
     parts.push(`${stakeholderCount} stakeholder${stakeholderCount === 1 ? "" : "s"}`);
   }
   if (deliverableCount > 0) {
-    parts.push(`${deliverableCount} deliverable${deliverableCount === 1 ? "" : "s"}`);
+    parts.push(`${deliverableCount} chat${deliverableCount === 1 ? "" : "s"}`);
   }
   return parts.join(" · ");
 }
 
 export function buildContextLine(scopeName: string, workspaceKnows: WorkspaceKnowsSummary): string {
-  const facts = `${workspaceKnows.factsCount} fact${workspaceKnows.factsCount === 1 ? "" : "s"}`;
-  const rules = `${workspaceKnows.rulesCount} rule${workspaceKnows.rulesCount === 1 ? "" : "s"}`;
-  const articles = `${workspaceKnows.articlesCount} article${workspaceKnows.articlesCount === 1 ? "" : "s"}`;
   const research = workspaceKnows.lastResearchLabel
-    ? ` Last research: ${workspaceKnows.lastResearchLabel}.`
+    ? ` Last updated ${workspaceKnows.lastResearchLabel}.`
     : "";
-  return `Ready with ${scopeName} memory: ${rules}, ${facts}, ${articles}.${research} What is on your mind?`;
+  return `Ask about ${scopeName}. I will use saved context and recent work.${research}`;
 }

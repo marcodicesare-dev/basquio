@@ -4,7 +4,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import React, { type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ScopeChatShell } from "@/components/scope-chat-shell";
+import { ScopeChatShell, buildContextLine } from "@/components/scope-chat-shell";
 
 type ScopeChatShellProps = ComponentProps<typeof ScopeChatShell>;
 
@@ -40,14 +40,20 @@ describe("ScopeChatShell", () => {
 
     const chat = screen.getByRole("region", { name: "Chat with Affinity Petcare" });
     expect(within(chat).getByRole("button", { name: "Summarize Affinity Petcare" })).not.toBeNull();
-    expect(screen.getAllByRole("heading", { name: "Suggested next" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("heading", { name: "Try next" }).length).toBeGreaterThan(0);
     expect(document.querySelector(".wbeta-suggestion-card")).toBeNull();
   });
 
   it("renders rail context without the retired briefing stack classes", () => {
     render(React.createElement(ScopeChatShell, baseProps()));
 
-    expect(screen.getAllByRole("heading", { name: "Recent deliverables" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("heading", { name: "Recent chats" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Context").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("People").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Chats").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Rules")).toBeNull();
+    expect(screen.queryByText("Facts")).toBeNull();
+    expect(screen.queryByText("Articles")).toBeNull();
     expect(document.querySelector(".wbeta-scope-landing")).toBeNull();
     expect(document.querySelector(".wbeta-scope-three-col")).toBeNull();
   });
@@ -57,10 +63,24 @@ describe("ScopeChatShell", () => {
 
     const mobileContext = document.querySelector(".wbeta-scope-mobile-context") as HTMLElement;
     const mobile = within(mobileContext);
+    expect(mobile.getByText("Saved context · 1 recent chat")).not.toBeNull();
     expect(mobile.getByRole("complementary", { name: "Mobile scope context" })).not.toBeNull();
     expect(mobile.getByRole("link", { name: /Retailer readout/ })).not.toBeNull();
     expect(mobile.getByRole("button", { name: /Summarize Affinity Petcare/ })).not.toBeNull();
     expect(mobile.getByRole("complementary", { name: "Workspace memory" })).not.toBeNull();
+  });
+
+  it("uses plain language in the scope context line", () => {
+    expect(
+      buildContextLine("Affinity Petcare", {
+        rulesCount: 4,
+        factsCount: 0,
+        articlesCount: 0,
+        lastResearchLabel: "21h, 0 sources",
+      }),
+    ).toBe(
+      "Ask about Affinity Petcare. I will use saved context and recent work. Last updated 21h, 0 sources.",
+    );
   });
 });
 

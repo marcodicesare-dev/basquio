@@ -100,32 +100,31 @@ export function WorkspaceContextRail({
             <h2 className="wbeta-rail-title">{scope.name}</h2>
             <p className="wbeta-rail-scope-caption">{scope.caption}</p>
           </div>
-          <span className="wbeta-rail-command-hint" aria-label="Open command palette">
-            ⌘K
-          </span>
         </header>
       ) : null}
 
       {scopeSummary ? (
-        <ul className="wbeta-rail-stats" aria-label="Scope memory summary">
+        <ul className="wbeta-rail-stats" aria-label="Scope summary">
           <li>
-            <span className="wbeta-rail-stat-num">{scopeSummary.rulesCount}</span>
-            <span className="wbeta-rail-stat-label">Rules</span>
+            <span className="wbeta-rail-stat-num">
+              {scopeSummary.rulesCount + scopeSummary.factsCount + scopeSummary.articlesCount}
+            </span>
+            <span className="wbeta-rail-stat-label">Context</span>
           </li>
           <li>
-            <span className="wbeta-rail-stat-num">{scopeSummary.factsCount}</span>
-            <span className="wbeta-rail-stat-label">Facts</span>
+            <span className="wbeta-rail-stat-num">{stakeholders.length}</span>
+            <span className="wbeta-rail-stat-label">People</span>
           </li>
           <li>
-            <span className="wbeta-rail-stat-num">{scopeSummary.articlesCount}</span>
-            <span className="wbeta-rail-stat-label">Articles</span>
+            <span className="wbeta-rail-stat-num">{deliverables.length}</span>
+            <span className="wbeta-rail-stat-label">Chats</span>
           </li>
         </ul>
       ) : null}
 
       {scopeSummary?.lastResearchLabel ? (
         <p className="wbeta-rail-context-line">
-          Last research: {scopeSummary.lastResearchLabel}
+          Last update: {scopeSummary.lastResearchLabel}
         </p>
       ) : null}
 
@@ -155,7 +154,7 @@ export function WorkspaceContextRail({
       {deliverables.length > 0 ? (
         <section className="wbeta-rail-section">
           <header className="wbeta-rail-section-head">
-            <h3 className="wbeta-rail-section-title">Recent deliverables</h3>
+            <h3 className="wbeta-rail-section-title">Recent chats</h3>
             <span className="wbeta-rail-section-meta">{deliverables.length}</span>
           </header>
           <ul className="wbeta-rail-list">
@@ -174,7 +173,7 @@ export function WorkspaceContextRail({
       {suggestions.length > 0 ? (
         <section className="wbeta-rail-section">
           <header className="wbeta-rail-section-head">
-            <h3 className="wbeta-rail-section-title">Suggested next</h3>
+            <h3 className="wbeta-rail-section-title">Try next</h3>
           </header>
           <ul className="wbeta-rail-list">
             {suggestions.slice(0, 3).map((suggestion) => (
