@@ -16,12 +16,14 @@ export function WorkspaceShell({
   viewer,
   scopeTree,
   scopeCounts,
+  recentConversations,
   locale = "en",
   children,
 }: {
   viewer: ViewerState;
   scopeTree: ScopeTree;
   scopeCounts: Record<string, ScopeCounts>;
+  recentConversations?: Array<{ id: string; title: string; lastMessageAt: string }>;
   locale?: WorkspaceLocale;
   children: ReactNode;
 }) {
@@ -69,6 +71,7 @@ export function WorkspaceShell({
         <WorkspaceSidebar
           tree={scopeTree}
           counts={scopeCounts}
+          recentConversations={recentConversations ?? []}
           copy={copy.sidebar}
           onNavigate={() => setMobileOpen(false)}
         />

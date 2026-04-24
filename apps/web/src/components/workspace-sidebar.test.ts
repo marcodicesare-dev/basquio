@@ -145,6 +145,34 @@ describe("WorkspaceSidebar", () => {
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(mocks.push).not.toHaveBeenCalled();
   });
+
+  it("marks the current recent chat instead of Home on chat pages", () => {
+    mocks.pathname = "/workspace/chat/chat-1";
+
+    render(
+      React.createElement(WorkspaceSidebar, {
+        tree: {
+          client: [],
+          category: [],
+          function: [],
+          system: [],
+        },
+        counts: {},
+        recentConversations: [
+          {
+            id: "chat-1",
+            title: "Retailer readout",
+            lastMessageAt: "2026-04-24T12:00:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByRole("link", { name: "Home" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: /Retailer readout/ }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+  });
 });
 
 function scope(id: string, kind: WorkspaceScope["kind"], name: string, slug: string): WorkspaceScope {

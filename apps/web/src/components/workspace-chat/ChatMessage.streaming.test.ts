@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
@@ -36,6 +36,52 @@ describe("ChatMessage streaming render", () => {
     rerender(React.createElement(ChatMessage, { message, isStreaming: false }));
 
     expect(mocks.reactMarkdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses streamed reasoning once answer text is present", () => {
+    const message = {
+      id: "m2",
+      role: "assistant",
+      parts: [
+        { type: "reasoning", text: "Checking workspace memory." },
+        { type: "text", text: "The answer starts now." },
+      ],
+    } as unknown as UIMessage;
+
+    render(React.createElement(ChatMessage, { message, isStreaming: true }));
+
+    expect(screen.getByText("Show thinking")).not.toBeNull();
+    expect((document.querySelector(".wbeta-ai-reasoning") as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it("renders an inline tool call chip for active tools", () => {
+    const message = {
+      id: "m3",
+      role: "assistant",
+      parts: [{ type: "tool-webSearch", state: "input-available", input: { query: "coffee" } }],
+    } as unknown as UIMessage;
+
+    render(React.createElement(ChatMessage, { message, isStreaming: true }));
+
+    expect(screen.getByText("Using webSearch")).not.toBeNull();
+  });
+
+  it("summarizes completed webSearch tool output", () => {
+    const message = {
+      id: "m4",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-webSearch",
+          state: "output-available",
+          output: { results: [{ title: "A" }, { title: "B" }] },
+        },
+      ],
+    } as unknown as UIMessage;
+
+    render(React.createElement(ChatMessage, { message, isStreaming: false }));
+
+    expect(screen.getByText("Used webSearch, 2 results")).not.toBeNull();
   });
 });
 

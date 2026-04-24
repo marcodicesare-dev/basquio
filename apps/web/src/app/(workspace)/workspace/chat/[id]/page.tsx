@@ -3,9 +3,8 @@ import { headers } from "next/headers";
 import type { UIMessage } from "ai";
 
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
-import { WorkspaceContextRail } from "@/components/workspace-context-rail";
 import { resolveWorkspaceLocale } from "@/i18n";
-import { getConversation, listConversations } from "@/lib/workspace/conversations";
+import { getConversation } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +36,6 @@ export default async function WorkspaceChatPage({
 
   const initialMessages = (Array.isArray(convo.messages) ? convo.messages : []) as UIMessage[];
 
-  const recentConversations = await listConversations({
-    workspaceId: workspace.id,
-    limit: 15,
-  }).catch(() => []);
-
   return (
     <div className="wbeta-workspace-layout">
       <section className="wbeta-chat-pane" aria-label="Conversation">
@@ -52,16 +46,6 @@ export default async function WorkspaceChatPage({
           locale={locale}
         />
       </section>
-
-      <WorkspaceContextRail
-        entityGroups={[]}
-        recentConversations={recentConversations.map((c) => ({
-          id: c.id,
-          title: c.title ?? "Untitled",
-          lastMessageAt: c.last_message_at,
-          isCurrent: c.id === convo.id,
-        }))}
-      />
     </div>
   );
 }

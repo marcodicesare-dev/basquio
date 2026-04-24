@@ -37,6 +37,33 @@ describe("ChatMessage inline suggestions", () => {
     expect(onSendFollowUp).toHaveBeenCalledWith("Turn the last answer into a concise memo.");
     expect(screen.queryByText("You might also want to:")).toBeNull();
   });
+
+  it("prefers model-provided metadata suggestions when present", () => {
+    const onSendFollowUp = vi.fn();
+    render(
+      React.createElement(ChatMessage, {
+        message: {
+          ...assistantMessage("m2", "Answer with a model suggestion."),
+          metadata: {
+            suggestions: [
+              {
+                label: "Build slide",
+                prompt: "Turn this into a slide outline.",
+              },
+            ],
+          },
+        },
+        isStreaming: false,
+        showInlineSuggestions: true,
+        onSendFollowUp,
+      }),
+    );
+
+    const chip = screen.getByRole("button", { name: /turn this into a slide outline/i });
+    fireEvent.click(chip);
+
+    expect(onSendFollowUp).toHaveBeenCalledWith("Turn this into a slide outline.");
+  });
 });
 
 function assistantMessage(id: string, text: string): UIMessage {

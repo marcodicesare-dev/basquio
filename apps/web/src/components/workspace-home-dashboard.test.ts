@@ -27,26 +27,22 @@ describe("WorkspaceHomeDashboard", () => {
   it("renders the populated workspace home with capped suggestions and chat", () => {
     render(React.createElement(WorkspaceHomeDashboard, baseProps()));
 
-    expect(screen.getByText("Good morning, Marco")).not.toBeNull();
-    expect(screen.getByText("7")).not.toBeNull();
-    expect(screen.getByText("Affinity Petcare")).not.toBeNull();
-    expect(screen.getByText("Updated 2h")).not.toBeNull();
-    expect(screen.getByText("Retailer margin readout")).not.toBeNull();
     expect(screen.getByTestId("workspace-chat")).not.toBeNull();
     expect(screen.queryByText("Suggested for today")).toBeNull();
+    expect(screen.queryByText("Good morning, Marco")).toBeNull();
   });
 
-  it("places workspace chat directly after the greeting", () => {
+  it("renders workspace chat as the only main surface", () => {
     render(React.createElement(WorkspaceHomeDashboard, baseProps()));
 
     const home = document.querySelector(".wbeta-home");
     const chat = screen.getByTestId("workspace-chat").parentElement;
 
-    expect(home?.children[0]?.classList.contains("wbeta-home-hero")).toBe(true);
-    expect(home?.children[1]).toBe(chat);
+    expect(home?.children).toHaveLength(1);
+    expect(home?.children[0]).toBe(chat);
   });
 
-  it("shows sparse workspace guidance when core context is missing", () => {
+  it("keeps sparse workspaces chat-first", () => {
     render(
       React.createElement(
         WorkspaceHomeDashboard,
@@ -65,11 +61,8 @@ describe("WorkspaceHomeDashboard", () => {
       ),
     );
 
-    expect(screen.getByText("Add the pieces that make answers feel yours.")).not.toBeNull();
-    expect(screen.getByText("Add a stakeholder")).not.toBeNull();
-    expect(screen.getByText("Upload one brief")).not.toBeNull();
-    expect(screen.getByText("Teach one rule")).not.toBeNull();
-    expect(screen.getByText("Stats appear after a week of activity.")).not.toBeNull();
+    expect(screen.getByTestId("workspace-chat")).not.toBeNull();
+    expect(screen.queryByText("Add the pieces that make answers feel yours.")).toBeNull();
   });
 
   it("renders the brand-new onboarding entry without the chat surface", () => {

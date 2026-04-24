@@ -199,7 +199,7 @@ describe("WorkspaceChat composer", () => {
     rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
     expect(screen.getByText("What changed in this account?")).not.toBeNull();
-    expect(screen.getByText("Reading Affinity Petcare context")).not.toBeNull();
+    expect(screen.getByText("Thinking...")).not.toBeNull();
     expect(screen.getByText(/^\d+\.\ds$/)).not.toBeNull();
   });
 
@@ -227,7 +227,7 @@ describe("WorkspaceChat composer", () => {
     rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Reading Affinity Petcare context")).not.toBeNull();
+      expect(screen.getByText("Thinking...")).not.toBeNull();
     });
     expect(screen.getAllByText("What is the next move?")).toHaveLength(1);
   });
@@ -272,7 +272,7 @@ describe("WorkspaceChat composer", () => {
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "end", behavior: "auto" });
   });
 
-  it("appends the pending turn at the bottom of an existing chat", () => {
+  it("appends the pending turn at the bottom of an existing chat", async () => {
     mocks.messages = [
       {
         id: "user-1",
@@ -292,11 +292,13 @@ describe("WorkspaceChat composer", () => {
     });
     fireEvent.submit(document.querySelector(".wbeta-ai-chat-form") as HTMLFormElement);
 
-    const renderedMessages = Array.from(document.querySelectorAll(".wbeta-ai-msg")).map(
-      (message) => message.textContent ?? "",
-    );
-    expect(renderedMessages.at(-2)).toContain("What changed now?");
-    expect(renderedMessages.at(-1)).toContain("Reading Affinity Petcare context");
+    await waitFor(() => {
+      const renderedMessages = Array.from(document.querySelectorAll(".wbeta-ai-msg")).map(
+        (message) => message.textContent ?? "",
+      );
+      expect(renderedMessages.at(-2)).toContain("What changed now?");
+      expect(renderedMessages.at(-1)).toContain("Thinking...");
+    });
   });
 
   it("keeps an uploaded file attached when memory indexing fails", async () => {

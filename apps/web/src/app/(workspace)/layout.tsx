@@ -6,6 +6,7 @@ import { WorkspaceShell } from "@/components/workspace-shell";
 import { resolveWorkspaceLocale } from "@/i18n";
 import { buildSignInPath, getViewerState } from "@/lib/supabase/auth";
 import { isTeamBetaEmail } from "@/lib/team-beta";
+import { listConversations } from "@/lib/workspace/conversations";
 import { countByScope, listScopesGrouped, type ScopeCounts } from "@/lib/workspace/scopes";
 
 export const metadata = {
@@ -29,9 +30,10 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     notFound();
   }
 
-  const [scopeTree, countsMap] = await Promise.all([
+  const [scopeTree, countsMap, recentConversations] = await Promise.all([
     listScopesGrouped().catch(() => ({ client: [], category: [], function: [], system: [] })),
     countByScope().catch(() => new Map<string, ScopeCounts>()),
+    listConversations({ limit: 10 }).catch(() => []),
   ]);
 
   const scopeCounts: Record<string, ScopeCounts> = {};
@@ -44,6 +46,11 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       viewer={viewer}
       scopeTree={scopeTree}
       scopeCounts={scopeCounts}
+      recentConversations={recentConversations.map((conversation) => ({
+        id: conversation.id,
+        title: conversation.title ?? "Untitled",
+        lastMessageAt: conversation.last_message_at,
+      }))}
       locale={resolveWorkspaceLocale(headersList.get("accept-language"))}
     >
       {children}

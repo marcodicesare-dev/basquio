@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   CaretDown,
   CaretRight,
@@ -10,6 +10,7 @@ import {
   Presentation,
   ThumbsDown,
   ThumbsUp,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import type { UIMessage } from "ai";
 
@@ -31,6 +32,10 @@ import {
 } from "@/components/workspace-chat/ToolChips";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
+import {
+  parseFollowUpSuggestions,
+  suggestionsFromMessageMetadata,
+} from "@/lib/workspace/chat-followup-suggestions";
 
 type ToolPart = {
   type: string;
@@ -77,10 +82,11 @@ function gatherCitations(message: UIMessage): CitationInline[] {
 
 function messageToMarkdown(message: UIMessage): string {
   const parts = (message.parts ?? []) as unknown as Part[];
-  return parts
+  const text = parts
     .filter((p) => p.type === "text")
     .map((p) => p.text ?? "")
     .join("\n\n");
+  return parseFollowUpSuggestions(text).text;
 }
 
 type ChatMessageProps = {
@@ -172,6 +178,10 @@ export const ChatMessage = memo(function ChatMessage({
   }
 
   const parts = useMemo(() => (message.parts ?? []) as unknown as Part[], [message]);
+  const hasAssistantText = useMemo(
+    () => parts.some((part) => part.type === "text" && (part.text ?? "").trim().length > 0),
+    [parts],
+  );
   const lastPartIndex = parts.length - 1;
   const toolPartOrdinals = useMemo(() => {
     const ordinals = new Map<number, number>();
@@ -185,7 +195,11 @@ export const ChatMessage = memo(function ChatMessage({
     return ordinals;
   }, [parts]);
   const inlineSuggestions = useMemo(
-    () => deriveInlineSuggestions(message, citations, Boolean(scopeSignal(message))),
+    () => {
+      const metadataSuggestions = deriveMetadataInlineSuggestions(message);
+      if (metadataSuggestions.length > 0) return metadataSuggestions;
+      return deriveInlineSuggestions(message, citations, Boolean(scopeSignal(message)));
+    },
     [message, citations],
   );
 
@@ -219,13 +233,29 @@ export const ChatMessage = memo(function ChatMessage({
         if (part.type === "reasoning") {
           const text = (part as { text?: string }).text ?? "";
           if (!text) return null;
-          return <ReasoningBlock key={i} text={text} isStreaming={isStreaming} />;
+          return (
+            <ReasoningStream
+              key={i}
+              text={text}
+              isStreaming={isStreaming}
+              hasAssistantText={hasAssistantText}
+            />
+          );
         }
         if (part.type?.startsWith("tool-")) {
           const toolPart = part as unknown as ToolPart;
           const toolName = part.type.slice(5);
           const state = (toolPart.state as string) || "input-available";
           const toolOrdinal = toolPartOrdinals.get(i) ?? 0;
+          const status = toolStatusFromPart(toolPart);
+          const callChip = (
+            <ToolCallChip
+              toolName={toolName}
+              toolStatus={status}
+              output={toolPart.output}
+              errorText={toolPart.errorText}
+            />
+          );
           const frame = (node: React.ReactNode) => (
             <ToolFrame key={i} compact={toolOrdinal > 3} label={toolFrameLabel(toolName)}>
               {node}
@@ -234,110 +264,146 @@ export const ChatMessage = memo(function ChatMessage({
           switch (toolName) {
             case "memory":
               return frame(
-                <MemoryReadChip
-                  state={state}
-                  input={toolPart.input as Parameters<typeof MemoryReadChip>[0]["input"]}
-                  output={toolPart.output as Parameters<typeof MemoryReadChip>[0]["output"]}
-                  errorText={toolPart.errorText}
-                />,
+                <>
+                  {callChip}
+                  <MemoryReadChip
+                    state={state}
+                    input={toolPart.input as Parameters<typeof MemoryReadChip>[0]["input"]}
+                    output={toolPart.output as Parameters<typeof MemoryReadChip>[0]["output"]}
+                    errorText={toolPart.errorText}
+                  />
+                </>,
               );
             case "retrieveContext":
               return frame(
-                <RetrieveContextChip
-                  state={state}
-                  input={toolPart.input as Parameters<typeof RetrieveContextChip>[0]["input"]}
-                  output={toolPart.output as Parameters<typeof RetrieveContextChip>[0]["output"]}
-                  errorText={toolPart.errorText}
-                />,
+                <>
+                  {callChip}
+                  <RetrieveContextChip
+                    state={state}
+                    input={toolPart.input as Parameters<typeof RetrieveContextChip>[0]["input"]}
+                    output={toolPart.output as Parameters<typeof RetrieveContextChip>[0]["output"]}
+                    errorText={toolPart.errorText}
+                  />
+                </>,
               );
             case "teachRule":
               return frame(
-                <TeachRuleCard
-                  state={state}
-                  input={toolPart.input as Parameters<typeof TeachRuleCard>[0]["input"]}
-                  output={toolPart.output as Parameters<typeof TeachRuleCard>[0]["output"]}
-                  errorText={toolPart.errorText}
-                />,
+                <>
+                  {callChip}
+                  <TeachRuleCard
+                    state={state}
+                    input={toolPart.input as Parameters<typeof TeachRuleCard>[0]["input"]}
+                    output={toolPart.output as Parameters<typeof TeachRuleCard>[0]["output"]}
+                    errorText={toolPart.errorText}
+                  />
+                </>,
               );
             case "showMetricCard":
               return frame(
-                <MetricCard
-                  state={state}
-                  input={toolPart.input as Parameters<typeof MetricCard>[0]["input"]}
-                />,
+                <>
+                  {callChip}
+                  <MetricCard
+                    state={state}
+                    input={toolPart.input as Parameters<typeof MetricCard>[0]["input"]}
+                  />
+                </>,
               );
             case "showStakeholderCard":
               return frame(
-                <StakeholderCard
-                  state={state}
-                  input={toolPart.input as Parameters<typeof StakeholderCard>[0]["input"]}
-                  output={toolPart.output as Parameters<typeof StakeholderCard>[0]["output"]}
-                />,
+                <>
+                  {callChip}
+                  <StakeholderCard
+                    state={state}
+                    input={toolPart.input as Parameters<typeof StakeholderCard>[0]["input"]}
+                    output={toolPart.output as Parameters<typeof StakeholderCard>[0]["output"]}
+                  />
+                </>,
               );
             case "saveFromPaste":
             case "scrapeUrl":
               return frame(
-                <ExtractionApprovalCard
-                  state={state}
-                  toolName={toolName}
-                  input={toolPart.input as Parameters<typeof ExtractionApprovalCard>[0]["input"]}
-                  output={toolPart.output as Parameters<typeof ExtractionApprovalCard>[0]["output"]}
-                  errorText={toolPart.errorText}
-                  onSendFollowUp={onSendFollowUp}
-                />,
+                <>
+                  {callChip}
+                  <ExtractionApprovalCard
+                    state={state}
+                    toolName={toolName}
+                    input={toolPart.input as Parameters<typeof ExtractionApprovalCard>[0]["input"]}
+                    output={toolPart.output as Parameters<typeof ExtractionApprovalCard>[0]["output"]}
+                    errorText={toolPart.errorText}
+                    onSendFollowUp={onSendFollowUp}
+                  />
+                </>,
               );
             case "editStakeholder":
               return frame(
-                <StakeholderEditApprovalCard
-                  state={state}
-                  output={toolPart.output as Parameters<typeof StakeholderEditApprovalCard>[0]["output"]}
-                  errorText={toolPart.errorText}
-                  onSendFollowUp={onSendFollowUp}
-                />,
+                <>
+                  {callChip}
+                  <StakeholderEditApprovalCard
+                    state={state}
+                    output={toolPart.output as Parameters<typeof StakeholderEditApprovalCard>[0]["output"]}
+                    errorText={toolPart.errorText}
+                    onSendFollowUp={onSendFollowUp}
+                  />
+                </>,
               );
             case "createStakeholder":
               return frame(
-                <StakeholderCreateApprovalCard
-                  state={state}
-                  output={toolPart.output as Parameters<typeof StakeholderCreateApprovalCard>[0]["output"]}
-                  errorText={toolPart.errorText}
-                  onSendFollowUp={onSendFollowUp}
-                />,
+                <>
+                  {callChip}
+                  <StakeholderCreateApprovalCard
+                    state={state}
+                    output={toolPart.output as Parameters<typeof StakeholderCreateApprovalCard>[0]["output"]}
+                    errorText={toolPart.errorText}
+                    onSendFollowUp={onSendFollowUp}
+                  />
+                </>,
               );
             case "editRule":
               return frame(
-                <RuleEditApprovalCard
-                  state={state}
-                  input={toolPart.input as Parameters<typeof RuleEditApprovalCard>[0]["input"]}
-                  output={toolPart.output as Parameters<typeof RuleEditApprovalCard>[0]["output"]}
-                  errorText={toolPart.errorText}
-                />,
+                <>
+                  {callChip}
+                  <RuleEditApprovalCard
+                    state={state}
+                    input={toolPart.input as Parameters<typeof RuleEditApprovalCard>[0]["input"]}
+                    output={toolPart.output as Parameters<typeof RuleEditApprovalCard>[0]["output"]}
+                    errorText={toolPart.errorText}
+                  />
+                </>,
               );
             case "draftBrief":
               return frame(
-                <BriefDraftCard
-                  state={state}
-                  output={toolPart.output as Parameters<typeof BriefDraftCard>[0]["output"]}
-                  onSendFollowUp={onSendFollowUp}
-                />,
+                <>
+                  {callChip}
+                  <BriefDraftCard
+                    state={state}
+                    output={toolPart.output as Parameters<typeof BriefDraftCard>[0]["output"]}
+                    onSendFollowUp={onSendFollowUp}
+                  />
+                </>,
               );
             case "explainBasquio":
               return frame(
-                <ExplainBasquioCard
-                  state={state}
-                  output={toolPart.output as Parameters<typeof ExplainBasquioCard>[0]["output"]}
-                />,
+                <>
+                  {callChip}
+                  <ExplainBasquioCard
+                    state={state}
+                    output={toolPart.output as Parameters<typeof ExplainBasquioCard>[0]["output"]}
+                  />
+                </>,
               );
             case "suggestServices":
               return frame(
-                <ServiceSuggestionCard
-                  state={state}
-                  output={toolPart.output as Parameters<typeof ServiceSuggestionCard>[0]["output"]}
-                  onSendFollowUp={onSendFollowUp}
-                />,
+                <>
+                  {callChip}
+                  <ServiceSuggestionCard
+                    state={state}
+                    output={toolPart.output as Parameters<typeof ServiceSuggestionCard>[0]["output"]}
+                    onSendFollowUp={onSendFollowUp}
+                  />
+                </>,
               );
             default:
-              return null;
+              return frame(callChip);
           }
         }
         return null;
@@ -549,14 +615,37 @@ function deriveInlineSuggestions(
   ];
 }
 
+function deriveMetadataInlineSuggestions(message: UIMessage): WorkspaceSuggestion[] {
+  return suggestionsFromMessageMetadata(message).map((suggestion, index) => ({
+    id: `inline-model-${message.id ?? "assistant"}-${index}`,
+    kind: "investigate",
+    prompt: suggestion.prompt,
+    reason: suggestion.label,
+  }));
+}
+
 function scopeSignal(message: UIMessage): string | null {
   const text = messageToMarkdown(message).toLowerCase();
   if (text.includes("scope") || text.includes("client") || text.includes("category")) return "scope";
   return null;
 }
 
-function ReasoningBlock({ text, isStreaming }: { text: string; isStreaming: boolean }) {
-  const [open, setOpen] = useState(false);
+function ReasoningStream({
+  text,
+  isStreaming,
+  hasAssistantText,
+}: {
+  text: string;
+  isStreaming: boolean;
+  hasAssistantText: boolean;
+}) {
+  const [open, setOpen] = useState(isStreaming && !hasAssistantText);
+
+  useEffect(() => {
+    if (isStreaming && !hasAssistantText) setOpen(true);
+    if (hasAssistantText) setOpen(false);
+  }, [hasAssistantText, isStreaming]);
+
   return (
     <details
       className="wbeta-ai-reasoning"
@@ -567,9 +656,84 @@ function ReasoningBlock({ text, isStreaming }: { text: string; isStreaming: bool
         <span className="wbeta-ai-reasoning-caret" aria-hidden>
           {open ? <CaretDown size={10} weight="bold" /> : <CaretRight size={10} weight="bold" />}
         </span>
-        <span>{isStreaming ? "Thinking" : "Thought for a moment"}</span>
+        <span>{isStreaming && !hasAssistantText ? "Thinking..." : "Show thinking"}</span>
       </summary>
       <pre className="wbeta-ai-reasoning-body">{text}</pre>
     </details>
   );
+}
+
+type ToolCallStatus = "using" | "used" | "error";
+
+function ToolCallChip({
+  toolName,
+  toolStatus,
+  output,
+  errorText,
+}: {
+  toolName: string;
+  toolStatus: ToolCallStatus;
+  output?: unknown;
+  errorText?: string;
+}) {
+  const [startedAt] = useState(() => Date.now());
+  const label =
+    toolStatus === "using"
+      ? `Using ${toolName}`
+      : toolStatus === "used"
+        ? `Used ${toolName}${toolOutputSummary(output)}`
+        : `${formatToolName(toolName)} failed`;
+  return (
+    <div className={`wbeta-ai-tool-call-chip wbeta-ai-tool-call-chip-${toolStatus}`}>
+      {toolStatus === "using" ? (
+        <span className="wbeta-ai-thinking-pulse" aria-hidden>
+          <span>•</span>
+          <span>•</span>
+          <span>•</span>
+        </span>
+      ) : toolStatus === "used" ? (
+        <CheckCircle size={13} weight="fill" />
+      ) : (
+        <WarningCircle size={13} weight="fill" />
+      )}
+      <span>{label}</span>
+      {toolStatus === "using" ? <ElapsedTimer startedAt={startedAt} /> : null}
+      {toolStatus === "error" && errorText ? <small>{errorText}</small> : null}
+    </div>
+  );
+}
+
+function ElapsedTimer({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const update = () => setElapsed((Date.now() - startedAt) / 1000);
+    update();
+    const interval = window.setInterval(update, 100);
+    return () => window.clearInterval(interval);
+  }, [startedAt]);
+
+  return <span className="wbeta-ai-tool-call-time">{elapsed.toFixed(1)}s</span>;
+}
+
+function toolStatusFromPart(part: ToolPart): ToolCallStatus {
+  if (part.errorText || part.state === "output-error") return "error";
+  if (part.output !== undefined || part.state === "output-available") return "used";
+  return "using";
+}
+
+function toolOutputSummary(output: unknown): string {
+  if (!output || typeof output !== "object") return "";
+  const resultCount = (output as { resultCount?: unknown; result_count?: unknown }).resultCount ??
+    (output as { result_count?: unknown }).result_count;
+  if (typeof resultCount === "number") return `, ${resultCount} results`;
+  const results = (output as { results?: unknown }).results;
+  if (Array.isArray(results)) return `, ${results.length} results`;
+  const chunks = (output as { chunks?: unknown }).chunks;
+  if (Array.isArray(chunks)) return `, ${chunks.length} sources`;
+  return "";
+}
+
+function formatToolName(toolName: string): string {
+  return toolName.replace(/([a-z])([A-Z])/g, "$1 $2");
 }

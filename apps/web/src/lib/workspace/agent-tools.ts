@@ -5,7 +5,6 @@ import { z } from "zod";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { assembleWorkspaceContext } from "@/lib/workspace/context";
-import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 import { createMemoryEntry, listMemoryEntries } from "@/lib/workspace/memory";
 import { getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes";
 import type { WorkspaceScope } from "@/lib/workspace/types";
@@ -22,6 +21,9 @@ import {
   explainBasquioTool,
   suggestServicesTool,
 } from "@/lib/workspace/agent-tools-editorial";
+import { analystCommentaryTool } from "@/lib/workspace/agent-tools-analyst-commentary";
+import { webSearchTool } from "@/lib/workspace/agent-tools-web-search";
+import { wrapChatTool } from "@/lib/workspace/chat-tool-telemetry";
 
 export type AgentCallContext = {
   workspaceId: string;
@@ -246,7 +248,7 @@ export function retrieveContextTool(ctx: AgentCallContext) {
  * KPI (value share, ROS, distribution, etc.) with a scope + period. Pure render
  * so the call context is not read.
  */
-export function showMetricCardTool(_ctx: AgentCallContext) {
+export function showMetricCardTool() {
   return tool({
     description:
       "Render a metric card component inline in the chat. Call this when the user's answer centers on a single KPI number.",
@@ -306,7 +308,7 @@ export function showStakeholderCardTool(ctx: AgentCallContext) {
  * Runs the user's question through Claude Sonnet with code_execution +
  * container_upload on every file attached to this conversation. The sub-call
  * reads the files with pandas/openpyxl and returns a cited markdown answer.
- * No pgvector round trip — used for structured/tabular data where retrieval
+ * No pgvector round trip. Used for structured/tabular data where retrieval
  * would lose the structure.
  */
 export function analyzeAttachedFileTool(ctx: AgentCallContext) {
@@ -379,21 +381,30 @@ export function listConversationFilesTool(ctx: AgentCallContext) {
 }
 
 export function getAllTools(ctx: AgentCallContext) {
-  return {
+  const tools = {
     memory: readMemoryTool(ctx),
     teachRule: teachRuleTool(ctx),
     editRule: editRuleTool(ctx),
     retrieveContext: retrieveContextTool(ctx),
     analyzeAttachedFile: analyzeAttachedFileTool(ctx),
+    analystCommentary: analystCommentaryTool(ctx),
     listConversationFiles: listConversationFilesTool(ctx),
-    showMetricCard: showMetricCardTool(ctx),
+    showMetricCard: showMetricCardTool(),
     showStakeholderCard: showStakeholderCardTool(ctx),
     editStakeholder: editStakeholderTool(ctx),
     createStakeholder: createStakeholderTool(ctx),
     saveFromPaste: saveFromPasteTool(ctx),
     scrapeUrl: scrapeUrlTool(ctx),
+    webSearch: webSearchTool(ctx),
     draftBrief: draftBriefTool(ctx),
     explainBasquio: explainBasquioTool(ctx),
     suggestServices: suggestServicesTool(ctx),
   } as const;
+
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, toolDef]) => [
+      name,
+      wrapChatTool(name, ctx, toolDef),
+    ]),
+  ) as typeof tools;
 }

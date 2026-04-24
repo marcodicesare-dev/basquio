@@ -87,6 +87,7 @@ export function WorkspaceChat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
+  const attachedFilesRef = useRef(new Map<string, File>());
   const router = useRouter();
 
   const updateAttachment = useCallback((localId: string, patch: Partial<AttachmentChip>) => {
@@ -96,6 +97,7 @@ export function WorkspaceChat({
   }, []);
 
   const removeAttachment = useCallback((localId: string) => {
+    attachedFilesRef.current.delete(localId);
     setAttachments((prev) => prev.filter((chip) => chip.localId !== localId));
   }, []);
 
@@ -156,6 +158,7 @@ export function WorkspaceChat({
             status: "uploading",
           },
         ]);
+        attachedFilesRef.current.set(localId, file);
         try {
           // Direct-to-storage upload flow owned by port-louis (prepare → PUT →
           // confirm). We layer the dual-lane attachment on top: the confirm
@@ -181,6 +184,7 @@ export function WorkspaceChat({
         } catch (uploadError) {
           const message =
             uploadError instanceof Error ? uploadError.message : "Upload failed.";
+          attachedFilesRef.current.delete(localId);
           updateAttachment(localId, { status: "upload-failed", message });
           setUpload({ kind: "error", message });
           continue;
@@ -272,6 +276,7 @@ export function WorkspaceChat({
     }),
     ...(initialMessages && initialMessages.length > 0 ? { messages: initialMessages } : {}),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    experimental_throttle: 60,
     onError: (err) => {
       setError(err?.message ?? "Something went wrong.");
       setPendingTurn(null);
@@ -292,12 +297,12 @@ export function WorkspaceChat({
         .some((message) => message.role === "user" && messageText(message).trim() === pendingTurn.text)
     : false;
   const showPendingUser = Boolean(pendingTurn) && !pendingUserAlreadyRendered;
-  const showAssistantActivity = isBusy;
+  const lastAssistantHasText =
+    lastMessage?.role === "assistant" && messageText(lastMessage).trim().length > 0;
+  const showAssistantActivity = isBusy && !(isStreaming && lastAssistantHasText);
   const activityCopy = getActivityCopy({
-    elapsed: pendingElapsed,
     hasPendingTurn: Boolean(pendingTurn),
     lastMessage,
-    scopeName,
   });
   const hasConversation = messages.length > 0 || showPendingUser || showAssistantActivity;
 
@@ -341,7 +346,7 @@ export function WorkspaceChat({
       setPendingElapsed((performance.now() - startedAt) / 1000);
     };
     update();
-    const interval = window.setInterval(update, 150);
+    const interval = window.setInterval(update, 100);
     return () => window.clearInterval(interval);
   }, [activeTurnStartedAt, isStreaming, pendingTurn]);
 
@@ -467,7 +472,7 @@ export function WorkspaceChat({
           }),
         );
       } catch {
-        // Ignore — next tick tries again.
+        // Ignore. The next tick tries again.
       }
     }, 4000);
     return () => clearInterval(interval);
@@ -524,7 +529,7 @@ export function WorkspaceChat({
       setActiveTurnStartedAt(startedAt);
       setPendingTurn({ text: trimmed, startedAt });
       try {
-        sendMessage({ text: trimmed });
+        sendCurrentMessage(sendMessage, trimmed, attachments, attachedFilesRef.current);
         setDraft("");
       } catch (sendError) {
         setPendingTurn(null);
@@ -532,7 +537,7 @@ export function WorkspaceChat({
         throw sendError;
       }
     },
-    [draft, isBusy, sendMessage],
+    [attachments, draft, isBusy, sendMessage],
   );
 
   const handleSendFollowUp = useCallback(
@@ -541,9 +546,9 @@ export function WorkspaceChat({
       const startedAt = performance.now();
       setActiveTurnStartedAt(startedAt);
       setPendingTurn({ text, startedAt });
-      sendMessage({ text });
+      sendCurrentMessage(sendMessage, text, attachments, attachedFilesRef.current);
     },
-    [isBusy, sendMessage],
+    [attachments, isBusy, sendMessage],
   );
 
   const handlePromptSuggestion = useCallback(
@@ -753,9 +758,9 @@ export function WorkspaceChat({
             <div className="wbeta-ai-msg wbeta-ai-msg-asst wbeta-ai-msg-pending-asst" role="status" aria-live="polite">
               <div className="wbeta-ai-thinking">
                 <span className="wbeta-ai-thinking-pulse" aria-hidden>
-                  <span />
-                  <span />
-                  <span />
+                  <span>•</span>
+                  <span>•</span>
+                  <span>•</span>
                 </span>
                 <span className="wbeta-ai-thinking-copy">
                   {activityCopy}
@@ -821,9 +826,21 @@ export function WorkspaceChat({
                 )}
               </span>
               <span className="wbeta-ai-chat-chip-body">
-                <span className="wbeta-ai-chat-chip-name" title={chip.filename}>
-                  {chip.filename}
-                </span>
+                {chip.documentId ? (
+                  <button
+                    type="button"
+                    className="wbeta-ai-chat-chip-name wbeta-ai-chat-chip-name-button"
+                    title={chip.filename}
+                    onClick={() => setPreviewAttachment(chip)}
+                    aria-label={`Open preview details for ${chip.filename}`}
+                  >
+                    {chip.filename}
+                  </button>
+                ) : (
+                  <span className="wbeta-ai-chat-chip-name" title={chip.filename}>
+                    {chip.filename}
+                  </span>
+                )}
                 <span className="wbeta-ai-chat-chip-meta">
                   {formatBytes(chip.sizeBytes)}
                   {chip.status === "uploading" ? " · uploading" : null}
@@ -976,62 +993,29 @@ export function WorkspaceChat({
       />
 
       {previewAttachment?.documentId ? (
-        <div
-          className="wbeta-ai-chat-preview-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label={previewAttachment.filename}
-          onClick={() => setPreviewAttachment(null)}
-        >
-          <div className="wbeta-ai-chat-preview-frame" onClick={(event) => event.stopPropagation()}>
-            <div className="wbeta-ai-chat-preview-bar">
-              <p>{previewAttachment.filename}</p>
-              <div className="wbeta-ai-chat-preview-actions">
-                <a
-                  href={getDocumentDownloadUrl(previewAttachment.documentId, conversationIdRef.current)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open original
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewAttachment(null)}
-                  aria-label={`Close preview for ${previewAttachment.filename}`}
-                >
-                  <X size={14} weight="bold" />
-                </button>
-              </div>
-            </div>
-            <img
-              src={getDocumentDownloadUrl(previewAttachment.documentId, conversationIdRef.current)}
-              alt={previewAttachment.filename}
-            />
-          </div>
-        </div>
+        <AttachmentPreviewDrawer
+          attachment={previewAttachment}
+          conversationId={conversationIdRef.current}
+          onClose={() => setPreviewAttachment(null)}
+        />
       ) : null}
     </section>
   );
 }
 
 function getActivityCopy({
-  elapsed,
   hasPendingTurn,
   lastMessage,
-  scopeName,
 }: {
-  elapsed: number;
   hasPendingTurn: boolean;
   lastMessage?: UIMessage;
-  scopeName?: string | null;
 }): string {
+  const activeTool = activeToolName(lastMessage);
+  if (activeTool) return `Using ${activeTool}`;
   if (!hasPendingTurn && lastMessage?.role === "assistant" && messageText(lastMessage).trim().length > 0) {
     return "Writing answer";
   }
-  const subject = scopeName ? `${scopeName} context` : "workspace context";
-  if (elapsed >= 8) return `Still working through ${subject}`;
-  if (elapsed >= 3) return `Searching ${subject}`;
-  return `Reading ${subject}`;
+  return "Thinking...";
 }
 
 function messageText(message: UIMessage): string {
@@ -1042,7 +1026,7 @@ function messageText(message: UIMessage): string {
 }
 
 function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return "—";
+  if (!bytes || bytes <= 0) return "-";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
@@ -1119,4 +1103,250 @@ function isImageAttachment(chip: AttachmentChip): boolean {
 
 function getDocumentDownloadUrl(documentId: string, conversationId: string): string {
   return `/api/workspace/documents/${documentId}/download?conversationId=${encodeURIComponent(conversationId)}`;
+}
+
+function getDocumentPreviewUrl(documentId: string, conversationId: string): string {
+  return `/api/workspace/documents/${documentId}/preview?conversationId=${encodeURIComponent(conversationId)}`;
+}
+
+function activeToolName(message?: UIMessage): string | null {
+  if (!message || message.role !== "assistant") return null;
+  const toolPart = [...(message.parts ?? [])]
+    .reverse()
+    .find((part) => part.type?.startsWith("tool-")) as
+    | { type?: string; state?: string; output?: unknown }
+    | undefined;
+  if (!toolPart?.type) return null;
+  const done = toolPart.state === "output-available" || toolPart.output !== undefined;
+  if (done) return null;
+  return toolPart.type.slice(5);
+}
+
+function sendCurrentMessage(
+  sendMessage: (message: { text: string; files?: FileList }) => unknown,
+  text: string,
+  attachments: AttachmentChip[],
+  fileMap: Map<string, File>,
+) {
+  const files = attachments
+    .filter((chip) => chip.status !== "upload-failed")
+    .map((chip) => fileMap.get(chip.localId))
+    .filter((file): file is File => Boolean(file));
+  const fileList = makeFileList(files);
+  if (fileList) {
+    sendMessage({ text, files: fileList });
+    for (const chip of attachments) fileMap.delete(chip.localId);
+    return;
+  }
+  sendMessage({ text });
+}
+
+function makeFileList(files: File[]): FileList | null {
+  if (files.length === 0 || typeof DataTransfer === "undefined") return null;
+  const transfer = new DataTransfer();
+  for (const file of files) transfer.items.add(file);
+  return transfer.files;
+}
+
+type AttachmentPreviewData =
+  | { kind: "text"; text: string }
+  | { kind: "spreadsheet"; sheets: Array<{ name: string; rows: string[][] }> }
+  | { kind: "unsupported"; message: string };
+
+function AttachmentPreviewDrawer({
+  attachment,
+  conversationId,
+  onClose,
+}: {
+  attachment: AttachmentChip;
+  conversationId: string;
+  onClose: () => void;
+}) {
+  const documentId = attachment.documentId as string;
+  const downloadUrl = getDocumentDownloadUrl(documentId, conversationId);
+  const previewUrl = getDocumentPreviewUrl(documentId, conversationId);
+  const kind = getAttachmentPreviewKind(attachment);
+  const [preview, setPreview] = useState<AttachmentPreviewData | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (kind !== "text" && kind !== "spreadsheet" && kind !== "document") {
+      setPreview(null);
+      setPreviewError(null);
+      return;
+    }
+    let cancelled = false;
+    setPreview(null);
+    setPreviewError(null);
+    fetch(previewUrl)
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as AttachmentPreviewData & {
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error ?? "Preview not available.");
+        return data;
+      })
+      .then((data) => {
+        if (!cancelled) setPreview(data);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPreviewError(error instanceof Error ? error.message : "Preview not available.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, previewUrl]);
+
+  return (
+    <div className="wbeta-ai-chat-preview-layer" role="presentation">
+      <button
+        type="button"
+        className="wbeta-ai-chat-preview-scrim"
+        onClick={onClose}
+        aria-label={`Close preview for ${attachment.filename}`}
+      />
+      <aside
+        className="wbeta-ai-chat-preview-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={attachment.filename}
+      >
+        <div className="wbeta-ai-chat-preview-bar">
+          <div>
+            <p>{attachment.filename}</p>
+            <span>{formatBytes(attachment.sizeBytes)}</span>
+          </div>
+          <div className="wbeta-ai-chat-preview-actions">
+            <a href={downloadUrl} target="_blank" rel="noreferrer">
+              Open original
+            </a>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={`Close preview for ${attachment.filename}`}
+            >
+              <X size={14} weight="bold" />
+            </button>
+          </div>
+        </div>
+        <div className="wbeta-ai-chat-preview-body">
+          {kind === "image" ? (
+            <img src={downloadUrl} alt={attachment.filename} />
+          ) : kind === "pdf" ? (
+            <iframe src={downloadUrl} title={attachment.filename} />
+          ) : kind === "text" || kind === "document" ? (
+            <TextPreview preview={preview} error={previewError} />
+          ) : kind === "spreadsheet" ? (
+            <SpreadsheetPreview preview={preview} error={previewError} />
+          ) : (
+            <div className="wbeta-ai-chat-preview-empty">
+              <p>Preview not supported. Open original to inspect the file.</p>
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function TextPreview({
+  preview,
+  error,
+}: {
+  preview: AttachmentPreviewData | null;
+  error: string | null;
+}) {
+  if (error) {
+    return (
+      <div className="wbeta-ai-chat-preview-empty">
+        <p>{error}</p>
+      </div>
+    );
+  }
+  if (!preview) {
+    return (
+      <div className="wbeta-ai-chat-preview-empty">
+        <p>Loading preview...</p>
+      </div>
+    );
+  }
+  if (preview.kind !== "text") {
+    return (
+      <div className="wbeta-ai-chat-preview-empty">
+        <p>Preview not supported. Open original to inspect the file.</p>
+      </div>
+    );
+  }
+  return <pre className="wbeta-ai-chat-preview-text">{preview.text}</pre>;
+}
+
+function SpreadsheetPreview({
+  preview,
+  error,
+}: {
+  preview: AttachmentPreviewData | null;
+  error: string | null;
+}) {
+  if (error) {
+    return (
+      <div className="wbeta-ai-chat-preview-empty">
+        <p>{error}</p>
+      </div>
+    );
+  }
+  if (!preview) {
+    return (
+      <div className="wbeta-ai-chat-preview-empty">
+        <p>Loading preview...</p>
+      </div>
+    );
+  }
+  if (preview.kind !== "spreadsheet" || preview.sheets.length === 0) {
+    return (
+      <div className="wbeta-ai-chat-preview-empty">
+        <p>Preview not supported. Open original to inspect the file.</p>
+      </div>
+    );
+  }
+  const sheet = preview.sheets[0];
+  return (
+    <div className="wbeta-ai-chat-preview-sheet">
+      <p>{sheet.name}</p>
+      <div className="wbeta-ai-chat-preview-table-wrap">
+        <table>
+          <tbody>
+            {sheet.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function getAttachmentPreviewKind(
+  attachment: AttachmentChip,
+): "image" | "pdf" | "text" | "spreadsheet" | "document" | "unsupported" {
+  const extension = (attachment.fileType || getFileExtension(attachment.filename)).toLowerCase();
+  if (["png", "jpg", "jpeg", "webp", "gif"].includes(extension)) return "image";
+  if (extension === "pdf") return "pdf";
+  if (["txt", "md", "gsp", "json", "yaml", "yml", "csv"].includes(extension)) return "text";
+  if (["xlsx", "xls"].includes(extension)) return "spreadsheet";
+  if (extension === "docx") return "document";
+  return "unsupported";
 }

@@ -1,10 +1,7 @@
-import Link from "next/link";
-import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 
 import { ScopeCommandPalette, type ScopeCommandAction } from "@/components/scope-command-palette";
-import { WorkspaceContextRail } from "@/components/workspace-context-rail";
-import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
+import type { WorkspaceLocale } from "@/i18n";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
 export type ScopeStakeholder = {
@@ -49,93 +46,23 @@ export function ScopeChatShell({
   commandActions: ScopeCommandAction[];
   locale?: WorkspaceLocale;
 }) {
-  const copy = getWorkspaceCopy(locale).scope;
-  const kindLabel = getKindLabel(scope.kind, copy);
-  const caption = buildCaption({
-    kindLabel,
-    stakeholderCount: stakeholders.length,
-    deliverableCount: deliverables.length,
-  });
-  const contextLine = buildContextLine(scope.name, workspaceKnows);
+  void stakeholders;
+  void workspaceKnows;
+  void deliverables;
+  void suggestions;
+  void memoryAside;
+  void locale;
 
   return (
     <div className="wbeta-workspace-layout wbeta-scope-chat-layout">
-      <details className="wbeta-scope-mobile-context">
-        <summary>
-          <span>{scope.name}</span>
-          <small>
-            Saved context · {deliverables.length} recent chat{deliverables.length === 1 ? "" : "s"}
-          </small>
-        </summary>
-        <div className="wbeta-scope-mobile-context-body">
-          <WorkspaceContextRail
-            ariaLabel="Mobile scope context"
-            scope={{ id: scope.id, name: scope.name, kindLabel, caption }}
-            scopeSummary={workspaceKnows}
-            stakeholders={stakeholders}
-            deliverables={deliverables}
-            suggestions={suggestions}
-            memoryAside={memoryAside}
-          />
-        </div>
-      </details>
-
       <section className="wbeta-chat-pane wbeta-scope-chat-pane" aria-label={`Chat with ${scope.name}`}>
-        <header className="wbeta-scope-chat-head">
-          <div>
-            <p className="wbeta-scope-chat-kicker">{kindLabel}</p>
-            <h1>{scope.name}</h1>
-            <p>{contextLine}</p>
-          </div>
+        <div className="wbeta-scope-chat-tools">
           <ScopeCommandPalette actions={commandActions} scopeName={scope.name} />
-        </header>
+        </div>
         {chat}
       </section>
-
-      <WorkspaceContextRail
-        scope={{ id: scope.id, name: scope.name, kindLabel, caption }}
-        scopeSummary={workspaceKnows}
-        stakeholders={stakeholders}
-        deliverables={deliverables}
-        suggestions={suggestions}
-        memoryAside={memoryAside}
-      />
-
-      <Link href="#workspace-chat" className="wbeta-scope-chat-skip">
-        Jump to composer
-        <ArrowRight size={12} weight="bold" />
-      </Link>
     </div>
   );
-}
-
-function getKindLabel(
-  kind: string,
-  copy: ReturnType<typeof getWorkspaceCopy>["scope"],
-): string {
-  if (kind === "client") return copy.client;
-  if (kind === "category") return copy.category;
-  if (kind === "function") return copy.function;
-  return kind.charAt(0).toUpperCase() + kind.slice(1);
-}
-
-function buildCaption({
-  kindLabel,
-  stakeholderCount,
-  deliverableCount,
-}: {
-  kindLabel: string;
-  stakeholderCount: number;
-  deliverableCount: number;
-}): string {
-  const parts = [kindLabel];
-  if (stakeholderCount > 0) {
-    parts.push(`${stakeholderCount} stakeholder${stakeholderCount === 1 ? "" : "s"}`);
-  }
-  if (deliverableCount > 0) {
-    parts.push(`${deliverableCount} chat${deliverableCount === 1 ? "" : "s"}`);
-  }
-  return parts.join(" · ");
 }
 
 export function buildContextLine(scopeName: string, workspaceKnows: WorkspaceKnowsSummary): string {

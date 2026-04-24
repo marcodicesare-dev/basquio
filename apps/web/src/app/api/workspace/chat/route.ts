@@ -2,6 +2,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { NextResponse } from "next/server";
 import {
   convertToModelMessages,
+  smoothStream,
   streamText,
   stepCountIs,
   type UIMessage,
@@ -9,17 +10,26 @@ import {
 
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
-import { BASQUIO_MODEL_ID, SYSTEM_PROMPT } from "@/lib/workspace/agent";
+import { resolveChatModel, SYSTEM_PROMPT, type ChatModelMode } from "@/lib/workspace/agent";
 import { getAllTools } from "@/lib/workspace/agent-tools";
 import { getScope } from "@/lib/workspace/scopes";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 import { saveConversation } from "@/lib/workspace/conversations";
 import { consume } from "@/lib/workspace/rate-limit";
+import { stripFollowUpSuggestionsFromMessages } from "@/lib/workspace/chat-followup-suggestions";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const RATE_LIMIT = { limit: 12, windowMs: 60_000 };
+
+type ChatRequestBody = {
+  id?: string;
+  messages?: UIMessage[];
+  mode?: ChatModelMode | null;
+  scope_id?: string | null;
+  title?: string;
+};
 
 export async function POST(request: Request) {
   const viewer = await getViewerState();
@@ -44,9 +54,9 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { id?: string; messages?: UIMessage[]; scope_id?: string | null; title?: string };
+  let body: ChatRequestBody;
   try {
-    body = (await request.json()) as typeof body;
+    body = (await request.json()) as ChatRequestBody;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
@@ -76,30 +86,53 @@ export async function POST(request: Request) {
   const tools = getAllTools(ctx);
   const firstUserPrompt = extractFirstUserText(uiMessages);
   const title = body.title ?? (firstUserPrompt ? firstUserPrompt.slice(0, 120) : null);
+  const chatMode: ChatModelMode = body.mode === "deep" ? "deep" : "standard";
 
   const result = streamText({
-    model: anthropic(BASQUIO_MODEL_ID),
+    model: anthropic(resolveChatModel(chatMode)),
     system: SYSTEM_PROMPT,
     tools,
     messages: await convertToModelMessages(uiMessages),
     stopWhen: stepCountIs(10),
+    experimental_transform: smoothStream({
+      delayInMs: 20,
+      chunking: "word",
+    }),
   });
 
   return result.toUIMessageStreamResponse({
     originalMessages: uiMessages,
+    sendReasoning: true,
+    sendSources: true,
+    messageMetadata: ({ part }) => {
+      if (part.type === "finish") {
+        return {
+          finishReason: part.finishReason,
+          totalUsage: part.totalUsage,
+          completedAt: new Date().toISOString(),
+        };
+      }
+      if (part.type === "start-step") {
+        return { startedAt: new Date().toISOString() };
+      }
+      return undefined;
+    },
     async onFinish({ messages: finalMessages }) {
       try {
+        const parsed = stripFollowUpSuggestionsFromMessages(finalMessages);
         await saveConversation({
           id: conversationId,
           workspaceId: workspace.id,
           scopeId: scope?.id ?? null,
           createdBy: viewer.user!.id,
           title,
-          messages: finalMessages,
+          messages: parsed.messages,
           metadata: {
             user_email: viewer.user!.email ?? null,
             scope_name: scope?.name ?? null,
             scope_kind: scope?.kind ?? null,
+            chat_mode_last: chatMode,
+            last_suggestions: parsed.suggestions,
           },
         });
       } catch (error) {

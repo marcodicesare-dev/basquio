@@ -29,10 +29,9 @@ describe("ScopeChatShell", () => {
 
     const chat = screen.getByRole("region", { name: "Chat with Affinity Petcare" });
     const layout = chat.parentElement;
-    expect(layout?.children[1]).toBe(chat);
-    expect(layout?.children[2]).toBe(
-      screen.getByRole("complementary", { name: "Workspace context" }),
-    );
+    expect(layout?.children).toHaveLength(1);
+    expect(layout?.children[0]).toBe(chat);
+    expect(screen.queryByRole("complementary", { name: "Workspace context" })).toBeNull();
   });
 
   it("moves suggested next into composer pills instead of a card section", () => {
@@ -40,17 +39,17 @@ describe("ScopeChatShell", () => {
 
     const chat = screen.getByRole("region", { name: "Chat with Affinity Petcare" });
     expect(within(chat).getByRole("button", { name: "Summarize Affinity Petcare" })).not.toBeNull();
-    expect(screen.getAllByRole("heading", { name: "Try next" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("heading", { name: "Try next" })).toBeNull();
     expect(document.querySelector(".wbeta-suggestion-card")).toBeNull();
   });
 
   it("renders rail context without the retired briefing stack classes", () => {
     render(React.createElement(ScopeChatShell, baseProps()));
 
-    expect(screen.getAllByRole("heading", { name: "Recent chats" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Context").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("People").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Chats").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("heading", { name: "Recent chats" })).toBeNull();
+    expect(screen.queryByText("Context")).toBeNull();
+    expect(screen.queryByText("People")).toBeNull();
+    expect(screen.queryByText("Chats")).toBeNull();
     expect(screen.queryByText("Rules")).toBeNull();
     expect(screen.queryByText("Facts")).toBeNull();
     expect(screen.queryByText("Articles")).toBeNull();
@@ -58,16 +57,11 @@ describe("ScopeChatShell", () => {
     expect(document.querySelector(".wbeta-scope-three-col")).toBeNull();
   });
 
-  it("keeps the full rail context available inside the mobile strip", () => {
+  it("does not open the right context pane by default on mobile", () => {
     render(React.createElement(ScopeChatShell, baseProps()));
 
     const mobileContext = document.querySelector(".wbeta-scope-mobile-context") as HTMLElement;
-    const mobile = within(mobileContext);
-    expect(mobile.getByText("Saved context · 1 recent chat")).not.toBeNull();
-    expect(mobile.getByRole("complementary", { name: "Mobile scope context" })).not.toBeNull();
-    expect(mobile.getByRole("link", { name: /Retailer readout/ })).not.toBeNull();
-    expect(mobile.getByRole("button", { name: /Summarize Affinity Petcare/ })).not.toBeNull();
-    expect(mobile.getByRole("complementary", { name: "Workspace memory" })).not.toBeNull();
+    expect(mobileContext).toBeNull();
   });
 
   it("uses plain language in the scope context line", () => {

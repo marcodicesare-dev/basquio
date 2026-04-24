@@ -11,6 +11,7 @@ import {
   Plus,
   Sparkle,
   UsersThree,
+  ChatText,
 } from "@phosphor-icons/react";
 
 import type { WorkspaceScope, ScopeCounts } from "@/lib/workspace/types";
@@ -64,11 +65,13 @@ const KIND_ICON: Record<Exclude<ScopeKind, "system">, typeof Buildings> = {
 export function WorkspaceSidebar({
   tree,
   counts,
+  recentConversations = [],
   copy = DEFAULT_COPY,
   onNavigate,
 }: {
   tree: SidebarScopeTree;
   counts: Record<string, ScopeCounts>;
+  recentConversations?: Array<{ id: string; title: string; lastMessageAt: string }>;
   copy?: SidebarCopy;
   onNavigate?: () => void;
 }) {
@@ -79,9 +82,8 @@ export function WorkspaceSidebar({
   const peopleActive = pathname === "/workspace/people" || pathname.startsWith("/workspace/people/");
   const memoryActive = pathname === "/workspace/memory" || pathname.startsWith("/workspace/memory/");
   const scopeActiveAny = pathname.startsWith("/workspace/scope/");
-  // Home is the fallback for any /workspace path that isn't scope / people / memory
-  // so deliverable detail pages still read as "you are inside workspace".
-  const homeActive = !peopleActive && !memoryActive && !scopeActiveAny;
+  const chatActiveAny = pathname.startsWith("/workspace/chat/");
+  const homeActive = pathname === "/workspace" || (!peopleActive && !memoryActive && !scopeActiveAny && !chatActiveAny);
 
   const navigateWithTransition = useCallback(
     () => (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -134,6 +136,50 @@ export function WorkspaceSidebar({
           <span className="wbeta-nav-label">{copy.home}</span>
         </Link>
       </nav>
+
+      <section className="wbeta-sidebar-section wbeta-sidebar-recent">
+        <header className="wbeta-sidebar-head">
+          <span className="wbeta-sidebar-head-icon" aria-hidden>
+            <ChatText size={14} weight="regular" />
+          </span>
+          <span className="wbeta-sidebar-head-label">Recent chats</span>
+          <Link
+            href="/workspace"
+            className="wbeta-sidebar-new-chat"
+            onClick={navigateWithTransition()}
+          >
+            New
+          </Link>
+        </header>
+        {recentConversations.length > 0 ? (
+          <ul className="wbeta-sidebar-list">
+            {recentConversations.slice(0, 6).map((conversation) => {
+              const active = pathname === `/workspace/chat/${conversation.id}`;
+              return (
+                <li key={conversation.id}>
+                  <Link
+                    href={`/workspace/chat/${conversation.id}`}
+                    className={
+                      active
+                        ? "wbeta-sidebar-item wbeta-sidebar-chat-item wbeta-sidebar-item-active"
+                        : "wbeta-sidebar-item wbeta-sidebar-chat-item"
+                    }
+                    aria-current={active ? "page" : undefined}
+                    onClick={navigateWithTransition()}
+                  >
+                    <span className="wbeta-sidebar-item-name">{conversation.title}</span>
+                    <span className="wbeta-sidebar-item-time">
+                      {relativeTime(conversation.lastMessageAt)}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="wbeta-sidebar-empty">Start a chat and it will stay here.</p>
+        )}
+      </section>
 
       {kinds.map((kind) => {
         const Icon = KIND_ICON[kind];
@@ -234,6 +280,16 @@ export function WorkspaceSidebar({
       </nav>
     </div>
   );
+}
+
+function relativeTime(iso: string): string {
+  const diff = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return "now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  const days = Math.floor(diff / 86400);
+  if (days < 7) return `${days}d`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function NewScopeForm({
