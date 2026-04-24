@@ -17,6 +17,7 @@ import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 import { saveConversation } from "@/lib/workspace/conversations";
 import { consume } from "@/lib/workspace/rate-limit";
 import { stripFollowUpSuggestionsFromMessages } from "@/lib/workspace/chat-followup-suggestions";
+import { CHAT_STREAM_CHARACTER_DELAY_MS, firstVisibleCharacter } from "@/lib/workspace/chat-streaming";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -95,8 +96,8 @@ export async function POST(request: Request) {
     messages: await convertToModelMessages(uiMessages),
     stopWhen: stepCountIs(10),
     experimental_transform: smoothStream({
-      delayInMs: 20,
-      chunking: "word",
+      delayInMs: CHAT_STREAM_CHARACTER_DELAY_MS,
+      chunking: firstVisibleCharacter,
     }),
   });
 

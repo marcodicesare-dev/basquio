@@ -21,6 +21,7 @@ import {
 import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 import { compactSuggestionPrompt } from "@/lib/workspace/suggestion-display";
+import { CHAT_STREAM_UI_THROTTLE_MS } from "@/lib/workspace/chat-streaming";
 import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
 
 type AttachmentChip = {
@@ -276,7 +277,7 @@ export function WorkspaceChat({
     }),
     ...(initialMessages && initialMessages.length > 0 ? { messages: initialMessages } : {}),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
-    experimental_throttle: 60,
+    experimental_throttle: CHAT_STREAM_UI_THROTTLE_MS,
     onError: (err) => {
       setError(err?.message ?? "Something went wrong.");
       setPendingTurn(null);

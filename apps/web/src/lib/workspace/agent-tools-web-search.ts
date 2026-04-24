@@ -30,6 +30,21 @@ const webSearchInputSchema = z.object({
   language: z.string().length(2).default("it").describe("ISO language for the query context."),
 });
 
+type FirecrawlSearchPayload = {
+  query: string;
+  limit: number;
+  sources: Array<{ type: "web" | "news" }>;
+  location: {
+    country: string;
+    languages: string[];
+  };
+  tbs?: string;
+  scrapeOptions: {
+    formats: ["markdown"];
+    onlyMainContent: true;
+  };
+};
+
 export function webSearchTool(ctx: AgentCallContext) {
   return tool({
     description:
@@ -53,17 +68,29 @@ export function webSearchTool(ctx: AgentCallContext) {
 
       try {
         const firecrawl = createFirecrawlClient({ apiKey });
-        const response = await firecrawl.search({
+        const searchPayload: FirecrawlSearchPayload = {
           query: input.language === "it" ? `${input.query} mercato Italia` : input.query,
           limit: input.max_results,
-          sources: [input.source_type],
-          country: input.country,
+          sources: [{ type: input.source_type }],
+          location: { country: input.country, languages: [input.language] },
           tbs: recencyToTbs(input.recency),
           scrapeOptions: {
             formats: ["markdown"],
             onlyMainContent: true,
           },
-        });
+        };
+        const response = await firecrawl.search(searchPayload as unknown as Parameters<typeof firecrawl.search>[0]);
+        if (!Array.isArray(response.data)) {
+          const responseRecord = response as unknown as { error?: unknown };
+          const message =
+            typeof responseRecord.error === "string"
+              ? responseRecord.error
+              : "Firecrawl returned an invalid search response.";
+          return {
+            error: `Web search failed: ${message}. Try rephrasing the query or check workspace context with retrieveContext.`,
+          };
+        }
+
         const resultCount = response.data.length;
         const creditsUsed = response.creditsUsed ?? resultCount;
         await logWebSearchCall({
@@ -106,7 +133,11 @@ export async function countConversationSearches(conversationId: string): Promise
     .from("chat_web_search_calls")
     .select("id", { count: "exact", head: true })
     .eq("conversation_id", conversationId);
-  if (error) return 0;
+  if (isMissingTableError(error)) return 0;
+  if (error) {
+    console.error("[workspace/webSearch] failed to count search calls", error);
+    return 0;
+  }
   return count ?? 0;
 }
 
@@ -125,6 +156,7 @@ export async function logWebSearchCall(input: {
     result_count: input.resultCount,
     credits_used: input.creditsUsed,
   });
+  if (isMissingTableError(error)) return;
   if (error) {
     console.error("[workspace/webSearch] failed to log search call", error);
   }
@@ -165,4 +197,10 @@ function publishedAt(metadata: Record<string, unknown>): string | null {
 function stringMetadata(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  return record.code === "PGRST205" || String(record.message ?? "").includes("schema cache");
 }

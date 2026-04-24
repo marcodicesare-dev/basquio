@@ -81,8 +81,8 @@ describe("webSearchTool", () => {
       expect.objectContaining({
         query: "coffee market trends mercato Italia",
         limit: 2,
-        sources: ["web"],
-        country: "IT",
+        sources: [{ type: "web" }],
+        location: { country: "IT", languages: ["it"] },
         tbs: "qdr:y",
         scrapeOptions: { formats: ["markdown"], onlyMainContent: true },
       }),
@@ -157,6 +157,44 @@ describe("webSearchTool", () => {
         credits_used: 0,
       }),
     );
+  });
+
+  it("continues searching when the telemetry tables are not migrated yet", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const missingTableError = {
+      code: "PGRST205",
+      message: "Could not find the table 'public.chat_web_search_calls' in the schema cache",
+    };
+    mocks.eq.mockResolvedValue({ count: null, error: missingTableError });
+    mocks.insert.mockResolvedValue({ error: missingTableError });
+
+    const result = await executeWebSearch();
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        credits_used: 2,
+        results: [
+          expect.objectContaining({
+            url: "https://example.com/coffee",
+          }),
+        ],
+      }),
+    );
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("returns a structured error for invalid Firecrawl response shapes", async () => {
+    mocks.search.mockResolvedValue({
+      success: false,
+      error: "Invalid request body",
+    });
+
+    const result = await executeWebSearch();
+
+    expect(result).toEqual({
+      error: "Web search failed: Invalid request body. Try rephrasing the query or check workspace context with retrieveContext.",
+    });
   });
 });
 

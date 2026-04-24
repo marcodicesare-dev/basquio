@@ -106,6 +106,7 @@ async function insertTelemetry(row: {
     if (!url || !key) return;
     const db = createServiceSupabaseClient(url, key);
     const { error } = await db.from("chat_tool_telemetry").insert(row);
+    if (isMissingTableError(error)) return;
     if (error) {
       console.error("[chat-tool-telemetry] insert failed", error);
     }
@@ -153,4 +154,10 @@ function stableValue(value: unknown): unknown {
       acc[key] = stableValue(record[key]);
       return acc;
     }, {});
+}
+
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  return record.code === "PGRST205" || String(record.message ?? "").includes("schema cache");
 }

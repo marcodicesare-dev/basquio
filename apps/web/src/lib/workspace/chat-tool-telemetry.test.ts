@@ -87,6 +87,28 @@ describe("withChatToolTelemetry", () => {
       }),
     );
   });
+
+  it("does not fail tool execution when the telemetry table is absent", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.insert.mockResolvedValue({
+      error: {
+        code: "PGRST205",
+        message: "Could not find the table 'public.chat_tool_telemetry' in the schema cache",
+      },
+    });
+
+    const result = await withChatToolTelemetry({
+      conversationId: "conversation-1",
+      userId: "00000000-0000-0000-0000-000000000001",
+      toolName: "webSearch",
+      inputHash: hashToolInput({ query: "coffee" }),
+      execute: async () => ({ ok: true }),
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
 });
 
 describe("wrapChatTool", () => {
