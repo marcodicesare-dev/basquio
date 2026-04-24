@@ -347,16 +347,30 @@ export function explainBasquioTool(ctx: AgentCallContext) {
           };
         }
         case "sources": {
-          const { count } = await db
-            .from("source_catalog")
-            .select("id", { count: "exact", head: true })
-            .eq("workspace_id", ctx.workspaceId)
-            .eq("status", "active");
+          const [workspaceFiles, externalSources] = await Promise.all([
+            db
+              .from("knowledge_documents")
+              .select("id", { count: "exact", head: true })
+              .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+              .eq("is_team_beta", true)
+              .in("kind", ["uploaded_file", "chat_paste", "chat_url"])
+              .neq("status", "deleted"),
+            db
+              .from("source_catalog")
+              .select("id", { count: "exact", head: true })
+              .eq("workspace_id", ctx.workspaceId)
+              .eq("status", "active"),
+          ]);
           return {
             topic,
-            headline: `${count ?? 0} external sources wired in for research.`,
+            headline: `${workspaceFiles.count ?? 0} internal files and ${
+              externalSources.count ?? 0
+            } active web sources.`,
             body:
-              "When you ask for a deck or research, Basquio queries Italian trade press, NielsenIQ press, and Fiber for LinkedIn context. Source list is read-only for now. Browse them at /workspace/sources.",
+              "Open /workspace/sources to upload reusable files for workspace retrieval, see indexed repository files, " +
+              "and review the curated web catalog used when internal context is not enough. When Basquio retrieves " +
+              "from a file, answers should cite the source label and filename.",
+            actions: [{ label: "Open sources", href: "/workspace/sources" }],
           };
         }
         case "scopes": {

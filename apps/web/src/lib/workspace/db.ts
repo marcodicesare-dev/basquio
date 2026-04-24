@@ -25,6 +25,28 @@ export type WorkspaceDocumentRow = {
   anthropic_file_id: string | null;
 };
 
+export type WorkspaceSourceDocumentRow = WorkspaceDocumentRow & {
+  kind: "uploaded_file" | "scraped_article" | "chat_paste" | "chat_url";
+  source_catalog_id: string | null;
+  source_url: string | null;
+  source_published_at: string | null;
+  source_trust_score: number | null;
+};
+
+export type WorkspaceSourceCatalogRow = {
+  id: string;
+  url: string;
+  host: string;
+  tier: number;
+  language: string;
+  source_type: string;
+  domain_tags: string[];
+  trust_score: number;
+  status: "active" | "paused" | "broken" | "removed";
+  last_verified_at: string | null;
+  metadata: Record<string, unknown>;
+};
+
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -51,6 +73,51 @@ export async function listRecentWorkspaceDocuments(limit = 20): Promise<Workspac
   }
 
   return (data ?? []) as WorkspaceDocumentRow[];
+}
+
+export async function listWorkspaceSourceDocuments(
+  limit = 100,
+): Promise<WorkspaceSourceDocumentRow[]> {
+  const db = getServiceClient();
+  const { data, error } = await db
+    .from("knowledge_documents")
+    .select(
+      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id, kind, source_catalog_id, source_url, source_published_at, source_trust_score",
+    )
+    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("is_team_beta", true)
+    .in("kind", ["uploaded_file", "chat_paste", "chat_url"])
+    .neq("status", "deleted")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to list workspace source documents: ${error.message}`);
+  }
+
+  return (data ?? []) as WorkspaceSourceDocumentRow[];
+}
+
+export async function listWorkspaceSourceCatalog(
+  limit = 100,
+): Promise<WorkspaceSourceCatalogRow[]> {
+  const db = getServiceClient();
+  const { data, error } = await db
+    .from("source_catalog")
+    .select(
+      "id, url, host, tier, language, source_type, domain_tags, trust_score, status, last_verified_at, metadata",
+    )
+    .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+    .order("status", { ascending: true })
+    .order("tier", { ascending: true })
+    .order("host", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to list workspace source catalog: ${error.message}`);
+  }
+
+  return (data ?? []) as WorkspaceSourceCatalogRow[];
 }
 
 export async function findWorkspaceDocumentByHash(hash: string): Promise<WorkspaceDocumentRow | null> {

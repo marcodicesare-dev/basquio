@@ -118,6 +118,7 @@ describe("WorkspaceSidebar", () => {
           clients: "Clienti",
           categories: "Categorie",
           functions: "Funzioni",
+          sources: "Fonti",
           people: "Persone",
           memory: "Memoria",
           newClient: "Nuovo cliente",
@@ -144,6 +145,27 @@ describe("WorkspaceSidebar", () => {
 
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("marks Sources active on the source library page", () => {
+    mocks.pathname = "/workspace/sources";
+
+    render(
+      React.createElement(WorkspaceSidebar, {
+        tree: {
+          client: [],
+          category: [],
+          function: [],
+          system: [],
+        },
+        counts: {},
+      }),
+    );
+
+    expect(screen.getByRole("link", { name: "Home" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("link", { name: "Sources" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
   });
 
   it("marks the current recent chat instead of Home on chat pages", () => {

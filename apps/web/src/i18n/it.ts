@@ -14,6 +14,7 @@ export const workspaceIt = {
     clients: "Clienti",
     categories: "Categorie",
     functions: "Funzioni",
+    sources: "Fonti",
     people: "Persone",
     memory: "Memoria",
     newClient: "Nuovo cliente",

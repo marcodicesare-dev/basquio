@@ -12,6 +12,10 @@ const STATUS_LABELS: Record<WorkspaceDocumentRow["status"], string> = {
   deleted: "Removed",
 };
 
+const DEFAULT_EMPTY_BODY =
+  "Drop a brief, a transcript, a prior deck, or a data export above. " +
+  "Basquio parses, extracts entities, and adds them to the timeline within about 30 seconds.";
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -30,22 +34,29 @@ function formatRelativeDate(iso: string): string {
   return created.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function WorkspaceDocumentList({ documents }: { documents: WorkspaceDocumentRow[] }) {
+export function WorkspaceDocumentList({
+  documents,
+  title = "Recent uploads",
+  emptyTitle = "Upload your first file.",
+  emptyBody = DEFAULT_EMPTY_BODY,
+}: {
+  documents: WorkspaceDocumentRow[];
+  title?: string;
+  emptyTitle?: string;
+  emptyBody?: string;
+}) {
   if (documents.length === 0) {
     return (
       <div className="wbeta-doclist-empty">
-        <p className="wbeta-doclist-empty-title">Upload your first file.</p>
-        <p className="wbeta-doclist-empty-body">
-          Drop a brief, a transcript, a prior deck, or a data export above. Basquio parses,
-          extracts entities, and adds them to the timeline within about 30 seconds.
-        </p>
+        <p className="wbeta-doclist-empty-title">{emptyTitle}</p>
+        <p className="wbeta-doclist-empty-body">{emptyBody}</p>
       </div>
     );
   }
 
   return (
     <div className="wbeta-doclist">
-      <h3 className="wbeta-doclist-head">Recent uploads</h3>
+      <h3 className="wbeta-doclist-head">{title}</h3>
       <ul className="wbeta-doclist-rows">
         {documents.map((doc) => (
           <li key={doc.id} className="wbeta-doclist-row">

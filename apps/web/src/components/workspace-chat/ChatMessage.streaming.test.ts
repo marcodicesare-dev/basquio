@@ -84,6 +84,45 @@ describe("ChatMessage streaming render", () => {
     expect(screen.getByText("Used webSearch, 2 results")).not.toBeNull();
   });
 
+  it("shows filenames for retrieved workspace source excerpts", () => {
+    const message = {
+      id: "m-source",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-retrieveContext",
+          state: "output-available",
+          output: {
+            chunk_count: 2,
+            entity_count: 1,
+            fact_count: 3,
+            chunks: [
+              {
+                label: "s1",
+                source_type: "document",
+                filename: "Coffee market brief.pdf",
+                content: "Capsule and RTD notes",
+              },
+              {
+                label: "s2",
+                source_type: "document",
+                filename: "Italy coffee 2025.xlsx",
+                content: "Retail data",
+              },
+            ],
+          },
+        },
+      ],
+    } as unknown as UIMessage;
+
+    render(React.createElement(ChatMessage, { message, isStreaming: false }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Found 2 source excerpts/ }));
+
+    expect(screen.getByText("Coffee market brief.pdf")).not.toBeNull();
+    expect(screen.getByText("Italy coffee 2025.xlsx")).not.toBeNull();
+  });
+
   it("marks structured tool error outputs as failed chips", () => {
     const message = {
       id: "m5",

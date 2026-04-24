@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Briefcase,
   Buildings,
+  Files,
   FolderOpen,
   House,
   Plus,
@@ -23,6 +24,7 @@ type SidebarCopy = {
   clients: string;
   categories: string;
   functions: string;
+  sources: string;
   people: string;
   memory: string;
   newClient: string;
@@ -42,6 +44,7 @@ const DEFAULT_COPY: SidebarCopy = {
   clients: "Clients",
   categories: "Categories",
   functions: "Functions",
+  sources: "Sources",
   people: "People",
   memory: "Memory",
   newClient: "New client",
@@ -79,11 +82,17 @@ export function WorkspaceSidebar({
   const router = useRouter();
   const [openForm, setOpenForm] = useState<Exclude<ScopeKind, "system"> | null>(null);
 
-  const peopleActive = pathname === "/workspace/people" || pathname.startsWith("/workspace/people/");
-  const memoryActive = pathname === "/workspace/memory" || pathname.startsWith("/workspace/memory/");
+  const peopleActive =
+    pathname === "/workspace/people" || pathname.startsWith("/workspace/people/");
+  const memoryActive =
+    pathname === "/workspace/memory" || pathname.startsWith("/workspace/memory/");
+  const sourcesActive =
+    pathname === "/workspace/sources" || pathname.startsWith("/workspace/sources/");
   const scopeActiveAny = pathname.startsWith("/workspace/scope/");
   const chatActiveAny = pathname.startsWith("/workspace/chat/");
-  const homeActive = pathname === "/workspace" || (!peopleActive && !memoryActive && !scopeActiveAny && !chatActiveAny);
+  const homeActive =
+    pathname === "/workspace" ||
+    (!peopleActive && !memoryActive && !sourcesActive && !scopeActiveAny && !chatActiveAny);
 
   const navigateWithTransition = useCallback(
     () => (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -255,6 +264,17 @@ export function WorkspaceSidebar({
       })}
 
       <nav className="wbeta-sidebar-nav wbeta-sidebar-nav-bottom">
+        <Link
+          href="/workspace/sources"
+          className={sourcesActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
+          aria-current={sourcesActive ? "page" : undefined}
+          onClick={navigateWithTransition()}
+        >
+          <span className="wbeta-nav-icon" aria-hidden>
+            <Files size={16} weight={sourcesActive ? "fill" : "regular"} />
+          </span>
+          <span className="wbeta-nav-label">{copy.sources}</span>
+        </Link>
         <Link
           href="/workspace/people"
           className={peopleActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}

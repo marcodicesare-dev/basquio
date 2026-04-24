@@ -14304,6 +14304,248 @@ body:has(.wbeta-shell) .site-wrap {
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
 }
 
+/* Sources library */
+
+.wbeta-sources-page {
+  width: min(1080px, calc(100% - 68px));
+  margin: 0 auto;
+  padding: 34px 0 89px;
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+@media (max-width: 980px) {
+  .wbeta-sources-page {
+    width: min(1080px, calc(100% - 42px));
+    padding: 21px 0 55px;
+  }
+}
+
+.wbeta-sources-head {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding-bottom: 21px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-sources-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.wbeta-sources-title {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-sources-summary {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  max-width: 68ch;
+  margin: 0;
+}
+
+.wbeta-sources-stats {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 34px;
+  flex-wrap: wrap;
+}
+
+.wbeta-sources-stats li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbeta-sources-stat-num {
+  font-size: 25px;
+  font-weight: 700;
+  color: var(--text);
+  font-feature-settings: "tnum" 1;
+  line-height: 1;
+}
+
+.wbeta-sources-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wbeta-sources-upload,
+.wbeta-sources-section {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.wbeta-sources-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 21px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-sources-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-sources-section-copy {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  max-width: 66ch;
+  margin: 6px 0 0;
+}
+
+.wbeta-sources-section-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  white-space: nowrap;
+}
+
+.wbeta-source-catalog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 13px;
+}
+
+.wbeta-source-catalog-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 13px;
+  padding: 13px 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.wbeta-source-catalog-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.wbeta-source-catalog-main:hover .wbeta-source-catalog-host,
+.wbeta-source-catalog-main:focus-visible .wbeta-source-catalog-host {
+  color: var(--blue);
+}
+
+.wbeta-source-catalog-main:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+
+.wbeta-source-catalog-host {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-source-catalog-url,
+.wbeta-source-catalog-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-source-catalog-meta {
+  grid-column: 1 / -1;
+  text-transform: capitalize;
+}
+
+.wbeta-source-catalog-status {
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  height: 21px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wbeta-source-catalog-status-active {
+  background: var(--success);
+  color: var(--success-text);
+}
+
+.wbeta-source-catalog-status-paused {
+  background: var(--amber-soft);
+  color: var(--text);
+}
+
+.wbeta-source-catalog-status-broken,
+.wbeta-source-catalog-status-removed {
+  background: var(--danger);
+  color: var(--danger-text);
+}
+
+.wbeta-sources-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 21px;
+}
+
+.wbeta-sources-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-sources-empty-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  margin: 0;
+  max-width: 42em;
+}
+
 /* ── People directory ───────────────────────────────────────────── */
 
 .wbeta-people-page,

@@ -15,9 +15,13 @@ type UploadState =
 export function WorkspaceUploadZone({
   supportedLabel,
   variant = "inline",
+  title,
+  subtitle,
 }: {
   supportedLabel: string;
   variant?: "inline" | "hero";
+  title?: string;
+  subtitle?: string;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -115,12 +119,13 @@ export function WorkspaceUploadZone({
 
       <div className="wbeta-drop-headline">
         <span className="wbeta-drop-title">
-          {variant === "hero" ? "Drop your first file." : "Drop a file."}
+          {title ?? (variant === "hero" ? "Drop your first file." : "Drop a file.")}
         </span>
         <span className="wbeta-drop-sub">
-          {variant === "hero"
-            ? `Or click anywhere on this card. ${supportedLabel}. Up to 50 MB.`
-            : `Or click to browse. ${supportedLabel}.`}
+          {subtitle ??
+            (variant === "hero"
+              ? `Or click anywhere on this card. ${supportedLabel}. Up to 50 MB.`
+              : `Or click to browse. ${supportedLabel}.`)}
         </span>
       </div>
 

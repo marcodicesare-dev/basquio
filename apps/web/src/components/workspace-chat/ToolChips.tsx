@@ -105,6 +105,12 @@ export function RetrieveContextChip({
     chunk_count?: number;
     entity_count?: number;
     fact_count?: number;
+    chunks?: Array<{
+      label: string;
+      source_type?: string;
+      filename?: string | null;
+      content?: string;
+    }>;
   };
   errorText?: string;
 }) {
@@ -158,11 +164,34 @@ export function RetrieveContextChip({
           ) : null}
         </dl>
       ) : null}
+      {open && isDone && output?.chunks && output.chunks.length > 0 ? (
+        <ul className="wbeta-ai-tool-chip-entries">
+          {output.chunks.slice(0, 6).map((chunk) => (
+            <li key={chunk.label} className="wbeta-ai-tool-chip-entry">
+              <span className="wbeta-ai-tool-chip-entry-kind">{chunk.label}</span>
+              <span className="wbeta-ai-tool-chip-entry-body">
+                {sourceDisplayName(chunk)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {open && isError && errorText ? (
         <p className="wbeta-ai-tool-chip-error-text">{errorText}</p>
       ) : null}
     </div>
   );
+}
+
+function sourceDisplayName(chunk: {
+  source_type?: string;
+  filename?: string | null;
+  content?: string;
+}): string {
+  const filename = chunk.filename?.trim();
+  if (filename) return filename;
+  if (chunk.source_type) return chunk.source_type.replaceAll("_", " ");
+  return chunk.content?.slice(0, 80) ?? "Workspace source";
 }
 
 /**
