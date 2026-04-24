@@ -29,6 +29,9 @@ Current screenshots captured during audit:
 - `/tmp/basquio-p0-audit/current-affinity-chat-after-send.png`
 - `/tmp/basquio-p0-audit/current-chat-composer-before-redesign.png`
 - `/tmp/basquio-p0-audit/current-chat-composer-after-redesign-full.png`
+- `/tmp/basquio-p0-audit/scope-chat-first-hard-reload-prod-34d898d.png`
+- `/tmp/basquio-p0-audit/scope-command-palette-prod-34d898d.png`
+- `/tmp/basquio-p0-audit/scope-composer-five-lines-prod-closed-34d898d.png`
 
 Video capture note: macOS screen recording from the agent process was blocked by local permissions, so the 15-second before and after videos could not be captured from this environment. The live browser and programmatic DOM audit did run.
 
@@ -43,14 +46,14 @@ Video capture note: macOS screen recording from the agent process was blocked by
 | Workspace surface audit | Workspace routes | Rules 2, 3, 5 | No single live audit artifact existed | This file documents route status, banned loading checks, and deferred gaps | Yes, in-app browser |
 | Sidebar transition traps navigation | `apps/web/src/components/workspace-sidebar.tsx` | Rule 5, navigation must feel instant and truthful | From `/workspace/memory`, clicking Affinity left URL on Memory while the sidebar marked Affinity active | Native `Link` routing restored, transition no longer prevents default navigation | Yes, production route click verified after deploy |
 | Scope composer smashed into viewport bottom | `apps/web/src/app/global.css`, `apps/web/src/components/workspace-chat/Chat.tsx` | Rule 3, crafted modern composer | Sticky scope chat plus sticky form made the composer look like a 2005 footer textarea and grow upward into content | Static scope workbench, centered padded composer dock, transparent textarea, compact icon send button | Yes, production five-line composer verified after deploy |
-| Scope route still briefing-first | `apps/web/src/app/(workspace)/workspace/scope/[kind]/[slug]/page.tsx`, `apps/web/src/components/scope-chat-shell.tsx` | Rules 1, 3, 5 | Analyst had to scroll past stakeholders, knows, deliverables, and suggestion cards before typing | Scope route uses chat-first pane plus 300px context rail, composer pills, and Cmd-K navigation | Pending deploy verification |
+| Scope route still briefing-first | `apps/web/src/app/(workspace)/workspace/scope/[kind]/[slug]/page.tsx`, `apps/web/src/components/scope-chat-shell.tsx` | Rules 1, 3, 5 | Analyst had to scroll past stakeholders, knows, deliverables, and suggestion cards before typing | Scope route uses chat-first pane plus 300px context rail, composer pills, and Cmd-K navigation | Yes, `34d898d` deployed on Vercel at `AJJWFZMWk6wquyu4pDhsYQHLeEst` and verified in prod |
 
 ## Route Audit
 
 | Surface | Audit result | Violations or notes |
 | --- | --- | --- |
 | `/workspace` | Dashboard renders greeting, learned count, suggestions, active scopes, recent chats, memory summary, weekly stats, and chat. Suggestions prefill composer. | Active scope cards now show relative updated labels. |
-| `/workspace/scope/client/affinity-petcare` | Scope route is now chat-first: main pane is the conversation, right rail carries scope context, memory, stakeholders, deliverables, and suggestions. | Pending deploy verification for the Apr 24 chat-first shell. |
+| `/workspace/scope/client/affinity-petcare` | Scope route is now chat-first: main pane is the conversation, right rail carries scope context, memory, stakeholders, deliverables, and suggestions. | Production verified after hard reload and sidebar navigation. Cmd-K opened the palette. A 5-line composer draft expanded without submitting. |
 | Scope chat composer | Before redesign, the chat card floated over the bottom of the viewport and the input grew upward. | P0 visual fix: remove sticky scope chat behavior and use a static centered composer dock with real padding. |
 | Sidebar navigation | Creation controls open and cancel. Prod audit found the View Transitions wrapper could trap scope navigation from Memory. | P0 follow-up fix in `workspace-sidebar.tsx`: do not prevent default navigation. |
 | `/workspace/memory` | Memory index renders counts, filters, entries, and Pin/Edit/Archive/Delete controls. | Mutating controls were not clicked during audit. No banned spinner, shimmer, emoji loader, or sparkle button pattern found. |
@@ -76,7 +79,7 @@ Video capture note: macOS screen recording from the agent process was blocked by
 
 Automated and local verification already run for the P0 and W2 work:
 
-- `pnpm qa:basquio`: green, 31 files and 130 tests.
+- `pnpm qa:basquio`: green, 32 files and 133 tests.
 - `pnpm qa:catalog`: green.
 - `pnpm build`: green, with pre-existing unused-variable warnings.
 - `pnpm lefthook run pre-push`: green.
@@ -87,6 +90,7 @@ This follow-up adds:
 - Sidebar navigation fix.
 - Sidebar tests that verify scope links keep native href navigation and the transition wrapper does not hijack the route.
 - This dedicated audit document requested by the P0 spec.
+- Chat-first scope shell, full mobile context strip, Cmd-K keyboard modal test, and production screenshots for deploy `34d898d`.
 
 ## Follow-up Priority Register
 
@@ -94,7 +98,7 @@ This follow-up adds:
 | --- | --- |
 | P0 | Sidebar navigation fix verified in production. |
 | P0 | Scope composer visual redesign verified in production. |
-| P0 | Deploy and verify chat-first scope shell in production. |
+| P0 | Chat-first scope shell verified in production. |
 | P1 | Build active chat landing morph, ESC return, and compact active context header. |
 | P1 | Move onboarding draft persistence server-side and wire Step 2 extraction reveal to real document processing output. |
 | P1 | Add Settings language switch and stakeholder language override for generated deliverables. |

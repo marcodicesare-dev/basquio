@@ -50,7 +50,7 @@ Surface: production `https://basquio.com/workspace`, logged in as `marco@basquio
 | Route | Result |
 | --- | --- |
 | `/workspace` | Home dashboard rendered with Suggested for today, Active scopes, Recent chats, What Basquio knows, This week, and Workspace chat. Use in chat prefilled composer and enabled Send. |
-| `/workspace/scope/client/affinity-petcare` | Scope route is now chat-first with scope context, suggestions, deliverables, and memory in the rail. Production verification for this Apr 24 override is tracked in `docs/2026-04-24-workspace-ux-audit.md`. |
+| `/workspace/scope/client/affinity-petcare` | Scope route is now chat-first with scope context, suggestions, deliverables, and memory in the rail. Production hard reload, Cmd-K, and 5-line composer growth verified for commit `34d898d`. |
 | `/workspace/people` | People index rendered grouped stakeholders and profile links. |
 | `/workspace/memory` | Memory index rendered counts, filters, memory entries, and disabled unavailable action controls. Mutating archive, pin, and delete style controls were not clicked. |
 | Account menu | Settings and App home links work when clicked as links. Sign out was not clicked. |
