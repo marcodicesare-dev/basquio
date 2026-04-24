@@ -11,11 +11,14 @@ The P0 chat defects were fixed before Week 2 shell work shipped. No migrations w
 
 This audit also re-opened production with the in-app browser and found one additional navigation defect: the sidebar View Transitions wrapper could mark a scope link active while leaving the URL and main content on `/workspace/memory`. That is a real UX bug because it makes the rail lie about where the analyst is. It is fixed in the same audit follow-up by letting Next `Link` keep native navigation while the transition call becomes decorative.
 
+The next production review found a separate visual P0: the scope chat composer was implemented as a sticky footer inside a sticky scope card. It appeared smashed against the bottom of the viewport and grew upward over the page. This does not meet the modern composer bar set by Codex, Claude, Notion, Legora, or Conductor-style work surfaces. The fix is to make the scope chat a static workbench section, then center a padded input dock inside it. Composer growth now expands the workbench instead of colliding with the viewport.
+
 Current screenshots captured during audit:
 
 - `/tmp/basquio-p0-audit/current-memory.png`
 - `/tmp/basquio-p0-audit/current-affinity-scope.png`
 - `/tmp/basquio-p0-audit/current-affinity-chat-after-send.png`
+- `/tmp/basquio-p0-audit/current-chat-composer-before-redesign.png`
 
 Video capture note: macOS screen recording from the agent process was blocked by local permissions, so the 15-second before and after videos could not be captured from this environment. The live browser and programmatic DOM audit did run.
 
@@ -29,6 +32,7 @@ Video capture note: macOS screen recording from the agent process was blocked by
 | Theatrical memo wrappers | `ChatMessage.tsx`, `ChatMarkdown.tsx` | Rule 5, unnecessary rerenders | Default shallow memo failed on new AI SDK object refs | Custom comparators based on cheap identity and text length | Yes, render-count tests |
 | Workspace surface audit | Workspace routes | Rules 2, 3, 5 | No single live audit artifact existed | This file documents route status, banned loading checks, and deferred gaps | Yes, in-app browser |
 | Sidebar transition traps navigation | `apps/web/src/components/workspace-sidebar.tsx` | Rule 5, navigation must feel instant and truthful | From `/workspace/memory`, clicking Affinity left URL on Memory while the sidebar marked Affinity active | Native `Link` routing restored, transition no longer prevents default navigation | Pending deploy verification in this audit follow-up |
+| Scope composer smashed into viewport bottom | `apps/web/src/app/global.css`, `apps/web/src/components/workspace-chat/Chat.tsx` | Rule 3, crafted modern composer | Sticky scope chat plus sticky form made the composer look like a 2005 footer textarea and grow upward into content | Static scope workbench, centered padded composer dock, transparent textarea, compact icon send button | Pending deploy verification in this audit follow-up |
 
 ## Route Audit
 
@@ -36,6 +40,7 @@ Video capture note: macOS screen recording from the agent process was blocked by
 | --- | --- | --- |
 | `/workspace` | Dashboard renders greeting, learned count, suggestions, active scopes, recent chats, memory summary, weekly stats, and chat. Suggestions prefill composer. | Active scope cards now show relative updated labels. |
 | `/workspace/scope/client/affinity-petcare` | Scope landing renders Stakeholders, Workspace knows, Recent deliverables, Suggested next, Chat composer, and memory aside in the correct order. | Active chat morph and ESC-return layout remain a Week 3 follow-up. |
+| Scope chat composer | Before redesign, the chat card floated over the bottom of the viewport and the input grew upward. | P0 visual fix: remove sticky scope chat behavior and use a static centered composer dock with real padding. |
 | Sidebar navigation | Creation controls open and cancel. Prod audit found the View Transitions wrapper could trap scope navigation from Memory. | P0 follow-up fix in `workspace-sidebar.tsx`: do not prevent default navigation. |
 | `/workspace/memory` | Memory index renders counts, filters, entries, and Pin/Edit/Archive/Delete controls. | Mutating controls were not clicked during audit. No banned spinner, shimmer, emoji loader, or sparkle button pattern found. |
 | `/workspace/people` | People index renders grouped stakeholders and profile links. | Profile route should get a deeper editing audit before preference write flows expand. |
@@ -77,6 +82,7 @@ This follow-up adds:
 | Priority | Item |
 | --- | --- |
 | P0 | Deploy and verify the sidebar navigation fix in production. |
+| P0 | Deploy and verify the scope composer visual redesign in production. |
 | P1 | Build active chat landing morph, ESC return, and compact active context header. |
 | P1 | Move onboarding draft persistence server-side and wire Step 2 extraction reveal to real document processing output. |
 | P1 | Add Settings language switch and stakeholder language override for generated deliverables. |

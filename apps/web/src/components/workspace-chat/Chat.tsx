@@ -738,7 +738,7 @@ export function WorkspaceChat({
               aria-label={copy.sendMessage}
             >
               <ArrowUp size={14} weight="bold" />
-              {copy.send}
+              <span className="wbeta-ai-chat-send-label">{copy.send}</span>
             </button>
           )}
         </div>

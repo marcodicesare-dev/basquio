@@ -10987,27 +10987,32 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-ai-chat-form {
   position: sticky;
-  bottom: 21px;
+  bottom: 34px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: var(--surface-strong);
+  gap: 10px;
+  background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 13px;
-  box-shadow: var(--shadow-panel);
+  border-radius: 18px;
+  padding: 14px 14px 10px;
+  box-shadow: 0 18px 48px rgba(20, 24, 32, 0.12), 0 2px 8px rgba(20, 24, 32, 0.05);
   z-index: 5;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background 150ms ease-out;
+}
+
+.wbeta-ai-chat-form:focus-within {
+  border-color: rgba(26, 106, 255, 0.5);
+  box-shadow: 0 22px 56px rgba(20, 24, 32, 0.14), 0 0 0 3px rgba(26, 106, 255, 0.12);
 }
 
 @media (max-width: 639px) {
   .wbeta-ai-chat-form,
   .wbeta-chat-pane .wbeta-ai-chat-form,
-  .wbeta-home-chat .wbeta-ai-chat-form,
-  .wbeta-scope-landing-chat .wbeta-ai-chat-form {
+  .wbeta-home-chat .wbeta-ai-chat-form {
     position: sticky;
-    bottom: calc(8px + env(safe-area-inset-bottom));
-    width: 100%;
-    margin-bottom: env(safe-area-inset-bottom);
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    width: calc(100% - 24px);
+    margin: 0 auto calc(14px + env(safe-area-inset-bottom));
   }
 
   .wbeta-ai-chat-row {
@@ -11036,13 +11041,14 @@ body:has(.wbeta-shell) .site-wrap {
   font: inherit;
   font-size: 15px;
   line-height: 1.5;
-  padding: 14px 16px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: var(--canvas);
+  padding: 8px 6px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   outline: none;
-  transition: border-color 150ms ease-out, background 150ms ease-out;
+  overflow-y: auto;
+  resize: none;
 }
 
 .wbeta-ai-chat-textarea::placeholder {
@@ -11050,16 +11056,15 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-ai-chat-textarea:focus {
-  border-color: var(--blue);
-  background: var(--surface-strong);
+  background: transparent;
 }
 
 .wbeta-ai-chat-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 13px;
-  padding: 0 4px;
+  gap: 10px;
+  padding: 0 2px;
 }
 
 .wbeta-ai-chat-hint {
@@ -11091,11 +11096,13 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-chat-stop {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 14px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 12px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -11103,8 +11110,21 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-ai-chat-send {
+  position: relative;
   background: var(--blue);
   color: #ffffff;
+  width: 36px;
+  padding: 0;
+}
+
+.wbeta-ai-chat-send-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
 }
 
 .wbeta-ai-chat-send:hover:not(:disabled) {
@@ -15943,26 +15963,69 @@ body:has(.wbeta-shell) .site-wrap {
   flex-shrink: 0;
 }
 
-/* Chat at the bottom */
+/* Scope chat workbench */
 .wbeta-scope-landing-chat {
-  position: sticky;
-  bottom: 0;
-  background: var(--surface-strong);
+  position: relative;
+  background: rgba(255, 255, 255, 0.76);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-soft);
-  min-height: 360px;
-  margin-top: 8px;
+  border-radius: 16px;
+  box-shadow: 0 18px 46px rgba(20, 24, 32, 0.08);
+  min-height: 0;
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .wbeta-scope-landing-chat > .wbeta-ai-chat {
-  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  gap: 18px;
+  padding: 24px;
+}
+
+.wbeta-scope-landing-chat .wbeta-ai-chat-empty {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.wbeta-scope-landing-chat .wbeta-ai-chat-stream {
+  width: 100%;
+  max-height: min(58dvh, 620px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 0 6px;
+  gap: 24px;
+  scrollbar-gutter: stable;
+}
+
+.wbeta-scope-landing-chat .wbeta-ai-chat-stream > * {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.wbeta-scope-landing-chat .wbeta-ai-chat-form {
+  position: static;
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.wbeta-scope-landing-chat .wbeta-ai-chat-textarea {
+  min-height: 40px;
+}
+
+.wbeta-scope-landing-chat .wbeta-ai-chat-attachments,
+.wbeta-scope-landing-chat .wbeta-ai-chat-memory-pulse,
+.wbeta-scope-landing-chat .wbeta-ai-chat-upload {
+  width: min(760px, 100%);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ── Workspace memory aside (spec §4.4.1) ───────────────────── */
@@ -16622,12 +16685,11 @@ body:has(.wbeta-shell) .site-wrap {
 
 @media (max-width: 639px) {
   .wbeta-home-chat .wbeta-ai-chat-form,
-  .wbeta-chat-pane .wbeta-ai-chat-form,
-  .wbeta-scope-landing-chat .wbeta-ai-chat-form {
+  .wbeta-chat-pane .wbeta-ai-chat-form {
     position: sticky;
-    bottom: calc(8px + env(safe-area-inset-bottom));
-    width: 100%;
-    margin: 0 0 env(safe-area-inset-bottom);
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    width: calc(100% - 24px);
+    margin: 0 auto calc(14px + env(safe-area-inset-bottom));
   }
 }
 
