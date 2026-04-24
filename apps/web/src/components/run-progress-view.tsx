@@ -9,7 +9,7 @@ import type { CSSProperties } from "react";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
 
-import { DEFAULT_AUTHOR_MODEL, calculateRunCredits, estimateRunMinutes } from "@/lib/credits";
+import { DEFAULT_AUTHOR_MODEL, estimateRunMinutes } from "@/lib/credits";
 import {
   clearRunLaunchDraft,
   clearRunLaunchState,
@@ -196,10 +196,8 @@ export function RunProgressView(input: {
   const [recipeName, setRecipeName] = useState("");
   const [recipeSaved, setRecipeSaved] = useState(false);
   const [recipeSaving, setRecipeSaving] = useState(false);
-  const [showCompletionToast, setShowCompletionToast] = useState(false);
   const [elapsedTickMs, setElapsedTickMs] = useState(() => Date.now());
   const [waitCopyIndex, setWaitCopyIndex] = useState(0);
-  const prevStatusRef = useRef<string | null>(null);
   const originalDocumentTitleRef = useRef<string | null>(null);
   const snapshotRef = useRef<RunProgressSnapshot | null>(input.initialSnapshot);
   const isTerminalRef = useRef(false);
@@ -381,18 +379,6 @@ export function RunProgressView(input: {
       active = false;
     };
   }, [initialLaunchDraft, input.jobId, launchRetryTick, router]);
-
-  // Detect live completion transition for toast
-  useEffect(() => {
-    if (prevStatusRef.current && prevStatusRef.current !== "completed" && snapshot?.status === "completed") {
-      setShowCompletionToast(true);
-      const timer = setTimeout(() => setShowCompletionToast(false), 8000);
-      return () => clearTimeout(timer);
-    }
-    if (snapshot?.status) {
-      prevStatusRef.current = snapshot.status;
-    }
-  }, [snapshot?.status]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -726,13 +712,8 @@ export function RunProgressView(input: {
     );
   }
 
-  const slideCount = snapshot.summary?.slideCount ?? snapshot.summary?.slidePlan?.slides?.length ?? 0;
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
-    const authorModel = snapshot.authorModel ?? DEFAULT_AUTHOR_MODEL;
-    const creditsCost = calculateRunCredits(slideCount, authorModel);
-    const elapsedMin = Math.floor(snapshot.elapsedSeconds / 60);
-    const elapsedSec = snapshot.elapsedSeconds % 60;
     const hasPptxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pptx"));
     const hasPdfArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pdf"));
     const hasMdArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "md"));
@@ -741,47 +722,19 @@ export function RunProgressView(input: {
     const pdfDownloadHref = `/api/artifacts/${snapshot.jobId}/pdf`;
     const mdDownloadHref = `/api/artifacts/${snapshot.jobId}/md`;
     const xlsxDownloadHref = `/api/artifacts/${snapshot.jobId}/xlsx`;
-    const templateSummary = describeTemplateDiagnostics(
-      snapshot.summary?.templateDiagnostics ?? snapshot.templateDiagnostics,
-    );
-    const reviewSuggested = snapshot.summary?.qaPassed === false;
     const isReportOnlyResult = !hasPptxArtifact && hasMdArtifact && hasXlsxArtifact;
     const readyLabel = isReportOnlyResult ? "Your report is ready" : "Your deck is ready";
-    const resultMeta = isReportOnlyResult
-      ? `Report + data pack · ${creditsCost} credits · ${elapsedMin}m ${elapsedSec}s`
-      : `${slideCount} slides · ${creditsCost} credits · ${elapsedMin}m ${elapsedSec}s`;
-    const capabilityPills = isReportOnlyResult
-      ? ["Markdown report", "Audit-ready Excel workbook"]
-      : ["Editable in PowerPoint", "Report + data workbook included"];
     const previewImages = snapshot.summary?.previews ?? [];
 
     return (
       <div className="page-shell job-result-page">
-        {showCompletionToast && (
-          <div style={{
-            position: "fixed", top: 24, left: "50%", transform: "translateX(-50%)",
-            background: "#1a6aff", color: "#fff", padding: "12px 24px", borderRadius: 12,
-            fontSize: "0.92rem", fontWeight: 600, zIndex: 1000, display: "flex",
-            alignItems: "center", gap: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
-          }}>
-            {readyLabel}
-            <button type="button" onClick={() => setShowCompletionToast(false)} style={{
-              background: "rgba(255,255,255,0.2)", border: "none", color: "#fff",
-              padding: "4px 12px", borderRadius: 6, cursor: "pointer", fontSize: "0.82rem",
-            }}>Dismiss</button>
-          </div>
-        )}
         <section className="panel job-result-hero">
           <div className="stack-lg job-result-copy">
             <div className="stack">
               <span className="job-result-check" aria-hidden>
                 <Check size={18} weight="bold" />
               </span>
-              <p className="artifact-kind">Export complete</p>
               <h1>{readyLabel}</h1>
-              <p className="muted">
-                {resultMeta}
-              </p>
             </div>
 
             <div className="job-result-actions">
@@ -810,45 +763,13 @@ export function RunProgressView(input: {
                 </a>
               ) : null}
             </div>
-
-            <div className="compact-meta-row">
-              {capabilityPills.map((pill) => <span key={pill} className="run-pill">{pill}</span>)}
-              {!reviewSuggested && snapshot.summary?.qaPassed === true ? <span className="run-pill run-pill-ready">Ready to review</span> : null}
-              {reviewSuggested ? <span className="run-pill run-pill-failed">Review suggested</span> : null}
-              <span className="run-pill">{templateSummary.badge}</span>
-            </div>
-            <p className="muted" style={{ marginTop: "0.85rem", maxWidth: 560 }}>
-              {templateSummary.detail}
-            </p>
           </div>
 
         </section>
 
-        <div className="billing-stats-row">
-          <article className="panel billing-stat-card">
-            <p className="billing-stat-label">{isReportOnlyResult ? "Artifacts" : "Slides"}</p>
-            <p className="billing-stat-value">{isReportOnlyResult ? "MD + XLSX" : slideCount}</p>
-          </article>
-          <article className="panel billing-stat-card">
-            <p className="billing-stat-label">Credits used</p>
-            <p className="billing-stat-value">{creditsCost}</p>
-          </article>
-          <article className="panel billing-stat-card">
-            <p className="billing-stat-label">Status</p>
-            <p className={`billing-stat-value job-result-qa ${reviewSuggested ? "job-result-qa-failed" : "job-result-qa-passed"}`}>
-              {reviewSuggested ? "Review suggested" : snapshot.summary?.qaPassed === true ? "Ready" : "Available"}
-            </p>
-          </article>
-        </div>
-
         {previewImages.length > 0 ? (
           <section className="panel stack-lg">
-            <div className="workspace-section-head">
-              <h2>Preview before you download</h2>
-            </div>
-            <p className="muted" style={{ maxWidth: 720 }}>
-              Review a few slide thumbnails here first. If the story looks right, grab the editable deck and supporting files.
-            </p>
+            <h2>Preview</h2>
             <div style={{
               display: "grid",
               gap: "1rem",
@@ -1007,7 +928,7 @@ export function RunProgressView(input: {
     const isTransientProviderFailure = fc?.class === "transient_provider";
     const headline = fc?.headline ?? "Something went wrong";
     const explanation = fc?.explanation ?? "We hit an issue generating your deck.";
-    const retryAdvice = fc?.retryAdvice ?? "Try again — it won't cost extra.";
+    const retryAdvice = fc?.retryAdvice ?? "Try again, it won't cost extra.";
 
     return (
       <div style={styles.fullPage}>
@@ -1325,34 +1246,6 @@ function getDisplayedElapsedSeconds(snapshot: RunProgressSnapshot, nowMs: number
   }
 
   return Math.max(snapshot.elapsedSeconds, Math.max(1, Math.round((nowMs - createdAtMs) / 1000)));
-}
-
-function describeTemplateDiagnostics(template: TemplateDiagnostics | null | undefined) {
-  if (!template || template.status === "not_provided") {
-    return {
-      badge: "No template attached",
-      detail: "Using the Basquio house style because this run did not include a template or brand file.",
-    };
-  }
-
-  if (template.status === "fallback_default") {
-    return {
-      badge: "Template fallback",
-      detail: `${template.templateName ?? "Uploaded template"} could not be parsed cleanly, so Basquio fell back to the system style. ${template.warnings[0] ?? ""}`.trim(),
-    };
-  }
-
-  if (template.status === "partially_applied") {
-    return {
-      badge: "Template guidance partial",
-      detail: `${template.templateName ?? "Template"} provided ${template.effect === "theme_only" ? "theme guidance only" : "partial layout guidance"}. This reflects template interpretation status, not a final fidelity score. ${template.warnings[0] ?? ""}`.trim(),
-    };
-  }
-
-  return {
-    badge: template.source === "saved_profile" ? "Saved template parsed" : "Uploaded template parsed",
-    detail: `${template.templateName ?? "Template"} parsed cleanly and is available to guide ${template.effect === "layout_and_theme" ? "layout and theme choices" : "theme choices"} for this run. This reflects template interpretation status, not a final fidelity score.`,
-  };
 }
 
 function buildPendingLaunchSnapshot(draft: RunLaunchDraft): RunProgressSnapshot {

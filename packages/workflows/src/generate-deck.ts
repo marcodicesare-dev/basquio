@@ -22,12 +22,18 @@ import {
   MIN_REQUIRED_STRUCTURAL_DECK_SLIDES,
   MAX_RENDERING_TARGET_SLIDES,
   routeQuestion,
+  validateCitations,
+  validateDataPrimacy,
   validateDeckContract,
+  type CitationFidelityReport,
+  type CitationViolation,
+  type DataPrimacyReport,
   type FidelitySheetInput,
   type FidelitySlideInput,
   type FidelityViolation,
   type SlidePlanLintInput,
   type SlideTextInput,
+  type UnboundClaim,
 } from "@basquio/intelligence";
 import { applyTemplateBranding, renderPptxArtifact } from "@basquio/render-pptx";
 import type { ChartSlotType } from "@basquio/scene-graph";
@@ -62,6 +68,7 @@ import {
   type ClaudeAuthorModel,
   normalizeClaudeAuthorModel,
   OPUS_AUTHOR_MODEL,
+  type WebFetchMode,
 } from "./anthropic-execution-contract";
 import {
   appendAssistantTurn,
@@ -76,6 +83,7 @@ import {
   usageToCost,
 } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
+import { runBriefDataReconciliation, type ReconciliationResult } from "./brief-data-reconciliation";
 import {
   buildExhibitPresentationSpec,
   buildWorkbookSheetPresentations,
@@ -83,6 +91,11 @@ import {
   type WorkbookSheetPresentation,
 } from "./metric-presentation";
 import { runClaimTraceabilityQa } from "./claim-traceability-qa";
+import {
+  renderSheetNameRejectionMessage,
+  validatePlanSheetNames,
+  type PlanSheetNameReport,
+} from "./plan-sheet-name-validator";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { closeOpenRequestUsageRows } from "./request-usage-lifecycle";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
@@ -657,6 +670,10 @@ type ClaudeUsage = {
   output_tokens?: number | null;
   cache_creation_input_tokens?: number | null;
   cache_read_input_tokens?: number | null;
+  server_tool_use?: {
+    web_fetch_requests?: number | null;
+    web_search_requests?: number | null;
+  } | null;
 };
 
 type PublishDecision = {
@@ -1037,6 +1054,7 @@ export async function generateDeckRun(
     const workspaceContextPack = parseWorkspaceContextPack(run.workspace_context_pack);
     const workspaceContextPackHash = run.workspace_context_pack_hash ?? hashWorkspaceContextPack(workspaceContextPack);
     run.business_context = extendBusinessContextWithWorkspacePack(run.business_context, workspaceContextPack);
+    const routedBusinessContext = run.business_context;
     authorModel = normalizeAuthorModel(run.author_model);
     let MODEL = authorModel;
     let modelBudget = getDeckBudgetCaps(MODEL, run.target_slide_count);
@@ -1063,7 +1081,7 @@ export async function generateDeckRun(
     throwIfWorkerShutdownRequested(externalAbortSignal, "normalize");
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
     const fileBackedAttachmentKinds = [...new Set(sourceFiles.map((file) => file.kind).filter(Boolean))];
-    // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
+    // E: Template fallback, if recovery_reason is template_fallback, skip template entirely
     const isTemplateFallback = attempt.recoveryReason === "template_fallback";
     const persistedTemplate = isTemplateFallback ? null : await loadTemplateProfileRow(config, run.template_profile_id);
     const templateSourceFileId = persistedTemplate?.source_file_id ?? null;
@@ -1082,6 +1100,18 @@ export async function generateDeckRun(
       ? undefined
       : (persistedTemplateFile ?? explicitTemplateFallback);
     const evidenceFiles = sourceFiles.filter((file) => file.id !== templateFile?.id);
+    const uploadedWorkbookBuffers = workbookSourceFiles.map((file) => ({
+      fileName: file.file_name,
+      buffer: file.buffer,
+    }));
+    const uploadedCitationFileNames = evidenceFiles.map((file) => file.file_name);
+    const dataPrimacyMode = resolveDataPrimacyValidatorMode();
+    const advisoryIssues = new Set<string>();
+    let latestReconciliation: ReconciliationResult | null = null;
+    let latestPlanSheetValidation: PlanSheetNameReport | null = null;
+    let latestDataPrimacyReport: DataPrimacyReport | null = null;
+    let latestCitationReport: CitationFidelityReport | null = null;
+    let fetchedUrls: string[] = [];
     templateMode = isTemplateFallback
       ? "template_fallback"
       : (templateFile || persistedTemplate ? "workspace_template" : "basquio_standard");
@@ -1228,6 +1258,45 @@ export async function generateDeckRun(
       }
     }
 
+    try {
+      latestReconciliation = await runBriefDataReconciliation({
+        client,
+        brief: {
+          objective: run.objective,
+          businessContext: run.business_context,
+          audience: run.audience,
+        },
+        datasetProfile: parsed.datasetProfile,
+      });
+      await upsertWorkingPaper(config, runId, "brief_data_reconciliation", latestReconciliation);
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: {
+          id: `eq.${runId}`,
+          active_attempt_id: `eq.${attempt.id}`,
+        },
+        payload: {
+          scope_adjustment: latestReconciliation.scopeAdjustment,
+        },
+      }).catch(() => {});
+      if (latestReconciliation.scopeAdjustment) {
+        run.business_context = appendScopeAdjustment(run.business_context, latestReconciliation.scopeAdjustment);
+      }
+    } catch (reconciliationError) {
+      await insertEvent(config, runId, attempt, "normalize", "brief_data_reconciliation_skipped", {
+        message: reconciliationError instanceof Error ? reconciliationError.message : String(reconciliationError),
+      }).catch(() => {});
+    }
+
+    const authorWebFetchMode: WebFetchMode =
+      researchEvidenceRefs.length > 0 ||
+      (workspaceContextPack?.citedSources?.length ?? 0) > 0
+        ? "enrich"
+        : "off";
+    toolCallSummary = buildAuthoringToolCallSummary(MODEL, { webFetchMode: authorWebFetchMode });
+
     const uploadedEvidence = await uploadClaudeFilesSequentially({
       client,
       config,
@@ -1334,7 +1403,7 @@ export async function generateDeckRun(
       "stale_timeout", "transient_provider_retry",
       "transient_network_retry", "worker_shutdown",
     ]);
-    // Failure messages that indicate hard artifact corruption — checkpoint
+    // Failure messages that indicate hard artifact corruption, checkpoint
     // resume would just re-publish a corrupt deck. Must replay instead.
     const CHECKPOINT_INELIGIBLE_PATTERNS = [
       "pptx_structural_integrity",
@@ -1418,7 +1487,7 @@ export async function generateDeckRun(
     let baseContainerId: string | null = null;
 
     if (canSkipToExportFromCheckpoint && existingCheckpoint) {
-      // Checkpoint recovery — skip ALL generation phases through export.
+      // Checkpoint recovery, skip ALL generation phases through export.
       // The checkpoint IS the deck we're going to try to publish.
       // We do NOT run critique/revise from a checkpoint because:
       //   - latestResponse is null (no Claude thread to continue)
@@ -1479,8 +1548,35 @@ export async function generateDeckRun(
       }
     } else {
       const isRecoveryAttempt = RECOVERY_ATTEMPT_REUSE_REASONS.has(attempt.recoveryReason ?? "");
-      const recoveredAnalysisForSplit = isRecoveryAttempt ? recoveredAnalysis : null;
-      const questionRoutes = routeQuestion(buildBriefText(run));
+      let recoveredAnalysisForSplit = isRecoveryAttempt ? recoveredAnalysis : null;
+      const questionRoutes = routeQuestion(buildBriefText({
+        ...run,
+        business_context: routedBusinessContext,
+      }));
+
+      if (recoveredAnalysisForSplit) {
+        latestPlanSheetValidation = validatePlanSheetNames({
+          slidePlan: recoveredAnalysisForSplit.slidePlan,
+          datasetProfile: parsed.datasetProfile,
+        });
+        await upsertWorkingPaper(config, runId, "plan_sheet_name_validation", latestPlanSheetValidation).catch(() => {});
+        if (!latestPlanSheetValidation.valid) {
+          phaseTelemetry.understandRecoveryRejected = {
+            reason: "fabricated_sheet_names",
+            fabricatedSheetCount: latestPlanSheetValidation.fabricatedSheetNames.length,
+          };
+          await insertEvent(config, runId, attempt, "understand", "plan_sheet_name_validation", {
+            valid: false,
+            fabricatedSheetCount: latestPlanSheetValidation.fabricatedSheetNames.length,
+            source: "recovered_analysis",
+            rejectionMessage: renderSheetNameRejectionMessage(latestPlanSheetValidation),
+          }).catch(() => {});
+          advisoryIssues.add(
+            `Plan sheet validation: recovered analysis referenced ${latestPlanSheetValidation.fabricatedSheetNames.length} non-existent sheet names and was discarded before authoring.`,
+          );
+          recoveredAnalysisForSplit = null;
+        }
+      }
 
       if (recoveredAnalysisForSplit) {
         analysis = recoveredAnalysisForSplit;
@@ -1521,7 +1617,9 @@ export async function generateDeckRun(
       for (let modelIndex = 0; modelIndex < authorModelCandidates.length; modelIndex += 1) {
         const candidateModel = authorModelCandidates[modelIndex];
         const candidateBetas = buildClaudeBetas(candidateModel);
-        const candidateToolCallSummary = buildAuthoringToolCallSummary(candidateModel);
+        const candidateToolCallSummary = buildAuthoringToolCallSummary(candidateModel, {
+          webFetchMode: authorWebFetchMode,
+        });
         const candidateIsReportOnly = candidateModel === "claude-haiku-4-5";
         const candidateGenerationMessage = buildAuthorMessage(
           run,
@@ -1554,6 +1652,15 @@ export async function generateDeckRun(
             spentUsd,
             maxUsd: modelBudget.preFlight,
             outputTokenBudget: authorMaxTokens,
+            onSoftCapExceeded: (warning) =>
+              recordCostAnomalyEvent(config, {
+                runId,
+                phase: "author",
+                model: candidateModel,
+                projectedUsd: warning.projectedUsd,
+                softCapUsd: warning.softCapUsd,
+                spentUsd: warning.spentUsd,
+              }),
             fileBackedBudgetContext: {
               phase: "author",
               targetSlideCount: run.target_slide_count,
@@ -1565,15 +1672,18 @@ export async function generateDeckRun(
             body: {
               system: systemPrompt,
               messages: [candidateGenerationMessage],
-              tools: buildClaudeTools(candidateModel),
+              tools: buildClaudeTools(candidateModel, { webFetchMode: authorWebFetchMode }),
               thinking: buildAuthoringThinkingConfig(candidateModel),
               output_config: buildAuthoringOutputConfig(candidateModel),
             },
           });
           await insertEvent(config, runId, attempt, "author", "cost_preflight", {
             projectedUsd: authorBudgetGate.projectedUsd,
+            overBudget: authorBudgetGate.overBudget,
             usedCountTokens: authorBudgetGate.usedCountTokens,
             envelopeContext: authorBudgetGate.envelopeContext,
+            model: candidateModel,
+            webFetchMode: authorWebFetchMode,
           }).catch(() => {});
 
           await persistRequestStart(config, runId, attempt, "author", "phase_generation", candidateModel);
@@ -1593,7 +1703,7 @@ export async function generateDeckRun(
             betas: candidateBetas,
             container: buildAuthoringContainer(baseContainerId, candidateModel),
             messages: [candidateGenerationMessage],
-            tools: buildClaudeTools(candidateModel),
+            tools: buildClaudeTools(candidateModel, { webFetchMode: authorWebFetchMode }),
             outputConfig: buildAuthoringOutputConfig(candidateModel),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
             abortSignal: externalAbortSignal,
@@ -1643,7 +1753,7 @@ export async function generateDeckRun(
                   ],
                 },
               ],
-              tools: buildClaudeTools(candidateModel),
+              tools: buildClaudeTools(candidateModel, { webFetchMode: authorWebFetchMode }),
               thinking: buildAuthoringThinkingConfig(candidateModel),
               outputConfig: buildAuthoringOutputConfig(candidateModel),
               onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
@@ -1669,11 +1779,21 @@ export async function generateDeckRun(
             cumulativeUsd: spentUsd,
             model: candidateModel,
           }).catch(() => {});
-          assertDeckSpendWithinBudget(spentUsd, candidateModel, {
+          const authorSpendGate = assertDeckSpendWithinBudget(spentUsd, candidateModel, {
             allowPartialOutput: candidateFiles.length > 0,
             context: `author:${candidateModel}`,
             targetSlideCount: run.target_slide_count,
           });
+          if (authorSpendGate.overBudget) {
+            await recordCostAnomalyEvent(config, {
+              runId,
+              phase: "author",
+              model: candidateModel,
+              projectedUsd: authorSpendGate.projectedUsd,
+              softCapUsd: authorSpendGate.softCapUsd,
+              spentUsd,
+            }).catch(() => {});
+          }
           continuationCount += candidateResponse.pauseTurns;
           await persistRequestUsage(config, runId, attempt, "author", "phase_generation", candidateModel, candidateResponse.requests);
           rememberRequestIds(anthropicRequestIds, candidateResponse.requests);
@@ -1705,7 +1825,7 @@ export async function generateDeckRun(
             authorModel = MODEL;
             modelBudget = getDeckBudgetCaps(MODEL, run.target_slide_count);
             modelBetas = buildClaudeBetas(MODEL);
-            toolCallSummary = buildAuthoringToolCallSummary(MODEL);
+            toolCallSummary = buildAuthoringToolCallSummary(MODEL, { webFetchMode: authorWebFetchMode });
             isReportOnly = candidateIsReportOnly;
             authorResponse = candidateResponse;
             authorFallbackMessages = candidateMessages;
@@ -1768,6 +1888,20 @@ export async function generateDeckRun(
         throw (lastAuthorError instanceof Error ? lastAuthorError : new Error("Author phase failed before any publishable artifacts were produced."));
       }
 
+      fetchedUrls = collectFetchedUrlsFromMessageThread(authorResponse.thread);
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: {
+          id: `eq.${runId}`,
+          active_attempt_id: `eq.${attempt.id}`,
+        },
+        payload: {
+          fetched_urls: fetchedUrls,
+        },
+      }).catch(() => {});
+
       manifest = parseManifestResponseWithFallback(authorFallbackMessages, authorFiles);
       if (!recoveredAnalysisForSplit) {
         const resolvedAnalysis = resolveAuthorAnalysisWithFallback({
@@ -1788,6 +1922,10 @@ export async function generateDeckRun(
         }
         enforceAnalysisExhibitRules(analysis);
         applyChartPreprocessingConstraints(analysis);
+        latestPlanSheetValidation = validatePlanSheetNames({
+          slidePlan: analysis.slidePlan,
+          datasetProfile: parsed.datasetProfile,
+        });
         const resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
         phaseTelemetry.understandPlanLint = resolvedPlanLint.summary;
         await assertAttemptStillOwnsRun(config, runId, attempt);
@@ -1801,11 +1939,26 @@ export async function generateDeckRun(
           _attemptId: attempt.id,
           _attemptNumber: attempt.attemptNumber,
         });
+        await upsertWorkingPaper(config, runId, "plan_sheet_name_validation", {
+          ...latestPlanSheetValidation,
+          _attemptId: attempt.id,
+          _attemptNumber: attempt.attemptNumber,
+        }).catch(() => {});
         await upsertWorkingPaper(config, runId, "deck_plan_validation", {
           ...resolvedPlanLint.result,
           _attemptId: attempt.id,
           _attemptNumber: attempt.attemptNumber,
         }).catch(() => {});
+        await insertEvent(config, runId, attempt, "understand", "plan_sheet_name_validation", {
+          valid: latestPlanSheetValidation.valid,
+          fabricatedSheetCount: latestPlanSheetValidation.fabricatedSheetNames.length,
+          source: "merged_author_analysis",
+        }).catch(() => {});
+        if (!latestPlanSheetValidation.valid) {
+          advisoryIssues.add(
+            `Plan sheet validation found ${latestPlanSheetValidation.fabricatedSheetNames.length} fabricated sheet references in the merged author analysis.`,
+          );
+        }
         await insertEvent(config, runId, attempt, "understand", "plan_validation", {
           ...resolvedPlanLint.summary,
           actionableIssues: resolvedPlanLint.actionableIssues.slice(0, 8),
@@ -1901,6 +2054,31 @@ export async function generateDeckRun(
         phaseTelemetry.authorLint = { passed: true, actionableIssueCount: 0, actionableIssues: [], slideViolationCount: 0, deckViolationCount: 0 };
         phaseTelemetry.authorContract = { passed: true, actionableIssueCount: 0, actionableIssues: [], violationCount: 0 };
       } else {
+        latestDataPrimacyReport = dataPrimacyMode === "off"
+          ? null
+          : await validateDataPrimacy({
+              client,
+              manifest,
+              datasetProfile: parsed.datasetProfile,
+              uploadedWorkbookBuffers,
+            });
+        latestCitationReport = validateCitations({
+          manifest,
+          uploadedFileNames: uploadedCitationFileNames,
+          fetchedUrls,
+        });
+        if (latestDataPrimacyReport) {
+          await upsertWorkingPaper(config, runId, "data_primacy_report", {
+            ...latestDataPrimacyReport,
+            _attemptId: attempt.id,
+            _attemptNumber: attempt.attemptNumber,
+          }).catch(() => {});
+        }
+        await upsertWorkingPaper(config, runId, "citation_fidelity", {
+          ...latestCitationReport,
+          _attemptId: attempt.id,
+          _attemptNumber: attempt.attemptNumber,
+        }).catch(() => {});
         if (authorClaimQa && ((authorClaimQa.usage.input_tokens ?? 0) + (authorClaimQa.usage.output_tokens ?? 0) > 0)) {
           phaseTelemetry.claimTraceabilityAuthor = buildSimplePhaseTelemetry("claude-haiku-4-5", authorClaimQa.usage);
           await persistRequestUsage(config, runId, attempt, "author", "claim_traceability_qa", "claude-haiku-4-5", authorClaimQa.requests);
@@ -1909,13 +2087,23 @@ export async function generateDeckRun(
         }
         const authorLintSummary = summarizeLintResult(lintManifest(manifest, run.target_slide_count, fidelityContext ?? undefined));
         const claimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
+        const authorValidationIssues = [
+          ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
+          ...formatCitationCritiqueIssues(latestCitationReport),
+          ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
+        ];
         phaseTelemetry.authorLint = {
           ...authorLintSummary,
-          actionableIssueCount: authorLintSummary.actionableIssueCount + claimIssueMessages.length,
-          actionableIssues: [...authorLintSummary.actionableIssues, ...claimIssueMessages],
+          actionableIssueCount: authorLintSummary.actionableIssueCount + claimIssueMessages.length + authorValidationIssues.length,
+          actionableIssues: [...authorLintSummary.actionableIssues, ...claimIssueMessages, ...authorValidationIssues],
           claimTraceabilityIssueCount: claimTraceabilityIssues.length,
         };
         phaseTelemetry.authorContract = summarizeDeckContractResult(validateManifestContract(manifest));
+        phaseTelemetry.dataPrimacy = summarizeDataPrimacyReport(latestDataPrimacyReport);
+        phaseTelemetry.citationFidelity = {
+          passed: latestCitationReport.passed,
+          violationCount: latestCitationReport.violations.length,
+        };
       }
 
       await assertAttemptStillOwnsRun(config, runId, attempt);
@@ -1995,11 +2183,21 @@ export async function generateDeckRun(
     pdfFile = initialQaOutcome.pdf;
     const initialVisualQa = initialQaOutcome.qa;
     spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, initialVisualQa.usage));
-    assertDeckSpendWithinBudget(spentUsd, MODEL, {
+    const critiqueSpendGate = assertDeckSpendWithinBudget(spentUsd, VISUAL_QA_MODEL, {
       allowPartialOutput: true,
       context: "critique:visual-qa",
       targetSlideCount: run.target_slide_count,
     });
+    if (critiqueSpendGate.overBudget) {
+      await recordCostAnomalyEvent(config, {
+        runId,
+        phase: "critique",
+        model: VISUAL_QA_MODEL,
+        projectedUsd: critiqueSpendGate.projectedUsd,
+        softCapUsd: critiqueSpendGate.softCapUsd,
+        spentUsd,
+      }).catch(() => {});
+    }
     phaseTelemetry.visualQaAuthor = buildSimplePhaseTelemetry(VISUAL_QA_MODEL, initialVisualQa.usage);
     await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, initialVisualQa.requests);
     rememberRequestIds(anthropicRequestIds, initialVisualQa.requests);
@@ -2018,13 +2216,18 @@ export async function generateDeckRun(
     const critiqueContract = validateManifestContract(manifest);
     const critiqueLintSummary = summarizeLintResult(critiqueLint);
     const critiqueContractSummary = summarizeDeckContractResult(critiqueContract);
+    const initialValidationIssues = [
+      ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
+      ...formatCitationCritiqueIssues(latestCitationReport),
+      ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
+    ];
     const initialRepairBuckets = bucketRepairIssues({
       critiqueIssues,
       claimTraceabilityIssues,
       visualQa: initialVisualQa.report,
     });
     const initialFrontierState = buildRepairFrontierState({
-      lintIssues: critiqueLintSummary.actionableIssues,
+      lintIssues: [...critiqueLintSummary.actionableIssues, ...initialValidationIssues],
       contractIssues: critiqueContractSummary.actionableIssues,
       claimTraceabilityIssues,
       visualQa: initialVisualQa.report,
@@ -2037,7 +2240,7 @@ export async function generateDeckRun(
       critiqueComplete: true,
       reviseComplete: false,
       visualQaGreen: initialVisualQa.report.overallStatus === "green",
-      lintPassed: critiqueLint.actionableIssues.length === 0,
+      lintPassed: critiqueLint.actionableIssues.length === 0 && initialValidationIssues.length === 0,
       contractPassed: critiqueContract.actionableIssues.length === 0,
       deckNeedsRevision: initialVisualQa.report.deckNeedsRevision || blockingCritiqueIssues.length > 0,
     });
@@ -2092,9 +2295,12 @@ export async function generateDeckRun(
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
         const reviseModel: AuthorModel = repairLane === "haiku" ? "claude-haiku-4-5" : MODEL;
+        const reviseWebFetchMode: WebFetchMode = "off";
         const reviseBudgetCaps = getDeckBudgetCaps(reviseModel, run.target_slide_count);
         const reviseBetas = buildClaudeBetas(reviseModel);
-        const reviseToolCallSummary = buildAuthoringToolCallSummary(reviseModel);
+        const reviseToolCallSummary = buildAuthoringToolCallSummary(reviseModel, {
+          webFetchMode: reviseWebFetchMode,
+        });
         const reviseMaxTokens = getRevisePhaseMaxTokens(reviseModel, run.target_slide_count);
         let activeManifest = manifest;
         let activePdf = pdfFile;
@@ -2116,12 +2322,14 @@ export async function generateDeckRun(
           output_tokens: 0,
           cache_creation_input_tokens: 0,
           cache_read_input_tokens: 0,
+          server_tool_use: null,
         };
         let reviseVisualQaAggregateUsage: Required<ClaudeUsage> = {
           input_tokens: 0,
           output_tokens: 0,
           cache_creation_input_tokens: 0,
           cache_read_input_tokens: 0,
+          server_tool_use: null,
         };
         let reviseAggregateIterations = 0;
         let reviseAggregatePauseTurns = 0;
@@ -2156,6 +2364,15 @@ export async function generateDeckRun(
             spentUsd,
             maxUsd: reviseBudgetCaps.preFlight,
             outputTokenBudget: reviseMaxTokens,
+            onSoftCapExceeded: (warning) =>
+              recordCostAnomalyEvent(config, {
+                runId,
+                phase: "revise",
+                model: reviseModel,
+                projectedUsd: warning.projectedUsd,
+                softCapUsd: warning.softCapUsd,
+                spentUsd: warning.spentUsd,
+              }),
             fileBackedBudgetContext: {
               phase: "revise",
               targetSlideCount: run.target_slide_count,
@@ -2168,17 +2385,19 @@ export async function generateDeckRun(
               body: {
                 system: systemPrompt,
                 messages: reviseMessages,
-                tools: buildClaudeTools(reviseModel),
+                tools: buildClaudeTools(reviseModel, { webFetchMode: reviseWebFetchMode }),
                 thinking: buildAuthoringThinkingConfig(reviseModel),
                 output_config: buildAuthoringOutputConfig(reviseModel),
               },
           });
           await insertEvent(config, runId, attempt, "revise", "cost_preflight", {
             projectedUsd: reviseBudgetGate.projectedUsd,
+            overBudget: reviseBudgetGate.overBudget,
             usedCountTokens: reviseBudgetGate.usedCountTokens,
             envelopeContext: reviseBudgetGate.envelopeContext,
             iteration: reviseLoopCount,
             model: reviseModel,
+            webFetchMode: reviseWebFetchMode,
           }).catch(() => {});
 
           await persistRequestStart(config, runId, attempt, "revise", "phase_generation", reviseModel);
@@ -2198,7 +2417,7 @@ export async function generateDeckRun(
             betas: reviseBetas,
             container: buildAuthoringContainer(latestContainerId, reviseModel),
             messages: reviseMessages,
-            tools: buildClaudeTools(reviseModel),
+            tools: buildClaudeTools(reviseModel, { webFetchMode: reviseWebFetchMode }),
             thinking: buildAuthoringThinkingConfig(reviseModel),
             outputConfig: buildAuthoringOutputConfig(reviseModel),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),
@@ -2248,7 +2467,7 @@ export async function generateDeckRun(
                   ],
                 },
               ],
-              tools: buildClaudeTools(reviseModel),
+              tools: buildClaudeTools(reviseModel, { webFetchMode: reviseWebFetchMode }),
               thinking: buildAuthoringThinkingConfig(reviseModel),
               outputConfig: buildAuthoringOutputConfig(reviseModel),
               onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),
@@ -2281,11 +2500,21 @@ export async function generateDeckRun(
             iteration: reviseLoopCount,
             model: reviseModel,
           }).catch(() => {});
-          assertDeckSpendWithinBudget(spentUsd, reviseModel, {
+          const reviseSpendGate = assertDeckSpendWithinBudget(spentUsd, reviseModel, {
             allowPartialOutput: reviseFiles.length > 0,
             context: `revise:${reviseLoopCount}`,
             targetSlideCount: run.target_slide_count,
           });
+          if (reviseSpendGate.overBudget) {
+            await recordCostAnomalyEvent(config, {
+              runId,
+              phase: "revise",
+              model: reviseModel,
+              projectedUsd: reviseSpendGate.projectedUsd,
+              softCapUsd: reviseSpendGate.softCapUsd,
+              spentUsd,
+            }).catch(() => {});
+          }
           continuationCount += reviseResponse.pauseTurns;
           reviseAggregateUsage = mergeClaudeUsage(reviseAggregateUsage, reviseResponse.usage);
           reviseAggregateIterations += reviseResponse.iterations;
@@ -2351,11 +2580,21 @@ export async function generateDeckRun(
           finalPdf = revisedQaOutcome.pdf;
           const revisedVisualQa = revisedQaOutcome.qa;
           spentUsd = roundUsd(spentUsd + usageToCost(VISUAL_QA_MODEL, revisedVisualQa.usage));
-          assertDeckSpendWithinBudget(spentUsd, reviseModel, {
+          const reviseVisualSpendGate = assertDeckSpendWithinBudget(spentUsd, VISUAL_QA_MODEL, {
             allowPartialOutput: true,
             context: `revise:visual-qa:${reviseLoopCount}`,
             targetSlideCount: run.target_slide_count,
           });
+          if (reviseVisualSpendGate.overBudget) {
+            await recordCostAnomalyEvent(config, {
+              runId,
+              phase: "revise",
+              model: VISUAL_QA_MODEL,
+              projectedUsd: reviseVisualSpendGate.projectedUsd,
+              softCapUsd: reviseVisualSpendGate.softCapUsd,
+              spentUsd,
+            }).catch(() => {});
+          }
           reviseVisualQaAggregateUsage = mergeClaudeUsage(reviseVisualQaAggregateUsage, revisedVisualQa.usage);
           await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, revisedVisualQa.requests);
           rememberRequestIds(anthropicRequestIds, revisedVisualQa.requests);
@@ -2370,12 +2609,44 @@ export async function generateDeckRun(
             await upsertWorkingPaper(config, runId, "claim_traceability_revise", reviseClaimQa.report);
           }
           await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
+          latestDataPrimacyReport = dataPrimacyMode === "off"
+            ? null
+            : await validateDataPrimacy({
+                client,
+                manifest: finalManifest,
+                datasetProfile: parsed.datasetProfile,
+                uploadedWorkbookBuffers,
+              });
+          latestCitationReport = validateCitations({
+            manifest: finalManifest,
+            uploadedFileNames: uploadedCitationFileNames,
+            fetchedUrls,
+          });
+          if (latestDataPrimacyReport) {
+            await upsertWorkingPaper(config, runId, "data_primacy_report", {
+              ...latestDataPrimacyReport,
+              _attemptId: attempt.id,
+              _attemptNumber: attempt.attemptNumber,
+              _reviseIteration: reviseLoopCount,
+            }).catch(() => {});
+          }
+          await upsertWorkingPaper(config, runId, "citation_fidelity", {
+            ...latestCitationReport,
+            _attemptId: attempt.id,
+            _attemptNumber: attempt.attemptNumber,
+            _reviseIteration: reviseLoopCount,
+          }).catch(() => {});
 
           const revisedLint = lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
           const revisedContract = validateManifestContract(finalManifest);
           const revisedLintSummary = summarizeLintResult(revisedLint);
           const revisedContractSummary = summarizeDeckContractResult(revisedContract);
           const revisedClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
+          const revisedValidationIssues = [
+            ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
+            ...formatCitationCritiqueIssues(latestCitationReport),
+            ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
+          ];
           activeManifest = finalManifest;
           activePdf = finalPdf;
           activeVisualQa = finalVisualQa;
@@ -2386,12 +2657,13 @@ export async function generateDeckRun(
               ...revisedLintSummary.actionableIssues,
               ...revisedContractSummary.actionableIssues,
               ...revisedClaimIssueMessages,
+              ...revisedValidationIssues,
             ],
             run.target_slide_count,
           );
           activeBlockingCritiqueIssues = activeCritiqueIssues.filter((issue) => isBlockingRepairIssue(issue));
           const activeFrontierState = buildRepairFrontierState({
-            lintIssues: revisedLintSummary.actionableIssues,
+            lintIssues: [...revisedLintSummary.actionableIssues, ...revisedValidationIssues],
             contractIssues: revisedContractSummary.actionableIssues,
             claimTraceabilityIssues,
             visualQa: activeVisualQa,
@@ -2487,12 +2759,17 @@ export async function generateDeckRun(
         const reviseLint = lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
         const reviseContract = validateManifestContract(finalManifest);
         const reviseClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
+        const reviseValidationIssues = [
+          ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
+          ...formatCitationCritiqueIssues(latestCitationReport),
+          ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
+        ];
         const reviseCheckpointProof = buildCheckpointProof({
           authorComplete: true,
           critiqueComplete: true,
           reviseComplete: true,
           visualQaGreen: finalVisualQa.overallStatus === "green",
-          lintPassed: reviseLint.actionableIssues.length === 0 && reviseClaimIssueMessages.length === 0,
+          lintPassed: reviseLint.actionableIssues.length === 0 && reviseClaimIssueMessages.length === 0 && reviseValidationIssues.length === 0,
           contractPassed: reviseContract.actionableIssues.length === 0,
           deckNeedsRevision: finalVisualQa.deckNeedsRevision,
         });
@@ -2540,7 +2817,7 @@ export async function generateDeckRun(
         estimatedCostUsd: spentUsd,
       }).catch(() => {});
     } else {
-      // Checkpoint recovery path — set final vars directly from checkpoint.
+      // Checkpoint recovery path, set final vars directly from checkpoint.
       // Visual QA will be run fresh in the export phase's strengthenFinalVisualQa
       // or in the salvage path. Use a conservative placeholder here.
       finalPptx = pptxFile;
@@ -2553,7 +2830,7 @@ export async function generateDeckRun(
       finalVisualQa = {
         overallStatus: "green" as const,
         score: 7,
-        summary: "Checkpoint recovery — fresh visual QA will run in export phase.",
+        summary: "Checkpoint recovery, fresh visual QA will run in export phase.",
         deckNeedsRevision: false,
         issues: [],
         strongestSlides: [],
@@ -2693,12 +2970,64 @@ export async function generateDeckRun(
           await upsertWorkingPaper(config, runId, "claim_traceability_export", exportClaimQa.report);
         }
       }
+      if (!isReportOnly) {
+        latestDataPrimacyReport = dataPrimacyMode === "off"
+          ? null
+          : await validateDataPrimacy({
+              client,
+              manifest: finalManifest,
+              datasetProfile: parsed.datasetProfile,
+              uploadedWorkbookBuffers,
+            });
+        latestCitationReport = validateCitations({
+          manifest: finalManifest,
+          uploadedFileNames: uploadedCitationFileNames,
+          fetchedUrls,
+        });
+        if (latestDataPrimacyReport) {
+          await upsertWorkingPaper(config, runId, "data_primacy_report", {
+            ...latestDataPrimacyReport,
+            _attemptId: attempt.id,
+            _attemptNumber: attempt.attemptNumber,
+            _phase: "export",
+          }).catch(() => {});
+        }
+        await upsertWorkingPaper(config, runId, "citation_fidelity", {
+          ...latestCitationReport,
+          _attemptId: attempt.id,
+          _attemptNumber: attempt.attemptNumber,
+          _phase: "export",
+        }).catch(() => {});
+      }
+      const finalValidationAdvisories = [
+        ...formatPlanSheetValidationAdvisories(latestPlanSheetValidation),
+        ...formatCitationAdvisories(latestCitationReport),
+        ...formatDataPrimacyAdvisories(latestDataPrimacyReport, dataPrimacyMode),
+      ];
+      for (const issue of finalValidationAdvisories) {
+        advisoryIssues.add(issue);
+      }
+      await patchRestRows({
+        supabaseUrl: config.supabaseUrl,
+        serviceKey: config.serviceKey,
+        table: "deck_runs",
+        query: {
+          id: `eq.${runId}`,
+          active_attempt_id: `eq.${attempt.id}`,
+        },
+        payload: {
+          data_primacy_report: latestDataPrimacyReport,
+          advisory_issues: [...advisoryIssues],
+          fetched_urls: fetchedUrls,
+          scope_adjustment: latestReconciliation?.scopeAdjustment ?? null,
+        },
+      }).catch(() => {});
       const finalLint = isReportOnly ? null : lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
       const finalContract = isReportOnly ? null : validateManifestContract(finalManifest);
       const finalQualityGate = isReportOnly
         ? {
             blockingFailures: qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check)),
-            advisories: qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
+            advisories: [...qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)), ...finalValidationAdvisories],
           }
         : collectPublishGateFailures({
             qaReport,
@@ -2706,6 +3035,9 @@ export async function generateDeckRun(
             contract: finalContract!,
             claimIssues: claimTraceabilityIssues,
           });
+      if (!isReportOnly) {
+        finalQualityGate.advisories = [...new Set([...finalQualityGate.advisories, ...finalValidationAdvisories])];
+      }
 
       lastPublishDecision = isReportOnly
         ? {
@@ -2745,19 +3077,29 @@ export async function generateDeckRun(
         ...qaReport,
         qualityPassport: lastPublishDecision.qualityPassport,
       };
+      lastPublishDecision = {
+        ...lastPublishDecision!,
+        advisories: [...new Set([...lastPublishDecision!.advisories, ...finalValidationAdvisories])],
+      };
 
       if (finalQualityGate.blockingFailures.length > 0) {
         throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
       }
       if (finalLint && finalContract) {
         const finalLintSummary = summarizeLintResult(finalLint);
+        const finalValidationIssues = [
+          ...formatCitationCritiqueIssues(latestCitationReport),
+          ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
+          ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
+        ];
         phaseTelemetry.finalLint = {
           ...finalLintSummary,
           claimTraceabilityIssueCount: claimTraceabilityIssues.length,
-          actionableIssueCount: finalLintSummary.actionableIssueCount + claimTraceabilityIssues.length,
+          actionableIssueCount: finalLintSummary.actionableIssueCount + claimTraceabilityIssues.length + finalValidationIssues.length,
           actionableIssues: [
             ...finalLintSummary.actionableIssues,
             ...claimTraceabilityIssues.map(formatClaimTraceabilityIssue),
+            ...finalValidationIssues,
           ],
         };
         phaseTelemetry.finalContract = summarizeDeckContractResult(finalContract);
@@ -3713,7 +4055,7 @@ async function uploadClaudeFileWithRetry<T>(input: {
 
       console.warn(
         `[generateDeckRun] transient file upload error for ${input.label}:${input.fileName} ` +
-        `(retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}) — waiting ${delayMs}ms`,
+        `(retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}), waiting ${delayMs}ms`,
       );
       await insertEvent(input.config, input.runId, input.attempt, input.phase, "file_upload_retry", {
         label: input.label,
@@ -4043,6 +4385,34 @@ async function insertEvent(
   });
 }
 
+async function recordCostAnomalyEvent(
+  config: ReturnType<typeof resolveConfig>,
+  input: {
+    runId: string;
+    phase: DeckPhase;
+    model: string;
+    projectedUsd: number;
+    softCapUsd: number;
+    spentUsd: number;
+  },
+) {
+  await upsertRestRows({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "cost_anomaly_events",
+    onConflict: "id",
+    rows: [{
+      id: randomUUID(),
+      run_id: input.runId,
+      phase: input.phase,
+      model: input.model,
+      projected_usd: input.projectedUsd,
+      soft_cap_usd: input.softCapUsd,
+      spent_usd: input.spentUsd,
+    }],
+  });
+}
+
 async function recordToolCall(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
@@ -4116,7 +4486,9 @@ async function persistRequestUsage(
         outputTokens: request.usage.output_tokens ?? 0,
         totalInputTokens: billableInputTokens(request.usage),
         totalTokens: billableInputTokens(request.usage) + (request.usage.output_tokens ?? 0),
+        webFetchCount: countWebFetchRequests(request.usage),
       },
+      web_fetch_count: countWebFetchRequests(request.usage),
       started_at: request.startedAt,
       completed_at: request.completedAt,
     })),
@@ -4155,8 +4527,10 @@ async function persistRequestStart(
         totalInputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
+        webFetchCount: 0,
         status: "started",
       },
+      web_fetch_count: 0,
       started_at: startedAt,
       completed_at: null,
     }],
@@ -4173,6 +4547,61 @@ function rememberRequestIds(
       target.add(request.requestId);
     }
   }
+}
+
+function countWebFetchRequests(usage: ClaudeUsage | null | undefined) {
+  return (
+    Number(usage?.server_tool_use?.web_fetch_requests ?? 0) +
+    Number(usage?.server_tool_use?.web_search_requests ?? 0)
+  );
+}
+
+function resolveDataPrimacyValidatorMode(): "off" | "warn" | "block-hero" {
+  const raw = (process.env.BASQUIO_DATA_PRIMACY_VALIDATOR_MODE ?? "warn").trim().toLowerCase();
+  if (raw === "off" || raw === "warn" || raw === "block-hero") {
+    return raw;
+  }
+  if (raw === "block") {
+    return "block-hero";
+  }
+  return "warn";
+}
+
+function appendScopeAdjustment(businessContext: string, scopeAdjustment: string) {
+  const base = businessContext?.trim() ?? "";
+  const block = `<scope_adjustment>\n${scopeAdjustment.trim()}\n</scope_adjustment>`;
+  return base ? `${base}\n\n${block}` : block;
+}
+
+function collectFetchedUrlsFromMessageThread(messages: Anthropic.Beta.BetaMessageParam[]) {
+  const urls = new Set<string>();
+
+  for (const message of messages) {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) {
+      continue;
+    }
+    for (const block of message.content as unknown as Array<Record<string, unknown>>) {
+      if (
+        typeof block.type === "string" &&
+        block.type.endsWith("_tool_use") &&
+        block.name === "web_fetch"
+      ) {
+        const input = block.input;
+        const url = input && typeof input === "object" && typeof (input as Record<string, unknown>).url === "string"
+          ? normalizeFetchedUrl((input as Record<string, unknown>).url as string)
+          : null;
+        if (url) {
+          urls.add(url);
+        }
+      }
+    }
+  }
+
+  return [...urls];
+}
+
+function normalizeFetchedUrl(value: string) {
+  return value.trim().replace(/[),.;]+$/, "").replace(/\/+$/, "");
 }
 
 function sanitizeFailureMessage(raw: string): string {
@@ -4408,11 +4837,11 @@ function buildAuthorMessage(
           ]),
           analysis
             ? (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
+              ? "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
             : (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
+              ? "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
           ...(analysis
             ? []
             : [
@@ -4494,7 +4923,7 @@ function buildAuthorMessage(
           "        'fill':       {'color': ACCENT},",
           "        'data_labels': {'value': True},",
           "    })",
-          "    bar.set_title({'name': 'S15 — Top 10 brand — Quota CY %'})",
+          "    bar.set_title({'name': 'S15, Top 10 brand, Quota CY %'})",
           "    bar.set_x_axis({'name': 'Quota CY %'})",
           "    bar.set_y_axis({'name': 'Brand'})",
           "    ws.insert_chart('G2', bar)",
@@ -4509,7 +4938,7 @@ function buildAuthorMessage(
           "        'values':     ['S22_SalesTrend', 1, 1, len(trend_df), 1],",
           "        'line':       {'color': ACCENT, 'width': 2.25},",
           "    })",
-          "    line.set_title({'name': 'S22 — Sales trend'})",
+          "    line.set_title({'name': 'S22, Sales trend'})",
           "    line.set_x_axis({'name': 'Period'})",
           "    line.set_y_axis({'name': 'Sales Value'})",
           "    ws.insert_chart('G2', line)",
@@ -4636,7 +5065,7 @@ function buildPerSlideConstraintBlock(analysis: z.infer<typeof analysisSchema> |
     return undefined;
   }
 
-  const lines: string[] = ["Per-slide spatial constraints (from archetype system — respect these exactly):"];
+  const lines: string[] = ["Per-slide spatial constraints (from archetype system, respect these exactly):"];
 
   for (const slide of analysis.slidePlan) {
     const layoutId = slide.slideArchetype || slide.layoutId || "title-chart";
@@ -4903,8 +5332,10 @@ function buildRequestRecordCallback(
           totalInputTokens,
           outputTokens: record.usage.output_tokens ?? 0,
           totalTokens,
+          webFetchCount: countWebFetchRequests(record.usage),
           status: record.stopReason?.startsWith("transient_retry") ? "failed_transient" : "completed",
         },
+        web_fetch_count: countWebFetchRequests(record.usage),
         started_at: record.startedAt,
         completed_at: record.completedAt,
       }],
@@ -5027,6 +5458,7 @@ async function runClaudeLoop(input: {
     output_tokens: 0,
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
+    server_tool_use: null,
   };
   const phaseTimeoutMs =
     typeof input.phaseTimeoutMs === "number" && input.phaseTimeoutMs > 0
@@ -5548,6 +5980,14 @@ function mergeClaudeUsage(baseUsage: ClaudeUsage, retryUsage: ClaudeUsage): Requ
     output_tokens: (baseUsage.output_tokens ?? 0) + (retryUsage.output_tokens ?? 0),
     cache_creation_input_tokens: (baseUsage.cache_creation_input_tokens ?? 0) + (retryUsage.cache_creation_input_tokens ?? 0),
     cache_read_input_tokens: (baseUsage.cache_read_input_tokens ?? 0) + (retryUsage.cache_read_input_tokens ?? 0),
+    server_tool_use: {
+      web_fetch_requests:
+        Number(baseUsage.server_tool_use?.web_fetch_requests ?? 0) +
+        Number(retryUsage.server_tool_use?.web_fetch_requests ?? 0),
+      web_search_requests:
+        Number(baseUsage.server_tool_use?.web_search_requests ?? 0) +
+        Number(retryUsage.server_tool_use?.web_search_requests ?? 0),
+    },
   };
 }
 
@@ -7548,6 +7988,101 @@ function formatClaimTraceabilityIssue(issue: ClaimTraceabilityIssue) {
   return `Slide ${issue.position} claim issue [claim_traceability]: ${issue.message}`;
 }
 
+function summarizeDataPrimacyReport(report: DataPrimacyReport | null) {
+  if (!report) {
+    return { skipped: true };
+  }
+
+  return {
+    heroPassed: report.heroPassed,
+    bodyPassed: report.bodyPassed,
+    boundRatio: report.boundRatio,
+    totalNumericClaims: report.totalNumericClaims,
+    heroUnboundCount: report.heroUnbound.length,
+    unboundClaimCount: report.unboundClaims.length,
+  };
+}
+
+function formatPlanSheetValidationIssues(report: PlanSheetNameReport | null) {
+  if (!report || report.valid) {
+    return [];
+  }
+
+  return report.fabricatedSheetNames.map((entry) =>
+    `Slide ${entry.slidePosition} plan sheet issue [plan_sheet_name]: chart ${entry.chartId} references "${entry.claimedSheetName}" outside the uploaded dataset.`,
+  );
+}
+
+function formatPlanSheetValidationAdvisories(report: PlanSheetNameReport | null) {
+  if (!report || report.valid) {
+    return [];
+  }
+
+  return [
+    `Plan sheet validation found ${report.fabricatedSheetNames.length} non-existent sheet references in analysis metadata.`,
+  ];
+}
+
+function formatDataPrimacyCritiqueIssues(
+  report: DataPrimacyReport | null,
+  mode: "off" | "warn" | "block-hero",
+) {
+  if (!report || mode !== "block-hero" || report.heroPassed) {
+    return [];
+  }
+
+  return report.heroUnbound.map((claim) => formatDataPrimacyIssue(claim));
+}
+
+function formatDataPrimacyAdvisories(
+  report: DataPrimacyReport | null,
+  mode: "off" | "warn" | "block-hero",
+) {
+  if (!report || mode === "off") {
+    return [];
+  }
+
+  const advisories: string[] = [];
+  if (!report.heroPassed) {
+    advisories.push(
+      `Data primacy hero check failed for ${report.heroUnbound.length} claim(s), publish remained allowed in ${mode} mode after revise budget was exhausted.`,
+    );
+  }
+  if (!report.bodyPassed) {
+    advisories.push(
+      `Data primacy body check below threshold, bound ratio ${(report.boundRatio * 100).toFixed(1)}% across ${report.totalNumericClaims} numeric claims.`,
+    );
+  }
+  return advisories;
+}
+
+function formatDataPrimacyIssue(claim: UnboundClaim) {
+  const classification = claim.classification ?? "unbound-invented";
+  return `Slide ${claim.slideIndex} data primacy issue [data_primacy]: ${claim.location} claim "${claim.rawText}" is ${classification}.`;
+}
+
+function formatCitationCritiqueIssues(report: CitationFidelityReport | null) {
+  if (!report || report.passed) {
+    return [];
+  }
+
+  return report.violations.map((violation) => formatCitationViolation(violation));
+}
+
+function formatCitationAdvisories(report: CitationFidelityReport | null) {
+  if (!report || report.passed) {
+    return [];
+  }
+
+  return [
+    `Citation fidelity found ${report.violations.length} unresolved citation issue(s) after revise.`,
+  ];
+}
+
+function formatCitationViolation(violation: CitationViolation) {
+  return `Slide ${violation.slideIndex} citation issue [citation_fidelity]: ${violation.violationType} for "${violation.citedEntity}".`;
+}
+
 function lintManifest(
   manifest: z.infer<typeof deckManifestSchema>,
   requestedSlideCount?: number,
@@ -7935,6 +8470,9 @@ function classifyRepairIssue(issue: string): keyof RepairIssueBuckets {
   }
   if (
     normalized.includes("claim-traceability") ||
+    normalized.includes("[data_primacy]") ||
+    normalized.includes("[citation_fidelity]") ||
+    normalized.includes("[plan_sheet_name]") ||
     normalized.includes("[title_no_number]") ||
     normalized.includes("[title_number_coverage]") ||
     normalized.includes("writing issue") ||
@@ -8092,7 +8630,7 @@ function isAdvisoryCritiqueIssue(issue: string) {
   const n = issue.toLowerCase();
 
   // Visual issues carry severity in the string: "has major visual issue" or "has advisory visual issue"
-  // Major and critical visual issues are NEVER advisory — they must trigger revise.
+  // Major and critical visual issues are NEVER advisory, they must trigger revise.
   if (n.includes("has major visual issue") || n.includes("has critical visual issue")) return false;
   // Advisory-severity visual issues are always advisory
   if (n.includes("has advisory visual issue")) return true;
@@ -8111,17 +8649,17 @@ function isAdvisoryCritiqueIssue(issue: string) {
   if (n.includes("deck plan issue [content_overflow]")) return false;
   if (n.includes("deck plan issue [appendix_overfill]")) return false;
 
-  // Lint advisories — layout diversity, layout percentage, writing issues
+  // Lint advisories, layout diversity, layout percentage, writing issues
   if (n.includes("layout type") || n.includes("layout used") || n.includes("main\" layout")) return true;
   if (n.startsWith("deck writing issue") || (n.startsWith("slide") && n.includes("writing issue"))) return true;
 
-  // Title overflow — advisory
+  // Title overflow, advisory
   if (n.includes("title is") && n.includes("overflow the right margin")) return true;
 
   if (n.includes("is below requested targetslidecount")) return false;
   if (n.includes("exceeds requested targetslidecount")) return false;
 
-  // Body length / metric layout warnings — hints, not structural failures
+  // Body length / metric layout warnings, hints, not structural failures
   if (n.includes("body is too long") || n.includes("too much body copy") || n.includes("title is too long for a clean")) return true;
 
   return false;
@@ -9414,7 +9952,7 @@ async function persistPreviewAssets(
     // Warn loudly so this never regresses to the empty-preview email bug again.
     if (pngBuffer.length < 12_000) {
       console.warn(
-        `[preview] slide ${slide.position} rendered to only ${pngBuffer.length} bytes — likely missing fonts, text may have silently dropped. Check nixpacks.toml has liberation_ttf/dejavu_fonts/noto-fonts and Resvg is configured with loadSystemFonts: true.`,
+        `[preview] slide ${slide.position} rendered to only ${pngBuffer.length} bytes, likely missing fonts, text may have silently dropped. Check nixpacks.toml has liberation_ttf/dejavu_fonts/noto-fonts and Resvg is configured with loadSystemFonts: true.`,
       );
     }
 
@@ -9475,7 +10013,7 @@ function selectPreviewSlides(manifest: z.infer<typeof deckManifestSchema>) {
 // Resolve bundled DejaVu TTF font paths at runtime. The npm package
 // `dejavu-fonts-ttf` ships actual .ttf files that @resvg/resvg-js can load
 // directly. Bundling is the only reliable approach because Nix/Railway's
-// fontconfig configuration does NOT expose system font packages to resvg —
+// fontconfig configuration does NOT expose system font packages to resvg,
 // adding liberation_ttf or dejavu_fonts to nixpacks.toml is insufficient
 // because Nix profiles are not in the paths fontconfig scans by default.
 // See: https://github.com/thx/resvg-js/issues/210 (identical symptom)

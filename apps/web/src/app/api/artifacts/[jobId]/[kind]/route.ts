@@ -44,6 +44,7 @@ export async function GET(
         : artifact.provider === "database"
           ? await readInlineArtifact(jobId, requestedKind, viewer.user.id)
           : await readLocalArtifactBuffer(artifact);
+    const downloadName = await resolveArtifactDownloadName(jobId, requestedKind, artifact.fileName);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -66,7 +67,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": artifact.mimeType,
-        "Content-Disposition": `${contentDisposition}; filename="${artifact.fileName}"`,
+        "Content-Disposition": `${contentDisposition}; filename="${downloadName}"`,
         "Cache-Control": "no-store",
       },
     });
@@ -144,4 +145,67 @@ async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf" | "md" | "
 
 function isMissingArtifactError(message: string) {
   return /not found|not exist|missing/i.test(message);
+}
+
+async function resolveArtifactDownloadName(
+  jobId: string,
+  kind: "pptx" | "pdf" | "md" | "xlsx",
+  fallbackName: string,
+) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return fallbackName;
+  }
+
+  const runs = await fetchRestRows<{ source_file_ids: string[] | null }>({
+    supabaseUrl,
+    serviceKey: serviceRoleKey,
+    table: "deck_runs",
+    query: {
+      select: "source_file_ids",
+      id: `eq.${jobId}`,
+      limit: "1",
+    },
+  }).catch(() => []);
+
+  const sourceFileIds = runs[0]?.source_file_ids?.filter(Boolean) ?? [];
+  if (sourceFileIds.length === 0) {
+    return fallbackName;
+  }
+
+  const sourceFiles = await Promise.all(
+    sourceFileIds.map(async (id) => {
+      const rows = await fetchRestRows<{ file_name: string; kind: string | null }>({
+        supabaseUrl,
+        serviceKey: serviceRoleKey,
+        table: "source_files",
+        query: {
+          select: "file_name,kind",
+          id: `eq.${id}`,
+          limit: "1",
+        },
+      }).catch(() => []);
+      return rows[0] ?? null;
+    }),
+  );
+
+  const preferredSource =
+    sourceFiles.find((file) => file?.kind === "workbook") ??
+    sourceFiles.find((file) => Boolean(file?.file_name));
+  const uploadedBaseName = preferredSource?.file_name?.replace(/\.[^.]+$/, "") ?? "basquio";
+  const normalizedBaseName = uploadedBaseName
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "") || "basquio";
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+
+  if (kind === "xlsx") {
+    return `${normalizedBaseName}-basquio-data-${stamp}.xlsx`;
+  }
+  if (kind === "md") {
+    return `${normalizedBaseName}-basquio-report-${stamp}.md`;
+  }
+  return `${normalizedBaseName}-basquio-deck-${stamp}.${kind}`;
 }

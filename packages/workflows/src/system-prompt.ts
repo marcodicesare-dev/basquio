@@ -11,6 +11,10 @@ const KNOWLEDGE_PACK_FILES = [
   "docs/domain-knowledge/niq-analyst-playbook.md",
   "docs/domain-knowledge/niq-promo-storytelling-playbook.md",
   "docs/domain-knowledge/niq-decimal-policy.md",
+  "docs/domain-knowledge/niq-cps-2023-template-extracted.md",
+  "docs/domain-knowledge/niq-voice-of-the-client-extracted.md",
+  "docs/domain-knowledge/niq-innovation-basics-extracted.md",
+  "docs/domain-knowledge/niq-storymasters-module-1-extracted.md",
   "docs/domain-knowledge/basquio-data-fidelity-rules.md",
   "docs/domain-knowledge/basquio-copywriting-skill.md",
   "docs/domain-knowledge/basquio-deck-depth-architecture.md",
@@ -80,7 +84,7 @@ const slide2 = pptx.addSlide({ masterName: "BASQUIO_MASTER" });
 `.trim();
 
 /**
- * Lighter client master example — provides color constants and master naming convention.
+ * Lighter client master example, provides color constants and master naming convention.
  * Logo and solid-fill decorative shapes are handled by PGTI post-processor.
  * Claude is still responsible for: cover background and slide number styling.
  */
@@ -97,7 +101,7 @@ function buildClientPaletteExample(
 
   return `
 <example name="client_template_palette_and_masters">
-// Color constants from the client template — use these throughout.
+// Color constants from the client template, use these throughout.
 // The client logo and decorative accent bars are added to the slide master automatically.
 // You do NOT need to add the logo via addImage().
 
@@ -354,7 +358,7 @@ plt.savefig("line_direct_labels.png", dpi=300, bbox_inches='tight', pad_inches=0
 </example>
 
 <example name="perfect_cover_slide">
-// Cover slide — only title + subtitle. No KPI cards, no accent bars, no extra geometry.
+// Cover slide, only title + subtitle. No KPI cards, no accent bars, no extra geometry.
 // Title = one-sentence finding with a number. Subtitle = client + source + period.
 
 const slide = pptx.addSlide(${BASQUIO_COVER_ARGS_PLACEHOLDER});
@@ -529,7 +533,7 @@ slide.addText("San Carlo cresce +1,7% diversificando su 10 brand; Kellanova cala
 // Chart rendered via matplotlib at chart-split dimensions
 slide.addImage({ path: "competitor_share_chart.png", x: 0.4, y: 1.3, w: 5.8, h: 3.5 });
 
-// Compact data table with supporting numbers — RIGHT of chart
+// Compact data table with supporting numbers, RIGHT of chart
 slide.addTable(
   [
     [
@@ -664,17 +668,17 @@ kpis.forEach((kpi, i) => {
   slide.addText("", { x: cx, y: cardY, w: cardWidth, h: cardH, fill: { color: "FFFFFF" } });
   // 2. Left accent bar (same x, same y, tiny width)
   slide.addText("", { x: cx, y: cardY, w: 0.08, h: cardH, fill: { color: accentColors[i] } });
-  // 3. Label — offset right and slightly down from card top
+  // 3. Label, offset right and slightly down from card top
   slide.addText(kpi.label, {
     x: cx + 0.2, y: cardY + 0.1, w: cardWidth - 0.35, h: 0.2,
     fontSize: 9, fontFace: "Arial", color: "6B7280"
   });
-  // 4. Value — below label
+  // 4. Value, below label
   slide.addText(kpi.value, {
     x: cx + 0.2, y: cardY + 0.3, w: cardWidth - 0.35, h: 0.45,
     fontSize: 22, fontFace: "Arial", color: "060A45", bold: true
   });
-  // 5. Delta — at bottom of card
+  // 5. Delta, at bottom of card
   slide.addText(kpi.delta, {
     x: cx + 0.2, y: cardY + 0.8, w: cardWidth - 0.35, h: 0.25,
     fontSize: 10, fontFace: "Arial", color: "060A45"
@@ -792,7 +796,7 @@ DON'T: "Analisi del Gap per Area"
 DO: "Discount perde 2.2pp vs Italia: Birre, Yogurt e Salumi spiegano il 60% del divario"
 
 DON'T: "Performance per Comparto"
-DO: "Yogurt cresce +5.1% ma resta 2.8pp sotto Italia — distribuzione limitata a 67% dei PDV"
+DO: "Yogurt cresce +5.1% ma resta 2.8pp sotto Italia, distribuzione limitata a 67% dei PDV"
 
 DON'T: "Raccomandazioni"
 DO: "Tre leve per recuperare 1.5pp entro H2: distribuzione Birre, facing Yogurt, profondita promo Salumi"
@@ -863,7 +867,7 @@ def apply_currency_axis_formatter(ax, max_val: float, language: str = "it"):
 # Example usage after you create the axes:
 # max_val = df["V. Valore"].max()
 # apply_currency_axis_formatter(ax, max_val, language="it")
-# 13_640_000 becomes €13,6 Mln — never €13,6K.
+# 13_640_000 becomes €13,6 Mln, never €13,6K.
 # For currency axes and tick labels, always call apply_currency_axis_formatter().
 # Do not type the euro symbol directly into axis labels or tick formatter lambdas.
 </example>
@@ -1378,7 +1382,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Every recommendation must name its main risk and mitigation in the narrative report.",
     "- ANALYTICAL DEPTH: go one layer deeper than the obvious finding. If a category is declining, show WHY (price, distribution, assortment, competitor action). If a brand is growing, decompose the growth into its drivers. Surface-level observation without causation is not consulting-grade.",
     "- VISUAL POLISH: every chart must have a clear title that states the insight (not the metric name), properly formatted axis labels with units, a subtle grid, and a source note. Bar charts should use a highlight color for the key bar. Line charts should annotate inflection points. Waterfall charts must have connectors.",
-    "- NUMBER SCALE DETECTION: before labeling any chart axis, inspect the data magnitude. If max value > 1,000,000 use 'Mln' for Italian or 'M' for English and divide by 1e6. If max value > 1,000 use 'K' and divide by 1e3. If values are already below 1,000 show raw numbers. NielsenIQ value columns often store raw EUR without scaling — 13,640,000 is €13.64 Mln, not €13.64K.",
+    "- NUMBER SCALE DETECTION: before labeling any chart axis, inspect the data magnitude. If max value > 1,000,000 use 'Mln' for Italian or 'M' for English and divide by 1e6. If max value > 1,000 use 'K' and divide by 1e3. If values are already below 1,000 show raw numbers. NielsenIQ value columns often store raw EUR without scaling, 13,640,000 is €13.64 Mln, not €13.64K.",
     "- Italian number conventions: use period as thousands separator and comma as decimal separator. On chart axes, use FuncFormatter or an equivalent formatter to enforce locale-safe labels.",
     "- NARRATIVE ARC: the deck must tell a story with rising tension. Slide 1 sets the stage. Slides 2-3 establish the baseline. The middle section reveals the problem or opportunity with escalating specificity. The final third pivots to action. The last slide must feel like a call to action, not a summary of summaries.",
     "- Aha slide rule: decks with 15+ slides should include one non-obvious cross-cut, contradiction, or structural trend observation just before the recommendations. Use source-backed structural metrics such as outlets, share, penetration, or mix. Never extrapolate financial amounts, ROI, budgets, or invented scenarios.",
@@ -1510,6 +1514,8 @@ export async function buildBasquioSystemPrompt(input: {
   ].join("\n");
 
   const dynamicParts: string[] = [
+    renderDataPrimacyContract(),
+    "",
     "Template summary:",
     templateSummary,
     "",
@@ -1531,6 +1537,39 @@ export async function buildBasquioSystemPrompt(input: {
       text: dynamicBlock,
     },
   ];
+}
+
+function renderDataPrimacyContract() {
+  return [
+    "<data_primacy_contract>",
+    "NON-NEGOTIABLE, READ FIRST. This contract overrides any other prompt instruction in conflict:",
+    "",
+    "<rule id=\"uploaded-data-primacy\">",
+    "Every numeric value, chart series, and recommendation metric on every slide must come from the uploaded files. External sources (`web_fetch` results, research-layer refs with `firecrawl:` or `graph:` ids, knowledge-base benchmarks) are SUPPORTING CONTEXT ONLY. They may appear as a clearly labeled \"Market context\" paragraph or footnote, citing the actual URL or report title, never as a hero number, never as a chart series, never as a recommendation's quantified impact.",
+    "</rule>",
+    "",
+    "<rule id=\"no-sheet-fabrication\">",
+    "You may only reference sheet names, column names, and cell values that exist in the user-uploaded workbook. You MAY NOT invent sheet names, synthetic worksheets, or pandas DataFrames whose provenance is not the uploaded file or a documented external source. If you need a computed view, compute it transparently in code execution from uploaded cells and name the computed view with a prefix like `computed_` so it is clear it is derivative.",
+    "</rule>",
+    "",
+    "<rule id=\"citation-accuracy\">",
+    "The source line on every slide must cite ONLY filenames that the user uploaded, or URLs that were actually fetched via `web_fetch` in this run. Never cite an external report name that you have not fetched. If the data is from the uploaded file, cite the exact uploaded filename. If from `web_fetch`, cite the actual URL as a footnote, not rolled into the uploaded filename.",
+    "</rule>",
+    "",
+    "<rule id=\"data-gap-narration\">",
+    "If the uploaded data does not support the analytical depth the brief implies, narrate the gap explicitly in the executive summary and in narrative_report.md. Tell the user what their data does answer, and what it does not answer. Cut slides rather than fill the gap with external numbers.",
+    "</rule>",
+    "",
+    "<rule id=\"structural-slot-reservation\">",
+    "Deck structure is bound by this ordering:",
+    "- Cover slide: hero number MUST come from uploaded data",
+    "- Executive summary: at least 3 of 4 metric blocks MUST come from uploaded data",
+    "- First half of drill-down slides (positions 3 through ceil(N/2)): uploaded-data only, no external enrichment",
+    "- Second half of drill-down slides: external enrichment allowed, clearly labeled \"Market context\" or \"External benchmark\"",
+    "- Recommendations: every recommendation must cite by slide position at least one prior uploaded-data slide (e.g., \"cfr. slide 3\")",
+    "</rule>",
+    "</data_primacy_contract>",
+  ].join("\n");
 }
 
 function buildHaikuReportOnlySystemPrompt(input: {
