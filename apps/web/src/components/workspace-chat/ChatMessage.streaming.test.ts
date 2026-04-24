@@ -129,6 +129,7 @@ describe("ChatMessage streaming render", () => {
             include_research: true,
           },
         },
+        { type: "text", text: "Brief: Coffee Italy 2025\nObjective: full assistant brief text." },
       ],
     } as unknown as UIMessage;
 
@@ -148,6 +149,7 @@ describe("ChatMessage streaming render", () => {
       draftBrief: expect.objectContaining({
         brief: expect.objectContaining({ title: "Coffee Italy 2025" }),
       }),
+      sourceText: "Brief: Coffee Italy 2025\nObjective: full assistant brief text.",
     });
     expect(onSendFollowUp).not.toHaveBeenCalled();
     expect(screen.getByText("14 workspace files available")).not.toBeNull();

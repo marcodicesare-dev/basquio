@@ -105,7 +105,11 @@ type ChatMessageProps = {
   onFeedback?: (value: "up" | "down") => void;
   onSaveAsMemo?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
   onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null> | void;
-  onOpenGenerateDrawer?: (args: { messageId: string; draftBrief: BriefDraftCardOutput }) => Promise<string | null> | void;
+  onOpenGenerateDrawer?: (args: {
+    messageId: string;
+    draftBrief: BriefDraftCardOutput;
+    sourceText: string;
+  }) => Promise<string | null> | void;
   showInlineSuggestions?: boolean;
   /**
    * Approval-card follow-up: cards fire a new user chat turn when the
@@ -389,6 +393,7 @@ export const ChatMessage = memo(function ChatMessage({
                             void onOpenGenerateDrawer({
                               messageId: message.id ?? "",
                               draftBrief,
+                              sourceText: messageToMarkdown(message),
                             });
                           }
                         : undefined

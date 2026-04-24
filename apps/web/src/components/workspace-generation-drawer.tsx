@@ -74,6 +74,7 @@ export type WorkspaceGenerationDraftBrief = {
     extra_instructions?: string | null;
   };
   include_research?: boolean;
+  sourceText?: string | null;
 };
 
 type PrepareResponse = {
@@ -502,12 +503,16 @@ export function WorkspaceGenerationDrawer({
 
 function applyDraftBrief(base: Brief, draftBrief?: WorkspaceGenerationDraftBrief | null): Brief {
   const draft = draftBrief?.brief;
-  if (!draft) return base;
+  const sourceNarrative = extractDraftNarrative(draftBrief?.sourceText);
+  if (!draft) {
+    return sourceNarrative ? { ...base, narrative: sourceNarrative } : base;
+  }
   const slideCount = parseDeckLength(draft.deck_length) ?? base.slideCount;
   return {
     ...base,
     title: cleanDraftField(draft.title) ?? base.title,
     objective: cleanDraftField(draft.objective) ?? base.objective,
+    narrative: sourceNarrative ?? base.narrative,
     audience: cleanDraftField(draft.audience) ?? base.audience,
     thesis: cleanDraftField(draft.thesis) ?? base.thesis,
     stakes: cleanDraftField(draft.stakes) ?? base.stakes,
@@ -525,4 +530,16 @@ function parseDeckLength(value: string | null | undefined): number | null {
   if (!match) return null;
   const parsed = Number.parseInt(match[0] ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function extractDraftNarrative(sourceText: string | null | undefined): string | null {
+  const text = sourceText?.trim();
+  if (!text) return null;
+  const markers = ["Brief:", "Titolo:", "Obiettivo del deck", "Objective"];
+  const indexes = markers
+    .map((marker) => text.indexOf(marker))
+    .filter((index) => index >= 0);
+  const start = indexes.length > 0 ? Math.min(...indexes) : 0;
+  const narrative = text.slice(start).trim();
+  return narrative.length > 0 ? narrative : null;
 }

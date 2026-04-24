@@ -684,14 +684,17 @@ export function WorkspaceChat({
     async ({
       messageId,
       draftBrief,
+      sourceText,
     }: {
       messageId: string;
       draftBrief: BriefDraftCardOutput;
+      sourceText: string;
     }): Promise<string | null> => {
       setDrawerMessageId(messageId || null);
       setDrawerDraftBrief({
         brief: draftBrief.brief,
         include_research: draftBrief.include_research,
+        sourceText,
       });
       setDrawerOpen(true);
       return "drawer-opened";
