@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
+import { compactSuggestionPrompt } from "@/lib/workspace/suggestion-display";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
 type EntityGroup = {
@@ -183,7 +184,7 @@ export function WorkspaceContextRail({
                   className="wbeta-rail-item wbeta-rail-suggestion"
                   onClick={() => sendPrompt(suggestion.prompt)}
                 >
-                  <span className="wbeta-rail-item-title">{suggestion.prompt}</span>
+                  <span className="wbeta-rail-item-title">{compactSuggestionPrompt(suggestion.prompt)}</span>
                   <span className="wbeta-rail-item-meta">{suggestion.reason}</span>
                 </button>
               </li>
