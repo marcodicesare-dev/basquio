@@ -84,7 +84,7 @@ export function WorkspaceSidebar({
   const homeActive = !peopleActive && !memoryActive && !scopeActiveAny;
 
   const navigateWithTransition = useCallback(
-    (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    () => (event: React.MouseEvent<HTMLAnchorElement>) => {
       if (
         event.defaultPrevented ||
         event.metaKey ||
@@ -95,24 +95,18 @@ export function WorkspaceSidebar({
       ) {
         return;
       }
-      event.preventDefault();
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const startViewTransition = (
         document as Document & {
           startViewTransition?: (callback: () => void) => void;
         }
       ).startViewTransition;
-      if (startViewTransition && !reducedMotion) {
-        onNavigate?.();
-        startViewTransition(() => {
-          router.push(href);
-        });
-        return;
-      }
       onNavigate?.();
-      router.push(href);
+      if (startViewTransition && !reducedMotion) {
+        startViewTransition(() => {});
+      }
     },
-    [onNavigate, router],
+    [onNavigate],
   );
 
   function scopeHref(scope: WorkspaceScope) {
@@ -132,7 +126,7 @@ export function WorkspaceSidebar({
           href="/workspace"
           className={homeActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
           aria-current={homeActive ? "page" : undefined}
-          onClick={navigateWithTransition("/workspace")}
+          onClick={navigateWithTransition()}
         >
           <span className="wbeta-nav-icon" aria-hidden>
             <House size={16} weight={homeActive ? "fill" : "regular"} />
@@ -172,7 +166,7 @@ export function WorkspaceSidebar({
                             : "wbeta-sidebar-item"
                         }
                         aria-current={active ? "page" : undefined}
-                        onClick={navigateWithTransition(scopeHref(scope))}
+                        onClick={navigateWithTransition()}
                       >
                         <span className="wbeta-sidebar-item-name">{scope.name}</span>
                         {badge > 0 ? (
@@ -219,7 +213,7 @@ export function WorkspaceSidebar({
           href="/workspace/people"
           className={peopleActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
           aria-current={peopleActive ? "page" : undefined}
-          onClick={navigateWithTransition("/workspace/people")}
+          onClick={navigateWithTransition()}
         >
           <span className="wbeta-nav-icon" aria-hidden>
             <UsersThree size={16} weight={peopleActive ? "fill" : "regular"} />
@@ -230,7 +224,7 @@ export function WorkspaceSidebar({
           href="/workspace/memory"
           className={memoryActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
           aria-current={memoryActive ? "page" : undefined}
-          onClick={navigateWithTransition("/workspace/memory")}
+          onClick={navigateWithTransition()}
         >
           <span className="wbeta-nav-icon" aria-hidden>
             <Sparkle size={16} weight={memoryActive ? "fill" : "regular"} />

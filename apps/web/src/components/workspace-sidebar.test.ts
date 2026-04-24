@@ -63,10 +63,12 @@ describe("WorkspaceSidebar", () => {
       }),
     );
 
-    fireEvent.click(screen.getByText("Affinity Petcare"));
+    const link = screen.getByText("Affinity Petcare").closest("a");
+    expect(link?.getAttribute("href")).toBe("/workspace/scope/client/affinity-petcare");
+    fireEvent.click(link!);
 
     expect(startViewTransition).toHaveBeenCalledTimes(1);
-    expect(mocks.push).toHaveBeenCalledWith("/workspace/scope/client/affinity-petcare");
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   it("falls back to direct navigation when reduced motion is enabled", () => {
@@ -92,10 +94,12 @@ describe("WorkspaceSidebar", () => {
       }),
     );
 
-    fireEvent.click(screen.getByText("Affinity Petcare"));
+    const link = screen.getByText("Affinity Petcare").closest("a");
+    expect(link?.getAttribute("href")).toBe("/workspace/scope/client/affinity-petcare");
+    fireEvent.click(link!);
 
     expect(startViewTransition).toHaveBeenCalledTimes(0);
-    expect(mocks.push).toHaveBeenCalledWith("/workspace/scope/client/affinity-petcare");
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   it("renders localized chrome labels and closes mobile navigation on route clicks", () => {
@@ -134,10 +138,12 @@ describe("WorkspaceSidebar", () => {
     expect(screen.getByText("Clienti")).not.toBeNull();
     expect(screen.getByText("Nuovo cliente")).not.toBeNull();
 
-    fireEvent.click(screen.getByText("Affinity Petcare"));
+    const link = screen.getByText("Affinity Petcare").closest("a");
+    expect(link?.getAttribute("href")).toBe("/workspace/scope/client/affinity-petcare");
+    fireEvent.click(link!);
 
     expect(onNavigate).toHaveBeenCalledTimes(1);
-    expect(mocks.push).toHaveBeenCalledWith("/workspace/scope/client/affinity-petcare");
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 });
 
