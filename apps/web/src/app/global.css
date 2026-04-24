@@ -18336,7 +18336,7 @@ body:has(.wbeta-shell) .site-wrap {
   inset: 0;
   background: rgba(11, 12, 12, 0.35);
   backdrop-filter: blur(2px);
-  z-index: 40;
+  z-index: 2147482000;
 }
 
 .wbeta-gen-drawer {
@@ -18348,10 +18348,19 @@ body:has(.wbeta-shell) .site-wrap {
   background: var(--surface-strong);
   border-left: 1px solid var(--border);
   box-shadow: -8px 0 32px -16px rgba(11, 12, 12, 0.25);
-  z-index: 41;
+  z-index: 2147482001;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+body:has(.wbeta-gen-drawer) .intercom-lightweight-app,
+body:has(.wbeta-gen-drawer) .intercom-launcher-frame,
+body:has(.wbeta-gen-drawer) .intercom-messenger-frame,
+body:has(.wbeta-gen-drawer) iframe[name="intercom-launcher-frame"],
+body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 @media (max-width: 520px) {
