@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/sign-out-button";
+import { WorkspaceInteractionLayer } from "@/components/workspace-interaction-layer";
 import { WorkspaceSidebar } from "@/components/workspace-sidebar";
 import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import type { ViewerState } from "@/lib/supabase/auth";
@@ -34,6 +35,7 @@ export function WorkspaceShell({
 
   return (
     <div className="wbeta-shell">
+      <WorkspaceInteractionLayer />
       <aside
         className={mobileOpen ? "wbeta-side wbeta-side-mobile-open" : "wbeta-side"}
         aria-label={copy.shell.workspaceLabel}

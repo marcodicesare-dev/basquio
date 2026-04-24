@@ -470,6 +470,8 @@ export const ChatMessage = memo(function ChatMessage({
               className="wbeta-ai-action-btn"
               onClick={handleSave}
               disabled={saving !== null}
+              aria-busy={saving === "memo"}
+              data-loading={saving === "memo" ? "true" : undefined}
               aria-label="Save as memo"
             >
               <FileArrowDown size={12} weight="regular" />
@@ -482,6 +484,8 @@ export const ChatMessage = memo(function ChatMessage({
               className="wbeta-ai-action-btn wbeta-ai-action-btn-primary"
               onClick={handleDeck}
               disabled={saving !== null}
+              aria-busy={saving === "deck"}
+              data-loading={saving === "deck" ? "true" : undefined}
               aria-label="Open the deck generator from this answer"
             >
               <Presentation size={12} weight="regular" />

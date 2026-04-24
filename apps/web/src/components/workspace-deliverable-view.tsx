@@ -47,6 +47,8 @@ function RetryDeliverableButton({ deliverableId }: { deliverableId: string }) {
         type="button"
         className="wbeta-deliverable-edit-btn"
         onClick={handleClick}
+        aria-busy={busy}
+        data-loading={busy ? "true" : undefined}
         disabled={busy}
       >
         {busy ? "Retrying..." : "Retry"}
@@ -221,6 +223,8 @@ export function WorkspaceDeliverableView({
               type="button"
               className="wbeta-prompt-submit"
               onClick={handleSave}
+              aria-busy={saving}
+              data-loading={saving ? "true" : undefined}
               disabled={saving || draft === savedBody}
             >
               {saving ? "Saving..." : "Save edits"}

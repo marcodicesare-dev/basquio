@@ -232,6 +232,7 @@ export function WorkspaceGenerationDrawer({
         role="dialog"
         aria-label="Generate deck from workspace"
         aria-modal
+        aria-busy={loading || launching}
       >
         <header className="wbeta-gen-head">
           <div>
@@ -461,6 +462,8 @@ export function WorkspaceGenerationDrawer({
               type="button"
               className="wbeta-gen-launch"
               onClick={handleLaunch}
+              aria-busy={launching}
+              data-loading={launching ? "true" : undefined}
               disabled={
                 launching ||
                 loading ||

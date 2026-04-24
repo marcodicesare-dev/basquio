@@ -176,6 +176,8 @@ export function WorkspacePrompt({
           <button
             type="submit"
             className="wbeta-prompt-submit"
+            aria-busy={isStreaming}
+            data-loading={isStreaming ? "true" : undefined}
             disabled={isStreaming || prompt.trim().length === 0}
           >
             {isStreaming ? "Generating" : "Send"}

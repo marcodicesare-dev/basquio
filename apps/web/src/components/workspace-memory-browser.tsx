@@ -281,6 +281,7 @@ function MemoryCard({
   const [draftContent, setDraftContent] = useState(entry.content);
   const [draftType, setDraftType] = useState<MemoryType>(entry.memory_type);
   const [busy, setBusy] = useState(false);
+  const [actionBusy, setActionBusy] = useState<"pin" | "archive" | "delete" | null>(null);
   const pinned = Boolean(entry.metadata?.pinned_at);
 
   async function save() {
@@ -292,8 +293,21 @@ function MemoryCard({
     }
   }
 
+  async function runAction(action: "pin" | "archive" | "delete", callback: () => Promise<void>) {
+    if (actionBusy || busy) return;
+    setActionBusy(action);
+    try {
+      await callback();
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
   return (
-    <article className={pinned ? "wbeta-memory-card wbeta-memory-card-pinned" : "wbeta-memory-card"}>
+    <article
+      className={pinned ? "wbeta-memory-card wbeta-memory-card-pinned" : "wbeta-memory-card"}
+      aria-busy={busy || actionBusy !== null}
+    >
       <header className="wbeta-memory-card-head">
         <div className="wbeta-memory-card-meta">
           {scope ? (
@@ -315,9 +329,12 @@ function MemoryCard({
                 ? "wbeta-memory-icon-btn wbeta-memory-icon-btn-active"
                 : "wbeta-memory-icon-btn"
             }
-            onClick={() => onTogglePin(entry)}
+            onClick={() => runAction("pin", () => onTogglePin(entry))}
             aria-label={pinned ? "Unpin" : "Pin"}
             aria-pressed={pinned}
+            aria-busy={actionBusy === "pin"}
+            data-loading={actionBusy === "pin" ? "true" : undefined}
+            disabled={busy || actionBusy !== null}
           >
             <PushPinSimple size={14} weight={pinned ? "fill" : "regular"} />
           </button>
@@ -327,6 +344,7 @@ function MemoryCard({
               className="wbeta-memory-icon-btn"
               onClick={onEditStart}
               aria-label="Edit"
+              disabled={busy || actionBusy !== null}
             >
               <PencilSimple size={14} weight="regular" />
             </button>
@@ -334,16 +352,22 @@ function MemoryCard({
           <button
             type="button"
             className="wbeta-memory-icon-btn"
-            onClick={() => onArchive(entry)}
+            onClick={() => runAction("archive", () => onArchive(entry))}
             aria-label="Archive"
+            aria-busy={actionBusy === "archive"}
+            data-loading={actionBusy === "archive" ? "true" : undefined}
+            disabled={busy || actionBusy !== null}
           >
             <Archive size={14} weight="regular" />
           </button>
           <button
             type="button"
             className="wbeta-memory-icon-btn wbeta-memory-icon-btn-danger"
-            onClick={() => onDelete(entry)}
+            onClick={() => runAction("delete", () => onDelete(entry))}
             aria-label="Delete"
+            aria-busy={actionBusy === "delete"}
+            data-loading={actionBusy === "delete" ? "true" : undefined}
+            disabled={busy || actionBusy !== null}
           >
             <TrashSimple size={14} weight="regular" />
           </button>
@@ -391,6 +415,8 @@ function MemoryCard({
                 type="button"
                 className="wbeta-memory-card-save"
                 onClick={save}
+                aria-busy={busy}
+                data-loading={busy ? "true" : undefined}
                 disabled={busy || (draftContent === entry.content && draftType === entry.memory_type)}
               >
                 <CheckCircle size={12} weight="fill" /> Save
@@ -438,7 +464,7 @@ function NewMemoryForm({
   }
 
   return (
-    <article className="wbeta-memory-card wbeta-memory-card-creating">
+    <article className="wbeta-memory-card wbeta-memory-card-creating" aria-busy={busy}>
       <header className="wbeta-memory-card-head">
         <div className="wbeta-memory-card-meta">
           <span className="wbeta-memory-card-scope wbeta-memory-card-scope-new">New</span>
@@ -488,6 +514,8 @@ function NewMemoryForm({
               type="button"
               className="wbeta-memory-card-save"
               onClick={submit}
+              aria-busy={busy}
+              data-loading={busy ? "true" : undefined}
               disabled={busy || !scopeId || !content.trim()}
             >
               <CheckCircle size={12} weight="fill" /> Teach

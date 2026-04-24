@@ -360,7 +360,7 @@ function NewScopeForm({
   );
 
   return (
-    <form className="wbeta-sidebar-newform" onSubmit={handleSubmit}>
+    <form className="wbeta-sidebar-newform" onSubmit={handleSubmit} aria-busy={busy || pending}>
       <input
         className="wbeta-sidebar-input"
         type="text"
@@ -392,6 +392,8 @@ function NewScopeForm({
           type="submit"
           className="wbeta-sidebar-newform-save"
           disabled={!name.trim() || busy || pending}
+          aria-busy={busy || pending}
+          data-loading={busy || pending ? "true" : undefined}
         >
           {busy || pending ? copy.adding : copy.add}
         </button>
