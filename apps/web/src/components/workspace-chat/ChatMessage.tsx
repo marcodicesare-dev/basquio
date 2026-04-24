@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import {
   CaretDown,
   CaretRight,
@@ -132,6 +132,26 @@ export const ChatMessage = memo(function ChatMessage({
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
   const [saving, setSaving] = useState<"memo" | "deck" | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const parts = (message.parts ?? []) as unknown as Part[];
+  const hasAssistantText = parts.some(
+    (part) =>
+      part.type === "text" &&
+      assistantVisibleText(part.text ?? "").trim().length > 0,
+  );
+  const lastPartIndex = parts.length - 1;
+  const toolPartOrdinals = new Map<number, number>();
+  let toolCount = 0;
+  parts.forEach((part, index) => {
+    if (part.type?.startsWith("tool-")) {
+      toolCount += 1;
+      toolPartOrdinals.set(index, toolCount);
+    }
+  });
+  const metadataSuggestions = deriveMetadataInlineSuggestions(message);
+  const inlineSuggestions =
+    metadataSuggestions.length > 0
+      ? metadataSuggestions
+      : deriveInlineSuggestions(message, citations, Boolean(scopeSignal(message)));
 
   async function handleCopy() {
     const md = messageToMarkdown(message);
@@ -183,37 +203,6 @@ export const ChatMessage = memo(function ChatMessage({
       setSaving(null);
     }
   }
-
-  const parts = useMemo(() => (message.parts ?? []) as unknown as Part[], [message]);
-  const hasAssistantText = useMemo(
-    () =>
-      parts.some(
-        (part) =>
-          part.type === "text" &&
-          assistantVisibleText(part.text ?? "").trim().length > 0,
-      ),
-    [parts],
-  );
-  const lastPartIndex = parts.length - 1;
-  const toolPartOrdinals = useMemo(() => {
-    const ordinals = new Map<number, number>();
-    let count = 0;
-    parts.forEach((part, index) => {
-      if (part.type?.startsWith("tool-")) {
-        count += 1;
-        ordinals.set(index, count);
-      }
-    });
-    return ordinals;
-  }, [parts]);
-  const inlineSuggestions = useMemo(
-    () => {
-      const metadataSuggestions = deriveMetadataInlineSuggestions(message);
-      if (metadataSuggestions.length > 0) return metadataSuggestions;
-      return deriveInlineSuggestions(message, citations, Boolean(scopeSignal(message)));
-    },
-    [message, citations],
-  );
 
   return (
     <article className={isUser ? "wbeta-ai-msg wbeta-ai-msg-user" : "wbeta-ai-msg wbeta-ai-msg-asst"}>
@@ -516,10 +505,7 @@ export const ChatMessage = memo(function ChatMessage({
 }, areChatMessagePropsEqual);
 
 function areChatMessagePropsEqual(prev: ChatMessageProps, next: ChatMessageProps) {
-  if (prev.isStreaming !== next.isStreaming) return false;
-  if (next.isStreaming) {
-    return streamingMessageSignature(prev.message) === streamingMessageSignature(next.message);
-  }
+  if (prev.isStreaming || next.isStreaming) return false;
   return (
     messagesDeepEqual(prev.message, next.message) &&
     prev.onCopy === next.onCopy &&
@@ -530,19 +516,6 @@ function areChatMessagePropsEqual(prev: ChatMessageProps, next: ChatMessageProps
     prev.showInlineSuggestions === next.showInlineSuggestions &&
     prev.onSendFollowUp === next.onSendFollowUp
   );
-}
-
-function streamingMessageSignature(message: UIMessage) {
-  const parts = (message.parts ?? []) as unknown as Part[];
-  const last = parts.at(-1);
-  return [
-    message.id ?? "",
-    message.role,
-    parts.length,
-    last?.type ?? "",
-    last?.state ?? "",
-    last?.text?.length ?? 0,
-  ].join(":");
 }
 
 function messagesDeepEqual(prev: UIMessage, next: UIMessage) {
