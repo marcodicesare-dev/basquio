@@ -256,7 +256,7 @@ export const ChatMessage = memo(function ChatMessage({
               toolName={toolName}
               toolStatus={status}
               output={toolPart.output}
-              errorText={toolPart.errorText}
+              errorText={toolPart.errorText ?? toolOutputError(toolPart.output)}
             />
           );
           const frame = (node: React.ReactNode) => (
@@ -709,9 +709,15 @@ function ElapsedTimer({ startedAt }: { startedAt: number }) {
 }
 
 function toolStatusFromPart(part: ToolPart): ToolCallStatus {
-  if (part.errorText || part.state === "output-error") return "error";
+  if (part.errorText || part.state === "output-error" || toolOutputError(part.output)) return "error";
   if (part.output !== undefined || part.state === "output-available") return "used";
   return "using";
+}
+
+function toolOutputError(output: unknown): string | undefined {
+  if (!output || typeof output !== "object") return undefined;
+  const error = (output as { error?: unknown }).error;
+  return typeof error === "string" && error.trim() ? error.trim() : undefined;
 }
 
 function toolOutputSummary(output: unknown): string {
@@ -727,5 +733,6 @@ function toolOutputSummary(output: unknown): string {
 }
 
 function formatToolName(toolName: string): string {
+  if (toolName === "webSearch") return "Web search";
   return toolName.replace(/([a-z])([A-Z])/g, "$1 $2");
 }

@@ -82,7 +82,7 @@ describe("webSearchTool", () => {
         query: "coffee market trends mercato Italia",
         limit: 2,
         sources: [{ type: "web" }],
-        location: { country: "IT", languages: ["it"] },
+        location: "IT",
         tbs: "qdr:y",
         scrapeOptions: { formats: ["markdown"], onlyMainContent: true },
       }),
@@ -108,6 +108,39 @@ describe("webSearchTool", () => {
         query: "coffee market trends",
         result_count: 1,
         credits_used: 2,
+      }),
+    );
+  });
+
+  it("supports Firecrawl v2 source-keyed search responses", async () => {
+    mocks.search.mockResolvedValue({
+      success: true,
+      creditsUsed: 1,
+      data: {
+        web: [
+          {
+            url: "https://example.com/live-shape",
+            title: "Live shape result",
+            markdown: "Live markdown body",
+            metadata: { "article:published_time": "2026-04-01T00:00:00Z" },
+          },
+        ],
+      },
+    });
+
+    const result = await executeWebSearch();
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        credits_used: 1,
+        results: [
+          {
+            url: "https://example.com/live-shape",
+            title: "Live shape result",
+            published_at: "2026-04-01T00:00:00Z",
+            markdown: "Live markdown body",
+          },
+        ],
       }),
     );
   });

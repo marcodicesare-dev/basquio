@@ -83,6 +83,25 @@ describe("ChatMessage streaming render", () => {
 
     expect(screen.getByText("Used webSearch, 2 results")).not.toBeNull();
   });
+
+  it("marks structured tool error outputs as failed chips", () => {
+    const message = {
+      id: "m5",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-webSearch",
+          state: "output-available",
+          output: { error: "Web search failed: Invalid request body." },
+        },
+      ],
+    } as unknown as UIMessage;
+
+    render(React.createElement(ChatMessage, { message, isStreaming: false }));
+
+    expect(screen.getByText("Web search failed")).not.toBeNull();
+    expect(screen.getByText("Web search failed: Invalid request body.")).not.toBeNull();
+  });
 });
 
 function assistantMessage(id: string, text: string): UIMessage {

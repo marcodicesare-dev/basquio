@@ -34,10 +34,7 @@ type FirecrawlSearchPayload = {
   query: string;
   limit: number;
   sources: Array<{ type: "web" | "news" }>;
-  location: {
-    country: string;
-    languages: string[];
-  };
+  location: string;
   tbs?: string;
   scrapeOptions: {
     formats: ["markdown"];
@@ -72,7 +69,7 @@ export function webSearchTool(ctx: AgentCallContext) {
           query: input.language === "it" ? `${input.query} mercato Italia` : input.query,
           limit: input.max_results,
           sources: [{ type: input.source_type }],
-          location: { country: input.country, languages: [input.language] },
+          location: input.country,
           tbs: recencyToTbs(input.recency),
           scrapeOptions: {
             formats: ["markdown"],
@@ -80,7 +77,8 @@ export function webSearchTool(ctx: AgentCallContext) {
           },
         };
         const response = await firecrawl.search(searchPayload as unknown as Parameters<typeof firecrawl.search>[0]);
-        if (!Array.isArray(response.data)) {
+        const results = normalizeFirecrawlSearchResults(response);
+        if (!results) {
           const responseRecord = response as unknown as { error?: unknown };
           const message =
             typeof responseRecord.error === "string"
@@ -91,7 +89,7 @@ export function webSearchTool(ctx: AgentCallContext) {
           };
         }
 
-        const resultCount = response.data.length;
+        const resultCount = results.length;
         const creditsUsed = response.creditsUsed ?? resultCount;
         await logWebSearchCall({
           conversationId,
@@ -108,13 +106,13 @@ export function webSearchTool(ctx: AgentCallContext) {
               ? `Approaching web search cap (${currentCount + 1}/${WEB_SEARCH_HARD_CAP}). Summarize findings efficiently.`
               : null,
           credits_used: creditsUsed,
-          results: response.data.map((result) => {
-            const metadata = result.data?.metadata ?? {};
+          results: results.map((result) => {
+            const metadata = resultMetadata(result);
             return {
               url: result.url,
               title: result.title ?? stringMetadata(metadata, "title"),
               published_at: publishedAt(metadata),
-              markdown: (result.data?.markdown ?? "").slice(0, 15_000),
+              markdown: resultMarkdown(result).slice(0, 15_000),
             };
           }),
         };
@@ -125,6 +123,39 @@ export function webSearchTool(ctx: AgentCallContext) {
       }
     },
   });
+}
+
+type FirecrawlSearchResultLike = {
+  url: string;
+  title?: string;
+  description?: string;
+  markdown?: string;
+  metadata?: Record<string, unknown>;
+  data?: {
+    markdown?: string;
+    metadata?: Record<string, unknown>;
+  };
+};
+
+function normalizeFirecrawlSearchResults(response: unknown): FirecrawlSearchResultLike[] | null {
+  if (!response || typeof response !== "object") return null;
+  const data = (response as { data?: unknown }).data;
+  if (Array.isArray(data)) return data as FirecrawlSearchResultLike[];
+  if (!data || typeof data !== "object") return null;
+
+  const buckets = data as Record<string, unknown>;
+  return ["web", "news", "images"].flatMap((key) => {
+    const bucket = buckets[key];
+    return Array.isArray(bucket) ? (bucket as FirecrawlSearchResultLike[]) : [];
+  });
+}
+
+function resultMetadata(result: FirecrawlSearchResultLike): Record<string, unknown> {
+  return result.data?.metadata ?? result.metadata ?? {};
+}
+
+function resultMarkdown(result: FirecrawlSearchResultLike): string {
+  return result.data?.markdown ?? result.markdown ?? "";
 }
 
 export async function countConversationSearches(conversationId: string): Promise<number> {
