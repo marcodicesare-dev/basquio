@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, X } from "@phosphor-icons/react";
 
+import { compactSuggestionPrompt } from "@/lib/workspace/suggestion-display";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
 const KIND_LABELS: Record<WorkspaceSuggestion["kind"], string> = {
@@ -104,7 +105,7 @@ export function WorkspaceInlineSuggestions({
               onSend(suggestion.prompt);
             }}
           >
-            {compactPrompt(suggestion.prompt)}
+            {compactSuggestionPrompt(suggestion.prompt)}
           </button>
         ))}
       </div>
@@ -169,8 +170,4 @@ function readDismissed(): Record<string, number> {
 function writeDismissed(value: Record<string, number>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(DISMISS_KEY, JSON.stringify(value));
-}
-
-function compactPrompt(prompt: string) {
-  return prompt.length > 42 ? `${prompt.slice(0, 39).trim()}…` : prompt;
 }

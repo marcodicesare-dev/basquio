@@ -20,6 +20,7 @@ import {
 } from "@/components/workspace-generation-status";
 import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
+import { compactSuggestionPrompt } from "@/lib/workspace/suggestion-display";
 import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
 
 type AttachmentChip = {
@@ -816,7 +817,7 @@ export function WorkspaceChat({
               onClick={() => handlePromptSuggestion(suggestion.prompt)}
               disabled={isBusy}
             >
-              {compactPrompt(suggestion.prompt)}
+              {compactSuggestionPrompt(suggestion.prompt)}
             </button>
           ))}
         </div>
@@ -903,10 +904,6 @@ export function WorkspaceChat({
       />
     </section>
   );
-}
-
-function compactPrompt(prompt: string): string {
-  return prompt.length > 56 ? `${prompt.slice(0, 53).trim()}...` : prompt;
 }
 
 function messageText(message: UIMessage): string {

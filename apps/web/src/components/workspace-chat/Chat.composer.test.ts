@@ -110,6 +110,29 @@ describe("WorkspaceChat composer", () => {
     );
   });
 
+  it("shows short labels for scoped prompt chips while keeping the full prompt", () => {
+    render(
+      React.createElement(WorkspaceChat, {
+        scopeName: "Affinity Petcare",
+        promptSuggestions: [
+          {
+            id: "suggestion-1",
+            kind: "investigate",
+            prompt: "Use Rossella feedback for the next Affinity Petcare brief.",
+            reason: "Saved memory updated 21 hours ago.",
+          },
+        ],
+      }),
+    );
+
+    const chip = screen.getByRole("button", { name: "Use Rossella feedback" });
+    fireEvent.click(chip);
+
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
+      "Use Rossella feedback for the next Affinity Petcare brief.",
+    );
+  });
+
   it("submits on Enter without requiring Command Enter", () => {
     render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
