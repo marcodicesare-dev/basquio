@@ -29,6 +29,7 @@ import {
   StakeholderCreateApprovalCard,
   StakeholderEditApprovalCard,
   TeachRuleCard,
+  type BriefDraftCardOutput,
 } from "@/components/workspace-chat/ToolChips";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
@@ -104,10 +105,11 @@ type ChatMessageProps = {
   onFeedback?: (value: "up" | "down") => void;
   onSaveAsMemo?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
   onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null> | void;
+  onOpenGenerateDrawer?: (args: { messageId: string; draftBrief: BriefDraftCardOutput }) => Promise<string | null> | void;
   showInlineSuggestions?: boolean;
   /**
    * Approval-card follow-up: cards fire a new user chat turn when the
-   * user clicks [Save all] / [Update] / [Create] / [Open in drawer] /
+   * user clicks [Save all] / [Update] / [Create] /
    * [Draft brief for this service]. The parent chat wires this to
    * useChat().sendMessage so the model sees the follow-up turn and
    * re-invokes the tool with dry_run: false plus the cached id.
@@ -123,6 +125,7 @@ export const ChatMessage = memo(function ChatMessage({
   onFeedback,
   onSaveAsMemo,
   onGenerateDeck,
+  onOpenGenerateDrawer,
   showInlineSuggestions = false,
   onSendFollowUp,
 }: ChatMessageProps) {
@@ -379,7 +382,17 @@ export const ChatMessage = memo(function ChatMessage({
                   {callChip}
                   <BriefDraftCard
                     state={state}
-                    output={toolPart.output as Parameters<typeof BriefDraftCard>[0]["output"]}
+                    output={toolPart.output as BriefDraftCardOutput}
+                    onOpenGenerateDrawer={
+                      onOpenGenerateDrawer
+                        ? (draftBrief) => {
+                            void onOpenGenerateDrawer({
+                              messageId: message.id ?? "",
+                              draftBrief,
+                            });
+                          }
+                        : undefined
+                    }
                     onSendFollowUp={onSendFollowUp}
                   />
                 </>,
@@ -465,10 +478,10 @@ export const ChatMessage = memo(function ChatMessage({
               className="wbeta-ai-action-btn wbeta-ai-action-btn-primary"
               onClick={handleDeck}
               disabled={saving !== null}
-              aria-label="Generate a deck from this answer"
+              aria-label="Open the deck generator from this answer"
             >
               <Presentation size={12} weight="regular" />
-              {saving === "deck" ? "Preparing…" : "Generate deck"}
+              {saving === "deck" ? "Opening…" : "Open deck generator"}
             </button>
           ) : null}
           {saveMsg ? <span className="wbeta-ai-action-status">{saveMsg}</span> : null}
@@ -513,6 +526,7 @@ function areChatMessagePropsEqual(prev: ChatMessageProps, next: ChatMessageProps
     prev.onFeedback === next.onFeedback &&
     prev.onSaveAsMemo === next.onSaveAsMemo &&
     prev.onGenerateDeck === next.onGenerateDeck &&
+    prev.onOpenGenerateDrawer === next.onOpenGenerateDrawer &&
     prev.showInlineSuggestions === next.showInlineSuggestions &&
     prev.onSendFollowUp === next.onSendFollowUp
   );

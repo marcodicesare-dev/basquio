@@ -324,6 +324,27 @@ export function StakeholderCard({
 
 export type ApprovalFollowUp = (text: string) => void;
 
+export type BriefDraftCardOutput = {
+  ok?: boolean;
+  brief?: {
+    title?: string;
+    objective?: string;
+    audience?: string;
+    language?: string | null;
+    deck_length?: string | null;
+    thesis?: string | null;
+    stakes?: string | null;
+    extra_instructions?: string | null;
+  };
+  scope?: { id: string; name: string; kind: string } | null;
+  context_preview?: {
+    scoped_stakeholder_count?: number;
+    workspace_memory_count?: number;
+    workspace_file_count?: number;
+  };
+  include_research?: boolean;
+};
+
 type IngestPreviewEntity = {
   type: string;
   canonical_name: string;
@@ -935,44 +956,28 @@ export function BriefDraftCard({
   state,
   output,
   onSendFollowUp,
+  onOpenGenerateDrawer,
 }: {
   state: ToolState;
   input?: unknown;
-  output?: {
-    ok?: boolean;
-    brief?: {
-      title?: string;
-      objective?: string;
-      audience?: string;
-      language?: string | null;
-      deck_length?: string | null;
-    };
-    scope?: { id: string; name: string; kind: string } | null;
-    context_preview?: {
-      scoped_stakeholder_count?: number;
-      workspace_memory_count?: number;
-      workspace_file_count?: number;
-    };
-    include_research?: boolean;
-  };
+  output?: BriefDraftCardOutput;
   onSendFollowUp?: ApprovalFollowUp;
+  onOpenGenerateDrawer?: (output: BriefDraftCardOutput) => void | Promise<void>;
 }) {
-  const [sent, setSent] = useState(false);
+  const [refineSent, setRefineSent] = useState(false);
   const isDone = state === "output-available";
   if (!output || output.ok === false) return null;
+  const draftOutput = output;
   const brief = output.brief ?? {};
   const preview = output.context_preview ?? {};
 
   function openDrawer() {
-    if (!onSendFollowUp) return;
-    setSent(true);
-    onSendFollowUp(
-      `Open the generate drawer for brief "${brief.title ?? "Workspace brief"}"`,
-    );
+    if (!onOpenGenerateDrawer) return;
+    void onOpenGenerateDrawer(draftOutput);
   }
   function refine() {
     if (!onSendFollowUp) return;
-    setSent(true);
+    setRefineSent(true);
     onSendFollowUp(
       `Refine the brief further. Ask me clarifying questions about thesis and stakes.`,
     );
@@ -1002,7 +1007,7 @@ export function BriefDraftCard({
           <span>{preview.workspace_memory_count ?? 0} workspace rules apply</span>
         </li>
         <li>
-          <span>{preview.workspace_file_count ?? 0} files in scope</span>
+          <span>{preview.workspace_file_count ?? 0} workspace files available</span>
         </li>
         {output.include_research ? (
           <li>
@@ -1016,15 +1021,15 @@ export function BriefDraftCard({
             type="button"
             className="wbeta-ai-action-btn wbeta-ai-approval-btn-primary"
             onClick={openDrawer}
-            disabled={sent || !onSendFollowUp}
+            disabled={!onOpenGenerateDrawer}
           >
-            Open in generate drawer
+            Open deck generator
           </button>
           <button
             type="button"
             className="wbeta-ai-action-btn"
             onClick={refine}
-            disabled={sent || !onSendFollowUp}
+            disabled={refineSent || !onSendFollowUp}
           >
             Refine in chat
           </button>

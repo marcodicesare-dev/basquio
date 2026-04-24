@@ -62,6 +62,20 @@ type Brief = {
   slideCount: number;
 };
 
+export type WorkspaceGenerationDraftBrief = {
+  brief?: {
+    title?: string;
+    objective?: string;
+    audience?: string;
+    language?: string | null;
+    deck_length?: string | null;
+    thesis?: string | null;
+    stakes?: string | null;
+    extra_instructions?: string | null;
+  };
+  include_research?: boolean;
+};
+
 type PrepareResponse = {
   pack: Pack;
   brief: Brief;
@@ -81,6 +95,7 @@ export type WorkspaceGenerationDrawerProps = {
   deliverableId?: string | null;
   messageId?: string | null;
   scopeId?: string | null;
+  draftBrief?: WorkspaceGenerationDraftBrief | null;
   onLaunched?: (args: { runId: string; progressUrl: string }) => void;
 };
 
@@ -91,6 +106,7 @@ export function WorkspaceGenerationDrawer({
   deliverableId,
   messageId,
   scopeId,
+  draftBrief,
   onLaunched,
 }: WorkspaceGenerationDrawerProps) {
   const [loading, setLoading] = useState(false);
@@ -106,7 +122,7 @@ export function WorkspaceGenerationDrawer({
   useEffect(() => {
     if (!open) return;
     if (!conversationId && !deliverableId) {
-      setLoadError("Nothing to generate — no conversation or memo supplied.");
+      setLoadError("Nothing to generate: no conversation or memo supplied.");
       return;
     }
     let cancelled = false;
@@ -134,7 +150,7 @@ export function WorkspaceGenerationDrawer({
         const data = (await response.json()) as PrepareResponse;
         if (cancelled) return;
         setPack(data.pack);
-        setBrief(data.brief);
+        setBrief(applyDraftBrief(data.brief, draftBrief));
       } catch (err) {
         if (cancelled) return;
         setLoadError(err instanceof Error ? err.message : "Could not prepare the brief.");
@@ -145,7 +161,7 @@ export function WorkspaceGenerationDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, conversationId, deliverableId, messageId, scopeId]);
+  }, [open, conversationId, deliverableId, messageId, scopeId, draftBrief]);
 
   useEffect(() => {
     if (!open) return;
@@ -255,7 +271,7 @@ export function WorkspaceGenerationDrawer({
               <section className="wbeta-gen-section">
                 <label className="wbeta-gen-field-label">Brief</label>
                 <p className="wbeta-gen-field-hint">
-                  Synthesized from the conversation. Edit anything that does not land.
+                  Prepared from the selected chat turn and workspace context. Edit anything that does not land.
                 </p>
                 <textarea
                   ref={firstFocusRef}
@@ -334,8 +350,8 @@ export function WorkspaceGenerationDrawer({
                 </label>
                 <p className="wbeta-gen-field-hint">
                   {pack.sourceFiles.length === 0
-                    ? "No files cited in this conversation. Attach at least one before generating — the pipeline needs data to read."
-                    : "Pulled from the files the chat cited. Click X to drop one."}
+                    ? "No cited or attached workspace files yet. Attach a file before generating; the pipeline needs data to read."
+                    : "Pulled from chat attachments and cited workspace files. Remove anything irrelevant."}
                 </p>
                 {pack.sourceFiles.length > 0 ? (
                   <ul className="wbeta-gen-file-list">
@@ -459,7 +475,7 @@ export function WorkspaceGenerationDrawer({
                 </>
               ) : (
                 <>
-                  <Presentation size={13} weight="regular" /> Start generation
+                  <Presentation size={13} weight="regular" /> Start deck generation
                 </>
               )}
             </button>
@@ -482,4 +498,31 @@ export function WorkspaceGenerationDrawer({
       </aside>
     </>
   );
+}
+
+function applyDraftBrief(base: Brief, draftBrief?: WorkspaceGenerationDraftBrief | null): Brief {
+  const draft = draftBrief?.brief;
+  if (!draft) return base;
+  const slideCount = parseDeckLength(draft.deck_length) ?? base.slideCount;
+  return {
+    ...base,
+    title: cleanDraftField(draft.title) ?? base.title,
+    objective: cleanDraftField(draft.objective) ?? base.objective,
+    audience: cleanDraftField(draft.audience) ?? base.audience,
+    thesis: cleanDraftField(draft.thesis) ?? base.thesis,
+    stakes: cleanDraftField(draft.stakes) ?? base.stakes,
+    slideCount,
+  };
+}
+
+function cleanDraftField(value: string | null | undefined): string | null {
+  const cleaned = value?.trim();
+  return cleaned ? cleaned : null;
+}
+
+function parseDeckLength(value: string | null | undefined): number | null {
+  const match = value?.match(/\d+/);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[0] ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

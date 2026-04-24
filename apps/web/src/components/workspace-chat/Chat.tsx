@@ -13,7 +13,11 @@ import { ArrowUp, Paperclip, Stop, X, CheckCircle, WarningCircle } from "@phosph
 
 import { ChatMessage } from "@/components/workspace-chat/ChatMessage";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
-import { WorkspaceGenerationDrawer } from "@/components/workspace-generation-drawer";
+import type { BriefDraftCardOutput } from "@/components/workspace-chat/ToolChips";
+import {
+  WorkspaceGenerationDrawer,
+  type WorkspaceGenerationDraftBrief,
+} from "@/components/workspace-generation-drawer";
 import {
   WorkspaceGenerationStatus,
   type ActiveGeneration,
@@ -621,6 +625,7 @@ export function WorkspaceChat({
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMessageId, setDrawerMessageId] = useState<string | null>(null);
+  const [drawerDraftBrief, setDrawerDraftBrief] = useState<WorkspaceGenerationDraftBrief | null>(null);
   const [activeGen, setActiveGen] = useState<ActiveGeneration | null>(null);
 
   const saveAsMemo = useCallback(
@@ -668,11 +673,37 @@ export function WorkspaceChat({
   const openGenerationDrawer = useCallback(
     async ({ messageId }: { messageId: string }): Promise<string | null> => {
       setDrawerMessageId(messageId || null);
+      setDrawerDraftBrief(null);
       setDrawerOpen(true);
       return "drawer-opened";
     },
     [],
   );
+
+  const openDraftBriefDrawer = useCallback(
+    async ({
+      messageId,
+      draftBrief,
+    }: {
+      messageId: string;
+      draftBrief: BriefDraftCardOutput;
+    }): Promise<string | null> => {
+      setDrawerMessageId(messageId || null);
+      setDrawerDraftBrief({
+        brief: draftBrief.brief,
+        include_research: draftBrief.include_research,
+      });
+      setDrawerOpen(true);
+      return "drawer-opened";
+    },
+    [],
+  );
+
+  const closeGenerationDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    setDrawerMessageId(null);
+    setDrawerDraftBrief(null);
+  }, []);
 
   const placeholder = scopeName ? `${copy.askAbout} ${scopeName}` : "Message Basquio";
 
@@ -740,6 +771,9 @@ export function WorkspaceChat({
                 onSaveAsMemo={message.role === "assistant" && !isStreaming ? saveAsMemo : undefined}
                 onGenerateDeck={
                   message.role === "assistant" && !isStreaming ? openGenerationDrawer : undefined
+                }
+                onOpenGenerateDrawer={
+                  message.role === "assistant" && !isStreaming ? openDraftBriefDrawer : undefined
                 }
                 showInlineSuggestions={isLast && message.role === "assistant" && !isStreaming}
                 onSendFollowUp={
@@ -977,10 +1011,11 @@ export function WorkspaceChat({
 
       <WorkspaceGenerationDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={closeGenerationDrawer}
         conversationId={conversationIdRef.current}
         messageId={drawerMessageId}
         scopeId={scopeId ?? null}
+        draftBrief={drawerDraftBrief}
         onLaunched={({ runId, progressUrl }) => {
           setActiveGen({
             runId,

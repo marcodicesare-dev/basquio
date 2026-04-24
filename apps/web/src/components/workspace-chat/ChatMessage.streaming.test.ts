@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
@@ -101,6 +101,56 @@ describe("ChatMessage streaming render", () => {
 
     expect(screen.getByText("Web search failed")).not.toBeNull();
     expect(screen.getByText("Web search failed: Invalid request body.")).not.toBeNull();
+  });
+
+  it("opens the deck generator from draftBrief without sending a chat follow-up", () => {
+    const onOpenGenerateDrawer = vi.fn();
+    const onSendFollowUp = vi.fn();
+    const message = {
+      id: "m6",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-draftBrief",
+          state: "output-available",
+          output: {
+            ok: true,
+            brief: {
+              title: "Coffee Italy 2025",
+              objective: "Build a coffee market deck.",
+              audience: "Insights team",
+              deck_length: "13 slides",
+            },
+            context_preview: {
+              scoped_stakeholder_count: 0,
+              workspace_memory_count: 15,
+              workspace_file_count: 14,
+            },
+            include_research: true,
+          },
+        },
+      ],
+    } as unknown as UIMessage;
+
+    render(
+      React.createElement(ChatMessage, {
+        message,
+        isStreaming: false,
+        onOpenGenerateDrawer,
+        onSendFollowUp,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open deck generator" }));
+
+    expect(onOpenGenerateDrawer).toHaveBeenCalledWith({
+      messageId: "m6",
+      draftBrief: expect.objectContaining({
+        brief: expect.objectContaining({ title: "Coffee Italy 2025" }),
+      }),
+    });
+    expect(onSendFollowUp).not.toHaveBeenCalled();
+    expect(screen.getByText("14 workspace files available")).not.toBeNull();
   });
 });
 
