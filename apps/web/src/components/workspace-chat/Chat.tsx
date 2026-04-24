@@ -27,10 +27,14 @@ type AttachmentChip = {
   localId: string;
   filename: string;
   sizeBytes: number;
+  fileType?: string | null;
   status: "uploading" | "indexing" | "indexed" | "indexing-failed" | "upload-failed";
   documentId?: string;
   message?: string;
 };
+
+const CHAT_UPLOAD_ACCEPT =
+  ".pdf,.docx,.pptx,.xlsx,.xls,.csv,.md,.txt,.json,.yaml,.yml,.gsp,.png,.jpg,.jpeg,.webp,.gif,.mp3,.mp4,.wav,.m4a";
 
 type UploadStatus =
   | { kind: "idle" }
@@ -72,6 +76,7 @@ export function WorkspaceChat({
   const [isDragOver, setIsDragOver] = useState(false);
   const [upload, setUpload] = useState<UploadStatus>({ kind: "idle" });
   const [attachments, setAttachments] = useState<AttachmentChip[]>([]);
+  const [previewAttachment, setPreviewAttachment] = useState<AttachmentChip | null>(null);
   const [memoryPulse, setMemoryPulse] = useState<{
     documentCount: number;
     entities: Array<{ id: string; type: string; canonical_name: string }>;
@@ -135,17 +140,19 @@ export function WorkspaceChat({
   );
 
   const uploadFiles = useCallback(
-    async (files: FileList | File[]) => {
+    async (files: FileList | File[], origin?: "chat-drop" | "chat-paste") => {
       const list = Array.from(files).filter((f) => f && f.size > 0);
       if (list.length === 0) return;
       for (const file of list) {
         const localId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const fileType = getFileExtension(file.name) || getExtensionFromMimeType(file.type);
         setAttachments((prev) => [
           ...prev,
           {
             localId,
             filename: file.name,
             sizeBytes: file.size,
+            fileType,
             status: "uploading",
           },
         ]);
@@ -158,6 +165,7 @@ export function WorkspaceChat({
           const result = await uploadWorkspaceFile(file, {
             conversationId: conversationIdRef.current,
             scopeId: scopeId ?? null,
+            ...(origin ? { origin } : {}),
           });
           const nextStatus = mapAttachmentStatus(result.status);
           const attachmentFailed = result.attachedToConversation === false;
@@ -209,7 +217,7 @@ export function WorkspaceChat({
       dragDepthRef.current = 0;
       setIsDragOver(false);
       if (event.dataTransfer?.files?.length) {
-        void uploadFiles(event.dataTransfer.files);
+        void uploadFiles(event.dataTransfer.files, "chat-drop");
       }
     },
     [uploadFiles],
@@ -222,8 +230,18 @@ export function WorkspaceChat({
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
-      if (files && files.length > 0) void uploadFiles(files);
+      if (files && files.length > 0) void uploadFiles(files, "chat-drop");
       event.target.value = "";
+    },
+    [uploadFiles],
+  );
+
+  const handlePaste = useCallback(
+    (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = getClipboardFiles(event.clipboardData);
+      if (files.length === 0) return;
+      event.preventDefault();
+      void uploadFiles(files, "chat-paste");
     },
     [uploadFiles],
   );
@@ -380,6 +398,7 @@ export function WorkspaceChat({
             id: string;
             documentId: string;
             filename: string | null;
+            fileType: string | null;
             fileSizeBytes: number | null;
             status: string | null;
           }>;
@@ -396,6 +415,7 @@ export function WorkspaceChat({
               localId: `server-${a.documentId}`,
               filename: a.filename ?? "attached file",
               sizeBytes: a.fileSizeBytes ?? 0,
+              fileType: a.fileType ?? getFileExtension(a.filename ?? ""),
               status:
                 mapAttachmentStatus(a.status),
               documentId: a.documentId,
@@ -769,6 +789,7 @@ export function WorkspaceChat({
         multiple
         hidden
         onChange={handleFileChange}
+        accept={CHAT_UPLOAD_ACCEPT}
         aria-hidden
       />
 
@@ -776,6 +797,20 @@ export function WorkspaceChat({
         <ul className="wbeta-ai-chat-attachments" role="list" aria-label="Files attached to this conversation">
           {attachments.map((chip) => (
             <li key={chip.localId} className={`wbeta-ai-chat-chip wbeta-ai-chat-chip-${chip.status}`}>
+              {chip.documentId && isImageAttachment(chip) ? (
+                <button
+                  type="button"
+                  className="wbeta-ai-chat-chip-preview"
+                  onClick={() => setPreviewAttachment(chip)}
+                  aria-label={`Preview ${chip.filename}`}
+                >
+                  <img
+                    src={getDocumentDownloadUrl(chip.documentId, conversationIdRef.current)}
+                    alt=""
+                    loading="lazy"
+                  />
+                </button>
+              ) : null}
               <span className="wbeta-ai-chat-chip-icon" aria-hidden>
                 {chip.status === "uploading" || chip.status === "indexing" ? (
                   <Paperclip size={14} weight="thin" className="wbeta-ai-chat-chip-icon-pulse" />
@@ -871,6 +906,7 @@ export function WorkspaceChat({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleComposerKeyDown}
+          onPaste={handlePaste}
           minRows={1}
           maxRows={10}
           disabled={isBusy}
@@ -938,6 +974,42 @@ export function WorkspaceChat({
           });
         }}
       />
+
+      {previewAttachment?.documentId ? (
+        <div
+          className="wbeta-ai-chat-preview-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewAttachment.filename}
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <div className="wbeta-ai-chat-preview-frame" onClick={(event) => event.stopPropagation()}>
+            <div className="wbeta-ai-chat-preview-bar">
+              <p>{previewAttachment.filename}</p>
+              <div className="wbeta-ai-chat-preview-actions">
+                <a
+                  href={getDocumentDownloadUrl(previewAttachment.documentId, conversationIdRef.current)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open original
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(null)}
+                  aria-label={`Close preview for ${previewAttachment.filename}`}
+                >
+                  <X size={14} weight="bold" />
+                </button>
+              </div>
+            </div>
+            <img
+              src={getDocumentDownloadUrl(previewAttachment.documentId, conversationIdRef.current)}
+              alt={previewAttachment.filename}
+            />
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -980,4 +1052,71 @@ function mapAttachmentStatus(status: string | null | undefined): AttachmentChip[
   if (status === "indexed") return "indexed";
   if (status === "failed") return "indexing-failed";
   return "indexing";
+}
+
+function getClipboardFiles(data: DataTransfer): File[] {
+  const fromItems = Array.from(data.items ?? [])
+    .filter((item) => item.kind === "file")
+    .map((item, index) => normalizeClipboardFile(item.getAsFile(), index))
+    .filter((file): file is File => file !== null);
+
+  if (fromItems.length > 0) return fromItems;
+  return Array.from(data.files ?? []).map((file, index) => normalizeClipboardFile(file, index) ?? file);
+}
+
+function normalizeClipboardFile(file: File | null, index: number): File | null {
+  if (!file) return null;
+  const extension = getFileExtension(file.name) || getExtensionFromMimeType(file.type);
+  const shouldRenameImage =
+    file.type.startsWith("image/") &&
+    (!file.name || /^image\.(png|jpe?g|webp|gif)$/i.test(file.name));
+  if (!shouldRenameImage) return file;
+  const name = `screenshot-${formatTimestampForFilename(new Date())}${index > 0 ? `-${index + 1}` : ""}.${extension || "png"}`;
+  return new File([file], name, {
+    type: file.type || getMimeTypeFromExtension(extension),
+    lastModified: file.lastModified || Date.now(),
+  });
+}
+
+function formatTimestampForFilename(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mi = String(date.getMinutes()).padStart(2, "0");
+  const ss = String(date.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}-${hh}${mi}${ss}`;
+}
+
+function getFileExtension(filename: string): string {
+  return filename.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function getExtensionFromMimeType(mimeType: string): string {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/gif") return "gif";
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType === "text/plain") return "txt";
+  if (mimeType === "text/markdown") return "md";
+  if (mimeType === "text/csv") return "csv";
+  return "";
+}
+
+function getMimeTypeFromExtension(extension: string): string {
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "png") return "image/png";
+  if (extension === "webp") return "image/webp";
+  if (extension === "gif") return "image/gif";
+  return "application/octet-stream";
+}
+
+function isImageAttachment(chip: AttachmentChip): boolean {
+  const extension = chip.fileType || getFileExtension(chip.filename);
+  return ["png", "jpg", "jpeg", "webp", "gif"].includes(extension.toLowerCase());
+}
+
+function getDocumentDownloadUrl(documentId: string, conversationId: string): string {
+  return `/api/workspace/documents/${documentId}/download?conversationId=${encodeURIComponent(conversationId)}`;
 }

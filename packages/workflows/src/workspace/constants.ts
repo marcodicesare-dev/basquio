@@ -25,7 +25,7 @@ export const LEGACY_DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 
 export const SUPPORTED_UPLOAD_EXTENSIONS = [
   "pdf", "docx", "pptx", "xlsx", "xls", "csv",
-  "md", "txt", "json", "yaml", "yml",
+  "md", "txt", "json", "yaml", "yml", "gsp",
   "png", "jpg", "jpeg", "webp", "gif",
   "mp3", "mp4", "wav", "m4a",
 ] as const;

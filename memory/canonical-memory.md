@@ -124,6 +124,7 @@ Initial domain bias:
 - workbook-native chart styling now persists as `ExhibitPresentationSpec`; chart bindings alone are not enough to preserve fidelity across PPT screenshots and Excel-native companions.
 - the shipped workspace uploader lives in `.context/main-landing`, and that surface must use direct browser-to-Supabase uploads plus confirm-step row creation instead of raw multipart bodies through a Vercel function.
 - workspace chat uploads are two-lane by contract: attached-to-chat is the immediate success state, while memory indexing is async worker work and must not be shown as an upload failure.
+- workspace chat supports paste-to-attach for screenshots and files; screenshots must attach immediately, remain previewable from the chat, and enter memory through an async vision/text projection lane.
 - In the current Anthropic API behavior, loading Skills can auto-inject the code-execution tool. Do not explicitly register another named `code_execution` tool alongside those Skills if the API reports a tool-name conflict.
 - The March 27-28 failure cluster was primarily a runtime-truth mismatch problem: speculative docs and forward-looking fixes diverged from live provider/runtime behavior faster than the code was revalidated.
 - The canonical March 28 forensic truth source is `memory/march28-48h-forensic-learnings.md`.

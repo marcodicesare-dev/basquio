@@ -48,6 +48,7 @@ const confirmSchema = z.object({
   note: z.string().max(2000).nullable().optional(),
   conversationId: z.string().uuid().nullable().optional(),
   scopeId: z.string().uuid().nullable().optional(),
+  origin: z.enum(["chat-drop", "chat-paste", "referenced-from-workspace"]).optional(),
 });
 
 /**
@@ -61,6 +62,7 @@ const dedupAttachSchema = z.object({
   contentHash: z.string().regex(/^[a-f0-9]{64}$/i),
   conversationId: z.string().uuid().nullable().optional(),
   scopeId: z.string().uuid().nullable().optional(),
+  origin: z.enum(["chat-drop", "chat-paste", "referenced-from-workspace"]).optional(),
 });
 
 export async function POST(request: Request) {
@@ -145,6 +147,7 @@ export async function POST(request: Request) {
           workspaceId: workspace.id,
           workspaceScopeId: resolvedScopeId,
           uploadedBy: viewer.user.id,
+          origin: payload.origin ?? "chat-drop",
         });
       }
 
@@ -221,6 +224,7 @@ export async function POST(request: Request) {
             workspaceId: workspace.id,
             workspaceScopeId: resolvedScopeId,
             uploadedBy: viewer.user.id,
+            origin: payload.origin ?? "chat-drop",
           });
         }
         return NextResponse.json({
@@ -242,6 +246,7 @@ export async function POST(request: Request) {
         workspaceId: workspace.id,
         workspaceScopeId: resolvedScopeId,
         uploadedBy: viewer.user.id,
+        origin: payload.origin ?? "chat-drop",
       });
     }
 
@@ -430,6 +435,7 @@ async function recordAttachmentSafely(input: {
   workspaceId: string;
   workspaceScopeId: string | null;
   uploadedBy: string;
+  origin: "chat-drop" | "chat-paste" | "referenced-from-workspace";
 }): Promise<boolean> {
   try {
     await recordConversationAttachment({
@@ -438,7 +444,7 @@ async function recordAttachmentSafely(input: {
       workspaceId: input.workspaceId,
       workspaceScopeId: input.workspaceScopeId,
       uploadedBy: input.uploadedBy,
-      origin: "chat-drop",
+      origin: input.origin,
     });
     return true;
   } catch (error) {
@@ -487,6 +493,7 @@ async function handleDedupAttach(rawBody: unknown, viewerId: string) {
       workspaceId: workspace.id,
       workspaceScopeId: resolvedScopeId,
       uploadedBy: viewerId,
+      origin: body.origin ?? "chat-drop",
     });
   }
 

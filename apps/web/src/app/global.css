@@ -17370,6 +17370,25 @@ body:has(.wbeta-shell) .site-wrap {
   max-width: 100%;
 }
 
+.wbeta-ai-chat-chip-preview {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #ffffff;
+  cursor: zoom-in;
+  flex-shrink: 0;
+}
+
+.wbeta-ai-chat-chip-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 .wbeta-ai-chat-chip-indexed {
   border-color: color-mix(in oklab, var(--accent, #0a7c3a) 40%, var(--border));
 }
@@ -17470,6 +17489,88 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-chat-chip-remove:hover {
   opacity: 1;
   background: var(--border);
+}
+
+.wbeta-ai-chat-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  padding: 24px;
+  background: rgba(11, 12, 12, 0.74);
+  display: grid;
+  place-items: center;
+}
+
+.wbeta-ai-chat-preview-frame {
+  width: min(1120px, 94vw);
+  max-height: 92vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #111315;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.38);
+}
+
+.wbeta-ai-chat-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px 10px 16px;
+  color: #f8fafc;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.wbeta-ai-chat-preview-bar p {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wbeta-ai-chat-preview-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.wbeta-ai-chat-preview-actions a,
+.wbeta-ai-chat-preview-actions button {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.wbeta-ai-chat-preview-actions a {
+  padding: 0 10px;
+}
+
+.wbeta-ai-chat-preview-actions button {
+  width: 30px;
+  padding: 0;
+}
+
+.wbeta-ai-chat-preview-frame > img {
+  width: 100%;
+  max-height: calc(92vh - 52px);
+  display: block;
+  object-fit: contain;
+  background: #0b0c0d;
 }
 
 /* Lane C pulse: entities/facts just extracted from files attached to this chat. */

@@ -50,6 +50,7 @@ vi.mock("react-textarea-autosize", () => {
       style: { height: `${rows * 22}px` },
       onChange: props.onChange,
       onKeyDown: props.onKeyDown,
+      onPaste: props.onPaste,
     });
   });
   TextareaAutosizeMock.displayName = "TextareaAutosizeMock";
@@ -319,6 +320,7 @@ describe("WorkspaceChat composer", () => {
       expect(uploadWorkspaceFileMock).toHaveBeenCalledWith(file, {
         conversationId: expect.any(String),
         scopeId: null,
+        origin: "chat-drop",
       });
     });
 
@@ -348,5 +350,71 @@ describe("WorkspaceChat composer", () => {
     expect(await screen.findByText("NIQ Shifting Analysis - Product Template Guide.pdf")).not.toBeNull();
     expect(screen.getByText(/saved to workspace, chat attach failed/i)).not.toBeNull();
     expect(screen.queryByText(/attached, memory indexing/i)).toBeNull();
+  });
+
+  it("uploads pasted screenshots as chat-paste attachments", async () => {
+    uploadWorkspaceFileMock.mockResolvedValue({
+      id: "fcbf595a-f076-445c-9c7f-6b31730ab1ec",
+      status: "processing",
+      deduplicated: false,
+      fileName: "screenshot.png",
+      attachedToConversation: true,
+    });
+
+    render(React.createElement(WorkspaceChat, { scopeName: "MDLZ" }));
+
+    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    const pasted = new File(["fake image"], "image.png", { type: "image/png" });
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [
+          {
+            kind: "file",
+            type: "image/png",
+            getAsFile: () => pasted,
+          },
+        ],
+        files: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(uploadWorkspaceFileMock).toHaveBeenCalled();
+    });
+
+    const uploadedFile = uploadWorkspaceFileMock.mock.calls[0]?.[0] as File;
+    expect(uploadedFile.name).toMatch(/^screenshot-\d{4}-\d{2}-\d{2}-\d{6}\.png$/);
+    expect(uploadWorkspaceFileMock.mock.calls[0]?.[1]).toMatchObject({
+      conversationId: expect.any(String),
+      scopeId: null,
+      origin: "chat-paste",
+    });
+    expect(await screen.findByRole("button", { name: /preview screenshot-/i })).not.toBeNull();
+  });
+
+  it("opens pasted image attachments in a full-screen preview", async () => {
+    uploadWorkspaceFileMock.mockResolvedValue({
+      id: "fcbf595a-f076-445c-9c7f-6b31730ab1ec",
+      status: "indexed",
+      deduplicated: false,
+      fileName: "screenshot.png",
+      attachedToConversation: true,
+    });
+
+    render(React.createElement(WorkspaceChat, { scopeName: "MDLZ" }));
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    const file = new File(["fake image"], "screen.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const previewButton = await screen.findByRole("button", { name: "Preview screen.png" });
+    fireEvent.click(previewButton);
+
+    expect(screen.getByRole("dialog", { name: "screen.png" })).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Open original" }).getAttribute("href")).toEqual(
+      expect.stringMatching(
+        /^\/api\/workspace\/documents\/fcbf595a-f076-445c-9c7f-6b31730ab1ec\/download\?conversationId=[0-9a-f-]+$/,
+      ),
+    );
   });
 });

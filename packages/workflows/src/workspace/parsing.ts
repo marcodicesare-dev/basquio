@@ -35,8 +35,12 @@ export async function parseDocument(
     return parseTextLike(buffer);
   }
 
-  if (lower === "md" || lower === "txt" || lower === "json" || lower === "yaml" || lower === "yml") {
+  if (lower === "md" || lower === "txt" || lower === "json" || lower === "yaml" || lower === "yml" || lower === "gsp") {
     return parseTextLike(buffer);
+  }
+
+  if (isImageExtension(lower) || contentType?.startsWith("image/")) {
+    return parseImageWithVision(buffer, lower, contentType);
   }
 
   if (contentType?.startsWith("text/") || contentType === "application/json") {
@@ -98,6 +102,82 @@ async function parsePdf(buffer: Buffer): Promise<ParseResult> {
     };
   } finally {
     await parser.destroy().catch(() => {});
+  }
+}
+
+async function parseImageWithVision(
+  buffer: Buffer,
+  ext: string,
+  contentType?: string,
+): Promise<ParseResult> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return {
+      text: "",
+      metadata: { skipped: true, reason: "OPENAI_API_KEY is not set for image parsing" },
+    };
+  }
+
+  const mimeType = getImageMimeType(ext, contentType);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.BASQUIO_IMAGE_PARSE_MODEL ?? "gpt-5.4",
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "Read this image for a business analyst. Extract all visible text, UI labels, error messages, tables, charts, numbers, and meaningful visual context. If it is a screenshot, describe the product state and the user-facing issue. Be concise but specific.",
+              },
+              {
+                type: "input_image",
+                image_url: `data:${mimeType};base64,${buffer.toString("base64")}`,
+                detail: "high",
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      return {
+        text: "",
+        metadata: {
+          skipped: true,
+          reason: `Image vision extraction failed: ${response.status}${detail ? ` ${detail.slice(0, 240)}` : ""}`,
+          mimeType,
+        },
+      };
+    }
+
+    const payload = (await response.json()) as { output_text?: unknown };
+    const text = typeof payload.output_text === "string" ? payload.output_text.trim() : "";
+    return {
+      text,
+      metadata: {
+        extractionMethod: "openai_vision",
+        mimeType,
+      },
+    };
+  } catch (error) {
+    return {
+      text: "",
+      metadata: {
+        skipped: true,
+        reason: error instanceof Error ? error.message : "image vision extraction failed",
+        mimeType,
+      },
+    };
   }
 }
 
@@ -297,6 +377,18 @@ function parseTextLike(buffer: Buffer): ParseResult {
     text,
     metadata: {},
   };
+}
+
+function isImageExtension(ext: string): boolean {
+  return ["png", "jpg", "jpeg", "webp", "gif"].includes(ext);
+}
+
+function getImageMimeType(ext: string, contentType?: string): string {
+  if (contentType?.startsWith("image/")) return contentType;
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
+  return "image/png";
 }
 
 export function chunkText(text: string, chunkSize = 1200, overlap = 150): string[] {

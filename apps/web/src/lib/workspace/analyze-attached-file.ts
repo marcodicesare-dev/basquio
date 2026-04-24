@@ -253,7 +253,11 @@ function guessContentType(ext: string): string {
     return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   if (lower === "xls") return "application/vnd.ms-excel";
   if (lower === "csv") return "text/csv";
-  if (lower === "md" || lower === "txt") return "text/plain";
+  if (lower === "md" || lower === "txt" || lower === "gsp") return "text/plain";
   if (lower === "json") return "application/json";
+  if (lower === "png") return "image/png";
+  if (lower === "jpg" || lower === "jpeg") return "image/jpeg";
+  if (lower === "webp") return "image/webp";
+  if (lower === "gif") return "image/gif";
   return "application/octet-stream";
 }

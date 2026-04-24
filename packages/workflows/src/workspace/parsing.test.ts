@@ -2,9 +2,20 @@ import { Buffer } from "node:buffer";
 
 import JSZip from "jszip";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseDocument } from "./parsing";
+
+const ORIGINAL_OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+afterEach(() => {
+  if (ORIGINAL_OPENAI_API_KEY === undefined) {
+    delete process.env.OPENAI_API_KEY;
+  } else {
+    process.env.OPENAI_API_KEY = ORIGINAL_OPENAI_API_KEY;
+  }
+  vi.restoreAllMocks();
+});
 
 describe("workspace document parsing", () => {
   it("parses PDFs with the installed pdf-parse runtime", async () => {
@@ -63,5 +74,41 @@ describe("workspace document parsing", () => {
     expect(parsed.text).toContain("Tablet mix");
     expect(parsed.text).toContain("2025: 18");
     expect(parsed.pageCount).toBe(1);
+  });
+
+  it("extracts screenshot text through the image vision lane", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          output_text: "Screenshot shows an upload chip with memory indexing failed.",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const parsed = await parseDocument(Buffer.from([1, 2, 3]), "png", "image/png");
+
+    expect(parsed.text).toContain("upload chip");
+    expect(parsed.metadata.extractionMethod).toBe("openai_vision");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/responses",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
+
+  it("does not fail image indexing when vision extraction is unavailable", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("rate limited", { status: 429 }),
+    );
+
+    const parsed = await parseDocument(Buffer.from([1, 2, 3]), "png", "image/png");
+
+    expect(parsed.text).toBe("");
+    expect(parsed.metadata.skipped).toBe(true);
+    expect(String(parsed.metadata.reason)).toContain("Image vision extraction failed: 429");
   });
 });

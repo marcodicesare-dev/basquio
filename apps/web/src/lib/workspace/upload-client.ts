@@ -42,6 +42,7 @@ type ConfirmWorkspaceUploadResponse = {
 type UploadWorkspaceFileOptions = {
   note?: string | null;
   onProgress?: (progressPct: number) => void;
+  origin?: "chat-drop" | "chat-paste" | "referenced-from-workspace";
   /**
    * Dual-lane spec (docs/specs/2026-04-21-dual-lane-workspace-chat-deck-architecture-spec.md):
    * when present, the confirm route records a conversation_attachments row so
@@ -93,6 +94,7 @@ export async function uploadWorkspaceFile(
         contentHash: preparePayload.contentHash,
         conversationId,
         scopeId,
+        origin: options.origin,
       }),
     });
     const attachPayload = (await readJson(attachResponse)) as ConfirmWorkspaceUploadResponse & {
@@ -137,6 +139,7 @@ export async function uploadWorkspaceFile(
       note: options.note ?? null,
       conversationId,
       scopeId,
+      origin: options.origin,
     }),
   });
   const confirmPayload = (await readJson(confirmResponse)) as ConfirmWorkspaceUploadResponse & { error?: string };

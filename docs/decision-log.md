@@ -867,3 +867,22 @@ Implication:
 - the old `ScopeLanding` briefing-stack component is retired
 - future scope polish should extend the chat pane and context rail, not recreate a dashboard above the composer
 - mobile scope routes collapse context into a one-line expandable strip while keeping chat first
+
+## April 24, 2026: Workspace chat attachments are immediate, paste-first, and index later
+
+Decision:
+- chat file upload success means the file is stored and attached to the conversation
+- memory indexing is a separate async lane and failure there must not be labeled as an upload failure
+- the chat composer accepts pasted screenshots through Cmd-V and Ctrl-V, then shows them as attachment chips
+- image attachments get an OpenAI vision text projection in the memory indexing lane so screenshots can become searchable memory
+- attached image chips can be reopened in a full-screen preview from the chat
+
+Why:
+- Giulia's failed upload report on Apr 24 was not a storage failure: Supabase Storage and the confirm route both returned success, while PDF/PPTX memory indexing failed later
+- the UI collapsed those two lanes into one red failure chip, which made a successful upload look broken
+- production-grade chat tools treat paste, drag, file picker, chat attachment, and background indexing as separate states
+
+Implication:
+- storage plus conversation attachment must stay on the fast path
+- chunking, embeddings, entity extraction, and image vision can retry without blocking chat use
+- future file types should first attach cleanly, then earn richer memory extraction by adding parsers or vision projections
