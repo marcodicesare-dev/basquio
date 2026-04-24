@@ -19,6 +19,7 @@ Current screenshots captured during audit:
 - `/tmp/basquio-p0-audit/current-affinity-scope.png`
 - `/tmp/basquio-p0-audit/current-affinity-chat-after-send.png`
 - `/tmp/basquio-p0-audit/current-chat-composer-before-redesign.png`
+- `/tmp/basquio-p0-audit/current-chat-composer-after-redesign-full.png`
 
 Video capture note: macOS screen recording from the agent process was blocked by local permissions, so the 15-second before and after videos could not be captured from this environment. The live browser and programmatic DOM audit did run.
 
@@ -31,8 +32,8 @@ Video capture note: macOS screen recording from the agent process was blocked by
 | Fixed 3-row textarea | `apps/web/src/components/workspace-chat/Chat.tsx`, `apps/web/src/app/global.css` | Rule 3, crafted composer | Raw textarea with manual vertical resize | `react-textarea-autosize` with minRows 1 and maxRows 10 | Yes, source, tests, prod DOM |
 | Theatrical memo wrappers | `ChatMessage.tsx`, `ChatMarkdown.tsx` | Rule 5, unnecessary rerenders | Default shallow memo failed on new AI SDK object refs | Custom comparators based on cheap identity and text length | Yes, render-count tests |
 | Workspace surface audit | Workspace routes | Rules 2, 3, 5 | No single live audit artifact existed | This file documents route status, banned loading checks, and deferred gaps | Yes, in-app browser |
-| Sidebar transition traps navigation | `apps/web/src/components/workspace-sidebar.tsx` | Rule 5, navigation must feel instant and truthful | From `/workspace/memory`, clicking Affinity left URL on Memory while the sidebar marked Affinity active | Native `Link` routing restored, transition no longer prevents default navigation | Pending deploy verification in this audit follow-up |
-| Scope composer smashed into viewport bottom | `apps/web/src/app/global.css`, `apps/web/src/components/workspace-chat/Chat.tsx` | Rule 3, crafted modern composer | Sticky scope chat plus sticky form made the composer look like a 2005 footer textarea and grow upward into content | Static scope workbench, centered padded composer dock, transparent textarea, compact icon send button | Pending deploy verification in this audit follow-up |
+| Sidebar transition traps navigation | `apps/web/src/components/workspace-sidebar.tsx` | Rule 5, navigation must feel instant and truthful | From `/workspace/memory`, clicking Affinity left URL on Memory while the sidebar marked Affinity active | Native `Link` routing restored, transition no longer prevents default navigation | Yes, production route click verified after deploy |
+| Scope composer smashed into viewport bottom | `apps/web/src/app/global.css`, `apps/web/src/components/workspace-chat/Chat.tsx` | Rule 3, crafted modern composer | Sticky scope chat plus sticky form made the composer look like a 2005 footer textarea and grow upward into content | Static scope workbench, centered padded composer dock, transparent textarea, compact icon send button | Yes, production five-line composer verified after deploy |
 
 ## Route Audit
 
@@ -81,8 +82,8 @@ This follow-up adds:
 
 | Priority | Item |
 | --- | --- |
-| P0 | Deploy and verify the sidebar navigation fix in production. |
-| P0 | Deploy and verify the scope composer visual redesign in production. |
+| P0 | Sidebar navigation fix verified in production. |
+| P0 | Scope composer visual redesign verified in production. |
 | P1 | Build active chat landing morph, ESC return, and compact active context header. |
 | P1 | Move onboarding draft persistence server-side and wire Step 2 extraction reveal to real document processing output. |
 | P1 | Add Settings language switch and stakeholder language override for generated deliverables. |
