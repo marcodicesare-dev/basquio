@@ -13,10 +13,16 @@ const mocks = vi.hoisted(() => ({
   messages: [] as Array<unknown>,
 }));
 const scrollIntoView = vi.fn();
+const scrollTo = vi.fn();
 
 Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
   configurable: true,
   value: scrollIntoView,
+});
+
+Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+  configurable: true,
+  value: scrollTo,
 });
 
 vi.mock("next/navigation", () => ({
@@ -82,6 +88,7 @@ afterEach(() => {
   mocks.regenerate.mockClear();
   uploadWorkspaceFileMock.mockReset();
   scrollIntoView.mockClear();
+  scrollTo.mockClear();
   mocks.status = "ready";
   mocks.messages = [];
 });
@@ -145,7 +152,7 @@ describe("WorkspaceChat composer", () => {
     );
   });
 
-  it("submits on Enter without requiring Command Enter", () => {
+  it("submits on Enter without requiring Command Enter", async () => {
     render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
     const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
@@ -154,7 +161,9 @@ describe("WorkspaceChat composer", () => {
     });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(mocks.sendMessage).toHaveBeenCalledWith({ text: "What changed in this account?" });
+    await waitFor(() => {
+      expect(mocks.sendMessage).toHaveBeenCalledWith({ text: "What changed in this account?" });
+    });
   });
 
   it("keeps Shift Enter for multiline drafting", () => {
@@ -186,14 +195,16 @@ describe("WorkspaceChat composer", () => {
     expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("shows an immediate thinking state after a submitted prompt", () => {
+  it("shows an immediate thinking state after a submitted prompt", async () => {
     const { rerender } = render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "What changed in this account?" },
     });
     fireEvent.submit(document.querySelector(".wbeta-ai-chat-form") as HTMLFormElement);
-    expect(mocks.sendMessage).toHaveBeenCalledWith({ text: "What changed in this account?" });
+    await waitFor(() => {
+      expect(mocks.sendMessage).toHaveBeenCalledWith({ text: "What changed in this account?" });
+    });
 
     mocks.status = "submitted";
     rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
@@ -232,9 +243,9 @@ describe("WorkspaceChat composer", () => {
     expect(screen.getAllByText("What is the next move?")).toHaveLength(1);
   });
 
-  it("keeps the composer in view as a streaming answer grows", async () => {
+  it("keeps the latest streamed answer in view as it grows", async () => {
     const { rerender } = render(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
 
     mocks.status = "streaming";
     mocks.messages = [
@@ -252,9 +263,9 @@ describe("WorkspaceChat composer", () => {
     rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
     await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "end", behavior: "auto" });
+      expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: "auto" }));
     });
-    const firstCallCount = scrollIntoView.mock.calls.length;
+    const firstCallCount = scrollTo.mock.calls.length;
 
     mocks.messages = [
       mocks.messages[0],
@@ -267,9 +278,9 @@ describe("WorkspaceChat composer", () => {
     rerender(React.createElement(WorkspaceChat, { scopeName: "Affinity Petcare" }));
 
     await waitFor(() => {
-      expect(scrollIntoView.mock.calls.length).toBeGreaterThan(firstCallCount);
+      expect(scrollTo.mock.calls.length).toBeGreaterThan(firstCallCount);
     });
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "end", behavior: "auto" });
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ behavior: "auto" }));
   });
 
   it("appends the pending turn at the bottom of an existing chat", async () => {

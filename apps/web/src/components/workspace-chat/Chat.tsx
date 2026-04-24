@@ -88,9 +88,13 @@ export function WorkspaceChat({
     factCount: number;
   } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const streamRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scheduledSendRef = useRef<number | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const stickToLatestRef = useRef(true);
   const dragDepthRef = useRef(0);
   const attachedFilesRef = useRef(new Map<string, File>());
   const router = useRouter();
@@ -304,12 +308,40 @@ export function WorkspaceChat({
   const showPendingUser = Boolean(pendingTurn) && !pendingUserAlreadyRendered;
   const lastAssistantHasText =
     lastMessage?.role === "assistant" && messageText(lastMessage).trim().length > 0;
+  const lastAssistantHasNonTextParts =
+    lastMessage?.role === "assistant" &&
+    (lastMessage.parts ?? []).some((part) => part.type && part.type !== "text");
   const showAssistantActivity = isBusy && !(isStreaming && lastAssistantHasText);
+  const activityOwnsLastAssistantSlot =
+    showAssistantActivity &&
+    lastMessage?.role === "assistant" &&
+    !lastAssistantHasText &&
+    !lastAssistantHasNonTextParts;
   const activityCopy = getActivityCopy({
     hasPendingTurn: Boolean(pendingTurn),
     lastMessage,
   });
   const hasConversation = messages.length > 0 || showPendingUser || showAssistantActivity;
+
+  const dispatchCurrentMessage = useCallback(
+    (text: string) => {
+      const attachmentSnapshot = attachments;
+      if (scheduledSendRef.current !== null) {
+        window.clearTimeout(scheduledSendRef.current);
+      }
+      scheduledSendRef.current = window.setTimeout(() => {
+        scheduledSendRef.current = null;
+        try {
+          sendCurrentMessage(sendMessage, text, attachmentSnapshot, attachedFilesRef.current);
+        } catch (sendError) {
+          setPendingTurn(null);
+          setActiveTurnStartedAt(null);
+          setError(sendError instanceof Error ? sendError.message : "Something went wrong.");
+        }
+      }, 0);
+    },
+    [attachments, sendMessage],
+  );
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -356,11 +388,48 @@ export function WorkspaceChat({
   }, [activeTurnStartedAt, isStreaming, pendingTurn]);
 
   useEffect(() => {
-    (composerRef.current ?? endRef.current)?.scrollIntoView?.({
-      block: "end",
-      behavior: isStreaming ? "auto" : "smooth",
-    });
-  }, [isStreaming, lastAssistantStreaming, lastAssistantTextLength, messages.length, showAssistantActivity]);
+    const stream = streamRef.current;
+    if (!stream || !hasConversation || !stickToLatestRef.current) return;
+
+    if (scrollRafRef.current !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = null;
+    }
+
+    const scrollToLatest = () => {
+      scrollRafRef.current = null;
+      const behavior: ScrollBehavior = isStreaming ? "auto" : "smooth";
+      if (typeof stream.scrollTo === "function") {
+        stream.scrollTo({ top: stream.scrollHeight, behavior });
+        return;
+      }
+      endRef.current?.scrollIntoView?.({ block: "end", behavior });
+    };
+
+    if (typeof requestAnimationFrame === "function") {
+      scrollRafRef.current = requestAnimationFrame(scrollToLatest);
+      return;
+    }
+
+    scrollToLatest();
+  }, [
+    hasConversation,
+    isStreaming,
+    lastAssistantStreaming,
+    lastAssistantTextLength,
+    messages.length,
+    showAssistantActivity,
+    showPendingUser,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (scheduledSendRef.current !== null) window.clearTimeout(scheduledSendRef.current);
+      if (scrollRafRef.current !== null && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (pendingUserAlreadyRendered) {
@@ -531,29 +600,25 @@ export function WorkspaceChat({
       if (!trimmed || isBusy) return;
       setError(null);
       const startedAt = performance.now();
+      stickToLatestRef.current = true;
       setActiveTurnStartedAt(startedAt);
       setPendingTurn({ text: trimmed, startedAt });
-      try {
-        sendCurrentMessage(sendMessage, trimmed, attachments, attachedFilesRef.current);
-        setDraft("");
-      } catch (sendError) {
-        setPendingTurn(null);
-        setActiveTurnStartedAt(null);
-        throw sendError;
-      }
+      setDraft("");
+      dispatchCurrentMessage(trimmed);
     },
-    [attachments, draft, isBusy, sendMessage],
+    [dispatchCurrentMessage, draft, isBusy],
   );
 
   const handleSendFollowUp = useCallback(
     (text: string) => {
       if (isBusy) return;
       const startedAt = performance.now();
+      stickToLatestRef.current = true;
       setActiveTurnStartedAt(startedAt);
       setPendingTurn({ text, startedAt });
-      sendCurrentMessage(sendMessage, text, attachments, attachedFilesRef.current);
+      dispatchCurrentMessage(text);
     },
-    [attachments, isBusy, sendMessage],
+    [dispatchCurrentMessage, isBusy],
   );
 
   const handlePromptSuggestion = useCallback(
@@ -589,6 +654,10 @@ export function WorkspaceChat({
   );
 
   const handleStop = useCallback(() => {
+    if (scheduledSendRef.current !== null) {
+      window.clearTimeout(scheduledSendRef.current);
+      scheduledSendRef.current = null;
+    }
     setPendingTurn(null);
     setActiveTurnStartedAt(null);
     stop();
@@ -596,8 +665,16 @@ export function WorkspaceChat({
 
   const handleRegenerate = useCallback(() => {
     setError(null);
+    stickToLatestRef.current = true;
     regenerate();
   }, [regenerate]);
+
+  const handleStreamScroll = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const distanceFromBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight;
+    stickToLatestRef.current = distanceFromBottom < 96;
+  }, []);
 
   const deriveTitle = useCallback(
     (text: string): string => {
@@ -762,9 +839,25 @@ export function WorkspaceChat({
           )}
         </div>
       ) : (
-        <div className="wbeta-ai-chat-stream" role="log" aria-live="polite" aria-busy={isBusy}>
+        <div
+          ref={streamRef}
+          className="wbeta-ai-chat-stream"
+          role="log"
+          aria-live="polite"
+          aria-busy={isBusy}
+          onScroll={handleStreamScroll}
+        >
           {messages.map((message, i) => {
             const isLast = i === messages.length - 1;
+            if (activityOwnsLastAssistantSlot && isLast) {
+              return (
+                <AssistantActivity
+                  key={message.id ?? i}
+                  activityCopy={activityCopy}
+                  pendingElapsed={pendingElapsed}
+                />
+              );
+            }
             return (
               <ChatMessage
                 key={message.id ?? i}
@@ -792,20 +885,11 @@ export function WorkspaceChat({
               <p className="wbeta-ai-user-bubble">{pendingTurn.text}</p>
             </article>
           ) : null}
-          {showAssistantActivity ? (
-            <div className="wbeta-ai-msg wbeta-ai-msg-asst wbeta-ai-msg-pending-asst" role="status" aria-live="polite">
-              <div className="wbeta-ai-thinking">
-                <span className="wbeta-ai-thinking-pulse" aria-hidden>
-                  <span>•</span>
-                  <span>•</span>
-                  <span>•</span>
-                </span>
-                <span className="wbeta-ai-thinking-copy">
-                  {activityCopy}
-                </span>
-                <span className="wbeta-ai-thinking-time">{pendingElapsed.toFixed(1)}s</span>
-              </div>
-            </div>
+          {showAssistantActivity && !activityOwnsLastAssistantSlot ? (
+            <AssistantActivity
+              activityCopy={activityCopy}
+              pendingElapsed={pendingElapsed}
+            />
           ) : null}
           <div ref={endRef} />
         </div>
@@ -987,7 +1071,7 @@ export function WorkspaceChat({
               aria-label={copy.stopGeneration}
             >
               <Stop size={13} weight="fill" />
-              {copy.stop}
+              <span className="wbeta-ai-chat-stop-label">{copy.stop}</span>
             </button>
           ) : (
             <button
@@ -1055,6 +1139,30 @@ function getActivityCopy({
     return "Writing answer";
   }
   return "Thinking...";
+}
+
+function AssistantActivity({
+  activityCopy,
+  pendingElapsed,
+}: {
+  activityCopy: string;
+  pendingElapsed: number;
+}) {
+  return (
+    <div className="wbeta-ai-msg wbeta-ai-msg-asst wbeta-ai-msg-pending-asst" role="status" aria-live="polite">
+      <div className="wbeta-ai-thinking">
+        <span className="wbeta-ai-thinking-pulse" aria-hidden>
+          <span>•</span>
+          <span>•</span>
+          <span>•</span>
+        </span>
+        <span className="wbeta-ai-thinking-copy">{activityCopy}</span>
+        <span className="wbeta-ai-thinking-time" aria-hidden>
+          {pendingElapsed.toFixed(1)}s
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function messageText(message: UIMessage): string {

@@ -11018,7 +11018,8 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 14px 14px 10px;
   box-shadow: 0 18px 48px rgba(20, 24, 32, 0.12), 0 2px 8px rgba(20, 24, 32, 0.05);
   z-index: 5;
-  transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background 150ms ease-out;
+  transform: translateZ(0);
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out, background 120ms ease-out;
 }
 
 .wbeta-ai-chat-form:focus-within {
@@ -11043,6 +11044,8 @@ body:has(.wbeta-shell) .site-wrap {
   .wbeta-ai-chat-send,
   .wbeta-ai-chat-stop,
   .wbeta-ai-chat-attach {
+    width: 44px;
+    flex-basis: 44px;
     min-height: 44px;
   }
 }
@@ -11094,7 +11097,10 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
+  min-width: 92px;
+  white-space: nowrap;
 }
 
 .wbeta-kbd {
@@ -11118,27 +11124,28 @@ body:has(.wbeta-shell) .site-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  flex: 0 0 36px;
+  width: 36px;
   min-width: 36px;
   height: 36px;
-  padding: 0 12px;
+  padding: 0;
   border: none;
   border-radius: 12px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 150ms ease-out, transform 80ms ease-out;
+  transform: translateZ(0);
+  transition: background 120ms ease-out, transform 80ms ease-out, opacity 120ms ease-out;
 }
 
 .wbeta-ai-chat-send {
   position: relative;
   background: var(--blue);
   color: #ffffff;
-  width: 36px;
-  padding: 0;
 }
 
-.wbeta-ai-chat-send-label {
+.wbeta-ai-chat-send-label,
+.wbeta-ai-chat-stop-label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -11169,6 +11176,16 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-ai-chat-stop:hover {
   background: rgba(255, 241, 238, 0.8);
+}
+
+@media (max-width: 639px) {
+  .wbeta-ai-chat-send,
+  .wbeta-ai-chat-stop {
+    width: 44px;
+    min-width: 44px;
+    flex-basis: 44px;
+    height: 44px;
+  }
 }
 
 .wbeta-ai-chat-error {
@@ -16076,22 +16093,38 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-ai-msg-pending-asst {
   max-width: 760px;
+  min-height: 42px;
+  animation: wbeta-ai-pending-enter 140ms ease-out both;
 }
 
 .wbeta-ai-thinking {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   width: fit-content;
+  min-width: 172px;
   max-width: 100%;
   padding: 9px 12px;
-  border: 1px solid var(--border);
+  overflow: hidden;
+  border: 1px solid rgba(26, 106, 255, 0.18);
   border-radius: var(--radius-pill);
-  background: #ffffff;
+  background: linear-gradient(110deg, #ffffff 0%, rgba(26, 106, 255, 0.055) 46%, #ffffff 100%);
   color: var(--text-soft);
-  box-shadow: 0 8px 24px rgba(20, 24, 32, 0.06);
+  box-shadow: 0 10px 28px rgba(20, 24, 32, 0.07);
   font-size: 12px;
   line-height: 1.2;
+  transform: translateZ(0);
+}
+
+.wbeta-ai-thinking::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.64) 42%, transparent 72%);
+  transform: translateX(-100%);
+  animation: wbeta-thinking-sheen 1800ms ease-in-out infinite;
 }
 
 .wbeta-ai-thinking-pulse {
@@ -16122,14 +16155,36 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-ai-thinking-copy {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
   color: var(--text);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .wbeta-ai-thinking-time {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  min-width: 4.8ch;
+  text-align: right;
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
   color: var(--text-muted);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes wbeta-ai-pending-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes wbeta-thinking-dot {
@@ -16145,7 +16200,23 @@ body:has(.wbeta-shell) .site-wrap {
   }
 }
 
+@keyframes wbeta-thinking-sheen {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  52%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .wbeta-ai-msg-pending-asst,
+  .wbeta-ai-thinking::after {
+    animation: none;
+  }
+
   .wbeta-ai-thinking-pulse span {
     animation: none;
     opacity: 0.7;
@@ -17620,6 +17691,15 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-chat-attach:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (max-width: 639px) {
+  .wbeta-ai-chat-attach {
+    width: 44px;
+    min-width: 44px;
+    flex-basis: 44px;
+    height: 44px;
+  }
 }
 
 /* Upload status message above the composer */
