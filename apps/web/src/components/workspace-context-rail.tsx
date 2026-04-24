@@ -1,6 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
+
+import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
 type EntityGroup = {
   type: string;
@@ -15,9 +18,43 @@ export type RecentConversation = {
   isCurrent?: boolean;
 };
 
+type ScopeRail = {
+  id: string;
+  name: string;
+  kindLabel: string;
+  caption: string;
+};
+
+type ScopeRailSummary = {
+  rulesCount: number;
+  factsCount: number;
+  articlesCount: number;
+  lastResearchLabel: string | null;
+};
+
+type ScopeRailStakeholder = {
+  id: string;
+  name: string;
+  role: string | null;
+};
+
+type ScopeRailDeliverable = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  href: string;
+};
+
 export type WorkspaceContextRailProps = {
-  entityGroups: EntityGroup[];
-  recentConversations: RecentConversation[];
+  ariaLabel?: string;
+  entityGroups?: EntityGroup[];
+  recentConversations?: RecentConversation[];
+  scope?: ScopeRail;
+  scopeSummary?: ScopeRailSummary;
+  stakeholders?: ScopeRailStakeholder[];
+  deliverables?: ScopeRailDeliverable[];
+  suggestions?: WorkspaceSuggestion[];
+  memoryAside?: ReactNode;
 };
 
 function relativeTime(iso: string): string {
@@ -30,11 +67,132 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function WorkspaceContextRail({ entityGroups, recentConversations }: WorkspaceContextRailProps) {
-  if (entityGroups.length === 0 && recentConversations.length === 0) return null;
+export function WorkspaceContextRail({
+  ariaLabel = "Workspace context",
+  entityGroups = [],
+  recentConversations = [],
+  scope,
+  scopeSummary,
+  stakeholders = [],
+  deliverables = [],
+  suggestions = [],
+  memoryAside,
+}: WorkspaceContextRailProps) {
+  if (
+    entityGroups.length === 0 &&
+    recentConversations.length === 0 &&
+    !scope &&
+    !scopeSummary &&
+    stakeholders.length === 0 &&
+    deliverables.length === 0 &&
+    suggestions.length === 0 &&
+    !memoryAside
+  ) {
+    return null;
+  }
 
   return (
-    <aside className="wbeta-rail" aria-label="Workspace context">
+    <aside className="wbeta-rail" aria-label={ariaLabel}>
+      {scope ? (
+        <header className="wbeta-rail-head">
+          <div>
+            <p className="wbeta-rail-kicker">{scope.kindLabel}</p>
+            <h2 className="wbeta-rail-title">{scope.name}</h2>
+            <p className="wbeta-rail-scope-caption">{scope.caption}</p>
+          </div>
+          <span className="wbeta-rail-command-hint" aria-label="Open command palette">
+            ⌘K
+          </span>
+        </header>
+      ) : null}
+
+      {scopeSummary ? (
+        <ul className="wbeta-rail-stats" aria-label="Scope memory summary">
+          <li>
+            <span className="wbeta-rail-stat-num">{scopeSummary.rulesCount}</span>
+            <span className="wbeta-rail-stat-label">Rules</span>
+          </li>
+          <li>
+            <span className="wbeta-rail-stat-num">{scopeSummary.factsCount}</span>
+            <span className="wbeta-rail-stat-label">Facts</span>
+          </li>
+          <li>
+            <span className="wbeta-rail-stat-num">{scopeSummary.articlesCount}</span>
+            <span className="wbeta-rail-stat-label">Articles</span>
+          </li>
+        </ul>
+      ) : null}
+
+      {scopeSummary?.lastResearchLabel ? (
+        <p className="wbeta-rail-context-line">
+          Last research: {scopeSummary.lastResearchLabel}
+        </p>
+      ) : null}
+
+      {stakeholders.length > 0 ? (
+        <section className="wbeta-rail-section">
+          <header className="wbeta-rail-section-head">
+            <h3 className="wbeta-rail-section-title">Stakeholders</h3>
+            <Link className="wbeta-rail-more" href="/workspace/people">
+              See all
+            </Link>
+          </header>
+          <ul className="wbeta-rail-list">
+            {stakeholders.slice(0, 4).map((person) => (
+              <li key={person.id}>
+                <Link href={`/workspace/people/${person.id}`} className="wbeta-rail-item">
+                  <span className="wbeta-rail-item-title">{person.name}</span>
+                  {person.role ? (
+                    <span className="wbeta-rail-item-meta">{person.role}</span>
+                  ) : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {deliverables.length > 0 ? (
+        <section className="wbeta-rail-section">
+          <header className="wbeta-rail-section-head">
+            <h3 className="wbeta-rail-section-title">Recent deliverables</h3>
+            <span className="wbeta-rail-section-meta">{deliverables.length}</span>
+          </header>
+          <ul className="wbeta-rail-list">
+            {deliverables.slice(0, 5).map((deliverable) => (
+              <li key={deliverable.id}>
+                <Link href={deliverable.href} className="wbeta-rail-item">
+                  <span className="wbeta-rail-item-title">{deliverable.title}</span>
+                  <span className="wbeta-rail-item-meta">{deliverable.updatedAt}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {suggestions.length > 0 ? (
+        <section className="wbeta-rail-section">
+          <header className="wbeta-rail-section-head">
+            <h3 className="wbeta-rail-section-title">Suggested next</h3>
+          </header>
+          <ul className="wbeta-rail-list">
+            {suggestions.slice(0, 3).map((suggestion) => (
+              <li key={suggestion.id}>
+                <button
+                  type="button"
+                  className="wbeta-rail-item wbeta-rail-suggestion"
+                  onClick={() => sendPrompt(suggestion.prompt)}
+                >
+                  <span className="wbeta-rail-item-title">{suggestion.prompt}</span>
+                  <span className="wbeta-rail-item-meta">{suggestion.reason}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {recentConversations.length > 0 ? (
         <section className="wbeta-rail-section">
           <header className="wbeta-rail-section-head">
@@ -79,6 +237,20 @@ export function WorkspaceContextRail({ entityGroups, recentConversations }: Work
           </ul>
         </section>
       ) : null}
+
+      {memoryAside ? <div className="wbeta-rail-memory">{memoryAside}</div> : null}
     </aside>
   );
+}
+
+function sendPrompt(prompt: string) {
+  window.dispatchEvent(
+    new CustomEvent("basquio:workspace-prompt", {
+      detail: { prompt },
+    }),
+  );
+  document.getElementById("workspace-chat")?.scrollIntoView({
+    block: "start",
+    behavior: "smooth",
+  });
 }

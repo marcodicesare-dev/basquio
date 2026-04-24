@@ -5,6 +5,8 @@
 **Owner (product):** Marco
 **Sibling spec:** [docs/specs/2026-04-22-workspace-chat-and-research-layer-spec.md](2026-04-22-workspace-chat-and-research-layer-spec.md) (covers chat tools and research layer; this spec covers everything around them)
 
+**Apr 24 override:** the scope route is now chat-first. The Apr 22 context-first scope landing described in §4.3.1 is archived as a rejected staging pattern after live production review. Current requirement: `/workspace/scope/[kind]/[slug]` uses the existing chat pane plus right context rail pattern, with scope metadata, stakeholders, deliverables, suggestions, and memory in the rail. Suggested actions render as composer pills. See `docs/2026-04-24-workspace-ux-audit.md`.
+
 This spec covers the workspace shell that surrounds the chat surface: scope landing redesign, workspace home, empty states, onboarding, suggested-actions surface, loading states, bilingual chrome, mobile viewport, and visual density rules. The chat is one tool inside the workspace; this spec makes the workspace itself feel like a workspace and not a chat wrapper.
 
 It applies five design golden rules locked by Marco on 2026-04-22 in `memory/feedback_design_golden_rules.md`:

@@ -3,16 +3,18 @@ import { headers } from "next/headers";
 
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import {
-  ScopeLanding,
+  ScopeChatShell,
   type ScopeDeliverable,
   type ScopeStakeholder,
   type WorkspaceKnowsSummary,
-} from "@/components/scope-landing";
+  buildContextLine,
+} from "@/components/scope-chat-shell";
+import type { ScopeCommandAction } from "@/components/scope-command-palette";
 import { WorkspaceMemoryAside } from "@/components/workspace-memory-aside";
-import { getWorkspaceCopy, resolveWorkspaceLocale } from "@/i18n";
+import { resolveWorkspaceLocale } from "@/i18n";
 import { BASQUIO_TEAM_ORG_ID, type ScopeKind } from "@/lib/workspace/constants";
 import { listConversations } from "@/lib/workspace/conversations";
-import { getScopeByKindSlug } from "@/lib/workspace/scopes";
+import { getScopeByKindSlug, listScopesGrouped } from "@/lib/workspace/scopes";
 import { buildSuggestions } from "@/lib/workspace/suggestions";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
@@ -112,7 +114,7 @@ async function countScopeFacts(workspaceId: string, scopeName: string): Promise<
   return count ?? 0;
 }
 
-async function countScrapedArticlesForScope(workspaceId: string): Promise<number> {
+async function countScrapedArticlesForScope(): Promise<number> {
   const db = getDb();
   const { count } = await db
     .from("knowledge_documents")
@@ -123,7 +125,7 @@ async function countScrapedArticlesForScope(workspaceId: string): Promise<number
   return count ?? 0;
 }
 
-async function lastResearchLabel(workspaceId: string, scopeId: string): Promise<string | null> {
+async function lastResearchLabel(workspaceId: string): Promise<string | null> {
   const db = getDb();
   const { data } = await db
     .from("research_runs")
@@ -147,26 +149,26 @@ export default async function WorkspaceScopePage({
   const { kind, slug } = await params;
   const headersList = await headers();
   const locale = resolveWorkspaceLocale(headersList.get("accept-language"));
-  const copy = getWorkspaceCopy(locale).scope;
   if (!ALLOWED.includes(kind as RouteKind)) notFound();
 
   const workspace = await getCurrentWorkspace();
   const scope = await getScopeByKindSlug(workspace.id, kind as RouteKind, slug);
   if (!scope) notFound();
 
-  const [memory, conversations, stakeholdersRaw, factsCount, articlesCount, researchLabel, suggestions] = await Promise.all([
+  const [memory, conversations, stakeholdersRaw, factsCount, articlesCount, researchLabel, suggestions, scopeTree] = await Promise.all([
     listScopeMemory(workspace.id, scope.id),
     listConversations({ workspaceId: workspace.id, scopeId: scope.id, limit: 5 }).catch(() => []),
     listScopeStakeholders(workspace.id, scope.id, scope.name),
     countScopeFacts(workspace.id, scope.name).catch(() => 0),
-    countScrapedArticlesForScope(workspace.id).catch(() => 0),
-    lastResearchLabel(workspace.id, scope.id).catch(() => null),
+    countScrapedArticlesForScope().catch(() => 0),
+    lastResearchLabel(workspace.id).catch(() => null),
     buildSuggestions({
       maxItems: 3,
       scopeId: scope.id,
       scopeName: scope.name,
       locale,
     }).catch(() => []),
+    listScopesGrouped(workspace.id).catch(() => ({ client: [], category: [], function: [], system: [] })),
   ]);
 
   const stakeholders: ScopeStakeholder[] = stakeholdersRaw.map((p) => ({
@@ -189,40 +191,92 @@ export default async function WorkspaceScopePage({
     articlesCount,
     lastResearchLabel: researchLabel,
   };
+  const effectiveSuggestions =
+    suggestions.length > 0
+      ? suggestions
+      : [
+          {
+            id: `fallback-${scope.id}`,
+            kind: "investigate" as const,
+            prompt: `Ask what changed in ${scope.name} this week.`,
+            reason: "Uses scoped chats, memory, and indexed documents.",
+          },
+        ];
+  const commandActions = buildCommandActions({
+    scopeId: scope.id,
+    scopeName: scope.name,
+    scopeTree,
+    deliverables,
+  });
 
   return (
-    <div className="wbeta-scope-three-col">
-      <div className="wbeta-scope-main">
-        <ScopeLanding
-          scope={scope}
-          stakeholders={stakeholders}
-          workspaceKnows={workspaceKnows}
-          deliverables={deliverables}
-          suggestions={
-            suggestions.length > 0
-              ? suggestions
-              : [
-                  {
-                    id: `fallback-${scope.id}`,
-                    kind: "investigate",
-                    prompt: `Ask what changed in ${scope.name} this week.`,
-                    reason: "Uses scoped chats, memory, and indexed documents.",
-                  },
-                ]
-          }
-          chat={<WorkspaceChat scopeId={scope.id} scopeName={scope.name} scopeKind={scope.kind} locale={locale} />}
+    <ScopeChatShell
+      scope={scope}
+      stakeholders={stakeholders}
+      workspaceKnows={workspaceKnows}
+      deliverables={deliverables}
+      suggestions={effectiveSuggestions}
+      commandActions={commandActions}
+      chat={
+        <WorkspaceChat
+          scopeId={scope.id}
+          scopeName={scope.name}
+          scopeKind={scope.kind}
           locale={locale}
+          compactEmpty
+          contextGreeting={buildContextLine(scope.name, workspaceKnows)}
+          promptSuggestions={effectiveSuggestions}
         />
-      </div>
-      <div className="wbeta-scope-aside">
-        <WorkspaceMemoryAside workspaceId={workspace.id} />
-      </div>
-      <details className="wbeta-mobile-memory-sheet">
-        <summary>{copy.workspaceKnows}</summary>
-        <div className="wbeta-mobile-memory-sheet-body">
-          <WorkspaceMemoryAside workspaceId={workspace.id} />
-        </div>
-      </details>
-    </div>
+      }
+      memoryAside={<WorkspaceMemoryAside workspaceId={workspace.id} />}
+      locale={locale}
+    />
   );
+}
+
+function buildCommandActions({
+  scopeId,
+  scopeName,
+  scopeTree,
+  deliverables,
+}: {
+  scopeId: string;
+  scopeName: string;
+  scopeTree: Awaited<ReturnType<typeof listScopesGrouped>>;
+  deliverables: ScopeDeliverable[];
+}): ScopeCommandAction[] {
+  const scopeActions = [...scopeTree.client, ...scopeTree.category, ...scopeTree.function]
+    .filter((scope) => scope.id !== scopeId)
+    .slice(0, 12)
+    .map((scope) => ({
+      id: `scope-${scope.id}`,
+      group: "Switch scope",
+      label: scope.name,
+      href: `/workspace/scope/${scope.kind}/${scope.slug}`,
+      hint: scope.kind,
+    }));
+  return [
+    {
+      id: "memory",
+      group: "Open",
+      label: `${scopeName} memory`,
+      href: "/workspace/memory",
+      hint: "Rules, facts, source notes",
+    },
+    {
+      id: "people",
+      group: "Open",
+      label: `${scopeName} stakeholders`,
+      href: `/workspace/people?scope=${scopeId}`,
+      hint: "People and preferences",
+    },
+    ...deliverables.slice(0, 5).map((deliverable) => ({
+      id: `deliverable-${deliverable.id}`,
+      group: "Deliverable",
+      label: deliverable.title,
+      href: deliverable.href,
+      hint: deliverable.updatedAt,
+    })),
+    ...scopeActions,
+  ];
 }

@@ -833,3 +833,21 @@ Implication:
 - worker releases now exercise only worker/runtime code paths during container build
 - worker redeploys should no longer trigger for arbitrary web-route changes
 - the web app can still share billing logic conceptually, but the worker owns the minimal recovery code it needs to refund failed runs without depending on Next build correctness
+
+## April 24, 2026: Scope routes are chat-first, not briefing-first
+
+Decision:
+- `/workspace/scope/[kind]/[slug]` uses the workspace chat pane as the primary viewport.
+- Scope metadata, stakeholders, counts, recent deliverables, suggested actions, and memory move into the right context rail.
+- Suggested actions also render as composer pills above the input, so the next prompt is one click away.
+- Scope navigation, memory, and deliverable jumps are available through a lightweight Cmd-K palette.
+
+Why:
+- the Apr 22 context-first scope landing made the analyst scroll past five briefing sections before reaching the input
+- live production review showed that a polished composer at the bottom of a briefing page still felt below the bar set by Codex, Claude Code, Notion Agent, Legora, and Conductor-style work surfaces
+- Basquio is an intelligence workspace, so scope context must stay visible beside the conversation rather than blocking access to it
+
+Implication:
+- the old `ScopeLanding` briefing-stack component is retired
+- future scope polish should extend the chat pane and context rail, not recreate a dashboard above the composer
+- mobile scope routes collapse context into a one-line expandable strip while keeping chat first

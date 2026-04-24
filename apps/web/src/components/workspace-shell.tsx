@@ -76,10 +76,9 @@ export function WorkspaceShell({
         <UserMenu email={userEmail} initial={userInitial} copy={copy.shell} />
       </aside>
 
-      {/* Routes opt into the three-tier scope layout (main + memory aside)
-        via the wbeta-scope-three-col wrapper inside their page component.
-        Shell stays two-column so non-scope pages keep full width. See
-        docs/specs/2026-04-22-workspace-shell-ux-spec.md §4.4. */}
+      {/* Routes opt into specialized workspace layouts inside their page component.
+        Scope routes now use the chat-first shell with a context rail. Shell stays
+        two-column so non-scope pages keep full width. */}
       <main className="wbeta-main">{children}</main>
     </div>
   );

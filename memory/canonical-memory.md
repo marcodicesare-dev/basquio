@@ -159,6 +159,7 @@ Initial domain bias:
 
 - Basquio UI should feel like an executive reporting product, not a generic SaaS admin shell.
 - The canonical shell direction is a pale editorial canvas with darker technical-stage surfaces used intentionally for workflow, pipeline, and proof moments.
+- Workspace scope routes are chat-first as of Apr 24, 2026: the conversation owns the main viewport, while scope metadata, stakeholders, deliverables, suggestions, and memory live in the right rail or mobile context strip.
 - CostFigure is the reference for editorial rhythm, spacing discipline, and token governance, not for color direction.
 - Inngest is the reference for technical confidence, dark-stage framing, and pipeline-proof presentation, not for brand cloning.
 - Landing-page copy must describe the real product: evidence package plus report brief plus design target in, PPTX plus PDF artifacts out.

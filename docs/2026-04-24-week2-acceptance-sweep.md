@@ -22,7 +22,7 @@ Surface: production `https://basquio.com/workspace`, logged in as `marco@basquio
 | --- | --- |
 | Workspace shell and navigation | `apps/web/src/components/workspace-shell.tsx`, `apps/web/src/components/workspace-sidebar.tsx`, `apps/web/src/app/global.css` |
 | Workspace home | `apps/web/src/app/(workspace)/workspace/page.tsx`, `apps/web/src/components/workspace-home-dashboard.tsx`, `apps/web/src/lib/workspace/db.ts`, `apps/web/src/lib/workspace/scopes.ts` |
-| Scope landing | `apps/web/src/app/(workspace)/workspace/scope/[kind]/[slug]/page.tsx`, `apps/web/src/components/scope-landing.tsx` |
+| Scope chat shell | `apps/web/src/app/(workspace)/workspace/scope/[kind]/[slug]/page.tsx`, `apps/web/src/components/scope-chat-shell.tsx`, `apps/web/src/components/scope-command-palette.tsx` |
 | Chat UX | `apps/web/src/components/workspace-chat/Chat.tsx`, `apps/web/src/components/workspace-chat/ChatMessage.tsx`, `apps/web/src/components/workspace-chat/ChatMarkdown.tsx`, `apps/web/src/components/workspace-chat/ToolChips.tsx` |
 | Suggested actions | `apps/web/src/components/workspace-suggestions.tsx`, `apps/web/src/lib/workspace/suggestions.ts` |
 | Onboarding | `apps/web/src/app/(workspace)/onboarding/[step]/page.tsx`, `apps/web/src/components/workspace-onboarding.tsx`, `apps/web/src/app/api/workspace/onboarding/route.ts` |
@@ -34,7 +34,7 @@ Surface: production `https://basquio.com/workspace`, logged in as `marco@basquio
 
 | Spec area | Status | Evidence |
 | --- | --- | --- |
-| 12.1 Scope landing | Partial | Production shows scope name, caption, Stakeholders, Workspace knows, Recent deliverables, Suggested next, composer, and memory aside. Empty optional sections are hidden. This sweep corrected the Recent deliverables and Suggested next order. Active chat morph, ESC return, and compact active header remain follow-up work. |
+| 12.1 Scope route | Superseded | Apr 24 production review rejected the briefing-first scope landing. Current route is chat-first with context in the rail and suggestions as composer pills. See `docs/2026-04-24-workspace-ux-audit.md`. |
 | 12.2 Workspace home | Verified | Production `/workspace` is the default route. Greeting, learned count, Suggested for today, Active scopes, recent chats, memory summary, weekly stats, and workspace chat all render. This sweep adds relative updated labels to active scope cards and sorts them by latest activity. |
 | 12.3 Empty states | Verified | Component tests cover brand-new, sparse, and populated states. Sparse state uses specific prompts: Add a stakeholder, Upload one brief, Teach one rule. |
 | 12.4 Onboarding | Partial | `/onboarding/1`, `/onboarding/2`, `/onboarding/3` exist, refresh resumes from session draft, every step is skippable, and Step 3 creates the scope, stakeholder, and memory entries. Server-side per-step persistence, Step 2 progressive extraction reveal, Step 3 extracted-person pre-suggestions, and automatic explainBasquio after completion remain follow-up work. |
@@ -50,7 +50,7 @@ Surface: production `https://basquio.com/workspace`, logged in as `marco@basquio
 | Route | Result |
 | --- | --- |
 | `/workspace` | Home dashboard rendered with Suggested for today, Active scopes, Recent chats, What Basquio knows, This week, and Workspace chat. Use in chat prefilled composer and enabled Send. |
-| `/workspace/scope/client/affinity-petcare` | Scope landing rendered context strips, suggestions, recent deliverables, chat composer, and memory aside. A real scope chat reply completed and displayed inline suggestions plus answer actions. |
+| `/workspace/scope/client/affinity-petcare` | Scope route is now chat-first with scope context, suggestions, deliverables, and memory in the rail. Production verification for this Apr 24 override is tracked in `docs/2026-04-24-workspace-ux-audit.md`. |
 | `/workspace/people` | People index rendered grouped stakeholders and profile links. |
 | `/workspace/memory` | Memory index rendered counts, filters, memory entries, and disabled unavailable action controls. Mutating archive, pin, and delete style controls were not clicked. |
 | Account menu | Settings and App home links work when clicked as links. Sign out was not clicked. |

@@ -19,6 +19,7 @@ import {
   type ActiveGeneration,
 } from "@/components/workspace-generation-status";
 import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
+import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 import { uploadWorkspaceFile } from "@/lib/workspace/upload-client";
 
 type AttachmentChip = {
@@ -41,6 +42,9 @@ export function WorkspaceChat({
   locale = "en",
   conversationId: initialConversationId,
   initialMessages,
+  contextGreeting,
+  promptSuggestions = [],
+  compactEmpty = false,
 }: {
   scopeId?: string | null;
   scopeName?: string | null;
@@ -48,6 +52,9 @@ export function WorkspaceChat({
   locale?: WorkspaceLocale;
   conversationId?: string;
   initialMessages?: UIMessage[];
+  contextGreeting?: string;
+  promptSuggestions?: WorkspaceSuggestion[];
+  compactEmpty?: boolean;
 }) {
   const copy = getWorkspaceCopy(locale).chat;
   const conversationIdRef = useRef(
@@ -449,6 +456,20 @@ export function WorkspaceChat({
     [sendMessage],
   );
 
+  const handlePromptSuggestion = useCallback(
+    (prompt: string) => {
+      if (isStreaming) return;
+      setDraft(prompt);
+      const focusInput = () => inputRef.current?.focus();
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(focusInput);
+      } else {
+        focusInput();
+      }
+    },
+    [isStreaming],
+  );
+
   const handleRegenerate = useCallback(() => {
     setError(null);
     regenerate();
@@ -537,6 +558,7 @@ export function WorkspaceChat({
 
   return (
     <section
+      id="workspace-chat"
       className={isDragOver ? "wbeta-ai-chat wbeta-ai-chat-drop" : "wbeta-ai-chat"}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
@@ -544,28 +566,46 @@ export function WorkspaceChat({
       onDrop={handleDrop}
     >
       {messages.length === 0 ? (
-        <div className="wbeta-ai-chat-empty">
-          {scopeName ? (
-            <p className="wbeta-ai-chat-empty-kicker">
-              {scopeKind === "client"
-                ? "Client"
-                : scopeKind === "category"
-                  ? "Category"
-                  : scopeKind === "function"
-                    ? "Function"
-                    : "Scope"}
-              {" · "}
-              {scopeName}
+        <div
+          className={
+            compactEmpty
+              ? "wbeta-ai-chat-empty wbeta-ai-chat-empty-compact"
+              : "wbeta-ai-chat-empty"
+          }
+        >
+          {compactEmpty ? (
+            <p className="wbeta-ai-chat-empty-body">
+              {contextGreeting ??
+                (scopeName
+                  ? `Ready with ${scopeName} memory. What is on your mind?`
+                  : copy.workspaceEmptyBody)}
             </p>
-          ) : null}
-          <h2 className="wbeta-ai-chat-empty-title">
-            {scopeName ? `${copy.askAbout} ${scopeName}` : copy.workspaceEmptyTitle}
-          </h2>
-          <p className="wbeta-ai-chat-empty-body">
-            {scopeName
-              ? `Pulls from ${scopeName} memory, uploads, and prior answers. Every claim cited.`
-              : copy.workspaceEmptyBody}
-          </p>
+          ) : (
+            <>
+              {scopeName ? (
+                <p className="wbeta-ai-chat-empty-kicker">
+                  {scopeKind === "client"
+                    ? "Client"
+                    : scopeKind === "category"
+                      ? "Category"
+                      : scopeKind === "function"
+                        ? "Function"
+                        : "Scope"}
+                  {" · "}
+                  {scopeName}
+                </p>
+              ) : null}
+              <h2 className="wbeta-ai-chat-empty-title">
+                {scopeName ? `${copy.askAbout} ${scopeName}` : copy.workspaceEmptyTitle}
+              </h2>
+              <p className="wbeta-ai-chat-empty-body">
+                {contextGreeting ??
+                  (scopeName
+                    ? `Pulls from ${scopeName} memory, uploads, and prior answers. Every claim cited.`
+                    : copy.workspaceEmptyBody)}
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="wbeta-ai-chat-stream" role="log" aria-live="polite" aria-busy={isStreaming}>
@@ -686,6 +726,22 @@ export function WorkspaceChat({
         </p>
       ) : null}
 
+      {messages.length === 0 && promptSuggestions.length > 0 ? (
+        <div className="wbeta-ai-chat-prompt-pills" aria-label="Suggested prompts">
+          {promptSuggestions.slice(0, 3).map((suggestion) => (
+            <button
+              key={suggestion.id}
+              type="button"
+              className="wbeta-ai-chat-prompt-pill"
+              onClick={() => handlePromptSuggestion(suggestion.prompt)}
+              disabled={isStreaming}
+            >
+              {compactPrompt(suggestion.prompt)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       <form className="wbeta-ai-chat-form" onSubmit={handleSubmit}>
         <label className="wbeta-ai-chat-label" htmlFor="wbeta-ai-input">
           {copy.message}
@@ -772,6 +828,10 @@ export function WorkspaceChat({
       />
     </section>
   );
+}
+
+function compactPrompt(prompt: string): string {
+  return prompt.length > 56 ? `${prompt.slice(0, 53).trim()}...` : prompt;
 }
 
 function formatBytes(bytes: number): string {
