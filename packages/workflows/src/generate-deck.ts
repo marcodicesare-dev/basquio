@@ -270,6 +270,7 @@ type WorkbookChartBindingRequest = {
   existingSheetName?: string;
   existingAnchor?: string;
   existingDataSignature?: string;
+  preferSemanticSlideBinding?: boolean;
 };
 type WorkbookChartBinding = {
   request: WorkbookChartBindingRequest;
@@ -4858,6 +4859,9 @@ function buildAuthorMessage(
             : run.target_slide_count <= 70
               ? `This is a Full-report NielsenIQ-grade deck. BEFORE generating any slide, plan an MECE issue tree with 4-6 chapters and 4-6 unique leaf questions per chapter. No two slides may answer the same question with different chart types. Cover at least 10 drill-down dimensions from the deck-depth architecture pack, and decompose every segment finding to at least L3 before recommending action. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides through drill-down depth. Ship one structural cover slide outside that count, and add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as genuinely supplementary top-up, never as filler to reach count.`
               : `This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides first. Ship one structural cover slide outside that count, and add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as optional top-up if they are genuinely additive.`;
+  const slideCountContractInstruction = isReportOnly
+    ? null
+    : `The requested ${run.target_slide_count} slides are your CONTENT slide count. Ship one structural cover slide outside that count. You may ship at most one structural closing slide outside that count, and only if its layout is summary, title-body, title-bullets, or recommendation-cards. Every other slide counts toward the requested content total.`;
   const extractionInstruction = evidenceMode.hasTabularData
     ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
     : evidenceMode.hasDocumentEvidence
@@ -4884,6 +4888,7 @@ function buildAuthorMessage(
         ...(routeContext ? [routeContext] : []),
         "- Inspect only the workbook regions needed to answer the brief. Do not spend time on exhaustive profiling of every tab if it is not necessary.",
         `- ${analysisDepthInstruction}`,
+        ...(slideCountContractInstruction ? [`- ${slideCountContractInstruction}`] : []),
         "- Complete ALL work in a single uninterrupted code execution session. Do not end the turn until every required output file is attached as a container upload.",
         "- If you hit an error while analyzing, charting, or exporting, fix it and continue in the same session rather than ending the turn early.",
         "- Keep code execution output concise: after the initial 2-3 profiling blocks, print only the computed values needed for charts and narrative, not full DataFrames.",
@@ -7624,15 +7629,25 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
   manifest: z.infer<typeof deckManifestSchema>;
   xlsxFile: GeneratedFile;
 }> {
+  const canonicalManifest = parseDeckManifest({
+    ...input.manifest,
+    charts: filterLinkedManifestCharts(input.manifest),
+  });
   const workbookSheets = extractWorkbookSheetProfiles(input.xlsxFile.buffer);
   if (workbookSheets.length === 0) {
-    return input;
+    return {
+      ...input,
+      manifest: canonicalManifest,
+    };
   }
   const sheetPresentations = buildWorkbookSheetPresentations(workbookSheets, input.templateProfile);
   const sheetPresentationByName = new Map(sheetPresentations.map((sheet) => [sheet.sheetName, sheet]));
-  const requests = buildWorkbookChartBindingRequests(input.manifest, input.analysis);
+  const requests = buildWorkbookChartBindingRequests(canonicalManifest, input.analysis);
   if (requests.length === 0 && sheetPresentations.length === 0) {
-    return input;
+    return {
+      ...input,
+      manifest: canonicalManifest,
+    };
   }
 
   const bindings = requests
@@ -7641,7 +7656,7 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
     )
     .filter((binding): binding is WorkbookChartBinding => Boolean(binding));
 
-  const manifestCharts = input.manifest.charts.map((chart) => {
+  const manifestCharts = canonicalManifest.charts.map((chart) => {
     const binding = bindings.find((entry) => entry.request.chartId === chart.id);
     if (!binding) {
       return chart;
@@ -7714,7 +7729,7 @@ async function ensureWorkbookChartCompanionArtifacts(input: {
   }
 
   const nextManifest = parseDeckManifest({
-    ...input.manifest,
+    ...canonicalManifest,
     charts: manifestCharts.map((chart) => {
       const anchor = chartAnchorById.get(chart.id) ?? chart.excelChartCellAnchor;
       return {
@@ -7799,8 +7814,9 @@ function buildWorkbookChartBindingRequests(
     }
   }
 
-  return manifest.charts.map((manifestChart, index) => {
+  return filterLinkedManifestCharts(manifest).map((manifestChart, index) => {
     const slide = manifest.slides.find((entry) => entry.chartId === manifestChart.id) ?? null;
+    const preferSemanticSlideBinding = isPlaceholderChartTitle(manifestChart.title);
     const analysisChart =
       analysisByChartId.get(manifestChart.id) ??
       (manifestChart.dataSignature ? analysisByDataSignature.get(manifestChart.dataSignature) : undefined) ??
@@ -7818,15 +7834,29 @@ function buildWorkbookChartBindingRequests(
       position: slide?.position ?? index + 1,
       chartId: manifestChart.id,
       chartType: manifestChart.chartType,
-      title: manifestChart.title || slide?.title || `Chart ${index + 1}`,
+      title:
+        (preferSemanticSlideBinding
+          ? slide?.title?.trim() || slide?.pageIntent?.trim() || manifestChart.title?.trim()
+          : manifestChart.title?.trim() || slide?.title?.trim() || slide?.pageIntent?.trim()) ||
+        `Chart ${index + 1}`,
       xAxisLabel: manifestChart.xAxisLabel,
       yAxisLabel: manifestChart.yAxisLabel,
-      categories: extractChartCategories(analysisChart),
+      categories: preferSemanticSlideBinding ? [] : extractChartCategories(analysisChart),
       existingSheetName: manifestChart.excelSheetName,
       existingAnchor: manifestChart.excelChartCellAnchor,
       existingDataSignature: manifestChart.dataSignature,
+      preferSemanticSlideBinding,
     };
   });
+}
+
+function filterLinkedManifestCharts(manifest: z.infer<typeof deckManifestSchema>) {
+  const referencedChartIds = new Set(
+    manifest.slides
+      .map((slide) => slide.chartId)
+      .filter((chartId): chartId is string => typeof chartId === "string" && chartId.trim().length > 0),
+  );
+  return manifest.charts.filter((chart) => referencedChartIds.has(chart.id));
 }
 
 function extractChartCategories(chart: AnalysisResult["slidePlan"][number]["chart"] | undefined) {
@@ -7844,7 +7874,7 @@ function bindWorkbookSheetToChart(
   templateProfile: TemplateProfile,
   sheetPresentationByName: Map<string, WorkbookSheetPresentation>,
 ): WorkbookChartBinding | null {
-  const preferredSheet = request.existingSheetName
+  const preferredSheet = !request.preferSemanticSlideBinding && request.existingSheetName
     ? workbookSheets.find((sheet) => sheet.name === request.existingSheetName)
     : null;
   const sheet = preferredSheet ?? selectBestWorkbookSheetForChart(request, workbookSheets);
@@ -7979,6 +8009,14 @@ function tokenizeWorkbookMatchText(value: string | undefined | null) {
   return normalizeEntityName(value ?? "")
     .split(" ")
     .filter((token) => token.length >= 2);
+}
+
+function isPlaceholderChartTitle(value: string | undefined | null) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized.length === 0) {
+    return true;
+  }
+  return /^chart\s+\d+$/.test(normalized) || /^figure\s+\d+$/.test(normalized);
 }
 
 async function injectWorkbookNativeCharts(
@@ -8845,10 +8883,11 @@ function computeReviseIterationBudget(input: {
 }
 
 function countStructuralSlidesInManifest(manifest: z.infer<typeof deckManifestSchema>) {
-  return manifest.slides.some((slide) => {
-    const layout = (slide.layoutId ?? slide.slideArchetype ?? "").trim().toLowerCase();
-    return layout === "cover";
-  }) ? 1 : 0;
+  const layouts = manifest.slides.map((slide) => (slide.layoutId ?? slide.slideArchetype ?? "").trim().toLowerCase());
+  const coverCount = layouts.includes("cover") ? 1 : 0;
+  const lastLayout = layouts.at(-1) ?? "";
+  const closingCount = ["summary", "title-body", "title-bullets", "recommendation-cards"].includes(lastLayout) ? 1 : 0;
+  return coverCount + closingCount;
 }
 
 /**
@@ -9115,7 +9154,7 @@ async function validateArtifactChecks(
     const workbookXmlString = workbookXml ? await workbookXml.async("string") : "";
     const workbookSheetNames = workbookXmlString ? extractWorkbookSheetNames(workbookXmlString) : [];
     const nativeChartXmlCount = Object.keys(zip.files).filter((name) => /^xl\/charts\/chart\d+\.xml$/i.test(name)).length;
-    const manifestCharts = manifest.charts ?? [];
+    const manifestCharts = filterLinkedManifestCharts(manifest);
     const chartsMissingExcelSheetName = manifestCharts.filter((chart) => !chart.excelSheetName);
     const missingWorkbookSheets = manifestCharts
       .map((chart) => chart.excelSheetName)
@@ -10588,3 +10627,10 @@ function buildHaikuCallFnForResearch(client: Anthropic): HaikuCallFn {
     return content;
   };
 }
+
+export const __test__ = {
+  bindWorkbookSheetToChart,
+  buildWorkbookChartBindingRequests,
+  isPlaceholderChartTitle,
+  selectBestWorkbookSheetForChart,
+};

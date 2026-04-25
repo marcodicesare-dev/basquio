@@ -146,7 +146,12 @@ export function lintSlidePlan(
     for (let compareIndex = index + 1; compareIndex < slides.length; compareIndex += 1) {
       const left = slides[index];
       const right = slides[compareIndex];
-      if (isStructuralSlide(left) || isStructuralSlide(right)) {
+      if (
+        isStructuralSlide(left)
+        || isStructuralSlide(right)
+        || isClosingStructuralSlide(slides, index)
+        || isClosingStructuralSlide(slides, compareIndex)
+      ) {
         continue;
       }
 
@@ -175,7 +180,9 @@ export function lintSlidePlan(
     slides.flatMap((slide) => slide.dimensions.filter((dimension) => COVERAGE_DIMENSIONS.has(dimension))),
   )];
   const minRequiredDimensions = requiredDimensionCoverage(targetSlideCount);
-  const analyticalSlides = slides.filter((slide) => !isStructuralSlide(slide));
+  const analyticalSlides = slides.filter((slide, index) =>
+    !isStructuralSlide(slide) && !isClosingStructuralSlide(slides, index),
+  );
   const appendixSlides = analyticalSlides.filter((slide) => isAppendixSlide(slide));
   const contentSlides = analyticalSlides.filter((slide) => !isAppendixSlide(slide));
   const storylineIslands = buildStorylineIslands(contentSlides);
@@ -446,6 +453,27 @@ function isStructuralSlide(slide: EnrichedSlide) {
   const role = (slide.role ?? "").toLowerCase();
   const layout = (slide.layoutId ?? slide.slideArchetype ?? "").toLowerCase();
   return role === "cover" || role === "section-divider" || layout === "cover" || layout === "section-divider";
+}
+
+const TERMINAL_STRUCTURAL_LAYOUTS = new Set([
+  "summary",
+  "title-body",
+  "title-bullets",
+  "recommendation-cards",
+]);
+
+function isClosingStructuralSlide(slides: EnrichedSlide[], index: number) {
+  if (index !== slides.length - 1) {
+    return false;
+  }
+
+  const slide = slides[index];
+  if (!slide) {
+    return false;
+  }
+
+  const layout = (slide.layoutId ?? slide.slideArchetype ?? "").toLowerCase();
+  return TERMINAL_STRUCTURAL_LAYOUTS.has(layout);
 }
 
 function isAppendixSlide(slide: EnrichedSlide) {

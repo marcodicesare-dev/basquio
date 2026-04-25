@@ -148,4 +148,30 @@ describe("slide-plan-linter", () => {
       "expected storyline_backtracking for a late segment-summary revisit after switching away from the segment branch",
     );
   });
+
+  it("treats a terminal summary slide as structural for content-count enforcement", () => {
+    const result = lintSlidePlan(
+      [
+        { position: 1, role: "cover", layoutId: "cover", title: "Coffee category review" },
+        { position: 2, role: "exec-summary", layoutId: "exec-summary", title: "Executive summary" },
+        { position: 3, layoutId: "title-chart", title: "Slide 1" },
+        { position: 4, layoutId: "title-chart", title: "Slide 2" },
+        { position: 5, layoutId: "title-chart", title: "Slide 3" },
+        { position: 6, layoutId: "title-chart", title: "Slide 4" },
+        { position: 7, layoutId: "title-chart", title: "Slide 5" },
+        { position: 8, layoutId: "title-chart", title: "Slide 6" },
+        { position: 9, layoutId: "title-chart", title: "Slide 7" },
+        { position: 10, layoutId: "title-chart", title: "Slide 8" },
+        { position: 11, layoutId: "recommendation-cards", title: "Slide 10" },
+        { position: 12, layoutId: "summary", title: "Closing summary" },
+      ],
+      10,
+    );
+
+    assert.equal(result.contentSlideCount, 10);
+    assert.ok(
+      !result.deckViolations.some((violation) => violation.rule === "content_overflow"),
+      "did not expect a trailing summary slide to trigger content_overflow",
+    );
+  });
 });
