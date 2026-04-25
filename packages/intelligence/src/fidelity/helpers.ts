@@ -143,6 +143,9 @@ export function extractTitleNumberTokens(title: string): TitleNumberToken[] {
     if (!raw || value === null) {
       continue;
     }
+    if (!unit && Number.isInteger(value) && (Math.abs(value) < 10 || (value >= 1900 && value <= 2100))) {
+      continue;
+    }
     tokens.push({ raw, value, unit });
   }
 
@@ -184,19 +187,37 @@ export function buildDerivedComparableValues(sheet?: FidelitySheetInput) {
     return [] as number[];
   }
 
-  const primarySeries = extractPrimaryNumericSeries(sheet);
-  if (primarySeries.length === 0) {
-    return [];
+  const derived = new Set<number>();
+  const numericHeaders = sheet.headers.filter((header) =>
+    sheet.rows.some((row) => typeof row[header] === "number" && Number.isFinite(row[header] as number)),
+  );
+
+  for (const header of numericHeaders) {
+    const series = sheet.rows
+      .map((row) => coerceNumber(row[header]))
+      .filter((value): value is number => value !== null);
+    if (series.length === 0) {
+      continue;
+    }
+
+    const sum = series.reduce((total, value) => total + value, 0);
+    const avg = sum / series.length;
+    const max = Math.max(...series);
+    derived.add(roundComparable(sum));
+    derived.add(roundComparable(sum / 1_000_000));
+    derived.add(roundComparable(avg));
+    derived.add(roundComparable(max));
+    addSequentialDerivedValues(derived, series);
   }
 
-  const sum = primarySeries.reduce((total, value) => total + value, 0);
-  const avg = sum / primarySeries.length;
-  const max = Math.max(...primarySeries);
-  return [roundComparable(sum), roundComparable(sum / 1_000_000), roundComparable(avg), roundComparable(max)];
-}
+  for (const row of sheet.rows) {
+    const numericValues = numericHeaders
+      .map((header) => coerceNumber(row[header]))
+      .filter((value): value is number => value !== null);
+    addSequentialDerivedValues(derived, numericValues);
+  }
 
-export function mentionsDerivation(text: string) {
-  return /\b(total|totale|combined|somma|sum|average|media|max|maximum|peak)\b/i.test(text);
+  return [...derived];
 }
 
 export function matchesComparableValue(token: TitleNumberToken, comparableValues: number[]) {
@@ -237,6 +258,27 @@ export function findClosestComparableValue(token: TitleNumberToken, comparableVa
 
 export function roundComparable(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function addSequentialDerivedValues(target: Set<number>, series: number[]) {
+  if (series.length < 2) {
+    return;
+  }
+
+  for (let index = 1; index < series.length; index += 1) {
+    addDeltaPair(target, series[index - 1]!, series[index]!);
+  }
+
+  addDeltaPair(target, series[0]!, series[series.length - 1]!);
+}
+
+function addDeltaPair(target: Set<number>, start: number, end: number) {
+  const delta = end - start;
+  target.add(roundComparable(delta));
+
+  if (start !== 0) {
+    target.add(roundComparable((delta / start) * 100));
+  }
 }
 
 export function formatComparableValue(value: number, unit: string) {

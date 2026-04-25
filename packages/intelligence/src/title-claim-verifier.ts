@@ -5,7 +5,6 @@ import {
   findClosestComparableValue,
   formatComparableValue,
   matchesComparableValue,
-  mentionsDerivation,
 } from "./fidelity/helpers";
 import type {
   FidelitySheetInput,
@@ -23,7 +22,6 @@ export function validateTitleClaims(
   }
 
   const workbookValues = buildComparableWorkbookValues(sheet);
-  const textContext = `${slide.body ?? ""} ${(slide.bullets ?? []).join(" ")} ${slide.callout?.text ?? ""}`;
   const violations: FidelityViolation[] = [];
 
   for (const token of tokens) {
@@ -32,7 +30,7 @@ export function validateTitleClaims(
     }
 
     const derivable = buildDerivedComparableValues(sheet);
-    if (mentionsDerivation(textContext) && matchesComparableValue(token, derivable)) {
+    if (matchesComparableValue(token, derivable)) {
       continue;
     }
 

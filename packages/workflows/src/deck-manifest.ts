@@ -61,6 +61,7 @@ function normalizeDeckManifest(input: unknown) {
   const rawSlides = readArray(record.slides);
   const slides = rawSlides.map((slide, index) => normalizeSlide(slide, index));
   const rawCharts = readArray(record.charts);
+  const charts = repairManifestChartIds(slides, rawCharts.map(normalizeChart));
 
   return {
     ...record,
@@ -70,7 +71,7 @@ function normalizeDeckManifest(input: unknown) {
       slides.length,
     pageCount: readNumber(record.pageCount) ?? readNumber(record.page_count),
     slides,
-    charts: rawCharts.map(normalizeChart),
+    charts,
   };
 }
 
@@ -142,6 +143,71 @@ function normalizeChart(input: unknown, index: number) {
       record.presentation ?? record.exhibitPresentation ?? record.exhibit_presentation,
     ),
   };
+}
+
+function repairManifestChartIds(
+  slides: Array<{ chartId?: string }>,
+  charts: Array<{ id: string } & Record<string, unknown>>,
+) {
+  const existingChartIds = new Set(charts.map((chart) => chart.id));
+  const orderedSlideChartIds = slides
+    .map((slide) => slide.chartId?.trim())
+    .filter((value): value is string => Boolean(value));
+  const missingSlideChartIds = orderedSlideChartIds.filter((chartId) => !existingChartIds.has(chartId));
+
+  if (missingSlideChartIds.length === 0) {
+    return charts;
+  }
+
+  const dedupedMissingIds: string[] = [];
+  for (const chartId of missingSlideChartIds) {
+    if (!dedupedMissingIds.includes(chartId)) {
+      dedupedMissingIds.push(chartId);
+    }
+  }
+
+  const referencedChartIds = new Set(
+    orderedSlideChartIds.filter((chartId) => existingChartIds.has(chartId)),
+  );
+  const remappableCharts = charts.filter((chart) => !referencedChartIds.has(chart.id));
+  if (remappableCharts.length < dedupedMissingIds.length) {
+    return charts;
+  }
+
+  const orderedRemapTargets = remappableCharts
+    .filter((chart) => looksGenericChartId(chart.id))
+    .concat(remappableCharts.filter((chart) => !looksGenericChartId(chart.id)));
+  if (orderedRemapTargets.length < dedupedMissingIds.length) {
+    return charts;
+  }
+
+  const idRemap = new Map<string, string>();
+  for (let index = 0; index < dedupedMissingIds.length; index += 1) {
+    const sourceChart = orderedRemapTargets[index];
+    const targetChartId = dedupedMissingIds[index];
+    if (!sourceChart || existingChartIds.has(targetChartId)) {
+      continue;
+    }
+    idRemap.set(sourceChart.id, targetChartId);
+    existingChartIds.add(targetChartId);
+  }
+
+  if (idRemap.size === 0) {
+    return charts;
+  }
+
+  return charts.map((chart) => (
+    idRemap.has(chart.id)
+      ? {
+          ...chart,
+          id: idRemap.get(chart.id)!,
+        }
+      : chart
+  ));
+}
+
+function looksGenericChartId(value: string) {
+  return /^chart[-_ ]?\d+$/i.test(value.trim());
 }
 
 function normalizeMetrics(input: unknown) {

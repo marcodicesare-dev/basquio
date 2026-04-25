@@ -28,7 +28,7 @@ export const SAFE_CHART_TYPES = [
 ] as const;
 export type SafeChartType = typeof SAFE_CHART_TYPES[number];
 
-// Tier 2: Rendered as PNG images — universal but not editable
+// Tier 2: Rendered as PNG images, universal but not editable
 export const IMAGE_ONLY_CHART_TYPES = [
   "bubble", "radar", "combo", "pareto", "heatmap",
   "funnel", "marimekko", "matrix", "quadrant", "timeline",
@@ -206,14 +206,16 @@ function validateRecommendationEvidence(slides: DeckContractSlide[]): ContractVi
       continue;
     }
 
-    const priorEvidenceNumbers = new Set(
-      slides
-        .slice(0, index)
-        .filter((candidate) => !isRecommendationSlide(candidate))
-        .flatMap((candidate) => extractQuantifiedTokens(buildSlideText(candidate))),
-    );
+    const priorEvidenceTokens = slides
+      .slice(0, index)
+      .filter((candidate) => !isRecommendationSlide(candidate))
+      .flatMap((candidate) => extractQuantifiedTokens(buildSlideText(candidate)));
+    const priorEvidenceNumbers = new Set(priorEvidenceTokens);
+    const priorEvidenceDerived = buildDerivedQuantifiedTokens(priorEvidenceTokens);
 
-    const unsupportedNumbers = recommendationNumbers.filter((token) => !priorEvidenceNumbers.has(token));
+    const unsupportedNumbers = recommendationNumbers.filter((token) =>
+      !priorEvidenceNumbers.has(token) && !matchesDerivedRecommendationToken(token, priorEvidenceDerived),
+    );
     if (unsupportedNumbers.length === 0) {
       continue;
     }
@@ -226,6 +228,90 @@ function validateRecommendationEvidence(slides: DeckContractSlide[]): ContractVi
   }
 
   return violations;
+}
+
+type QuantifiedToken = {
+  value: number;
+  unit: string;
+};
+
+function buildDerivedQuantifiedTokens(tokens: string[]) {
+  const parsed = tokens
+    .map(parseQuantifiedToken)
+    .filter((value): value is QuantifiedToken => value !== null);
+  const derived: QuantifiedToken[] = [];
+
+  for (let leftIndex = 0; leftIndex < parsed.length; leftIndex += 1) {
+    const left = parsed[leftIndex]!;
+    for (let rightIndex = leftIndex + 1; rightIndex < parsed.length; rightIndex += 1) {
+      const right = parsed[rightIndex]!;
+      if (left.unit !== right.unit) {
+        continue;
+      }
+
+      const delta = Math.abs(right.value - left.value);
+      derived.push({ value: delta, unit: left.unit });
+      if (left.value !== 0) {
+        derived.push({ value: (delta / Math.abs(left.value)) * 100, unit: "%" });
+      }
+      if (right.value !== 0) {
+        derived.push({ value: (delta / Math.abs(right.value)) * 100, unit: "%" });
+      }
+    }
+  }
+
+  return derived;
+}
+
+function matchesDerivedRecommendationToken(token: string, derived: QuantifiedToken[]) {
+  const parsed = parseQuantifiedToken(token);
+  if (!parsed) {
+    return false;
+  }
+
+  return derived.some((candidate) =>
+    candidate.unit === parsed.unit &&
+    Math.abs(candidate.value - parsed.value) <= toleranceForRecommendationUnit(parsed.unit, parsed.value),
+  );
+}
+
+function parseQuantifiedToken(token: string): QuantifiedToken | null {
+  const normalized = token.toLowerCase().replace(/\s+/g, "").replace(/,/g, ".");
+  const match = normalized.match(/^([€$£]?)([-+]?\d+(?:\.\d+)?)(%|pp|p\.p\.|mln|mld|bln|bn|m|k)?$/i);
+  if (!match) {
+    return null;
+  }
+
+  const value = Number(match[2]);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  return {
+    value,
+    unit: normalizeQuantifiedUnit(match[3] ?? match[1] ?? ""),
+  };
+}
+
+function normalizeQuantifiedUnit(value: string) {
+  const normalized = value.toLowerCase();
+  if (normalized === "p.p.") {
+    return "pp";
+  }
+  if (normalized === "€" || normalized === "$" || normalized === "£") {
+    return "currency";
+  }
+  return normalized;
+}
+
+function toleranceForRecommendationUnit(unit: string, value: number) {
+  if (unit === "%" || unit === "pp") {
+    return 2;
+  }
+  if (unit === "m" || unit === "mln" || unit === "mld" || unit === "bn" || unit === "bln" || unit === "currency") {
+    return Math.max(1, Math.abs(value) * 0.02);
+  }
+  return 0.5;
 }
 
 function isRecommendationSlide(slide: DeckContractSlide) {
