@@ -3497,7 +3497,11 @@ async function resolveAttemptContext(
   run: RunRow,
   suppliedAttempt?: Partial<AttemptContext>,
 ): Promise<AttemptContext> {
-  if (suppliedAttempt?.id && typeof suppliedAttempt.attemptNumber === "number") {
+  const suppliedAttemptHasRecoveryReason = suppliedAttempt
+    ? Object.prototype.hasOwnProperty.call(suppliedAttempt, "recoveryReason")
+    : false;
+
+  if (suppliedAttempt?.id && typeof suppliedAttempt.attemptNumber === "number" && suppliedAttemptHasRecoveryReason) {
     return {
       id: suppliedAttempt.id,
       attemptNumber: suppliedAttempt.attemptNumber,
