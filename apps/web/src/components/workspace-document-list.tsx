@@ -212,9 +212,6 @@ export function WorkspaceDocumentList({
                   </a>
                   {doc.status === "failed" ? <RetryDocumentButton documentId={doc.id} /> : null}
                 </div>
-                {doc.error_message ? (
-                  <p className="wbeta-doclist-error">{doc.error_message}</p>
-                ) : null}
               </li>
             );
           })}
