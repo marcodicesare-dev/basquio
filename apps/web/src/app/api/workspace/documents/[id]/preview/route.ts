@@ -6,7 +6,7 @@ import { isTeamBetaEmail } from "@/lib/team-beta";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { getViewerState } from "@/lib/supabase/auth";
 import { KNOWLEDGE_BUCKET } from "@/lib/workspace/constants";
-import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
+import { resolveWorkspaceDocumentAccess } from "@/lib/workspace/document-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export async function GET(
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }
   const conversationId = new URL(request.url).searchParams.get("conversationId");
-  if (!conversationId || !UUID_RE.test(conversationId)) {
+  if (conversationId && !UUID_RE.test(conversationId)) {
     return NextResponse.json({ error: "Conversation attachment required." }, { status: 403 });
   }
 
@@ -43,36 +43,13 @@ export async function GET(
     return NextResponse.json({ error: "Supabase storage is not configured." }, { status: 500 });
   }
 
-  const workspace = await getCurrentWorkspace();
   const db = createServiceSupabaseClient(supabaseUrl, serviceKey);
-  const { data: attachment, error } = await db
-    .from("conversation_attachments")
-    .select(`
-      id,
-      workspace_id,
-      conversation_id,
-      document_id,
-      knowledge_documents (
-        id,
-        filename,
-        file_type,
-        storage_path,
-        status
-      )
-    `)
-    .eq("conversation_id", conversationId)
-    .eq("document_id", id)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-
-  const doc = Array.isArray(attachment?.knowledge_documents)
-    ? attachment.knowledge_documents[0]
-    : attachment?.knowledge_documents;
-  if (error || !attachment || !doc || doc.status === "deleted") {
+  const doc = await resolveWorkspaceDocumentAccess({ db, documentId: id, conversationId });
+  if (!doc) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }
 
-  const storagePath = (doc as { storage_path: string | null }).storage_path;
+  const storagePath = doc.storage_path;
   if (!storagePath) {
     return NextResponse.json({ error: "Document file is missing." }, { status: 404 });
   }
@@ -84,8 +61,8 @@ export async function GET(
     return NextResponse.json({ error: "Document file is missing." }, { status: 404 });
   }
 
-  const filename = (doc as { filename: string | null }).filename ?? "workspace-file";
-  const fileType = ((doc as { file_type: string | null }).file_type ?? "").toLowerCase();
+  const filename = doc.filename ?? "workspace-file";
+  const fileType = (doc.file_type ?? "").toLowerCase();
   const extension = fileType || filename.split(".").pop()?.toLowerCase() || "";
 
   if (["txt", "md", "gsp", "json", "yaml", "yml", "csv"].includes(extension)) {

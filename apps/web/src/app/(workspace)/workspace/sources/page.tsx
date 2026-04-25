@@ -54,8 +54,9 @@ export default async function WorkspaceSourcesPage() {
         <p className="wbeta-sources-eyebrow">Sources</p>
         <h1 className="wbeta-sources-title">The files Basquio can retrieve from.</h1>
         <p className="wbeta-sources-summary">
-          Upload reusable workspace files here. Basquio indexes them into retrieval so chat answers
-          can cite filename-backed excerpts, and deck briefs can carry the cited files forward.
+          Upload reusable workspace files, inspect them in place, and download the original when
+          you need the full context. Basquio indexes these files so chat answers and deck briefs can
+          cite filename-backed evidence.
         </p>
         <ul className="wbeta-sources-stats">
           <li>
@@ -90,9 +91,9 @@ export default async function WorkspaceSourcesPage() {
           </div>
         </div>
         <WorkspaceUploadZone
-          variant="hero"
-          title="Drop source files."
-          subtitle={`Or click anywhere on this card. ${SUPPORTED_SOURCE_FILES}. Up to 50 MB.`}
+          variant="inline"
+          title="Drop source files"
+          subtitle={`${SUPPORTED_SOURCE_FILES}. Up to 50 MB.`}
           supportedLabel={SUPPORTED_SOURCE_FILES}
         />
       </section>
@@ -104,8 +105,8 @@ export default async function WorkspaceSourcesPage() {
               Internal source repository
             </h2>
             <p className="wbeta-sources-section-copy">
-              These uploaded files are eligible for workspace retrieval. When Basquio uses one, the
-              answer should cite the source label and filename.
+              Select a file to preview it without leaving the source repository. Download keeps the
+              original untouched for audit and handoff.
             </p>
           </div>
         </div>

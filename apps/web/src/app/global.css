@@ -12926,14 +12926,33 @@ body:has(.wbeta-shell) .site-wrap {
 /* Document list */
 
 .wbeta-doclist {
-  display: flex;
-  flex-direction: column;
-  gap: 13px;
+  display: grid;
+  grid-template-columns: minmax(320px, 38fr) minmax(0, 62fr);
   background: var(--surface-strong);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
-  padding: 21px;
+  min-height: 620px;
+  overflow: hidden;
+}
+
+.wbeta-doclist-library {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-strong);
+  padding: 16px;
+}
+
+.wbeta-doclist-headrow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 13px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
 }
 
 .wbeta-doclist-head {
@@ -12944,38 +12963,90 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text);
 }
 
+.wbeta-doclist-subhead {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  margin: 3px 0 0;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
 .wbeta-doclist-rows {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .wbeta-doclist-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 13px;
-  padding: 13px;
-  border-radius: var(--radius-md);
-  background: var(--canvas-stage);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: transparent;
   border: 1px solid transparent;
-  transition: border-color 150ms ease-out, background 150ms ease-out;
+  transition: background 120ms ease-out, border-color 120ms ease-out;
 }
 
 .wbeta-doclist-row:hover {
-  border-color: var(--border);
+  background: var(--canvas-stage);
+}
+
+.wbeta-doclist-select {
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 8px 8px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.wbeta-doclist-select:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.wbeta-doclist-select-active {
+  background: rgba(26, 106, 255, 0.08);
+}
+
+.wbeta-doclist-fileicon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--canvas);
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+}
+
+.wbeta-doclist-select-active .wbeta-doclist-fileicon {
+  border-color: rgba(26, 106, 255, 0.24);
+  color: var(--blue);
 }
 
 .wbeta-doclist-row-main {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
+  gap: 3px;
 }
 
 .wbeta-doclist-filename {
@@ -12995,14 +13066,15 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
   align-items: center;
 }
 
 .wbeta-doclist-error {
+  grid-column: 1 / -1;
   font-size: 12px;
   color: var(--danger-text);
-  margin: 0;
+  margin: 0 10px 8px 54px;
 }
 
 .wbeta-doclist-status {
@@ -13046,10 +13118,10 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-doclist-side {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  align-items: center;
+  gap: 5px;
   flex-shrink: 0;
+  padding-right: 8px;
 }
 
 .wbeta-doclist-retry {
@@ -13075,6 +13147,308 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-doclist-retry:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.wbeta-doclist-iconlink {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+}
+
+.wbeta-doclist-iconlink:hover,
+.wbeta-doclist-iconlink:focus-visible {
+  background: var(--canvas);
+  color: var(--text);
+  border-color: var(--border);
+  outline: none;
+}
+
+.wbeta-docpreview {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+}
+
+.wbeta-docpreview-head {
+  min-height: 77px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.wbeta-docpreview-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  color: var(--blue);
+}
+
+.wbeta-docpreview-titleblock {
+  min-width: 0;
+}
+
+.wbeta-docpreview-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-docpreview-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  margin: 4px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-docpreview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wbeta-docpreview-action {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-strong);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  transition: background 120ms ease-out, border-color 120ms ease-out, transform 120ms ease-out;
+}
+
+.wbeta-docpreview-action:hover,
+.wbeta-docpreview-action:focus-visible {
+  background: var(--canvas-stage);
+  border-color: var(--text);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.wbeta-docpreview-action-primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: white;
+}
+
+.wbeta-docpreview-action-primary:hover,
+.wbeta-docpreview-action-primary:focus-visible {
+  background: #0f56d9;
+  border-color: #0f56d9;
+  color: white;
+}
+
+.wbeta-docpreview-body {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0)),
+    var(--canvas);
+}
+
+.wbeta-docpreview-frame {
+  width: 100%;
+  min-height: 540px;
+  height: 100%;
+  border: 0;
+  background: white;
+}
+
+.wbeta-docpreview-image {
+  display: block;
+  max-width: calc(100% - 34px);
+  max-height: 560px;
+  object-fit: contain;
+  margin: 17px auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: white;
+}
+
+.wbeta-docpreview-text {
+  margin: 0;
+  padding: 21px;
+  min-height: 540px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-docpreview-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 21px;
+}
+
+.wbeta-docpreview-loading span {
+  height: 13px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, rgba(11, 12, 12, 0.06), rgba(11, 12, 12, 0.12), rgba(11, 12, 12, 0.06));
+  background-size: 200% 100%;
+  animation: wbeta-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.wbeta-docpreview-loading span:nth-child(1) { width: 82%; }
+.wbeta-docpreview-loading span:nth-child(2) { width: 96%; }
+.wbeta-docpreview-loading span:nth-child(3) { width: 58%; }
+
+@keyframes wbeta-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.wbeta-docpreview-message {
+  max-width: 420px;
+  margin: 55px auto;
+  padding: 0 21px;
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.wbeta-docpreview-message p {
+  margin: 0;
+}
+
+.wbeta-docpreview-message-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 6px !important;
+}
+
+.wbeta-docpreview-tablewrap {
+  padding: 17px;
+}
+
+.wbeta-docpreview-sheet {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  margin: 0 0 8px;
+}
+
+.wbeta-docpreview-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.wbeta-docpreview-table td {
+  border: 1px solid var(--border);
+  padding: 7px 9px;
+  color: var(--text);
+  min-width: 96px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-docpreview-empty {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 34px;
+  background: var(--canvas-stage);
+}
+
+.wbeta-docpreview-empty-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.wbeta-docpreview-empty-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  max-width: 32ch;
+  margin: 6px 0 0;
+}
+
+@media (max-width: 980px) {
+  .wbeta-doclist {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .wbeta-doclist-library {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    max-height: 360px;
+  }
+
+  .wbeta-docpreview {
+    min-height: 460px;
+  }
+
+  .wbeta-docpreview-head {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .wbeta-docpreview-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 680px) {
+  .wbeta-doclist-side {
+    align-self: start;
+    padding-top: 8px;
+  }
+
+  .wbeta-doclist-status {
+    display: none;
+  }
+
+  .wbeta-docpreview-action {
+    flex: 1;
+  }
 }
 
 .wbeta-doclist-empty {
@@ -14494,7 +14868,7 @@ body:has(.wbeta-shell) .site-wrap {
 /* Sources library */
 
 .wbeta-sources-page {
-  width: min(1080px, calc(100% - 68px));
+  width: min(1320px, calc(100% - 68px));
   margin: 0 auto;
   padding: 34px 0 89px;
   display: flex;
@@ -14504,7 +14878,7 @@ body:has(.wbeta-shell) .site-wrap {
 
 @media (max-width: 980px) {
   .wbeta-sources-page {
-    width: min(1080px, calc(100% - 42px));
+    width: min(1320px, calc(100% - 42px));
     padding: 21px 0 55px;
   }
 }

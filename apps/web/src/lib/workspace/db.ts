@@ -8,6 +8,7 @@ import {
 
 export type WorkspaceDocumentRow = {
   id: string;
+  workspace_id: string | null;
   filename: string;
   file_type: string;
   file_size_bytes: number;
@@ -61,7 +62,7 @@ export async function listRecentWorkspaceDocuments(limit = 20): Promise<Workspac
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
-      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
+      "id, workspace_id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
     )
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -82,7 +83,7 @@ export async function listWorkspaceSourceDocuments(
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
-      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id, kind, source_catalog_id, source_url, source_published_at, source_trust_score",
+      "id, workspace_id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id, kind, source_catalog_id, source_url, source_published_at, source_trust_score",
     )
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -125,7 +126,7 @@ export async function findWorkspaceDocumentByHash(hash: string): Promise<Workspa
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
-      "id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
+      "id, workspace_id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
     )
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -166,6 +167,7 @@ export async function createWorkspaceDocument(input: CreateWorkspaceDocumentInpu
       uploaded_by_discord_id: null,
       upload_context: input.uploadContext ?? null,
       organization_id: BASQUIO_TEAM_ORG_ID,
+      workspace_id: BASQUIO_TEAM_WORKSPACE_ID,
       is_team_beta: true,
       status: "processing",
     })
