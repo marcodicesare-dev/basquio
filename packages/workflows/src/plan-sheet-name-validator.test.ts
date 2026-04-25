@@ -83,4 +83,18 @@ describe("validatePlanSheetNames", () => {
 
     expect(report.valid).toBe(true);
   });
+
+  it("passes when the generated workbook resolves S-prefixed companion sheets", () => {
+    const report = validatePlanSheetNames({
+      slidePlan: [
+        { position: 3, chart: { id: "chart-3", excelSheetName: "S02_GlobalMarket" } },
+        { position: 4, chart: { id: "chart-4", excelSheetName: "S03_Category" } },
+      ],
+      datasetProfile: buildDatasetProfile("Estrazione SP Segafredo"),
+      additionalKnownSheetNames: ["README", "S02_GlobalMarket", "S03_Category", "S09_Waterfall"],
+    });
+
+    expect(report.valid).toBe(true);
+    expect(report.fabricatedSheetNames).toHaveLength(0);
+  });
 });

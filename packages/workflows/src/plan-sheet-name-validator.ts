@@ -23,8 +23,9 @@ type SlidePlanEntry = {
 export function validatePlanSheetNames(input: {
   slidePlan: SlidePlanEntry[];
   datasetProfile: DatasetProfile;
+  additionalKnownSheetNames?: string[];
 }): PlanSheetNameReport {
-  const knownSheetNames = collectKnownSheetNames(input.datasetProfile);
+  const knownSheetNames = collectKnownSheetNames(input.datasetProfile, input.additionalKnownSheetNames ?? []);
   const knownSheetSet = new Set(knownSheetNames.map(normalizeSheetName));
   const fabricatedSheetNames = input.slidePlan.flatMap((slide) => {
     const claimedSheetName = slide.chart?.excelSheetName?.trim();
@@ -71,7 +72,7 @@ export function renderSheetNameRejectionMessage(report: PlanSheetNameReport) {
   return lines.join("\n");
 }
 
-function collectKnownSheetNames(datasetProfile: DatasetProfile) {
+function collectKnownSheetNames(datasetProfile: DatasetProfile, additionalKnownSheetNames: string[]) {
   const names = new Set<string>();
 
   for (const sheet of datasetProfile.sheets) {
@@ -93,6 +94,12 @@ function collectKnownSheetNames(datasetProfile: DatasetProfile) {
     const withoutExt = sourceFile.fileName.replace(/\.[^.]+$/, "").trim();
     if (withoutExt) {
       names.add(withoutExt);
+    }
+  }
+
+  for (const sheetName of additionalKnownSheetNames) {
+    if (sheetName.trim()) {
+      names.add(sheetName.trim());
     }
   }
 

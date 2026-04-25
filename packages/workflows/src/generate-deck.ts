@@ -2093,6 +2093,16 @@ export async function generateDeckRun(
           reason: reason.slice(0, 500),
         }).catch(() => {});
       }
+      latestPlanSheetValidation = resolvePlanSheetValidationReport({
+        slidePlan: analysis?.slidePlan ?? [],
+        datasetProfile: parsed.datasetProfile,
+        workbookSheets: fidelityContext?.workbookSheets,
+      });
+      await upsertWorkingPaper(config, runId, "plan_sheet_name_validation", {
+        ...latestPlanSheetValidation,
+        _attemptId: attempt.id,
+        _attemptNumber: attempt.attemptNumber,
+      }).catch(() => {});
       const authorClaimQa = isReportOnly
         ? null
         : await runClaimTraceabilityQaSafely({
@@ -2652,6 +2662,17 @@ export async function generateDeckRun(
               }).catch(() => {});
             }
           }
+          latestPlanSheetValidation = resolvePlanSheetValidationReport({
+            slidePlan: analysis?.slidePlan ?? [],
+            datasetProfile: parsed.datasetProfile,
+            workbookSheets: fidelityContext?.workbookSheets,
+          });
+          await upsertWorkingPaper(config, runId, "plan_sheet_name_validation", {
+            ...latestPlanSheetValidation,
+            _attemptId: attempt.id,
+            _attemptNumber: attempt.attemptNumber,
+            _reviseIteration: reviseLoopCount,
+          }).catch(() => {});
           const reviseClaimQa = await runClaimTraceabilityQaSafely({
             client,
             manifest: finalManifest,
@@ -3066,6 +3087,21 @@ export async function generateDeckRun(
         await insertEvent(config, runId, attempt, "export", "fidelity_context_skipped", {
           reason: reason.slice(0, 500),
         }).catch(() => {});
+      }
+      latestPlanSheetValidation = resolvePlanSheetValidationReport({
+        slidePlan: analysis?.slidePlan ?? [],
+        datasetProfile: parsed.datasetProfile,
+        workbookSheets: fidelityContext?.workbookSheets,
+      });
+      await upsertWorkingPaper(config, runId, "plan_sheet_name_validation", {
+        ...latestPlanSheetValidation,
+        _attemptId: attempt.id,
+        _attemptNumber: attempt.attemptNumber,
+        _phase: "export",
+      }).catch(() => {});
+      if (!isReportOnly) {
+        await assertAttemptStillOwnsRun(config, runId, attempt);
+        await persistDeckSpec(config, runId, finalManifest);
       }
 
       if (!isReportOnly) {
@@ -7235,6 +7271,26 @@ async function persistDeckSpec(
     revision: 1,
     kicker: null,
     callout: slide.callout ?? null,
+    page_intent: slide.pageIntent ?? null,
+    governing_thought: typeof (slide as { governingThought?: string }).governingThought === "string"
+      ? (slide as { governingThought?: string }).governingThought
+      : null,
+    chart_intent: typeof (slide as { chartIntent?: string }).chartIntent === "string"
+      ? (slide as { chartIntent?: string }).chartIntent
+      : null,
+    focal_object: typeof (slide as { focalObject?: string }).focalObject === "string"
+      ? (slide as { focalObject?: string }).focalObject
+      : null,
+    decision_ask: typeof (slide as { decisionAsk?: string }).decisionAsk === "string"
+      ? (slide as { decisionAsk?: string }).decisionAsk
+      : null,
+    risk_note: typeof (slide as { riskNote?: string }).riskNote === "string"
+      ? (slide as { riskNote?: string }).riskNote
+      : null,
+    highlight_categories: Array.isArray((slide as { highlightCategories?: unknown[] }).highlightCategories)
+      ? ((slide as { highlightCategories?: unknown[] }).highlightCategories as unknown[])
+      : null,
+    recommendation_block: readManifestRecommendationBlock(slide),
   }));
 
   if (slideRows.length > 0) {
@@ -7457,40 +7513,50 @@ function extractTopEntityCount(text: string) {
 
 function manifestToLintInput(manifest: z.infer<typeof deckManifestSchema>): SlideTextInput[] {
   const deckText = manifest.slides
-    .flatMap((slide) => [slide.title, slide.body, ...(slide.bullets ?? []), slide.callout?.text])
+    .flatMap((slide) => [
+      slide.title,
+      slide.body,
+      ...buildRecommendationBlockBullets(slide),
+      ...(slide.bullets ?? []),
+      slide.callout?.text,
+    ])
     .filter((value): value is string => Boolean(value && value.trim()))
     .join(" ");
   const expectedLanguage = (detectLanguage(deckText) as "it" | "en" | "unknown");
 
-  return manifest.slides.map((slide, index) => ({
-    position: slide.position,
-    role: index === 0 || slide.layoutId === "cover"
-      ? "cover"
-      : slide.slideArchetype === "exec-summary" || slide.layoutId === "exec-summary"
-        ? "exec-summary"
-        : "finding",
-    layoutId: slide.layoutId,
-    title: slide.title,
-    expectedLanguage,
-    slideArchetype: slide.slideArchetype,
-    body: slide.body,
-    bullets: slide.bullets,
-    callout: slide.callout ? { text: slide.callout.text, tone: slide.callout.tone } : undefined,
-    metrics: slide.metrics,
-    speakerNotes: typeof (slide as { speakerNotes?: string }).speakerNotes === "string"
-      ? (slide as { speakerNotes?: string }).speakerNotes
-      : undefined,
-    chartId: slide.chartId,
-    pageIntent: typeof slide.pageIntent === "string" ? slide.pageIntent : undefined,
-    hasDataTable: Boolean(slide.hasDataTable),
-    hasChartAnnotations: Boolean(slide.hasChartAnnotations),
-  }));
+  return manifest.slides.map((slide, index) => {
+    const recommendationBody = buildRecommendationBlockBody(slide);
+    return {
+      position: slide.position,
+      role: index === 0 || slide.layoutId === "cover"
+        ? "cover"
+        : slide.slideArchetype === "exec-summary" || slide.layoutId === "exec-summary"
+          ? "exec-summary"
+          : "finding",
+      layoutId: slide.layoutId,
+      title: slide.title,
+      expectedLanguage,
+      slideArchetype: slide.slideArchetype,
+      body: slide.body ?? recommendationBody,
+      bullets: slide.bullets ?? buildRecommendationBlockBullets(slide),
+      callout: slide.callout ? { text: slide.callout.text, tone: slide.callout.tone } : undefined,
+      metrics: slide.metrics,
+      speakerNotes: typeof (slide as { speakerNotes?: string }).speakerNotes === "string"
+        ? (slide as { speakerNotes?: string }).speakerNotes
+        : undefined,
+      chartId: slide.chartId,
+      pageIntent: typeof slide.pageIntent === "string" ? slide.pageIntent : undefined,
+      hasDataTable: Boolean(slide.hasDataTable),
+      hasChartAnnotations: Boolean(slide.hasChartAnnotations),
+    };
+  });
 }
 
 function manifestToPlanLintInput(manifest: z.infer<typeof deckManifestSchema>): SlidePlanLintInput[] {
   const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
   return manifest.slides.map((slide, index) => {
     const chart = slide.chartId ? chartById.get(slide.chartId) : undefined;
+    const recommendationBody = buildRecommendationBlockBody(slide);
     return {
       position: slide.position,
       role: index === 0 || slide.layoutId === "cover"
@@ -7501,8 +7567,8 @@ function manifestToPlanLintInput(manifest: z.infer<typeof deckManifestSchema>): 
       layoutId: slide.layoutId,
       slideArchetype: slide.slideArchetype,
       title: slide.title,
-      body: slide.body,
-      governingThought: slide.body ?? slide.subtitle,
+      body: slide.body ?? recommendationBody,
+      governingThought: slide.body ?? recommendationBody ?? slide.subtitle,
       focalObject: slide.callout?.text,
       pageIntent: slide.pageIntent,
       chartId: slide.chartId,
@@ -7524,6 +7590,18 @@ function buildFidelityContext(
     workbookSheets: workbookBuffer ? extractWorkbookSheetProfiles(workbookBuffer) : [],
     knownEntities: buildKnownEntityCatalog(parsed, run),
   };
+}
+
+function resolvePlanSheetValidationReport(input: {
+  slidePlan: Parameters<typeof validatePlanSheetNames>[0]["slidePlan"];
+  datasetProfile: Parameters<typeof validatePlanSheetNames>[0]["datasetProfile"];
+  workbookSheets?: FidelitySheetInput[] | null;
+}) {
+  return validatePlanSheetNames({
+    slidePlan: input.slidePlan,
+    datasetProfile: input.datasetProfile,
+    additionalKnownSheetNames: input.workbookSheets?.map((sheet) => sheet.name) ?? [],
+  });
 }
 
 async function ensureWorkbookChartCompanionArtifacts(input: {
@@ -8057,18 +8135,70 @@ function manifestToClaimTraceabilityInput(
   const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
   return manifest.slides.map((slide) => {
     const chart = slide.chartId ? chartById.get(slide.chartId) : undefined;
+    const recommendationBullets = buildRecommendationBlockBullets(slide);
     return {
       position: slide.position,
       layoutId: slide.layoutId,
       slideArchetype: slide.slideArchetype,
       pageIntent: slide.pageIntent,
       title: slide.title,
-      body: slide.body,
-      bullets: slide.bullets,
+      body: slide.body ?? buildRecommendationBlockBody(slide),
+      bullets: recommendationBullets.length > 0
+        ? [...(slide.bullets ?? []), ...recommendationBullets]
+        : slide.bullets,
       calloutText: slide.callout?.text,
       chartSheetName: chart?.excelSheetName,
     };
   });
+}
+
+function buildRecommendationBlockBody(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+) {
+  const recommendationBlock = readManifestRecommendationBlock(slide);
+  if (!recommendationBlock) {
+    return undefined;
+  }
+
+  return [recommendationBlock.condition, recommendationBlock.recommendation, recommendationBlock.quantification]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" ");
+}
+
+function buildRecommendationBlockBullets(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+) {
+  const recommendationBlock = readManifestRecommendationBlock(slide);
+  if (!recommendationBlock) {
+    return [];
+  }
+
+  return [recommendationBlock.condition, recommendationBlock.recommendation, recommendationBlock.quantification]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function readManifestRecommendationBlock(
+  input: unknown,
+): { condition?: string; recommendation?: string; quantification?: string } | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+
+  const record = input as Record<string, unknown>;
+  const raw = record.recommendationBlock ?? record.recommendation_block;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+
+  const block = raw as Record<string, unknown>;
+  const condition = typeof block.condition === "string" ? block.condition : undefined;
+  const recommendation = typeof block.recommendation === "string" ? block.recommendation : undefined;
+  const quantification = typeof block.quantification === "string" ? block.quantification : undefined;
+  if (!condition && !recommendation && !quantification) {
+    return null;
+  }
+
+  return { condition, recommendation, quantification };
 }
 
 function formatClaimTraceabilityIssue(issue: ClaimTraceabilityIssue) {
