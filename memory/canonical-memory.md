@@ -154,6 +154,7 @@ Initial domain bias:
 - Affected users included `rossella@basquio.com` on Segafredo and `sandy@65nation.com` on a separate leadership-team run. This was not a single-brief issue.
 - Vercel and Supabase Storage were healthy during the incident. `/api/generate` kept returning `202`, storage uploads and reads were `200`, and the failure class was isolated to the worker's Anthropic request contract.
 - Canonical prevention rule: any change to `anthropic-execution-contract.ts` or author/revise tool wiring must run a live cold-upload smoke on the exact no-web-fetch path before merge. `pnpm test:code-exec-no-webfetch` is the minimum required validation.
+- The second April 25 failure was a validator-lane design mistake. After the contract fix, Rossella's rerun got past author and then crashed inside the new April 24 forensic validator stack. The lesson is structural: shadow validators must default to export-only, fail-soft execution. Unset or `warn` validator modes cannot be allowed on author or revise.
 
 ## Production Incident Memory: March 21-22, 2026
 

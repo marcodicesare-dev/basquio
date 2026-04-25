@@ -97,6 +97,14 @@ import {
   validatePlanSheetNames,
   type PlanSheetNameReport,
 } from "./plan-sheet-name-validator";
+import {
+  resolveCitationFidelityValidatorMode,
+  resolveDataPrimacyValidatorMode,
+  shouldRunCitationFidelityDuringGeneration,
+  shouldRunDataPrimacyDuringGeneration,
+  type CitationFidelityValidatorMode,
+  type DataPrimacyValidatorMode,
+} from "./validator-rollout";
 import { renderedPageQaSchema, runRenderedPageQa } from "./rendered-page-qa";
 import { closeOpenRequestUsageRows } from "./request-usage-lifecycle";
 import { isRetryableContainerStringError, isTransientProviderError, classifyRuntimeError } from "./failure-classifier";
@@ -1139,6 +1147,7 @@ export async function generateDeckRun(
     }));
     const uploadedCitationFileNames = evidenceFiles.map((file) => file.file_name);
     const dataPrimacyMode = resolveDataPrimacyValidatorMode();
+    const citationFidelityMode = resolveCitationFidelityValidatorMode();
     const advisoryIssues = new Set<string>();
     let latestReconciliation: ReconciliationResult | null = null;
     let latestPlanSheetValidation: PlanSheetNameReport | null = null;
@@ -2118,9 +2127,8 @@ export async function generateDeckRun(
         phaseTelemetry.authorLint = { passed: true, actionableIssueCount: 0, actionableIssues: [], slideViolationCount: 0, deckViolationCount: 0 };
         phaseTelemetry.authorContract = { passed: true, actionableIssueCount: 0, actionableIssues: [], violationCount: 0 };
       } else {
-        latestDataPrimacyReport = dataPrimacyMode === "off"
-          ? null
-          : await runDataPrimacyValidationSafely({
+        latestDataPrimacyReport = shouldRunDataPrimacyDuringGeneration(dataPrimacyMode)
+          ? await runDataPrimacyValidationSafely({
               config,
               runId,
               attempt,
@@ -2131,12 +2139,15 @@ export async function generateDeckRun(
               uploadedWorkbookBuffers,
               phaseTelemetry,
               telemetryKey: "dataPrimacyAuthorSkipped",
-            });
-        latestCitationReport = validateCitations({
-          manifest,
-          uploadedFileNames: uploadedCitationFileNames,
-          fetchedUrls,
-        });
+            })
+          : null;
+        latestCitationReport = shouldRunCitationFidelityDuringGeneration(citationFidelityMode)
+          ? validateCitations({
+              manifest,
+              uploadedFileNames: uploadedCitationFileNames,
+              fetchedUrls,
+            })
+          : null;
         if (latestDataPrimacyReport) {
           await upsertWorkingPaper(config, runId, "data_primacy_report", {
             ...latestDataPrimacyReport,
@@ -2159,7 +2170,7 @@ export async function generateDeckRun(
         const claimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
         const authorValidationIssues = [
           ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
-          ...formatCitationCritiqueIssues(latestCitationReport),
+          ...formatCitationCritiqueIssues(latestCitationReport, citationFidelityMode),
           ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
         ];
         phaseTelemetry.authorLint = {
@@ -2170,10 +2181,12 @@ export async function generateDeckRun(
         };
         phaseTelemetry.authorContract = summarizeDeckContractResult(validateManifestContract(manifest));
         phaseTelemetry.dataPrimacy = summarizeDataPrimacyReport(latestDataPrimacyReport);
-        phaseTelemetry.citationFidelity = {
-          passed: latestCitationReport.passed,
-          violationCount: latestCitationReport.violations.length,
-        };
+        if (latestCitationReport) {
+          phaseTelemetry.citationFidelity = {
+            passed: latestCitationReport.passed,
+            violationCount: latestCitationReport.violations.length,
+          };
+        }
       }
 
       await assertAttemptStillOwnsRun(config, runId, attempt);
@@ -2288,7 +2301,7 @@ export async function generateDeckRun(
     const critiqueContractSummary = summarizeDeckContractResult(critiqueContract);
     const initialValidationIssues = [
       ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
-      ...formatCitationCritiqueIssues(latestCitationReport),
+      ...formatCitationCritiqueIssues(latestCitationReport, citationFidelityMode),
       ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
     ];
     const initialRepairBuckets = bucketRepairIssues({
@@ -2712,9 +2725,8 @@ export async function generateDeckRun(
             await upsertWorkingPaper(config, runId, "claim_traceability_revise", reviseClaimQa.report);
           }
           await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
-          latestDataPrimacyReport = dataPrimacyMode === "off"
-            ? null
-            : await runDataPrimacyValidationSafely({
+          latestDataPrimacyReport = shouldRunDataPrimacyDuringGeneration(dataPrimacyMode)
+            ? await runDataPrimacyValidationSafely({
                 config,
                 runId,
                 attempt,
@@ -2725,12 +2737,15 @@ export async function generateDeckRun(
                 uploadedWorkbookBuffers,
                 phaseTelemetry,
                 telemetryKey: "dataPrimacyReviseSkipped",
-              });
-          latestCitationReport = validateCitations({
-            manifest: finalManifest,
-            uploadedFileNames: uploadedCitationFileNames,
-            fetchedUrls,
-          });
+              })
+            : null;
+          latestCitationReport = shouldRunCitationFidelityDuringGeneration(citationFidelityMode)
+            ? validateCitations({
+                manifest: finalManifest,
+                uploadedFileNames: uploadedCitationFileNames,
+                fetchedUrls,
+              })
+            : null;
           if (latestDataPrimacyReport) {
             await upsertWorkingPaper(config, runId, "data_primacy_report", {
               ...latestDataPrimacyReport,
@@ -2753,7 +2768,7 @@ export async function generateDeckRun(
           const revisedClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
           const revisedValidationIssues = [
             ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
-            ...formatCitationCritiqueIssues(latestCitationReport),
+            ...formatCitationCritiqueIssues(latestCitationReport, citationFidelityMode),
             ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
           ];
           activeManifest = finalManifest;
@@ -2870,7 +2885,7 @@ export async function generateDeckRun(
         const reviseClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
         const reviseValidationIssues = [
           ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
-          ...formatCitationCritiqueIssues(latestCitationReport),
+          ...formatCitationCritiqueIssues(latestCitationReport, citationFidelityMode),
           ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
         ];
         const reviseCheckpointProof = buildCheckpointProof({
@@ -3118,11 +3133,13 @@ export async function generateDeckRun(
               phaseTelemetry,
               telemetryKey: "dataPrimacyExportSkipped",
             });
-        latestCitationReport = validateCitations({
-          manifest: finalManifest,
-          uploadedFileNames: uploadedCitationFileNames,
-          fetchedUrls,
-        });
+        latestCitationReport = citationFidelityMode === "off"
+          ? null
+          : validateCitations({
+              manifest: finalManifest,
+              uploadedFileNames: uploadedCitationFileNames,
+              fetchedUrls,
+            });
         if (latestDataPrimacyReport) {
           await upsertWorkingPaper(config, runId, "data_primacy_report", {
             ...latestDataPrimacyReport,
@@ -3140,7 +3157,7 @@ export async function generateDeckRun(
       }
       const finalValidationAdvisories = [
         ...formatPlanSheetValidationAdvisories(latestPlanSheetValidation),
-        ...formatCitationAdvisories(latestCitationReport),
+        ...formatCitationAdvisories(latestCitationReport, citationFidelityMode),
         ...formatDataPrimacyAdvisories(latestDataPrimacyReport, dataPrimacyMode),
       ];
       for (const issue of finalValidationAdvisories) {
@@ -3227,7 +3244,7 @@ export async function generateDeckRun(
       if (finalLint && finalContract) {
         const finalLintSummary = summarizeLintResult(finalLint);
         const finalValidationIssues = [
-          ...formatCitationCritiqueIssues(latestCitationReport),
+          ...formatCitationCritiqueIssues(latestCitationReport, citationFidelityMode),
           ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
           ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
         ];
@@ -4693,17 +4710,6 @@ function countWebFetchRequests(usage: ClaudeUsage | null | undefined) {
     Number(usage?.server_tool_use?.web_fetch_requests ?? 0) +
     Number(usage?.server_tool_use?.web_search_requests ?? 0)
   );
-}
-
-function resolveDataPrimacyValidatorMode(): "off" | "warn" | "block-hero" {
-  const raw = (process.env.BASQUIO_DATA_PRIMACY_VALIDATOR_MODE ?? "warn").trim().toLowerCase();
-  if (raw === "off" || raw === "warn" || raw === "block-hero") {
-    return raw;
-  }
-  if (raw === "block") {
-    return "block-hero";
-  }
-  return "warn";
 }
 
 function appendScopeAdjustment(businessContext: string, scopeAdjustment: string) {
@@ -8106,7 +8112,7 @@ function formatPlanSheetValidationAdvisories(report: PlanSheetNameReport | null)
 
 function formatDataPrimacyCritiqueIssues(
   report: DataPrimacyReport | null,
-  mode: "off" | "warn" | "block-hero",
+  mode: DataPrimacyValidatorMode,
 ) {
   if (!report || mode !== "block-hero" || report.heroPassed) {
     return [];
@@ -8117,7 +8123,7 @@ function formatDataPrimacyCritiqueIssues(
 
 function formatDataPrimacyAdvisories(
   report: DataPrimacyReport | null,
-  mode: "off" | "warn" | "block-hero",
+  mode: DataPrimacyValidatorMode,
 ) {
   if (!report || mode === "off") {
     return [];
@@ -8142,16 +8148,22 @@ function formatDataPrimacyIssue(claim: UnboundClaim) {
   return `Slide ${claim.slideIndex} data primacy issue [data_primacy]: ${claim.location} claim "${claim.rawText}" is ${classification}.`;
 }
 
-function formatCitationCritiqueIssues(report: CitationFidelityReport | null) {
-  if (!report || report.passed) {
+function formatCitationCritiqueIssues(
+  report: CitationFidelityReport | null,
+  mode: CitationFidelityValidatorMode,
+) {
+  if (!report || report.passed || mode !== "block") {
     return [];
   }
 
   return report.violations.map((violation) => formatCitationViolation(violation));
 }
 
-function formatCitationAdvisories(report: CitationFidelityReport | null) {
-  if (!report || report.passed) {
+function formatCitationAdvisories(
+  report: CitationFidelityReport | null,
+  mode: CitationFidelityValidatorMode,
+) {
+  if (!report || report.passed || mode === "off") {
     return [];
   }
 

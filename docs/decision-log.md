@@ -20,6 +20,18 @@ Cross-references:
 - Canonical memory: `memory/canonical-memory.md` → "Production Incident Memory: April 25, 2026, Anthropic Skills contract outage"
 - Forensic addendum: `memory/march28-48h-forensic-learnings.md`
 
+## April 25, 2026, Validator shadow mode means export-only
+
+Decision:
+- Forensic validators introduced by the April 24 P0 pass must default to true shadow mode when env is unset or `warn`.
+- `data_primacy` and `citation_fidelity` may still run in `export` to persist reports and advisories, but they must not perturb `author`, `critique`, or `revise` unless an explicit blocking mode is enabled.
+- Blocking modes remain opt-in deployment controls, not implicit defaults.
+
+Why:
+- After the authoring contract fix, Rossella's Segafredo rerun progressed into the deck pipeline and then hit the second April 25 failure chain in the new validator lane.
+- The failure mode was not acceptable for a shadow rollout. New workbook reparsing and model-classifier logic had been placed on the main generation path even when the rollout intent was effectively advisory.
+- Production-grade rollout for forensic checks requires fail-soft export execution first, then explicit promotion to blocking only after clean evidence from real runs.
+
 ## April 21, 2026 — Service-scoped Railway configs (post-Discord-bot-silent-death forensic)
 
 Decision:

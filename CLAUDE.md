@@ -106,6 +106,7 @@ Migrations: `supabase/migrations/`
 - **Haiku always keeps explicit `code_execution`.** Haiku does not load Skills and still needs the tool in `tools`, with `web_fetch` added only when the flow is enrich-enabled.
 - **`buildClaudeTools()` is a production boundary.** Any change to `packages/workflows/src/anthropic-execution-contract.ts` or any author/revise tool wiring in `generate-deck.ts` requires `pnpm test:code-exec-no-webfetch` before merge, plus a comparable production rerun after deploy.
 - **The April 25 outage was caused by blessing the wrong behavior in tests.** Commit `eb05537` added a unit test asserting Opus with `webFetchMode: "off"` should send no tools. Deploy `2b3c7d4` surfaced that latent mistake and production went to 5 of 5 failed author runs.
+- **Shadow validators must stay off the author and revise lane by default.** New forensic validators such as data primacy or citation fidelity may run during `export` in best-effort mode when unset or `warn`, but they must not perturb author or revise unless an explicit blocking mode is enabled in env.
 
 ### Haiku execution contract (March 31, 2026, revised April 25, 2026)
 - **`code_execution` MUST be explicit in the tools array for Haiku.** The beta header only enables the API to accept the tool type. Haiku with no skills still needs `{type: "code_execution_20250825", name: "code_execution"}` in `tools`. Without this, `container_upload` blocks are rejected.

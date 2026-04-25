@@ -96,6 +96,7 @@
 - Historical audits or briefs that become non-canonical must be marked as archival at the top and redirected to the current truth source.
 - Do not promote forward-looking SDK features or research claims to canonical runtime guidance without live validation.
 - Any change to `packages/workflows/src/anthropic-execution-contract.ts`, `buildClaudeTools()`, or author/revise tool wiring must run a live no-web-fetch smoke before merge. The canonical command is `pnpm test:code-exec-no-webfetch`.
+- New forensic validators must default to export-only shadow mode. If an env flag is unset or `warn`, the validator may persist reports and advisories, but it must not run on the blocking author or revise path or change publish decisions. Only explicit `block` modes may influence repair routing.
 
 ## Railway / Multi-Service Deploy Rules (CRITICAL — learned April 21, 2026 forensic)
 

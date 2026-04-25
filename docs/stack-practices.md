@@ -147,6 +147,8 @@ Basquio implication:
 - changes to `packages/workflows/src/anthropic-execution-contract.ts` must run live smokes on both the no-web-fetch and enrich branches with a real Anthropic key before merge
 - the canonical local commands are `pnpm test:code-exec-no-webfetch` and `pnpm exec tsx scripts/test-anthropic-skills-contract.ts --web-fetch-mode enrich`
 - if runtime evidence and historical docs disagree, trust the live provider response and update the docs in the same change
+- new forensic validators must be rolled out in true shadow mode: export-only, fail-soft, and advisory-only when env is unset or `warn`
+- do not put new workbook reparsing or model-classifier validators on author or revise unless the mode is explicitly blocking and the exact live run path has been proven with production evidence
 
 ## Browserless
 
