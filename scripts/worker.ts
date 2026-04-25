@@ -84,6 +84,10 @@ type ActiveRunState = {
   abortController: AbortController;
 };
 
+type AttemptRecoveryReasonRow = {
+  recovery_reason: string | null;
+};
+
 function getMeaningfulStaleMinutesForPhase(phase: string | null | undefined) {
   switch (phase) {
     case "author":
@@ -330,9 +334,14 @@ async function processRun(
         const newAttemptId = randomUUID();
         const newAttemptNumber = attempt.attempt_number + 1;
         const now = new Date().toISOString();
-        const recoveryReason = failureClass === "transient_network"
+        const baseRecoveryReason = failureClass === "transient_network"
           ? "transient_network_retry"
           : "transient_provider_retry";
+        const recoveryReason = await buildAutomaticRecoveryReason(
+          config,
+          attempt.id,
+          baseRecoveryReason,
+        );
 
         const recoveryRows = await callWorkerRpc<Array<{ attempt_id: string; attempt_number: number }>>({
           supabaseUrl: config.supabaseUrl,
@@ -505,7 +514,11 @@ async function recoverAttemptForShutdown(
       p_old_attempt_id: attempt.id,
       p_new_attempt_id: randomUUID(),
       p_new_attempt_number: attempt.attempt_number + 1,
-      p_recovery_reason: SHUTDOWN_RECOVERY_REASON,
+      p_recovery_reason: await buildAutomaticRecoveryReason(
+        config,
+        attempt.id,
+        SHUTDOWN_RECOVERY_REASON,
+      ),
       p_now: now,
       p_expected_old_status: "running",
       p_old_status_override: "failed",
@@ -810,7 +823,11 @@ async function recoverStaleAttempts(config: ReturnType<typeof resolveConfig>) {
         p_old_attempt_id: attempt.id,
         p_new_attempt_id: newAttemptId,
         p_new_attempt_number: newAttemptNumber,
-        p_recovery_reason: "stale_timeout",
+        p_recovery_reason: await buildAutomaticRecoveryReason(
+          config,
+          attempt.id,
+          "stale_timeout",
+        ),
         p_now: now,
         p_expected_old_status: "running",
         p_old_status_override: "failed",
@@ -1004,6 +1021,45 @@ function startHeartbeat(config: ReturnType<typeof resolveConfig>, attempt: Queue
   timer.unref?.();
 
   return () => clearInterval(timer);
+}
+
+async function buildAutomaticRecoveryReason(
+  config: ReturnType<typeof resolveConfig>,
+  attemptId: string,
+  baseReason: string,
+) {
+  const priorReason = await loadAttemptRecoveryReason(config, attemptId);
+  return composeRecoveryReason(baseReason, priorReason);
+}
+
+async function loadAttemptRecoveryReason(
+  config: ReturnType<typeof resolveConfig>,
+  attemptId: string,
+) {
+  const rows = await fetchRestRows<AttemptRecoveryReasonRow>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      select: "recovery_reason",
+      id: `eq.${attemptId}`,
+      limit: "1",
+    },
+  }).catch(() => []);
+
+  return rows[0]?.recovery_reason ?? null;
+}
+
+function composeRecoveryReason(baseReason: string, priorReason: string | null | undefined) {
+  if (!priorReason || priorReason === baseReason) {
+    return baseReason;
+  }
+
+  if (priorReason.startsWith(`${baseReason}_after_`)) {
+    return priorReason;
+  }
+
+  return `${baseReason}_after_${priorReason}`;
 }
 
 async function processTemplateImportJobs(config: ReturnType<typeof resolveConfig>) {

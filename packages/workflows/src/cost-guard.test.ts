@@ -146,6 +146,8 @@ describe("cost-guard", () => {
   it("resets cross-attempt budget for operator prod reruns after a fix", () => {
     expect(shouldResetCrossAttemptBudget("rossella_prod_rerun_after_publish_path_fix")).toBe(true);
     expect(shouldResetCrossAttemptBudget("manual_code_fix_rerun")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("worker_shutdown_after_operator_rerun_after_revise_contract_fix")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("stale_timeout_after_rossella_prod_rerun_after_publish_path_fix")).toBe(true);
   });
 
   it("keeps cross-attempt budget active for normal and transient retries", () => {
