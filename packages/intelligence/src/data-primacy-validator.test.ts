@@ -12,6 +12,18 @@ async function buildWorkbookBuffer(rows: Array<Array<string | number>>) {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
+async function buildSparseWorkbookBuffer() {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("w34 Cocktails on tap");
+  sheet.getCell("A1").value = "metric";
+  sheet.getCell("C1").value = "value";
+  sheet.getCell("A2").value = "respondents";
+  sheet.getCell("C2").value = 100;
+  sheet.getCell("A3").value = "trial_rate";
+  sheet.getCell("C3").value = 0.135;
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
 function buildDatasetProfile(): DatasetProfile {
   return {
     datasetId: "dataset-1",
@@ -165,6 +177,62 @@ describe("validateDataPrimacy", () => {
 
     expect(report.heroPassed).toBe(true);
     expect(report.unboundClaims).toHaveLength(0);
+  });
+
+  it("handles sparse workbook headers without throwing", async () => {
+    const workbook = await buildSparseWorkbookBuffer();
+
+    const report = await validateDataPrimacy({
+      manifest: {
+        slides: [{
+          position: 1,
+          title: "100 respondents",
+          body: "Trial intent 13,5%",
+        }],
+        charts: [],
+      },
+      datasetProfile: buildDatasetProfile(),
+      uploadedWorkbookBuffers: [{ fileName: "cocktails.xlsx", buffer: workbook }],
+    });
+
+    expect(report.heroPassed).toBe(true);
+    expect(report.bodyPassed).toBe(true);
+    expect(report.unboundClaims).toHaveLength(0);
+  });
+
+  it("falls back to unbound classification when the classifier returns malformed JSON", async () => {
+    const workbook = await buildWorkbookBuffer([
+      ["metric", "value"],
+      ["buyers", 25],
+      ["base", 40],
+    ]);
+
+    const report = await validateDataPrimacy({
+      client: {
+        beta: {
+          messages: {
+            create: async () => ({
+              content: [{ type: "text", text: "not json" }],
+            }),
+          },
+        },
+      } as never,
+      manifest: {
+        slides: [{
+          position: 2,
+          title: "Survey readout",
+          body: "Purchase intent reaches 62.5%",
+        }],
+        charts: [],
+      },
+      datasetProfile: buildDatasetProfile(),
+      uploadedWorkbookBuffers: [{ fileName: "cocktails.xlsx", buffer: workbook }],
+    });
+
+    expect(report.heroPassed).toBe(true);
+    expect(report.bodyPassed).toBe(false);
+    expect(report.unboundClaims).toHaveLength(1);
+    expect(report.unboundClaims[0]?.classification).toBe("unbound-invented");
   });
 
   it("treats an empty deck as passing", async () => {

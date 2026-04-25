@@ -1021,6 +1021,38 @@ async function runClaimTraceabilityQaSafely(input: {
   }
 }
 
+async function runDataPrimacyValidationSafely(input: {
+  config: ReturnType<typeof resolveConfig>;
+  runId: string;
+  attempt: AttemptContext;
+  phase: "author" | "revise" | "export";
+  client: Anthropic;
+  manifest: Parameters<typeof validateDataPrimacy>[0]["manifest"];
+  datasetProfile: Parameters<typeof validateDataPrimacy>[0]["datasetProfile"];
+  uploadedWorkbookBuffers: Parameters<typeof validateDataPrimacy>[0]["uploadedWorkbookBuffers"];
+  phaseTelemetry: Record<string, unknown>;
+  telemetryKey: string;
+}) {
+  try {
+    return await validateDataPrimacy({
+      client: input.client,
+      manifest: input.manifest,
+      datasetProfile: input.datasetProfile,
+      uploadedWorkbookBuffers: input.uploadedWorkbookBuffers,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[generateDeckRun] data primacy validation skipped during ${input.phase}: ${message.slice(0, 300)}`);
+    input.phaseTelemetry[input.telemetryKey] = {
+      reason: message.slice(0, 300),
+    };
+    await insertEvent(input.config, input.runId, input.attempt, input.phase, "data_primacy_skipped", {
+      message: message.slice(0, 300),
+    }).catch(() => {});
+    return null;
+  }
+}
+
 const RECOVERY_ATTEMPT_REUSE_REASONS = new Set([
   "stale_timeout",
   "transient_provider_retry",
@@ -2088,11 +2120,17 @@ export async function generateDeckRun(
       } else {
         latestDataPrimacyReport = dataPrimacyMode === "off"
           ? null
-          : await validateDataPrimacy({
+          : await runDataPrimacyValidationSafely({
+              config,
+              runId,
+              attempt,
+              phase: "author",
               client,
               manifest,
               datasetProfile: parsed.datasetProfile,
               uploadedWorkbookBuffers,
+              phaseTelemetry,
+              telemetryKey: "dataPrimacyAuthorSkipped",
             });
         latestCitationReport = validateCitations({
           manifest,
@@ -2676,11 +2714,17 @@ export async function generateDeckRun(
           await upsertWorkingPaper(config, runId, "visual_qa_revise", finalVisualQa);
           latestDataPrimacyReport = dataPrimacyMode === "off"
             ? null
-            : await validateDataPrimacy({
+            : await runDataPrimacyValidationSafely({
+                config,
+                runId,
+                attempt,
+                phase: "revise",
                 client,
                 manifest: finalManifest,
                 datasetProfile: parsed.datasetProfile,
                 uploadedWorkbookBuffers,
+                phaseTelemetry,
+                telemetryKey: "dataPrimacyReviseSkipped",
               });
           latestCitationReport = validateCitations({
             manifest: finalManifest,
@@ -3062,11 +3106,17 @@ export async function generateDeckRun(
       if (!isReportOnly) {
         latestDataPrimacyReport = dataPrimacyMode === "off"
           ? null
-          : await validateDataPrimacy({
+          : await runDataPrimacyValidationSafely({
+              config,
+              runId,
+              attempt,
+              phase: "export",
               client,
               manifest: finalManifest,
               datasetProfile: parsed.datasetProfile,
               uploadedWorkbookBuffers,
+              phaseTelemetry,
+              telemetryKey: "dataPrimacyExportSkipped",
             });
         latestCitationReport = validateCitations({
           manifest: finalManifest,

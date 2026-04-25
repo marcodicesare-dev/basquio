@@ -270,8 +270,15 @@ async function buildWorkbookVocabulary(
     }
 
     for (const worksheet of workbook.worksheets) {
-      const rows = worksheet.getSheetValues().slice(1).map((row) => Array.isArray(row) ? row.slice(1) : []);
-      const headers = (rows[0] ?? []).map((value, index) => normalizeHeader(value, index));
+      const rows = worksheet
+        .getSheetValues()
+        .slice(1)
+        .map((row) => densifyWorksheetRow(Array.isArray(row) ? row.slice(1) : []));
+      const maxColumnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
+      const headers = Array.from(
+        { length: maxColumnCount },
+        (_, index) => normalizeHeader((rows[0] ?? [])[index], index),
+      );
       const bodyRows = rows.slice(1).filter((row) => row.some((value) => value !== null && value !== undefined && `${value}`.trim() !== ""));
       datasetSummaryParts.push(`${worksheet.name}: ${bodyRows.length} rows, ${headers.length} columns`);
 
@@ -279,7 +286,7 @@ async function buildWorkbookVocabulary(
         workbookSamples.push({
           sheet: worksheet.name,
           row: rowIndex + 1,
-          values: Object.fromEntries(headers.map((header, colIndex) => [header, bodyRows[rowIndex]?.[colIndex] ?? null])),
+          values: Object.fromEntries(headers.map((header, colIndex) => [header, bodyRows[rowIndex]?.[colIndex] ?? null] as const)),
         });
       }
 
@@ -318,6 +325,10 @@ async function buildWorkbookVocabulary(
 function normalizeHeader(value: ExcelJS.CellValue | undefined, index: number) {
   const text = typeof value === "string" ? value.trim() : `${value ?? ""}`.trim();
   return text || `column_${index + 1}`;
+}
+
+function densifyWorksheetRow(row: ExcelJS.CellValue[]) {
+  return Array.from({ length: row.length }, (_, index) => row[index]);
 }
 
 function normalizeNumericCell(value: ExcelJS.CellValue | undefined) {
@@ -472,12 +483,42 @@ async function classifyUnboundClaims(input: {
   const rawText = response.content
     .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
     .join("\n");
-  const parsed = JSON.parse(stripFence(rawText)) as Array<NumericClaim["classification"]>;
+  const parsed = parseClassificationResponse(rawText);
+  if (!parsed) {
+    return input.claims.map((claim) => ({
+      ...claim,
+      classification: "unbound-invented" as const,
+    }));
+  }
 
   return input.claims.map((claim, index) => ({
     ...claim,
     classification: parsed[index] ?? "unbound-invented",
   }));
+}
+
+function parseClassificationResponse(value: string) {
+  try {
+    const parsed = JSON.parse(stripFence(value));
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed.map((entry) => normalizeClassification(entry));
+  } catch {
+    return null;
+  }
+}
+
+function normalizeClassification(value: unknown): NumericClaim["classification"] {
+  switch (value) {
+    case "bound-via-derivation":
+    case "bound-via-ratio":
+    case "unbound-external":
+    case "unbound-invented":
+      return value;
+    default:
+      return "unbound-invented";
+  }
 }
 
 function stripFence(value: string) {
