@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { assertDeckSpendWithinBudget, enforceDeckBudget } from "./cost-guard";
+import {
+  assertDeckSpendWithinBudget,
+  enforceDeckBudget,
+  shouldResetCrossAttemptBudget,
+} from "./cost-guard";
 
 type FakeCountTokens = () => Promise<{ input_tokens: number }>;
 
@@ -137,5 +141,16 @@ describe("cost-guard", () => {
 
     expect(result.overBudget).toBe(false);
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("resets cross-attempt budget for operator prod reruns after a fix", () => {
+    expect(shouldResetCrossAttemptBudget("rossella_prod_rerun_after_publish_path_fix")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("manual_code_fix_rerun")).toBe(true);
+  });
+
+  it("keeps cross-attempt budget active for normal and transient retries", () => {
+    expect(shouldResetCrossAttemptBudget(null)).toBe(false);
+    expect(shouldResetCrossAttemptBudget("transient_provider_retry")).toBe(false);
+    expect(shouldResetCrossAttemptBudget("worker_shutdown")).toBe(false);
   });
 });
