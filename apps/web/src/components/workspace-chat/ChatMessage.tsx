@@ -592,6 +592,12 @@ function toolFrameLabel(toolName: string) {
       return "More metric detail";
     case "retrieveContext":
       return "More cited context";
+    case "webSearch":
+      return "More web search detail";
+    case "memory":
+      return "More memory detail";
+    case "draftBrief":
+      return "More brief detail";
     case "suggestServices":
       return "More service ideas";
     default:
