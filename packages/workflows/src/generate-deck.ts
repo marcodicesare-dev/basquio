@@ -147,6 +147,10 @@ const HARD_QA_BLOCKERS = new Set([
   "slide_count_within_requested_plus_appendix_cap",
   "content_slide_count_matches_request",
   "appendix_slide_count_within_cap",
+  "chart_density_fits_layout_slots",
+  "rendered_page_visual_green",
+  "rendered_page_visual_no_revision",
+  "rendered_page_numeric_labels_clean",
   "report_only_manifest_zero_slides",
   "pptx_zip_parse_failed",
 ]);
@@ -5382,6 +5386,37 @@ function isTerminalClosingContractIssue(issue: string) {
   return normalized.includes("last slide should be summary or recommendation layout");
 }
 
+function buildReviseIssueDirectives(issues: string[]) {
+  const normalizedIssues = issues.map((issue) => issue.toLowerCase());
+  const directives: string[] = [
+    "Treat every blocking issue below as mandatory. The revise turn is incomplete until the blocking issues are fixed or the unsupported claim or visual element is removed.",
+  ];
+
+  if (normalizedIssues.some((issue) => issue.includes("[em_dash]"))) {
+    directives.push("If a critique issue says em_dash, replace every em dash with a comma, colon, or sentence break. Zero em dashes are allowed anywhere in the deck copy.");
+  }
+  if (normalizedIssues.some((issue) => issue.includes("[title_no_number]") || issue.includes("[title_number_coverage]"))) {
+    directives.push("If a critique issue says title_no_number or title_number_coverage, rewrite the analytical title so it contains one evidence-backed number. Do not add filler numbers.");
+  }
+  if (normalizedIssues.some((issue) => issue.includes("[title_claim_unverified]") || issue.includes("[data_primacy]"))) {
+    directives.push("If a critique issue says title_claim_unverified or data_primacy, remove the unsupported number or rewrite the claim so it matches the linked evidence exactly. Never preserve a numeric claim that the evidence does not support.");
+  }
+  if (normalizedIssues.some((issue) => issue.includes("[claim_chart_metric_mismatch]") || issue.includes("[distribution_claim_without_productivity_proof]"))) {
+    directives.push("If a critique issue says claim_chart_metric_mismatch or distribution_claim_without_productivity_proof, either add the cited metric directly to the exhibit or rewrite the copy so it only claims what the visible chart proves.");
+  }
+  if (normalizedIssues.some((issue) => issue.includes("[bubble_size_legend_missing]"))) {
+    directives.push("If a critique issue says bubble_size_legend_missing, add an explicit bubble-size legend label with units, or change to a non-bubble chart if size is not analytically required.");
+  }
+  if (normalizedIssues.some((issue) => issue.includes("chart exposes") && issue.includes("capped at"))) {
+    directives.push("If a critique issue says the chart exceeds the layout slot cap, aggregate the tail into Other, switch to a horizontal chart when needed, or change the grammar so the category count fits the slot budget.");
+  }
+  if (normalizedIssues.some((issue) => issue.includes("[plan_sheet_name]") || issue.includes("[citation_fidelity]"))) {
+    directives.push("If a critique issue says plan_sheet_name or citation_fidelity, use only exact uploaded sheet names and exact uploaded source names. Do not invent workbook tabs, files, or citations.");
+  }
+
+  return directives;
+}
+
 export function buildReviseMessage(input: {
   issues: string[];
   manifest: z.infer<typeof deckManifestSchema>;
@@ -5392,12 +5427,18 @@ export function buildReviseMessage(input: {
   const chartPreprocessingGuide = buildChartPreprocessingGuide();
   const slideScope = buildReviseSlideScope(input.manifest, input.issues, input.visualQa);
   const primaryVisualIssues = input.visualQa.issues.filter((issue) => issue.severity === "major" || issue.severity === "critical");
-  const secondaryIssues = input.issues.filter((issue) => {
-    return !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
+  const nonVisualBlockingIssues = input.issues.filter((issue) => {
+    return isBlockingRepairIssue(issue) && !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
   });
+  const advisoryIssues = input.issues.filter((issue) => {
+    return !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
+  }).filter((issue) => !nonVisualBlockingIssues.includes(issue));
+  const reviseIssueDirectives = buildReviseIssueDirectives(input.issues);
   const targetSlideCountInstruction = typeof input.targetSlideCount === "number" && input.targetSlideCount > 0
     ? `The user asked for exactly ${input.targetSlideCount} content slides. Keep exactly ${input.targetSlideCount} content slides, plus one structural cover, plus at most one structural closing slide.`
     : "Keep the requested content-slide count exact, plus one structural cover, plus at most one structural closing slide.";
+  const canUseAnySlide = slideScope.allowedSlides.length === input.manifest.slides.length;
+
   return {
     role: "user" as const,
     content: [
@@ -5420,7 +5461,7 @@ export function buildReviseMessage(input: {
           "If a client PPTX template is present in the container, continue using it as the visual source of truth. Do not drift back to Basquio dark/editorial styling during repair.",
           `Current rendered visual QA score: ${input.visualQa.score}/10 (${input.visualQa.overallStatus}). Improve the rendered visual quality from this baseline.`,
           "",
-          slideScope.allowedSlides.length === input.manifest.slides.length
+          canUseAnySlide
             ? "You may change any slide, but still preserve the storyline and keep edits minimal."
             : `You may change ONLY these slides: ${slideScope.allowedSlides.map((slide) => `${slide.position} (${slide.title})`).join(", ")}.`,
           ...(slideScope.preservedSlides.length > 0
@@ -5440,11 +5481,18 @@ export function buildReviseMessage(input: {
           ...(primaryVisualIssues.length > 0
             ? primaryVisualIssues.map((issue) => `- Slide ${issue.slidePosition} ${issue.code}: ${issue.description}. Fix: ${issue.fix}`)
             : ["- No major visual issues were supplied; make only the smallest fixes needed."]),
-          ...(secondaryIssues.length > 0
+          ...(nonVisualBlockingIssues.length > 0
             ? [
                 "",
-                "Secondary issues to consider only if they can be fixed within the same allowed slides and WITHOUT creating new visual defects:",
-                ...secondaryIssues.map((issue) => `- ${issue}`),
+                "Mandatory non-visual issues to fix in the same revise turn:",
+                ...nonVisualBlockingIssues.map((issue) => `- ${issue}`),
+              ]
+            : []),
+          ...(advisoryIssues.length > 0
+            ? [
+                "",
+                "Secondary advisories to clean up only after the blocking issues above are fixed and without regressing repaired slides:",
+                ...advisoryIssues.map((issue) => `- ${issue}`),
               ]
             : []),
           "",
@@ -5454,7 +5502,7 @@ export function buildReviseMessage(input: {
           "If you include a structural closing slide, it must be the final slide. Never place an analytical or support slide after a summary, title-body, title-bullets, or recommendation-cards closing slide.",
           "Do not widen or compress the deck unless you are fixing a count-contract failure. If a critique issue says [content_shortfall], [content_overflow], or [appendix_overfill], you may add or remove only the minimum slides needed to restore the requested content-slide count and keep appendix within the allowed top-up cap.",
           "If there is one surplus slide, remove the weakest trailing support slide instead of weakening the storyline or appending material after a closing slide.",
-          "If a critique issue says title_claim_unverified or data_primacy, remove the unsupported number or rewrite the claim so it matches the linked evidence exactly. Never preserve a numeric claim that the evidence does not support.",
+          ...reviseIssueDirectives,
           "If a critique issue says a slide violates its archetype, repair the slide so the required slots for that archetype are genuinely present, not just visually implied.",
           "Re-apply the deterministic chart preprocessing guide when rebuilding any chart:",
           chartPreprocessingGuide,
@@ -8333,7 +8381,7 @@ function formatDataPrimacyAdvisories(
   const advisories: string[] = [];
   if (!report.heroPassed) {
     advisories.push(
-      `Data primacy hero check failed for ${report.heroUnbound.length} claim(s), publish remained allowed in ${mode} mode after revise budget was exhausted.`,
+      `Data primacy hero check failed for ${report.heroUnbound.length} claim(s), publish remained allowed in ${mode} mode while unresolved hero claims remained after revise.`,
     );
   }
   if (!report.bodyPassed) {
@@ -8574,18 +8622,20 @@ function summarizeDeckContractResult(contract: ReturnType<typeof validateManifes
   };
 }
 
-function collectPublishGateFailures(input: {
+export function collectPublishGateFailures(input: {
   qaReport: Awaited<ReturnType<typeof buildQaReport>>;
   lint: ReturnType<typeof lintManifest>;
   contract: ReturnType<typeof validateManifestContract>;
   claimIssues?: ClaimTraceabilityIssue[];
 }) {
-  const blockingFailures = input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check));
-  const advisories = [
-    ...input.qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
+  const blockingFailures = [
+    ...input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check)),
     ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
     ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
     ...((input.claimIssues ?? []).map((issue) => `claim:${formatClaimTraceabilityIssue(issue)}`)),
+  ];
+  const advisories = [
+    ...input.qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
   ];
 
   return {
@@ -8877,7 +8927,7 @@ function deckStillNeedsRevise(input: {
   );
 }
 
-function computeReviseIterationBudget(input: {
+export function computeReviseIterationBudget(input: {
   frontierState: RepairFrontierState;
   repairLane: RepairLane;
 }) {
@@ -8893,16 +8943,34 @@ function computeReviseIterationBudget(input: {
     (input.frontierState.visualScore < 5 ? 4 : input.frontierState.visualScore < 7 ? 2 : 0);
 
   if (input.repairLane === "haiku") {
+    if (
+      severityWeight >= 12 ||
+      input.frontierState.blockingContractIssueCount >= 4 ||
+      input.frontierState.claimTraceabilityIssueCount >= 2
+    ) {
+      return 3;
+    }
     return severityWeight >= 6 ? 2 : 1;
   }
 
-  if (severityWeight >= 18) {
-    return 3;
+  if (
+    severityWeight >= 24 ||
+    input.frontierState.blockingContractIssueCount >= 10 ||
+    input.frontierState.claimTraceabilityIssueCount >= 3
+  ) {
+    return 5;
+  }
+  if (
+    severityWeight >= 14 ||
+    input.frontierState.blockingContractIssueCount >= 5 ||
+    input.frontierState.blockingVisualIssueCount >= 2
+  ) {
+    return 4;
   }
   if (severityWeight >= 8) {
-    return 2;
+    return 3;
   }
-  return 1;
+  return 2;
 }
 
 function countStructuralSlidesInManifest(manifest: z.infer<typeof deckManifestSchema>) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildReviseMessage } from "./generate-deck";
+import { buildReviseMessage, computeReviseIterationBudget } from "./generate-deck";
 
 const manifest = {
   slideCount: 3,
@@ -56,7 +56,6 @@ describe("buildReviseMessage", () => {
     expect(text).toContain("If a critique issue says [content_shortfall], [content_overflow], or [appendix_overfill]");
     expect(text).toContain("If you include a structural closing slide, it must be the final slide.");
     expect(text).toContain("If there is one surplus slide, remove the weakest trailing support slide");
-    expect(text).toContain("If a critique issue says title_claim_unverified or data_primacy");
     expect(text).toContain("The user asked for exactly 10 content slides.");
   });
 
@@ -74,5 +73,44 @@ describe("buildReviseMessage", () => {
     const text = extractText(message);
     expect(text).toContain("You may change ONLY these slides: 2 (Market).");
     expect(text).toContain("Do NOT change these slides: 1 (Cover), 3 (Summary).");
+  });
+
+  it("treats non-visual blocking issues as mandatory, not optional", () => {
+    const message = buildReviseMessage({
+      issues: [
+        "Slide 2 writing issue [em_dash]: Em dash in title (title)",
+        "Slide 2 writing issue [title_no_number]: Non-cover title has no number (title)",
+        "Slide 2 fidelity issue [title_claim_unverified]: Title number \"+22%\" is not verifiable from the linked slide data.",
+        "Slide 2 fidelity issue [claim_chart_metric_mismatch]: Slide commentary says the story is price-led, but the hero chart does not show price mechanics or value-vs-volume decomposition.",
+        "Slide 2 chart exposes 15 categories but the title-chart chart slot is capped at 12. Aggregate the tail, switch to horizontal orientation, or change the grammar.",
+      ],
+      manifest,
+      currentPdf,
+      visualQa,
+      targetSlideCount: 10,
+    });
+
+    const text = extractText(message);
+    expect(text).toContain("Mandatory non-visual issues to fix in the same revise turn:");
+    expect(text).toContain("If a critique issue says em_dash, replace every em dash");
+    expect(text).toContain("If a critique issue says title_no_number or title_number_coverage");
+    expect(text).toContain("If a critique issue says title_claim_unverified or data_primacy");
+    expect(text).toContain("If a critique issue says claim_chart_metric_mismatch or distribution_claim_without_productivity_proof");
+    expect(text).toContain("If a critique issue says the chart exceeds the layout slot cap");
+    expect(text).not.toContain("Secondary issues to consider only if they can be fixed");
+  });
+
+  it("grants more revise loops for heavy sonnet repair frontiers", () => {
+    expect(computeReviseIterationBudget({
+      repairLane: "sonnet",
+      frontierState: {
+        blockingContractIssueCount: 8,
+        claimTraceabilityIssueCount: 1,
+        blockingVisualIssueCount: 2,
+        visualScore: 6.2,
+        advisoryIssueCount: 3,
+        deckNeedsRevision: true,
+      },
+    })).toBe(5);
   });
 });
