@@ -1,3 +1,4 @@
+import { parse as parseCsv } from "csv-parse/sync";
 import ExcelJS from "exceljs";
 import mammoth from "mammoth";
 import { NextResponse } from "next/server";
@@ -65,7 +66,15 @@ export async function GET(
   const fileType = (doc.file_type ?? "").toLowerCase();
   const extension = fileType || filename.split(".").pop()?.toLowerCase() || "";
 
-  if (["txt", "md", "gsp", "json", "yaml", "yml", "csv"].includes(extension)) {
+  if (extension === "csv") {
+    const rows = parseCsvPreview(await blob.text());
+    return NextResponse.json({
+      kind: "spreadsheet",
+      sheets: [{ name: filename, rows }],
+    });
+  }
+
+  if (["txt", "md", "gsp", "json", "yaml", "yml"].includes(extension)) {
     return NextResponse.json({
       kind: "text",
       text: (await blob.text()).slice(0, MAX_TEXT_CHARS),
@@ -120,4 +129,17 @@ function formatCellValue(value: unknown): string {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function parseCsvPreview(text: string): string[][] {
+  const records = parseCsv(text, {
+    bom: true,
+    relax_column_count: true,
+    skip_empty_lines: false,
+    to_line: MAX_ROWS,
+  }) as unknown[][];
+
+  return records.map((row) =>
+    row.slice(0, MAX_COLUMNS).map((cell) => formatCellValue(cell)),
+  );
 }

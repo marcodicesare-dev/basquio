@@ -22,6 +22,7 @@ type PreviewPayload =
 
 type PreviewState =
   | { kind: "idle" }
+  | { kind: "unavailable"; documentId: string; message: string }
   | { kind: "loading"; documentId: string }
   | { kind: "ready"; documentId: string; payload: PreviewPayload }
   | { kind: "error"; documentId: string; message: string };
@@ -69,6 +70,14 @@ function getDocumentKind(doc: WorkspaceDocumentRow): "pdf" | "image" | "sheet" |
   if (["pptx", "ppt"].includes(extension)) return "deck";
   if (["txt", "md", "gsp", "json", "yaml", "yml", "docx"].includes(extension)) return "text";
   return "file";
+}
+
+function getUnsupportedPreviewMessage(doc: WorkspaceDocumentRow): string {
+  const kind = getDocumentKind(doc);
+  if (kind === "deck") {
+    return "PowerPoint preview is not available in the browser. Download the original to inspect the deck.";
+  }
+  return "Inline preview is not available for this file type. Download the original to inspect it.";
 }
 
 function DocumentIcon({ doc }: { doc: WorkspaceDocumentRow }) {
@@ -125,6 +134,15 @@ export function WorkspaceDocumentList({
     const documentKind = getDocumentKind(selectedDocument);
     if (documentKind === "pdf" || documentKind === "image") {
       setPreview({ kind: "idle" });
+      return;
+    }
+
+    if (documentKind === "deck" || documentKind === "file") {
+      setPreview({
+        kind: "unavailable",
+        documentId: selectedDocument.id,
+        message: getUnsupportedPreviewMessage(selectedDocument),
+      });
       return;
     }
 
@@ -242,6 +260,7 @@ function DocumentPreview({
   }
 
   const documentKind = getDocumentKind(document);
+  const canOpenInline = documentKind === "pdf" || documentKind === "image";
   const openUrl = buildDocumentUrl(document.id, "download");
   const downloadUrl = buildDocumentUrl(document.id, "download", true);
 
@@ -261,10 +280,12 @@ function DocumentPreview({
           </p>
         </div>
         <div className="wbeta-docpreview-actions">
-          <a href={openUrl} target="_blank" rel="noreferrer" className="wbeta-docpreview-action">
-            <ArrowSquareOut size={15} weight="bold" />
-            <span>Open</span>
-          </a>
+          {canOpenInline ? (
+            <a href={openUrl} target="_blank" rel="noreferrer" className="wbeta-docpreview-action">
+              <ArrowSquareOut size={15} weight="bold" />
+              <span>Open</span>
+            </a>
+          ) : null}
           <a href={downloadUrl} className="wbeta-docpreview-action wbeta-docpreview-action-primary">
             <DownloadSimple size={15} weight="bold" />
             <span>Download</span>
@@ -323,6 +344,15 @@ function PreviewContent({
     return (
       <div className="wbeta-docpreview-message">
         <p className="wbeta-docpreview-message-title">Preview unavailable.</p>
+        <p>{preview.message}</p>
+      </div>
+    );
+  }
+
+  if (preview.kind === "unavailable") {
+    return (
+      <div className="wbeta-docpreview-message">
+        <p className="wbeta-docpreview-message-title">Download original.</p>
         <p>{preview.message}</p>
       </div>
     );

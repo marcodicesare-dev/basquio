@@ -16,7 +16,10 @@ type DocumentRow = WorkspaceDocumentListProps["documents"][number];
 beforeEach(() => {
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
-    json: async () => ({ kind: "text", text: "Category growth is driven by reusable files." }),
+    json: async () => ({
+      kind: "spreadsheet",
+      sheets: [{ name: "Coffee repository.csv", rows: [["Category", "Growth"], ["Coffee", "12%"]] }],
+    }),
   }) as unknown as typeof fetch;
 });
 
@@ -36,7 +39,8 @@ describe("WorkspaceDocumentList", () => {
       );
     });
 
-    expect(await screen.findByText("Category growth is driven by reusable files.")).not.toBeNull();
+    expect(await screen.findByText("Coffee")).not.toBeNull();
+    expect(screen.getByText("12%")).not.toBeNull();
     expect(screen.getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
       "/api/workspace/documents/11111111-1111-4111-8111-111111111111/download?download=1",
     );
@@ -55,6 +59,22 @@ describe("WorkspaceDocumentList", () => {
     expect(
       screen.getByTitle("Preview of Coffee outlook.pdf").getAttribute("src"),
     ).toBe("/api/workspace/documents/22222222-2222-4222-8222-222222222222/download");
+  });
+
+  it("does not fetch fake previews for PowerPoint files", async () => {
+    const deck = documentRow({
+      filename: "Coffee deck.pptx",
+      file_type: "pptx",
+    });
+
+    render(React.createElement(WorkspaceDocumentList, { documents: [deck] }));
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.getByText("PowerPoint preview is not available in the browser. Download the original to inspect the deck.")).not.toBeNull();
+    expect(screen.queryByRole("link", { name: "Open" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
+      "/api/workspace/documents/11111111-1111-4111-8111-111111111111/download?download=1",
+    );
   });
 });
 

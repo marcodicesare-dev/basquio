@@ -13357,6 +13357,7 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-docpreview-tablewrap {
   padding: 17px;
+  overflow: auto;
 }
 
 .wbeta-docpreview-sheet {
@@ -13367,13 +13368,22 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-docpreview-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   background: var(--surface-strong);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   font-size: 12px;
+}
+
+.wbeta-docpreview-table tr:first-child td {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--canvas-stage);
+  font-weight: 700;
 }
 
 .wbeta-docpreview-table td {
