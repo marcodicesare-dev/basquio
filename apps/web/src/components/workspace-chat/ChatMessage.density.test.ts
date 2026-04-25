@@ -27,7 +27,7 @@ describe("ChatMessage density rules", () => {
     expect(container.querySelectorAll(".wbeta-ai-tool-frame")).toHaveLength(4);
     expect(container.querySelectorAll(".wbeta-ai-tool-frame-compact")).toHaveLength(1);
     expect(container.querySelector(".wbeta-ai-tool-frame-compact summary")?.textContent).toContain(
-      "Show all",
+      "Details",
     );
   });
 });

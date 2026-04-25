@@ -312,7 +312,7 @@ describe("WorkspaceChat composer", () => {
     });
   });
 
-  it("keeps an uploaded file attached when memory indexing fails", async () => {
+  it("keeps an uploaded file attached when workspace search prep fails", async () => {
     uploadWorkspaceFileMock.mockResolvedValue({
       id: "d135e80d-2f1a-4760-95c3-a8393ef2dd68",
       status: "failed",
@@ -338,13 +338,13 @@ describe("WorkspaceChat composer", () => {
     });
 
     expect(await screen.findByText("2026_Tablets shifting FY 2025.pptx")).not.toBeNull();
-    expect(screen.getByText(/attached, direct file ready/i)).not.toBeNull();
+    expect(screen.getByText(/attached, readable here/i)).not.toBeNull();
     expect(screen.queryByText(/upload failed/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /retry indexing 2026_Tablets/i })).toBeNull();
-    expect(screen.getByRole("button", { name: /what direct file ready means/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /status details for 2026_Tablets/i })).not.toBeNull();
     expect(
       screen.getByText(
-        "Basquio can still read this original file in this chat. The background memory index did not finish, so broader workspace search may not cite it yet.",
+        "Basquio can still read the original file in this chat. It is not yet available for broader workspace search.",
       ),
     ).not.toBeNull();
   });
@@ -396,8 +396,8 @@ describe("WorkspaceChat composer", () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     expect(await screen.findByText("NIQ Shifting Analysis - Product Template Guide.pdf")).not.toBeNull();
-    expect(screen.getByText(/saved to workspace, chat attach failed/i)).not.toBeNull();
-    expect(screen.queryByText(/attached, memory indexing/i)).toBeNull();
+    expect(screen.getByText(/saved, not attached to this chat/i)).not.toBeNull();
+    expect(screen.queryByText(/attached, preparing search/i)).toBeNull();
   });
 
   it("uploads pasted screenshots as chat-paste attachments", async () => {
@@ -459,7 +459,7 @@ describe("WorkspaceChat composer", () => {
     fireEvent.click(previewButton);
 
     expect(screen.getByRole("dialog", { name: "screen.png" })).not.toBeNull();
-    expect(screen.getByRole("link", { name: "Open original" }).getAttribute("href")).toEqual(
+    expect(screen.getByRole("link", { name: "Download screen.png" }).getAttribute("href")).toEqual(
       expect.stringMatching(
         /^\/api\/workspace\/documents\/fcbf595a-f076-445c-9c7f-6b31730ab1ec\/download\?conversationId=[0-9a-f-]+$/,
       ),

@@ -11479,7 +11479,7 @@ body:has(.wbeta-shell) .site-wrap {
   display: flex;
   gap: 4px;
   margin-top: 4px;
-  opacity: 0.5;
+  opacity: 0.72;
   transition: opacity 150ms ease-out;
 }
 
@@ -11539,6 +11539,54 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text-muted);
   align-self: center;
   margin-left: 4px;
+}
+
+.wbeta-inline-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 1px;
+  border-radius: var(--radius-pill);
+  color: currentColor;
+  opacity: 0.64;
+  flex-shrink: 0;
+}
+
+.wbeta-inline-help-tip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 70;
+  width: min(286px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(11, 12, 12, 0.94);
+  color: #ffffff;
+  box-shadow: var(--shadow-panel);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px) scale(0.98);
+  transform-origin: bottom right;
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.wbeta-inline-help:hover .wbeta-inline-help-tip,
+.wbeta-ai-action-btn:hover .wbeta-inline-help-tip,
+.wbeta-ai-action-btn:focus-visible .wbeta-inline-help-tip,
+.wbeta-ai-tool-call-chip:hover .wbeta-inline-help-tip,
+.wbeta-ai-tool-call-chip:focus-within .wbeta-inline-help-tip {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 /* ── Markdown rendering ─────────────────────────────────────────── */
@@ -18505,6 +18553,48 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-chat-attach:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.wbeta-ai-chat [data-help] {
+  position: relative;
+}
+
+.wbeta-ai-chat [data-help]::after {
+  content: attr(data-help);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 80;
+  width: min(286px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(11, 12, 12, 0.94);
+  color: #ffffff;
+  box-shadow: var(--shadow-panel);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px) scale(0.98);
+  transform-origin: bottom right;
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.wbeta-ai-chat [data-help]:hover::after,
+.wbeta-ai-chat [data-help]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.wbeta-ai-chat-chip-name-button[data-help]::after,
+.wbeta-ai-chat-prompt-pill[data-help]::after {
+  left: 0;
+  right: auto;
+  transform-origin: bottom left;
 }
 
 @media (max-width: 639px) {

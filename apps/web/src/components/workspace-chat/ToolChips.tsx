@@ -1051,8 +1051,10 @@ export function BriefDraftCard({
             className="wbeta-ai-action-btn wbeta-ai-approval-btn-primary"
             onClick={openDrawer}
             disabled={!onOpenGenerateDrawer}
+            aria-label="Generate deck from this brief"
           >
-            Open deck generator
+            Generate deck
+            <CardInlineHelp text="Opens the deck setup with this brief already filled in. You can review it before starting." />
           </button>
           <button
             type="button"
@@ -1061,6 +1063,7 @@ export function BriefDraftCard({
             disabled={refineSent || !onSendFollowUp}
           >
             Refine in chat
+            <CardInlineHelp text="Keeps working in chat and asks for sharper thesis, audience, and stakes." />
           </button>
         </div>
       ) : null}
@@ -1217,6 +1220,7 @@ export function ServiceSuggestionCard({
               disabled={!onSendFollowUp}
             >
               Draft brief for this service
+              <CardInlineHelp text="Turns this service idea into an editable deck brief in the conversation." />
             </button>
           </li>
         ))}
@@ -1225,5 +1229,16 @@ export function ServiceSuggestionCard({
         <p className="wbeta-ai-approval-muted">Catalog pending NIQ-side review.</p>
       ) : null}
     </div>
+  );
+}
+
+function CardInlineHelp({ text }: { text: string }) {
+  return (
+    <span className="wbeta-inline-help" aria-hidden>
+      <Info size={11} weight="bold" />
+      <span className="wbeta-inline-help-tip" role="tooltip">
+        {text}
+      </span>
+    </span>
   );
 }

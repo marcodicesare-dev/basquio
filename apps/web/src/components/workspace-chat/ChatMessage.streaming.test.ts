@@ -65,7 +65,7 @@ describe("ChatMessage streaming render", () => {
 
     render(React.createElement(ChatMessage, { message, isStreaming: true }));
 
-    expect(screen.getByText("Using webSearch")).not.toBeNull();
+    expect(screen.getByText("Searching web")).not.toBeNull();
   });
 
   it("summarizes completed webSearch tool output", () => {
@@ -83,7 +83,7 @@ describe("ChatMessage streaming render", () => {
 
     render(React.createElement(ChatMessage, { message, isStreaming: false }));
 
-    expect(screen.getByText("Used webSearch, 2 results")).not.toBeNull();
+    expect(screen.getByText("Searched web, 2 results")).not.toBeNull();
   });
 
   it("shows filenames for retrieved workspace source excerpts", () => {
@@ -141,7 +141,7 @@ describe("ChatMessage streaming render", () => {
     render(React.createElement(ChatMessage, { message, isStreaming: false }));
 
     expect(screen.getByText("Web search failed")).not.toBeNull();
-    expect(screen.getByText("Web search failed: Invalid request body.")).not.toBeNull();
+    expect(screen.getByText(/Web search failed: Invalid request body/)).not.toBeNull();
   });
 
   it("opens the deck generator from draftBrief without sending a chat follow-up", () => {
@@ -183,7 +183,7 @@ describe("ChatMessage streaming render", () => {
       }),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open deck generator" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate deck from this brief" }));
 
     expect(onOpenGenerateDrawer).toHaveBeenCalledWith({
       messageId: "m6",

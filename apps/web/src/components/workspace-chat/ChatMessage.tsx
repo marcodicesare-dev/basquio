@@ -7,6 +7,7 @@ import {
   CheckCircle,
   ClipboardText,
   FileArrowDown,
+  Info,
   Presentation,
   ThumbsDown,
   ThumbsUp,
@@ -447,10 +448,12 @@ export const ChatMessage = memo(function ChatMessage({
             {copiedAt ? (
               <>
                 <CheckCircle size={12} weight="fill" /> Copied
+                <InlineHelp text="The answer is on your clipboard as clean Markdown." />
               </>
             ) : (
               <>
                 <ClipboardText size={12} weight="regular" /> Copy
+                <InlineHelp text="Copies this answer as clean Markdown, including citations." />
               </>
             )}
           </button>
@@ -459,9 +462,10 @@ export const ChatMessage = memo(function ChatMessage({
               type="button"
               className="wbeta-ai-action-btn"
               onClick={onRegenerate}
-              aria-label="Regenerate answer"
-            >
-              <CaretRight size={12} weight="regular" /> Regenerate
+            aria-label="Regenerate answer"
+          >
+              <CaretRight size={12} weight="regular" /> Try again
+              <InlineHelp text="Runs the last prompt again while keeping this conversation intact." />
             </button>
           ) : null}
           {onSaveAsMemo ? (
@@ -475,7 +479,8 @@ export const ChatMessage = memo(function ChatMessage({
               aria-label="Save as memo"
             >
               <FileArrowDown size={12} weight="regular" />
-              {saving === "memo" ? "Saving…" : "Save as memo"}
+              {saving === "memo" ? "Saving..." : "Save memo"}
+              <InlineHelp text="Saves this answer as a reusable workspace memo with its cited sources." />
             </button>
           ) : null}
           {onGenerateDeck ? (
@@ -486,10 +491,11 @@ export const ChatMessage = memo(function ChatMessage({
               disabled={saving !== null}
               aria-busy={saving === "deck"}
               data-loading={saving === "deck" ? "true" : undefined}
-              aria-label="Open the deck generator from this answer"
+              aria-label="Generate deck from this answer"
             >
               <Presentation size={12} weight="regular" />
-              {saving === "deck" ? "Opening…" : "Open deck generator"}
+              {saving === "deck" ? "Opening..." : "Generate deck"}
+              <InlineHelp text="Opens a deck setup from this answer. You can edit the brief before starting generation." />
             </button>
           ) : null}
           {saveMsg ? <span className="wbeta-ai-action-status">{saveMsg}</span> : null}
@@ -505,6 +511,7 @@ export const ChatMessage = memo(function ChatMessage({
             aria-pressed={feedback === "up"}
           >
             <ThumbsUp size={12} weight={feedback === "up" ? "fill" : "regular"} />
+            <InlineHelp text="Marks this answer as useful so future workspace answers can improve." />
           </button>
           <button
             type="button"
@@ -518,6 +525,7 @@ export const ChatMessage = memo(function ChatMessage({
             aria-pressed={feedback === "down"}
           >
             <ThumbsDown size={12} weight={feedback === "down" ? "fill" : "regular"} />
+            <InlineHelp text="Marks this answer as not useful. Basquio keeps the conversation but learns the signal." />
           </button>
         </div>
       ) : null}
@@ -569,7 +577,7 @@ function ToolFrame({
     <details className="wbeta-ai-tool-frame wbeta-ai-tool-frame-compact">
       <summary>
         <span>{label}</span>
-        <span>Show all</span>
+        <span>Details</span>
       </summary>
       <div className="wbeta-ai-tool-frame-expanded">{children}</div>
     </details>
@@ -691,12 +699,15 @@ function ToolCallChip({
   errorText?: string;
 }) {
   const [startedAt] = useState(() => Date.now());
+  const copy = toolCopy(toolName);
+  const summary = toolOutputSummary(output);
+  const help = toolHelp(toolName, toolStatus, errorText);
   const label =
     toolStatus === "using"
-      ? `Using ${toolName}`
+      ? copy.using
       : toolStatus === "used"
-        ? `Used ${toolName}${toolOutputSummary(output)}`
-        : `${formatToolName(toolName)} failed`;
+        ? `${copy.used}${summary}`
+        : copy.failed;
   return (
     <div className={`wbeta-ai-tool-call-chip wbeta-ai-tool-call-chip-${toolStatus}`}>
       {toolStatus === "using" ? (
@@ -712,7 +723,8 @@ function ToolCallChip({
       )}
       <span>{label}</span>
       {toolStatus === "using" ? <ElapsedTimer startedAt={startedAt} /> : null}
-      {toolStatus === "error" && errorText ? <small>{errorText}</small> : null}
+      {toolStatus === "error" ? <small>{errorText ? "Could not complete" : "Check details"}</small> : null}
+      <InlineHelp text={help} />
     </div>
   );
 }
@@ -754,7 +766,95 @@ function toolOutputSummary(output: unknown): string {
   return "";
 }
 
-function formatToolName(toolName: string): string {
-  if (toolName === "webSearch") return "Web search";
-  return toolName.replace(/([a-z])([A-Z])/g, "$1 $2");
+function toolCopy(toolName: string): { using: string; used: string; failed: string } {
+  switch (toolName) {
+    case "memory":
+      return {
+        using: "Checking memory",
+        used: "Checked memory",
+        failed: "Memory check failed",
+      };
+    case "retrieveContext":
+      return {
+        using: "Searching workspace",
+        used: "Searched workspace",
+        failed: "Workspace search failed",
+      };
+    case "webSearch":
+      return {
+        using: "Searching web",
+        used: "Searched web",
+        failed: "Web search failed",
+      };
+    case "draftBrief":
+      return {
+        using: "Drafting brief",
+        used: "Drafted brief",
+        failed: "Brief draft failed",
+      };
+    case "suggestServices":
+      return {
+        using: "Finding service ideas",
+        used: "Found service ideas",
+        failed: "Service ideas failed",
+      };
+    case "scrapeUrl":
+      return {
+        using: "Reading URL",
+        used: "Read URL",
+        failed: "URL read failed",
+      };
+    case "saveFromPaste":
+      return {
+        using: "Reading pasted text",
+        used: "Read pasted text",
+        failed: "Paste read failed",
+      };
+    default:
+      return {
+        using: "Working",
+        used: "Done",
+        failed: "Could not complete",
+      };
+  }
+}
+
+function toolHelp(toolName: string, status: ToolCallStatus, errorText?: string): string {
+  if (status === "error") {
+    if (toolName === "webSearch") {
+      return errorText
+        ? `${errorText} Basquio can still answer from workspace context, or you can rephrase the search.`
+        : "The web search service did not return results. Basquio can still answer from workspace context.";
+    }
+    return errorText ?? "This step did not finish. The chat can continue from the information already available.";
+  }
+  switch (toolName) {
+    case "memory":
+      return "Looks for saved notes, rules, and preferences that can improve this answer.";
+    case "retrieveContext":
+      return "Searches your workspace files, memos, and saved facts so the answer can cite internal sources.";
+    case "webSearch":
+      return "Searches public web sources for fresh information when the answer needs current evidence.";
+    case "draftBrief":
+      return "Builds an editable deck brief. Use Generate deck when you are ready to review the setup.";
+    case "suggestServices":
+      return "Suggests useful report or deck angles based on the current workspace context.";
+    case "scrapeUrl":
+      return "Reads the page you gave Basquio so it can extract useful evidence.";
+    case "saveFromPaste":
+      return "Turns pasted text into structured workspace context after you approve it.";
+    default:
+      return "Shows a background step Basquio used while preparing the answer.";
+  }
+}
+
+function InlineHelp({ text }: { text: string }) {
+  return (
+    <span className="wbeta-inline-help" aria-hidden>
+      <Info size={11} weight="bold" />
+      <span className="wbeta-inline-help-tip" role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
 }

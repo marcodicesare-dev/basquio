@@ -142,9 +142,9 @@ export function WorkspaceChat({
             status: attachmentFailed ? "upload-failed" : nextStatus,
             documentId: result.id,
             message: attachmentFailed
-              ? "saved to workspace, chat attach failed"
+              ? "saved, not attached to this chat"
               : nextStatus === "indexing-failed"
-                ? "attached, direct file ready"
+                ? "attached, readable here"
                 : undefined,
           });
         } catch (uploadError) {
@@ -495,7 +495,7 @@ export function WorkspaceChat({
               return {
                 ...chip,
                 status: "indexing-failed",
-                message: "attached, direct file ready",
+                message: "attached, readable here",
               };
             }
             return chip;
@@ -853,7 +853,15 @@ export function WorkspaceChat({
 
       {error ? (
         <p className="wbeta-ai-chat-error">
-          {error}. <button type="button" className="wbeta-ai-chat-error-retry" onClick={() => setError(null)}>Dismiss</button>
+          {error}.{" "}
+          <button
+            type="button"
+            className="wbeta-ai-chat-error-retry"
+            onClick={() => setError(null)}
+            data-help="Hide this message. It does not delete the conversation."
+          >
+            Hide message
+          </button>
         </p>
       ) : null}
 
@@ -886,6 +894,7 @@ export function WorkspaceChat({
                   className="wbeta-ai-chat-chip-preview"
                   onClick={() => setPreviewAttachment(chip)}
                   aria-label={`Preview ${chip.filename}`}
+                  data-help="Open a quick preview without leaving the chat."
                 >
                   <img
                     src={getDocumentDownloadUrl(chip.documentId, conversationIdRef.current)}
@@ -911,6 +920,7 @@ export function WorkspaceChat({
                     title={chip.filename}
                     onClick={() => setPreviewAttachment(chip)}
                     aria-label={`Open preview details for ${chip.filename}`}
+                    data-help="Open preview and download options."
                   >
                     {chip.filename}
                   </button>
@@ -921,26 +931,20 @@ export function WorkspaceChat({
                 )}
                 <span className="wbeta-ai-chat-chip-meta">
                   {formatBytes(chip.sizeBytes)}
-                  {chip.status === "uploading" ? " · uploading" : null}
-                  {chip.status === "indexing" ? " · attached, memory indexing" : null}
-                  {chip.status === "indexed" ? " · attached, in memory" : null}
-                  {chip.status === "indexing-failed"
-                    ? ` · ${chip.message ?? "attached, direct file ready"}`
-                    : null}
-                  {chip.status === "upload-failed" ? ` · ${chip.message ?? "upload failed"}` : null}
+                  {" · "}
+                  {attachmentStatusLabel(chip)}
                 </span>
               </span>
-              {chip.status === "indexing-failed" ? (
-                <AttachmentChipInfo
-                  label={`What direct file ready means for ${chip.filename}`}
-                  text="Basquio can still read this original file in this chat. The background memory index did not finish, so broader workspace search may not cite it yet."
-                />
-              ) : null}
+              <AttachmentChipInfo
+                label={`Status details for ${chip.filename}`}
+                text={attachmentStatusHelp(chip)}
+              />
               <button
                 type="button"
                 className="wbeta-ai-chat-chip-remove"
                 onClick={() => removeAttachment(chip.localId)}
                 aria-label={`Remove ${chip.filename} from this chat`}
+                data-help="Remove this file from the current chat."
               >
                 <X size={12} weight="bold" />
               </button>
@@ -978,6 +982,8 @@ export function WorkspaceChat({
               className="wbeta-ai-chat-prompt-pill"
               onClick={() => handlePromptSuggestion(suggestion.prompt)}
               disabled={isBusy || hasUploadingAttachments}
+              title={suggestion.prompt}
+              data-help="Runs this suggested prompt in the current workspace."
             >
               {compactSuggestionPrompt(suggestion.prompt)}
             </button>
@@ -1009,6 +1015,7 @@ export function WorkspaceChat({
             onClick={handleAttachClick}
             disabled={isBusy}
             aria-label={copy.attachFile}
+            data-help="Attach files to this chat. Basquio stores them first, then reads them from the conversation."
           >
             <Paperclip size={14} weight="regular" />
           </button>
@@ -1027,6 +1034,7 @@ export function WorkspaceChat({
               className="wbeta-ai-chat-stop"
               onClick={handleStop}
               aria-label={copy.stopGeneration}
+              data-help="Stop the current answer. The conversation and attached files stay here."
             >
               <Stop size={13} weight="fill" />
               <span className="wbeta-ai-chat-stop-label">{copy.stop}</span>
@@ -1037,6 +1045,7 @@ export function WorkspaceChat({
               className="wbeta-ai-chat-send"
               disabled={!draft.trim() || hasUploadingAttachments}
               aria-label={copy.sendMessage}
+              data-help={hasUploadingAttachments ? "Wait for the upload to finish before sending." : "Send this message. Attached files stay in storage and are read from this chat."}
             >
               <ArrowUp size={14} weight="bold" />
               <span className="wbeta-ai-chat-send-label">{copy.send}</span>
@@ -1140,6 +1149,43 @@ function AttachmentChipInfo({ label, text }: { label: string; text: string }) {
       </span>
     </span>
   );
+}
+
+function attachmentStatusLabel(chip: AttachmentChip): string {
+  if (chip.message) return chip.message;
+  switch (chip.status) {
+    case "uploading":
+      return "uploading";
+    case "indexing":
+      return "attached, preparing search";
+    case "indexed":
+      return "attached, searchable";
+    case "indexing-failed":
+      return "attached, readable here";
+    case "upload-failed":
+      return "upload failed";
+    default:
+      return "attached";
+  }
+}
+
+function attachmentStatusHelp(chip: AttachmentChip): string {
+  switch (chip.status) {
+    case "uploading":
+      return "Uploading to your private workspace. You can send once the upload finishes.";
+    case "indexing":
+      return "The file is attached to this chat. Basquio is preparing it for broader workspace search.";
+    case "indexed":
+      return "Basquio can read this file in chat and find it later in workspace search.";
+    case "indexing-failed":
+      return "Basquio can still read the original file in this chat. It is not yet available for broader workspace search.";
+    case "upload-failed":
+      return chip.documentId
+        ? "The file reached your workspace, but it was not attached to this chat. Add it again if you need this answer to use it."
+        : "The file did not finish uploading. Check the file size or try again.";
+    default:
+      return "This file is attached to the conversation.";
+  }
 }
 
 function messageText(message: UIMessage): string {
@@ -1332,13 +1378,20 @@ function AttachmentPreviewDrawer({
             <span>{formatBytes(attachment.sizeBytes)}</span>
           </div>
           <div className="wbeta-ai-chat-preview-actions">
-            <a href={downloadUrl} target="_blank" rel="noreferrer">
-              Open original
+            <a
+              href={downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Download ${attachment.filename}`}
+              data-help="Download or open the original file."
+            >
+              Download
             </a>
             <button
               type="button"
               onClick={onClose}
               aria-label={`Close preview for ${attachment.filename}`}
+              data-help="Close preview and return to chat."
             >
               <X size={14} weight="bold" />
             </button>
@@ -1355,7 +1408,7 @@ function AttachmentPreviewDrawer({
             <SpreadsheetPreview preview={preview} error={previewError} />
           ) : (
             <div className="wbeta-ai-chat-preview-empty">
-              <p>Preview not supported. Open original to inspect the file.</p>
+              <p>Preview is not available for this file type. Download the original to inspect it.</p>
             </div>
           )}
         </div>
@@ -1388,7 +1441,7 @@ function TextPreview({
   if (preview.kind !== "text") {
     return (
       <div className="wbeta-ai-chat-preview-empty">
-        <p>Preview not supported. Open original to inspect the file.</p>
+        <p>Preview is not available for this file type. Download the original to inspect it.</p>
       </div>
     );
   }
@@ -1419,7 +1472,7 @@ function SpreadsheetPreview({
   if (preview.kind !== "spreadsheet" || preview.sheets.length === 0) {
     return (
       <div className="wbeta-ai-chat-preview-empty">
-        <p>Preview not supported. Open original to inspect the file.</p>
+        <p>Preview is not available for this file type. Download the original to inspect it.</p>
       </div>
     );
   }
