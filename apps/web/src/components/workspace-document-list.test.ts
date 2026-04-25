@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React, { type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,6 +32,10 @@ describe("WorkspaceDocumentList", () => {
   it("previews the selected repository document and exposes a download action", async () => {
     render(React.createElement(WorkspaceDocumentList, { documents: [documentRow()] }));
 
+    expect(fetch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Coffee repository\.csv/i }));
+
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         "/api/workspace/documents/11111111-1111-4111-8111-111111111111/preview",
@@ -41,9 +45,11 @@ describe("WorkspaceDocumentList", () => {
 
     expect(await screen.findByText("Coffee")).not.toBeNull();
     expect(screen.getByText("12%")).not.toBeNull();
-    expect(screen.getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
+    const dialog = screen.getByRole("dialog", { name: "Coffee repository.csv" });
+    expect(within(dialog).getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
       "/api/workspace/documents/11111111-1111-4111-8111-111111111111/download?download=1",
     );
+    expect(dialog).not.toBeNull();
   });
 
   it("switches to an inline pdf preview without refetching text preview", async () => {
@@ -69,12 +75,24 @@ describe("WorkspaceDocumentList", () => {
 
     render(React.createElement(WorkspaceDocumentList, { documents: [deck] }));
 
+    fireEvent.click(screen.getByRole("button", { name: /Coffee deck\.pptx/i }));
+
     expect(fetch).not.toHaveBeenCalled();
     expect(screen.getByText("PowerPoint preview is not available in the browser. Download the original to inspect the deck.")).not.toBeNull();
-    expect(screen.queryByRole("link", { name: "Open" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
+    const dialog = screen.getByRole("dialog", { name: "Coffee deck.pptx" });
+    expect(within(dialog).queryByRole("link", { name: "Open" })).toBeNull();
+    expect(within(dialog).getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
       "/api/workspace/documents/11111111-1111-4111-8111-111111111111/download?download=1",
     );
+  });
+
+  it("explains source status badges in plain English", () => {
+    render(React.createElement(WorkspaceDocumentList, { documents: [documentRow()] }));
+
+    expect(screen.getByLabelText("What Ready means")).not.toBeNull();
+    expect(
+      screen.getByText("Ready means Basquio can retrieve this file and cite it in chat answers or deck briefs."),
+    ).not.toBeNull();
   });
 });
 

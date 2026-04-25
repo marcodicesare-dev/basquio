@@ -7,13 +7,31 @@ import {
   FilePdf,
   FileText,
   ImageSquare,
+  Info,
   MicrosoftExcelLogo,
   MicrosoftPowerpointLogo,
+  X,
 } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 
 import type { WorkspaceDocumentRow } from "@/lib/workspace/db";
+
+const SourceMarkdown = dynamic(
+  () => import("@/components/workspace-document-markdown-preview").then((mod) => mod.SourceMarkdown),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="wbeta-docpreview-loading" role="status" aria-label="Loading markdown preview">
+        <span />
+        <span />
+        <span />
+      </div>
+    ),
+  },
+);
 
 type PreviewPayload =
   | { kind: "text"; text: string }
@@ -32,6 +50,17 @@ const STATUS_LABELS: Record<WorkspaceDocumentRow["status"], string> = {
   indexed: "Ready",
   failed: "Needs attention",
   deleted: "Removed",
+};
+
+const STATUS_DESCRIPTIONS: Record<WorkspaceDocumentRow["status"], string> = {
+  processing:
+    "Basquio is extracting text, tables, and facts from this file. You can keep working while it finishes.",
+  indexed:
+    "Ready means Basquio can retrieve this file and cite it in chat answers or deck briefs.",
+  failed:
+    "Needs attention means parsing did not finish. You can retry processing, download the original, or replace the file.",
+  deleted:
+    "Removed means this file is no longer available for new retrieval. It may still appear in older history.",
 };
 
 const DEFAULT_EMPTY_BODY =
@@ -108,30 +137,27 @@ export function WorkspaceDocumentList({
   emptyTitle?: string;
   emptyBody?: string;
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(documents[0]?.id ?? null);
-  const selectedDocument = useMemo(
-    () => documents.find((doc) => doc.id === selectedId) ?? documents[0] ?? null,
-    [documents, selectedId],
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeDocument = useMemo(
+    () => documents.find((doc) => doc.id === activeId) ?? null,
+    [documents, activeId],
   );
   const [preview, setPreview] = useState<PreviewState>({ kind: "idle" });
 
   useEffect(() => {
-    if (!documents.length) {
-      setSelectedId(null);
-      return;
+    if (activeId && !documents.some((doc) => doc.id === activeId)) {
+      setActiveId(null);
+      setPreview({ kind: "idle" });
     }
-    if (!selectedId || !documents.some((doc) => doc.id === selectedId)) {
-      setSelectedId(documents[0].id);
-    }
-  }, [documents, selectedId]);
+  }, [documents, activeId]);
 
   useEffect(() => {
-    if (!selectedDocument) {
+    if (!activeDocument) {
       setPreview({ kind: "idle" });
       return;
     }
 
-    const documentKind = getDocumentKind(selectedDocument);
+    const documentKind = getDocumentKind(activeDocument);
     if (documentKind === "pdf" || documentKind === "image") {
       setPreview({ kind: "idle" });
       return;
@@ -140,16 +166,16 @@ export function WorkspaceDocumentList({
     if (documentKind === "deck" || documentKind === "file") {
       setPreview({
         kind: "unavailable",
-        documentId: selectedDocument.id,
-        message: getUnsupportedPreviewMessage(selectedDocument),
+        documentId: activeDocument.id,
+        message: getUnsupportedPreviewMessage(activeDocument),
       });
       return;
     }
 
     const controller = new AbortController();
-    setPreview({ kind: "loading", documentId: selectedDocument.id });
+    setPreview({ kind: "loading", documentId: activeDocument.id });
 
-    fetch(buildDocumentUrl(selectedDocument.id, "preview"), {
+    fetch(buildDocumentUrl(activeDocument.id, "preview"), {
       signal: controller.signal,
       headers: { accept: "application/json" },
     })
@@ -160,19 +186,50 @@ export function WorkspaceDocumentList({
         if (!response.ok) {
           throw new Error(payload.error ?? "Preview is not available.");
         }
-        setPreview({ kind: "ready", documentId: selectedDocument.id, payload });
+        setPreview({ kind: "ready", documentId: activeDocument.id, payload });
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
         setPreview({
           kind: "error",
-          documentId: selectedDocument.id,
+          documentId: activeDocument.id,
           message: error instanceof Error ? error.message : "Preview is not available.",
         });
       });
 
     return () => controller.abort();
-  }, [selectedDocument]);
+  }, [activeDocument]);
+
+  function closePreview() {
+    setActiveId(null);
+    setPreview({ kind: "idle" });
+  }
+
+  useEffect(() => {
+    if (!activeDocument) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePreview();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [activeDocument]);
+
+  useEffect(() => {
+    if (!activeDocument) {
+      setPreview({ kind: "idle" });
+    }
+  }, [activeDocument]);
 
   if (documents.length === 0) {
     return (
@@ -194,13 +251,13 @@ export function WorkspaceDocumentList({
         </div>
         <ul className="wbeta-doclist-rows">
           {documents.map((doc) => {
-            const isSelected = selectedDocument?.id === doc.id;
+            const isSelected = activeDocument?.id === doc.id;
             return (
               <li key={doc.id} className="wbeta-doclist-row">
                 <button
                   type="button"
                   className={`wbeta-doclist-select ${isSelected ? "wbeta-doclist-select-active" : ""}`}
-                  onClick={() => setSelectedId(doc.id)}
+                  onClick={() => setActiveId(doc.id)}
                   aria-pressed={isSelected}
                 >
                   <span className="wbeta-doclist-fileicon" aria-hidden>
@@ -218,9 +275,7 @@ export function WorkspaceDocumentList({
                   </span>
                 </button>
                 <div className="wbeta-doclist-side">
-                  <span className={`wbeta-doclist-status wbeta-doclist-status-${doc.status}`}>
-                    {STATUS_LABELS[doc.status]}
-                  </span>
+                  <DocumentStatus status={doc.status} documentId={doc.id} />
                   <a
                     className="wbeta-doclist-iconlink"
                     href={buildDocumentUrl(doc.id, "download", true)}
@@ -236,27 +291,66 @@ export function WorkspaceDocumentList({
         </ul>
       </div>
 
-      <DocumentPreview document={selectedDocument} preview={preview} />
+      <DocumentPreviewDialog document={activeDocument} preview={preview} onClose={closePreview} />
     </div>
   );
 }
 
-function DocumentPreview({
+function DocumentStatus({
+  status,
+  documentId,
+}: {
+  status: WorkspaceDocumentRow["status"];
+  documentId: string;
+}) {
+  const tooltipId = `source-status-tip-${documentId}`;
+  return (
+    <span className="wbeta-docstatus-wrap">
+      <span className={`wbeta-doclist-status wbeta-doclist-status-${status}`}>
+        {STATUS_LABELS[status]}
+      </span>
+      <span className="wbeta-docinfo">
+        <button
+          type="button"
+          className="wbeta-docinfo-trigger"
+          aria-label={`What ${STATUS_LABELS[status]} means`}
+          aria-describedby={tooltipId}
+        >
+          <Info size={13} weight="bold" />
+        </button>
+        <span id={tooltipId} className="wbeta-docinfo-tip" role="tooltip">
+          {STATUS_DESCRIPTIONS[status]}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function DocumentPreviewDialog({
   document,
   preview,
+  onClose,
 }: {
   document: WorkspaceDocumentRow | null;
   preview: PreviewState;
+  onClose: () => void;
 }) {
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!document) return;
+    const previouslyFocused =
+      globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => closeRef.current?.focus());
+    return () => {
+      window.cancelAnimationFrame(frame);
+      previouslyFocused?.focus({ preventScroll: true });
+    };
+  }, [document]);
+
   if (!document) {
-    return (
-      <aside className="wbeta-docpreview wbeta-docpreview-empty">
-        <p className="wbeta-docpreview-empty-title">Select a source.</p>
-        <p className="wbeta-docpreview-empty-body">
-          The preview opens here without leaving the repository.
-        </p>
-      </aside>
-    );
+    return null;
   }
 
   const documentKind = getDocumentKind(document);
@@ -264,14 +358,58 @@ function DocumentPreview({
   const openUrl = buildDocumentUrl(document.id, "download");
   const downloadUrl = buildDocumentUrl(document.id, "download", true);
 
-  return (
-    <aside className="wbeta-docpreview" aria-live="polite">
+  function handleDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((node) => !node.hasAttribute("disabled") && !node.getAttribute("aria-hidden"));
+
+    if (!focusable.length) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = globalThis.document.activeElement;
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  return createPortal(
+    <div
+      className="wbeta-docpreview-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+    <aside
+      ref={dialogRef}
+      className="wbeta-docpreview"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wbeta-docpreview-title"
+      aria-live="polite"
+      onKeyDown={handleDialogKeyDown}
+    >
       <div className="wbeta-docpreview-head">
         <span className="wbeta-docpreview-icon" aria-hidden>
           <DocumentIcon doc={document} />
         </span>
         <div className="wbeta-docpreview-titleblock">
-          <h3 className="wbeta-docpreview-title" title={document.filename}>
+          <h3 id="wbeta-docpreview-title" className="wbeta-docpreview-title" title={document.filename}>
             {document.filename}
           </h3>
           <p className="wbeta-docpreview-meta">
@@ -290,6 +428,15 @@ function DocumentPreview({
             <DownloadSimple size={15} weight="bold" />
             <span>Download</span>
           </a>
+          <button
+            ref={closeRef}
+            type="button"
+            className="wbeta-docpreview-close"
+            onClick={onClose}
+            aria-label="Close preview"
+          >
+            <X size={18} weight="bold" />
+          </button>
         </div>
       </div>
 
@@ -306,19 +453,21 @@ function DocumentPreview({
           <img className="wbeta-docpreview-image" src={openUrl} alt={`Preview of ${document.filename}`} />
         ) : null}
         {documentKind !== "pdf" && documentKind !== "image" ? (
-          <PreviewContent preview={preview} activeDocumentId={document.id} />
+          <PreviewContent preview={preview} document={document} />
         ) : null}
       </div>
     </aside>
+    </div>,
+    documentBody(),
   );
 }
 
 function PreviewContent({
   preview,
-  activeDocumentId,
+  document,
 }: {
   preview: PreviewState;
-  activeDocumentId: string;
+  document: WorkspaceDocumentRow;
 }) {
   if (preview.kind === "idle") {
     return (
@@ -330,7 +479,7 @@ function PreviewContent({
     );
   }
 
-  if (preview.kind === "loading" || preview.documentId !== activeDocumentId) {
+  if (preview.kind === "loading" || preview.documentId !== document.id) {
     return (
       <div className="wbeta-docpreview-loading" role="status" aria-label="Loading document preview">
         <span />
@@ -360,7 +509,11 @@ function PreviewContent({
 
   if (preview.kind === "ready") {
     if (preview.payload.kind === "text") {
-      return <pre className="wbeta-docpreview-text">{preview.payload.text || "No preview text found."}</pre>;
+      const text = preview.payload.text || "No preview text found.";
+      if (isMarkdownDocument(document)) {
+        return <SourceMarkdown source={text} />;
+      }
+      return <pre className="wbeta-docpreview-text">{text}</pre>;
     }
 
     if (preview.payload.kind === "spreadsheet") {
@@ -400,6 +553,14 @@ function PreviewContent({
   }
 
   return null;
+}
+
+function isMarkdownDocument(doc: WorkspaceDocumentRow): boolean {
+  return ["md", "markdown", "gsp"].includes(getExtension(doc));
+}
+
+function documentBody(): HTMLElement {
+  return document.body;
 }
 
 function RetryDocumentButton({ documentId }: { documentId: string }) {
