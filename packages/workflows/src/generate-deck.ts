@@ -8,7 +8,6 @@ import { promisify } from "node:util";
 import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import JSZip from "jszip";
 import { PDFDocument } from "pdf-lib";
-import { read, utils } from "xlsx";
 import { z } from "zod";
 
 import { parseEvidencePackage } from "@basquio/data-ingest";
@@ -91,6 +90,7 @@ import {
   inferMetricPresentationSpec,
   type WorkbookSheetPresentation,
 } from "./metric-presentation";
+import { extractWorkbookSheetProfiles } from "./workbook-sheet-profiles";
 import { runClaimTraceabilityQa } from "./claim-traceability-qa";
 import {
   renderSheetNameRejectionMessage,
@@ -2022,13 +2022,36 @@ export async function generateDeckRun(
       }
       finalNarrativeMarkdown = requireGeneratedFile(authorFiles, "narrative_report.md");
       xlsxFile = requireGeneratedFile(authorFiles, "data_tables.xlsx");
-      ({ analysis, manifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
-        analysis,
-        manifest,
-        templateProfile,
-        xlsxFile,
-      }));
-      fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
+      try {
+        ({ analysis, manifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
+          analysis,
+          manifest,
+          templateProfile,
+          xlsxFile,
+        }));
+      } catch (workbookCompanionError) {
+        const reason = workbookCompanionError instanceof Error
+          ? workbookCompanionError.message
+          : String(workbookCompanionError);
+        phaseTelemetry.workbookCompanionArtifactsSkipped = { reason: reason.slice(0, 300) };
+        advisoryIssues.add(`Workbook companion enrichment skipped: ${reason.slice(0, 200)}`);
+        await insertEvent(config, runId, attempt, "author", "workbook_companion_artifacts_skipped", {
+          reason: reason.slice(0, 500),
+        }).catch(() => {});
+      }
+      try {
+        fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
+      } catch (fidelityContextError) {
+        const reason = fidelityContextError instanceof Error
+          ? fidelityContextError.message
+          : String(fidelityContextError);
+        fidelityContext = null;
+        phaseTelemetry.fidelityContextSkipped = { reason: reason.slice(0, 300) };
+        advisoryIssues.add(`Workbook fidelity context skipped: ${reason.slice(0, 200)}`);
+        await insertEvent(config, runId, attempt, "author", "fidelity_context_skipped", {
+          reason: reason.slice(0, 500),
+        }).catch(() => {});
+      }
       const authorClaimQa = isReportOnly
         ? null
         : await runClaimTraceabilityQaSafely({
@@ -2545,14 +2568,39 @@ export async function generateDeckRun(
           finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
           xlsxFile = findGeneratedFile(reviseFiles, "data_tables.xlsx") ?? xlsxFile;
           if (xlsxFile) {
-            ({ analysis, manifest: finalManifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
-              analysis,
-              manifest: finalManifest,
-              templateProfile,
-              xlsxFile,
-            }));
+            try {
+              ({ analysis, manifest: finalManifest, xlsxFile } = await ensureWorkbookChartCompanionArtifacts({
+                analysis,
+                manifest: finalManifest,
+                templateProfile,
+                xlsxFile,
+              }));
+            } catch (workbookCompanionError) {
+              const reason = workbookCompanionError instanceof Error
+                ? workbookCompanionError.message
+                : String(workbookCompanionError);
+              phaseTelemetry.reviseWorkbookCompanionArtifactsSkipped = { reason: reason.slice(0, 300) };
+              advisoryIssues.add(`Revise workbook companion enrichment skipped: ${reason.slice(0, 200)}`);
+              await insertEvent(config, runId, attempt, "revise", "workbook_companion_artifacts_skipped", {
+                reason: reason.slice(0, 500),
+              }).catch(() => {});
+            }
           }
-          fidelityContext = xlsxFile ? buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run) : fidelityContext;
+          if (xlsxFile) {
+            try {
+              fidelityContext = buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run);
+            } catch (fidelityContextError) {
+              const reason = fidelityContextError instanceof Error
+                ? fidelityContextError.message
+                : String(fidelityContextError);
+              fidelityContext = null;
+              phaseTelemetry.reviseFidelityContextSkipped = { reason: reason.slice(0, 300) };
+              advisoryIssues.add(`Revise workbook fidelity context skipped: ${reason.slice(0, 200)}`);
+              await insertEvent(config, runId, attempt, "revise", "fidelity_context_skipped", {
+                reason: reason.slice(0, 500),
+              }).catch(() => {});
+            }
+          }
           const reviseClaimQa = await runClaimTraceabilityQaSafely({
             client,
             manifest: finalManifest,
@@ -2930,12 +2978,36 @@ export async function generateDeckRun(
       if (!finalDocx) {
         throw new Error("Narrative markdown artifact unavailable before publish.");
       }
-      ({ analysis, manifest: finalManifest, xlsxFile: finalXlsx } = await ensureWorkbookChartCompanionArtifacts({
-        analysis,
-        manifest: finalManifest,
-        templateProfile,
-        xlsxFile: finalXlsx,
-      }));
+      try {
+        ({ analysis, manifest: finalManifest, xlsxFile: finalXlsx } = await ensureWorkbookChartCompanionArtifacts({
+          analysis,
+          manifest: finalManifest,
+          templateProfile,
+          xlsxFile: finalXlsx,
+        }));
+      } catch (workbookCompanionError) {
+        const reason = workbookCompanionError instanceof Error
+          ? workbookCompanionError.message
+          : String(workbookCompanionError);
+        phaseTelemetry.exportWorkbookCompanionArtifactsSkipped = { reason: reason.slice(0, 300) };
+        advisoryIssues.add(`Export workbook companion enrichment skipped: ${reason.slice(0, 200)}`);
+        await insertEvent(config, runId, attempt, "export", "workbook_companion_artifacts_skipped", {
+          reason: reason.slice(0, 500),
+        }).catch(() => {});
+      }
+      try {
+        fidelityContext = buildFidelityContext(finalManifest, finalXlsx.buffer, parsed, run);
+      } catch (fidelityContextError) {
+        const reason = fidelityContextError instanceof Error
+          ? fidelityContextError.message
+          : String(fidelityContextError);
+        fidelityContext = null;
+        phaseTelemetry.exportFidelityContextSkipped = { reason: reason.slice(0, 300) };
+        advisoryIssues.add(`Export workbook fidelity context skipped: ${reason.slice(0, 200)}`);
+        await insertEvent(config, runId, attempt, "export", "fidelity_context_skipped", {
+          reason: reason.slice(0, 500),
+        }).catch(() => {});
+      }
 
       if (!isReportOnly) {
         let brandedBuffer = await sanitizePptxMedia(finalPptx!.buffer);
@@ -7398,47 +7470,6 @@ function buildFidelityContext(
   };
 }
 
-function extractWorkbookSheetProfiles(buffer: Buffer): WorkbookSheetProfile[] {
-  const workbook = read(buffer, {
-    type: "buffer",
-    raw: true,
-    cellDates: true,
-  });
-
-  return workbook.SheetNames.map((sheetName) => {
-    const sheet = workbook.Sheets[sheetName];
-    const matrix = utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: null,
-      raw: true,
-    }) as unknown[][];
-    const normalizedRows = matrix
-      .map((row) => row.map((cell) => normalizeWorkbookCell(cell)))
-      .filter((row) => row.some((cell) => cell !== null && cell !== ""));
-    const headers = (normalizedRows[0] ?? []).map((cell, index) => normalizeWorkbookHeader(cell, index));
-    const rowObjects = normalizedRows
-      .slice(1)
-      .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? null])))
-      .filter((row) => Object.values(row).some((value) => value !== null && value !== ""));
-    const numericValues = rowObjects.flatMap((row) =>
-      Object.values(row)
-        .map((value) => typeof value === "number" && Number.isFinite(value) ? value : null)
-        .filter((value): value is number => value !== null),
-    );
-
-    return {
-      name: sheetName,
-      headers,
-      rows: rowObjects,
-      numericValues,
-      dataSignature: createHash("sha256")
-        .update(JSON.stringify({ headers, rows: rowObjects }))
-        .digest("hex")
-        .slice(0, 16),
-    };
-  });
-}
-
 async function ensureWorkbookChartCompanionArtifacts(input: {
   analysis: AnalysisResult | null;
   manifest: z.infer<typeof deckManifestSchema>;
@@ -7877,23 +7908,6 @@ async function injectWorkbookNativeCharts(
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
-}
-
-function normalizeWorkbookHeader(value: unknown, index: number) {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value.trim();
-  }
-  return `column_${index + 1}`;
-}
-
-function normalizeWorkbookCell(value: unknown) {
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10);
-  }
-  if (typeof value === "string") {
-    return value.trim();
-  }
-  return value ?? null;
 }
 
 function buildKnownEntityCatalog(
