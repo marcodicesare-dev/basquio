@@ -2449,6 +2449,7 @@ export async function generateDeckRun(
             manifest: activeManifest,
             currentPdf: activePdf,
             visualQa: activeVisualQa,
+            targetSlideCount: run.target_slide_count,
           });
           const reviseMessages = [
             ...buildMinimalReviseThread({
@@ -4861,7 +4862,7 @@ function buildAuthorMessage(
               : `This is a Complete-book deliverable. Maximum depth is expected: dimension-specific slides, retailer and SKU drill-downs, sensitivity analysis, and a full methodology appendix. The requested ${run.target_slide_count} slides are your CONTENT slide count, not your total. Produce exactly ${run.target_slide_count} content slides first. Ship one structural cover slide outside that count, and add up to ${getAppendixCapForRequestedDeckSize(run.target_slide_count)} appendix slides only as optional top-up if they are genuinely additive.`;
   const slideCountContractInstruction = isReportOnly
     ? null
-    : `The requested ${run.target_slide_count} slides are your CONTENT slide count. Ship one structural cover slide outside that count. You may ship at most one structural closing slide outside that count, and only if its layout is summary, title-body, title-bullets, or recommendation-cards. Every other slide counts toward the requested content total.`;
+    : `The requested ${run.target_slide_count} slides are your CONTENT slide count. Ship one structural cover slide outside that count. You may ship at most one structural closing slide outside that count, and only if its layout is summary, title-body, title-bullets, or recommendation-cards. If you include a structural closing slide, it must be the final slide. Never place an analytical or support slide after a structural closing slide. Every other slide counts toward the requested content total.`;
   const extractionInstruction = evidenceMode.hasTabularData
     ? "Read the uploaded Excel/CSV files with pandas, profile only the relevant sheets, compute KPIs, and derive the storyline from the tabular evidence."
     : evidenceMode.hasDocumentEvidence
@@ -5327,6 +5328,7 @@ function buildReviseSlideScope(
 ) {
   const targetedPositions = new Set<number>();
   const deckLevelIssues: string[] = [];
+  const requiresGlobalScope = issues.some((issue) => isDeckLevelCountContractIssue(issue) || isTerminalClosingContractIssue(issue));
 
   for (const issue of visualQa?.issues ?? []) {
     if (issue.severity === "major" || issue.severity === "critical") {
@@ -5353,7 +5355,7 @@ function buildReviseSlideScope(
     title: slide.title,
   }));
 
-  if (targetedPositions.size === 0) {
+  if (requiresGlobalScope || targetedPositions.size === 0) {
     return {
       allowedSlides: allSlides,
       preservedSlides: [] as Array<{ position: number; title: string }>,
@@ -5368,11 +5370,24 @@ function buildReviseSlideScope(
   };
 }
 
-function buildReviseMessage(input: {
+function isDeckLevelCountContractIssue(issue: string) {
+  const normalized = issue.toLowerCase();
+  return normalized.includes("[content_shortfall]")
+    || normalized.includes("[content_overflow]")
+    || normalized.includes("[appendix_overfill]");
+}
+
+function isTerminalClosingContractIssue(issue: string) {
+  const normalized = issue.toLowerCase();
+  return normalized.includes("last slide should be summary or recommendation layout");
+}
+
+export function buildReviseMessage(input: {
   issues: string[];
   manifest: z.infer<typeof deckManifestSchema>;
   currentPdf: GeneratedFile;
   visualQa: RenderedPageQaReport;
+  targetSlideCount?: number;
 }) {
   const chartPreprocessingGuide = buildChartPreprocessingGuide();
   const slideScope = buildReviseSlideScope(input.manifest, input.issues, input.visualQa);
@@ -5380,6 +5395,9 @@ function buildReviseMessage(input: {
   const secondaryIssues = input.issues.filter((issue) => {
     return !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
   });
+  const targetSlideCountInstruction = typeof input.targetSlideCount === "number" && input.targetSlideCount > 0
+    ? `The user asked for exactly ${input.targetSlideCount} content slides. Keep exactly ${input.targetSlideCount} content slides, plus one structural cover, plus at most one structural closing slide.`
+    : "Keep the requested content-slide count exact, plus one structural cover, plus at most one structural closing slide.";
   return {
     role: "user" as const,
     content: [
@@ -5432,7 +5450,12 @@ function buildReviseMessage(input: {
           "",
           "Target only the weak slides. Preserve the rest of the deck.",
           "Do not use a deck-wide rewrite to solve local issues.",
-          "Do not widen or compress the deck unless you are fixing a count-contract failure. If a critique issue says [content_shortfall] or [appendix_overfill], you may add or remove only the minimum slides needed to restore the requested content-slide count and keep appendix within the allowed top-up cap.",
+          targetSlideCountInstruction,
+          "If you include a structural closing slide, it must be the final slide. Never place an analytical or support slide after a summary, title-body, title-bullets, or recommendation-cards closing slide.",
+          "Do not widen or compress the deck unless you are fixing a count-contract failure. If a critique issue says [content_shortfall], [content_overflow], or [appendix_overfill], you may add or remove only the minimum slides needed to restore the requested content-slide count and keep appendix within the allowed top-up cap.",
+          "If there is one surplus slide, remove the weakest trailing support slide instead of weakening the storyline or appending material after a closing slide.",
+          "If a critique issue says title_claim_unverified or data_primacy, remove the unsupported number or rewrite the claim so it matches the linked evidence exactly. Never preserve a numeric claim that the evidence does not support.",
+          "If a critique issue says a slide violates its archetype, repair the slide so the required slots for that archetype are genuinely present, not just visually implied.",
           "Re-apply the deterministic chart preprocessing guide when rebuilding any chart:",
           chartPreprocessingGuide,
           "Fix overlaps, clipped text, blank sections, and claim-exhibit mismatches before any cosmetic refinements.",
