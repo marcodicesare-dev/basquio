@@ -70,7 +70,7 @@
 - `SIGTERM` handling must drain before recovery. Stop claiming new work immediately, keep run heartbeats alive during the drain window, then abort/supersede only the attempts still in flight after the timeout.
 - Checkpoint recovery is invalid unless the checkpoint contains the full durable artifact set and the recovered analysis belongs to the same attempt as the checkpoint.
 - Include `web_fetch_20260209` in the tools array for free code execution compute.
-- If the loaded Anthropic Skills auto-inject code execution, do not also register a second named `code_execution` tool that collides with the injected one.
+- Sonnet and Opus use two valid runtime branches: `webFetchMode: "off"` must explicitly include `{ type: "code_execution_20250825", name: "code_execution" }`, while `webFetchMode: "enrich"` should send `web_fetch` and let the live API auto-inject code execution. `webFetchMode: "off"` never means `tools: []`.
 - Opaque provider/tool interruption markers such as `terminated`, `container_expired`, `execution_time_exceeded`, `too_many_requests`, and tool-result `unavailable` are retryable provider failures. Do not file them under `internal_processing_error`.
 - The generation call should be a SINGLE turn, not an understand/author split. Multi-turn accumulates tool output and multiplies costs.
 - The single-turn file-backed path should be materially cheaper than the split understand/author path. Confirm real cost with live usage telemetry instead of assuming a fixed deck price from prompt theory alone.
@@ -95,6 +95,7 @@
 - Supabase-backed runtime queries must be validated against the migration-defined schema before release.
 - Historical audits or briefs that become non-canonical must be marked as archival at the top and redirected to the current truth source.
 - Do not promote forward-looking SDK features or research claims to canonical runtime guidance without live validation.
+- Any change to `packages/workflows/src/anthropic-execution-contract.ts`, `buildClaudeTools()`, or author/revise tool wiring must run a live no-web-fetch smoke before merge. The canonical command is `pnpm test:code-exec-no-webfetch`.
 
 ## Railway / Multi-Service Deploy Rules (CRITICAL — learned April 21, 2026 forensic)
 

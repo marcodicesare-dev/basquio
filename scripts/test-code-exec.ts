@@ -8,11 +8,13 @@ import pdfParse from "pdf-parse";
 import { createSystemTemplateProfile } from "@basquio/template-engine";
 
 import {
+  assertAuthoringExecutionContract,
   BETAS,
   type AuthoringContainer,
   buildAuthoringOutputConfig,
   buildAuthoringContainer,
   buildClaudeTools,
+  type WebFetchMode,
 } from "../packages/workflows/src/anthropic-execution-contract";
 import { parseDeckManifest } from "../packages/workflows/src/deck-manifest";
 import { buildBasquioSystemPrompt } from "../packages/workflows/src/system-prompt";
@@ -77,6 +79,14 @@ async function main() {
   let container: AuthoringContainer = buildAuthoringContainer(undefined, MODEL);
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
   const fileIds = new Set<string>();
+  const tools = buildClaudeTools(MODEL, { webFetchMode: options.webFetchMode });
+  assertAuthoringExecutionContract({
+    model: MODEL,
+    phase: "smoke",
+    tools,
+    skills: ["pptx", "pdf"],
+    webFetchMode: options.webFetchMode,
+  });
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
@@ -88,7 +98,7 @@ async function main() {
       system,
       messages,
       container,
-      tools: buildClaudeTools(MODEL),
+      tools,
       output_config: buildAuthoringOutputConfig(MODEL),
     });
     const response: Anthropic.Beta.BetaMessage = await stream.finalMessage();
@@ -182,6 +192,8 @@ async function main() {
     visualQaScore: visualQa.report.score,
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
+    toolNames: tools.flatMap((tool) => ("name" in tool && typeof tool.name === "string" ? [tool.name] : [])),
+    webFetchMode: options.webFetchMode,
     containerId: finalMessage.container?.id ?? null,
   }, null, 2));
 }
@@ -236,6 +248,7 @@ function inferLanguageHint(brief: string) {
 
 function parseArgs(argv: string[]) {
   let file: string | null = null;
+  let webFetchMode: WebFetchMode = "enrich";
   let brief =
     "Create a 3-slide consulting-grade deck from the uploaded data with one strong takeaway, one recommendation-card slide, and one visual evidence slide.";
 
@@ -249,10 +262,20 @@ function parseArgs(argv: string[]) {
     if (arg === "--brief") {
       brief = argv[index + 1] ?? brief;
       index += 1;
+      continue;
+    }
+    if (arg === "--web-fetch-mode") {
+      const value = argv[index + 1];
+      if (value === "off" || value === "enrich") {
+        webFetchMode = value;
+      } else {
+        throw new Error(`Invalid --web-fetch-mode value: ${value ?? "missing"}`);
+      }
+      index += 1;
     }
   }
 
-  return { file, brief };
+  return { file, brief, webFetchMode };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {

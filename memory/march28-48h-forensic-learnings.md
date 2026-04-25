@@ -17,6 +17,23 @@ Use it to avoid reintroducing the same failure classes.
 4. The `normalize` Files API upload window needs its own liveness updates and bounded transient retries.
    Long or flaky file uploads can legitimately take minutes; they should refresh `last_meaningful_event_at` and retry transient 5xx / overload failures before failing the attempt.
 
+## April 25, 2026 Addendum, Anthropic Skills contract outage
+
+1. Provider-contract changes need a live smoke on the exact production path, not only unit tests.
+   On April 24, 2026 Basquio merged a unit test that asserted `buildClaudeTools("claude-opus-4-7", { webFetchMode: "off" })` should return an empty array. The test passed, production failed.
+
+2. Skills do not excuse an empty tools array.
+   The stable Basquio contract is branch-specific: Sonnet or Opus with `webFetchMode: "off"` must include explicit `code_execution`, while the enrich branch should send `web_fetch` and let the live API auto-inject code execution. Haiku keeps explicit `code_execution`.
+
+3. A Railway deploy can surface an older worker bug even when the commit message looks unrelated.
+   The production-red deployment was `2b3c7d4`, but the prod-breaking logic came from its ancestor `eb05537`, and the root unsafe assumption came from `8d885116`.
+
+4. Zero-token provider rejects are their own failure class.
+   If `deck_run_request_usage` shows zero input and output tokens with a provider `400 invalid_request_error`, the request envelope is wrong. Do not waste time auditing charts, storage, or Supabase first.
+
+5. The canonical pre-merge smokes for this class are `pnpm test:code-exec-no-webfetch` and `pnpm exec tsx scripts/test-anthropic-skills-contract.ts --web-fetch-mode enrich`.
+   Any change to `anthropic-execution-contract.ts` or author/revise tool wiring must pass both when both branches remain live.
+
 ## Last Known-Good Baseline
 
 - Comparable production success before the regression cluster: run `281f287a-3a72-41af-b84e-e6fe84efd646`

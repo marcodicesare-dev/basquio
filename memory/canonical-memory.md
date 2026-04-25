@@ -125,7 +125,7 @@ Initial domain bias:
 - the shipped workspace uploader lives in `.context/main-landing`, and that surface must use direct browser-to-Supabase uploads plus confirm-step row creation instead of raw multipart bodies through a Vercel function.
 - workspace chat uploads are two-lane by contract: attached-to-chat is the immediate success state, while memory indexing is async worker work and must not be shown as an upload failure.
 - workspace chat supports paste-to-attach for screenshots and files; screenshots must attach immediately, remain previewable from the chat, and enter memory through an async vision/text projection lane.
-- In the current Anthropic API behavior, loading Skills can auto-inject the code-execution tool. Do not explicitly register another named `code_execution` tool alongside those Skills if the API reports a tool-name conflict.
+- In the current Anthropic API behavior, Sonnet and Opus use two stable authoring branches: `webFetchMode: "off"` requires explicit `{ type: "code_execution_20250825", name: "code_execution" }`, while `webFetchMode: "enrich"` should send `web_fetch` and let the API auto-inject code execution. Haiku always keeps explicit `code_execution`.
 - The March 27-28 failure cluster was primarily a runtime-truth mismatch problem: speculative docs and forward-looking fixes diverged from live provider/runtime behavior faster than the code was revalidated.
 - The canonical March 28 forensic truth source is `memory/march28-48h-forensic-learnings.md`.
 - Current production Anthropic contract is `code_execution_20250825` with beta `code-execution-2025-08-25`; treat `code_execution_20260120` as non-canonical until live-validated.
@@ -143,6 +143,17 @@ Initial domain bias:
 - Lesson: every Railway service must own a service-scoped config under its own subdirectory. Root `railway.toml` is reserved for the deck worker. The Discord bot's config lives at `apps/bot/railway.toml` from this incident forward.
 - See `rules/canonical-rules.md` → "Railway / Multi-Service Deploy Rules" for the full audit-before-touch checklist.
 - Watchdog requirement: any long-lived service (Discord bot, deck worker) must have a heartbeat alarm. A 30-minute silence on the bot's transcript table or worker's claim table fires an alert. Silent death over a full night is unacceptable.
+
+## Production Incident Memory: April 25, 2026, Anthropic Skills contract outage
+
+- The deck worker was effectively down after the Railway deployment created at `2026-04-24T16:42:43Z`, deployment `fded89be-4cec-44c8-b196-9ccb6fd44130`, commit `2b3c7d46892162b77e9394bed58af27c4ecfd45d`.
+- The root bug was older. Commit `8d88511649c0525225681fc1e535aef5ee0132d3` encoded the wrong assumption that Sonnet and Opus could always rely on implicit code execution. That assumption was only survivable on the enrich branch, not on the `webFetchMode: "off"` branch.
+- The prod-breaking path was activated by commit `eb0553715070942a895a7239c6f68b256f2654d6`, which introduced `webFetchMode: "off"` for cold uploads and added a unit test that asserted Opus with `webFetchMode: "off"` should return `[]` tools.
+- Runtime proof from `deck_run_events`: failed runs entered `author`, recorded `skills: ["pptx", "pdf"]`, `tools: []`, and then Anthropic rejected the request with `400 invalid_request_error: container: skills can only be used when a code execution tool is enabled`.
+- Runtime proof from `deck_run_request_usage`: all five failed runs after that deployment recorded zero input tokens and zero output tokens, which means the provider rejected the request envelope before model execution.
+- Affected users included `rossella@basquio.com` on Segafredo and `sandy@65nation.com` on a separate leadership-team run. This was not a single-brief issue.
+- Vercel and Supabase Storage were healthy during the incident. `/api/generate` kept returning `202`, storage uploads and reads were `200`, and the failure class was isolated to the worker's Anthropic request contract.
+- Canonical prevention rule: any change to `anthropic-execution-contract.ts` or author/revise tool wiring must run a live cold-upload smoke on the exact no-web-fetch path before merge. `pnpm test:code-exec-no-webfetch` is the minimum required validation.
 
 ## Production Incident Memory: March 21-22, 2026
 

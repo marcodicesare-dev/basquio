@@ -1,6 +1,6 @@
 # Stack Practices
 
-Last revalidated against official documentation: March 15, 2026.
+Last revalidated against official documentation: April 25, 2026.
 
 ## Purpose
 
@@ -124,6 +124,29 @@ When Basquio supports multiple organizations and heavier workloads:
 - add throttling for expensive render steps
 - consider separating template analysis from generation fan-out
 - if a worker pool replaces the single worker, preserve atomic claim semantics and heartbeat-based stale-run recovery
+
+## Anthropic provider contract
+
+### Skills and code execution
+
+Anthropic's official docs and the live API need to be validated together because the runtime has branch-specific behavior.
+
+Basquio implication:
+
+- Sonnet and Opus with `webFetchMode: "off"` must include `{ type: "code_execution_20250825", name: "code_execution" }`
+- Sonnet and Opus with `webFetchMode: "enrich"` should send `web_fetch` and let the live API auto-inject code execution. Explicit duplicate `code_execution` conflicts on that branch
+- Haiku keeps explicit `code_execution` on both branches because it does not load Skills
+- never treat an empty `tools` array as valid on author or revise when the worker expects code execution
+
+### Validation discipline
+
+TypeScript and unit tests are not enough for provider-contract changes.
+
+Basquio implication:
+
+- changes to `packages/workflows/src/anthropic-execution-contract.ts` must run live smokes on both the no-web-fetch and enrich branches with a real Anthropic key before merge
+- the canonical local commands are `pnpm test:code-exec-no-webfetch` and `pnpm exec tsx scripts/test-anthropic-skills-contract.ts --web-fetch-mode enrich`
+- if runtime evidence and historical docs disagree, trust the live provider response and update the docs in the same change
 
 ## Browserless
 

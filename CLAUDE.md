@@ -28,6 +28,7 @@ pnpm qa:basquio        # type-check + context QA
 npx tsc --noEmit       # type-check only
 pnpm worker            # run Railway worker locally
 pnpm test:code-exec    # smoke test against Claude API
+pnpm test:code-exec-no-webfetch   # exact cold-upload authoring smoke against Claude API
 ```
 
 After pushing to `main`, Vercel auto-deploys. The Railway worker is Git-connected, so deploy safety depends on committed `railway.toml` watch patterns and graceful shutdown behavior, not on manual clean-`HEAD` snapshot rituals.
@@ -99,8 +100,15 @@ Migrations: `supabase/migrations/`
 - `code_execution_20260120` does NOT exist server-side as of March 28. The SDK has forward types.
 - `context_management` (clear_tool_uses, compact) was REJECTED by the API on March 29. Do NOT use until Anthropic confirms support.
 
-### Haiku execution contract (March 31, 2026 — 6 failed production runs to discover)
-- **`code_execution` MUST be explicit in the tools array for Haiku.** The beta header only enables the API to accept the tool type. For Sonnet/Opus, `container.skills` implicitly enables code execution. For Haiku with no skills, you MUST pass `{type: "code_execution_20250825", name: "code_execution"}` in `tools`. Without this, `container_upload` blocks are rejected.
+### Skills + code execution contract (April 25, 2026 forensic)
+- **Sonnet and Opus have two different valid authoring contracts.** With `webFetchMode: "off"`, the request must explicitly include `{type: "code_execution_20250825", name: "code_execution"}`. With `webFetchMode: "enrich"`, the request should include `web_fetch` only. The live API auto-injects code execution on that branch and rejects duplicate `code_execution` names.
+- **`webFetchMode: "off"` must NEVER produce an empty tools array.** The minimum valid no-web-fetch contract is `{type: "code_execution_20250825", name: "code_execution"}`.
+- **Haiku always keeps explicit `code_execution`.** Haiku does not load Skills and still needs the tool in `tools`, with `web_fetch` added only when the flow is enrich-enabled.
+- **`buildClaudeTools()` is a production boundary.** Any change to `packages/workflows/src/anthropic-execution-contract.ts` or any author/revise tool wiring in `generate-deck.ts` requires `pnpm test:code-exec-no-webfetch` before merge, plus a comparable production rerun after deploy.
+- **The April 25 outage was caused by blessing the wrong behavior in tests.** Commit `eb05537` added a unit test asserting Opus with `webFetchMode: "off"` should send no tools. Deploy `2b3c7d4` surfaced that latent mistake and production went to 5 of 5 failed author runs.
+
+### Haiku execution contract (March 31, 2026, revised April 25, 2026)
+- **`code_execution` MUST be explicit in the tools array for Haiku.** The beta header only enables the API to accept the tool type. Haiku with no skills still needs `{type: "code_execution_20250825", name: "code_execution"}` in `tools`. Without this, `container_upload` blocks are rejected.
 - **Haiku does NOT support `container.skills`.** API rejects with "container: skills can only be used when a code execution tool is enabled". Drop the `skills-2025-10-02` beta and do NOT pass `container.skills` for Haiku.
 - **Haiku container param must be `undefined`, not `{}`.** An empty object `{}` causes the same "skills" error. Omit the field entirely on the first request; use `{id: containerId}` on continuations.
 - **Haiku does NOT support programmatic tool calling.** `web_fetch` needs `allowed_callers: ["direct"]`.

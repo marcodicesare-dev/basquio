@@ -1,5 +1,8 @@
 # P0 handoff: data primacy, vertical knowledge expansion, UI slop strip
 
+Historical correction, added 2026-04-25:
+P0.2's original expectation for `buildClaudeTools("claude-opus-4-7", { webFetchMode: "off" })` was wrong. Production proved that the no-web-fetch branch needs explicit `code_execution`, while the enrich branch uses `web_fetch` and the live API auto-injects code execution. See `memory/canonical-memory.md` and `CLAUDE.md` for the corrected runtime contract.
+
 Session date: 2026-04-24
 Owner on hand-off: GPT-5.5 via codex CLI
 Branch: cut a fresh branch from `origin/main` named `codex/p0-data-primacy-ui-slop`
@@ -289,7 +292,7 @@ tools: buildClaudeTools(reviseModel, { webFetchMode: "off" }),
 Add `webFetchMode` field to the `cost_preflight` event payload for both author and revise so operators can see from the database which runs had web access.
 
 ### Acceptance
-- Unit test in `packages/workflows/src/anthropic-execution-contract.test.ts`: `buildClaudeTools("claude-opus-4-7", { webFetchMode: "off" })` returns empty array; `buildClaudeTools("claude-opus-4-7", { webFetchMode: "enrich" })` contains web_fetch; `buildClaudeTools("claude-haiku-4-5", { webFetchMode: "off" })` returns single code_execution tool
+- Unit test in `packages/workflows/src/anthropic-execution-contract.test.ts`: `buildClaudeTools("claude-opus-4-7", { webFetchMode: "off" })` returns the explicit `code_execution` tool; `buildClaudeTools("claude-opus-4-7", { webFetchMode: "enrich" })` returns `web_fetch`; `buildClaudeTools("claude-haiku-4-5", { webFetchMode: "off" })` returns single `code_execution` tool
 - Grep confirms `web_fetch_20260209` appears only inside `if (webFetchMode === "enrich")` block
 - Every `buildClaudeTools(` call in generate-deck.ts now passes explicit `webFetchMode`
 

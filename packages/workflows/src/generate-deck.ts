@@ -56,6 +56,7 @@ import {
 } from "@basquio/types";
 
 import {
+  assertAuthoringExecutionContract,
   BETAS,
   type AuthoringContainer,
   buildAuthoringContainer,
@@ -1620,6 +1621,14 @@ export async function generateDeckRun(
         const candidateToolCallSummary = buildAuthoringToolCallSummary(candidateModel, {
           webFetchMode: authorWebFetchMode,
         });
+        const candidateTools = buildClaudeTools(candidateModel, { webFetchMode: authorWebFetchMode });
+        assertAuthoringExecutionContract({
+          model: candidateModel,
+          phase: "author",
+          tools: candidateTools,
+          skills: candidateToolCallSummary.skills,
+          webFetchMode: authorWebFetchMode,
+        });
         const candidateIsReportOnly = candidateModel === "claude-haiku-4-5";
         const candidateGenerationMessage = buildAuthorMessage(
           run,
@@ -1672,7 +1681,7 @@ export async function generateDeckRun(
             body: {
               system: systemPrompt,
               messages: [candidateGenerationMessage],
-              tools: buildClaudeTools(candidateModel, { webFetchMode: authorWebFetchMode }),
+              tools: candidateTools,
               thinking: buildAuthoringThinkingConfig(candidateModel),
               output_config: buildAuthoringOutputConfig(candidateModel),
             },
@@ -1703,7 +1712,7 @@ export async function generateDeckRun(
             betas: candidateBetas,
             container: buildAuthoringContainer(baseContainerId, candidateModel),
             messages: [candidateGenerationMessage],
-            tools: buildClaudeTools(candidateModel, { webFetchMode: authorWebFetchMode }),
+            tools: candidateTools,
             outputConfig: buildAuthoringOutputConfig(candidateModel),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
             abortSignal: externalAbortSignal,
@@ -1753,7 +1762,7 @@ export async function generateDeckRun(
                   ],
                 },
               ],
-              tools: buildClaudeTools(candidateModel, { webFetchMode: authorWebFetchMode }),
+              tools: candidateTools,
               thinking: buildAuthoringThinkingConfig(candidateModel),
               outputConfig: buildAuthoringOutputConfig(candidateModel),
               onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
@@ -2301,6 +2310,14 @@ export async function generateDeckRun(
         const reviseToolCallSummary = buildAuthoringToolCallSummary(reviseModel, {
           webFetchMode: reviseWebFetchMode,
         });
+        const reviseTools = buildClaudeTools(reviseModel, { webFetchMode: reviseWebFetchMode });
+        assertAuthoringExecutionContract({
+          model: reviseModel,
+          phase: "revise",
+          tools: reviseTools,
+          skills: reviseToolCallSummary.skills,
+          webFetchMode: reviseWebFetchMode,
+        });
         const reviseMaxTokens = getRevisePhaseMaxTokens(reviseModel, run.target_slide_count);
         let activeManifest = manifest;
         let activePdf = pdfFile;
@@ -2385,7 +2402,7 @@ export async function generateDeckRun(
               body: {
                 system: systemPrompt,
                 messages: reviseMessages,
-                tools: buildClaudeTools(reviseModel, { webFetchMode: reviseWebFetchMode }),
+                tools: reviseTools,
                 thinking: buildAuthoringThinkingConfig(reviseModel),
                 output_config: buildAuthoringOutputConfig(reviseModel),
               },
@@ -2417,7 +2434,7 @@ export async function generateDeckRun(
             betas: reviseBetas,
             container: buildAuthoringContainer(latestContainerId, reviseModel),
             messages: reviseMessages,
-            tools: buildClaudeTools(reviseModel, { webFetchMode: reviseWebFetchMode }),
+            tools: reviseTools,
             thinking: buildAuthoringThinkingConfig(reviseModel),
             outputConfig: buildAuthoringOutputConfig(reviseModel),
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),
@@ -2467,7 +2484,7 @@ export async function generateDeckRun(
                   ],
                 },
               ],
-              tools: buildClaudeTools(reviseModel, { webFetchMode: reviseWebFetchMode }),
+              tools: reviseTools,
               thinking: buildAuthoringThinkingConfig(reviseModel),
               outputConfig: buildAuthoringOutputConfig(reviseModel),
               onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "revise", reviseModel),

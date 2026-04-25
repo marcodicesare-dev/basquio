@@ -104,6 +104,17 @@ In final responses: lead with the answer, then structure the reasoning. Not the 
 
 If Marco asks "is X shipped?" and you are not sure, check the code. Run `git show`, read the file, query Supabase, run the pipeline. Never answer from memory of earlier session state. Code changes fast here.
 
+## 10b. Provider contract changes need live smoke
+
+If a change touches Anthropic tool wiring, `packages/workflows/src/anthropic-execution-contract.ts`, `buildClaudeTools()`, or the author or revise request envelope, run a live provider smoke on the exact path you changed.
+
+Minimum rule:
+- run `pnpm test:code-exec-no-webfetch` before claiming the change is safe
+- run `pnpm exec tsx scripts/test-anthropic-skills-contract.ts --web-fetch-mode enrich` when the Sonnet or Opus enrich branch is still part of the release path
+- if the change affects another contract branch, run the closest matching live smoke too
+- unit tests are necessary, not sufficient
+- if a historical spec or test says the provider allows something and the live API disagrees, the live API wins and the docs must be corrected in the same change
+
 ## 11. Respect shipping pace
 
 Marco ships in hours. A task you would estimate at 3 weeks for a funded team ships here in 2 to 3 focused sessions. Calibrate timelines accordingly. Do not pad estimates. Do not recommend a 3-month multi-tenant lift when the foundation is already multi-tenant and the remaining work is a few database columns.

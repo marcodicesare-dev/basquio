@@ -1,5 +1,25 @@
 # Decision Log
 
+## April 25, 2026, Live Anthropic authoring contract by branch
+
+Decision:
+- `packages/workflows/src/anthropic-execution-contract.ts` now follows the live two-branch Sonnet or Opus contract: `webFetchMode: "off"` includes explicit `{ type: "code_execution_20250825", name: "code_execution" }`, while `webFetchMode: "enrich"` sends `web_fetch` and relies on the API's auto-injected code execution. Haiku keeps explicit `code_execution` on both branches.
+- `webFetchMode: "off"` only disables `web_fetch`. It must never produce an empty `tools` array on the author or revise path.
+- The worker now fails fast on invalid authoring contracts before making the Anthropic request.
+- Any change to the authoring contract requires live smoke on both contract branches before merge: `pnpm test:code-exec-no-webfetch` plus `pnpm exec tsx scripts/test-anthropic-skills-contract.ts --web-fetch-mode enrich`.
+
+Why:
+- Production incident on April 24 to 25, 2026: every run after worker deployment `fded89be-4cec-44c8-b196-9ccb6fd44130` failed in `author` with `container: skills can only be used when a code execution tool is enabled`.
+- The root unsafe assumption was introduced in `8d885116`, which treated Sonnet and Opus Skills as implicitly enabling code execution on every branch.
+- Commit `eb05537` made the broken branch reachable for cold uploads and added a unit test that blessed the empty-tools behavior as correct.
+- The worker deployment from `2b3c7d4` surfaced that bad contract in production.
+
+Cross-references:
+- Canonical runtime guidance: `CLAUDE.md` → "Skills + code execution contract"
+- Canonical rules: `rules/canonical-rules.md` → "Token Cost Rules" and "Change Management Rules"
+- Canonical memory: `memory/canonical-memory.md` → "Production Incident Memory: April 25, 2026, Anthropic Skills contract outage"
+- Forensic addendum: `memory/march28-48h-forensic-learnings.md`
+
 ## April 21, 2026 — Service-scoped Railway configs (post-Discord-bot-silent-death forensic)
 
 Decision:
@@ -158,7 +178,7 @@ Implication:
 
 Decision:
 - Always include `{ type: "web_fetch_20260209", name: "web_fetch" }` in the tools array.
-- When Skills already auto-inject code execution, do not also register another named `code_execution` tool that collides with the injected tool name.
+- When Basquio loads Skills, keep explicit `{ type: "code_execution_20250825", name: "code_execution" }` in the tools array. `webFetchMode: "off"` removes `web_fetch`, not `code_execution`.
 
 Why:
 - Anthropic pricing docs: "Code execution is free when used with web search or web fetch."
