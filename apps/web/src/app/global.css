@@ -18587,9 +18587,9 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-ai-chat-chip-indexing-failed {
-  background: var(--amber-soft);
+  background: var(--canvas-stage);
   color: var(--text);
-  border-color: color-mix(in oklab, var(--amber, #f0cc27) 55%, var(--border));
+  border-color: color-mix(in oklab, var(--blue, #1a6aff) 18%, var(--border));
 }
 
 .wbeta-ai-chat-chip-upload-failed {
@@ -18613,7 +18613,7 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-ai-chat-chip-indexing-failed .wbeta-ai-chat-chip-icon {
-  color: color-mix(in oklab, var(--amber, #f0cc27) 70%, #8a6a00);
+  color: var(--blue);
 }
 
 .wbeta-ai-chat-chip-upload-failed .wbeta-ai-chat-chip-icon {
@@ -18677,26 +18677,60 @@ body:has(.wbeta-shell) .site-wrap {
   transition: opacity 120ms ease, background 120ms ease;
 }
 
-.wbeta-ai-chat-chip-retry {
+.wbeta-ai-chat-chip-info {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid currentColor;
-  background: transparent;
-  color: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
 }
 
-.wbeta-ai-chat-chip-retry:hover {
-  background: currentColor;
-  color: var(--canvas-stage, #fff);
+.wbeta-ai-chat-chip-info-trigger {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.wbeta-ai-chat-chip-info-trigger:hover,
+.wbeta-ai-chat-chip-info-trigger:focus-visible {
+  background: var(--surface-strong);
+  color: var(--text);
+  outline: none;
+}
+
+.wbeta-ai-chat-chip-info-tip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  width: 286px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(11, 12, 12, 0.94);
+  color: white;
+  box-shadow: var(--shadow-panel);
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: 0;
+  font-weight: 500;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px) scale(0.98);
+  transform-origin: bottom right;
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.wbeta-ai-chat-chip-info:hover .wbeta-ai-chat-chip-info-tip,
+.wbeta-ai-chat-chip-info:focus-within .wbeta-ai-chat-chip-info-tip {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .wbeta-ai-chat-chip-remove:hover {

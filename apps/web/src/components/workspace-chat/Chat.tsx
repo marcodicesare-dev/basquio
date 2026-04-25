@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useRouter } from "next/navigation";
 import TextareaAutosize from "react-textarea-autosize";
@@ -9,7 +9,7 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
-import { ArrowUp, Paperclip, Stop, X, CheckCircle, WarningCircle } from "@phosphor-icons/react";
+import { ArrowUp, Paperclip, Stop, X, CheckCircle, WarningCircle, Info } from "@phosphor-icons/react";
 
 import { ChatMessage } from "@/components/workspace-chat/ChatMessage";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
@@ -96,7 +96,6 @@ export function WorkspaceChat({
   const scrollRafRef = useRef<number | null>(null);
   const stickToLatestRef = useRef(true);
   const dragDepthRef = useRef(0);
-  const attachedFilesRef = useRef(new Map<string, File>());
   const router = useRouter();
 
   const updateAttachment = useCallback((localId: string, patch: Partial<AttachmentChip>) => {
@@ -106,49 +105,8 @@ export function WorkspaceChat({
   }, []);
 
   const removeAttachment = useCallback((localId: string) => {
-    attachedFilesRef.current.delete(localId);
     setAttachments((prev) => prev.filter((chip) => chip.localId !== localId));
   }, []);
-
-  const retryAttachment = useCallback(
-    async (localId: string) => {
-      const chip = attachments.find((c) => c.localId === localId);
-      if (!chip || !chip.documentId) return;
-      setAttachments((prev) =>
-        prev.map((c) =>
-          c.localId === localId ? { ...c, status: "indexing", message: undefined } : c,
-        ),
-      );
-      try {
-        const response = await fetch(`/api/workspace/documents/${chip.documentId}/retry`, {
-          method: "POST",
-        });
-        if (!response.ok) {
-          const data = (await response.json().catch(() => ({}))) as { error?: string };
-          setAttachments((prev) =>
-            prev.map((c) =>
-              c.localId === localId
-                ? { ...c, status: "indexing-failed", message: data.error ?? "retry failed" }
-                : c,
-            ),
-          );
-        }
-      } catch (err) {
-        setAttachments((prev) =>
-          prev.map((c) =>
-            c.localId === localId
-              ? {
-                  ...c,
-                  status: "indexing-failed",
-                  message: err instanceof Error ? err.message : "retry failed",
-                }
-              : c,
-          ),
-        );
-      }
-    },
-    [attachments],
-  );
 
   const uploadFiles = useCallback(
     async (files: FileList | File[], origin?: "chat-drop" | "chat-paste") => {
@@ -167,7 +125,6 @@ export function WorkspaceChat({
             status: "uploading",
           },
         ]);
-        attachedFilesRef.current.set(localId, file);
         try {
           // Direct-to-storage upload flow owned by port-louis (prepare → PUT →
           // confirm). We layer the dual-lane attachment on top: the confirm
@@ -187,13 +144,12 @@ export function WorkspaceChat({
             message: attachmentFailed
               ? "saved to workspace, chat attach failed"
               : nextStatus === "indexing-failed"
-                ? "memory indexing needs retry"
+                ? "attached, direct file ready"
                 : undefined,
           });
         } catch (uploadError) {
           const message =
             uploadError instanceof Error ? uploadError.message : "Upload failed.";
-          attachedFilesRef.current.delete(localId);
           updateAttachment(localId, { status: "upload-failed", message });
           setUpload({ kind: "error", message });
           continue;
@@ -296,6 +252,7 @@ export function WorkspaceChat({
 
   const isStreaming = status === "streaming" || status === "submitted";
   const isBusy = isStreaming || Boolean(pendingTurn);
+  const hasUploadingAttachments = attachments.some((chip) => chip.status === "uploading");
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
   const lastAssistantStreaming =
     isStreaming && lastMessage?.role === "assistant";
@@ -325,14 +282,13 @@ export function WorkspaceChat({
 
   const dispatchCurrentMessage = useCallback(
     (text: string) => {
-      const attachmentSnapshot = attachments;
       if (scheduledSendRef.current !== null) {
         window.clearTimeout(scheduledSendRef.current);
       }
       scheduledSendRef.current = window.setTimeout(() => {
         scheduledSendRef.current = null;
         try {
-          sendCurrentMessage(sendMessage, text, attachmentSnapshot, attachedFilesRef.current);
+          sendCurrentMessage(sendMessage, text);
         } catch (sendError) {
           setPendingTurn(null);
           setActiveTurnStartedAt(null);
@@ -340,7 +296,7 @@ export function WorkspaceChat({
         }
       }, 0);
     },
-    [attachments, sendMessage],
+    [sendMessage],
   );
 
   useEffect(() => {
@@ -539,7 +495,7 @@ export function WorkspaceChat({
               return {
                 ...chip,
                 status: "indexing-failed",
-                message: "memory indexing needs retry",
+                message: "attached, direct file ready",
               };
             }
             return chip;
@@ -597,7 +553,7 @@ export function WorkspaceChat({
     (event?: React.FormEvent<HTMLFormElement>) => {
       if (event) event.preventDefault();
       const trimmed = draft.trim();
-      if (!trimmed || isBusy) return;
+      if (!trimmed || isBusy || hasUploadingAttachments) return;
       setError(null);
       const startedAt = performance.now();
       stickToLatestRef.current = true;
@@ -606,19 +562,19 @@ export function WorkspaceChat({
       setDraft("");
       dispatchCurrentMessage(trimmed);
     },
-    [dispatchCurrentMessage, draft, isBusy],
+    [dispatchCurrentMessage, draft, hasUploadingAttachments, isBusy],
   );
 
   const handleSendFollowUp = useCallback(
     (text: string) => {
-      if (isBusy) return;
+      if (isBusy || hasUploadingAttachments) return;
       const startedAt = performance.now();
       stickToLatestRef.current = true;
       setActiveTurnStartedAt(startedAt);
       setPendingTurn({ text, startedAt });
       dispatchCurrentMessage(text);
     },
-    [dispatchCurrentMessage, isBusy],
+    [dispatchCurrentMessage, hasUploadingAttachments, isBusy],
   );
 
   const handlePromptSuggestion = useCallback(
@@ -941,10 +897,10 @@ export function WorkspaceChat({
               <span className="wbeta-ai-chat-chip-icon" aria-hidden>
                 {chip.status === "uploading" || chip.status === "indexing" ? (
                   <Paperclip size={14} weight="thin" className="wbeta-ai-chat-chip-icon-pulse" />
-                ) : chip.status === "indexed" ? (
-                  <CheckCircle size={14} weight="fill" />
-                ) : (
+                ) : chip.status === "upload-failed" ? (
                   <WarningCircle size={14} weight="fill" />
+                ) : (
+                  <CheckCircle size={14} weight="fill" />
                 )}
               </span>
               <span className="wbeta-ai-chat-chip-body">
@@ -969,20 +925,16 @@ export function WorkspaceChat({
                   {chip.status === "indexing" ? " · attached, memory indexing" : null}
                   {chip.status === "indexed" ? " · attached, in memory" : null}
                   {chip.status === "indexing-failed"
-                    ? ` · attached, ${chip.message ?? "memory indexing needs retry"}`
+                    ? ` · ${chip.message ?? "attached, direct file ready"}`
                     : null}
                   {chip.status === "upload-failed" ? ` · ${chip.message ?? "upload failed"}` : null}
                 </span>
               </span>
-              {chip.status === "indexing-failed" && chip.documentId ? (
-                <button
-                  type="button"
-                  className="wbeta-ai-chat-chip-retry"
-                  onClick={() => retryAttachment(chip.localId)}
-                  aria-label={`Retry indexing ${chip.filename}`}
-                >
-                  Retry
-                </button>
+              {chip.status === "indexing-failed" ? (
+                <AttachmentChipInfo
+                  label={`What direct file ready means for ${chip.filename}`}
+                  text="Basquio can still read this original file in this chat. The background memory index did not finish, so broader workspace search may not cite it yet."
+                />
               ) : null}
               <button
                 type="button"
@@ -1025,7 +977,7 @@ export function WorkspaceChat({
               type="button"
               className="wbeta-ai-chat-prompt-pill"
               onClick={() => handlePromptSuggestion(suggestion.prompt)}
-              disabled={isBusy}
+              disabled={isBusy || hasUploadingAttachments}
             >
               {compactSuggestionPrompt(suggestion.prompt)}
             </button>
@@ -1061,7 +1013,13 @@ export function WorkspaceChat({
             <Paperclip size={14} weight="regular" />
           </button>
           <p className="wbeta-ai-chat-hint" aria-live="polite">
-            {isBusy ? copy.generating : <kbd className="wbeta-kbd">↵</kbd>}
+            {hasUploadingAttachments ? (
+              "Uploading file..."
+            ) : isBusy ? (
+              copy.generating
+            ) : (
+              <kbd className="wbeta-kbd">↵</kbd>
+            )}
           </p>
           {isBusy ? (
             <button
@@ -1077,7 +1035,7 @@ export function WorkspaceChat({
             <button
               type="submit"
               className="wbeta-ai-chat-send"
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || hasUploadingAttachments}
               aria-label={copy.sendMessage}
             >
               <ArrowUp size={14} weight="bold" />
@@ -1162,6 +1120,25 @@ function AssistantActivity({
         </span>
       </div>
     </div>
+  );
+}
+
+function AttachmentChipInfo({ label, text }: { label: string; text: string }) {
+  const tooltipId = useId();
+  return (
+    <span className="wbeta-ai-chat-chip-info">
+      <button
+        type="button"
+        className="wbeta-ai-chat-chip-info-trigger"
+        aria-label={label}
+        aria-describedby={tooltipId}
+      >
+        <Info size={12} weight="bold" />
+      </button>
+      <span id={tooltipId} className="wbeta-ai-chat-chip-info-tip" role="tooltip">
+        {text}
+      </span>
+    </span>
   );
 }
 
@@ -1270,29 +1247,10 @@ function activeToolName(message?: UIMessage): string | null {
 }
 
 function sendCurrentMessage(
-  sendMessage: (message: { text: string; files?: FileList }) => unknown,
+  sendMessage: (message: { text: string }) => unknown,
   text: string,
-  attachments: AttachmentChip[],
-  fileMap: Map<string, File>,
 ) {
-  const files = attachments
-    .filter((chip) => chip.status !== "upload-failed")
-    .map((chip) => fileMap.get(chip.localId))
-    .filter((file): file is File => Boolean(file));
-  const fileList = makeFileList(files);
-  if (fileList) {
-    sendMessage({ text, files: fileList });
-    for (const chip of attachments) fileMap.delete(chip.localId);
-    return;
-  }
   sendMessage({ text });
-}
-
-function makeFileList(files: File[]): FileList | null {
-  if (files.length === 0 || typeof DataTransfer === "undefined") return null;
-  const transfer = new DataTransfer();
-  for (const file of files) transfer.items.add(file);
-  return transfer.files;
 }
 
 type AttachmentPreviewData =

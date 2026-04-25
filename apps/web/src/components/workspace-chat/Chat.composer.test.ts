@@ -338,9 +338,44 @@ describe("WorkspaceChat composer", () => {
     });
 
     expect(await screen.findByText("2026_Tablets shifting FY 2025.pptx")).not.toBeNull();
-    expect(screen.getByText(/attached, memory indexing needs retry/i)).not.toBeNull();
+    expect(screen.getByText(/attached, direct file ready/i)).not.toBeNull();
     expect(screen.queryByText(/upload failed/i)).toBeNull();
-    expect(screen.getByRole("button", { name: /retry indexing 2026_Tablets/i })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /retry indexing 2026_Tablets/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /what direct file ready means/i })).not.toBeNull();
+    expect(
+      screen.getByText(
+        "Basquio can still read this original file in this chat. The background memory index did not finish, so broader workspace search may not cite it yet.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("does not resend uploaded file bytes through the chat stream request", async () => {
+    uploadWorkspaceFileMock.mockResolvedValue({
+      id: "d135e80d-2f1a-4760-95c3-a8393ef2dd68",
+      status: "processing",
+      deduplicated: false,
+      fileName: "deck.pptx",
+      attachedToConversation: true,
+    });
+
+    render(React.createElement(WorkspaceChat, { scopeName: "Coffee" }));
+
+    const input = document.querySelector("input[type='file']") as HTMLInputElement;
+    const file = new File(["fake deck"], "deck.pptx", {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText("deck.pptx")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Use this deck for the answer" },
+    });
+    fireEvent.submit(document.querySelector(".wbeta-ai-chat-form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(mocks.sendMessage).toHaveBeenCalledWith({ text: "Use this deck for the answer" });
+    });
+    expect(mocks.sendMessage.mock.calls[0]?.[0]).not.toHaveProperty("files");
   });
 
   it("does not label a file as attached when conversation attachment fails", async () => {
