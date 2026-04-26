@@ -3840,8 +3840,12 @@ async function finalizeSuccess(
   extraTelemetry: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
-  const qaPassed = qaReport.passed === true;
-  const deliveryStatus = qaPassed ? "reviewed" : "degraded";
+  const qualityPassport = qaReport && typeof qaReport === "object"
+    ? ((qaReport as Record<string, unknown>).qualityPassport as { classification?: string } | undefined)
+    : undefined;
+  const deliveryStatus = qualityPassport?.classification === "gold" || qualityPassport?.classification === "silver"
+    ? "reviewed"
+    : "degraded";
   const attemptCostTelemetry = {
     model,
     estimatedCostUsd,
@@ -3866,7 +3870,7 @@ async function finalizeSuccess(
       p_anthropic_request_ids: extraTelemetry.anthropicRequestIds ?? [],
       p_slide_count: manifest.slideCount,
       p_page_count: manifest.pageCount ?? manifest.slideCount,
-      p_qa_passed: qaPassed,
+      p_qa_passed: deliveryStatus === "reviewed",
       p_qa_report: {
         ...qaReport,
         template: templateDiagnostics,
