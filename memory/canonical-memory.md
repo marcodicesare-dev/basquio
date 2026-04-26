@@ -116,6 +116,9 @@ Initial domain bias:
 - The final direct-deck publish contract requires `deck.pptx`, `narrative_report.md`, `data_tables.xlsx`, and `deck_manifest.json`. `deck.pdf` is internal QA/checkpoint support only when generated, never a required durable user-facing publish artifact.
 - A failed later recovery attempt must not hide a prior successful publish. If `artifact_manifests_v2` already has `pptx`, `md`, and `xlsx`, the dashboard and finalizer should preserve the run as completed or degraded instead of making downloads disappear.
 - `narrative_report.md` is a live artifact in the direct deck path and must be authored from the same canonical narrative and evidence layer as the deck, not reverse-converted from slides or PDF.
+- Author messages that include uploaded evidence must put the instruction text block before all `container_upload` blocks, matching the official Anthropic code-execution file pattern.
+- The direct author turn must prove evidence availability before analysis. If deterministic ingest found tabular evidence, Claude must locate and open a workbook or CSV inside the container before writing any analytical claim.
+- If Claude says a required uploaded workbook is missing from the container, the run must fail at the evidence availability gate. Basquio must not salvage analysis from a manifest built after missing-evidence self-reporting.
 - NielsenIQ-style exports contain hierarchy subtotal traps. Any topline number must reconcile category rows against supplier rows before it is allowed into the artifacts.
 - narrative markdown in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.
 - narrative markdown must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
@@ -156,6 +159,15 @@ Initial domain bias:
 - Vercel and Supabase Storage were healthy during the incident. `/api/generate` kept returning `202`, storage uploads and reads were `200`, and the failure class was isolated to the worker's Anthropic request contract.
 - Canonical prevention rule: any change to `anthropic-execution-contract.ts` or author/revise tool wiring must run a live cold-upload smoke on the exact no-web-fetch path before merge. `pnpm test:code-exec-no-webfetch` is the minimum required validation.
 - The second April 25 failure was a validator-lane design mistake. After the contract fix, Rossella's rerun got past author and then crashed inside the new April 24 forensic validator stack. The lesson is structural: shadow validators must default to export-only, fail-soft execution. Unset or `warn` validator modes cannot be allowed on author or revise.
+
+## Production Incident Memory: April 26, 2026, Rossella workbook missing in Claude container
+
+- Rossella's Segafredo rerun `58eaa9a5-18d5-44dd-8158-a0dcc9874c60`, attempt 22, ran after the worker had deployed commit `094265af096be7de771f7bbeeb41c8c508538dff`.
+- Runtime proof from `deck_run_events`: normalize parsed one workbook sheet, but the author response preview said `Estrazione SP Segafredo.xlsx` was not present in the container and that only the template PPTX was uploaded.
+- The author then inferred from the brief and produced artifacts anyway. Revise spent additional budget on downstream lint issues, but the real root cause was missing evidence visibility before analysis.
+- PDF recovery errors such as `spawn soffice ENOENT` were incidental. PDF remains internal QA support only and must not be chased as the user-facing artifact failure.
+- Canonical prevention rule: author requests must send text first, then `container_upload` blocks, and must run an evidence availability gate that locates and opens every required tabular evidence file before any claim is written.
+- If Claude self-reports missing required evidence, manifest salvage is forbidden. The attempt must fail with a clear evidence availability error instead of fabricating deck content from the brief.
 
 ## Production Incident Memory: March 21-22, 2026
 

@@ -15,11 +15,16 @@ import {
   buildClaudeTools,
   type WebFetchMode,
 } from "../packages/workflows/src/anthropic-execution-contract";
+import {
+  appendAssistantTurn,
+  appendPauseTurnContinuation,
+} from "../packages/workflows/src/anthropic-message-thread";
 import { parseDeckManifest } from "../packages/workflows/src/deck-manifest";
 import { buildBasquioSystemPrompt } from "../packages/workflows/src/system-prompt";
 import { loadBasquioScriptEnv } from "./load-app-env";
 
 const MODEL = "claude-sonnet-4-6";
+const SMOKE_MAX_TOKENS = 16_384;
 
 loadBasquioScriptEnv();
 
@@ -53,7 +58,6 @@ async function main() {
   const initialMessage = {
     role: "user" as const,
     content: [
-      { type: "container_upload" as const, file_id: uploaded.id },
       {
         type: "text" as const,
         text: [
@@ -71,6 +75,7 @@ async function main() {
           "You may also attach basquio_analysis.json if useful.",
         ].join("\n"),
       },
+      { type: "container_upload" as const, file_id: uploaded.id },
     ],
   };
 
@@ -92,7 +97,7 @@ async function main() {
   for (let iteration = 0; iteration < 8; iteration += 1) {
     const stream = client.beta.messages.stream({
       model: MODEL,
-      max_tokens: 8_192,
+      max_tokens: SMOKE_MAX_TOKENS,
       betas: [...BETAS],
       system,
       messages,
@@ -115,14 +120,59 @@ async function main() {
       break;
     }
 
-    messages = appendAssistantTurn(messages, response);
+    messages = appendPauseTurnContinuation(messages, response);
   }
 
   if (!finalMessage) {
     throw new Error("Claude did not return a final message.");
   }
 
-  const generated = await downloadGeneratedFiles(client, [...fileIds]);
+  let generated = await downloadGeneratedFiles(client, [...fileIds]);
+  const requiredFiles = ["test-deck.pptx", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
+  const missingAfterFirstPass = findMissingGeneratedFiles(generated, requiredFiles);
+  if (missingAfterFirstPass.length > 0 && finalMessage) {
+    messages = [
+      ...appendAssistantTurn(messages, finalMessage),
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: [
+              `The smoke is incomplete. Missing files: ${missingAfterFirstPass.join(", ")}.`,
+              "Use the current container state. Do not restart the analysis.",
+              "Attach every required smoke file before ending: test-deck.pptx, narrative_report.md, data_tables.xlsx, deck_manifest.json.",
+            ].join(" "),
+          },
+        ],
+      },
+    ];
+    for (let retryIteration = 0; retryIteration < 4; retryIteration += 1) {
+      const retryStream = client.beta.messages.stream({
+        model: MODEL,
+        max_tokens: SMOKE_MAX_TOKENS,
+        betas: [...BETAS],
+        system,
+        messages,
+        container,
+        tools,
+        output_config: buildAuthoringOutputConfig(MODEL),
+      });
+      const retryResponse: Anthropic.Beta.BetaMessage = await retryStream.finalMessage();
+      finalMessage = retryResponse;
+      container = retryResponse.container ? buildAuthoringContainer(retryResponse.container.id, MODEL) : container;
+      totalInputTokens += retryResponse.usage?.input_tokens ?? 0;
+      totalOutputTokens += retryResponse.usage?.output_tokens ?? 0;
+      for (const fileId of collectGeneratedFileIds(retryResponse.content)) {
+        fileIds.add(fileId);
+      }
+      if (retryResponse.stop_reason !== "pause_turn") {
+        break;
+      }
+      messages = appendPauseTurnContinuation(messages, retryResponse);
+    }
+    generated = await downloadGeneratedFiles(client, [...fileIds]);
+  }
   const pptx = generated.find((file) => file.fileName === "test-deck.pptx" || file.fileName.endsWith("/test-deck.pptx"));
   const narrative = generated.find((file) => file.fileName === "narrative_report.md" || file.fileName.endsWith("/narrative_report.md"));
   const workbook = generated.find((file) => file.fileName === "data_tables.xlsx" || file.fileName.endsWith("/data_tables.xlsx"));
@@ -130,7 +180,7 @@ async function main() {
   if (!pptx) {
     throw new Error(
       `Claude did not attach test-deck.pptx. Attached files: ${generated.map((file) => file.fileName).join(", ") || "none"}. ` +
-      `Content blocks: ${finalMessage.content.map((block) => block.type).join(", ") || "none"}.`,
+      `stop_reason=${finalMessage.stop_reason ?? "unknown"}. Content blocks: ${finalMessage.content.map((block) => block.type).join(", ") || "none"}.`,
     );
   }
   if (!narrative) {
@@ -223,19 +273,6 @@ async function loadInputFile(filePath: string | null) {
   };
 }
 
-function appendAssistantTurn(
-  messages: Anthropic.Beta.BetaMessageParam[],
-  message: Anthropic.Beta.BetaMessage,
-): Anthropic.Beta.BetaMessageParam[] {
-  return [
-    ...messages,
-    {
-      role: "assistant",
-      content: message.content as Anthropic.Beta.BetaContentBlockParam[],
-    },
-  ];
-}
-
 function inferLanguageHint(brief: string) {
   return /\b(il|lo|la|gli|dei|delle|massimo|slide|chiari|famiglie|soluzioni|scenari|grafico)\b/i.test(brief)
     ? "Italian"
@@ -315,6 +352,15 @@ async function downloadGeneratedFiles(client: Anthropic, fileIds: string[]) {
         buffer: Buffer.from(await response.arrayBuffer()),
       };
     }),
+  );
+}
+
+function findMissingGeneratedFiles(
+  files: Array<{ fileName: string }>,
+  requiredFiles: string[],
+) {
+  return requiredFiles.filter(
+    (required) => !files.some((file) => file.fileName === required || file.fileName.endsWith(required)),
   );
 }
 

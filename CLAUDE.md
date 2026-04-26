@@ -65,6 +65,10 @@ The Railway project `basquio-bot` hosts MORE than one service: the deck worker A
 
 ### Data access
 Evidence files are uploaded to Claude via Files API `container_upload`. Claude reads them via pandas/openpyxl in code execution. No preloading into memory.
+- The first author user-message content block must be text, followed by `container_upload` blocks. This matches the official Anthropic code-execution file example and avoids ambiguous multi-file visibility.
+- Author must run an evidence availability gate before analysis: list container files, locate every required uploaded evidence filename, and open at least one tabular workbook/CSV when the deterministic ingest found sheets.
+- If a required workbook is missing from the container, author must stop and attach `evidence_availability_error.json`. It must never infer from the brief, template, filename, or prior run memory.
+- Any author response that self-reports missing required evidence is a blocking pipeline failure. Do not salvage analysis from the manifest in that case.
 
 ### Security
 Storage policies for artifacts scope access by org membership via `deck_runs` join. All PostgREST queries use `assertUuid()` to prevent operator injection. API read endpoints verify auth + tenancy.

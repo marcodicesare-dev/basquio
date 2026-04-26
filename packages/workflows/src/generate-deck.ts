@@ -75,6 +75,12 @@ import {
   appendPauseTurnContinuation,
 } from "./anthropic-message-thread";
 import {
+  buildAuthorFileInventoryLines,
+  buildEvidenceAvailabilityGateLines,
+  buildTextFirstAuthorContent,
+  hasEvidenceAvailabilityFailureText,
+} from "./author-file-message-contract";
+import {
   assertDeckSpendWithinBudget,
   enforceDeckBudget,
   getDeckBudgetCaps,
@@ -1421,9 +1427,15 @@ export async function generateDeckRun(
             client.beta.files.upload({
               file: await toFile(templateFile.buffer, templateFile.file_name),
               betas: [FILES_BETA],
-            }),
+          }),
         })
       : null;
+    await insertEvent(config, runId, attempt, "normalize", "container_upload_inventory", {
+      evidenceFiles: uploadedEvidence.map((file) => ({ fileId: file.id, fileName: file.filename })),
+      supportPackets: uploadedSupportPackets.map((file) => ({ fileId: file.id, fileName: file.filename })),
+      templateFile: uploadedTemplate ? { fileId: uploadedTemplate.id, fileName: uploadedTemplate.filename } : null,
+      messageOrder: "text_then_container_uploads",
+    }).catch(() => {});
 
     const systemPrompt = await buildBasquioSystemPrompt({
       templateProfile,
@@ -1789,6 +1801,18 @@ export async function generateDeckRun(
             : ["deck.pptx", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
           const candidateMessages = [candidateResponse.message];
           let candidateFiles: GeneratedFile[] = await downloadGeneratedFiles(client, candidateResponse.fileIds);
+          const evidenceAvailabilityErrorFile = findGeneratedFile(candidateFiles, "evidence_availability_error.json");
+          if (evidenceAvailabilityErrorFile) {
+            const errorText = evidenceAvailabilityErrorFile.buffer.toString("utf8").slice(0, 2_000);
+            await insertEvent(config, runId, attempt, "author", "evidence_availability_failed", {
+              model: candidateModel,
+              expectedEvidenceFiles: uploadedEvidence.map((file) => file.filename),
+              errorText,
+            }).catch(() => {});
+            throw new Error(
+              `Author evidence availability gate failed before artifact generation. ${errorText}`,
+            );
+          }
           const missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
           if (missingAuthorFiles.length > 0) {
             console.warn(`[author-retry] Missing author files for ${candidateModel}: ${missingAuthorFiles.join(", ")}. Retrying author phase once.`);
@@ -1995,6 +2019,19 @@ export async function generateDeckRun(
         if (resolvedAnalysis.recovery) {
           phaseTelemetry.authorAnalysisRecovery = resolvedAnalysis.recovery;
           await insertEvent(config, runId, attempt, "author", "analysis_salvaged", resolvedAnalysis.recovery).catch(() => {});
+          if (hasEvidenceAvailabilityFailureText({
+            text: JSON.stringify(resolvedAnalysis.recovery),
+            expectedEvidenceFileNames: uploadedEvidence.map((file) => file.filename),
+          })) {
+            await insertEvent(config, runId, attempt, "author", "evidence_availability_failed", {
+              model: MODEL,
+              expectedEvidenceFiles: uploadedEvidence.map((file) => file.filename),
+              recovery: resolvedAnalysis.recovery,
+            }).catch(() => {});
+            throw new Error(
+              `Author proceeded after reporting missing uploaded evidence. Expected evidence files: ${uploadedEvidence.map((file) => file.filename).join(", ")}.`,
+            );
+          }
         }
         enforceAnalysisExhibitRules(analysis);
         applyChartPreprocessingConstraints(analysis);
@@ -5070,44 +5107,38 @@ function buildAuthorMessage(
         "- When a slide presents 3 key takeaways or 3 takeaway cards, use the key-findings archetype.",
         "- Use the system-prompt examples as the visual contract: charts should be PNG-based, slot-sized, and paired with complete narrative copy rather than placeholder labels.",
       ];
-  const uploadedFilesContent = [
-    ...(files?.uploadedEvidence.map((file) => ({ type: "container_upload" as const, file_id: file.id })) ?? []),
-    ...(files?.uploadedSupportPackets.map((file) => ({ type: "container_upload" as const, file_id: file.id })) ?? []),
-    ...(files?.uploadedTemplate ? [{ type: "container_upload" as const, file_id: files.uploadedTemplate.id }] : []),
-  ];
-
   if (isReportOnly) {
     return {
       role: "user" as const,
-      content: [
-        ...uploadedFilesContent,
-        {
-          type: "text" as const,
-          text: buildReportOnlyAuthorText({
-            run,
-            analysis,
-            extractionInstruction,
-            routeContext,
-            analysisDepthInstruction,
-            files,
-          }),
-        },
-      ],
+      content: buildTextFirstAuthorContent({
+        text: buildReportOnlyAuthorText({
+          run,
+          analysis,
+          extractionInstruction,
+          routeContext,
+          analysisDepthInstruction,
+          files,
+          evidenceMode,
+        }),
+        files,
+      }),
     };
   }
 
   return {
     role: "user" as const,
-    content: [
-      ...uploadedFilesContent,
-      {
-        type: "text" as const,
-        text: [
+    content: buildTextFirstAuthorContent({
+      files,
+      text: [
           analysis
             ? "Using the evidence files already available in the current container and the approved analysis below, generate the final consulting-grade deck artifacts."
             : "Use the evidence files already available in the current container to build a final consulting-grade deck without a separate analysis turn.",
           "",
           buildGenerationBrief(run),
+          "",
+          ...buildAuthorFileInventoryLines(files),
+          "",
+          ...buildEvidenceAvailabilityGateLines({ files, evidenceMode }),
           "",
           ...(analysis ? [`Approved analysis JSON:\n${JSON.stringify(analysis, null, 2)}`, ""] : mergedAnalysisInstructions),
           "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
@@ -5317,8 +5348,7 @@ function buildAuthorMessage(
           "- For charted slides, each slide entry in `deck_manifest.json` must also set `hasDataTable` and `hasChartAnnotations` so Basquio can verify evidence co-location deterministically.",
           "- Your final assistant message must attach the files as container uploads before finishing.",
         ].join("\n"),
-      },
-    ],
+    }),
   };
 }
 
@@ -5329,6 +5359,10 @@ function buildReportOnlyAuthorText(input: {
   routeContext: string;
   analysisDepthInstruction: string;
   files?: AuthorInputFiles;
+  evidenceMode: {
+    hasTabularData: boolean;
+    hasDocumentEvidence: boolean;
+  };
 }) {
   const lines = [
     input.analysis
@@ -5336,6 +5370,10 @@ function buildReportOnlyAuthorText(input: {
       : "Use the evidence files already available in the current container to build the final consulting-grade report deliverables without a separate analysis turn.",
     "",
     buildGenerationBrief(input.run),
+    "",
+    ...buildAuthorFileInventoryLines(input.files),
+    "",
+    ...buildEvidenceAvailabilityGateLines({ files: input.files, evidenceMode: input.evidenceMode }),
     "",
     ...(input.analysis
       ? [`Approved analysis JSON:\n${JSON.stringify(input.analysis, null, 2)}`, ""]

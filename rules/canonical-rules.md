@@ -86,6 +86,9 @@
 - Imported template master-background tokens are advisory, not authoritative. Do not let a neutral extracted master fill become the live deck canvas unless it is clearly brand-aligned.
 - The AI should decide what to compute; code should compute the numbers.
 - `data_tables.xlsx` is a user-facing deliverable. Native chart injection alone is insufficient; the workbook must preserve a readable consulting shell with freeze panes, styled tables, deterministic widths, and collision-free chart placement.
+- Claude authoring must prove file availability before analysis. If deterministic ingest found workbook or CSV sheets, the author must locate and open the uploaded tabular file inside code execution before writing claims or artifacts.
+- A missing required workbook in Claude code execution is a hard evidence availability failure. Do not let the author infer from the brief, template, filename, or prior memory, and do not salvage analysis from a manifest created after that self-report.
+- Anthropic code-execution requests that include uploaded files should place the text instruction block before `container_upload` blocks, then list the required evidence filenames in the prompt.
 
 ## Change Management Rules
 

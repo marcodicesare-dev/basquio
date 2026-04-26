@@ -58,11 +58,11 @@ async function main() {
       {
         role: "user",
         content: [
-          { type: "container_upload", file_id: uploaded.id },
           {
             type: "text",
             text: "Use code execution to read the uploaded CSV and compute the total sales value.",
           },
+          { type: "container_upload", file_id: uploaded.id },
         ],
       },
     ],
