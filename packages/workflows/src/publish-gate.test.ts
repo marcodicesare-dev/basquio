@@ -154,8 +154,100 @@ describe("collectPublishGateFailures", () => {
 
     expect(text).toContain("Rebuild the complete artifact set");
     expect(text).toContain("content-slide count must be exactly 10");
-    expect(text).toContain("Use only these uploaded sheet names");
+    expect(text).toContain("existing data_tables.xlsx sheet names");
     expect(text).toContain("analysis_result.json");
     expect(text).toContain("deck.pptx");
+  });
+
+  it("accepts generated workbook companion sheets during author plan validation", () => {
+    const report = __test__.resolvePlanSheetValidationReport({
+      slidePlan: [
+        { position: 3, chart: { id: "chart-3", excelSheetName: "S03_CategoryTotals" } },
+      ],
+      datasetProfile: {
+        sheets: [{ name: "Estrazione SP Segafredo" }],
+        sourceFiles: [{ fileName: "Estrazione SP Segafredo.xlsx" }],
+      } as never,
+      workbookSheets: [{
+        name: "S03_CategoryTotals",
+        headers: ["Metrica", "Valore"],
+        rows: [],
+        numericValues: [],
+        dataSignature: "sheet:s03",
+      }],
+    });
+
+    expect(report.valid).toBe(true);
+    expect(report.fabricatedSheetNames).toHaveLength(0);
+  });
+
+  it("accepts null Excel chart anchors in generated analysis artifacts", () => {
+    const result = __test__.validateGeneratedAnalysisResultFile([{
+      fileId: "file-analysis",
+      fileName: "analysis_result.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify({
+        language: "Italian",
+        thesis: "Segafredo deve riallineare promozioni e distribuzione.",
+        executiveSummary: "Sintesi",
+        slidePlan: [{
+          position: 3,
+          title: "La quota resta sotto il mercato",
+          chart: {
+            id: "chart-3",
+            chartType: "bar",
+            title: "Promozioni per communication in store",
+            excelSheetName: "S03_PromoComm",
+            excelChartCellAnchor: null,
+          },
+        }],
+      })),
+    }]);
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("uses manifest chart metadata to avoid false generic duplicate cuts", () => {
+    const plan = __test__.lintManifestPlan({
+      slideCount: 4,
+      slides: [
+        { position: 1, layoutId: "cover", slideArchetype: "cover", title: "Segafredo promo review" },
+        { position: 2, layoutId: "exec-summary", slideArchetype: "exec-summary", title: "La quota resta sotto il mercato" },
+        {
+          position: 3,
+          layoutId: "title-chart",
+          slideArchetype: "title-chart",
+          title: "La quota resta sotto il mercato",
+          chartId: "promo-chart",
+        },
+        {
+          position: 4,
+          layoutId: "title-chart",
+          slideArchetype: "title-chart",
+          title: "La quota resta sotto il mercato",
+          chartId: "channel-chart",
+        },
+      ],
+      charts: [
+        {
+          id: "promo-chart",
+          chartType: "bar",
+          title: "Promozioni per communication in store",
+          excelSheetName: "S03_PromoComm",
+          xAxisLabel: "Communication in store",
+          yAxisLabel: "Quota promo",
+        },
+        {
+          id: "channel-chart",
+          chartType: "bar",
+          title: "Canali e insegne per peso vendite",
+          excelSheetName: "S04_ChannelMix",
+          xAxisLabel: "Canale",
+          yAxisLabel: "Quota valore",
+        },
+      ],
+    } as never, 3);
+
+    expect(plan.actionableIssues).not.toContainEqual(expect.stringContaining("redundant_analytical_cut"));
   });
 });

@@ -531,6 +531,8 @@ function buildSupportPacketFilename(index: number, fileName: string) {
   return `basquio-evidence-packet-${String(index + 1).padStart(2, "0")}-${base}.md`;
 }
 
+const nullableOptionalString = z.string().nullish().transform((value) => value ?? undefined);
+
 const analysisSchema = z.object({
   language: z.string().default("English"),
   thesis: z.string().default(""),
@@ -558,13 +560,13 @@ const analysisSchema = z.object({
       id: z.string().optional().transform((value) => value?.trim() || `chart-${randomUUID().slice(0, 8)}`),
       chartType: z.string().optional().transform((value) => value?.trim() || "bar"),
       title: z.string().optional().transform((value) => value?.trim() || ""),
-      xAxisLabel: z.string().optional(),
-      yAxisLabel: z.string().optional(),
-      bubbleSizeLabel: z.string().optional(),
-      sourceNote: z.string().optional(),
-      excelSheetName: z.string().optional(),
-      excelChartCellAnchor: z.string().optional(),
-      dataSignature: z.string().optional(),
+      xAxisLabel: nullableOptionalString,
+      yAxisLabel: nullableOptionalString,
+      bubbleSizeLabel: nullableOptionalString,
+      sourceNote: nullableOptionalString,
+      excelSheetName: nullableOptionalString,
+      excelChartCellAnchor: nullableOptionalString,
+      dataSignature: nullableOptionalString,
       maxCategories: z.coerce.number().int().min(1).optional().catch(undefined),
       preferredOrientation: z.enum(["horizontal", "vertical"]).optional().catch(undefined),
       slotAspectRatio: z.any().optional().transform((value) => coercePositiveNumber(value)),
@@ -1663,7 +1665,7 @@ export async function generateDeckRun(
       }));
 
       if (recoveredAnalysisForSplit) {
-        latestPlanSheetValidation = validatePlanSheetNames({
+        latestPlanSheetValidation = resolvePlanSheetValidationReport({
           slidePlan: recoveredAnalysisForSplit.slidePlan,
           datasetProfile: parsed.datasetProfile,
         });
@@ -2096,9 +2098,11 @@ export async function generateDeckRun(
         }
         enforceAnalysisExhibitRules(analysis);
         applyChartPreprocessingConstraints(analysis);
-        latestPlanSheetValidation = validatePlanSheetNames({
+        const authorWorkbookSheets = extractGeneratedWorkbookSheetProfiles(authorFiles);
+        latestPlanSheetValidation = resolvePlanSheetValidationReport({
           slidePlan: analysis.slidePlan,
           datasetProfile: parsed.datasetProfile,
+          workbookSheets: authorWorkbookSheets,
         });
         let resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
         let authorPlanQualityGate = buildAuthorPlanQualityGate({
@@ -2163,7 +2167,7 @@ export async function generateDeckRun(
                   issues: authorPlanQualityGate.issues,
                   targetSlideCount: run.target_slide_count,
                   requiredFiles: qualityRetryRequiredFiles,
-                  knownSheetNames: parsed.datasetProfile.sheets.map((sheet) => sheet.name).filter(Boolean),
+                  knownSheetNames: buildKnownPlanSheetNameList(parsed.datasetProfile, authorWorkbookSheets),
                 }),
               ],
               tools: authorQualityRetryTools,
@@ -2202,7 +2206,7 @@ export async function generateDeckRun(
                 issues: authorPlanQualityGate.issues,
                 targetSlideCount: run.target_slide_count,
                 requiredFiles: qualityRetryRequiredFiles,
-                knownSheetNames: parsed.datasetProfile.sheets.map((sheet) => sheet.name).filter(Boolean),
+                knownSheetNames: buildKnownPlanSheetNameList(parsed.datasetProfile, authorWorkbookSheets),
               }),
             ],
             tools: authorQualityRetryTools,
@@ -2275,9 +2279,11 @@ export async function generateDeckRun(
           analysis = resolvedAnalysis.analysis;
           enforceAnalysisExhibitRules(analysis);
           applyChartPreprocessingConstraints(analysis);
-          latestPlanSheetValidation = validatePlanSheetNames({
+          const retryWorkbookSheets = extractGeneratedWorkbookSheetProfiles(authorFiles);
+          latestPlanSheetValidation = resolvePlanSheetValidationReport({
             slidePlan: analysis.slidePlan,
             datasetProfile: parsed.datasetProfile,
+            workbookSheets: retryWorkbookSheets,
           });
           resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
           authorPlanQualityGate = buildAuthorPlanQualityGate({
@@ -7778,7 +7784,7 @@ function buildAuthorPlanQualityRetryMessage(input: {
           "Your author output failed Basquio quality gates before critique.",
           "Do not patch the old deck locally. Rebuild the complete artifact set from the uploaded workbook and template in this same container.",
           `The content-slide count must be exactly ${input.targetSlideCount}. Keep structural slides separate from content slides.`,
-          `Use only these uploaded sheet names, or derived sheet names prefixed with computed_: ${knownSheetNames}.`,
+          `Use only these uploaded/source sheet names, existing data_tables.xlsx sheet names, or derived sheet names prefixed with computed_: ${knownSheetNames}.`,
           "Remove duplicate analytical cuts, keep analytical chapters contiguous, and do not backtrack to a previous branch unless it is an explicit synthesis slide.",
           "Every title number must be evidence-backed by the visible chart or table on the same slide.",
           "The narrative report must meet the required standalone leave-behind depth and preserve Italian accents.",
@@ -8280,7 +8286,14 @@ function manifestToPlanLintInput(manifest: z.infer<typeof deckManifestSchema>): 
       pageIntent: slide.pageIntent,
       chartId: slide.chartId,
       chartType: chart?.chartType,
-      categories: chart?.categories,
+      categories: [
+        chart?.title,
+        chart?.excelSheetName,
+        chart?.xAxisLabel,
+        chart?.yAxisLabel,
+        chart?.bubbleSizeLabel,
+        ...(chart?.categories ?? []),
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0),
       categoryCount: chart?.categoryCount,
       evidenceIds: slide.evidenceIds,
     };
@@ -8309,6 +8322,49 @@ function resolvePlanSheetValidationReport(input: {
     datasetProfile: input.datasetProfile,
     additionalKnownSheetNames: input.workbookSheets?.map((sheet) => sheet.name) ?? [],
   });
+}
+
+function extractGeneratedWorkbookSheetProfiles(files: GeneratedFile[]) {
+  const workbookFile = findGeneratedFile(files, "data_tables.xlsx");
+  if (!workbookFile) {
+    return [];
+  }
+
+  try {
+    return extractWorkbookSheetProfiles(workbookFile.buffer);
+  } catch {
+    return [];
+  }
+}
+
+function buildKnownPlanSheetNameList(
+  datasetProfile: {
+    sheets: Array<{ name: string }>;
+    sourceFiles: Array<{ fileName: string }>;
+  },
+  workbookSheets: FidelitySheetInput[],
+) {
+  const names = new Set<string>();
+  for (const sheet of datasetProfile.sheets) {
+    if (sheet.name.trim()) {
+      names.add(sheet.name.trim());
+    }
+  }
+  for (const sourceFile of datasetProfile.sourceFiles) {
+    if (sourceFile.fileName.trim()) {
+      names.add(sourceFile.fileName.trim());
+    }
+    const withoutExt = sourceFile.fileName.replace(/\.[^.]+$/, "").trim();
+    if (withoutExt) {
+      names.add(withoutExt);
+    }
+  }
+  for (const sheet of workbookSheets) {
+    if (sheet.name.trim()) {
+      names.add(sheet.name.trim());
+    }
+  }
+  return [...names];
 }
 
 async function ensureWorkbookChartCompanionArtifacts(input: {
@@ -11694,5 +11750,8 @@ export const __test__ = {
   formatArtifactQualityRepairIssues,
   buildWorkbookChartBindingRequests,
   isPlaceholderChartTitle,
+  lintManifestPlan,
+  resolvePlanSheetValidationReport,
   selectBestWorkbookSheetForChart,
+  validateGeneratedAnalysisResultFile,
 };
