@@ -142,11 +142,12 @@ function normalizeChart(input: unknown, index: number) {
   return {
     ...record,
     id: readString(record.id) ?? `chart-${index + 1}`,
-    chartType:
+    chartType: normalizeChartTypeAlias(
       readString(record.chartType) ??
       readString(record.chart_type) ??
       readString(record.type) ??
       "bar",
+    ),
     title: readString(record.title) ?? `Chart ${index + 1}`,
     xAxisLabel: readString(record.xAxisLabel) ?? readString(record.x_axis_label),
     yAxisLabel: readString(record.yAxisLabel) ?? readString(record.y_axis_label),
@@ -163,6 +164,27 @@ function normalizeChart(input: unknown, index: number) {
       record.presentation ?? record.exhibitPresentation ?? record.exhibit_presentation,
     ),
   };
+}
+
+function normalizeChartTypeAlias(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  switch (normalized) {
+    case "horizontal_grouped_bar":
+    case "grouped_horizontal_bar":
+      return "horizontal_bar";
+    case "grouped_bar_with_line":
+    case "bar_with_line":
+    case "combo_bar_line":
+    case "combo":
+      return "grouped_bar";
+    case "stacked_bar_100":
+    case "percent_stacked_bar":
+      return "stacked_bar";
+    case "donut":
+      return "doughnut";
+    default:
+      return normalized;
+  }
 }
 
 function normalizeMetrics(input: unknown) {

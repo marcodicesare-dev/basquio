@@ -6,6 +6,7 @@ import {
   buildBriefDataReconciliationProfile,
   buildFallbackBriefDataReconciliation,
   formatScopeAdjustmentForAuthor,
+  parseBriefDataReconciliationResponse,
 } from "./brief-data-reconciliation";
 
 describe("brief-data-reconciliation", () => {
@@ -49,6 +50,44 @@ describe("brief-data-reconciliation", () => {
     expect(authorBlock).toContain("COFFEE SINGLE SERVE ROAST");
     expect(authorBlock).toContain("Do not invent Segafredo metrics");
     expect(authorBlock).not.toContain("2019");
+  });
+
+  it("does not let model reconciliation reclassify unsupported brief entities as supported", () => {
+    const fallback: ReturnType<typeof buildFallbackBriefDataReconciliation> = {
+      answerable: "partial",
+      supportedScope: [
+        "Uploaded workbook scope: Estrazione SP Segafredo.xlsx (workbook).",
+        "Source entity dimension BRAND OWNER includes labels such as MASSIMO ZANETTI, NESTLE.",
+      ],
+      unsupportedScope: [
+        "Brief terms absent from workbook dimension values: Segafredo.",
+      ],
+      entityCorrections: [
+        "Segafredo appears in the brief, but not as a workbook dimension value. Do not invent metrics for it.",
+      ],
+      forbiddenClaims: [],
+      authorInstructions: [],
+      scopeAdjustmentText: "Segafredo is absent as a dimension value; do not invent Segafredo metrics.",
+    };
+
+    const parsed = parseBriefDataReconciliationResponse(JSON.stringify({
+      answerable: "partial",
+      supportedScope: [
+        "Global coffee market trends 2023-2025 by value and volume",
+        "Segafredo positioning relative to competitors if Segafredo appears in BRAND OWNER dimension",
+      ],
+      unsupportedScope: [],
+      entityCorrections: [],
+      forbiddenClaims: [],
+      authorInstructions: [],
+      scopeAdjustmentText: "Use MZB only if explicitly supported.",
+    }), fallback);
+
+    expect(parsed.supportedScope).toContain("Global coffee market trends 2023-2025 by value and volume");
+    expect(parsed.supportedScope).not.toContain(
+      "Segafredo positioning relative to competitors if Segafredo appears in BRAND OWNER dimension",
+    );
+    expect(parsed.supportedScope).toContain("Uploaded workbook scope: Estrazione SP Segafredo.xlsx (workbook).");
   });
 });
 

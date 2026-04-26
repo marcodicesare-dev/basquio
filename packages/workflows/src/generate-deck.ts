@@ -4524,6 +4524,9 @@ function buildAuthorMessage(
           "- CLIENT-FRIENDLY COPY IS NOT A LICENSE TO LOWER ANALYTICAL QUALITY. If there is a conflict, preserve evidence depth, metric accuracy, and focal-brand clarity first, then make the copy friendlier without weakening the claim.",
           "- BEFORE committing each slide to PPTX, self-score it against this rubric and revise in-place until it passes: TITLE = full-sentence insight with at least one number and max 14 words; BODY = no AI slop, active voice, evidence-led; EVIDENCE = chart/table/source actually support the claim; STRUCTURE = approved archetype and no duplicate question; RECOMMENDATIONS = opportunity first, lever second, rationale tied to visible evidence.",
           "- Treat the rubric as blocking inside the author turn. If a planned slide fails any dimension, rewrite the slide before adding it to the deck instead of hoping revise will fix it later.",
+          "- GREEN-FIRST AUTHORING CONTRACT: the first author output must be publishable without a revise pass. Before writing the PPTX, run a final self-check over the slide plan: exact requested content count, no unsupported numbers, no overcrowded chart labels, approved archetypes, and manifest text matching visible slide text.",
+          `- COUNT CONTRACT: for this run, ship exactly 1 cover slide plus exactly ${run.target_slide_count} content slides. That means the normal total is ${run.target_slide_count + 1} slides. Only exceed that total when every surplus slide has pageIntent containing \"appendix\" or \"source-trail\" and is genuinely supplementary methodology/source material.`,
+          "- COUNT CONTRACT: if your plan has one extra synthesis, recommendation, roadmap, or action-plan slide, merge it into the requested content slides instead of making it a surplus slide. Do not label strategic recommendations or roadmaps as appendix.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
           "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
           "- CLAIM-TO-CHART BINDING: if the slide says the issue is rotation, productivity, ROS, price-led growth, or a distribution opportunity, the hero exhibit must show that metric or a direct causal driver. Do not chart sales value and bury productivity in a side note.",
@@ -4551,13 +4554,17 @@ function buildAuthorMessage(
           "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
           "- Every recommendation must include its own risk and mitigation in the narrative report: `Risk:` and `Mitigation:`.",
           "- If a chart would overcrowd labels or waste most of its frame, switch to a stronger text-first or split-slide composition instead of forcing the chart.",
+          "- Ranking charts with 7+ rows must reserve enough right margin for labels. Do not place value labels and CAGR labels in the same endpoint lane; put growth in the side text/table or omit endpoint labels that collide.",
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
+          "- If a slide headline claims growth/CAGR/delta, set the linked chart metadata title and Excel sheet headers to include `growth`, `CAGR`, `delta`, `trend`, `variazione`, or `vs`; do not leave growth exhibits with level-only chart metadata.",
           "- If a slide promises a comparison set with an explicit count such as 4 provinces, 3 channels, or 5 segments, cover all of them explicitly or change the claim.",
           "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
           "- Never invent a growth target, market-share target, or strategy objective unless it is explicitly present in the brief or directly derivable from the visible evidence.",
+          "- Recommendation slides must not introduce fresh quantified targets, share goals, revenue scenarios, or ROI math. Use opportunity size/CAGR already shown on prior evidence slides; if you must show a scenario, create a visible calculation sheet in data_tables.xlsx with assumptions/formula/source rows and label it as a scenario, not a forecast.",
           "- On player, manufacturer, or competitor slides, keep the focal brand explicitly visible and say what the comparison means for it.",
           "- Preserve source labels exactly: use the input label or the canonical NIQ English label, never invented synonyms like ACV when the source says Distr. Pond.",
+          "- Manifest chartType values must use the canonical vocabulary only: bar, stacked_bar, line, pie, doughnut, waterfall, scatter, area, grouped_bar, horizontal_bar. Do not emit aliases such as grouped_bar_with_line or horizontal_grouped_bar.",
           "- Tables with PY and CY must be ordered past-to-present (PY before CY), and any share or price table must include the relevant delta columns when those metrics are shown.",
           "- Bubble charts must declare the bubble-size dimension explicitly in both metadata and visible title text (`bolla = ...` or `bubble = ...`).",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
@@ -5585,25 +5592,45 @@ async function hydrateManifestFromPptxText(
 
   let changed = false;
   const slides = manifest.slides.map((slide) => {
+    const extracted = textBySlide.get(slide.position) ?? [];
+    const title = findPptxTitleReplacement(slide.title, extracted) ?? slide.title;
     if (slide.body || (slide.bullets?.length ?? 0) > 0) {
+      if (title !== slide.title) {
+        changed = true;
+        return { ...slide, title };
+      }
       return slide;
     }
 
-    const extracted = textBySlide.get(slide.position) ?? [];
     const fallback = buildSlideTextFallback(slide, extracted);
-    if (!fallback.body && fallback.bullets.length === 0) {
+    if (title === slide.title && !fallback.body && fallback.bullets.length === 0) {
       return slide;
     }
 
     changed = true;
     return {
       ...slide,
+      title,
       ...(fallback.body ? { body: fallback.body } : {}),
       ...(fallback.bullets.length > 0 ? { bullets: fallback.bullets } : {}),
     };
   });
 
   return changed ? parseDeckManifest({ ...manifest, slides }) : manifest;
+}
+
+function findPptxTitleReplacement(title: string, extractedTexts: string[]) {
+  const normalizedTitle = normalizePptxTitleForCompare(title);
+  if (!normalizedTitle) {
+    return undefined;
+  }
+
+  return extractedTexts
+    .map(normalizePptxText)
+    .find((text) =>
+      text !== title &&
+      text.length >= Math.max(12, title.length * 0.6) &&
+      normalizePptxTitleForCompare(text) === normalizedTitle);
 }
 
 async function extractPptxTextBySlide(buffer: Buffer): Promise<Map<number, string[]>> {
@@ -5680,6 +5707,15 @@ function isManifestFallbackText(text: string, normalizedTitle: string) {
 
 function normalizePptxText(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizePptxTitleForCompare(value: string) {
+  return normalizePptxText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function truncateManifestBody(value: string) {
