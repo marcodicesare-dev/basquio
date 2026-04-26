@@ -251,8 +251,8 @@ describe("collectPublishGateFailures", () => {
     expect(plan.actionableIssues).not.toContainEqual(expect.stringContaining("redundant_analytical_cut"));
   });
 
-  it("blocks publishing bronze or recovery passports as user-ready artifacts", () => {
-    expect(__test__.collectQualityPassportPublishFailures({
+  it("publishes bronze or recovery passports as degraded advisories, not hard blockers", () => {
+    expect(__test__.collectQualityPassportPublishAdvisories({
       classification: "recovery",
       criticalCount: 6,
       majorCount: 7,
@@ -263,7 +263,7 @@ describe("collectPublishGateFailures", () => {
       "quality_passport_not_reviewed: Quality passport recovery: visual=8.2, critical=6, major=7, mecePass=false.",
     ]);
 
-    expect(__test__.collectQualityPassportPublishFailures({
+    expect(__test__.collectQualityPassportPublishAdvisories({
       classification: "bronze",
       criticalCount: 0,
       majorCount: 9,
@@ -275,9 +275,9 @@ describe("collectPublishGateFailures", () => {
     ]);
   });
 
-  it("allows only silver and gold passports to publish as reviewed", () => {
+  it("does not add quality passport advisories for reviewed silver and gold outputs", () => {
     for (const classification of ["silver", "gold"] as const) {
-      expect(__test__.collectQualityPassportPublishFailures({
+      expect(__test__.collectQualityPassportPublishAdvisories({
         classification,
         criticalCount: 0,
         majorCount: classification === "gold" ? 1 : 5,
@@ -286,5 +286,19 @@ describe("collectPublishGateFailures", () => {
         summary: `Quality passport ${classification}`,
       })).toEqual([]);
     }
+  });
+
+  it("hard-blocks only artifact integrity failures at final publish", () => {
+    expect(__test__.collectArtifactIntegrityPublishFailures([
+      "chart_density_fits_layout_slots",
+      "rendered_page_visual_no_revision",
+      "lint:Slide 4 writing issue [storyline_backtracking]: returned to a prior branch",
+      "claim:Slide 7 claim issue [claim_traceability]: Unsupported claim.",
+      "pptx_zip_signature",
+      "xlsx_workbook_xml",
+    ])).toEqual([
+      "pptx_zip_signature",
+      "xlsx_workbook_xml",
+    ]);
   });
 });

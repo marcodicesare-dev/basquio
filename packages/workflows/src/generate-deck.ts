@@ -2297,15 +2297,23 @@ export async function generateDeckRun(
               sheetValidation: authorPlanQualityGate.sheetReport,
               planLintSummary: authorPlanQualityGate.planLintSummary,
             }).catch(() => {});
-            throw new Error(
-              `Author plan quality gate failed after retry: ${authorPlanQualityGate.issues.slice(0, 5).join(" | ")}`,
-            );
+            for (const issue of authorPlanQualityGate.issues) {
+              advisoryIssues.add(`Author plan quality unresolved: ${issue}`);
+            }
+            phaseTelemetry.authorPlanQualityRetry = {
+              passed: false,
+              initialIssueCount: initialAuthorPlanQualityIssueCount,
+              finalIssueCount: authorPlanQualityGate.issues.length,
+              model: MODEL,
+              publishAsDegraded: true,
+            };
+          } else {
+            phaseTelemetry.authorPlanQualityRetry = {
+              passed: true,
+              initialIssueCount: initialAuthorPlanQualityIssueCount,
+              model: MODEL,
+            };
           }
-          phaseTelemetry.authorPlanQualityRetry = {
-            passed: true,
-            initialIssueCount: initialAuthorPlanQualityIssueCount,
-            model: MODEL,
-          };
         }
         phaseTelemetry.understandPlanLint = resolvedPlanLint.summary;
         await assertAttemptStillOwnsRun(config, runId, attempt);
@@ -3700,16 +3708,25 @@ export async function generateDeckRun(
         ...lastPublishDecision!,
         advisories: [...new Set([...lastPublishDecision!.advisories, ...finalValidationAdvisories])],
       };
-      const qualityPassportFailures = collectQualityPassportPublishFailures(lastPublishDecision.qualityPassport);
-      if (qualityPassportFailures.length > 0) {
-        lastPublishDecision = {
-          ...lastPublishDecision,
-          decision: "fail",
-          hardBlockers: [...new Set([...lastPublishDecision.hardBlockers, ...qualityPassportFailures])],
-        };
-      }
+      const artifactIntegrityBlockers = collectArtifactIntegrityPublishFailures(finalQualityGate.blockingFailures);
+      const qualityPassportAdvisories = collectQualityPassportPublishAdvisories(lastPublishDecision.qualityPassport);
+      const degradedQualityAdvisories = finalQualityGate.blockingFailures
+        .filter((issue) => !artifactIntegrityBlockers.includes(issue))
+        .map((issue) => `degraded_quality:${issue}`);
+      lastPublishDecision = {
+        ...lastPublishDecision,
+        decision: artifactIntegrityBlockers.length === 0 ? "publish" : "fail",
+        hardBlockers: artifactIntegrityBlockers,
+        advisories: [
+          ...new Set([
+            ...lastPublishDecision.advisories,
+            ...degradedQualityAdvisories,
+            ...qualityPassportAdvisories,
+          ]),
+        ],
+      };
 
-      const publishBlockers = [...new Set([...finalQualityGate.blockingFailures, ...qualityPassportFailures])];
+      const publishBlockers = artifactIntegrityBlockers;
       if (publishBlockers.length > 0) {
         throw new Error(`Artifact publish gate failed: ${publishBlockers.join(", ")}`);
       }
@@ -9514,7 +9531,27 @@ function buildPublishDecision(input: {
   };
 }
 
-function collectQualityPassportPublishFailures(qualityPassport: PublishDecision["qualityPassport"]) {
+const ARTIFACT_INTEGRITY_PUBLISH_BLOCKERS = new Set([
+  "pptx_present",
+  "pptx_zip_signature",
+  "pptx_presentation_xml",
+  "pptx_content_types_xml",
+  "pptx_slide_xml_count_matches_manifest",
+  "pptx_structural_integrity",
+  "pptx_zip_parse_failed",
+  "slide_count_positive",
+  "md_present",
+  "md_parseable",
+  "xlsx_present",
+  "xlsx_zip_signature",
+  "xlsx_workbook_xml",
+]);
+
+function collectArtifactIntegrityPublishFailures(issues: string[]) {
+  return [...new Set(issues.filter((issue) => ARTIFACT_INTEGRITY_PUBLISH_BLOCKERS.has(issue)))];
+}
+
+function collectQualityPassportPublishAdvisories(qualityPassport: PublishDecision["qualityPassport"]) {
   if (qualityPassport.classification === "gold" || qualityPassport.classification === "silver") {
     return [];
   }
@@ -11770,7 +11807,8 @@ export const __test__ = {
   buildWorkbookChartBindingRequests,
   isPlaceholderChartTitle,
   lintManifestPlan,
-  collectQualityPassportPublishFailures,
+  collectArtifactIntegrityPublishFailures,
+  collectQualityPassportPublishAdvisories,
   resolvePlanSheetValidationReport,
   selectBestWorkbookSheetForChart,
   validateGeneratedAnalysisResultFile,
