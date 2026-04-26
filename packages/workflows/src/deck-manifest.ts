@@ -61,6 +61,7 @@ function normalizeDeckManifest(input: unknown) {
   const rawSlides = readArray(record.slides);
   const slides = rawSlides.map((slide, index) => normalizeSlide(slide, index));
   const rawCharts = readArray(record.charts);
+  const charts = normalizeChartsForSlides(rawCharts.map(normalizeChart), slides);
 
   return {
     ...record,
@@ -70,8 +71,28 @@ function normalizeDeckManifest(input: unknown) {
       slides.length,
     pageCount: readNumber(record.pageCount) ?? readNumber(record.page_count),
     slides,
-    charts: rawCharts.map(normalizeChart),
+    charts,
   };
+}
+
+function normalizeChartsForSlides(
+  charts: ReturnType<typeof normalizeChart>[],
+  slides: ReturnType<typeof normalizeSlide>[],
+) {
+  const chartSlides = slides.filter((slide) => slide.chartId);
+  const chartIds = new Set(charts.map((chart) => chart.id));
+  const missingSlideChartIds = chartSlides
+    .map((slide) => slide.chartId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0 && !chartIds.has(id));
+
+  if (missingSlideChartIds.length === 0 || missingSlideChartIds.length !== charts.length) {
+    return charts;
+  }
+
+  return charts.map((chart, index) => ({
+    ...chart,
+    id: missingSlideChartIds[index] ?? chart.id,
+  }));
 }
 
 function normalizeSlide(input: unknown, index: number) {

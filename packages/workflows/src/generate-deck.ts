@@ -1920,6 +1920,9 @@ export async function generateDeckRun(
         templateProfile,
         xlsxFile,
       }));
+      if (pptxFile) {
+        manifest = await hydrateManifestFromPptxText(manifest, pptxFile.buffer);
+      }
       fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
       const authorClaimQa = isReportOnly
         ? null
@@ -2360,6 +2363,7 @@ export async function generateDeckRun(
               xlsxFile,
             }));
           }
+          finalManifest = await hydrateManifestFromPptxText(finalManifest, finalPptx.buffer);
           fidelityContext = xlsxFile ? buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run) : fidelityContext;
           const reviseClaimQa = await runClaimTraceabilityQaSafely({
             client,
@@ -5565,6 +5569,127 @@ function buildManifestFromAnalysis(analysis: AnalysisResult) {
 async function countPptxSlides(buffer: Buffer) {
   const zip = await JSZip.loadAsync(buffer);
   return Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name)).length;
+}
+
+async function hydrateManifestFromPptxText(
+  manifest: z.infer<typeof deckManifestSchema>,
+  pptxBuffer: Buffer,
+): Promise<z.infer<typeof deckManifestSchema>> {
+  const textBySlide = await extractPptxTextBySlide(pptxBuffer).catch((error) => {
+    console.warn(`[hydrateManifestFromPptxText] skipped: ${error instanceof Error ? error.message : String(error)}`);
+    return new Map<number, string[]>();
+  });
+  if (textBySlide.size === 0) {
+    return manifest;
+  }
+
+  let changed = false;
+  const slides = manifest.slides.map((slide) => {
+    if (slide.body || (slide.bullets?.length ?? 0) > 0) {
+      return slide;
+    }
+
+    const extracted = textBySlide.get(slide.position) ?? [];
+    const fallback = buildSlideTextFallback(slide, extracted);
+    if (!fallback.body && fallback.bullets.length === 0) {
+      return slide;
+    }
+
+    changed = true;
+    return {
+      ...slide,
+      ...(fallback.body ? { body: fallback.body } : {}),
+      ...(fallback.bullets.length > 0 ? { bullets: fallback.bullets } : {}),
+    };
+  });
+
+  return changed ? parseDeckManifest({ ...manifest, slides }) : manifest;
+}
+
+async function extractPptxTextBySlide(buffer: Buffer): Promise<Map<number, string[]>> {
+  const zip = await JSZip.loadAsync(buffer);
+  const slideEntries = Object.keys(zip.files)
+    .map((entry) => {
+      const match = entry.match(/^ppt\/slides\/slide(\d+)\.xml$/i);
+      return match ? { entry, position: Number.parseInt(match[1]!, 10) } : null;
+    })
+    .filter((entry): entry is { entry: string; position: number } => entry !== null)
+    .sort((left, right) => left.position - right.position);
+  const bySlide = new Map<number, string[]>();
+
+  for (const slide of slideEntries) {
+    const xml = await zip.file(slide.entry)?.async("string");
+    if (!xml) {
+      continue;
+    }
+    const texts: string[] = [];
+    for (const match of xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)) {
+      const text = normalizePptxText(decodeXmlEntities(match[1] ?? ""));
+      if (text) {
+        texts.push(text);
+      }
+    }
+    bySlide.set(slide.position, [...new Set(texts)]);
+  }
+
+  return bySlide;
+}
+
+function buildSlideTextFallback(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  extractedTexts: string[],
+) {
+  const normalizedTitle = normalizePptxText(slide.title).toLowerCase();
+  const candidates = extractedTexts
+    .map(normalizePptxText)
+    .filter((text) => isManifestFallbackText(text, normalizedTitle));
+  const substantial = candidates.filter((text) => text.length >= 18);
+  const narrative = substantial.find((text) => /[.!?:;]|[àèéìòù]/i.test(text) && text.length >= 45);
+  const bodySource = narrative ?? substantial.slice(0, 3).join(" ");
+  const body = bodySource ? truncateManifestBody(bodySource) : undefined;
+  const bullets = substantial
+    .filter((text) => text !== bodySource && text.length >= 24)
+    .slice(0, 5)
+    .map((text) => truncateManifestBullet(text));
+
+  return {
+    body,
+    bullets,
+  };
+}
+
+function isManifestFallbackText(text: string, normalizedTitle: string) {
+  if (!text || text.length < 3) {
+    return false;
+  }
+  const normalized = text.toLowerCase();
+  if (normalized === normalizedTitle || normalizedTitle.includes(normalized) || normalized.includes(normalizedTitle)) {
+    return false;
+  }
+  if (/^(slide|page)\s+\d+$/i.test(text)) {
+    return false;
+  }
+  if (/^(fonte|source|confidential|proprietary|riservato|nielseniq)\b/i.test(text)) {
+    return false;
+  }
+  if (/^\d+$/.test(text)) {
+    return false;
+  }
+  return true;
+}
+
+function normalizePptxText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateManifestBody(value: string) {
+  const compact = normalizePptxText(value);
+  return compact.length <= 520 ? compact : `${compact.slice(0, 517).trimEnd()}...`;
+}
+
+function truncateManifestBullet(value: string) {
+  const compact = normalizePptxText(value);
+  return compact.length <= 180 ? compact : `${compact.slice(0, 177).trimEnd()}...`;
 }
 
 function buildPlaceholderNarrativeReport(run: RunRow, warnings: string[]): GeneratedFile {
