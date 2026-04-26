@@ -2056,8 +2056,23 @@ export async function generateDeckRun(
           lastAuthorError = authorPassError;
           const authorPassMessage = authorPassError instanceof Error ? authorPassError.message : String(authorPassError);
           const nextFallbackModel = authorModelCandidates[modelIndex + 1];
-          if (!nextFallbackModel || !isBudgetExhaustionErrorMessage(authorPassMessage)) {
+          if (!isRecoverableAuthorPassError(authorPassError)) {
             throw authorPassError;
+          }
+          if (!nextFallbackModel || !isBudgetExhaustionErrorMessage(authorPassMessage)) {
+            const fallbackTelemetry = ((phaseTelemetry.authorFallbacks as Record<string, unknown>[] | undefined) ?? []);
+            fallbackTelemetry.push({
+              model: candidateModel,
+              error: authorPassMessage.slice(0, 500),
+              reason: "author_candidate_failed_before_publishable_artifacts",
+            });
+            phaseTelemetry.authorFallbacks = fallbackTelemetry;
+            await insertEvent(config, runId, attempt, "author", "author_candidate_failed_recovery", {
+              model: candidateModel,
+              error: authorPassMessage.slice(0, 500),
+              nextAction: "deterministic_recovery_publish",
+            }).catch(() => {});
+            break;
           }
 
           const fallbackTelemetry = ((phaseTelemetry.authorFallbacks as Record<string, unknown>[] | undefined) ?? []);
@@ -5505,6 +5520,41 @@ function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvide
   return "Could not find readable data. Add Excel/CSV for tabular data, or PPTX/PDF with tables and charts.";
 }
 
+function getNarrativeArtifactMinimums(mode: QaMode, requestedSlideCount?: number) {
+  if (mode === "report_only") {
+    return { lines: 800, words: 8_000 };
+  }
+
+  const target = typeof requestedSlideCount === "number" && requestedSlideCount > 0
+    ? requestedSlideCount
+    : 20;
+  if (target <= 10) {
+    return { lines: 160, words: 1_800 };
+  }
+  if (target <= 20) {
+    return { lines: 320, words: 3_500 };
+  }
+  return { lines: 500, words: 5_000 };
+}
+
+function getNarrativeTargetRange(mode: QaMode, requestedSlideCount?: number) {
+  const minimums = getNarrativeArtifactMinimums(mode, requestedSlideCount);
+  if (mode === "report_only") {
+    return { lines: "800-1200", words: "10000-16000", minimums };
+  }
+
+  const target = typeof requestedSlideCount === "number" && requestedSlideCount > 0
+    ? requestedSlideCount
+    : 20;
+  if (target <= 10) {
+    return { lines: "180-280", words: "2200-3600", minimums };
+  }
+  if (target <= 20) {
+    return { lines: "320-520", words: "4000-7000", minimums };
+  }
+  return { lines: "500-1000", words: "8000-15000", minimums };
+}
+
 function buildAuthorMessage(
   run: RunRow,
   model: AuthorModel,
@@ -5519,6 +5569,9 @@ function buildAuthorMessage(
   perSlideConstraintMessage?: string,
 ) {
   const isReportOnly = model === "claude-haiku-4-5";
+  const narrativeTarget = getNarrativeTargetRange(isReportOnly ? "report_only" : "deck", run.target_slide_count);
+  const narrativeMinimums = narrativeTarget.minimums;
+  const shouldUseCompactDeckNarrative = !isReportOnly && run.target_slide_count <= 10;
   const routeContext = questionRoutes.length > 0
     ? `- Detected analytical question: ${questionRoutes[0].name}. Check for these diagnostic motifs: ${questionRoutes[0].diagnosticMotifs.join(", ") || "none specific"}. Recommended levers: ${questionRoutes[0].recommendationLevers.join(", ") || "general"}.`
     : "";
@@ -5707,11 +5760,15 @@ function buildAuthorMessage(
           ]),
           analysis
             ? (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck_manifest.json`.")
+              ? `- Generate files in this exact order: (1) \`narrative_report.md\`, write this FIRST using Python file I/O as the primary analytical deliverable, target ${narrativeTarget.lines} lines and ${narrativeTarget.words} words. File content written to disk has no token limit. (2) \`data_tables.xlsx\`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) \`deck_manifest.json\` with slideCount 0. Do NOT generate deck.pptx or deck.pdf.`
+              : shouldUseCompactDeckNarrative
+                ? `- Generate files in this exact order: (1) \`data_tables.xlsx\`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter. (2) \`deck.pptx\` as the durable user deck. (3) \`deck_manifest.json\`. (4) \`narrative_report.md\`, target ${narrativeTarget.lines} lines and ${narrativeTarget.words} words.`
+                : `- Generate files in this exact order: (1) \`narrative_report.md\`, write this FIRST using Python file I/O as the primary analytical deliverable, target ${narrativeTarget.lines} lines and ${narrativeTarget.words} words. File content written to disk has no token limit. (2) \`data_tables.xlsx\`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) \`deck.pptx\` as the durable user deck, (4) \`deck_manifest.json\`.`)
             : (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck_manifest.json`."),
+              ? `- Generate files in this exact order: (1) \`narrative_report.md\`, write this FIRST using Python file I/O, target ${narrativeTarget.lines} lines and ${narrativeTarget.words} words. (2) \`data_tables.xlsx\`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) \`deck_manifest.json\` with slideCount 0. Do NOT generate deck.pptx or deck.pdf.`
+              : shouldUseCompactDeckNarrative
+                ? `- Generate files in this exact order: (1) \`analysis_result.json\`, (2) \`data_tables.xlsx\`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter. (3) \`deck.pptx\` as the durable user deck. (4) \`deck_manifest.json\`. (5) \`narrative_report.md\`, target ${narrativeTarget.lines} lines and ${narrativeTarget.words} words.`
+                : `- Generate files in this exact order: (1) \`narrative_report.md\`, write this FIRST using Python file I/O, target ${narrativeTarget.lines} lines and ${narrativeTarget.words} words. (2) \`analysis_result.json\`, (3) \`data_tables.xlsx\`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) \`deck.pptx\` as the durable user deck, (5) \`deck_manifest.json\`.`),
           ...(analysis
             ? []
             : [
@@ -5724,25 +5781,33 @@ function buildAuthorMessage(
               ]),
           ...(!isReportOnly
             ? [
-                "- Two-phase authoring is mandatory for full-deck runs.",
-                "- Phase 1: finish `narrative_report.md` and `data_tables.xlsx` first. Do not start chart rendering or PPTX generation until the markdown narrative is substantively complete.",
-                "- VERIFICATION: after writing `narrative_report.md`, count its lines in Python before starting `analysis_result.json` or `deck.pptx`.",
+                shouldUseCompactDeckNarrative
+                  ? "- Compact summary-deck authoring: keep the narrative report deep enough to audit the deck, but prioritize finishing and attaching all five required files in one pass."
+                  : "- Two-phase authoring is mandatory for full-deck runs.",
+                shouldUseCompactDeckNarrative
+                  ? "- Finish the core analysis, workbook, PPTX, manifest, and narrative in one coherent script. Do not spend the run expanding prose beyond the scaled narrative target."
+                  : "- Phase 1: finish `narrative_report.md` and `data_tables.xlsx` first. Do not start chart rendering or PPTX generation until the markdown narrative is substantively complete.",
+                shouldUseCompactDeckNarrative
+                  ? "- VERIFICATION: after writing `narrative_report.md`, count its lines and words in Python before final attachment."
+                  : "- VERIFICATION: after writing `narrative_report.md`, count its lines in Python before starting `analysis_result.json` or `deck.pptx`.",
                 "```python",
                 "with open('narrative_report.md', 'r', encoding='utf-8') as f:",
                 "    narrative_text = f.read()",
                 "line_count = narrative_text.count('\\n') + (1 if narrative_text.strip() else 0)",
                 "word_count = len(narrative_text.split())",
                 "print(f'narrative_report.md: {line_count} lines, {word_count} words')",
-                "assert line_count >= 500, f'Narrative too short ({line_count} lines). Extend appendix, competitor analysis, and data tables before Phase 2.'",
-                "assert word_count >= 5000, f'Narrative too shallow ({word_count} words). Add methodology, detailed findings, recommendations, and appendix tables before Phase 2.'",
+                `assert line_count >= ${narrativeMinimums.lines}, f'Narrative too short ({line_count} lines). Extend appendix, competitor analysis, and data tables before Phase 2.'`,
+                `assert word_count >= ${narrativeMinimums.words}, f'Narrative too shallow ({word_count} words). Add methodology, detailed findings, recommendations, and appendix tables before Phase 2.'`,
                 "```",
                 "- If either assertion fails, expand the executive summary, findings, competitor section, recommendation details, and appendix tables until it passes.",
-                "- Only after the markdown narrative passes the 500-line and 5000-word gate should you start slide, chart, and PPTX generation.",
+                shouldUseCompactDeckNarrative
+                  ? "- For summary decks, do not restart authoring if the report is already above the scaled gate. Finish the files and attach them."
+                  : `- Only after the markdown narrative passes the ${narrativeMinimums.lines}-line and ${narrativeMinimums.words}-word gate should you start slide, chart, and PPTX generation.`,
               ]
             : []),
           isReportOnly
-            ? "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. For report-only runs target 800-1200 lines and roughly 10000-16000 words."
-            : "- `narrative_report.md` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. Target 500-1000 lines and roughly 8000-15000 words.",
+            ? `- \`narrative_report.md\` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. For report-only runs target ${narrativeTarget.lines} lines and roughly ${narrativeTarget.words} words.`
+            : `- \`narrative_report.md\` must be a STANDALONE consulting leave-behind that the reader can use without opening the PPTX. Target ${narrativeTarget.lines} lines and roughly ${narrativeTarget.words} words.`,
           "- Begin `narrative_report.md` with a short `Brief Interpretation` section (5-7 sentences) explaining the core question, the main segmentation choices, the KPIs prioritized, the chapter/report flow, and what is intentionally out of scope.",
           "- Required sections for `narrative_report.md`:",
           "  1. Title page with client name from the brief (NEVER `Non specificato`), objective, date, and data source.",
@@ -5770,7 +5835,7 @@ function buildAuthorMessage(
           "- Write `narrative_report.md` to McKinsey leave-behind quality, not blog-post quality. Use the same language as the brief.",
           isReportOnly
             ? "- `narrative_report.md` must be at least 800 lines for a report-only run. If it is shorter, extend the appendix, competitor analysis, and chart-supporting markdown tables."
-            : "- `narrative_report.md` must be at least 500 lines. If it is shorter, extend the appendix and the chart-supporting markdown tables.",
+            : `- \`narrative_report.md\` must be at least ${narrativeMinimums.lines} lines. If it is shorter, extend the appendix and the chart-supporting markdown tables.`,
           "- `data_tables.xlsx` must contain every pandas DataFrame that supports a chart, table, or numeric finding. Verify supplier-level sums vs category totals before writing it.",
           "- EXCEL-NATIVE-CHARTS RULE: for every slide that contains a matplotlib chart in the PPTX, write the exact underlying DataFrame to a sheet named `S<NN>_<descriptor>` in `data_tables.xlsx`.",
           "- Excel sheet names must already be Excel-safe in both the workbook and the manifest: max 31 characters, no `\\ / ? * [ ] :`, and use the exact same sanitized string in both places.",
@@ -6209,6 +6274,7 @@ export function buildReviseMessage(input: {
   const needsNarrativeRepair = requiredOutputFiles.includes("narrative_report.md");
   const needsWorkbookRepair = requiredOutputFiles.includes("data_tables.xlsx");
   const hasAttachablePdf = canAttachPdfDocument(input.currentPdf);
+  const narrativeMinimums = getNarrativeArtifactMinimums("deck", input.targetSlideCount);
 
   return {
     role: "user" as const,
@@ -6287,7 +6353,7 @@ export function buildReviseMessage(input: {
           "If there is one surplus slide, remove the weakest trailing support slide instead of weakening the storyline or appending material after a closing slide.",
           ...(needsNarrativeRepair
             ? [
-                "Narrative artifact repair is mandatory in this turn: regenerate narrative_report.md as the audit-ready leave-behind, minimum 500 lines, evidence-linked, client-facing, with Italian accents when writing Italian.",
+                `Narrative artifact repair is mandatory in this turn: regenerate narrative_report.md as the audit-ready leave-behind, minimum ${narrativeMinimums.lines} lines and ${narrativeMinimums.words} words, evidence-linked, client-facing, with Italian accents when writing Italian.`,
                 "The narrative report must not be a transcript, placeholder, or short executive memo. It must include brief interpretation, executive summary, methodology, detailed findings, recommendations, and appendix/supporting data.",
               ]
             : []),
@@ -6771,6 +6837,10 @@ function mergeGeneratedFiles(primaryFiles: GeneratedFile[], retryFiles: Generate
 function isBudgetExhaustionErrorMessage(message: string) {
   const normalized = message.toLowerCase();
   return normalized.includes("budget") || normalized.includes("remaining budget") || normalized.includes("continuation threshold");
+}
+
+function isRecoverableAuthorPassError(error: unknown) {
+  return !(error instanceof AttemptOwnershipLostError || error instanceof WorkerShutdownInterruptError);
 }
 
 function getAuthorFallbackModels(model: AuthorModel): AuthorModel[] {
@@ -10669,7 +10739,7 @@ async function buildQaReport(
 
   const mdContentValid = artifacts.md.buffer.toString("utf8").trim().length > 50;
   checks.push({ name: "md_content_present", passed: mdContentValid, detail: "narrative markdown has content" });
-  checks.push(...buildMarkdownArtifactChecks(artifacts.md.buffer, mode));
+  checks.push(...buildMarkdownArtifactChecks(artifacts.md.buffer, mode, requestedSlideCount));
 
   const validated = await validateArtifactChecks(
     manifest,
@@ -11295,15 +11365,16 @@ function applyCommonTextCleanupToManifest(manifest: z.infer<typeof deckManifestS
   return changed ? { ...manifest, slides, charts } : manifest;
 }
 
-export function buildMarkdownArtifactChecks(buffer: Buffer, mode: QaMode): ArtifactQualityCheck[] {
+export function buildMarkdownArtifactChecks(buffer: Buffer, mode: QaMode, requestedSlideCount?: number): ArtifactQualityCheck[] {
   const markdownText = buffer.toString("utf8");
   const trimmed = markdownText.trim();
   const lineCount = trimmed.length === 0 ? 0 : markdownText.split(/\r?\n/).length;
   const wordCount = trimmed.length === 0 ? 0 : trimmed.split(/\s+/).filter(Boolean).length;
   const normalized = markdownText.normalize("NFC");
   const lower = normalized.toLowerCase();
-  const minLines = mode === "report_only" ? 800 : 500;
-  const minWords = mode === "report_only" ? 8_000 : 5_000;
+  const minimums = getNarrativeArtifactMinimums(mode, requestedSlideCount);
+  const minLines = minimums.lines;
+  const minWords = minimums.words;
   const requiredSectionGroups = [
     ["interpretazione del brief", "brief interpretation"],
     ["executive summary", "sintesi esecutiva"],

@@ -116,6 +116,7 @@ Initial domain bias:
 - The final direct-deck publish contract requires `deck.pptx`, `narrative_report.md`, `data_tables.xlsx`, and `deck_manifest.json`. `deck.pdf` is internal QA/checkpoint support only when generated, never a required durable user-facing publish artifact.
 - A failed later recovery attempt must not hide a prior successful publish. If `artifact_manifests_v2` already has `pptx`, `md`, and `xlsx`, the dashboard and finalizer should preserve the run as completed or degraded instead of making downloads disappear.
 - `narrative_report.md` is a live artifact in the direct deck path and must be authored from the same canonical narrative and evidence layer as the deck, not reverse-converted from slides or PDF.
+- Narrative depth must scale with the requested deck size. A 5-slide summary deck still needs an audit-ready leave-behind, but forcing a 500-line / 5,000-word report before artifact generation can starve the author turn and produce no files.
 - Author messages that include uploaded evidence must put the instruction text block before all `container_upload` blocks, matching the official Anthropic code-execution file pattern.
 - The direct author turn must prove evidence availability before analysis. If deterministic ingest found tabular evidence, Claude must locate and open a workbook or CSV inside the container before writing any analytical claim.
 - If Claude says a required uploaded workbook is missing from the container, the run must fail at the evidence availability gate. Basquio must not salvage analysis from a manifest built after missing-evidence self-reporting.
@@ -175,7 +176,7 @@ Initial domain bias:
 
 - Rossella's Segafredo rerun attempt 26 proved that the evidence upload gate was necessary but not sufficient. The author opened the workbook, then omitted attached `analysis_result.json` and returned a prose delivery summary instead.
 - The pipeline accepted the durable files, synthesized analysis from `deck_manifest.json`, and entered revise with a 14-slide untrusted plan for a 10-content-slide request. Revise spent five loops and `$16.341`, then export correctly blocked publish on content slide count and fidelity issues.
-- Canonical prevention rule: merged full-deck author runs must attach parseable `analysis_result.json` before revise. If it is missing or malformed after the bounded retry, fail author early. Manifest salvage is allowed only as forensic evidence or checkpoint recovery, not as the production happy path.
+- Canonical prevention rule: merged full-deck author runs must attach parseable `analysis_result.json` before revise. If it is missing or malformed after the bounded retry, fail author early. Manifest salvage is allowed only as forensic evidence or checkpoint recovery, not as the production happy path. If the paid author pass still produces no publishable artifact set, publish deterministic recovery artifacts from parsed evidence instead of throwing past the publisher and leaving the user with nothing.
 
 ## Production Incident Memory: April 26, 2026, Rossella invalid author-plan loop
 

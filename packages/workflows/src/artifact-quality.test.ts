@@ -24,6 +24,14 @@ describe("durable artifact quality checks", () => {
     expect(byName.get("md_italian_orthography_clean")?.passed).toBe(false);
   });
 
+  it("scales deck narrative depth by requested slide count", () => {
+    const checks = buildMarkdownArtifactChecks(Buffer.from("# Executive Summary\n\nBrief body", "utf8"), "deck", 5);
+    const byName = new Map(checks.map((check) => [check.name, check]));
+
+    expect(byName.get("md_minimum_line_count")?.detail).toBe("lines=3 minimum=160");
+    expect(byName.get("md_minimum_word_count")?.detail).toBe("words=5 minimum=1800");
+  });
+
   it("accepts formatted workbook sheets with tables, panes, widths, and chart drawings", async () => {
     const zip = new JSZip();
     zip.file("xl/workbook.xml", [

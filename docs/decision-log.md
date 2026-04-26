@@ -5,7 +5,7 @@
 Decision:
 - The durable user-facing artifact contract is `deck.pptx`, `narrative_report.md`, and `data_tables.xlsx`.
 - `deck.pdf` is internal visual-QA support only when it can be derived safely from the PPTX. Claude must not be asked to generate or attach PDF, and missing PDF must not fail export.
-- Full-deck authoring must write the narrative report before slide generation and pass a 500-line plus 5000-word local gate before moving to PPTX.
+- Full-deck authoring must produce an audit-ready narrative report before publish; the minimum depth now scales by requested deck size instead of forcing a 500-line plus 5000-word gate onto every deck.
 - Artifact QA failures for short markdown reports or weak workbook formatting route into revise and require the failed artifact to be regenerated.
 - If a later recovery attempt fails after a prior attempt published `pptx`, `md`, and `xlsx`, the finalizer and dashboard must preserve the completed/degraded artifact set instead of hiding downloads behind top-level failure.
 
@@ -955,3 +955,20 @@ Implication:
 - revise becomes a polishing and bounded repair lane, not the first place where basic analytical plan validity is enforced
 - the dashboard should not expose a "completed" run as acceptable when `qa_passed=false` reflects weak user artifacts
 - production reruns should fail faster on unfixable author planning defects rather than burning several revise loops and still blocking export
+
+## April 26, 2026: Author failure must publish recovery artifacts, and narrative depth scales by deck size
+
+Decision:
+- author validation failures that happen after paid model work must fall through to deterministic recovery publish unless the attempt lost ownership or the worker is shutting down
+- deck narrative depth is now scaled by requested content-slide count instead of forcing the same 500-line / 5,000-word floor onto every deck
+- short summary decks still require a standalone markdown leave-behind, but the artifact contract must prioritize finishing and attaching the full durable file set
+
+Why:
+- the Marco Sonnet smoke run `03b6749b-c63e-4c9b-a30b-87a487a471b0` spent two author calls, produced no container-uploaded files, and failed because the missing `analysis_result.json` throw bypassed the deterministic recovery publisher
+- the same run showed a 5-slide deck being asked to create a very large narrative report before reaching deck and workbook artifacts, which starved the code-execution author turn and made Claude less reliable
+- the product invariant is that users must receive fresh durable artifacts for every run; internal quality iteration cannot be allowed to destroy delivery
+
+Implication:
+- missing author files now produce fresh parsed-evidence recovery artifacts instead of an empty failed run
+- short-deck prompts and markdown QA remain strict enough for auditability without turning small jobs into full report books
+- internal quality passports can continue to guide improvement, but artifact delivery is guarded separately from oversized prompt compliance
