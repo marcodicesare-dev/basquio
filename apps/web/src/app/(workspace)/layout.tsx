@@ -7,7 +7,12 @@ import { resolveWorkspaceLocale } from "@/i18n";
 import { buildSignInPath, getViewerState } from "@/lib/supabase/auth";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { listConversations } from "@/lib/workspace/conversations";
-import { countByScope, listScopesGrouped, type ScopeCounts } from "@/lib/workspace/scopes";
+import {
+  countByScope,
+  listScopesGrouped,
+  type ScopeCounts,
+  type WorkspaceScope,
+} from "@/lib/workspace/scopes";
 
 export const metadata = {
   title: "Workspace · Basquio",
@@ -40,6 +45,11 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   for (const [id, row] of countsMap) {
     scopeCounts[id] = row;
   }
+  const scopeById = new Map(
+    Object.values(scopeTree)
+      .flat()
+      .map((scope) => [scope.id, scope]),
+  );
 
   return (
     <WorkspaceShell
@@ -50,10 +60,43 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         id: conversation.id,
         title: conversation.title ?? "Untitled",
         lastMessageAt: conversation.last_message_at,
+        scope: buildConversationScope(conversation.workspace_scope_id, scopeById),
       }))}
       locale={resolveWorkspaceLocale(headersList.get("accept-language"))}
     >
       {children}
     </WorkspaceShell>
   );
+}
+
+function buildConversationScope(scopeId: string | null, scopeById: Map<string, WorkspaceScope>) {
+  if (!scopeId) return null;
+  const scope = scopeById.get(scopeId);
+  if (!scope) {
+    return {
+      name: "Unknown",
+      kindLabel: "Context",
+      tooltip: "This chat is tied to a context that is no longer available.",
+    };
+  }
+  if (scope.kind === "system") {
+    return {
+      name: scope.name,
+      kindLabel: "Workspace",
+      tooltip: "This chat was opened in the full workspace context.",
+    };
+  }
+  const kindLabel = singularScopeLabel(scope.kind);
+  return {
+    name: scope.name,
+    kindLabel,
+    tooltip: `Opened in ${kindLabel}: ${scope.name}. Basquio uses this context by default.`,
+  };
+}
+
+function singularScopeLabel(kind: string): string {
+  if (kind === "client") return "Client";
+  if (kind === "category") return "Category";
+  if (kind === "function") return "Function";
+  return "Context";
 }

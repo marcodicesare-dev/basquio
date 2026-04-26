@@ -108,14 +108,14 @@ function baseProps(overrides: Partial<ScopeChatShellProps> = {}): ScopeChatShell
         id: "suggestion-1",
         kind: "summarize",
         prompt: "Summarize Affinity Petcare",
-        reason: "Uses recent scope memory.",
+        reason: "Uses recent saved context.",
       },
     ],
     commandActions: [
       {
         id: "memory",
         group: "Open",
-        label: "Affinity memory",
+        label: "Affinity knowledge",
         href: "/workspace/memory",
       },
     ],
@@ -124,7 +124,7 @@ function baseProps(overrides: Partial<ScopeChatShellProps> = {}): ScopeChatShell
         React.createElement("button", { key: "suggestion", type: "button" }, "Summarize Affinity Petcare"),
       ]),
     ]),
-    memoryAside: React.createElement("aside", { "aria-label": "Workspace memory" }, "Memory"),
+    memoryAside: React.createElement("aside", { "aria-label": "Workspace knowledge" }, "Knowledge"),
     locale: "en",
     ...overrides,
   };

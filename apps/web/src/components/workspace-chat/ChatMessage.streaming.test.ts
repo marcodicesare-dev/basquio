@@ -45,7 +45,7 @@ describe("ChatMessage streaming render", () => {
       id: "m2",
       role: "assistant",
       parts: [
-        { type: "reasoning", text: "Checking workspace memory." },
+        { type: "reasoning", text: "Checking workspace knowledge." },
         { type: "text", text: "The answer starts now." },
       ],
     } as unknown as UIMessage;

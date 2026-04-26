@@ -90,7 +90,7 @@ async function resolveScopeRef(
 export function editRuleTool(ctx: AgentCallContext) {
   return tool({
     description:
-      "Create, update, archive, pin, or delete a workspace memory entry (rule, fact, or past win). Use for any of: 'create' (prefer teachRule for simple explicit saves), 'update' (patch content/memory_type/scope on an existing rule_id), 'archive' or 'unarchive', 'pin' or 'unpin', 'delete'. Destructive actions (archive, delete) always require approval.",
+      "Create, update, archive, pin, or delete a saved workspace knowledge item (instruction, knowledge, or example). Use for any of: 'create' (prefer teachRule for simple explicit saves), 'update' (patch content/memory_type/scope on an existing rule_id), 'archive' or 'unarchive', 'pin' or 'unpin', 'delete'. Destructive actions (archive, delete) always require approval.",
     inputSchema: z
       .object({
         action: z.enum(["create", "update", "archive", "unarchive", "pin", "unpin", "delete"]),
@@ -145,7 +145,7 @@ export function editRuleTool(ctx: AgentCallContext) {
         // Non-create actions: rule_id required, must exist + belong to workspace.
         const existing = await getMemoryEntry(input.rule_id!);
         if (!existing || existing.workspace_id !== ctx.workspaceId) {
-          return { ok: false, error: "Rule not found in this workspace." };
+          return { ok: false, error: "Saved knowledge item not found in this workspace." };
         }
 
         if (input.action === "update") {
@@ -293,12 +293,13 @@ export function draftBriefTool(ctx: AgentCallContext) {
 export function explainBasquioTool(ctx: AgentCallContext) {
   return tool({
     description:
-      "Answer questions about what Basquio is, what it knows, and what the user can do in this workspace. Call this instead of generating generic AI-assistant copy when the user asks 'what can you do', 'how does this work', 'what do you know about me', or 'how do I save/edit/pin a rule'.",
+      "Answer questions about what Basquio is, what it knows, and what the user can do in this workspace. Call this instead of generating generic AI-assistant copy when the user asks 'what can you do', 'how does this work', 'what do you know about me', or 'how do I save/edit/pin an instruction'.",
     inputSchema: z.object({
       topic: z.enum([
         "overview",
         "memory",
         "stakeholders",
+        "instructions",
         "rules",
         "decks",
         "briefs",
@@ -312,6 +313,7 @@ export function explainBasquioTool(ctx: AgentCallContext) {
       const db = getDb();
       switch (topic) {
         case "memory":
+        case "instructions":
         case "rules": {
           const { count } = await db
             .from("memory_entries")
@@ -319,9 +321,9 @@ export function explainBasquioTool(ctx: AgentCallContext) {
             .eq("workspace_id", ctx.workspaceId);
           return {
             topic,
-            headline: `${count ?? 0} memory entries across your scopes.`,
+            headline: `${count ?? 0} saved knowledge items across your contexts.`,
             body:
-              "Ask Basquio to remember a rule ('remember: Kellanova decks are always 52-week rolling excluding private label'), or to edit an existing one ('update the rule about source callouts to say top-right'). Use editRule with action=pin to keep a rule sticky, or action=archive when it is outdated.",
+              "Ask Basquio to remember context ('remember: for Despar, Marca del Distributore means private label'), or to edit an existing instruction ('update the source callout instruction to say top-right'). Pin an item to keep it sticky, or archive it when it is outdated.",
           };
         }
         case "stakeholders": {
@@ -343,7 +345,7 @@ export function explainBasquioTool(ctx: AgentCallContext) {
             topic,
             headline: `${count ?? 0} decks generated from this workspace.`,
             body:
-              "Drop a brief in chat or click 'Generate deck' in the scope rail. Basquio pulls stakeholder preferences, workspace rules, and scope files, then researches trade press to ground the narrative. The brief preview shows exactly what context travels with the deck.",
+              "Drop a brief in chat or click 'Generate deck' in the scope rail. Basquio pulls stakeholder preferences, saved knowledge, and scope files, then researches trade press to ground the narrative. The brief preview shows exactly what context travels with the deck.",
           };
         }
         case "sources": {
@@ -379,7 +381,7 @@ export function explainBasquioTool(ctx: AgentCallContext) {
             topic,
             headline: `${scopes.length} scopes in this workspace.`,
             body:
-              "Scopes are clients, categories, or internal functions. Each has its own stakeholders, rules, and files. Switch scope in the sidebar or by saying 'inside Kellanova' or 'in the Snack Salati category' in chat.",
+              "Contexts are clients, categories, or internal functions. Each has its own stakeholders, knowledge, instructions, and files. Switch context in the sidebar or by saying 'inside Kellanova' or 'in the Snack Salati category' in chat.",
           };
         }
         case "what_you_know_about_me": {
@@ -393,9 +395,9 @@ export function explainBasquioTool(ctx: AgentCallContext) {
           return {
             topic,
             headline: "Here is what this workspace carries about you and your work.",
-            body: `You have ${memoryRows.count ?? 0} memory entries covering rules and past wins across ${scopes.length} scopes. Ask explainBasquio with topic: 'stakeholders' or 'rules' to drill in, or say 'show me every rule I taught you about Kellanova' to list them.`,
+            body: `You have ${memoryRows.count ?? 0} saved knowledge items covering context, instructions, and examples across ${scopes.length} contexts. Ask explainBasquio with topic: 'stakeholders' or 'instructions' to drill in, or say 'show me everything saved about Kellanova' to list them.`,
             actions: [
-              { label: "Open memory", href: "/workspace/memory" },
+              { label: "Open knowledge", href: "/workspace/memory" },
               { label: "Open people", href: "/workspace/people" },
             ],
           };
@@ -405,7 +407,7 @@ export function explainBasquioTool(ctx: AgentCallContext) {
             topic,
             headline: "What you can edit from chat.",
             body:
-              "Save pastes (saveFromPaste), scrape a URL (scrapeUrl), edit stakeholders (editStakeholder + createStakeholder), add or archive rules (editRule), draft briefs (draftBrief), or ask suggestServices for NIQ service ideas. Every edit runs through a dry-run approval card so nothing writes until you confirm.",
+              "Save pastes, scrape a URL, edit stakeholders, add or archive saved knowledge, draft briefs, or ask for NIQ service ideas. Every edit runs through an approval card so nothing writes until you confirm.",
           };
         case "overview":
         default:

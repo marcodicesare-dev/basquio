@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/sign-out-button";
 import { WorkspaceInteractionLayer } from "@/components/workspace-interaction-layer";
-import { WorkspaceSidebar } from "@/components/workspace-sidebar";
+import { WorkspaceSidebar, type SidebarRecentConversation } from "@/components/workspace-sidebar";
 import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
 import type { ViewerState } from "@/lib/supabase/auth";
 import type { ScopeCounts, ScopeTree } from "@/lib/workspace/scopes";
@@ -24,7 +24,7 @@ export function WorkspaceShell({
   viewer: ViewerState;
   scopeTree: ScopeTree;
   scopeCounts: Record<string, ScopeCounts>;
-  recentConversations?: Array<{ id: string; title: string; lastMessageAt: string }>;
+  recentConversations?: SidebarRecentConversation[];
   locale?: WorkspaceLocale;
   children: ReactNode;
 }) {

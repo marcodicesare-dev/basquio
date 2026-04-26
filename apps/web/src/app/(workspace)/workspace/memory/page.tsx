@@ -7,7 +7,7 @@ import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Memory · Basquio",
+  title: "Knowledge · Basquio",
 };
 
 export default async function WorkspaceMemoryPage() {
@@ -26,24 +26,23 @@ export default async function WorkspaceMemoryPage() {
 
   return (
     <div className="wbeta-memory-page">
-      <WorkspaceBreadcrumb items={[{ href: "/workspace", label: "Home" }, { label: "Memory" }]} />
+      <WorkspaceBreadcrumb items={[{ href: "/workspace", label: "Home" }, { label: "Knowledge" }]} />
 
       <header className="wbeta-memory-head">
-        <p className="wbeta-memory-eyebrow">Memory</p>
-        <h1 className="wbeta-memory-title">Everything you&apos;ve taught Basquio.</h1>
+        <p className="wbeta-memory-eyebrow">Knowledge</p>
+        <h1 className="wbeta-memory-title">What Basquio knows.</h1>
         <p className="wbeta-memory-summary">
-          Every rule, fact, and win below is used when you ask a question. Edit the content to
-          correct Basquio, pin the important ones so they never drop out of context, archive what
-          does not apply anymore.
+          Saved context, instructions, and examples Basquio can reuse in answers. Upload files in
+          Sources when Basquio should cite evidence from documents.
         </p>
         <ul className="wbeta-memory-stats">
           <li>
-            <span className="wbeta-memory-stat-num">{byType.procedural}</span>
-            <span className="wbeta-memory-stat-label">{MEMORY_TYPE_LABELS.procedural}</span>
-          </li>
-          <li>
             <span className="wbeta-memory-stat-num">{byType.semantic}</span>
             <span className="wbeta-memory-stat-label">{MEMORY_TYPE_LABELS.semantic}</span>
+          </li>
+          <li>
+            <span className="wbeta-memory-stat-num">{byType.procedural}</span>
+            <span className="wbeta-memory-stat-label">{MEMORY_TYPE_LABELS.procedural}</span>
           </li>
           <li>
             <span className="wbeta-memory-stat-num">{byType.episodic}</span>
@@ -51,7 +50,7 @@ export default async function WorkspaceMemoryPage() {
           </li>
           <li>
             <span className="wbeta-memory-stat-num">{scopeCount}</span>
-            <span className="wbeta-memory-stat-label">scopes</span>
+            <span className="wbeta-memory-stat-label">contexts</span>
           </li>
         </ul>
       </header>

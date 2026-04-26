@@ -595,7 +595,7 @@ function toolFrameLabel(toolName: string) {
     case "webSearch":
       return "More web search detail";
     case "memory":
-      return "More memory detail";
+      return "More saved knowledge";
     case "draftBrief":
       return "More brief detail";
     case "suggestServices":
@@ -625,8 +625,8 @@ function deriveInlineSuggestions(
       id: `inline-compare-${id}`,
       kind: "investigate",
       prompt: hasScopeSignal
-        ? "Compare this answer with the saved scope memory."
-        : "Compare this answer with my saved workspace memory.",
+        ? "Compare this answer with the saved context."
+        : "Compare this answer with my saved workspace knowledge.",
       reason: "Checks the answer against what Basquio already knows.",
     },
     {
@@ -776,9 +776,9 @@ function toolCopy(toolName: string): { using: string; used: string; failed: stri
   switch (toolName) {
     case "memory":
       return {
-        using: "Checking memory",
-        used: "Checked memory",
-        failed: "Memory check failed",
+        using: "Checking saved knowledge",
+        used: "Checked saved knowledge",
+        failed: "Knowledge check failed",
       };
     case "retrieveContext":
       return {
@@ -836,7 +836,7 @@ function toolHelp(toolName: string, status: ToolCallStatus, errorText?: string):
   }
   switch (toolName) {
     case "memory":
-      return "Looks for saved notes, rules, and preferences that can improve this answer.";
+      return "Looks for saved notes, instructions, and examples that can improve this answer.";
     case "retrieveContext":
       return "Searches your workspace files, memos, and saved facts so the answer can cite internal sources.";
     case "webSearch":

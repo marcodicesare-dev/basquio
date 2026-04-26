@@ -955,7 +955,7 @@ export function WorkspaceChat({
 
       {memoryPulse && memoryPulse.entities.length > 0 ? (
         <p className="wbeta-ai-chat-memory-pulse" role="status" aria-live="polite">
-          <span className="wbeta-ai-chat-memory-pulse-kicker">In workspace memory from this chat</span>
+          <span className="wbeta-ai-chat-memory-pulse-kicker">Saved to workspace knowledge</span>
           <span className="wbeta-ai-chat-memory-pulse-body">
             {memoryPulse.entities
               .slice(0, 4)

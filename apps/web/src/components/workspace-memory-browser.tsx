@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Archive,
   CheckCircle,
+  Info,
   PencilSimple,
   Plus,
   PushPinSimple,
@@ -15,7 +16,19 @@ import {
 import type { MemoryRow, MemoryType, WorkspaceScope } from "@/lib/workspace/types";
 import { MEMORY_TYPE_DESCRIPTIONS, MEMORY_TYPE_LABELS } from "@/lib/workspace/types";
 
-const TYPE_ORDER: MemoryType[] = ["procedural", "semantic", "episodic"];
+const TYPE_ORDER: MemoryType[] = ["semantic", "procedural", "episodic"];
+
+const KIND_HELP: Record<MemoryType, string> = {
+  semantic:
+    "Use Knowledge for stable client, category, market, glossary, and business context Basquio should remember.",
+  procedural:
+    "Use Instructions for how Basquio should behave: tone, writing style, citation rules, charts, and analysis preferences.",
+  episodic:
+    "Use Examples for good past outputs or decisions Basquio should treat as a pattern to repeat.",
+};
+
+const SCOPE_HELP =
+  "Choose where this applies. Workspace is global; a client or category keeps the note tied to that context.";
 
 type Filters = {
   scopeId: string | "all";
@@ -84,7 +97,7 @@ export function MemoryBrowser({
       startTransition(() => router.refresh());
     } else {
       const err = (await response.json().catch(() => ({}))) as { error?: string };
-      alert(err.error ?? "Could not save this memory.");
+      alert(err.error ?? "Could not save this knowledge item.");
     }
   }
 
@@ -102,7 +115,7 @@ export function MemoryBrowser({
   }
 
   async function handleArchive(entry: MemoryRow) {
-    if (!confirm(`Archive this ${MEMORY_TYPE_LABELS[entry.memory_type].toLowerCase().slice(0, -1)}? It will not be used in answers.`)) return;
+    if (!confirm("Archive this saved knowledge? It will not be used in answers.")) return;
     const response = await fetch(`/api/workspace/memory/${entry.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -115,7 +128,7 @@ export function MemoryBrowser({
   }
 
   async function handleDelete(entry: MemoryRow) {
-    if (!confirm("Delete this memory entry? This cannot be undone.")) return;
+    if (!confirm("Delete this saved knowledge item? This cannot be undone.")) return;
     const response = await fetch(`/api/workspace/memory/${entry.id}`, { method: "DELETE" });
     if (response.ok) {
       setEntries((prev) => prev.filter((e) => e.id !== entry.id));
@@ -144,7 +157,7 @@ export function MemoryBrowser({
       startTransition(() => router.refresh());
     } else {
       const err = (await response.json().catch(() => ({}))) as { error?: string };
-      alert(err.error ?? "Could not save this memory.");
+      alert(err.error ?? "Could not save this knowledge item.");
     }
   }
 
@@ -153,12 +166,15 @@ export function MemoryBrowser({
       <div className="wbeta-memory-toolbar">
         <div className="wbeta-memory-filters">
           <label className="wbeta-memory-filter">
-            <span>Scope</span>
+            <span className="wbeta-memory-label-row">
+              Applies to
+              <InfoHint text={SCOPE_HELP} />
+            </span>
             <select
               value={filters.scopeId}
               onChange={(e) => setFilters((f) => ({ ...f, scopeId: e.target.value as Filters["scopeId"] }))}
             >
-              <option value="all">All scopes</option>
+              <option value="all">Every context</option>
               {scopes.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.kind === "system" ? s.name : `${s.kind}: ${s.name}`}
@@ -167,12 +183,15 @@ export function MemoryBrowser({
             </select>
           </label>
           <label className="wbeta-memory-filter">
-            <span>Type</span>
+            <span className="wbeta-memory-label-row">
+              Kind
+              <InfoHint text="Basquio can store knowledge, instructions, and examples. Pick Knowledge if you are unsure." />
+            </span>
             <select
               value={filters.type}
               onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value as Filters["type"] }))}
             >
-              <option value="all">All types</option>
+              <option value="all">All kinds</option>
               {TYPE_ORDER.map((t) => (
                 <option key={t} value={t}>
                   {MEMORY_TYPE_LABELS[t]}
@@ -184,7 +203,7 @@ export function MemoryBrowser({
             <span>Search</span>
             <input
               type="search"
-              placeholder="Filter by content or path"
+              placeholder="Search saved knowledge"
               value={filters.search}
               onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
             />
@@ -199,7 +218,7 @@ export function MemoryBrowser({
           <span className="wbeta-memory-new-icon" aria-hidden>
             <Plus size={13} weight="bold" />
           </span>
-          Teach a rule
+          Add knowledge
         </button>
       </div>
 
@@ -215,11 +234,11 @@ export function MemoryBrowser({
         <div className="wbeta-memory-empty">
           <h3 className="wbeta-memory-empty-title">Nothing here yet.</h3>
           <p className="wbeta-memory-empty-body">
-            Teach Basquio a rule, or upload a file. Every question you ask afterwards will lean on
-            what you taught it.
+            Add a note, instruction, or example Basquio should reuse. Upload files in Sources when
+            answers need evidence from documents.
           </p>
           <button type="button" className="wbeta-memory-empty-cta" onClick={() => setIsCreating(true)}>
-            Teach a rule
+            Add knowledge
           </button>
         </div>
       ) : null}
@@ -230,7 +249,10 @@ export function MemoryBrowser({
         return (
           <section key={type} className="wbeta-memory-group">
             <header className="wbeta-memory-group-head">
-              <h2 className="wbeta-memory-group-title">{MEMORY_TYPE_LABELS[type]}</h2>
+              <h2 className="wbeta-memory-group-title">
+                {MEMORY_TYPE_LABELS[type]}
+                <InfoHint text={KIND_HELP[type]} />
+              </h2>
               <p className="wbeta-memory-group-meta">{MEMORY_TYPE_DESCRIPTIONS[type]}</p>
             </header>
             <ul className="wbeta-memory-list">
@@ -319,7 +341,7 @@ function MemoryCard({
               Unscoped
             </span>
           )}
-          <span className="wbeta-memory-card-path">{entry.path}</span>
+          <span className="wbeta-memory-card-path">{memoryOriginLabel(entry)}</span>
         </div>
         <div className="wbeta-memory-card-actions">
           <button
@@ -385,7 +407,8 @@ function MemoryCard({
           />
           <div className="wbeta-memory-card-editor-row">
             <label className="wbeta-memory-card-type-label">
-              Type
+              Kind
+              <InfoHint text="This controls how Basquio reuses the saved item. Pick Knowledge for normal client or category context." />
               <select
                 value={draftType}
                 onChange={(e) => setDraftType(e.target.value as MemoryType)}
@@ -449,7 +472,7 @@ function NewMemoryForm({
   const defaultScopeId =
     scopes.find((s) => s.kind === "system" && s.slug === "workspace")?.id ?? scopes[0]?.id ?? "";
   const [scopeId, setScopeId] = useState(defaultScopeId);
-  const [type, setType] = useState<MemoryType>("procedural");
+  const [type, setType] = useState<MemoryType>("semantic");
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -468,7 +491,7 @@ function NewMemoryForm({
       <header className="wbeta-memory-card-head">
         <div className="wbeta-memory-card-meta">
           <span className="wbeta-memory-card-scope wbeta-memory-card-scope-new">New</span>
-          <span className="wbeta-memory-card-path">Teach Basquio</span>
+          <span className="wbeta-memory-card-path">Add reusable context</span>
         </div>
       </header>
       <div className="wbeta-memory-card-editor">
@@ -476,14 +499,15 @@ function NewMemoryForm({
           className="wbeta-memory-card-textarea"
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Example: for Mulino Bianco, always lead competitive slides with a waterfall chart. Never a bar chart."
+          placeholder="What should Basquio remember? Example: for Despar, Marca del Distributore means private label."
           rows={5}
           disabled={busy}
           autoFocus
         />
         <div className="wbeta-memory-card-editor-row">
           <label className="wbeta-memory-card-type-label">
-            Scope
+            Applies to
+            <InfoHint text={SCOPE_HELP} />
             <select value={scopeId} onChange={(e) => setScopeId(e.target.value)} disabled={busy}>
               {scopes.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -493,7 +517,8 @@ function NewMemoryForm({
             </select>
           </label>
           <label className="wbeta-memory-card-type-label">
-            Type
+            Kind
+            <InfoHint text="Knowledge is the default. Use Instructions for behavior and Examples for patterns worth repeating." />
             <select
               value={type}
               onChange={(e) => setType(e.target.value as MemoryType)}
@@ -518,7 +543,7 @@ function NewMemoryForm({
               data-loading={busy ? "true" : undefined}
               disabled={busy || !scopeId || !content.trim()}
             >
-              <CheckCircle size={12} weight="fill" /> Teach
+              <CheckCircle size={12} weight="fill" /> Save knowledge
             </button>
           </div>
         </div>
@@ -535,4 +560,23 @@ function formatRelative(iso: string): string {
   const days = Math.floor(diff / 86400);
   if (days < 7) return `${days}d ago`;
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function memoryOriginLabel(entry: MemoryRow): string {
+  const via = typeof entry.metadata?.via === "string" ? entry.metadata.via : null;
+  if (via === "chat") return "From chat";
+  if (via === "onboarding") return "From setup";
+  if (via) return `From ${via}`;
+  return `Saved ${MEMORY_TYPE_LABELS[entry.memory_type].toLowerCase()}`;
+}
+
+function InfoHint({ text }: { text: string }) {
+  return (
+    <span className="wbeta-info-hint" tabIndex={0} aria-label={text}>
+      <Info size={11} weight="bold" />
+      <span className="wbeta-info-hint-tip" role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
 }

@@ -39,6 +39,19 @@ type SidebarCopy = {
   items: string;
 };
 
+export type SidebarConversationScope = {
+  name: string;
+  kindLabel: string;
+  tooltip: string;
+};
+
+export type SidebarRecentConversation = {
+  id: string;
+  title: string;
+  lastMessageAt: string;
+  scope?: SidebarConversationScope | null;
+};
+
 const DEFAULT_COPY: SidebarCopy = {
   home: "Home",
   clients: "Clients",
@@ -46,7 +59,7 @@ const DEFAULT_COPY: SidebarCopy = {
   functions: "Functions",
   sources: "Sources",
   people: "People",
-  memory: "Memory",
+  memory: "Knowledge",
   newClient: "New client",
   newCategory: "New category",
   newFunction: "New function",
@@ -74,7 +87,7 @@ export function WorkspaceSidebar({
 }: {
   tree: SidebarScopeTree;
   counts: Record<string, ScopeCounts>;
-  recentConversations?: Array<{ id: string; title: string; lastMessageAt: string }>;
+  recentConversations?: SidebarRecentConversation[];
   copy?: SidebarCopy;
   onNavigate?: () => void;
 }) {
@@ -164,6 +177,8 @@ export function WorkspaceSidebar({
           <ul className="wbeta-sidebar-list">
             {recentConversations.slice(0, 6).map((conversation) => {
               const active = pathname === `/workspace/chat/${conversation.id}`;
+              const scope = conversation.scope ?? workspaceScopeFallback();
+              const scopeLabel = formatConversationScope(scope);
               return (
                 <li key={conversation.id}>
                   <Link
@@ -176,7 +191,18 @@ export function WorkspaceSidebar({
                     aria-current={active ? "page" : undefined}
                     onClick={navigateWithTransition()}
                   >
-                    <span className="wbeta-sidebar-item-name">{conversation.title}</span>
+                    <span className="wbeta-sidebar-chat-main">
+                      <span className="wbeta-sidebar-item-name">{conversation.title}</span>
+                      <span
+                        className="wbeta-sidebar-chat-scope"
+                        aria-label={`${scopeLabel}. ${scope.tooltip}`}
+                      >
+                        <span className="wbeta-sidebar-chat-scope-label">{scopeLabel}</span>
+                        <span className="wbeta-sidebar-chat-scope-tip" role="tooltip">
+                          {scope.tooltip}
+                        </span>
+                      </span>
+                    </span>
                     <span className="wbeta-sidebar-item-time">
                       {relativeTime(conversation.lastMessageAt)}
                     </span>
@@ -300,6 +326,19 @@ export function WorkspaceSidebar({
       </nav>
     </div>
   );
+}
+
+function workspaceScopeFallback(): SidebarConversationScope {
+  return {
+    name: "Workspace",
+    kindLabel: "Workspace",
+    tooltip: "This chat was not tied to a specific client or category.",
+  };
+}
+
+function formatConversationScope(scope: SidebarConversationScope): string {
+  if (scope.kindLabel === "Workspace") return "Workspace";
+  return `${scope.kindLabel}: ${scope.name}`;
 }
 
 function relativeTime(iso: string): string {

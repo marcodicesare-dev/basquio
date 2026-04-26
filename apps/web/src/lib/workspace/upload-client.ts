@@ -110,7 +110,7 @@ export async function uploadWorkspaceFile(
       };
     }
     // Attach call failed; return the dedup result anyway so the upload still
-    // looks successful. The file is in workspace memory; the user can retry
+    // looks successful. The file is in workspace knowledge; the user can retry
     // attaching by re-dropping.
     return {
       id: preparePayload.id,

@@ -51,15 +51,15 @@ export type WorkspaceRow = {
 export type MemoryType = "procedural" | "semantic" | "episodic";
 
 export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
-  procedural: "Rules",
-  semantic: "Facts",
-  episodic: "Wins",
+  procedural: "Instructions",
+  semantic: "Knowledge",
+  episodic: "Examples",
 };
 
 export const MEMORY_TYPE_DESCRIPTIONS: Record<MemoryType, string> = {
-  procedural: "Things Basquio does for you, in your style.",
-  semantic: "Things Basquio knows about your world.",
-  episodic: "Things Basquio remembers from the last time.",
+  procedural: "How Basquio should write, analyze, cite, and format.",
+  semantic: "Stable client, category, market, and glossary context.",
+  episodic: "Good prior outputs or decisions Basquio should repeat.",
 };
 
 export type MemoryRow = {

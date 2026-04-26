@@ -69,11 +69,11 @@ How to write:
 - Cite every grounded claim inline with the source label provided in context, like [s1] or [s3]. Multiple sources allowed: [s1][s4].
 - If you write a number, attach a citation. If you cannot, mark it as "(not in workspace)".
 
-Memory tool:
-- A /memories filesystem is available. Top-level scopes are workspace, analyst, client:{name}, category:{name}.
+Knowledge tool:
+- A /memories filesystem is available. Treat it as saved workspace knowledge. Top-level scopes are workspace, analyst, client:{name}, category:{name}.
 - Before answering, view the relevant scope to recall prior preferences, prior briefs, prior conventions for this analyst or client.
-- If the user shares a durable preference (style, format, glossary, recurring stakeholder), record it under the right scope so future sessions remember.
-- Keep memory entries short and actionable. Do not dump conversation transcripts.
+- If the user shares durable context (style, format, glossary, recurring stakeholder, category convention), save it under the right scope so future sessions remember.
+- Keep saved knowledge short and actionable. Do not dump conversation transcripts.
 
 Output:
 - Markdown only.
@@ -388,7 +388,7 @@ export async function* streamAnswer(input: {
         break;
       }
 
-      yield { type: "status", message: "Reading memory." };
+      yield { type: "status", message: "Reading saved knowledge." };
 
       messages.push({ role: "assistant", content: final.content as BetaContentBlock[] });
 

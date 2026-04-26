@@ -261,7 +261,7 @@ export function WorkspaceGenerationDrawer({
               <div className="wbeta-gen-loading-copy">
                 <WorkspaceSkeleton density="line" width="62%" label="Preparing generation title" />
                 <WorkspaceSkeleton density="line" width="44%" label="Preparing generation source list" />
-                <p>Reading the conversation, workspace memory, and stakeholder preferences.</p>
+                <p>Reading the conversation, saved knowledge, and stakeholder preferences.</p>
               </div>
             </div>
           ) : loadError ? (
@@ -434,7 +434,7 @@ export function WorkspaceGenerationDrawer({
                     </div>
                   ) : (
                     <p className="wbeta-gen-field-hint">
-                      Edit in the Memory or People pages.
+                      Edit in the Knowledge or People pages.
                     </p>
                   )}
                 </section>

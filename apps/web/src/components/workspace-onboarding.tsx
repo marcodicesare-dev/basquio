@@ -342,7 +342,7 @@ export function WorkspaceOnboarding({
           </h2>
           <p className="wbeta-onboard-step-hint">
             An old deck, category brief, NIQ export, transcript, or markdown note is enough.
-            Basquio will read it in the background and start building workspace memory.
+            Basquio will read it in the background and start building workspace knowledge.
           </p>
           <WorkspaceUploadZone supportedLabel={SUPPORTED_UPLOAD_LABEL} variant="hero" />
           <p className="wbeta-onboard-help">

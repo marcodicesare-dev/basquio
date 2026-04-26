@@ -13,7 +13,7 @@ import Anthropic, { toFile } from "@anthropic-ai/sdk";
  * and reused across chat turns and deck runs. Container_upload costs 0 input
  * tokens — the file bytes live on the container disk, not in the message.
  *
- * Best-effort in every error path. The upload chip and workspace memory both
+ * Best-effort in every error path. The upload chip and workspace knowledge both
  * survive an Anthropic API failure; we simply fall back to the pgvector
  * retrieval lane and log. The spec §10 lists Supabase Storage as the source of
  * truth — Anthropic is cache.

@@ -22,7 +22,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   document: "Document",
   transcript: "Transcript",
   chunk: "Excerpt",
-  memory: "Memory rule",
+  memory: "Saved knowledge",
   fact: "Grounded fact",
   entity: "Entity",
 };
@@ -53,7 +53,7 @@ export function WorkspaceProvenance({
     bits.push(`${factCount} grounded fact${factCount === 1 ? "" : "s"}`);
   }
   if (memoryCount > 0) {
-    bits.push(`${memoryCount} memory rule${memoryCount === 1 ? "" : "s"}`);
+    bits.push(`${memoryCount} saved item${memoryCount === 1 ? "" : "s"}`);
   }
   if (entityCount > 0 && bits.length < 3) {
     bits.push(`${entityCount} entit${entityCount === 1 ? "y" : "ies"}`);
@@ -84,7 +84,7 @@ export function WorkspaceProvenance({
           <header className="wbeta-prov-panel-head">
             <h3 className="wbeta-prov-panel-title">Where this answer came from</h3>
             <p className="wbeta-prov-panel-hint">
-              Every claim traces back to a source Basquio could see. Facts, memory rules, and source
+              Every claim traces back to a source Basquio could see. Facts, saved knowledge, and source
               excerpts are listed here. Click a citation in the answer to scroll to it.
             </p>
           </header>
@@ -135,12 +135,12 @@ export function WorkspaceProvenance({
             <div className="wbeta-prov-group">
               <div className="wbeta-prov-group-head">
                 <ClipboardText size={13} weight="regular" />
-                <h4 className="wbeta-prov-group-title">Memory rules applied</h4>
+                <h4 className="wbeta-prov-group-title">Saved knowledge applied</h4>
                 <span className="wbeta-prov-group-count">{memoryCount}</span>
               </div>
               <p className="wbeta-prov-group-hint">
-                Procedural memory Basquio followed while writing this answer. Browse the Memory page
-                to see which rules exist at workspace, scope, and analyst level.
+                Instructions and notes Basquio followed while writing this answer. Browse Knowledge
+                to see what exists at workspace, client, category, and analyst level.
               </p>
             </div>
           ) : null}

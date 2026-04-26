@@ -12,8 +12,8 @@ import {
 import { enqueueFileIngestRun } from "@/lib/workspace/ingest-queue";
 
 export const runtime = "nodejs";
-// Retry only resets the memory-indexing lane. The Railway file-ingest worker
-// owns chunking, embeddings, and entity extraction.
+// Retry only resets the searchable-document lane. The Railway file-ingest
+// worker owns chunking, embeddings, and entity extraction.
 export const maxDuration = 60;
 
 function getDb() {
@@ -62,8 +62,9 @@ export async function POST(
   await cleanOrphansForDocument(id);
   await markDocumentForRetry(id);
 
-  // Queue memory indexing. The attached file remains usable in chat while this
-  // runs, because Lane A reads from Supabase Storage / Anthropic Files.
+  // Queue searchable-document processing. The attached file remains usable in
+  // chat while this runs, because Lane A reads from Supabase Storage /
+  // Anthropic Files.
   try {
     await enqueueFileIngestRun({
       documentId: id,
@@ -71,15 +72,16 @@ export async function POST(
       metadata: { source: "retry_endpoint", requested_at: new Date().toISOString() },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "memory indexing queue failed";
+    const message =
+      error instanceof Error ? error.message : "document processing queue failed";
     console.error(`[workspace/retry] enqueueFileIngestRun failed for ${id}`, error);
-    await markDocumentIndexingFailed(id, `Memory indexing queue failed: ${message}`).catch(
+    await markDocumentIndexingFailed(id, `Document processing queue failed: ${message}`).catch(
       (markError) => {
         console.error(`[workspace/retry] markDocumentIndexingFailed failed for ${id}`, markError);
       },
     );
     return NextResponse.json(
-      { error: "Memory indexing could not be queued. Try again." },
+      { error: "Basquio could not start reading this file. Try again." },
       { status: 503 },
     );
   }

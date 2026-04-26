@@ -84,12 +84,12 @@ async function resolveScopeRef(
 
 /**
  * readMemory: agent-initiated memory consultation. Rendered in the chat UI as a
- * subtle system chip "Reading workspace memory" (per Marco 7c rendering contract).
+ * subtle system chip "Reading saved knowledge" (per Marco 7c rendering contract).
  */
 export function readMemoryTool(ctx: AgentCallContext) {
   return tool({
     description:
-      "Read memory entries for the current workspace. Use this to find rules, facts, and wins Basquio has been taught. Pass an optional scope hint ('client:Lavazza', 'workspace', 'analyst') or scope UUID.",
+      "Read saved knowledge for the current workspace. Use this to find reusable knowledge, instructions, and examples Basquio has been taught. Pass an optional scope hint ('client:Lavazza', 'workspace', 'analyst') or scope UUID.",
     inputSchema: z.object({
       scope: z
         .string()
@@ -135,20 +135,20 @@ export function readMemoryTool(ctx: AgentCallContext) {
 }
 
 /**
- * teachRule: user-initiated explicit rule save. Rendered in the chat UI as a bold
- * affirmative card "Rule saved to Lavazza workspace" per Marco 7c.
+ * teachRule: user-initiated explicit knowledge save. Rendered in the chat UI as a bold
+ * affirmative card "Knowledge saved to Lavazza workspace" per Marco 7c.
  * Only fires when the user explicitly asks Basquio to remember or save.
  */
 export function teachRuleTool(ctx: AgentCallContext) {
   return tool({
     description:
-      "Save a new rule, fact, or win for the workspace. Call this ONLY when the user explicitly asks you to 'remember', 'save', 'always do', or equivalent. Do NOT call proactively or silently.",
+      "Save a reusable instruction, knowledge item, or example for the workspace. Call this ONLY when the user explicitly asks you to 'remember', 'save', 'always do', or equivalent. Do NOT call proactively or silently.",
     inputSchema: z.object({
-      scope: z.string().describe("Scope to save the rule under. Use 'workspace' for firm-wide, 'analyst' for analyst preferences, 'client:{name}' or 'category:{name}' for scoped rules."),
+      scope: z.string().describe("Scope to save the item under. Use 'workspace' for firm-wide, 'analyst' for analyst preferences, 'client:{name}' or 'category:{name}' for scoped knowledge."),
       memory_type: z
         .enum(["procedural", "semantic", "episodic"])
-        .describe("procedural for rules Basquio should follow, semantic for facts, episodic for past wins."),
-      content: z.string().min(3).max(4000).describe("The rule in plain prose, 1-3 sentences max."),
+        .describe("procedural for instructions Basquio should follow, semantic for stable knowledge, episodic for examples or past good outputs."),
+      content: z.string().min(3).max(4000).describe("The saved item in plain prose, 1-3 sentences max."),
     }),
     execute: async ({ scope, memory_type, content }) => {
       const scopeRow = await resolveScopeRef(ctx.workspaceId, scope);

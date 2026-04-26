@@ -30,7 +30,7 @@ describe("ScopeCommandPalette", () => {
           {
             id: "memory",
             group: "Open",
-            label: "Affinity memory",
+            label: "Affinity knowledge",
             href: "/workspace/memory",
           },
           {

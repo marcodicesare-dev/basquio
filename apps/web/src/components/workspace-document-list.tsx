@@ -46,19 +46,19 @@ type PreviewState =
   | { kind: "error"; documentId: string; message: string };
 
 const STATUS_LABELS: Record<WorkspaceDocumentRow["status"], string> = {
-  processing: "Parsing",
-  indexed: "Ready",
-  failed: "Needs attention",
+  processing: "Reading file",
+  indexed: "Searchable",
+  failed: "Could not read",
   deleted: "Removed",
 };
 
 const STATUS_DESCRIPTIONS: Record<WorkspaceDocumentRow["status"], string> = {
   processing:
-    "Basquio is extracting text, tables, and facts from this file. You can keep working while it finishes.",
+    "Basquio is extracting text, tables, and facts from this file so it can use the content in answers.",
   indexed:
-    "Ready means Basquio can retrieve this file and cite it in chat answers or deck briefs.",
+    "Searchable means Basquio can find this file, use its excerpts, and cite it in answers or deck briefs.",
   failed:
-    "Needs attention means parsing did not finish. You can retry processing, download the original, or replace the file.",
+    "Could not read means Basquio kept the original file, but the searchable copy failed. Try reading it again or replace the file.",
   deleted:
     "Removed means this file is no longer available for new retrieval. It may still appear in older history.",
 };
@@ -596,9 +596,9 @@ function RetryDocumentButton({ documentId }: { documentId: string }) {
         className="wbeta-doclist-retry"
         onClick={handleClick}
         disabled={busy}
-        aria-label="Retry processing this document"
+        aria-label="Read this file again"
       >
-        {busy ? "Retrying..." : "Retry"}
+        {busy ? "Reading..." : "Read again"}
       </button>
       {error ? <p className="wbeta-doclist-error">{error}</p> : null}
     </>

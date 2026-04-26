@@ -275,9 +275,9 @@ function buildCommandActions({
     {
       id: "memory",
       group: "Open",
-      label: `${scopeName} memory`,
+      label: `${scopeName} knowledge`,
       href: "/workspace/memory",
-      hint: "Saved context",
+      hint: "Saved knowledge",
     },
     {
       id: "people",

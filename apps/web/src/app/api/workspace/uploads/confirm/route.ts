@@ -30,9 +30,10 @@ import { markDocumentIndexingFailed } from "@/lib/workspace/retry";
 
 export const runtime = "nodejs";
 // Confirm owns the fast lane only: validate the object, create the document,
-// attach it to the chat, enqueue memory indexing, and return. Heavy chunking
-// lives in the Railway file-ingest worker. Anthropic Files + inline excerpt
-// enrichment are best-effort after() work and never block the upload response.
+// attach it to the chat, enqueue searchable-document processing, and return.
+// Heavy chunking lives in the Railway file-ingest worker. Anthropic Files +
+// inline excerpt enrichment are best-effort after() work and never block the
+// upload response.
 export const maxDuration = 120;
 
 const SUPPORTED = new Set<string>(SUPPORTED_UPLOAD_EXTENSIONS);
@@ -282,14 +283,14 @@ export async function POST(request: Request) {
       .then(() => true)
       .catch(async (error) => {
         const message =
-          error instanceof Error ? error.message : "memory indexing queue failed";
+          error instanceof Error ? error.message : "document processing queue failed";
         console.error(
           `[workspace/uploads/confirm] enqueueFileIngestRun failed for ${documentId}`,
           error,
         );
         await markDocumentIndexingFailed(
           documentId,
-          `Memory indexing queue failed: ${message}`,
+          `Document processing queue failed: ${message}`,
         ).catch((markError) => {
           console.error(
             `[workspace/uploads/confirm] markDocumentIndexingFailed failed for ${documentId}`,

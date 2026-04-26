@@ -75,7 +75,7 @@ describe("ChatMessage inline suggestions", () => {
 
 <suggestions>
 - <label>Build slide</label><prompt>Turn this into a slide outline.</prompt>
-- <label>Check memory</label><prompt>Compare this answer with saved memory.</prompt>
+- <label>Check knowledge</label><prompt>Compare this answer with saved knowledge.</prompt>
 </suggestions>`,
         ),
         isStreaming: false,
@@ -86,7 +86,7 @@ describe("ChatMessage inline suggestions", () => {
 
     expect(screen.getByText("Workspace chat is live and ready.")).not.toBeNull();
     expect(screen.queryByText(/Build slide/)).toBeNull();
-    expect(screen.queryByText(/Check memory/)).toBeNull();
+    expect(screen.queryByText(/Check knowledge/)).toBeNull();
 
     const chip = screen.getByRole("button", { name: /turn this into a slide outline/i });
     fireEvent.click(chip);

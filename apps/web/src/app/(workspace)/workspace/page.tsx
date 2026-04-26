@@ -148,7 +148,7 @@ export default async function WorkspaceHomePage() {
             id: "fallback-ask",
             kind: "investigate" as const,
             prompt: "Ask what changed across my clients this week.",
-            reason: "Uses recent workspace chats, memory, and indexed documents.",
+            reason: "Uses recent workspace chats, saved knowledge, and searchable documents.",
           },
         ];
   const state =
@@ -186,7 +186,7 @@ export default async function WorkspaceHomePage() {
             locale={locale}
             promptSuggestions={homeSuggestions}
             compactEmpty
-            contextGreeting="Ask across clients, memory, and recent work."
+            contextGreeting="Ask across clients, knowledge, and recent work."
           />
         }
         locale={locale}

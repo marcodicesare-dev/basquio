@@ -10268,6 +10268,67 @@ body:has(.wbeta-shell) .site-wrap {
   gap: 8px;
 }
 
+.wbeta-sidebar-chat-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.wbeta-sidebar-chat-scope {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  height: 17px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(26, 106, 255, 0.08);
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.wbeta-sidebar-chat-scope-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wbeta-sidebar-chat-scope-tip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 7px);
+  z-index: 30;
+  width: max-content;
+  max-width: 220px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: var(--text);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: var(--shadow-panel);
+  opacity: 0;
+  transform: translateY(3px);
+  pointer-events: none;
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.wbeta-sidebar-chat-scope:hover .wbeta-sidebar-chat-scope-tip,
+.wbeta-sidebar-item:focus-visible .wbeta-sidebar-chat-scope-tip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .wbeta-sidebar-item-time {
   color: var(--text-muted);
   font-size: 10px;
@@ -10735,6 +10796,61 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text-muted);
 }
 
+.wbeta-memory-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wbeta-info-hint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: var(--radius-pill);
+  background: rgba(11, 12, 12, 0.06);
+  color: var(--text-muted);
+  cursor: help;
+  outline: none;
+}
+
+.wbeta-info-hint:hover,
+.wbeta-info-hint:focus-visible {
+  background: rgba(26, 106, 255, 0.1);
+  color: var(--blue);
+}
+
+.wbeta-info-hint-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--text);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: var(--shadow-panel);
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  pointer-events: none;
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.wbeta-info-hint:hover .wbeta-info-hint-tip,
+.wbeta-info-hint:focus-visible .wbeta-info-hint-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .wbeta-memory-filter-grow {
   flex: 1;
   min-width: 200px;
@@ -10859,6 +10975,9 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-memory-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.08em;

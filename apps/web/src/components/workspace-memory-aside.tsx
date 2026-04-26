@@ -3,9 +3,10 @@ import { PencilSimple, Sparkle, Trash } from "@phosphor-icons/react/dist/ssr";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
+import { MEMORY_TYPE_LABELS, type MemoryType } from "@/lib/workspace/types";
 
 /**
- * Workspace memory aside per shell spec §4.4.1 (Anthropic Memory
+ * Workspace knowledge aside per shell spec §4.4.1 (Anthropic Memory
  * Tool pattern). Renders recent saves with source provenance so
  * Rossella sees what Basquio is writing to her workspace in real
  * time. Edit and delete affordances appear on hover per the Linear
@@ -14,7 +15,7 @@ import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
  * Server component: fetches the last N writes across memory_entries,
  * knowledge_documents (kind=chat_paste / chat_url / scraped_article),
  * and entities. A single result stream keeps the UI honest about
- * what "memory" contains.
+ * what saved knowledge contains.
  *
  * V1 scope: rendering is read-only. Edit + delete wire to the
  * editRule / memory routes in a follow-up. The buttons exist in the
@@ -65,7 +66,7 @@ async function listRecentSaves(workspaceId: string, limit = 8): Promise<RecentSa
     saves.push({
       kind: "memory_rule",
       label: truncate(String(row.content), 90),
-      sourceLabel: String(row.memory_type ?? "rule"),
+      sourceLabel: memoryTypeLabel(row.memory_type),
       updatedAt: String(row.updated_at),
       detailHref: `/workspace/memory?entry=${row.id}`,
     });
@@ -127,11 +128,11 @@ export async function WorkspaceMemoryAside({
   ).length;
 
   return (
-    <aside className="wbeta-memory-aside" aria-label="Workspace memory">
+    <aside className="wbeta-memory-aside" aria-label="Workspace knowledge">
       <header className="wbeta-memory-aside-head">
         <div className="wbeta-memory-aside-title-row">
           <Sparkle size={16} weight="regular" />
-          <h3 className="wbeta-memory-aside-title">Workspace memory</h3>
+          <h3 className="wbeta-memory-aside-title">Workspace knowledge</h3>
         </div>
         <p className="wbeta-memory-aside-meta">
           {thisWeekCount} saved this week
@@ -140,7 +141,7 @@ export async function WorkspaceMemoryAside({
 
       {saves.length === 0 ? (
         <p className="wbeta-memory-aside-empty">
-          Memory will grow as you use Basquio.
+          Knowledge will grow as you use Basquio.
         </p>
       ) : (
         <ul className="wbeta-memory-aside-list">
@@ -178,9 +179,16 @@ export async function WorkspaceMemoryAside({
 
       <footer className="wbeta-memory-aside-foot">
         <Link className="wbeta-memory-aside-link" href="/workspace/memory">
-          See all memory
+          See all knowledge
         </Link>
       </footer>
     </aside>
   );
+}
+
+function memoryTypeLabel(value: unknown): string {
+  if (value === "procedural" || value === "semantic" || value === "episodic") {
+    return MEMORY_TYPE_LABELS[value as MemoryType];
+  }
+  return "Knowledge";
 }

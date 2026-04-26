@@ -5,7 +5,7 @@ import type { WorkspaceDeliverableRow } from "@/lib/workspace/db";
 const STATUS_LABELS: Record<WorkspaceDeliverableRow["status"], string> = {
   generating: "Thinking",
   ready: "Ready",
-  failed: "Needs attention",
+  failed: "Could not finish",
   archived: "Archived",
 };
 

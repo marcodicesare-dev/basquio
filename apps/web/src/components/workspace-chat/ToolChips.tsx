@@ -18,11 +18,13 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 
+import { MEMORY_TYPE_LABELS, type MemoryType } from "@/lib/workspace/types";
+
 type ToolState = "input-streaming" | "input-available" | "output-available" | "output-error" | string;
 
 /**
  * MemoryReadChip: subtle system chip rendered when the agent calls the `memory` tool.
- * Per Marco 7c: "subtle system chips". No emojis; Phosphor Brain icon.
+ * User-facing copy calls this saved knowledge; the backend still uses memory.
  */
 export function MemoryReadChip({
   state,
@@ -58,10 +60,10 @@ export function MemoryReadChip({
         </span>
         <span className="wbeta-ai-tool-chip-label">
           {isError
-            ? "Memory read failed"
+            ? "Saved knowledge lookup failed"
             : isDone
-              ? `Read ${count} ${count === 1 ? "memory entry" : "memory entries"} from ${scopeName}`
-              : `Reading memory from ${scopeName}`}
+              ? `Read ${count} saved ${count === 1 ? "item" : "items"} from ${scopeName}`
+              : `Reading saved knowledge from ${scopeName}`}
         </span>
         <span className="wbeta-ai-tool-caret" aria-hidden>
           {open ? <CaretDown size={10} weight="bold" /> : <CaretRight size={10} weight="bold" />}
@@ -71,7 +73,9 @@ export function MemoryReadChip({
         <ul className="wbeta-ai-tool-chip-entries">
           {output.entries.slice(0, 8).map((entry) => (
             <li key={entry.id} className="wbeta-ai-tool-chip-entry">
-              <span className="wbeta-ai-tool-chip-entry-kind">{entry.memory_type}</span>
+              <span className="wbeta-ai-tool-chip-entry-kind">
+                {memoryTypeLabel(entry.memory_type)}
+              </span>
               {entry.pinned ? (
                 <span className="wbeta-ai-tool-chip-entry-pin" aria-label="Pinned">
                   <PushPinSimple size={10} weight="fill" />
@@ -94,7 +98,6 @@ export function MemoryReadChip({
  */
 export function RetrieveContextChip({
   state,
-  input,
   output,
   errorText,
 }: {
@@ -194,6 +197,13 @@ function sourceDisplayName(chunk: {
   return chunk.content?.slice(0, 80) ?? "Workspace source";
 }
 
+function memoryTypeLabel(value?: string): string {
+  if (value === "procedural" || value === "semantic" || value === "episodic") {
+    return MEMORY_TYPE_LABELS[value as MemoryType];
+  }
+  return "Knowledge";
+}
+
 /**
  * TeachRuleCard: bold affirmative card rendered when agent calls teachRule.
  * Per Marco 7c: user-facing explicit save moment should feel like a confirmation.
@@ -219,6 +229,7 @@ export function TeachRuleCard({
   const isDone = state === "output-available";
   const isError = state === "output-error" || output?.ok === false;
   const title = output?.scope?.name ?? input?.scope ?? "workspace";
+  const kind = memoryTypeLabel(output?.memory_type ?? input?.memory_type);
 
   if (isError) {
     return (
@@ -228,7 +239,7 @@ export function TeachRuleCard({
             <WarningCircle size={18} weight="fill" />
           </span>
           <div className="wbeta-ai-teach-copy">
-            <p className="wbeta-ai-teach-title">Could not save that rule.</p>
+            <p className="wbeta-ai-teach-title">Could not save that knowledge.</p>
             <p className="wbeta-ai-teach-body">{output?.error ?? errorText ?? "Try rephrasing."}</p>
           </div>
         </div>
@@ -244,7 +255,7 @@ export function TeachRuleCard({
         </span>
         <div className="wbeta-ai-teach-copy">
           <p className="wbeta-ai-teach-title">
-            {isDone ? "Rule saved" : "Saving rule"} to {title}
+            {isDone ? `${kind} saved` : `Saving ${kind.toLowerCase()}`} to {title}
           </p>
           <p className="wbeta-ai-teach-body">
             {output?.content ?? input?.content ?? ""}
@@ -254,7 +265,7 @@ export function TeachRuleCard({
       {output?.entry_id ? (
         <div className="wbeta-ai-teach-foot">
           <a className="wbeta-ai-teach-link" href={`/workspace/memory?entry=${output.entry_id}`}>
-            Open in Memory
+            Open in Knowledge
           </a>
         </div>
       ) : null}
@@ -926,7 +937,7 @@ export function RuleEditApprovalCard({
             <WarningCircle size={18} weight="fill" />
           </span>
           <div className="wbeta-ai-teach-copy">
-            <p className="wbeta-ai-teach-title">Rule edit failed</p>
+            <p className="wbeta-ai-teach-title">Knowledge edit failed</p>
             <p className="wbeta-ai-teach-body">
               {output?.error ?? errorText ?? "Try again."}
             </p>
@@ -937,22 +948,23 @@ export function RuleEditApprovalCard({
   }
   const action = output?.action ?? input?.action ?? "update";
   const scopeName = output?.scope?.name ?? "workspace";
+  const kind = memoryTypeLabel(output?.memory_type);
   const title =
     action === "create"
-      ? `Rule saved to ${scopeName}`
+      ? `${kind} saved to ${scopeName}`
       : action === "update"
-        ? "Rule updated"
+        ? "Saved knowledge updated"
         : action === "archive"
-          ? "Rule archived"
+          ? "Saved knowledge archived"
           : action === "unarchive"
-            ? "Rule restored"
+            ? "Saved knowledge restored"
             : action === "pin"
-              ? "Rule pinned"
+              ? "Saved knowledge pinned"
               : action === "unpin"
-                ? "Rule unpinned"
+                ? "Saved knowledge unpinned"
                 : action === "delete"
-                  ? "Rule deleted"
-                  : "Rule edit applied";
+                  ? "Saved knowledge deleted"
+                  : "Knowledge edit applied";
   return (
     <div className="wbeta-ai-teach-card">
       <div className="wbeta-ai-teach-head">
@@ -967,7 +979,7 @@ export function RuleEditApprovalCard({
       {output?.entry_id && action !== "delete" ? (
         <div className="wbeta-ai-teach-foot">
           <a className="wbeta-ai-teach-link" href={`/workspace/memory?entry=${output.entry_id}`}>
-            Open in Memory
+            Open in Knowledge
           </a>
         </div>
       ) : null}
@@ -1033,7 +1045,7 @@ export function BriefDraftCard({
           <span>{preview.scoped_stakeholder_count ?? 0} stakeholder preferences loaded</span>
         </li>
         <li>
-          <span>{preview.workspace_memory_count ?? 0} workspace rules apply</span>
+          <span>{preview.workspace_memory_count ?? 0} workspace knowledge items apply</span>
         </li>
         <li>
           <span>{preview.workspace_file_count ?? 0} workspace files available</span>
