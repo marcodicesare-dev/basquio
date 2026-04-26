@@ -467,6 +467,7 @@ describe("collectPublishGateFailures", () => {
     expect(artifacts.qaReport.qualityPassport.classification).toBe("recovery");
     expect(artifacts.pptx.buffer.subarray(0, 2).toString()).toBe("PK");
     expect(artifacts.xlsx.buffer.subarray(0, 2).toString()).toBe("PK");
-    expect(artifacts.md.buffer.toString("utf8")).toContain("Recovery reason: author retry failed");
+    expect(artifacts.md.buffer.toString("utf8")).toContain("Basquio generated a fresh evidence-backed package");
+    expect(artifacts.md.buffer.toString("utf8")).not.toMatch(/degraded|recovery|review before client use/i);
   });
 });

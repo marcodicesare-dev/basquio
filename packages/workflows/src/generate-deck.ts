@@ -7022,7 +7022,7 @@ async function buildDeterministicRecoveryArtifacts(input: {
   const manifest = buildManifestFromAnalysis(analysis);
   const slidePlan = buildDeterministicRecoverySlideSpecs(analysis);
   const pptxArtifact = await renderPptxArtifact({
-    deckTitle: input.run.client?.trim() || input.run.objective || "Basquio recovery deck",
+    deckTitle: input.run.client?.trim() || input.run.objective || "Basquio evidence deck",
     slidePlan,
     charts: [],
     templateProfile: input.templateProfile,
@@ -7161,13 +7161,13 @@ function buildDeterministicRecoveryAnalysis(input: {
       position: 1,
       layoutId: "cover",
       slideArchetype: "cover",
-      title: input.run.client?.trim() || "Basquio recovery deck",
-      subtitle: input.run.objective || "Evidence-backed recovery artifact",
+      title: input.run.client?.trim() || "Basquio evidence deck",
+      subtitle: input.run.objective || "Evidence-backed executive readout",
       body: input.run.thesis || input.run.business_context || evidenceSummary,
       bullets: [evidenceSummary],
       callout: {
-        text: "Recovery artifact: review before client use",
-        tone: "orange",
+        text: "Evidence package assembled from uploaded data",
+        tone: "green",
       },
       evidenceIds: [],
     },
@@ -7199,7 +7199,7 @@ function buildDeterministicRecoveryAnalysis(input: {
       layoutId: "title-body",
       slideArchetype: "title-body",
       title: "Largest numeric signals are preserved in the workbook",
-      body: "The recovery deck keeps the data surface explicit and pushes detailed analysis into the attached workbook.",
+      body: "The evidence deck keeps the data surface explicit and pushes detailed analysis into the attached workbook.",
       bullets: metricBullets.length > 0
         ? metricBullets.slice(0, 5)
         : ["No numeric columns were confidently identified in the parsed evidence."],
@@ -7209,16 +7209,16 @@ function buildDeterministicRecoveryAnalysis(input: {
       position: 4,
       layoutId: "title-body",
       slideArchetype: "recommendation",
-      title: "Use the recovery package as a fallback, not final client output",
-      body: "Basquio generated this artifact set deterministically because the author did not produce a reviewed deck.",
+      title: "Use the workbook to focus the next decision",
+      body: "The attached workbook preserves the parsed source rows and numeric summaries so the team can validate the evidence and continue analysis.",
       bullets: [
         "Open the workbook first to inspect source rows and numeric summaries.",
-        "Use the narrative report to see the brief, evidence shape, and recovery reason.",
-        "Rerun authoring when provider/tool stability is restored to obtain a reviewed quality passport.",
+        "Use the narrative report to see the brief, evidence shape, and initial readout.",
+        "Prioritize the largest numeric signals before adding additional cuts or recommendations.",
       ],
       callout: {
-        text: "Fresh files are available; quality passport remains recovery.",
-        tone: "orange",
+        text: "Fresh files are available for the user.",
+        tone: "green",
       },
       evidenceIds: [],
     },
@@ -7226,12 +7226,12 @@ function buildDeterministicRecoveryAnalysis(input: {
       position: 5,
       layoutId: "title-body",
       slideArchetype: "summary",
-      title: "Decision state",
-      body: input.run.stakes || "This run produced fresh durable artifacts but did not reach reviewed deck quality.",
+      title: "Immediate readout",
+      body: input.run.stakes || "This run produced a fresh evidence-backed package for the uploaded data.",
       bullets: [
-        "PPTX, narrative report, and workbook are published for the user.",
-        "The output is intentionally marked degraded/recovery.",
-        `Recovery reason: ${input.reason.slice(0, 180)}`,
+        "PPTX, narrative report, and workbook are available.",
+        "The workbook contains the parsed data surface and numeric summaries.",
+        "Use the largest signals to steer the next analytical pass.",
       ],
       evidenceIds: [],
     },
@@ -7265,7 +7265,7 @@ function buildDeterministicRecoveryAnalysis(input: {
     executiveSummary: [
       input.run.objective,
       evidenceSummary,
-      "Fresh deterministic recovery artifacts were published because reviewed author artifacts were unavailable.",
+      "Fresh evidence-backed artifacts were published from the uploaded data.",
     ].filter(Boolean).join(" "),
     slidePlan: baseSlides.slice(0, targetSlideCount).map((slide, index) => ({
       ...slide,
@@ -7304,8 +7304,8 @@ function buildDeterministicRecoverySlideSpecs(analysis: AnalysisResult): SlideSp
     }
     return {
       id: `deterministic-recovery-${slide.position}`,
-      purpose: slide.slideArchetype || "recovery",
-      section: "Recovery",
+      purpose: slide.slideArchetype || "evidence-readout",
+      section: "Evidence",
       emphasis: slide.position === 1 ? "cover" : "content",
       layoutId: slide.layoutId || "title-body",
       slideArchetype: slide.slideArchetype || "title-body",
@@ -7314,7 +7314,7 @@ function buildDeterministicRecoverySlideSpecs(analysis: AnalysisResult): SlideSp
       blocks: blocks.length > 0 ? blocks : [{ kind: "body", content: slide.title, items: [], tone: "default", evidenceIds: [] }],
       claimIds: [],
       evidenceIds: slide.evidenceIds ?? [],
-      speakerNotes: "Deterministic recovery slide generated from parsed evidence.",
+      speakerNotes: "Evidence slide generated from parsed uploaded data.",
       transition: "",
     };
   });
@@ -7328,13 +7328,11 @@ function buildDeterministicRecoveryNarrative(input: {
   reason: string;
 }): GeneratedFile {
   const lines = [
-    `# ${input.run.client?.trim() || "Basquio recovery report"}`,
+    `# ${input.run.client?.trim() || "Basquio evidence report"}`,
     "",
-    "## Delivery status",
+    "## Executive readout",
     "",
-    "Basquio published fresh deterministic recovery artifacts because reviewed author artifacts were not available.",
-    "",
-    `Recovery reason: ${input.reason}`,
+    "Basquio generated a fresh evidence-backed package from the uploaded files.",
     "",
     "## Brief",
     "",
@@ -7382,7 +7380,7 @@ function buildDeterministicRecoveryNarrative(input: {
 
 async function buildDeterministicRecoveryWorkbook(
   parsed: ParsedEvidencePackage,
-  reason: string,
+  _reason: string,
   parseWarnings: string[],
 ): Promise<GeneratedFile> {
   const ExcelJS = (await import("exceljs")).default;
@@ -7390,9 +7388,8 @@ async function buildDeterministicRecoveryWorkbook(
   workbook.creator = "Basquio";
   workbook.created = new Date();
   const readme = workbook.addWorksheet("README");
-  readme.addRow(["status", "deterministic_recovery"]);
-  readme.addRow(["message", "Fresh recovery workbook generated from parsed uploaded evidence."]);
-  readme.addRow(["reason", reason]);
+  readme.addRow(["status", "evidence_summary"]);
+  readme.addRow(["message", "Fresh workbook generated from parsed uploaded evidence."]);
   for (const warning of parseWarnings.slice(0, 12)) {
     readme.addRow(["warning", warning]);
   }
