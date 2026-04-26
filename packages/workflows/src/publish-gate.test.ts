@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
+import { parseEvidencePackage } from "@basquio/data-ingest";
+import { createSystemTemplateProfile } from "@basquio/template-engine";
+
 import { __test__, collectPublishGateFailures } from "./generate-deck";
 
 describe("collectPublishGateFailures", () => {
@@ -352,5 +355,65 @@ describe("collectPublishGateFailures", () => {
       value: "55.8%",
       delta: "-0.5pp vs Jan",
     });
+  });
+
+  it("builds deterministic recovery artifacts when author cannot publish reviewed files", async () => {
+    const parsed = await parseEvidencePackage({
+      datasetId: "recovery-smoke",
+      files: [
+        {
+          id: "source-1",
+          fileName: "sales.csv",
+          buffer: Buffer.from([
+            "Month,Channel,ValueSales,VolumeUnits",
+            "Jan,Modern Trade,1200,80",
+            "Feb,Modern Trade,1400,92",
+            "Mar,E-commerce,1800,110",
+          ].join("\n")),
+        },
+      ],
+    });
+
+    const artifacts = await __test__.buildDeterministicRecoveryArtifacts({
+      run: {
+        id: "run-1",
+        organization_id: "org-1",
+        project_id: "project-1",
+        requested_by: "user-1",
+        brief: {},
+        business_context: "Diagnose commercial performance.",
+        client: "Northstar Foods",
+        audience: "Country Manager",
+        objective: "Explain channel growth",
+        thesis: "Modern Trade and E-commerce are driving growth.",
+        stakes: "Used for Q2 planning.",
+        source_file_ids: ["source-1"],
+        target_slide_count: 5,
+        author_model: "claude-sonnet-4-6",
+        template_profile_id: null,
+        template_diagnostics: null,
+        workspace_id: null,
+        workspace_scope_id: null,
+        conversation_id: null,
+        from_message_id: null,
+        launch_source: "operator-smoke-test",
+        workspace_context_pack: null,
+        workspace_context_pack_hash: null,
+        active_attempt_id: "attempt-1",
+        latest_attempt_id: "attempt-1",
+        latest_attempt_number: 1,
+        failure_phase: null,
+      } as never,
+      parsed,
+      templateProfile: createSystemTemplateProfile(),
+      parseWarnings: [],
+      reason: "author retry failed",
+    });
+
+    expect(artifacts.manifest.slideCount).toBe(5);
+    expect(artifacts.qaReport.qualityPassport.classification).toBe("recovery");
+    expect(artifacts.pptx.buffer.subarray(0, 2).toString()).toBe("PK");
+    expect(artifacts.xlsx.buffer.subarray(0, 2).toString()).toBe("PK");
+    expect(artifacts.md.buffer.toString("utf8")).toContain("Recovery reason: author retry failed");
   });
 });

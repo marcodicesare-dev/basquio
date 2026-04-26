@@ -2048,7 +2048,84 @@ export async function generateDeckRun(
       }
 
       if (!authorResponse || !authorPhaseUsage) {
-        throw (lastAuthorError instanceof Error ? lastAuthorError : new Error("Author phase failed before any publishable artifacts were produced."));
+        const recoveryReason = lastAuthorError instanceof Error
+          ? lastAuthorError.message
+          : "Author phase failed before any publishable artifacts were produced.";
+        await closeOpenRequestUsageRows({
+          config,
+          attemptId: attempt.id,
+          status: "failed",
+          note: recoveryReason.slice(0, 300),
+        });
+        const recoveryArtifacts = await buildDeterministicRecoveryArtifacts({
+          run,
+          parsed,
+          templateProfile,
+          parseWarnings,
+          reason: recoveryReason,
+        });
+        phaseTelemetry.deterministicAuthorRecovery = recoveryArtifacts.telemetry;
+        partialDeliveryWarnings = [
+          ...new Set([
+            ...partialDeliveryWarnings,
+            "Author failed before a reviewed artifact set was available. Basquio published deterministic recovery artifacts from the uploaded evidence.",
+          ]),
+        ];
+        await insertEvent(config, runId, attempt, "author", "deterministic_recovery_artifacts", {
+          reason: recoveryReason.slice(0, 500),
+          slideCount: recoveryArtifacts.manifest.slideCount,
+          sheetCount: recoveryArtifacts.telemetry.sheetCount,
+          rowCount: recoveryArtifacts.telemetry.rowCount,
+        }).catch(() => {});
+        await completePhase(config, runId, attempt, "author", {
+          slideCount: recoveryArtifacts.manifest.slideCount,
+          source: "deterministic_recovery",
+          estimatedCostUsd: spentUsd,
+        });
+        for (const skippedPhase of ["render", "critique", "revise"] as const) {
+          currentPhase = skippedPhase;
+          await markPhase(config, runId, attempt, skippedPhase);
+          await completePhase(config, runId, attempt, skippedPhase, {
+            source: "deterministic_recovery",
+            skipped: true,
+            reason: "author_failed_before_reviewed_artifacts",
+          });
+        }
+        currentPhase = "export";
+        await markPhase(config, runId, attempt, currentPhase);
+        const artifacts = await persistArtifacts(config, run, attempt, {
+          pptx: recoveryArtifacts.pptx,
+          md: recoveryArtifacts.md,
+          xlsx: recoveryArtifacts.xlsx,
+        }, {
+          allowDocxFailure: false,
+        });
+        await completePhase(config, runId, attempt, "export", {
+          artifactCount: artifacts.length,
+          estimatedCostUsd: spentUsd,
+          qaTier: "red",
+          source: "deterministic_recovery",
+        });
+        await finalizeSuccess(
+          config,
+          runId,
+          attempt,
+          MODEL,
+          spentUsd,
+          recoveryArtifacts.manifest,
+          recoveryArtifacts.qaReport,
+          artifacts,
+          templateDiagnostics,
+          {
+            phases: phaseTelemetry,
+            continuationCount,
+            anthropicRequestIds: [...anthropicRequestIds],
+            templateMode,
+            partialDelivery: true,
+            partialDeliveryWarnings,
+          },
+        );
+        return;
       }
 
       fetchedUrls = collectFetchedUrlsFromMessageThread(authorResponse.thread);
@@ -2121,6 +2198,7 @@ export async function generateDeckRun(
             sheetValidation: authorPlanQualityGate.sheetReport,
             planLintSummary: authorPlanQualityGate.planLintSummary,
           }).catch(() => {});
+          try {
           const authorQualityRetryMaxTokens = getAuthorPhaseMaxTokens(MODEL, run.target_slide_count);
           const authorQualityRetryToolCallSummary = buildAuthoringToolCallSummary(MODEL, {
             webFetchMode: authorWebFetchMode,
@@ -2312,6 +2390,39 @@ export async function generateDeckRun(
               passed: true,
               initialIssueCount: initialAuthorPlanQualityIssueCount,
               model: MODEL,
+            };
+          }
+          } catch (authorQualityRetryError) {
+            const retryMessage = authorQualityRetryError instanceof Error
+              ? authorQualityRetryError.message
+              : String(authorQualityRetryError);
+            await closeOpenRequestUsageRows({
+              config,
+              attemptId: attempt.id,
+              status: "failed",
+              note: retryMessage.slice(0, 300),
+            });
+            await insertEvent(config, runId, attempt, "author", "author_plan_quality_retry_failed_soft_publish", {
+              error: retryMessage.slice(0, 500),
+              initialIssueCount: initialAuthorPlanQualityIssueCount,
+              issues: authorPlanQualityGate.issues.slice(0, 12),
+            }).catch(() => {});
+            for (const issue of authorPlanQualityGate.issues) {
+              advisoryIssues.add(`Author plan quality retry failed; publishing initial author artifacts as degraded: ${issue}`);
+            }
+            partialDeliveryWarnings = [
+              ...new Set([
+                ...partialDeliveryWarnings,
+                "Author plan quality retry failed. Basquio published the initial author artifact set as degraded instead of leaving the run empty.",
+              ]),
+            ];
+            phaseTelemetry.authorPlanQualityRetry = {
+              passed: false,
+              retryFailed: true,
+              initialIssueCount: initialAuthorPlanQualityIssueCount,
+              model: MODEL,
+              publishAsDegraded: true,
+              error: retryMessage.slice(0, 500),
             };
           }
         }
@@ -6736,6 +6847,527 @@ async function buildPlaceholderWorkbookArtifact(warnings: string[]): Promise<Gen
     buffer: Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer),
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   };
+}
+
+type ParsedEvidencePackage = Awaited<ReturnType<typeof parseEvidencePackage>>;
+
+type RecoverySheetSummary = {
+  name: string;
+  rowCount: number;
+  columnNames: string[];
+  numericSummaries: Array<{
+    column: string;
+    sum: number;
+    average: number;
+    min: number;
+    max: number;
+    count: number;
+  }>;
+};
+
+async function buildDeterministicRecoveryArtifacts(input: {
+  run: RunRow;
+  parsed: ParsedEvidencePackage;
+  templateProfile: TemplateProfile;
+  parseWarnings: string[];
+  reason: string;
+}) {
+  const sheetSummaries = summarizeRecoverySheets(input.parsed);
+  const analysis = buildDeterministicRecoveryAnalysis({
+    run: input.run,
+    sheetSummaries,
+    parseWarnings: input.parseWarnings,
+    reason: input.reason,
+  });
+  const manifest = buildManifestFromAnalysis(analysis);
+  const slidePlan = buildDeterministicRecoverySlideSpecs(analysis);
+  const pptxArtifact = await renderPptxArtifact({
+    deckTitle: input.run.client?.trim() || input.run.objective || "Basquio recovery deck",
+    slidePlan,
+    charts: [],
+    templateProfile: input.templateProfile,
+  });
+  const pptxBuffer = Buffer.isBuffer(pptxArtifact.buffer)
+    ? pptxArtifact.buffer
+    : Buffer.from(pptxArtifact.buffer.data);
+  const md = buildDeterministicRecoveryNarrative({
+    run: input.run,
+    analysis,
+    sheetSummaries,
+    parseWarnings: input.parseWarnings,
+    reason: input.reason,
+  });
+  const xlsx = await buildDeterministicRecoveryWorkbook(input.parsed, input.reason, input.parseWarnings);
+  const telemetry = {
+    reason: input.reason.slice(0, 500),
+    slideCount: manifest.slideCount,
+    sheetCount: sheetSummaries.length,
+    rowCount: sheetSummaries.reduce((sum, sheet) => sum + sheet.rowCount, 0),
+    numericColumnCount: sheetSummaries.reduce((sum, sheet) => sum + sheet.numericSummaries.length, 0),
+  };
+  const qaReport = {
+    tier: "red",
+    passed: false,
+    checks: [
+      "pptx_present",
+      "md_present",
+      "xlsx_present",
+      "deterministic_recovery_artifacts_published",
+    ],
+    failed: [
+      "author_reviewed_artifact_generation",
+    ],
+    warnings: [
+      "Deterministic recovery artifacts were published because author failed before reviewed artifacts were available.",
+      ...input.parseWarnings.slice(0, 8),
+    ],
+    qualityPassport: {
+      classification: "recovery",
+      criticalCount: 0,
+      majorCount: 1,
+      visualScore: 0,
+      mecePass: false,
+      summary: "Fresh deterministic recovery artifacts published; deck requires human review before client use.",
+    },
+    publishDecision: {
+      decision: "publish",
+      hardBlockers: [],
+      advisories: [
+        `deterministic_recovery: ${input.reason.slice(0, 240)}`,
+        "quality_passport_not_reviewed: recovery artifacts require review",
+      ],
+      artifactSource: "deterministic_recovery",
+      lintPassed: false,
+      contractPassed: false,
+    },
+  };
+
+  return {
+    pptx: {
+      fileId: "deterministic-recovery-pptx",
+      fileName: "deck.pptx",
+      buffer: pptxBuffer,
+      mimeType: pptxArtifact.mimeType || "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    } satisfies GeneratedFile,
+    md,
+    xlsx,
+    manifest,
+    analysis,
+    qaReport,
+    telemetry,
+  };
+}
+
+function summarizeRecoverySheets(parsed: ParsedEvidencePackage): RecoverySheetSummary[] {
+  const sheets = parsed.normalizedWorkbook?.sheets ?? [];
+  return sheets.map((sheet, index) => {
+    const rows = readRecoveryRows(sheet);
+    const columnNames = readRecoveryColumnNames(sheet, rows);
+    const numericSummaries = columnNames
+      .map((column) => {
+        const values = rows
+          .map((row) => coerceRecoveryNumber(row[column]))
+          .filter((value): value is number => typeof value === "number");
+        if (values.length === 0) {
+          return null;
+        }
+        const sum = values.reduce((total, value) => total + value, 0);
+        return {
+          column,
+          sum,
+          average: sum / values.length,
+          min: Math.min(...values),
+          max: Math.max(...values),
+          count: values.length,
+        };
+      })
+      .filter((summary): summary is RecoverySheetSummary["numericSummaries"][number] => summary !== null)
+      .sort((a, b) => Math.abs(b.sum) - Math.abs(a.sum));
+
+    return {
+      name: sheet.name || `Sheet ${index + 1}`,
+      rowCount: Number(sheet.rowCount ?? rows.length),
+      columnNames,
+      numericSummaries,
+    };
+  });
+}
+
+function buildDeterministicRecoveryAnalysis(input: {
+  run: RunRow;
+  sheetSummaries: RecoverySheetSummary[];
+  parseWarnings: string[];
+  reason: string;
+}): AnalysisResult {
+  const primarySheet = input.sheetSummaries[0];
+  const topMetrics = input.sheetSummaries.flatMap((sheet) =>
+    sheet.numericSummaries.slice(0, 4).map((metric) => ({ ...metric, sheet: sheet.name })),
+  );
+  const targetSlideCount = Math.max(1, Math.min(input.run.target_slide_count || 5, 12));
+  const evidenceSummary = primarySheet
+    ? `${primarySheet.name} contains ${formatInteger(primarySheet.rowCount)} rows and ${formatInteger(primarySheet.columnNames.length)} columns.`
+    : "Basquio parsed the uploaded evidence but could not identify a primary analytical table.";
+  const metricBullets = topMetrics.slice(0, 4).map((metric) =>
+    `${metric.column} in ${metric.sheet}: sum ${formatCompactNumber(metric.sum)}, average ${formatCompactNumber(metric.average)}.`,
+  );
+  const dimensionBullets = primarySheet
+    ? [
+        `Columns available: ${primarySheet.columnNames.slice(0, 8).join(", ")}${primarySheet.columnNames.length > 8 ? ", ..." : ""}.`,
+        ...metricBullets,
+      ]
+    : input.parseWarnings.slice(0, 4);
+  const baseSlides: AnalysisResult["slidePlan"] = [
+    {
+      position: 1,
+      layoutId: "cover",
+      slideArchetype: "cover",
+      title: input.run.client?.trim() || "Basquio recovery deck",
+      subtitle: input.run.objective || "Evidence-backed recovery artifact",
+      body: input.run.thesis || input.run.business_context || evidenceSummary,
+      bullets: [evidenceSummary],
+      callout: {
+        text: "Recovery artifact: review before client use",
+        tone: "orange",
+      },
+      evidenceIds: [],
+    },
+    {
+      position: 2,
+      layoutId: "title-body",
+      slideArchetype: "title-body",
+      title: "Uploaded evidence is available for review",
+      body: evidenceSummary,
+      bullets: dimensionBullets.slice(0, 5),
+      metrics: [
+        {
+          label: "Sheets",
+          value: formatInteger(input.sheetSummaries.length),
+        },
+        {
+          label: "Rows",
+          value: formatInteger(input.sheetSummaries.reduce((sum, sheet) => sum + sheet.rowCount, 0)),
+        },
+        {
+          label: "Numeric fields",
+          value: formatInteger(input.sheetSummaries.reduce((sum, sheet) => sum + sheet.numericSummaries.length, 0)),
+        },
+      ],
+      evidenceIds: [],
+    },
+    {
+      position: 3,
+      layoutId: "title-body",
+      slideArchetype: "title-body",
+      title: "Largest numeric signals are preserved in the workbook",
+      body: "The recovery deck keeps the data surface explicit and pushes detailed analysis into the attached workbook.",
+      bullets: metricBullets.length > 0
+        ? metricBullets.slice(0, 5)
+        : ["No numeric columns were confidently identified in the parsed evidence."],
+      evidenceIds: [],
+    },
+    {
+      position: 4,
+      layoutId: "title-body",
+      slideArchetype: "recommendation",
+      title: "Use the recovery package as a fallback, not final client output",
+      body: "Basquio generated this artifact set deterministically because the author did not produce a reviewed deck.",
+      bullets: [
+        "Open the workbook first to inspect source rows and numeric summaries.",
+        "Use the narrative report to see the brief, evidence shape, and recovery reason.",
+        "Rerun authoring when provider/tool stability is restored to obtain a reviewed quality passport.",
+      ],
+      callout: {
+        text: "Fresh files are available; quality passport remains recovery.",
+        tone: "orange",
+      },
+      evidenceIds: [],
+    },
+    {
+      position: 5,
+      layoutId: "title-body",
+      slideArchetype: "summary",
+      title: "Decision state",
+      body: input.run.stakes || "This run produced fresh durable artifacts but did not reach reviewed deck quality.",
+      bullets: [
+        "PPTX, narrative report, and workbook are published for the user.",
+        "The output is intentionally marked degraded/recovery.",
+        `Recovery reason: ${input.reason.slice(0, 180)}`,
+      ],
+      evidenceIds: [],
+    },
+  ];
+
+  while (baseSlides.length < targetSlideCount) {
+    const sheet = input.sheetSummaries[(baseSlides.length - 5) % Math.max(1, input.sheetSummaries.length)];
+    baseSlides.push({
+      position: baseSlides.length + 1,
+      layoutId: "title-body",
+      slideArchetype: "appendix",
+      title: sheet ? `Evidence appendix: ${sheet.name}` : `Evidence appendix ${baseSlides.length - 4}`,
+      body: sheet
+        ? `${sheet.name} has ${formatInteger(sheet.rowCount)} rows and ${formatInteger(sheet.columnNames.length)} columns.`
+        : "No additional sheet details were available.",
+      bullets: sheet
+        ? [
+            `Columns: ${sheet.columnNames.slice(0, 10).join(", ")}${sheet.columnNames.length > 10 ? ", ..." : ""}.`,
+            ...sheet.numericSummaries.slice(0, 4).map((metric) =>
+              `${metric.column}: sum ${formatCompactNumber(metric.sum)}, range ${formatCompactNumber(metric.min)} to ${formatCompactNumber(metric.max)}.`,
+            ),
+          ]
+        : input.parseWarnings.slice(0, 4),
+      evidenceIds: [],
+    });
+  }
+
+  return analysisSchema.parse({
+    language: inferLanguageHint(input.run),
+    thesis: input.run.thesis || evidenceSummary,
+    executiveSummary: [
+      input.run.objective,
+      evidenceSummary,
+      "Fresh deterministic recovery artifacts were published because reviewed author artifacts were unavailable.",
+    ].filter(Boolean).join(" "),
+    slidePlan: baseSlides.slice(0, targetSlideCount).map((slide, index) => ({
+      ...slide,
+      position: index + 1,
+    })),
+  });
+}
+
+function buildDeterministicRecoverySlideSpecs(analysis: AnalysisResult): SlideSpec[] {
+  return analysis.slidePlan.map((slide) => {
+    const blocks: SlideSpec["blocks"] = [];
+    if (slide.body) {
+      blocks.push({ kind: "body", content: slide.body, items: [], tone: "default", evidenceIds: [] });
+    }
+    for (const metric of slide.metrics ?? []) {
+      blocks.push({
+        kind: "metric",
+        label: metric.label,
+        value: [metric.value, metric.delta].filter(Boolean).join(" "),
+        items: [],
+        tone: "default",
+        evidenceIds: [],
+      });
+    }
+    if (slide.bullets && slide.bullets.length > 0) {
+      blocks.push({ kind: "bullet-list", items: slide.bullets.slice(0, 6), tone: "default", evidenceIds: [] });
+    }
+    if (slide.callout?.text) {
+      blocks.push({
+        kind: "callout",
+        content: slide.callout.text,
+        tone: slide.callout.tone === "green" ? "positive" : slide.callout.tone === "orange" ? "caution" : "default",
+        items: [],
+        evidenceIds: [],
+      });
+    }
+    return {
+      id: `deterministic-recovery-${slide.position}`,
+      purpose: slide.slideArchetype || "recovery",
+      section: "Recovery",
+      emphasis: slide.position === 1 ? "cover" : "content",
+      layoutId: slide.layoutId || "title-body",
+      slideArchetype: slide.slideArchetype || "title-body",
+      title: slide.title,
+      subtitle: slide.subtitle,
+      blocks: blocks.length > 0 ? blocks : [{ kind: "body", content: slide.title, items: [], tone: "default", evidenceIds: [] }],
+      claimIds: [],
+      evidenceIds: slide.evidenceIds ?? [],
+      speakerNotes: "Deterministic recovery slide generated from parsed evidence.",
+      transition: "",
+    };
+  });
+}
+
+function buildDeterministicRecoveryNarrative(input: {
+  run: RunRow;
+  analysis: AnalysisResult;
+  sheetSummaries: RecoverySheetSummary[];
+  parseWarnings: string[];
+  reason: string;
+}): GeneratedFile {
+  const lines = [
+    `# ${input.run.client?.trim() || "Basquio recovery report"}`,
+    "",
+    "## Delivery status",
+    "",
+    "Basquio published fresh deterministic recovery artifacts because reviewed author artifacts were not available.",
+    "",
+    `Recovery reason: ${input.reason}`,
+    "",
+    "## Brief",
+    "",
+    `Audience: ${input.run.audience || "Not specified"}`,
+    `Objective: ${input.run.objective || "Not specified"}`,
+    `Thesis: ${input.run.thesis || "Not specified"}`,
+    `Stakes: ${input.run.stakes || "Not specified"}`,
+    "",
+    "## Evidence summary",
+    "",
+    ...input.sheetSummaries.flatMap((sheet) => [
+      `### ${sheet.name}`,
+      "",
+      `Rows: ${formatInteger(sheet.rowCount)}`,
+      `Columns: ${sheet.columnNames.join(", ") || "None"}`,
+      "",
+      ...sheet.numericSummaries.slice(0, 10).map((metric) =>
+        `- ${metric.column}: count ${formatInteger(metric.count)}, sum ${formatCompactNumber(metric.sum)}, average ${formatCompactNumber(metric.average)}, range ${formatCompactNumber(metric.min)} to ${formatCompactNumber(metric.max)}`,
+      ),
+      "",
+    ]),
+    input.parseWarnings.length > 0 ? "## Parse warnings" : "",
+    "",
+    ...input.parseWarnings.map((warning) => `- ${warning}`),
+    "",
+    "## Slide outline",
+    "",
+    ...input.analysis.slidePlan.flatMap((slide) => [
+      `### ${slide.position}. ${slide.title}`,
+      "",
+      slide.body ?? "",
+      "",
+      ...(slide.bullets ?? []).map((bullet) => `- ${bullet}`),
+      "",
+    ]),
+  ].filter((line, index, all) => line !== "" || all[index - 1] !== "");
+
+  return {
+    fileId: "deterministic-recovery-md",
+    fileName: "narrative_report.md",
+    buffer: Buffer.from(lines.join("\n"), "utf8"),
+    mimeType: "text/markdown",
+  };
+}
+
+async function buildDeterministicRecoveryWorkbook(
+  parsed: ParsedEvidencePackage,
+  reason: string,
+  parseWarnings: string[],
+): Promise<GeneratedFile> {
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Basquio";
+  workbook.created = new Date();
+  const readme = workbook.addWorksheet("README");
+  readme.addRow(["status", "deterministic_recovery"]);
+  readme.addRow(["message", "Fresh recovery workbook generated from parsed uploaded evidence."]);
+  readme.addRow(["reason", reason]);
+  for (const warning of parseWarnings.slice(0, 12)) {
+    readme.addRow(["warning", warning]);
+  }
+  readme.getColumn(1).width = 18;
+  readme.getColumn(2).width = 90;
+
+  const summarySheet = workbook.addWorksheet("Evidence summary");
+  summarySheet.addRow(["Sheet", "Rows", "Columns", "Numeric fields"]);
+  for (const sheet of summarizeRecoverySheets(parsed)) {
+    summarySheet.addRow([sheet.name, sheet.rowCount, sheet.columnNames.length, sheet.numericSummaries.length]);
+  }
+  summarySheet.views = [{ state: "frozen", ySplit: 1 }];
+  summarySheet.columns = [
+    { width: 32 },
+    { width: 12 },
+    { width: 12 },
+    { width: 16 },
+  ];
+
+  const usedNames = new Set(["README", "Evidence summary"]);
+  for (const [index, sourceSheet] of (parsed.normalizedWorkbook?.sheets ?? []).entries()) {
+    const rows = readRecoveryRows(sourceSheet);
+    const columnNames = readRecoveryColumnNames(sourceSheet, rows);
+    const sheetName = uniqueWorksheetName(sourceSheet.name || `Data ${index + 1}`, usedNames);
+    const worksheet = workbook.addWorksheet(sheetName);
+    worksheet.addRow(columnNames);
+    for (const row of rows) {
+      worksheet.addRow(columnNames.map((column) => row[column] ?? null));
+    }
+    worksheet.views = [{ state: "frozen", ySplit: 1 }];
+    worksheet.columns = columnNames.map((name) => ({ header: name, width: Math.min(36, Math.max(12, name.length + 4)) }));
+    worksheet.getRow(1).font = { bold: true };
+    if (rows.length > 0 && columnNames.length > 0) {
+      worksheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: Math.max(1, rows.length + 1), column: columnNames.length },
+      };
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return {
+    fileId: "deterministic-recovery-xlsx",
+    fileName: "data_tables.xlsx",
+    buffer: Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer),
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+}
+
+function readRecoveryRows(sheet: ParsedEvidencePackage["normalizedWorkbook"]["sheets"][number]) {
+  const directRows = Array.isArray((sheet as { rows?: Array<Record<string, unknown>> }).rows)
+    ? (sheet as { rows?: Array<Record<string, unknown>> }).rows
+    : [];
+  if (directRows && directRows.length > 0) {
+    return directRows;
+  }
+  return Array.isArray(sheet.sampleRows) ? sheet.sampleRows : [];
+}
+
+function readRecoveryColumnNames(
+  sheet: ParsedEvidencePackage["normalizedWorkbook"]["sheets"][number],
+  rows: Array<Record<string, unknown>>,
+) {
+  const fromColumns = Array.isArray(sheet.columns)
+    ? sheet.columns.map((column) => column.name).filter((name): name is string => typeof name === "string" && name.trim().length > 0)
+    : [];
+  if (fromColumns.length > 0) {
+    return [...new Set(fromColumns)];
+  }
+  return [...new Set(rows.flatMap((row) => Object.keys(row)))];
+}
+
+function coerceRecoveryNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/[%,$]/g, "").trim();
+    if (!normalized) {
+      return null;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function formatInteger(value: number) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatCompactNumber(value: number) {
+  const absolute = Math.abs(value);
+  const maximumFractionDigits = absolute >= 100 ? 0 : absolute >= 10 ? 1 : 2;
+  return new Intl.NumberFormat("en-US", {
+    notation: absolute >= 100_000 ? "compact" : "standard",
+    maximumFractionDigits,
+  }).format(value);
+}
+
+function uniqueWorksheetName(rawName: string, usedNames: Set<string>) {
+  const base = rawName
+    .replace(/[\[\]:*?/\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 31) || "Sheet";
+  let candidate = base;
+  let suffix = 2;
+  while (usedNames.has(candidate)) {
+    const suffixText = ` ${suffix}`;
+    candidate = `${base.slice(0, 31 - suffixText.length)}${suffixText}`;
+    suffix += 1;
+  }
+  usedNames.add(candidate);
+  return candidate;
 }
 
 async function repairPartialAuthorArtifacts(input: {
@@ -12097,6 +12729,7 @@ export const __test__ = {
   isPlaceholderChartTitle,
   lintManifestPlan,
   enrichManifestWithPptxVisibleText,
+  buildDeterministicRecoveryArtifacts,
   collectArtifactIntegrityPublishFailures,
   collectQualityPassportPublishAdvisories,
   resolvePlanSheetValidationReport,
