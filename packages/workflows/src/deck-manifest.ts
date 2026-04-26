@@ -59,7 +59,8 @@ export function parseDeckManifest(input: unknown): DeckManifest {
 function normalizeDeckManifest(input: unknown) {
   const record = asRecord(input);
   const rawSlides = readArray(record.slides);
-  const slides = rawSlides.map((slide, index) => normalizeSlide(slide, index));
+  const zeroBasedSlidePositions = usesZeroBasedSlidePositions(rawSlides);
+  const slides = rawSlides.map((slide, index) => normalizeSlide(slide, index, zeroBasedSlidePositions));
   const rawCharts = readArray(record.charts);
   const charts = repairManifestChartIds(slides, rawCharts.map(normalizeChart));
 
@@ -75,7 +76,7 @@ function normalizeDeckManifest(input: unknown) {
   };
 }
 
-function normalizeSlide(input: unknown, index: number) {
+function normalizeSlide(input: unknown, index: number, zeroBasedSlidePositions = false) {
   const record = asRecord(input);
   const fallbackLayoutId =
     readString(record.layoutId) ??
@@ -88,11 +89,13 @@ function normalizeSlide(input: unknown, index: number) {
 
   return {
     ...record,
-    position:
+    position: normalizeSlidePosition(
       readNumber(record.position) ??
       readNumber(record.index) ??
-      readNumber(record.order) ??
-      index + 1,
+      readNumber(record.order),
+      index,
+      zeroBasedSlidePositions,
+    ),
     layoutId: fallbackLayoutId,
     slideArchetype:
       readString(record.slideArchetype) ??
@@ -115,6 +118,32 @@ function normalizeSlide(input: unknown, index: number) {
       readBoolean(record.hasChartAnnotations) ??
       readBoolean(record.has_chart_annotations),
   };
+}
+
+function normalizeSlidePosition(value: number | undefined, index: number, zeroBasedSlidePositions: boolean) {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    if (zeroBasedSlidePositions && value >= 0) {
+      return value + 1;
+    }
+    if (value >= 1) {
+      return value;
+    }
+  }
+
+  return index + 1;
+}
+
+function usesZeroBasedSlidePositions(slides: unknown[]) {
+  const positions = slides
+    .map((slide) => {
+      const record = asRecord(slide);
+      return readNumber(record.position) ?? readNumber(record.index) ?? readNumber(record.order);
+    })
+    .filter((value): value is number => typeof value === "number" && Number.isInteger(value));
+
+  return positions.length > 0 &&
+    positions.includes(0) &&
+    positions.every((position) => position >= 0 && position <= Math.max(0, slides.length - 1));
 }
 
 function normalizeChart(input: unknown, index: number) {

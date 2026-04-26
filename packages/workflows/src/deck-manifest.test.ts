@@ -37,4 +37,16 @@ describe("parseDeckManifest", () => {
 
     expect(manifest.charts.map((chart) => chart.id)).toEqual(["chart_s2_global"]);
   });
+
+  it("repairs zero-based slide positions from generated manifests", () => {
+    const manifest = parseDeckManifest({
+      slideCount: 2,
+      slides: [
+        { position: 0, title: "Cover" },
+        { position: 1, title: "Opportunity" },
+      ],
+    });
+
+    expect(manifest.slides.map((slide) => slide.position)).toEqual([1, 2]);
+  });
 });
