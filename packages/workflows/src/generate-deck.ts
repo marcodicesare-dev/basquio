@@ -6733,7 +6733,7 @@ async function persistDeckSpec(
     serviceKey: config.serviceKey,
     table: "deck_spec_v2_slides",
     query: { run_id: `eq.${runId}` },
-  }).catch(() => {});
+  });
 
   const existingChartRows = manifest.charts.length > 0
     ? await fetchRestRows<PersistedChartRow>({
@@ -6799,7 +6799,6 @@ async function persistDeckSpec(
   }
 
   const slideRows = manifest.slides.map((slide) => ({
-    id: randomUUID(),
     run_id: runId,
     position: slide.position,
     layout_id: slide.layoutId,
@@ -6824,7 +6823,7 @@ async function persistDeckSpec(
       supabaseUrl: config.supabaseUrl,
       serviceKey: config.serviceKey,
       table: "deck_spec_v2_slides",
-      onConflict: "id",
+      onConflict: "run_id,position,revision",
       rows: slideRows,
     });
   }
