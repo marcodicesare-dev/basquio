@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { enforceDeckBudget } from "./cost-guard";
+import { enforceDeckBudget, shouldResetCrossAttemptBudget } from "./cost-guard";
 
 type FakeCountTokens = () => Promise<{ input_tokens: number }>;
 
@@ -76,5 +76,12 @@ describe("cost-guard", () => {
     expect(fallbackCalls).toBe(1);
     expect(result.usedCountTokens).toBe(false);
     expect(result.inputTokens).toBe(null);
+  });
+
+  it("resets cross-attempt budget only for operator and manual recovery reasons", () => {
+    expect(shouldResetCrossAttemptBudget("operator_after_brief_data_reconciliation")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("manual_prod_rerun_after_deploy")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("visual_qa_retry")).toBe(false);
+    expect(shouldResetCrossAttemptBudget(null)).toBe(false);
   });
 });

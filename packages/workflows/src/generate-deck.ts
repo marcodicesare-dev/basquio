@@ -73,8 +73,17 @@ import {
   getDeckBudgetCaps,
   getPriorAttemptsCost,
   roundUsd,
+  shouldResetCrossAttemptBudget,
   usageToCost,
 } from "./cost-guard";
+import {
+  buildBriefDataReconciliationProfile,
+  buildBriefDataReconciliationPrompt,
+  buildFallbackBriefDataReconciliation,
+  formatScopeAdjustmentForAuthor,
+  parseBriefDataReconciliationResponse,
+  type BriefDataReconciliationResult,
+} from "./brief-data-reconciliation";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
 import {
   buildExhibitPresentationSpec,
@@ -1030,6 +1039,7 @@ export async function generateDeckRun(
   let authorModel: AuthorModel = DEFAULT_AUTHOR_MODEL;
   let parseWarnings: string[] = [];
   let partialDeliveryWarnings: string[] = [];
+  let scopeAdjustmentForAuthor: string | undefined;
 
   try {
     const run = await loadRun(config, runId);
@@ -1048,13 +1058,18 @@ export async function generateDeckRun(
       runId,
       excludeAttemptId: attempt.id,
     });
+    const crossAttemptBudgetReset = shouldResetCrossAttemptBudget(attempt.recoveryReason);
+    const effectivePriorAttemptsCostUsd = crossAttemptBudgetReset ? 0 : priorAttemptsCostUsd;
     phaseTelemetry.crossAttemptBudget = {
       priorAttemptsCostUsd,
+      effectivePriorAttemptsCostUsd,
+      resetApplied: crossAttemptBudgetReset,
+      resetReason: attempt.recoveryReason,
       budgetUsd: modelBudget.crossAttempt,
       attemptNumber: attempt.attemptNumber,
       model: MODEL,
     };
-    if (priorAttemptsCostUsd >= modelBudget.crossAttempt) {
+    if (effectivePriorAttemptsCostUsd >= modelBudget.crossAttempt) {
       throw new Error(
         `Run has already spent $${priorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget for ${MODEL} is $${modelBudget.crossAttempt.toFixed(2)}.`,
       );
@@ -1159,6 +1174,45 @@ export async function generateDeckRun(
     if (evidenceValidationError) {
       throw new Error(evidenceValidationError);
     }
+
+    const briefDataReconciliation = await runBriefDataReconciliation({
+      config,
+      runId,
+      run,
+      attempt,
+      client,
+      evidenceFiles,
+      parsed,
+      currentSpentUsd: spentUsd,
+      abortSignal: externalAbortSignal,
+    });
+    spentUsd = roundUsd(spentUsd + briefDataReconciliation.costUsd);
+    rememberRequestIds(anthropicRequestIds, briefDataReconciliation.requests);
+    scopeAdjustmentForAuthor = formatScopeAdjustmentForAuthor(briefDataReconciliation.result);
+    phaseTelemetry.briefDataReconciliation = {
+      answerable: briefDataReconciliation.result.answerable,
+      source: briefDataReconciliation.source,
+      unsupportedScopeCount: briefDataReconciliation.result.unsupportedScope.length,
+      forbiddenClaimCount: briefDataReconciliation.result.forbiddenClaims.length,
+    };
+    await upsertWorkingPaper(config, runId, "brief_data_reconciliation", {
+      source: briefDataReconciliation.source,
+      result: briefDataReconciliation.result,
+    });
+    await patchRestRows({
+      supabaseUrl: config.supabaseUrl,
+      serviceKey: config.serviceKey,
+      table: "deck_runs",
+      query: { id: `eq.${runId}` },
+      payload: { scope_adjustment: briefDataReconciliation.result.scopeAdjustmentText },
+    }).catch(() => {});
+    await insertEvent(config, runId, attempt, currentPhase, "brief_data_reconciliation", {
+      source: briefDataReconciliation.source,
+      answerable: briefDataReconciliation.result.answerable,
+      supportedScope: briefDataReconciliation.result.supportedScope,
+      unsupportedScope: briefDataReconciliation.result.unsupportedScope,
+      forbiddenClaims: briefDataReconciliation.result.forbiddenClaims,
+    }).catch(() => {});
 
     await completePhase(config, runId, attempt, "normalize", {
       fileCount: parsed.datasetProfile.sourceFiles.length,
@@ -1533,6 +1587,7 @@ export async function generateDeckRun(
           },
           !baseContainerId ? { uploadedEvidence, uploadedSupportPackets, uploadedTemplate } : undefined,
           questionRoutes,
+          scopeAdjustmentForAuthor,
           recoveredAnalysisForSplit && analysis ? buildChartSlotConstraintMessage(analysis) : undefined,
           recoveredAnalysisForSplit && analysis ? buildPerSlideConstraintBlock(analysis) : undefined,
         );
@@ -4207,6 +4262,110 @@ function validateAnalyticalEvidence(parsed: Awaited<ReturnType<typeof parseEvide
   return "Could not find readable data. Add Excel/CSV for tabular data, or PPTX/PDF with tables and charts.";
 }
 
+async function runBriefDataReconciliation(input: {
+  config: ReturnType<typeof resolveConfig>;
+  runId: string;
+  run: RunRow;
+  attempt: AttemptContext;
+  client: Anthropic;
+  evidenceFiles: LoadedSourceFile[];
+  parsed: Awaited<ReturnType<typeof parseEvidencePackage>>;
+  currentSpentUsd: number;
+  abortSignal: AbortSignal | null;
+}): Promise<{
+  result: BriefDataReconciliationResult;
+  costUsd: number;
+  requests: ClaudeRequestUsage[];
+  source: "haiku" | "deterministic_fallback";
+}> {
+  const profile = buildBriefDataReconciliationProfile({
+    briefText: [buildBriefText(input.run), input.run.audience].filter(Boolean).join("\n"),
+    files: input.evidenceFiles.map((file) => ({
+      id: file.id,
+      fileName: file.file_name,
+      kind: file.kind,
+      buffer: file.buffer,
+    })),
+    workbook: input.parsed.normalizedWorkbook,
+  });
+  const fallback = buildFallbackBriefDataReconciliation(profile);
+
+  try {
+    await persistRequestStart(
+      input.config,
+      input.runId,
+      input.attempt,
+      "normalize",
+      "brief_data_reconciliation",
+      VISUAL_QA_MODEL,
+    );
+    const response = await runClaudeLoop({
+      client: input.client,
+      model: VISUAL_QA_MODEL,
+      betas: buildClaudeBetas(VISUAL_QA_MODEL),
+      systemPrompt: "You are Basquio's brief-data reconciliation auditor. Return strict JSON only.",
+      maxTokens: 1600,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: buildBriefDataReconciliationPrompt(profile),
+            },
+          ],
+        },
+      ],
+      tools: [],
+      phaseLabel: "normalize",
+      maxPauseTurns: 0,
+      phaseTimeoutMs: 75_000,
+      requestWatchdogMs: 75_000,
+      abortSignal: input.abortSignal,
+      currentSpentUsd: input.currentSpentUsd,
+      targetSlideCount: input.run.target_slide_count,
+      circuitKey: "brief-data-reconciliation",
+    });
+    await persistRequestUsage(
+      input.config,
+      input.runId,
+      input.attempt,
+      "normalize",
+      "brief_data_reconciliation",
+      VISUAL_QA_MODEL,
+      response.requests,
+    );
+
+    const result = parseBriefDataReconciliationResponse(
+      extractResponseText(response.message.content),
+      fallback,
+    );
+
+    return {
+      result,
+      costUsd: usageToCost(VISUAL_QA_MODEL, response.usage),
+      requests: response.requests,
+      source: "haiku",
+    };
+  } catch (error) {
+    await closeOpenRequestUsageRows({
+      config: input.config,
+      attemptId: input.attempt.id,
+      status: "failed",
+      note: `brief_data_reconciliation fallback: ${error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240)}`,
+    });
+    await insertEvent(input.config, input.runId, input.attempt, "normalize", "brief_data_reconciliation_fallback", {
+      error: error instanceof Error ? error.message : String(error),
+    }).catch(() => {});
+    return {
+      result: buildFallbackBriefDataReconciliation(profile, error),
+      costUsd: 0,
+      requests: [],
+      source: "deterministic_fallback",
+    };
+  }
+}
+
 function buildAuthorMessage(
   run: RunRow,
   model: AuthorModel,
@@ -4217,6 +4376,7 @@ function buildAuthorMessage(
   },
   files?: AuthorInputFiles,
   questionRoutes: Array<{ id: string; name: string; diagnosticMotifs: string[]; recommendationLevers: string[] }> = [],
+  scopeAdjustmentMessage?: string,
   chartSlotConstraintMessage?: string,
   perSlideConstraintMessage?: string,
 ) {
@@ -4313,6 +4473,7 @@ function buildAuthorMessage(
             routeContext,
             analysisDepthInstruction,
             files,
+            scopeAdjustmentMessage,
           }),
         },
       ],
@@ -4332,6 +4493,7 @@ function buildAuthorMessage(
           "",
           buildGenerationBrief(run),
           "",
+          ...(scopeAdjustmentMessage ? [scopeAdjustmentMessage, ""] : []),
           ...(analysis ? [`Approved analysis JSON:\n${JSON.stringify(analysis, null, 2)}`, ""] : mergedAnalysisInstructions),
           "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
           ...(analysis
@@ -4546,6 +4708,7 @@ function buildReportOnlyAuthorText(input: {
   routeContext: string;
   analysisDepthInstruction: string;
   files?: AuthorInputFiles;
+  scopeAdjustmentMessage?: string;
 }) {
   const lines = [
     input.analysis
@@ -4554,6 +4717,7 @@ function buildReportOnlyAuthorText(input: {
     "",
     buildGenerationBrief(input.run),
     "",
+    ...(input.scopeAdjustmentMessage ? [input.scopeAdjustmentMessage, ""] : []),
     ...(input.analysis
       ? [`Approved analysis JSON:\n${JSON.stringify(input.analysis, null, 2)}`, ""]
       : [

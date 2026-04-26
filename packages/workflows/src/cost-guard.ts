@@ -30,6 +30,18 @@ export function getDeckBudgetCaps(
   return MODEL_BUDGET_USD[model];
 }
 
+export function shouldResetCrossAttemptBudget(recoveryReason: string | null | undefined) {
+  if (!recoveryReason) {
+    return false;
+  }
+  return (
+    recoveryReason.startsWith("operator_") ||
+    recoveryReason.startsWith("manual_") ||
+    recoveryReason.includes("_prod_rerun_") ||
+    recoveryReason.includes("_after_")
+  );
+}
+
 type FileBackedBudgetContext = {
   phase: "author" | "revise" | "critique" | "export";
   targetSlideCount: number;
