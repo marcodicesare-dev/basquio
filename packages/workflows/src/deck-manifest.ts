@@ -84,14 +84,14 @@ function normalizeSlide(input: unknown, index: number) {
     readString(record.slide_archetype) ??
     readString(record.archetype) ??
     "title-body";
+  const rawPosition =
+    readNumber(record.position) ??
+    readNumber(record.index) ??
+    readNumber(record.order);
 
   return {
     ...record,
-    position:
-      readNumber(record.position) ??
-      readNumber(record.index) ??
-      readNumber(record.order) ??
-      index + 1,
+    position: rawPosition === 0 ? index + 1 : rawPosition ?? index + 1,
     layoutId: fallbackLayoutId,
     slideArchetype:
       readString(record.slideArchetype) ??
