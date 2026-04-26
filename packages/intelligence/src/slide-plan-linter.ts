@@ -78,17 +78,17 @@ const METRIC_FAMILY_DEFINITIONS: Array<{ id: string; keywords: string[] }> = [
 ];
 
 const DIMENSION_DEFINITIONS: Array<{ id: string; keywords: string[] }> = [
-  { id: "segment", keywords: ["segment", "segments", "segmento", "segmenti", "comparto", "comparti", "categoria", "categorie", "sottocategoria", "famiglia", "family", "sub-segment", "wet", "dry", "reconstituted"] },
-  { id: "channel", keywords: ["channel", "channels", "canale", "canali", "super", "hyper", "iper", "ipermercato", "ipermercati", "supermercato", "supermercati", "discount", "online", "drug", "convenience", "grocery"] },
-  { id: "format", keywords: ["format", "formats", "formato", "formati", "pack", "packs", "size", "sizes", "confezione", "confezioni", "multipack", "single", "sharing", "canister"] },
-  { id: "brand", keywords: ["brand", "brands", "marca", "marche", "supplier", "fornitore", "fornitori", "competitor", "concorrente", "concorrenti", "portfolio", "player"] },
-  { id: "sku", keywords: ["sku", "skus", "referenza", "referenze", "item", "items", "articolo", "articoli", "top 10", "top 5", "top 3", "pareto", "hero sku"] },
-  { id: "flavour", keywords: ["flavour", "flavor", "gusto", "gusti", "taste", "variant", "variants", "variante", "varianti", "variety"] },
-  { id: "promo", keywords: ["promo", "promotion", "promotional", "promozione", "promozioni", "promozionale", "sconto", "sconti", "taglio prezzo", "volantino", "volantini", "display", "communication in store", "comunicazione in store", "comunicazioni in store", "lift", "incremental", "baseline"] },
-  { id: "price", keywords: ["price", "pricing", "prezzo", "prezzi", "price index", "indice prezzo", "premium", "mainstream", "economy", "price ladder"] },
-  { id: "distribution", keywords: ["distribution", "distribuzione", "distr", "dp", "wd", "acv", "numeric distribution", "weighted distribution", "ponderata", "numerica", "availability", "listings"] },
-  { id: "retailer", keywords: ["retailer", "retailers", "insegna", "insegne", "store", "stores", "punto vendita", "punti vendita", "banner", "customer"] },
-  { id: "geography", keywords: ["geography", "geo", "region", "regions", "regione", "regioni", "area", "areas", "aree", "provincia", "province", "country", "countries", "territory"] },
+  { id: "segment", keywords: ["segment", "segments", "comparto", "famiglia", "family", "sub-segment", "wet", "dry", "reconstituted"] },
+  { id: "channel", keywords: ["channel", "channels", "super", "hyper", "discount", "online", "drug", "convenience", "grocery"] },
+  { id: "format", keywords: ["format", "formats", "pack", "packs", "size", "sizes", "multipack", "single", "sharing", "canister"] },
+  { id: "brand", keywords: ["brand", "brands", "marca", "supplier", "competitor", "portfolio"] },
+  { id: "sku", keywords: ["sku", "skus", "item", "items", "top 10", "top 5", "top 3", "pareto", "hero sku"] },
+  { id: "flavour", keywords: ["flavour", "flavor", "taste", "variant", "variety"] },
+  { id: "promo", keywords: ["promo", "promotion", "promotional", "lift", "incremental", "baseline"] },
+  { id: "price", keywords: ["price", "pricing", "price index", "premium", "mainstream", "economy", "price ladder"] },
+  { id: "distribution", keywords: ["distribution", "acv", "numeric distribution", "weighted distribution", "availability", "listings"] },
+  { id: "retailer", keywords: ["retailer", "retailers", "insegna", "store", "stores", "banner", "customer"] },
+  { id: "geography", keywords: ["geography", "geo", "region", "regions", "area", "areas", "country", "countries", "territory"] },
   { id: "occasion", keywords: ["occasion", "occasions", "daypart", "usage"] },
   { id: "shopper", keywords: ["shopper", "shoppers", "buyer", "buyers", "household", "households", "penetration", "loyalty", "cohort"] },
   { id: "recommendation", keywords: ["recommendation", "recommendations", "priority", "priorities", "roadmap", "action", "actions"] },
@@ -146,12 +146,7 @@ export function lintSlidePlan(
     for (let compareIndex = index + 1; compareIndex < slides.length; compareIndex += 1) {
       const left = slides[index];
       const right = slides[compareIndex];
-      if (
-        isStructuralSlide(left)
-        || isStructuralSlide(right)
-        || isClosingStructuralSlide(slides, index)
-        || isClosingStructuralSlide(slides, compareIndex)
-      ) {
+      if (isStructuralSlide(left) || isStructuralSlide(right)) {
         continue;
       }
 
@@ -161,10 +156,6 @@ export function lintSlidePlan(
       }
 
       const sharedDimensions = left.dimensions.filter((dimension) => right.dimensions.includes(dimension));
-      const specificSharedDimensions = sharedDimensions.filter((dimension) => dimension !== "general");
-      if (specificSharedDimensions.length === 0 && similarity < 0.88) {
-        continue;
-      }
       const sharedMetricFamilies = left.metricFamilies.filter((family) => right.metricFamilies.includes(family));
       pairViolations.push({
         rule: "redundant_analytical_cut",
@@ -184,9 +175,7 @@ export function lintSlidePlan(
     slides.flatMap((slide) => slide.dimensions.filter((dimension) => COVERAGE_DIMENSIONS.has(dimension))),
   )];
   const minRequiredDimensions = requiredDimensionCoverage(targetSlideCount);
-  const analyticalSlides = slides.filter((slide, index) =>
-    !isStructuralSlide(slide) && !isClosingStructuralSlide(slides, index),
-  );
+  const analyticalSlides = slides.filter((slide) => !isStructuralSlide(slide));
   const appendixSlides = analyticalSlides.filter((slide) => isAppendixSlide(slide));
   const contentSlides = analyticalSlides.filter((slide) => !isAppendixSlide(slide));
   const storylineIslands = buildStorylineIslands(contentSlides);
@@ -387,18 +376,10 @@ function computeDataCutSimilarity(left: EnrichedSlide, right: EnrichedSlide) {
   const tokenSimilarity = jaccard(left.tokens, right.tokens);
   const sharedDimensions = left.dimensions.filter((dimension) => right.dimensions.includes(dimension));
   const sharedMetricFamilies = left.metricFamilies.filter((family) => right.metricFamilies.includes(family));
-  const leftSpecificDimensions = left.dimensions.filter((dimension) => dimension !== "general");
-  const rightSpecificDimensions = right.dimensions.filter((dimension) => dimension !== "general");
-  const specificSharedDimensions = sharedDimensions.filter((dimension) => dimension !== "general");
-  const specificSharedMetrics = sharedMetricFamilies.filter((family) => family !== "general");
-  const sharedDimensionScore = specificSharedDimensions.length / Math.max(leftSpecificDimensions.length, rightSpecificDimensions.length, 1);
-  const sharedMetricScore = specificSharedMetrics.length / Math.max(
-    left.metricFamilies.filter((family) => family !== "general").length,
-    right.metricFamilies.filter((family) => family !== "general").length,
-    1,
-  );
-  const samePrimary = left.primaryDimension !== "general" && left.primaryDimension === right.primaryDimension ? 0.18 : 0;
-  const sameMetricFocus = specificSharedMetrics.length > 0 ? 0.12 : 0;
+  const sharedDimensionScore = sharedDimensions.length / Math.max(left.dimensions.length, right.dimensions.length, 1);
+  const sharedMetricScore = sharedMetricFamilies.length / Math.max(left.metricFamilies.length, right.metricFamilies.length, 1, 1);
+  const samePrimary = left.primaryDimension === right.primaryDimension ? 0.18 : 0;
+  const sameMetricFocus = sharedMetricFamilies.length > 0 ? 0.12 : 0;
   const sameLevel = left.decompositionLevel === right.decompositionLevel ? 0.12 : 0;
   const sameIntent = left.pageIntentNormalized && left.pageIntentNormalized === right.pageIntentNormalized ? 0.05 : 0;
   const sameFocalObject = left.focalObject && right.focalObject && normalize(left.focalObject) === normalize(right.focalObject) ? 0.08 : 0;
@@ -465,27 +446,6 @@ function isStructuralSlide(slide: EnrichedSlide) {
   const role = (slide.role ?? "").toLowerCase();
   const layout = (slide.layoutId ?? slide.slideArchetype ?? "").toLowerCase();
   return role === "cover" || role === "section-divider" || layout === "cover" || layout === "section-divider";
-}
-
-const TERMINAL_STRUCTURAL_LAYOUTS = new Set([
-  "summary",
-  "title-body",
-  "title-bullets",
-  "recommendation-cards",
-]);
-
-function isClosingStructuralSlide(slides: EnrichedSlide[], index: number) {
-  if (index !== slides.length - 1) {
-    return false;
-  }
-
-  const slide = slides[index];
-  if (!slide) {
-    return false;
-  }
-
-  const layout = (slide.layoutId ?? slide.slideArchetype ?? "").toLowerCase();
-  return TERMINAL_STRUCTURAL_LAYOUTS.has(layout);
 }
 
 function isAppendixSlide(slide: EnrichedSlide) {
@@ -562,9 +522,6 @@ function detectStorylineBacktracking(
 
   for (const island of islands) {
     if (isExecutiveSummaryIsland(island)) {
-      continue;
-    }
-    if (island.primaryDimension === "general") {
       continue;
     }
     const key = island.primaryDimension === "general"

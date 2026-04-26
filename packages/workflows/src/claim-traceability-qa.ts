@@ -25,22 +25,6 @@ type JudgeSlide = {
   chartSheetName?: string | null;
 };
 
-type CandidateSlide = {
-  position: number;
-  layoutId: string;
-  slideArchetype: string;
-  pageIntent: string | null;
-  title: string;
-  body: string | null;
-  bullets: string[];
-  calloutText: string | null;
-  linkedSheet: {
-    name: string;
-    headers: string[];
-    sampleRows: Array<Record<string, unknown>>;
-  } | null;
-};
-
 export async function runClaimTraceabilityQa(input: {
   client: Anthropic;
   manifest: {
@@ -59,7 +43,7 @@ export async function runClaimTraceabilityQa(input: {
   model?: "claude-haiku-4-5" | "claude-sonnet-4-6";
   maxTokens?: number;
 }) {
-  const candidateSlides: CandidateSlide[] = input.manifest.slides
+  const candidateSlides = input.manifest.slides
     .filter((slide) => shouldJudgeSlide(slide))
     .map((slide) => {
       const linkedSheet = slide.chartSheetName
@@ -195,11 +179,6 @@ export async function runClaimTraceabilityQa(input: {
     { input_tokens: 0, output_tokens: 0 },
   );
 
-  report = {
-    ...report,
-    issues: filterStandaloneNumericRecommendationIssues(report.issues, candidateSlides),
-  };
-
   return {
     report,
     usage: aggregateUsage,
@@ -208,57 +187,6 @@ export async function runClaimTraceabilityQa(input: {
     completedAt: requests[requests.length - 1]?.completedAt ?? new Date().toISOString(),
     requests,
   };
-}
-
-export function filterStandaloneNumericRecommendationIssues(
-  issues: Array<z.infer<typeof claimTraceabilityIssueSchema>>,
-  candidateSlides: CandidateSlide[],
-) {
-  const slideByPosition = new Map(candidateSlides.map((slide) => [slide.position, slide]));
-  return issues.filter((issue) => {
-    const slide = slideByPosition.get(issue.position);
-    return !isStandaloneNumericRecommendationIssue(issue.message, slide);
-  });
-}
-
-function isStandaloneNumericRecommendationIssue(message: string, slide: CandidateSlide | undefined) {
-  if (!slide || !isRecommendationSlide(slide)) {
-    return false;
-  }
-
-  if (slide.linkedSheet) {
-    return false;
-  }
-
-  const supportingText = [slide.body ?? "", ...slide.bullets, slide.calloutText ?? ""].join(" ").trim();
-  if (supportingText.length > 0) {
-    return false;
-  }
-
-  if (extractQuantifiedTokens(slide.title).length === 0) {
-    return false;
-  }
-
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("linkedsheet")
-    || normalized.includes("linked sheet")
-    || normalized.includes("linked workbook")
-    || normalized.includes("visible breakdown")
-    || normalized.includes("workbook reference")
-    || normalized.includes("workbook linkage")
-    || normalized.includes("calculation methodology")
-    || normalized.includes("justify the headline number")
-  );
-}
-
-function isRecommendationSlide(slide: Pick<CandidateSlide, "layoutId" | "slideArchetype">) {
-  const layout = `${slide.slideArchetype ?? slide.layoutId}`.toLowerCase();
-  return layout.includes("recommendation");
-}
-
-function extractQuantifiedTokens(text: string) {
-  return text.match(/[€$£]?\s*[-+]?\d+(?:[.,]\d+)?\s*(?:%|pp|p\.p\.|mln|mld|bln|bn|m|k)?/gi) ?? [];
 }
 
 function shouldJudgeSlide(slide: JudgeSlide) {

@@ -73,7 +73,6 @@ import {
   getDeckBudgetCaps,
   getPriorAttemptsCost,
   roundUsd,
-  shouldResetCrossAttemptBudget,
   usageToCost,
 } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
@@ -1050,26 +1049,21 @@ export async function generateDeckRun(
       runId,
       excludeAttemptId: attempt.id,
     });
-    const crossAttemptBudgetReset = shouldResetCrossAttemptBudget(attempt.recoveryReason);
-    const effectivePriorAttemptsCostUsd = crossAttemptBudgetReset ? 0 : priorAttemptsCostUsd;
     phaseTelemetry.crossAttemptBudget = {
       priorAttemptsCostUsd,
-      effectivePriorAttemptsCostUsd,
       budgetUsd: modelBudget.crossAttempt,
       attemptNumber: attempt.attemptNumber,
       model: MODEL,
-      recoveryReason: attempt.recoveryReason,
-      resetApplied: crossAttemptBudgetReset,
     };
-    if (effectivePriorAttemptsCostUsd >= modelBudget.crossAttempt) {
+    if (priorAttemptsCostUsd >= modelBudget.crossAttempt) {
       throw new Error(
-        `Run has already spent $${effectivePriorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget for ${MODEL} is $${modelBudget.crossAttempt.toFixed(2)}.`,
+        `Run has already spent $${priorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget for ${MODEL} is $${modelBudget.crossAttempt.toFixed(2)}.`,
       );
     }
     throwIfWorkerShutdownRequested(externalAbortSignal, "normalize");
     const sourceFiles = await loadSourceFiles(config, run.source_file_ids);
     const fileBackedAttachmentKinds = [...new Set(sourceFiles.map((file) => file.kind).filter(Boolean))];
-    // E: Template fallback - if recovery_reason is template_fallback, skip template entirely
+    // E: Template fallback — if recovery_reason is template_fallback, skip template entirely
     const isTemplateFallback = attempt.recoveryReason === "template_fallback";
     const persistedTemplate = isTemplateFallback ? null : await loadTemplateProfileRow(config, run.template_profile_id);
     const templateSourceFileId = persistedTemplate?.source_file_id ?? null;
@@ -1340,7 +1334,7 @@ export async function generateDeckRun(
       "stale_timeout", "transient_provider_retry",
       "transient_network_retry", "worker_shutdown",
     ]);
-    // Failure messages that indicate hard artifact corruption - checkpoint
+    // Failure messages that indicate hard artifact corruption — checkpoint
     // resume would just re-publish a corrupt deck. Must replay instead.
     const CHECKPOINT_INELIGIBLE_PATTERNS = [
       "pptx_structural_integrity",
@@ -1424,7 +1418,7 @@ export async function generateDeckRun(
     let baseContainerId: string | null = null;
 
     if (canSkipToExportFromCheckpoint && existingCheckpoint) {
-      // Checkpoint recovery - skip ALL generation phases through export.
+      // Checkpoint recovery — skip ALL generation phases through export.
       // The checkpoint IS the deck we're going to try to publish.
       // We do NOT run critique/revise from a checkpoint because:
       //   - latestResponse is null (no Claude thread to continue)
@@ -2546,7 +2540,7 @@ export async function generateDeckRun(
         estimatedCostUsd: spentUsd,
       }).catch(() => {});
     } else {
-      // Checkpoint recovery path - set final vars directly from checkpoint.
+      // Checkpoint recovery path — set final vars directly from checkpoint.
       // Visual QA will be run fresh in the export phase's strengthenFinalVisualQa
       // or in the salvage path. Use a conservative placeholder here.
       finalPptx = pptxFile;
@@ -2559,7 +2553,7 @@ export async function generateDeckRun(
       finalVisualQa = {
         overallStatus: "green" as const,
         score: 7,
-        summary: "Checkpoint recovery - fresh visual QA will run in export phase.",
+        summary: "Checkpoint recovery — fresh visual QA will run in export phase.",
         deckNeedsRevision: false,
         issues: [],
         strongestSlides: [],
@@ -3719,7 +3713,7 @@ async function uploadClaudeFileWithRetry<T>(input: {
 
       console.warn(
         `[generateDeckRun] transient file upload error for ${input.label}:${input.fileName} ` +
-        `(retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}) - waiting ${delayMs}ms`,
+        `(retry ${retry + 1}/${TRANSIENT_RETRY_DELAYS_MS.length}) — waiting ${delayMs}ms`,
       );
       await insertEvent(input.config, input.runId, input.attempt, input.phase, "file_upload_retry", {
         label: input.label,
@@ -4414,11 +4408,11 @@ function buildAuthorMessage(
           ]),
           analysis
             ? (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` - write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` - write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` - write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` - write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
             : (isReportOnly
-              ? "- Generate files in this exact order: (1) `narrative_report.md` - write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` - write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md` - write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` - write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
+              ? "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
+              : "- Generate files in this exact order: (1) `narrative_report.md` — write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx` — write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
           ...(analysis
             ? []
             : [
@@ -4500,7 +4494,7 @@ function buildAuthorMessage(
           "        'fill':       {'color': ACCENT},",
           "        'data_labels': {'value': True},",
           "    })",
-          "    bar.set_title({'name': 'S15 - Top 10 brand - Quota CY %'})",
+          "    bar.set_title({'name': 'S15 — Top 10 brand — Quota CY %'})",
           "    bar.set_x_axis({'name': 'Quota CY %'})",
           "    bar.set_y_axis({'name': 'Brand'})",
           "    ws.insert_chart('G2', bar)",
@@ -4515,7 +4509,7 @@ function buildAuthorMessage(
           "        'values':     ['S22_SalesTrend', 1, 1, len(trend_df), 1],",
           "        'line':       {'color': ACCENT, 'width': 2.25},",
           "    })",
-          "    line.set_title({'name': 'S22 - Sales trend'})",
+          "    line.set_title({'name': 'S22 — Sales trend'})",
           "    line.set_x_axis({'name': 'Period'})",
           "    line.set_y_axis({'name': 'Sales Value'})",
           "    ws.insert_chart('G2', line)",
@@ -4642,7 +4636,7 @@ function buildPerSlideConstraintBlock(analysis: z.infer<typeof analysisSchema> |
     return undefined;
   }
 
-  const lines: string[] = ["Per-slide spatial constraints (from archetype system - respect these exactly):"];
+  const lines: string[] = ["Per-slide spatial constraints (from archetype system — respect these exactly):"];
 
   for (const slide of analysis.slidePlan) {
     const layoutId = slide.slideArchetype || slide.layoutId || "title-chart";
@@ -8098,7 +8092,7 @@ function isAdvisoryCritiqueIssue(issue: string) {
   const n = issue.toLowerCase();
 
   // Visual issues carry severity in the string: "has major visual issue" or "has advisory visual issue"
-  // Major and critical visual issues are NEVER advisory - they must trigger revise.
+  // Major and critical visual issues are NEVER advisory — they must trigger revise.
   if (n.includes("has major visual issue") || n.includes("has critical visual issue")) return false;
   // Advisory-severity visual issues are always advisory
   if (n.includes("has advisory visual issue")) return true;
@@ -8117,17 +8111,17 @@ function isAdvisoryCritiqueIssue(issue: string) {
   if (n.includes("deck plan issue [content_overflow]")) return false;
   if (n.includes("deck plan issue [appendix_overfill]")) return false;
 
-  // Lint advisories - layout diversity, layout percentage, writing issues
+  // Lint advisories — layout diversity, layout percentage, writing issues
   if (n.includes("layout type") || n.includes("layout used") || n.includes("main\" layout")) return true;
   if (n.startsWith("deck writing issue") || (n.startsWith("slide") && n.includes("writing issue"))) return true;
 
-  // Title overflow - advisory
+  // Title overflow — advisory
   if (n.includes("title is") && n.includes("overflow the right margin")) return true;
 
   if (n.includes("is below requested targetslidecount")) return false;
   if (n.includes("exceeds requested targetslidecount")) return false;
 
-  // Body length / metric layout warnings - hints, not structural failures
+  // Body length / metric layout warnings — hints, not structural failures
   if (n.includes("body is too long") || n.includes("too much body copy") || n.includes("title is too long for a clean")) return true;
 
   return false;
@@ -9420,7 +9414,7 @@ async function persistPreviewAssets(
     // Warn loudly so this never regresses to the empty-preview email bug again.
     if (pngBuffer.length < 12_000) {
       console.warn(
-        `[preview] slide ${slide.position} rendered to only ${pngBuffer.length} bytes - likely missing fonts, text may have silently dropped. Check nixpacks.toml has liberation_ttf/dejavu_fonts/noto-fonts and Resvg is configured with loadSystemFonts: true.`,
+        `[preview] slide ${slide.position} rendered to only ${pngBuffer.length} bytes — likely missing fonts, text may have silently dropped. Check nixpacks.toml has liberation_ttf/dejavu_fonts/noto-fonts and Resvg is configured with loadSystemFonts: true.`,
       );
     }
 
@@ -9481,7 +9475,7 @@ function selectPreviewSlides(manifest: z.infer<typeof deckManifestSchema>) {
 // Resolve bundled DejaVu TTF font paths at runtime. The npm package
 // `dejavu-fonts-ttf` ships actual .ttf files that @resvg/resvg-js can load
 // directly. Bundling is the only reliable approach because Nix/Railway's
-// fontconfig configuration does NOT expose system font packages to resvg -
+// fontconfig configuration does NOT expose system font packages to resvg —
 // adding liberation_ttf or dejavu_fonts to nixpacks.toml is insufficient
 // because Nix profiles are not in the paths fontconfig scans by default.
 // See: https://github.com/thx/resvg-js/issues/210 (identical symptom)

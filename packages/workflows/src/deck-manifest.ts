@@ -27,11 +27,6 @@ export const deckManifestSchema = z.object({
       text: z.string(),
       tone: z.enum(["accent", "green", "orange"]).optional(),
     }).optional(),
-    recommendationBlock: z.object({
-      condition: z.string().optional(),
-      recommendation: z.string().optional(),
-      quantification: z.string().optional(),
-    }).optional(),
     evidenceIds: z.array(z.string()).optional(),
     chartId: z.string().optional(),
     hasDataTable: z.boolean().optional(),
@@ -64,10 +59,8 @@ export function parseDeckManifest(input: unknown): DeckManifest {
 function normalizeDeckManifest(input: unknown) {
   const record = asRecord(input);
   const rawSlides = readArray(record.slides);
-  const zeroBasedSlidePositions = usesZeroBasedSlidePositions(rawSlides);
-  const slides = rawSlides.map((slide, index) => normalizeSlide(slide, index, zeroBasedSlidePositions));
+  const slides = rawSlides.map((slide, index) => normalizeSlide(slide, index));
   const rawCharts = readArray(record.charts);
-  const charts = repairManifestChartIds(slides, rawCharts.map(normalizeChart));
 
   return {
     ...record,
@@ -77,11 +70,11 @@ function normalizeDeckManifest(input: unknown) {
       slides.length,
     pageCount: readNumber(record.pageCount) ?? readNumber(record.page_count),
     slides,
-    charts,
+    charts: rawCharts.map(normalizeChart),
   };
 }
 
-function normalizeSlide(input: unknown, index: number, zeroBasedSlidePositions = false) {
+function normalizeSlide(input: unknown, index: number) {
   const record = asRecord(input);
   const fallbackLayoutId =
     readString(record.layoutId) ??
@@ -94,13 +87,11 @@ function normalizeSlide(input: unknown, index: number, zeroBasedSlidePositions =
 
   return {
     ...record,
-    position: normalizeSlidePosition(
+    position:
       readNumber(record.position) ??
       readNumber(record.index) ??
-      readNumber(record.order),
-      index,
-      zeroBasedSlidePositions,
-    ),
+      readNumber(record.order) ??
+      index + 1,
     layoutId: fallbackLayoutId,
     slideArchetype:
       readString(record.slideArchetype) ??
@@ -114,7 +105,6 @@ function normalizeSlide(input: unknown, index: number, zeroBasedSlidePositions =
     bullets: readStringArray(record.bullets),
     metrics: normalizeMetrics(record.metrics),
     callout: normalizeCallout(record.callout),
-    recommendationBlock: normalizeRecommendationBlock(record.recommendationBlock ?? record.recommendation_block),
     evidenceIds: readStringArray(record.evidenceIds) ?? readStringArray(record.evidence_ids),
     chartId:
       readString(record.chartId) ??
@@ -124,48 +114,6 @@ function normalizeSlide(input: unknown, index: number, zeroBasedSlidePositions =
       readBoolean(record.hasChartAnnotations) ??
       readBoolean(record.has_chart_annotations),
   };
-}
-
-function normalizeRecommendationBlock(input: unknown) {
-  const record = asRecord(input);
-  const condition = readString(record.condition);
-  const recommendation = readString(record.recommendation);
-  const quantification = readString(record.quantification);
-  if (!condition && !recommendation && !quantification) {
-    return undefined;
-  }
-
-  return {
-    ...(condition ? { condition } : {}),
-    ...(recommendation ? { recommendation } : {}),
-    ...(quantification ? { quantification } : {}),
-  };
-}
-
-function normalizeSlidePosition(value: number | undefined, index: number, zeroBasedSlidePositions: boolean) {
-  if (typeof value === "number" && Number.isInteger(value)) {
-    if (zeroBasedSlidePositions && value >= 0) {
-      return value + 1;
-    }
-    if (value >= 1) {
-      return value;
-    }
-  }
-
-  return index + 1;
-}
-
-function usesZeroBasedSlidePositions(slides: unknown[]) {
-  const positions = slides
-    .map((slide) => {
-      const record = asRecord(slide);
-      return readNumber(record.position) ?? readNumber(record.index) ?? readNumber(record.order);
-    })
-    .filter((value): value is number => typeof value === "number" && Number.isInteger(value));
-
-  return positions.length > 0 &&
-    positions.includes(0) &&
-    positions.every((position) => position >= 0 && position <= Math.max(0, slides.length - 1));
 }
 
 function normalizeChart(input: unknown, index: number) {
@@ -194,71 +142,6 @@ function normalizeChart(input: unknown, index: number) {
       record.presentation ?? record.exhibitPresentation ?? record.exhibit_presentation,
     ),
   };
-}
-
-function repairManifestChartIds(
-  slides: Array<{ chartId?: string }>,
-  charts: Array<{ id: string } & Record<string, unknown>>,
-) {
-  const existingChartIds = new Set(charts.map((chart) => chart.id));
-  const orderedSlideChartIds = slides
-    .map((slide) => slide.chartId?.trim())
-    .filter((value): value is string => Boolean(value));
-  const missingSlideChartIds = orderedSlideChartIds.filter((chartId) => !existingChartIds.has(chartId));
-
-  if (missingSlideChartIds.length === 0) {
-    return charts;
-  }
-
-  const dedupedMissingIds: string[] = [];
-  for (const chartId of missingSlideChartIds) {
-    if (!dedupedMissingIds.includes(chartId)) {
-      dedupedMissingIds.push(chartId);
-    }
-  }
-
-  const referencedChartIds = new Set(
-    orderedSlideChartIds.filter((chartId) => existingChartIds.has(chartId)),
-  );
-  const remappableCharts = charts.filter((chart) => !referencedChartIds.has(chart.id));
-  if (remappableCharts.length < dedupedMissingIds.length) {
-    return charts;
-  }
-
-  const orderedRemapTargets = remappableCharts
-    .filter((chart) => looksGenericChartId(chart.id))
-    .concat(remappableCharts.filter((chart) => !looksGenericChartId(chart.id)));
-  if (orderedRemapTargets.length < dedupedMissingIds.length) {
-    return charts;
-  }
-
-  const idRemap = new Map<string, string>();
-  for (let index = 0; index < dedupedMissingIds.length; index += 1) {
-    const sourceChart = orderedRemapTargets[index];
-    const targetChartId = dedupedMissingIds[index];
-    if (!sourceChart || existingChartIds.has(targetChartId)) {
-      continue;
-    }
-    idRemap.set(sourceChart.id, targetChartId);
-    existingChartIds.add(targetChartId);
-  }
-
-  if (idRemap.size === 0) {
-    return charts;
-  }
-
-  return charts.map((chart) => (
-    idRemap.has(chart.id)
-      ? {
-          ...chart,
-          id: idRemap.get(chart.id)!,
-        }
-      : chart
-  ));
-}
-
-function looksGenericChartId(value: string) {
-  return /^chart[-_ ]?\d+$/i.test(value.trim());
 }
 
 function normalizeMetrics(input: unknown) {

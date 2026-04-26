@@ -30,7 +30,6 @@
     "test:research-filters": "vitest run packages/research/src/filters.test.ts",
     "test:notify-completion": "tsx scripts/test-notify-completion.ts",
     "test:code-exec": "tsx scripts/test-code-exec.ts",
-    "test:code-exec-no-webfetch": "tsx scripts/test-anthropic-skills-contract.ts --web-fetch-mode off",
     "test:anthropic-message-thread": "tsx scripts/test-anthropic-message-thread.ts",
     "smoke:research": "tsx scripts/smoke-test-research-layer.ts",
     "test:failure-classifier": "tsx scripts/test-failure-classifier.ts",
