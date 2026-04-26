@@ -5,6 +5,7 @@ import {
   WorkerShutdownInterruptError,
 } from "../packages/workflows/src/generate-deck";
 import { classifyRuntimeError } from "../packages/workflows/src/failure-classifier";
+import { shouldResetCrossAttemptBudget } from "../packages/workflows/src/cost-guard";
 import { closeOpenRequestUsageRows } from "../packages/workflows/src/request-usage-lifecycle";
 import { runTemplateImportJob } from "../packages/workflows/src/template-import";
 import { fetchRestRows, patchRestRows, upsertRestRows } from "../packages/workflows/src/supabase";
@@ -489,6 +490,20 @@ async function recoverAttemptForShutdown(
   attempt: QueuedRunRow,
 ) {
   const now = new Date().toISOString();
+  const priorAttempt = await fetchRestRows<{ recovery_reason: string | null }>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "deck_run_attempts",
+    query: {
+      select: "recovery_reason",
+      id: `eq.${attempt.id}`,
+      limit: "1",
+    },
+  }).catch(() => []);
+  const inheritedRecoveryReason = priorAttempt[0]?.recovery_reason ?? null;
+  const recoveryReason = shouldResetCrossAttemptBudget(inheritedRecoveryReason)
+    ? inheritedRecoveryReason!
+    : SHUTDOWN_RECOVERY_REASON;
   await closeOpenRequestUsageRows({
     config,
     attemptId: attempt.id,
@@ -505,7 +520,7 @@ async function recoverAttemptForShutdown(
       p_old_attempt_id: attempt.id,
       p_new_attempt_id: randomUUID(),
       p_new_attempt_number: attempt.attempt_number + 1,
-      p_recovery_reason: SHUTDOWN_RECOVERY_REASON,
+      p_recovery_reason: recoveryReason,
       p_now: now,
       p_expected_old_status: "running",
       p_old_status_override: "failed",
