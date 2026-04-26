@@ -149,6 +149,47 @@ describe("slide-plan-linter", () => {
     );
   });
 
+  it("does not block distinct low-specificity share slides as duplicates", () => {
+    const result = lintSlidePlan(
+      [
+        { position: 1, role: "cover", title: "Segafredo promotion review" },
+        { position: 2, role: "exec-summary", title: "La quota resta sotto il mercato" },
+        { position: 3, title: "La quota valore cresce ma i volumi restano deboli" },
+        { position: 4, title: "Il contributo relativo spiega parte della pressione" },
+        { position: 5, title: "La quota relativa non compensa il gap operativo" },
+        { position: 6, title: "La quota finale cambia la qualità della pressione" },
+      ],
+      5,
+    );
+
+    assert.ok(
+      !result.pairViolations.some((violation) => violation.rule === "redundant_analytical_cut"),
+      "did not expect generic share language alone to create duplicate analytical cuts",
+    );
+    assert.ok(
+      !result.deckViolations.some((violation) => violation.rule === "storyline_backtracking"),
+      "did not expect generic branches to trigger storyline_backtracking",
+    );
+  });
+
+  it("still catches exact duplicate generic share slides", () => {
+    const result = lintSlidePlan(
+      [
+        { position: 1, role: "cover", title: "Segafredo promotion review" },
+        { position: 2, role: "exec-summary", title: "La quota promo resta sotto il mercato" },
+        { position: 3, title: "La quota valore resta sotto il mercato" },
+        { position: 4, title: "La quota valore resta sotto il mercato" },
+        { position: 5, title: "I tagli prezzo spiegano parte della pressione" },
+      ],
+      3,
+    );
+
+    assert.ok(
+      result.pairViolations.some((violation) => violation.rule === "redundant_analytical_cut"),
+      "expected exact generic duplicate slides to remain blocked",
+    );
+  });
+
   it("treats a terminal summary slide as structural for content-count enforcement", () => {
     const result = lintSlidePlan(
       [

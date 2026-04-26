@@ -7689,6 +7689,13 @@ function analysisToPlanLintInput(analysis: z.infer<typeof analysisSchema>): Slid
       : undefined,
     chartId: slide.chart?.id,
     chartType: slide.chart?.chartType,
+    categories: [
+      slide.chart?.title,
+      slide.chart?.excelSheetName,
+      slide.chart?.xAxisLabel,
+      slide.chart?.yAxisLabel,
+      slide.chart?.bubbleSizeLabel,
+    ].filter((value): value is string => typeof value === "string" && value.trim().length > 0),
     evidenceIds: slide.evidenceIds,
   }));
 }
