@@ -3011,7 +3011,11 @@ async function resolveAttemptContext(
   run: RunRow,
   suppliedAttempt?: Partial<AttemptContext>,
 ): Promise<AttemptContext> {
-  if (suppliedAttempt?.id && typeof suppliedAttempt.attemptNumber === "number") {
+  if (
+    suppliedAttempt?.id &&
+    typeof suppliedAttempt.attemptNumber === "number" &&
+    suppliedAttempt.recoveryReason !== undefined
+  ) {
     return {
       id: suppliedAttempt.id,
       attemptNumber: suppliedAttempt.attemptNumber,
