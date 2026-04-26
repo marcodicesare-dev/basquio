@@ -5386,6 +5386,65 @@ function isTerminalClosingContractIssue(issue: string) {
   return normalized.includes("last slide should be summary or recommendation layout");
 }
 
+function truncateReviseIssueText(issue: string, maxChars = 260) {
+  const normalized = issue.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+
+  const sentenceBoundary = normalized.lastIndexOf(".", maxChars);
+  if (sentenceBoundary >= Math.floor(maxChars * 0.6)) {
+    return `${normalized.slice(0, sentenceBoundary + 1)} [truncated]`;
+  }
+
+  return `${normalized.slice(0, maxChars - 12)}... [truncated]`;
+}
+
+function classifyReviseIssueFamily(issue: string) {
+  const normalized = issue.toLowerCase();
+  const bracketed = normalized.match(/\[([a-z0-9_]+)\]/)?.[1];
+  if (bracketed) {
+    return bracketed;
+  }
+  if (normalized.includes("overflow the right margin")) return "title_overflow";
+  if (normalized.includes("claims metric growth or acceleration")) return "claim_exhibit_mismatch";
+  if (normalized.includes("violates archetype")) return "archetype_violation";
+  if (normalized.includes("chart exposes") && normalized.includes("capped at")) return "chart_density";
+  if (normalized.includes("requires revision")) return "deck_needs_revision";
+  return "generic";
+}
+
+function compactReviseIssueList(
+  issues: string[],
+  options: {
+    maxItems: number;
+    maxPerFamily: number;
+    maxCharsPerIssue?: number;
+  },
+) {
+  const familyCounts = new Map<string, number>();
+  const selected: string[] = [];
+
+  for (const issue of issues) {
+    if (selected.length >= options.maxItems) {
+      break;
+    }
+    const family = classifyReviseIssueFamily(issue);
+    const familyCount = familyCounts.get(family) ?? 0;
+    if (familyCount >= options.maxPerFamily) {
+      continue;
+    }
+    familyCounts.set(family, familyCount + 1);
+    selected.push(truncateReviseIssueText(issue, options.maxCharsPerIssue ?? 260));
+  }
+
+  const remainingCount = Math.max(0, issues.length - selected.length);
+  return {
+    items: selected,
+    remainingCount,
+  };
+}
+
 function buildReviseIssueDirectives(issues: string[]) {
   const normalizedIssues = issues.map((issue) => issue.toLowerCase());
   const directives: string[] = [
@@ -5433,6 +5492,16 @@ export function buildReviseMessage(input: {
   const advisoryIssues = input.issues.filter((issue) => {
     return !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
   }).filter((issue) => !nonVisualBlockingIssues.includes(issue));
+  const compactBlockingIssues = compactReviseIssueList(nonVisualBlockingIssues, {
+    maxItems: 18,
+    maxPerFamily: 2,
+    maxCharsPerIssue: 260,
+  });
+  const compactAdvisoryIssues = compactReviseIssueList(advisoryIssues, {
+    maxItems: 6,
+    maxPerFamily: 1,
+    maxCharsPerIssue: 180,
+  });
   const reviseIssueDirectives = buildReviseIssueDirectives(input.issues);
   const targetSlideCountInstruction = typeof input.targetSlideCount === "number" && input.targetSlideCount > 0
     ? `The user asked for exactly ${input.targetSlideCount} content slides. Keep exactly ${input.targetSlideCount} content slides, plus one structural cover, plus at most one structural closing slide.`
@@ -5481,18 +5550,24 @@ export function buildReviseMessage(input: {
           ...(primaryVisualIssues.length > 0
             ? primaryVisualIssues.map((issue) => `- Slide ${issue.slidePosition} ${issue.code}: ${issue.description}. Fix: ${issue.fix}`)
             : ["- No major visual issues were supplied; make only the smallest fixes needed."]),
-          ...(nonVisualBlockingIssues.length > 0
+          ...(compactBlockingIssues.items.length > 0
             ? [
                 "",
                 "Mandatory non-visual issues to fix in the same revise turn:",
-                ...nonVisualBlockingIssues.map((issue) => `- ${issue}`),
+                ...compactBlockingIssues.items.map((issue) => `- ${issue}`),
+                ...(compactBlockingIssues.remainingCount > 0
+                  ? [`- ${compactBlockingIssues.remainingCount} additional blocking issues follow the same families above. Fix the issue classes explicitly listed here before export.`]
+                  : []),
               ]
             : []),
-          ...(advisoryIssues.length > 0
+          ...(compactAdvisoryIssues.items.length > 0
             ? [
                 "",
                 "Secondary advisories to clean up only after the blocking issues above are fixed and without regressing repaired slides:",
-                ...advisoryIssues.map((issue) => `- ${issue}`),
+                ...compactAdvisoryIssues.items.map((issue) => `- ${issue}`),
+                ...(compactAdvisoryIssues.remainingCount > 0
+                  ? [`- ${compactAdvisoryIssues.remainingCount} additional advisory issues remain in the same families. Address them only if the blocking repairs are already stable.`]
+                  : []),
               ]
             : []),
           "",
@@ -5519,30 +5594,15 @@ function buildMinimalReviseThread(input: {
   analysis: z.infer<typeof analysisSchema> | null;
   manifest: z.infer<typeof deckManifestSchema>;
 }) {
-  const compactManifest = input.manifest.slides.map((slide) => ({
-    position: slide.position,
-    title: slide.title,
-    archetype: slide.slideArchetype,
-    chartId: slide.chartId ?? null,
-    metrics: slide.metrics?.slice(0, 3) ?? [],
-    callout: slide.callout?.text ?? null,
-  }));
+  const slideInventory = input.manifest.slides
+    .map((slide) => `${slide.position}:${truncateReviseIssueText(`${slide.title} (${slide.slideArchetype ?? slide.layoutId ?? "slide"})`, 72)}`)
+    .join(" | ");
 
   const summary = [
-    `I analyzed the uploaded evidence package and generated a ${input.manifest.slideCount}-slide deck in the current container.`,
-    `Client: ${input.run.client || "Not specified"}`,
-    `Audience: ${input.run.audience || "Executive stakeholder"}`,
-    `Objective: ${input.run.objective || "Not specified"}`,
-    `Thesis: ${input.analysis?.thesis || input.run.thesis || "Not specified"}`,
-    `Executive summary: ${input.analysis?.executiveSummary || "Not available"}`,
-    ...(parseWorkspaceContextPack(input.run.workspace_context_pack)
-      ? [
-          "Workspace context summary:",
-          buildWorkspaceContextSummary(parseWorkspaceContextPack(input.run.workspace_context_pack)),
-          "Workspace context files already in the container: workspace-context.md, workspace-context.json.",
-        ]
-      : []),
-    `Manifest summary: ${JSON.stringify(compactManifest, null, 2)}`,
+    `Existing deck in container: ${input.manifest.slideCount} slides.`,
+    `Client: ${input.run.client || "Not specified"}. Audience: ${input.run.audience || "Executive stakeholder"}. Objective: ${input.run.objective || "Not specified"}.`,
+    `Thesis: ${truncateReviseIssueText(input.analysis?.thesis || input.run.thesis || "Not specified", 180)}`,
+    `Slide inventory: ${slideInventory}`,
     "Generated files already present in the container: deck.pptx, deck.pdf (internal QA), deck_manifest.json.",
     "Use the rendered PDF and issue list from the next user message to make local repairs without replaying the full authoring transcript.",
   ].join("\n\n");
