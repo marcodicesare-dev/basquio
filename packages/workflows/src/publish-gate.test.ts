@@ -7,7 +7,7 @@ import { createSystemTemplateProfile } from "@basquio/template-engine";
 import { __test__, collectPublishGateFailures } from "./generate-deck";
 
 describe("collectPublishGateFailures", () => {
-  it("treats blocking lint, contract, claim, visual, and artifact gate failures as hard blockers", () => {
+  it("hard-blocks artifact integrity only while preserving quality issues as advisories", () => {
     const gate = collectPublishGateFailures({
       qaReport: {
         tier: "yellow",
@@ -16,7 +16,9 @@ describe("collectPublishGateFailures", () => {
         failed: [
           "chart_density_fits_layout_slots",
           "rendered_page_visual_no_revision",
+          "md_content_present",
           "md_minimum_word_count",
+          "pptx_zip_signature",
           "xlsx_data_sheets_have_tables",
         ],
       } as never,
@@ -62,17 +64,18 @@ describe("collectPublishGateFailures", () => {
       ],
     });
 
-    expect(gate.blockingFailures).toContain("chart_density_fits_layout_slots");
-    expect(gate.blockingFailures).toContain("rendered_page_visual_no_revision");
-    expect(gate.blockingFailures).toContain("md_minimum_word_count");
-    expect(gate.blockingFailures).toContain("xlsx_data_sheets_have_tables");
-    expect(gate.blockingFailures).toContain("lint:Slide 1 writing issue [em_dash]: Em dash in title (title)");
-    expect(gate.blockingFailures).toContain("claim:Slide 7 claim issue [claim_traceability]: Title claims unsupported causal diagnosis.");
-    expect(gate.blockingFailures).toContain("lint:Slide 2 fidelity issue [title_claim_unverified]: Title number \"+22%\" is not verifiable from the linked slide data.");
-    expect(gate.blockingFailures).toContain("contract:Deck contract issue: Last slide should be summary or recommendation layout");
+    expect(gate.blockingFailures).toEqual(["md_content_present", "pptx_zip_signature"]);
+    expect(gate.advisories).toContain("chart_density_fits_layout_slots");
+    expect(gate.advisories).toContain("rendered_page_visual_no_revision");
+    expect(gate.advisories).toContain("md_minimum_word_count");
+    expect(gate.advisories).toContain("xlsx_data_sheets_have_tables");
+    expect(gate.advisories).toContain("lint:Slide 1 writing issue [em_dash]: Em dash in title (title)");
+    expect(gate.advisories).toContain("claim:Slide 7 claim issue [claim_traceability]: Title claims unsupported causal diagnosis.");
+    expect(gate.advisories).toContain("lint:Slide 2 fidelity issue [title_claim_unverified]: Title number \"+22%\" is not verifiable from the linked slide data.");
+    expect(gate.advisories).toContain("contract:Deck contract issue: Last slide should be summary or recommendation layout");
   });
 
-  it("blocks copy defects that break analyst acceptance while keeping low layout variety advisory", () => {
+  it("keeps copy defects and low layout variety as internal advisories", () => {
     const gate = collectPublishGateFailures({
       qaReport: {
         tier: "yellow",
@@ -106,8 +109,9 @@ describe("collectPublishGateFailures", () => {
       claimIssues: [],
     });
 
-    expect(gate.blockingFailures).toContain("lint:Slide 2 writing issue [title_no_number]: Non-cover title has no number (title)");
-    expect(gate.blockingFailures).toContain("lint:Slide 3 writing issue [italian_missing_accent]: Missing Italian accent (body)");
+    expect(gate.blockingFailures).toEqual([]);
+    expect(gate.advisories).toContain("lint:Slide 2 writing issue [title_no_number]: Non-cover title has no number (title)");
+    expect(gate.advisories).toContain("lint:Slide 3 writing issue [italian_missing_accent]: Missing Italian accent (body)");
     expect(gate.advisories).toContain("lint:Deck writing issue [low_layout_variety]: Only 3 layout types used across 12 slides");
   });
 
@@ -351,12 +355,50 @@ describe("collectPublishGateFailures", () => {
       "rendered_page_visual_no_revision",
       "lint:Slide 4 writing issue [storyline_backtracking]: returned to a prior branch",
       "claim:Slide 7 claim issue [claim_traceability]: Unsupported claim.",
+      "md_content_present",
       "pptx_zip_signature",
       "xlsx_workbook_xml",
     ])).toEqual([
+      "md_content_present",
       "pptx_zip_signature",
       "xlsx_workbook_xml",
     ]);
+  });
+
+  it("derives delivery status from publishable artifacts rather than quality passport labels", () => {
+    expect(__test__.resolveDeliveryStatusForPublishedArtifacts({
+      publishDecision: { hardBlockers: [] },
+      qualityPassport: {
+        classification: "recovery",
+        summary: "Quality passport recovery: visual=6.5, critical=3, major=8, mecePass=false.",
+      },
+      failed: [
+        "chart_density_fits_layout_slots",
+        "rendered_page_visual_no_revision",
+        "md_minimum_word_count",
+        "xlsx_data_sheets_have_tables",
+      ],
+    })).toBe("reviewed");
+
+    expect(__test__.resolveDeliveryStatusForPublishedArtifacts({
+      publishDecision: { hardBlockers: ["pptx_zip_signature"] },
+      qualityPassport: { classification: "gold" },
+      failed: [],
+    })).toBe("degraded");
+  });
+
+  it("falls back to artifact integrity failures when publish decision is absent", () => {
+    expect(__test__.resolveDeliveryStatusForPublishedArtifacts({
+      failed: [
+        "title_number_coverage",
+        "md_minimum_word_count",
+        "xlsx_data_sheets_have_tables",
+      ],
+    })).toBe("reviewed");
+
+    expect(__test__.resolveDeliveryStatusForPublishedArtifacts({
+      failed: ["md_content_present"],
+    })).toBe("degraded");
   });
 
   it("enriches sparse manifests from actual PPTX visible text before QA", async () => {

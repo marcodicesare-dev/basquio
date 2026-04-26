@@ -2452,12 +2452,12 @@ export async function generateDeckRun(
               issues: authorPlanQualityGate.issues.slice(0, 12),
             }).catch(() => {});
             for (const issue of authorPlanQualityGate.issues) {
-              advisoryIssues.add(`Author plan quality retry failed; publishing initial author artifacts as degraded: ${issue}`);
+              advisoryIssues.add(`Author plan quality retry did not improve the draft; initial artifact set was kept: ${issue}`);
             }
             partialDeliveryWarnings = [
               ...new Set([
                 ...partialDeliveryWarnings,
-                "Author plan quality retry failed. Basquio published the initial author artifact set as degraded instead of leaving the run empty.",
+                "Author plan quality retry did not improve the draft. Basquio kept the initial artifact set instead of leaving the run empty.",
               ]),
             ];
             phaseTelemetry.authorPlanQualityRetry = {
@@ -3861,10 +3861,16 @@ export async function generateDeckRun(
       }).catch(() => {});
       const finalLint = isReportOnly ? null : lintManifest(finalManifest, run.target_slide_count, fidelityContext ?? undefined);
       const finalContract = isReportOnly ? null : validateManifestContract(finalManifest);
+      const reportOnlyArtifactBlockers = isReportOnly
+        ? collectArtifactIntegrityPublishFailures(qaReport.failed)
+        : [];
       const finalQualityGate = isReportOnly
         ? {
-            blockingFailures: qaReport.failed.filter(isHardQaBlocker),
-            advisories: [...qaReport.failed.filter((check) => !isHardQaBlocker(check)), ...finalValidationAdvisories],
+            blockingFailures: reportOnlyArtifactBlockers,
+            advisories: [
+              ...qaReport.failed.filter((check) => !reportOnlyArtifactBlockers.includes(check)),
+              ...finalValidationAdvisories,
+            ],
           }
         : collectPublishGateFailures({
             qaReport,
@@ -5042,12 +5048,7 @@ async function finalizeSuccess(
   extraTelemetry: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
-  const qualityPassport = qaReport && typeof qaReport === "object"
-    ? ((qaReport as Record<string, unknown>).qualityPassport as { classification?: string } | undefined)
-    : undefined;
-  const deliveryStatus = qualityPassport?.classification === "gold" || qualityPassport?.classification === "silver"
-    ? "reviewed"
-    : "degraded";
+  const deliveryStatus = resolveDeliveryStatusForPublishedArtifacts(qaReport);
   const attemptCostTelemetry = {
     model,
     estimatedCostUsd,
@@ -10131,17 +10132,12 @@ export function collectPublishGateFailures(input: {
   contract: ReturnType<typeof validateManifestContract>;
   claimIssues?: ClaimTraceabilityIssue[];
 }) {
-  const blockingLintIssues = input.lint.actionableIssues.filter(isPublishBlockingLintIssue);
-  const advisoryLintIssues = input.lint.actionableIssues.filter((issue) => !isPublishBlockingLintIssue(issue));
-  const blockingFailures = [
-    ...input.qaReport.failed.filter(isHardQaBlocker),
-    ...blockingLintIssues.map((issue) => `lint:${issue}`),
+  const blockingFailures = collectArtifactIntegrityPublishFailures(input.qaReport.failed);
+  const advisories = [
+    ...input.qaReport.failed.filter((check) => !blockingFailures.includes(check)),
+    ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
     ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
     ...((input.claimIssues ?? []).map((issue) => `claim:${formatClaimTraceabilityIssue(issue)}`)),
-  ];
-  const advisories = [
-    ...input.qaReport.failed.filter((check) => !isHardQaBlocker(check)),
-    ...advisoryLintIssues.map((issue) => `lint:${issue}`),
   ];
 
   return {
@@ -10154,40 +10150,6 @@ export function collectPublishGateFailures(input: {
 
 function isHardQaBlocker(checkName: string) {
   return HARD_QA_BLOCKERS.has(checkName) || checkName.startsWith("md_") || checkName.startsWith("xlsx_");
-}
-
-function isPublishBlockingLintIssue(issue: string) {
-  const normalized = issue.toLowerCase();
-  return (
-    normalized.includes("[em_dash]") ||
-    normalized.includes("[italian_missing_accent]") ||
-    normalized.includes("[title_no_number]") ||
-    normalized.includes("[title_number_coverage]") ||
-    normalized.includes("[placeholder_metric]") ||
-    normalized.includes("[title_claim_unverified]") ||
-    normalized.includes("[claim_chart_metric_mismatch]") ||
-    normalized.includes("[distribution_claim_without_productivity_proof]") ||
-    normalized.includes("[plan_sheet_name]") ||
-    normalized.includes("[data_primacy]") ||
-    normalized.includes("[citation_fidelity]") ||
-    normalized.includes("[redundant_data_cut]") ||
-    normalized.includes("[redundant_analytical_cut]") ||
-    normalized.includes("[storyline_backtracking]") ||
-    normalized.includes("[drilldown_dimension_coverage]") ||
-    normalized.includes("[insufficient_decomposition_depth]") ||
-    normalized.includes("[chapter_depth_shallow]") ||
-    normalized.includes("artifact quality issue [md_") ||
-    normalized.includes("artifact quality issue [xlsx_") ||
-    normalized.includes("[missing_delta_") ||
-    normalized.includes("[bubble_size_legend_missing]") ||
-    normalized.includes("[invented_label]") ||
-    normalized.includes("[entity_grounding]") ||
-    normalized.includes("[content_shortfall]") ||
-    normalized.includes("[content_overflow]") ||
-    normalized.includes("[appendix_overfill]") ||
-    normalized.includes("manifest has zero slides") ||
-    normalized.includes("references a chart missing")
-  );
 }
 
 const REPAIRABLE_ARTIFACT_QA_CHECK_PREFIXES = ["md_", "xlsx_"] as const;
@@ -10344,6 +10306,7 @@ const ARTIFACT_INTEGRITY_PUBLISH_BLOCKERS = new Set([
   "pptx_zip_parse_failed",
   "slide_count_positive",
   "md_present",
+  "md_content_present",
   "md_parseable",
   "xlsx_present",
   "xlsx_zip_signature",
@@ -10352,6 +10315,21 @@ const ARTIFACT_INTEGRITY_PUBLISH_BLOCKERS = new Set([
 
 function collectArtifactIntegrityPublishFailures(issues: string[]) {
   return [...new Set(issues.filter((issue) => ARTIFACT_INTEGRITY_PUBLISH_BLOCKERS.has(issue)))];
+}
+
+function resolveDeliveryStatusForPublishedArtifacts(qaReport: Record<string, unknown>) {
+  const report = qaReport && typeof qaReport === "object" ? qaReport : {};
+  const publishDecision = report.publishDecision && typeof report.publishDecision === "object"
+    ? report.publishDecision as { hardBlockers?: unknown }
+    : null;
+  if (publishDecision && Array.isArray(publishDecision.hardBlockers)) {
+    return publishDecision.hardBlockers.length === 0 ? "reviewed" : "degraded";
+  }
+
+  const failed = Array.isArray(report.failed)
+    ? report.failed.filter((issue): issue is string => typeof issue === "string")
+    : [];
+  return collectArtifactIntegrityPublishFailures(failed).length === 0 ? "reviewed" : "degraded";
 }
 
 function collectQualityPassportPublishAdvisories(qualityPassport: PublishDecision["qualityPassport"]) {
@@ -12875,6 +12853,7 @@ export const __test__ = {
   buildDeterministicRecoveryArtifacts,
   collectArtifactIntegrityPublishFailures,
   collectQualityPassportPublishAdvisories,
+  resolveDeliveryStatusForPublishedArtifacts,
   resolvePlanSheetValidationReport,
   selectBestWorkbookSheetForChart,
   validateGeneratedAnalysisResultFile,

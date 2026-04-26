@@ -938,23 +938,24 @@ Implication:
 - chunking, embeddings, entity extraction, and image vision can retry without blocking chat use
 - future file types should first attach cleanly, then earn richer memory extraction by adding parsers or vision projections
 
-## April 26, 2026: Author plan quality and durable artifact QA are hard gates
+## April 26, 2026: Author plan quality is bounded repair; durable artifact integrity is the final hard gate
 
 Decision:
-- merged full-deck author output must pass sheet-name and plan-linearity checks before critique
-- fabricated workbook sheet references, duplicate analytical cuts, storyline backtracking, content-count mismatches, and blocking plan-depth defects trigger one bounded author rebuild of the full artifact set in the same container
-- if the rebuilt author plan still fails, the attempt fails before revise instead of spending additional downstream repair budget
-- publish now treats weak markdown, weak workbook shell, missing workbook links, missing native chart companions, PPTX structural defects, rendered visual-revision findings, Italian accent loss, title-number defects, and plan-linearity defects as hard blockers
+- merged full-deck author output should pass sheet-name and plan-linearity checks before critique; failures trigger one bounded author rebuild of the full artifact set in the same container
+- if the rebuilt author plan still fails, publish fresh deterministic evidence artifacts rather than spending unbounded revise budget or leaving the user with nothing
+- final publish hard-blocks only missing, corrupt, or structurally invalid durable artifacts
+- weak markdown depth, weak workbook shell, missing workbook links, missing native chart companions, rendered visual-revision findings, Italian accent loss, title-number defects, and plan-linearity defects are bounded repair signals and internal advisories unless they make the artifact set unusable
 
 Why:
 - Rossella's Segafredo attempt 27 showed that requiring parseable `analysis_result.json` was not enough. The author saw the workbook and produced files, but the analysis plan still referenced fabricated sheets and repeated or backtracked analytical cuts
 - downstream revise was being asked to rescue a bad author plan after PPTX, markdown, and workbook generation had already happened
+- the failed recovery loop showed that turning every quality validator into a final publish blocker destroys the product invariant that every user run receives usable artifacts
 - official Anthropic guidance starts prompt work from explicit success criteria and evaluations; for Basquio, the success criteria are the durable artifacts and the author plan that creates them, not a later prose critique
 
 Implication:
 - revise becomes a polishing and bounded repair lane, not the first place where basic analytical plan validity is enforced
-- the dashboard should not expose a "completed" run as acceptable when `qa_passed=false` reflects weak user artifacts
-- production reruns should fail faster on unfixable author planning defects rather than burning several revise loops and still blocking export
+- `qa_passed` and `delivery_status` reflect publishable artifact integrity, not the internal quality passport classification
+- production reruns should improve weak plans through bounded repair, then still ship fresh usable artifacts when artifact integrity passes
 
 ## April 26, 2026: Author failure must publish recovery artifacts, and narrative depth scales by deck size
 
