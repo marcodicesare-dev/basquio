@@ -715,11 +715,9 @@ export function RunProgressView(input: {
   // ─── COMPLETED STATE ─────────────────────────────────────────
   if (snapshot.status === "completed" && snapshot.artifactsReady) {
     const hasPptxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pptx"));
-    const hasPdfArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "pdf"));
     const hasMdArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "md"));
     const hasXlsxArtifact = Boolean(snapshot.summary?.artifacts?.some((artifact) => artifact.kind === "xlsx"));
     const pptxDownloadHref = `/api/artifacts/${snapshot.jobId}/pptx`;
-    const pdfDownloadHref = `/api/artifacts/${snapshot.jobId}/pdf`;
     const mdDownloadHref = `/api/artifacts/${snapshot.jobId}/md`;
     const xlsxDownloadHref = `/api/artifacts/${snapshot.jobId}/xlsx`;
     const isReportOnlyResult = !hasPptxArtifact && hasMdArtifact && hasXlsxArtifact;
@@ -741,11 +739,6 @@ export function RunProgressView(input: {
               {hasPptxArtifact ? (
                 <a className="button" href={pptxDownloadHref}>
                   Download PPTX
-                </a>
-              ) : null}
-              {hasPdfArtifact ? (
-                <a className="button secondary" href={pdfDownloadHref}>
-                  Download PDF
                 </a>
               ) : null}
               {hasMdArtifact ? (

@@ -23,7 +23,6 @@ type RunStatus = {
   status: string;
   phase?: string | null;
   pptxUrl?: string | null;
-  pdfUrl?: string | null;
   narrativeUrl?: string | null;
   error?: string | null;
 };
@@ -58,7 +57,6 @@ export function WorkspaceGenerationStatus({
           phase?: string | null;
           artifacts?: {
             pptx_url?: string;
-            pdf_url?: string;
             narrative_url?: string;
           };
           error?: string | null;
@@ -68,7 +66,6 @@ export function WorkspaceGenerationStatus({
           status: data.status ?? "queued",
           phase: data.phase ?? null,
           pptxUrl: data.artifacts?.pptx_url ?? null,
-          pdfUrl: data.artifacts?.pdf_url ?? null,
           narrativeUrl: data.artifacts?.narrative_url ?? null,
           error: data.error ?? null,
         });
@@ -117,11 +114,6 @@ export function WorkspaceGenerationStatus({
             {runStatus?.pptxUrl ? (
               <a href={runStatus.pptxUrl} className="wbeta-genstatus-link" target="_blank" rel="noreferrer">
                 <FileArrowDown size={11} weight="regular" /> PPTX
-              </a>
-            ) : null}
-            {runStatus?.pdfUrl ? (
-              <a href={runStatus.pdfUrl} className="wbeta-genstatus-link" target="_blank" rel="noreferrer">
-                <FileArrowDown size={11} weight="regular" /> PDF
               </a>
             ) : null}
             {runStatus?.narrativeUrl ? (

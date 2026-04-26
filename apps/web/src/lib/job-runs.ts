@@ -11,6 +11,24 @@ import {
 } from "@/lib/supabase/admin";
 
 type ArtifactKind = ArtifactRecord["kind"];
+const USER_FACING_ARTIFACT_KINDS = new Set(["pptx", "md", "xlsx"]);
+const REQUIRED_USER_FACING_ARTIFACT_KINDS = ["pptx", "md", "xlsx"] as const;
+
+function isUserFacingArtifactKind(kind: string): kind is ArtifactKind {
+  return USER_FACING_ARTIFACT_KINDS.has(kind);
+}
+
+function hasRequiredUserFacingArtifacts(artifacts: Array<{ kind: string }>) {
+  const kinds = new Set(artifacts.filter((artifact) => isUserFacingArtifactKind(artifact.kind)).map((artifact) => artifact.kind));
+  return REQUIRED_USER_FACING_ARTIFACT_KINDS.every((kind) => kinds.has(kind));
+}
+
+function resolveDashboardRunStatus(run: { status: string }, manifest?: { artifacts?: Array<{ kind: string }> } | null) {
+  if (run.status === "failed" && manifest?.artifacts && hasRequiredUserFacingArtifacts(manifest.artifacts)) {
+    return "completed";
+  }
+  return run.status;
+}
 
 // ─── V2-NATIVE RUN TYPE ──────────────────────────────────────────
 // Used by the dashboard and artifacts pages directly. No legacy shim.
@@ -49,17 +67,18 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
 
     if (runs.length === 0) return [];
 
-    // Fetch artifact manifests for completed runs
-    const completedIds = runs.filter((r) => r.status === "completed" || r.completed_at).map((r) => r.id);
+    // Fetch manifests for all visible runs. A later failed recovery attempt can
+    // leave a run marked failed even though a prior attempt published artifacts.
+    const runIdsWithPossibleArtifacts = runs.map((r) => r.id);
     let manifests: V2ArtifactManifestRow[] = [];
-    if (completedIds.length > 0) {
+    if (runIdsWithPossibleArtifacts.length > 0) {
       try {
         manifests = await fetchRestRows<V2ArtifactManifestRow>({
           ...credentials,
           table: "artifact_manifests_v2",
           query: {
             select: "run_id,slide_count,page_count,qa_passed,qa_report,artifacts",
-            run_id: `in.(${completedIds.join(",")})`,
+            run_id: `in.(${runIdsWithPossibleArtifacts.join(",")})`,
           },
         });
       } catch { /* table may not exist */ }
@@ -68,14 +87,14 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
 
     // Fetch cover slide titles
     const coverTitles = new Map<string, string>();
-    if (completedIds.length > 0) {
+    if (runIdsWithPossibleArtifacts.length > 0) {
       try {
         const slides = await fetchRestRows<{ run_id: string; title: string }>({
           ...credentials,
           table: "deck_spec_v2_slides",
           query: {
             select: "run_id,title",
-            run_id: `in.(${completedIds.join(",")})`,
+            run_id: `in.(${runIdsWithPossibleArtifacts.join(",")})`,
             position: "eq.1",
           },
         });
@@ -108,10 +127,11 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
       const clientName = run.client ?? brief.client ?? "";
       const objectiveText = run.objective ?? brief.objective ?? "";
       const coverTitle = coverTitles.get(run.id);
+      const effectiveStatus = resolveDashboardRunStatus(run, manifest);
 
       return {
         id: run.id,
-        status: (run.status === "completed" ? "completed" : run.status === "failed" ? "failed" : run.status === "queued" ? "queued" : "running") as V2RunCard["status"],
+        status: (effectiveStatus === "completed" ? "completed" : effectiveStatus === "failed" ? "failed" : effectiveStatus === "queued" ? "queued" : "running") as V2RunCard["status"],
         authorModel: run.author_model ?? "claude-sonnet-4-6",
         targetSlideCount: run.target_slide_count ?? 0,
         headline: coverTitle || (clientName ? `${clientName} — ${objectiveText}` : objectiveText) || "Report",
@@ -120,10 +140,12 @@ export async function listV2RunCards(limit = 12, viewerId?: string): Promise<V2R
         sourceFileName: fileNames.get(run.id) || "Uploaded files",
         slideCount: manifest?.slide_count ?? 0,
         createdAt: run.created_at,
-        artifacts: (manifest?.artifacts ?? []).map((a) => ({
-          kind: a.kind,
-          downloadUrl: `/api/artifacts/${run.id}/${a.kind}`,
-        })),
+        artifacts: (manifest?.artifacts ?? [])
+          .filter((a) => isUserFacingArtifactKind(a.kind))
+          .map((a) => ({
+            kind: a.kind,
+            downloadUrl: `/api/artifacts/${run.id}/${a.kind}`,
+          })),
         costUsd: (run as Record<string, unknown>).cost_telemetry
           ? ((run as Record<string, unknown>).cost_telemetry as { estimatedCostUsd?: number })?.estimatedCostUsd ?? null
           : null,
@@ -347,20 +369,22 @@ async function listDurableArtifactRecords(jobId: string, viewerId?: string) {
       });
 
       if (v2Manifests.length > 0 && v2Manifests[0].artifacts?.length > 0) {
-        return v2Manifests[0].artifacts.map((a) => ({
-          id: `${jobId}-${a.kind}`,
-          jobId,
-          kind: a.kind as ArtifactKind,
-          fileName: a.fileName,
-          mimeType: a.mimeType,
-          storagePath: a.storagePath,
-          byteSize: a.fileBytes,
-          provider: "supabase" as const,
-          checksumSha256: a.checksumSha256 ?? "",
-          exists: true,
-          slideCount: v2Manifests[0].slide_count,
-          pageCount: v2Manifests[0].page_count,
-        }));
+        return v2Manifests[0].artifacts
+          .filter((a) => isUserFacingArtifactKind(a.kind))
+          .map((a) => ({
+            id: `${jobId}-${a.kind}`,
+            jobId,
+            kind: a.kind as ArtifactKind,
+            fileName: a.fileName,
+            mimeType: a.mimeType,
+            storagePath: a.storagePath,
+            byteSize: a.fileBytes,
+            provider: "supabase" as const,
+            checksumSha256: a.checksumSha256 ?? "",
+            exists: true,
+            slideCount: v2Manifests[0].slide_count,
+            pageCount: v2Manifests[0].page_count,
+          }));
       }
     } catch {
       // v2 table may not exist; fall through to legacy
@@ -385,7 +409,7 @@ async function listDurableArtifactRecords(jobId: string, viewerId?: string) {
       });
 
       const artifacts = await Promise.all(
-        artifactRows.map(async (artifactRow) => {
+        artifactRows.filter((artifactRow) => isUserFacingArtifactKind(artifactRow.kind)).map(async (artifactRow) => {
           const artifact = buildArtifactRecord(jobId, artifactRow);
           return (await isArtifactDurablyAvailable(artifact, credentials)) ? artifact : null;
         }),
@@ -399,7 +423,9 @@ async function listDurableArtifactRecords(jobId: string, viewerId?: string) {
 
   const run = await getGenerationRun(jobId, viewerId);
   const artifacts = await Promise.all(
-    (run?.artifacts ?? []).map(async (artifact) => ((await isLocalArtifactReadable(artifact)) ? artifact : null)),
+    (run?.artifacts ?? [])
+      .filter((artifact) => isUserFacingArtifactKind(artifact.kind))
+      .map(async (artifact) => ((await isLocalArtifactReadable(artifact)) ? artifact : null)),
   );
 
   return artifacts.filter((artifact): artifact is ArtifactRecord => Boolean(artifact));
@@ -500,17 +526,18 @@ async function listV2DeckRuns(
       },
     });
 
-    // Fetch artifact manifests for completed runs
-    const completedIds = runs.filter((r) => r.status === "completed" || r.completed_at).map((r) => r.id);
+    // Fetch manifests for all visible runs. A run can have completed artifacts
+    // even if a later recovery attempt failed and overwrote top-level status.
+    const runIdsWithPossibleArtifacts = runs.map((r) => r.id);
     let manifests: V2ArtifactManifestRow[] = [];
-    if (completedIds.length > 0) {
+    if (runIdsWithPossibleArtifacts.length > 0) {
       try {
         manifests = await fetchRestRows<V2ArtifactManifestRow>({
           ...credentials,
           table: "artifact_manifests_v2",
           query: {
             select: "run_id,slide_count,page_count,qa_passed,artifacts",
-            run_id: `in.(${completedIds.join(",")})`,
+            run_id: `in.(${runIdsWithPossibleArtifacts.join(",")})`,
           },
         });
       } catch {
@@ -520,8 +547,8 @@ async function listV2DeckRuns(
 
     const manifestMap = new Map(manifests.map((m) => [m.run_id, m]));
 
-    // Fetch cover slide titles for completed runs (the real headline)
-    const completedRunIds = runs.filter((r) => r.status === "completed" || r.completed_at).map((r) => r.id);
+    // Fetch cover slide titles for any run with a persisted deck spec.
+    const completedRunIds = runIdsWithPossibleArtifacts;
     let coverTitles = new Map<string, string>();
     if (completedRunIds.length > 0) {
       try {
@@ -574,26 +601,29 @@ async function listV2DeckRuns(
       const clientName = run.client ?? brief.client ?? "";
       const objectiveText = run.objective ?? brief.objective ?? "";
       const headline = coverTitle || (clientName ? `${clientName} — ${objectiveText}` : objectiveText) || "Report";
+      const effectiveStatus = resolveDashboardRunStatus(run, manifest);
 
-      const artifacts = (manifest?.artifacts ?? []).map((a) => ({
-        id: `${run.id}-${a.kind}`,
-        jobId: run.id,
-        kind: a.kind as ArtifactRecord["kind"],
-        fileName: a.fileName,
-        mimeType: a.mimeType,
-        storagePath: a.storagePath,
-        byteSize: a.fileBytes,
-        provider: "supabase" as const,
-        checksumSha256: a.checksumSha256 ?? "",
-        exists: true,
-        slideCount: manifest?.slide_count,
-        pageCount: manifest?.page_count,
-      }));
+      const artifacts = (manifest?.artifacts ?? [])
+        .filter((artifact) => isUserFacingArtifactKind(artifact.kind))
+        .map((a) => ({
+          id: `${run.id}-${a.kind}`,
+          jobId: run.id,
+          kind: a.kind as ArtifactRecord["kind"],
+          fileName: a.fileName,
+          mimeType: a.mimeType,
+          storagePath: a.storagePath,
+          byteSize: a.fileBytes,
+          provider: "supabase" as const,
+          checksumSha256: a.checksumSha256 ?? "",
+          exists: true,
+          slideCount: manifest?.slide_count,
+          pageCount: manifest?.page_count,
+        }));
 
       return generationRunSummarySchema.parse({
         jobId: run.id,
         createdAt: run.created_at,
-        status: run.status === "completed" ? "completed" : run.status === "failed" ? "failed" : "running",
+        status: effectiveStatus === "completed" ? "completed" : effectiveStatus === "failed" ? "failed" : "running",
         failureMessage: run.failure_message ?? "",
         sourceFileName: fileName || "Uploaded files",
         brief: {

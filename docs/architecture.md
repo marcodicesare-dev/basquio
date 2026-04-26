@@ -7,7 +7,7 @@
 Basquio keeps deterministic ingest, template interpretation, domain analytics, storage, and progress persistence. The primary deck-generation path is no longer a scene-graph and renderer pipeline. The primary path is a single Claude code-execution worker that:
 
 - reads uploaded evidence files directly in the sandbox
-- loads the `pptx` and `pdf` skills on the initial generation call
+- loads the `pptx` skill on the initial generation call
 - performs analysis and deck creation in one file-backed generation turn instead of a separate prompt-stuffed understand step
 - reuses the same persistent container for one repair turn when QA requests revision
 - generates the final PPTX artifact directly for full-deck tiers
@@ -25,14 +25,15 @@ Execution surface:
 - Vercel no longer hosts the long-running execution route for deck generation
 - the worker must refresh `deck_runs.updated_at` while a run is in flight and periodically requeue stale `running` runs after crashes
 - Anthropic client timeouts for the durable worker should be materially longer than Vercel request ceilings; the worker must not keep the old 15-minute request timeout if real deck generation exceeds it
-- narrative markdown is a live artifact lane beside PPTX/PDF, and it must be generated from the same canonical narrative layer rather than by converting slides backward into Word
+- narrative markdown and the data workbook are live artifact lanes beside PPTX, and they must be generated from the same canonical narrative and evidence layer rather than converted backward from slides
 
 Important direct-path constraints:
 
 - uploaded evidence should reach Claude through `container_upload`, not through prompt-side dataset inventories
 - the user message should stay brief-first and artifact-oriented; workbook inspection happens inside code execution
 - the live persisted worker phase spine is `normalize -> understand -> author -> render -> critique -> revise -> export`
-- rendered-page QA remains a second cheap model call on an internally generated PDF
+- rendered-page QA remains a second cheap model call on an internally derived PDF when available
+- PDF is internal QA support only. It is not a durable user-facing artifact and missing PDF must not fail export when `deck.pptx`, `narrative_report.md`, and `data_tables.xlsx` are valid.
 - the worker should rely on documented Anthropic skill contracts, not undocumented assumptions about the skill internals
 - narrative markdown should share the same knowledge pack and copywriting rules as the deck path while going deeper on what, why, and how
 - `data_tables.xlsx` must be written from the exact pandas DataFrames used for charts and numeric findings so the workbook becomes the audit trail for every number

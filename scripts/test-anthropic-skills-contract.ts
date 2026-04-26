@@ -37,7 +37,7 @@ async function main() {
     model: MODEL,
     phase: "smoke",
     tools,
-    skills: ["pptx", "pdf"],
+    skills: ["pptx"],
     webFetchMode: options.webFetchMode,
   });
 
@@ -77,7 +77,7 @@ async function main() {
     );
   }
 
-  if (!/^smoke ok \d+$/i.test(text)) {
+  if (!/^smoke ok \d+\.?$/i.test(text)) {
     throw new Error(`Smoke failed: unexpected text response: ${text || "empty"}`);
   }
 

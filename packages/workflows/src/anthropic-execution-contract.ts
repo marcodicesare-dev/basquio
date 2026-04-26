@@ -24,7 +24,7 @@ export function normalizeClaudeAuthorModel(model: string | null | undefined): Cl
   return "claude-sonnet-4-6";
 }
 
-const AUTHORING_SKILL_IDS = ["pptx", "pdf"] as const;
+const AUTHORING_SKILL_IDS = ["pptx"] as const;
 
 export function buildClaudeBetas(model: ClaudeAuthorModel): Anthropic.Beta.AnthropicBeta[] {
   return model === "claude-haiku-4-5"
@@ -145,7 +145,6 @@ export function assertAuthoringExecutionContract(input: {
 
 const AUTHORING_SKILLS = [
   { type: "anthropic", skill_id: "pptx", version: "latest" },
-  { type: "anthropic", skill_id: "pdf", version: "latest" },
 ] as const;
 
 export function buildAuthoringOutputConfig(

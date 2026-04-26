@@ -2,7 +2,7 @@
 
 Basquio now has a real evidence-package generation path in the web app plus two code-execution-era verification commands:
 
-- `pnpm test:code-exec` for a direct Claude smoke test that must return both PPTX and PDF
+- `pnpm test:code-exec` for a direct Claude smoke test that must return PPTX, narrative markdown, and data workbook
 - `pnpm test:run --run-id <uuid>` for inspecting a persisted production-style run from Supabase
 
 ## App Path
@@ -25,7 +25,7 @@ Current intended test path:
 - provide business context plus client, audience, objective, thesis, and stakes
 - optionally attach a JSON/CSS brand token file, PPTX template, or PDF style reference
 - verify the outline is planned before the slide plan
-- generate both `.pptx` and `.pdf`
+- generate `.pptx`, `narrative_report.md`, and `data_tables.xlsx`
 - download them from `/artifacts`
 
 ## Code Execution Smoke
@@ -38,7 +38,8 @@ This requires `ANTHROPIC_API_KEY` and writes:
 
 ```bash
 Basquio/test-output/code-exec-smoke/test-deck.pptx
-Basquio/test-output/code-exec-smoke/test-deck.pdf
+Basquio/test-output/code-exec-smoke/narrative_report.md
+Basquio/test-output/code-exec-smoke/data_tables.xlsx
 ```
 
 ## Persisted Run Inspection
@@ -56,7 +57,8 @@ Basquio/test-output/run-<run-id-prefix>/
 Files produced when available:
 
 - `deck.pptx`
-- `deck.pdf`
+- `narrative_report.md`
+- `data_tables.xlsx`
 - `manifest.json`
 - `plan.json`
 - `analysis.json`

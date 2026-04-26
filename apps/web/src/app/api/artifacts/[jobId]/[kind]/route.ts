@@ -23,10 +23,10 @@ export async function GET(
     return new Response("Authentication required.", { status: 401 });
   }
 
-  if (kind !== "pptx" && kind !== "pdf" && kind !== "md" && kind !== "xlsx") {
+  if (kind !== "pptx" && kind !== "md" && kind !== "xlsx") {
     return new Response("Unsupported artifact kind.", { status: 400 });
   }
-  const requestedKind = kind as "pptx" | "pdf" | "md" | "xlsx";
+  const requestedKind = kind as "pptx" | "md" | "xlsx";
 
   const availability = await getDurableArtifactAvailability(jobId, viewer.user.id, [requestedKind]);
   const artifact =
@@ -93,7 +93,7 @@ async function readSupabaseArtifact(storagePath: string) {
   });
 }
 
-async function readInlineArtifact(jobId: string, kind: "pptx" | "pdf" | "md" | "xlsx", viewerId: string) {
+async function readInlineArtifact(jobId: string, kind: "pptx" | "md" | "xlsx", viewerId: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -149,7 +149,7 @@ function isMissingArtifactError(message: string) {
 
 async function resolveArtifactDownloadName(
   jobId: string,
-  kind: "pptx" | "pdf" | "md" | "xlsx",
+  kind: "pptx" | "md" | "xlsx",
   fallbackName: string,
 ) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

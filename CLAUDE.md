@@ -9,12 +9,13 @@ Single Claude API call with code execution, running on Railway + Vercel + Supaba
 1. **User uploads** Excel/CSV + brief on basquio.com (Vercel)
 2. **API queues** `deck_run` with `status="queued"` in Supabase
 3. **Railway worker** polls Supabase, claims queued runs, calls `generateDeckRun()`
-4. **Claude code execution** — reads data with pandas, analyzes, generates PPTX via PPTX skill (PptxGenJS), generates PDF
-5. **Visual QA** — uploads rendered PDF to Sonnet for the critique/export gate
+4. **Claude code execution** - reads data with pandas, analyzes, generates PPTX via PPTX skill (PptxGenJS), and writes narrative markdown plus data workbook
+5. **Visual QA** - inspects an internally derived rendered PDF when available, but PDF is not a user artifact or publish requirement
 6. **Publish** — uploads artifacts to Supabase Storage, publishes manifest
 
 Key properties:
-- Claude controls the full rendering via code execution + PPTX/PDF skills
+- Claude controls the full rendering via code execution + the PPTX skill
+- Durable user-facing artifacts are `deck.pptx`, `narrative_report.md`, and `data_tables.xlsx`
 - `container_upload` files cost 0 input tokens (files go to container disk, not context)
 - `web_fetch` tool in tools array = free compute (no container charges)
 - Railway worker has no timeout (unlike Vercel routes)
@@ -148,12 +149,13 @@ Migrations: `supabase/migrations/`
 - Haiku for BOTH critiques is acceptable (same model at both stages) but not yet proven in production.
 
 ### Publish gate
-- ONLY structural corruption blocks publish: `pptx_present`, `pdf_present`, `pptx_zip_signature`, `pdf_header_signature`, `slide_count_positive`, `pptx_zip_parse_failed`, `pdf_parseable`.
-- Everything else (lint, visual QA score, contract violations) is ADVISORY, not blocking.
-- A run that spent $1+ MUST ship artifacts. "Export failed" after 25 minutes is NEVER acceptable to a user.
+- ONLY durable artifact corruption blocks publish: missing or corrupt `deck.pptx`, missing or corrupt `narrative_report.md`, missing or corrupt `data_tables.xlsx`, impossible slide-count structure, malformed numeric labels, or parse failure of the required PPTX/XLSX artifacts.
+- PDF is not a durable user artifact and must not be required for publish. It may be regenerated from PPTX for internal visual QA, but missing or invalid PDF must not fail export.
+- Advisory lint and visual issues should drive revise before publish. If a later recovery attempt fails after a prior attempt published the three required artifacts, preserve the published run instead of hiding downloads behind top-level failure.
 
 ### Revise architecture
-- Revise MUST receive the rendered PDF as a `document` source with `base64` encoding so Claude can SEE what's broken.
+- Revise should receive a rendered PDF document when a valid internal PDF exists so Claude can see visible defects.
+- If internal PDF rendering is unavailable, revise must still proceed from the manifest, issue list, and current container files. It must not generate or attach a PDF.
 - Revise should use a compact thread (synthetic summary of what was generated) NOT replay the full 150K+ author conversation.
 - Research (Huang et al. ICLR 2024, ChartIR March 2026) proves: LLM self-correction without new visual information FAILS. The PDF is the new information that makes correction work.
 - Revise should be slide-specific: list which slides to fix, forbid touching the rest.
@@ -162,8 +164,8 @@ Migrations: `supabase/migrations/`
 - Narrative markdown MUST be generated INSIDE the author code execution turn, NOT as a separate post-hoc API call.
 - Claude already has pandas loaded, analysis done, charts made. Writing a 2000-word narrative from that state is trivial.
 - A separate API call that receives a stripped-down summary will ALWAYS produce shallow output.
-- The author prompt should require `narrative_report.md` as a mandatory output file alongside deck.pptx, deck.pdf, deck_manifest.json.
-- Target: 2000-3000 words with executive summary, methodology, detailed findings with caveats, and operational recommendations.
+- The author prompt must require `narrative_report.md` as a mandatory output file alongside `deck.pptx`, `data_tables.xlsx`, and `deck_manifest.json`.
+- Target for full-deck runs: 500-1000 lines and 8000-15000 words, with executive summary, methodology, detailed findings, recommendations, and appendix tables.
 
 ### Schema parsing
 - Claude's output shape varies. Use `.passthrough()` on Zod objects for LLM output.
@@ -193,8 +195,8 @@ Migrations: `supabase/migrations/`
 - Narrative markdown MUST be generated INSIDE the author code execution turn, NOT as a separate post-hoc API call.
 - Claude already has pandas loaded, analysis done, charts made. Writing a 2000-word narrative from that state is trivial.
 - A separate API call that receives a stripped-down summary will ALWAYS produce shallow output.
-- The author prompt should require `narrative_report.md` as a mandatory output file alongside deck.pptx, deck.pdf, deck_manifest.json.
-- Target: 2000-3000 words with executive summary, methodology, detailed findings with caveats, and operational recommendations.
+- The author prompt must require `narrative_report.md` as a mandatory output file alongside `deck.pptx`, `data_tables.xlsx`, and `deck_manifest.json`.
+- Target for full-deck runs: 500-1000 lines and 8000-15000 words, with executive summary, methodology, detailed findings, recommendations, and appendix tables.
 
 ### Proven quality levers (ranked by impact, March 30)
 1. **Few-shot examples in system prompt** — 6/10 → 7.4/10 in one commit. THE highest-impact change.

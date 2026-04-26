@@ -54,7 +54,7 @@
 
 - Prefer direct PPTX generation inside the Claude code-execution sandbox as the primary export path.
 - When the PPTX skill is loaded, let the skill own final presentation generation instead of hardcoding a separate presentation library contract in the prompt.
-- Use deterministic server-side conversion or model-authored PDF generation as the PDF path.
+- PDF is an internal visual-QA support format only. Do not require Claude to generate it, do not list it in user-facing manifests, and do not fail export because PDF rendering is unavailable.
 - Use `pdf-lib` only for post-processing when needed.
 - For direct deck generation, default to a premium editorial visual language instead of generic Office styling when the template is weakly specified, but keep dense card text on cross-viewer-safe fonts and reserved non-overlapping layout bands.
 - Charts that matter to the argument must be embedded as image assets in the PPTX when Basquio needs one visually consistent deliverable across PowerPoint, Keynote, and Google Slides.

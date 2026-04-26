@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildReviseMessage, computeReviseIterationBudget } from "./generate-deck";
+import { __test__, buildReviseMessage, computeReviseIterationBudget } from "./generate-deck";
 
 const manifest = {
   slideCount: 3,
@@ -75,10 +75,41 @@ describe("buildReviseMessage", () => {
     expect(text).toContain("Do NOT change these slides: 1 (Cover), 3 (Summary).");
   });
 
+  it("does not attach a PDF document when the internal PDF is missing", () => {
+    const message = buildReviseMessage({
+      issues: [
+        "Slide 2 writing issue [italian_missing_accent]: Missing Italian accent (body)",
+      ],
+      manifest,
+      currentPdf: null,
+      visualQa,
+      targetSlideCount: 10,
+    });
+
+    expect(message.content.some((block) => block.type === "document")).toBe(false);
+    expect(extractText(message)).toContain("Rendered PDF inspection is unavailable");
+  });
+
+  it("does not attach a PDF document when the internal PDF buffer is invalid", () => {
+    const message = buildReviseMessage({
+      issues: [
+        "Slide 2 writing issue [italian_missing_accent]: Missing Italian accent (body)",
+      ],
+      manifest,
+      currentPdf: { ...currentPdf, buffer: Buffer.alloc(0) },
+      visualQa,
+      targetSlideCount: 10,
+    });
+
+    expect(message.content.some((block) => block.type === "document")).toBe(false);
+    expect(extractText(message)).toContain("Do not generate a PDF");
+  });
+
   it("treats non-visual blocking issues as mandatory, not optional", () => {
     const message = buildReviseMessage({
       issues: [
         "Slide 2 writing issue [em_dash]: Em dash in title (title)",
+        "Slide 2 writing issue [italian_missing_accent]: Missing Italian accent (body)",
         "Slide 2 writing issue [title_no_number]: Non-cover title has no number (title)",
         "Slide 2 fidelity issue [title_claim_unverified]: Title number \"+22%\" is not verifiable from the linked slide data.",
         "Slide 2 fidelity issue [claim_chart_metric_mismatch]: Slide commentary says the story is price-led, but the hero chart does not show price mechanics or value-vs-volume decomposition.",
@@ -93,6 +124,7 @@ describe("buildReviseMessage", () => {
     const text = extractText(message);
     expect(text).toContain("Mandatory non-visual issues to fix in the same revise turn:");
     expect(text).toContain("If a critique issue says em_dash, replace every em dash");
+    expect(text).toContain("If a critique issue says italian_missing_accent");
     expect(text).toContain("If a critique issue says title_no_number or title_number_coverage");
     expect(text).toContain("If a critique issue says title_claim_unverified or data_primacy");
     expect(text).toContain("If a critique issue says claim_chart_metric_mismatch or distribution_claim_without_productivity_proof");
@@ -112,5 +144,30 @@ describe("buildReviseMessage", () => {
         deckNeedsRevision: true,
       },
     })).toBe(5);
+  });
+
+  it("requires narrative and workbook uploads when artifact QA fails", () => {
+    const issues = [
+      "Artifact quality issue [md_minimum_line_count]: narrative_report.md failed durable output QA. lines=416 minimum=500",
+      "Artifact quality issue [xlsx_data_sheets_have_tables]: data_tables.xlsx failed durable output QA. missing tablePart: xl/worksheets/sheet2.xml",
+    ];
+    const message = buildReviseMessage({
+      issues,
+      manifest,
+      currentPdf,
+      visualQa,
+      targetSlideCount: 10,
+    });
+
+    const text = extractText(message);
+    expect(__test__.buildRequiredReviseFiles(issues)).toEqual([
+      "deck.pptx",
+      "deck_manifest.json",
+      "narrative_report.md",
+      "data_tables.xlsx",
+    ]);
+    expect(text).toContain("regenerate these exact files: deck.pptx, deck_manifest.json, narrative_report.md, data_tables.xlsx");
+    expect(text).toContain("Narrative artifact repair is mandatory");
+    expect(text).toContain("Workbook artifact repair is mandatory");
   });
 });

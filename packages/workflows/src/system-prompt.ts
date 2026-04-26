@@ -1330,7 +1330,7 @@ export async function buildBasquioSystemPrompt(input: {
     "",
     "Operating rules:",
     "- Use the uploaded workbook files directly inside the execution container.",
-    "- Use the loaded pptx and pdf skills for the final deliverables instead of inventing a separate export pipeline.",
+    "- Use the loaded pptx skill and Python file generation for the final deliverables instead of inventing a separate export pipeline.",
     "- Compute deterministic facts in Python instead of guessing.",
     "- Every number in every artifact must be traceable to a correctly filtered pandas DataFrame.",
     "- Before writing any topline number from NielsenIQ-style exports, verify that supplier-level totals reconcile to the category total within plus or minus 2 percent. If they do not, you are double-counting hierarchy subtotals.",

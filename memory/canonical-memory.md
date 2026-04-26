@@ -69,7 +69,7 @@ Initial domain bias:
 - Template and brand interpretation must flow through `TemplateProfile`, not renderer-only style hacks.
 - `.pptx` interpretation must materially preserve layout, placeholder, placeholder-frame, theme, and source-origin information.
 - uploaded PPTX runs should instantiate the output deck against imported template slides when usable source-slide exemplars exist.
-- when the client template is strong, Claude's direct PPTX should be treated as an interim content draft and the shipped PPTX/PDF should be recomposed deterministically against the imported template.
+- when the client template is strong, Claude's direct PPTX should preserve the imported template constraints, and any deterministic recomposition must preserve actual rendered slide content.
 - structured brand token JSON or CSS files are the current file-backed v1 path into `TemplateProfile`.
 - generation is an async workflow with durable stage records, not a synchronous page request.
 - users should see stage-level progress, elapsed time, and estimated remaining time while generation is running.
@@ -91,12 +91,12 @@ Initial domain bias:
 - For Claude 4.6+ / Opus 4.7, `pause_turn` continuations must not end on an assistant message; Basquio must append assistant history and then an explicit user continuation prompt to stay on the live Anthropic contract.
 - `deck_run_request_usage` is part of the durable execution contract: open request rows must be closed when an attempt fails, is superseded, or is interrupted by worker shutdown.
 - Railway shutdown must drain before it hands off. Stop claiming new work on `SIGTERM`, keep heartbeats during the drain window, then abort and supersede only the runs still active after the timeout.
-- checkpoint resume is only trustworthy when the checkpoint stores the full durable artifact set and recovered analysis is scoped to the same attempt that produced the checkpoint.
+- checkpoint resume is only trustworthy when the checkpoint stores the full durable user artifact set plus any internal QA support and recovered analysis is scoped to the same attempt that produced the checkpoint.
 - Cost control for the direct path must reduce turn count and context churn, not only trim wording from prompts.
 - file-backed budget preflight must use telemetry-shaped cost envelopes rather than output-only projected spend.
 - repair routing should prefer deterministic fixes first, then a cheap Haiku lane, and only then Sonnet-class revise when structural repair or major visual redesign is still required.
 - revise acceptance must follow an ordered frontier: blocking contract issues, claim traceability, blocking visual issues, visual score, then advisory issues.
-- The primary direct-worker generation pattern should be one file-backed Claude generation turn that loads the `pptx` and `pdf` skills from the start, not a prompt-stuffed `understand` call followed by a separate `author` call.
+- The primary direct-worker generation pattern should be one file-backed Claude generation turn that loads the `pptx` skill from the start, not a prompt-stuffed `understand` call followed by a separate `author` call.
 - workspace-origin runs must persist a typed `WorkspaceContextPack` on `deck_runs` plus a durable support packet, not only a prose workspace prelude inside `business_context`.
 - the first-class workspace lineage that must survive into deck run state is `workspace_id`, `workspace_scope_id`, `conversation_id`, `from_message_id`, and `launch_source`.
 - author, revise, and QA must all consume the same frozen `workspace-context.md` / `workspace-context.json` packet when a run originates from workspace context.
@@ -111,9 +111,10 @@ Initial domain bias:
 - The durable worker should heartbeat `deck_runs.updated_at` while a Claude call is in flight so the database reflects live execution rather than only phase boundaries.
 - every Anthropic phase request should persist request id, usage, phase, and attempt linkage durably so failed-run cost does not require external log forensics.
 - Moving generation off Vercel is not sufficient if the Anthropic client timeout remains at 15 minutes. The durable worker timeout budget must exceed real workbook generation time.
-- A concrete rendered-page QA path now exists: upload the generated internal `deck.pdf` to Claude as a document block and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
+- A concrete rendered-page QA path exists: derive an internal rendered PDF from the PPTX when available, upload it to Claude as a document block, and judge the rendered pages directly. Local PDF-to-PNG rendering is for debugging and fixture inspection, not the primary production gate.
 - Anthropic's token-counting endpoint must not be used with Files API references such as `source: { type: "file", file_id }` or `container_upload` blocks, and it must not be used on server-tool requests that register `code_execution_*` or `web_fetch_*`. File-backed or tool-backed phases need envelope preflight plus post-response budget enforcement from actual usage instead of preflight token counting.
-- The final direct-deck publish contract should require `deck.pptx`, `narrative_report.md`, `data_tables.xlsx`, and `deck_manifest.json`. `deck.pdf` remains an internal QA/checkpoint artifact when generated, not a required durable user-facing publish artifact.
+- The final direct-deck publish contract requires `deck.pptx`, `narrative_report.md`, `data_tables.xlsx`, and `deck_manifest.json`. `deck.pdf` is internal QA/checkpoint support only when generated, never a required durable user-facing publish artifact.
+- A failed later recovery attempt must not hide a prior successful publish. If `artifact_manifests_v2` already has `pptx`, `md`, and `xlsx`, the dashboard and finalizer should preserve the run as completed or degraded instead of making downloads disappear.
 - `narrative_report.md` is a live artifact in the direct deck path and must be authored from the same canonical narrative and evidence layer as the deck, not reverse-converted from slides or PDF.
 - NielsenIQ-style exports contain hierarchy subtotal traps. Any topline number must reconcile category rows against supplier rows before it is allowed into the artifacts.
 - narrative markdown in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.
@@ -176,7 +177,7 @@ Initial domain bias:
 - Workspace scope routes are chat-first as of Apr 24, 2026: the conversation owns the main viewport, while scope metadata, stakeholders, deliverables, suggestions, and memory live in the right rail or mobile context strip.
 - CostFigure is the reference for editorial rhythm, spacing discipline, and token governance, not for color direction.
 - Inngest is the reference for technical confidence, dark-stage framing, and pipeline-proof presentation, not for brand cloning.
-- Landing-page copy must describe the real product: evidence package plus report brief plus design target in, PPTX plus PDF artifacts out.
+- Landing-page copy must describe the real product: evidence package plus report brief plus design target in, PPTX plus narrative markdown plus data workbook out.
 - `/jobs/new` is the primary action path and should read like a report-composer surface, not a generic upload form.
 - `/templates` and `/artifacts` should read as report-generation tools and deliverable surfaces, not generic cards or file lists.
 - Shared visual rules should live in the web token layer first, then page structure, instead of ad hoc one-off component styling.

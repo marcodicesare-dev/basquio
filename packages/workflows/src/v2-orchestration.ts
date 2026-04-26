@@ -5930,8 +5930,8 @@ export const basquioExport = inngest.createFunction(
         contentType: pptxArtifact.mimeType,
       });
 
-      // Render PDF via unified scene graph (same coordinates as PPTX)
-      let pdfArtifactEntry: { id: string; kind: "pdf"; fileName: string; mimeType: string; fileBytes: number; storagePath: string; storageBucket: string; checksumSha256: string } | null = null;
+      // Render PDF via unified scene graph for internal QA parity only.
+      let pdfInternalEntry: { fileBytes: number } | null = null;
       try {
         // Build chart lookup map for PDF (same data as PPTX — uses chartsForExport for consistency)
         const chartsMap = new Map<string, V2PdfChart>();
@@ -5976,7 +5976,7 @@ export const basquioExport = inngest.createFunction(
         );
         const pdfSceneGraph = injectChartImagesIntoSceneGraph(pdfBaseSceneGraph, chartImageMap);
 
-        // Scene-graph-based PDF (preferred — guaranteed visual parity with PPTX)
+        // Scene-graph-based PDF for non-blocking internal parity measurement.
         const pdfResult = await renderPdfFromSceneGraph({
           sceneGraph: pdfSceneGraph,
           charts: chartsMap,
@@ -5985,29 +5985,12 @@ export const basquioExport = inngest.createFunction(
         });
 
         if (pdfResult) {
-          const pdfPath = `${runId}/deck.pdf`;
           const pdfBuffer = Buffer.isBuffer(pdfResult.buffer)
             ? pdfResult.buffer
             : Buffer.from((pdfResult.buffer as { data: number[] }).data);
 
-          await uploadToStorage({
-            supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-            bucket: "artifacts",
-            storagePath: pdfPath,
-            body: pdfBuffer,
-            contentType: pdfResult.mimeType,
-          });
-
-          pdfArtifactEntry = {
-            id: crypto.randomUUID(),
-            kind: "pdf" as const,
-            fileName: "basquio-deck.pdf",
-            mimeType: pdfResult.mimeType,
+          pdfInternalEntry = {
             fileBytes: pdfBuffer.length,
-            storagePath: pdfPath,
-            storageBucket: "artifacts",
-            checksumSha256: checksumSha256(pdfBuffer),
           };
         }
       } catch (pdfError) {
@@ -6050,7 +6033,6 @@ export const basquioExport = inngest.createFunction(
             storageBucket: "artifacts",
             checksumSha256: checksumSha256(pptxToUpload),
           },
-          ...(pdfArtifactEntry ? [pdfArtifactEntry] : []),
         ],
         published_at: new Date().toISOString(),
       };
@@ -6079,7 +6061,7 @@ export const basquioExport = inngest.createFunction(
 
       return {
         pptxBytes: pptxToUpload.length,
-        pdfBytes: pdfArtifactEntry?.fileBytes ?? 0,
+        pdfBytes: pdfInternalEntry?.fileBytes ?? 0,
         slideCount: slidesForExport.length,
         qaPassed,
         qaTier,

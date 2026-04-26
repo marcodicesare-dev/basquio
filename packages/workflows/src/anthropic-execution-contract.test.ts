@@ -38,7 +38,7 @@ describe("buildAuthoringToolCallSummary", () => {
     expect(buildAuthoringToolCallSummary("claude-opus-4-7", { webFetchMode: "off" })).toEqual({
       tools: ["code_execution"],
       autoInjectedTools: [],
-      skills: ["pptx", "pdf"],
+      skills: ["pptx"],
     });
   });
 
@@ -46,7 +46,7 @@ describe("buildAuthoringToolCallSummary", () => {
     expect(buildAuthoringToolCallSummary("claude-opus-4-7", { webFetchMode: "enrich" })).toEqual({
       tools: ["web_fetch"],
       autoInjectedTools: ["code_execution"],
-      skills: ["pptx", "pdf"],
+      skills: ["pptx"],
     });
   });
 });
@@ -58,7 +58,7 @@ describe("assertAuthoringExecutionContract", () => {
         model: "claude-opus-4-7",
         phase: "author",
         tools: buildClaudeTools("claude-opus-4-7", { webFetchMode: "off" }),
-        skills: ["pptx", "pdf"],
+        skills: ["pptx"],
         webFetchMode: "off",
       }),
     ).not.toThrow();
@@ -70,7 +70,7 @@ describe("assertAuthoringExecutionContract", () => {
         model: "claude-opus-4-7",
         phase: "author",
         tools: buildClaudeTools("claude-opus-4-7", { webFetchMode: "enrich" }),
-        skills: ["pptx", "pdf"],
+        skills: ["pptx"],
         webFetchMode: "enrich",
       }),
     ).not.toThrow();
@@ -82,7 +82,7 @@ describe("assertAuthoringExecutionContract", () => {
         model: "claude-opus-4-7",
         phase: "author",
         tools: [],
-        skills: ["pptx", "pdf"],
+        skills: ["pptx"],
         webFetchMode: "off",
       }),
     ).toThrow(/without web_fetch must include the explicit code_execution tool/i);
@@ -97,7 +97,7 @@ describe("assertAuthoringExecutionContract", () => {
           { type: "code_execution_20250825", name: "code_execution" },
           { type: "web_fetch_20260209", name: "web_fetch" },
         ],
-        skills: ["pptx", "pdf"],
+        skills: ["pptx"],
         webFetchMode: "enrich",
       }),
     ).toThrow(/must not explicitly include code_execution/i);

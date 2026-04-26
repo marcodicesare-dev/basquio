@@ -138,18 +138,11 @@ const HARD_QA_BLOCKERS = new Set([
   "md_content_present",
   "xlsx_present",
   "xlsx_zip_signature",
-  "xlsx_manifest_excel_sheet_links_present",
-  "xlsx_manifest_excel_sheets_exist",
-  "xlsx_manifest_native_chart_links_present",
-  "xlsx_native_chart_xml_present",
   "pptx_zip_signature",
   "slide_count_positive",
   "slide_count_within_requested_plus_appendix_cap",
   "content_slide_count_matches_request",
   "appendix_slide_count_within_cap",
-  "chart_density_fits_layout_slots",
-  "rendered_page_visual_green",
-  "rendered_page_visual_no_revision",
   "rendered_page_numeric_labels_clean",
   "report_only_manifest_zero_slides",
   "pptx_zip_parse_failed",
@@ -727,7 +720,7 @@ type MutableNumberRef = {
 };
 type PublishedArtifact = {
   id: string;
-  kind: "pptx" | "pdf" | "md" | "xlsx";
+  kind: "pptx" | "md" | "xlsx";
   fileName: string;
   mimeType: string;
   storageBucket: "artifacts";
@@ -862,14 +855,16 @@ function recordPdfRecovery(
 }
 
 async function ensureValidPdfArtifact(input: {
-  pdf: GeneratedFile;
+  pdf: GeneratedFile | null;
   pptx: GeneratedFile;
   phaseTelemetry: Record<string, unknown>;
   stage: "critique" | "revise" | "export";
 }): Promise<GeneratedFile> {
-  const initial = await inspectPdfBuffer(input.pdf.buffer);
+  const initial = input.pdf
+    ? await inspectPdfBuffer(input.pdf.buffer)
+    : { valid: false, reason: "pdf_missing" };
   if (initial.valid) {
-    return input.pdf;
+    return input.pdf!;
   }
 
   console.warn(`[generateDeckRun] ${input.stage} PDF invalid (${initial.reason}). Attempting recovery from PPTX.`);
@@ -883,10 +878,13 @@ async function ensureValidPdfArtifact(input: {
     recordPdfRecovery(input.phaseTelemetry, input.stage, {
       succeeded: true,
       source: "pptx_conversion",
+      initialReason: initial.reason,
     });
     return {
-      ...input.pdf,
+      fileId: input.pdf?.fileId ?? `deck-pdf-${input.stage}-recovered`,
+      fileName: "deck.pdf",
       buffer: recoveredBuffer,
+      mimeType: "application/pdf",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -896,7 +894,12 @@ async function ensureValidPdfArtifact(input: {
       reason: message.slice(0, 300),
       initialReason: initial.reason,
     });
-    return input.pdf;
+    return input.pdf ?? {
+      fileId: `deck-pdf-${input.stage}-missing-placeholder`,
+      fileName: "deck.pdf",
+      buffer: Buffer.alloc(0),
+      mimeType: "application/pdf",
+    };
   }
 }
 
@@ -943,6 +946,18 @@ async function runRenderedPageQaSafely(input: {
     phaseTelemetry: input.phaseTelemetry,
     stage: input.recoveryStage,
   });
+  const safePdfInspection = await inspectPdfBuffer(safePdf.buffer);
+  if (!safePdfInspection.valid) {
+    const reason = `invalid_internal_pdf:${safePdfInspection.reason}`;
+    console.warn(`[generateDeckRun] visual QA skipped during ${input.recoveryStage}: ${reason.slice(0, 300)}`);
+    input.phaseTelemetry[input.telemetryKey] = {
+      reason: reason.slice(0, 300),
+    };
+    return {
+      pdf: safePdf,
+      qa: buildSkippedVisualQaResult(reason),
+    };
+  }
 
   try {
     return {
@@ -1771,7 +1786,7 @@ export async function generateDeckRun(
           });
           const requiredAuthorFiles = candidateIsReportOnly
             ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
-            : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
+            : ["deck.pptx", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
           const candidateMessages = [candidateResponse.message];
           let candidateFiles: GeneratedFile[] = await downloadGeneratedFiles(client, candidateResponse.fileIds);
           const missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
@@ -2045,32 +2060,6 @@ export async function generateDeckRun(
       if (!isReportOnly) {
         pptxFile = requireGeneratedFile(authorFiles, "deck.pptx");
         pdfFile = findGeneratedFile(authorFiles, "deck.pdf") ?? null;
-        if (!pdfFile && pptxFile) {
-          try {
-            const recoveredPdfBuffer = await convertPptxToPdf(pptxFile.buffer);
-            pdfFile = {
-              fileId: "deck-pdf-export-recovered",
-              fileName: "deck.pdf",
-              buffer: recoveredPdfBuffer,
-              mimeType: "application/pdf",
-            };
-          } catch (pdfRecoveryError) {
-            partialDeliveryWarnings = [
-              ...new Set([
-                ...partialDeliveryWarnings,
-                `Deck PDF was missing and could not be regenerated before export: ${
-                  pdfRecoveryError instanceof Error ? pdfRecoveryError.message : String(pdfRecoveryError)
-                }`,
-              ]),
-            ];
-            pdfFile = {
-              fileId: "deck-pdf-missing-placeholder",
-              fileName: "deck.pdf",
-              buffer: Buffer.alloc(0),
-              mimeType: "application/pdf",
-            };
-          }
-        }
       }
       finalNarrativeMarkdown = requireGeneratedFile(authorFiles, "narrative_report.md");
       xlsxFile = requireGeneratedFile(authorFiles, "data_tables.xlsx");
@@ -2090,6 +2079,26 @@ export async function generateDeckRun(
         await insertEvent(config, runId, attempt, "author", "workbook_companion_artifacts_skipped", {
           reason: reason.slice(0, 500),
         }).catch(() => {});
+      }
+      const cleanedAuthorArtifacts = await applyCommonTextCleanupToArtifacts({
+        manifest,
+        pptx: pptxFile,
+        narrativeMarkdown: finalNarrativeMarkdown,
+        xlsx: xlsxFile,
+        phaseTelemetry,
+        stage: "author",
+      });
+      manifest = cleanedAuthorArtifacts.manifest;
+      pptxFile = cleanedAuthorArtifacts.pptx;
+      finalNarrativeMarkdown = cleanedAuthorArtifacts.narrativeMarkdown;
+      xlsxFile = cleanedAuthorArtifacts.xlsx;
+      if (!isReportOnly && pptxFile) {
+        pdfFile = await ensureValidPdfArtifact({
+          pdf: pdfFile,
+          pptx: pptxFile,
+          phaseTelemetry,
+          stage: "critique",
+        });
       }
       try {
         fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
@@ -2306,12 +2315,40 @@ export async function generateDeckRun(
     await persistRequestUsage(config, runId, attempt, "critique", "rendered_page_qa", VISUAL_QA_MODEL, initialVisualQa.requests);
     rememberRequestIds(anthropicRequestIds, initialVisualQa.requests);
     await upsertWorkingPaper(config, runId, "visual_qa_author", initialVisualQa.report);
+    const initialArtifactQaReport = await buildQaReport(
+      manifest,
+      {
+        pptx: pptxFile,
+        pdf: pdfFile,
+        md: finalNarrativeMarkdown!,
+        xlsx: xlsxFile!,
+      },
+      initialVisualQa.report,
+      templateDiagnostics,
+      run.target_slide_count,
+      "deck",
+    );
+    const initialArtifactQualityIssues = formatArtifactQualityRepairIssues(initialArtifactQaReport);
+    phaseTelemetry.authorArtifactQa = {
+      tier: initialArtifactQaReport.tier,
+      passed: initialArtifactQaReport.passed,
+      failed: initialArtifactQaReport.failed,
+      repairIssueCount: initialArtifactQualityIssues.length,
+    };
+    await upsertWorkingPaper(config, runId, "artifact_qa_author", {
+      ...initialArtifactQaReport,
+      _attemptId: attempt.id,
+      _attemptNumber: attempt.attemptNumber,
+      _phase: "critique",
+      repairIssues: initialArtifactQualityIssues,
+    }).catch(() => {});
     const critiqueIssues = collectCritiqueIssues(
       manifest,
       initialVisualQa.report,
       [
         ...((phaseTelemetry.authorLint as { actionableIssues?: string[] } | undefined)?.actionableIssues ?? []),
         ...((phaseTelemetry.authorContract as { actionableIssues?: string[] } | undefined)?.actionableIssues ?? []),
+        ...initialArtifactQualityIssues,
       ],
       run.target_slide_count,
     );
@@ -2324,6 +2361,7 @@ export async function generateDeckRun(
       ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
       ...formatCitationCritiqueIssues(latestCitationReport, citationFidelityMode),
       ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
+      ...initialArtifactQualityIssues,
     ];
     const initialRepairBuckets = bucketRepairIssues({
       critiqueIssues,
@@ -2455,6 +2493,7 @@ export async function generateDeckRun(
             visualQa: activeVisualQa,
             targetSlideCount: run.target_slide_count,
           });
+          const requiredReviseFiles = buildRequiredReviseFiles(activeCritiqueIssues);
           const reviseMessages = [
             ...buildMinimalReviseThread({
               run,
@@ -2537,11 +2576,12 @@ export async function generateDeckRun(
             abortSignal: externalAbortSignal,
           });
           let reviseFiles = await downloadGeneratedFiles(client, reviseResponse.fileIds);
-          const missingReviseFiles = findMissingGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"]);
+          const missingReviseFiles = findMissingGeneratedFiles(reviseFiles, requiredReviseFiles);
           if (missingReviseFiles.length > 0) {
             console.warn(`[revise-retry] Missing revise files: ${missingReviseFiles.join(", ")}. Retrying revise phase once.`);
             await insertEvent(config, runId, attempt, "revise", "revise_missing_files_retry", {
               missingFiles: missingReviseFiles,
+              requiredFiles: requiredReviseFiles,
               model: reviseModel,
               repairLane,
               reviseIteration: reviseLoopCount,
@@ -2572,8 +2612,13 @@ export async function generateDeckRun(
                       text: [
                         `Missing output files: ${missingReviseFiles.join(", ")}.`,
                         "Generate them now using the existing slides in the container.",
-                        "Do not re-analyze or rewrite content.",
-                        "Rebuild the PPTX from the current slides, render the PDF, and write deck_manifest.json.",
+                        missingReviseFiles.includes("narrative_report.md")
+                          ? "If narrative_report.md is missing or failed artifact QA, regenerate it as the audit-ready narrative leave-behind with the same evidence base."
+                          : "Do not re-analyze or rewrite narrative content.",
+                        missingReviseFiles.includes("data_tables.xlsx")
+                          ? "If data_tables.xlsx is missing or failed artifact QA, regenerate it as the formatted editable workbook with README, tables, freeze panes, widths, and companion Excel charts where supported."
+                          : "Do not rebuild the workbook unless it is listed as missing.",
+                        "Rebuild the PPTX from the current slides and write deck_manifest.json.",
                         "The turn is incomplete until every missing file is attached.",
                       ].join(" "),
                     },
@@ -2634,10 +2679,15 @@ export async function generateDeckRun(
           reviseAggregatePauseTurns += reviseResponse.pauseTurns;
           await persistRequestUsage(config, runId, attempt, "revise", "phase_generation", reviseModel, reviseResponse.requests);
           rememberRequestIds(anthropicRequestIds, reviseResponse.requests);
-          requireGeneratedFiles(reviseFiles, ["deck.pptx", "deck.pdf", "deck_manifest.json"], "revise");
+          requireGeneratedFiles(reviseFiles, requiredReviseFiles, "revise");
           finalManifest = parseManifestResponse(reviseResponse.message, reviseFiles);
           finalPptx = requireGeneratedFile(reviseFiles, "deck.pptx");
-          finalPdf = requireGeneratedFile(reviseFiles, "deck.pdf");
+          finalPdf = await ensureValidPdfArtifact({
+            pdf: findGeneratedFile(reviseFiles, "deck.pdf") ?? finalPdf,
+            pptx: finalPptx,
+            phaseTelemetry,
+            stage: "revise",
+          });
           finalNarrativeMarkdown = findGeneratedFile(reviseFiles, "narrative_report.md") ?? finalNarrativeMarkdown;
           xlsxFile = findGeneratedFile(reviseFiles, "data_tables.xlsx") ?? xlsxFile;
           if (xlsxFile) {
@@ -2659,6 +2709,18 @@ export async function generateDeckRun(
               }).catch(() => {});
             }
           }
+          const cleanedReviseArtifacts = await applyCommonTextCleanupToArtifacts({
+            manifest: finalManifest,
+            pptx: finalPptx,
+            narrativeMarkdown: finalNarrativeMarkdown!,
+            xlsx: xlsxFile!,
+            phaseTelemetry,
+            stage: "revise",
+          });
+          finalManifest = cleanedReviseArtifacts.manifest;
+          finalPptx = cleanedReviseArtifacts.pptx!;
+          finalNarrativeMarkdown = cleanedReviseArtifacts.narrativeMarkdown;
+          xlsxFile = cleanedReviseArtifacts.xlsx;
           if (xlsxFile) {
             try {
               fidelityContext = buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run);
@@ -2799,10 +2861,32 @@ export async function generateDeckRun(
           const revisedLintSummary = summarizeLintResult(revisedLint);
           const revisedContractSummary = summarizeDeckContractResult(revisedContract);
           const revisedClaimIssueMessages = claimTraceabilityIssues.map(formatClaimTraceabilityIssue);
+          const revisedArtifactQaReport = await buildQaReport(
+            finalManifest,
+            {
+              pptx: finalPptx,
+              pdf: finalPdf,
+              md: finalNarrativeMarkdown!,
+              xlsx: xlsxFile!,
+            },
+            finalVisualQa,
+            templateDiagnostics,
+            run.target_slide_count,
+            "deck",
+          );
+          const revisedArtifactQualityIssues = formatArtifactQualityRepairIssues(revisedArtifactQaReport);
+          await upsertWorkingPaper(config, runId, "artifact_qa_revise", {
+            ...revisedArtifactQaReport,
+            _attemptId: attempt.id,
+            _attemptNumber: attempt.attemptNumber,
+            _reviseIteration: reviseLoopCount,
+            repairIssues: revisedArtifactQualityIssues,
+          }).catch(() => {});
           const revisedValidationIssues = [
             ...formatPlanSheetValidationIssues(latestPlanSheetValidation),
             ...formatCitationCritiqueIssues(latestCitationReport, citationFidelityMode),
             ...formatDataPrimacyCritiqueIssues(latestDataPrimacyReport, dataPrimacyMode),
+            ...revisedArtifactQualityIssues,
           ];
           activeManifest = finalManifest;
           activePdf = finalPdf;
@@ -2854,7 +2938,6 @@ export async function generateDeckRun(
             activeVisualQa = bestVisualQa;
             activeCritiqueIssues = bestCritiqueIssues;
             activeBlockingCritiqueIssues = bestBlockingCritiqueIssues;
-            break;
           }
 
           if (!deckStillNeedsRevise({
@@ -3003,10 +3086,18 @@ export async function generateDeckRun(
       qualityPassport?: PublishDecision["qualityPassport"];
     };
     let lastPublishDecision: PublishDecision | null = null;
-    try {
-      if (!isReportOnly) {
-        finalVisualQa = await strengthenFinalVisualQa({
-          client,
+      try {
+        if (!isReportOnly) {
+          finalPdf = await ensureValidPdfArtifact({
+            pdf: finalPdf,
+            pptx: finalPptx!,
+            phaseTelemetry,
+            stage: "export",
+          });
+        }
+        if (!isReportOnly) {
+          finalVisualQa = await strengthenFinalVisualQa({
+            client,
           pdf: finalPdf!.buffer,
           pptx: finalPptx!,
           manifest: finalManifest,
@@ -3131,6 +3222,26 @@ export async function generateDeckRun(
         };
         finalPdf = await ensureValidPdfArtifact({
           pdf: finalPdf!,
+          pptx: finalPptx,
+          phaseTelemetry,
+          stage: "export",
+        });
+      }
+      const cleanedExportArtifacts = await applyCommonTextCleanupToArtifacts({
+        manifest: finalManifest,
+        pptx: finalPptx,
+        narrativeMarkdown: finalDocx,
+        xlsx: finalXlsx,
+        phaseTelemetry,
+        stage: "export",
+      });
+      finalManifest = cleanedExportArtifacts.manifest;
+      finalPptx = cleanedExportArtifacts.pptx;
+      finalDocx = cleanedExportArtifacts.narrativeMarkdown;
+      finalXlsx = cleanedExportArtifacts.xlsx;
+      if (!isReportOnly && finalPptx) {
+        finalPdf = await ensureValidPdfArtifact({
+          pdf: finalPdf,
           pptx: finalPptx,
           phaseTelemetry,
           stage: "export",
@@ -4436,6 +4547,21 @@ async function finalizeSuccess(
   }
 }
 
+async function hasRequiredPublishedArtifacts(config: ReturnType<typeof resolveConfig>, runId: string) {
+  const manifests = await fetchRestRows<{ artifacts?: Array<{ kind?: string }> }>({
+    supabaseUrl: config.supabaseUrl,
+    serviceKey: config.serviceKey,
+    table: "artifact_manifests_v2",
+    query: {
+      select: "artifacts",
+      run_id: `eq.${runId}`,
+      limit: "1",
+    },
+  }).catch(() => []);
+  const artifactKinds = new Set((manifests[0]?.artifacts ?? []).map((artifact) => artifact.kind).filter(Boolean));
+  return ["pptx", "md", "xlsx"].every((kind) => artifactKinds.has(kind));
+}
+
 async function finalizeFailure(
   config: ReturnType<typeof resolveConfig>,
   runId: string,
@@ -4445,18 +4571,30 @@ async function finalizeFailure(
   failureMessage: string,
   extraTelemetry: Record<string, unknown>,
 ) {
-  const ownsRun = attempt
-    ? await fetchRestRows<{ active_attempt_id: string | null }>({
+  const runOwnership = attempt
+    ? await fetchRestRows<{
+        active_attempt_id: string | null;
+        successful_attempt_id: string | null;
+        completed_at: string | null;
+        delivery_status: string | null;
+      }>({
         supabaseUrl: config.supabaseUrl,
         serviceKey: config.serviceKey,
         table: "deck_runs",
         query: {
-          select: "active_attempt_id",
+          select: "active_attempt_id,successful_attempt_id,completed_at,delivery_status",
           id: `eq.${runId}`,
           limit: "1",
         },
-      }).then((rows) => rows[0]?.active_attempt_id === attempt.id).catch(() => false)
-    : true;
+      }).then((rows) => rows[0] ?? null).catch(() => null)
+    : null;
+  const ownsRun = attempt ? runOwnership?.active_attempt_id === attempt.id : true;
+  const preservePublishedRun =
+    attempt !== null &&
+    ownsRun &&
+    Boolean(runOwnership?.successful_attempt_id) &&
+    runOwnership?.successful_attempt_id !== attempt.id &&
+    await hasRequiredPublishedArtifacts(config, runId);
   const now = new Date().toISOString();
   if (attempt) {
     await closeOpenRequestUsageRows({
@@ -4493,12 +4631,15 @@ async function finalizeFailure(
           }
         : { id: `eq.${runId}` },
       payload: {
-        status: "failed",
-        failure_message: failureMessage,
-        failure_phase: failurePhase,
+        status: preservePublishedRun ? "completed" : "failed",
+        failure_message: preservePublishedRun ? null : failureMessage,
+        failure_phase: preservePublishedRun ? null : failurePhase,
+        current_phase: preservePublishedRun ? "export" : failurePhase,
         updated_at: now,
-        completed_at: null,
-        delivery_status: "failed",
+        completed_at: preservePublishedRun ? (runOwnership?.completed_at ?? now) : null,
+        delivery_status: preservePublishedRun
+          ? (runOwnership?.delivery_status && runOwnership.delivery_status !== "draft" ? runOwnership.delivery_status : "degraded")
+          : "failed",
         cost_telemetry: runCostTelemetry,
         active_attempt_id: null,
       },
@@ -4529,9 +4670,14 @@ async function finalizeFailure(
   }
 
   await Promise.all(writes);
-  await insertEvent(config, runId, attempt, failurePhase, "error", { message: failureMessage });
+  await insertEvent(config, runId, attempt, failurePhase, preservePublishedRun ? "recovery_attempt_failed_preserved_publish" : "error", {
+    message: failureMessage,
+    preservedPublishedArtifacts: preservePublishedRun,
+    successfulAttemptId: runOwnership?.successful_attempt_id ?? null,
+  });
   const failureClass = String(extraTelemetry.failureClass ?? "");
   const shouldSuppressRefund =
+    preservePublishedRun ||
     attempt !== null &&
     attempt.attemptNumber < 3 &&
     (failureClass === "transient_provider" || failureClass === "transient_network");
@@ -4908,7 +5054,7 @@ function buildAuthorMessage(
           : []),
         isReportOnly
           ? "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: deck_manifest.json, data_tables.xlsx, and narrative_report.md."
-          : "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final user-facing outputs: deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json. Also attach `deck.pdf` as the internal rendered-QA artifact for this run.",
+          : "- Compact output does not change the deliverables. Finish all required file generation steps and attach only the final user-facing outputs: deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json. Do not generate or attach any PDF.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         ...(isReportOnly
           ? ["- This is a report-only run. Do not produce slides or presentation artifacts."]
@@ -4985,6 +5131,9 @@ function buildAuthorMessage(
           "- CLIENT-FRIENDLY COPY IS NOT A LICENSE TO LOWER ANALYTICAL QUALITY. If there is a conflict, preserve evidence depth, metric accuracy, and focal-brand clarity first, then make the copy friendlier without weakening the claim.",
           "- BEFORE committing each slide to PPTX, self-score it against this rubric and revise in-place until it passes: TITLE = full-sentence insight with at least one number and max 14 words; BODY = no AI slop, active voice, evidence-led; EVIDENCE = chart/table/source actually support the claim; STRUCTURE = approved archetype and no duplicate question; RECOMMENDATIONS = opportunity first, lever second, rationale tied to visible evidence.",
           "- Treat the rubric as blocking inside the author turn. If a planned slide fails any dimension, rewrite the slide before adding it to the deck instead of hoping revise will fix it later.",
+          "- AUTHOR SELF-CHECK BEFORE UPLOAD: inspect deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json yourself before final attachment. Fix obvious issues in author, not in revise.",
+          "- Author self-check must verify: every promised user artifact exists; Italian copy uses proper accents; non-cover titles are insight sentences with evidence-backed numbers when the evidence supports one; no title invents a number; chart claims match the visible chart; data_tables.xlsx has README, formatted tables, freeze panes, widths, and editable chart companions where supported.",
+          "- If a quality rule cannot be satisfied without inventing data, prefer a truthful weaker claim and explain the evidence limit. Never add filler numbers just to satisfy title-number rules.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
           "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
           "- CLAIM-TO-CHART BINDING: if the slide says the issue is rotation, productivity, ROS, price-led growth, or a distribution opportunity, the hero exhibit must show that metric or a direct causal driver. Do not chart sales value and bury productivity in a side note.",
@@ -5039,10 +5188,10 @@ function buildAuthorMessage(
           analysis
             ? (isReportOnly
               ? "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O as the primary analytical deliverable, target 800-1200 lines and 10000-16000 words. File content written to disk has no token limit. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck.pdf` as the internal rendered-QA artifact, (5) `deck_manifest.json`.")
+              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O as the primary analytical deliverable, target 500-1000 lines and 8000-15000 words. File content written to disk has no token limit. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck.pptx` as the durable user deck, (4) `deck_manifest.json`.")
             : (isReportOnly
               ? "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O, target 800-1200 lines and 10000-16000 words. (2) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (3) `deck_manifest.json` with slideCount 0. Do NOT generate deck.pptx or deck.pdf."
-              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck.pdf` as the internal rendered-QA artifact, (6) `deck_manifest.json`."),
+              : "- Generate files in this exact order: (1) `narrative_report.md`, write this FIRST using Python file I/O, target 500-1000 lines and 8000-15000 words. (2) `analysis_result.json`, (3) `data_tables.xlsx`, write ALL analysis DataFrames to a multi-sheet Excel file using pandas ExcelWriter with XlsxWriter, attempting native Excel chart objects for supported chart-bearing slides when the runtime allows it. (4) `deck.pptx` as the durable user deck, (5) `deck_manifest.json`."),
           ...(analysis
             ? []
             : [
@@ -5055,16 +5204,19 @@ function buildAuthorMessage(
           ...(!isReportOnly
             ? [
                 "- Two-phase authoring is mandatory for full-deck runs.",
-                "- Phase 1: finish `narrative_report.md` and `data_tables.xlsx` first. Do not start chart rendering, PPTX generation, or PDF generation until the markdown narrative is substantively complete.",
-                "- VERIFICATION: after writing `narrative_report.md`, count its lines in Python before starting `analysis_result.json`, `deck.pptx`, or `deck.pdf`.",
+                "- Phase 1: finish `narrative_report.md` and `data_tables.xlsx` first. Do not start chart rendering or PPTX generation until the markdown narrative is substantively complete.",
+                "- VERIFICATION: after writing `narrative_report.md`, count its lines in Python before starting `analysis_result.json` or `deck.pptx`.",
                 "```python",
                 "with open('narrative_report.md', 'r', encoding='utf-8') as f:",
-                "    line_count = sum(1 for _ in f)",
-                "print(f'narrative_report.md: {line_count} lines')",
-                "assert line_count >= 400, f'Narrative too short ({line_count} lines). Extend appendix, competitor analysis, and data tables before Phase 2.'",
+                "    narrative_text = f.read()",
+                "line_count = narrative_text.count('\\n') + (1 if narrative_text.strip() else 0)",
+                "word_count = len(narrative_text.split())",
+                "print(f'narrative_report.md: {line_count} lines, {word_count} words')",
+                "assert line_count >= 500, f'Narrative too short ({line_count} lines). Extend appendix, competitor analysis, and data tables before Phase 2.'",
+                "assert word_count >= 5000, f'Narrative too shallow ({word_count} words). Add methodology, detailed findings, recommendations, and appendix tables before Phase 2.'",
                 "```",
-                "- If the assertion fails, expand the executive summary, findings, competitor section, recommendation details, and appendix tables until it passes.",
-                "- Only after the markdown narrative passes the >400-line gate should you start slide, chart, PPTX, and PDF generation.",
+                "- If either assertion fails, expand the executive summary, findings, competitor section, recommendation details, and appendix tables until it passes.",
+                "- Only after the markdown narrative passes the 500-line and 5000-word gate should you start slide, chart, and PPTX generation.",
               ]
             : []),
           isReportOnly
@@ -5103,7 +5255,7 @@ function buildAuthorMessage(
           "- Excel sheet names must already be Excel-safe in both the workbook and the manifest: max 31 characters, no `\\ / ? * [ ] :`, and use the exact same sanitized string in both places.",
           "- For supported Excel chart families (bar/column, line, scatter, pie/doughnut, area), attempt to embed a native XlsxWriter chart object in that same sheet so an analyst can copy it into another deck.",
           "- Basquio chart-type mapping for native Excel charts is deterministic: `bar` -> column, `horizontal_bar` -> bar, `grouped_bar` -> column cluster, `stacked_bar` -> bar stacked, `stacked_bar_100` -> bar percent-stacked, `line` -> line, `area` -> area, `scatter` -> scatter, `pie` -> pie, `doughnut` -> doughnut.",
-          "- Excel-native charts are best-effort companion artifacts. If XlsxWriter is unavailable or a specific chart object fails, still write the exact sheet, omit `excelChartCellAnchor` for that chart, and continue. Never let Excel chart generation block `deck.pptx`, `deck.pdf`, `narrative_report.md`, or the workbook itself.",
+          "- Excel-native charts are best-effort companion artifacts. If XlsxWriter is unavailable or a specific chart object fails, still write the exact sheet, omit `excelChartCellAnchor` for that chart, and continue. Never let Excel chart generation block `deck.pptx`, `narrative_report.md`, or the workbook itself.",
           "- For unsupported Excel chart families (for example waterfall, heatmap, bubble, or table-only exhibits), still write the sheet and set `excelSheetName` in the manifest, but omit `excelChartCellAnchor` instead of inventing a broken native chart.",
           "- Every manifest chart should include `xAxisLabel`, `yAxisLabel`, and for bubble charts `bubbleSizeLabel` so slide-level fidelity validators can check source labels and legends.",
           "- Every manifest chart should include `excelSheetName` and, when a native Excel chart object exists, `excelChartCellAnchor`. Include `dataSignature` when you can derive a stable signature from the plotted data columns.",
@@ -5145,7 +5297,7 @@ function buildAuthorMessage(
           "    ws.insert_chart('G2', line)",
           "</example>",
           "<example name=\"perfect_narrative_finding_section\">",
-          "## Finding 2: Birre, Yogurt e Salumi spiegano la meta del gap ponderato",
+          "## Finding 2: Birre, Yogurt e Salumi spiegano la metà del gap ponderato",
           "",
           "I comparti con il maggiore contributo negativo ponderato al gap totale di -0.5pp sono:",
           "- **BIRRE** (3.9% delle confezioni Discount): -5.0% vs -2.8% TI, gap -2.2pp, contributo al gap totale -0.08pp",
@@ -5156,7 +5308,7 @@ function buildAuthorMessage(
           "",
           "**Implicazione:** Questi 5 comparti da soli spiegano circa 0.31pp del gap totale di -0.5pp. Interventi mirati basterebbero a recuperare la maggior parte del divario.",
           "",
-          "**Caveat:** Il contributo ponderato assume un peso proporzionale al numero di confezioni. Se la distribuzione ponderata in questi comparti e significativamente diversa, il contributo reale potrebbe deviare. Servirebbe un drill-down per insegna.",
+          "**Caveat:** Il contributo ponderato assume un peso proporzionale al numero di confezioni. Se la distribuzione ponderata in questi comparti è significativamente diversa, il contributo reale potrebbe deviare. Servirebbe un drill-down per insegna.",
           "</example>",
           "- `deck_manifest.json` must contain `slideCount`, `pageCount`, `slides[]`, and `charts[]` describing the final deck.",
           "- Each chart in the manifest should include `categoryCount` and `categories[]` when available so Basquio can verify density and label fit.",
@@ -5203,7 +5355,7 @@ function buildReportOnlyAuthorText(input: {
           "- Complete all work in a single uninterrupted code execution session. Do not end the turn until every required output file is attached as a container upload.",
           "- If you hit an error while analyzing or exporting, fix it and continue in the same session rather than ending the turn early.",
         ]),
-    "- This is a Haiku report-only run. Do not rely on pptx or pdf skills.",
+    "- This is a Haiku report-only run. Do not rely on presentation-generation skills.",
     "- Generate ONLY these deliverables: narrative_report.md, data_tables.xlsx, and deck_manifest.json with slideCount set to 0.",
     "- Do NOT generate deck.pptx, deck.pdf, slide plans, or presentation artifacts.",
     "- Reuse the existing container state and uploaded files. Do not restart with exhaustive workbook discovery.",
@@ -5454,6 +5606,9 @@ function buildReviseIssueDirectives(issues: string[]) {
   if (normalizedIssues.some((issue) => issue.includes("[em_dash]"))) {
     directives.push("If a critique issue says em_dash, replace every em dash with a comma, colon, or sentence break. Zero em dashes are allowed anywhere in the deck copy.");
   }
+  if (normalizedIssues.some((issue) => issue.includes("[italian_missing_accent]"))) {
+    directives.push("If a critique issue says italian_missing_accent, fix the Italian orthography in the cited slide fields. Use proper accents such as è, perché, più, caffè, qualità, attività, priorità, capacità, opportunità, and città.");
+  }
   if (normalizedIssues.some((issue) => issue.includes("[title_no_number]") || issue.includes("[title_number_coverage]"))) {
     directives.push("If a critique issue says title_no_number or title_number_coverage, rewrite the analytical title so it contains one evidence-backed number. Do not add filler numbers.");
   }
@@ -5476,10 +5631,18 @@ function buildReviseIssueDirectives(issues: string[]) {
   return directives;
 }
 
+function canAttachPdfDocument(file: GeneratedFile | null | undefined) {
+  return Boolean(
+    file &&
+    file.buffer.length >= 8 &&
+    file.buffer.subarray(0, 5).toString("utf8") === "%PDF-",
+  );
+}
+
 export function buildReviseMessage(input: {
   issues: string[];
   manifest: z.infer<typeof deckManifestSchema>;
-  currentPdf: GeneratedFile;
+  currentPdf: GeneratedFile | null;
   visualQa: RenderedPageQaReport;
   targetSlideCount?: number;
 }) {
@@ -5507,25 +5670,33 @@ export function buildReviseMessage(input: {
     ? `The user asked for exactly ${input.targetSlideCount} content slides. Keep exactly ${input.targetSlideCount} content slides, plus one structural cover, plus at most one structural closing slide.`
     : "Keep the requested content-slide count exact, plus one structural cover, plus at most one structural closing slide.";
   const canUseAnySlide = slideScope.allowedSlides.length === input.manifest.slides.length;
+  const requiredOutputFiles = buildRequiredReviseFiles(input.issues);
+  const needsNarrativeRepair = requiredOutputFiles.includes("narrative_report.md");
+  const needsWorkbookRepair = requiredOutputFiles.includes("data_tables.xlsx");
+  const hasAttachablePdf = canAttachPdfDocument(input.currentPdf);
 
   return {
     role: "user" as const,
     content: [
-      {
-        type: "document" as const,
-        source: {
-          type: "base64" as const,
-          media_type: "application/pdf" as const,
-          data: input.currentPdf.buffer.toString("base64"),
-        },
-        title: "Current rendered deck PDF - inspect this exact output before repairing it",
-      },
+      ...(hasAttachablePdf && input.currentPdf
+        ? [{
+            type: "document" as const,
+            source: {
+              type: "base64" as const,
+              media_type: "application/pdf" as const,
+              data: input.currentPdf.buffer.toString("base64"),
+            },
+            title: "Current rendered deck PDF - inspect this exact output before repairing it",
+          }]
+        : []),
       {
         type: "text" as const,
         text: [
-          "Repair the generated deck and regenerate deck.pptx, deck.pdf (internal rendered-QA artifact), and deck_manifest.json.",
-          "After making corrections, you MUST regenerate the complete output set: deck.pptx, deck.pdf, and deck_manifest.json. The revise turn is incomplete until all three files exist in the container.",
-          "The rendered PDF above is the exact current deck. Inspect it before you change anything.",
+          `Repair the generated deliverables and regenerate these exact files: ${requiredOutputFiles.join(", ")}.`,
+          `After making corrections, you MUST attach ${requiredOutputFiles.join(", ")} as container_upload blocks. The revise turn is incomplete until all required files exist in the container.`,
+          hasAttachablePdf
+            ? "The rendered PDF above is the exact current deck. Inspect it before you change anything."
+            : "Rendered PDF inspection is unavailable in this turn. Use the manifest, critique issue list, and current container files to repair the required artifacts. Do not generate a PDF.",
           "Reuse the existing container state and the prior authoring context. Do not start a new draft from scratch unless necessary to fix the issues.",
           "If a client PPTX template is present in the container, continue using it as the visual source of truth. Do not drift back to Basquio dark/editorial styling during repair.",
           `Current rendered visual QA score: ${input.visualQa.score}/10 (${input.visualQa.overallStatus}). Improve the rendered visual quality from this baseline.`,
@@ -5546,7 +5717,9 @@ export function buildReviseMessage(input: {
               ]
             : []),
           "",
-          "Primary visible issues to fix from the rendered PDF:",
+          hasAttachablePdf
+            ? "Primary visible issues to fix from the rendered PDF:"
+            : "Primary visible issues to fix from the rendered QA report:",
           ...(primaryVisualIssues.length > 0
             ? primaryVisualIssues.map((issue) => `- Slide ${issue.slidePosition} ${issue.code}: ${issue.description}. Fix: ${issue.fix}`)
             : ["- No major visual issues were supplied; make only the smallest fixes needed."]),
@@ -5577,12 +5750,24 @@ export function buildReviseMessage(input: {
           "If you include a structural closing slide, it must be the final slide. Never place an analytical or support slide after a summary, title-body, title-bullets, or recommendation-cards closing slide.",
           "Do not widen or compress the deck unless you are fixing a count-contract failure. If a critique issue says [content_shortfall], [content_overflow], or [appendix_overfill], you may add or remove only the minimum slides needed to restore the requested content-slide count and keep appendix within the allowed top-up cap.",
           "If there is one surplus slide, remove the weakest trailing support slide instead of weakening the storyline or appending material after a closing slide.",
+          ...(needsNarrativeRepair
+            ? [
+                "Narrative artifact repair is mandatory in this turn: regenerate narrative_report.md as the audit-ready leave-behind, minimum 500 lines, evidence-linked, client-facing, with Italian accents when writing Italian.",
+                "The narrative report must not be a transcript, placeholder, or short executive memo. It must include brief interpretation, executive summary, methodology, detailed findings, recommendations, and appendix/supporting data.",
+              ]
+            : []),
+          ...(needsWorkbookRepair
+            ? [
+                "Workbook artifact repair is mandatory in this turn: regenerate data_tables.xlsx as an editable analyst workbook.",
+                "The workbook must include a README sheet, one formatted Excel table per data sheet, freeze panes, deterministic column widths, and native Excel companion charts for supported chart-bearing sheets when XlsxWriter supports them.",
+              ]
+            : []),
           ...reviseIssueDirectives,
           "If a critique issue says a slide violates its archetype, repair the slide so the required slots for that archetype are genuinely present, not just visually implied.",
           "Re-apply the deterministic chart preprocessing guide when rebuilding any chart:",
           chartPreprocessingGuide,
           "Fix overlaps, clipped text, blank sections, and claim-exhibit mismatches before any cosmetic refinements.",
-          "Your final assistant message must attach deck.pptx, deck.pdf, and deck_manifest.json as container_upload blocks. `deck.pdf` is internal QA support, not a durable user-facing publish artifact.",
+          `Your final assistant message must attach ${requiredOutputFiles.join(", ")} as container_upload blocks. Do not generate or attach any PDF.`,
         ].join("\n"),
       },
     ],
@@ -5603,8 +5788,8 @@ function buildMinimalReviseThread(input: {
     `Client: ${input.run.client || "Not specified"}. Audience: ${input.run.audience || "Executive stakeholder"}. Objective: ${input.run.objective || "Not specified"}.`,
     `Thesis: ${truncateReviseIssueText(input.analysis?.thesis || input.run.thesis || "Not specified", 180)}`,
     `Slide inventory: ${slideInventory}`,
-    "Generated files already present in the container: deck.pptx, deck.pdf (internal QA), deck_manifest.json.",
-    "Use the rendered PDF and issue list from the next user message to make local repairs without replaying the full authoring transcript.",
+    "Generated files already present in the container: deck.pptx and deck_manifest.json.",
+    "Use the issue list and any rendered PDF attachment in the next user message to make local repairs without replaying the full authoring transcript.",
   ].join("\n\n");
 
   return [
@@ -6268,24 +6453,6 @@ async function repairPartialAuthorArtifacts(input: {
           });
           repairWarnings.push("Deck manifest was missing. Rebuilt a minimal manifest from the PPTX structure.");
         }
-      }
-    }
-  }
-
-  if (!isReportOnly && !findGeneratedFile(repairedFiles, "deck.pdf")) {
-    const pptx = findGeneratedFile(repairedFiles, "deck.pptx");
-    if (pptx) {
-      try {
-        const pdfBuffer = await convertPptxToPdf(pptx.buffer);
-        repairedFiles.push({
-          fileId: "deck-pdf-recovered",
-          fileName: "deck.pdf",
-          buffer: pdfBuffer,
-          mimeType: "application/pdf",
-        });
-        repairWarnings.push("Deck PDF was missing. Re-rendered it from the PPTX before publish.");
-      } catch (error) {
-        repairWarnings.push(`Deck PDF was missing and could not be regenerated: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
@@ -8688,14 +8855,17 @@ export function collectPublishGateFailures(input: {
   contract: ReturnType<typeof validateManifestContract>;
   claimIssues?: ClaimTraceabilityIssue[];
 }) {
+  const blockingLintIssues = input.lint.actionableIssues.filter(isPublishBlockingLintIssue);
+  const advisoryLintIssues = input.lint.actionableIssues.filter((issue) => !isPublishBlockingLintIssue(issue));
   const blockingFailures = [
     ...input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check)),
-    ...input.lint.actionableIssues.map((issue) => `lint:${issue}`),
+    ...blockingLintIssues.map((issue) => `lint:${issue}`),
     ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
     ...((input.claimIssues ?? []).map((issue) => `claim:${formatClaimTraceabilityIssue(issue)}`)),
   ];
   const advisories = [
     ...input.qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
+    ...advisoryLintIssues.map((issue) => `lint:${issue}`),
   ];
 
   return {
@@ -8704,6 +8874,51 @@ export function collectPublishGateFailures(input: {
     lintSummary: summarizeLintResult(input.lint),
     contractSummary: summarizeDeckContractResult(input.contract),
   };
+}
+
+function isPublishBlockingLintIssue(issue: string) {
+  const normalized = issue.toLowerCase();
+  return (
+    normalized.includes("[em_dash]") ||
+    normalized.includes("[placeholder_metric]") ||
+    normalized.includes("[title_claim_unverified]") ||
+    normalized.includes("[claim_chart_metric_mismatch]") ||
+    normalized.includes("[distribution_claim_without_productivity_proof]") ||
+    normalized.includes("[missing_delta_") ||
+    normalized.includes("[bubble_size_legend_missing]") ||
+    normalized.includes("[invented_label]") ||
+    normalized.includes("[entity_grounding]") ||
+    normalized.includes("[content_shortfall]") ||
+    normalized.includes("[content_overflow]") ||
+    normalized.includes("[appendix_overfill]") ||
+    normalized.includes("manifest has zero slides") ||
+    normalized.includes("references a chart missing")
+  );
+}
+
+const REPAIRABLE_ARTIFACT_QA_CHECK_PREFIXES = ["md_", "xlsx_"] as const;
+const REPAIRABLE_ARTIFACT_QA_CHECKS = new Set([
+  "md_present",
+  "md_content_present",
+  "xlsx_present",
+  "xlsx_zip_signature",
+]);
+
+function isRepairableArtifactQaCheck(checkName: string) {
+  return (
+    REPAIRABLE_ARTIFACT_QA_CHECKS.has(checkName) ||
+    REPAIRABLE_ARTIFACT_QA_CHECK_PREFIXES.some((prefix) => checkName.startsWith(prefix))
+  );
+}
+
+function formatArtifactQualityRepairIssues(qaReport: Awaited<ReturnType<typeof buildQaReport>>) {
+  return qaReport.failed
+    .filter((checkName) => isRepairableArtifactQaCheck(checkName))
+    .map((checkName) => {
+      const check = qaReport.checks.find((candidate) => candidate.name === checkName);
+      const artifactName = checkName.startsWith("md_") ? "narrative_report.md" : "data_tables.xlsx";
+      return `Artifact quality issue [${checkName}]: ${artifactName} failed durable output QA. ${check?.detail ?? "No detail available"}`;
+    });
 }
 
 function classifyQualityPassport(input: {
@@ -8859,6 +9074,12 @@ function classifyRepairIssue(issue: string): keyof RepairIssueBuckets {
     return "sonnet";
   }
   if (
+    normalized.includes("artifact quality issue [md_") ||
+    normalized.includes("artifact quality issue [xlsx_")
+  ) {
+    return "sonnet";
+  }
+  if (
     normalized.includes("deck depth issue") ||
     normalized.includes("[content_shortfall]") ||
     normalized.includes("[content_overflow]") ||
@@ -8895,6 +9116,17 @@ function classifyRepairIssue(issue: string): keyof RepairIssueBuckets {
   }
 
   return "sonnet";
+}
+
+function buildRequiredReviseFiles(issues: string[]) {
+  const required = ["deck.pptx", "deck_manifest.json"];
+  if (issues.some((issue) => issue.toLowerCase().includes("artifact quality issue [md_"))) {
+    required.push("narrative_report.md");
+  }
+  if (issues.some((issue) => issue.toLowerCase().includes("artifact quality issue [xlsx_"))) {
+    required.push("data_tables.xlsx");
+  }
+  return required;
 }
 
 function isBlockingRepairIssue(issue: string) {
@@ -9062,6 +9294,7 @@ function isAdvisoryCritiqueIssue(issue: string) {
 
   // Wave 1 quality blockers: these must trigger revise, not remain advisory.
   if (n.includes("[competitor_tool_")) return false;
+  if (n.includes("[italian_missing_accent]")) return false;
   if (n.includes("[title_no_number]")) return false;
   if (n.includes("[title_number_coverage]")) return false;
   if (n.includes("redundancy issue [redundant_data_cut]")) return false;
@@ -9117,7 +9350,6 @@ async function buildQaReport(
     const structuralSlideCount = countStructuralSlidesInManifest(manifest);
     checks.push(
       { name: "pptx_present", passed: (artifacts.pptx?.buffer.length ?? 0) > 0, detail: `${artifacts.pptx?.buffer.length ?? 0} bytes` },
-      { name: "pdf_present", passed: (artifacts.pdf?.buffer.length ?? 0) > 0, detail: `${artifacts.pdf?.buffer.length ?? 0} bytes` },
       { name: "slide_count_positive", passed: manifest.slideCount > 0, detail: `${manifest.slideCount} slides` },
       {
         name: "slide_count_within_requested_plus_appendix_cap",
@@ -9167,14 +9399,6 @@ async function buildQaReport(
       artifacts.pptx!.buffer[0] === 0x50 &&
       artifacts.pptx!.buffer[1] === 0x4b;
     checks.push({ name: "pptx_zip_signature", passed: zipSignatureValid, detail: "pptx starts with PK" });
-
-    const pdfHeaderValid =
-      (artifacts.pdf?.buffer.length ?? 0) >= 4 &&
-      artifacts.pdf!.buffer[0] === 0x25 &&
-      artifacts.pdf!.buffer[1] === 0x50 &&
-      artifacts.pdf!.buffer[2] === 0x44 &&
-      artifacts.pdf!.buffer[3] === 0x46;
-    checks.push({ name: "pdf_header_signature", passed: pdfHeaderValid, detail: "pdf starts with %PDF" });
   } else {
     checks.push({
       name: "report_only_manifest_zero_slides",
@@ -9185,6 +9409,7 @@ async function buildQaReport(
 
   const mdContentValid = artifacts.md.buffer.toString("utf8").trim().length > 50;
   checks.push({ name: "md_content_present", passed: mdContentValid, detail: "narrative markdown has content" });
+  checks.push(...buildMarkdownArtifactChecks(artifacts.md.buffer, mode));
 
   const validated = await validateArtifactChecks(
     manifest,
@@ -9278,27 +9503,6 @@ async function validateArtifactChecks(
     }
   }
 
-  if (mode === "deck" && buffers.pdf) {
-    try {
-      const pdfDoc = await PDFDocument.load(buffers.pdf);
-      const pdfPageCount = pdfDoc.getPageCount();
-      const expectedPageCount = manifest.pageCount ?? manifest.slideCount;
-      const extraChecks = [
-        { name: "pdf_parseable", passed: true, detail: `${pdfPageCount} pages` },
-        {
-          name: "pdf_page_count_matches_manifest",
-          passed: pdfPageCount === expectedPageCount,
-          detail: `manifest=${expectedPageCount} pdf=${pdfPageCount}`,
-        },
-      ];
-      allChecks.push(...extraChecks);
-      allFailed.push(...extraChecks.filter((check) => !check.passed).map((check) => check.name));
-    } catch {
-      allChecks.push({ name: "pdf_parseable", passed: false, detail: "pdf-lib could not parse the PDF" });
-      allFailed.push("pdf_parseable");
-    }
-  }
-
   try {
     const zip = await JSZip.loadAsync(buffers.xlsx);
     const workbookXml = zip.file("xl/workbook.xml");
@@ -9314,9 +9518,11 @@ async function validateArtifactChecks(
     const chartsExpectingNativeExcel = manifestCharts.filter((chart) => supportsNativeExcelChart(chart.chartType));
     const chartsMissingExcelAnchor = chartsExpectingNativeExcel.filter((chart) => !chart.excelChartCellAnchor);
     const linkedNativeExcelCharts = manifestCharts.filter((chart) => chart.excelChartCellAnchor);
+    const workbookQualityChecks = await buildWorkbookArtifactChecks(zip, workbookSheetNames, nativeChartXmlCount);
     const extraChecks = [
       { name: "xlsx_zip_signature", passed: true, detail: "xlsx starts with PK" },
       { name: "xlsx_workbook_xml", passed: Boolean(workbookXml), detail: "xl/workbook.xml exists" },
+      ...workbookQualityChecks,
       {
         name: "xlsx_manifest_excel_sheet_links_present",
         passed: manifestCharts.length === 0 || chartsMissingExcelSheetName.length === 0,
@@ -9403,6 +9609,294 @@ async function validateArtifactChecks(
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };
+}
+
+type ArtifactQualityCheck = { name: string; passed: boolean; detail: string };
+
+const ITALIAN_ORTHOGRAPHY_PATTERNS: Array<{ pattern: RegExp; expected: string }> = [
+  { pattern: /\bpriorita\b/gi, expected: "priorità" },
+  { pattern: /\bpiu\b/gi, expected: "più" },
+  { pattern: /\bcaffe\b/gi, expected: "caffè" },
+  { pattern: /\bcapacita\b/gi, expected: "capacità" },
+  { pattern: /\bopportunita\b/gi, expected: "opportunità" },
+  { pattern: /\battivita\b/gi, expected: "attività" },
+  { pattern: /\bperche\b/gi, expected: "perché" },
+  { pattern: /\bqualita\b/gi, expected: "qualità" },
+  { pattern: /\bcitta\b/gi, expected: "città" },
+];
+
+const ITALIAN_ORTHOGRAPHY_REPLACEMENTS: Array<{ pattern: RegExp; replacement: string | ((match: string, ...captures: string[]) => string) }> = [
+  { pattern: /\bpriorita\b/gi, replacement: preserveCase("priorità") },
+  { pattern: /\bpiu\b/gi, replacement: preserveCase("più") },
+  { pattern: /\bcaffe\b/gi, replacement: preserveCase("caffè") },
+  { pattern: /\bcapacita\b/gi, replacement: preserveCase("capacità") },
+  { pattern: /\bopportunita\b/gi, replacement: preserveCase("opportunità") },
+  { pattern: /\battivita\b/gi, replacement: preserveCase("attività") },
+  { pattern: /\bperche\b/gi, replacement: preserveCase("perché") },
+  { pattern: /\bqualita\b/gi, replacement: preserveCase("qualità") },
+  { pattern: /\bcitta\b/gi, replacement: preserveCase("città") },
+];
+
+function preserveCase(replacement: string) {
+  return (match: string) => match === match.toUpperCase() ? replacement.toUpperCase() : replacement;
+}
+
+function applyCommonItalianOrthography(text: string) {
+  let current = text;
+  for (const rule of ITALIAN_ORTHOGRAPHY_REPLACEMENTS) {
+    current = typeof rule.replacement === "function"
+      ? current.replace(rule.pattern, rule.replacement)
+      : current.replace(rule.pattern, rule.replacement);
+  }
+  return current;
+}
+
+async function applyCommonTextCleanupToArtifacts(input: {
+  manifest: z.infer<typeof deckManifestSchema>;
+  pptx: GeneratedFile | null;
+  narrativeMarkdown: GeneratedFile;
+  xlsx: GeneratedFile;
+  phaseTelemetry: Record<string, unknown>;
+  stage: "author" | "revise" | "export";
+}) {
+  const manifest = applyCommonTextCleanupToManifest(input.manifest);
+  const narrativeMarkdown = applyCommonTextCleanupToGeneratedFile(input.narrativeMarkdown, ["markdown"]);
+  const pptx = input.pptx
+    ? await applyCommonTextCleanupToZipGeneratedFile(input.pptx, /^(ppt\/slides\/slide\d+\.xml|ppt\/notesSlides\/notesSlide\d+\.xml)$/i)
+    : null;
+  const xlsx = await applyCommonTextCleanupToZipGeneratedFile(input.xlsx, /^(xl\/sharedStrings\.xml|xl\/worksheets\/sheet\d+\.xml)$/i);
+
+  const changed = {
+    manifest: manifest !== input.manifest,
+    pptx: Boolean(input.pptx && pptx && pptx.buffer !== input.pptx.buffer),
+    narrativeMarkdown: narrativeMarkdown.buffer !== input.narrativeMarkdown.buffer,
+    xlsx: xlsx.buffer !== input.xlsx.buffer,
+  };
+  if (changed.manifest || changed.pptx || changed.narrativeMarkdown || changed.xlsx) {
+    const current = (input.phaseTelemetry.textCleanup as Record<string, unknown> | undefined) ?? {};
+    input.phaseTelemetry.textCleanup = {
+      ...current,
+      [input.stage]: changed,
+    };
+  }
+
+  return {
+    manifest,
+    pptx,
+    narrativeMarkdown,
+    xlsx,
+  };
+}
+
+function applyCommonTextCleanupToGeneratedFile(file: GeneratedFile, formats: string[]) {
+  const text = file.buffer.toString("utf8");
+  const cleaned = applyCommonItalianOrthography(text);
+  if (cleaned === text) {
+    return file;
+  }
+
+  return {
+    ...file,
+    fileId: `${file.fileId}-text-cleaned-${formats.join("-")}`,
+    buffer: Buffer.from(cleaned, "utf8"),
+  };
+}
+
+async function applyCommonTextCleanupToZipGeneratedFile(file: GeneratedFile, pathPattern: RegExp) {
+  try {
+    const zip = await JSZip.loadAsync(file.buffer);
+    let changed = false;
+    for (const [entryName, entry] of Object.entries(zip.files)) {
+      if (!pathPattern.test(entryName)) {
+        pathPattern.lastIndex = 0;
+        continue;
+      }
+      pathPattern.lastIndex = 0;
+      const xml = await entry.async("string");
+      const cleanedXml = applyCommonItalianOrthography(xml);
+      if (cleanedXml !== xml) {
+        zip.file(entryName, cleanedXml);
+        changed = true;
+      }
+    }
+    if (!changed) {
+      return file;
+    }
+    return {
+      ...file,
+      fileId: `${file.fileId}-text-cleaned`,
+      buffer: Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" })),
+    };
+  } catch {
+    return file;
+  }
+}
+
+function applyCommonTextCleanupToManifest(manifest: z.infer<typeof deckManifestSchema>) {
+  let changed = false;
+  const clean = (value: string | undefined | null) => {
+    if (typeof value !== "string") {
+      return value;
+    }
+    const cleaned = applyCommonItalianOrthography(value);
+    if (cleaned !== value) {
+      changed = true;
+    }
+    return cleaned;
+  };
+
+  const slides = manifest.slides.map((slide) => ({
+    ...slide,
+    title: clean(slide.title) ?? slide.title,
+    subtitle: clean(slide.subtitle) ?? slide.subtitle,
+    body: clean(slide.body) ?? slide.body,
+    bullets: slide.bullets?.map((bullet) => clean(bullet) ?? bullet),
+    callout: slide.callout
+      ? {
+          ...slide.callout,
+          text: clean(slide.callout.text) ?? slide.callout.text,
+        }
+      : slide.callout,
+    metrics: slide.metrics?.map((metric) => ({
+      ...metric,
+      label: clean(metric.label) ?? metric.label,
+      value: clean(metric.value) ?? metric.value,
+      delta: clean(metric.delta) ?? metric.delta,
+    })),
+  }));
+  const charts = manifest.charts.map((chart) => ({
+    ...chart,
+    title: clean(chart.title) ?? chart.title,
+    sourceNote: clean(chart.sourceNote) ?? chart.sourceNote,
+    xAxisLabel: clean(chart.xAxisLabel) ?? chart.xAxisLabel,
+    yAxisLabel: clean(chart.yAxisLabel) ?? chart.yAxisLabel,
+    bubbleSizeLabel: clean(chart.bubbleSizeLabel) ?? chart.bubbleSizeLabel,
+    categories: chart.categories?.map((category) => clean(category) ?? category),
+  }));
+
+  return changed ? { ...manifest, slides, charts } : manifest;
+}
+
+export function buildMarkdownArtifactChecks(buffer: Buffer, mode: QaMode): ArtifactQualityCheck[] {
+  const markdownText = buffer.toString("utf8");
+  const trimmed = markdownText.trim();
+  const lineCount = trimmed.length === 0 ? 0 : markdownText.split(/\r?\n/).length;
+  const wordCount = trimmed.length === 0 ? 0 : trimmed.split(/\s+/).filter(Boolean).length;
+  const normalized = markdownText.normalize("NFC");
+  const lower = normalized.toLowerCase();
+  const minLines = mode === "report_only" ? 800 : 500;
+  const minWords = mode === "report_only" ? 8_000 : 5_000;
+  const requiredSectionGroups = [
+    ["interpretazione del brief", "brief interpretation"],
+    ["executive summary", "sintesi esecutiva"],
+    ["metodologia", "methodology"],
+    ["raccomandazioni", "recommendations"],
+    ["appendice", "appendix", "dati di supporto", "supporting data"],
+  ];
+  const missingSectionGroups = requiredSectionGroups.filter((group) => !group.some((needle) => lower.includes(needle)));
+  const orthographyFindings: string[] = [];
+  for (const rule of ITALIAN_ORTHOGRAPHY_PATTERNS) {
+    if (rule.pattern.test(normalized)) {
+      orthographyFindings.push(rule.expected);
+    }
+    rule.pattern.lastIndex = 0;
+  }
+
+  return [
+    {
+      name: "md_minimum_line_count",
+      passed: lineCount >= minLines,
+      detail: `lines=${lineCount} minimum=${minLines}`,
+    },
+    {
+      name: "md_minimum_word_count",
+      passed: wordCount >= minWords,
+      detail: `words=${wordCount} minimum=${minWords}`,
+    },
+    {
+      name: "md_required_sections_present",
+      passed: missingSectionGroups.length === 0,
+      detail: missingSectionGroups.length === 0
+        ? "required leave-behind sections present"
+        : `missing section families: ${missingSectionGroups.map((group) => group[0]).join(", ")}`,
+    },
+    {
+      name: "md_italian_orthography_clean",
+      passed: orthographyFindings.length === 0,
+      detail: orthographyFindings.length === 0
+        ? "no common unaccented Italian forms detected"
+        : `expected accented forms: ${[...new Set(orthographyFindings)].join(", ")}`,
+    },
+  ];
+}
+
+async function buildWorkbookArtifactChecks(
+  zip: JSZip,
+  workbookSheetNames: string[],
+  nativeChartXmlCount: number,
+): Promise<ArtifactQualityCheck[]> {
+  const worksheetFiles = Object.keys(zip.files)
+    .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
+    .sort((a, b) => {
+      const aNumber = Number.parseInt(a.match(/sheet(\d+)\.xml/i)?.[1] ?? "0", 10);
+      const bNumber = Number.parseInt(b.match(/sheet(\d+)\.xml/i)?.[1] ?? "0", 10);
+      return aNumber - bNumber;
+    });
+  const dataWorksheetFiles = worksheetFiles.filter((_, index) => {
+    const sheetName = workbookSheetNames[index] ?? "";
+    return sheetName.trim().toLowerCase() !== "readme";
+  });
+  const worksheetStats = await Promise.all(dataWorksheetFiles.map(async (name) => {
+    const xml = await zip.file(name)?.async("string") ?? "";
+    return {
+      name,
+      hasTable: /<tablePart\b/i.test(xml),
+      hasFreezePane: /<pane\b/i.test(xml),
+      hasColumnWidths: /<cols\b/i.test(xml) && /<col\b/i.test(xml),
+    };
+  }));
+  const drawingFiles = Object.keys(zip.files).filter((name) => /^xl\/drawings\/drawing\d+\.xml$/i.test(name));
+  const drawingStats = await Promise.all(drawingFiles.map(async (name) => {
+    const xml = await zip.file(name)?.async("string") ?? "";
+    return {
+      name,
+      anchorCount: (xml.match(/<(?:[a-z]+:)?(?:twoCellAnchor|oneCellAnchor)\b/gi) ?? []).length,
+      chartRefCount: (xml.match(/<(?:[a-z]+:)?chart\b/gi) ?? []).length,
+    };
+  }));
+  const tableMissing = worksheetStats.filter((stat) => !stat.hasTable).map((stat) => stat.name);
+  const freezeMissing = worksheetStats.filter((stat) => !stat.hasFreezePane).map((stat) => stat.name);
+  const widthMissing = worksheetStats.filter((stat) => !stat.hasColumnWidths).map((stat) => stat.name);
+  const drawingChartRefs = drawingStats.reduce((sum, stat) => sum + stat.chartRefCount, 0);
+  const drawingAnchors = drawingStats.reduce((sum, stat) => sum + stat.anchorCount, 0);
+
+  return [
+    {
+      name: "xlsx_readme_sheet_present",
+      passed: workbookSheetNames.some((name) => name.trim().toLowerCase() === "readme"),
+      detail: `sheets=${workbookSheetNames.join(", ") || "none"}`,
+    },
+    {
+      name: "xlsx_data_sheets_have_tables",
+      passed: dataWorksheetFiles.length === 0 || tableMissing.length === 0,
+      detail: tableMissing.length === 0 ? `tables present on ${dataWorksheetFiles.length} data sheet(s)` : `missing tablePart: ${tableMissing.slice(0, 5).join(", ")}`,
+    },
+    {
+      name: "xlsx_data_sheets_have_freeze_panes",
+      passed: dataWorksheetFiles.length === 0 || freezeMissing.length === 0,
+      detail: freezeMissing.length === 0 ? `freeze panes present on ${dataWorksheetFiles.length} data sheet(s)` : `missing pane: ${freezeMissing.slice(0, 5).join(", ")}`,
+    },
+    {
+      name: "xlsx_data_sheets_have_column_widths",
+      passed: dataWorksheetFiles.length === 0 || widthMissing.length === 0,
+      detail: widthMissing.length === 0 ? `column widths present on ${dataWorksheetFiles.length} data sheet(s)` : `missing column widths: ${widthMissing.slice(0, 5).join(", ")}`,
+    },
+    {
+      name: "xlsx_native_chart_drawings_present",
+      passed: nativeChartXmlCount === 0 || (drawingChartRefs >= nativeChartXmlCount && drawingAnchors >= nativeChartXmlCount),
+      detail: `nativeChartXml=${nativeChartXmlCount} drawingChartRefs=${drawingChartRefs} anchors=${drawingAnchors}`,
+    },
+  ];
 }
 
 function extractWorkbookSheetNames(workbookXml: string) {
@@ -10781,6 +11275,9 @@ function buildHaikuCallFnForResearch(client: Anthropic): HaikuCallFn {
 
 export const __test__ = {
   bindWorkbookSheetToChart,
+  buildRequiredReviseFiles,
+  buildWorkbookArtifactChecks,
+  formatArtifactQualityRepairIssues,
   buildWorkbookChartBindingRequests,
   isPlaceholderChartTitle,
   selectBestWorkbookSheetForChart,

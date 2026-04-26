@@ -2,7 +2,7 @@
 name: basquio-rendering
 description: >
   Use when implementing template ingestion, brand-token interpretation, chart rendering,
-  PowerPoint generation, PDF generation, and artifact QA.
+  PowerPoint generation, internal rendered-preview support, and artifact QA.
 ---
 
 # Basquio Rendering
@@ -13,7 +13,8 @@ Render high-quality artifacts without turning renderer constraints into product 
 
 ## Rules
 
-- PPTX and PDF come from the same `SlideSpec[]`
+- Durable user-facing artifacts are PPTX, narrative markdown, and data workbook
+- PDF is internal visual-QA support only and must not be required for publish
 - prefer editable PPT charts for standard families
 - prefer ECharts SSR for advanced export visuals
 - use Browserless for PDF by default
@@ -25,7 +26,7 @@ Render high-quality artifacts without turning renderer constraints into product 
 - treat image-chart rendering as a production contract, not a best-effort nicety; if the screenshot path fails in prod, audit why before accepting renderer fallbacks
 - do not silently accept shape-built or native-chart fallback as "close enough" when the intended contract is pixel-perfect chart images
 - overflow, collision, clipped callouts, unreadable tables, and underfilled slides are render failures, not polish debt
-- PPTX and PDF must share the same visual contract, not just the same slide list; token/background/layout drift between renderers is a regression
+- If internal PDF is generated for visual QA, it must reflect the PPTX closely enough to judge visible deck defects
 
 ## Implementation Checklist
 
@@ -35,7 +36,7 @@ Render high-quality artifacts without turning renderer constraints into product 
 3. Preserve theme, brand-token, and layout constraints from `TemplateProfile`.
 4. Verify exported slides fit inside the canonical grid with no overlaps, no clipped boxes, and no effectively empty slides.
 5. Treat scene audit failures as artifact failures, not just warnings to log away.
-6. When production artifacts look worse than the plan, inspect downloaded PPTX/PDF plus runtime logs before changing spacing heuristics.
+6. When production artifacts look worse than the plan, inspect downloaded PPTX, markdown, workbook, any internal QA preview, and runtime logs before changing spacing heuristics.
 7. When changing product UI, preserve the canonical shell and landing-page rules from the design synthesis doc.
 8. Validate output opens and assets resolve.
 9. Run `pnpm qa:basquio`.

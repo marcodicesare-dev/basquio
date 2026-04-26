@@ -1,5 +1,24 @@
 # Decision Log
 
+## April 26, 2026, Direct publish contract and recovery preservation
+
+Decision:
+- The durable user-facing artifact contract is `deck.pptx`, `narrative_report.md`, and `data_tables.xlsx`.
+- `deck.pdf` is internal visual-QA support only when it can be derived safely from the PPTX. Claude must not be asked to generate or attach PDF, and missing PDF must not fail export.
+- Full-deck authoring must write the narrative report before slide generation and pass a 500-line plus 5000-word local gate before moving to PPTX.
+- Artifact QA failures for short markdown reports or weak workbook formatting route into revise and require the failed artifact to be regenerated.
+- If a later recovery attempt fails after a prior attempt published `pptx`, `md`, and `xlsx`, the finalizer and dashboard must preserve the completed/degraded artifact set instead of hiding downloads behind top-level failure.
+
+Why:
+- Rossella's April 26 Segafredo forensic run showed a prior successful attempt with readable PPTX, markdown, and workbook artifacts, but a later failed attempt overwrote the top-level status and hid downloads in the dashboard.
+- The same run showed `narrative_report.md` at 403 lines and 4145 words, below the live report contract. The previous prompt asked for depth but did not enforce that depth before Phase 2 or route the failure as required artifact repair.
+- PDF had become a brittle dependency even though it is not part of the product promise. Users need the editable PPTX, audit-ready markdown, and formatted workbook.
+
+Implication:
+- Future quality work should harden the three durable artifacts first.
+- Visual QA may still use internal PDF when available, but PDF cannot be a user-facing artifact, required upload, or terminal publish blocker.
+- Dashboard status must be derived from durable artifact availability as well as top-level `deck_runs.status`.
+
 ## April 25, 2026, Live Anthropic authoring contract by branch
 
 Decision:
@@ -802,7 +821,7 @@ Implication:
 Decision:
 - Railway worker shutdown now uses a two-stage policy: stop claiming immediately, keep heartbeats during a bounded drain window, and only abort/supersede in-flight runs after the drain timeout expires
 - Claude author/revise loops must accept a worker abort signal and throw a shutdown-specific interrupt before another provider continuation or retry is issued
-- checkpoint resume is only valid when the checkpoint carries the full durable artifact set (`deck.pptx`, `deck.pdf`, `narrative_report.md`, `data_tables.xlsx`) and recovered analysis matches the same attempt that produced the checkpoint
+- checkpoint resume is only valid when the checkpoint carries the full durable user artifact set (`deck.pptx`, `narrative_report.md`, `data_tables.xlsx`) plus any internal QA support and recovered analysis matches the same attempt that produced the checkpoint
 - stale recovery must close open request-usage sentinel rows and must not supersede an attempt while there is still a reasonably fresh in-flight phase request
 - forensic audit scripts must dedupe shadow `request_record` rows from phase-level usage rows before summing or presenting token spend
 
