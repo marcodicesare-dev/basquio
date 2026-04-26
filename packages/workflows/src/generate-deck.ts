@@ -963,6 +963,35 @@ function buildSkippedVisualQaResult(reason: string): RenderedPageQaResult {
   };
 }
 
+async function sanitizeGeneratedPptxForQa(input: {
+  pptx: GeneratedFile | null;
+  phaseTelemetry: Record<string, unknown>;
+  stage: "author" | "revise" | "export";
+}): Promise<GeneratedFile | null> {
+  if (!input.pptx) {
+    return null;
+  }
+
+  const sanitizedBuffer = await sanitizePptxMedia(input.pptx.buffer);
+  if (sanitizedBuffer === input.pptx.buffer) {
+    return input.pptx;
+  }
+
+  const current = (input.phaseTelemetry.pptxPackageSanitization as Record<string, unknown> | undefined) ?? {};
+  input.phaseTelemetry.pptxPackageSanitization = {
+    ...current,
+    [input.stage]: {
+      sourceBytes: input.pptx.buffer.length,
+      sanitizedBytes: sanitizedBuffer.length,
+    },
+  };
+
+  return {
+    ...input.pptx,
+    buffer: sanitizedBuffer,
+  };
+}
+
 async function runRenderedPageQaSafely(input: {
   client: Anthropic;
   pdf: GeneratedFile;
@@ -2521,6 +2550,13 @@ export async function generateDeckRun(
         phaseTelemetry,
         stage: "author",
       });
+      if (!isReportOnly) {
+        pptxFile = await sanitizeGeneratedPptxForQa({
+          pptx: pptxFile,
+          phaseTelemetry,
+          stage: "author",
+        });
+      }
       if (!isReportOnly && pptxFile) {
         pdfFile = await ensureValidPdfArtifact({
           pdf: pdfFile,
@@ -2895,7 +2931,9 @@ export async function generateDeckRun(
         let bestVisualQa = initialVisualQa.report;
         let bestCritiqueIssues = critiqueIssues;
         let bestBlockingCritiqueIssues = blockingCritiqueIssues;
+        let bestClaimTraceabilityIssues = claimTraceabilityIssues;
         let reviseLoopCount = 0;
+        let consecutiveRegressionRejections = 0;
         let reviseAggregateUsage: Required<ClaudeUsage> = {
           input_tokens: 0,
           output_tokens: 0,
@@ -3150,6 +3188,11 @@ export async function generateDeckRun(
           finalPptx = cleanedReviseArtifacts.pptx!;
           finalNarrativeMarkdown = cleanedReviseArtifacts.narrativeMarkdown;
           xlsxFile = cleanedReviseArtifacts.xlsx;
+          finalPptx = (await sanitizeGeneratedPptxForQa({
+            pptx: finalPptx,
+            phaseTelemetry,
+            stage: "revise",
+          }))!;
           finalManifest = await enrichManifestWithPptxVisibleText({
             manifest: finalManifest,
             pptx: finalPptx,
@@ -3347,6 +3390,7 @@ export async function generateDeckRun(
           });
           const frontierComparison = compareRepairFrontierState(activeFrontierState, bestFrontierState);
           if (frontierComparison >= 0) {
+            consecutiveRegressionRejections = 0;
             bestFrontierState = activeFrontierState;
             bestManifest = finalManifest;
             bestPdf = finalPdf;
@@ -3356,7 +3400,9 @@ export async function generateDeckRun(
             bestVisualQa = finalVisualQa;
             bestCritiqueIssues = activeCritiqueIssues;
             bestBlockingCritiqueIssues = activeBlockingCritiqueIssues;
+            bestClaimTraceabilityIssues = claimTraceabilityIssues;
           } else {
+            consecutiveRegressionRejections += 1;
             await insertEvent(config, runId, attempt, "revise", "frontier_regression_rejected", {
               iteration: reviseLoopCount,
               candidateFrontier: activeFrontierState,
@@ -3373,6 +3419,20 @@ export async function generateDeckRun(
             activeVisualQa = bestVisualQa;
             activeCritiqueIssues = bestCritiqueIssues;
             activeBlockingCritiqueIssues = bestBlockingCritiqueIssues;
+            claimTraceabilityIssues = bestClaimTraceabilityIssues;
+            const reviseOverBudget =
+              reviseBudgetGate.overBudget ||
+              reviseSpendGate.overBudget ||
+              reviseVisualSpendGate.overBudget;
+            if (consecutiveRegressionRejections >= 2 && reviseOverBudget) {
+              await insertEvent(config, runId, attempt, "revise", "revise_regression_budget_stop", {
+                iteration: reviseLoopCount,
+                consecutiveRegressionRejections,
+                spentUsd,
+                bestFrontier: bestFrontierState,
+              }).catch(() => {});
+              break;
+            }
           }
 
           if (!deckStillNeedsRevise({
@@ -3393,6 +3453,7 @@ export async function generateDeckRun(
         activeVisualQa = bestVisualQa;
         activeCritiqueIssues = bestCritiqueIssues;
         activeBlockingCritiqueIssues = bestBlockingCritiqueIssues;
+        claimTraceabilityIssues = bestClaimTraceabilityIssues;
 
         phaseTelemetry.revise = {
           ...buildPhaseTelemetry(reviseModel, {
@@ -3643,7 +3704,12 @@ export async function generateDeckRun(
       }
 
       if (!isReportOnly) {
-        let brandedBuffer = await sanitizePptxMedia(finalPptx!.buffer);
+        finalPptx = await sanitizeGeneratedPptxForQa({
+          pptx: finalPptx,
+          phaseTelemetry,
+          stage: "export",
+        });
+        let brandedBuffer = finalPptx!.buffer;
 
         // PGTI: deterministically inject template branding (logo, theme, decorative shapes)
         if (templateProfile.sourceType === "pptx" && templateProfile.brandTokens?.injection) {
@@ -5588,6 +5654,7 @@ function buildAuthorMessage(
           "- Author self-check must verify: every promised user artifact exists; Italian copy uses proper accents; non-cover titles are insight sentences with evidence-backed numbers when the evidence supports one; no title invents a number; chart claims match the visible chart; data_tables.xlsx has README, formatted tables, freeze panes, widths, and editable chart companions where supported.",
           "- If a quality rule cannot be satisfied without inventing data, prefer a truthful weaker claim and explain the evidence limit. Never add filler numbers just to satisfy title-number rules.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
+          "- WORKBOOK TRACEABILITY CONTRACT: every metric, target, budget, range, ROI, baseline, and causal driver visible in a slide title, body, card, callout, or recommendation must appear in the slide-linked worksheet in data_tables.xlsx with clear headers and source or formula inputs. If the worksheet does not contain it, remove the claim instead of hoping QA infers it from the raw upload.",
           "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
           "- CLAIM-TO-CHART BINDING: if the slide says the issue is rotation, productivity, ROS, price-led growth, or a distribution opportunity, the hero exhibit must show that metric or a direct causal driver. Do not chart sales value and bury productivity in a side note.",
           "- STORYLINE CONTIGUITY: finish one analytical branch before switching to another. If you revisit an earlier branch later in the deck, it must be an explicit synthesis/comparison or a deeper follow-up, not a lateral jump.",
@@ -6079,6 +6146,9 @@ function buildReviseIssueDirectives(issues: string[]) {
   }
   if (normalizedIssues.some((issue) => issue.includes("[title_claim_unverified]") || issue.includes("[data_primacy]"))) {
     directives.push("If a critique issue says title_claim_unverified or data_primacy, remove the unsupported number or rewrite the claim so it matches the linked evidence exactly. Never preserve a numeric claim that the evidence does not support.");
+  }
+  if (normalizedIssues.some((issue) => issue.includes("[claim_traceability]"))) {
+    directives.push("If a critique issue says claim_traceability, remove or soften the unsupported recommendation or diagnosis. Do not replace it with a new target, ROI range, budget range, or causal explanation. If you keep a quantified recommendation, the linked workbook sheet must contain the exact baseline, formula inputs, and derived value used on the slide.");
   }
   if (normalizedIssues.some((issue) => issue.includes("[claim_chart_metric_mismatch]") || issue.includes("[distribution_claim_without_productivity_proof]"))) {
     directives.push("If a critique issue says claim_chart_metric_mismatch or distribution_claim_without_productivity_proof, either add the cited metric directly to the exhibit or rewrite the copy so it only claims what the visible chart proves.");
@@ -10110,6 +10180,7 @@ function classifyQualityPassport(input: {
   const contractCriticalCount = input.contract.actionableIssues.length;
   const criticalCount = writingCriticalCount + visualCriticalCount + claimCriticalCount + contractCriticalCount;
   const majorCount = writingMajorCount + visualMajorCount + claimMajorCount;
+  const visualQaVerified = !/^Visual QA skipped:/i.test(input.visualQa.summary.trim());
   const mecePass = input.lint.planLint.pairViolations.every((issue) => issue.severity === "minor")
     && input.lint.planLint.deckViolations.every((issue) => issue.severity === "minor");
 
@@ -10122,6 +10193,8 @@ function classifyQualityPassport(input: {
     || majorCount > 10
   ) {
     classification = "recovery";
+  } else if (!visualQaVerified) {
+    classification = "bronze";
   } else if (majorCount <= 3 && input.visualQa.score >= 8.5) {
     classification = "gold";
   } else if (majorCount <= 6 && input.visualQa.score >= 7) {
@@ -10136,7 +10209,7 @@ function classifyQualityPassport(input: {
     majorCount,
     visualScore: input.visualQa.score,
     mecePass,
-    summary: `Quality passport ${classification}: visual=${input.visualQa.score.toFixed(1)}, critical=${criticalCount}, major=${majorCount}, mecePass=${mecePass}.`,
+    summary: `Quality passport ${classification}: visual=${input.visualQa.score.toFixed(1)}, visualVerified=${visualQaVerified}, critical=${criticalCount}, major=${majorCount}, mecePass=${mecePass}.`,
   };
 }
 
@@ -12728,6 +12801,8 @@ export const __test__ = {
   buildWorkbookChartBindingRequests,
   isPlaceholderChartTitle,
   lintManifestPlan,
+  classifyQualityPassport,
+  sanitizePptxMedia,
   enrichManifestWithPptxVisibleText,
   buildDeterministicRecoveryArtifacts,
   collectArtifactIntegrityPublishFailures,

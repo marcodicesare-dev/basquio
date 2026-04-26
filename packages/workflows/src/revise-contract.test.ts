@@ -132,6 +132,23 @@ describe("buildReviseMessage", () => {
     expect(text).not.toContain("Secondary issues to consider only if they can be fixed");
   });
 
+  it("tells revise to remove unsupported claim-traceability defects instead of inventing replacement targets", () => {
+    const message = buildReviseMessage({
+      issues: [
+        "Slide 6 claim issue [claim_traceability]: Recommendation states a 73% distribution target and £1,500-2,000/month gain, but the linked workbook sheet does not contain those target or gain calculations.",
+      ],
+      manifest,
+      currentPdf,
+      visualQa,
+      targetSlideCount: 5,
+    });
+
+    const text = extractText(message);
+    expect(text).toContain("If a critique issue says claim_traceability");
+    expect(text).toContain("Do not replace it with a new target, ROI range, budget range, or causal explanation.");
+    expect(text).toContain("the linked workbook sheet must contain the exact baseline, formula inputs, and derived value");
+  });
+
   it("grants more revise loops for heavy sonnet repair frontiers", () => {
     expect(computeReviseIterationBudget({
       repairLane: "sonnet",

@@ -111,6 +111,59 @@ describe("collectPublishGateFailures", () => {
     expect(gate.advisories).toContain("lint:Deck writing issue [low_layout_variety]: Only 3 layout types used across 12 slides");
   });
 
+  it("does not award reviewed quality when rendered visual QA was skipped", () => {
+    const passport = __test__.classifyQualityPassport({
+      qaReport: {
+        failed: [],
+        checks: [],
+      } as never,
+      lint: {
+        result: { deckViolations: [], slideResults: [] },
+        fidelity: { violations: [] },
+        planLint: { pairViolations: [], deckViolations: [] },
+      } as never,
+      contract: {
+        actionableIssues: [],
+      } as never,
+      visualQa: {
+        score: 8.8,
+        overallStatus: "green",
+        summary: "Visual QA skipped: invalid_internal_pdf:pdf_invalid_header",
+        deckNeedsRevision: false,
+        issues: [],
+        strongestSlides: [],
+        weakestSlides: [],
+      },
+      claimIssues: [],
+    });
+
+    expect(passport.classification).toBe("bronze");
+    expect(passport.summary).toContain("visualVerified=false");
+  });
+
+  it("removes orphan slide-master content type overrides before PPTX QA", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "[Content_Types].xml",
+      [
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+        '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>',
+        '<Override PartName="/ppt/slideMasters/slideMaster2.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>',
+        "</Types>",
+      ].join(""),
+    );
+    zip.file("ppt/slideMasters/slideMaster1.xml", "<p:sldMaster/>");
+    const buffer = Buffer.from(await zip.generateAsync({ type: "nodebuffer" }));
+
+    const sanitized = await __test__.sanitizePptxMedia(buffer);
+    const sanitizedZip = await JSZip.loadAsync(sanitized);
+    const contentTypes = await sanitizedZip.file("[Content_Types].xml")!.async("string");
+
+    expect(contentTypes).toContain("/ppt/slideMasters/slideMaster1.xml");
+    expect(contentTypes).not.toContain("/ppt/slideMasters/slideMaster2.xml");
+  });
+
   it("turns invalid author analysis plans into a complete artifact rebuild instruction", () => {
     const gate = __test__.buildAuthorPlanQualityGate({
       sheetReport: {
