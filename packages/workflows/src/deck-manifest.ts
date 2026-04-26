@@ -27,6 +27,11 @@ export const deckManifestSchema = z.object({
       text: z.string(),
       tone: z.enum(["accent", "green", "orange"]).optional(),
     }).optional(),
+    recommendationBlock: z.object({
+      condition: z.string().optional(),
+      recommendation: z.string().optional(),
+      quantification: z.string().optional(),
+    }).optional(),
     evidenceIds: z.array(z.string()).optional(),
     chartId: z.string().optional(),
     hasDataTable: z.boolean().optional(),
@@ -109,6 +114,7 @@ function normalizeSlide(input: unknown, index: number, zeroBasedSlidePositions =
     bullets: readStringArray(record.bullets),
     metrics: normalizeMetrics(record.metrics),
     callout: normalizeCallout(record.callout),
+    recommendationBlock: normalizeRecommendationBlock(record.recommendationBlock ?? record.recommendation_block),
     evidenceIds: readStringArray(record.evidenceIds) ?? readStringArray(record.evidence_ids),
     chartId:
       readString(record.chartId) ??
@@ -117,6 +123,22 @@ function normalizeSlide(input: unknown, index: number, zeroBasedSlidePositions =
     hasChartAnnotations:
       readBoolean(record.hasChartAnnotations) ??
       readBoolean(record.has_chart_annotations),
+  };
+}
+
+function normalizeRecommendationBlock(input: unknown) {
+  const record = asRecord(input);
+  const condition = readString(record.condition);
+  const recommendation = readString(record.recommendation);
+  const quantification = readString(record.quantification);
+  if (!condition && !recommendation && !quantification) {
+    return undefined;
+  }
+
+  return {
+    ...(condition ? { condition } : {}),
+    ...(recommendation ? { recommendation } : {}),
+    ...(quantification ? { quantification } : {}),
   };
 }
 

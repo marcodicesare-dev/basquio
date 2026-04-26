@@ -48,4 +48,16 @@ describe("validateTitleClaims", () => {
 
     expect(issues).toHaveLength(0);
   });
+
+  it("accepts headline numbers repeated in visible metric cards when a summary slide has no chart sheet", () => {
+    const issues = validateTitleClaims({
+      position: 2,
+      title: "NS leads at 55.8% share; TT erosion offsets channel wins",
+      metrics: [
+        { label: "Northstar share", value: "55.8%", delta: "-0.5pp vs Jan" },
+      ],
+    });
+
+    expect(issues).toHaveLength(0);
+  });
 });

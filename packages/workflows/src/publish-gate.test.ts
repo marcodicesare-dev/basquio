@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
 
 import { __test__, collectPublishGateFailures } from "./generate-deck";
 
@@ -300,5 +301,56 @@ describe("collectPublishGateFailures", () => {
       "pptx_zip_signature",
       "xlsx_workbook_xml",
     ]);
+  });
+
+  it("enriches sparse manifests from actual PPTX visible text before QA", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "ppt/slides/slide2.xml",
+      [
+        "<p:sld><p:cSld><p:spTree>",
+        "<a:t>Q2 COMMERCIAL ACTIONS</a:t>",
+        "<a:t>NORTHSTAR SHARE</a:t>",
+        "<a:t>55.8%</a:t>",
+        "<a:t>-0.5pp vs Jan</a:t>",
+        "<a:t>Restore TT distribution to 73%+</a:t>",
+        "<a:t>TT promo efficiency is 8.9x; PL gained 3.6pp channel share.</a:t>",
+        "<a:t>Recover ~$4K/month value</a:t>",
+        "</p:spTree></p:cSld></p:sld>",
+      ].join(""),
+    );
+    const buffer = Buffer.from(await zip.generateAsync({ type: "nodebuffer" }));
+
+    const enriched = await __test__.enrichManifestWithPptxVisibleText({
+      manifest: {
+        slideCount: 2,
+        pageCount: 2,
+        slides: [
+          { position: 1, layoutId: "cover", slideArchetype: "cover", title: "Cover" },
+          {
+            position: 2,
+            layoutId: "recommendation-cards",
+            slideArchetype: "recommendation-cards",
+            pageIntent: "q2-actions",
+            title: "Three Q2 actions protect the channel reset",
+          },
+        ],
+        charts: [],
+      } as never,
+      pptx: {
+        fileId: "pptx",
+        fileName: "deck.pptx",
+        mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        buffer,
+      },
+    });
+
+    expect(enriched.slides[1]?.body).toContain("Restore TT distribution to 73%+");
+    expect(enriched.slides[1]?.body).toContain("Recover ~$4K/month value");
+    expect(enriched.slides[1]?.metrics).toContainEqual({
+      label: "NORTHSTAR SHARE",
+      value: "55.8%",
+      delta: "-0.5pp vs Jan",
+    });
   });
 });

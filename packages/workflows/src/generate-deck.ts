@@ -2404,6 +2404,12 @@ export async function generateDeckRun(
       pptxFile = cleanedAuthorArtifacts.pptx;
       finalNarrativeMarkdown = cleanedAuthorArtifacts.narrativeMarkdown;
       xlsxFile = cleanedAuthorArtifacts.xlsx;
+      manifest = await enrichManifestWithPptxVisibleText({
+        manifest,
+        pptx: pptxFile,
+        phaseTelemetry,
+        stage: "author",
+      });
       if (!isReportOnly && pptxFile) {
         pdfFile = await ensureValidPdfArtifact({
           pdf: pdfFile,
@@ -3033,6 +3039,12 @@ export async function generateDeckRun(
           finalPptx = cleanedReviseArtifacts.pptx!;
           finalNarrativeMarkdown = cleanedReviseArtifacts.narrativeMarkdown;
           xlsxFile = cleanedReviseArtifacts.xlsx;
+          finalManifest = await enrichManifestWithPptxVisibleText({
+            manifest: finalManifest,
+            pptx: finalPptx,
+            phaseTelemetry,
+            stage: "revise",
+          });
           if (xlsxFile) {
             try {
               fidelityContext = buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run);
@@ -3551,6 +3563,12 @@ export async function generateDeckRun(
       finalPptx = cleanedExportArtifacts.pptx;
       finalDocx = cleanedExportArtifacts.narrativeMarkdown;
       finalXlsx = cleanedExportArtifacts.xlsx;
+      finalManifest = await enrichManifestWithPptxVisibleText({
+        manifest: finalManifest,
+        pptx: finalPptx,
+        phaseTelemetry,
+        stage: "export",
+      });
       if (!isReportOnly && finalPptx) {
         finalPdf = await ensureValidPdfArtifact({
           pdf: finalPdf,
@@ -5639,6 +5657,8 @@ function buildAuthorMessage(
           "- Each chart in the manifest should include `categoryCount` and `categories[]` when available so Basquio can verify density and label fit.",
           "- Each chart in the manifest should also include `excelSheetName` for the linked `data_tables.xlsx` sheet and `excelChartCellAnchor` when a native Excel chart object exists.",
           "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `pageIntent`, `title`, and `chartId` when applicable.",
+          "- Each slide entry in `deck_manifest.json` must mirror the visible PPTX text used for QA: include `subtitle`, `body`, `bullets[]`, `metrics[]`, `callout`, and `recommendationBlock` whenever those words or numbers are visible on the slide. Do not leave recommendation-card or executive-summary slide text only inside the PPTX.",
+          "- `deck_manifest.json` is Basquio's QA source of truth. If a visible recommendation, target, metric card, or rationale is missing from the manifest, QA will treat the claim as unsupported even if it appears in the PPTX.",
           "- For charted slides, each slide entry in `deck_manifest.json` must also set `hasDataTable` and `hasChartAnnotations` so Basquio can verify evidence co-location deterministically.",
           analysis
             ? "- Your final assistant message must attach deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json as container uploads before finishing."
@@ -8265,6 +8285,7 @@ function manifestToLintInput(manifest: z.infer<typeof deckManifestSchema>): Slid
 
   return manifest.slides.map((slide, index) => {
     const recommendationBody = buildRecommendationBlockBody(slide);
+    const recommendationBullets = buildRecommendationBlockBullets(slide);
     return {
       position: slide.position,
       role: index === 0 || slide.layoutId === "cover"
@@ -8277,7 +8298,9 @@ function manifestToLintInput(manifest: z.infer<typeof deckManifestSchema>): Slid
       expectedLanguage,
       slideArchetype: slide.slideArchetype,
       body: slide.body ?? recommendationBody,
-      bullets: slide.bullets ?? buildRecommendationBlockBullets(slide),
+      bullets: recommendationBullets.length > 0
+        ? [...(slide.bullets ?? []), ...recommendationBullets]
+        : slide.bullets,
       callout: slide.callout ? { text: slide.callout.text, tone: slide.callout.tone } : undefined,
       metrics: slide.metrics,
       speakerNotes: typeof (slide as { speakerNotes?: string }).speakerNotes === "string"
@@ -8924,11 +8947,19 @@ function manifestToFidelityInput(
   const chartById = new Map(manifest.charts.map((chart) => [chart.id, chart]));
   return manifest.slides.map((slide) => {
     const chart = slide.chartId ? chartById.get(slide.chartId) : undefined;
+    const recommendationBody = buildRecommendationBlockBody(slide);
+    const recommendationBullets = buildRecommendationBlockBullets(slide);
     return {
       position: slide.position,
       title: slide.title,
-      ...(slide.body ? { body: slide.body } : {}),
-      ...(slide.bullets ? { bullets: slide.bullets } : {}),
+      ...(slide.body || recommendationBody ? { body: slide.body ?? recommendationBody } : {}),
+      ...(slide.bullets || recommendationBullets.length > 0
+        ? {
+            bullets: recommendationBullets.length > 0
+              ? [...(slide.bullets ?? []), ...recommendationBullets]
+              : slide.bullets,
+          }
+        : {}),
       ...(slide.callout ? { callout: { text: slide.callout.text } } : {}),
       ...(slide.metrics ? { metrics: slide.metrics } : {}),
       ...(slide.evidenceIds ? { evidenceIds: slide.evidenceIds } : {}),
@@ -10212,6 +10243,256 @@ async function applyCommonTextCleanupToArtifacts(input: {
   };
 }
 
+async function enrichManifestWithPptxVisibleText(input: {
+  manifest: z.infer<typeof deckManifestSchema>;
+  pptx: GeneratedFile | null;
+  phaseTelemetry?: Record<string, unknown>;
+  stage?: "author" | "revise" | "export" | "test";
+}) {
+  if (!input.pptx) {
+    return input.manifest;
+  }
+
+  const visibleTextBySlide = await extractPptxVisibleTextBySlide(input.pptx.buffer).catch((error) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (input.phaseTelemetry) {
+      input.phaseTelemetry.pptxVisibleTextManifestEnrichment = {
+        ...((input.phaseTelemetry.pptxVisibleTextManifestEnrichment as Record<string, unknown> | undefined) ?? {}),
+        [input.stage ?? "unknown"]: {
+          skipped: true,
+          reason: reason.slice(0, 300),
+        },
+      };
+    }
+    return null;
+  });
+  if (!visibleTextBySlide) {
+    return input.manifest;
+  }
+
+  let bodyEnriched = 0;
+  let metricsEnriched = 0;
+  const slides = input.manifest.slides.map((slide) => {
+    const visible = visibleTextBySlide.get(slide.position);
+    if (!visible || isCoverOrDividerSlide(slide)) {
+      return slide;
+    }
+
+    const cleanedChunks = buildPptxVisibleTextChunksForManifest(slide, visible.chunks);
+    if (cleanedChunks.length === 0) {
+      return slide;
+    }
+
+    const inferredMetrics = hasManifestMetrics(slide)
+      ? []
+      : inferVisibleMetricCards(cleanedChunks);
+    const fallbackBody = hasManifestNarrativeText(slide)
+      ? null
+      : buildVisibleTextFallbackBody(cleanedChunks);
+    if (!fallbackBody && inferredMetrics.length === 0) {
+      return slide;
+    }
+
+    if (fallbackBody) {
+      bodyEnriched += 1;
+    }
+    if (inferredMetrics.length > 0) {
+      metricsEnriched += 1;
+    }
+
+    return {
+      ...slide,
+      ...(fallbackBody ? { body: fallbackBody } : {}),
+      ...(inferredMetrics.length > 0 ? { metrics: inferredMetrics } : {}),
+    };
+  });
+
+  if (bodyEnriched === 0 && metricsEnriched === 0) {
+    return input.manifest;
+  }
+
+  if (input.phaseTelemetry) {
+    input.phaseTelemetry.pptxVisibleTextManifestEnrichment = {
+      ...((input.phaseTelemetry.pptxVisibleTextManifestEnrichment as Record<string, unknown> | undefined) ?? {}),
+      [input.stage ?? "unknown"]: {
+        bodyEnriched,
+        metricsEnriched,
+      },
+    };
+  }
+
+  return parseDeckManifest({
+    ...input.manifest,
+    slides,
+  });
+}
+
+async function extractPptxVisibleTextBySlide(pptxBuffer: Buffer) {
+  const zip = await JSZip.loadAsync(pptxBuffer);
+  const slideEntries = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+    .sort((a, b) => extractSlideNumber(a) - extractSlideNumber(b));
+  const bySlide = new Map<number, { chunks: string[]; text: string }>();
+
+  for (const slideEntry of slideEntries) {
+    const slideNumber = extractSlideNumber(slideEntry);
+    const xml = await zip.file(slideEntry)?.async("string");
+    if (!xml) {
+      continue;
+    }
+    const chunks = Array.from(xml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/gi))
+      .map((match) => decodeXmlText(match[1] ?? ""))
+      .map((value) => value.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    bySlide.set(slideNumber, {
+      chunks,
+      text: chunks.join(" ").trim(),
+    });
+  }
+
+  return bySlide;
+}
+
+function buildPptxVisibleTextChunksForManifest(
+  slide: z.infer<typeof deckManifestSchema>["slides"][number],
+  chunks: string[],
+) {
+  const title = normalizeVisibleTextForComparison(slide.title);
+  const subtitle = normalizeVisibleTextForComparison(slide.subtitle ?? "");
+  return chunks
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0)
+    .filter((chunk) => !isObviousPptxChromeText(chunk))
+    .filter((chunk) => {
+      const normalized = normalizeVisibleTextForComparison(chunk);
+      return normalized !== title && normalized !== subtitle;
+    })
+    .slice(0, 80);
+}
+
+function buildVisibleTextFallbackBody(chunks: string[]) {
+  const body = chunks
+    .filter((chunk) => !isLikelyMetricCardLabel(chunk) || chunk.length > 14)
+    .join(" | ")
+    .trim();
+  if (body.length < 20) {
+    return null;
+  }
+  return body.length > 1_800 ? `${body.slice(0, 1_799).trimEnd()}…` : body;
+}
+
+function inferVisibleMetricCards(chunks: string[]) {
+  const metrics: Array<{ label: string; value: string; delta?: string }> = [];
+  const seen = new Set<string>();
+
+  for (let index = 1; index < chunks.length; index += 1) {
+    const label = chunks[index - 1]?.trim() ?? "";
+    const value = chunks[index]?.trim() ?? "";
+    const next = chunks[index + 1]?.trim() ?? "";
+    if (!isLikelyMetricCardLabel(label) || !isLikelyMetricCardValue(value)) {
+      continue;
+    }
+    const delta = isLikelyMetricCardDelta(next) ? next : undefined;
+    const key = `${normalizeVisibleTextForComparison(label)}:${normalizeVisibleTextForComparison(value)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    metrics.push({
+      label,
+      value,
+      ...(delta ? { delta } : {}),
+    });
+    if (metrics.length >= 10) {
+      break;
+    }
+  }
+
+  return metrics;
+}
+
+function hasManifestNarrativeText(slide: z.infer<typeof deckManifestSchema>["slides"][number]) {
+  return Boolean(
+    slide.body?.trim() ||
+    (slide.bullets ?? []).some((bullet) => bullet.trim().length > 0) ||
+    slide.callout?.text?.trim() ||
+    buildRecommendationBlockBody(slide),
+  );
+}
+
+function hasManifestMetrics(slide: z.infer<typeof deckManifestSchema>["slides"][number]) {
+  return (slide.metrics ?? []).some((metric) =>
+    metric.label.trim().length > 0 && metric.value.trim().length > 0,
+  );
+}
+
+function isCoverOrDividerSlide(slide: z.infer<typeof deckManifestSchema>["slides"][number]) {
+  const layout = `${slide.layoutId} ${slide.slideArchetype}`.toLowerCase();
+  return layout.includes("cover") || layout.includes("divider");
+}
+
+function isObviousPptxChromeText(value: string) {
+  const normalized = normalizeVisibleTextForComparison(value);
+  return (
+    normalized.length === 0 ||
+    /^\d{1,3}$/.test(normalized) ||
+    normalized === "confidential" ||
+    normalized === "draft" ||
+    normalized === "appendix" ||
+    normalized === "basquio"
+  );
+}
+
+function isLikelyMetricCardLabel(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length < 3 || trimmed.length > 64) {
+    return false;
+  }
+  if (isLikelyMetricCardValue(trimmed) || isLikelyMetricCardDelta(trimmed)) {
+    return false;
+  }
+  if (/^source\b/i.test(trimmed)) {
+    return false;
+  }
+  const alphaCount = (trimmed.match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g) ?? []).length;
+  return alphaCount >= 3;
+}
+
+function isLikelyMetricCardValue(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 48) {
+    return false;
+  }
+  return /^(?:[+$€£]|[-−–])?\s*\d[\d.,]*(?:\s*(?:%|pp|pts?|x|k|m|mn|mln|bn|bln|eur|usd))?(?:\s*→\s*(?:[+$€£]|[-−–])?\s*\d[\d.,]*(?:\s*(?:%|pp|pts?|x|k|m|mn|mln|bn|bln|eur|usd))?)?$/i.test(trimmed);
+}
+
+function isLikelyMetricCardDelta(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 80) {
+    return false;
+  }
+  return /^(?:[+]|[-−–])\s*\d/i.test(trimmed) || /\bvs\b/i.test(trimmed) || /→/.test(trimmed);
+}
+
+function normalizeVisibleTextForComparison(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[\u2212\u2013\u2014]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function decodeXmlText(value: string) {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
+}
+
 function applyCommonTextCleanupToGeneratedFile(file: GeneratedFile, formats: string[]) {
   const text = file.buffer.toString("utf8");
   const cleaned = applyCommonItalianOrthography(text);
@@ -10281,6 +10562,14 @@ function applyCommonTextCleanupToManifest(manifest: z.infer<typeof deckManifestS
           text: clean(slide.callout.text) ?? slide.callout.text,
         }
       : slide.callout,
+    recommendationBlock: slide.recommendationBlock
+      ? {
+          ...slide.recommendationBlock,
+          condition: clean(slide.recommendationBlock.condition) ?? slide.recommendationBlock.condition,
+          recommendation: clean(slide.recommendationBlock.recommendation) ?? slide.recommendationBlock.recommendation,
+          quantification: clean(slide.recommendationBlock.quantification) ?? slide.recommendationBlock.quantification,
+        }
+      : slide.recommendationBlock,
     metrics: slide.metrics?.map((metric) => ({
       ...metric,
       label: clean(metric.label) ?? metric.label,
@@ -11807,6 +12096,7 @@ export const __test__ = {
   buildWorkbookChartBindingRequests,
   isPlaceholderChartTitle,
   lintManifestPlan,
+  enrichManifestWithPptxVisibleText,
   collectArtifactIntegrityPublishFailures,
   collectQualityPassportPublishAdvisories,
   resolvePlanSheetValidationReport,

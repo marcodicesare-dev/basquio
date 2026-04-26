@@ -49,4 +49,29 @@ describe("parseDeckManifest", () => {
 
     expect(manifest.slides.map((slide) => slide.position)).toEqual([1, 2]);
   });
+
+  it("preserves recommendation blocks for downstream QA", () => {
+    const manifest = parseDeckManifest({
+      slideCount: 2,
+      slides: [
+        { position: 1, title: "Cover" },
+        {
+          position: 2,
+          title: "Three Q2 actions protect the channel reset",
+          layoutId: "recommendation-cards",
+          recommendationBlock: {
+            condition: "Traditional Trade distribution fell 4pp.",
+            recommendation: "Restore distribution before Q2 windows close.",
+            quantification: "Recover $4K/month value.",
+          },
+        },
+      ],
+    });
+
+    expect(manifest.slides[1]?.recommendationBlock).toEqual({
+      condition: "Traditional Trade distribution fell 4pp.",
+      recommendation: "Restore distribution before Q2 windows close.",
+      quantification: "Recover $4K/month value.",
+    });
+  });
 });
