@@ -163,7 +163,7 @@ export default function HomePage() {
           <p className="section-label light">The output</p>
           <h2>Upload once. Present tomorrow.</h2>
           <p className="muted">
-            A finished analysis deck with real charts, a narrative report, and an editable PowerPoint. Ready to review, not rebuild.
+            A finished analysis deck with real charts, a narrative report, and an editable PowerPoint. Built to present, not rebuild.
           </p>
         </div>
 
@@ -183,39 +183,39 @@ export default function HomePage() {
           <Link href="/library" className="output-example-card">
             <Image
               src="/library/analysis/analysis.006.png"
-              alt="Healthcare AI Platform - stacked bar chart slide"
+              alt="Healthcare AI Platform, stacked bar chart slide"
               width={960}
               height={540}
             />
             <div className="output-example-meta">
               <span className="library-tier-badge">Deck &middot; 15 slides</span>
-              <p>Healthcare AI Platform - Performance & Growth</p>
+              <p>Healthcare AI Platform, Performance & Growth</p>
             </div>
           </Link>
 
           <Link href="/library" className="output-example-card">
             <Image
               src="/library/exec-summary/exec-summary.002.png"
-              alt="Payment Infrastructure - KPI cards slide"
+              alt="Payment Infrastructure, KPI cards slide"
               width={960}
               height={540}
             />
             <div className="output-example-meta">
               <span className="library-tier-badge">Memo &middot; 4 slides</span>
-              <p>Payment Infrastructure - Executive Summary</p>
+              <p>Payment Infrastructure, Executive Summary</p>
             </div>
           </Link>
 
           <Link href="/library" className="output-example-card">
             <Image
               src="/library/deep-analysis/deep-analysis.003.png"
-              alt="E-Commerce Marketplace - category mix stacked bars"
+              alt="E-Commerce Marketplace, category mix stacked bars"
               width={960}
               height={540}
             />
             <div className="output-example-meta">
               <span className="library-tier-badge">Deep-Dive &middot; 10 slides</span>
-              <p>E-Commerce Marketplace - Deep Dive</p>
+              <p>E-Commerce Marketplace, Deep Dive</p>
             </div>
           </Link>
         </div>
