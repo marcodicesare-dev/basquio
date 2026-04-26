@@ -395,12 +395,12 @@ Implication:
 - the next architecture step is not "bigger prompt"
 - the next step is a small set of elite slide archetypes, slide-level variant generation, rendered-page judging, and hard publish vetoes on weak decks
 
-### Direct deck path now reuses slot archetypes and PDF visual judging
+### Direct deck path now reuses slot archetypes and internal PDF visual judging
 
 Decision:
 
 - the direct Claude code-execution path should reuse the existing slot-archetype library as its grammar source
-- rendered-page QA should use the generated `deck.pdf` as a Claude document input instead of relying on native server-side PDF rasterization dependencies in production
+- rendered-page QA may use an internally derived PDF as a Claude document input when conversion succeeds, but PDF is not a generated user artifact and is not an export dependency
 
 Why:
 

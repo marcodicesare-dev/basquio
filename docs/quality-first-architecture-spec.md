@@ -3,6 +3,7 @@
 
 **Date:** 2026-04-17
 **Author:** Claude (deep SOTA research) — for another agent to implement
+**Superseded note, 2026-04-26:** The artifact contract changed after the P0 direct-publish incident review. Durable user-facing artifacts are now only `deck.pptx`, `narrative_report.md`, and `data_tables.xlsx`. `deck.pdf` is internal visual QA support only when it can be derived safely from the PPTX, never a user artifact, never an export dependency, and never a hard publish blocker.
 **Trigger:** Production 70-slide Opus 4.7 run `d580a4df` shipped with:
 - 133 lint issues flagged as "advisory" (not blocking)
 - 18 MECE pair violations detected but ignored at publish
@@ -271,8 +272,11 @@ This tier decides whether a deck is allowed to ship.
 
 Per AWS Evaluator reflect-refine pattern (2026): "The loop repeats until the result meets a set of criteria, is approved, or reaches a retry limit."
 
-Current publish gate per CLAUDE.md:
+Current publish gate per CLAUDE.md at the time this historical spec was written:
 > "ONLY structural corruption blocks publish: `pptx_present`, `pdf_present`, `pptx_zip_signature`, `pdf_header_signature`, `slide_count_positive`, `pptx_zip_parse_failed`, `pdf_parseable`. Everything else (lint, visual QA score, contract violations) is ADVISORY, not blocking. A run that spent $1+ MUST ship artifacts."
+
+Current P0 publish gate as of 2026-04-26:
+> "Durable user-facing publish requires `deck.pptx`, `narrative_report.md`, `data_tables.xlsx`, and `deck_manifest.json`. PDF is internal visual-QA support only. Missing or invalid PDF must not block export, hide artifacts, or appear in the customer manifest."
 
 This rule exists because "export failed after 25 minutes is NEVER acceptable to a user." That intent is correct for catastrophic failures. But it's been extended to mean "ship whatever survived the pipeline, regardless of quality." **These are different guarantees.**
 
@@ -293,8 +297,11 @@ The specific list of "structural corruption" blockers per CLAUDE.md should expan
 
 ```
 Existing (keep):
-  pptx_present, pdf_present, pptx_zip_signature, pdf_header_signature,
-  slide_count_positive, pptx_zip_parse_failed, pdf_parseable
+  pptx_present, pptx_zip_signature,
+  slide_count_positive, pptx_zip_parse_failed,
+  md_present, md_depth_minimum, md_has_required_sections,
+  xlsx_present, xlsx_zip_signature, xlsx_has_readme,
+  xlsx_data_sheets_have_tables, xlsx_freeze_panes, xlsx_column_widths
 
 Add (critical severity):
   no_duplicate_near_identical_slides  (MECE pairs with similarity > 0.9)

@@ -2,6 +2,8 @@
 
 This plan translates the latest direct deck learnings into concrete work that can move Basquio from "better-looking" to reliably consulting-grade.
 
+Superseded note, 2026-04-26: durable user-facing artifacts are `deck.pptx`, `narrative_report.md`, and `data_tables.xlsx`. PDF is internal visual QA support only when it can be derived safely from PPTX, not a generated user artifact and not an export dependency.
+
 ## Goal
 
 Produce `10/10` executive decks with:
@@ -27,7 +29,7 @@ Basquio should generate decks with five layers:
 
 1. Deterministic evidence and template interpretation
 2. Slide grammar selection from a small approved archetype library
-3. Model-native PPTX and PDF generation in Claude code execution
+3. Model-native PPTX generation in Claude code execution
 4. Rendered-page evaluation on slide images, not only JSON manifests
 5. Variant ranking and hard publish vetoes
 
@@ -106,7 +108,7 @@ Manifests are not enough. Evaluate the rendered artifact itself.
 
 Production method:
 
-- upload `deck.pdf` to Claude as a beta document block
+- upload an internally derived PDF to Claude as a beta document block when that conversion succeeds
 - run a structured visual judge over the rendered PDF pages plus slide metadata
 - persist that report as a working paper and inside artifact QA
 

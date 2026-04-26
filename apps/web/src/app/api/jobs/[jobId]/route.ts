@@ -18,6 +18,17 @@ export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const V2_PHASES = BASQUIO_PHASES;
+const USER_FACING_ARTIFACT_KINDS = new Set(["pptx", "md", "xlsx"]);
+const REQUIRED_USER_FACING_ARTIFACT_KINDS = ["pptx", "md", "xlsx"] as const;
+
+function isUserFacingArtifactKind(kind: string) {
+  return USER_FACING_ARTIFACT_KINDS.has(kind);
+}
+
+function hasRequiredUserFacingArtifacts(artifacts: Array<{ kind: string }>) {
+  const kinds = new Set(artifacts.filter((artifact) => isUserFacingArtifactKind(artifact.kind)).map((artifact) => artifact.kind));
+  return REQUIRED_USER_FACING_ARTIFACT_KINDS.every((kind) => kinds.has(kind));
+}
 
 type DeckRunRow = {
   id: string;
@@ -281,7 +292,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const rawStatus = (run.completed_at ? "completed" : run.status) as DeckRunRow["status"];
   const attemptId = run.active_attempt_id ?? run.latest_attempt_id;
   const needsInputSummary = rawStatus === "failed" || rawStatus === "completed";
-  const [sourceFiles, summaryEvents, templateDiagnostics, attemptProgressRows] = await Promise.all([
+  const [sourceFiles, summaryEvents, templateDiagnostics, attemptProgressRows, manifestRows, terminalAttemptRows] = await Promise.all([
     needsInputSummary
       ? loadSourceFileSummaries(supabaseUrl, serviceKey, run.source_file_ids)
       : Promise.resolve([]),
@@ -310,7 +321,37 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
           },
         }).catch(() => [])
       : Promise.resolve([]),
+    needsInputSummary
+      ? fetchRestRows<ArtifactManifestRow>({
+          supabaseUrl: supabaseUrl!,
+          serviceKey: serviceKey!,
+          table: "artifact_manifests_v2",
+          query: {
+            select: "slide_count,page_count,qa_passed,artifacts,preview_assets",
+            run_id: `eq.${jobId}`,
+            limit: "1",
+          },
+        }).catch(() => [])
+      : Promise.resolve([]),
+    needsInputSummary
+      ? fetchRestRows<AttemptCostSummaryRow>({
+          supabaseUrl: supabaseUrl!,
+          serviceKey: serviceKey!,
+          table: "deck_run_attempts",
+          query: {
+            select: "id,attempt_number,status,failure_phase,recovery_reason,cost_telemetry,started_at,completed_at",
+            run_id: `eq.${jobId}`,
+            order: "attempt_number.asc",
+            limit: "10",
+          },
+        }).catch(() => [])
+      : Promise.resolve([]),
   ]);
+  const manifest = manifestRows[0] ?? null;
+  const effectiveStatus =
+    rawStatus === "failed" && manifest?.artifacts && hasRequiredUserFacingArtifacts(manifest.artifacts)
+      ? "completed"
+      : rawStatus;
 
   const completedPhases = new Set(
     summaryEvents
@@ -326,7 +367,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const createdAtMs = new Date(run.created_at).getTime();
   const updatedAtMs = run.updated_at ? new Date(run.updated_at).getTime() : createdAtMs;
   const completedAtMs = run.completed_at ? new Date(run.completed_at).getTime() : null;
-  const elapsedToMs = rawStatus === "completed" && completedAtMs ? completedAtMs : now;
+  const elapsedToMs = effectiveStatus === "completed" && completedAtMs ? completedAtMs : now;
   const elapsedSeconds = Math.max(1, Math.round((elapsedToMs - createdAtMs) / 1000));
   const attemptProgressRow = attemptProgressRows[0] ?? null;
   const meaningfulProgressAt = attemptProgressRow?.last_meaningful_event_at ?? attemptProgressRow?.updated_at ?? run.updated_at;
@@ -349,9 +390,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   });
 
   let progressPercent: number;
-  if (rawStatus === "completed") {
+  if (effectiveStatus === "completed") {
     progressPercent = 100;
-  } else if (rawStatus === "failed") {
+  } else if (effectiveStatus === "failed") {
     progressPercent = Math.max(2, Math.round((completedPhases.size / V2_PHASES.length) * 100));
   } else {
     progressPercent = Math.max(2, Math.min(96, Math.round(progressModel.progressPercent)));
@@ -364,7 +405,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     if (completedPhases.has(phase)) {
       status = "completed";
     } else if (run.current_phase === phase) {
-      status = rawStatus === "failed" ? "failed" : "running";
+      status = effectiveStatus === "failed" ? "failed" : effectiveStatus === "completed" ? "completed" : "running";
     } else if (index < (currentPhaseIndex >= 0 ? currentPhaseIndex : V2_PHASES.length)) {
       status = "completed";
     } else {
@@ -398,9 +439,9 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       ? `This run has not heartbeated recently. Automatic recovery starts after ${Math.round(WORKER_STALE_RUN_SECONDS / 60)} minutes without progress.`
     : isTransientRecovery
       ? `Retrying automatically after a temporary service issue. Attempt ${run.latest_attempt_number}.`
-    : rawStatus === "failed"
+    : effectiveStatus === "failed"
         ? run.failure_message ?? "Run failed."
-        : rawStatus === "completed"
+        : effectiveStatus === "completed"
           ? "Generation finished. Checking artifact availability."
         : phaseMeta.activeDetail;
 
@@ -415,11 +456,12 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
   const workspaceContextPackResult = workspaceContextPackSchema.safeParse(run.workspace_context_pack ?? null);
   const workspaceContextPack = workspaceContextPackResult.success ? workspaceContextPackResult.data : null;
   const failureGuidance = buildFailureGuidance(run, sourceFiles, recoveryEligibleStale);
-  const failureClassification = rawStatus === "failed" || recoveryEligibleStale
+  const failureClassification = effectiveStatus === "failed" || recoveryEligibleStale
     ? classifyFailure(run, recoveryEligibleStale)
     : undefined;
 
-  // Fetch artifact manifest if completed
+  // Terminal snapshots must load manifests even when a later recovery attempt
+  // marked the parent run failed after a prior successful publish.
   let summary: Record<string, unknown> | null = needsInputSummary
     ? {
         brief: runBrief,
@@ -435,45 +477,22 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       }
     : null;
   let attemptSummaries: Array<Record<string, unknown>> = [];
-  if (rawStatus === "completed") {
-    const [manifests, attemptRows] = await Promise.all([
-      fetchRestRows<ArtifactManifestRow>({
-        supabaseUrl: supabaseUrl!,
-        serviceKey: serviceKey!,
-        table: "artifact_manifests_v2",
-        query: {
-          select: "slide_count,page_count,qa_passed,artifacts,preview_assets",
-          run_id: `eq.${jobId}`,
-          limit: "1",
-        },
-      }).catch(() => []),
-      fetchRestRows<AttemptCostSummaryRow>({
-        supabaseUrl: supabaseUrl!,
-        serviceKey: serviceKey!,
-        table: "deck_run_attempts",
-        query: {
-          select: "id,attempt_number,status,failure_phase,recovery_reason,cost_telemetry,started_at,completed_at",
-          run_id: `eq.${jobId}`,
-          order: "attempt_number.asc",
-          limit: "10",
-        },
-      }).catch(() => []),
-    ]);
-
-    if (manifests.length > 0) {
-      const m = manifests[0];
+  if (needsInputSummary) {
+    if (manifest) {
       summary = {
         ...summary,
-        slideCount: m.slide_count,
-        pageCount: m.page_count,
-        qaPassed: m.qa_passed,
-        artifacts: m.artifacts.map((a) => ({
-          kind: a.kind,
-          fileName: a.fileName,
-          fileBytes: a.fileBytes,
-          downloadUrl: `/api/artifacts/${jobId}/${a.kind}`,
-        })),
-        previews: buildCustomerPreviewAssets(jobId, m.preview_assets),
+        slideCount: manifest.slide_count,
+        pageCount: manifest.page_count,
+        qaPassed: manifest.qa_passed,
+        artifacts: manifest.artifacts
+          .filter((a) => isUserFacingArtifactKind(a.kind))
+          .map((a) => ({
+            kind: a.kind,
+            fileName: a.fileName,
+            fileBytes: a.fileBytes,
+            downloadUrl: `/api/artifacts/${jobId}/${a.kind}`,
+          })),
+        previews: buildCustomerPreviewAssets(jobId, manifest.preview_assets),
       };
     }
 
@@ -504,34 +523,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
       }
     }
 
-    attemptSummaries = attemptRows.map((row) => ({
-      id: row.id,
-      attemptNumber: row.attempt_number,
-      status: row.status,
-      failurePhase: row.failure_phase,
-      recoveryReason: row.recovery_reason,
-      estimatedCostUsd: typeof row.cost_telemetry?.estimatedCostUsd === "number"
-        ? row.cost_telemetry.estimatedCostUsd
-        : null,
-      startedAt: row.started_at,
-      completedAt: row.completed_at,
-    }));
-  }
-
-  if (rawStatus === "failed") {
-    const attemptRows = await fetchRestRows<AttemptCostSummaryRow>({
-      supabaseUrl: supabaseUrl!,
-      serviceKey: serviceKey!,
-      table: "deck_run_attempts",
-      query: {
-        select: "id,attempt_number,status,failure_phase,recovery_reason,cost_telemetry,started_at,completed_at",
-        run_id: `eq.${jobId}`,
-        order: "attempt_number.asc",
-        limit: "10",
-      },
-    }).catch(() => []);
-
-    attemptSummaries = attemptRows.map((row) => ({
+    attemptSummaries = terminalAttemptRows.map((row) => ({
       id: row.id,
       attemptNumber: row.attempt_number,
       status: row.status,
@@ -551,7 +543,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     attemptNumber: run.latest_attempt_number ?? 1,
     activeAttemptId: attemptId,
     pipelineVersion: "v2" as const,
-    status: (isTransientRecovery ? "running" : rawStatus) as "queued" | "running" | "completed" | "failed",
+    status: (isTransientRecovery ? "running" : effectiveStatus) as "queued" | "running" | "completed" | "failed",
     artifactsReady: Boolean(summary && Array.isArray(summary.artifacts) && (summary.artifacts as unknown[]).length > 0),
     createdAt: run.created_at,
     updatedAt: run.updated_at ?? undefined,
@@ -560,10 +552,10 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     currentDetail,
     progressPercent,
     elapsedSeconds,
-    estimatedRemainingSeconds: rawStatus === "completed" || rawStatus === "failed" ? 0 : estimatedRemaining.midpointSeconds,
-    estimatedRemainingLowSeconds: rawStatus === "completed" || rawStatus === "failed" ? 0 : estimatedRemaining.lowSeconds,
-    estimatedRemainingHighSeconds: rawStatus === "completed" || rawStatus === "failed" ? 0 : estimatedRemaining.highSeconds,
-    estimatedRemainingConfidence: rawStatus === "completed" || rawStatus === "failed" ? "high" : estimatedRemaining.confidence,
+    estimatedRemainingSeconds: effectiveStatus === "completed" || effectiveStatus === "failed" ? 0 : estimatedRemaining.midpointSeconds,
+    estimatedRemainingLowSeconds: effectiveStatus === "completed" || effectiveStatus === "failed" ? 0 : estimatedRemaining.lowSeconds,
+    estimatedRemainingHighSeconds: effectiveStatus === "completed" || effectiveStatus === "failed" ? 0 : estimatedRemaining.highSeconds,
+    estimatedRemainingConfidence: effectiveStatus === "completed" || effectiveStatus === "failed" ? "high" : estimatedRemaining.confidence,
     steps,
     summary,
     templateDiagnostics,
@@ -571,7 +563,7 @@ async function getRunSnapshot(jobId: string, viewerId: string) {
     qualityWarnings: collectQualityWarnings(run.cost_telemetry),
     attemptSummaries: attemptSummaries.length > 0 ? attemptSummaries : undefined,
     notifyOnComplete: run.notify_on_complete,
-    failureMessage: run.failure_message ?? undefined,
+    failureMessage: effectiveStatus === "completed" ? undefined : run.failure_message ?? undefined,
     failureClassification,
     toolCallCount: toolCalls.length,
     runHealth: recoveryEligibleStale ? "stale" : isTransientRecovery ? "recovering" : heartbeatLate ? "late_heartbeat" : "healthy",
