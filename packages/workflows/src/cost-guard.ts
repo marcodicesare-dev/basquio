@@ -8,7 +8,6 @@ const MODEL_PRICING: Record<string, { inputUsdPerMTok: number; outputUsdPerMTok:
   "claude-opus-4-6": { inputUsdPerMTok: 5, outputUsdPerMTok: 25 },
   "claude-opus-4-7": { inputUsdPerMTok: 5, outputUsdPerMTok: 25 },
 };
-export const EMERGENCY_USD_CEILING = 30.0;
 
 export const MODEL_BUDGET_USD: Record<keyof typeof MODEL_PRICING, {
   preFlight: number;
@@ -41,13 +40,6 @@ type FileBackedBudgetContext = {
   priorSpendUsd: number;
 };
 
-type BudgetWarning = {
-  model: keyof typeof MODEL_PRICING;
-  projectedUsd: number;
-  softCapUsd: number;
-  spentUsd: number;
-};
-
 export async function enforceDeckBudget(input: {
   client: Anthropic;
   model: keyof typeof MODEL_PRICING;
@@ -57,7 +49,6 @@ export async function enforceDeckBudget(input: {
   outputTokenBudget: number;
   maxUsd?: number;
   fileBackedBudgetContext?: FileBackedBudgetContext;
-  onSoftCapExceeded?: (warning: BudgetWarning) => Promise<void> | void;
 }) {
   const maxUsd = input.maxUsd ?? getDeckBudgetCaps(input.model).preFlight;
 
@@ -71,18 +62,15 @@ export async function enforceDeckBudget(input: {
       input.outputTokenBudget,
       input.fileBackedBudgetContext,
     );
-    const overBudget = await handleProjectedBudget({
-      model: input.model,
-      projectedUsd,
-      softCapUsd: maxUsd,
-      spentUsd: input.spentUsd,
-      onSoftCapExceeded: input.onSoftCapExceeded,
-    });
+    if (projectedUsd > maxUsd) {
+      throw new Error(
+        `Projected Claude cost $${projectedUsd.toFixed(3)} exceeds budget $${maxUsd.toFixed(2)}.`,
+      );
+    }
 
     return {
       inputTokens: null,
       projectedUsd,
-      overBudget,
       usedCountTokens: false,
       envelopeContext: input.fileBackedBudgetContext ?? null,
     };
@@ -105,18 +93,15 @@ export async function enforceDeckBudget(input: {
       input.outputTokenBudget,
       input.fileBackedBudgetContext,
     );
-    const overBudget = await handleProjectedBudget({
-      model: input.model,
-      projectedUsd,
-      softCapUsd: maxUsd,
-      spentUsd: input.spentUsd,
-      onSoftCapExceeded: input.onSoftCapExceeded,
-    });
+    if (projectedUsd > maxUsd) {
+      throw new Error(
+        `Projected Claude cost $${projectedUsd.toFixed(3)} exceeds budget $${maxUsd.toFixed(2)}.`,
+      );
+    }
 
     return {
       inputTokens: null,
       projectedUsd,
-      overBudget,
       usedCountTokens: false,
       envelopeContext: input.fileBackedBudgetContext ?? null,
     };
@@ -126,18 +111,15 @@ export async function enforceDeckBudget(input: {
     input.spentUsd +
     estimateUsd(input.model, tokenCount.input_tokens, input.outputTokenBudget);
 
-  const overBudget = await handleProjectedBudget({
-    model: input.model,
-    projectedUsd,
-    softCapUsd: maxUsd,
-    spentUsd: input.spentUsd,
-    onSoftCapExceeded: input.onSoftCapExceeded,
-  });
+  if (projectedUsd > maxUsd) {
+    throw new Error(
+      `Projected Claude cost $${projectedUsd.toFixed(3)} exceeds budget $${maxUsd.toFixed(2)}.`,
+    );
+  }
 
   return {
     inputTokens: tokenCount.input_tokens,
     projectedUsd,
-    overBudget,
     usedCountTokens: true,
     envelopeContext: null,
   };
@@ -150,35 +132,24 @@ export function assertDeckSpendWithinBudget(
     allowPartialOutput?: boolean;
     context?: string;
     targetSlideCount?: number;
-    onSoftCapExceeded?: (warning: BudgetWarning) => Promise<void> | void;
   },
 ) {
   const maxUsd = typeof maxUsdOrModel === "number"
     ? maxUsdOrModel
     : getDeckBudgetCaps(maxUsdOrModel, options?.targetSlideCount).hard;
-  if (spentUsd > EMERGENCY_USD_CEILING) {
-    throwEmergencyBudgetError("Claude cost", spentUsd);
-  }
+  if (spentUsd > maxUsd) {
+    if (options?.allowPartialOutput) {
+      console.warn(
+        `[cost-guard] hard budget exceeded after partial output${options.context ? ` during ${options.context}` : ""}: ` +
+        `$${spentUsd.toFixed(3)} > $${maxUsd.toFixed(2)}. Allowing publish/salvage to finish.`,
+      );
+      return;
+    }
 
-  const overBudget = spentUsd > maxUsd;
-  if (overBudget) {
-    console.warn(
-      `[cost-guard] spend $${spentUsd.toFixed(3)} exceeds soft cap $${maxUsd.toFixed(2)}${options?.context ? ` during ${options.context}` : ""}, continuing.`,
+    throw new Error(
+      `Claude cost $${spentUsd.toFixed(3)} exceeded hard budget $${maxUsd.toFixed(2)}.`,
     );
-    void options?.onSoftCapExceeded?.({
-      model: typeof maxUsdOrModel === "string" ? maxUsdOrModel : "claude-sonnet-4-6",
-      projectedUsd: spentUsd,
-      softCapUsd: maxUsd,
-      spentUsd,
-    });
   }
-
-  return {
-    overBudget,
-    projectedUsd: spentUsd,
-    softCapUsd: maxUsd,
-    emergencyCeilingUsd: EMERGENCY_USD_CEILING,
-  };
 }
 
 export function estimateUsd(
@@ -252,17 +223,6 @@ export async function getPriorAttemptsCost(input: {
   );
 }
 
-export function shouldResetCrossAttemptBudget(recoveryReason: string | null | undefined) {
-  if (!recoveryReason) {
-    return false;
-  }
-
-  return recoveryReason.startsWith("operator_")
-    || recoveryReason.startsWith("manual_")
-    || recoveryReason.includes("_prod_rerun_")
-    || recoveryReason.includes("_after_");
-}
-
 function containsUncountableRequestSurface(value: unknown): boolean {
   if (!value || typeof value !== "object") {
     return false;
@@ -298,33 +258,6 @@ function containsUncountableRequestSurface(value: unknown): boolean {
   return Object.values(record).some((entry) => containsUncountableRequestSurface(entry));
 }
 
-async function handleProjectedBudget(input: {
-  model: keyof typeof MODEL_PRICING;
-  projectedUsd: number;
-  softCapUsd: number;
-  spentUsd: number;
-  onSoftCapExceeded?: (warning: BudgetWarning) => Promise<void> | void;
-}) {
-  if (input.projectedUsd > EMERGENCY_USD_CEILING) {
-    throwEmergencyBudgetError("Projected Claude cost", input.projectedUsd);
-  }
-
-  const overBudget = input.projectedUsd > input.softCapUsd;
-  if (overBudget) {
-    console.warn(
-      `[cost-guard] projected spend $${input.projectedUsd.toFixed(3)} exceeds soft cap $${input.softCapUsd.toFixed(2)} for ${input.model}, continuing.`,
-    );
-    await input.onSoftCapExceeded?.({
-      model: input.model,
-      projectedUsd: input.projectedUsd,
-      softCapUsd: input.softCapUsd,
-      spentUsd: input.spentUsd,
-    });
-  }
-
-  return overBudget;
-}
-
 function hasUnsupportedCountTokensServerTool(record: Record<string, unknown>) {
   const type = typeof record.type === "string" ? record.type : null;
   const name = typeof record.name === "string" ? record.name : null;
@@ -333,12 +266,6 @@ function hasUnsupportedCountTokensServerTool(record: Record<string, unknown>) {
     type?.startsWith("web_fetch_") === true ||
     name === "code_execution" ||
     name === "web_fetch"
-  );
-}
-
-function throwEmergencyBudgetError(label: string, usd: number): never {
-  throw new Error(
-    `${label} $${usd.toFixed(3)} exceeds emergency ceiling $${EMERGENCY_USD_CEILING.toFixed(2)}. Circuit breaker.`,
   );
 }
 

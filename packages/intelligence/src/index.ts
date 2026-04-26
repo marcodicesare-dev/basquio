@@ -119,16 +119,6 @@ export { validateEntityGrounding } from "./entity-grounding-validator";
 export { validateRequiredDeltaColumns } from "./required-delta-validator";
 export { validateBarOrdering } from "./bar-order-validator";
 export { validateSingleSourceLine } from "./source-line-validator";
-export {
-  validateDataPrimacy,
-  type DataPrimacyReport,
-  type UnboundClaim,
-} from "./data-primacy-validator";
-export {
-  validateCitations,
-  type CitationFidelityReport,
-  type CitationViolation,
-} from "./citation-fidelity-validator";
 
 // ─── FMCG SEMANTIC LAYER (executable domain logic) ────────────────
 export {

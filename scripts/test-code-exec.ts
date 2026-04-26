@@ -3,28 +3,23 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import JSZip from "jszip";
+import pdfParse from "pdf-parse";
 
 import { createSystemTemplateProfile } from "@basquio/template-engine";
 
 import {
-  assertAuthoringExecutionContract,
   BETAS,
   type AuthoringContainer,
   buildAuthoringOutputConfig,
   buildAuthoringContainer,
   buildClaudeTools,
-  type WebFetchMode,
 } from "../packages/workflows/src/anthropic-execution-contract";
-import {
-  appendAssistantTurn,
-  appendPauseTurnContinuation,
-} from "../packages/workflows/src/anthropic-message-thread";
 import { parseDeckManifest } from "../packages/workflows/src/deck-manifest";
 import { buildBasquioSystemPrompt } from "../packages/workflows/src/system-prompt";
+import { runRenderedPageQa } from "../packages/workflows/src/rendered-page-qa";
 import { loadBasquioScriptEnv } from "./load-app-env";
 
 const MODEL = "claude-sonnet-4-6";
-const SMOKE_MAX_TOKENS = 16_384;
 
 loadBasquioScriptEnv();
 
@@ -58,24 +53,23 @@ async function main() {
   const initialMessage = {
     role: "user" as const,
     content: [
+      { type: "container_upload" as const, file_id: uploaded.id },
       {
         type: "text" as const,
         text: [
           options.brief,
           "",
           "Analyze the uploaded evidence file directly inside code execution and create the final consulting-grade deck in one run.",
-          "Use the loaded pptx skill for the deck and Python file generation for the narrative markdown and workbook.",
+          "Use the loaded pptx and pdf skills for the final artifacts.",
           "Charts must be rendered to PNG assets in Python and embedded as images in the final deck.",
           "Do not use native PowerPoint chart objects for critical visuals.",
           "Generate and attach these files exactly:",
           "- test-deck.pptx",
-          "- narrative_report.md",
-          "- data_tables.xlsx",
+          "- test-deck.pdf",
           "- deck_manifest.json",
           "You may also attach basquio_analysis.json if useful.",
         ].join("\n"),
       },
-      { type: "container_upload" as const, file_id: uploaded.id },
     ],
   };
 
@@ -83,26 +77,18 @@ async function main() {
   let container: AuthoringContainer = buildAuthoringContainer(undefined, MODEL);
   let finalMessage: Anthropic.Beta.BetaMessage | null = null;
   const fileIds = new Set<string>();
-  const tools = buildClaudeTools(MODEL, { webFetchMode: options.webFetchMode });
-  assertAuthoringExecutionContract({
-    model: MODEL,
-    phase: "smoke",
-    tools,
-    skills: ["pptx"],
-    webFetchMode: options.webFetchMode,
-  });
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
   for (let iteration = 0; iteration < 8; iteration += 1) {
     const stream = client.beta.messages.stream({
       model: MODEL,
-      max_tokens: SMOKE_MAX_TOKENS,
+      max_tokens: 8_192,
       betas: [...BETAS],
       system,
       messages,
       container,
-      tools,
+      tools: buildClaudeTools(MODEL),
       output_config: buildAuthoringOutputConfig(MODEL),
     });
     const response: Anthropic.Beta.BetaMessage = await stream.finalMessage();
@@ -120,78 +106,26 @@ async function main() {
       break;
     }
 
-    messages = appendPauseTurnContinuation(messages, response);
+    messages = appendAssistantTurn(messages, response);
   }
 
   if (!finalMessage) {
     throw new Error("Claude did not return a final message.");
   }
 
-  let generated = await downloadGeneratedFiles(client, [...fileIds]);
-  const requiredFiles = ["test-deck.pptx", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
-  const missingAfterFirstPass = findMissingGeneratedFiles(generated, requiredFiles);
-  if (missingAfterFirstPass.length > 0 && finalMessage) {
-    messages = [
-      ...appendAssistantTurn(messages, finalMessage),
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: [
-              `The smoke is incomplete. Missing files: ${missingAfterFirstPass.join(", ")}.`,
-              "Use the current container state. Do not restart the analysis.",
-              "Attach every required smoke file before ending: test-deck.pptx, narrative_report.md, data_tables.xlsx, deck_manifest.json.",
-            ].join(" "),
-          },
-        ],
-      },
-    ];
-    for (let retryIteration = 0; retryIteration < 4; retryIteration += 1) {
-      const retryStream = client.beta.messages.stream({
-        model: MODEL,
-        max_tokens: SMOKE_MAX_TOKENS,
-        betas: [...BETAS],
-        system,
-        messages,
-        container,
-        tools,
-        output_config: buildAuthoringOutputConfig(MODEL),
-      });
-      const retryResponse: Anthropic.Beta.BetaMessage = await retryStream.finalMessage();
-      finalMessage = retryResponse;
-      container = retryResponse.container ? buildAuthoringContainer(retryResponse.container.id, MODEL) : container;
-      totalInputTokens += retryResponse.usage?.input_tokens ?? 0;
-      totalOutputTokens += retryResponse.usage?.output_tokens ?? 0;
-      for (const fileId of collectGeneratedFileIds(retryResponse.content)) {
-        fileIds.add(fileId);
-      }
-      if (retryResponse.stop_reason !== "pause_turn") {
-        break;
-      }
-      messages = appendPauseTurnContinuation(messages, retryResponse);
-    }
-    generated = await downloadGeneratedFiles(client, [...fileIds]);
-  }
+  const generated = await downloadGeneratedFiles(client, [...fileIds]);
   const pptx = generated.find((file) => file.fileName === "test-deck.pptx" || file.fileName.endsWith("/test-deck.pptx"));
-  const narrative = generated.find((file) => file.fileName === "narrative_report.md" || file.fileName.endsWith("/narrative_report.md"));
-  const workbook = generated.find((file) => file.fileName === "data_tables.xlsx" || file.fileName.endsWith("/data_tables.xlsx"));
+  const pdf = generated.find((file) => file.fileName === "test-deck.pdf" || file.fileName.endsWith("/test-deck.pdf"));
   const manifestFile = generated.find((file) => file.fileName === "deck_manifest.json" || file.fileName.endsWith("/deck_manifest.json"));
   if (!pptx) {
     throw new Error(
       `Claude did not attach test-deck.pptx. Attached files: ${generated.map((file) => file.fileName).join(", ") || "none"}. ` +
-      `stop_reason=${finalMessage.stop_reason ?? "unknown"}. Content blocks: ${finalMessage.content.map((block) => block.type).join(", ") || "none"}.`,
-    );
-  }
-  if (!narrative) {
-    throw new Error(
-      `Claude did not attach narrative_report.md. Attached files: ${generated.map((file) => file.fileName).join(", ") || "none"}. ` +
       `Content blocks: ${finalMessage.content.map((block) => block.type).join(", ") || "none"}.`,
     );
   }
-  if (!workbook) {
+  if (!pdf) {
     throw new Error(
-      `Claude did not attach data_tables.xlsx. Attached files: ${generated.map((file) => file.fileName).join(", ") || "none"}. ` +
+      `Claude did not attach test-deck.pdf. Attached files: ${generated.map((file) => file.fileName).join(", ") || "none"}. ` +
       `Content blocks: ${finalMessage.content.map((block) => block.type).join(", ") || "none"}.`,
     );
   }
@@ -207,39 +141,47 @@ async function main() {
   if (!verification.valid) {
     throw new Error(`Generated PPTX failed verification: ${verification.reason}`);
   }
-  const narrativeText = narrative.buffer.toString("utf8").trim();
-  if (narrativeText.split(/\s+/).filter(Boolean).length < 200) {
-    throw new Error("Generated narrative_report.md is too short for a smoke deliverable.");
+  const pdfVerification = await verifyPdf(pdf.buffer);
+  if (!pdfVerification.valid) {
+    throw new Error(`Generated PDF failed verification: ${pdfVerification.reason}`);
   }
-  const workbookVerification = await verifyXlsx(workbook.buffer);
-  if (!workbookVerification.valid) {
-    throw new Error(`Generated data_tables.xlsx failed verification: ${workbookVerification.reason}`);
+  if (pdfVerification.pageCount !== verification.slideCount) {
+    throw new Error(
+      `Generated PDF page count does not match PPTX slide count: pdf=${pdfVerification.pageCount} pptx=${verification.slideCount}.`,
+    );
+  }
+  const visualQa = await runRenderedPageQa({
+    client,
+    pdf: pdf.buffer,
+    manifest,
+    betas: ["files-api-2025-04-14"],
+  });
+
+  if (visualQa.report.deckNeedsRevision || visualQa.report.overallStatus !== "green") {
+    throw new Error(`Rendered-page QA failed: ${JSON.stringify(visualQa.report)}`);
   }
 
   const outputDir = path.join(process.cwd(), "test-output", "code-exec-smoke");
   await mkdir(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, "test-deck.pptx");
-  const narrativePath = path.join(outputDir, "narrative_report.md");
-  const workbookPath = path.join(outputDir, "data_tables.xlsx");
+  const pdfPath = path.join(outputDir, "test-deck.pdf");
   const manifestPath = path.join(outputDir, "deck_manifest.json");
   await writeFile(outputPath, pptx.buffer);
-  await writeFile(narrativePath, narrative.buffer);
-  await writeFile(workbookPath, workbook.buffer);
+  await writeFile(pdfPath, pdf.buffer);
   await writeFile(manifestPath, manifestFile.buffer);
 
   console.log(JSON.stringify({
     outputPath,
-    narrativePath,
-    workbookPath,
+    pdfPath,
     manifestPath,
     slideXmlCount: verification.slideCount,
     chartXmlCount: verification.chartXmlCount,
     mediaCount: verification.mediaCount,
-    workbookSheetCount: workbookVerification.sheetCount,
+    pdfPageCount: pdfVerification.pageCount,
+    visualQaStatus: visualQa.report.overallStatus,
+    visualQaScore: visualQa.report.score,
     inputTokens: totalInputTokens,
     outputTokens: totalOutputTokens,
-    toolNames: tools.flatMap((tool) => ("name" in tool && typeof tool.name === "string" ? [tool.name] : [])),
-    webFetchMode: options.webFetchMode,
     containerId: finalMessage.container?.id ?? null,
   }, null, 2));
 }
@@ -273,6 +215,19 @@ async function loadInputFile(filePath: string | null) {
   };
 }
 
+function appendAssistantTurn(
+  messages: Anthropic.Beta.BetaMessageParam[],
+  message: Anthropic.Beta.BetaMessage,
+): Anthropic.Beta.BetaMessageParam[] {
+  return [
+    ...messages,
+    {
+      role: "assistant",
+      content: message.content as Anthropic.Beta.BetaContentBlockParam[],
+    },
+  ];
+}
+
 function inferLanguageHint(brief: string) {
   return /\b(il|lo|la|gli|dei|delle|massimo|slide|chiari|famiglie|soluzioni|scenari|grafico)\b/i.test(brief)
     ? "Italian"
@@ -281,7 +236,6 @@ function inferLanguageHint(brief: string) {
 
 function parseArgs(argv: string[]) {
   let file: string | null = null;
-  let webFetchMode: WebFetchMode = "enrich";
   let brief =
     "Create a 3-slide consulting-grade deck from the uploaded data with one strong takeaway, one recommendation-card slide, and one visual evidence slide.";
 
@@ -295,20 +249,10 @@ function parseArgs(argv: string[]) {
     if (arg === "--brief") {
       brief = argv[index + 1] ?? brief;
       index += 1;
-      continue;
-    }
-    if (arg === "--web-fetch-mode") {
-      const value = argv[index + 1];
-      if (value === "off" || value === "enrich") {
-        webFetchMode = value;
-      } else {
-        throw new Error(`Invalid --web-fetch-mode value: ${value ?? "missing"}`);
-      }
-      index += 1;
     }
   }
 
-  return { file, brief, webFetchMode };
+  return { file, brief };
 }
 
 function collectGeneratedFileIds(blocks: Anthropic.Beta.BetaContentBlock[]) {
@@ -355,15 +299,6 @@ async function downloadGeneratedFiles(client: Anthropic, fileIds: string[]) {
   );
 }
 
-function findMissingGeneratedFiles(
-  files: Array<{ fileName: string }>,
-  requiredFiles: string[],
-) {
-  return requiredFiles.filter(
-    (required) => !files.some((file) => file.fileName === required || file.fileName.endsWith(required)),
-  );
-}
-
 async function verifyPptx(buffer: Buffer) {
   if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
     return { valid: false, reason: "file is not a zip archive", slideCount: 0, chartXmlCount: 0, mediaCount: 0 };
@@ -394,24 +329,20 @@ async function verifyPptx(buffer: Buffer) {
   return { valid: true, reason: "", slideCount, chartXmlCount, mediaCount };
 }
 
-async function verifyXlsx(buffer: Buffer) {
-  if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
-    return { valid: false, reason: "file is not a zip archive", sheetCount: 0 };
+async function verifyPdf(buffer: Buffer) {
+  if (buffer.length < 4 || buffer[0] !== 0x25 || buffer[1] !== 0x50 || buffer[2] !== 0x44 || buffer[3] !== 0x46) {
+    return { valid: false, reason: "file does not start with %PDF", pageCount: 0 };
   }
 
   try {
-    const zip = await JSZip.loadAsync(buffer);
-    const workbookXml = await zip.file("xl/workbook.xml")?.async("string");
-    if (!workbookXml) {
-      return { valid: false, reason: "missing xl/workbook.xml", sheetCount: 0 };
+    const parsed = await pdfParse(buffer);
+    const pageCount = parsed.numpages ?? 0;
+    if (pageCount === 0) {
+      return { valid: false, reason: "pdf has zero pages", pageCount };
     }
-    const sheetCount = (workbookXml.match(/<sheet\b/gi) ?? []).length;
-    if (sheetCount === 0) {
-      return { valid: false, reason: "workbook has zero sheets", sheetCount };
-    }
-    return { valid: true, reason: "", sheetCount };
+    return { valid: true, reason: "", pageCount };
   } catch {
-    return { valid: false, reason: "xlsx parser could not parse the file", sheetCount: 0 };
+    return { valid: false, reason: "pdf parser could not parse the file", pageCount: 0 };
   }
 }
 
