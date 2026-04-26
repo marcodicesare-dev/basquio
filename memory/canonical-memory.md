@@ -119,6 +119,8 @@ Initial domain bias:
 - Author messages that include uploaded evidence must put the instruction text block before all `container_upload` blocks, matching the official Anthropic code-execution file pattern.
 - The direct author turn must prove evidence availability before analysis. If deterministic ingest found tabular evidence, Claude must locate and open a workbook or CSV inside the container before writing any analytical claim.
 - If Claude says a required uploaded workbook is missing from the container, the run must fail at the evidence availability gate. Basquio must not salvage analysis from a manifest built after missing-evidence self-reporting.
+- The direct author turn must pass plan quality before revise. Fabricated workbook sheet references, duplicate data cuts, storyline backtracking, unsupported content counts, and blocking plan-depth defects are author defects, not revise polish. Author gets one bounded full-artifact rebuild, then the attempt fails before critique if the rebuilt plan is still invalid.
+- Durable artifact QA is a publish contract. Weak markdown depth, missing required narrative sections, lost Italian accents, weak workbook shell, missing workbook sheet links, missing native chart companions, PPTX structural defects, and visual-revision findings must block publish instead of shipping yellow artifacts.
 - NielsenIQ-style exports contain hierarchy subtotal traps. Any topline number must reconcile category rows against supplier rows before it is allowed into the artifacts.
 - narrative markdown in v1 should be text-first and chart-free. The right trade is a reliable narrative report, not a brittle Word recreation of slide visuals.
 - narrative markdown must use the same knowledge depth and copywriting rules as the deck path while expanding the explanation of what happened, why it matters, and how to act.
@@ -174,6 +176,13 @@ Initial domain bias:
 - Rossella's Segafredo rerun attempt 26 proved that the evidence upload gate was necessary but not sufficient. The author opened the workbook, then omitted attached `analysis_result.json` and returned a prose delivery summary instead.
 - The pipeline accepted the durable files, synthesized analysis from `deck_manifest.json`, and entered revise with a 14-slide untrusted plan for a 10-content-slide request. Revise spent five loops and `$16.341`, then export correctly blocked publish on content slide count and fidelity issues.
 - Canonical prevention rule: merged full-deck author runs must attach parseable `analysis_result.json` before revise. If it is missing or malformed after the bounded retry, fail author early. Manifest salvage is allowed only as forensic evidence or checkpoint recovery, not as the production happy path.
+
+## Production Incident Memory: April 26, 2026, Rossella invalid author-plan loop
+
+- Rossella's Segafredo attempt 27 proved that a parseable `analysis_result.json` is necessary but not sufficient. The author opened the workbook and attached the analysis artifact, but the plan still referenced fabricated sheets and repeated or backtracked analytical cuts.
+- The old pipeline logged these as plan validation and critique issues, then continued into render, critique, and revise. That turned an author planning failure into expensive downstream repair.
+- Canonical prevention rule: author-plan validity is a pre-critique gate. If `analysis_result.json` fails sheet-name or plan-linearity checks, the same author container gets one bounded full-artifact rebuild. If the rebuilt analysis still fails, fail author before revise.
+- Canonical publish rule: `qa_passed=false` is not an acceptable delivery state for user-facing runs. Narrative depth, workbook editability, language correctness, slide-plan quality, and visual no-revision checks are part of the hard publish frontier.
 
 ## Production Incident Memory: March 21-22, 2026
 

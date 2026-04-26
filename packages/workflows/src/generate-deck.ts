@@ -143,13 +143,40 @@ const HARD_QA_BLOCKERS = new Set([
   "pptx_present",
   "md_present",
   "md_content_present",
+  "md_heading_present",
+  "md_text_content_present",
+  "md_no_internal_scaffolding",
+  "md_no_placeholder_metrics",
+  "md_parseable",
   "xlsx_present",
   "xlsx_zip_signature",
+  "xlsx_workbook_xml",
+  "xlsx_readme_sheet_present",
+  "xlsx_data_sheets_have_tables",
+  "xlsx_data_sheets_have_freeze_panes",
+  "xlsx_data_sheets_have_column_widths",
+  "xlsx_native_chart_drawings_present",
+  "xlsx_manifest_excel_sheet_links_present",
+  "xlsx_manifest_excel_sheets_exist",
+  "xlsx_manifest_native_chart_links_present",
+  "xlsx_native_chart_xml_present",
   "pptx_zip_signature",
+  "pptx_presentation_xml",
+  "pptx_content_types_xml",
+  "pptx_slide_xml_count_matches_manifest",
+  "pptx_chart_media_present",
+  "pptx_no_vector_media",
+  "pptx_no_native_chart_xml",
+  "pptx_large_image_aspect_fit",
+  "pptx_structural_integrity",
   "slide_count_positive",
   "slide_count_within_requested_plus_appendix_cap",
   "content_slide_count_matches_request",
   "appendix_slide_count_within_cap",
+  "chart_density_fits_layout_slots",
+  "titles_present",
+  "rendered_page_visual_green",
+  "rendered_page_visual_no_revision",
   "rendered_page_numeric_labels_clean",
   "report_only_manifest_zero_slides",
   "pptx_zip_parse_failed",
@@ -1660,15 +1687,32 @@ export async function generateDeckRun(
       }
 
       if (recoveredAnalysisForSplit) {
-        analysis = recoveredAnalysisForSplit;
-        applyChartPreprocessingConstraints(analysis);
-        const recoveredPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
+        const candidateRecoveredAnalysis = recoveredAnalysisForSplit;
+        applyChartPreprocessingConstraints(candidateRecoveredAnalysis);
+        const recoveredPlanLint = buildPlanLintSummary(candidateRecoveredAnalysis, run.target_slide_count);
         phaseTelemetry.understandPlanLint = recoveredPlanLint.summary;
         await upsertWorkingPaper(config, runId, "deck_plan_validation", recoveredPlanLint.result).catch(() => {});
         await insertEvent(config, runId, attempt, "understand", "plan_validation", {
           ...recoveredPlanLint.summary,
           actionableIssues: recoveredPlanLint.actionableIssues.slice(0, 8),
         }).catch(() => {});
+        if (recoveredPlanLint.actionableIssues.length > 0) {
+          phaseTelemetry.understandRecoveryRejected = {
+            ...((phaseTelemetry.understandRecoveryRejected as Record<string, unknown> | undefined) ?? {}),
+            reason: "plan_quality_gate",
+            issueCount: recoveredPlanLint.actionableIssues.length,
+            actionableIssues: recoveredPlanLint.actionableIssues.slice(0, 8),
+          };
+          advisoryIssues.add(
+            `Plan validation: recovered analysis had ${recoveredPlanLint.actionableIssues.length} blocking plan issue(s) and was discarded before authoring.`,
+          );
+          recoveredAnalysisForSplit = null;
+        } else {
+          analysis = candidateRecoveredAnalysis;
+        }
+      }
+
+      if (recoveredAnalysisForSplit && analysis) {
         phaseTelemetry.understandRecovery = {
           source: "working_paper",
           recoveryReason: attempt.recoveryReason,
@@ -2021,7 +2065,7 @@ export async function generateDeckRun(
 
       manifest = parseManifestResponseWithFallback(authorFallbackMessages, authorFiles);
       if (!recoveredAnalysisForSplit) {
-        const resolvedAnalysis = resolveAuthorAnalysisWithFallback({
+        let resolvedAnalysis = resolveAuthorAnalysisWithFallback({
           run,
           messages: authorFallbackMessages,
           files: authorFiles,
@@ -2056,7 +2100,207 @@ export async function generateDeckRun(
           slidePlan: analysis.slidePlan,
           datasetProfile: parsed.datasetProfile,
         });
-        const resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
+        let resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
+        let authorPlanQualityGate = buildAuthorPlanQualityGate({
+          sheetReport: latestPlanSheetValidation,
+          planLint: resolvedPlanLint,
+        });
+        if (!authorPlanQualityGate.passed) {
+          const initialAuthorPlanQualityIssueCount = authorPlanQualityGate.issues.length;
+          const qualityRetryRequiredFiles = buildRequiredAuthorOutputFiles({
+            isReportOnly: false,
+            requiresAnalysisResult: true,
+          });
+          await insertEvent(config, runId, attempt, "author", "author_plan_quality_retry", {
+            issueCount: authorPlanQualityGate.issues.length,
+            issues: authorPlanQualityGate.issues.slice(0, 12),
+            sheetValidation: authorPlanQualityGate.sheetReport,
+            planLintSummary: authorPlanQualityGate.planLintSummary,
+          }).catch(() => {});
+          const authorQualityRetryMaxTokens = getAuthorPhaseMaxTokens(MODEL, run.target_slide_count);
+          const authorQualityRetryToolCallSummary = buildAuthoringToolCallSummary(MODEL, {
+            webFetchMode: authorWebFetchMode,
+          });
+          const authorQualityRetryTools = buildClaudeTools(MODEL, { webFetchMode: authorWebFetchMode });
+          await recordToolCall(config, runId, attempt, "author", "code_execution", {
+            model: MODEL,
+            tools: [...authorQualityRetryToolCallSummary.tools],
+            autoInjectedTools: [...authorQualityRetryToolCallSummary.autoInjectedTools],
+            skills: [...authorQualityRetryToolCallSummary.skills],
+            stepNumber: 2,
+            reason: "plan_quality_retry",
+          });
+          const authorQualityRetryBudgetGate = await enforceDeckBudget({
+            client,
+            model: MODEL,
+            betas: [...modelBetas],
+            spentUsd,
+            maxUsd: modelBudget.preFlight,
+            outputTokenBudget: authorQualityRetryMaxTokens,
+            onSoftCapExceeded: (warning) =>
+              recordCostAnomalyEvent(config, {
+                runId,
+                phase: "author",
+                model: MODEL,
+                projectedUsd: warning.projectedUsd,
+                softCapUsd: warning.softCapUsd,
+                spentUsd: warning.spentUsd,
+              }),
+            fileBackedBudgetContext: {
+              phase: "author",
+              targetSlideCount: run.target_slide_count,
+              fileCount: sourceFiles.length,
+              attachmentKinds: fileBackedAttachmentKinds,
+              hasWorkspaceContext: Boolean(workspaceContextPack),
+              priorSpendUsd: spentUsd,
+              hasPriorRevise: false,
+            },
+            body: {
+              system: systemPrompt,
+              messages: [
+                ...authorResponse.thread,
+                buildAuthorPlanQualityRetryMessage({
+                  issues: authorPlanQualityGate.issues,
+                  targetSlideCount: run.target_slide_count,
+                  requiredFiles: qualityRetryRequiredFiles,
+                  knownSheetNames: parsed.datasetProfile.sheets.map((sheet) => sheet.name).filter(Boolean),
+                }),
+              ],
+              tools: authorQualityRetryTools,
+              thinking: buildAuthoringThinkingConfig(MODEL),
+              output_config: buildAuthoringOutputConfig(MODEL),
+            },
+          });
+          await insertEvent(config, runId, attempt, "author", "author_plan_quality_retry_preflight", {
+            projectedUsd: authorQualityRetryBudgetGate.projectedUsd,
+            overBudget: authorQualityRetryBudgetGate.overBudget,
+            usedCountTokens: authorQualityRetryBudgetGate.usedCountTokens,
+            envelopeContext: authorQualityRetryBudgetGate.envelopeContext,
+            model: MODEL,
+            webFetchMode: authorWebFetchMode,
+          }).catch(() => {});
+
+          await persistRequestStart(config, runId, attempt, "author", "plan_quality_retry", MODEL);
+          const authorQualityRetryResponse = await runClaudeLoop({
+            client,
+            model: MODEL,
+            systemPrompt,
+            maxTokens: authorQualityRetryMaxTokens,
+            phaseLabel: "author",
+            circuitKey: `${run.id}:${attempt.id}:author:plan-quality-retry`,
+            onMeaningfulProgress: () => touchAttemptProgress(config, runId, attempt, "author").catch(() => {}),
+            maxPauseTurns: MAX_PAUSE_TURNS_PER_PHASE.author,
+            phaseTimeoutMs: PHASE_TIMEOUTS_MS.author,
+            requestWatchdogMs: REQUEST_WATCHDOG_BY_PHASE_MS.author,
+            currentSpentUsd: spentUsd,
+            targetSlideCount: run.target_slide_count,
+            betas: modelBetas,
+            container: buildAuthoringContainer(authorResponse.containerId ?? containerId ?? baseContainerId, MODEL),
+            messages: [
+              ...authorResponse.thread,
+              buildAuthorPlanQualityRetryMessage({
+                issues: authorPlanQualityGate.issues,
+                targetSlideCount: run.target_slide_count,
+                requiredFiles: qualityRetryRequiredFiles,
+                knownSheetNames: parsed.datasetProfile.sheets.map((sheet) => sheet.name).filter(Boolean),
+              }),
+            ],
+            tools: authorQualityRetryTools,
+            thinking: buildAuthoringThinkingConfig(MODEL),
+            outputConfig: buildAuthoringOutputConfig(MODEL),
+            onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", MODEL),
+            abortSignal: externalAbortSignal,
+          });
+          const authorQualityRetryFiles = await downloadGeneratedFiles(client, authorQualityRetryResponse.fileIds);
+          requireGeneratedFiles(authorQualityRetryFiles, qualityRetryRequiredFiles, "author");
+          const retryAnalysisFileValidation = validateGeneratedAnalysisResultFile(authorQualityRetryFiles);
+          if (!retryAnalysisFileValidation.valid) {
+            await insertEvent(config, runId, attempt, "author", "author_plan_quality_retry_failed", {
+              reason: retryAnalysisFileValidation.reason,
+              generatedFiles: authorQualityRetryFiles.map((file) => file.fileName),
+            }).catch(() => {});
+            throw new Error(
+              `Author plan quality retry did not produce parseable analysis_result.json. ${retryAnalysisFileValidation.reason}`,
+            );
+          }
+
+          spentUsd = roundUsd(spentUsd + usageToCost(MODEL, authorQualityRetryResponse.usage));
+          await insertEvent(config, runId, attempt, "author", "author_plan_quality_retry_cost_actual", {
+            actualUsd: usageToCost(MODEL, authorQualityRetryResponse.usage),
+            cumulativeUsd: spentUsd,
+            model: MODEL,
+          }).catch(() => {});
+          const authorQualityRetrySpendGate = assertDeckSpendWithinBudget(spentUsd, MODEL, {
+            allowPartialOutput: authorQualityRetryFiles.length > 0,
+            context: "author:plan-quality-retry",
+            targetSlideCount: run.target_slide_count,
+          });
+          if (authorQualityRetrySpendGate.overBudget) {
+            await recordCostAnomalyEvent(config, {
+              runId,
+              phase: "author",
+              model: MODEL,
+              projectedUsd: authorQualityRetrySpendGate.projectedUsd,
+              softCapUsd: authorQualityRetrySpendGate.softCapUsd,
+              spentUsd,
+            }).catch(() => {});
+          }
+          continuationCount += authorQualityRetryResponse.pauseTurns;
+          await persistRequestUsage(config, runId, attempt, "author", "plan_quality_retry", MODEL, authorQualityRetryResponse.requests);
+          rememberRequestIds(anthropicRequestIds, authorQualityRetryResponse.requests);
+          authorPhaseUsage = mergeClaudeUsage(authorPhaseUsage, authorQualityRetryResponse.usage);
+          authorResponse = {
+            ...authorResponse,
+            containerId: authorQualityRetryResponse.containerId ?? authorResponse.containerId,
+            thread: authorQualityRetryResponse.thread,
+            fileIds: [...new Set([...authorResponse.fileIds, ...authorQualityRetryResponse.fileIds])],
+            usage: mergeClaudeUsage(authorResponse.usage, authorQualityRetryResponse.usage),
+            iterations: authorResponse.iterations + authorQualityRetryResponse.iterations,
+            pauseTurns: authorResponse.pauseTurns + authorQualityRetryResponse.pauseTurns,
+            requests: [...authorResponse.requests, ...authorQualityRetryResponse.requests],
+          };
+          phaseTelemetry.author = buildPhaseTelemetry(MODEL, {
+            ...authorResponse,
+            requestIds: authorResponse.requests.map((request) => request.requestId).filter((requestId): requestId is string => Boolean(requestId)),
+          });
+          authorFallbackMessages = [authorQualityRetryResponse.message, ...authorFallbackMessages];
+          authorFiles = mergeGeneratedFiles(authorFiles, authorQualityRetryFiles);
+          manifest = parseManifestResponseWithFallback(authorFallbackMessages, authorFiles);
+          resolvedAnalysis = resolveAuthorAnalysisWithFallback({
+            run,
+            messages: authorFallbackMessages,
+            files: authorFiles,
+            manifest,
+          });
+          analysis = resolvedAnalysis.analysis;
+          enforceAnalysisExhibitRules(analysis);
+          applyChartPreprocessingConstraints(analysis);
+          latestPlanSheetValidation = validatePlanSheetNames({
+            slidePlan: analysis.slidePlan,
+            datasetProfile: parsed.datasetProfile,
+          });
+          resolvedPlanLint = buildPlanLintSummary(analysis, run.target_slide_count);
+          authorPlanQualityGate = buildAuthorPlanQualityGate({
+            sheetReport: latestPlanSheetValidation,
+            planLint: resolvedPlanLint,
+          });
+          if (!authorPlanQualityGate.passed) {
+            await insertEvent(config, runId, attempt, "author", "author_plan_quality_retry_failed", {
+              issueCount: authorPlanQualityGate.issues.length,
+              issues: authorPlanQualityGate.issues.slice(0, 12),
+              sheetValidation: authorPlanQualityGate.sheetReport,
+              planLintSummary: authorPlanQualityGate.planLintSummary,
+            }).catch(() => {});
+            throw new Error(
+              `Author plan quality gate failed after retry: ${authorPlanQualityGate.issues.slice(0, 5).join(" | ")}`,
+            );
+          }
+          phaseTelemetry.authorPlanQualityRetry = {
+            passed: true,
+            initialIssueCount: initialAuthorPlanQualityIssueCount,
+            model: MODEL,
+          };
+        }
         phaseTelemetry.understandPlanLint = resolvedPlanLint.summary;
         await assertAttemptStillOwnsRun(config, runId, attempt);
         await upsertWorkingPaper(config, runId, "analysis_result", {
@@ -3395,8 +3639,8 @@ export async function generateDeckRun(
       const finalContract = isReportOnly ? null : validateManifestContract(finalManifest);
       const finalQualityGate = isReportOnly
         ? {
-            blockingFailures: qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check)),
-            advisories: [...qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)), ...finalValidationAdvisories],
+            blockingFailures: qaReport.failed.filter(isHardQaBlocker),
+            advisories: [...qaReport.failed.filter((check) => !isHardQaBlocker(check)), ...finalValidationAdvisories],
           }
         : collectPublishGateFailures({
             qaReport,
@@ -7483,6 +7727,66 @@ function buildPlanLintSummary(analysis: z.infer<typeof analysisSchema>, requeste
   };
 }
 
+type AuthorPlanQualityGate = {
+  passed: boolean;
+  issues: string[];
+  sheetReport: PlanSheetNameReport | null;
+  planLintSummary: ReturnType<typeof buildPlanLintSummary>["summary"] | null;
+};
+
+function buildAuthorPlanQualityGate(input: {
+  sheetReport: PlanSheetNameReport | null;
+  planLint: ReturnType<typeof buildPlanLintSummary> | null;
+}): AuthorPlanQualityGate {
+  const issues = [
+    ...formatPlanSheetValidationIssues(input.sheetReport),
+    ...(input.planLint?.actionableIssues ?? []),
+  ];
+
+  return {
+    passed: issues.length === 0,
+    issues,
+    sheetReport: input.sheetReport,
+    planLintSummary: input.planLint?.summary ?? null,
+  };
+}
+
+function buildAuthorPlanQualityRetryMessage(input: {
+  issues: string[];
+  targetSlideCount: number;
+  requiredFiles: string[];
+  knownSheetNames: string[];
+}): Anthropic.Beta.BetaMessageParam {
+  const knownSheetNames = input.knownSheetNames.length > 0
+    ? input.knownSheetNames.join(", ")
+    : "use exact uploaded sheet names discovered in the container";
+  const issueLines = input.issues.slice(0, 18).map((issue) => `- ${issue}`);
+
+  return {
+    role: "user",
+    content: [
+      {
+        type: "text",
+        text: [
+          "Your author output failed Basquio quality gates before critique.",
+          "Do not patch the old deck locally. Rebuild the complete artifact set from the uploaded workbook and template in this same container.",
+          `The content-slide count must be exactly ${input.targetSlideCount}. Keep structural slides separate from content slides.`,
+          `Use only these uploaded sheet names, or derived sheet names prefixed with computed_: ${knownSheetNames}.`,
+          "Remove duplicate analytical cuts, keep analytical chapters contiguous, and do not backtrack to a previous branch unless it is an explicit synthesis slide.",
+          "Every title number must be evidence-backed by the visible chart or table on the same slide.",
+          "The narrative report must meet the required standalone leave-behind depth and preserve Italian accents.",
+          "The workbook must include README, formatted data tables, freeze panes, column widths, and editable native chart companions when supported.",
+          "Attach exactly these files before ending the turn:",
+          ...input.requiredFiles.map((fileName) => `- ${fileName}`),
+          "",
+          "Blocking issues to fix:",
+          ...issueLines,
+        ].join("\n"),
+      },
+    ],
+  };
+}
+
 function shouldEnforceDeckPlanMeceCheck(targetSlideCount: number) {
   return DECK_PLAN_MECE_CHECK && targetSlideCount >= 40;
 }
@@ -8941,13 +9245,13 @@ export function collectPublishGateFailures(input: {
   const blockingLintIssues = input.lint.actionableIssues.filter(isPublishBlockingLintIssue);
   const advisoryLintIssues = input.lint.actionableIssues.filter((issue) => !isPublishBlockingLintIssue(issue));
   const blockingFailures = [
-    ...input.qaReport.failed.filter((check) => HARD_QA_BLOCKERS.has(check)),
+    ...input.qaReport.failed.filter(isHardQaBlocker),
     ...blockingLintIssues.map((issue) => `lint:${issue}`),
     ...input.contract.actionableIssues.map((issue) => `contract:${issue}`),
     ...((input.claimIssues ?? []).map((issue) => `claim:${formatClaimTraceabilityIssue(issue)}`)),
   ];
   const advisories = [
-    ...input.qaReport.failed.filter((check) => !HARD_QA_BLOCKERS.has(check)),
+    ...input.qaReport.failed.filter((check) => !isHardQaBlocker(check)),
     ...advisoryLintIssues.map((issue) => `lint:${issue}`),
   ];
 
@@ -8959,14 +9263,32 @@ export function collectPublishGateFailures(input: {
   };
 }
 
+function isHardQaBlocker(checkName: string) {
+  return HARD_QA_BLOCKERS.has(checkName) || checkName.startsWith("md_") || checkName.startsWith("xlsx_");
+}
+
 function isPublishBlockingLintIssue(issue: string) {
   const normalized = issue.toLowerCase();
   return (
     normalized.includes("[em_dash]") ||
+    normalized.includes("[italian_missing_accent]") ||
+    normalized.includes("[title_no_number]") ||
+    normalized.includes("[title_number_coverage]") ||
     normalized.includes("[placeholder_metric]") ||
     normalized.includes("[title_claim_unverified]") ||
     normalized.includes("[claim_chart_metric_mismatch]") ||
     normalized.includes("[distribution_claim_without_productivity_proof]") ||
+    normalized.includes("[plan_sheet_name]") ||
+    normalized.includes("[data_primacy]") ||
+    normalized.includes("[citation_fidelity]") ||
+    normalized.includes("[redundant_data_cut]") ||
+    normalized.includes("[redundant_analytical_cut]") ||
+    normalized.includes("[storyline_backtracking]") ||
+    normalized.includes("[drilldown_dimension_coverage]") ||
+    normalized.includes("[insufficient_decomposition_depth]") ||
+    normalized.includes("[chapter_depth_shallow]") ||
+    normalized.includes("artifact quality issue [md_") ||
+    normalized.includes("artifact quality issue [xlsx_") ||
     normalized.includes("[missing_delta_") ||
     normalized.includes("[bubble_size_legend_missing]") ||
     normalized.includes("[invented_label]") ||
@@ -9041,7 +9363,7 @@ function classifyQualityPassport(input: {
 
   let classification: "gold" | "silver" | "bronze" | "recovery";
   if (
-    input.qaReport.failed.some((check) => HARD_QA_BLOCKERS.has(check))
+    input.qaReport.failed.some(isHardQaBlocker)
     || criticalCount > 0
     || !mecePass
     || input.visualQa.score < 5
@@ -9678,7 +10000,7 @@ async function validateArtifactChecks(
     allFailed.push("md_parseable");
   }
 
-  const blockingFailures = allFailed.filter((check) => HARD_QA_BLOCKERS.has(check));
+  const blockingFailures = allFailed.filter(isHardQaBlocker);
   const tier =
     blockingFailures.length > 0
       ? "red" as const
@@ -11359,6 +11681,8 @@ function buildHaikuCallFnForResearch(client: Anthropic): HaikuCallFn {
 export const __test__ = {
   bindWorkbookSheetToChart,
   buildRequiredReviseFiles,
+  buildAuthorPlanQualityGate,
+  buildAuthorPlanQualityRetryMessage,
   buildWorkbookArtifactChecks,
   formatArtifactQualityRepairIssues,
   buildWorkbookChartBindingRequests,

@@ -141,6 +141,7 @@ Basquio implication:
 - The author prompt must include a file-availability preflight. If the deterministic ingest found tabular data, Claude must locate and open at least one uploaded workbook or CSV before generating `deck.pptx`, `narrative_report.md`, or `data_tables.xlsx`.
 - If Claude reports that an expected workbook is missing from the container, stop the attempt as an evidence availability failure. Do not continue into manifest salvage or revise.
 - In merged full-deck author runs, `analysis_result.json` must be a real attached file and must parse before revise starts. Manifest-only analysis salvage can preserve forensic evidence, but it must not be treated as a valid author contract for production reruns.
+- In merged full-deck author runs, the parsed `analysis_result.json` must pass sheet-name and plan-linearity checks before critique. A bad plan should get one bounded author rebuild in the same code-execution container, not five revise loops.
 
 ### Validation discipline
 
@@ -153,6 +154,7 @@ Basquio implication:
 - if runtime evidence and historical docs disagree, trust the live provider response and update the docs in the same change
 - new forensic validators must be rolled out in true shadow mode: export-only, fail-soft, and advisory-only when env is unset or `warn`
 - do not put new workbook reparsing or model-classifier validators on author or revise unless the mode is explicitly blocking and the exact live run path has been proven with production evidence
+- user-facing artifact QA is not shadow validation. Markdown depth and orthography checks, workbook shell and chart-link checks, PPTX structural checks, and rendered visual no-revision checks are hard publish gates because they validate the actual durable outputs.
 
 ## Browserless
 

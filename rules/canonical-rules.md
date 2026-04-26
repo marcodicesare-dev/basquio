@@ -90,6 +90,8 @@
 - A missing required workbook in Claude code execution is a hard evidence availability failure. Do not let the author infer from the brief, template, filename, or prior memory, and do not salvage analysis from a manifest created after that self-report.
 - Anthropic code-execution requests that include uploaded files should place the text instruction block before `container_upload` blocks, then list the required evidence filenames in the prompt.
 - Merged full-deck author runs must attach a parseable `analysis_result.json` before revise. If the file is missing or malformed after the bounded retry, fail the author phase. Do not salvage a slide plan from `deck_manifest.json` and spend revise budget on an untrusted plan.
+- Merged full-deck author runs must pass plan quality before revise. Fabricated sheet names, duplicate analytical cuts, storyline backtracking, unsupported content counts, and blocking plan-depth failures trigger one bounded author rebuild of `analysis_result.json`, `deck.pptx`, `narrative_report.md`, `data_tables.xlsx`, and `deck_manifest.json`. If the rebuilt plan still fails, fail author early rather than spending revise budget.
+- Publish gates must block weak durable artifacts. `narrative_report.md` depth, required sections, and Italian orthography, plus `data_tables.xlsx` README, formatted tables, freeze panes, widths, sheet links, and native chart companions are part of the user-facing quality contract.
 
 ## Change Management Rules
 

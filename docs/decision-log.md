@@ -937,3 +937,21 @@ Implication:
 - storage plus conversation attachment must stay on the fast path
 - chunking, embeddings, entity extraction, and image vision can retry without blocking chat use
 - future file types should first attach cleanly, then earn richer memory extraction by adding parsers or vision projections
+
+## April 26, 2026: Author plan quality and durable artifact QA are hard gates
+
+Decision:
+- merged full-deck author output must pass sheet-name and plan-linearity checks before critique
+- fabricated workbook sheet references, duplicate analytical cuts, storyline backtracking, content-count mismatches, and blocking plan-depth defects trigger one bounded author rebuild of the full artifact set in the same container
+- if the rebuilt author plan still fails, the attempt fails before revise instead of spending additional downstream repair budget
+- publish now treats weak markdown, weak workbook shell, missing workbook links, missing native chart companions, PPTX structural defects, rendered visual-revision findings, Italian accent loss, title-number defects, and plan-linearity defects as hard blockers
+
+Why:
+- Rossella's Segafredo attempt 27 showed that requiring parseable `analysis_result.json` was not enough. The author saw the workbook and produced files, but the analysis plan still referenced fabricated sheets and repeated or backtracked analytical cuts
+- downstream revise was being asked to rescue a bad author plan after PPTX, markdown, and workbook generation had already happened
+- official Anthropic guidance starts prompt work from explicit success criteria and evaluations; for Basquio, the success criteria are the durable artifacts and the author plan that creates them, not a later prose critique
+
+Implication:
+- revise becomes a polishing and bounded repair lane, not the first place where basic analytical plan validity is enforced
+- the dashboard should not expose a "completed" run as acceptable when `qa_passed=false` reflects weak user artifacts
+- production reruns should fail faster on unfixable author planning defects rather than burning several revise loops and still blocking export

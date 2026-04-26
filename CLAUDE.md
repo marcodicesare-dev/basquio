@@ -70,6 +70,7 @@ Evidence files are uploaded to Claude via Files API `container_upload`. Claude r
 - If a required workbook is missing from the container, author must stop and attach `evidence_availability_error.json`. It must never infer from the brief, template, filename, or prior run memory.
 - Any author response that self-reports missing required evidence is a blocking pipeline failure. Do not salvage analysis from the manifest in that case.
 - For merged full-deck author runs, `analysis_result.json` is a required internal artifact. If it is missing or malformed after the bounded missing-file retry, fail author before revise. Manifest salvage is forensic recovery only, not a happy path.
+- For merged full-deck author runs, `analysis_result.json` must also pass sheet-name and plan-linearity gates before critique. If the plan references fabricated workbook sheets, repeats analytical cuts, backtracks across chapters, or violates content-slide count, author gets one bounded full-artifact rebuild in the same container. If the rebuilt plan still fails, fail author before revise.
 
 ### Security
 Storage policies for artifacts scope access by org membership via `deck_runs` join. All PostgREST queries use `assertUuid()` to prevent operator injection. API read endpoints verify auth + tenancy.
@@ -154,9 +155,9 @@ Migrations: `supabase/migrations/`
 - Haiku for BOTH critiques is acceptable (same model at both stages) but not yet proven in production.
 
 ### Publish gate
-- ONLY durable artifact corruption blocks publish: missing or corrupt `deck.pptx`, missing or corrupt `narrative_report.md`, missing or corrupt `data_tables.xlsx`, impossible slide-count structure, malformed numeric labels, or parse failure of the required PPTX/XLSX artifacts.
+- Durable artifact quality blocks publish, not only file presence. Missing or corrupt `deck.pptx`, weak or shallow `narrative_report.md`, weakly formatted `data_tables.xlsx`, broken PPTX structure, visual-revision findings, malformed numeric labels, impossible slide-count structure, missing Italian accents, title-number failures, plan-linearity failures, fabricated sheet references, data-primacy failures, and citation-fidelity failures must not publish as "yellow" acceptable artifacts.
 - PDF is not a durable user artifact and must not be required for publish. It may be regenerated from PPTX for internal visual QA, but missing or invalid PDF must not fail export.
-- Advisory lint and visual issues should drive revise before publish. If a later recovery attempt fails after a prior attempt published the three required artifacts, preserve the published run instead of hiding downloads behind top-level failure.
+- Advisory issues can remain advisory only when they do not affect artifact usefulness, evidence grounding, language correctness, or analyst editability. If a later recovery attempt fails after a prior attempt published the three required artifacts, preserve the published run instead of hiding downloads behind top-level failure.
 
 ### Revise architecture
 - Revise should receive a rendered PDF document when a valid internal PDF exists so Claude can see visible defects.
