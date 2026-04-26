@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { enforceDeckBudget } from "./cost-guard";
+import { enforceDeckBudget, shouldResetCrossAttemptBudget } from "./cost-guard";
 
 type FakeCountTokens = () => Promise<{ input_tokens: number }>;
 
@@ -76,5 +76,14 @@ describe("cost-guard", () => {
     expect(fallbackCalls).toBe(1);
     expect(result.usedCountTokens).toBe(false);
     expect(result.inputTokens).toBe(null);
+  });
+
+  it("resets cross-attempt budget for explicit operator recovery reruns", () => {
+    expect(shouldResetCrossAttemptBudget(null)).toBe(false);
+    expect(shouldResetCrossAttemptBudget("transient_provider_retry")).toBe(false);
+    expect(shouldResetCrossAttemptBudget("operator_retry")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("manual_code_fix_rerun")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("rossella_after_reviewed_p0_rollback_deploy")).toBe(true);
+    expect(shouldResetCrossAttemptBudget("rossella_prod_rerun_after_generated_workbook_sheet_gate_fix")).toBe(true);
   });
 });

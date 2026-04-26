@@ -73,6 +73,7 @@ import {
   getDeckBudgetCaps,
   getPriorAttemptsCost,
   roundUsd,
+  shouldResetCrossAttemptBudget,
   usageToCost,
 } from "./cost-guard";
 import { deckManifestSchema, parseDeckManifest } from "./deck-manifest";
@@ -1049,15 +1050,20 @@ export async function generateDeckRun(
       runId,
       excludeAttemptId: attempt.id,
     });
+    const crossAttemptBudgetReset = shouldResetCrossAttemptBudget(attempt.recoveryReason);
+    const effectivePriorAttemptsCostUsd = crossAttemptBudgetReset ? 0 : priorAttemptsCostUsd;
     phaseTelemetry.crossAttemptBudget = {
       priorAttemptsCostUsd,
+      effectivePriorAttemptsCostUsd,
       budgetUsd: modelBudget.crossAttempt,
       attemptNumber: attempt.attemptNumber,
       model: MODEL,
+      recoveryReason: attempt.recoveryReason,
+      resetApplied: crossAttemptBudgetReset,
     };
-    if (priorAttemptsCostUsd >= modelBudget.crossAttempt) {
+    if (effectivePriorAttemptsCostUsd >= modelBudget.crossAttempt) {
       throw new Error(
-        `Run has already spent $${priorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget for ${MODEL} is $${modelBudget.crossAttempt.toFixed(2)}.`,
+        `Run has already spent $${effectivePriorAttemptsCostUsd.toFixed(2)} across prior attempts. Cross-attempt budget for ${MODEL} is $${modelBudget.crossAttempt.toFixed(2)}.`,
       );
     }
     throwIfWorkerShutdownRequested(externalAbortSignal, "normalize");
