@@ -18,6 +18,23 @@ export type EvidenceModeForMessage = {
   hasDocumentEvidence: boolean;
 };
 
+export function buildRequiredAuthorOutputFiles(input: {
+  isReportOnly: boolean;
+  requiresAnalysisResult: boolean;
+}): string[] {
+  if (input.isReportOnly) {
+    return ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
+  }
+
+  return [
+    ...(input.requiresAnalysisResult ? ["analysis_result.json"] : []),
+    "deck.pptx",
+    "narrative_report.md",
+    "data_tables.xlsx",
+    "deck_manifest.json",
+  ];
+}
+
 export function buildUploadedFileContentBlocks(
   files?: AuthorInputFilesForMessage,
 ): AuthorMessageContentBlock[] {

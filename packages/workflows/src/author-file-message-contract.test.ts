@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildEvidenceAvailabilityGateLines,
+  buildRequiredAuthorOutputFiles,
   buildTextFirstAuthorContent,
   hasEvidenceAvailabilityFailureText,
   type AuthorInputFilesForMessage,
@@ -56,5 +57,29 @@ describe("author file message contract", () => {
       expectedEvidenceFileNames: ["Estrazione SP Segafredo.xlsx"],
       text: "analysis_result.json is malformed and could not be repaired.",
     })).toBe(false);
+  });
+
+  it("requires analysis_result.json for merged full-deck author runs", () => {
+    expect(buildRequiredAuthorOutputFiles({
+      isReportOnly: false,
+      requiresAnalysisResult: true,
+    })).toEqual([
+      "analysis_result.json",
+      "deck.pptx",
+      "narrative_report.md",
+      "data_tables.xlsx",
+      "deck_manifest.json",
+    ]);
+  });
+
+  it("does not require analysis_result.json for report-only output", () => {
+    expect(buildRequiredAuthorOutputFiles({
+      isReportOnly: true,
+      requiresAnalysisResult: true,
+    })).toEqual([
+      "narrative_report.md",
+      "data_tables.xlsx",
+      "deck_manifest.json",
+    ]);
   });
 });

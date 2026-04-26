@@ -77,6 +77,7 @@ import {
 import {
   buildAuthorFileInventoryLines,
   buildEvidenceAvailabilityGateLines,
+  buildRequiredAuthorOutputFiles,
   buildTextFirstAuthorContent,
   hasEvidenceAvailabilityFailureText,
 } from "./author-file-message-contract";
@@ -1796,9 +1797,11 @@ export async function generateDeckRun(
             onRequestRecord: buildRequestRecordCallback(config, runId, attempt, "author", candidateModel),
             abortSignal: externalAbortSignal,
           });
-          const requiredAuthorFiles = candidateIsReportOnly
-            ? ["narrative_report.md", "data_tables.xlsx", "deck_manifest.json"]
-            : ["deck.pptx", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
+          const requiresAnalysisResult = !candidateIsReportOnly && !recoveredAnalysisForSplit;
+          const requiredAuthorFiles = buildRequiredAuthorOutputFiles({
+            isReportOnly: candidateIsReportOnly,
+            requiresAnalysisResult,
+          });
           const candidateMessages = [candidateResponse.message];
           let candidateFiles: GeneratedFile[] = await downloadGeneratedFiles(client, candidateResponse.fileIds);
           const evidenceAvailabilityErrorFile = findGeneratedFile(candidateFiles, "evidence_availability_error.json");
@@ -1897,6 +1900,20 @@ export async function generateDeckRun(
           continuationCount += candidateResponse.pauseTurns;
           await persistRequestUsage(config, runId, attempt, "author", "phase_generation", candidateModel, candidateResponse.requests);
           rememberRequestIds(anthropicRequestIds, candidateResponse.requests);
+
+          if (requiresAnalysisResult) {
+            const analysisFileValidation = validateGeneratedAnalysisResultFile(candidateFiles);
+            if (!analysisFileValidation.valid) {
+              await insertEvent(config, runId, attempt, "author", "author_analysis_result_required_failed", {
+                model: candidateModel,
+                reason: analysisFileValidation.reason,
+                generatedFiles: candidateFiles.map((file) => file.fileName),
+              }).catch(() => {});
+              throw new Error(
+                `Full-deck author phase did not produce parseable analysis_result.json. ${analysisFileValidation.reason}`,
+              );
+            }
+          }
 
           const repaired = await repairPartialAuthorArtifacts({
             run,
@@ -5091,7 +5108,7 @@ function buildAuthorMessage(
           : []),
         isReportOnly
           ? "- Compact output does not change the deliverables. Finish all required file generation steps and attach the final outputs: deck_manifest.json, data_tables.xlsx, and narrative_report.md."
-          : "- Compact output does not change the deliverables. Finish all required file generation steps and attach only the final user-facing outputs: deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json. Do not generate or attach any PDF.",
+          : "- Compact output does not change the deliverables. Finish all required file generation steps and attach exactly these outputs: analysis_result.json, deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json. Do not generate or attach any PDF.",
         "- Compute deterministic facts in Python and produce a concise executive storyline.",
         ...(isReportOnly
           ? ["- This is a report-only run. Do not produce slides or presentation artifacts."]
@@ -5226,6 +5243,7 @@ function buildAuthorMessage(
           ...(analysis
             ? []
             : [
+                "- `analysis_result.json` is a required internal QA artifact for this merged author run. Attach it as a container upload even though it is not user-facing.",
                 "- `analysis_result.json` must be valid JSON matching the approved analysis schema with `language`, `thesis`, `executiveSummary`, and `slidePlan[]`.",
                 "- For every `slidePlan[].chart`, include `maxCategories`, `preferredOrientation`, `slotAspectRatio`, `figureSize`, `sort`, and `truncateLabels` so downstream QA can verify the chart contract.",
                 "- For every `slidePlan[].chart`, also include `xAxisLabel`, `yAxisLabel`, and for bubble charts `bubbleSizeLabel` so fidelity validators can verify labels and legends.",
@@ -5346,7 +5364,9 @@ function buildAuthorMessage(
           "- Each chart in the manifest should also include `excelSheetName` for the linked `data_tables.xlsx` sheet and `excelChartCellAnchor` when a native Excel chart object exists.",
           "- Each slide entry in the manifest must include `position`, `layoutId`, `slideArchetype`, `pageIntent`, `title`, and `chartId` when applicable.",
           "- For charted slides, each slide entry in `deck_manifest.json` must also set `hasDataTable` and `hasChartAnnotations` so Basquio can verify evidence co-location deterministically.",
-          "- Your final assistant message must attach the files as container uploads before finishing.",
+          analysis
+            ? "- Your final assistant message must attach deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json as container uploads before finishing."
+            : "- Your final assistant message must attach analysis_result.json, deck.pptx, narrative_report.md, data_tables.xlsx, and deck_manifest.json as container uploads before finishing. Do not replace analysis_result.json with a prose summary.",
         ].join("\n"),
     }),
   };
@@ -6575,6 +6595,31 @@ function requireGeneratedFile(files: GeneratedFile[], fileName: string) {
   const suffix = files.find((file) => file.fileName.endsWith(fileName));
   if (suffix) return suffix;
   throw new Error(`Claude did not generate required file ${fileName}.`);
+}
+
+function validateGeneratedAnalysisResultFile(files: GeneratedFile[]): { valid: true } | { valid: false; reason: string } {
+  const analysisFile = findGeneratedFile(files, "analysis_result.json");
+  if (!analysisFile) {
+    return { valid: false, reason: "analysis_result.json was not attached as a container upload." };
+  }
+
+  const raw = analysisFile.buffer.toString("utf8");
+  try {
+    parseAnalysisPayload(JSON.parse(raw));
+    return { valid: true };
+  } catch (error) {
+    const repaired = attemptJsonRepair(raw);
+    if (repaired) {
+      try {
+        parseAnalysisPayload(JSON.parse(repaired));
+        return { valid: true };
+      } catch {
+        // Report the original parse issue below.
+      }
+    }
+    const reason = error instanceof Error ? error.message : String(error);
+    return { valid: false, reason: `analysis_result.json is malformed. ${reason}` };
+  }
 }
 
 function parseGeneratedAnalysisResponse(

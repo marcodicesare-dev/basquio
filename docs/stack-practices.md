@@ -140,6 +140,7 @@ Basquio implication:
 - For file-backed code-execution requests, follow Anthropic's documented content order: the text instruction block first, then `container_upload` blocks. Basquio author and smoke requests should use that order consistently.
 - The author prompt must include a file-availability preflight. If the deterministic ingest found tabular data, Claude must locate and open at least one uploaded workbook or CSV before generating `deck.pptx`, `narrative_report.md`, or `data_tables.xlsx`.
 - If Claude reports that an expected workbook is missing from the container, stop the attempt as an evidence availability failure. Do not continue into manifest salvage or revise.
+- In merged full-deck author runs, `analysis_result.json` must be a real attached file and must parse before revise starts. Manifest-only analysis salvage can preserve forensic evidence, but it must not be treated as a valid author contract for production reruns.
 
 ### Validation discipline
 

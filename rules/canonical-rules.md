@@ -89,6 +89,7 @@
 - Claude authoring must prove file availability before analysis. If deterministic ingest found workbook or CSV sheets, the author must locate and open the uploaded tabular file inside code execution before writing claims or artifacts.
 - A missing required workbook in Claude code execution is a hard evidence availability failure. Do not let the author infer from the brief, template, filename, or prior memory, and do not salvage analysis from a manifest created after that self-report.
 - Anthropic code-execution requests that include uploaded files should place the text instruction block before `container_upload` blocks, then list the required evidence filenames in the prompt.
+- Merged full-deck author runs must attach a parseable `analysis_result.json` before revise. If the file is missing or malformed after the bounded retry, fail the author phase. Do not salvage a slide plan from `deck_manifest.json` and spend revise budget on an untrusted plan.
 
 ## Change Management Rules
 

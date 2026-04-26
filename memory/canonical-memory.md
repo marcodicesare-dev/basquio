@@ -169,6 +169,12 @@ Initial domain bias:
 - Canonical prevention rule: author requests must send text first, then `container_upload` blocks, and must run an evidence availability gate that locates and opens every required tabular evidence file before any claim is written.
 - If Claude self-reports missing required evidence, manifest salvage is forbidden. The attempt must fail with a clear evidence availability error instead of fabricating deck content from the brief.
 
+## Production Incident Memory: April 26, 2026, Rossella manifest salvage loop
+
+- Rossella's Segafredo rerun attempt 26 proved that the evidence upload gate was necessary but not sufficient. The author opened the workbook, then omitted attached `analysis_result.json` and returned a prose delivery summary instead.
+- The pipeline accepted the durable files, synthesized analysis from `deck_manifest.json`, and entered revise with a 14-slide untrusted plan for a 10-content-slide request. Revise spent five loops and `$16.341`, then export correctly blocked publish on content slide count and fidelity issues.
+- Canonical prevention rule: merged full-deck author runs must attach parseable `analysis_result.json` before revise. If it is missing or malformed after the bounded retry, fail author early. Manifest salvage is allowed only as forensic evidence or checkpoint recovery, not as the production happy path.
+
 ## Production Incident Memory: March 21-22, 2026
 
 - The March 21 run `10669fc3-917b-4a4e-84cf-a3ae07493839` did not fail because the analyst could not reason. It failed because the planner emitted a hallucinated chart sheet key (`→` separators plus duplicated filename), all 10 charts loaded zero rows, and the author fell into guaranteed fallback mode.

@@ -69,6 +69,7 @@ Evidence files are uploaded to Claude via Files API `container_upload`. Claude r
 - Author must run an evidence availability gate before analysis: list container files, locate every required uploaded evidence filename, and open at least one tabular workbook/CSV when the deterministic ingest found sheets.
 - If a required workbook is missing from the container, author must stop and attach `evidence_availability_error.json`. It must never infer from the brief, template, filename, or prior run memory.
 - Any author response that self-reports missing required evidence is a blocking pipeline failure. Do not salvage analysis from the manifest in that case.
+- For merged full-deck author runs, `analysis_result.json` is a required internal artifact. If it is missing or malformed after the bounded missing-file retry, fail author before revise. Manifest salvage is forensic recovery only, not a happy path.
 
 ### Security
 Storage policies for artifacts scope access by org membership via `deck_runs` join. All PostgREST queries use `assertUuid()` to prevent operator injection. API read endpoints verify auth + tenancy.
@@ -174,7 +175,7 @@ Migrations: `supabase/migrations/`
 ### Schema parsing
 - Claude's output shape varies. Use `.passthrough()` on Zod objects for LLM output.
 - Normalize/coerce fields instead of rejecting. A run that spent $1+ MUST NOT die on parseable-but-differently-shaped JSON.
-- `analysis_result.json` frequently has schema violations (figureSize as string, missing chart.id). Salvage from manifest if parsing fails.
+- `analysis_result.json` may have schema variations such as figureSize as string or missing chart.id. Repair/coerce parseable JSON, but do not enter revise from manifest-only salvage on merged full-deck author runs.
 
 ### Prompt engineering
 - NEVER add "suppress output" or "compact output" instructions that could cause Claude to skip file generation. Proven regression on March 30.
