@@ -942,7 +942,7 @@ Implication:
 
 Decision:
 - merged full-deck author output should pass sheet-name and plan-linearity checks before critique; failures trigger one bounded author rebuild of the full artifact set in the same container
-- if the rebuilt author plan still fails, publish fresh deterministic evidence artifacts rather than spending unbounded revise budget or leaving the user with nothing
+- if the rebuilt author plan still fails but the author produced structurally publishable artifacts, keep the best fresh artifact set with internal advisories; if no publishable author artifacts exist, publish deterministic evidence artifacts rather than leaving the user with nothing
 - final publish hard-blocks only missing, corrupt, or structurally invalid durable artifacts
 - weak markdown depth, weak workbook shell, missing workbook links, missing native chart companions, rendered visual-revision findings, Italian accent loss, title-number defects, and plan-linearity defects are bounded repair signals and internal advisories unless they make the artifact set unusable
 
