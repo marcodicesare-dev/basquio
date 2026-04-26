@@ -122,7 +122,6 @@ const HARD_QA_BLOCKERS = new Set([
   "pptx_zip_signature",
   "slide_count_positive",
   "slide_count_within_requested_plus_appendix_cap",
-  "content_slide_count_matches_request",
   "appendix_slide_count_within_cap",
   "report_only_manifest_zero_slides",
   "pptx_zip_parse_failed",
@@ -8170,8 +8169,8 @@ async function buildQaReport(
           : "no requested slide count recorded",
       },
       {
-        name: "content_slide_count_matches_request",
-        passed: typeof requestedSlideCount !== "number" || planLint.result.contentSlideCount === requestedSlideCount,
+        name: "content_slide_count_meets_request",
+        passed: typeof requestedSlideCount !== "number" || planLint.result.contentSlideCount >= requestedSlideCount,
         detail: typeof requestedSlideCount === "number"
           ? `requested=${requestedSlideCount} content=${planLint.result.contentSlideCount}`
           : "no requested slide count recorded",

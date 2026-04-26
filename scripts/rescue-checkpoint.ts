@@ -3,8 +3,9 @@
  *
  * This script:
  * 1. Loads the highest checkpoint (revise > author) from working_papers
- * 2. Downloads the checkpoint PPTX, narrative markdown, and workbook from storage
- * 3. Publishes the durable user-facing artifacts to the final storage paths
+ * 2. Downloads the checkpoint PPTX and PDF from storage
+ * 3. Builds narrative markdown from the checkpoint manifest + run analysis
+ * 4. Publishes all artifacts to the final storage paths
  * 5. Creates the artifact_manifests_v2 row
  * 6. Marks the run as completed/salvaged
  *
@@ -99,15 +100,14 @@ async function main() {
   });
 
   const checkpoint = checkpointRows[0]?.content;
-  if (!checkpoint || !checkpoint.pptxStoragePath || !checkpoint.mdStoragePath || !checkpoint.xlsxStoragePath || !checkpoint.manifestJson) {
-    console.error("No contract-complete checkpoint found for this run.");
+  if (!checkpoint || !checkpoint.pptxStoragePath || !checkpoint.pdfStoragePath) {
+    console.error("No valid checkpoint found for this run.");
     process.exit(1);
   }
 
   console.log(`Checkpoint found: phase=${checkpoint.phase}, saved=${checkpoint.savedAt}`);
   console.log(`  PPTX: ${checkpoint.pptxStoragePath}`);
-  console.log(`  MD:   ${checkpoint.mdStoragePath}`);
-  console.log(`  XLSX: ${checkpoint.xlsxStoragePath}`);
+  console.log(`  PDF:  ${checkpoint.pdfStoragePath}`);
 
   // 3. Download checkpoint artifacts
   console.log("\nDownloading checkpoint artifacts...");
@@ -119,32 +119,51 @@ async function main() {
   });
   console.log(`  PPTX: ${pptxBuffer.length} bytes`);
 
-  const markdownBuffer = await downloadFromStorage({
+  const pdfBuffer = await downloadFromStorage({
     supabaseUrl,
     serviceKey,
     bucket: "artifacts",
-    storagePath: checkpoint.mdStoragePath as string,
+    storagePath: checkpoint.pdfStoragePath as string,
   });
-  console.log(`  MD:   ${markdownBuffer.length} bytes`);
-
-  const workbookBuffer = await downloadFromStorage({
-    supabaseUrl,
-    serviceKey,
-    bucket: "artifacts",
-    storagePath: checkpoint.xlsxStoragePath as string,
-  });
-  console.log(`  XLSX: ${workbookBuffer.length} bytes`);
+  console.log(`  PDF:  ${pdfBuffer.length} bytes`);
 
   // 4. Parse manifest
   const manifest = parseDeckManifest(checkpoint.manifestJson as Record<string, unknown>);
   console.log(`  Manifest: ${manifest.slideCount} slides, ${manifest.charts.length} charts`);
 
+  // 5. Load analysis for the narrative markdown
+  const analysisRows = await fetchRestRows<WorkingPaperRow>({
+    supabaseUrl,
+    serviceKey,
+    table: "working_papers",
+    query: {
+      select: "paper_type,content,version",
+      run_id: `eq.${runId}`,
+      paper_type: "eq.analysis_result",
+      order: "version.desc",
+      limit: "1",
+    },
+  });
+
+  const analysis = analysisRows[0]?.content ?? { language: "English", thesis: "", executiveSummary: "", slidePlan: [] };
+
+  // 6. Build narrative markdown
+  console.log("\nBuilding narrative markdown...");
+  const markdown = buildRescueNarrativeMarkdown({
+    run,
+    analysis,
+    manifest,
+    checkpointPhase: String(checkpoint.phase ?? "unknown"),
+  });
+  const markdownBuffer = Buffer.from(markdown, "utf8");
+  console.log(`  MD:   ${markdownBuffer.length} bytes`);
+
   // 7. Upload final artifacts
   console.log("\nUploading final artifacts...");
   const items = [
     { kind: "pptx", fileName: "deck.pptx", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", buffer: pptxBuffer },
+    { kind: "pdf", fileName: "deck.pdf", mimeType: "application/pdf", buffer: pdfBuffer },
     { kind: "md", fileName: "narrative_report.md", mimeType: "text/markdown", buffer: markdownBuffer },
-    { kind: "xlsx", fileName: "data_tables.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: workbookBuffer },
   ] as const;
 
   const artifacts = [];
@@ -242,6 +261,42 @@ async function main() {
 
   console.log(`\nDone. Run ${runId} is now completed (salvaged from ${checkpoint.phase} checkpoint).`);
   console.log(`Artifacts: ${artifacts.map((a) => `${a.kind} (${a.fileBytes} bytes)`).join(", ")}`);
+}
+
+function buildRescueNarrativeMarkdown(input: {
+  run: RunRow;
+  analysis: Record<string, unknown>;
+  manifest: ReturnType<typeof parseDeckManifest>;
+  checkpointPhase: string;
+}) {
+  const executiveSummary =
+    typeof input.analysis.executiveSummary === "string" && input.analysis.executiveSummary.trim().length > 0
+      ? input.analysis.executiveSummary.trim()
+      : "This report was salvaged from the latest successful checkpoint. Review the deck for full visual context.";
+
+  const slideTitles = input.manifest.slides
+    .map((slide) => `- Slide ${slide.position}: ${slide.title}`)
+    .join("\n");
+
+  return [
+    `# ${input.run.client || "Basquio Report"}`,
+    "",
+    "## Executive Summary",
+    executiveSummary,
+    "",
+    "## Rescue Context",
+    `This narrative was rebuilt from a ${input.checkpointPhase} checkpoint after the primary publish flow failed.`,
+    `Objective: ${input.run.objective || "Not specified"}`,
+    `Audience: ${input.run.audience || "Not specified"}`,
+    "",
+    "## Deck Structure",
+    slideTitles || "- No slide titles available",
+    "",
+    "## Notes",
+    "Use this markdown as the text-first companion to the salvaged PPTX and PDF artifacts.",
+    "The content is intentionally conservative because it was reconstructed from checkpoint data rather than the final author turn.",
+    "",
+  ].join("\n");
 }
 
 void main().catch((error) => {
