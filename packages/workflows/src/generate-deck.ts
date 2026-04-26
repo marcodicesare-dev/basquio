@@ -3700,9 +3700,18 @@ export async function generateDeckRun(
         ...lastPublishDecision!,
         advisories: [...new Set([...lastPublishDecision!.advisories, ...finalValidationAdvisories])],
       };
+      const qualityPassportFailures = collectQualityPassportPublishFailures(lastPublishDecision.qualityPassport);
+      if (qualityPassportFailures.length > 0) {
+        lastPublishDecision = {
+          ...lastPublishDecision,
+          decision: "fail",
+          hardBlockers: [...new Set([...lastPublishDecision.hardBlockers, ...qualityPassportFailures])],
+        };
+      }
 
-      if (finalQualityGate.blockingFailures.length > 0) {
-        throw new Error(`Artifact publish gate failed: ${finalQualityGate.blockingFailures.join(", ")}`);
+      const publishBlockers = [...new Set([...finalQualityGate.blockingFailures, ...qualityPassportFailures])];
+      if (publishBlockers.length > 0) {
+        throw new Error(`Artifact publish gate failed: ${publishBlockers.join(", ")}`);
       }
       if (finalLint && finalContract) {
         const finalLintSummary = summarizeLintResult(finalLint);
@@ -9505,6 +9514,16 @@ function buildPublishDecision(input: {
   };
 }
 
+function collectQualityPassportPublishFailures(qualityPassport: PublishDecision["qualityPassport"]) {
+  if (qualityPassport.classification === "gold" || qualityPassport.classification === "silver") {
+    return [];
+  }
+
+  return [
+    `quality_passport_not_reviewed: ${qualityPassport.summary}`,
+  ];
+}
+
 function collectCritiqueIssues(
   manifest: z.infer<typeof deckManifestSchema>,
   visualQa: RenderedPageQaReport,
@@ -11751,6 +11770,7 @@ export const __test__ = {
   buildWorkbookChartBindingRequests,
   isPlaceholderChartTitle,
   lintManifestPlan,
+  collectQualityPassportPublishFailures,
   resolvePlanSheetValidationReport,
   selectBestWorkbookSheetForChart,
   validateGeneratedAnalysisResultFile,

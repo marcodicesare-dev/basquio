@@ -250,4 +250,41 @@ describe("collectPublishGateFailures", () => {
 
     expect(plan.actionableIssues).not.toContainEqual(expect.stringContaining("redundant_analytical_cut"));
   });
+
+  it("blocks publishing bronze or recovery passports as user-ready artifacts", () => {
+    expect(__test__.collectQualityPassportPublishFailures({
+      classification: "recovery",
+      criticalCount: 6,
+      majorCount: 7,
+      visualScore: 8.2,
+      mecePass: false,
+      summary: "Quality passport recovery: visual=8.2, critical=6, major=7, mecePass=false.",
+    })).toEqual([
+      "quality_passport_not_reviewed: Quality passport recovery: visual=8.2, critical=6, major=7, mecePass=false.",
+    ]);
+
+    expect(__test__.collectQualityPassportPublishFailures({
+      classification: "bronze",
+      criticalCount: 0,
+      majorCount: 9,
+      visualScore: 7.2,
+      mecePass: true,
+      summary: "Quality passport bronze: visual=7.2, critical=0, major=9, mecePass=true.",
+    })).toEqual([
+      "quality_passport_not_reviewed: Quality passport bronze: visual=7.2, critical=0, major=9, mecePass=true.",
+    ]);
+  });
+
+  it("allows only silver and gold passports to publish as reviewed", () => {
+    for (const classification of ["silver", "gold"] as const) {
+      expect(__test__.collectQualityPassportPublishFailures({
+        classification,
+        criticalCount: 0,
+        majorCount: classification === "gold" ? 1 : 5,
+        visualScore: classification === "gold" ? 9 : 7.5,
+        mecePass: true,
+        summary: `Quality passport ${classification}`,
+      })).toEqual([]);
+    }
+  });
 });
