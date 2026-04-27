@@ -36,6 +36,7 @@
 - Supabase is the default app database, auth, and storage layer.
 - Inngest is no longer the primary deck-generation runtime.
 - Durable database-backed run state and internal execution dispatch are the current workflow contract.
+- AI SDK v6 + `@ai-sdk/anthropic` 3.0 default `output_config.format` (the new structured-output channel) is rejected by the live Anthropic Messages API on every Claude 4.x model: `claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-7` all return HTTP 404 (empty body) when that field is present. Calls must opt into tool-emulated structured output via `providerOptions: { anthropic: { structuredOutputMode: "jsonTool" } }` for `generateObject`, or register an explicit tool with `tool_choice: { type: "tool", name }` on the raw Anthropic SDK. Discovered during Memory v1 Brief 2 router smoke (commit `9006c22` adopted the workaround). The 404 with empty Cloudflare body is misleading; without this rule a future agent will spend an hour debugging a 404 that looks like a bad model id. Local diagnostic gotcha: Claude Code sets `ANTHROPIC_BASE_URL=https://api.anthropic.com` in the shell, which shadows the AI SDK provider default `/v1` and yields the same 404 from any AI-SDK call. Production Vercel does not set that variable.
 
 ## Product Scope Memory
 

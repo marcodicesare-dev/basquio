@@ -79,6 +79,17 @@ To flip the flag and run Phase 9b smoke, the operator (Marco) needs to:
    - p95 turn latency < 8 seconds.
 3. If anything regresses, the revert is `vercel env rm CHAT_ROUTER_V2_ENABLED production` (or set to `false`). PUSH 3 of the code budget is reserved for any forensic fix surfaced.
 
+## 100-turn live router eval
+
+`scripts/eval-router-100-turns.ts` runs the production classifier contract (Haiku 4.5 + tool-emulated structured output) against the 100 labeled fixture rows and computes accuracy. Run on 2026-04-27 against the live Anthropic API:
+
+- **PASS at 90.0% contains-all-expected** (gate is 85% per spec §6 + brief).
+- 86.0% exact match across 100 turns. 0 API errors.
+- Per-intent recall: `metric` 20/20 (100%), `evidence` 20/20 (100%), `rule` 20/20 (100%), `web` 20/20 (100%), `graph` 10/20 (50%).
+- The graph weakness is consistent: Haiku conflates "who was X at Y" / "who connected us into Z" with `evidence` rather than `graph`. activeToolsForIntents falls back to the typed evidence retrieval in those cases, which still produces the right answer for relationship questions about people/brands present in the workspace knowledge base. The classifier prompt can be tuned to disambiguate "who was true" temporally from "find a quote" if and when graph-intent precision becomes a measured production blocker.
+- Cost: ~$0.30 in Haiku tokens for the full 100-row sweep.
+- Full results JSON at `/tmp/router-eval-100.json`.
+
 ## Forward pointer
 
 Brief 3 (brand-guideline extraction pipeline) is the next unblocked work. Its inngest-driven pipeline writes into `brand_guideline` (Brief 1 substrate) which `queryBrandRuleTool` from Brief 2 already reads. Today the table is empty; Brief 3 lights it up. Run on a fresh agent session.
