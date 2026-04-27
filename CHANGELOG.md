@@ -4,6 +4,22 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 Brief 5 PUSH 1-3 (procedural rule injection + Memory Inspector v2 + anticipation hints)
+
+Three concerns shipped behind two flags. Spec: `docs/research/2026-04-25-sota-implementation-specs.md` §8 + §9.
+
+PART A (PUSH 1, commit `3517b11`): Procedural rule injection. Migration `20260512100000_workspace_rule_rpcs.sql` adds 4 SECURITY DEFINER RPCs following the persist_brand_guideline pattern (upsert / pin / edit / forget workspace_rule). `buildScopeContextPack` from Brief 2 now injects active workspace_rule rows ordered by priority desc into every chat scope pack, capped at 24 rules. `apps/web/src/lib/workspace/rules.ts` exports the server actions consumed by chat tools and Memory Inspector v2.
+
+PART B (PUSH 2, commit `ebf8561`, behind MEMORY_INSPECTOR_V2): Memory Inspector v2 with 4 tabs (Entities, Facts, Rules, Pending). Rules tab Pin / Edit / Forget actions wire to three new REST endpoints (`/api/workspace/rules/[id]/pin|edit|forget`) calling the SECURITY DEFINER RPCs. Pending tab promotes the Brief 4 candidate-queue placeholder. Flag-OFF falls back to the legacy MemoryBrowser.
+
+PART C (PUSH 3, commit `01a1886`, behind ANTICIPATION_ENABLED): Migration `20260512110000_anticipation_hints_rpcs.sql` adds 5 SECURITY DEFINER RPCs (insert / dismiss / snooze / accept / expire). 14-day cooldown_key suppression is enforced INSIDE the insert RPC. `apps/web/src/lib/workspace/anticipation.ts` exports `generateMondayMorningHints` with three concurrent pull-based generators (pending candidates older than 3 days; brand_guideline extracted in last 7 days; workspace_rule activity in last 14 days). Each generator caps at one hint; combined with the 3-hint workspace home cap, the spec §9 "three things" pattern is enforced. `WorkspaceHintsBanner` renders on the workspace home above WorkspaceHomeDashboard. Renders nothing when there are zero active hints, so the home is byte-identical when the flag is off.
+
+Inngest stays retired (same finding as Briefs 3-4); pg_cron schedules are guarded by IF EXISTS pg_extension. pg_cron is not currently enabled on the basquio project; operator can enable via Dashboard. The Monday-morning generator is pull-based and callable from scripts or the upcoming Brief 6 admin console.
+
+Local gates green across all 3 pushes: `pnpm tsc --noEmit`, `pnpm vitest run` 304/304, `pnpm qa:basquio`, `pnpm --filter @basquio/web build` (BAML externalize lesson held). Brief 5 budget remaining: 4-5 pushes of 7-8.
+
+Forward: Brief 6 admin console (read-only routes over memory_audit + memory_workflow_runs + anticipation_hints + existing telemetry). Spec: §10. Shipped report: `docs/research/2026-04-27-brief-5-shipped.md`.
+
 ## 2026-04-27, Brief 3 PUSH 2 (Vercel build fix: externalize @boundaryml/baml)
 
 Brief 3 PUSH 1 landed code that imported `@boundaryml/baml` transitively into the Next.js bundle (`processWorkspaceDocument` is reachable from `/api/workspace/uploads/confirm`). Vercel deploy failed with a Webpack "Unexpected character" parse error on `baml.linux-x64-gnu.node` because Webpack tries to bundle `.node` binaries by default. Fix: add `@boundaryml/baml` to `apps/web/next.config.ts` `serverExternalPackages`, same pattern as `sharp` and `@resvg/resvg-js`. Local `pnpm --filter @basquio/web build` now completes green. Promoted to canonical-memory as a recipe for any future brief that adds workflows-side native deps. Brief 3 PUSH 2 of 5 consumed; PUSH 3-5 reserved.
