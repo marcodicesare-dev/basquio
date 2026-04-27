@@ -298,6 +298,17 @@ function coercePositiveNumber(value: unknown) {
   return typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function coerceInteger(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
 function normalizeChartFigureSize(value: unknown) {
   if (!value) {
     return undefined;
@@ -474,6 +485,24 @@ function sanitizeSupportPacketText(text: string | undefined, maxChars: number) {
     .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, maxChars);
+}
+
+function buildWorkbookEvidencePromptExcerpt(packets: SupportEvidencePacket[]) {
+  const workbookPackets = packets.filter((packet) => packet.filename.startsWith("basquio-workbook-evidence-packet-"));
+  if (workbookPackets.length === 0) {
+    return undefined;
+  }
+
+  const excerpts = workbookPackets.map((packet) => [
+    `Workbook packet: ${packet.filename}`,
+    sanitizeSupportPacketText(packet.content, 12_000),
+  ].join("\n\n"));
+
+  return [
+    "DETERMINISTIC WORKBOOK SOURCE TRUTH",
+    "Basquio computed the following workbook facts before authoring. These facts override any different total, share, CAGR, category, period, or focal-entity value you compute from ad hoc parsing. If your code disagrees, fix your workbook header parsing before writing artifacts.",
+    ...excerpts,
+  ].join("\n\n");
 }
 
 function buildSupportPacketFilename(index: number, fileName: string) {
@@ -1312,6 +1341,13 @@ export async function generateDeckRun(
       ),
       buildSupportEvidencePackets(parsed),
     );
+    const workbookEvidencePromptExcerpt = buildWorkbookEvidencePromptExcerpt(supportEvidencePackets);
+    if (workbookEvidencePromptExcerpt) {
+      scopeAdjustmentForAuthor = [scopeAdjustmentForAuthor, workbookEvidencePromptExcerpt].filter(Boolean).join("\n\n");
+      await upsertWorkingPaper(config, runId, "workbook_evidence_prompt_excerpt", {
+        content: workbookEvidencePromptExcerpt,
+      }).catch(() => {});
+    }
     const uploadedSupportPackets = await uploadClaudeFilesSequentially({
       client,
       config,
@@ -1665,7 +1701,27 @@ export async function generateDeckRun(
             : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
           const candidateMessages = [candidateResponse.message];
           let candidateFiles: GeneratedFile[] = await downloadGeneratedFiles(client, candidateResponse.fileIds);
-          const missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
+          let missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
+          if (shouldRepairAuthorFilesBeforeRetry(missingAuthorFiles, candidateIsReportOnly)) {
+            const deterministicRepair = await repairPartialAuthorArtifacts({
+              run,
+              model: candidateModel,
+              files: candidateFiles,
+              messages: candidateMessages,
+              recoveredAnalysis: recoveredAnalysisForSplit ? analysis : null,
+              parseWarnings,
+            });
+            candidateFiles = deterministicRepair.files;
+            missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
+            if (deterministicRepair.repairWarnings.length > 0) {
+              partialDeliveryWarnings = [...new Set([...partialDeliveryWarnings, ...deterministicRepair.repairWarnings])];
+              await insertEvent(config, runId, attempt, "author", "partial_delivery_salvage", {
+                warnings: deterministicRepair.repairWarnings,
+                model: candidateModel,
+                stage: "pre_retry_deterministic_repair",
+              }).catch(() => {});
+            }
+          }
           if (missingAuthorFiles.length > 0) {
             console.warn(`[author-retry] Missing author files for ${candidateModel}: ${missingAuthorFiles.join(", ")}. Retrying author phase once.`);
             await insertEvent(config, runId, attempt, "author", "author_missing_files_retry", {
@@ -4536,6 +4592,7 @@ function buildAuthorMessage(
           "- Treat the rubric as blocking inside the author turn. If a planned slide fails any dimension, rewrite the slide before adding it to the deck instead of hoping revise will fix it later.",
           "- GREEN-FIRST AUTHORING CONTRACT: the first author output must be publishable without a revise pass. Before writing the PPTX, run a final self-check over the slide plan: exact requested content count, no unsupported numbers, no overcrowded chart labels, approved archetypes, and manifest text matching visible slide text.",
           `- COUNT CONTRACT: for this run, ship exactly 1 cover slide plus exactly ${run.target_slide_count} content slides. That means the normal total is ${run.target_slide_count + 1} slides. Only exceed that total when every surplus slide has pageIntent containing \"appendix\" or \"source-trail\" and is genuinely supplementary methodology/source material.`,
+          `- POSITION CONTRACT: use 1-indexed slide positions only. Cover is position 1. Content slides are positions 2 through ${run.target_slide_count + 1} inclusive. Executive summary and recommendations count as content slides. Do not create position ${run.target_slide_count + 2} unless it is a true appendix/source-trail slide.`,
           "- COUNT CONTRACT: if your plan has one extra synthesis, recommendation, roadmap, or action-plan slide, merge it into the requested content slides instead of making it a surplus slide. Do not label strategic recommendations or roadmaps as appendix.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
           "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
@@ -5472,6 +5529,14 @@ function findMissingGeneratedFiles(files: GeneratedFile[], requiredFiles: string
   return requiredFiles.filter((fileName) => !files.some((file) => file.fileName === fileName || file.fileName.endsWith(fileName)));
 }
 
+function shouldRepairAuthorFilesBeforeRetry(missingFiles: string[], isReportOnly: boolean) {
+  if (missingFiles.length === 0) {
+    return false;
+  }
+  const repairable = new Set(isReportOnly ? ["deck_manifest.json"] : ["deck_manifest.json", "deck.pdf"]);
+  return missingFiles.every((fileName) => repairable.has(fileName));
+}
+
 function mergeGeneratedFiles(primaryFiles: GeneratedFile[], retryFiles: GeneratedFile[]) {
   const merged = new Map<string, GeneratedFile>();
   for (const file of [...primaryFiles, ...retryFiles]) {
@@ -6121,7 +6186,7 @@ function normalizeAnalysisPayload(payload: unknown): unknown {
 
   if (Array.isArray(normalized.slidePlan)) {
     normalized.slidePlan = normalized.slidePlan
-      .map((slide) => normalizeSlidePlanEntry(slide))
+      .map((slide, index) => normalizeSlidePlanEntry(slide, index))
       .filter((slide): slide is Record<string, unknown> => slide !== null);
   }
 
@@ -6165,19 +6230,14 @@ function normalizeExecutiveSummary(value: unknown) {
   return stringifyLooseText(value);
 }
 
-function normalizeSlidePlanEntry(value: unknown): Record<string, unknown> | null {
+function normalizeSlidePlanEntry(value: unknown, index: number): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
   const normalized = { ...(value as Record<string, unknown>) };
-
-  if (typeof normalized.position === "string") {
-    const parsed = Number.parseInt(normalized.position, 10);
-    if (Number.isFinite(parsed)) {
-      normalized.position = parsed;
-    }
-  }
+  const rawPosition = coerceInteger(normalized.position ?? normalized.index ?? normalized.order);
+  normalized.position = rawPosition === 0 || rawPosition == null ? index + 1 : rawPosition;
 
   if (typeof normalized.bullets === "string") {
     normalized.bullets = [normalized.bullets];
