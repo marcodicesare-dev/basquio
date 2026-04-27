@@ -106,6 +106,7 @@ import {
   hashWorkspaceContextPack,
   parseWorkspaceContextPack,
 } from "./workspace-context";
+import { buildWorkbookEvidencePackets } from "./workbook-evidence-packet";
 
 const execFileAsync = promisify(execFile);
 
@@ -1298,10 +1299,17 @@ export async function generateDeckRun(
       })),
     });
     const supportEvidencePackets = mergeSupportPackets(
-      buildWorkspaceContextSupportPackets(workspaceContextPack).map((packet) => ({
-        filename: packet.filename,
-        content: packet.content,
-      })),
+      mergeSupportPackets(
+        buildWorkspaceContextSupportPackets(workspaceContextPack).map((packet) => ({
+          filename: packet.filename,
+          content: packet.content,
+        })),
+        buildWorkbookEvidencePackets(evidenceFiles.map((file) => ({
+          fileName: file.file_name,
+          kind: file.kind,
+          buffer: file.buffer,
+        }))),
+      ),
       buildSupportEvidencePackets(parsed),
     );
     const uploadedSupportPackets = await uploadClaudeFilesSequentially({
@@ -4517,6 +4525,8 @@ function buildAuthorMessage(
             ? [
                 `- Normalized evidence packets are already uploaded in the container: ${files.uploadedSupportPackets.map((file) => file.filename).join(", ")}.`,
                 "- Read those packets before attempting your own PDF/PPTX extraction. They are the fast path for hostile spacing, OCR drift, and scanned-layout noise.",
+                "- If a `basquio-workbook-evidence-packet-*.md` packet is uploaded, read it before writing any analysis code. Its source totals and top dimension breakdowns are binding. Every market size, share, CAGR, and focal-entity value in the deck, workbook, and narrative report must reconcile to that packet within normal rounding.",
+                "- If your raw Excel parsing produces different totals from the workbook evidence packet, stop and fix the header/measure parsing. Do not proceed with estimated, sampled, benchmark, or manually typed replacement figures.",
               ]
             : []),
           "- Follow the loaded pptx skill for the deck artifact generation.",
@@ -4562,6 +4572,7 @@ function buildAuthorMessage(
           "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
           "- Never invent a growth target, market-share target, or strategy objective unless it is explicitly present in the brief or directly derivable from the visible evidence.",
           "- Recommendation slides must not introduce fresh quantified targets, share goals, revenue scenarios, or ROI math. Use opportunity size/CAGR already shown on prior evidence slides; if you must show a scenario, create a visible calculation sheet in data_tables.xlsx with assumptions/formula/source rows and label it as a scenario, not a forecast.",
+          "- If uploaded evidence covers only historical/actual years and contains no forecast assumptions, do not create future-year forecast or target slides. Prioritize recommendations using current opportunity size, historical CAGR, share gaps, and clearly stated data gaps.",
           "- On player, manufacturer, or competitor slides, keep the focal brand explicitly visible and say what the comparison means for it.",
           "- Preserve source labels exactly: use the input label or the canonical NIQ English label, never invented synonyms like ACV when the source says Distr. Pond.",
           "- Manifest chartType values must use the canonical vocabulary only: bar, stacked_bar, line, pie, doughnut, waterfall, scatter, area, grouped_bar, horizontal_bar. Do not emit aliases such as grouped_bar_with_line or horizontal_grouped_bar.",
@@ -4766,6 +4777,8 @@ function buildReportOnlyAuthorText(input: {
       ? [
           `- Normalized evidence packets are already uploaded in the container: ${input.files.uploadedSupportPackets.map((file) => file.filename).join(", ")}.`,
           "- Read those packets before attempting your own PDF/PPTX extraction. They are the fast path for hostile spacing, OCR drift, and scanned-layout noise.",
+          "- If a `basquio-workbook-evidence-packet-*.md` packet is uploaded, read it before writing any analysis code. Its source totals and top dimension breakdowns are binding. Every market size, share, CAGR, and focal-entity value in the workbook and narrative report must reconcile to that packet within normal rounding.",
+          "- If your raw Excel parsing produces different totals from the workbook evidence packet, stop and fix the header/measure parsing. Do not proceed with estimated, sampled, benchmark, or manually typed replacement figures.",
         ]
       : []),
     ...(input.files?.uploadedTemplate
