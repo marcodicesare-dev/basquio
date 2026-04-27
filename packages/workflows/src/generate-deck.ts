@@ -77,6 +77,10 @@ import {
   usageToCost,
 } from "./cost-guard";
 import {
+  shouldApplyChartCategorySlotCap,
+  shouldWarnBarChartCategoryDensity,
+} from "./chart-slot-constraints";
+import {
   buildBriefDataReconciliationProfile,
   buildBriefDataReconciliationPrompt,
   buildFallbackBriefDataReconciliation,
@@ -107,6 +111,7 @@ import {
   parseWorkspaceContextPack,
 } from "./workspace-context";
 import { buildWorkbookEvidencePackets } from "./workbook-evidence-packet";
+import { resolvePublishedDeliveryStatus } from "./publish-status";
 
 const execFileAsync = promisify(execFile);
 
@@ -3967,12 +3972,7 @@ async function finalizeSuccess(
   extraTelemetry: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
-  const qualityPassport = qaReport && typeof qaReport === "object"
-    ? ((qaReport as Record<string, unknown>).qualityPassport as { classification?: string } | undefined)
-    : undefined;
-  const deliveryStatus = qualityPassport?.classification === "gold" || qualityPassport?.classification === "silver"
-    ? "reviewed"
-    : "degraded";
+  const deliveryStatus = resolvePublishedDeliveryStatus(qaReport);
   const attemptCostTelemetry = {
     model,
     estimatedCostUsd,
@@ -4535,7 +4535,6 @@ function buildAuthorMessage(
     return {
       role: "user" as const,
       content: [
-        ...uploadedFilesContent,
         {
           type: "text" as const,
           text: buildReportOnlyAuthorText({
@@ -4548,6 +4547,7 @@ function buildAuthorMessage(
             scopeAdjustmentMessage,
           }),
         },
+        ...uploadedFilesContent,
       ],
     };
   }
@@ -4555,7 +4555,6 @@ function buildAuthorMessage(
   return {
     role: "user" as const,
     content: [
-      ...uploadedFilesContent,
       {
         type: "text" as const,
         text: [
@@ -4591,6 +4590,7 @@ function buildAuthorMessage(
           "- BEFORE committing each slide to PPTX, self-score it against this rubric and revise in-place until it passes: TITLE = full-sentence insight with at least one number and max 14 words; BODY = no AI slop, active voice, evidence-led; EVIDENCE = chart/table/source actually support the claim; STRUCTURE = approved archetype and no duplicate question; RECOMMENDATIONS = opportunity first, lever second, rationale tied to visible evidence.",
           "- Treat the rubric as blocking inside the author turn. If a planned slide fails any dimension, rewrite the slide before adding it to the deck instead of hoping revise will fix it later.",
           "- GREEN-FIRST AUTHORING CONTRACT: the first author output must be publishable without a revise pass. Before writing the PPTX, run a final self-check over the slide plan: exact requested content count, no unsupported numbers, no overcrowded chart labels, approved archetypes, and manifest text matching visible slide text.",
+          "- MANIFEST TEXT CONTRACT: deck_manifest.json must mirror only the text visibly present on each slide. Do not copy speaker-note paragraphs, hidden rationale, or workbook table prose into slide.body or slide.bullets. Keep each non-cover slide to at most 4 visible bullets; recommendation cards should use 2-3 compact lines per card.",
           `- COUNT CONTRACT: for this run, ship exactly 1 cover slide plus exactly ${run.target_slide_count} content slides. That means the normal total is ${run.target_slide_count + 1} slides. Only exceed that total when every surplus slide has pageIntent containing \"appendix\" or \"source-trail\" and is genuinely supplementary methodology/source material.`,
           `- POSITION CONTRACT: use 1-indexed slide positions only. Cover is position 1. Content slides are positions 2 through ${run.target_slide_count + 1} inclusive. Executive summary and recommendations count as content slides. Do not create position ${run.target_slide_count + 2} unless it is a true appendix/source-trail slide.`,
           "- COUNT CONTRACT: if your plan has one extra synthesis, recommendation, roadmap, or action-plan slide, merge it into the requested content slides instead of making it a surplus slide. Do not label strategic recommendations or roadmaps as appendix.",
@@ -4618,6 +4618,8 @@ function buildAuthorMessage(
           "- Keep code execution output compact after the first profiling pass, but still complete every required deliverable.",
           "- Follow the system-prompt examples and per-slide constraints instead of inventing custom layout logic: complete SCQA/body copy, slot-sized PNG charts, and clean recommendation cards.",
           "- Rank recommendations by impact × feasibility. The first recommendation must be Priority 1 (must-win), then Priority 2 (high impact), then quick wins.",
+          "- Recommendation cards may reuse quantified opportunity numbers only when those exact numbers are visible on prior evidence slides or in a visible calculation table. Do not introduce fresh quantified targets such as `target 15%`, `obiettivo +X`, revenue upside, ROI, or market-share goals unless the uploaded brief explicitly states that target or the deck contains a visible scenario calculation sheet with assumptions.",
+          "- Every recommendation card with a number must cite the evidence slide in the visible card text, for example `(cfr. slide 7)`. If the evidence is not visible on a prior slide, remove the number and phrase the recommendation qualitatively.",
           "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
           "- Every recommendation must include its own risk and mitigation in the narrative report: `Risk:` and `Mitigation:`.",
           "- If a chart would overcrowd labels or waste most of its frame, switch to a stronger text-first or split-slide composition instead of forcing the chart.",
@@ -4632,7 +4634,8 @@ function buildAuthorMessage(
           "- If uploaded evidence covers only historical/actual years and contains no forecast assumptions, do not create future-year forecast or target slides. Prioritize recommendations using current opportunity size, historical CAGR, share gaps, and clearly stated data gaps.",
           "- On player, manufacturer, or competitor slides, keep the focal brand explicitly visible and say what the comparison means for it.",
           "- Preserve source labels exactly: use the input label or the canonical NIQ English label, never invented synonyms like ACV when the source says Distr. Pond.",
-          "- Manifest chartType values must use the canonical vocabulary only: bar, stacked_bar, line, pie, doughnut, waterfall, scatter, area, grouped_bar, horizontal_bar. Do not emit aliases such as grouped_bar_with_line or horizontal_grouped_bar.",
+          "- Manifest chartType values must use the canonical vocabulary only: bar, stacked_bar, line, pie, doughnut, waterfall, scatter, area, grouped_bar, horizontal_bar, heatmap, bubble. Do not emit aliases such as grouped_bar_with_line or horizontal_grouped_bar.",
+          "- For heatmap metadata, categoryCount is the larger axis count, not rows multiplied by columns. A 5x3 heatmap has categoryCount 5, not 15.",
           "- Tables with PY and CY must be ordered past-to-present (PY before CY), and any share or price table must include the relevant delta columns when those metrics are shown.",
           "- Bubble charts must declare the bubble-size dimension explicitly in both metadata and visible title text (`bolla = ...` or `bubble = ...`).",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
@@ -4780,6 +4783,7 @@ function buildAuthorMessage(
           "- Your final assistant message must attach the files as container uploads before finishing.",
         ].join("\n"),
       },
+      ...uploadedFilesContent,
     ],
   };
 }
@@ -7175,12 +7179,17 @@ function collectChartSlotConstraintFindings(manifest: z.infer<typeof deckManifes
     const archetype = getArchetypeOrDefault(slide.slideArchetype || slide.layoutId);
     const chartSlot = archetype.slots.chart;
     const categoryCount = chart.categoryCount ?? chart.categories?.length;
-    if (chartSlot?.maxCategories && categoryCount && categoryCount > chartSlot.maxCategories) {
+    if (
+      shouldApplyChartCategorySlotCap(chart.chartType) &&
+      chartSlot?.maxCategories &&
+      categoryCount &&
+      categoryCount > chartSlot.maxCategories
+    ) {
       findings.push(
         `Slide ${slide.position} chart exposes ${categoryCount} categories but the ${archetype.id} chart slot is capped at ${chartSlot.maxCategories}. Aggregate the tail, switch to horizontal orientation, or change the grammar.`,
       );
     }
-    if (categoryCount && categoryCount > 8 && ["bar", "grouped_bar", "stacked_bar", "stacked_bar_100"].includes(chart.chartType)) {
+    if (categoryCount && categoryCount > 8 && shouldWarnBarChartCategoryDensity(chart.chartType)) {
       findings.push(
         `Slide ${slide.position} chart uses ${chart.chartType} with ${categoryCount} categories. Prefer horizontal orientation or reduce the category set before publish.`,
       );
