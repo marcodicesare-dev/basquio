@@ -13,6 +13,7 @@ import {
 import type { WorkspaceRule } from "@/lib/workspace/types";
 
 import { WorkspaceCandidateQueue } from "@/components/workspace-candidate-queue";
+import { WorkspaceRowMenu, type RowMenuItem } from "@/components/workspace-row-menu";
 
 type Tab = "entities" | "facts" | "rules" | "pending";
 
@@ -37,6 +38,12 @@ export function WorkspaceMemoryInspectorV2({
   factCountByEntity,
 }: Props) {
   const [tab, setTab] = useState<Tab>("entities");
+  const [factsSubjectFilter, setFactsSubjectFilter] = useState<string | null>(null);
+
+  function showFactsForEntity(entityId: string) {
+    setFactsSubjectFilter(entityId);
+    setTab("facts");
+  }
 
   return (
     <section className="wbeta-mi2">
@@ -56,9 +63,20 @@ export function WorkspaceMemoryInspectorV2({
       </nav>
 
       {tab === "entities" ? (
-        <EntitiesTab entities={entities} factCountByEntity={factCountByEntity} />
+        <EntitiesTab
+          entities={entities}
+          factCountByEntity={factCountByEntity}
+          onShowFacts={showFactsForEntity}
+        />
       ) : null}
-      {tab === "facts" ? <FactsTab facts={facts} entitiesById={entitiesById(entities)} /> : null}
+      {tab === "facts" ? (
+        <FactsTab
+          facts={facts}
+          entitiesById={entitiesById(entities)}
+          subjectFilter={factsSubjectFilter}
+          onSubjectFilterChange={setFactsSubjectFilter}
+        />
+      ) : null}
       {tab === "rules" ? <RulesTab rules={rules} /> : null}
       {tab === "pending" ? <WorkspaceCandidateQueue initialCandidates={candidates} /> : null}
     </section>
@@ -99,9 +117,11 @@ function TabButton({
 function EntitiesTab({
   entities,
   factCountByEntity,
+  onShowFacts,
 }: {
   entities: InspectorEntity[];
   factCountByEntity: Record<string, number>;
+  onShowFacts: (entityId: string) => void;
 }) {
   if (entities.length === 0) {
     return (
@@ -112,24 +132,39 @@ function EntitiesTab({
   }
   return (
     <div className="wbeta-mi2-grid">
-      <div className="wbeta-mi2-grid-head">
+      <div className="wbeta-mi2-grid-head wbeta-mi2-grid-head-entities">
         <span>Name</span>
         <span>Type</span>
         <span>Aliases</span>
         <span>Facts</span>
         <span>Updated</span>
+        <span aria-hidden></span>
       </div>
-      {entities.map((e) => (
-        <div key={e.id} className="wbeta-mi2-grid-row">
-          <span className="wbeta-mi2-name">{e.canonical_name}</span>
-          <span className="wbeta-mi2-meta">{e.type}</span>
-          <span className="wbeta-mi2-meta">
-            {e.aliases.length > 0 ? e.aliases.join(", ") : <em className="wbeta-mi2-empty-cell">none</em>}
-          </span>
-          <span className="wbeta-mi2-meta">{factCountByEntity[e.id] ?? 0}</span>
-          <span className="wbeta-mi2-meta">{formatDate(e.updated_at)}</span>
-        </div>
-      ))}
+      {entities.map((e) => {
+        const factCount = factCountByEntity[e.id] ?? 0;
+        const items: RowMenuItem[] = [
+          {
+            label: factCount > 0 ? `Show ${factCount} fact${factCount === 1 ? "" : "s"}` : "Show facts",
+            onSelect: () => onShowFacts(e.id),
+            disabled: factCount === 0,
+          },
+        ];
+        return (
+          <div key={e.id} className="wbeta-mi2-grid-row wbeta-mi2-grid-row-entities">
+            <span className="wbeta-mi2-name">{e.canonical_name}</span>
+            <span className="wbeta-mi2-meta">{e.type}</span>
+            <span className="wbeta-mi2-meta">
+              {e.aliases.length > 0 ? e.aliases.join(", ") : <em className="wbeta-mi2-empty-cell">none</em>}
+            </span>
+            <span className="wbeta-mi2-meta">{factCount}</span>
+            <span className="wbeta-mi2-meta">{formatDate(e.updated_at)}</span>
+            <WorkspaceRowMenu
+              items={items}
+              ariaLabel={`Actions for ${e.canonical_name}`}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -137,12 +172,15 @@ function EntitiesTab({
 function FactsTab({
   facts,
   entitiesById,
+  subjectFilter,
+  onSubjectFilterChange,
 }: {
   facts: InspectorFact[];
   entitiesById: Map<string, InspectorEntity>;
+  subjectFilter: string | null;
+  onSubjectFilterChange: (next: string | null) => void;
 }) {
   const [includeSuperseded, setIncludeSuperseded] = useState(false);
-  const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     let rows = facts;
@@ -183,7 +221,7 @@ function FactsTab({
           <button
             type="button"
             className="wbeta-mi2-facts-filter"
-            onClick={() => setSubjectFilter(null)}
+            onClick={() => onSubjectFilterChange(null)}
           >
             Filter: {filterEntity?.canonical_name ?? subjectFilter.slice(0, 8)} ✕
           </button>
@@ -221,7 +259,7 @@ function FactsTab({
               <button
                 type="button"
                 className="wbeta-mi2-subject-link"
-                onClick={() => setSubjectFilter(f.subject_entity)}
+                onClick={() => onSubjectFilterChange(f.subject_entity)}
                 title={
                   subject
                     ? `Show all facts about ${subject.canonical_name}`
@@ -322,12 +360,35 @@ function RulesTab({ rules }: { rules: WorkspaceRule[] }) {
                 const busy = isPending || (state.kind === "pending" && state.ruleId === r.id);
                 const error = state.kind === "error" && state.ruleId === r.id ? state.message : null;
                 const isEditing = editing?.ruleId === r.id;
+                const items: RowMenuItem[] = [
+                  {
+                    label: "Pin",
+                    onSelect: () => callAction(r.id, "pin"),
+                    disabled: busy,
+                  },
+                  {
+                    label: "Edit",
+                    onSelect: () => setEditing({ ruleId: r.id, ruleText: r.rule_text }),
+                    disabled: busy,
+                  },
+                  {
+                    label: r.active ? "Forget" : "Restore",
+                    onSelect: () => callAction(r.id, r.active ? "forget" : "pin"),
+                    disabled: busy,
+                    danger: r.active,
+                  },
+                ];
                 return (
                   <li key={r.id} className="wbeta-mi2-rule-row">
-                    <div className="wbeta-mi2-rule-meta">
-                      <span className="wbeta-mi2-rule-priority">priority {r.priority}</span>
-                      <span className="wbeta-mi2-rule-origin">origin: {r.origin}</span>
-                      {!r.active ? <span className="wbeta-mi2-rule-inactive">forgotten</span> : null}
+                    <div className="wbeta-mi2-rule-meta-row">
+                      <div className="wbeta-mi2-rule-meta">
+                        <span className="wbeta-mi2-rule-priority">priority {r.priority}</span>
+                        <span className="wbeta-mi2-rule-origin">origin: {r.origin}</span>
+                        {!r.active ? <span className="wbeta-mi2-rule-inactive">forgotten</span> : null}
+                      </div>
+                      {!isEditing ? (
+                        <WorkspaceRowMenu items={items} ariaLabel="Rule actions" disabled={busy} />
+                      ) : null}
                     </div>
                     {isEditing ? (
                       <div className="wbeta-mi2-rule-edit">
@@ -364,23 +425,6 @@ function RulesTab({ rules }: { rules: WorkspaceRule[] }) {
                       <p className="wbeta-mi2-rule-forbidden">Forbidden: {r.forbidden.join(", ")}</p>
                     ) : null}
                     {error ? <p className="wbeta-mi2-rule-error">{error}</p> : null}
-                    {!isEditing ? (
-                      <div className="wbeta-mi2-rule-actions">
-                        <button type="button" disabled={busy} onClick={() => callAction(r.id, "pin")}>
-                          Pin
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setEditing({ ruleId: r.id, ruleText: r.rule_text })}
-                        >
-                          Edit
-                        </button>
-                        <button type="button" disabled={busy} onClick={() => callAction(r.id, "forget")}>
-                          Forget
-                        </button>
-                      </div>
-                    ) : null}
                   </li>
                 );
               })}

@@ -13404,6 +13404,91 @@ body:has(.wbeta-shell) .site-wrap {
   font-size: 11px;
 }
 
+/* Brief 7 PUSH 6: row-level dropdown menus on Memory Inspector. */
+.wbeta-row-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.wbeta-row-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 80ms ease, border-color 80ms ease, color 80ms ease;
+}
+
+.wbeta-row-menu-trigger:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.wbeta-row-menu-trigger[aria-expanded="true"] {
+  background: var(--surface-muted);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.wbeta-row-menu-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wbeta-row-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 144px;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 13px 34px rgba(11, 12, 12, 0.13);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbeta-row-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 13px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.wbeta-row-menu-item:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+
+.wbeta-row-menu-item:disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+.wbeta-row-menu-item-danger {
+  color: var(--danger-text, #b00020);
+}
+
 /* Brief 7 PUSH 5: workspace-home "Your workspace remembers" card. */
 .wbeta-memory-card {
   display: flex;
@@ -13677,6 +13762,11 @@ body:has(.wbeta-shell) .site-wrap {
   font-size: 12px;
 }
 
+.wbeta-mi2-grid-head-entities,
+.wbeta-mi2-grid-row-entities {
+  grid-template-columns: 1.5fr 1fr 1.5fr 0.5fr 0.8fr 32px;
+}
+
 .wbeta-mi2-grid-head-facts,
 .wbeta-mi2-grid-row-facts {
   grid-template-columns: 1fr 1fr 1.5fr 0.8fr 0.5fr 0.5fr;
@@ -13799,6 +13889,13 @@ body:has(.wbeta-shell) .site-wrap {
   background: var(--surface-strong);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+
+.wbeta-mi2-rule-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .wbeta-mi2-rule-meta {
