@@ -4,6 +4,23 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 Brief 2 on `ad0ee2b` (chat caching + router + 4 typed tools)
+
+Behind `CHAT_ROUTER_V2_ENABLED` flag (default false on Vercel). Code shipped, schema migration applied, flag flip pending operator action.
+
+- `9006c22` Memory v1 Brief 2: chat caching + router + 4 typed tools (PUSH 1)
+- `ad0ee2b` chat route: keep flag-OFF tool catalogue byte-identical to pre-Brief-2 (PUSH 2)
+
+PART A. Three cached system blocks via `@ai-sdk/anthropic` `providerOptions.anthropic.cacheControl`: `STATIC_SYSTEM_PROMPT` at 1h ephemeral, workspace brand pack at 5m, scope context pack at 5m. `apps/web/src/lib/workspace/build-context-pack.ts` split into `buildWorkspaceBrandPack` and `buildScopeContextPack`, both pure functions of stable workspace and scope state.
+
+PART B. Haiku 4.5 intent classifier in `apps/web/src/lib/workspace/router.ts` (5-enum: metric / evidence / graph / rule / web; entities; as_of; needs_web; uses `structuredOutputMode: 'jsonTool'` because the live Anthropic Messages API rejects the default `output_config.format`). Four typed retrieval tools in `apps/web/src/lib/workspace/agent-tools-typed.ts`: `queryStructuredMetricTool`, `queryBrandRuleTool` (reads Brief 1 `brand_guideline` and `workspace_rule`), `queryEntityFactTool` (bi-temporal `as_of` filter), `searchEvidenceTool` (wraps existing `workspace_hybrid_search`). Chat route gates active tools by intent on the new path; the legacy `retrieveContextTool` stays as a 30-day deprecation fallback.
+
+Schema: `20260428130000_chat_tool_telemetry_cache_stats.sql` adds nine nullable columns to `chat_tool_telemetry` for per-turn cache and classifier telemetry plus a partial index for `__chat_turn__` aggregate rows.
+
+Local gates green: `pnpm tsc --noEmit`, `pnpm vitest run` 271/271, `pnpm qa:basquio`. Live cache smoke (`scripts/test-chat-router-v2-cache.ts`) verified cold cache_creation > 0 and warm cache_read 18846 tokens. Production deploy on `ad0ee2b` Ready on Vercel; flag-OFF chat path byte-identical to pre-Brief-2.
+
+Forward: Brief 3 (brand-guideline extraction) lights up `queryBrandRuleTool` with real brand-book extraction. Spec: `docs/research/2026-04-25-sota-implementation-specs.md` §5, §6. Shipped report: `docs/research/2026-04-27-brief-2-shipped.md`. Substrate audit: `docs/research/2026-04-27-brief-2-substrate-audit.md`.
+
 ## 2026-04-27, Memory v1 foundation on `c513701` (Brief 1)
 
 Storage-only foundation for the memory architecture. Three Supabase migrations apply cleanly to production:
