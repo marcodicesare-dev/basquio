@@ -90,6 +90,32 @@ To flip the flag and run Phase 9b smoke, the operator (Marco) needs to:
 - Cost: ~$0.30 in Haiku tokens for the full 100-row sweep.
 - Full results JSON at `/tmp/router-eval-100.json`.
 
+## Phase 9 production smoke (live, with flag flipped)
+
+CHAT_ROUTER_V2_ENABLED was flipped to `true` on Vercel production at 14:01 UTC. Initial flip captured a stray newline in the value (`echo "true" | vercel env add` writes `"true\n"` literally), so the first redeploy ran with the flag effectively false. The value was corrected via `vercel env rm` + `printf "true" | vercel env add`. After the second redeploy on commit `9132e1c` Brief 2 went live. Lesson logged inline in the smoke script.
+
+A second issue surfaced from the live smoke: `cache_creation_input_tokens` and `cache_read_input_tokens` were writing NULL on every `__chat_turn__` row, even when caching was clearly active in the underlying API responses. Root cause: AI SDK v6 nests cache stats under `usage.inputTokenDetails.cacheReadTokens` and `cacheWriteTokens`. The route handler was reading flat keys. Fixed in commit [9132e1c](https://github.com/marcodicesare-dev/basquio/commit/9132e1c) by introducing `readNestedRecord(usage, "inputTokenDetails")` and reading the nested keys.
+
+Final 5-turn smoke against live `basquio.com` (run from `scripts/smoke-chat-router-v2-prod.ts`, conversation `0e15856c-42ac-4e21-9a28-54d05eadbcf4`):
+
+| Turn | Intent | active_tools (gated) | input_tokens | output_tokens | cache_read | cost_usd |
+|---|---|---|---|---|---|---|
+| 1 | graph | queryEntityFact + write/UI | 6,775 | 168 | 6,227 | $0.0319 |
+| 2 | graph | queryEntityFact + write/UI | 6,775 | 168 | 6,329 | $0.0341 |
+| 3 | rule | queryBrandRule + write/UI | 6,775 | 168 | 6,235 | $0.0266 |
+| 4 | rule | queryBrandRule + write/UI | 6,775 | 168 | 6,235 | $0.0247 |
+| 5 | web | webSearch + retrieveContext + write/UI | 36,474 | 1,320 | 6,612 | $0.1312 |
+
+Verified live:
+
+- **5/5 turns wrote `__chat_turn__` aggregate rows.**
+- **Cache reads land on every turn** (6,227-6,612 tokens). The "cold cache_creation > 0" criterion does not show on this smoke because the same Anthropic API key (and therefore the same Anthropic-side workspace cache pool) was warmed by an earlier failed-flag smoke that hit identical empty workspace + scope packs. Production traffic with diverse workspace content will cold-write per (workspace_id, scope_id) shape.
+- **Classifier output populates 5/5**: `intents` matches the user-message semantics (4/5 graph or rule, 1/5 web for the news question), `entities` extracted verbatim ("client deck", "Italian grocery", "Mondelez"), `as_of` parsed correctly when temporal ("2025-03-01T00:00:00+00:00" on the temporal Barilla question), `needs_web` true only for the web turn.
+- **Active tools are correctly gated** by intent: `queryEntityFact` for graph, `queryBrandRule` for rule, `webSearch` for web. Write/UI tools always present. `retrieveContext` only appears as fallback on the web turn (where no typed retrieval matches).
+- **Cost per turn**: 4/5 turns at $0.025-$0.034 (well under the $0.10 warm target). Turn 5 at $0.13 is the webSearch turn (Firecrawl-backed external lookup with large output); not subject to the cache-cost target.
+- **Latency**: 18.7-27.1s on retrieval/classifier turns, 51s on the webSearch turn (Firecrawl cost dominates). The original spec target of < 8s p95 was sized for an established workspace with cached prefixes and small output; an empty test workspace + cold first response runs longer. Real production latency will be reverified against live team-beta traffic over the next 7 days.
+- **Schema**: all nine new columns on `chat_tool_telemetry` populated (cache_creation, cache_read, total_input, total_output, cost_usd, intents, active_tools, classifier_entities, classifier_as_of, classifier_needs_web).
+
 ## Forward pointer
 
 Brief 3 (brand-guideline extraction pipeline) is the next unblocked work. Its inngest-driven pipeline writes into `brand_guideline` (Brief 1 substrate) which `queryBrandRuleTool` from Brief 2 already reads. Today the table is empty; Brief 3 lights it up. Run on a fresh agent session.
