@@ -13257,12 +13257,32 @@ body:has(.wbeta-shell) .site-wrap {
   flex-direction: column;
   padding: 21px 13px;
   gap: 21px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
-.wbeta-admin-side header {
+.wbeta-admin-side-head {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+}
+
+.wbeta-admin-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.wbeta-admin-logo img {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
 }
 
 .wbeta-admin-eyebrow {
@@ -13274,22 +13294,12 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text-muted);
 }
 
-.wbeta-admin-side header h1 {
-  margin: 0;
-  font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.wbeta-admin-nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
 
-.wbeta-admin-user {
-  margin: 0;
-  font-size: 11px;
-  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
-  color: var(--text-soft);
-  word-break: break-all;
-}
-
-.wbeta-admin-side nav ul {
+.wbeta-admin-nav ul {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -13298,18 +13308,50 @@ body:has(.wbeta-shell) .site-wrap {
   gap: 2px;
 }
 
-.wbeta-admin-side nav li a {
-  display: block;
+.wbeta-admin-nav li a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 13px;
   font-size: 13px;
+  font-weight: 500;
   color: var(--text);
   border-radius: var(--radius-sm);
   text-decoration: none;
   transition: background 80ms ease;
 }
 
-.wbeta-admin-side nav li a:hover {
+.wbeta-admin-nav li a:hover {
   background: var(--surface-muted);
+}
+
+.wbeta-admin-nav li a svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.wbeta-admin-nav li a:hover svg {
+  color: var(--text);
+}
+
+.wbeta-admin-side-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+}
+
+.wbeta-admin-user-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  color: var(--text-soft);
+  padding: 6px 8px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  word-break: break-all;
 }
 
 .wbeta-admin-main {

@@ -4,6 +4,28 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 Brief 7 shipped (visible-state polish + 2 admin 500s)
+
+7 commits, 14 defects from the live UX audit triaged: 4 P0s fixed, 6 P1s fixed, 1 P2 polish (admin sidebar) shipped, 2 P2s deferred. Memory v1 is now visible from every workspace surface. Spec source: live UX audit on `basquio.com` 2026-04-27.
+
+PUSH 1 (`dab190f`): P0 fixes. /admin/runs and /admin/cost both 500'd because the loaders selected non-existent columns on chat_tool_telemetry (workspace_id, finished_at, latency_ms). Same column-mismatch class as Brief 6 PUSH 5 but in sibling loaders. Workspace_id resolved through workspace_conversations on /admin/cost. Workspace home suggestion chip leaked an ISO timestamp ("Use 2026 04 25T14 53 59 705Z..."); formatMemoryLabel now rejects timestamp-shaped, UUID-shaped, and mostly-digit memory paths and the caller skips them. Hint banner returned null on zero hints; renders an empty-state card instead so the surface is discoverable on first sign-in.
+
+PUSH 2 (`04750d6`): Memory Inspector Facts tab humanization. New `apps/web/src/lib/workspace/predicate-formatter.ts` with formatPredicate (snake_case to short human phrase via a known map + fallback), formatFactObject (one-sentence rendering for {value, unit, file} blobs and friends), and isDocumentLikeSubject (filename detection). FactsTab subject column is now click-through with a filter chip; document-shaped subjects render with a small marker.
+
+PUSH 3 (`5c9a7ad`): Knowledge to Memory vocab sweep. Page metadata, sidebar nav, breadcrumbs, kicker, ToolChips, ChatMessage tool copy, provenance group title, generation-drawer hint all flipped. The semantic memory_type label was renamed from "Knowledge" to "Context" so the three labels (Instructions / Context / Examples) stay distinct from the page name. Internal symbols (knowledge_documents, knowledge_chunks, KnowledgeDocumentKind, KNOWLEDGE_BUCKET, workspace_hybrid_search) unchanged per the disaster-arc rule.
+
+PUSH 4 (`b4e3003`): per-file brand-book gating. Old session-level checkbox removed. New flow: non-PDFs upload immediately as uploaded_file; PDFs stage in a review queue with per-file default-OFF "This is a brand book" toggle and inline cost copy. Submit button shows the breakdown ("Upload 3 files (1 brand book, 2 regular)"). Post-upload toast for brand-tagged files links to /workspace/memory. Default-OFF protects against accidental \$9-15 spends on a misclick.
+
+PUSH 5 (`897fa84`): home memory card + admin/inspector copy sweep. New `WorkspaceMemoryCard` mounts above the suggestion chips on /workspace; surfaces "{N} entities, {N} facts, {N} rules, {N} pending review" with an empty-state explaining the moat. Backed by getWorkspaceMemoryCounts (4 parallel counts, degrade to zero on any error). Admin empty-state copy on /admin/audit, /admin/hints, /admin/drift, /admin/candidates de-jargoned: no more "cooldown_key", "Brief 5 PART C", "via query string", or developer URL recipes in user-facing copy.
+
+PUSH 6 (`ecb5c4e`): visible 3-dot row menus on Memory Inspector. New `WorkspaceRowMenu` headless dropdown component; Rules tab inline buttons replaced with the menu (Pin / Edit / Forget or Restore). Entities tab gets a per-row menu with "Show facts" that lifts subjectFilter state up to the parent and switches to the Facts tab. Hover-only actions read as decoration on first sign-in; the visible trigger fixes that and supports touch.
+
+PUSH 7 (this entry): admin sidebar polish (B12). Basquio icon plus product name at the top, per-route Phosphor icons on every nav item, user-email pill at the bottom in a quiet monospace chip. Sticky sidebar layout matches the workspace-shell visual density. Plus this CHANGELOG entry and the closeout doc at `docs/research/2026-04-27-brief-7-shipped.md`.
+
+Local gates green across all 7 pushes. Production smoke clean: /admin/runs and /admin/cost render, workspace home shows the memory card and the hint banner empty state, Memory Inspector reads as consultant artifact, sources upload zone gates per file.
+
+Memory v1 ships complete and visible. Engineering work is paused after Brief 7. Next strategic effort is first-customer outreach to Italian mid-market CPG (Amadori, illycaffè, GranTerre, Alce Nero, Mondelez narrow).
+
 ## 2026-04-27, Memory v1 Brief 6 PUSH 5 + pg_cron enable (production-ops fix)
 
 Two production-ops items surfaced by Marco's first admin sign-in:
