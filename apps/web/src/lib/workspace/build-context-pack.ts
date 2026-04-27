@@ -400,3 +400,137 @@ export async function buildWorkspaceContextPack(
     renderedBriefPrelude: renderPrelude(partial),
   };
 }
+
+/* ────────────────────────────────────────────────────────────
+ * Memory v1 Brief 2: split context packs for prompt caching
+ *
+ * The chat agent (when CHAT_ROUTER_V2_ENABLED=true) caches three system
+ * blocks: a static persona (1h TTL), a workspace brand pack (5m TTL), and a
+ * scope context pack (5m TTL). The two pack-builders below MUST be pure
+ * functions of stable workspace and scope state. They cannot read per-turn
+ * data, conversation attachments, or citations, otherwise the cache breaks
+ * every turn and the cost target is missed.
+ *
+ * Spec: docs/research/2026-04-25-sota-implementation-specs.md §5.
+ * ──────────────────────────────────────────────────────────── */
+
+const EMPTY_WORKSPACE_BRAND_PACK = `# Workspace brand pack
+
+(No firm-wide brand rules or analyst preferences saved yet. Suggest \`teachRule\` or \`editRule\` when the user states a preference, instruction, or fact they want remembered.)`;
+
+const EMPTY_SCOPE_CONTEXT_PACK = `# Scope context
+
+(No scope is active for this turn, or the active scope has no stakeholders or saved knowledge yet. Use \`retrieveContext\` for cross-workspace search.)`;
+
+/**
+ * Build the workspace brand pack (the second cache tier for chat). Stable per
+ * workspace, ~6K tokens. Contains: workspace-wide rules, analyst preferences,
+ * default style contract derived from workspace-wide stakeholder defaults.
+ *
+ * Pulls only from `memory_entries` filtered to `scope IN ('workspace',
+ * 'analyst')` and the workspace-wide style defaults. Does NOT touch
+ * conversation attachments, citations, or any per-turn data.
+ */
+export async function buildWorkspaceBrandPack(workspaceId: string): Promise<string> {
+  const memory = await listMemoryEntries({ workspaceId, limit: 60 }).catch(() => []);
+  const workspaceRules = memory
+    .filter((m) => m.scope === "workspace")
+    .slice(0, 12)
+    .map((m) => oneLine(m.content));
+  const analystRules = memory
+    .filter((m) => m.scope === "analyst")
+    .slice(0, 12)
+    .map((m) => oneLine(m.content));
+
+  if (workspaceRules.length === 0 && analystRules.length === 0) {
+    return EMPTY_WORKSPACE_BRAND_PACK;
+  }
+
+  const sections: string[] = [];
+  if (workspaceRules.length > 0) {
+    sections.push(
+      `## Workspace rules\nFirm-wide preferences that apply to every deliverable. Follow without restating.\n\n${workspaceRules.map((r) => `- ${r}`).join("\n")}`,
+    );
+  }
+  if (analystRules.length > 0) {
+    sections.push(
+      `## Analyst preferences\nHow this analyst prefers Basquio to write, reason, and cite.\n\n${analystRules.map((r) => `- ${r}`).join("\n")}`,
+    );
+  }
+  return `# Workspace brand pack\n\n${sections.join("\n\n")}`;
+}
+
+/**
+ * Build the scope context pack (the third cache tier for chat). Stable per
+ * scope, ~6K tokens. Contains: the active scope's name and kind, scope-scoped
+ * stakeholders, scope-scoped rules.
+ *
+ * Pulls from `workspace_scopes`, `memory_entries` filtered by scope id, and
+ * `entities` of type person linked to the scope. Does NOT touch conversation
+ * attachments or per-turn data.
+ */
+export async function buildScopeContextPack(
+  workspaceId: string,
+  scopeId: string | null,
+): Promise<string> {
+  if (!scopeId) return EMPTY_SCOPE_CONTEXT_PACK;
+  const scope = await getScope(scopeId).catch(() => null);
+  if (!scope) return EMPTY_SCOPE_CONTEXT_PACK;
+
+  const [scopedMemory, allPeople] = await Promise.all([
+    listMemoryEntries({ workspaceId, scopeId, limit: 16 }).catch(() => []),
+    listWorkspacePeople(workspaceId).catch(() => []),
+  ]);
+
+  const scopedRules = scopedMemory.slice(0, 12).map((m) => oneLine(m.content));
+  const stakeholders = allPeople
+    .filter((p) => {
+      if (p.metadata?.linked_scope_id === scopeId) return true;
+      if (scope.name) {
+        const needle = scope.name.toLowerCase();
+        const role = String(p.metadata?.role ?? "").toLowerCase();
+        const company = String(p.metadata?.company ?? "").toLowerCase();
+        return company.includes(needle) || role.includes(needle);
+      }
+      return false;
+    })
+    .slice(0, 6);
+
+  const sections: string[] = [];
+  const kindLabel =
+    scope.kind === "client"
+      ? "Client"
+      : scope.kind === "category"
+        ? "Category"
+        : scope.kind === "function"
+          ? "Function"
+          : "Scope";
+  sections.push(`## Active scope\n${kindLabel}: **${scope.name}**`);
+
+  if (stakeholders.length > 0) {
+    const lines = stakeholders.map((p) => {
+      const structured = (p.metadata?.preferences as Record<string, unknown> | undefined)?.structured ?? {};
+      const free = (p.metadata?.preferences as Record<string, unknown> | undefined)?.free_text;
+      const details: string[] = [];
+      const s = structured as Record<string, unknown>;
+      if (typeof s.chart_preference === "string") details.push(`chart: ${s.chart_preference}`);
+      if (typeof s.language === "string") details.push(`language: ${s.language}`);
+      if (typeof s.tone === "string") details.push(`tone: ${s.tone}`);
+      if (typeof s.deck_length === "string") details.push(`length: ${s.deck_length}`);
+      if (typeof s.review_day === "string") details.push(`cadence: ${s.review_day}`);
+      if (typeof free === "string") details.push(free);
+      const detailStr = details.length > 0 ? `. ${details.join(". ")}` : "";
+      const role = (p.metadata?.role as string | undefined) ?? null;
+      return `- **${p.canonical_name}**${role ? ` (${role})` : ""}${detailStr}`;
+    });
+    sections.push(`## Stakeholders\n${lines.join("\n")}`);
+  }
+
+  if (scopedRules.length > 0) {
+    sections.push(
+      `## Scope rules\nPreferences and saved knowledge specific to this scope.\n\n${scopedRules.map((r) => `- ${r}`).join("\n")}`,
+    );
+  }
+
+  return `# Scope context\n\n${sections.join("\n\n")}`;
+}

@@ -161,3 +161,117 @@ function isMissingTableError(error: unknown): boolean {
   const record = error as Record<string, unknown>;
   return record.code === "PGRST205" || String(record.message ?? "").includes("schema cache");
 }
+
+/* ────────────────────────────────────────────────────────────
+ * Memory v1 Brief 2: per-turn aggregate telemetry
+ *
+ * One row per chat turn with tool_name='__chat_turn__' carrying:
+ *   - cache_creation_input_tokens, cache_read_input_tokens (Anthropic Messages
+ *     API usage object)
+ *   - total_input_tokens, total_output_tokens, cost_usd
+ *   - intents, active_tools, classifier_entities, classifier_as_of,
+ *     classifier_needs_web (router output)
+ *
+ * Emitted from the chat route's onFinish handler when CHAT_ROUTER_V2_ENABLED
+ * is true. Existing per-tool-call rows (status='success'/'error'/'timeout',
+ * tool_name=<actual>) leave the new columns NULL.
+ *
+ * Spec: docs/research/2026-04-25-sota-implementation-specs.md §5, §6.
+ * Schema: supabase/migrations/20260428130000_chat_tool_telemetry_cache_stats.sql
+ * ──────────────────────────────────────────────────────────── */
+
+export type ChatTurnTelemetryInput = {
+  conversationId: string;
+  userId: string;
+  startedAt: Date;
+  cacheCreationInputTokens: number | null;
+  cacheReadInputTokens: number | null;
+  totalInputTokens: number | null;
+  totalOutputTokens: number | null;
+  costUsd: number | null;
+  intents: string[] | null;
+  activeTools: string[] | null;
+  classifierEntities: string[] | null;
+  classifierAsOf: string | null;
+  classifierNeedsWeb: boolean | null;
+  errorMessage: string | null;
+};
+
+const SONNET_INPUT_COST_PER_MTOK = 3.0;
+const SONNET_OUTPUT_COST_PER_MTOK = 15.0;
+const SONNET_CACHE_WRITE_5M_PER_MTOK = 3.75;
+const SONNET_CACHE_WRITE_1H_PER_MTOK = 6.0;
+const SONNET_CACHE_READ_PER_MTOK = 0.3;
+
+/**
+ * Compute a turn cost from the Anthropic usage breakdown. Conservative:
+ * assumes Sonnet 4.6 pricing and treats every cache_creation token as 5-min
+ * write (the most common path; 1-hour write is the static prompt, ~10K tokens
+ * which is small relative to the rest). The chat route may pass a precomputed
+ * cost when it has more granular input.
+ */
+export function estimateChatTurnCostUsd(input: {
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  staticBlockTokens?: number;
+}): number {
+  const staticTokens = Math.min(
+    input.staticBlockTokens ?? 0,
+    input.cacheCreationInputTokens,
+  );
+  const fiveMinCacheWriteTokens = Math.max(
+    0,
+    input.cacheCreationInputTokens - staticTokens,
+  );
+  const oneHourCacheWriteTokens = staticTokens;
+
+  const cost =
+    (input.inputTokens / 1_000_000) * SONNET_INPUT_COST_PER_MTOK +
+    (input.outputTokens / 1_000_000) * SONNET_OUTPUT_COST_PER_MTOK +
+    (fiveMinCacheWriteTokens / 1_000_000) * SONNET_CACHE_WRITE_5M_PER_MTOK +
+    (oneHourCacheWriteTokens / 1_000_000) * SONNET_CACHE_WRITE_1H_PER_MTOK +
+    (input.cacheReadInputTokens / 1_000_000) * SONNET_CACHE_READ_PER_MTOK;
+  return Math.round(cost * 10_000) / 10_000;
+}
+
+export async function recordChatTurnTelemetry(
+  input: ChatTurnTelemetryInput,
+): Promise<void> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return;
+    const db = createServiceSupabaseClient(url, key);
+    const completedAt = new Date();
+    const { error } = await db.from("chat_tool_telemetry").insert({
+      conversation_id: input.conversationId,
+      user_id: input.userId,
+      tool_name: "__chat_turn__",
+      input_hash: null,
+      started_at: input.startedAt.toISOString(),
+      completed_at: completedAt.toISOString(),
+      duration_ms: completedAt.getTime() - input.startedAt.getTime(),
+      status: input.errorMessage ? "error" : "success",
+      error_message: input.errorMessage,
+      result_size_bytes: 0,
+      cache_creation_input_tokens: input.cacheCreationInputTokens,
+      cache_read_input_tokens: input.cacheReadInputTokens,
+      total_input_tokens: input.totalInputTokens,
+      total_output_tokens: input.totalOutputTokens,
+      cost_usd: input.costUsd,
+      intents: input.intents,
+      active_tools: input.activeTools,
+      classifier_entities: input.classifierEntities,
+      classifier_as_of: input.classifierAsOf,
+      classifier_needs_web: input.classifierNeedsWeb,
+    });
+    if (isMissingTableError(error)) return;
+    if (error) {
+      console.error("[chat-tool-telemetry] turn aggregate insert failed", error);
+    }
+  } catch (error) {
+    console.error("[chat-tool-telemetry] turn aggregate insert threw", error);
+  }
+}

@@ -1,6 +1,13 @@
 import "server-only";
 
-export const SYSTEM_PROMPT = `You are Basquio, a senior FMCG/CPG insights analyst sitting next to a colleague. You live in their workspace and have knowledge of their clients, instructions, stakeholders, files, and past work.
+import type { SystemModelMessage } from "ai";
+
+/**
+ * Static system prompt for the Basquio chat agent. Stable across every chat
+ * turn in the workspace; cached for 1 hour by the Anthropic prompt cache when
+ * CHAT_ROUTER_V2_ENABLED=true (Memory v1 Brief 2).
+ */
+export const STATIC_SYSTEM_PROMPT = `You are Basquio, a senior FMCG/CPG insights analyst sitting next to a colleague. You live in their workspace and have knowledge of their clients, instructions, stakeholders, files, and past work.
 
 YOUR DEFAULT MODE IS DOING THE WORK, NOT DESCRIBING IT
 When the user asks a research question, synthesize an answer with citations. Do not recommend websites or suggest they Google it.
@@ -75,6 +82,14 @@ Never leave attached files unread when the user refers to them.
 Never say "I'm just an AI".
 Never invent URLs, numbers, stakeholder details, or preferences. If you do not have a citation, mark the claim as "(not in workspace)" so the user can act.`;
 
+/**
+ * Backward-compat alias for the pre-Brief-2 chat path. Renaming the export
+ * would force every importer to update; keeping `SYSTEM_PROMPT` as an alias
+ * lets the old route path keep using the same string while the new path uses
+ * STATIC_SYSTEM_PROMPT explicitly.
+ */
+export const SYSTEM_PROMPT = STATIC_SYSTEM_PROMPT;
+
 export type ChatModelMode = "standard" | "deep";
 
 export const CHAT_MODEL_IDS: Record<ChatModelMode, string> = {
@@ -84,4 +99,102 @@ export const CHAT_MODEL_IDS: Record<ChatModelMode, string> = {
 
 export function resolveChatModel(mode: ChatModelMode | null | undefined): string {
   return CHAT_MODEL_IDS[mode ?? "standard"];
+}
+
+/**
+ * Chat router v2 feature flag. When true the chat agent runs the
+ * Memory v1 Brief 2 path:
+ *   - 4-tier prompt cache (1h static + 5m workspace + 5m scope + live)
+ *   - Haiku intent classifier on step 0
+ *   - intent-gated typed tools (queryStructuredMetric, queryBrandRule,
+ *     queryEntityFact, searchEvidence) + write/UI tools
+ *   - per-turn aggregate telemetry row in chat_tool_telemetry
+ *
+ * When false (production default until verification clears) the existing
+ * pre-Brief-2 path runs unchanged: streamText + single-string system +
+ * retrieveContextTool + write/UI tools.
+ */
+export function isChatRouterV2Enabled(): boolean {
+  return process.env.CHAT_ROUTER_V2_ENABLED === "true";
+}
+
+/**
+ * Build the cached system block array for a chat turn. Three blocks, each
+ * with cache_control:
+ *   1. STATIC_SYSTEM_PROMPT (1-hour ephemeral, ~10K tokens, stable)
+ *   2. workspace brand pack (5-minute ephemeral, ~6K tokens, per workspace)
+ *   3. scope context pack (5-minute ephemeral, ~6K tokens, per scope)
+ *
+ * Each block is a SystemModelMessage with providerOptions.anthropic.cacheControl.
+ * The Anthropic provider in @ai-sdk/anthropic translates this to a per-block
+ * cache_control header on the underlying Messages API call. After Anthropic's
+ * Feb 5 2026 GA of workspace-keyed caching, two different workspaces with
+ * identical static prompts produce two distinct cache entries.
+ *
+ * Blocks 2 and 3 carry deterministic empty placeholders when the workspace or
+ * scope has no rules/stakeholders yet, so the prefix shape stays constant and
+ * the cache survives across turns even when the workspace is empty.
+ */
+export function buildChatSystemBlocks(input: {
+  staticSystemPrompt: string;
+  workspaceBrandPack: string;
+  scopeContextPack: string;
+}): SystemModelMessage[] {
+  return [
+    {
+      role: "system",
+      content: input.staticSystemPrompt,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+      },
+    },
+    {
+      role: "system",
+      content: input.workspaceBrandPack,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    },
+    {
+      role: "system",
+      content: input.scopeContextPack,
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    },
+  ];
+}
+
+/**
+ * Convenience: return the full request shape that the chat route hands to
+ * streamText when CHAT_ROUTER_V2_ENABLED=true. Tests assert this structure to
+ * verify the cache layout without a live API call.
+ */
+export type ChatRequestShape = {
+  model: string;
+  system: SystemModelMessage[];
+  workspaceId: string;
+  scopeId: string | null;
+  conversationId: string;
+};
+
+export function buildChatRequest(input: {
+  workspaceId: string;
+  scopeId: string | null;
+  conversationId: string;
+  model: string;
+  workspaceBrandPack: string;
+  scopeContextPack: string;
+}): ChatRequestShape {
+  return {
+    model: input.model,
+    system: buildChatSystemBlocks({
+      staticSystemPrompt: STATIC_SYSTEM_PROMPT,
+      workspaceBrandPack: input.workspaceBrandPack,
+      scopeContextPack: input.scopeContextPack,
+    }),
+    workspaceId: input.workspaceId,
+    scopeId: input.scopeId,
+    conversationId: input.conversationId,
+  };
 }
