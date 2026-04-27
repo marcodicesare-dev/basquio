@@ -71,6 +71,7 @@ import {
   assertDeckSpendWithinBudget,
   enforceDeckBudget,
   getDeckBudgetCaps,
+  getDeckPhaseBudgetCap,
   getPriorAttemptsCost,
   roundUsd,
   shouldResetCrossAttemptBudget,
@@ -122,8 +123,9 @@ const AUTHOR_MODEL_VALUES = new Set([
   OPUS_AUTHOR_MODEL,
   "claude-haiku-4-5",
 ]);
-const VISUAL_QA_MODEL = "claude-haiku-4-5";
-const FINAL_VISUAL_QA_MODEL = "claude-haiku-4-5";
+const VISUAL_QA_MODEL = "claude-sonnet-4-6";
+const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
+const CLAIM_TRACEABILITY_QA_MODEL = "claude-sonnet-4-6";
 const HARD_QA_BLOCKERS = new Set([
   "pptx_present",
   "md_present",
@@ -1022,6 +1024,7 @@ async function runClaimTraceabilityQaSafely(input: {
         thesis: input.run.thesis,
         businessContext: input.run.business_context,
       },
+      model: CLAIM_TRACEABILITY_QA_MODEL,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -2028,8 +2031,8 @@ export async function generateDeckRun(
         phaseTelemetry.authorContract = { passed: true, actionableIssueCount: 0, actionableIssues: [], violationCount: 0 };
       } else {
         if (authorClaimQa && ((authorClaimQa.usage.input_tokens ?? 0) + (authorClaimQa.usage.output_tokens ?? 0) > 0)) {
-          phaseTelemetry.claimTraceabilityAuthor = buildSimplePhaseTelemetry("claude-haiku-4-5", authorClaimQa.usage);
-          await persistRequestUsage(config, runId, attempt, "author", "claim_traceability_qa", "claude-haiku-4-5", authorClaimQa.requests);
+          phaseTelemetry.claimTraceabilityAuthor = buildSimplePhaseTelemetry(CLAIM_TRACEABILITY_QA_MODEL, authorClaimQa.usage);
+          await persistRequestUsage(config, runId, attempt, "author", "claim_traceability_qa", CLAIM_TRACEABILITY_QA_MODEL, authorClaimQa.requests);
           rememberRequestIds(anthropicRequestIds, authorClaimQa.requests);
           await upsertWorkingPaper(config, runId, "claim_traceability_author", authorClaimQa.report);
         }
@@ -2218,7 +2221,6 @@ export async function generateDeckRun(
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
         const reviseModel: AuthorModel = repairLane === "haiku" ? "claude-haiku-4-5" : MODEL;
-        const reviseBudgetCaps = getDeckBudgetCaps(reviseModel, run.target_slide_count);
         const reviseBetas = buildClaudeBetas(reviseModel);
         const reviseToolCallSummary = buildAuthoringToolCallSummary(reviseModel);
         const reviseMaxTokens = getRevisePhaseMaxTokens(reviseModel, run.target_slide_count);
@@ -2280,7 +2282,11 @@ export async function generateDeckRun(
             model: reviseModel,
             betas: [...reviseBetas],
             spentUsd,
-            maxUsd: reviseBudgetCaps.preFlight,
+            maxUsd: getDeckPhaseBudgetCap({
+              model: reviseModel,
+              phase: "revise",
+              targetSlideCount: run.target_slide_count,
+            }),
             outputTokenBudget: reviseMaxTokens,
             fileBackedBudgetContext: {
               phase: "revise",
@@ -2491,8 +2497,8 @@ export async function generateDeckRun(
           }
           finalVisualQa = revisedVisualQa.report;
           if ((reviseClaimQa.usage.input_tokens ?? 0) + (reviseClaimQa.usage.output_tokens ?? 0) > 0) {
-            phaseTelemetry.claimTraceabilityRevise = buildSimplePhaseTelemetry("claude-haiku-4-5", reviseClaimQa.usage);
-            await persistRequestUsage(config, runId, attempt, "revise", "claim_traceability_qa", "claude-haiku-4-5", reviseClaimQa.requests);
+            phaseTelemetry.claimTraceabilityRevise = buildSimplePhaseTelemetry(CLAIM_TRACEABILITY_QA_MODEL, reviseClaimQa.usage);
+            await persistRequestUsage(config, runId, attempt, "revise", "claim_traceability_qa", CLAIM_TRACEABILITY_QA_MODEL, reviseClaimQa.requests);
             rememberRequestIds(anthropicRequestIds, reviseClaimQa.requests);
             await upsertWorkingPaper(config, runId, "claim_traceability_revise", reviseClaimQa.report);
           }
@@ -2814,8 +2820,8 @@ export async function generateDeckRun(
         });
         claimTraceabilityIssues = exportClaimQa.report.issues ?? [];
         if ((exportClaimQa.usage.input_tokens ?? 0) + (exportClaimQa.usage.output_tokens ?? 0) > 0) {
-          phaseTelemetry.claimTraceabilityExport = buildSimplePhaseTelemetry("claude-haiku-4-5", exportClaimQa.usage);
-          await persistRequestUsage(config, runId, attempt, "export", "claim_traceability_qa", "claude-haiku-4-5", exportClaimQa.requests);
+          phaseTelemetry.claimTraceabilityExport = buildSimplePhaseTelemetry(CLAIM_TRACEABILITY_QA_MODEL, exportClaimQa.usage);
+          await persistRequestUsage(config, runId, attempt, "export", "claim_traceability_qa", CLAIM_TRACEABILITY_QA_MODEL, exportClaimQa.requests);
           rememberRequestIds(anthropicRequestIds, exportClaimQa.requests);
           await upsertWorkingPaper(config, runId, "claim_traceability_export", exportClaimQa.report);
         }
@@ -4595,7 +4601,9 @@ function buildAuthorMessage(
           `- POSITION CONTRACT: use 1-indexed slide positions only. Cover is position 1. Content slides are positions 2 through ${run.target_slide_count + 1} inclusive. Executive summary and recommendations count as content slides. Do not create position ${run.target_slide_count + 2} unless it is a true appendix/source-trail slide.`,
           "- COUNT CONTRACT: if your plan has one extra synthesis, recommendation, roadmap, or action-plan slide, merge it into the requested content slides instead of making it a surplus slide. Do not label strategic recommendations or roadmaps as appendix.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
-          "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
+          "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence. Include timing only when the brief or uploaded evidence provides a real planning horizon.",
+          "- WORKBOOK-ONLY RECOMMENDATION MODE: if the uploaded evidence contains market/category/player metrics but no sell-in, SKU, pack, marketing plan, margin, channel operations, or investment assumptions, recommendations must be evidence-backed opportunity priorities and next analyses. Do not invent launch dates, pack/SKU systems, retailer/channel expansion, marketing concepts, financial targets, ROI, budgets, or market-share goals.",
+          "- Do not use terms such as capsule, capsule compatibili, cialde, pod, Nespresso, Dolce Gusto, pack architecture, hero renovation, premium import, or Q1/Q2 launch unless those exact terms are present in the brief or uploaded evidence.",
           "- CLAIM-TO-CHART BINDING: if the slide says the issue is rotation, productivity, ROS, price-led growth, or a distribution opportunity, the hero exhibit must show that metric or a direct causal driver. Do not chart sales value and bury productivity in a side note.",
           "- STORYLINE CONTIGUITY: finish one analytical branch before switching to another. If you revisit an earlier branch later in the deck, it must be an explicit synthesis/comparison or a deeper follow-up, not a lateral jump.",
           "- REDUNDANCY RULE: if a later slide only improves the commentary while keeping the same analytical cut, collapse it and replace it with a deeper or more causal exhibit.",
@@ -4623,6 +4631,8 @@ function buildAuthorMessage(
           "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
           "- Every recommendation must include its own risk and mitigation in the narrative report: `Risk:` and `Mitigation:`.",
           "- If a chart would overcrowd labels or waste most of its frame, switch to a stronger text-first or split-slide composition instead of forcing the chart.",
+          "- Do not place full-width colored callout or insight bars over chart slides unless they are outside the chart image bounds with at least 0.25in clear space from axes, labels, legends, and source/footer text. Prefer a side note panel or omit the callout.",
+          "- Before saving each chart slide, inspect the rendered composition: no callout band, footer, legend, source line, or textbox may cover bars, heatmap cells, axis labels, category labels, data labels, or plot boundaries.",
           "- Ranking charts with 7+ rows must reserve enough right margin for labels. Do not place value labels and CAGR labels in the same endpoint lane; put growth in the side text/table or omit endpoint labels that collide.",
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
@@ -4705,8 +4715,8 @@ function buildAuthorMessage(
             ? "  7. Competitor deep-dive (minimum 600 words): dedicated section analyzing each major competitor's strategy, relative strengths, and implications for the client."
             : "  7. Competitor deep-dive: dedicated section analyzing the main competitors' strategies, relative strengths, and implications for the client.",
           isReportOnly
-            ? "  8. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline."
-            : "  8. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+            ? "  8. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timing only if supported by the brief or evidence."
+            : "  8. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timing only if supported by the brief or evidence.",
           "  8a. For every recommendation include the action, traceable rationale, priority, and any measurable impact that can be computed directly from the source data. If financial impact is not directly computable, say so explicitly instead of inventing ROI, investment, or budget figures.",
           "  9. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, brand x geography, top items, distribution by channel, or the closest available evidence).",
           "  10. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
@@ -4856,6 +4866,8 @@ function buildReportOnlyAuthorText(input: {
     "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
     "- Every recommendation must include its own Risk: and Mitigation: in the narrative report.",
     "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
+    "- WORKBOOK-ONLY RECOMMENDATION MODE: if the uploaded evidence contains market/category/player metrics but no sell-in, SKU, pack, marketing plan, margin, channel operations, or investment assumptions, recommendations must be evidence-backed opportunity priorities and next analyses. Do not invent launch dates, pack/SKU systems, retailer/channel expansion, marketing concepts, financial targets, ROI, budgets, or market-share goals.",
+    "- Do not use terms such as capsule, capsule compatibili, cialde, pod, Nespresso, Dolce Gusto, pack architecture, hero renovation, premium import, or Q1/Q2 launch unless those exact terms are present in the brief or uploaded evidence.",
     "- When the brief asks for both geography and brand, retailer, or channel analysis, include at least one brand x geography or channel x geography cross-tab in the report appendix and call it out in the findings.",
     "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
     "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
@@ -4872,7 +4884,7 @@ function buildReportOnlyAuthorText(input: {
     "  5. Detailed findings (minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add context where available.",
     "  6. For every chart-like or table-backed finding, include a markdown table with the exact numbers so the report is usable without Excel.",
     "  7. Competitor deep-dive (minimum 600 words): dedicated section on each major competitor's strategy, strengths, and implications for the client.",
-    "  8. Recommendations with sensitivity analysis (minimum 800 words): base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
+    "  8. Recommendations with sensitivity analysis (minimum 800 words): base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timing only if supported by the brief or evidence.",
     "  9. Full data appendix: markdown tables with the key cross-tabulations behind the report, including brand x geography or channel x geography views when the brief calls for both cuts.",
     "  10. Risk register: probability x impact matrix for the recommendations and main delivery risks.",
     "- `narrative_report.md` must be at least 800 lines. If it is shorter, extend the appendix, competitor analysis, and chart-supporting markdown tables.",

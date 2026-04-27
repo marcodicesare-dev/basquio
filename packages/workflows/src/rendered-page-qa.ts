@@ -81,7 +81,7 @@ export async function runRenderedPageQa(input: {
   const executeQaRequest = async (requestMessages: Anthropic.Beta.BetaMessageParam[]) => {
     const startedAt = new Date().toISOString();
     const response = await input.client.beta.messages.create({
-      model: input.model ?? "claude-haiku-4-5",
+      model: input.model ?? "claude-sonnet-4-6",
       max_tokens: input.maxTokens ?? 1_200,
       betas: [...input.betas] as Anthropic.Beta.AnthropicBeta[],
       messages: requestMessages,
@@ -156,7 +156,7 @@ export async function runRenderedPageQa(input: {
   };
 }
 
-function buildRenderedPageQaPrompt(
+export function buildRenderedPageQaPrompt(
   manifest: JudgeManifest,
   templateContext?: { templateName?: string; palette?: string[]; background?: string | null; clientLabel?: string | null; logoExpected?: boolean },
 ) {
@@ -192,9 +192,13 @@ function buildRenderedPageQaPrompt(
     "Do not judge whether the business analysis is correct. Judge the artifact that a client or executive would see.",
     "You may flag a claim-exhibit mismatch when the slide itself makes a visible claim the chart cannot support from what is shown on the page.",
     "Apply the same overlap, readability, spacing, and chart-legibility standards to every template path. A custom template is not an excuse for collisions, tiny charts, or broken hierarchy.",
+    "Do not award green if any chart slide has a visible colored callout band, insight bar, textbox, legend, or source/footer element covering the chart image, plot area, axis title, axis tick labels, category labels, data labels, or legend.",
+    "Treat bottom callout bars on chart slides as suspicious: if the band touches or covers x-axis labels, source text, chart labels, or the lower plot boundary, it is a major issue at minimum.",
+    "If a text block or callout is drawn on top of bars, heatmap cells, labels, or chart axes, mark deckNeedsRevision=true even when the slide otherwise looks polished.",
     "",
     "Focus on these failure modes:",
     "- text overlap",
+    "- chart callout overlap where a colored band or text box covers the chart, x-axis, labels, legend, or source line",
     "- recommendation card overlap or footer band collisions",
     "- label overlap inside charts or tables",
     "- footer collisions",
@@ -269,6 +273,9 @@ function buildRenderedPageQaPrompt(
     "- weak_visual_hierarchy",
     "- generic_visual_style",
     "- footer_overlap",
+    "- chart_callout_overlap",
+    "- axis_label_obscured",
+    "- chart_plot_overlap",
     "",
     "Scoring guidance:",
     "- green = ready to ship visually",
@@ -278,6 +285,7 @@ function buildRenderedPageQaPrompt(
     "Revision policy:",
     "- set deckNeedsRevision=true if any critical issue exists",
     "- set deckNeedsRevision=true if any major issue exists",
+    "- classify chart/callout overlap as major when labels or axes remain partly readable, and critical when bars/cells/labels are substantially covered or the reader cannot trust the chart",
     "- keep issues concise and concrete",
   ].join("\n");
 }
