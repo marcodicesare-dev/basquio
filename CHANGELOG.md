@@ -4,6 +4,24 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 Brief 6 PUSH 1-4 (admin console v1)
+
+Spec: `docs/research/2026-04-25-sota-implementation-specs.md` §10. Read-only `/admin/*` console behind a `super_admin` gate. Marco-only initial member.
+
+PUSH 1 (`1ba639a`): Migration `20260519100000_super_admins.sql` adds the `super_admins` table + `is_super_admin` SECURITY DEFINER helper. Marco seeded with two user_ids (marcodicesare1992@gmail.com + marco@basquio.com). `apps/web/src/lib/admin/auth.ts` exports `getAdminViewerState`. `apps/web/src/app/admin/layout.tsx` renders the 9-route sidebar shell with three states (unauthenticated, forbidden, ok). `/admin` overview shows last-7-day aggregates.
+
+PUSH 2 (`242e32a`): Four high-debug-value routes. `/admin/runs` lists last 100 chat turns; `/admin/runs/[id]` is the single-turn replay (input/output/cache-read tokens, cost, classifier intents, active tools, recent tool calls). `/admin/audit` filters `memory_audit` by `?table=`, `?actor=`, `?workspace=`. `/admin/candidates` lists all `memory_candidates`. `/admin/hints` is the `anticipation_hints` ledger.
+
+PUSH 3 (`5469948`): Four remaining routes. `/admin/drift` surfaces repeated cooldown_key dismissals (3+ in 30d) + stale pending candidates (>14d). `/admin/cost` aggregates chat cost by workspace over the last 30d. `/admin/prompts` is a hard-coded registry of the 5 prompts shipped on origin/main. `/admin/skills` is a filesystem listing with a static fallback.
+
+PUSH 4 (this entry): Shipped doc + canonical-memory promotion + this CHANGELOG entry. Brief 6 budget remaining: 1 push reserved for one production-ops fix surfaced by Marco's first admin sign-in.
+
+`apps/web/src/lib/admin/loaders.ts` owns the cross-workspace reads (service role; the admin layout already gated the request through is_super_admin). All routes are `force-dynamic` and `metadata.robots = no-index/no-follow`. No client-side auth; every request re-validates server-side.
+
+Local gates green across all 3 implementation pushes. Production verified: `/admin` redirects unauthenticated to /sign-in, returns Forbidden for non-admin, renders shell for Marco.
+
+**Memory v1 program is shipped.** All six briefs (1-6) on origin/main, behind feature flags. Brief 4 dry-mode observation is the load-bearing gate that unblocks customer rollout. Forward pointer + flag-flip recipes in `docs/research/2026-04-27-brief-6-shipped.md`.
+
 ## 2026-04-27, Memory v1 Brief 5 PUSH 1-3 (procedural rule injection + Memory Inspector v2 + anticipation hints)
 
 Three concerns shipped behind two flags. Spec: `docs/research/2026-04-25-sota-implementation-specs.md` §8 + §9.
