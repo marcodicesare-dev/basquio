@@ -78,8 +78,10 @@ import {
   usageToCost,
 } from "./cost-guard";
 import {
+  POINT_LABEL_CATEGORY_LIMIT,
   shouldApplyChartCategorySlotCap,
   shouldWarnBarChartCategoryDensity,
+  shouldWarnPointLabelDensity,
 } from "./chart-slot-constraints";
 import {
   buildBriefDataReconciliationProfile,
@@ -126,6 +128,7 @@ const AUTHOR_MODEL_VALUES = new Set([
 const VISUAL_QA_MODEL = "claude-sonnet-4-6";
 const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
 const CLAIM_TRACEABILITY_QA_MODEL = "claude-sonnet-4-6";
+const BRIEF_DATA_RECONCILIATION_MODEL = "claude-haiku-4-5";
 const HARD_QA_BLOCKERS = new Set([
   "pptx_present",
   "md_present",
@@ -4375,12 +4378,12 @@ async function runBriefDataReconciliation(input: {
       input.attempt,
       "normalize",
       "brief_data_reconciliation",
-      VISUAL_QA_MODEL,
+      BRIEF_DATA_RECONCILIATION_MODEL,
     );
     const response = await runClaudeLoop({
       client: input.client,
-      model: VISUAL_QA_MODEL,
-      betas: buildClaudeBetas(VISUAL_QA_MODEL),
+      model: BRIEF_DATA_RECONCILIATION_MODEL,
+      betas: buildClaudeBetas(BRIEF_DATA_RECONCILIATION_MODEL),
       systemPrompt: "You are Basquio's brief-data reconciliation auditor. Return strict JSON only.",
       maxTokens: 1600,
       messages: [
@@ -4410,7 +4413,7 @@ async function runBriefDataReconciliation(input: {
       input.attempt,
       "normalize",
       "brief_data_reconciliation",
-      VISUAL_QA_MODEL,
+      BRIEF_DATA_RECONCILIATION_MODEL,
       response.requests,
     );
 
@@ -4421,7 +4424,7 @@ async function runBriefDataReconciliation(input: {
 
     return {
       result,
-      costUsd: usageToCost(VISUAL_QA_MODEL, response.usage),
+      costUsd: usageToCost(BRIEF_DATA_RECONCILIATION_MODEL, response.usage),
       requests: response.requests,
       source: "haiku",
     };
@@ -5016,9 +5019,11 @@ function buildReviseMessage(input: {
   const chartPreprocessingGuide = buildChartPreprocessingGuide();
   const slideScope = buildReviseSlideScope(input.manifest, input.issues, input.visualQa);
   const primaryVisualIssues = input.visualQa.issues.filter((issue) => issue.severity === "major" || issue.severity === "critical");
-  const secondaryIssues = input.issues.filter((issue) => {
+  const nonPrimaryIssues = input.issues.filter((issue) => {
     return !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
   });
+  const mandatoryNonVisualIssues = nonPrimaryIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
+  const advisoryIssues = nonPrimaryIssues.filter((issue) => isAdvisoryCritiqueIssue(issue));
   return {
     role: "user" as const,
     content: [
@@ -5061,11 +5066,20 @@ function buildReviseMessage(input: {
           ...(primaryVisualIssues.length > 0
             ? primaryVisualIssues.map((issue) => `- Slide ${issue.slidePosition} ${issue.code}: ${issue.description}. Fix: ${issue.fix}`)
             : ["- No major visual issues were supplied; make only the smallest fixes needed."]),
-          ...(secondaryIssues.length > 0
+          ...(mandatoryNonVisualIssues.length > 0
             ? [
                 "",
-                "Secondary issues to consider only if they can be fixed within the same allowed slides and WITHOUT creating new visual defects:",
-                ...secondaryIssues.map((issue) => `- ${issue}`),
+                "Mandatory non-visual issues to fix before returning files:",
+                ...mandatoryNonVisualIssues.map((issue) => `- ${issue}`),
+                "These mandatory issues are not optional. If an issue says a claim is unsupported, remove the claim, soften it into a data-backed observation, or convert it into a data-gap / next-analysis statement. Do not invent new evidence to defend it.",
+                "If an issue says a chart is too dense, rebuild that chart or change the slide grammar. Do not leave a dense chart in place with overlapping labels.",
+              ]
+            : []),
+          ...(advisoryIssues.length > 0
+            ? [
+                "",
+                "Advisory issues to consider only after all mandatory issues are fixed and only if they do not create new visual defects:",
+                ...advisoryIssues.map((issue) => `- ${issue}`),
               ]
             : []),
           "",
@@ -6721,6 +6735,7 @@ function buildChartPreprocessingGuide() {
     "Deterministic chart preprocessing guide:",
     "- Compute category_count before rendering every chart.",
     "- If category_count exceeds the slot limit, aggregate the tail into `Other` or switch to commentary-led treatment instead of cramming the chart.",
+    `- Bubble/scatter charts with labels are capped at ${POINT_LABEL_CATEGORY_LIMIT} labeled points. For more points, use a top-${POINT_LABEL_CATEGORY_LIMIT} chart plus table, a horizontal ranking, or unlabeled points with a separate label table. Do not ship overlapping point labels.`,
     "- If average category label length is above 12 characters, prefer horizontal orientation unless the chart is a true time series.",
     "- Figure size must match the slide archetype chart slot. Render at the slot ratio first, then place the image 1:1 without stretch.",
     "- Use descending sort for rankings, ascending only for deliberate smallest-first comparisons, and `none` for time series.",
@@ -7204,6 +7219,11 @@ function collectChartSlotConstraintFindings(manifest: z.infer<typeof deckManifes
     if (categoryCount && categoryCount > 8 && shouldWarnBarChartCategoryDensity(chart.chartType)) {
       findings.push(
         `Slide ${slide.position} chart uses ${chart.chartType} with ${categoryCount} categories. Prefer horizontal orientation or reduce the category set before publish.`,
+      );
+    }
+    if (categoryCount && categoryCount > POINT_LABEL_CATEGORY_LIMIT && shouldWarnPointLabelDensity(chart.chartType)) {
+      findings.push(
+        `Slide ${slide.position} chart uses ${chart.chartType} with ${categoryCount} labeled points, above the safe label limit of ${POINT_LABEL_CATEGORY_LIMIT}. Use a top-${POINT_LABEL_CATEGORY_LIMIT} point chart plus a table, switch to a horizontal ranking, or remove overlapping point labels before publish.`,
       );
     }
   }
@@ -8859,7 +8879,7 @@ async function validateArtifactChecks(
 
   return {
     tier,
-    passed: blockingFailures.length === 0,
+    passed: allFailed.length === 0,
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };

@@ -5,17 +5,28 @@ export function resolvePublishedDeliveryStatus(qaReport: {
   tier?: unknown;
   qualityPassport?: { classification?: unknown } | null;
 }): PublishedDeliveryStatus {
-  if (qaReport.passed === true) {
-    return "reviewed";
-  }
-
-  // Older report shapes may not include `passed`; yellow means the hard
-  // artifact gate passed and only internal advisories remain.
-  if (qaReport.tier === "green" || qaReport.tier === "yellow") {
-    return "reviewed";
-  }
-
   const classification = qaReport.qualityPassport?.classification;
+
+  if (qaReport.passed === true) {
+    return qaReport.tier === "green" && classification !== "bronze" && classification !== "recovery"
+      ? "reviewed"
+      : "degraded";
+  }
+
+  if (qaReport.passed === false) {
+    return "degraded";
+  }
+
+  if (qaReport.tier === "green") {
+    return classification === "bronze" || classification === "recovery" ? "degraded" : "reviewed";
+  }
+
+  if (qaReport.tier === "yellow" || qaReport.tier === "red") {
+    return "degraded";
+  }
+
+  // Older report shapes may not include tier/passed; preserve historical
+  // reviewed status only for explicitly strong quality-passport grades.
   if (classification === "gold" || classification === "silver") {
     return "reviewed";
   }
