@@ -13713,6 +13713,57 @@ body:has(.wbeta-shell) .site-wrap {
   gap: 8px;
 }
 
+.wbeta-mi2-facts-controls {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  flex-wrap: wrap;
+}
+
+.wbeta-mi2-facts-filter {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  background: var(--surface-muted);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.wbeta-mi2-facts-filter:hover {
+  border-color: var(--border-strong);
+}
+
+.wbeta-mi2-subject-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wbeta-mi2-subject-link:hover .wbeta-mi2-name {
+  text-decoration: underline;
+}
+
+.wbeta-mi2-subject-icon {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 /* Memory v1 Brief 4 placeholder: pending memory-candidate queue. */
 .wbeta-candidate-queue {
   display: flex;

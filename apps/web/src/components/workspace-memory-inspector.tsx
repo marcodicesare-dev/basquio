@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 
 import type { MemoryCandidateRow } from "@/lib/workspace/candidates";
 import type { InspectorEntity, InspectorFact } from "@/lib/workspace/inspector";
+import {
+  formatFactObject,
+  formatPredicate,
+  isDocumentLikeSubject,
+} from "@/lib/workspace/predicate-formatter";
 import type { WorkspaceRule } from "@/lib/workspace/types";
 
 import { WorkspaceCandidateQueue } from "@/components/workspace-candidate-queue";
@@ -137,28 +142,53 @@ function FactsTab({
   entitiesById: Map<string, InspectorEntity>;
 }) {
   const [includeSuperseded, setIncludeSuperseded] = useState(false);
-  const filtered = useMemo(() => {
-    if (includeSuperseded) return facts;
-    return facts.filter((f) => f.superseded_by === null && f.expired_at === null);
-  }, [facts, includeSuperseded]);
+  const [subjectFilter, setSubjectFilter] = useState<string | null>(null);
 
-  if (filtered.length === 0) {
+  const filtered = useMemo(() => {
+    let rows = facts;
+    if (!includeSuperseded) {
+      rows = rows.filter((f) => f.superseded_by === null && f.expired_at === null);
+    }
+    if (subjectFilter) {
+      rows = rows.filter((f) => f.subject_entity === subjectFilter);
+    }
+    return rows;
+  }, [facts, includeSuperseded, subjectFilter]);
+
+  if (facts.length === 0) {
     return (
       <div className="wbeta-mi2-empty">
-        <p>No facts yet. Chat extraction (Brief 4) populates this when CHAT_EXTRACTOR_ENABLED flips on.</p>
+        <p>
+          Facts land here as the chat agent extracts them, the deck pipeline records evidence,
+          or you teach a fact in chat. The page fills automatically.
+        </p>
       </div>
     );
   }
+
+  const filterEntity = subjectFilter ? entitiesById.get(subjectFilter) : null;
+
   return (
     <div className="wbeta-mi2-facts">
-      <label className="wbeta-mi2-toggle">
-        <input
-          type="checkbox"
-          checked={includeSuperseded}
-          onChange={(event) => setIncludeSuperseded(event.target.checked)}
-        />
-        <span>Show superseded / expired facts</span>
-      </label>
+      <div className="wbeta-mi2-facts-controls">
+        <label className="wbeta-mi2-toggle">
+          <input
+            type="checkbox"
+            checked={includeSuperseded}
+            onChange={(event) => setIncludeSuperseded(event.target.checked)}
+          />
+          <span>Show superseded and expired</span>
+        </label>
+        {subjectFilter ? (
+          <button
+            type="button"
+            className="wbeta-mi2-facts-filter"
+            onClick={() => setSubjectFilter(null)}
+          >
+            Filter: {filterEntity?.canonical_name ?? subjectFilter.slice(0, 8)} ✕
+          </button>
+        ) : null}
+      </div>
       <div className="wbeta-mi2-grid">
         <div className="wbeta-mi2-grid-head wbeta-mi2-grid-head-facts">
           <span>Subject</span>
@@ -168,20 +198,43 @@ function FactsTab({
           <span>Source</span>
           <span>Status</span>
         </div>
+        {filtered.length === 0 ? (
+          <div className="wbeta-mi2-grid-row wbeta-mi2-grid-row-facts">
+            <span className="wbeta-mi2-empty-cell" style={{ gridColumn: "1 / -1" }}>
+              Nothing matches this filter.
+            </span>
+          </div>
+        ) : null}
         {filtered.map((f) => {
           const subject = entitiesById.get(f.subject_entity);
           const object = f.object_entity ? entitiesById.get(f.object_entity) : null;
-          const objectLabel = object?.canonical_name ?? formatObjectValue(f.object_value);
+          const objectLabel = object?.canonical_name ?? formatFactObject(f.object_value);
           const status = f.superseded_by
             ? "superseded"
             : f.expired_at
               ? "expired"
               : "active";
+          const subjectName = subject?.canonical_name ?? f.subject_entity.slice(0, 8);
+          const isDoc = isDocumentLikeSubject(subjectName);
           return (
             <div key={f.id} className="wbeta-mi2-grid-row wbeta-mi2-grid-row-facts">
-              <span className="wbeta-mi2-name">{subject?.canonical_name ?? f.subject_entity.slice(0, 8)}</span>
-              <span className="wbeta-mi2-meta">{f.predicate}</span>
-              <span className="wbeta-mi2-meta">{objectLabel}</span>
+              <button
+                type="button"
+                className="wbeta-mi2-subject-link"
+                onClick={() => setSubjectFilter(f.subject_entity)}
+                title={
+                  subject
+                    ? `Show all facts about ${subject.canonical_name}`
+                    : `Show all facts with this subject`
+                }
+              >
+                {isDoc ? <span className="wbeta-mi2-subject-icon">▤</span> : null}
+                <span className="wbeta-mi2-name">{subjectName}</span>
+              </button>
+              <span className="wbeta-mi2-meta" title={f.predicate}>
+                {formatPredicate(f.predicate)}
+              </span>
+              <span className="wbeta-mi2-meta">{objectLabel || "-"}</span>
               <span className="wbeta-mi2-meta">{f.valid_from ? formatDate(f.valid_from) : "-"}</span>
               <span className="wbeta-mi2-meta">{f.source_type ?? "-"}</span>
               <span className={`wbeta-mi2-status wbeta-mi2-status-${status}`}>{status}</span>
@@ -349,13 +402,3 @@ function formatDate(iso: string | null | undefined): string {
   }
 }
 
-function formatObjectValue(value: unknown): string {
-  if (value === null || value === undefined) return "-";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  try {
-    return JSON.stringify(value).slice(0, 80);
-  } catch {
-    return "-";
-  }
-}
