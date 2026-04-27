@@ -119,6 +119,12 @@ const AUTHOR_MODEL_VALUES = new Set([
 ]);
 const VISUAL_QA_MODEL = "claude-haiku-4-5";
 const FINAL_VISUAL_QA_MODEL = "claude-haiku-4-5";
+// Per memory/april-2026-disaster-arc-forensic.md §6.4 + §6.5: only structural
+// corruption blocks publish. The slide_count_within_requested_plus_appendix_cap
+// check is non-deterministic model output (Claude can produce 12-13 slides for
+// a 10-slide ask) and is a publish-blocker only by accident; it is the QA-treadmill
+// pattern §6.5 explicitly warns against. Downgraded to advisory: the check still
+// runs and reports in qa_report.failed, but does not block publish.
 const HARD_QA_BLOCKERS = new Set([
   "pptx_present",
   "md_present",
@@ -131,7 +137,6 @@ const HARD_QA_BLOCKERS = new Set([
   "xlsx_native_chart_xml_present",
   "pptx_zip_signature",
   "slide_count_positive",
-  "slide_count_within_requested_plus_appendix_cap",
   "appendix_slide_count_within_cap",
   "report_only_manifest_zero_slides",
   "pptx_zip_parse_failed",
