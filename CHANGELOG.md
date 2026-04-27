@@ -4,6 +4,16 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 Brief 6 PUSH 5 + pg_cron enable (production-ops fix)
+
+Two production-ops items surfaced by Marco's first admin sign-in:
+
+1. **Schema mismatch fix**: the admin overview `safeCount(table, since)` helper queried `created_at` blindly, but `memory_audit` uses `occurred_at`. The fallback retry chain hid the user-facing failure but produced a noisy `column memory_audit.created_at does not exist` Postgres log. Replaced with a per-table-aware `safeCountByTime(table, timeColumn, since, filters)` helper so every aggregation uses the right column up front. Promoted to canonical-memory: future cross-table dashboards must consult the right time column per table (memory_audit.occurred_at, memory_workflow_runs.started_at, chat_tool_telemetry.started_at; everything else uses created_at).
+
+2. **pg_cron enabled** via Supabase Dashboard. Migration `20260520100000_pg_cron_enable.sql` idempotently re-runs the `cron.schedule` blocks from migrations 20260505110000 (memory-candidates-expire at 04:00 UTC) and 20260512110000 (anticipation-hints-expire at 04:15 UTC). Each block unschedules an existing job of the same name first; safe to re-apply. Both nightly RPCs are now driven by pg_cron; manual operator calls still work.
+
+Brief 6 PUSH 5 of 5 consumed. Brief 6 budget exhausted; further fixes will need a fresh Brief 6 PUSH cycle if more operator findings surface.
+
 ## 2026-04-27, Memory v1 Brief 6 PUSH 1-4 (admin console v1)
 
 Spec: `docs/research/2026-04-25-sota-implementation-specs.md` §10. Read-only `/admin/*` console behind a `super_admin` gate. Marco-only initial member.

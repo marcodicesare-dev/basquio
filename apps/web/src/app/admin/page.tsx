@@ -9,29 +9,51 @@ function getDb() {
   return createServiceSupabaseClient(url, key);
 }
 
-async function safeCount(table: string, since: string): Promise<number> {
+/**
+ * Per-table time-column-aware counter. memory_audit uses `occurred_at`,
+ * memory_workflow_runs uses `started_at`, the rest use `created_at`.
+ * Brief 6 PUSH 5 fix: the original implementation queried `created_at`
+ * blindly which produced a Postgres "column does not exist" log on
+ * memory_audit. The catch-and-retry chain hid the user-facing failure
+ * but the error logs were noisy. Now every query uses the right
+ * column up front; no fallback retries.
+ */
+async function safeCountByTime(
+  table: string,
+  timeColumn: string,
+  sinceIso: string,
+  filters: Array<[string, string]> = [],
+): Promise<number> {
   try {
     const db = getDb();
-    const { count, error } = await db
-      .from(table)
-      .select("*", { count: "exact", head: true })
-      .gt("created_at", since);
-    if (error) return 0;
+    let q = db.from(table).select("*", { count: "exact", head: true }).gt(timeColumn, sinceIso);
+    for (const [col, val] of filters) {
+      q = q.eq(col, val);
+    }
+    const { count, error } = await q;
+    if (error) {
+      console.error(`[admin overview] count failed for ${table}.${timeColumn}`, error);
+      return 0;
+    }
     return count ?? 0;
-  } catch {
+  } catch (err) {
+    console.error(`[admin overview] count threw for ${table}.${timeColumn}`, err);
     return 0;
   }
 }
 
-async function safeWorkflowRunCount(since: string): Promise<{ success: number; failure: number }> {
+async function safeWorkflowRunCount(sinceIso: string): Promise<{ success: number; failure: number }> {
   try {
     const db = getDb();
     const { data, error } = await db
       .from("memory_workflow_runs")
       .select("status")
-      .gt("started_at", since)
+      .gt("started_at", sinceIso)
       .limit(5000);
-    if (error) return { success: 0, failure: 0 };
+    if (error) {
+      console.error("[admin overview] workflow runs query failed", error);
+      return { success: 0, failure: 0 };
+    }
     let success = 0;
     let failure = 0;
     for (const row of (data ?? []) as Array<{ status: string }>) {
@@ -39,7 +61,8 @@ async function safeWorkflowRunCount(since: string): Promise<{ success: number; f
       else if (row.status === "failure") failure += 1;
     }
     return { success, failure };
-  } catch {
+  } catch (err) {
+    console.error("[admin overview] workflow runs threw", err);
     return { success: 0, failure: 0 };
   }
 }
@@ -53,40 +76,10 @@ export default async function AdminOverviewPage() {
     chatTurnsCount,
     workflowRuns,
   ] = await Promise.all([
-    safeCount("memory_candidates", since7d),
-    safeCount("memory_audit", since7d).then(async (c) =>
-      c === 0
-        ? // memory_audit lacks created_at; uses occurred_at. Re-query.
-          (async () => {
-            try {
-              const db = getDb();
-              const { count, error } = await db
-                .from("memory_audit")
-                .select("*", { count: "exact", head: true })
-                .gt("occurred_at", since7d);
-              if (error) return 0;
-              return count ?? 0;
-            } catch {
-              return 0;
-            }
-          })()
-        : c,
-    ),
-    safeCount("anticipation_hints", since7d),
-    (async () => {
-      try {
-        const db = getDb();
-        const { count, error } = await db
-          .from("chat_tool_telemetry")
-          .select("*", { count: "exact", head: true })
-          .eq("tool_name", "__chat_turn__")
-          .gt("started_at", since7d);
-        if (error) return 0;
-        return count ?? 0;
-      } catch {
-        return 0;
-      }
-    })(),
+    safeCountByTime("memory_candidates", "created_at", since7d),
+    safeCountByTime("memory_audit", "occurred_at", since7d),
+    safeCountByTime("anticipation_hints", "created_at", since7d),
+    safeCountByTime("chat_tool_telemetry", "started_at", since7d, [["tool_name", "__chat_turn__"]]),
     safeWorkflowRunCount(since7d),
   ]);
 
