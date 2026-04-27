@@ -6,6 +6,7 @@ import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { ensureViewerWorkspace } from "@/lib/viewer-workspace";
 import type { ViewerState } from "@/lib/supabase/auth";
 import { listMemoryEntries } from "@/lib/workspace/memory";
+import { formatActiveRulesForScope, listActiveRules } from "@/lib/workspace/rules";
 import { getScope } from "@/lib/workspace/scopes";
 import { listWorkspacePeople } from "@/lib/workspace/people";
 import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
@@ -477,9 +478,17 @@ export async function buildScopeContextPack(
   const scope = await getScope(scopeId).catch(() => null);
   if (!scope) return EMPTY_SCOPE_CONTEXT_PACK;
 
-  const [scopedMemory, allPeople] = await Promise.all([
+  const [scopedMemory, allPeople, activeRules] = await Promise.all([
     listMemoryEntries({ workspaceId, scopeId, limit: 16 }).catch(() => []),
     listWorkspacePeople(workspaceId).catch(() => []),
+    // Memory v1 Brief 5 PART A: pull active workspace_rule rows
+    // ordered by priority desc and inject into the scope pack so the
+    // chat agent obeys procedural rules on every turn. Caps at 24 to
+    // keep the pack token budget predictable.
+    listActiveRules(workspaceId, { scopeId, limit: 24 }).catch((err) => {
+      console.error("[buildScopeContextPack] listActiveRules failed", err);
+      return [];
+    }),
   ]);
 
   const scopedRules = scopedMemory.slice(0, 12).map((m) => oneLine(m.content));
@@ -530,6 +539,11 @@ export async function buildScopeContextPack(
     sections.push(
       `## Scope rules\nPreferences and saved knowledge specific to this scope.\n\n${scopedRules.map((r) => `- ${r}`).join("\n")}`,
     );
+  }
+
+  const rulesSection = formatActiveRulesForScope(activeRules);
+  if (rulesSection) {
+    sections.push(rulesSection);
   }
 
   return `# Scope context\n\n${sections.join("\n\n")}`;
