@@ -1,4 +1,6 @@
-# Basquio — AI-native business intelligence deck generation
+# Basquio, AI-native business intelligence deck generation
+
+> **STOP AND READ before touching the deck pipeline.** If you are about to edit `packages/workflows/`, `scripts/worker.ts`, `apps/bot/`, any `railway.toml`, or any file in the publish/QA gate path, read `memory/april-2026-disaster-arc-forensic.md` FIRST. That file documents three consecutive disasters between Apr 20-27, 2026, the recurring failure pattern, and 10 non-negotiable rules that must replace it. The night-spiral disaster on Apr 26-27 happened specifically because the agent did not have this history loaded. Don't repeat it.
 
 ## North star
 Basquio does the same level of analysis as a Claude Code chat. The model decides what to investigate and how to present it. Claude controls every pixel of the final artifact via code execution. No rendering pipeline between the model and the file.

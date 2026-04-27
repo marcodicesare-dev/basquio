@@ -4,9 +4,10 @@ This index exists so future agents have one place to start instead of guessing f
 
 ## Read First
 
-1. `memory/canonical-memory.md` — canonical product, runtime, and process truth
-2. `CLAUDE.md` — current operational rules and hard-won pipeline constraints
-3. `memory/march28-48h-forensic-learnings.md` — March 27-28 forensic baseline, regression sequence, and anti-regression rules
+1. **`memory/april-2026-disaster-arc-forensic.md`** REQUIRED before touching the deck pipeline. 7-day arc covering three consecutive disasters Apr 20-27, the recurring failure pattern, and the 10 non-negotiable rules that must replace it.
+2. `memory/canonical-memory.md` canonical product, runtime, and process truth
+3. `CLAUDE.md` current operational rules and hard-won pipeline constraints
+4. `memory/march28-48h-forensic-learnings.md` March 27-28 forensic baseline, regression sequence, and anti-regression rules
 
 ## Canonical Memory
 
@@ -14,6 +15,7 @@ This index exists so future agents have one place to start instead of guessing f
 
 ## Critical Incident Context
 
+- **`memory/april-2026-disaster-arc-forensic.md`** Apr 20-27, 2026 disaster arc (Discord bot silent death, P0 mega-PR contract break, night-spiral recovery). Read this first if touching any deck-pipeline file.
 - `memory/march28-48h-forensic-learnings.md`
 - `.context/march28-zero-results-forensic-spec.md`
 
