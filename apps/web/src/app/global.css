@@ -13115,6 +13115,131 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0;
 }
 
+/* Memory v1 Brief 5 PART C: workspace-home anticipation hints banner. */
+.wbeta-hints-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 13px;
+}
+
+.wbeta-hints-banner header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wbeta-hints-banner header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.wbeta-hints-count {
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.wbeta-hints-banner ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wbeta-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text);
+  border-radius: var(--radius-md);
+}
+
+.wbeta-hint-reactive {
+  border-left-color: #b00020;
+}
+
+.wbeta-hint-proactive {
+  border-left-color: #1a7eff;
+}
+
+.wbeta-hint-optimisation {
+  border-left-color: #1ed760;
+}
+
+.wbeta-hint-kind {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.wbeta-hint-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wbeta-hint-reason {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.wbeta-hint-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--danger-text, #b00020);
+}
+
+.wbeta-hint-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.wbeta-hint-actions button,
+.wbeta-hint-open {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 13px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wbeta-hint-open {
+  background: var(--text);
+  color: var(--surface-solid);
+  border-color: var(--text);
+}
+
+.wbeta-hint-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Memory v1 Brief 5 PART B: Memory Inspector v2 (4 tabs). */
 .wbeta-mi2 {
   display: flex;

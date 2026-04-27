@@ -1,7 +1,9 @@
 import { headers } from "next/headers";
 
 import { getViewerState } from "@/lib/supabase/auth";
+import { WorkspaceHintsBanner } from "@/components/workspace-hints-banner";
 import { WorkspaceHomeDashboard } from "@/components/workspace-home-dashboard";
+import { listActiveHints } from "@/lib/workspace/anticipation";
 import {
   getWorkspaceHomeActivity,
   listRecentWorkspaceDeliverables,
@@ -160,9 +162,17 @@ export default async function WorkspaceHomePage() {
   const userName = formatUserName(viewer.user?.email ?? "");
   const locale = resolveWorkspaceLocale(headersList.get("accept-language"));
 
+  const hints = viewer.user
+    ? await listActiveHints(workspace.id, viewer.user.id, 3).catch((err) => {
+        console.error("[workspace home] listActiveHints failed", err);
+        return [];
+      })
+    : [];
+
   return (
     <>
       <WorkspaceShortcuts />
+      <WorkspaceHintsBanner hints={hints} />
       <WorkspaceHomeDashboard
         greeting={buildGreeting(userName, locale)}
         learnedCount={weeklyLearnedCount}
