@@ -13298,6 +13298,19 @@ body:has(.wbeta-shell) .site-wrap {
   margin-bottom: 13px;
 }
 
+.wbeta-hints-banner-empty {
+  background: var(--surface-muted);
+  border-style: dashed;
+}
+
+.wbeta-hints-empty-copy {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  max-width: 55ch;
+}
+
 .wbeta-hints-banner header {
   display: flex;
   align-items: baseline;

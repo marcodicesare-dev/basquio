@@ -19,7 +19,7 @@ export default async function AdminRunsPage() {
         <thead>
           <tr>
             <th>Started</th>
-            <th>Workspace</th>
+            <th>Conversation</th>
             <th>Intents</th>
             <th>Active tools</th>
             <th>In</th>
@@ -43,7 +43,7 @@ export default async function AdminRunsPage() {
                   {t.started_at.slice(0, 19).replace("T", " ")}
                 </Link>
               </td>
-              <td className="wbeta-admin-mono">{t.workspace_id?.slice(0, 8) ?? "-"}</td>
+              <td className="wbeta-admin-mono">{t.conversation_id?.slice(0, 8) ?? "-"}</td>
               <td>{(t.intents ?? []).join(", ") || "-"}</td>
               <td>{(t.active_tools ?? []).join(", ") || "-"}</td>
               <td className="wbeta-admin-mono">{t.total_input_tokens ?? "-"}</td>

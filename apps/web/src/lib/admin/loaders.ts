@@ -15,13 +15,19 @@ function getDb() {
   return createServiceSupabaseClient(url, key);
 }
 
+// Schema reality: chat_tool_telemetry has id, conversation_id, user_id,
+// tool_name, input_hash, started_at, completed_at (not finished_at),
+// duration_ms (not latency_ms), status, error_message, result_size_bytes,
+// created_at, plus the Brief 2 cache + classifier columns. NO workspace_id.
+// Workspace context is reachable via workspace_conversations.id when
+// needed (see resolveWorkspaceForConversations below, used by the cost
+// aggregator).
 export type AdminChatTurnRow = {
   id: string;
   conversation_id: string | null;
-  workspace_id: string | null;
   user_id: string | null;
   started_at: string;
-  finished_at: string | null;
+  completed_at: string | null;
   cost_usd: number | null;
   total_input_tokens: number | null;
   total_output_tokens: number | null;
@@ -30,44 +36,81 @@ export type AdminChatTurnRow = {
   active_tools: string[] | null;
 };
 
+const CHAT_TURN_COLUMNS =
+  "id, conversation_id, user_id, started_at, completed_at, cost_usd, " +
+  "total_input_tokens, total_output_tokens, cache_read_input_tokens, " +
+  "intents, active_tools";
+
 export async function listAdminChatTurns(limit = 50): Promise<AdminChatTurnRow[]> {
   const db = getDb();
   const { data, error } = await db
     .from("chat_tool_telemetry")
-    .select(
-      "id, conversation_id, workspace_id, user_id, started_at, finished_at, cost_usd, total_input_tokens, total_output_tokens, cache_read_input_tokens, intents, active_tools",
-    )
+    .select(CHAT_TURN_COLUMNS)
     .eq("tool_name", "__chat_turn__")
     .order("started_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(`admin chat turns failed: ${error.message}`);
-  return (data ?? []) as AdminChatTurnRow[];
+  return (data ?? []) as unknown as AdminChatTurnRow[];
 }
 
 export async function getAdminChatTurn(turnId: string): Promise<AdminChatTurnRow | null> {
   const db = getDb();
   const { data, error } = await db
     .from("chat_tool_telemetry")
-    .select(
-      "id, conversation_id, workspace_id, user_id, started_at, finished_at, cost_usd, total_input_tokens, total_output_tokens, cache_read_input_tokens, intents, active_tools",
-    )
+    .select(CHAT_TURN_COLUMNS)
     .eq("id", turnId)
     .maybeSingle();
   if (error) throw new Error(`admin chat turn failed: ${error.message}`);
-  return (data ?? null) as AdminChatTurnRow | null;
+  return (data ?? null) as unknown as AdminChatTurnRow | null;
 }
 
-export async function listToolCallsForTurn(conversationId: string): Promise<unknown[]> {
+export type AdminToolCallRow = {
+  id: string;
+  tool_name: string;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  status: string | null;
+  error_message: string | null;
+};
+
+export async function listToolCallsForTurn(conversationId: string): Promise<AdminToolCallRow[]> {
   const db = getDb();
   const { data, error } = await db
     .from("chat_tool_telemetry")
-    .select("id, tool_name, started_at, finished_at, latency_ms, status, error_message")
+    .select("id, tool_name, started_at, completed_at, duration_ms, status, error_message")
     .eq("conversation_id", conversationId)
     .neq("tool_name", "__chat_turn__")
     .order("started_at", { ascending: false })
     .limit(50);
   if (error) throw new Error(`tool calls failed: ${error.message}`);
-  return data ?? [];
+  return (data ?? []) as unknown as AdminToolCallRow[];
+}
+
+// Resolve workspace_id for a list of conversation ids. chat_tool_telemetry
+// stores conversation_id as TEXT; workspace_conversations.id is UUID.
+// Casts are implicit when comparing TEXT to UUID via .in() on a UUID
+// column; supabase-js / PostgREST handle the cast as long as the values
+// are valid UUID strings.
+async function resolveWorkspaceForConversations(
+  conversationIds: string[],
+): Promise<Map<string, string>> {
+  if (conversationIds.length === 0) return new Map();
+  const db = getDb();
+  const unique = Array.from(new Set(conversationIds));
+  const { data, error } = await db
+    .from("workspace_conversations")
+    .select("id, workspace_id")
+    .in("id", unique);
+  if (error) {
+    console.error("[admin loaders] workspace_conversations resolve failed", error);
+    return new Map();
+  }
+  const out = new Map<string, string>();
+  for (const row of (data ?? []) as Array<{ id: string; workspace_id: string }>) {
+    out.set(row.id, row.workspace_id);
+  }
+  return out;
 }
 
 export type AdminAuditRow = {
@@ -166,18 +209,32 @@ export async function aggregateChatCostByWorkspace(sinceIso: string): Promise<Ad
   const db = getDb();
   const { data, error } = await db
     .from("chat_tool_telemetry")
-    .select("workspace_id, cost_usd")
+    .select("conversation_id, cost_usd")
     .eq("tool_name", "__chat_turn__")
     .gt("started_at", sinceIso)
     .limit(5000);
   if (error) throw new Error(`admin cost aggregate failed: ${error.message}`);
+  const rows = (data ?? []) as Array<{ conversation_id: string | null; cost_usd: number | null }>;
+
+  // chat_tool_telemetry has no workspace_id; resolve via workspace_conversations.
+  const conversationIds = rows
+    .map((r) => r.conversation_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const conversationToWorkspace = await resolveWorkspaceForConversations(conversationIds);
+
   const buckets = new Map<string, AdminCostBucket>();
-  for (const row of (data ?? []) as Array<{ workspace_id: string | null; cost_usd: number | null }>) {
-    const key = row.workspace_id ?? "(unknown)";
-    const existing = buckets.get(key) ?? { workspace_id: key, total_cost_usd: 0, turn_count: 0 };
+  for (const row of rows) {
+    const workspaceId = row.conversation_id
+      ? conversationToWorkspace.get(row.conversation_id) ?? "(unknown)"
+      : "(unknown)";
+    const existing = buckets.get(workspaceId) ?? {
+      workspace_id: workspaceId,
+      total_cost_usd: 0,
+      turn_count: 0,
+    };
     existing.total_cost_usd += Number(row.cost_usd ?? 0);
     existing.turn_count += 1;
-    buckets.set(key, existing);
+    buckets.set(workspaceId, existing);
   }
   return [...buckets.values()].sort((a, b) => b.total_cost_usd - a.total_cost_usd);
 }

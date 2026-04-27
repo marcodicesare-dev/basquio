@@ -150,6 +150,7 @@ async function buildSuggestionsUncached({
 
   for (const memory of memories.slice(0, 2)) {
     const label = formatMemoryLabel(memory.path || memory.memory_type);
+    if (!label) continue;
     const prompt = scopeName
       ? text(locale, "memory-scope-prompt", { label, scopeName })
       : text(locale, "memory-home-prompt", { label });
@@ -165,7 +166,9 @@ async function buildSuggestionsUncached({
   }
 
   for (const doc of docs.slice(0, 3)) {
-    const prompt = text(locale, "summarize-doc", { filename: formatMemoryLabel(doc.filename) });
+    const filename = formatMemoryLabel(doc.filename);
+    if (!filename) continue;
+    const prompt = text(locale, "summarize-doc", { filename });
     if (promptsCovered.has(prompt.toLowerCase())) continue;
     suggestions.push({
       id: `summarize-${doc.id}`,
@@ -208,14 +211,27 @@ function formatRelative(iso: string, locale: "en" | "it"): string {
   return locale === "it" ? `${days} g fa` : `${days}d ago`;
 }
 
-function formatMemoryLabel(value: string): string {
+function formatMemoryLabel(value: string): string | null {
   const leaf = value.split("/").filter(Boolean).pop() ?? value;
+  // Reject ISO-8601-shaped leaves before further processing. The path
+  // for chat-extracted preferences ends in a UUID or a timestamp; the
+  // timestamp form ("2026-04-25T14:53:59.705Z") survives the dash-strip
+  // step below and reaches the chip as digit-soup. UUIDs are filtered
+  // by the all-hex test further down.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(leaf)) return null;
   const withoutExtension = leaf.replace(/\.[a-z0-9]+$/i, "");
   const cleaned = withoutExtension
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!cleaned) return "saved context";
+  if (!cleaned) return null;
+  // Reject UUID-shaped labels: 8-4-4-4-12 hex pattern, with the dashes
+  // already gone after the strip above, leaves a 32-char hex string.
+  if (/^[0-9a-f]{32}$/i.test(cleaned.replace(/\s+/g, ""))) return null;
+  // Reject mostly-digit labels (timestamps that survived a different
+  // path format, raw IDs).
+  const digitRatio = (cleaned.match(/\d/g) ?? []).length / cleaned.length;
+  if (digitRatio > 0.5) return null;
   return cleaned
     .split(" ")
     .map((word, index) => {

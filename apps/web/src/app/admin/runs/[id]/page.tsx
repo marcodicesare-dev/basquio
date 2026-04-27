@@ -14,14 +14,7 @@ export default async function AdminTurnReplayPage({
   const turn = await getAdminChatTurn(id);
   if (!turn) notFound();
   const toolCalls = turn.conversation_id
-    ? ((await listToolCallsForTurn(turn.conversation_id)) as Array<{
-        id: string;
-        tool_name: string;
-        started_at: string;
-        latency_ms: number | null;
-        status: string | null;
-        error_message: string | null;
-      }>)
+    ? await listToolCallsForTurn(turn.conversation_id)
     : [];
 
   return (
@@ -57,10 +50,6 @@ export default async function AdminTurnReplayPage({
               <td>{(turn.active_tools ?? []).join(", ") || "-"}</td>
             </tr>
             <tr>
-              <th>Workspace</th>
-              <td className="wbeta-admin-mono">{turn.workspace_id ?? "-"}</td>
-            </tr>
-            <tr>
               <th>Conversation</th>
               <td className="wbeta-admin-mono">{turn.conversation_id ?? "-"}</td>
             </tr>
@@ -79,7 +68,7 @@ export default async function AdminTurnReplayPage({
             <tr>
               <th>Started</th>
               <th>Tool</th>
-              <th>Latency (ms)</th>
+              <th>Duration (ms)</th>
               <th>Status</th>
               <th>Error</th>
             </tr>
@@ -96,7 +85,7 @@ export default async function AdminTurnReplayPage({
               <tr key={tc.id}>
                 <td className="wbeta-admin-mono">{tc.started_at.slice(0, 19).replace("T", " ")}</td>
                 <td>{tc.tool_name}</td>
-                <td className="wbeta-admin-mono">{tc.latency_ms ?? "-"}</td>
+                <td className="wbeta-admin-mono">{tc.duration_ms ?? "-"}</td>
                 <td>{tc.status ?? "-"}</td>
                 <td className="wbeta-admin-mono">{tc.error_message ?? ""}</td>
               </tr>
