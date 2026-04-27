@@ -26,8 +26,15 @@ export type WorkspaceDocumentRow = {
   anthropic_file_id: string | null;
 };
 
+export type KnowledgeDocumentKind =
+  | "uploaded_file"
+  | "scraped_article"
+  | "chat_paste"
+  | "chat_url"
+  | "brand_book";
+
 export type WorkspaceSourceDocumentRow = WorkspaceDocumentRow & {
-  kind: "uploaded_file" | "scraped_article" | "chat_paste" | "chat_url";
+  kind: KnowledgeDocumentKind;
   source_catalog_id: string | null;
   source_url: string | null;
   source_published_at: string | null;
@@ -141,6 +148,11 @@ export async function findWorkspaceDocumentByHash(hash: string): Promise<Workspa
   return (data ?? null) as WorkspaceDocumentRow | null;
 }
 
+// Document kinds settable from the upload path. Other kinds
+// ('scraped_article', 'chat_paste', 'chat_url') are owned by their own
+// ingest paths.
+export type UploadKnowledgeDocumentKind = "uploaded_file" | "brand_book";
+
 export type CreateWorkspaceDocumentInput = {
   filename: string;
   fileType: string;
@@ -150,6 +162,7 @@ export type CreateWorkspaceDocumentInput = {
   uploadedByEmail: string;
   uploadedByUserId: string;
   uploadContext?: string | null;
+  kind?: UploadKnowledgeDocumentKind;
 };
 
 export async function createWorkspaceDocument(input: CreateWorkspaceDocumentInput): Promise<string> {
@@ -170,6 +183,7 @@ export async function createWorkspaceDocument(input: CreateWorkspaceDocumentInpu
       workspace_id: BASQUIO_TEAM_WORKSPACE_ID,
       is_team_beta: true,
       status: "processing",
+      kind: input.kind ?? "uploaded_file",
     })
     .select("id")
     .single();

@@ -4,6 +4,31 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 Brief 3 PUSH 1 (brand-guideline extraction)
+
+Behind `BRAND_EXTRACTION_ENABLED` flag (default false on Vercel). Code shipped + two migrations + BAML setup + tests. Phase 9 (flag flip + production verification) deferred until a text-rich brand book is available; the Spotify fixture is image-heavy and constrained for the rule-count gates from spec §4.
+
+PART A. BAML 0.221.0 added at workspace root (`pnpm add -w @boundaryml/baml`). Sources at `packages/workflows/baml_src/clients.baml` (Sonnet 4.6 + Haiku 4.5 Anthropic clients) and `packages/workflows/baml_src/brand_guideline.baml` (typed schema + ExtractBrandGuideline + ValidateBrandGuideline functions). Generated TypeScript client at `packages/workflows/baml_client/` (gitignored). Postinstall and `qa:basquio` both run `pnpm baml:gen` so cloners always have a generated client before `tsc`.
+
+PART B. Three-phase pipeline at `packages/workflows/src/workspace/brand-extraction.ts`: Sonnet 4.6 extract → Haiku 4.5 validate (reject below 0.7) → SECURITY DEFINER persist. Wraps the run in `beginWorkflowRun` / `finishWorkflowRun` (new helper at `packages/workflows/src/workspace/memory-workflow-runs.ts`, reused by Briefs 4-6) for memory_workflow_runs telemetry. Cost model: Sonnet 4.6 $3/$15/$0.30 in/out/cached, Haiku 4.5 $1/$5/$0.10.
+
+PART C. Migrations.
+
+- `20260428140000_brand_extraction_rpc.sql` adds `public.persist_brand_guideline(workspace_id, brand, version, ..., actor_text, workflow_run_id)` SECURITY DEFINER, `SET search_path = ''`. Sets `app.actor` and `app.workflow_run_id` inside the function body so the audit_memory_change trigger from Brief 1 reads the caller in the same transaction. PostgREST connection pooling cannot carry session-local config across separate `.rpc()` calls; this RPC is the canonical pattern that Brief 4 and beyond reuse.
+- `20260428141000_knowledge_documents_brand_book_kind.sql` widens the `knowledge_documents.kind` CHECK constraint to include `brand_book`.
+
+PART D. Worker post-ingest hook (Option C wiring). Inngest is retired on basquio (`apps/web/src/app/api/inngest/route.ts` returns 410). The brief originally specified an Inngest function; the substrate audit found the active background pattern is the Railway worker polling Supabase. `processWorkspaceDocument` now SELECTs `kind` and runs `runBrandGuidelineExtraction` post-chunking when `kind === 'brand_book'` and the flag is on. Failure does not roll back ingest (chunks already persist for hybrid search).
+
+PART E. Upload + UI. The `/api/workspace/uploads/confirm` route accepts an optional `kind: 'uploaded_file' | 'brand_book'`. `WorkspaceUploadZone` renders a checkbox: "This is a brand book. We extract typography, colour, tone, and imagery as typed rules. Other PDFs chunk for search only." Threading via `apps/web/src/lib/workspace/upload-client.ts` and `createWorkspaceDocument`.
+
+PART F. Read API + placeholder UI. New `apps/web/src/lib/workspace/brand-guidelines.ts` exports `getActiveBrandGuideline(workspaceId, brand)` and `searchBrandRules(workspaceId, query)`. `queryBrandRuleTool` from Brief 2 refactored to call `getActiveBrandGuideline`; external behaviour preserved. `apps/web/src/components/workspace-brand-rules.tsx` server component renders extracted rules grouped by surface; Brief 5 wires it into the Memory Inspector.
+
+PART G. Skill + flag. `skills/basquio-brand-extraction/SKILL.md` documents the BAML schema, the 0.7 confidence floor, the SECURITY DEFINER persist contract, and the spec §4 acceptance gates. `BRAND_EXTRACTION_ENABLED=false` added to `.env.example`.
+
+Local gates green: `pnpm tsc --noEmit`, `pnpm vitest run` 281/281 across 51 files (10 new: 4 brand-extraction + 6 brand-guidelines), `pnpm qa:basquio`, `scripts/test-anthropic-skills-contract.ts` smoke ok. Live extraction smoke against `fixtures/brand-books/spotify.pdf` (21 pages, 11k chars text-extracted) returned 0 typography / 5 colour / 3 tone / 3 imagery rules with 100% source_page coverage on every extracted rule, validation confidence 0.68 (correctly below the 0.7 persist floor, sparse extraction rejected), negative test confidence 0.15 catching all 12 hard-fail violations, total cost $0.04. Spotify is image-heavy (visual typography mockups that pdf-parse cannot OCR); the validator did its job. Phase 9 verification of the rule-count gates needs a text-rich CPG-style brand book.
+
+Forward: Brief 4 (chat-turn fact extractor + memory_candidates queue) lights up the compounding engine; reuses the persist_brand_guideline RPC pattern from this brief. Spec: `docs/research/2026-04-25-sota-implementation-specs.md` §4. Shipped report: `docs/research/2026-04-27-brief-3-shipped.md`. Substrate audit: `docs/research/2026-04-27-brief-3-substrate-audit.md`.
+
 ## 2026-04-27, Memory v1 Brief 2 on `ad0ee2b` (chat caching + router + 4 typed tools)
 
 Behind `CHAT_ROUTER_V2_ENABLED` flag (default false on Vercel). Code shipped, schema migration applied, flag flip pending operator action.

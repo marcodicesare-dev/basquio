@@ -50,6 +50,7 @@ const confirmSchema = z.object({
   conversationId: z.string().uuid().nullable().optional(),
   scopeId: z.string().uuid().nullable().optional(),
   origin: z.enum(["chat-drop", "chat-paste", "referenced-from-workspace"]).optional(),
+  kind: z.enum(["uploaded_file", "brand_book"]).optional(),
 });
 
 /**
@@ -212,6 +213,7 @@ export async function POST(request: Request) {
         uploadedByEmail: viewer.user.email ?? "unknown",
         uploadedByUserId: viewer.user.id,
         uploadContext: payload.note ?? null,
+        kind: payload.kind ?? "uploaded_file",
       });
     } catch (error) {
       const raceWinner = await findWorkspaceDocumentByHash(payload.contentHash);

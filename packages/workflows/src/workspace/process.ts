@@ -1,4 +1,8 @@
 import { createServiceSupabaseClient } from "../supabase";
+import {
+  BrandExtractionValidationError,
+  runBrandGuidelineExtraction,
+} from "./brand-extraction";
 import { BASQUIO_TEAM_ORG_ID } from "./constants";
 import { embedTexts } from "./embeddings";
 import {
@@ -21,8 +25,18 @@ type ProcessOutcome = {
   newEntityCount: number;
   factCount: number;
   mentionCount: number;
+  brandExtraction?: {
+    status: "success" | "failure" | "skipped";
+    workflowRunId?: string;
+    brandGuidelineId?: string;
+    reason?: string;
+  };
   error?: string;
 };
+
+function isBrandExtractionEnabled(): boolean {
+  return process.env.BRAND_EXTRACTION_ENABLED === "true";
+}
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -36,7 +50,7 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
 
   const { data: doc, error: fetchError } = await db
     .from("knowledge_documents")
-    .select("id, filename, file_type, storage_path, content_hash")
+    .select("id, filename, file_type, storage_path, content_hash, kind, workspace_id, organization_id")
     .eq("id", documentId)
     .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .eq("is_team_beta", true)
@@ -146,6 +160,42 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
     const extraction = await extractEntitiesFromDocument(text, doc.filename);
     const persisted = await persistExtraction(documentId, extraction);
 
+    // Brand-book post-ingest hook (Memory v1 Brief 3, Option C wiring).
+    // Runs ONLY when the user marked this document as a brand book at upload
+    // time AND the BRAND_EXTRACTION_ENABLED flag is on. Failure does not
+    // fail the overall ingest; chunks are already indexed for hybrid search.
+    let brandExtraction: ProcessOutcome["brandExtraction"];
+    if (doc.kind === "brand_book") {
+      if (isBrandExtractionEnabled()) {
+        try {
+          const result = await runBrandGuidelineExtraction(db, {
+            workspaceId: doc.workspace_id ?? doc.organization_id ?? BASQUIO_TEAM_ORG_ID,
+            organizationId: doc.organization_id ?? BASQUIO_TEAM_ORG_ID,
+            documentId,
+            pdfText: text,
+            pageCount: parsed.pageCount ?? 0,
+            actor: "system:workflow:brand-extraction",
+          });
+          brandExtraction = {
+            status: "success",
+            workflowRunId: result.workflowRunId,
+            brandGuidelineId: result.brandGuidelineId,
+          };
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          const validationFailure = err instanceof BrandExtractionValidationError;
+          console.error(
+            `[brand-extraction] documentId=${documentId} failed (${
+              validationFailure ? "validation" : "runtime"
+            }): ${reason}`,
+          );
+          brandExtraction = { status: "failure", reason };
+        }
+      } else {
+        brandExtraction = { status: "skipped", reason: "BRAND_EXTRACTION_ENABLED=false" };
+      }
+    }
+
     await db
       .from("knowledge_documents")
       .update({
@@ -157,6 +207,7 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
           parsed_chars: text.length,
           entity_count: persisted.totalMentionCount,
           fact_count: persisted.factCount,
+          ...(brandExtraction ? { brand_extraction: brandExtraction } : {}),
         },
         updated_at: new Date().toISOString(),
       })
@@ -170,6 +221,7 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
       newEntityCount: persisted.newEntityCount,
       factCount: persisted.factCount,
       mentionCount: persisted.totalMentionCount,
+      brandExtraction,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

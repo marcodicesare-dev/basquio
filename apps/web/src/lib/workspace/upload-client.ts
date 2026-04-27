@@ -51,6 +51,13 @@ type UploadWorkspaceFileOptions = {
    */
   conversationId?: string | null;
   scopeId?: string | null;
+  /**
+   * Memory v1 Brief 3: when "brand_book", the post-ingest worker hook runs
+   * runBrandGuidelineExtraction (Sonnet extract + Haiku validate) and writes
+   * a typed brand_guideline row. Default 'uploaded_file' triggers normal
+   * chunk-and-embed only.
+   */
+  kind?: "uploaded_file" | "brand_book";
 };
 
 export async function uploadWorkspaceFile(
@@ -140,6 +147,7 @@ export async function uploadWorkspaceFile(
       conversationId,
       scopeId,
       origin: options.origin,
+      kind: options.kind,
     }),
   });
   const confirmPayload = (await readJson(confirmResponse)) as ConfirmWorkspaceUploadResponse & { error?: string };

@@ -28,6 +28,7 @@ export function WorkspaceUploadZone({
   const [state, setState] = useState<UploadState>({ kind: "idle" });
   const [isDragOver, setIsDragOver] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [isBrandBook, setIsBrandBook] = useState(false);
 
   const uploadFile = useCallback(
     async (file: File) => {
@@ -35,6 +36,7 @@ export function WorkspaceUploadZone({
 
       try {
         const data = await uploadWorkspaceFile(file, {
+          kind: isBrandBook ? "brand_book" : "uploaded_file",
           onProgress(progressPct) {
             setState({ kind: "uploading", filename: file.name, progressPct });
           },
@@ -54,7 +56,7 @@ export function WorkspaceUploadZone({
         setState({ kind: "error", message });
       }
     },
-    [router],
+    [router, isBrandBook],
   );
 
   const handleFiles = useCallback(
@@ -128,6 +130,23 @@ export function WorkspaceUploadZone({
               : `Or click to browse. ${supportedLabel}.`)}
         </span>
       </div>
+
+      <label
+        className="wbeta-drop-kind"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={isBrandBook}
+          onChange={(event) => setIsBrandBook(event.target.checked)}
+          disabled={isBusy}
+        />
+        <span className="wbeta-drop-kind-label">This is a brand book</span>
+        <span className="wbeta-drop-kind-hint">
+          We extract typography, colour, tone, and imagery as typed rules. Other PDFs chunk for search only.
+        </span>
+      </label>
 
       <UploadStatus state={state} />
     </div>

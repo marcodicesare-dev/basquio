@@ -2,6 +2,9 @@
   "name": "@basquio/workflows",
   "version": "0.1.0",
   "private": true,
+  "scripts": {
+    "baml:gen": "baml-cli generate"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./generate-deck": "./src/generate-deck.ts",

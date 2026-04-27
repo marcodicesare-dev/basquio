@@ -13069,12 +13069,152 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--text-soft);
 }
 
+.wbeta-drop-kind {
+  display: grid;
+  grid-template-columns: 16px auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  padding: 8px 13px;
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+}
+
+.wbeta-drop-kind input[type="checkbox"] {
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+  margin: 0;
+  cursor: pointer;
+}
+
+.wbeta-drop-kind-label {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wbeta-drop-kind-hint {
+  grid-column: 2 / 3;
+  grid-row: 2 / 3;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
 .wbeta-drop-status {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   margin: 0;
+}
+
+/* Memory v1 Brief 3 placeholder: extracted brand rules surface. */
+.wbeta-brand-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 13px 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.wbeta-brand-rules-empty {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.wbeta-brand-rules-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wbeta-brand-rules-head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.wbeta-brand-rules-version {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-brand-rules-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-brand-rules-group header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-brand-rules-group header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wbeta-brand-rules-group header span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.wbeta-brand-rules-group ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-brand-rules-group li {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wbeta-brand-rules-headline {
+  color: var(--text);
+}
+
+.wbeta-brand-rules-page {
+  font-size: 10px;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  color: var(--text-muted);
+  padding: 1px 4px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+}
+
+.wbeta-brand-rules-swatch {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .wbeta-drop-status-busy {

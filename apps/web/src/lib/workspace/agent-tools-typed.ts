@@ -4,6 +4,7 @@ import { tool } from "ai";
 import { z } from "zod";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import { getActiveBrandGuideline } from "@/lib/workspace/brand-guidelines";
 import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { assembleWorkspaceContext } from "@/lib/workspace/context";
 import { getScope } from "@/lib/workspace/scopes";
@@ -168,18 +169,7 @@ export function queryBrandRuleTool(ctx: AgentCallContext) {
 
       if (brand) {
         try {
-          const { data } = await db
-            .from("brand_guideline")
-            .select(
-              "id, workspace_id, brand_entity_id, brand, version, source_document_id, typography, colour, tone, imagery, forbidden, language_preferences, layout, logo, extraction_method, extraction_confidence, extracted_at, approved_by, approved_at, superseded_by, metadata",
-            )
-            .eq("workspace_id", ctx.workspaceId)
-            .ilike("brand", brand)
-            .is("superseded_by", null)
-            .order("extracted_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          brandGuideline = (data ?? null) as BrandGuideline | null;
+          brandGuideline = await getActiveBrandGuideline(ctx.workspaceId, brand);
           if (brandGuideline) {
             sources.push({
               kind: "brand_guideline",

@@ -7,13 +7,14 @@
     "node": "22.x"
   },
   "scripts": {
-    "postinstall": "lefthook install || echo 'lefthook install failed; run pnpm lefthook install manually'",
+    "postinstall": "(lefthook install || echo 'lefthook install failed; run pnpm lefthook install manually') && (pnpm baml:gen || echo 'baml:gen failed; run pnpm baml:gen manually')",
     "dev": "pnpm --filter @basquio/web dev",
     "build": "pnpm --filter @basquio/web build",
     "lint": "pnpm --filter @basquio/web lint",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "baml:gen": "pnpm --filter @basquio/workflows baml:gen",
     "qa": "pnpm qa:basquio",
-    "qa:basquio": "tsx scripts/qa-context.ts && vitest run",
+    "qa:basquio": "pnpm baml:gen && tsx scripts/qa-context.ts && vitest run",
     "qa:catalog": "tsx scripts/qa-source-catalog.ts",
     "test": "vitest",
     "test:run": "vitest run",
@@ -52,6 +53,7 @@
     "qa:illustrations": "node scripts/qa-blog-illustrations.mjs"
   },
   "dependencies": {
+    "@boundaryml/baml": "^0.221.0",
     "@supabase/supabase-js": "^2.49.4",
     "@types/pdf-parse": "^1.1.5",
     "csv-parse": "^6.1.0",
