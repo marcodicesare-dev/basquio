@@ -282,13 +282,16 @@ export async function POST(request: Request) {
 
       try {
         const usage = await Promise.resolve(result.usage).catch(() => null);
+        const inputTokenDetails = readNestedRecord(usage, "inputTokenDetails");
         const cacheCreation = readNumericUsage(
-          usage,
+          inputTokenDetails,
+          "cacheWriteTokens",
           "cacheCreationInputTokens",
           "cache_creation_input_tokens",
         );
         const cacheRead = readNumericUsage(
-          usage,
+          inputTokenDetails,
+          "cacheReadTokens",
           "cacheReadInputTokens",
           "cache_read_input_tokens",
         );
@@ -386,4 +389,13 @@ function readNumericUsage(
     if (typeof value === "number" && Number.isFinite(value)) return value;
   }
   return null;
+}
+
+function readNestedRecord(
+  usage: unknown,
+  key: string,
+): Record<string, unknown> | null {
+  if (!usage || typeof usage !== "object") return null;
+  const value = (usage as Record<string, unknown>)[key];
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
