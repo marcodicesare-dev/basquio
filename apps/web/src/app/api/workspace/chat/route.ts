@@ -114,22 +114,20 @@ export async function POST(request: Request) {
   const modelId = resolveChatModel(chatMode);
   const routerEnabled = isChatRouterV2Enabled();
 
-  const allTools = {
-    ...getAllTools(ctx),
-    ...getTypedRetrievalTools(ctx),
-  };
-
+  const legacyTools = getAllTools(ctx);
   const modelMessages = await convertToModelMessages(uiMessages);
   const turnStartedAt = new Date();
 
   // ──────────────────────────────────────────────────────────
   // Pre-Brief-2 path (CHAT_ROUTER_V2_ENABLED=false, default in production).
+  // The tool catalogue here is byte-identical to the pre-Brief-2 release;
+  // typed retrieval tools are only registered on the flag-on path below.
   // ──────────────────────────────────────────────────────────
   if (!routerEnabled) {
     const result = streamText({
       model: anthropic(modelId),
       system: SYSTEM_PROMPT,
-      tools: allTools,
+      tools: legacyTools,
       messages: modelMessages,
       stopWhen: stepCountIs(10),
       experimental_transform: smoothStream({
@@ -221,17 +219,21 @@ export async function POST(request: Request) {
     console.error("[workspace/chat] classifier failed; falling back to all tools", err);
   }
 
+  const v2Tools = {
+    ...legacyTools,
+    ...getTypedRetrievalTools(ctx),
+  };
   const activeToolNames = intent
     ? activeToolsForIntents(intent, { includeFallback: true })
-    : Object.keys(allTools);
+    : Object.keys(v2Tools);
 
   const result = streamText({
     model: anthropic(modelId),
     system: systemBlocks,
-    tools: allTools,
+    tools: v2Tools,
     messages: modelMessages,
     stopWhen: stepCountIs(12),
-    activeTools: activeToolNames as Array<keyof typeof allTools>,
+    activeTools: activeToolNames as Array<keyof typeof v2Tools>,
     experimental_transform: smoothStream({
       delayInMs: CHAT_STREAM_CHARACTER_DELAY_MS,
       chunking: firstVisibleCharacter,
