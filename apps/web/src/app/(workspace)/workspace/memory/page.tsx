@@ -1,5 +1,7 @@
 import { WorkspaceBreadcrumb } from "@/components/workspace-breadcrumb";
 import { MemoryBrowser } from "@/components/workspace-memory-browser";
+import { WorkspaceCandidateQueue } from "@/components/workspace-candidate-queue";
+import { listPendingCandidates } from "@/lib/workspace/candidates";
 import { listMemoryEntries, MEMORY_TYPE_LABELS } from "@/lib/workspace/memory";
 import { listScopes } from "@/lib/workspace/scopes";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
@@ -12,9 +14,13 @@ export const metadata = {
 
 export default async function WorkspaceMemoryPage() {
   const workspace = await getCurrentWorkspace();
-  const [scopes, entries] = await Promise.all([
+  const [scopes, entries, pendingCandidates] = await Promise.all([
     listScopes(workspace.id),
     listMemoryEntries({ workspaceId: workspace.id }),
+    listPendingCandidates(workspace.id).catch((err) => {
+      console.error("[memory page] listPendingCandidates failed", err);
+      return [];
+    }),
   ]);
 
   const byType = {
@@ -54,6 +60,8 @@ export default async function WorkspaceMemoryPage() {
           </li>
         </ul>
       </header>
+
+      <WorkspaceCandidateQueue initialCandidates={pendingCandidates} />
 
       <MemoryBrowser initialEntries={entries} scopes={scopes} />
     </div>

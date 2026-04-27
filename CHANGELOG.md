@@ -4,6 +4,29 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 Brief 4 PUSH 1 (chat-turn fact extractor + candidates queue)
+
+Behind `CHAT_EXTRACTOR_ENABLED` flag (default false, DRY MODE). Code shipped + two migrations + chat route hook + candidates API + UI placeholder + tests + 40-turn live eval. Phase 8 (24-48h dry-mode observation on real production traffic) is the load-bearing gate before PUSH 3 flips the flag.
+
+PART A. Migrations.
+
+- `20260505100000_memory_candidates.sql` adds the `public.memory_candidates` table: kind CHECK (fact, rule, preference, alias, entity), confidence NUMERIC(4,3), status CHECK (pending, approved, dismissed, expired), expires_at default NOW() + 14 days, three indices including `idx_memory_candidates_workspace_pending` partial on status='pending'. Member-scoped RLS reads via `is_workspace_member`.
+- `20260505110000_memory_candidates_rpcs.sql` adds 5 SECURITY DEFINER RPCs following the persist_brand_guideline pattern from Brief 3: `insert_memory_candidate`, `approve_memory_candidate`, `dismiss_memory_candidate`, `expire_pending_candidates`, `auto_promote_high_confidence`, plus the internal helper `write_durable_memory_from_candidate` shared by approve and auto-promote. Each function sets `app.actor` and `app.workflow_run_id` inside its body so the audit_memory_change trigger from Brief 1 attributes the caller in the same transaction. The migration also schedules a pg_cron job at 04:00 UTC for `expire_pending_candidates`, guarded by `IF EXISTS pg_extension`; if pg_cron is not enabled on the project the schedule is skipped with a NOTICE and the RPC works manually.
+
+PART B. Chat-extraction module. `packages/workflows/src/workspace/chat-extraction.ts` exports `extractCandidatesFromTurn(supabase, input)` (the full pipeline with DB writes + telemetry) and `extractCandidatesLLM(input)` (pure LLM call for the eval script). Confidence gates per spec §7: `< 0.6` dropped silently, `0.6 <= confidence <= 0.8` inserted as pending, `> 0.8` auto-promoted via `auto_promote_high_confidence` RPC ONLY when CHAT_EXTRACTOR_ENABLED=true (DRY MODE keeps everything pending). Auto-promote dispatches by kind: facts (kind='fact'), workspace_rule (kind='rule'), memory_entries (kind='preference'). Kinds 'alias' and 'entity' stage in memory_entries with `metadata.deferred_kind` until Brief 5 ships entity-resolution. Telemetry per run on `memory_workflow_runs` with prompt_version='v1.0', skill_version='1.0.0', metadata.flag_state.
+
+PART C. Chat-route post-turn hook. `apps/web/src/app/api/workspace/chat/route.ts` v2 onFinish callback calls `after(extractCandidatesFromTurn(...))` from "next/server". Vercel keeps the function alive past the streaming response while extraction completes; chat-turn latency is unchanged. The brief originally specified an Inngest function path; Inngest is retired on basquio (`/api/inngest/route.ts` returns 410), so Next.js `after()` is the canonical post-response hook (already used by `/api/workspace/uploads/confirm`). The v1 chat path (CHAT_ROUTER_V2_ENABLED=false) is byte-identical to today.
+
+PART D. Candidates API + UI placeholder. New `apps/web/src/lib/workspace/candidates.ts` (server actions: listPendingCandidates, approveCandidate, dismissCandidate, expirePendingCandidates), `apps/web/src/app/api/workspace/candidates/route.ts` GET, `apps/web/src/app/api/workspace/candidates/[id]/approve/route.ts` POST, `apps/web/src/app/api/workspace/candidates/[id]/dismiss/route.ts` POST. `apps/web/src/components/workspace-candidate-queue.tsx` placeholder client component wired into `/workspace/memory` above the MemoryBrowser. Brief 5 promotes this into the full Memory Inspector v2.
+
+PART E. Skill + flag. `packages/workflows/src/workspace/prompts/chat-fact-extraction.md` is the canonical Mem0 V3 ADD-only prompt (mirrored as a TypeScript const for portability across the Next.js bundle and Node worker). `CHAT_EXTRACTOR_ENABLED=false` added to `.env.example` with the dry-mode rationale documented inline.
+
+Local gates green: `pnpm tsc --noEmit`, `pnpm vitest run` 295/295 across 53 files (14 new: 7 chat-extraction + 7 candidates), `pnpm qa:basquio`, `scripts/test-anthropic-skills-contract.ts` smoke ok. 40-turn live eval against the labeled fixture returned auto-promote precision 96.2% (PASS, target >= 95%), false-positive rate 0.59 per 10 turns (1 borderline FP on a possessive-brand turn; documented), 100% kind coverage, $0.093 total cost.
+
+The 40-turn fixture is a sanity-check, not the gate. The canonical gate is 24-48h of dry-mode observation on real team-beta traffic, where statistical confidence emerges naturally and label disagreements dissolve into "is the candidate useful when surfaced for review" rather than "does it match an a-priori label". Phase 8 dry-mode observation is non-negotiable and Marco runs it.
+
+Forward: Brief 5 (Memory Inspector v2 + procedural rule injection + anticipation hints) is the next unblocked work after Brief 4 dry-mode observation closes; ships on a fresh agent session. Spec: `docs/research/2026-04-25-sota-implementation-specs.md` §7. Shipped report: `docs/research/2026-04-27-brief-4-shipped.md`.
+
 ## 2026-04-27, Memory v1 Brief 3 PUSH 1 (brand-guideline extraction)
 
 Behind `BRAND_EXTRACTION_ENABLED` flag (default false on Vercel). Code shipped + two migrations + BAML setup + tests. Phase 9 (flag flip + production verification) deferred until a text-rich brand book is available; the Spotify fixture is image-heavy and constrained for the rule-count gates from spec §4.

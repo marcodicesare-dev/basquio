@@ -1,0 +1,242 @@
+[
+  {
+    "id": 1,
+    "userMessage": "Always cite source pages on Lavazza decks. We got burned last quarter when a slide cited an unsourced number.",
+    "expectKinds": ["rule"],
+    "note": "explicit always-rule with reason"
+  },
+  {
+    "id": 2,
+    "userMessage": "Can you make me a quick three-slide deck on Q4 results?",
+    "expectKinds": [],
+    "note": "deck request, no fact"
+  },
+  {
+    "id": 3,
+    "userMessage": "Lavazza launched Eraclea in March 2024 as their first cold-brew SKU.",
+    "expectKinds": ["fact"],
+    "note": "explicit launch fact with date"
+  },
+  {
+    "id": 4,
+    "userMessage": "What is the value share of Lavazza in Italy?",
+    "expectKinds": [],
+    "note": "question, not an assertion"
+  },
+  {
+    "id": 5,
+    "userMessage": "I prefer bullet points over prose for executive summaries.",
+    "expectKinds": ["preference"],
+    "note": "personal preference"
+  },
+  {
+    "id": 6,
+    "userMessage": "We just call it Branca internally, not Fratelli Branca Distillerie.",
+    "expectKinds": ["alias"],
+    "note": "explicit alias with canonical"
+  },
+  {
+    "id": 7,
+    "userMessage": "Our new client is Pavesi, an Italian biscuit brand owned by Barilla.",
+    "expectKinds": ["entity", "fact"],
+    "note": "named new entity AND ownership fact (sentence contains both)"
+  },
+  {
+    "id": 8,
+    "userMessage": "ok",
+    "expectKinds": [],
+    "note": "filler"
+  },
+  {
+    "id": 9,
+    "userMessage": "Never use the word 'unlock' in any Lavazza copy. Stefania flagged it last review.",
+    "expectKinds": ["rule"],
+    "note": "explicit forbidden-word rule"
+  },
+  {
+    "id": 10,
+    "userMessage": "Q3 was strong.",
+    "expectKinds": [],
+    "note": "vague claim, no quantitative fact, should not extract"
+  },
+  {
+    "id": 11,
+    "userMessage": "Mondelez acquired Chipita in January 2022 for €2 billion.",
+    "expectKinds": ["fact"],
+    "note": "specific acquisition fact"
+  },
+  {
+    "id": 12,
+    "userMessage": "Show me last week's deliverables.",
+    "expectKinds": [],
+    "note": "command, no fact"
+  },
+  {
+    "id": 13,
+    "userMessage": "For NielsenIQ-tagged decks, always show the source seminar in the appendix.",
+    "expectKinds": ["rule"],
+    "note": "scoped always-rule"
+  },
+  {
+    "id": 14,
+    "userMessage": "I work in Italian most of the time. Default chat replies to Italian unless I switch.",
+    "expectKinds": ["rule"],
+    "note": "default-to behavioural directive (rule), not personal taste"
+  },
+  {
+    "id": 15,
+    "userMessage": "thanks",
+    "expectKinds": [],
+    "note": "filler"
+  },
+  {
+    "id": 16,
+    "userMessage": "We sometimes write Branca Menta as 'BM' in internal chat.",
+    "expectKinds": ["alias"],
+    "note": "alias for an existing brand"
+  },
+  {
+    "id": 17,
+    "userMessage": "Carrefour is the retailer for the Italian motion-2 pilot.",
+    "expectKinds": ["fact"],
+    "note": "factual association"
+  },
+  {
+    "id": 18,
+    "userMessage": "What did Stefania say about the pricing slide?",
+    "expectKinds": [],
+    "note": "question"
+  },
+  {
+    "id": 19,
+    "userMessage": "Make this slide a bit bigger.",
+    "expectKinds": [],
+    "note": "one-off ask, not a rule"
+  },
+  {
+    "id": 20,
+    "userMessage": "Headline font is Spotify Mix Bold 32pt for cover slides on Spotify decks. That's the brand book v3 standard.",
+    "expectKinds": ["rule"],
+    "note": "explicit format-rule with brand and source"
+  },
+  {
+    "id": 21,
+    "userMessage": "Granarolo is a dairy cooperative based in Bologna.",
+    "expectKinds": ["entity"],
+    "note": "named entity introduction"
+  },
+  {
+    "id": 22,
+    "userMessage": "ok let's do that next week",
+    "expectKinds": [],
+    "note": "scheduling, no fact"
+  },
+  {
+    "id": 23,
+    "userMessage": "I always want a methodology box on slide 2. Every analytics deck.",
+    "expectKinds": ["rule"],
+    "note": "always-rule on layout"
+  },
+  {
+    "id": 24,
+    "userMessage": "Maria Rossi joined Mondelez as Marketing Lead on May 1, 2024.",
+    "expectKinds": ["fact"],
+    "note": "person-role fact with date"
+  },
+  {
+    "id": 25,
+    "userMessage": "I prefer one chart per slide rather than two side-by-side. It reads better in client meetings.",
+    "expectKinds": ["preference"],
+    "note": "personal layout preference"
+  },
+  {
+    "id": 26,
+    "userMessage": "Can you double-check this number?",
+    "expectKinds": [],
+    "note": "verification request, no fact"
+  },
+  {
+    "id": 27,
+    "userMessage": "BBC stands for British Broadcasting Corporation, in case the model gets confused with the British Bakery Chain.",
+    "expectKinds": ["alias"],
+    "note": "alias clarification"
+  },
+  {
+    "id": 28,
+    "userMessage": "Hello!",
+    "expectKinds": [],
+    "note": "greeting"
+  },
+  {
+    "id": 29,
+    "userMessage": "Always order recommendation slides by financial impact, not alphabetically. The CFO reads top-down.",
+    "expectKinds": ["rule"],
+    "note": "ordering rule with reason"
+  },
+  {
+    "id": 30,
+    "userMessage": "Do we have any data on coffee penetration in Lombardia?",
+    "expectKinds": [],
+    "note": "data-availability question"
+  },
+  {
+    "id": 31,
+    "userMessage": "Coca-Cola HBC Italia has 32 production plants in Italy as of 2025.",
+    "expectKinds": ["fact"],
+    "note": "quantitative fact with as-of"
+  },
+  {
+    "id": 32,
+    "userMessage": "Add Branca's amaro line to the dataset.",
+    "expectKinds": [],
+    "note": "task, not a fact. Borderline FP: model is overzealous on possessives when the brand already exists (Branca) and treats it as a new entity introduction. Documented as a known prompt edge case, not a hard label change. Real production data will dedupe via existing-entity workspace context."
+  },
+  {
+    "id": 33,
+    "userMessage": "Remember that I don't drink coffee, so don't keep recommending Lavazza tasting events for me.",
+    "expectKinds": ["rule", "preference"],
+    "note": "self-directed don't-keep ask: defensible as either rule or preference"
+  },
+  {
+    "id": 34,
+    "userMessage": "We refer to Massimo Zanetti Beverage Group as 'MZBG' in the deck templates.",
+    "expectKinds": ["alias"],
+    "note": "explicit alias with canonical"
+  },
+  {
+    "id": 35,
+    "userMessage": "ok",
+    "expectKinds": [],
+    "note": "filler"
+  },
+  {
+    "id": 36,
+    "userMessage": "Eridania is a sugar brand owned by Maccaferri Industrial Group.",
+    "expectKinds": ["entity", "fact"],
+    "note": "entity introduction plus ownership fact"
+  },
+  {
+    "id": 37,
+    "userMessage": "Why is the chart broken?",
+    "expectKinds": [],
+    "note": "question"
+  },
+  {
+    "id": 38,
+    "userMessage": "Never use 'unlock' or 'leverage' in any client-facing copy. House style.",
+    "expectKinds": ["rule"],
+    "note": "forbidden-words rule (multiple words)"
+  },
+  {
+    "id": 39,
+    "userMessage": "Can you regenerate the deck?",
+    "expectKinds": [],
+    "note": "command"
+  },
+  {
+    "id": 40,
+    "userMessage": "I need it by Friday.",
+    "expectKinds": [],
+    "note": "deadline, not a fact for memory"
+  }
+]

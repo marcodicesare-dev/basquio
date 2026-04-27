@@ -1,5 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   convertToModelMessages,
   smoothStream,
@@ -8,6 +8,9 @@ import {
   type UIMessage,
 } from "ai";
 
+import { extractCandidatesFromTurn } from "@basquio/workflows/workspace/chat-extraction";
+import { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import {
@@ -326,6 +329,38 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error("[workspace/chat] failed to record turn telemetry", error);
       }
+
+      // Memory v1 Brief 4: post-turn fact extraction (Mem0 V3 ADD-only).
+      // Runs after the response is sent (Next.js after()), so it does not
+      // block the streaming response. CHAT_EXTRACTOR_ENABLED gates whether
+      // high-confidence extractions auto-promote; default false (DRY MODE)
+      // means everything lands as pending in memory_candidates.
+      after(async () => {
+        try {
+          const turnText = extractLastUserText(finalMessages);
+          if (!turnText || turnText.length < 10) return;
+          const recentTurns = summariseRecentTurns(finalMessages);
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          if (!supabaseUrl || !serviceKey) {
+            console.error("[workspace/chat] chat-extraction skipped: supabase service role not configured");
+            return;
+          }
+          const supabase = createServiceSupabaseClient(supabaseUrl, serviceKey);
+          await extractCandidatesFromTurn(supabase, {
+            conversationId,
+            turnText,
+            recentTurns,
+            workspaceId: workspace.id,
+            organizationId: workspace.id ?? BASQUIO_TEAM_ORG_ID,
+            scopeId: scope?.id ?? null,
+            userId: viewer.user!.id,
+            sourceMessageId: null,
+          });
+        } catch (error) {
+          console.error("[workspace/chat] chat-extraction failed", error);
+        }
+      });
     },
   });
 }

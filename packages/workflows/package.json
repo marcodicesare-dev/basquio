@@ -16,7 +16,8 @@
     "./workspace/parsing": "./src/workspace/parsing.ts",
     "./workspace/contextual-retrieval": "./src/workspace/contextual-retrieval.ts",
     "./workspace/ingest-queue": "./src/workspace/ingest-queue.ts",
-    "./workspace/process": "./src/workspace/process.ts"
+    "./workspace/process": "./src/workspace/process.ts",
+    "./workspace/chat-extraction": "./src/workspace/chat-extraction.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.41",
