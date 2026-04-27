@@ -13404,6 +13404,58 @@ body:has(.wbeta-shell) .site-wrap {
   font-size: 11px;
 }
 
+/* Brief 7 PUSH 5: workspace-home "Your workspace remembers" card. */
+.wbeta-memory-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 13px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 80ms ease, background 80ms ease;
+}
+
+.wbeta-memory-card:hover {
+  border-color: var(--border-strong);
+}
+
+.wbeta-memory-card-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.wbeta-memory-card-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  align-items: baseline;
+}
+
+.wbeta-memory-card-counts strong {
+  font-weight: 700;
+  font-feature-settings: "tnum";
+}
+
+.wbeta-memory-card-pending strong {
+  color: var(--text);
+}
+
+.wbeta-memory-card-empty {
+  font-size: 13px;
+  color: var(--text-soft);
+  line-height: 1.5;
+  max-width: 55ch;
+}
+
 /* Memory v1 Brief 5 PART C: workspace-home anticipation hints banner. */
 .wbeta-hints-banner {
   display: flex;

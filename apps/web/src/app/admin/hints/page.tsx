@@ -14,8 +14,7 @@ export default async function AdminHintsPage() {
       <header>
         <h2>Hint ledger</h2>
         <p className="wbeta-admin-summary">
-          Anticipation hints across all workspaces (Brief 5 PART C). Status counts in the last 200
-          rows:{" "}
+          Anticipation hints across all workspaces. Status counts in the last 200 rows:{" "}
           <code className="wbeta-admin-mono">
             candidate {counts.candidate ?? 0} · shown {counts.shown ?? 0} · accepted{" "}
             {counts.accepted ?? 0} · dismissed {counts.dismissed ?? 0} · snoozed{" "}

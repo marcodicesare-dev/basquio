@@ -126,3 +126,78 @@ export async function countFactsByEntity(
 export function isMemoryInspectorV2Enabled(): boolean {
   return process.env.MEMORY_INSPECTOR_V2 === "true";
 }
+
+export type MemoryCounts = {
+  entities: number;
+  facts: number;
+  activeRules: number;
+  pendingCandidates: number;
+};
+
+/**
+ * Compact counts shown on the workspace home "Your workspace remembers"
+ * card and on the Memory Inspector v2 page header. All four queries run
+ * in parallel; failure on any one returns zero for that bucket so the
+ * card degrades gracefully when a table is empty or unreachable.
+ */
+export async function getWorkspaceMemoryCounts(workspaceId: string): Promise<MemoryCounts> {
+  const db = getDb();
+  const [entitiesResult, factsResult, rulesResult, candidatesResult] = await Promise.all([
+    db
+      .from("entities")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", workspaceId)
+      .then(({ count, error }) => {
+        if (error) {
+          console.error("[memory counts] entities count failed", error);
+          return 0;
+        }
+        return count ?? 0;
+      }),
+    db
+      .from("facts")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", workspaceId)
+      .is("superseded_by", null)
+      .is("expired_at", null)
+      .then(({ count, error }) => {
+        if (error) {
+          console.error("[memory counts] facts count failed", error);
+          return 0;
+        }
+        return count ?? 0;
+      }),
+    db
+      .from("workspace_rule")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId)
+      .eq("active", true)
+      .is("expired_at", null)
+      .then(({ count, error }) => {
+        if (error) {
+          console.error("[memory counts] rules count failed", error);
+          return 0;
+        }
+        return count ?? 0;
+      }),
+    db
+      .from("memory_candidates")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId)
+      .eq("status", "pending")
+      .gt("expires_at", new Date().toISOString())
+      .then(({ count, error }) => {
+        if (error) {
+          console.error("[memory counts] candidates count failed", error);
+          return 0;
+        }
+        return count ?? 0;
+      }),
+  ]);
+  return {
+    entities: entitiesResult,
+    facts: factsResult,
+    activeRules: rulesResult,
+    pendingCandidates: candidatesResult,
+  };
+}

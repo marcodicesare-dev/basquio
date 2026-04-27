@@ -3,7 +3,9 @@ import { headers } from "next/headers";
 import { getViewerState } from "@/lib/supabase/auth";
 import { WorkspaceHintsBanner } from "@/components/workspace-hints-banner";
 import { WorkspaceHomeDashboard } from "@/components/workspace-home-dashboard";
+import { WorkspaceMemoryCard } from "@/components/workspace-memory-card";
 import { listActiveHints } from "@/lib/workspace/anticipation";
+import { getWorkspaceMemoryCounts } from "@/lib/workspace/inspector";
 import {
   getWorkspaceHomeActivity,
   listRecentWorkspaceDeliverables,
@@ -169,10 +171,16 @@ export default async function WorkspaceHomePage() {
       })
     : [];
 
+  const memoryCounts = await getWorkspaceMemoryCounts(workspace.id).catch((err) => {
+    console.error("[workspace home] getWorkspaceMemoryCounts failed", err);
+    return { entities: 0, facts: 0, activeRules: 0, pendingCandidates: 0 };
+  });
+
   return (
     <>
       <WorkspaceShortcuts />
       <WorkspaceHintsBanner hints={hints} />
+      <WorkspaceMemoryCard counts={memoryCounts} />
       <WorkspaceHomeDashboard
         greeting={buildGreeting(userName, locale)}
         learnedCount={weeklyLearnedCount}

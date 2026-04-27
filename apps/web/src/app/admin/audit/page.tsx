@@ -26,9 +26,10 @@ export default async function AdminAuditPage({
       <header>
         <h2>Audit log</h2>
         <p className="wbeta-admin-summary">
-          Append-only memory mutations across all workspaces. Filter via query string:
-          <code> ?table=workspace_rule</code>, <code>?actor=user:</code>,
-          <code> ?workspace=&lt;uuid&gt;</code>.
+          Every change to workspace memory shows up here. Filters live in the URL:
+          <code> ?table=workspace_rule</code> shows only rule changes,
+          <code> ?actor=user:</code> shows changes by one user, and
+          <code> ?workspace=</code> followed by an id shows changes in one workspace.
         </p>
       </header>
 

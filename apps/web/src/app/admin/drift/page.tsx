@@ -10,20 +10,19 @@ export default async function AdminDriftPage() {
       <header>
         <h2>Drift</h2>
         <p className="wbeta-admin-summary">
-          Signals that the memory system is drifting from analyst preferences. Repeated
-          dismissals on the same cooldown_key (3+ times in 30 days) suggest a hint generator is
-          surfacing something the analyst does not want. Stale pending candidates (older than 14
-          days) suggest the candidate queue is being ignored.
+          Signals that the memory system is drifting from analyst preferences. The two
+          patterns to watch: hint patterns the analyst keeps rejecting (3 or more times in
+          the last 30 days), and memory candidates older than 14 days that no one reviewed.
         </p>
       </header>
 
       <section>
-        <h3>Repeated hint dismissals (3+ in 30 days)</h3>
+        <h3>Hint patterns dismissed 3+ times in 30 days</h3>
         <table className="wbeta-admin-table">
           <thead>
             <tr>
               <th>Workspace</th>
-              <th>Cooldown key</th>
+              <th>Pattern</th>
               <th>Dismissals</th>
             </tr>
           </thead>
@@ -47,7 +46,7 @@ export default async function AdminDriftPage() {
       </section>
 
       <section>
-        <h3>Stale pending candidates (older than 14 days)</h3>
+        <h3>Memory candidates older than 14 days that no one reviewed</h3>
         <table className="wbeta-admin-table">
           <thead>
             <tr>

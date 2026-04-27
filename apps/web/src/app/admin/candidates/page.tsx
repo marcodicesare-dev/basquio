@@ -14,7 +14,7 @@ export default async function AdminCandidatesPage() {
       <header>
         <h2>Memory candidates</h2>
         <p className="wbeta-admin-summary">
-          All candidates produced by the chat-extractor (Brief 4) across workspaces. Pending /
+          All candidates produced by the chat extractor across workspaces. Pending /
           approved / dismissed / expired counts in the last 200 rows:{" "}
           <code className="wbeta-admin-mono">
             pending {counts.pending ?? 0} · approved {counts.approved ?? 0} · dismissed{" "}
