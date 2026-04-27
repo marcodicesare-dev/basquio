@@ -13115,6 +13115,177 @@ body:has(.wbeta-shell) .site-wrap {
   margin: 0;
 }
 
+/* Memory v1 Brief 6: admin console layout + page styles. */
+.wbeta-admin-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+  background: var(--surface-muted);
+}
+
+.wbeta-admin-shell-deny {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  align-items: flex-start;
+  padding: 55px;
+  grid-template-columns: none;
+}
+
+.wbeta-admin-side {
+  background: var(--surface-strong);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 21px 13px;
+  gap: 21px;
+}
+
+.wbeta-admin-side header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-admin-eyebrow {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.wbeta-admin-side header h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.wbeta-admin-user {
+  margin: 0;
+  font-size: 11px;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  color: var(--text-soft);
+  word-break: break-all;
+}
+
+.wbeta-admin-side nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wbeta-admin-side nav li a {
+  display: block;
+  padding: 8px 13px;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background 80ms ease;
+}
+
+.wbeta-admin-side nav li a:hover {
+  background: var(--surface-muted);
+}
+
+.wbeta-admin-main {
+  padding: 34px 55px;
+  max-width: 1280px;
+}
+
+.wbeta-admin-page {
+  display: flex;
+  flex-direction: column;
+  gap: 21px;
+}
+
+.wbeta-admin-page header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wbeta-admin-page h2 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.wbeta-admin-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.wbeta-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 13px;
+}
+
+.wbeta-admin-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 21px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.wbeta-admin-stat-num {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.wbeta-admin-stat-label {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.wbeta-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.wbeta-admin-table th,
+.wbeta-admin-table td {
+  text-align: left;
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wbeta-admin-table th {
+  background: var(--surface-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.wbeta-admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.wbeta-admin-mono {
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 11px;
+}
+
 /* Memory v1 Brief 5 PART C: workspace-home anticipation hints banner. */
 .wbeta-hints-banner {
   display: flex;
