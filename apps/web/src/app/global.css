@@ -13084,6 +13084,124 @@ body:has(.wbeta-shell) .site-wrap {
   border: 1px solid var(--border);
 }
 
+.wbeta-drop-review {
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.wbeta-drop-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.wbeta-drop-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+  padding: 8px 13px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.wbeta-drop-review-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.wbeta-drop-review-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wbeta-drop-review-size {
+  font-size: 11px;
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  color: var(--text-muted);
+}
+
+.wbeta-drop-review-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.wbeta-drop-review-non-pdf {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+}
+
+.wbeta-drop-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wbeta-drop-review-cancel,
+.wbeta-drop-review-confirm {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 13px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  font-family: inherit;
+}
+
+.wbeta-drop-review-cancel {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.wbeta-drop-review-confirm {
+  background: var(--text);
+  color: var(--surface-solid);
+  border-color: var(--text);
+}
+
+.wbeta-drop-review-confirm:hover {
+  background: var(--text-soft);
+}
+
+.wbeta-drop-toast {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  padding: 8px 13px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.wbeta-drop-toast a {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .wbeta-drop-kind input[type="checkbox"] {
   grid-column: 1 / 2;
   grid-row: 1 / 2;
