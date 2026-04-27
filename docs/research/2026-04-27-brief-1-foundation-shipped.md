@@ -112,6 +112,12 @@ Briefs 2 through 6 per `docs/research/2026-04-25-codex-handoff-briefs.md`:
 - Brief 5 (Memory Inspector v2 + procedural rule injection + anticipation hints): UI reads `workspace_rule`, `brand_guideline`, `anticipation_hints`; writes via server actions wrapped in `withActor`.
 - Brief 6 (admin console v1): reads `memory_audit`, `memory_workflow_runs`, plus the existing telemetry tables.
 
+## Design pivot for Briefs 2-6 (withActor + PostgREST connection pooling)
+
+`withActor`'s `set_config(is_local := true)` pattern requires the mutation to run inside the same database session that set the session var. PostgREST and the Supabase JS client both pool connections, which means the var may not survive across the call boundary. The Brief 1 audit trigger end-to-end test passed only because all writes happened inside a single explicit transaction. In normal application usage, the actor will read as `'system:unknown'` whenever the `set_config` call and the subsequent mutation land on different pooled connections. Briefs 2-6 should NOT adopt `withActor` as written for live mutation paths.
+
+Recommended pivot: every audited mutation in Briefs 2-6 becomes a `SECURITY DEFINER` PostgreSQL function that takes `actor` (and optionally `workflow_run_id`) as explicit parameters, calls `set_config('app.actor', actor, true)` inside the function body (where the session is guaranteed to be the same as the trigger that fires on the underlying INSERT/UPDATE/DELETE), and performs the mutation. The `audit_memory_change` trigger already reads `current_setting('app.actor', TRUE)` and tolerates `'system:unknown'`. This pattern is canonical Supabase/PostgREST and avoids the connection-pool race entirely. The thin `public.set_config` wrapper that ships in Brief 1 stays useful for ad-hoc operator scripts running against a single direct session, but it is not the production path.
+
 ## Forward pointer
 
-Brief 2 (chat caching + router) is the next unblocked brief. Run that on a fresh agent session, do not continue this one. The brief paste lives in `docs/research/2026-04-25-codex-handoff-briefs.md` lines 138-242.
+Brief 2 (chat caching + router) is the next unblocked brief. Run that on a fresh agent session, do not continue this one. The brief paste lives in `docs/research/2026-04-25-codex-handoff-briefs.md` lines 138-242. Brief 2's design must incorporate the SECURITY DEFINER RPC pattern above for any audited writes it adds.
