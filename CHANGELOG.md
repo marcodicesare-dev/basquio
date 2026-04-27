@@ -4,6 +4,10 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Brief 3 PUSH 2 (Vercel build fix: externalize @boundaryml/baml)
+
+Brief 3 PUSH 1 landed code that imported `@boundaryml/baml` transitively into the Next.js bundle (`processWorkspaceDocument` is reachable from `/api/workspace/uploads/confirm`). Vercel deploy failed with a Webpack "Unexpected character" parse error on `baml.linux-x64-gnu.node` because Webpack tries to bundle `.node` binaries by default. Fix: add `@boundaryml/baml` to `apps/web/next.config.ts` `serverExternalPackages`, same pattern as `sharp` and `@resvg/resvg-js`. Local `pnpm --filter @basquio/web build` now completes green. Promoted to canonical-memory as a recipe for any future brief that adds workflows-side native deps. Brief 3 PUSH 2 of 5 consumed; PUSH 3-5 reserved.
+
 ## 2026-04-27, Memory v1 Brief 4 PUSH 1 (chat-turn fact extractor + candidates queue)
 
 Behind `CHAT_EXTRACTOR_ENABLED` flag (default false, DRY MODE). Code shipped + two migrations + chat route hook + candidates API + UI placeholder + tests + 40-turn live eval. Phase 8 (24-48h dry-mode observation on real production traffic) is the load-bearing gate before PUSH 3 flips the flag.
