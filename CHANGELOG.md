@@ -4,6 +4,20 @@ Material production events for the Basquio stack. Newest first. Links use git SH
 
 For full forensic detail on the April 2026 disaster arc and the operational rules it produced, read `memory/april-2026-disaster-arc-forensic.md`.
 
+## 2026-04-27, Memory v1 foundation on `c513701` (Brief 1)
+
+Storage-only foundation for the memory architecture. Three Supabase migrations apply cleanly to production:
+
+- `20260428100000_memory_architecture_foundation.sql` adds the four foundation tables (`workspace_rule`, `brand_guideline`, `anticipation_hints`, `memory_workflows`, `memory_workflow_runs`), the `hint_kind` and `hint_status` enums, the bi-temporal `expired_at` column on `facts`, and `fact_embedding VECTOR(1536)` plus its HNSW partial index. Graphiti four-timestamp model now in place.
+- `20260428110000_member_scoped_rls.sql` creates `workspace_members` and the `is_workspace_member` SECURITY DEFINER helper, replaces the legacy `FOR ALL TO service_role USING (true)` policies on `entities`, `entity_mentions`, `facts`, `memory_entries`, `workspace_deliverables` with service-role write + member-scoped authenticated SELECT, and sets `hnsw.iterative_scan = strict_order` plus `hnsw.max_scan_tuples = 20000` (pgvector 0.8 RLS top-k correctness).
+- `20260428120000_memory_audit_log.sql` adds the append-only `memory_audit` log, the `audit_memory_change` trigger function, triggers on `workspace_rule`, `brand_guideline`, `anticipation_hints`, `facts`, `memory_entries`, and a `public.set_config` PostgREST wrapper.
+
+App-side: `apps/web/src/lib/workspace/audit.ts` exports `withActor(actor, workflowRunId, fn)` for Briefs 2-6 to wrap audited writes; nothing in Brief 1 calls it. TypeScript types for the new tables landed in `apps/web/src/lib/workspace/types.ts`. `MEMORY_V2_ENABLED` env var documented in `.env.example`, default false. RLS schema test at `apps/web/src/lib/workspace/rls.test.ts` (36 assertions over the migration SQL).
+
+Production verification: `supabase db push --linked` applied all three. Schema dump confirms 7 tables, 2 enums, 7 indexes, 22 policies, 3 functions, 5 triggers. Pre-merge dry-run on a production-schema copy found one real bug in the spec: `idx_anticipation_hints_active` had `WHERE ... AND expires_at > NOW()` which Postgres rejects (non-IMMUTABLE function in index predicate). Fixed by dropping the time predicate from the partial index; queries use index column ordering instead.
+
+Unblocks Briefs 2 through 6 per `docs/research/2026-04-25-codex-handoff-briefs.md`. Forensic detail: `docs/research/2026-04-27-brief-1-substrate-audit.md` and `docs/research/2026-04-27-brief-1-foundation-shipped.md`.
+
 ## 2026-04-27, Stabilization on `aca8be5`
 
 After three consecutive disasters in 7 days the deck pipeline is back at the SHIPPABLE bar.
