@@ -71,18 +71,11 @@ import {
   assertDeckSpendWithinBudget,
   enforceDeckBudget,
   getDeckBudgetCaps,
-  getDeckPhaseBudgetCap,
   getPriorAttemptsCost,
   roundUsd,
   shouldResetCrossAttemptBudget,
   usageToCost,
 } from "./cost-guard";
-import {
-  POINT_LABEL_CATEGORY_LIMIT,
-  shouldApplyChartCategorySlotCap,
-  shouldWarnBarChartCategoryDensity,
-  shouldWarnPointLabelDensity,
-} from "./chart-slot-constraints";
 import {
   buildBriefDataReconciliationProfile,
   buildBriefDataReconciliationPrompt,
@@ -114,7 +107,6 @@ import {
   parseWorkspaceContextPack,
 } from "./workspace-context";
 import { buildWorkbookEvidencePackets } from "./workbook-evidence-packet";
-import { resolvePublishedDeliveryStatus } from "./publish-status";
 
 const execFileAsync = promisify(execFile);
 
@@ -125,10 +117,8 @@ const AUTHOR_MODEL_VALUES = new Set([
   OPUS_AUTHOR_MODEL,
   "claude-haiku-4-5",
 ]);
-const VISUAL_QA_MODEL = "claude-sonnet-4-6";
-const FINAL_VISUAL_QA_MODEL = "claude-sonnet-4-6";
-const CLAIM_TRACEABILITY_QA_MODEL = "claude-sonnet-4-6";
-const BRIEF_DATA_RECONCILIATION_MODEL = "claude-haiku-4-5";
+const VISUAL_QA_MODEL = "claude-haiku-4-5";
+const FINAL_VISUAL_QA_MODEL = "claude-haiku-4-5";
 const HARD_QA_BLOCKERS = new Set([
   "pptx_present",
   "md_present",
@@ -1027,7 +1017,6 @@ async function runClaimTraceabilityQaSafely(input: {
         thesis: input.run.thesis,
         businessContext: input.run.business_context,
       },
-      model: CLAIM_TRACEABILITY_QA_MODEL,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1712,27 +1701,7 @@ export async function generateDeckRun(
             : ["deck.pptx", "deck.pdf", "narrative_report.md", "data_tables.xlsx", "deck_manifest.json"];
           const candidateMessages = [candidateResponse.message];
           let candidateFiles: GeneratedFile[] = await downloadGeneratedFiles(client, candidateResponse.fileIds);
-          let missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
-          if (shouldRepairAuthorFilesBeforeRetry(missingAuthorFiles, candidateIsReportOnly)) {
-            const deterministicRepair = await repairPartialAuthorArtifacts({
-              run,
-              model: candidateModel,
-              files: candidateFiles,
-              messages: candidateMessages,
-              recoveredAnalysis: recoveredAnalysisForSplit ? analysis : null,
-              parseWarnings,
-            });
-            candidateFiles = deterministicRepair.files;
-            missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
-            if (deterministicRepair.repairWarnings.length > 0) {
-              partialDeliveryWarnings = [...new Set([...partialDeliveryWarnings, ...deterministicRepair.repairWarnings])];
-              await insertEvent(config, runId, attempt, "author", "partial_delivery_salvage", {
-                warnings: deterministicRepair.repairWarnings,
-                model: candidateModel,
-                stage: "pre_retry_deterministic_repair",
-              }).catch(() => {});
-            }
-          }
+          const missingAuthorFiles = findMissingGeneratedFiles(candidateFiles, requiredAuthorFiles);
           if (missingAuthorFiles.length > 0) {
             console.warn(`[author-retry] Missing author files for ${candidateModel}: ${missingAuthorFiles.join(", ")}. Retrying author phase once.`);
             await insertEvent(config, runId, attempt, "author", "author_missing_files_retry", {
@@ -1995,9 +1964,6 @@ export async function generateDeckRun(
         templateProfile,
         xlsxFile,
       }));
-      if (pptxFile) {
-        manifest = await hydrateManifestFromPptxText(manifest, pptxFile.buffer);
-      }
       fidelityContext = buildFidelityContext(manifest, xlsxFile.buffer, parsed, run);
       const authorClaimQa = isReportOnly
         ? null
@@ -2034,8 +2000,8 @@ export async function generateDeckRun(
         phaseTelemetry.authorContract = { passed: true, actionableIssueCount: 0, actionableIssues: [], violationCount: 0 };
       } else {
         if (authorClaimQa && ((authorClaimQa.usage.input_tokens ?? 0) + (authorClaimQa.usage.output_tokens ?? 0) > 0)) {
-          phaseTelemetry.claimTraceabilityAuthor = buildSimplePhaseTelemetry(CLAIM_TRACEABILITY_QA_MODEL, authorClaimQa.usage);
-          await persistRequestUsage(config, runId, attempt, "author", "claim_traceability_qa", CLAIM_TRACEABILITY_QA_MODEL, authorClaimQa.requests);
+          phaseTelemetry.claimTraceabilityAuthor = buildSimplePhaseTelemetry("claude-haiku-4-5", authorClaimQa.usage);
+          await persistRequestUsage(config, runId, attempt, "author", "claim_traceability_qa", "claude-haiku-4-5", authorClaimQa.requests);
           rememberRequestIds(anthropicRequestIds, authorClaimQa.requests);
           await upsertWorkingPaper(config, runId, "claim_traceability_author", authorClaimQa.report);
         }
@@ -2224,6 +2190,7 @@ export async function generateDeckRun(
         currentPhase = "revise";
         await markPhase(config, runId, attempt, currentPhase);
         const reviseModel: AuthorModel = repairLane === "haiku" ? "claude-haiku-4-5" : MODEL;
+        const reviseBudgetCaps = getDeckBudgetCaps(reviseModel, run.target_slide_count);
         const reviseBetas = buildClaudeBetas(reviseModel);
         const reviseToolCallSummary = buildAuthoringToolCallSummary(reviseModel);
         const reviseMaxTokens = getRevisePhaseMaxTokens(reviseModel, run.target_slide_count);
@@ -2285,11 +2252,7 @@ export async function generateDeckRun(
             model: reviseModel,
             betas: [...reviseBetas],
             spentUsd,
-            maxUsd: getDeckPhaseBudgetCap({
-              model: reviseModel,
-              phase: "revise",
-              targetSlideCount: run.target_slide_count,
-            }),
+            maxUsd: reviseBudgetCaps.preFlight,
             outputTokenBudget: reviseMaxTokens,
             fileBackedBudgetContext: {
               phase: "revise",
@@ -2441,7 +2404,6 @@ export async function generateDeckRun(
               xlsxFile,
             }));
           }
-          finalManifest = await hydrateManifestFromPptxText(finalManifest, finalPptx.buffer);
           fidelityContext = xlsxFile ? buildFidelityContext(finalManifest, xlsxFile.buffer, parsed, run) : fidelityContext;
           const reviseClaimQa = await runClaimTraceabilityQaSafely({
             client,
@@ -2500,8 +2462,8 @@ export async function generateDeckRun(
           }
           finalVisualQa = revisedVisualQa.report;
           if ((reviseClaimQa.usage.input_tokens ?? 0) + (reviseClaimQa.usage.output_tokens ?? 0) > 0) {
-            phaseTelemetry.claimTraceabilityRevise = buildSimplePhaseTelemetry(CLAIM_TRACEABILITY_QA_MODEL, reviseClaimQa.usage);
-            await persistRequestUsage(config, runId, attempt, "revise", "claim_traceability_qa", CLAIM_TRACEABILITY_QA_MODEL, reviseClaimQa.requests);
+            phaseTelemetry.claimTraceabilityRevise = buildSimplePhaseTelemetry("claude-haiku-4-5", reviseClaimQa.usage);
+            await persistRequestUsage(config, runId, attempt, "revise", "claim_traceability_qa", "claude-haiku-4-5", reviseClaimQa.requests);
             rememberRequestIds(anthropicRequestIds, reviseClaimQa.requests);
             await upsertWorkingPaper(config, runId, "claim_traceability_revise", reviseClaimQa.report);
           }
@@ -2823,8 +2785,8 @@ export async function generateDeckRun(
         });
         claimTraceabilityIssues = exportClaimQa.report.issues ?? [];
         if ((exportClaimQa.usage.input_tokens ?? 0) + (exportClaimQa.usage.output_tokens ?? 0) > 0) {
-          phaseTelemetry.claimTraceabilityExport = buildSimplePhaseTelemetry(CLAIM_TRACEABILITY_QA_MODEL, exportClaimQa.usage);
-          await persistRequestUsage(config, runId, attempt, "export", "claim_traceability_qa", CLAIM_TRACEABILITY_QA_MODEL, exportClaimQa.requests);
+          phaseTelemetry.claimTraceabilityExport = buildSimplePhaseTelemetry("claude-haiku-4-5", exportClaimQa.usage);
+          await persistRequestUsage(config, runId, attempt, "export", "claim_traceability_qa", "claude-haiku-4-5", exportClaimQa.requests);
           rememberRequestIds(anthropicRequestIds, exportClaimQa.requests);
           await upsertWorkingPaper(config, runId, "claim_traceability_export", exportClaimQa.report);
         }
@@ -3981,7 +3943,12 @@ async function finalizeSuccess(
   extraTelemetry: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
-  const deliveryStatus = resolvePublishedDeliveryStatus(qaReport);
+  const qualityPassport = qaReport && typeof qaReport === "object"
+    ? ((qaReport as Record<string, unknown>).qualityPassport as { classification?: string } | undefined)
+    : undefined;
+  const deliveryStatus = qualityPassport?.classification === "gold" || qualityPassport?.classification === "silver"
+    ? "reviewed"
+    : "degraded";
   const attemptCostTelemetry = {
     model,
     estimatedCostUsd,
@@ -4378,12 +4345,12 @@ async function runBriefDataReconciliation(input: {
       input.attempt,
       "normalize",
       "brief_data_reconciliation",
-      BRIEF_DATA_RECONCILIATION_MODEL,
+      VISUAL_QA_MODEL,
     );
     const response = await runClaudeLoop({
       client: input.client,
-      model: BRIEF_DATA_RECONCILIATION_MODEL,
-      betas: buildClaudeBetas(BRIEF_DATA_RECONCILIATION_MODEL),
+      model: VISUAL_QA_MODEL,
+      betas: buildClaudeBetas(VISUAL_QA_MODEL),
       systemPrompt: "You are Basquio's brief-data reconciliation auditor. Return strict JSON only.",
       maxTokens: 1600,
       messages: [
@@ -4413,7 +4380,7 @@ async function runBriefDataReconciliation(input: {
       input.attempt,
       "normalize",
       "brief_data_reconciliation",
-      BRIEF_DATA_RECONCILIATION_MODEL,
+      VISUAL_QA_MODEL,
       response.requests,
     );
 
@@ -4424,7 +4391,7 @@ async function runBriefDataReconciliation(input: {
 
     return {
       result,
-      costUsd: usageToCost(BRIEF_DATA_RECONCILIATION_MODEL, response.usage),
+      costUsd: usageToCost(VISUAL_QA_MODEL, response.usage),
       requests: response.requests,
       source: "haiku",
     };
@@ -4544,6 +4511,7 @@ function buildAuthorMessage(
     return {
       role: "user" as const,
       content: [
+        ...uploadedFilesContent,
         {
           type: "text" as const,
           text: buildReportOnlyAuthorText({
@@ -4556,7 +4524,6 @@ function buildAuthorMessage(
             scopeAdjustmentMessage,
           }),
         },
-        ...uploadedFilesContent,
       ],
     };
   }
@@ -4564,6 +4531,7 @@ function buildAuthorMessage(
   return {
     role: "user" as const,
     content: [
+      ...uploadedFilesContent,
       {
         type: "text" as const,
         text: [
@@ -4598,15 +4566,9 @@ function buildAuthorMessage(
           "- CLIENT-FRIENDLY COPY IS NOT A LICENSE TO LOWER ANALYTICAL QUALITY. If there is a conflict, preserve evidence depth, metric accuracy, and focal-brand clarity first, then make the copy friendlier without weakening the claim.",
           "- BEFORE committing each slide to PPTX, self-score it against this rubric and revise in-place until it passes: TITLE = full-sentence insight with at least one number and max 14 words; BODY = no AI slop, active voice, evidence-led; EVIDENCE = chart/table/source actually support the claim; STRUCTURE = approved archetype and no duplicate question; RECOMMENDATIONS = opportunity first, lever second, rationale tied to visible evidence.",
           "- Treat the rubric as blocking inside the author turn. If a planned slide fails any dimension, rewrite the slide before adding it to the deck instead of hoping revise will fix it later.",
-          "- GREEN-FIRST AUTHORING CONTRACT: the first author output must be publishable without a revise pass. Before writing the PPTX, run a final self-check over the slide plan: exact requested content count, no unsupported numbers, no overcrowded chart labels, approved archetypes, and manifest text matching visible slide text.",
-          "- MANIFEST TEXT CONTRACT: deck_manifest.json must mirror only the text visibly present on each slide. Do not copy speaker-note paragraphs, hidden rationale, or workbook table prose into slide.body or slide.bullets. Keep each non-cover slide to at most 4 visible bullets; recommendation cards should use 2-3 compact lines per card.",
-          `- COUNT CONTRACT: for this run, ship exactly 1 cover slide plus exactly ${run.target_slide_count} content slides. That means the normal total is ${run.target_slide_count + 1} slides. Only exceed that total when every surplus slide has pageIntent containing \"appendix\" or \"source-trail\" and is genuinely supplementary methodology/source material.`,
           `- POSITION CONTRACT: use 1-indexed slide positions only. Cover is position 1. Content slides are positions 2 through ${run.target_slide_count + 1} inclusive. Executive summary and recommendations count as content slides. Do not create position ${run.target_slide_count + 2} unless it is a true appendix/source-trail slide.`,
-          "- COUNT CONTRACT: if your plan has one extra synthesis, recommendation, roadmap, or action-plan slide, merge it into the requested content slides instead of making it a surplus slide. Do not label strategic recommendations or roadmaps as appendix.",
           "- EVIDENCE CO-LOCATION RULE: every analytical slide must show its supporting numbers. If a slide has a chart, include a compact data table or explicit chart annotations with the key values. Executive summary and recommendation slides may reference prior evidence via 'cfr. slide N'.",
-          "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence. Include timing only when the brief or uploaded evidence provides a real planning horizon.",
-          "- WORKBOOK-ONLY RECOMMENDATION MODE: if the uploaded evidence contains market/category/player metrics but no sell-in, SKU, pack, marketing plan, margin, channel operations, or investment assumptions, recommendations must be evidence-backed opportunity priorities and next analyses. Do not invent launch dates, pack/SKU systems, retailer/channel expansion, marketing concepts, financial targets, ROI, budgets, or market-share goals.",
-          "- Do not use terms such as capsule, capsule compatibili, cialde, pod, Nespresso, Dolce Gusto, pack architecture, hero renovation, premium import, or Q1/Q2 launch unless those exact terms are present in the brief or uploaded evidence.",
+          "- Use the recommendation framework from the knowledge pack: opportunity first, specific lever second, rationale anchored to visible evidence, and a concrete timeline.",
           "- CLAIM-TO-CHART BINDING: if the slide says the issue is rotation, productivity, ROS, price-led growth, or a distribution opportunity, the hero exhibit must show that metric or a direct causal driver. Do not chart sales value and bury productivity in a side note.",
           "- STORYLINE CONTIGUITY: finish one analytical branch before switching to another. If you revisit an earlier branch later in the deck, it must be an explicit synthesis/comparison or a deeper follow-up, not a lateral jump.",
           "- REDUNDANCY RULE: if a later slide only improves the commentary while keeping the same analytical cut, collapse it and replace it with a deeper or more causal exhibit.",
@@ -4629,17 +4591,11 @@ function buildAuthorMessage(
           "- Keep code execution output compact after the first profiling pass, but still complete every required deliverable.",
           "- Follow the system-prompt examples and per-slide constraints instead of inventing custom layout logic: complete SCQA/body copy, slot-sized PNG charts, and clean recommendation cards.",
           "- Rank recommendations by impact × feasibility. The first recommendation must be Priority 1 (must-win), then Priority 2 (high impact), then quick wins.",
-          "- Recommendation cards may reuse quantified opportunity numbers only when those exact numbers are visible on prior evidence slides or in a visible calculation table. Do not introduce fresh quantified targets such as `target 15%`, `obiettivo +X`, revenue upside, ROI, or market-share goals unless the uploaded brief explicitly states that target or the deck contains a visible scenario calculation sheet with assumptions.",
-          "- Every recommendation card with a number must cite the evidence slide in the visible card text, for example `(cfr. slide 7)`. If the evidence is not visible on a prior slide, remove the number and phrase the recommendation qualitatively.",
           "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
           "- Every recommendation must include its own risk and mitigation in the narrative report: `Risk:` and `Mitigation:`.",
           "- If a chart would overcrowd labels or waste most of its frame, switch to a stronger text-first or split-slide composition instead of forcing the chart.",
-          "- Do not place full-width colored callout or insight bars over chart slides unless they are outside the chart image bounds with at least 0.25in clear space from axes, labels, legends, and source/footer text. Prefer a side note panel or omit the callout.",
-          "- Before saving each chart slide, inspect the rendered composition: no callout band, footer, legend, source line, or textbox may cover bars, heatmap cells, axis labels, category labels, data labels, or plot boundaries.",
-          "- Ranking charts with 7+ rows must reserve enough right margin for labels. Do not place value labels and CAGR labels in the same endpoint lane; put growth in the side text/table or omit endpoint labels that collide.",
           "- Numeric labels must be clean: + exactly once for positives, - for negatives, and pp labels like +0.09pp with no doubled symbols.",
           "- If a slide headline or commentary claims growth, expansion, or acceleration in a metric, the exhibit must show the change in that metric, not just its current level.",
-          "- If a slide headline claims growth/CAGR/delta, set the linked chart metadata title and Excel sheet headers to include `growth`, `CAGR`, `delta`, `trend`, `variazione`, or `vs`; do not leave growth exhibits with level-only chart metadata.",
           "- If a slide promises a comparison set with an explicit count such as 4 provinces, 3 channels, or 5 segments, cover all of them explicitly or change the claim.",
           "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
           "- Never invent a growth target, market-share target, or strategy objective unless it is explicitly present in the brief or directly derivable from the visible evidence.",
@@ -4647,8 +4603,6 @@ function buildAuthorMessage(
           "- If uploaded evidence covers only historical/actual years and contains no forecast assumptions, do not create future-year forecast or target slides. Prioritize recommendations using current opportunity size, historical CAGR, share gaps, and clearly stated data gaps.",
           "- On player, manufacturer, or competitor slides, keep the focal brand explicitly visible and say what the comparison means for it.",
           "- Preserve source labels exactly: use the input label or the canonical NIQ English label, never invented synonyms like ACV when the source says Distr. Pond.",
-          "- Manifest chartType values must use the canonical vocabulary only: bar, stacked_bar, line, pie, doughnut, waterfall, scatter, area, grouped_bar, horizontal_bar, heatmap, bubble. Do not emit aliases such as grouped_bar_with_line or horizontal_grouped_bar.",
-          "- For heatmap metadata, categoryCount is the larger axis count, not rows multiplied by columns. A 5x3 heatmap has categoryCount 5, not 15.",
           "- Tables with PY and CY must be ordered past-to-present (PY before CY), and any share or price table must include the relevant delta columns when those metrics are shown.",
           "- Bubble charts must declare the bubble-size dimension explicitly in both metadata and visible title text (`bolla = ...` or `bubble = ...`).",
           "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
@@ -4718,8 +4672,8 @@ function buildAuthorMessage(
             ? "  7. Competitor deep-dive (minimum 600 words): dedicated section analyzing each major competitor's strategy, relative strengths, and implications for the client."
             : "  7. Competitor deep-dive: dedicated section analyzing the main competitors' strategies, relative strengths, and implications for the client.",
           isReportOnly
-            ? "  8. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timing only if supported by the brief or evidence."
-            : "  8. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timing only if supported by the brief or evidence.",
+            ? "  8. Recommendations with sensitivity analysis (minimum 800 words): for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline."
+            : "  8. Recommendations with sensitivity analysis: for each recommendation include base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
           "  8a. For every recommendation include the action, traceable rationale, priority, and any measurable impact that can be computed directly from the source data. If financial impact is not directly computable, say so explicitly instead of inventing ROI, investment, or budget figures.",
           "  9. Full data appendix: markdown tables with the key cross-tabulations (category by channel, brand share by channel, brand x geography, top items, distribution by channel, or the closest available evidence).",
           "  10. Risk register: probability x impact matrix for the recommendations and the main delivery risks.",
@@ -4796,7 +4750,6 @@ function buildAuthorMessage(
           "- Your final assistant message must attach the files as container uploads before finishing.",
         ].join("\n"),
       },
-      ...uploadedFilesContent,
     ],
   };
 }
@@ -4869,8 +4822,6 @@ function buildReportOnlyAuthorText(input: {
     "- Distinguish promo intensity (% of PDV on promo) from promo effectiveness (incremental volume per promo event). High intensity with low effectiveness means wasted budget.",
     "- Every recommendation must include its own Risk: and Mitigation: in the narrative report.",
     "- Recommendations must stay inside the proven evidence. Do not elevate a country, region, or lever unless the supporting chart or table clearly makes it one of the strongest opportunities.",
-    "- WORKBOOK-ONLY RECOMMENDATION MODE: if the uploaded evidence contains market/category/player metrics but no sell-in, SKU, pack, marketing plan, margin, channel operations, or investment assumptions, recommendations must be evidence-backed opportunity priorities and next analyses. Do not invent launch dates, pack/SKU systems, retailer/channel expansion, marketing concepts, financial targets, ROI, budgets, or market-share goals.",
-    "- Do not use terms such as capsule, capsule compatibili, cialde, pod, Nespresso, Dolce Gusto, pack architecture, hero renovation, premium import, or Q1/Q2 launch unless those exact terms are present in the brief or uploaded evidence.",
     "- When the brief asks for both geography and brand, retailer, or channel analysis, include at least one brand x geography or channel x geography cross-tab in the report appendix and call it out in the findings.",
     "- Apply the copywriting voice rules from the NIQ Analyst Playbook: no em dashes, no AI slop patterns, numbers first, active voice, every sentence carries information.",
     "- Native-language quality is mandatory. If the brief is Italian, write native Italian business prose, not translated English and not pseudo-Spanish. Never use fake-Italian verbs such as 'lidera' or 'performa'.",
@@ -4887,7 +4838,7 @@ function buildReportOnlyAuthorText(input: {
     "  5. Detailed findings (minimum 400 words each): state the finding with exact numbers, explain the methodology, include caveats and confidence level, and add context where available.",
     "  6. For every chart-like or table-backed finding, include a markdown table with the exact numbers so the report is usable without Excel.",
     "  7. Competitor deep-dive (minimum 600 words): dedicated section on each major competitor's strategy, strengths, and implications for the client.",
-    "  8. Recommendations with sensitivity analysis (minimum 800 words): base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timing only if supported by the brief or evidence.",
+    "  8. Recommendations with sensitivity analysis (minimum 800 words): base, bull, and bear scenarios, explicit assumptions, risk/probability assessment, expected impact, and timeline.",
     "  9. Full data appendix: markdown tables with the key cross-tabulations behind the report, including brand x geography or channel x geography views when the brief calls for both cuts.",
     "  10. Risk register: probability x impact matrix for the recommendations and main delivery risks.",
     "- `narrative_report.md` must be at least 800 lines. If it is shorter, extend the appendix, competitor analysis, and chart-supporting markdown tables.",
@@ -5019,11 +4970,9 @@ function buildReviseMessage(input: {
   const chartPreprocessingGuide = buildChartPreprocessingGuide();
   const slideScope = buildReviseSlideScope(input.manifest, input.issues, input.visualQa);
   const primaryVisualIssues = input.visualQa.issues.filter((issue) => issue.severity === "major" || issue.severity === "critical");
-  const nonPrimaryIssues = input.issues.filter((issue) => {
+  const secondaryIssues = input.issues.filter((issue) => {
     return !primaryVisualIssues.some((visualIssue) => issue.includes(`${visualIssue.code}`) && issue.includes(`${visualIssue.slidePosition}`));
   });
-  const mandatoryNonVisualIssues = nonPrimaryIssues.filter((issue) => !isAdvisoryCritiqueIssue(issue));
-  const advisoryIssues = nonPrimaryIssues.filter((issue) => isAdvisoryCritiqueIssue(issue));
   return {
     role: "user" as const,
     content: [
@@ -5066,20 +5015,11 @@ function buildReviseMessage(input: {
           ...(primaryVisualIssues.length > 0
             ? primaryVisualIssues.map((issue) => `- Slide ${issue.slidePosition} ${issue.code}: ${issue.description}. Fix: ${issue.fix}`)
             : ["- No major visual issues were supplied; make only the smallest fixes needed."]),
-          ...(mandatoryNonVisualIssues.length > 0
+          ...(secondaryIssues.length > 0
             ? [
                 "",
-                "Mandatory non-visual issues to fix before returning files:",
-                ...mandatoryNonVisualIssues.map((issue) => `- ${issue}`),
-                "These mandatory issues are not optional. If an issue says a claim is unsupported, remove the claim, soften it into a data-backed observation, or convert it into a data-gap / next-analysis statement. Do not invent new evidence to defend it.",
-                "If an issue says a chart is too dense, rebuild that chart or change the slide grammar. Do not leave a dense chart in place with overlapping labels.",
-              ]
-            : []),
-          ...(advisoryIssues.length > 0
-            ? [
-                "",
-                "Advisory issues to consider only after all mandatory issues are fixed and only if they do not create new visual defects:",
-                ...advisoryIssues.map((issue) => `- ${issue}`),
+                "Secondary issues to consider only if they can be fixed within the same allowed slides and WITHOUT creating new visual defects:",
+                ...secondaryIssues.map((issue) => `- ${issue}`),
               ]
             : []),
           "",
@@ -5559,14 +5499,6 @@ function findMissingGeneratedFiles(files: GeneratedFile[], requiredFiles: string
   return requiredFiles.filter((fileName) => !files.some((file) => file.fileName === fileName || file.fileName.endsWith(fileName)));
 }
 
-function shouldRepairAuthorFilesBeforeRetry(missingFiles: string[], isReportOnly: boolean) {
-  if (missingFiles.length === 0) {
-    return false;
-  }
-  const repairable = new Set(isReportOnly ? ["deck_manifest.json"] : ["deck_manifest.json", "deck.pdf"]);
-  return missingFiles.every((fileName) => repairable.has(fileName));
-}
-
 function mergeGeneratedFiles(primaryFiles: GeneratedFile[], retryFiles: GeneratedFile[]) {
   const merged = new Map<string, GeneratedFile>();
   for (const file of [...primaryFiles, ...retryFiles]) {
@@ -5684,156 +5616,6 @@ function buildManifestFromAnalysis(analysis: AnalysisResult) {
 async function countPptxSlides(buffer: Buffer) {
   const zip = await JSZip.loadAsync(buffer);
   return Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name)).length;
-}
-
-async function hydrateManifestFromPptxText(
-  manifest: z.infer<typeof deckManifestSchema>,
-  pptxBuffer: Buffer,
-): Promise<z.infer<typeof deckManifestSchema>> {
-  const textBySlide = await extractPptxTextBySlide(pptxBuffer).catch((error) => {
-    console.warn(`[hydrateManifestFromPptxText] skipped: ${error instanceof Error ? error.message : String(error)}`);
-    return new Map<number, string[]>();
-  });
-  if (textBySlide.size === 0) {
-    return manifest;
-  }
-
-  let changed = false;
-  const slides = manifest.slides.map((slide) => {
-    const extracted = textBySlide.get(slide.position) ?? [];
-    const title = findPptxTitleReplacement(slide.title, extracted) ?? slide.title;
-    if (slide.body || (slide.bullets?.length ?? 0) > 0) {
-      if (title !== slide.title) {
-        changed = true;
-        return { ...slide, title };
-      }
-      return slide;
-    }
-
-    const fallback = buildSlideTextFallback(slide, extracted);
-    if (title === slide.title && !fallback.body && fallback.bullets.length === 0) {
-      return slide;
-    }
-
-    changed = true;
-    return {
-      ...slide,
-      title,
-      ...(fallback.body ? { body: fallback.body } : {}),
-      ...(fallback.bullets.length > 0 ? { bullets: fallback.bullets } : {}),
-    };
-  });
-
-  return changed ? parseDeckManifest({ ...manifest, slides }) : manifest;
-}
-
-function findPptxTitleReplacement(title: string, extractedTexts: string[]) {
-  const normalizedTitle = normalizePptxTitleForCompare(title);
-  if (!normalizedTitle) {
-    return undefined;
-  }
-
-  return extractedTexts
-    .map(normalizePptxText)
-    .find((text) =>
-      text !== title &&
-      text.length >= Math.max(12, title.length * 0.6) &&
-      normalizePptxTitleForCompare(text) === normalizedTitle);
-}
-
-async function extractPptxTextBySlide(buffer: Buffer): Promise<Map<number, string[]>> {
-  const zip = await JSZip.loadAsync(buffer);
-  const slideEntries = Object.keys(zip.files)
-    .map((entry) => {
-      const match = entry.match(/^ppt\/slides\/slide(\d+)\.xml$/i);
-      return match ? { entry, position: Number.parseInt(match[1]!, 10) } : null;
-    })
-    .filter((entry): entry is { entry: string; position: number } => entry !== null)
-    .sort((left, right) => left.position - right.position);
-  const bySlide = new Map<number, string[]>();
-
-  for (const slide of slideEntries) {
-    const xml = await zip.file(slide.entry)?.async("string");
-    if (!xml) {
-      continue;
-    }
-    const texts: string[] = [];
-    for (const match of xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)) {
-      const text = normalizePptxText(decodeXmlEntities(match[1] ?? ""));
-      if (text) {
-        texts.push(text);
-      }
-    }
-    bySlide.set(slide.position, [...new Set(texts)]);
-  }
-
-  return bySlide;
-}
-
-function buildSlideTextFallback(
-  slide: z.infer<typeof deckManifestSchema>["slides"][number],
-  extractedTexts: string[],
-) {
-  const normalizedTitle = normalizePptxText(slide.title).toLowerCase();
-  const candidates = extractedTexts
-    .map(normalizePptxText)
-    .filter((text) => isManifestFallbackText(text, normalizedTitle));
-  const substantial = candidates.filter((text) => text.length >= 18);
-  const narrative = substantial.find((text) => /[.!?:;]|[àèéìòù]/i.test(text) && text.length >= 45);
-  const bodySource = narrative ?? substantial.slice(0, 3).join(" ");
-  const body = bodySource ? truncateManifestBody(bodySource) : undefined;
-  const bullets = substantial
-    .filter((text) => text !== bodySource && text.length >= 24)
-    .slice(0, 5)
-    .map((text) => truncateManifestBullet(text));
-
-  return {
-    body,
-    bullets,
-  };
-}
-
-function isManifestFallbackText(text: string, normalizedTitle: string) {
-  if (!text || text.length < 3) {
-    return false;
-  }
-  const normalized = text.toLowerCase();
-  if (normalized === normalizedTitle || normalizedTitle.includes(normalized) || normalized.includes(normalizedTitle)) {
-    return false;
-  }
-  if (/^(slide|page)\s+\d+$/i.test(text)) {
-    return false;
-  }
-  if (/^(fonte|source|confidential|proprietary|riservato|nielseniq)\b/i.test(text)) {
-    return false;
-  }
-  if (/^\d+$/.test(text)) {
-    return false;
-  }
-  return true;
-}
-
-function normalizePptxText(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function normalizePptxTitleForCompare(value: string) {
-  return normalizePptxText(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function truncateManifestBody(value: string) {
-  const compact = normalizePptxText(value);
-  return compact.length <= 520 ? compact : `${compact.slice(0, 517).trimEnd()}...`;
-}
-
-function truncateManifestBullet(value: string) {
-  const compact = normalizePptxText(value);
-  return compact.length <= 180 ? compact : `${compact.slice(0, 177).trimEnd()}...`;
 }
 
 function buildPlaceholderNarrativeReport(run: RunRow, warnings: string[]): GeneratedFile {
@@ -6735,7 +6517,6 @@ function buildChartPreprocessingGuide() {
     "Deterministic chart preprocessing guide:",
     "- Compute category_count before rendering every chart.",
     "- If category_count exceeds the slot limit, aggregate the tail into `Other` or switch to commentary-led treatment instead of cramming the chart.",
-    `- Bubble/scatter charts with labels are capped at ${POINT_LABEL_CATEGORY_LIMIT} labeled points. For more points, use a top-${POINT_LABEL_CATEGORY_LIMIT} chart plus table, a horizontal ranking, or unlabeled points with a separate label table. Do not ship overlapping point labels.`,
     "- If average category label length is above 12 characters, prefer horizontal orientation unless the chart is a true time series.",
     "- Figure size must match the slide archetype chart slot. Render at the slot ratio first, then place the image 1:1 without stretch.",
     "- Use descending sort for rankings, ascending only for deliberate smallest-first comparisons, and `none` for time series.",
@@ -7206,24 +6987,14 @@ function collectChartSlotConstraintFindings(manifest: z.infer<typeof deckManifes
     const archetype = getArchetypeOrDefault(slide.slideArchetype || slide.layoutId);
     const chartSlot = archetype.slots.chart;
     const categoryCount = chart.categoryCount ?? chart.categories?.length;
-    if (
-      shouldApplyChartCategorySlotCap(chart.chartType) &&
-      chartSlot?.maxCategories &&
-      categoryCount &&
-      categoryCount > chartSlot.maxCategories
-    ) {
+    if (chartSlot?.maxCategories && categoryCount && categoryCount > chartSlot.maxCategories) {
       findings.push(
         `Slide ${slide.position} chart exposes ${categoryCount} categories but the ${archetype.id} chart slot is capped at ${chartSlot.maxCategories}. Aggregate the tail, switch to horizontal orientation, or change the grammar.`,
       );
     }
-    if (categoryCount && categoryCount > 8 && shouldWarnBarChartCategoryDensity(chart.chartType)) {
+    if (categoryCount && categoryCount > 8 && ["bar", "grouped_bar", "stacked_bar", "stacked_bar_100"].includes(chart.chartType)) {
       findings.push(
         `Slide ${slide.position} chart uses ${chart.chartType} with ${categoryCount} categories. Prefer horizontal orientation or reduce the category set before publish.`,
-      );
-    }
-    if (categoryCount && categoryCount > POINT_LABEL_CATEGORY_LIMIT && shouldWarnPointLabelDensity(chart.chartType)) {
-      findings.push(
-        `Slide ${slide.position} chart uses ${chart.chartType} with ${categoryCount} labeled points, above the safe label limit of ${POINT_LABEL_CATEGORY_LIMIT}. Use a top-${POINT_LABEL_CATEGORY_LIMIT} point chart plus a table, switch to a horizontal ranking, or remove overlapping point labels before publish.`,
       );
     }
   }
@@ -8879,7 +8650,7 @@ async function validateArtifactChecks(
 
   return {
     tier,
-    passed: allFailed.length === 0,
+    passed: blockingFailures.length === 0,
     checks: allChecks,
     failed: [...new Set(allFailed)],
   };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { enforceDeckBudget, getDeckPhaseBudgetCap, shouldResetCrossAttemptBudget } from "./cost-guard";
+import { enforceDeckBudget, shouldResetCrossAttemptBudget } from "./cost-guard";
 
 type FakeCountTokens = () => Promise<{ input_tokens: number }>;
 
@@ -83,18 +83,5 @@ describe("cost-guard", () => {
     expect(shouldResetCrossAttemptBudget("manual_prod_rerun_after_deploy")).toBe(true);
     expect(shouldResetCrossAttemptBudget("visual_qa_retry")).toBe(false);
     expect(shouldResetCrossAttemptBudget(null)).toBe(false);
-  });
-
-  it("uses the hard cap for revise preflight so publishable repairs can run", () => {
-    expect(getDeckPhaseBudgetCap({
-      model: "claude-sonnet-4-6",
-      phase: "author",
-      targetSlideCount: 10,
-    })).toBe(7);
-    expect(getDeckPhaseBudgetCap({
-      model: "claude-sonnet-4-6",
-      phase: "revise",
-      targetSlideCount: 10,
-    })).toBe(10);
   });
 });

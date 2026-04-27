@@ -27,16 +27,12 @@ export function validateTitleClaims(
   const violations: FidelityViolation[] = [];
 
   for (const token of tokens) {
-    if (isStructuralOrOrdinalToken(slide, token.raw)) {
-      continue;
-    }
-
     if (matchesComparableValue(token, workbookValues)) {
       continue;
     }
 
     const derivable = buildDerivedComparableValues(sheet);
-    if ((mentionsDerivation(textContext) || derivable.length > 0) && matchesComparableValue(token, derivable)) {
+    if (mentionsDerivation(textContext) && matchesComparableValue(token, derivable)) {
       continue;
     }
 
@@ -53,25 +49,4 @@ export function validateTitleClaims(
   }
 
   return violations;
-}
-
-function isStructuralOrOrdinalToken(slide: FidelitySlideInput, rawToken: string) {
-  const title = slide.title.toLowerCase();
-  const intent = (slide.pageIntent ?? "").toLowerCase();
-  const token = rawToken.trim();
-
-  if (slide.position === 1) {
-    return true;
-  }
-
-  if (
-    /\b(q[1-4]|roadmap|timeline|piano d'azione|sequenza|priorit|priority)\b/i.test(title) ||
-    /\b(roadmap|timeline|action plan|piano d'azione|appendix|appendice)\b/i.test(intent)
-  ) {
-    if (/^(?:20\d{2}|[1-9])$/.test(token.replace(/[+-]/g, ""))) {
-      return true;
-    }
-  }
-
-  return false;
 }

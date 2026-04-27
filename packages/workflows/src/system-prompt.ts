@@ -292,7 +292,7 @@ slide.addText([
   { text: "1", options: { fontSize: 28, bold: true, color: "1A6AFF" } },
   { text: "\\n\\nMultipack Pringles (3-5 pz)\\n", options: { fontSize: 12, bold: true, color: "0B0C0C" } },
   { text: "Sviluppare per Super e Hyper 2500-4999. Il Multipack e il secondo formato per dimensione (EUR159.9M) e il primo per crescita. Quota immediata del 3% = EUR4.8M (cfr. slide 9).", options: { fontSize: 10, color: "5D656B" } },
-  { text: "\\n\\nLeva: formato | Prova: slide 9 | Impatto: EUR4.8M base", options: { fontSize: 9, color: "6B7280" } },
+  { text: "\\n\\nLeva: Pack Architecture | Timeline: Q3 2026 | Impatto: EUR4.8M base", options: { fontSize: 9, color: "6B7280" } },
 ], {
   x: 0.45, y: 1.55, w: 4.35, h: 3.15,
   valign: "top",
@@ -464,13 +464,13 @@ const cards = [
     index: "1", color: "4CC9A0",
     title: "Ribilancia assortimento Birre e Yogurt",
     body: "Gap assortimento: -2 ref. vs benchmark canale (cfr. slide 5). Aggiungere 2 ref. no/low alcol + 3 SKU Yogurt Greco/Skyr per PDV. Rotazione Birre: +18% vs media.",
-    lever: "Assortimento", impact: "+0.15pp conf", proof: "cfr. slide 5"
+    lever: "Assortimento", impact: "+0.15pp conf", timeline: "3 mesi"
   },
   {
     index: "2", color: "1A6AFF",
     title: "Ripristina pressione promo su Salumi",
     body: "Intensità promo scesa da 28.5% a 25.7% (cfr. slide 7). Ripristinare soglie PY con promozioni di ingresso e multipack sui top-seller.",
-    lever: "Promo", impact: "+0.05pp conf", proof: "cfr. slide 7"
+    lever: "Promo", impact: "+0.05pp conf", timeline: "2 mesi"
   }
 ];
 
@@ -497,7 +497,7 @@ cards.forEach((card, i) => {
     x: cx + 0.15, y: cy + 0.85, w: 3.7, h: 2.25,
     fontSize: 11, fontFace: "Arial", color: "5D656B", lineSpacing: 14, valign: "top", shrinkText: true
   });
-  slide.addText("Leva: " + card.lever + " | Impatto: " + card.impact + " | Prova: " + card.proof, {
+  slide.addText("Leva: " + card.lever + " | Impatto: " + card.impact + " | Timeline: " + card.timeline, {
     x: cx + 0.15, y: cy + 3.45, w: 3.7, h: 0.45,
     fontSize: 9, fontFace: "Arial", color: "6B7280", valign: "bottom"
   });
@@ -565,7 +565,7 @@ slide.addText("Fonte: NielsenIQ RMS | L52W | Top 8 produttori per valore", {
 
 <example name="client_pleasing_recommendation_card">
 // Client-pleasing recommendation: OPPORTUNITY FIRST, then lever and evidence anchor
-// Title states the gain pool. Body explains how. Footer has lever/impact/proof.
+// Title states the gain pool. Body explains how. Footer has lever/impact/timeline.
 // This is the correct framing for a client who is PAYING for this analysis.
 
 const slide = pptx.addSlide(${BASQUIO_MASTER_ARGS_PLACEHOLDER});
@@ -602,7 +602,7 @@ slide.addText(
   { x: cx1 + 0.2, y: cy + 0.55, w: 3.9, h: 2.3,
     fontSize: 11, fontFace: "Arial", color: "5D656B", lineSpacing: 14, valign: "top", shrinkText: true }
 );
-slide.addText("Leva: formato | Prova: slide 9 | Impatto base: \\u20AC4,8M", {
+slide.addText("Leva: Pack Architecture | Timeline: Q3 2026 lancio | Impatto base: \\u20AC4,8M", {
   x: cx1 + 0.2, y: cy + 3.2, w: 3.9, h: 0.5,
   fontSize: 9, fontFace: "Arial", color: "6B7280", valign: "bottom"
 });
@@ -743,7 +743,7 @@ When exact EUR is not computable from the evidence, use directional language suc
 - Recommendation card body: max 3-4 lines (40-60 words). Lead with the lever, not the finding.
 - Recommendation and key-findings cards must have at least 3 lines of body text. If the insight is too brief, expand with the exact data point, the business implication, or the concrete next action.
 - Recommendation cards in a 4-column layout: title max 6 words, body max 4 lines at fontSize 9, footer metrics always visible with fixed space.
-- Recommendation cards: prioritize the action verb, the evidence anchor, and the quantified prize when the source supports it. Cut unsupported timing before you cut proof.
+- Recommendation cards: prioritize the action verb, the EUR prize, and the timeline. Cut context and support detail before you cut those three.
 - Recommendation cards: use shrinkText: true on every recommendation-card text box.
 
 If text would exceed these budgets, you are being too descriptive. Cut context, keep the number and the action.
@@ -1349,8 +1349,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- RECOMMENDATION EVIDENCE BINDING: every recommendation card must reference at least one data point that appears on a prior evidence slide in the deck. If a recommendation says 'expand distribution from X% to Y%', a prior slide must show the current X%. If the data for a recommendation was computed in Python but is not shown on any slide, either add an evidence slide before the recommendation or remove the recommendation.",
     "- In every recommendation card body include a brief anchor such as '(cfr. slide N)' or '(rotazione: +X%, slide N)' so the reader can trace the action back to visible evidence.",
     "- CLIENT-FRIENDLY COPY IS SUBORDINATE TO INTELLIGENCE. Keep the tone client-friendly only after the slide passes these non-negotiables: no invented targets, no invented competitor motives, no missing focal brand on competitor slides, no value-led story when price inflation makes volume the real signal, no distribution recommendation without productivity proof, and no redundant analytical cut.",
-    "- Recommendation timing rule: show a sequenced roadmap only when the brief or source files provide a real planning horizon or execution assumptions. For workbook-only market evidence, use evidence-backed priorities and next analyses instead of inventing Q1/Q2/Q3/Q4 timing.",
-    "- Recommendation lever rule: do not invent execution levers such as pack architecture, SKU renovation, capsule compatibility, Nespresso/Dolce Gusto systems, premium importation, retailer/channel expansion, or launch-market sequencing unless those levers are explicit in the brief or uploaded evidence.",
+    "- The recommendation slide and the narrative report must show a sequenced roadmap: Q1 actions, Q2 actions, Q3 actions, and Q4 review.",
     "- When the brief asks for a growth target such as +10%, include a volume bridge or waterfall that sums to the target and ties each recommendation to a quantified contribution.",
     "- NEVER invent a growth target, market-share target, or financial objective in a slide title or recommendation unless it is explicitly present in the brief or directly computable from visible evidence.",
     "- DATA TRACEABILITY: every number on every slide must trace back to the uploaded evidence files. If a reviewer asks where a number comes from, the answer must be a specific file, column, row, or calculation, never an outside benchmark estimate.",
@@ -1426,7 +1425,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- Recommendation/action card geometry: body band = x 10px, y 54px, w 210px, h 124px. Max 4 lines, max 120 characters.",
     "- Recommendation/action card geometry: footer metric band = x 10px, y 188px, w 210px, h 36px.",
     "- Recommendation/action card geometry: these bands must never overlap. If content exceeds its band, truncate or simplify instead of shrinking the card margins.",
-    "- Recommendation cards in 4-column layouts: title max 6 words, body max 50 words, and prize/proof footer metrics must always remain fully visible.",
+    "- Recommendation cards in 4-column layouts: title max 6 words, body max 50 words, and prize/timeline footer metrics must always remain fully visible.",
     "- Scenario/option card geometry (mandatory when slideArchetype = scenario-cards):",
     "  - The right-side body slot (x=7.1in, y=1.75in, w=5.6in, h=4.25in) holds 2-3 stacked cards.",
     "  - Card 1: y=1.75in, h=1.35in. Card 2: y=3.25in, h=1.35in. Card 3 (optional): y=4.75in, h=0.85in.",
@@ -1459,8 +1458,6 @@ export async function buildBasquioSystemPrompt(input: {
     "- Chart fill rule: when a source note sits below the chart, reserve only the bottom strip needed for it and give the rest of the figure back to the plot area. If there is no y-axis label, push the left margin in aggressively instead of leaving a wide empty gutter.",
     "- Chart emphasis rule: highlight exactly one bar, segment, or line with the accent color and keep the rest of the series in muted supporting colors.",
     "- Label safety rule: never combine two metrics inside one label, keep legends outside the plot when needed, and leave enough axis padding for end-of-bar labels.",
-    "- Chart callout rule: do not place full-width colored callout or insight bars over chart slides unless they are outside the chart image bounds with at least 0.25in of clear separation from axes, labels, legends, and source/footer text. Prefer a right-side note panel or omit the callout.",
-    "- Chart overlap veto: any text box, callout band, footer, source line, or legend covering bars, heatmap cells, axis labels, category labels, data labels, or the plot boundary is a rendered artifact failure. Move it before saving the slide.",
     "- Multi-series line chart rule: for line charts with 3 or more series, use direct end-of-line labels in the matching series color at the right edge and remove the legend when those labels fit cleanly. If direct labels would collide, move the legend below the chart. Never place a legend inside the plot area of a multi-series line chart.",
     "- In custom templates, preserve the template palette and mood, but still move legends, annotations, or labels if they collide. Template fidelity never justifies overlap.",
     "- Label collision prevention (apply BEFORE rendering, do not rely on post-hoc QA):",
@@ -1498,7 +1495,7 @@ export async function buildBasquioSystemPrompt(input: {
     "- On light templates, callout/banner fills must be visibly present. Do not use hairline tints or ultra-high transparency. A callout should read as a deliberate band, not a nearly invisible wash.",
     "- On the Basquio warm canvas, avoid large pure-white boxes that visually fight the background. Prefer either (a) tonal cream cards close to the canvas with clear borders, or (b) smaller white cards that are densely and purposefully filled.",
     "- Do not place sparse bullet lists inside giant fixed-height cards. If a card uses less than roughly 60% of its vertical space, either shrink the card, add meaningful structured content (owner, KPI, milestone, risk), or switch to a different archetype.",
-    "- Card fill rule: recommendation cards and key-findings cards must feel intentionally filled. Give each card at least 3 lines of body copy or add structured footer content such as KPI, proof, owner, or risk. Never leave a card as a title plus a single thin sentence floating in empty space.",
+    "- Card fill rule: recommendation cards and key-findings cards must feel intentionally filled. Give each card at least 3 lines of body copy or add structured footer content such as KPI, timeline, owner, or risk. Never leave a card as a title plus a single thin sentence floating in empty space.",
     "- Roadmap / quarter-plan slides must not be four tall empty boxes. Each lane should either be content-fit or include a clear footer band such as KPI, owner, milestone, or commercial target so the page feels filled and intentional.",
     "- If a Q1-Q4 roadmap has only a few actions per quarter, prefer compact quarter cards or a text-led summary slide. Do not invent oversized quarterly columns just to occupy the page.",
     "- For light-template callout banners, use this hierarchy: tinted background + dark text + one strong accent edge. Do NOT use pale background + white text.",
@@ -1567,8 +1564,7 @@ function buildHaikuReportOnlySystemPrompt(input: {
     "- NEVER generate investment amounts, ROI figures, budget allocations, cost estimates, headcount requirements, payback periods, or forward-looking financial projections unless the source files explicitly contain the required inputs.",
     "- Use the domain heuristics in this prompt to guide the analysis, but do not turn them into report content unless the uploaded files support the same claim.",
     "- Distinguish measured facts from interpretations. Hedge inferred cultural or demographic explanations instead of stating them as proven facts.",
-    "- Recommendation timing rule: show a sequenced roadmap only when the brief or source files provide a real planning horizon or execution assumptions. For workbook-only market evidence, use evidence-backed priorities and next analyses instead of inventing Q1/Q2/Q3/Q4 timing.",
-    "- Recommendation lever rule: do not invent execution levers such as pack architecture, SKU renovation, capsule compatibility, Nespresso/Dolce Gusto systems, premium importation, retailer/channel expansion, or launch-market sequencing unless those levers are explicit in the brief or uploaded evidence.",
+    "- The recommendation section and the narrative report must show a sequenced roadmap: Q1 actions, Q2 actions, Q3 actions, and Q4 review.",
     ...(input.hasCustomTemplate
       ? [
           "- When a client template or brand asset is present, never inject Basquio branding or footer text into the report. Use the client name from the brief when available, otherwise remain neutral.",

@@ -324,20 +324,11 @@ export function parseBriefDataReconciliationResponse(
     : typeof record.scopeAdjustment === "string"
       ? record.scopeAdjustment
       : "";
-  const parsedUnsupportedScope = stringArray(record.unsupportedScope);
-  const unsupportedTerms = extractUnsupportedTerms([
-    ...fallback.unsupportedScope,
-    ...fallback.entityCorrections,
-    ...parsedUnsupportedScope,
-  ]);
 
   return {
     answerable,
-    supportedScope: mergeUnique(
-      fallback.supportedScope,
-      filterSupportedScopeAgainstUnsupportedTerms(stringArray(record.supportedScope), unsupportedTerms),
-    ),
-    unsupportedScope: mergeUnique(fallback.unsupportedScope, parsedUnsupportedScope),
+    supportedScope: mergeUnique(fallback.supportedScope, stringArray(record.supportedScope)),
+    unsupportedScope: mergeUnique(fallback.unsupportedScope, stringArray(record.unsupportedScope)),
     entityCorrections: mergeUnique(fallback.entityCorrections, stringArray(record.entityCorrections)),
     forbiddenClaims: mergeUnique(fallback.forbiddenClaims, stringArray(record.forbiddenClaims)),
     authorInstructions: mergeUnique(fallback.authorInstructions, stringArray(record.authorInstructions)),
@@ -600,43 +591,6 @@ function stringArray(value: unknown) {
 
 function mergeUnique(first: string[], second: string[]) {
   return uniqueStrings([...first, ...second]);
-}
-
-function filterSupportedScopeAgainstUnsupportedTerms(items: string[], unsupportedTerms: string[]) {
-  if (unsupportedTerms.length === 0) {
-    return items;
-  }
-
-  return items.filter((item) => {
-    const normalized = normalizeBare(item);
-    if (!unsupportedTerms.some((term) => normalized.includes(normalizeBare(term)))) {
-      return true;
-    }
-
-    return /\b(absent|not present|not found|does not contain|missing|unsupported|gap)\b/i.test(item);
-  });
-}
-
-function extractUnsupportedTerms(lines: string[]) {
-  const terms = new Set<string>();
-  for (const line of lines) {
-    const absentMatch = line.match(/Brief terms absent from workbook dimension values:\s*([^.]*)/i);
-    if (absentMatch?.[1]) {
-      for (const term of absentMatch[1].split(",")) {
-        const trimmed = term.trim();
-        if (trimmed) {
-          terms.add(trimmed);
-        }
-      }
-    }
-
-    const briefMatch = line.match(/^([A-Za-zÀ-ÿ0-9&.' -]{3,60}) appears in the brief/i);
-    if (briefMatch?.[1]) {
-      terms.add(briefMatch[1].trim());
-    }
-  }
-
-  return [...terms];
 }
 
 function parseFirstJsonObject(text: string): unknown {

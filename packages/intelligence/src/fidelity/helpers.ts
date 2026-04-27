@@ -184,41 +184,15 @@ export function buildDerivedComparableValues(sheet?: FidelitySheetInput) {
     return [] as number[];
   }
 
-  const numericSeries = extractNumericSeries(sheet);
-  if (numericSeries.length === 0) {
+  const primarySeries = extractPrimaryNumericSeries(sheet);
+  if (primarySeries.length === 0) {
     return [];
   }
 
-  const derived = new Set<number>();
-  for (const series of numericSeries) {
-    if (series.length === 0) {
-      continue;
-    }
-
-    const sum = series.reduce((total, value) => total + value, 0);
-    const avg = sum / series.length;
-    const max = Math.max(...series);
-    derived.add(roundComparable(sum));
-    derived.add(roundComparable(sum / 1_000));
-    derived.add(roundComparable(sum / 1_000_000));
-    derived.add(roundComparable(avg));
-    derived.add(roundComparable(max));
-
-    const first = series[0];
-    const last = series[series.length - 1];
-    if (series.length >= 2 && first !== 0) {
-      const delta = last - first;
-      const percentChange = (last / first - 1) * 100;
-      const cagr = (Math.pow(last / first, 1 / (series.length - 1)) - 1) * 100;
-      for (const value of [delta, delta / 1_000, delta / 1_000_000, percentChange, cagr]) {
-        if (Number.isFinite(value)) {
-          derived.add(roundComparable(value));
-        }
-      }
-    }
-  }
-
-  return [...derived];
+  const sum = primarySeries.reduce((total, value) => total + value, 0);
+  const avg = sum / primarySeries.length;
+  const max = Math.max(...primarySeries);
+  return [roundComparable(sum), roundComparable(sum / 1_000_000), roundComparable(avg), roundComparable(max)];
 }
 
 export function mentionsDerivation(text: string) {
@@ -286,17 +260,4 @@ export function coerceNumber(value: unknown) {
     return parseLocaleNumber(value);
   }
   return null;
-}
-
-function extractNumericSeries(sheet: FidelitySheetInput) {
-  if (sheet.rows.length === 0 || sheet.headers.length < 2) {
-    return [] as number[][];
-  }
-
-  return sheet.headers
-    .filter((header, index) => index > 0 && sheet.rows.some((row) => typeof row[header] === "number"))
-    .map((header) => sheet.rows
-      .map((row) => coerceNumber(row[header]))
-      .filter((value): value is number => value !== null))
-    .filter((series) => series.length > 0);
 }

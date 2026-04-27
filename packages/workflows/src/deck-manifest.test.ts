@@ -36,21 +36,4 @@ describe("deck manifest normalization", () => {
 
     expect(manifest.charts[0]?.id).toBe("chart-1");
   });
-
-  it("normalizes common author chart type aliases to supported contract names", () => {
-    const manifest = parseDeckManifest({
-      slideCount: 3,
-      slides: [
-        { position: 1, title: "Cover" },
-        { position: 2, title: "Combo", chartId: "c1" },
-        { position: 3, title: "Horizontal", chartId: "c2" },
-      ],
-      charts: [
-        { id: "c1", chartType: "grouped_bar_with_line", title: "Combo" },
-        { id: "c2", chartType: "horizontal_grouped_bar", title: "Ranking" },
-      ],
-    });
-
-    expect(manifest.charts.map((chart) => chart.chartType)).toEqual(["grouped_bar", "horizontal_bar"]);
-  });
 });

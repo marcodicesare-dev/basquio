@@ -30,15 +30,6 @@ export function getDeckBudgetCaps(
   return MODEL_BUDGET_USD[model];
 }
 
-export function getDeckPhaseBudgetCap(input: {
-  model: keyof typeof MODEL_PRICING;
-  phase: "author" | "revise" | "critique" | "export";
-  targetSlideCount?: number;
-}) {
-  const caps = getDeckBudgetCaps(input.model, input.targetSlideCount);
-  return input.phase === "revise" ? caps.hard : caps.preFlight;
-}
-
 export function shouldResetCrossAttemptBudget(recoveryReason: string | null | undefined) {
   if (!recoveryReason) {
     return false;
