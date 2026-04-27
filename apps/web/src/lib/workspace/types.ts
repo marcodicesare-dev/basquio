@@ -52,7 +52,7 @@ export type MemoryType = "procedural" | "semantic" | "episodic";
 
 export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
   procedural: "Instructions",
-  semantic: "Knowledge",
+  semantic: "Context",
   episodic: "Examples",
 };
 

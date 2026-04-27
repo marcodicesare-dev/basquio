@@ -776,9 +776,9 @@ function toolCopy(toolName: string): { using: string; used: string; failed: stri
   switch (toolName) {
     case "memory":
       return {
-        using: "Checking saved knowledge",
-        used: "Checked saved knowledge",
-        failed: "Knowledge check failed",
+        using: "Checking saved memory",
+        used: "Checked saved memory",
+        failed: "Memory check failed",
       };
     case "retrieveContext":
       return {

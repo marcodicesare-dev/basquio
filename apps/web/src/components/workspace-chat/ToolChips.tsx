@@ -201,7 +201,7 @@ function memoryTypeLabel(value?: string): string {
   if (value === "procedural" || value === "semantic" || value === "episodic") {
     return MEMORY_TYPE_LABELS[value as MemoryType];
   }
-  return "Knowledge";
+  return "Memory";
 }
 
 /**
@@ -265,7 +265,7 @@ export function TeachRuleCard({
       {output?.entry_id ? (
         <div className="wbeta-ai-teach-foot">
           <a className="wbeta-ai-teach-link" href={`/workspace/memory?entry=${output.entry_id}`}>
-            Open in Knowledge
+            Open in Memory
           </a>
         </div>
       ) : null}
@@ -937,7 +937,7 @@ export function RuleEditApprovalCard({
             <WarningCircle size={18} weight="fill" />
           </span>
           <div className="wbeta-ai-teach-copy">
-            <p className="wbeta-ai-teach-title">Knowledge edit failed</p>
+            <p className="wbeta-ai-teach-title">Memory edit failed</p>
             <p className="wbeta-ai-teach-body">
               {output?.error ?? errorText ?? "Try again."}
             </p>
@@ -964,7 +964,7 @@ export function RuleEditApprovalCard({
                 ? "Saved knowledge unpinned"
                 : action === "delete"
                   ? "Saved knowledge deleted"
-                  : "Knowledge edit applied";
+                  : "Memory edit applied";
   return (
     <div className="wbeta-ai-teach-card">
       <div className="wbeta-ai-teach-head">
@@ -979,7 +979,7 @@ export function RuleEditApprovalCard({
       {output?.entry_id && action !== "delete" ? (
         <div className="wbeta-ai-teach-foot">
           <a className="wbeta-ai-teach-link" href={`/workspace/memory?entry=${output.entry_id}`}>
-            Open in Knowledge
+            Open in Memory
           </a>
         </div>
       ) : null}

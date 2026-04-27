@@ -135,11 +135,11 @@ export function WorkspaceProvenance({
             <div className="wbeta-prov-group">
               <div className="wbeta-prov-group-head">
                 <ClipboardText size={13} weight="regular" />
-                <h4 className="wbeta-prov-group-title">Saved knowledge applied</h4>
+                <h4 className="wbeta-prov-group-title">Memory applied</h4>
                 <span className="wbeta-prov-group-count">{memoryCount}</span>
               </div>
               <p className="wbeta-prov-group-hint">
-                Instructions and notes Basquio followed while writing this answer. Browse Knowledge
+                Instructions and notes Basquio followed while writing this answer. Browse Memory
                 to see what exists at workspace, client, category, and analyst level.
               </p>
             </div>

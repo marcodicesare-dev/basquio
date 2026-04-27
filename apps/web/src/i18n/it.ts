@@ -16,7 +16,7 @@ export const workspaceIt = {
     functions: "Funzioni",
     sources: "Fonti",
     people: "Persone",
-    memory: "Conoscenza",
+    memory: "Memoria",
     newClient: "Nuovo cliente",
     newCategory: "Nuova categoria",
     newFunction: "Nuova funzione",

@@ -17,7 +17,7 @@ import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Knowledge · Basquio",
+  title: "Memory · Basquio",
 };
 
 export default async function WorkspaceMemoryPage() {
@@ -52,10 +52,10 @@ export default async function WorkspaceMemoryPage() {
 
     return (
       <div className="wbeta-memory-page">
-        <WorkspaceBreadcrumb items={[{ href: "/workspace", label: "Home" }, { label: "Knowledge" }]} />
+        <WorkspaceBreadcrumb items={[{ href: "/workspace", label: "Home" }, { label: "Memory" }]} />
 
         <header className="wbeta-memory-head">
-          <p className="wbeta-memory-eyebrow">Knowledge</p>
+          <p className="wbeta-memory-eyebrow">Memory</p>
           <h1 className="wbeta-memory-title">Memory Inspector</h1>
           <p className="wbeta-memory-summary">
             Entities, facts, rules, and pending candidates Basquio knows about this workspace.
@@ -111,7 +111,7 @@ export default async function WorkspaceMemoryPage() {
 
   return (
     <div className="wbeta-memory-page">
-      <WorkspaceBreadcrumb items={[{ href: "/workspace", label: "Home" }, { label: "Knowledge" }]} />
+      <WorkspaceBreadcrumb items={[{ href: "/workspace", label: "Home" }, { label: "Memory" }]} />
 
       <header className="wbeta-memory-head">
         <p className="wbeta-memory-eyebrow">Knowledge</p>

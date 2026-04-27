@@ -20,7 +20,7 @@ const TYPE_ORDER: MemoryType[] = ["semantic", "procedural", "episodic"];
 
 const KIND_HELP: Record<MemoryType, string> = {
   semantic:
-    "Use Knowledge for stable client, category, market, glossary, and business context Basquio should remember.",
+    "Use Context for stable client, category, market, glossary, and business context Basquio should remember.",
   procedural:
     "Use Instructions for how Basquio should behave: tone, writing style, citation rules, charts, and analysis preferences.",
   episodic:
@@ -185,7 +185,7 @@ export function MemoryBrowser({
           <label className="wbeta-memory-filter">
             <span className="wbeta-memory-label-row">
               Kind
-              <InfoHint text="Basquio can store knowledge, instructions, and examples. Pick Knowledge if you are unsure." />
+              <InfoHint text="Basquio can store context, instructions, and examples. Pick Context if you are unsure." />
             </span>
             <select
               value={filters.type}
@@ -408,7 +408,7 @@ function MemoryCard({
           <div className="wbeta-memory-card-editor-row">
             <label className="wbeta-memory-card-type-label">
               Kind
-              <InfoHint text="This controls how Basquio reuses the saved item. Pick Knowledge for normal client or category context." />
+              <InfoHint text="This controls how Basquio reuses the saved item. Pick Context for normal client or category material." />
               <select
                 value={draftType}
                 onChange={(e) => setDraftType(e.target.value as MemoryType)}
@@ -518,7 +518,7 @@ function NewMemoryForm({
           </label>
           <label className="wbeta-memory-card-type-label">
             Kind
-            <InfoHint text="Knowledge is the default. Use Instructions for behavior and Examples for patterns worth repeating." />
+            <InfoHint text="Context is the default. Use Instructions for behavior and Examples for patterns worth repeating." />
             <select
               value={type}
               onChange={(e) => setType(e.target.value as MemoryType)}

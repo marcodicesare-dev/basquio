@@ -434,7 +434,7 @@ export function WorkspaceGenerationDrawer({
                     </div>
                   ) : (
                     <p className="wbeta-gen-field-hint">
-                      Edit in the Knowledge or People pages.
+                      Edit in the Memory or People pages.
                     </p>
                   )}
                 </section>

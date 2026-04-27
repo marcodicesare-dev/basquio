@@ -59,7 +59,7 @@ const DEFAULT_COPY: SidebarCopy = {
   functions: "Functions",
   sources: "Sources",
   people: "People",
-  memory: "Knowledge",
+  memory: "Memory",
   newClient: "New client",
   newCategory: "New category",
   newFunction: "New function",
