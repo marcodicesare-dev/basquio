@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ScopeCommandPalette, type ScopeCommandAction } from "@/components/scope-command-palette";
+import type { ScopeCommandAction } from "@/components/scope-command-palette";
 import type { WorkspaceLocale } from "@/i18n";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
 
@@ -53,12 +53,15 @@ export function ScopeChatShell({
   void memoryAside;
   void locale;
 
+  // commandActions still flows in for type-compat with existing
+  // builders but the palette is now mounted globally in WorkspaceShell
+  // (Cmd+K opens it from any workspace surface). Keeping the prop
+  // avoids touching every caller in this round.
+  void commandActions;
+
   return (
     <div className="wbeta-workspace-layout wbeta-scope-chat-layout">
       <section className="wbeta-chat-pane wbeta-scope-chat-pane" aria-label={`Chat with ${scope.name}`}>
-        <div className="wbeta-scope-chat-tools">
-          <ScopeCommandPalette actions={commandActions} scopeName={scope.name} />
-        </div>
         {chat}
       </section>
     </div>

@@ -6,6 +6,10 @@ import { WorkspaceShell } from "@/components/workspace-shell";
 import { resolveWorkspaceLocale } from "@/i18n";
 import { buildSignInPath, getViewerState } from "@/lib/supabase/auth";
 import { isTeamBetaEmail } from "@/lib/team-beta";
+import {
+  buildWorkspaceCommandActions,
+  type RecentChatForCommand,
+} from "@/lib/workspace/command-actions";
 import { listConversations } from "@/lib/workspace/conversations";
 import {
   countByScope,
@@ -51,6 +55,23 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       .map((scope) => [scope.id, scope]),
   );
 
+  const commandRecentChats: RecentChatForCommand[] = recentConversations
+    .slice(0, 6)
+    .map((conversation) => {
+      const scope = conversation.workspace_scope_id
+        ? scopeById.get(conversation.workspace_scope_id)
+        : null;
+      return {
+        id: conversation.id,
+        title: conversation.title ?? "Untitled",
+        scopeName: scope && scope.kind !== "system" ? scope.name : null,
+      };
+    });
+  const commandActions = buildWorkspaceCommandActions({
+    scopeTree,
+    recentChats: commandRecentChats,
+  });
+
   return (
     <WorkspaceShell
       viewer={viewer}
@@ -62,6 +83,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         lastMessageAt: conversation.last_message_at,
         scope: buildConversationScope(conversation.workspace_scope_id, scopeById),
       }))}
+      commandActions={commandActions}
       locale={resolveWorkspaceLocale(headersList.get("accept-language"))}
     >
       {children}

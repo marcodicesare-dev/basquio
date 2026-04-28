@@ -14,15 +14,11 @@ export function WorkspaceShortcuts() {
         target?.tagName === "TEXTAREA" ||
         target?.isContentEditable;
 
-      if (isCmd && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        const input =
-          (document.getElementById("wbeta-ai-input") as HTMLTextAreaElement | null) ??
-          (document.getElementById("wbeta-prompt-input") as HTMLTextAreaElement | null);
-        input?.focus();
-        input?.scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
+      // Cmd+K is owned by the WorkspaceCommandPalette (mounted in
+      // WorkspaceShell) so the navigation surface is identical on
+      // every route. We used to focus the chat input here, which
+      // conflicted with the palette and stayed inconsistent across
+      // home, memory, sources, and people.
       if (isCmd && event.key.toLowerCase() === "u") {
         event.preventDefault();
         const drop = document.querySelector(
@@ -62,7 +58,7 @@ export function WorkspaceShortcuts() {
         <ul className="wbeta-shortcuts-list">
           <li>
             <kbd>⌘ K</kbd>
-            <span>Focus the ask anything input.</span>
+            <span>Open search across home, memory, sources, people, and scopes.</span>
           </li>
           <li>
             <kbd>⌘ U</kbd>

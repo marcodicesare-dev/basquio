@@ -7,6 +7,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/sign-out-button";
+import {
+  WorkspaceCommandPalette,
+  type WorkspaceCommandAction,
+} from "@/components/workspace-command-palette";
 import { WorkspaceInteractionLayer } from "@/components/workspace-interaction-layer";
 import { WorkspaceSidebar, type SidebarRecentConversation } from "@/components/workspace-sidebar";
 import { getWorkspaceCopy, type WorkspaceLocale } from "@/i18n";
@@ -18,6 +22,7 @@ export function WorkspaceShell({
   scopeTree,
   scopeCounts,
   recentConversations,
+  commandActions = [],
   locale = "en",
   children,
 }: {
@@ -25,6 +30,7 @@ export function WorkspaceShell({
   scopeTree: ScopeTree;
   scopeCounts: Record<string, ScopeCounts>;
   recentConversations?: SidebarRecentConversation[];
+  commandActions?: WorkspaceCommandAction[];
   locale?: WorkspaceLocale;
   children: ReactNode;
 }) {
@@ -69,6 +75,12 @@ export function WorkspaceShell({
             </button>
           </div>
         </header>
+
+        {commandActions.length > 0 ? (
+          <div className="wbeta-side-search">
+            <WorkspaceCommandPalette actions={commandActions} />
+          </div>
+        ) : null}
 
         <WorkspaceSidebar
           tree={scopeTree}
