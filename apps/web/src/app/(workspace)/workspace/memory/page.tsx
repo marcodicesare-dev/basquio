@@ -8,6 +8,7 @@ import {
   isMemoryInspectorV2Enabled,
   listInspectorEntities,
   listInspectorFacts,
+  rankInspectorEntities,
 } from "@/lib/workspace/inspector";
 import { listMemoryEntries, MEMORY_TYPE_LABELS } from "@/lib/workspace/memory";
 import { listAllRules } from "@/lib/workspace/rules";
@@ -121,6 +122,13 @@ export default async function WorkspaceMemoryPage() {
     const factCountByEntity: Record<string, number> = {};
     for (const [k, v] of factCounts.entries()) factCountByEntity[k] = v;
 
+    // Rank entities so the ones a CPG analyst recognises (people,
+    // brands, retailers, categories) and the ones with at least one
+    // fact land at the top of the list. The default updated_at sort
+    // surfaces whatever was imported last, which on Marco's workspace
+    // happens to be a metric-heavy batch.
+    const rankedEntities = rankInspectorEntities(entities, factCounts);
+
     const mergedRules: WorkspaceRule[] = [
       ...rules,
       ...proceduralMemories.map((entry) => proceduralMemoryAsRule(entry, workspace.id)),
@@ -159,7 +167,7 @@ export default async function WorkspaceMemoryPage() {
         </header>
 
         <WorkspaceMemoryInspectorV2
-          entities={entities}
+          entities={rankedEntities}
           facts={facts}
           rules={mergedRules}
           candidates={candidates}

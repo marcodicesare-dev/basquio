@@ -42,6 +42,51 @@ export async function listInspectorEntities(
   return (data ?? []) as InspectorEntity[];
 }
 
+/**
+ * Type-priority order used to surface the most useful entities first
+ * in the Inspector. People, brands, retailers, and categories tell the
+ * user what Basquio actually knows about their workspace. Metrics and
+ * documents are the dial-tone of the system: useful, but not what
+ * makes a CPG analyst go "oh, it knows Elena Bianchi".
+ */
+const ENTITY_TYPE_PRIORITY: Record<string, number> = {
+  person: 1,
+  organization: 2,
+  brand: 3,
+  retailer: 4,
+  category: 5,
+  sub_category: 6,
+  channel: 7,
+  sku: 8,
+  metric: 9,
+  document: 10,
+  deliverable: 11,
+};
+
+export function rankInspectorEntities(
+  entities: InspectorEntity[],
+  factCounts: Map<string, number>,
+): InspectorEntity[] {
+  const ranked = [...entities];
+  ranked.sort((a, b) => {
+    const aFacts = factCounts.get(a.id) ?? 0;
+    const bFacts = factCounts.get(b.id) ?? 0;
+    // 1. entities with facts come before zero-fact entities
+    const aHas = aFacts > 0 ? 0 : 1;
+    const bHas = bFacts > 0 ? 0 : 1;
+    if (aHas !== bHas) return aHas - bHas;
+    // 2. type priority (people, brands, retailers, categories first)
+    const aPri = ENTITY_TYPE_PRIORITY[a.type] ?? 99;
+    const bPri = ENTITY_TYPE_PRIORITY[b.type] ?? 99;
+    if (aPri !== bPri) return aPri - bPri;
+    // 3. higher fact count first
+    if (aFacts !== bFacts) return bFacts - aFacts;
+    // 4. canonical name alpha
+    return a.canonical_name.localeCompare(b.canonical_name);
+  });
+  return ranked;
+}
+
 export type InspectorFact = {
   id: string;
   subject_entity: string;
