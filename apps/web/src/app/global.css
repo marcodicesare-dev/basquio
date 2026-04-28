@@ -9894,6 +9894,17 @@ body:has(.wbeta-shell) .site-wrap {
   padding: 21px 21px 21px 0;
 }
 
+/* On chat surfaces (home + scope + chat thread) the composer needs to
+   pin to the actual viewport bottom. The default 21px main padding
+   pushed it 21px above the viewport bottom, which Marco called out as
+   the composer "going down" when scrolling. Remove the bottom padding
+   on chat surfaces so the composer hugs the bottom edge. Non-chat
+   admin / memory / sources / people pages keep the breathing room. */
+body:has(.wbeta-home-chat-only) .wbeta-main,
+body:has(.wbeta-chat-pane) .wbeta-main {
+  padding-bottom: 0;
+}
+
 @media (max-width: 639px) {
   .wbeta-shell {
     display: block;
@@ -11678,17 +11689,23 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-inline-help-tip {
+  /* Tooltip anchors center-above the trigger and clamps to viewport
+     so it never extends off the left or right edge. Background is
+     fully opaque so the text stays readable when it sits over the
+     chat content (the previous .94 alpha looked transparent against
+     warm cream backgrounds). */
   position: absolute;
-  right: 0;
+  left: 50%;
   bottom: calc(100% + 8px);
   z-index: 70;
-  width: min(286px, calc(100vw - 32px));
+  width: max-content;
+  max-width: min(286px, calc(100vw - 64px));
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 9px;
-  background: rgba(11, 12, 12, 0.94);
+  background: rgb(11, 12, 12);
   color: #ffffff;
-  box-shadow: var(--shadow-panel);
+  box-shadow: 0 10px 28px rgba(11, 12, 12, 0.22), 0 2px 6px rgba(11, 12, 12, 0.12);
   font-size: 12px;
   line-height: 1.45;
   font-weight: 500;
@@ -11697,8 +11714,8 @@ body:has(.wbeta-shell) .site-wrap {
   white-space: normal;
   pointer-events: none;
   opacity: 0;
-  transform: translateY(3px) scale(0.98);
-  transform-origin: bottom right;
+  transform: translateX(-50%) translateY(3px) scale(0.98);
+  transform-origin: bottom center;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
 
@@ -11708,7 +11725,7 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-ai-tool-call-chip:hover .wbeta-inline-help-tip,
 .wbeta-ai-tool-call-chip:focus-within .wbeta-inline-help-tip {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 /* ── Markdown rendering ─────────────────────────────────────────── */
@@ -14677,14 +14694,15 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-docinfo-tip {
   position: absolute;
   z-index: 40;
-  right: 0;
+  left: 50%;
   top: calc(100% + 8px);
-  width: 260px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 64px));
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(11, 12, 12, 0.94);
+  background: rgb(11, 12, 12);
   color: white;
-  box-shadow: var(--shadow-panel);
+  box-shadow: 0 10px 28px rgba(11, 12, 12, 0.22), 0 2px 6px rgba(11, 12, 12, 0.12);
   font-size: 12px;
   line-height: 1.45;
   letter-spacing: 0;
@@ -14692,15 +14710,15 @@ body:has(.wbeta-shell) .site-wrap {
   font-weight: 500;
   pointer-events: none;
   opacity: 0;
-  transform: translateY(-3px) scale(0.98);
-  transform-origin: top right;
+  transform: translateX(-50%) translateY(-3px) scale(0.98);
+  transform-origin: top center;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
 
 .wbeta-docinfo:hover .wbeta-docinfo-tip,
 .wbeta-docinfo:focus-within .wbeta-docinfo-tip {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .wbeta-doclist-side {
@@ -19327,11 +19345,11 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-home-chat .wbeta-ai-chat-form {
   position: sticky;
-  bottom: 21px;
+  bottom: 14px;
   flex: 0 0 auto;
   width: calc(100% - 34px);
   max-width: 720px;
-  margin: 0 auto 21px;
+  margin: 0 auto 14px;
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(11, 12, 12, 0.08), 0 2px 6px rgba(11, 12, 12, 0.04);
   z-index: 5;
@@ -19571,11 +19589,11 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-chat-pane .wbeta-ai-chat-form {
   position: sticky;
-  bottom: 17px;
+  bottom: 14px;
   flex: 0 0 auto;
   width: calc(100% - 34px);
   max-width: 720px;
-  margin: 0 auto 17px;
+  margin: 0 auto 14px;
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(11, 12, 12, 0.08), 0 2px 6px rgba(11, 12, 12, 0.04);
@@ -20349,30 +20367,31 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-ai-chat-chip-info-tip {
   position: absolute;
-  right: 0;
+  left: 50%;
   bottom: calc(100% + 8px);
   z-index: 40;
-  width: 286px;
+  width: max-content;
+  max-width: min(286px, calc(100vw - 64px));
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(11, 12, 12, 0.94);
+  background: rgb(11, 12, 12);
   color: white;
-  box-shadow: var(--shadow-panel);
+  box-shadow: 0 10px 28px rgba(11, 12, 12, 0.22), 0 2px 6px rgba(11, 12, 12, 0.12);
   font-size: 12px;
   line-height: 1.45;
   letter-spacing: 0;
   font-weight: 500;
   pointer-events: none;
   opacity: 0;
-  transform: translateY(3px) scale(0.98);
-  transform-origin: bottom right;
+  transform: translateX(-50%) translateY(3px) scale(0.98);
+  transform-origin: bottom center;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
 
 .wbeta-ai-chat-chip-info:hover .wbeta-ai-chat-chip-info-tip,
 .wbeta-ai-chat-chip-info:focus-within .wbeta-ai-chat-chip-info-tip {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .wbeta-ai-chat-chip-remove:hover {
