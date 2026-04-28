@@ -173,14 +173,32 @@ export function WorkspaceGenerationDrawer({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, launching, onClose]);
 
+  // Initial focus on the brief textarea fires ONCE per drawer-open
+  // cycle. The previous version had `[open, brief]` as deps, which
+  // re-ran on every keystroke (because `setBrief({ ...brief, ... })`
+  // produces a new object reference). The re-fire called `focus()`
+  // and `setSelectionRange(end, end)`, which yanked the caret back to
+  // the end of the textarea on every keypress. Francesco caught it
+  // when trying to edit the middle of the brief and when typing in
+  // the Audience input (the refocus stole focus from Audience back
+  // to the brief textarea).
+  const didInitialFocusRef = useRef(false);
+
   useEffect(() => {
-    if (open && brief && firstFocusRef.current) {
-      firstFocusRef.current.focus();
-      firstFocusRef.current.setSelectionRange(
-        firstFocusRef.current.value.length,
-        firstFocusRef.current.value.length,
-      );
+    if (!open) {
+      didInitialFocusRef.current = false;
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !brief || !firstFocusRef.current) return;
+    if (didInitialFocusRef.current) return;
+    didInitialFocusRef.current = true;
+    firstFocusRef.current.focus();
+    firstFocusRef.current.setSelectionRange(
+      firstFocusRef.current.value.length,
+      firstFocusRef.current.value.length,
+    );
   }, [open, brief]);
 
   const activeFiles = pack
