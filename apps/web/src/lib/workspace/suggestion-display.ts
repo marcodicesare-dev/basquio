@@ -22,16 +22,21 @@ export function compactSuggestionPrompt(prompt: string): string {
   const weeklyScope = cleaned.match(/^Ask what changed in .+? this week$/i);
   if (weeklyScope) return "What changed this week?";
   // "Generate the X memo for tomorrow's pre-read." -> "Generate the X
-  // memo". Keeps the verb + object, drops the deadline phrase that
-  // would otherwise blow past the chip width.
+  // memo". Keeps the verb + object, drops any deadline phrase
+  // ("for tomorrow's pre-read", "by Friday", "before the meeting")
+  // that would otherwise blow past the chip width. The regex is
+  // intentionally permissive: anything starting with " for ", " by ",
+  // " before ", or " in time for " is treated as a deadline.
   const generateForDeadline = cleaned.match(
-    /^(Generate|Draft|Prepare|Build) (.+?) (for tomorrow|for today|for the next .+|by .+)$/i,
+    /^(Generate|Draft|Prepare|Build|Write|Send) (.+?)\s+(?:for|by|before|in time for)\s+.+$/i,
   );
   if (generateForDeadline?.[1] && generateForDeadline?.[2]) {
     return compact(generateForDeadline[2], generateForDeadline[1]);
   }
   // "Summarize X for Y" -> "Summarize X". Same shape as Generate.
-  const summarizeFor = cleaned.match(/^(Summarize|Recap) (.+?) for .+$/i);
+  const summarizeFor = cleaned.match(
+    /^(Summarize|Recap|Pull together) (.+?)\s+(?:for|by|before|in time for)\s+.+$/i,
+  );
   if (summarizeFor?.[1] && summarizeFor?.[2]) {
     return compact(summarizeFor[2], summarizeFor[1]);
   }
