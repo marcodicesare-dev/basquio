@@ -141,7 +141,10 @@ export function WorkspaceSidebar({
     return pathname === scopeHref(scope);
   }
 
-  const kinds: Array<Exclude<ScopeKind, "system">> = ["client", "category", "function"];
+  // Functions are an engineer concept: they exist in the data model
+  // (system/client/category/function) but no user has ever asked for one.
+  // The sidebar omits them until Marco confirms a real use case.
+  const kinds: Array<Exclude<ScopeKind, "system" | "function">> = ["client", "category"];
 
   return (
     <div id="wbeta-workspace-nav" className="wbeta-sidebar-nav-root" aria-label="Workspace navigation">
@@ -156,6 +159,39 @@ export function WorkspaceSidebar({
             <House size={16} weight={homeActive ? "fill" : "regular"} />
           </span>
           <span className="wbeta-nav-label">{copy.home}</span>
+        </Link>
+        <Link
+          href="/workspace/memory"
+          className={memoryActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
+          aria-current={memoryActive ? "page" : undefined}
+          onClick={navigateWithTransition()}
+        >
+          <span className="wbeta-nav-icon" aria-hidden>
+            <Sparkle size={16} weight={memoryActive ? "fill" : "regular"} />
+          </span>
+          <span className="wbeta-nav-label">{copy.memory}</span>
+        </Link>
+        <Link
+          href="/workspace/sources"
+          className={sourcesActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
+          aria-current={sourcesActive ? "page" : undefined}
+          onClick={navigateWithTransition()}
+        >
+          <span className="wbeta-nav-icon" aria-hidden>
+            <Files size={16} weight={sourcesActive ? "fill" : "regular"} />
+          </span>
+          <span className="wbeta-nav-label">{copy.sources}</span>
+        </Link>
+        <Link
+          href="/workspace/people"
+          className={peopleActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
+          aria-current={peopleActive ? "page" : undefined}
+          onClick={navigateWithTransition()}
+        >
+          <span className="wbeta-nav-icon" aria-hidden>
+            <UsersThree size={16} weight={peopleActive ? "fill" : "regular"} />
+          </span>
+          <span className="wbeta-nav-label">{copy.people}</span>
         </Link>
       </nav>
 
@@ -289,41 +325,6 @@ export function WorkspaceSidebar({
         );
       })}
 
-      <nav className="wbeta-sidebar-nav wbeta-sidebar-nav-bottom">
-        <Link
-          href="/workspace/sources"
-          className={sourcesActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
-          aria-current={sourcesActive ? "page" : undefined}
-          onClick={navigateWithTransition()}
-        >
-          <span className="wbeta-nav-icon" aria-hidden>
-            <Files size={16} weight={sourcesActive ? "fill" : "regular"} />
-          </span>
-          <span className="wbeta-nav-label">{copy.sources}</span>
-        </Link>
-        <Link
-          href="/workspace/people"
-          className={peopleActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
-          aria-current={peopleActive ? "page" : undefined}
-          onClick={navigateWithTransition()}
-        >
-          <span className="wbeta-nav-icon" aria-hidden>
-            <UsersThree size={16} weight={peopleActive ? "fill" : "regular"} />
-          </span>
-          <span className="wbeta-nav-label">{copy.people}</span>
-        </Link>
-        <Link
-          href="/workspace/memory"
-          className={memoryActive ? "wbeta-nav-link wbeta-nav-link-active" : "wbeta-nav-link"}
-          aria-current={memoryActive ? "page" : undefined}
-          onClick={navigateWithTransition()}
-        >
-          <span className="wbeta-nav-icon" aria-hidden>
-            <Sparkle size={16} weight={memoryActive ? "fill" : "regular"} />
-          </span>
-          <span className="wbeta-nav-label">{copy.memory}</span>
-        </Link>
-      </nav>
     </div>
   );
 }

@@ -91,9 +91,9 @@ export const workspaceIt = {
     stopGeneration: "Ferma generazione",
     stop: "Ferma",
     generating: "Generazione",
-    workspaceEmptyTitle: "La tua conoscenza analista, sempre presente.",
+    workspaceEmptyTitle: "Cosa lavoriamo oggi?",
     workspaceEmptyBody:
-      "Basquio conosce clienti, stakeholder e stile. Ogni risposta cita da dove arriva.",
+      "Chiedimi qualsiasi cosa. Conosco i tuoi clienti, i tuoi file, e come ti piace lavorare.",
     askAbout: "Chiedi su",
   },
 } as const;

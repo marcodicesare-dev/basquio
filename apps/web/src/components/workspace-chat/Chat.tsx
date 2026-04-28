@@ -579,16 +579,23 @@ export function WorkspaceChat({
 
   const handlePromptSuggestion = useCallback(
     (prompt: string) => {
-      if (isBusy) return;
-      setDraft(prompt);
-      const focusInput = () => inputRef.current?.focus();
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(focusInput);
-      } else {
-        focusInput();
-      }
+      if (isBusy || hasUploadingAttachments) return;
+      const trimmed = prompt.trim();
+      if (!trimmed) return;
+      // SOTA chat pattern (Vercel ai-chatbot SuggestedActions, Claude.ai
+      // /new): suggestion chip is one-shot, not a fill-and-focus. Click
+      // sends the message immediately so the user feels the chip "do
+      // the thing" instead of "do it for me later". Still respects
+      // busy/upload gates so we never submit on top of a streaming turn.
+      const startedAt = performance.now();
+      stickToLatestRef.current = true;
+      setError(null);
+      setActiveTurnStartedAt(startedAt);
+      setPendingTurn({ text: trimmed, startedAt });
+      setDraft("");
+      dispatchCurrentMessage(trimmed);
     },
-    [isBusy],
+    [dispatchCurrentMessage, hasUploadingAttachments, isBusy],
   );
 
   const handleComposerKeyDown = useCallback(

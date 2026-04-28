@@ -204,7 +204,11 @@ export default async function WorkspaceHomePage() {
             locale={locale}
             promptSuggestions={homeSuggestions}
             compactEmpty
-            contextGreeting="Ask across clients, knowledge, and recent work."
+            contextGreeting={
+              locale === "it"
+                ? "Chiedimi qualsiasi cosa. Conosco i tuoi clienti, i tuoi file, e come ti piace lavorare."
+                : "Ask me anything. I know your clients, your files, and how you like to work."
+            }
           />
         }
         locale={locale}

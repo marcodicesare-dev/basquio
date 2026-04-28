@@ -13583,6 +13583,89 @@ body:has(.wbeta-shell) .site-wrap {
   max-width: 55ch;
 }
 
+/* Workspace-home memory anticipation card. Lives between the hints
+   banner and the chat. Replaces the old counter-style memory card so
+   the home page tells a story about what Basquio knows, not a number. */
+.wbeta-home-memory {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 13px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 150ms ease-out, transform 80ms ease-out, box-shadow 150ms ease-out;
+}
+
+.wbeta-home-memory:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgba(11, 12, 12, 0.05);
+}
+
+.wbeta-home-memory:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.wbeta-home-memory:active {
+  transform: translateY(1px);
+}
+
+.wbeta-home-memory-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: rgba(26, 106, 255, 0.1);
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.wbeta-home-memory-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wbeta-home-memory-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  line-height: 1.4;
+}
+
+.wbeta-home-memory-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  max-width: 64ch;
+}
+
+.wbeta-home-memory-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 150ms ease-out, transform 150ms ease-out;
+}
+
+.wbeta-home-memory:hover .wbeta-home-memory-arrow {
+  color: var(--blue);
+  transform: translateX(2px);
+}
+
 /* Memory v1 Brief 5 PART C: workspace-home anticipation hints banner. */
 .wbeta-hints-banner {
   display: flex;
@@ -19124,11 +19207,18 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-home-chat > .wbeta-ai-chat {
   flex: 1;
-  justify-content: center;
+  display: flex;
+  flex-direction: column;
   padding: 0;
+  min-height: 0;
 }
 
 .wbeta-home-chat .wbeta-ai-chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   margin: 0 auto;
   border: none;
   border-radius: 0;
@@ -19136,6 +19226,7 @@ body:has(.wbeta-shell) .site-wrap {
   background: transparent;
   max-width: 640px;
   width: 100%;
+  text-align: center;
 }
 
 .wbeta-home-chat .wbeta-ai-chat-empty-compact {
@@ -19170,13 +19261,25 @@ body:has(.wbeta-shell) .site-wrap {
   box-sizing: border-box;
 }
 
-.wbeta-home-chat .wbeta-ai-chat-form {
-  position: static;
+.wbeta-home-chat .wbeta-ai-chat-prompt-pills {
+  flex: 0 0 auto;
   width: calc(100% - 34px);
   max-width: 720px;
-  margin: 0 auto 17px;
-  border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(11, 12, 12, 0.04);
+  margin: 0 auto 13px;
+  padding: 0;
+  justify-content: center;
+}
+
+.wbeta-home-chat .wbeta-ai-chat-form {
+  position: sticky;
+  bottom: 21px;
+  flex: 0 0 auto;
+  width: calc(100% - 34px);
+  max-width: 720px;
+  margin: 0 auto 21px;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(11, 12, 12, 0.08), 0 2px 6px rgba(11, 12, 12, 0.04);
+  z-index: 5;
 }
 
 @media (max-width: 639px) {
@@ -19412,16 +19515,19 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-form {
-  position: static;
+  position: sticky;
+  bottom: 17px;
+  flex: 0 0 auto;
   width: calc(100% - 34px);
   max-width: 720px;
   margin: 0 auto 17px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(11, 12, 12, 0.04);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(11, 12, 12, 0.08), 0 2px 6px rgba(11, 12, 12, 0.04);
   padding: 10px 13px;
   background: var(--surface-strong);
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  z-index: 5;
 }
 
 .wbeta-chat-pane .wbeta-ai-chat-form:focus-within {

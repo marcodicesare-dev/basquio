@@ -135,14 +135,30 @@ export type MemoryCounts = {
 };
 
 /**
- * Compact counts shown on the workspace home "Your workspace remembers"
- * card and on the Memory Inspector v2 page header. All four queries run
- * in parallel; failure on any one returns zero for that bucket so the
- * card degrades gracefully when a table is empty or unreachable.
+ * Compact counts shown on the workspace home anticipation card and on
+ * the Memory Inspector v2 page header. Five queries run in parallel;
+ * failure on any one returns zero for that bucket so the surface
+ * degrades gracefully when a table is empty or unreachable.
+ *
+ * activeRules merges TWO data stores so the inspector and the chat
+ * tool see the same number:
+ *   1. workspace_rule rows (Brief 5+ canonical rules, active + not expired)
+ *   2. memory_entries rows where memory_type='procedural' (legacy
+ *      memory store still read by readMemoryTool)
+ *
+ * Until the two stores are consolidated, both are functionally rules
+ * the user has taught Basquio; counting only one of them is what made
+ * the home card show "0 rules" while the chat happily cited 2.
  */
 export async function getWorkspaceMemoryCounts(workspaceId: string): Promise<MemoryCounts> {
   const db = getDb();
-  const [entitiesResult, factsResult, rulesResult, candidatesResult] = await Promise.all([
+  const [
+    entitiesResult,
+    factsResult,
+    rulesResult,
+    proceduralMemoryResult,
+    candidatesResult,
+  ] = await Promise.all([
     db
       .from("entities")
       .select("id", { count: "exact", head: true })
@@ -181,6 +197,18 @@ export async function getWorkspaceMemoryCounts(workspaceId: string): Promise<Mem
         return count ?? 0;
       }),
     db
+      .from("memory_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId)
+      .eq("memory_type", "procedural")
+      .then(({ count, error }) => {
+        if (error) {
+          console.error("[memory counts] procedural memory count failed", error);
+          return 0;
+        }
+        return count ?? 0;
+      }),
+    db
       .from("memory_candidates")
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspaceId)
@@ -197,7 +225,7 @@ export async function getWorkspaceMemoryCounts(workspaceId: string): Promise<Mem
   return {
     entities: entitiesResult,
     facts: factsResult,
-    activeRules: rulesResult,
+    activeRules: rulesResult + proceduralMemoryResult,
     pendingCandidates: candidatesResult,
   };
 }

@@ -27,19 +27,20 @@ export function WorkspaceHintsBanner({ hints }: Props) {
   const [, startTransition] = useTransition();
 
   // Empty state: render a quiet card so the surface is discoverable on
-  // first sign-in. Generators are pull-based today (Brief 5 PART C);
-  // hints land here when a workspace accumulates pending candidates,
-  // a brand book is extracted, or rules churn in a 14-day window.
+  // first sign-in. Copy stays generic so no single use case (brand book,
+  // pending candidate, drift) feels like the product. The surface
+  // populates as the workspace accumulates pending candidates or rules
+  // churn in a 14-day window.
   if (items.length === 0) {
     return (
       <section className="wbeta-hints-banner wbeta-hints-banner-empty">
         <header>
-          <h3>This week</h3>
-          <span className="wbeta-hints-count">nothing pressing</span>
+          <h3>Today</h3>
+          <span className="wbeta-hints-count">nothing pending</span>
         </header>
         <p className="wbeta-hints-empty-copy">
-          When something needs your attention (a stale claim in a draft, a brand book ready
-          to review, a pattern of corrections worth pinning), it lands here.
+          When something in your workspace shifts and Basquio thinks it
+          deserves your attention, it surfaces here.
         </p>
       </section>
     );

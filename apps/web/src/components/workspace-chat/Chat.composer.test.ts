@@ -129,7 +129,7 @@ describe("WorkspaceChat composer", () => {
     );
   });
 
-  it("shows short labels for scoped prompt chips while keeping the full prompt", () => {
+  it("shows short labels for scoped prompt chips and auto-submits the full prompt", async () => {
     render(
       React.createElement(WorkspaceChat, {
         scopeName: "Affinity Petcare",
@@ -144,12 +144,18 @@ describe("WorkspaceChat composer", () => {
       }),
     );
 
+    // Per Vercel ai-chatbot SuggestedActions and Claude.ai /new: chip
+    // is one-shot. Clicking sends the full prompt immediately, leaves
+    // the composer textarea empty since the message has been dispatched.
     const chip = screen.getByRole("button", { name: "Use Rossella feedback" });
     fireEvent.click(chip);
 
-    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
-      "Use Rossella feedback for the next Affinity Petcare brief.",
-    );
+    await waitFor(() => {
+      expect(mocks.sendMessage).toHaveBeenCalledWith({
+        text: "Use Rossella feedback for the next Affinity Petcare brief.",
+      });
+    });
+    expect((screen.getByLabelText("Message") as HTMLTextAreaElement).value).toBe("");
   });
 
   it("submits on Enter without requiring Command Enter", async () => {

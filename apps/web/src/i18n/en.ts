@@ -91,9 +91,9 @@ export const workspaceEn = {
     stopGeneration: "Stop generation",
     stop: "Stop",
     generating: "Generating",
-    workspaceEmptyTitle: "Your analyst knowledge, always there.",
+    workspaceEmptyTitle: "What should we work on today?",
     workspaceEmptyBody:
-      "Basquio knows your clients, stakeholders, and style. Every answer cites where it came from.",
+      "Ask me anything. I know your clients, your files, and how you like to work.",
     askAbout: "Ask about",
   },
 } as const;

@@ -60,10 +60,12 @@ export function MemoryReadChip({
         </span>
         <span className="wbeta-ai-tool-chip-label">
           {isError
-            ? "Saved knowledge lookup failed"
+            ? "I could not check what I remember"
             : isDone
-              ? `Read ${count} saved ${count === 1 ? "item" : "items"} from ${scopeName}`
-              : `Reading saved knowledge from ${scopeName}`}
+              ? count === 0
+                ? `I checked what I remember about ${scopeName}`
+                : `Used ${count} ${count === 1 ? "thing" : "things"} you taught me about ${scopeName}`
+              : `Checking what I remember about ${scopeName}`}
         </span>
         <span className="wbeta-ai-tool-caret" aria-hidden>
           {open ? <CaretDown size={10} weight="bold" /> : <CaretRight size={10} weight="bold" />}
@@ -136,10 +138,12 @@ export function RetrieveContextChip({
         </span>
         <span className="wbeta-ai-tool-chip-label">
           {isError
-            ? "Context search failed"
+            ? "I could not search your files"
             : isDone
-              ? `Found ${chunks} source excerpt${chunks === 1 ? "" : "s"} and ${facts} fact${facts === 1 ? "" : "s"}`
-              : "Searching workspace"}
+              ? chunks === 0 && facts === 0
+                ? "I checked your files. Nothing relevant yet."
+                : `Read ${chunks} ${chunks === 1 ? "excerpt" : "excerpts"} from your files${facts > 0 ? ` and ${facts} ${facts === 1 ? "fact" : "facts"}` : ""}`
+              : "Reading your files"}
         </span>
         <span className="wbeta-ai-tool-caret" aria-hidden>
           {open ? <CaretDown size={10} weight="bold" /> : <CaretRight size={10} weight="bold" />}

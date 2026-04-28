@@ -52,16 +52,15 @@ export default async function WorkspaceSourcesPage() {
 
       <header className="wbeta-sources-head">
         <p className="wbeta-sources-eyebrow">Sources</p>
-        <h1 className="wbeta-sources-title">The files Basquio can retrieve from.</h1>
+        <h1 className="wbeta-sources-title">The files Basquio reads when answering you.</h1>
         <p className="wbeta-sources-summary">
-          Upload reusable workspace files, inspect them in place, and download the original when
-          you need the full context. Basquio indexes these files so chat answers and deck briefs can
-          cite filename-backed evidence.
+          Drop a brief, an export, a transcript, or a deck. Basquio reads it once and cites it
+          forever. Files here are reusable across chats and decks; chat attachments stay one-off.
         </p>
         <ul className="wbeta-sources-stats">
           <li>
             <span className="wbeta-sources-stat-num">{documents.length}</span>
-            <span className="wbeta-sources-stat-label">repository files</span>
+            <span className="wbeta-sources-stat-label">files in your repository</span>
           </li>
           <li>
             <span className="wbeta-sources-stat-num">{readyDocuments}</span>
@@ -69,7 +68,7 @@ export default async function WorkspaceSourcesPage() {
           </li>
           <li>
             <span className="wbeta-sources-stat-num">{processingDocuments}</span>
-            <span className="wbeta-sources-stat-label">processing</span>
+            <span className="wbeta-sources-stat-label">still reading</span>
           </li>
           <li>
             <span className="wbeta-sources-stat-num">{activeSources}</span>
@@ -82,17 +81,17 @@ export default async function WorkspaceSourcesPage() {
         <div className="wbeta-sources-section-head">
           <div>
             <h2 id="sources-upload-title" className="wbeta-sources-section-title">
-              Add repository files
+              Add files
             </h2>
             <p className="wbeta-sources-section-copy">
-              Chat attachments still work for one-off questions. Files placed here become the
-              reusable source repository for future chats and decks.
+              Files added here are reusable across every chat and deck. Chat attachments still
+              work for one-off questions you do not need to keep.
             </p>
           </div>
         </div>
         <WorkspaceUploadZone
           variant="inline"
-          title="Drop source files"
+          title="Drop files here"
           subtitle={`${SUPPORTED_SOURCE_FILES}. Up to 50 MB.`}
           supportedLabel={SUPPORTED_SOURCE_FILES}
         />
@@ -102,21 +101,20 @@ export default async function WorkspaceSourcesPage() {
         <div className="wbeta-sources-section-head">
           <div>
             <h2 id="sources-library-title" className="wbeta-sources-section-title">
-              Internal source repository
+              Your files
             </h2>
             <p className="wbeta-sources-section-copy">
-              Select a file to preview it without leaving the source repository. Download keeps the
-              original untouched for audit and handoff.
+              Click a file to preview it. Download keeps the original untouched.
             </p>
           </div>
         </div>
         <WorkspaceDocumentList
           documents={documents}
-          title="Repository files"
-          emptyTitle="No source files yet."
+          title="Your files"
+          emptyTitle="No files yet."
           emptyBody={
-            "Upload a deck, brief, transcript, dataset, or category note above. " +
-            "Once indexed, Basquio can retrieve excerpts from it and cite the filename in chat."
+            "Drop a deck, a brief, a transcript, a dataset, or a category note above. " +
+            "Once Basquio reads it, every chat answer can cite it."
           }
         />
       </section>
@@ -125,10 +123,10 @@ export default async function WorkspaceSourcesPage() {
         <div className="wbeta-sources-section-head">
           <div>
             <h2 id="sources-web-title" className="wbeta-sources-section-title">
-              External research catalog
+              Web sources
             </h2>
             <p className="wbeta-sources-section-copy">
-              Curated web sources used when workspace files are not enough for market research.
+              Pages Basquio reads on the open web when your files are not enough.
             </p>
           </div>
           <p className="wbeta-sources-section-meta">{activeSources} active</p>

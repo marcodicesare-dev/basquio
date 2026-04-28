@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight, Sparkle } from "@phosphor-icons/react/dist/ssr";
 
 import type { MemoryCounts } from "@/lib/workspace/inspector";
 
@@ -7,52 +8,48 @@ type Props = {
 };
 
 /**
- * Workspace-home "Your workspace remembers" card. Surfaces the moat on
- * the page the analyst spends 80% of their time on. Counts come from
- * getWorkspaceMemoryCounts; the card links to /workspace/memory.
+ * Workspace-home memory card. Anticipation surface, not a counter. Per
+ * SOTA research (Harvey Memory, Notion Skills, Linear Magic), the home
+ * card narrates what the agent learned and invites a next action.
+ * Numbers belong in /workspace/memory, not on home.
  *
- * Renders even at all-zero state because the empty case is the most
- * important one to communicate ("Basquio is ready to start
- * remembering"). The first signal lands here as soon as the user
- * uploads a source or has a chat turn.
+ * The card always links to /workspace/memory so the user can drill in.
+ *
+ * Class namespace `wbeta-home-memory-*` is intentionally separate from
+ * `wbeta-memory-card-*` (used by the inspector's individual entry
+ * cards). Two different cards, two different roles, two namespaces.
  */
 export function WorkspaceMemoryCard({ counts }: Props) {
-  const empty =
-    counts.entities === 0 &&
-    counts.facts === 0 &&
-    counts.activeRules === 0 &&
-    counts.pendingCandidates === 0;
+  const totalRemembered = counts.entities + counts.facts + counts.activeRules;
+  const empty = totalRemembered === 0 && counts.pendingCandidates === 0;
+  const sparse = totalRemembered > 0 && totalRemembered < 5;
 
   return (
-    <Link href="/workspace/memory" className="wbeta-memory-card">
-      <span className="wbeta-memory-card-eyebrow">Your workspace remembers</span>
-      {empty ? (
-        <span className="wbeta-memory-card-empty">
-          Nothing yet. Upload a source or start a chat; entities, facts, and rules will land here.
+    <Link href="/workspace/memory" className="wbeta-home-memory">
+      <span className="wbeta-home-memory-icon" aria-hidden>
+        <Sparkle size={16} weight="fill" />
+      </span>
+      <span className="wbeta-home-memory-body">
+        <span className="wbeta-home-memory-title">
+          {empty
+            ? "Tell me what to remember about your clients."
+            : sparse
+              ? "I am starting to remember a few things about your work."
+              : `I am remembering ${totalRemembered} things about your work.`}
         </span>
-      ) : (
-        <span className="wbeta-memory-card-counts">
-          <span>
-            <strong>{counts.entities}</strong> {counts.entities === 1 ? "entity" : "entities"}
-          </span>
-          <span>·</span>
-          <span>
-            <strong>{counts.facts}</strong> {counts.facts === 1 ? "fact" : "facts"}
-          </span>
-          <span>·</span>
-          <span>
-            <strong>{counts.activeRules}</strong> {counts.activeRules === 1 ? "rule" : "rules"}
-          </span>
-          {counts.pendingCandidates > 0 ? (
-            <>
-              <span>·</span>
-              <span className="wbeta-memory-card-pending">
-                <strong>{counts.pendingCandidates}</strong> pending review
-              </span>
-            </>
-          ) : null}
+        <span className="wbeta-home-memory-hint">
+          {empty
+            ? "Drop a brief, an export, or ask me a question. I will start saving what matters."
+            : counts.pendingCandidates > 0
+              ? `${counts.pendingCandidates} ${
+                  counts.pendingCandidates === 1 ? "item is" : "items are"
+                } waiting for you to confirm.`
+              : "Open my memory to see what I know and pin what should never change."}
         </span>
-      )}
+      </span>
+      <span className="wbeta-home-memory-arrow" aria-hidden>
+        <ArrowRight size={14} weight="bold" />
+      </span>
     </Link>
   );
 }

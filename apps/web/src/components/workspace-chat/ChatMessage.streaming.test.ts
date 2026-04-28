@@ -119,7 +119,7 @@ describe("ChatMessage streaming render", () => {
 
     render(React.createElement(ChatMessage, { message, isStreaming: false }));
 
-    fireEvent.click(screen.getByRole("button", { name: /Found 2 source excerpts/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Read 2 excerpts from your files/ }));
 
     expect(screen.getByText("Coffee market brief.pdf")).not.toBeNull();
     expect(screen.getByText("Italy coffee 2025.xlsx")).not.toBeNull();
