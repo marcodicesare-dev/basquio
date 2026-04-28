@@ -9895,14 +9895,21 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 /* On chat surfaces (home + scope + chat thread) the composer needs to
-   pin to the actual viewport bottom. The default 21px main padding
-   pushed it 21px above the viewport bottom, which Marco called out as
-   the composer "going down" when scrolling. Remove the bottom padding
-   on chat surfaces so the composer hugs the bottom edge. Non-chat
-   admin / memory / sources / people pages keep the breathing room. */
+   pin to the actual viewport bottom. Two things shipped this gap
+   above the viewport bottom: `.wbeta-main` had `padding-bottom: 21px`
+   AND `.wbeta-workspace-layout` was `height: calc(100dvh - 42px)`
+   (21px reserved on each end). Both zeroed on chat surfaces so the
+   composer's `bottom: 14px` sticky offset lands 14px above the actual
+   viewport edge. Non-chat admin / memory / sources / people pages
+   keep the breathing room. */
 body:has(.wbeta-home-chat-only) .wbeta-main,
 body:has(.wbeta-chat-pane) .wbeta-main {
   padding-bottom: 0;
+}
+
+body:has(.wbeta-home-chat-only) .wbeta-workspace-layout,
+body:has(.wbeta-chat-pane) .wbeta-workspace-layout {
+  height: calc(100dvh - 21px);
 }
 
 @media (max-width: 639px) {
