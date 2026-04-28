@@ -24,6 +24,11 @@ import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
  * "user"), which is correct: the chat-taught entries do not have a
  * structured rule type, and the user explicitly asked Basquio to
  * remember them.
+ *
+ * Strips leading markdown markers (`# `, `## `, `* `, `- `) from the
+ * memory_entries content because some rules saved by older flows had
+ * a markdown title prefix that leaked into the rule card and looked
+ * like raw markdown in the UI.
  */
 function proceduralMemoryAsRule(entry: MemoryRow, workspaceId: string): WorkspaceRule {
   return {
@@ -31,7 +36,7 @@ function proceduralMemoryAsRule(entry: MemoryRow, workspaceId: string): Workspac
     workspace_id: entry.workspace_id ?? workspaceId,
     scope_id: entry.workspace_scope_id,
     rule_type: "always",
-    rule_text: entry.content,
+    rule_text: stripLeadingMarkdown(entry.content),
     applies_to: [],
     forbidden: [],
     origin: "user",
@@ -49,6 +54,19 @@ function proceduralMemoryAsRule(entry: MemoryRow, workspaceId: string): Workspac
     created_at: entry.created_at,
     updated_at: entry.updated_at,
   };
+}
+
+function stripLeadingMarkdown(content: string): string {
+  // Remove leading "# ", "## ", "### ", "* ", "- " from each non-empty
+  // line so a memory entry that was saved with a markdown header (e.g.
+  // "# Chart conventions for Mulino Bianco - Elena Bianchi prefers...")
+  // renders as plain prose in the rule card. The actual rule text
+  // semantics do not change; only the typographic clutter goes away.
+  return content
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:#{1,6}\s+|[*\-]\s+)/, ""))
+    .join("\n")
+    .trim();
 }
 
 export const dynamic = "force-dynamic";
