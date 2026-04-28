@@ -89,11 +89,9 @@ describe("WorkspaceDocumentList", () => {
   it("explains source status badges in plain English", () => {
     render(React.createElement(WorkspaceDocumentList, { documents: [documentRow()] }));
 
-    expect(screen.getByLabelText("What Searchable means")).not.toBeNull();
+    expect(screen.getByLabelText("What Ready means")).not.toBeNull();
     expect(
-      screen.getByText(
-        "Searchable means Basquio can find this file, use its excerpts, and cite it in answers or deck briefs.",
-      ),
+      screen.getByText("I can read this file and cite it in chat answers and decks."),
     ).not.toBeNull();
   });
 });

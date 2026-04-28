@@ -65,7 +65,7 @@ describe("ChatMessage streaming render", () => {
 
     render(React.createElement(ChatMessage, { message, isStreaming: true }));
 
-    expect(screen.getByText("Searching web")).not.toBeNull();
+    expect(screen.getByText("Reading the web")).not.toBeNull();
   });
 
   it("summarizes completed webSearch tool output", () => {
@@ -83,7 +83,7 @@ describe("ChatMessage streaming render", () => {
 
     render(React.createElement(ChatMessage, { message, isStreaming: false }));
 
-    expect(screen.getByText("Searched web, 2 results")).not.toBeNull();
+    expect(screen.getByText("Read the web, 2 results")).not.toBeNull();
   });
 
   it("shows filenames for retrieved workspace source excerpts", () => {
@@ -140,7 +140,7 @@ describe("ChatMessage streaming render", () => {
 
     render(React.createElement(ChatMessage, { message, isStreaming: false }));
 
-    expect(screen.getByText("Web search failed")).not.toBeNull();
+    expect(screen.getByText("I could not read the web")).not.toBeNull();
     expect(screen.getByText(/Web search failed: Invalid request body/)).not.toBeNull();
   });
 

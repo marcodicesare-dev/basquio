@@ -14601,13 +14601,13 @@ body:has(.wbeta-shell) .site-wrap {
 .wbeta-doclist-status {
   display: inline-flex;
   align-items: center;
-  height: 21px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 10px;
   border-radius: var(--radius-pill);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
   flex-shrink: 0;
 }
 
@@ -14627,9 +14627,12 @@ body:has(.wbeta-shell) .site-wrap {
   color: var(--success-text);
 }
 
+/* "Needs reread" is the failure state, but it is recoverable. Soft
+   amber instead of red avoids the gaslighting "everything is on fire"
+   feel when the worker hits a transient hiccup on a 21-file batch. */
 .wbeta-doclist-status-failed {
-  background: var(--danger);
-  color: var(--danger-text);
+  background: rgba(240, 204, 39, 0.18);
+  color: #6a4d00;
 }
 
 .wbeta-doclist-status-deleted {
@@ -14710,15 +14713,15 @@ body:has(.wbeta-shell) .site-wrap {
 
 .wbeta-doclist-retry {
   height: 26px;
-  padding: 0 8px;
+  padding: 0 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-strong);
   background: var(--surface-strong);
   color: var(--text);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
   transition: background 150ms ease-out, border-color 150ms ease-out;
 }
@@ -18372,25 +18375,39 @@ body:has(.wbeta-shell) .site-wrap {
 }
 
 .wbeta-chat-pane.wbeta-scope-chat-pane > .wbeta-ai-chat {
-  justify-content: flex-start;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   padding-top: 0;
   padding-bottom: 0;
 }
 
 .wbeta-chat-pane.wbeta-scope-chat-pane > .wbeta-ai-chat:has(.wbeta-ai-chat-stream) {
-  justify-content: flex-start;
-  overflow-y: auto;
+  overflow: hidden;
   padding-top: 0;
   padding-bottom: 0;
 }
 
 .wbeta-chat-pane.wbeta-scope-chat-pane .wbeta-ai-chat-empty-compact {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 0 21px 8px;
+  text-align: center;
 }
 
 .wbeta-chat-pane.wbeta-scope-chat-pane .wbeta-ai-chat-empty-compact .wbeta-ai-chat-empty-body {
   max-width: 720px;
   color: var(--text-soft);
+  margin: 0 auto;
+}
+
+.wbeta-chat-pane.wbeta-scope-chat-pane .wbeta-ai-chat-prompt-pills {
+  flex: 0 0 auto;
+  justify-content: center;
 }
 
 .wbeta-ai-chat-prompt-pills {

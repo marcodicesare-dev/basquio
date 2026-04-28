@@ -773,48 +773,103 @@ function toolOutputSummary(output: unknown): string {
 }
 
 function toolCopy(toolName: string): { using: string; used: string; failed: string } {
+  // Plain-English summary copy for tool-call status chips. The user is
+  // a CPG analyst, not an engineer: "checking what I remember" beats
+  // "checking saved memory", "reading your files" beats "searching
+  // workspace". Past-tense for completed; present-progressive for
+  // in-flight.
   switch (toolName) {
     case "memory":
       return {
-        using: "Checking saved memory",
-        used: "Checked saved memory",
-        failed: "Memory check failed",
+        using: "Checking what I remember",
+        used: "Checked what I remember",
+        failed: "I could not check what I remember",
       };
     case "retrieveContext":
       return {
-        using: "Searching workspace",
-        used: "Searched workspace",
-        failed: "Workspace search failed",
+        using: "Reading your files",
+        used: "Read your files",
+        failed: "I could not read your files",
       };
     case "webSearch":
       return {
-        using: "Searching web",
-        used: "Searched web",
-        failed: "Web search failed",
+        using: "Reading the web",
+        used: "Read the web",
+        failed: "I could not read the web",
       };
     case "draftBrief":
       return {
-        using: "Drafting brief",
-        used: "Drafted brief",
-        failed: "Brief draft failed",
+        using: "Drafting your brief",
+        used: "Drafted your brief",
+        failed: "I could not draft the brief",
       };
     case "suggestServices":
       return {
-        using: "Finding service ideas",
-        used: "Found service ideas",
-        failed: "Service ideas failed",
+        using: "Finding services that fit",
+        used: "Found services that fit",
+        failed: "I could not find services",
       };
     case "scrapeUrl":
       return {
-        using: "Reading URL",
-        used: "Read URL",
-        failed: "URL read failed",
+        using: "Reading that link",
+        used: "Read that link",
+        failed: "I could not read that link",
       };
     case "saveFromPaste":
       return {
-        using: "Reading pasted text",
-        used: "Read pasted text",
-        failed: "Paste read failed",
+        using: "Reading what you pasted",
+        used: "Read what you pasted",
+        failed: "I could not read what you pasted",
+      };
+    case "analystCommentary":
+      return {
+        using: "Reading your files",
+        used: "Read your files",
+        failed: "I could not read your files",
+      };
+    case "analyzeAttachedFile":
+      return {
+        using: "Analysing the data",
+        used: "Analysed the data",
+        failed: "I could not analyse the data",
+      };
+    case "editRule":
+    case "teachRule":
+      return {
+        using: "Saving what you taught me",
+        used: "Saved what you taught me",
+        failed: "I could not save it",
+      };
+    case "editStakeholder":
+    case "createStakeholder":
+      return {
+        using: "Updating that person",
+        used: "Updated that person",
+        failed: "I could not update that person",
+      };
+    case "showStakeholderCard":
+      return {
+        using: "Looking up that person",
+        used: "Looked up that person",
+        failed: "I could not look that person up",
+      };
+    case "showMetricCard":
+      return {
+        using: "Pulling that number",
+        used: "Pulled that number",
+        failed: "I could not pull that number",
+      };
+    case "explainBasquio":
+      return {
+        using: "Putting together a quick tour",
+        used: "Put together a quick tour",
+        failed: "Quick tour failed",
+      };
+    case "listConversationFiles":
+      return {
+        using: "Looking at the files you shared",
+        used: "Looked at the files you shared",
+        failed: "I could not read your files",
       };
     default:
       return {

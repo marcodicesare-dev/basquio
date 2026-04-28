@@ -46,21 +46,21 @@ type PreviewState =
   | { kind: "error"; documentId: string; message: string };
 
 const STATUS_LABELS: Record<WorkspaceDocumentRow["status"], string> = {
-  processing: "Reading file",
-  indexed: "Searchable",
-  failed: "Could not read",
+  processing: "Reading",
+  indexed: "Ready",
+  failed: "Needs reread",
   deleted: "Removed",
 };
 
 const STATUS_DESCRIPTIONS: Record<WorkspaceDocumentRow["status"], string> = {
   processing:
-    "Basquio is extracting text, tables, and facts from this file so it can use the content in answers.",
+    "I am reading this file so I can use it in answers.",
   indexed:
-    "Searchable means Basquio can find this file, use its excerpts, and cite it in answers or deck briefs.",
+    "I can read this file and cite it in chat answers and decks.",
   failed:
-    "Could not read means Basquio kept the original file, but the searchable copy failed. Try reading it again or replace the file.",
+    "I kept the original file but my reading pass did not finish. Click Try again, or replace the file.",
   deleted:
-    "Removed means this file is no longer available for new retrieval. It may still appear in older history.",
+    "This file is no longer in your repository. Older answers that cite it still work.",
 };
 
 const DEFAULT_EMPTY_BODY =
@@ -596,9 +596,9 @@ function RetryDocumentButton({ documentId }: { documentId: string }) {
         className="wbeta-doclist-retry"
         onClick={handleClick}
         disabled={busy}
-        aria-label="Read this file again"
+        aria-label="Try reading this file again"
       >
-        {busy ? "Reading..." : "Read again"}
+        {busy ? "Reading..." : "Try again"}
       </button>
       {error ? <p className="wbeta-doclist-error">{error}</p> : null}
     </>
