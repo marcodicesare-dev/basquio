@@ -118,7 +118,12 @@ export function WorkspaceGenerationDrawer({
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [removedFileIds, setRemovedFileIds] = useState<Set<string>>(new Set());
   const [stylePanelOpen, setStylePanelOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const firstFocusRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const briefRef = useRef<Brief | null>(null);
+  briefRef.current = brief;
 
   useEffect(() => {
     if (!open) return;
@@ -163,6 +168,68 @@ export function WorkspaceGenerationDrawer({
       cancelled = true;
     };
   }, [open, conversationId, deliverableId, messageId, scopeId, draftBrief]);
+
+  /**
+   * Refresh the pack after an in-drawer upload. Keeps the user-edited
+   * brief intact (we do not call applyDraftBrief on the refreshed
+   * brief, otherwise typed-in changes would get clobbered by the
+   * server's regenerated narrative). Only the pack.sourceFiles list
+   * needs to update so the new file lands in Evidence.
+   */
+  const refreshPack = useCallback(async () => {
+    if (!conversationId && !deliverableId) return;
+    try {
+      const response = await fetch("/api/workspace/prepare-generation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversationId ?? undefined,
+          deliverableId: deliverableId ?? null,
+          messageId: messageId ?? null,
+          scopeId: scopeId ?? null,
+        }),
+      });
+      if (!response.ok) return;
+      const data = (await response.json()) as PrepareResponse;
+      setPack(data.pack);
+    } catch {
+      /* ignore: the file already uploaded; the user can launch once it indexes */
+    }
+  }, [conversationId, deliverableId, messageId, scopeId]);
+
+  const handlePickFile = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      event.target.value = "";
+      if (!files || files.length === 0) return;
+      if (!conversationId) {
+        setUploadError("Cannot attach a file here without an open conversation.");
+        return;
+      }
+      setUploading(true);
+      setUploadError(null);
+      try {
+        const { uploadWorkspaceFile } = await import("@/lib/workspace/upload-client");
+        for (const file of Array.from(files)) {
+          await uploadWorkspaceFile(file, {
+            conversationId,
+            scopeId: scopeId ?? null,
+            origin: "chat-drop",
+          });
+        }
+        await refreshPack();
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : "Upload failed.");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [conversationId, scopeId, refreshPack],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -365,14 +432,41 @@ export function WorkspaceGenerationDrawer({
               ) : null}
 
               <section className="wbeta-gen-section">
-                <label className="wbeta-gen-field-label">
-                  Evidence ({activeFiles.length}/{pack.sourceFiles.length})
-                </label>
+                <div className="wbeta-gen-evidence-head">
+                  <label className="wbeta-gen-field-label">
+                    Evidence ({activeFiles.length}/{pack.sourceFiles.length})
+                  </label>
+                  {conversationId ? (
+                    <button
+                      type="button"
+                      className="wbeta-gen-evidence-add"
+                      onClick={handlePickFile}
+                      disabled={uploading || launching}
+                      aria-label="Attach a file to the brief"
+                    >
+                      <Paperclip size={11} weight="regular" />
+                      {uploading ? "Adding..." : "Add a file"}
+                    </button>
+                  ) : null}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={handleFileChange}
+                  aria-hidden
+                />
                 <p className="wbeta-gen-field-hint">
                   {pack.sourceFiles.length === 0
-                    ? "No cited or attached workspace files yet. Attach a file before generating; the pipeline needs data to read."
+                    ? "No cited or attached workspace files yet. Click Add a file to attach one; the deck pipeline needs data to read."
                     : "Pulled from chat attachments and cited workspace files. Remove anything irrelevant."}
                 </p>
+                {uploadError ? (
+                  <p className="wbeta-gen-error" role="alert">
+                    <WarningCircle size={11} weight="fill" /> {uploadError}
+                  </p>
+                ) : null}
                 {pack.sourceFiles.length > 0 ? (
                   <ul className="wbeta-gen-file-list">
                     {pack.sourceFiles.map((f) => {
@@ -513,7 +607,7 @@ export function WorkspaceGenerationDrawer({
           ) : null}
           {pack && pack.sourceFiles.length === 0 ? (
             <p className="wbeta-gen-foot-hint wbeta-gen-foot-hint-warn">
-              <CheckCircle size={11} weight="fill" /> Add at least one file to the chat (drag onto the pane or paperclip) and the workspace will wire it automatically.
+              <CheckCircle size={11} weight="fill" /> Add at least one file before generating. Use Add a file in Evidence above, or close the drawer and use the chat paperclip.
             </p>
           ) : null}
         </footer>

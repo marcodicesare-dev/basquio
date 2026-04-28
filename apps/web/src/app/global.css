@@ -20834,6 +20834,42 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   line-height: 1.45;
 }
 
+.wbeta-gen-evidence-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 13px;
+}
+
+.wbeta-gen-evidence-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: border-color 150ms ease-out, background 150ms ease-out;
+}
+
+.wbeta-gen-evidence-add:hover:not(:disabled),
+.wbeta-gen-evidence-add:focus-visible:not(:disabled) {
+  border-color: var(--blue);
+  background: #f7faff;
+  outline: none;
+}
+
+.wbeta-gen-evidence-add:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .wbeta-gen-brief {
   font-family: var(--font-manrope), "Avenir Next", sans-serif;
   font-size: 13.5px;
