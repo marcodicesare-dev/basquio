@@ -21319,8 +21319,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .landing-j {
   display: grid;
-  gap: clamp(72px, 8vw, 120px);
+  gap: clamp(48px, 5vw, 76px);
   padding-bottom: 96px;
+}
+
+.landing-j > .public-nav + * {
+  margin-top: clamp(-16px, -1vw, -8px);
 }
 
 /* --- HERO ---------------------------------------------------------------- */
@@ -21330,15 +21334,18 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
   align-items: center;
   gap: clamp(40px, 5vw, 80px);
-  padding: clamp(40px, 5vw, 72px) clamp(28px, 4vw, 56px);
-  margin-top: clamp(24px, 3vw, 40px);
+  padding: clamp(40px, 5vw, 64px) clamp(28px, 4vw, 56px);
+  margin-top: 0;
   border-radius: 14px;
   background:
-    radial-gradient(circle at 4% 10%, rgba(26, 106, 255, 0.05), transparent 32rem),
-    radial-gradient(circle at 96% 96%, rgba(240, 204, 39, 0.07), transparent 22rem),
-    linear-gradient(180deg, #fbf8f1 0%, #f1eadc 100%);
-  border: 1px solid rgba(11, 12, 12, 0.06);
-  box-shadow: 0 24px 48px -28px rgba(11, 12, 12, 0.18);
+    radial-gradient(circle at 8% 12%, rgba(26, 106, 255, 0.07), transparent 30rem),
+    radial-gradient(circle at 94% 96%, rgba(240, 204, 39, 0.09), transparent 22rem),
+    linear-gradient(165deg, #f3ecdb 0%, #ebe1c7 100%);
+  border: 1px solid rgba(11, 12, 12, 0.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 32px 56px -32px rgba(11, 12, 12, 0.22),
+    0 12px 24px -16px rgba(11, 12, 12, 0.1);
 }
 
 .hero-j-copy {
@@ -21466,12 +21473,13 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   grid-template-rows: auto 1fr auto;
   gap: 0;
   background: linear-gradient(180deg, #ffffff 0%, #fdfcf8 100%);
-  border: 1px solid rgba(11, 12, 12, 0.08);
+  border: 1px solid rgba(11, 12, 12, 0.1);
   border-radius: 10px;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 40px 72px -36px rgba(11, 12, 12, 0.32),
-    0 16px 32px -20px rgba(11, 12, 12, 0.14);
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 60px 120px -48px rgba(11, 12, 12, 0.36),
+    0 24px 48px -28px rgba(11, 12, 12, 0.18),
+    0 8px 16px -10px rgba(11, 12, 12, 0.08);
   overflow: hidden;
   min-height: 480px;
 }
@@ -21771,6 +21779,48 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 /* === COMPANION ARTIFACTS (report + workbook ghost references) === */
 
+.hero-j-companions-wrap {
+  display: grid;
+  gap: 10px;
+}
+
+.hero-j-companions-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 14px;
+  width: fit-content;
+  border-radius: 999px;
+  background: rgba(240, 204, 39, 0.18);
+  border: 1px solid rgba(240, 204, 39, 0.42);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.hero-j-companions-tick {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--amber);
+  border: 1px solid #d29c0a;
+}
+
+.hero-j-companions-tick::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 4px;
+  height: 7px;
+  border-right: 2px solid #6b4f08;
+  border-bottom: 2px solid #6b4f08;
+  transform: rotate(45deg) translate(-1px, -2px);
+}
+
 .hero-j-companions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -21782,36 +21832,39 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .hero-j-companion {
   display: grid;
-  grid-template-columns: 32px 1fr auto;
+  grid-template-columns: 36px 1fr;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(11, 12, 12, 0.08);
+  gap: 14px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.1);
   border-radius: 8px;
-  transition: background 160ms ease, border 160ms ease;
+  box-shadow: 0 6px 16px -10px rgba(11, 12, 12, 0.12);
+  transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
 .hero-j-companion:hover {
-  background: #ffffff;
-  border-color: rgba(11, 12, 12, 0.18);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px -12px rgba(11, 12, 12, 0.18);
 }
 
 .hero-j-companion-glyph {
   display: grid;
-  width: 32px;
-  height: 36px;
-  padding: 5px;
-  background: #ffffff;
-  border: 1px solid rgba(11, 12, 12, 0.12);
-  border-radius: 3px;
+  width: 36px;
+  height: 42px;
+  padding: 6px;
+  background: linear-gradient(180deg, #fbfaf6 0%, #f4eddd 100%);
+  border: 1px solid rgba(11, 12, 12, 0.14);
+  border-radius: 4px;
   gap: 3px;
   align-content: start;
+  justify-items: center;
 }
 
 .hero-j-companion-glyph-line {
   height: 2px;
-  background: rgba(11, 12, 12, 0.16);
+  width: 100%;
+  background: rgba(11, 12, 12, 0.18);
   border-radius: 1px;
 }
 
@@ -21821,20 +21874,36 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .hero-j-companion-glyph-grid {
   position: relative;
-  width: 22px;
-  height: 26px;
+  width: 24px;
+  height: 30px;
   background:
-    linear-gradient(rgba(11, 12, 12, 0.12) 1px, transparent 1px) 0 0 / 100% 6px,
-    linear-gradient(90deg, rgba(11, 12, 12, 0.12) 1px, transparent 1px) 0 0 / 7px 100%;
-  border: 1px solid rgba(11, 12, 12, 0.16);
+    linear-gradient(rgba(11, 12, 12, 0.14) 1px, transparent 1px) 0 0 / 100% 6px,
+    linear-gradient(90deg, rgba(11, 12, 12, 0.14) 1px, transparent 1px) 0 0 / 7px 100%;
+  border: 1px solid rgba(11, 12, 12, 0.18);
   border-radius: 1px;
+}
+
+.hero-j-companion-text {
+  display: grid;
+  gap: 0;
+}
+
+.hero-j-companion-kind {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin-bottom: 1px;
 }
 
 .hero-j-companion-name {
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 600;
   color: var(--text);
+  letter-spacing: -0.005em;
 }
 
 .hero-j-companion-meta {
@@ -21842,6 +21911,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   color: var(--text-muted);
+  margin-top: 2px;
 }
 
 /* --- Section primitives -------------------------------------------------- */

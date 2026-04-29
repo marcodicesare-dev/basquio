@@ -117,7 +117,7 @@ export default function HomePage() {
               No model training on customer data. Workspace-level tenant isolation. Encryption in
               transit and at rest. DPA available on request. SOC 2 Type 1 is planned, not claimed.
             </p>
-            <Link className="strip-link" href="/trust">
+            <Link className="strip-link" href="/security">
               Read security details
               <span aria-hidden="true">→</span>
             </Link>

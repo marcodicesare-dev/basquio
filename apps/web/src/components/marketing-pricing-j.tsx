@@ -30,8 +30,8 @@ const buyingModes: Record<BuyingMode, ModeContent> = {
     receive: [
       "Estimated cost before you pay",
       "Credit pack sized to the work",
-      "Deck, report, and Excel from one run",
-      "Three to seven days to delivery",
+      "One run produces deck, report, and Excel",
+      "Download the files when the run completes",
     ],
     price: "Estimated after upload",
     priceCaption: "No subscription. No free credits.",
@@ -41,7 +41,7 @@ const buyingModes: Record<BuyingMode, ModeContent> = {
   },
   workspace: {
     label: "Workspace",
-    caption: "Solo recurring work · 199 / month",
+    caption: "199 / month",
     provide: [
       "Recurring clients, brands, and projects",
       "Briefs, notes, transcripts, past reviews",
@@ -62,7 +62,7 @@ const buyingModes: Record<BuyingMode, ModeContent> = {
   },
   team: {
     label: "Team",
-    caption: "Shared recurring work · from 500 / month",
+    caption: "From 500 / month",
     provide: [
       "Team projects and roles",
       "Shared brand rules and templates",
@@ -85,8 +85,16 @@ const buyingModes: Record<BuyingMode, ModeContent> = {
 
 const modeOrder: BuyingMode[] = ["one", "workspace", "team"];
 
-export function BuyingInterface({ variant = "homepage" }: { variant?: "homepage" | "pricing" }) {
-  const [mode, setMode] = useState<BuyingMode>("workspace");
+export function BuyingInterface({
+  variant = "homepage",
+  defaultMode,
+}: {
+  variant?: "homepage" | "pricing";
+  defaultMode?: BuyingMode;
+}) {
+  const initialMode: BuyingMode =
+    defaultMode ?? (variant === "pricing" ? "one" : "workspace");
+  const [mode, setMode] = useState<BuyingMode>(initialMode);
   const active = buyingModes[mode];
 
   return (

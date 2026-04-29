@@ -182,7 +182,7 @@ export const publicNavLinks = [
     label: "Compare",
   },
   {
-    href: "/trust",
+    href: "/security",
     label: "Security",
   },
   {

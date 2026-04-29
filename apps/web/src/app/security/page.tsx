@@ -5,10 +5,10 @@ import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "Trust - How Basquio Protects Your Data",
+  title: "Security · How Basquio handles your data",
   description:
     "Your data is encrypted, never used for AI training, and processed in temporary containers that are destroyed after each run. Here is exactly what happens to your files.",
-  alternates: { canonical: "https://basquio.com/trust" },
+  alternates: { canonical: "https://basquio.com/security" },
 };
 
 const commitments = [

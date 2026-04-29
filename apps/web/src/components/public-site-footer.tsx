@@ -30,7 +30,7 @@ export function PublicSiteFooter() {
 
         <div className="site-footer-column">
           <p className="site-footer-column-title">Trust</p>
-          <Link href="/trust">Security</Link>
+          <Link href="/security">Security</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <a href="mailto:marco@basquio.com">Contact</a>

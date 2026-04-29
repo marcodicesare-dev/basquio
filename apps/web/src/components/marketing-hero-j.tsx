@@ -23,7 +23,7 @@ export function MarketingHeroJ() {
           </Link>
         </div>
 
-        <Link href="/trust" className="hero-j-trust-link">
+        <Link href="/security" className="hero-j-trust-link">
           <span className="hero-j-trust-dot" aria-hidden="true" />
           Security and data handling
         </Link>
@@ -108,24 +108,36 @@ function FinishedDeckArtifact() {
 
 function CompanionArtifacts() {
   return (
-    <ul className="hero-j-companions" aria-label="The same run also produced">
-      <li className="hero-j-companion">
-        <span className="hero-j-companion-glyph" aria-hidden="true">
-          <span className="hero-j-companion-glyph-line" />
-          <span className="hero-j-companion-glyph-line short" />
-          <span className="hero-j-companion-glyph-line" />
-          <span className="hero-j-companion-glyph-line short" />
-        </span>
-        <span className="hero-j-companion-name">narrative_report.md</span>
-        <span className="hero-j-companion-meta">2,400 words · 6 sections</span>
-      </li>
-      <li className="hero-j-companion">
-        <span className="hero-j-companion-glyph" aria-hidden="true">
-          <span className="hero-j-companion-glyph-grid" />
-        </span>
-        <span className="hero-j-companion-name">data_tables.xlsx</span>
-        <span className="hero-j-companion-meta">4 sheets · native charts</span>
-      </li>
-    </ul>
+    <div className="hero-j-companions-wrap">
+      <p className="hero-j-companions-label">
+        <span className="hero-j-companions-tick" aria-hidden="true" />
+        Same run also produced the report and the Excel workbook
+      </p>
+      <ul className="hero-j-companions" aria-label="The same run also produced">
+        <li className="hero-j-companion">
+          <span className="hero-j-companion-glyph" aria-hidden="true">
+            <span className="hero-j-companion-glyph-line" />
+            <span className="hero-j-companion-glyph-line short" />
+            <span className="hero-j-companion-glyph-line" />
+            <span className="hero-j-companion-glyph-line short" />
+          </span>
+          <span className="hero-j-companion-text">
+            <span className="hero-j-companion-kind">Report</span>
+            <span className="hero-j-companion-name">narrative_report.md</span>
+            <span className="hero-j-companion-meta">2,400 words · 6 sections</span>
+          </span>
+        </li>
+        <li className="hero-j-companion">
+          <span className="hero-j-companion-glyph" aria-hidden="true">
+            <span className="hero-j-companion-glyph-grid" />
+          </span>
+          <span className="hero-j-companion-text">
+            <span className="hero-j-companion-kind">Workbook</span>
+            <span className="hero-j-companion-name">data_tables.xlsx</span>
+            <span className="hero-j-companion-meta">4 sheets · native charts</span>
+          </span>
+        </li>
+      </ul>
+    </div>
   );
 }

@@ -34,6 +34,15 @@ const nextConfig: NextConfig = {
     "@basquio/types",
     "@basquio/workflows",
   ],
+  async redirects() {
+    return [
+      {
+        source: "/trust",
+        destination: "/security",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
