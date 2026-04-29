@@ -233,8 +233,8 @@ textarea {
 }
 
 .public-nav {
-  position: sticky;
-  top: 20px;
+  position: relative;
+  top: auto;
   z-index: 10;
 }
 
@@ -21303,8 +21303,8 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .mstudio-workspace-hero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(280px, 0.62fr) minmax(620px, 1.38fr);
-  gap: 44px;
+  grid-template-columns: minmax(380px, 0.84fr) minmax(560px, 1.16fr);
+  gap: 36px;
   min-height: 720px;
   padding: 40px;
   overflow: hidden;
@@ -21334,6 +21334,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   font-size: 5rem;
   line-height: 0.92;
   letter-spacing: 0;
+}
+
+.mstudio-hero h1 {
+  max-width: 13ch;
+  font-size: 3.85rem;
+  line-height: 0.94;
 }
 
 .mstudio-hero-copy p,
@@ -21409,7 +21415,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .mstudio-product {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr) 188px;
+  grid-template-columns: 132px minmax(0, 1fr) 170px;
   gap: 12px;
   min-height: 474px;
   padding: 12px;
@@ -21500,16 +21506,16 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 .mstudio-thread h2 {
-  max-width: 22rem;
+  max-width: 20rem;
   margin: 0;
-  font-size: 1.85rem;
+  font-size: 1.62rem;
   line-height: 1.05;
   letter-spacing: 0;
 }
 
 .mstudio-canvas {
   display: grid;
-  grid-template-columns: 0.82fr 1.18fr;
+  grid-template-columns: 0.68fr 1.32fr;
   gap: 14px;
   min-height: 210px;
 }
@@ -21990,11 +21996,20 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
     padding: 18px;
   }
 
+  .mstudio-hero-copy {
+    gap: 16px;
+  }
+
   .mstudio-hero h1,
   .mstudio-workspace-hero h1,
   .mstudio-page-hero h1 {
     font-size: 2.85rem;
     max-width: 10ch;
+  }
+
+  .mstudio-hero h1 {
+    max-width: 11ch;
+    font-size: 2.52rem;
   }
 
   .mstudio-hero-copy p,
@@ -22012,6 +22027,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
     grid-template-columns: 1fr;
   }
 
+  .mstudio-mode-row {
+    order: 3;
+  }
+
   .mstudio-mode {
     min-height: 50px;
   }
@@ -22021,22 +22040,57 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   }
 
   .mstudio-product {
+    order: 1;
     grid-template-columns: 1fr;
     min-height: 0;
+    padding: 10px;
+  }
+
+  .mstudio-thread {
+    order: 1;
+  }
+
+  .mstudio-thread-body {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .mstudio-canvas {
+    order: -1;
+  }
+
+  .mstudio-thread h2 {
+    max-width: 100%;
+    font-size: 1.12rem;
+    line-height: 1.1;
   }
 
   .mstudio-rail,
   .mstudio-memory {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .mstudio-rail p,
-  .mstudio-memory p {
-    grid-column: 1 / -1;
+    display: none;
   }
 
   .mstudio-canvas {
-    grid-template-columns: 1fr;
+    grid-template-columns: 0.54fr 1.46fr;
+    min-height: 132px;
+  }
+
+  .mstudio-chart {
+    padding: 12px;
+  }
+
+  .mstudio-slide {
+    min-height: 132px;
+    padding: 14px;
+  }
+
+  .mstudio-slide strong {
+    font-size: 1.55rem;
+  }
+
+  .mstudio-output-tray {
+    order: 2;
+    justify-content: flex-start;
   }
 
   .mstudio-section-head h2,

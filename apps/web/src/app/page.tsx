@@ -48,7 +48,7 @@ export default function HomePage() {
       <section className="mstudio-hero">
         <div className="mstudio-hero-copy">
           <p className="section-label light">For market research teams</p>
-          <h1>Stop rebuilding context.</h1>
+          <h1>Your next research deck should not start from zero.</h1>
           <p>
             Basquio keeps the brief, data, notes, template, and past work together. When the direction is
             clear, it drafts the deck, report, Excel file, charts, and review material.

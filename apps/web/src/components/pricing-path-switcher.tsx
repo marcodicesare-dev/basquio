@@ -48,8 +48,8 @@ const paths: Array<{
 ];
 
 export function PricingPathSwitcher() {
-  const [activeId, setActiveId] = useState<PathId>("team");
-  const active = useMemo(() => paths.find((path) => path.id === activeId) ?? paths[2], [activeId]);
+  const [activeId, setActiveId] = useState<PathId>("payg");
+  const active = useMemo(() => paths.find((path) => path.id === activeId) ?? paths[0], [activeId]);
 
   return (
     <section className="mstudio-pricing-tool" aria-labelledby="pricing-tool-title">

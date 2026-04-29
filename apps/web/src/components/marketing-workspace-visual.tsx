@@ -45,8 +45,8 @@ const modes: Array<{
 const sourceItems = ["Brief", "Data", "Notes", "Old deck", "Template"] as const;
 
 export function MarketingWorkspaceVisual() {
-  const [activeId, setActiveId] = useState<ModeId>("workspace");
-  const active = useMemo(() => modes.find((mode) => mode.id === activeId) ?? modes[1], [activeId]);
+  const [activeId, setActiveId] = useState<ModeId>("one");
+  const active = useMemo(() => modes.find((mode) => mode.id === activeId) ?? modes[0], [activeId]);
 
   return (
     <div className={`mstudio-visual mstudio-visual-${active.id}`}>
