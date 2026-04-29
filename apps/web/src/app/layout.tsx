@@ -20,11 +20,11 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://basquio.com"),
   title: {
-    default: "Basquio - Turn Data into Finished Analysis Decks",
+    default: "Basquio · From research files to finished decks, reports, and workbooks",
     template: "%s | Basquio",
   },
   description:
-    "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, an editable PowerPoint, and a data workbook. The only tool that does the analysis AND builds the presentation.",
+    "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for. For recurring research work, the workspace remembers the client, brand, template, and past reviews. Built by FMCG and CPG analysts.",
   icons: {
     icon: "/brand/svg/favicon/basquio-favicon.svg",
     shortcut: "/brand/png/favicon/basquio-favicon-32.png",
@@ -34,18 +34,18 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     siteName: "Basquio",
-    title: "Basquio - Turn Data into Finished Analysis Decks",
+    title: "Basquio · From research files to finished decks, reports, and workbooks",
     description:
-      "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
+      "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for. For recurring research work, the workspace remembers the client, brand, template, and past reviews.",
     images: [{ url: "/brand/png/logo/basquio-logo-dark-bg-4x.png", width: 1200, height: 630, alt: "Basquio" }],
   },
   twitter: {
     card: "summary_large_image",
     site: "@basquio",
     creator: "@basquio",
-    title: "Basquio - Turn Data into Finished Analysis Decks",
+    title: "Basquio · From research files to finished decks, reports, and workbooks",
     description:
-      "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
+      "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for.",
     images: ["/brand/png/logo/basquio-logo-dark-bg-4x.png"],
   },
   alternates: {
@@ -75,7 +75,7 @@ const jsonLd = {
         "https://www.linkedin.com/company/basquio",
       ],
       description:
-        "Basquio turns raw CSV and Excel data into finished PowerPoint decks with real charts, written narrative analysis, and branded templates. Upload a spreadsheet, describe the analysis in two sentences, get a 10-15 slide presentation with methodology, findings, and recommendations.",
+        "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for. For recurring research work, the workspace remembers the client, brand, template, and past reviews. Built by FMCG and CPG analysts.",
     },
     {
       "@type": "SoftwareApplication",
@@ -83,48 +83,45 @@ const jsonLd = {
       name: "Basquio",
       url: "https://basquio.com",
       applicationCategory: "BusinessApplication",
-      applicationSubCategory: "Data Analysis & Presentation Generation",
+      applicationSubCategory: "Decks, reports, and workbooks for market research teams",
       operatingSystem: "Web",
       offers: [
         {
           "@type": "Offer",
-          name: "Starter",
-          price: "19",
-          priceCurrency: "USD",
-          billingIncrement: "P1M",
-          description: "30 credits/month. No branding. 2 template slots.",
-        },
-        {
-          "@type": "Offer",
-          name: "Pro",
-          price: "149",
-          priceCurrency: "USD",
-          billingIncrement: "P1M",
-          description: "200 credits/month. Priority queue. 5 templates.",
-        },
-        {
-          "@type": "Offer",
-          name: "Enterprise",
+          name: "Pay as you go",
           price: "0",
           priceCurrency: "USD",
+          description:
+            "Estimated after upload. Buy a credit pack for one deck, report, or Excel file. No subscription.",
+        },
+        {
+          "@type": "Offer",
+          name: "Workspace Pro",
+          price: "199",
+          priceCurrency: "USD",
           billingIncrement: "P1M",
-          description: "Custom workspace, billing, and template setup.",
+          description:
+            "Private workspace for solo consultants and independent research professionals. 7-day card-required trial.",
+        },
+        {
+          "@type": "Offer",
+          name: "Team Workspace",
+          price: "500",
+          priceCurrency: "USD",
+          billingIncrement: "P1M",
+          description:
+            "Shared workspace for teams preparing recurring research outputs. From 500 per month, multi-user, concierge onboarding.",
         },
       ],
       featureList: [
-        "Upload CSV, Excel, and XLSX data files",
-        "Automated data analysis with real computed metrics",
-        "Chart generation from actual data (matplotlib, PptxGenJS)",
-        "Branded PPTX presentation output",
-        "Narrative markdown report output",
-        "Data workbook with traceable source references",
-        "Brand template interpretation",
-        "Zero-prompt operation",
-        "Audience-aware narrative generation",
-        "Syndicated and market research data support",
-        "Category review deck automation",
+        "Workspace memory for clients, brands, stakeholders, templates, and prior reviews",
+        "Brief, data, notes, and old decks stay together across recurring work",
+        "Editable PowerPoint with charts, storyline, and recommendations",
+        "Written report explaining what changed, why it matters, and what to do next",
+        "Audit-ready Excel workbook with the tables behind every chart",
+        "Brand template and brand-rule interpretation",
+        "Built first for FMCG and CPG market research work",
       ],
-      screenshot: "https://basquio.com/showcase/slide-showcase-chart.svg",
       creator: { "@id": "https://basquio.com/#organization" },
     },
     {

@@ -1,85 +1,22 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { BuyingInterface } from "@/components/marketing-pricing-j";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "Basquio pricing · Pay as you go, Workspace Pro, Team Workspace",
+  title: "Basquio pricing · Pay as you go, Workspace, Team",
   description:
-    "Pay for one output, or use a workspace for recurring research work. Basquio pricing covers pay as you go for one-off outputs, Workspace Pro for solo recurring work, and Team Workspace for shared research teams.",
+    "Pay for one output, or use a workspace for recurring research work. Basquio pricing covers pay as you go for one-off outputs, Workspace for solo recurring work, and Team Workspace for shared research teams.",
   alternates: { canonical: "https://basquio.com/pricing" },
 };
-
-const plans = [
-  {
-    name: "Pay as you go",
-    price: "Estimated after upload",
-    priceCaption: "Buy a credit pack for one output.",
-    forWho: "One deck, report, or Excel file.",
-    accent: false,
-    primary: { label: "Estimate one output", href: "/jobs/new" },
-    secondary: null,
-    bullets: [
-      "Upload the brief and files.",
-      "See the credit estimate before you pay.",
-      "Buy the pack, run the output, download the files.",
-      "No subscription. No free credits.",
-    ],
-    notIncluded: [
-      "Workspace memory between outputs",
-      "Stakeholder, brand, or template recall",
-      "Shared team access",
-    ],
-  },
-  {
-    name: "Workspace Pro",
-    price: "199",
-    priceCaption: "per month, one user",
-    forWho: "Solo consultants and independent professionals doing recurring research work.",
-    accent: true,
-    primary: { label: "Start the trial", href: "/get-started" },
-    secondary: null,
-    bullets: [
-      "Private workspace with memory across recurring work.",
-      "Brief, data, notes, templates, and past reviews stay together.",
-      "Included monthly output usage at normal solo volume.",
-      "Card-required 7-day trial. Cancel before day 7 and you are not charged.",
-    ],
-    notIncluded: [
-      "Multi-user team access",
-      "Shared projects and review trails",
-      "Concierge onboarding",
-    ],
-  },
-  {
-    name: "Team Workspace",
-    price: "From 500",
-    priceCaption: "per month, 2 or more users",
-    forWho: "Teams preparing recurring research outputs every month.",
-    accent: false,
-    primary: { label: "Talk about a team pilot", href: "/about" },
-    secondary: null,
-    bullets: [
-      "Shared workspace, projects, roles, and review trails.",
-      "Memory across brands, categories, stakeholders, templates, and prior reviews.",
-      "Concierge onboarding: stakeholder map, KPI dictionary, retailer canon, last reviews.",
-      "Normal team usage included; fair-use limits agreed in pilot.",
-    ],
-    notIncluded: [
-      "SSO and SOC 2 Type 1 (planned, not shipped)",
-      "Custom data residency",
-      "Dedicated FMCG engineer",
-    ],
-  },
-] as const;
 
 const faqs = [
   {
     question: "Why is there no free plan?",
     answer:
-      "Basquio is built for real client work with real files. Pay as you go lets you start with one output without subscribing or signing up for a free trial that will not last past the first deliverable.",
+      "Basquio is built for real client work with real files. Pay as you go lets you start with one output without subscribing or signing up for a trial that will not last past the first deliverable.",
   },
   {
     question: "Why does pay as you go need an estimate?",
@@ -104,66 +41,31 @@ const faqs = [
   {
     question: "Can I add analyst review on a run?",
     answer:
-      "Yes, for selected outputs. Analyst review is an add-on after a generated run, not the default delivery model. It is not the homepage offer; the homepage offer is the workspace.",
+      "Yes, for selected outputs. Analyst review is an add-on after a generated run, not the default delivery model.",
   },
 ] as const;
 
 export default function PricingPage() {
   return (
-    <div className="page-shell public-page pricing-page">
+    <div className="page-shell public-page pricing-page-j">
       <PublicSiteNav />
 
-      <section className="page-hero pricing-j-hero">
-        <div className="stack pricing-j-hero-copy">
+      <section className="pricing-j-hero">
+        <div className="pricing-j-hero-copy">
           <p className="section-j-eyebrow">Pricing</p>
           <h1 className="pricing-j-title">Choose how you want to use Basquio.</h1>
           <p className="pricing-j-sub">
-            Pay for one output when the work is occasional. Use Workspace Pro or Team Workspace when
-            the context needs to stay alive between outputs.
+            Pay for one output when the work is occasional. Use Workspace or Team Workspace when the
+            context needs to stay alive between outputs.
           </p>
         </div>
       </section>
 
-      <section className="pricing-j-stage">
-        <div className="pricing-j-grid">
-          {plans.map((plan) => (
-            <article
-              key={plan.name}
-              className={
-                plan.accent ? "pricing-j-card pricing-j-card-accent" : "pricing-j-card"
-              }
-            >
-              {plan.accent ? (
-                <span className="pricing-j-flag">Most teams start here</span>
-              ) : null}
-              <p className="pricing-j-card-name">{plan.name}</p>
-              <p className="pricing-j-card-price">{plan.price}</p>
-              <p className="pricing-j-card-price-caption">{plan.priceCaption}</p>
-              <p className="pricing-j-card-for">{plan.forWho}</p>
-
-              <Link className="pricing-j-card-cta" href={plan.primary.href}>
-                {plan.primary.label}
-                <span aria-hidden="true">→</span>
-              </Link>
-
-              <ul className="pricing-j-card-bullets">
-                {plan.bullets.map((bullet) => (
-                  <li key={bullet}>
-                    <span className="pricing-j-tick" aria-hidden="true" />
-                    {bullet}
-                  </li>
-                ))}
-              </ul>
-
-              <p className="pricing-j-card-not-label">Not included</p>
-              <ul className="pricing-j-card-not">
-                {plan.notIncluded.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </div>
+      <section className="pricing-j-buying-stage" aria-labelledby="pricing-buying-heading">
+        <h2 id="pricing-buying-heading" className="visually-hidden">
+          Pricing
+        </h2>
+        <BuyingInterface variant="pricing" />
       </section>
 
       <section className="pricing-j-faq-stage" aria-labelledby="pricing-faq-heading">

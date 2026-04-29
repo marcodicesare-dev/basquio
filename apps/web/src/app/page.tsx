@@ -1,54 +1,31 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BuyingInterface } from "@/components/marketing-pricing-j";
 import { MarketingHeroJ } from "@/components/marketing-hero-j";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
 
 export const metadata: Metadata = {
-  title: "Basquio · Decks, reports, and Excel files from research material",
+  title: "Basquio · From research files to finished decks, reports, and workbooks",
   description:
-    "Basquio turns briefs, data, notes, templates, and past work into decks, reports, and Excel files. Pay as you go for one output, or use a workspace for recurring research work.",
+    "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for. For recurring research work, the workspace remembers the client, brand, template, and past reviews.",
   alternates: { canonical: "https://basquio.com" },
   openGraph: {
-    title: "Basquio · Decks, reports, and Excel files from research material",
+    title: "Basquio · From research files to finished decks, reports, and workbooks",
     description:
-      "Basquio turns briefs, data, notes, templates, and past work into decks, reports, and Excel files. Pay as you go for one output, or use a workspace for recurring research work.",
+      "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for.",
   },
 };
 
-const buyerPaths = [
-  {
-    eyebrow: "Pay as you go",
-    title: "I have one deck, report, or Excel due.",
-    body: "Upload the brief and files, see the estimated cost, buy credits, and run the output.",
-    ctaLabel: "Estimate one output",
-    ctaHref: "/jobs/new",
-  },
-  {
-    eyebrow: "Workspace Pro",
-    title: "I work across recurring clients and projects.",
-    body: "Keep clients, brands, templates, notes, and past work in one private workspace. Best for solo consultants and independent professionals.",
-    ctaLabel: "See Workspace Pro",
-    ctaHref: "#workspace",
-  },
-  {
-    eyebrow: "Team Workspace",
-    title: "My team prepares research outputs every month.",
-    body: "Shared memory for brands, categories, stakeholders, templates, and previous reviews. Built for recurring research work.",
-    ctaLabel: "Talk about a team pilot",
-    ctaHref: "/about",
-  },
-] as const;
-
 const memoryModules = [
-  "Clients",
-  "Brands",
-  "Stakeholders",
-  "Templates",
-  "Past reviews",
-  "Brand rules",
+  { name: "Clients", body: "Who the work is for, the contacts, the relationship history." },
+  { name: "Brands", body: "Brand rules, tone, template, and what was approved last time." },
+  { name: "Stakeholders", body: "Who reads the deck, what they care about, how they respond." },
+  { name: "Templates", body: "Approved layouts, brand-system constraints, source slides." },
+  { name: "Past reviews", body: "What was said in the meeting, what was corrected, why." },
+  { name: "Briefs and data", body: "The original ask, the dataset, the methodology behind the numbers." },
 ] as const;
 
 const useCases = [
@@ -59,33 +36,6 @@ const useCases = [
   "Leadership pack",
 ] as const;
 
-const pricingLanes = [
-  {
-    name: "Pay as you go",
-    price: "Estimated after upload",
-    description: "For one deck, report, or Excel file. No subscription, no free credits.",
-    ctaLabel: "Estimate one output",
-    ctaHref: "/jobs/new",
-    accent: false,
-  },
-  {
-    name: "Workspace Pro",
-    price: "199 / month",
-    description: "Private workspace for recurring clients and projects. Card-required 7-day trial. One user.",
-    ctaLabel: "Start the trial",
-    ctaHref: "/pricing",
-    accent: true,
-  },
-  {
-    name: "Team Workspace",
-    price: "From 500 / month",
-    description: "Shared workspace, projects, onboarding, and normal team usage included.",
-    ctaLabel: "Talk about a team pilot",
-    ctaHref: "/about",
-    accent: false,
-  },
-] as const;
-
 export default function HomePage() {
   return (
     <div className="landing-shell landing-j">
@@ -93,143 +43,25 @@ export default function HomePage() {
 
       <MarketingHeroJ />
 
-      <section className="section-j section-j-router" id="paths" aria-labelledby="router-heading">
+      <section className="section-j section-j-workspace" id="workspace" aria-labelledby="workspace-heading">
         <header className="section-j-head">
-          <p className="section-j-eyebrow">Pick the path that matches the work</p>
-          <h2 id="router-heading" className="section-j-title">
-            Three buyers. One product.
+          <p className="section-j-eyebrow">The workspace</p>
+          <h2 id="workspace-heading" className="section-j-title">
+            The next ask should not start from zero.
           </h2>
+          <p className="section-j-body">
+            The analyst still decides what matters. Basquio holds the context behind recurring work
+            so the next deck, report, or workbook starts closer to done.
+          </p>
         </header>
-        <ul className="path-rows" aria-label="Buyer paths">
-          {buyerPaths.map((path) => (
-            <li key={path.title} className="path-row">
-              <p className="path-row-eyebrow">{path.eyebrow}</p>
-              <h3 className="path-row-title">{path.title}</h3>
-              <p className="path-row-body">{path.body}</p>
-              <Link className="path-row-link" href={path.ctaHref}>
-                {path.ctaLabel}
-                <span aria-hidden="true">→</span>
-              </Link>
+
+        <ul className="memory-grid-v2" aria-label="What the workspace remembers">
+          {memoryModules.map((module) => (
+            <li key={module.name} className="memory-card">
+              <p className="memory-card-name">{module.name}</p>
+              <p className="memory-card-body">{module.body}</p>
             </li>
           ))}
-        </ul>
-      </section>
-
-      <section className="section-j section-j-workspace" id="workspace" aria-labelledby="workspace-heading">
-        <div className="section-j-workspace-grid">
-          <header className="section-j-head">
-            <p className="section-j-eyebrow">The workspace</p>
-            <h2 id="workspace-heading" className="section-j-title">
-              The next ask should not start from zero.
-            </h2>
-            <p className="section-j-body">
-              The analyst still decides what matters. Basquio holds the context behind recurring work
-              so the next deck, report, or workbook starts closer to done. The workspace remembers the
-              client, the brand, the template, the last meeting, and the last review, so the team does
-              not rebuild the same context every time.
-            </p>
-          </header>
-
-          <ul className="memory-grid" aria-label="What the workspace remembers">
-            {memoryModules.map((label) => (
-              <li key={label} className="memory-cell">
-                <span className="memory-cell-tick" aria-hidden="true" />
-                <span>{label}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section className="section-j section-j-output" aria-labelledby="output-heading">
-        <header className="section-j-head">
-          <p className="section-j-eyebrow">One run, three files</p>
-          <h2 id="output-heading" className="section-j-title">
-            Editable presentation, written report, and the workbook behind every number.
-          </h2>
-        </header>
-
-        <ul className="output-trio" aria-label="What Basquio produces">
-          <li className="output-card output-card-deck">
-            <div className="output-card-frame" aria-hidden="true">
-              <div className="output-card-frame-bar">
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="output-card-frame-content">
-                <div className="output-card-frame-headline" />
-                <div className="output-card-frame-chart">
-                  <span style={{ height: "52%" }} />
-                  <span style={{ height: "68%" }} />
-                  <span style={{ height: "44%" }} />
-                  <span style={{ height: "82%" }} />
-                </div>
-                <div className="output-card-frame-line" />
-              </div>
-            </div>
-            <p className="output-card-name">Deck</p>
-            <p className="output-card-body">
-              Editable PowerPoint with charts, storyline, and recommendations. Built to present, not to
-              be rebuilt.
-            </p>
-          </li>
-
-          <li className="output-card output-card-report">
-            <div className="output-card-frame" aria-hidden="true">
-              <div className="output-card-frame-paragraph" />
-              <div className="output-card-frame-paragraph" />
-              <div className="output-card-frame-paragraph short" />
-              <div className="output-card-frame-paragraph" />
-              <div className="output-card-frame-paragraph short" />
-            </div>
-            <p className="output-card-name">Report</p>
-            <p className="output-card-body">
-              Written explanation of what changed, why it matters, and what to do next. Section
-              headings, methodology, recommendations, sources.
-            </p>
-          </li>
-
-          <li className="output-card output-card-excel">
-            <div className="output-card-frame" aria-hidden="true">
-              <div className="output-card-frame-tabs">
-                <span className="active" />
-                <span />
-                <span />
-              </div>
-              <div className="output-card-frame-grid">
-                <div className="output-card-frame-row header">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div className="output-card-frame-row">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div className="output-card-frame-row">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div className="output-card-frame-row">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </div>
-            </div>
-            <p className="output-card-name">Excel</p>
-            <p className="output-card-body">
-              Workbook with the tables behind every chart. Freeze panes, formatted headers, native
-              charts where they matter.
-            </p>
-          </li>
         </ul>
       </section>
 
@@ -241,8 +73,8 @@ export default function HomePage() {
           </h2>
           <p className="section-j-body">
             Category reviews, retailer readouts, brand updates, price and promo analyses, and
-            stakeholder packs all carry context: the client, the brand, the template, the last review.
-            Basquio is built for that kind of work first.
+            stakeholder packs all carry context: the client, the brand, the template, the last
+            review. Basquio is built for that kind of work first.
           </p>
         </header>
 
@@ -253,40 +85,22 @@ export default function HomePage() {
         </ul>
       </section>
 
-      <section className="section-j section-j-pricing" id="pricing-preview" aria-labelledby="pricing-heading">
+      <section className="section-j section-j-buying" id="pricing-preview" aria-labelledby="buying-heading">
         <header className="section-j-head">
           <p className="section-j-eyebrow">Pricing</p>
-          <h2 id="pricing-heading" className="section-j-title">
+          <h2 id="buying-heading" className="section-j-title">
             Pay for one output, or keep the work in a workspace.
           </h2>
           <p className="section-j-body">
             Credits cover one-off output. Workspace subscription covers continuity. Team Workspace
-            covers shared continuity. The pricing logic matches how the work actually arrives.
+            covers shared continuity. Pick what matches the work.
           </p>
         </header>
 
-        <div className="pricing-lanes" role="list">
-          {pricingLanes.map((plan) => (
-            <article
-              key={plan.name}
-              role="listitem"
-              className={
-                plan.accent ? "pricing-lane pricing-lane-accent" : "pricing-lane"
-              }
-            >
-              <p className="pricing-lane-name">{plan.name}</p>
-              <p className="pricing-lane-price">{plan.price}</p>
-              <p className="pricing-lane-body">{plan.description}</p>
-              <Link className="pricing-lane-link" href={plan.ctaHref}>
-                {plan.ctaLabel}
-                <span aria-hidden="true">→</span>
-              </Link>
-            </article>
-          ))}
-        </div>
+        <BuyingInterface variant="homepage" />
 
-        <p className="pricing-lanes-footnote">
-          <Link href="/pricing">See full pricing details</Link>
+        <p className="buying-iface-footnote">
+          <Link href="/pricing">See pricing details</Link>
         </p>
       </section>
 
@@ -316,13 +130,14 @@ export default function HomePage() {
           <header className="strip-grid-head">
             <p className="section-j-eyebrow">The team</p>
             <h2 id="about-heading" className="section-j-title strip-title">
-              Built by people who know this work.
+              Built by FMCG and CPG analysts who lived this work.
             </h2>
           </header>
           <div className="strip-body">
             <p>
-              Basquio comes from engineering, brand, category, and market research work. The product
-              is built around the recurring deliverables teams already prepare by hand.
+              Basquio comes from engineering, brand, category, and market research work inside FMCG
+              and CPG companies. The product is built around the recurring deliverables teams
+              already prepare by hand.
             </p>
             <Link className="strip-link" href="/about">
               Meet the team
