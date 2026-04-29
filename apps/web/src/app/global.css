@@ -23507,3 +23507,161 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   }
 }
 
+
+/* ============================================================================
+   Variant J · Planhat proportion fix
+   Hard ratio: body 13px / titles 40-48px / hero 60-68px.
+   Reduces text density across all below-hero sections. Overrides earlier
+   J-pass values where they were too generous on body and too small on
+   headlines.
+   ============================================================================ */
+
+.section-j-eyebrow {
+  font-size: 0.66rem;
+  letter-spacing: 0.22em;
+}
+
+.section-j-title {
+  font-size: clamp(1.85rem, 3.4vw, 2.85rem);
+  line-height: 1.06;
+  letter-spacing: -0.028em;
+  font-weight: 600;
+}
+
+.section-j-row .section-j-title {
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+}
+
+.section-j-body {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+  max-width: 52ch;
+}
+
+.section-j-row .section-j-body {
+  font-size: 0.84rem;
+  max-width: 50ch;
+}
+
+.section-j-content {
+  gap: clamp(36px, 4vw, 56px);
+  max-width: 52ch;
+}
+
+.section-j-content .section-j-head {
+  gap: 14px;
+}
+
+/* Product list · tight, small */
+.product-list {
+  border-top: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.product-line {
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 20px;
+  padding: 18px 0;
+}
+
+.product-line-name {
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+.product-line-body {
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+/* Memory list · tight, small */
+.memory-list {
+  grid-template-columns: 1fr 1fr;
+  gap: 20px clamp(24px, 3vw, 36px);
+  padding-top: 22px;
+}
+
+.memory-line-name {
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+.memory-line-body {
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+/* Strip / row sections · tighter */
+.section-j-row .section-j-link {
+  font-size: 0.82rem;
+}
+
+/* Dark stage · same proportion */
+.section-j-stage-dark .section-j-title-light {
+  font-size: clamp(1.85rem, 3.4vw, 2.85rem);
+}
+
+.section-j-stage-dark .section-j-body-light {
+  font-size: 0.84rem;
+  max-width: 52ch;
+}
+
+/* Buying interface · tighter inside the dark stage */
+.section-j-stage-dark .buying-iface {
+  font-size: 0.86rem;
+}
+
+.section-j-stage-dark .buying-iface-mode-label {
+  font-size: 0.92rem;
+}
+
+.section-j-stage-dark .buying-iface-mode-caption {
+  font-size: 0.7rem;
+}
+
+.section-j-stage-dark .buying-iface-list li {
+  font-size: 0.82rem;
+}
+
+.section-j-stage-dark .buying-iface-col-head {
+  font-size: 0.66rem;
+  letter-spacing: 0.2em;
+}
+
+.section-j-stage-dark .buying-iface-price {
+  font-size: clamp(1.55rem, 2.2vw, 1.95rem);
+}
+
+.section-j-stage-dark .buying-iface-price-caption {
+  font-size: 0.78rem;
+}
+
+.section-j-stage-dark .buying-iface-trial {
+  font-size: 0.78rem;
+}
+
+.section-j-stage-dark .buying-iface-cta {
+  font-size: 0.88rem;
+  height: 42px;
+}
+
+@media (max-width: 960px) {
+  .section-j-title {
+    font-size: clamp(1.65rem, 5.4vw, 2.05rem);
+  }
+
+  .section-j-row .section-j-title {
+    font-size: clamp(1.5rem, 5vw, 1.9rem);
+  }
+
+  .section-j-body {
+    font-size: 0.86rem;
+  }
+
+  .memory-list {
+    grid-template-columns: 1fr;
+  }
+}
+
