@@ -166,8 +166,12 @@ export const howItWorksChecks = [
 
 export const publicNavLinks = [
   {
-    href: "/#workflow",
-    label: "Product",
+    href: "/#workspace",
+    label: "Workspace",
+  },
+  {
+    href: "/#paths",
+    label: "Pay as you go",
   },
   {
     href: "/pricing",
@@ -178,12 +182,8 @@ export const publicNavLinks = [
     label: "Compare",
   },
   {
-    href: "/powerpoint-tax",
-    label: "PowerPoint Tax",
-  },
-  {
-    href: "/blog",
-    label: "Blog",
+    href: "/trust",
+    label: "Security",
   },
   {
     href: "/about",

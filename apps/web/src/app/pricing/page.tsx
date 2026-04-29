@@ -1,133 +1,111 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
+import Link from "next/link";
 
-import { CreditPackShelf } from "@/components/credit-pack-shelf";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
-import { PricingPlans } from "@/components/pricing-plans";
 
 export const metadata: Metadata = {
-  title: "Pricing",
+  title: "Basquio pricing · Pay as you go, Workspace Pro, Team Workspace",
   description:
-    "Start free with 30 credits. Upgrade to Starter at $19/mo or Pro at $149/mo when the workflow becomes recurring. Basquio turns spreadsheets into finished analysis decks, narratives, and workbooks.",
+    "Pay for one output, or use a workspace for recurring research work. Basquio pricing covers pay as you go for one-off outputs, Workspace Pro for solo recurring work, and Team Workspace for shared research teams.",
   alternates: { canonical: "https://basquio.com/pricing" },
 };
 
-const outputTypes = [
+const plans = [
   {
-    name: "Memo",
-    credits: "3 credits",
-    artifacts: "XLSX + MD",
-    description: "Written analysis + data workbook. Fast, no slides.",
-    time: "~2 min",
-    highlight: false,
+    name: "Pay as you go",
+    price: "Estimated after upload",
+    priceCaption: "Buy a credit pack for one output.",
+    forWho: "One deck, report, or Excel file.",
+    accent: false,
+    primary: { label: "Estimate one output", href: "/jobs/new" },
+    secondary: null,
+    bullets: [
+      "Upload the brief and files.",
+      "See the credit estimate before you pay.",
+      "Buy the pack, run the output, download the files.",
+      "No subscription. No free credits.",
+    ],
+    notIncluded: [
+      "Workspace memory between outputs",
+      "Stakeholder, brand, or template recall",
+      "Shared team access",
+    ],
   },
   {
-    name: "Deck",
-    credits: "10 slides = 13 credits",
-    artifacts: "PPTX + MD + XLSX",
-    description: "Full deck with real charts, written analysis, and data workbook.",
-    time: "~15 min",
-    highlight: true,
+    name: "Workspace Pro",
+    price: "199",
+    priceCaption: "per month, one user",
+    forWho: "Solo consultants and independent professionals doing recurring research work.",
+    accent: true,
+    primary: { label: "Start the trial", href: "/get-started" },
+    secondary: null,
+    bullets: [
+      "Private workspace with memory across recurring work.",
+      "Brief, data, notes, templates, and past reviews stay together.",
+      "Included monthly output usage at normal solo volume.",
+      "Card-required 7-day trial. Cancel before day 7 and you are not charged.",
+    ],
+    notIncluded: [
+      "Multi-user team access",
+      "Shared projects and review trails",
+      "Concierge onboarding",
+    ],
   },
   {
-    name: "Deep-Dive",
-    credits: "10 slides = 25 credits",
-    artifacts: "PPTX + MD + XLSX",
-    description: "Consulting-grade depth. The full treatment.",
-    time: "~25 min",
-    highlight: false,
+    name: "Team Workspace",
+    price: "From 500",
+    priceCaption: "per month, 2 or more users",
+    forWho: "Teams preparing recurring research outputs every month.",
+    accent: false,
+    primary: { label: "Talk about a team pilot", href: "/about" },
+    secondary: null,
+    bullets: [
+      "Shared workspace, projects, roles, and review trails.",
+      "Memory across brands, categories, stakeholders, templates, and prior reviews.",
+      "Concierge onboarding: stakeholder map, KPI dictionary, retailer canon, last reviews.",
+      "Normal team usage included; fair-use limits agreed in pilot.",
+    ],
+    notIncluded: [
+      "SSO and SOC 2 Type 1 (planned, not shipped)",
+      "Custom data residency",
+      "Dedicated FMCG engineer",
+    ],
   },
 ] as const;
 
 const faqs = [
   {
-    question: "What do I get with each output type?",
+    question: "Why is there no free plan?",
     answer:
-      "Every run includes a written analysis (2000+ words with methodology, findings, and recommendations) and a data workbook. Deck and Deep-Dive also include an editable PowerPoint with real charts. Deep-Dive runs a deeper analytical pass for more nuanced findings.",
+      "Basquio is built for real client work with real files. Pay as you go lets you start with one output without subscribing or signing up for a free trial that will not last past the first deliverable.",
   },
   {
-    question: "How do credits work?",
+    question: "Why does pay as you go need an estimate?",
     answer:
-      "Memo costs 3 credits flat. Deck uses a progressive formula: 3 base + 1 per slide for the first 10 slides, then 2 per slide after that. Deep-Dive costs 5 base + 2 per slide. Examples: Deck 10 slides = 13 credits, Deck 15 slides = 23 credits, Deep-Dive 20 slides = 45 credits.",
+      "A short report and a 20-slide category review do not cost the same to produce. Basquio estimates the workload from the brief and files before asking you to buy credits, so the price you see is the price for that specific output.",
   },
   {
-    question: "What happens to unused credits?",
+    question: "What happens if a run fails?",
     answer:
-      "Subscription credits roll over for 1 month. Purchased credit packs expire after 12 months. Free tier credits never expire.",
+      "Credits are returned automatically when Basquio fails to produce the promised output files. You never lose credits when the platform fails.",
   },
   {
-    question: "What if a run fails?",
-    answer: "Basquio refunds credits automatically for system failures. You never lose credits when the platform fails.",
-  },
-  {
-    question: "What files can I upload?",
+    question: "What does the workspace remember?",
     answer:
-      "CSV, XLSX, XLS, PDF, PPTX, and plain text. Excel gives the deepest analysis; PPTX and PDF also work for extraction and restyling.",
+      "Clients, brands, stakeholders, templates, brand rules, recurring projects, transcripts, prior reviews, and the corrections you make on past runs. The next brief starts with that context already in place.",
   },
   {
-    question: "Do custom templates cost extra on Free?",
+    question: "Is Team Workspace unlimited?",
     answer:
-      "Yes. Free users pay a $5 per-run custom-template fee. Starter and Pro include template usage inside the plan.",
-  },
-] as const;
-
-const planComparisonRows = [
-  {
-    label: "Who it is for",
-    values: ["Trialing Basquio on real work", "Solo operator", "Power user", "Larger team / procurement"],
+      "It is designed for normal daily team usage. During pilot setup we agree fair-use limits based on team size and expected output volume, so the subscription does not punish heavy weeks.",
   },
   {
-    label: "Monthly credits",
-    values: ["30 free credits once", "30 / month", "200 / month", "Custom"],
+    question: "Can I add analyst review on a run?",
+    answer:
+      "Yes, for selected outputs. Analyst review is an add-on after a generated run, not the default delivery model. It is not the homepage offer; the homepage offer is the workspace.",
   },
-  {
-    label: "Branding on output",
-    values: ["Basquio branding", "No branding", "No branding", "No branding"],
-  },
-  {
-    label: "Custom templates",
-    values: ["Community only", "2 slots", "5 slots", "Custom"],
-  },
-  {
-    label: "Workspace model",
-    values: ["Single user", "Single user", "Single user", "Shared workspace"],
-  },
-  {
-    label: "How to start",
-    values: ["Try before paying", "Subscribe", "Subscribe", "Talk to sales"],
-  },
-] as const;
-
-const outputModes = [
-  {
-    name: "Memo",
-    credits: "3 credits",
-    deliverables: ["Written analysis (2000+ words)", "Data workbook (XLSX)"],
-    fit: "Fast readout when slides are unnecessary.",
-    featured: false,
-  },
-  {
-    name: "Deck",
-    credits: "10 slides = 13 credits",
-    deliverables: ["Editable PPTX with charts", "Written analysis (2000+ words)", "Data workbook (XLSX)"],
-    fit: "Default client-ready report package.",
-    featured: true,
-  },
-  {
-    name: "Deep-Dive",
-    credits: "10 slides = 25 credits",
-    deliverables: ["Full deck with deeper analysis", "Extended written analysis", "Data workbook (XLSX)"],
-    fit: "When the room needs more analysis, not more decoration.",
-    featured: false,
-  },
-] as const;
-
-const creditFormulaRows = [
-  { label: "Memo", formula: "3 flat", note: "No slides." },
-  { label: "Deck", formula: "3 + 1/slide for first 10, then 2/slide", note: "10 slides = 13. 15 slides = 23." },
-  { label: "Deep-Dive", formula: "5 + 2 per slide", note: "10 slides = 25. 20 slides = 45." },
 ] as const;
 
 export default function PricingPage() {
@@ -135,159 +113,85 @@ export default function PricingPage() {
     <div className="page-shell public-page pricing-page">
       <PublicSiteNav />
 
-      <section className="page-hero pricing-hero">
-        <div className="stack pricing-hero-copy">
-          <p className="section-label">Pricing</p>
-          <h1>Start free. Upgrade when you need more.</h1>
-          <p className="page-copy">
-            30 free credits. No credit card. Run your first deck and see what comes back.
+      <section className="page-hero pricing-j-hero">
+        <div className="stack pricing-j-hero-copy">
+          <p className="section-j-eyebrow">Pricing</p>
+          <h1 className="pricing-j-title">Choose how you want to use Basquio.</h1>
+          <p className="pricing-j-sub">
+            Pay for one output when the work is occasional. Use Workspace Pro or Team Workspace when
+            the context needs to stay alive between outputs.
           </p>
         </div>
       </section>
 
-      <PricingPlans />
+      <section className="pricing-j-stage">
+        <div className="pricing-j-grid">
+          {plans.map((plan) => (
+            <article
+              key={plan.name}
+              className={
+                plan.accent ? "pricing-j-card pricing-j-card-accent" : "pricing-j-card"
+              }
+            >
+              {plan.accent ? (
+                <span className="pricing-j-flag">Most teams start here</span>
+              ) : null}
+              <p className="pricing-j-card-name">{plan.name}</p>
+              <p className="pricing-j-card-price">{plan.price}</p>
+              <p className="pricing-j-card-price-caption">{plan.priceCaption}</p>
+              <p className="pricing-j-card-for">{plan.forWho}</p>
 
-      <section className="pricing-comparison-stage">
-        <article className="technical-panel pricing-comparison-panel">
-          <div className="pricing-comparison-head">
-            <div className="stack-xs">
-              <p className="section-label light">Plan comparison</p>
-              <h2>Pick your plan. Adjust scope later.</h2>
-            </div>
-            <p className="muted">
-              Every plan uses the same analysis engine. Higher tiers unlock cheaper credits, more template slots, and cleaner output.
-            </p>
-          </div>
+              <Link className="pricing-j-card-cta" href={plan.primary.href}>
+                {plan.primary.label}
+                <span aria-hidden="true">→</span>
+              </Link>
 
-          <div className="pricing-comparison-table-wrap">
-            <table className="pricing-comparison-table">
-              <thead>
-                <tr>
-                  <th>Decision point</th>
-                  <th>Free</th>
-                  <th>Starter</th>
-                  <th>Pro</th>
-                  <th>Enterprise</th>
-                </tr>
-              </thead>
-              <tbody>
-                {planComparisonRows.map((row) => (
-                  <tr key={row.label}>
-                    <th>{row.label}</th>
-                    {row.values.map((value) => (
-                      <td key={`${row.label}-${value}`}>{value}</td>
-                    ))}
-                  </tr>
+              <ul className="pricing-j-card-bullets">
+                {plan.bullets.map((bullet) => (
+                  <li key={bullet}>
+                    <span className="pricing-j-tick" aria-hidden="true" />
+                    {bullet}
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-      </section>
+              </ul>
 
-      <section className="pricing-explainer-stage">
-        <article className="panel pricing-explainer-panel">
-          <div className="stack-xs">
-            <p className="section-label">Deliverables</p>
-            <h2>Choose the output mode that matches the room.</h2>
-          </div>
-
-          <div className="pricing-mode-grid">
-            {outputModes.map((mode) => (
-              <article
-                key={mode.name}
-                className={mode.featured ? "pricing-mode-card pricing-mode-card-featured" : "pricing-mode-card"}
-              >
-                <div className="pricing-mode-top">
-                  <div>
-                    <p className="pricing-tier-name">{mode.name}</p>
-                    <p className="pricing-mode-credits">{mode.credits}</p>
-                  </div>
-                  {mode.featured ? <span className="pricing-badge">Default</span> : null}
-                </div>
-                <p className="muted">{mode.fit}</p>
-                <ul className="pricing-mode-deliverables">
-                  {mode.deliverables.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
-        </article>
-      </section>
-
-      <section className="pricing-formula-stage">
-        <article className="technical-panel pricing-formula-panel">
-          <div className="stack-xs">
-            <p className="section-label light">Credit logic</p>
-            <h2>Credits map to workload, not vague AI usage.</h2>
-          </div>
-
-          <div className="pricing-formula-body">
-            <div className="pricing-formula-list">
-              {creditFormulaRows.map((row) => (
-                <div key={row.label} className="pricing-formula-row">
-                  <div>
-                    <p className="pricing-tier-name">{row.label}</p>
-                    <p className="pricing-formula-value">{row.formula}</p>
-                  </div>
-                  <p className="muted">{row.note}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="pricing-example-card">
-              <p className="section-label light">Examples</p>
-              <div className="pricing-example-grid">
-                {outputTypes.map((type) => (
-                  <div key={type.name} className="pricing-example-pill">
-                    <strong>{type.name}</strong>
-                    <span>{type.time}</span>
-                    <span>{type.artifacts}</span>
-                  </div>
+              <p className="pricing-j-card-not-label">Not included</p>
+              <ul className="pricing-j-card-not">
+                {plan.notIncluded.map((item) => (
+                  <li key={item}>{item}</li>
                 ))}
-              </div>
-            </div>
-          </div>
-        </article>
-      </section>
-
-      <Suspense fallback={null}>
-        <div id="packs">
-          <CreditPackShelf
-            plan="free"
-            subtitle="Top up anytime. Pack pricing gets cheaper once you subscribe: Free pays $0.88/credit, Starter $0.70, Pro $0.50."
-          />
+              </ul>
+            </article>
+          ))}
         </div>
-      </Suspense>
+      </section>
 
-      <section className="cards">
-        <article className="technical-panel stack-lg">
-          <div className="stack">
-            <p className="section-label light">Common questions</p>
-            <h2>What you pay for, what you get back, and when to move up.</h2>
-          </div>
+      <section className="pricing-j-faq-stage" aria-labelledby="pricing-faq-heading">
+        <header className="section-j-head pricing-j-faq-head">
+          <p className="section-j-eyebrow">Common questions</p>
+          <h2 id="pricing-faq-heading" className="section-j-title">
+            What you pay for, what you get back, and when each plan stops fitting.
+          </h2>
+        </header>
 
-          <div className="faq-list">
-            {faqs.map((faq) => (
-              <details key={faq.question} className="faq-item">
-                <summary>{faq.question}</summary>
-                <p className="muted">{faq.answer}</p>
-              </details>
-            ))}
-          </div>
-        </article>
+        <div className="pricing-j-faq-list">
+          {faqs.map((faq) => (
+            <details key={faq.question} className="pricing-j-faq-item">
+              <summary>{faq.question}</summary>
+              <p>{faq.answer}</p>
+            </details>
+          ))}
+        </div>
       </section>
 
       <PublicSiteFooterCta
-        eyebrow="Ready to try it?"
-        title="Run the first report on live data."
-        copy="Upload your data. Get a finished deck in 15 minutes. 30 free credits, no credit card."
-        primaryLabel="Try it with your data"
+        eyebrow="Ready to start"
+        title="Start with one output. Or set up the workspace."
+        copy="Upload the brief and files for one job. If the work comes back next month, keep the context in a workspace."
+        primaryLabel="Start one output"
         primaryHref="/jobs/new"
-        secondaryLabel="Get started"
-        secondaryHref="/get-started"
+        secondaryLabel="See the workspace"
+        secondaryHref="/#workspace"
       />
       <PublicSiteFooter />
     </div>

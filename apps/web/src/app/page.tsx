@@ -1,278 +1,345 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 
-import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
+import { MarketingHeroJ } from "@/components/marketing-hero-j";
 import { PublicSiteFooter } from "@/components/public-site-footer";
+import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
-import { ScrollWorkflowShowcase } from "@/components/scroll-workflow-showcase";
-import { SlideShowcase } from "@/components/slide-showcase";
 
 export const metadata: Metadata = {
-  title: "Basquio - Turn Data into Finished Analysis Decks",
+  title: "Basquio · Decks, reports, and Excel files from research material",
   description:
-    "Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output. The only AI tool that analyzes data AND builds the presentation.",
+    "Basquio turns briefs, data, notes, templates, and past work into decks, reports, and Excel files. Pay as you go for one output, or use a workspace for recurring research work.",
   alternates: { canonical: "https://basquio.com" },
   openGraph: {
-    title: "Basquio - Turn Data into Finished Analysis Decks",
+    title: "Basquio · Decks, reports, and Excel files from research material",
     description:
-      "Upload CSV, Excel, or spreadsheet data and get back a finished analysis deck with real charts, a narrative report, and editable PPTX output.",
+      "Basquio turns briefs, data, notes, templates, and past work into decks, reports, and Excel files. Pay as you go for one output, or use a workspace for recurring research work.",
   },
 };
 
-const problemCards = [
+const buyerPaths = [
   {
-    title: "Manual chart-building",
-    copy: "Every chart copied from a spreadsheet. Every axis label fixed by hand.",
+    eyebrow: "Pay as you go",
+    title: "I have one deck, report, or Excel due.",
+    body: "Upload the brief and files, see the estimated cost, buy credits, and run the output.",
+    ctaLabel: "Estimate one output",
+    ctaHref: "/jobs/new",
   },
   {
-    title: "Formatting over analysis",
-    copy: "More time aligning boxes than interpreting what the numbers mean.",
+    eyebrow: "Workspace Pro",
+    title: "I work across recurring clients and projects.",
+    body: "Keep clients, brands, templates, notes, and past work in one private workspace. Best for solo consultants and independent professionals.",
+    ctaLabel: "See Workspace Pro",
+    ctaHref: "#workspace",
   },
   {
-    title: "A first draft nobody trusts",
-    copy: "The deck goes out with a caveat. The team presents something unfinished.",
+    eyebrow: "Team Workspace",
+    title: "My team prepares research outputs every month.",
+    body: "Shared memory for brands, categories, stakeholders, templates, and previous reviews. Built for recurring research work.",
+    ctaLabel: "Talk about a team pilot",
+    ctaHref: "/about",
   },
 ] as const;
 
-const pricingSnapshot = [
+const memoryModules = [
+  "Clients",
+  "Brands",
+  "Stakeholders",
+  "Templates",
+  "Past reviews",
+  "Brand rules",
+] as const;
+
+const useCases = [
+  "Category review",
+  "Brand performance update",
+  "Channel readout",
+  "Competitive memo",
+  "Leadership pack",
+] as const;
+
+const pricingLanes = [
   {
-    name: "Free",
-    price: "$0",
-    unit: "30 free credits",
-    copy: "Enough for ~2 Deck runs. No credit card. See if it fits.",
-    highlight: false,
+    name: "Pay as you go",
+    price: "Estimated after upload",
+    description: "For one deck, report, or Excel file. No subscription, no free credits.",
+    ctaLabel: "Estimate one output",
+    ctaHref: "/jobs/new",
+    accent: false,
   },
   {
-    name: "Starter",
-    price: "$19",
-    unit: "/mo",
-    copy: "30 credits/month. No branding. 2 template slots.",
-    highlight: true,
+    name: "Workspace Pro",
+    price: "199 / month",
+    description: "Private workspace for recurring clients and projects. Card-required 7-day trial. One user.",
+    ctaLabel: "Start the trial",
+    ctaHref: "/pricing",
+    accent: true,
   },
   {
-    name: "Pro",
-    price: "$149",
-    unit: "/mo",
-    copy: "200 credits/month. Priority queue. 5 template slots.",
-    highlight: false,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    unit: "",
-    copy: "Shared workspace, custom billing, custom template setup.",
-    highlight: false,
+    name: "Team Workspace",
+    price: "From 500 / month",
+    description: "Shared workspace, projects, onboarding, and normal team usage included.",
+    ctaLabel: "Talk about a team pilot",
+    ctaHref: "/about",
+    accent: false,
   },
 ] as const;
 
 export default function HomePage() {
   return (
-    <div className="landing-shell landing-shell-editorial">
+    <div className="landing-shell landing-j">
       <PublicSiteNav />
 
-      <section className="hero-stage marketing-hero marketing-hero-editorial">
-        <div className="hero-main">
-          <div className="stack">
-            <p className="section-label light">Beautiful Intelligence.</p>
-            <h1>Two weeks of analysis. Delivered in hours.</h1>
-            <p className="hero-subtitle">Upload your data. Get back a finished deck.</p>
-          </div>
+      <MarketingHeroJ />
 
-          <div className="row">
-            <Link className="button" href="/jobs/new">
-              Try it with your data
-            </Link>
-            <Link className="button secondary inverted" href="#workflow">
-              See how it works
-            </Link>
-          </div>
-        </div>
+      <section className="section-j section-j-router" id="paths" aria-labelledby="router-heading">
+        <header className="section-j-head">
+          <p className="section-j-eyebrow">Pick the path that matches the work</p>
+          <h2 id="router-heading" className="section-j-title">
+            Three buyers. One product.
+          </h2>
+        </header>
+        <ul className="path-rows" aria-label="Buyer paths">
+          {buyerPaths.map((path) => (
+            <li key={path.title} className="path-row">
+              <p className="path-row-eyebrow">{path.eyebrow}</p>
+              <h3 className="path-row-title">{path.title}</h3>
+              <p className="path-row-body">{path.body}</p>
+              <Link className="path-row-link" href={path.ctaHref}>
+                {path.ctaLabel}
+                <span aria-hidden="true">→</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-        <div className="hero-product-showcase">
-          <div className="showcase-layer showcase-layer-slide">
-            <div className="showcase-window-chrome" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-            <Image
-              src="/showcase/slide-showcase-executive.svg"
-              alt="Basquio executive overview slide showing KPI cards, segment performance, and a key finding"
-              width={960}
-              height={540}
-              priority
-            />
-          </div>
-
-          <div className="showcase-layer showcase-layer-chart">
-            <div className="showcase-card-heading">
-              <span className="showcase-card-label">Share view</span>
-              <strong>Category mix</strong>
-            </div>
-            <div className="showcase-mini-chart" aria-hidden="true">
-              <span style={{ height: "68%" }} />
-              <span style={{ height: "82%" }} />
-              <span className="accent" style={{ height: "100%" }} />
-              <span style={{ height: "58%" }} />
-              <span style={{ height: "44%" }} />
-            </div>
-            <p>Branded share is compressing while private label accelerates.</p>
-          </div>
-
-          <div className="showcase-layer showcase-layer-report">
-            <div className="showcase-card-heading">
-              <span className="showcase-card-label">Narrative</span>
-              <strong>Key finding</strong>
-            </div>
-            <p>
-              Enterprise carries most value, but private label momentum is shifting the category story in
-              mid-market accounts.
+      <section className="section-j section-j-workspace" id="workspace" aria-labelledby="workspace-heading">
+        <div className="section-j-workspace-grid">
+          <header className="section-j-head">
+            <p className="section-j-eyebrow">The workspace</p>
+            <h2 id="workspace-heading" className="section-j-title">
+              The next ask should not start from zero.
+            </h2>
+            <p className="section-j-body">
+              The analyst still decides what matters. Basquio holds the context behind recurring work
+              so the next deck, report, or workbook starts closer to done. The workspace remembers the
+              client, the brand, the template, the last meeting, and the last review, so the team does
+              not rebuild the same context every time.
             </p>
-            <div className="showcase-report-lines" aria-hidden="true">
-              <span />
-              <span />
-              <span />
+          </header>
+
+          <ul className="memory-grid" aria-label="What the workspace remembers">
+            {memoryModules.map((label) => (
+              <li key={label} className="memory-cell">
+                <span className="memory-cell-tick" aria-hidden="true" />
+                <span>{label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="section-j section-j-output" aria-labelledby="output-heading">
+        <header className="section-j-head">
+          <p className="section-j-eyebrow">One run, three files</p>
+          <h2 id="output-heading" className="section-j-title">
+            Editable presentation, written report, and the workbook behind every number.
+          </h2>
+        </header>
+
+        <ul className="output-trio" aria-label="What Basquio produces">
+          <li className="output-card output-card-deck">
+            <div className="output-card-frame" aria-hidden="true">
+              <div className="output-card-frame-bar">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="output-card-frame-content">
+                <div className="output-card-frame-headline" />
+                <div className="output-card-frame-chart">
+                  <span style={{ height: "52%" }} />
+                  <span style={{ height: "68%" }} />
+                  <span style={{ height: "44%" }} />
+                  <span style={{ height: "82%" }} />
+                </div>
+                <div className="output-card-frame-line" />
+              </div>
             </div>
-          </div>
-        </div>
+            <p className="output-card-name">Deck</p>
+            <p className="output-card-body">
+              Editable PowerPoint with charts, storyline, and recommendations. Built to present, not to
+              be rebuilt.
+            </p>
+          </li>
+
+          <li className="output-card output-card-report">
+            <div className="output-card-frame" aria-hidden="true">
+              <div className="output-card-frame-paragraph" />
+              <div className="output-card-frame-paragraph" />
+              <div className="output-card-frame-paragraph short" />
+              <div className="output-card-frame-paragraph" />
+              <div className="output-card-frame-paragraph short" />
+            </div>
+            <p className="output-card-name">Report</p>
+            <p className="output-card-body">
+              Written explanation of what changed, why it matters, and what to do next. Section
+              headings, methodology, recommendations, sources.
+            </p>
+          </li>
+
+          <li className="output-card output-card-excel">
+            <div className="output-card-frame" aria-hidden="true">
+              <div className="output-card-frame-tabs">
+                <span className="active" />
+                <span />
+                <span />
+              </div>
+              <div className="output-card-frame-grid">
+                <div className="output-card-frame-row header">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="output-card-frame-row">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="output-card-frame-row">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="output-card-frame-row">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+            </div>
+            <p className="output-card-name">Excel</p>
+            <p className="output-card-body">
+              Workbook with the tables behind every chart. Freeze panes, formatted headers, native
+              charts where they matter.
+            </p>
+          </li>
+        </ul>
       </section>
 
-      <section className="social-proof-bar">
-        <p>Built by category analysts and brand managers who lived the reporting cycle.</p>
-      </section>
+      <section className="section-j section-j-vertical" aria-labelledby="vertical-heading">
+        <header className="section-j-head">
+          <p className="section-j-eyebrow">Built first for FMCG and CPG</p>
+          <h2 id="vertical-heading" className="section-j-title">
+            Built for the work that depends on category context.
+          </h2>
+          <p className="section-j-body">
+            Category reviews, retailer readouts, brand updates, price and promo analyses, and
+            stakeholder packs all carry context: the client, the brand, the template, the last review.
+            Basquio is built for that kind of work first.
+          </p>
+        </header>
 
-      <section className="problem-section">
-        <div className="stack">
-          <p className="section-label">The bottleneck</p>
-          <h2>You already have the data. The deck is what takes two weeks.</h2>
-        </div>
-
-        <div className="problem-grid">
-          {problemCards.map((card) => (
-            <article key={card.title} className="problem-card">
-              <h3>{card.title}</h3>
-              <p>{card.copy}</p>
-            </article>
+        <ul className="usecase-row" aria-label="Common use cases">
+          {useCases.map((label) => (
+            <li key={label}>{label}</li>
           ))}
-        </div>
+        </ul>
       </section>
 
-      <section className="transformation-section dark-panel" id="output">
-        <div className="stack">
-          <p className="section-label light">The output</p>
-          <h2>Upload once. Present tomorrow.</h2>
-          <p className="muted">
-            A finished analysis deck with real charts, a narrative report, and an editable PowerPoint. Built to present, not rebuild.
+      <section className="section-j section-j-pricing" id="pricing-preview" aria-labelledby="pricing-heading">
+        <header className="section-j-head">
+          <p className="section-j-eyebrow">Pricing</p>
+          <h2 id="pricing-heading" className="section-j-title">
+            Pay for one output, or keep the work in a workspace.
+          </h2>
+          <p className="section-j-body">
+            Credits cover one-off output. Workspace subscription covers continuity. Team Workspace
+            covers shared continuity. The pricing logic matches how the work actually arrives.
           </p>
-        </div>
+        </header>
 
-        <SlideShowcase />
-      </section>
-
-      <section className="output-examples-section">
-        <div className="stack">
-          <p className="section-label">Real output</p>
-          <h2>See it before you try it.</h2>
-          <p className="muted">
-            These decks were generated by Basquio from uploaded spreadsheets. Not mockups. Download the PPTX and open it yourself.
-          </p>
-        </div>
-
-        <div className="output-examples-grid">
-          <Link href="/library" className="output-example-card">
-            <Image
-              src="/library/analysis/analysis.006.png"
-              alt="Healthcare AI Platform, stacked bar chart slide"
-              width={960}
-              height={540}
-            />
-            <div className="output-example-meta">
-              <span className="library-tier-badge">Deck &middot; 15 slides</span>
-              <p>Healthcare AI Platform, Performance & Growth</p>
-            </div>
-          </Link>
-
-          <Link href="/library" className="output-example-card">
-            <Image
-              src="/library/exec-summary/exec-summary.002.png"
-              alt="Payment Infrastructure, KPI cards slide"
-              width={960}
-              height={540}
-            />
-            <div className="output-example-meta">
-              <span className="library-tier-badge">Memo &middot; 4 slides</span>
-              <p>Payment Infrastructure, Executive Summary</p>
-            </div>
-          </Link>
-
-          <Link href="/library" className="output-example-card">
-            <Image
-              src="/library/deep-analysis/deep-analysis.003.png"
-              alt="E-Commerce Marketplace, category mix stacked bars"
-              width={960}
-              height={540}
-            />
-            <div className="output-example-meta">
-              <span className="library-tier-badge">Deep-Dive &middot; 10 slides</span>
-              <p>E-Commerce Marketplace, Deep Dive</p>
-            </div>
-          </Link>
-        </div>
-
-        <Link className="button secondary" href="/library">
-          See all output examples →
-        </Link>
-      </section>
-
-      <ScrollWorkflowShowcase />
-
-      <section className="pricing-snapshot-section" id="pricing">
-        <div className="pricing-snapshot-head">
-          <div className="stack">
-            <p className="section-label">Pricing</p>
-            <h2>Start free. Pick the model that fits your team.</h2>
-          </div>
-          <Link className="button secondary" href="/pricing">
-            See full pricing
-          </Link>
-        </div>
-
-        <div className="pricing-snapshot-grid">
-          {pricingSnapshot.map((tier) => (
+        <div className="pricing-lanes" role="list">
+          {pricingLanes.map((plan) => (
             <article
-              key={tier.name}
-              className={tier.highlight ? "mini-tier-card pricing-card-highlighted" : "mini-tier-card"}
+              key={plan.name}
+              role="listitem"
+              className={
+                plan.accent ? "pricing-lane pricing-lane-accent" : "pricing-lane"
+              }
             >
-              <p className="mini-tier-name">{tier.name}</p>
-              <p className="mini-tier-price">{tier.price}</p>
-              <p className="pricing-snapshot-unit">{tier.unit}</p>
-              <p className="muted">{tier.copy}</p>
+              <p className="pricing-lane-name">{plan.name}</p>
+              <p className="pricing-lane-price">{plan.price}</p>
+              <p className="pricing-lane-body">{plan.description}</p>
+              <Link className="pricing-lane-link" href={plan.ctaHref}>
+                {plan.ctaLabel}
+                <span aria-hidden="true">→</span>
+              </Link>
             </article>
           ))}
         </div>
-        <p className="pricing-snapshot-note">
-          * Credits and report type are calculated from scope, slide count, and workflow complexity.
+
+        <p className="pricing-lanes-footnote">
+          <Link href="/pricing">See full pricing details</Link>
         </p>
       </section>
 
-      <section className="powerpoint-tax-hook">
-        <p className="section-label">The PowerPoint Tax</p>
-        <h2>You lose about 14 weeks to slides every year.</h2>
-        <p className="muted">The average analyst spends 580 hours a year on manual deck production. Calculate your number.</p>
-        <Link className="button secondary" href="/powerpoint-tax">
-          Calculate your PowerPoint Tax →
-        </Link>
+      <section className="section-j section-j-strip" aria-labelledby="security-heading">
+        <div className="strip-grid">
+          <header className="strip-grid-head">
+            <p className="section-j-eyebrow">Security</p>
+            <h2 id="security-heading" className="section-j-title strip-title">
+              Clear data handling before you upload.
+            </h2>
+          </header>
+          <div className="strip-body">
+            <p>
+              No model training on customer data. Workspace-level tenant isolation. Encryption in
+              transit and at rest. DPA available on request. SOC 2 Type 1 is planned, not claimed.
+            </p>
+            <Link className="strip-link" href="/trust">
+              Read security details
+              <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="section-j section-j-strip section-j-strip-team" aria-labelledby="about-heading">
+        <div className="strip-grid">
+          <header className="strip-grid-head">
+            <p className="section-j-eyebrow">The team</p>
+            <h2 id="about-heading" className="section-j-title strip-title">
+              Built by people who know this work.
+            </h2>
+          </header>
+          <div className="strip-body">
+            <p>
+              Basquio comes from engineering, brand, category, and market research work. The product
+              is built around the recurring deliverables teams already prepare by hand.
+            </p>
+            <Link className="strip-link" href="/about">
+              Meet the team
+              <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+        </div>
       </section>
 
       <PublicSiteFooterCta
         eyebrow="Ready to start"
-        title="Upload your data. Get a finished deck in 15 minutes."
-        copy="Start with a real draft, not a blank slide."
-        primaryLabel="Try it with your data"
+        title="Start with one output. Or set up the workspace."
+        copy="Upload the brief and files for one job. If the work comes back next month, keep the context in a workspace."
+        primaryLabel="Start one output"
         primaryHref="/jobs/new"
-        secondaryLabel="See pricing"
-        secondaryHref="/pricing"
+        secondaryLabel="See the workspace"
+        secondaryHref="#workspace"
       />
       <PublicSiteFooter />
     </div>
