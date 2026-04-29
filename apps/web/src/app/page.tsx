@@ -21,6 +21,39 @@ export const metadata: Metadata = {
   },
 };
 
+const workspaceMemory = [
+  {
+    name: "Client",
+    body: "Who the work is for, the contact, and the relationship history.",
+    illustration: "/marketing/illustrations/memory-spot-client.svg",
+  },
+  {
+    name: "Brand",
+    body: "Brand rules, tone, and what was approved last time.",
+    illustration: "/marketing/illustrations/memory-spot-brand.svg",
+  },
+  {
+    name: "Template",
+    body: "Approved layouts, brand-system constraints, source slides.",
+    illustration: "/marketing/illustrations/memory-spot-template.svg",
+  },
+  {
+    name: "Last meeting",
+    body: "What was said, what was asked for, what stays open.",
+    illustration: "/marketing/illustrations/memory-spot-meeting.svg",
+  },
+  {
+    name: "Past reviews",
+    body: "Prior decisions, corrections, and stakeholder feedback over time.",
+    illustration: "/marketing/illustrations/memory-spot-reviews.svg",
+  },
+  {
+    name: "Approved formats",
+    body: "How the team likes recommendations framed and presented.",
+    illustration: "/marketing/illustrations/memory-spot-formats.svg",
+  },
+] as const;
+
 export default function HomePage() {
   return (
     <div className="landing-shell landing-j">
@@ -33,9 +66,9 @@ export default function HomePage() {
         id="product"
         aria-labelledby="product-heading"
       >
-        <ScrollReveal className="section-j-anchor" as="figure">
+        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure">
           <Image
-            src="/marketing/hero-candidates/basquio-memory-context-07.jpg"
+            src="/marketing/illustrations/product-anchor.svg"
             alt=""
             fill
             sizes="(max-width: 960px) 100vw, 48vw"
@@ -73,15 +106,32 @@ export default function HomePage() {
             Client, brand, template, last meeting, past reviews, approved formats. The next ask
             starts closer to done.
           </p>
+          <ul className="memory-list memory-list-illustrated" aria-label="What the workspace remembers">
+            {workspaceMemory.map((module) => (
+              <li key={module.name} className="memory-line memory-line-illustrated">
+                <Image
+                  src={module.illustration}
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="memory-spot-illustration"
+                />
+                <div className="memory-line-copy">
+                  <p className="memory-line-name">{module.name}</p>
+                  <p className="memory-line-body">{module.body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
           <Link className="section-j-link" href="/#workspace">
             See the workspace
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
 
-        <ScrollReveal className="section-j-anchor" as="figure" delay={120}>
+        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure" delay={120}>
           <Image
-            src="/marketing/hero-candidates/basquio-memory-context-03.jpg"
+            src="/marketing/illustrations/workspace-anchor.svg"
             alt=""
             fill
             sizes="(max-width: 960px) 100vw, 48vw"
@@ -118,9 +168,9 @@ export default function HomePage() {
         className="section-j section-j-row section-j-split section-j-split-image-left"
         aria-labelledby="about-heading"
       >
-        <ScrollReveal className="section-j-anchor" as="figure">
+        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure">
           <Image
-            src="/marketing/hero-candidates/basquio-memory-context-09.jpg"
+            src="/marketing/illustrations/about-anchor.svg"
             alt=""
             fill
             sizes="(max-width: 960px) 100vw, 42vw"
@@ -163,9 +213,9 @@ export default function HomePage() {
           </Link>
         </ScrollReveal>
 
-        <ScrollReveal className="section-j-anchor" as="figure" delay={120}>
+        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure" delay={120}>
           <Image
-            src="/marketing/hero-candidates/basquio-memory-context-06.jpg"
+            src="/marketing/illustrations/security-anchor.svg"
             alt=""
             fill
             sizes="(max-width: 960px) 100vw, 42vw"

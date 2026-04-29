@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
+  <rect width="1600" height="900" fill="#F8F5EF"/>
+  <filter id="s" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+    <feDropShadow dx="0" dy="26" stdDeviation="18" flood-color="#0B0C0C" flood-opacity=".14"/>
+  </filter>
+  <g stroke="#1A6AFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#s)">
+    <g transform="translate(260 258) rotate(-5 170 210)">
+      <rect x="0" y="0" width="340" height="420" rx="18" fill="#FCFAF5"/>
+      <path d="M42 58H154M42 86H118"/>
+      <rect x="42" y="134" width="256" height="152" rx="12" fill="#F8F5EF"/>
+      <path d="M76 246V200M128 246V178M180 246V214M232 246V160"/>
+      <path d="M62 246H278"/>
+      <path d="M58 326H282M58 356H236"/>
+      <path d="M232 246V160" stroke="#F0CC27" stroke-width="7"/>
+    </g>
+    <g transform="translate(625 232) rotate(3 170 215)">
+      <path d="M20 46C20 30 34 18 50 20L184 38C203 40 220 56 224 75L300 386C304 405 290 424 270 424H74C56 424 40 411 36 393L20 46Z" fill="#FCFAF5"/>
+      <path d="M224 78L320 54C340 49 360 64 360 85V374C360 390 349 404 333 408L270 424"/>
+      <path d="M72 126H188M72 158H206M72 190H188M72 222H214M72 254H178"/>
+      <path d="M244 128H314M244 160H300M244 192H320M244 224H292M244 256H312"/>
+    </g>
+    <g transform="translate(1014 268) rotate(5 170 194)">
+      <rect x="0" y="0" width="340" height="388" rx="18" fill="#FCFAF5"/>
+      <path d="M46 58H288M46 104H288M46 150H288M46 196H288M46 242H288M46 288H288M46 334H288"/>
+      <path d="M96 40V350M146 40V350M196 40V350M246 40V350"/>
+      <path d="M46 58H288" stroke="#F0CC27" stroke-width="5"/>
+    </g>
+  </g>
+</svg>
