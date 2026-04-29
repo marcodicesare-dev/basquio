@@ -1,4 +1,4 @@
-export type MarketingVariantKey = "context" | "output" | "team" | "italian";
+export type MarketingVariantKey = "context" | "output" | "team" | "italian" | "conversation";
 
 export type MarketingVariant = {
   key: MarketingVariantKey;
@@ -9,7 +9,7 @@ export type MarketingVariant = {
   secondaryCta: string;
   secondaryHref: string;
   visualTitle: string;
-  visualMode: "context" | "deadline" | "team" | "italian";
+  visualMode: "context" | "deadline" | "team" | "italian" | "conversation";
   routerHeading: string;
   painHeading: string;
   painCopy: string;
@@ -25,7 +25,7 @@ export type MarketingVariant = {
   metadataDescription: string;
 };
 
-export const activeMarketingVariant: MarketingVariantKey = "context";
+export const activeMarketingVariant: MarketingVariantKey = "conversation";
 
 export const marketingVariants: Record<MarketingVariantKey, MarketingVariant> = {
   context: {
@@ -151,6 +151,37 @@ export const marketingVariants: Record<MarketingVariantKey, MarketingVariant> = 
     metadataTitle: "Basquio | Presentazioni, report e file Excel da materiale di ricerca",
     metadataDescription:
       "Basquio tiene insieme brief, dati, appunti, template e lavori passati, poi prepara presentazioni, report e file Excel.",
+  },
+  conversation: {
+    key: "conversation",
+    eyebrow: "Interactive research workspace",
+    hero: "Brief the workspace. Watch the output take shape.",
+    subhead:
+      "Basquio keeps research context, files, templates, stakeholder rules, and past reviews in one working room, then prepares the deck, report, Excel file, charts, and evidence package.",
+    primaryCta: "Run one output",
+    secondaryCta: "Open team path",
+    secondaryHref: "/team-workspace",
+    visualTitle: "Research command room",
+    visualMode: "conversation",
+    routerHeading: "Ask from the shape of the work.",
+    painHeading: "The hard part is not asking AI. It is keeping the research room intact.",
+    painCopy:
+      "Market research work depends on context, judgment, caveats, stakeholder memory, and approved formats. Basquio keeps those parts together.",
+    workspaceHeading: "The workspace remembers what the next request needs.",
+    workspaceCopy:
+      "Briefs, transcripts, notes, source files, templates, brand rules, stakeholder preferences, and review history stay available for the next output.",
+    outputHeading: "The conversation ends in files, not loose text.",
+    outputCopy:
+      "Basquio prepares decks, reports, Excel workbooks, charts, and evidence packages from the same source-backed context.",
+    teamHeading: "For teams that repeat insight work every month.",
+    teamCopy:
+      "Team Workspace gives research, brand, category, and strategy teams a shared place to turn direction into finished outputs.",
+    pricingHeading: "Start with one output or keep a recurring workspace.",
+    pricingCopy:
+      "Pay as you go fits occasional work. Workspace Pro and Team Workspace fit recurring output where context should compound.",
+    metadataTitle: "Basquio | Interactive workspace for research outputs",
+    metadataDescription:
+      "Basquio is an interactive AI workspace for market research teams that keeps context together and prepares decks, reports, Excel files, charts, and evidence packages.",
   },
 };
 
