@@ -10,6 +10,7 @@ import { getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes
 import type { WorkspaceScope } from "@/lib/workspace/types";
 import { analyzeAttachedFile } from "@/lib/workspace/analyze-attached-file";
 import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
+import { recordConversationAttachment } from "@/lib/workspace/conversation-attachments";
 import { saveFromPasteTool, scrapeUrlTool } from "@/lib/workspace/agent-tools-ingest";
 import {
   createStakeholderTool,
@@ -380,6 +381,164 @@ export function listConversationFilesTool(ctx: AgentCallContext) {
   });
 }
 
+/**
+ * listWorkspaceSources: lists indexed knowledge_documents that live in the
+ * current workspace (and, when set, the current scope). This is the bridge
+ * that lets the agent KNOW what files Basquio has remembered for this
+ * client / category before deciding to recall them. Without this surface,
+ * Memory v1 collapses into ChatGPT-with-rules; the analyst would have to
+ * re-paperclip every file every time.
+ *
+ * Pure read. Does not attach anything. Pair with recallWorkspaceFile
+ * to pull a file into the conversation for analyzeAttachedFile.
+ */
+export function listWorkspaceSourcesTool(ctx: AgentCallContext) {
+  return tool({
+    description:
+      "List the workspace's saved files (Sources). Use this when the user asks an analytical question and you want to know which files Basquio remembers for the current client / category before deciding whether to recall one. Returns filename, kind, size, and document id. Filter by current scope by default; pass scope='workspace' to see all.",
+    inputSchema: z.object({
+      scope: z
+        .string()
+        .optional()
+        .describe(
+          "Optional scope filter. Defaults to the current scope when present. Pass 'workspace' to widen.",
+        ),
+      query: z
+        .string()
+        .optional()
+        .describe("Optional substring filter on filename or upload context."),
+      limit: z.number().int().min(1).max(50).default(20),
+    }),
+    execute: async ({ scope, query, limit }) => {
+      const db = getDb();
+      const scopeRow = scope
+        ? scope === "workspace"
+          ? null
+          : await resolveScopeRef(ctx.workspaceId, scope)
+        : ctx.currentScopeId
+          ? await getScope(ctx.currentScopeId)
+          : null;
+      let q = db
+        .from("knowledge_documents")
+        .select(
+          "id, filename, file_type, file_size_bytes, status, kind, upload_context, metadata, created_at",
+        )
+        .eq("organization_id", ctx.workspaceId)
+        .neq("status", "deleted")
+        .in("kind", ["uploaded_file", "brand_book", "chat_paste", "chat_url"])
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (scopeRow) {
+        // Tagged via metadata.linked_scope_id on the demo seed; keep both
+        // shapes (linked_scope_id OR scope_id) in case future seeders use
+        // either form.
+        q = q.or(
+          `metadata->>linked_scope_id.eq.${scopeRow.id},metadata->>scope_id.eq.${scopeRow.id}`,
+        );
+      }
+      if (query) {
+        q = q.or(`filename.ilike.%${query}%,upload_context.ilike.%${query}%`);
+      }
+      const { data, error } = await q;
+      if (error) {
+        return { scope: scopeRow?.name ?? "workspace", count: 0, files: [], error: error.message };
+      }
+      return {
+        scope: scopeRow?.name ?? "workspace",
+        count: (data ?? []).length,
+        files: (data ?? []).map((row) => ({
+          document_id: row.id,
+          filename: row.filename,
+          file_type: row.file_type,
+          file_size_bytes: row.file_size_bytes,
+          status: row.status,
+          kind: row.kind,
+          upload_context: row.upload_context,
+          created_at: row.created_at,
+        })),
+      };
+    },
+  });
+}
+
+/**
+ * recallWorkspaceFile: attaches a workspace knowledge_document to THIS
+ * conversation with origin "referenced-from-workspace". After this returns
+ * the doc shows up in listConversationFiles and is analyzable via
+ * analyzeAttachedFile / analystCommentary, without the user
+ * re-paperclipping the file. This is what makes /workspace/sources a
+ * working memory and not a static dump.
+ *
+ * Idempotent on the conversation_attachments unique key
+ * (conversation_id, document_id).
+ */
+export function recallWorkspaceFileTool(ctx: AgentCallContext) {
+  return tool({
+    description:
+      "Pull a saved workspace file into THIS conversation so it can be analyzed with analyzeAttachedFile or analystCommentary. Use when the user's question needs structured data (CSV, XLSX) or pages from a deck/PDF that already lives in /workspace/sources, instead of asking the user to re-attach. Returns the document so you can chain into analyzeAttachedFile in the same turn.",
+    inputSchema: z.object({
+      document_id: z
+        .string()
+        .uuid()
+        .describe("The knowledge_documents.id from listWorkspaceSources or retrieveContext."),
+      reason: z
+        .string()
+        .max(240)
+        .optional()
+        .describe(
+          "One-line analyst-language reason. Surfaces in the audit log and the chip the user sees.",
+        ),
+    }),
+    execute: async ({ document_id, reason }) => {
+      if (!ctx.conversationId) {
+        return {
+          ok: false,
+          error:
+            "No conversation id on this call; recall only works inside an active chat. Open a chat in the relevant scope first.",
+        };
+      }
+      // Must belong to this workspace + not be deleted.
+      const db = getDb();
+      const { data: doc, error: docErr } = await db
+        .from("knowledge_documents")
+        .select("id, filename, file_type, file_size_bytes, status, kind")
+        .eq("id", document_id)
+        .eq("organization_id", ctx.workspaceId)
+        .neq("status", "deleted")
+        .maybeSingle();
+      if (docErr || !doc) {
+        return {
+          ok: false,
+          error:
+            docErr?.message ??
+            "Document not found in this workspace (or has been removed). Use listWorkspaceSources to see available files.",
+        };
+      }
+      const attached = await recordConversationAttachment({
+        conversationId: ctx.conversationId,
+        documentId: document_id,
+        workspaceId: ctx.workspaceId,
+        workspaceScopeId: ctx.currentScopeId ?? null,
+        uploadedBy: ctx.userEmail,
+        origin: "referenced-from-workspace",
+        metadata: { reason: reason ?? null, recalled_at: new Date().toISOString() },
+      });
+      return {
+        ok: true,
+        document: {
+          document_id: doc.id,
+          filename: doc.filename,
+          file_type: doc.file_type,
+          file_size_bytes: doc.file_size_bytes,
+          status: doc.status,
+        },
+        recalled_via: attached ? "conversation_attachments" : "skipped (conversation row not yet persisted)",
+        next: "Call analyzeAttachedFile (for CSV/XLSX number-cuts) or analystCommentary (for PDF/PPTX/DOCX commentary) on this document_id in the same turn.",
+      };
+    },
+  });
+}
+
 export function getAllTools(ctx: AgentCallContext) {
   const tools = {
     memory: readMemoryTool(ctx),
@@ -389,6 +548,8 @@ export function getAllTools(ctx: AgentCallContext) {
     analyzeAttachedFile: analyzeAttachedFileTool(ctx),
     analystCommentary: analystCommentaryTool(ctx),
     listConversationFiles: listConversationFilesTool(ctx),
+    listWorkspaceSources: listWorkspaceSourcesTool(ctx),
+    recallWorkspaceFile: recallWorkspaceFileTool(ctx),
     showMetricCard: showMetricCardTool(),
     showStakeholderCard: showStakeholderCardTool(ctx),
     editStakeholder: editStakeholderTool(ctx),

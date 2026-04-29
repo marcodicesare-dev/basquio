@@ -871,6 +871,18 @@ function toolCopy(toolName: string): { using: string; used: string; failed: stri
         used: "Looked at the files you shared",
         failed: "I could not read your files",
       };
+    case "listWorkspaceSources":
+      return {
+        using: "Checking your saved files",
+        used: "Checked your saved files",
+        failed: "I could not check your saved files",
+      };
+    case "recallWorkspaceFile":
+      return {
+        using: "Pulling the right file from your sources",
+        used: "Pulled the right file from your sources",
+        failed: "I could not pull that file from your sources",
+      };
     default:
       return {
         using: "Working",
