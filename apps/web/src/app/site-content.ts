@@ -112,7 +112,7 @@ export const detailedComparisonRows = [
     basquio: "Yes",
   },
   {
-    label: "Free tier with no sign-up",
+    label: "Public trial with no sign-up",
     genericAi: "Yes",
     slideGenerators: "Yes",
     basquio: "No",
@@ -166,8 +166,12 @@ export const howItWorksChecks = [
 
 export const publicNavLinks = [
   {
-    href: "/#workflow",
-    label: "Product",
+    href: "/workspace-pro",
+    label: "Workspace",
+  },
+  {
+    href: "/pay-as-you-go",
+    label: "Pay as you go",
   },
   {
     href: "/pricing",
@@ -178,12 +182,8 @@ export const publicNavLinks = [
     label: "Compare",
   },
   {
-    href: "/powerpoint-tax",
-    label: "PowerPoint Tax",
-  },
-  {
-    href: "/blog",
-    label: "Blog",
+    href: "/security",
+    label: "Security",
   },
   {
     href: "/about",
