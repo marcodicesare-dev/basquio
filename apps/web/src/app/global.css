@@ -22822,12 +22822,13 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 .hero-j-headline {
-  max-width: 13ch;
-  font-size: 4.25rem;
-  line-height: 1.03;
-  letter-spacing: 0;
+  max-width: 24ch;
+  font-size: 3.75rem;
+  line-height: 1.05;
+  letter-spacing: -0.012em;
   color: #ffffff;
   text-shadow: 0 28px 72px rgba(0, 0, 0, 0.32);
+  text-wrap: balance;
 }
 
 .hero-j-subhead {

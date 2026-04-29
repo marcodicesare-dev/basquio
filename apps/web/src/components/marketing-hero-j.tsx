@@ -21,9 +21,8 @@ export function MarketingHeroJ() {
           From scattered research files to a finished deck.
         </h1>
         <p className="hero-j-subhead">
-          Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and
-          Excel file your stakeholder asked for. The workspace remembers the client, brand, template,
-          and last review.
+          Basquio turns the brief, data, notes, and templates into the deck, report, and Excel file
+          your stakeholder asked for.
         </p>
 
         <div className="hero-j-actions">
