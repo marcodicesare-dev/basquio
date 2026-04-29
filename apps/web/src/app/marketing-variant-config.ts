@@ -25,7 +25,7 @@ export type MarketingVariant = {
   metadataDescription: string;
 };
 
-export const activeMarketingVariant: MarketingVariantKey = "context";
+export const activeMarketingVariant: MarketingVariantKey = "italian";
 
 export const marketingVariants: Record<MarketingVariantKey, MarketingVariant> = {
   context: {
