@@ -22925,9 +22925,9 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   }
 
   .hero-j-headline {
-    max-width: 11ch;
-    font-size: 2.42rem;
-    line-height: 1.07;
+    max-width: 14ch;
+    font-size: 2.05rem;
+    line-height: 1.08;
   }
 
   .hero-j-subhead {
@@ -23112,3 +23112,398 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
     gap: 20px;
   }
 }
+
+/* ============================================================================
+   Variant J · Planhat-rhythm pass
+   - Tall sections, smaller body, generous whitespace
+   - Split-section layout: image anchor + copy column, alternating side
+   - One dark-stage section break (Pricing on warm onyx)
+   - Scroll-reveal fade-up motion (respects prefers-reduced-motion)
+   ============================================================================ */
+
+/* --- Reveal motion ------------------------------------------------------- */
+
+.reveal-up {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 700ms cubic-bezier(0.22, 0.84, 0.34, 1),
+    transform 700ms cubic-bezier(0.22, 0.84, 0.34, 1);
+  will-change: opacity, transform;
+}
+
+.reveal-up.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-up,
+  .reveal-up.is-revealed {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* --- Landing-j gap (override prior) -------------------------------------- */
+
+.landing-j {
+  gap: clamp(96px, 9vw, 152px);
+}
+
+/* --- Section primitives · Planhat-rhythm pass ---------------------------- */
+
+.section-j {
+  width: 100%;
+}
+
+.section-j-title {
+  font-size: clamp(1.6rem, 2.6vw, 2.4rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.section-j-body {
+  font-size: 0.94rem;
+  line-height: 1.65;
+  color: var(--text-soft);
+  max-width: 56ch;
+}
+
+.section-j-eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+}
+
+.section-j-head {
+  display: grid;
+  gap: 18px;
+  max-width: 56ch;
+}
+
+/* --- Split section · image-anchor + content column ----------------------- */
+
+.section-j-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(40px, 5vw, 96px);
+  align-items: center;
+  min-height: clamp(560px, 72vh, 760px);
+  padding: clamp(48px, 6vw, 96px) 0;
+}
+
+.section-j-split-image-right {
+  /* default order: content first then image; image already last in markup */
+}
+
+.section-j-split-image-left {
+  /* image first then content; markup already has figure first */
+}
+
+.section-j-anchor {
+  position: relative;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  min-height: clamp(420px, 60vh, 620px);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #15110a;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 32px 60px -32px rgba(11, 12, 12, 0.36),
+    0 14px 28px -16px rgba(11, 12, 12, 0.18);
+}
+
+.section-j-anchor::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(11, 12, 12, 0) 0%,
+    rgba(11, 12, 12, 0) 60%,
+    rgba(11, 12, 12, 0.12) 100%
+  );
+}
+
+.section-j-anchor-image {
+  object-fit: cover;
+  object-position: center;
+  filter: saturate(1.04) brightness(0.92);
+}
+
+.section-j-content {
+  display: grid;
+  gap: clamp(28px, 3vw, 48px);
+  align-content: start;
+  max-width: 56ch;
+}
+
+.section-j-content .section-j-head {
+  gap: 16px;
+}
+
+/* --- Product list (smaller body, tighter rhythm) ------------------------- */
+
+.product-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.product-line {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 24px;
+  padding: 22px 0;
+  border-bottom: 1px solid rgba(11, 12, 12, 0.08);
+  border-right: 0;
+}
+
+.product-line:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+  border-right: 0;
+}
+
+.product-line-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.014em;
+  color: var(--text);
+}
+
+.product-line-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+/* --- Memory list (smaller body, two-column inside split) ----------------- */
+
+.memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px clamp(28px, 3vw, 40px);
+  border-top: 1px solid rgba(11, 12, 12, 0.08);
+  padding-top: 24px;
+}
+
+.memory-line {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.memory-line-name {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  color: var(--text);
+}
+
+.memory-line-body {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+/* --- About / Security row inside split ----------------------------------- */
+
+.section-j-row {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.section-j-row .section-j-head {
+  gap: 14px;
+}
+
+.section-j-row .section-j-title {
+  font-size: clamp(1.4rem, 2vw, 1.85rem);
+}
+
+.section-j-row .section-j-body {
+  font-size: 0.94rem;
+}
+
+.section-j-link-row {
+  margin: 0;
+}
+
+.section-j-link {
+  color: var(--blue);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-j-link span {
+  transition: transform 160ms ease;
+}
+
+.section-j-link:hover span {
+  transform: translateX(3px);
+}
+
+/* --- Dark-stage section (Pricing) ---------------------------------------- */
+
+.section-j-stage {
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding: clamp(96px, 10vw, 160px) 0;
+  isolation: isolate;
+}
+
+.section-j-stage-dark {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(240, 204, 39, 0.07), transparent 32rem),
+    radial-gradient(circle at 86% 90%, rgba(26, 106, 255, 0.05), transparent 26rem),
+    linear-gradient(180deg, #0b0c0c 0%, #14110b 100%);
+}
+
+.section-j-stage-dark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.014) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse at 50% 40%, black 30%, transparent 80%);
+}
+
+.section-j-stage-inner {
+  position: relative;
+  z-index: 1;
+  width: min(1200px, calc(100% - 48px));
+  margin: 0 auto;
+  display: grid;
+  gap: clamp(40px, 4vw, 64px);
+}
+
+.section-j-eyebrow-light {
+  color: rgba(240, 204, 39, 0.92) !important;
+}
+
+.section-j-eyebrow-light::before {
+  background: rgba(240, 204, 39, 0.7) !important;
+}
+
+.section-j-title-light {
+  color: #ffffff !important;
+}
+
+.section-j-body-light {
+  color: rgba(255, 255, 255, 0.74) !important;
+}
+
+.buying-iface-footnote-light {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.buying-iface-footnote-light a {
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.32);
+}
+
+.buying-iface-footnote-light a:hover {
+  border-bottom-color: #ffffff;
+}
+
+/* On the dark stage, the buying interface card needs more visual weight */
+.section-j-stage-dark .buying-iface {
+  background: #ffffff;
+  border-color: rgba(11, 12, 12, 0.14);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 60px 120px -48px rgba(0, 0, 0, 0.55),
+    0 24px 48px -28px rgba(0, 0, 0, 0.32);
+}
+
+.section-j-stage-dark .buying-iface-mode-active::after {
+  background: var(--blue);
+}
+
+/* --- Responsive ---------------------------------------------------------- */
+
+@media (max-width: 960px) {
+  .landing-j {
+    gap: clamp(72px, 10vw, 112px);
+  }
+
+  .section-j-split {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    min-height: 0;
+    padding: clamp(32px, 6vw, 64px) 0;
+  }
+
+  .section-j-split-image-right .section-j-anchor {
+    order: -1;
+  }
+
+  .section-j-anchor {
+    min-height: 280px;
+    height: 320px;
+  }
+
+  .memory-list {
+    grid-template-columns: 1fr;
+  }
+
+  .product-line {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .section-j-stage {
+    padding: clamp(64px, 12vw, 96px) 0;
+  }
+
+  .section-j-stage-inner {
+    width: min(560px, calc(100% - 32px));
+  }
+}
+
+@media (max-width: 560px) {
+  .section-j-anchor {
+    height: 240px;
+    min-height: 240px;
+    border-radius: 10px;
+  }
+
+  .section-j-title {
+    font-size: clamp(1.4rem, 5.6vw, 1.85rem);
+  }
+
+  .section-j-body {
+    font-size: 0.9rem;
+  }
+}
+
