@@ -166,12 +166,12 @@ export const howItWorksChecks = [
 
 export const publicNavLinks = [
   {
-    href: "/#workspace",
-    label: "Workspace",
+    href: "/#product",
+    label: "Product",
   },
   {
-    href: "/#paths",
-    label: "Pay as you go",
+    href: "/#workspace",
+    label: "Workspace",
   },
   {
     href: "/pricing",
@@ -180,10 +180,6 @@ export const publicNavLinks = [
   {
     href: "/compare",
     label: "Compare",
-  },
-  {
-    href: "/security",
-    label: "Security",
   },
   {
     href: "/about",

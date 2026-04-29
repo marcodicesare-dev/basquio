@@ -22587,3 +22587,337 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   }
 }
 
+
+/* ============================================================================
+   Variant J refinements · Rossella's shell feedback
+   Solid light-grey persistent nav (Apple-style), calmer type, fewer boxes,
+   editorial Product/Workspace lists, About before Security.
+   ============================================================================ */
+
+/* --- Solid persistent top nav -------------------------------------------- */
+
+.public-nav-shell {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100vw;
+  margin-top: -24px;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  background: #ece6d6;
+  border-bottom: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.public-nav-shell-inner {
+  width: min(1280px, calc(100% - 32px));
+  margin: 0 auto;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: clamp(20px, 3vw, 36px);
+}
+
+.public-nav-brand {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.public-nav-brand img {
+  display: block;
+  height: 18px;
+  width: auto;
+}
+
+.public-nav-list {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: clamp(18px, 2.6vw, 28px);
+  flex: 1;
+}
+
+.public-nav-list .public-nav-link {
+  display: inline-flex;
+  align-items: center;
+  height: 56px;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--text-soft);
+  transition: color 160ms ease;
+}
+
+.public-nav-list .public-nav-link:hover {
+  color: var(--text);
+}
+
+.public-nav-auth {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.public-nav-signin {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  border-radius: 4px;
+  transition: background 160ms ease;
+}
+
+.public-nav-signin:hover {
+  background: rgba(11, 12, 12, 0.04);
+}
+
+@media (max-width: 760px) {
+  .public-nav-shell-inner .public-nav-toggle {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .public-nav-list {
+    display: none;
+    position: absolute;
+    top: 56px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px 16px 16px;
+    background: #ece6d6;
+    border-bottom: 1px solid rgba(11, 12, 12, 0.08);
+  }
+
+  .public-nav-shell-open .public-nav-list {
+    display: flex;
+  }
+
+  .public-nav-list .public-nav-link {
+    height: 44px;
+    border-bottom: 1px solid rgba(11, 12, 12, 0.06);
+  }
+
+  .public-nav-shell-inner {
+    height: 56px;
+    position: relative;
+  }
+
+  .public-nav-auth {
+    display: none;
+  }
+
+  .public-nav-shell-open .public-nav-auth {
+    display: flex;
+    position: absolute;
+    top: 56px;
+    right: 16px;
+    margin-top: 8px;
+  }
+}
+
+/* Override the older .landing-shell padding-top so nav can sit at viewport
+   top:0. The negative margin on .public-nav-shell pulls it up. */
+.landing-shell {
+  padding-top: 0;
+}
+
+/* --- Calmer type scale --------------------------------------------------- */
+
+.hero-j-headline {
+  font-size: clamp(2.1rem, 3.6vw, 3.1rem);
+  letter-spacing: -0.028em;
+  line-height: 1.06;
+}
+
+.section-j-title {
+  font-size: clamp(1.4rem, 2.05vw, 2rem);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.hero-j-subhead {
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.section-j-body {
+  font-size: 0.98rem;
+  line-height: 1.6;
+  max-width: 60ch;
+}
+
+/* --- Product section · editorial trio (no card borders) ------------------ */
+
+.section-j-product {
+  display: grid;
+  gap: 36px;
+}
+
+.product-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-top: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.product-line {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 28px 28px 32px 0;
+  border-bottom: 1px solid rgba(11, 12, 12, 0.08);
+  border-right: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.product-line:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.product-line-name {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  color: var(--text);
+}
+
+.product-line-body {
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.55;
+  color: var(--text-soft);
+  max-width: 32ch;
+}
+
+/* --- Workspace memory · editorial list (replaces dashboard grid) --------- */
+
+.memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 32px 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px clamp(28px, 4vw, 56px);
+  border-top: 1px solid rgba(11, 12, 12, 0.08);
+}
+
+.memory-line {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.memory-line-name {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.014em;
+  color: var(--text);
+}
+
+.memory-line-body {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-soft);
+  max-width: 30ch;
+}
+
+.section-j-workspace {
+  display: grid;
+  gap: 32px;
+}
+
+/* --- About / Security rows · editorial, no boxed strips ------------------ */
+
+.section-j-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
+  gap: clamp(28px, 4vw, 64px);
+  padding: 28px 0;
+  border-top: 1px solid rgba(11, 12, 12, 0.08);
+  background: transparent;
+  border-radius: 0;
+  align-items: start;
+}
+
+.section-j-row .section-j-head {
+  gap: 12px;
+}
+
+.section-j-row .section-j-title {
+  font-size: clamp(1.3rem, 1.8vw, 1.7rem);
+}
+
+.section-j-row .section-j-body {
+  font-size: 0.96rem;
+  color: var(--text-soft);
+  max-width: 60ch;
+}
+
+.section-j-link-row {
+  margin: 0;
+  align-self: start;
+  justify-self: start;
+}
+
+.section-j-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--blue);
+}
+
+.section-j-link span {
+  transition: transform 160ms ease;
+}
+
+.section-j-link:hover span {
+  transform: translateX(3px);
+}
+
+/* --- Mobile responsive for new sections ---------------------------------- */
+
+@media (max-width: 960px) {
+  .product-list {
+    grid-template-columns: 1fr;
+  }
+
+  .product-line {
+    border-right: none;
+    padding-right: 0;
+  }
+
+  .memory-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .section-j-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  .memory-list {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+

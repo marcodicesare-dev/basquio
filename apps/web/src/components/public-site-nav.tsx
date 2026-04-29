@@ -10,46 +10,55 @@ export function PublicSiteNav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <section className={`landing-nav-panel public-nav${open ? " public-nav-open" : ""}`}>
-      <div className="row landing-nav-copy landing-nav-brand-row">
-        <Link href="/" className="brand-lockup" aria-label="Basquio home">
+    <nav className={`public-nav-shell${open ? " public-nav-shell-open" : ""}`} aria-label="Public navigation">
+      <div className="public-nav-shell-inner">
+        <Link href="/" className="public-nav-brand" aria-label="Basquio home">
           <Image
             src="/brand/svg/logo/basquio-logo-light-bg-blue.svg"
             alt="Basquio"
-            width={188}
-            height={30}
+            width={132}
+            height={21}
             priority
           />
         </Link>
+
         <button
           type="button"
           className="public-nav-toggle"
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
+          aria-controls="public-nav-links"
           onClick={() => setOpen((v) => !v)}
         >
           <span className="public-nav-toggle-bar" />
           <span className="public-nav-toggle-bar" />
           <span className="public-nav-toggle-bar" />
         </button>
-      </div>
 
-      <nav className="public-nav-links" aria-label="Public">
-        {publicNavLinks.map((link) => (
-          <Link key={link.href} className="public-nav-link" href={link.href} onClick={() => setOpen(false)}>
-            {link.label}
+        <ul className="public-nav-list" id="public-nav-links">
+          {publicNavLinks.map((link) => (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className="public-nav-link"
+                onClick={() => setOpen(false)}
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        <div className="public-nav-auth">
+          <Link
+            href="/sign-in?next=%2Fdashboard"
+            className="public-nav-signin"
+            onClick={() => setOpen(false)}
+          >
+            Sign in
           </Link>
-        ))}
-      </nav>
-
-      <div className="row landing-nav-copy landing-nav-actions">
-        <Link className="button secondary" href="/sign-in?next=%2Fdashboard">
-          Sign in
-        </Link>
-        <Link className="button" href="/jobs/new">
-          Start one output
-        </Link>
+        </div>
       </div>
-    </section>
+    </nav>
   );
 }
