@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const existing = await findWorkspaceDocumentByHash(contentHash);
+  const existing = await findWorkspaceDocumentByHash(contentHash, workspace.organization_id);
   if (existing) {
     if (conversationId && conversationAttachable) {
       await recordConversationAttachment({
@@ -191,6 +191,8 @@ export async function POST(request: Request) {
     uploadedByEmail: viewer.user.email ?? "unknown",
     uploadedByUserId: viewer.user.id,
     uploadContext,
+    workspaceId: workspace.id,
+    organizationId: workspace.organization_id,
   });
 
   // Execution-first enrichment: inline excerpt + Anthropic Files API id run

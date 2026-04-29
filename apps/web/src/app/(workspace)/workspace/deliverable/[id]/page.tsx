@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { getViewerState } from "@/lib/supabase/auth";
 import { getWorkspaceDeliverable } from "@/lib/workspace/db";
 import { WorkspaceDeliverableView } from "@/components/workspace-deliverable-view";
 import { WorkspaceProvenance } from "@/components/workspace-provenance";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const deliverable = await getWorkspaceDeliverable(id);
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
+  const deliverable = await getWorkspaceDeliverable(id, workspace.id);
   return {
     title: deliverable ? `${deliverable.title} · Basquio` : "Deliverable · Basquio",
   };
@@ -23,7 +27,9 @@ export default async function WorkspaceDeliverablePage({
   const { id } = await params;
   if (!isUuid(id)) notFound();
 
-  const deliverable = await getWorkspaceDeliverable(id);
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
+  const deliverable = await getWorkspaceDeliverable(id, workspace.id);
   if (!deliverable) notFound();
 
   const citations = Array.isArray(deliverable.citations)

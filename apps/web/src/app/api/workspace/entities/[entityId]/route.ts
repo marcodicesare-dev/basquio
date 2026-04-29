@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { getWorkspaceEntityDetail } from "@/lib/workspace/db";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,8 @@ export async function GET(
     return NextResponse.json({ error: "Invalid entity id." }, { status: 400 });
   }
 
-  const detail = await getWorkspaceEntityDetail(entityId);
+  const workspace = await getCurrentWorkspace(viewer);
+  const detail = await getWorkspaceEntityDetail(entityId, workspace.organization_id);
   if (!detail) {
     return NextResponse.json({ error: "Entity not found." }, { status: 404 });
   }

@@ -17,6 +17,7 @@ import {
   SUPPORTED_UPLOAD_EXTENSIONS,
 } from "@/lib/workspace/constants";
 import { findWorkspaceDocumentByHash } from "@/lib/workspace/db";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -62,7 +63,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const existing = await findWorkspaceDocumentByHash(payload.contentHash);
+    const workspace = await getCurrentWorkspace(viewer);
+    const existing = await findWorkspaceDocumentByHash(payload.contentHash, workspace.organization_id);
     if (existing) {
       return NextResponse.json({
         deduplicated: true,

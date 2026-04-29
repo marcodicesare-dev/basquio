@@ -1,12 +1,14 @@
 import { WorkspaceBreadcrumb } from "@/components/workspace-breadcrumb";
 import { WorkspaceDocumentList } from "@/components/workspace-document-list";
 import { WorkspaceUploadZone } from "@/components/workspace-upload-zone";
+import { getViewerState } from "@/lib/supabase/auth";
 import {
   listWorkspaceSourceCatalog,
   listWorkspaceSourceDocuments,
   type WorkspaceSourceCatalogRow,
   type WorkspaceSourceDocumentRow,
 } from "@/lib/workspace/db";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const dynamic = "force-dynamic";
 
@@ -27,14 +29,16 @@ async function safe<T>(promise: Promise<T>, fallback: T, label: string): Promise
 }
 
 export default async function WorkspaceSourcesPage() {
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
   const [documents, sourceCatalog] = await Promise.all([
     safe<WorkspaceSourceDocumentRow[]>(
-      listWorkspaceSourceDocuments(150),
+      listWorkspaceSourceDocuments(150, workspace.organization_id),
       [],
       "list source documents",
     ),
     safe<WorkspaceSourceCatalogRow[]>(
-      listWorkspaceSourceCatalog(150),
+      listWorkspaceSourceCatalog(150, workspace.id),
       [],
       "list source catalog",
     ),

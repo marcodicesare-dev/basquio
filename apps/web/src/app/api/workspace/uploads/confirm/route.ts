@@ -138,7 +138,7 @@ export async function POST(request: Request) {
       createdBy: viewer.user.id,
     });
 
-    const existing = await findWorkspaceDocumentByHash(payload.contentHash);
+    const existing = await findWorkspaceDocumentByHash(payload.contentHash, workspace.organization_id);
     if (existing) {
       await cleanupDuplicateObject(supabaseUrl, serviceKey, payload.storagePath, existing.storage_path);
       let attachedToConversation = false;
@@ -214,9 +214,11 @@ export async function POST(request: Request) {
         uploadedByUserId: viewer.user.id,
         uploadContext: payload.note ?? null,
         kind: payload.kind ?? "uploaded_file",
+        workspaceId: workspace.id,
+        organizationId: workspace.organization_id,
       });
     } catch (error) {
-      const raceWinner = await findWorkspaceDocumentByHash(payload.contentHash);
+      const raceWinner = await findWorkspaceDocumentByHash(payload.contentHash, workspace.organization_id);
       if (raceWinner) {
         await cleanupDuplicateObject(supabaseUrl, serviceKey, payload.storagePath, raceWinner.storage_path);
         let attachedToConversation = false;
@@ -479,12 +481,11 @@ async function handleDedupAttach(
   }
   const viewerId = viewer.user.id;
 
-  const existing = await findWorkspaceDocumentByHash(body.contentHash);
+  const workspace = await getCurrentWorkspace(viewer);
+  const existing = await findWorkspaceDocumentByHash(body.contentHash, workspace.organization_id);
   if (!existing || existing.id !== body.deduplicatedDocumentId) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }
-
-  const workspace = await getCurrentWorkspace(viewer);
   const resolvedScopeId = await resolveScopeOwnership({
     workspaceId: workspace.id,
     scopeId: body.scopeId ?? null,
