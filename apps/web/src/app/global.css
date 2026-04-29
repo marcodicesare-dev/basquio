@@ -6179,8 +6179,7 @@ textarea {
 }
 
 /* Features list pins to top of middle row, whitespace falls between
-   features and the button, creating a natural staircase: Free (3 items,
-   most space below) → Starter (4) → Pro (5, least space) */
+   features and the button, creating a natural staircase across plan sizes. */
 .pricing-plans-section .pricing-features {
   align-self: start;
 }
@@ -22755,6 +22754,177 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   max-width: 60ch;
 }
 
+/* --- Generated hero image integration ------------------------------------- */
+
+.hero-j-stage {
+  min-width: 0;
+}
+
+.hero-j-photo-card {
+  position: relative;
+  margin: 0;
+  min-height: clamp(430px, 42vw, 620px);
+  overflow: hidden;
+  border-radius: 18px;
+  background: #efe4cf;
+  border: 1px solid rgba(11, 12, 12, 0.12);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.48) inset,
+    0 70px 130px -58px rgba(11, 12, 12, 0.42),
+    0 26px 56px -36px rgba(11, 12, 12, 0.24);
+  isolation: isolate;
+}
+
+.hero-j-photo-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(245, 239, 226, 0.82) 0%, rgba(245, 239, 226, 0.18) 42%, rgba(245, 239, 226, 0) 72%),
+    linear-gradient(180deg, rgba(11, 12, 12, 0) 54%, rgba(11, 12, 12, 0.46) 100%);
+  pointer-events: none;
+}
+
+.hero-j-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 55% 50%;
+  transform: scale(1.015);
+  filter: saturate(0.94) contrast(1.03);
+}
+
+.hero-j-photo-caption {
+  position: absolute;
+  z-index: 2;
+  left: clamp(20px, 4vw, 42px);
+  top: clamp(20px, 4vw, 38px);
+  width: min(290px, calc(100% - 40px));
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+}
+
+.hero-j-photo-caption-kicker {
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(26, 106, 255, 0.1);
+  border: 1px solid rgba(26, 106, 255, 0.18);
+  color: var(--blue);
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hero-j-photo-caption-title {
+  font-size: clamp(1.35rem, 2.1vw, 2rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  font-weight: 650;
+}
+
+.hero-j-photo-caption-copy {
+  max-width: 32ch;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: rgba(11, 12, 12, 0.66);
+}
+
+.hero-j-output-strip {
+  position: absolute;
+  z-index: 2;
+  left: clamp(16px, 3vw, 28px);
+  right: clamp(16px, 3vw, 28px);
+  bottom: clamp(16px, 3vw, 28px);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 252, 244, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  box-shadow: 0 18px 48px -28px rgba(11, 12, 12, 0.44);
+  backdrop-filter: blur(14px);
+}
+
+.hero-j-output-strip li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(11, 12, 12, 0.06);
+}
+
+.hero-j-output-strip span {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hero-j-output-strip small {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+
+@media (max-width: 960px) {
+  .hero-j-photo-card {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-j-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .hero-j-primary,
+  .hero-j-secondary {
+    width: 100%;
+  }
+
+  .hero-j-photo-card {
+    min-height: 430px;
+    border-radius: 14px;
+  }
+
+  .hero-j-photo {
+    object-position: 62% 50%;
+  }
+
+  .hero-j-photo-caption {
+    width: min(240px, calc(100% - 32px));
+  }
+
+  .hero-j-photo-caption-copy {
+    display: none;
+  }
+
+  .hero-j-output-strip {
+    grid-template-columns: 1fr;
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .hero-j-output-strip li {
+    grid-template-columns: 96px 1fr;
+    align-items: center;
+    padding: 9px 10px;
+  }
+}
+
 /* --- Product section · editorial trio (no card borders) ------------------ */
 
 .section-j-product {
@@ -22920,4 +23090,3 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
     gap: 20px;
   }
 }
-
