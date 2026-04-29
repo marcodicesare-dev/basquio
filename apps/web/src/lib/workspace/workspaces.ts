@@ -1,6 +1,9 @@
 import "server-only";
 
+import { cookies } from "next/headers";
+
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import type { ViewerState } from "@/lib/supabase/auth";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 
@@ -18,6 +21,8 @@ export type WorkspaceRow = {
   created_at: string;
   updated_at: string;
 };
+
+export const ACTIVE_WORKSPACE_COOKIE = "basquio_active_workspace_id";
 
 function getDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,21 +45,132 @@ export async function getWorkspace(workspaceId: string): Promise<WorkspaceRow | 
 }
 
 /**
- * V2 workspace resolution for the authenticated user.
+ * Returns the workspace the signed-in viewer is currently working in.
  *
- * For V1 team beta: every @basquio.com user shares the single BASQUIO_TEAM_WORKSPACE_ID row.
- * For V2 customer / demo-template future: look up workspace membership by user_id.
- * This helper is the single read path new code uses; it isolates the lookup so the
- * membership migration is a one-file change.
+ * Resolution order (V2 multi-tenant):
+ *  1. If `active_workspace_id` cookie matches one of the viewer's memberships, use it.
+ *  2. Otherwise, return the first workspace the viewer is a member of (by created_at).
+ *  3. As a last-resort fallback, return the team-beta singleton workspace. This keeps
+ *     legacy callers (cron jobs, system code, no-viewer paths) working.
+ *
+ * Pass `viewer` whenever a request has user context. When called without a viewer
+ * the function returns the team-beta workspace, the same as the legacy V1 contract.
  */
-export async function getCurrentWorkspace(): Promise<WorkspaceRow> {
-  const workspace = await getWorkspace(BASQUIO_TEAM_WORKSPACE_ID);
-  if (!workspace) {
+export async function getCurrentWorkspace(
+  viewer?: ViewerState | null,
+): Promise<WorkspaceRow> {
+  const userId = viewer?.user?.id ?? null;
+  if (userId) {
+    const db = getDb();
+    const cookieStore = await cookies();
+    const requestedId = cookieStore.get(ACTIVE_WORKSPACE_COOKIE)?.value ?? null;
+
+    const { data: rows, error } = await db
+      .from("workspace_members")
+      .select(
+        "workspace_id, role, created_at, workspaces:workspace_id(id, organization_id, name, slug, kind, template_id, visibility, share_token, metadata, created_by, created_at, updated_at)",
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+    if (error) {
+      throw new Error(`getCurrentWorkspace membership read failed: ${error.message}`);
+    }
+    const memberships = (rows ?? []) as Array<{
+      workspace_id: string;
+      workspaces: WorkspaceRow | WorkspaceRow[] | null;
+    }>;
+    const flat: WorkspaceRow[] = memberships
+      .map((m) => (Array.isArray(m.workspaces) ? m.workspaces[0] ?? null : m.workspaces))
+      .filter((w): w is WorkspaceRow => Boolean(w));
+
+    if (flat.length > 0) {
+      if (requestedId) {
+        const match = flat.find((w) => w.id === requestedId);
+        if (match) return match;
+      }
+      return flat[0]!;
+    }
+  }
+
+  const fallback = await getWorkspace(BASQUIO_TEAM_WORKSPACE_ID);
+  if (!fallback) {
     throw new Error(
       "Team beta workspace row is missing. Check migration 20260420120000_v2_workspace_tables.",
     );
   }
-  return workspace;
+  return fallback;
+}
+
+/**
+ * Returns every workspace the viewer is a member of, ordered by membership age.
+ * Used by the workspace switcher UI.
+ */
+export async function listViewerWorkspaces(viewer: ViewerState | null): Promise<WorkspaceRow[]> {
+  const userId = viewer?.user?.id ?? null;
+  if (!userId) return [];
+  const db = getDb();
+  const { data, error } = await db
+    .from("workspace_members")
+    .select(
+      "workspace_id, created_at, workspaces:workspace_id(id, organization_id, name, slug, kind, template_id, visibility, share_token, metadata, created_by, created_at, updated_at)",
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    throw new Error(`listViewerWorkspaces failed: ${error.message}`);
+  }
+  const rows = (data ?? []) as Array<{
+    workspaces: WorkspaceRow | WorkspaceRow[] | null;
+  }>;
+  return rows
+    .map((r) => (Array.isArray(r.workspaces) ? r.workspaces[0] ?? null : r.workspaces))
+    .filter((w): w is WorkspaceRow => Boolean(w));
+}
+
+/**
+ * Ensures the signed-in viewer is a member of at least one workspace.
+ *
+ * Behaviour:
+ *  - No-op if the viewer already has any workspace_members row.
+ *  - For team-beta-eligible emails (every @basquio.com address plus the
+ *    unlimited-access allowlist) we auto-create membership in the team-beta
+ *    workspace. This preserves the V1 contract: anyone on the team can see
+ *    the shared workspace by default.
+ *  - For non-eligible emails we do nothing. Those accounts have no automatic
+ *    workspace and the surface treats them as not-onboarded.
+ *
+ * Idempotent. Safe to call on every request.
+ */
+export async function ensureMembership(viewer: ViewerState | null): Promise<void> {
+  const userId = viewer?.user?.id ?? null;
+  const email = viewer?.user?.email ?? null;
+  if (!userId) return;
+
+  const db = getDb();
+  const { count, error: countErr } = await db
+    .from("workspace_members")
+    .select("workspace_id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (countErr) {
+    throw new Error(`ensureMembership count failed: ${countErr.message}`);
+  }
+  if ((count ?? 0) > 0) return;
+
+  if (!isTeamBetaEmail(email)) return;
+
+  const { error: insertErr } = await db
+    .from("workspace_members")
+    .upsert(
+      {
+        workspace_id: BASQUIO_TEAM_WORKSPACE_ID,
+        user_id: userId,
+        role: "member",
+      },
+      { onConflict: "workspace_id,user_id", ignoreDuplicates: true },
+    );
+  if (insertErr) {
+    throw new Error(`ensureMembership insert failed: ${insertErr.message}`);
+  }
 }
 
 export function isWorkspaceOnboarded(workspace: WorkspaceRow): boolean {
@@ -126,7 +242,7 @@ export async function createWorkspace(input: CreateWorkspaceInput): Promise<Work
 /**
  * Deep-clones a template workspace into a fresh workspace for the given
  * organization. Copies:
- *   - workspace_scopes (maps old → new scope ids)
+ *   - workspace_scopes (maps old to new scope ids)
  *   - entities (type, canonical_name, aliases, metadata)
  *   - memory_entries (non-archived, with remapped workspace_scope_id)
  *

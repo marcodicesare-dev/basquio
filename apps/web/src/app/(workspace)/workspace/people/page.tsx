@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { WorkspaceBreadcrumb } from "@/components/workspace-breadcrumb";
+import { getViewerState } from "@/lib/supabase/auth";
 import { listWorkspacePeople } from "@/lib/workspace/people";
 import type { PersonRow } from "@/lib/workspace/people-types";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
@@ -37,7 +38,8 @@ export const metadata = {
 };
 
 export default async function WorkspacePeoplePage() {
-  const workspace = await getCurrentWorkspace();
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
   const people = await listWorkspacePeople(workspace.id);
 
   const grouped = new Map<string, typeof people>();

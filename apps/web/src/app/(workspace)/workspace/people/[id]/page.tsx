@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { WorkspaceBreadcrumb } from "@/components/workspace-breadcrumb";
 import { StakeholderProfileEditor } from "@/components/workspace-stakeholder-editor";
+import { getViewerState } from "@/lib/supabase/auth";
 import { getWorkspacePersonProfile } from "@/lib/workspace/people";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
@@ -30,7 +31,8 @@ export default async function WorkspacePersonPage({
   const { id } = await params;
   if (!isUuid(id)) notFound();
 
-  const workspace = await getCurrentWorkspace();
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
   const profile = await getWorkspacePersonProfile(id);
   if (!profile || profile.workspace_id !== workspace.id) notFound();
 

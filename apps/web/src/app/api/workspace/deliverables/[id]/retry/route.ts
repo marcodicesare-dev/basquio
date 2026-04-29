@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { generateAnswer } from "@/lib/workspace/generate";
 import { consume } from "@/lib/workspace/rate-limit";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -51,11 +51,12 @@ export async function POST(
     return NextResponse.json({ error: "Invalid deliverable id." }, { status: 400 });
   }
 
+  const workspace = await getCurrentWorkspace(viewer);
   const db = getDb();
   const { data: existing, error: loadError } = await db
     .from("workspace_deliverables")
     .select("id, prompt, scope, status")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("workspace_id", workspace.id)
     .eq("id", id)
     .maybeSingle();
 
@@ -76,6 +77,8 @@ export async function POST(
     scope: (existing as { scope: string | null }).scope ?? undefined,
     userEmail: viewer.user.email ?? "unknown",
     userId: viewer.user.id,
+    workspaceId: workspace.id,
+    organizationId: workspace.organization_id,
   });
 
   return NextResponse.json({

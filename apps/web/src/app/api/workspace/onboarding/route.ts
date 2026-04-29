@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
 
   // If someone already finished, short-circuit.
   if (isWorkspaceOnboarded(workspace) && !payload.skipped) {

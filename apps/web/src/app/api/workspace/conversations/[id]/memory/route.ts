@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
 import { getConversation } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
@@ -37,7 +36,7 @@ export async function GET(
   }
 
   // Ownership check — see sibling attachments route for rationale.
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const conversation = await getConversation(id).catch(() => null);
   if (!conversation || conversation.workspace_id !== workspace.id) {
     return NextResponse.json({ entities: [], facts: [], documentCount: 0 });
@@ -59,7 +58,7 @@ export async function GET(
   const { data: mentionRows } = await db
     .from("entity_mentions")
     .select("entity_id, entities(id, type, canonical_name)")
-    .eq("organization_id", BASQUIO_TEAM_WORKSPACE_ID)
+    .eq("organization_id", workspace.organization_id)
     .eq("source_type", "document")
     .in("source_id", documentIds);
 
@@ -77,7 +76,7 @@ export async function GET(
   const { data: factRows } = await db
     .from("facts")
     .select("id, predicate, object_value, valid_from, subject_entity, source_id, metadata")
-    .eq("organization_id", BASQUIO_TEAM_WORKSPACE_ID)
+    .eq("organization_id", workspace.organization_id)
     .eq("source_type", "document")
     .is("superseded_by", null)
     .in("source_id", documentIds)

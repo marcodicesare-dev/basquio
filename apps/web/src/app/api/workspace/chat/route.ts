@@ -10,7 +10,6 @@ import {
 
 import { extractCandidatesFromTurn } from "@basquio/workflows/workspace/chat-extraction";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import {
@@ -97,7 +96,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Send at least one message." }, { status: 400 });
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const scope = body.scope_id ? await getScope(body.scope_id) : null;
   if (body.scope_id && (!scope || scope.workspace_id !== workspace.id)) {
     return NextResponse.json({ error: "Scope not found in this workspace." }, { status: 404 });
@@ -105,6 +104,7 @@ export async function POST(request: Request) {
 
   const ctx = {
     workspaceId: workspace.id,
+    organizationId: workspace.organization_id,
     currentScopeId: scope?.id ?? null,
     conversationId: conversationId ?? null,
     userEmail: viewer.user.email ?? "unknown",
@@ -352,7 +352,7 @@ export async function POST(request: Request) {
             turnText,
             recentTurns,
             workspaceId: workspace.id,
-            organizationId: workspace.id ?? BASQUIO_TEAM_ORG_ID,
+            organizationId: workspace.organization_id,
             scopeId: scope?.id ?? null,
             userId: viewer.user!.id,
             sourceMessageId: null,

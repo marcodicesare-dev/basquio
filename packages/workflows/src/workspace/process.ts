@@ -52,8 +52,6 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
     .from("knowledge_documents")
     .select("id, filename, file_type, storage_path, content_hash, kind, workspace_id, organization_id")
     .eq("id", documentId)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
     .single();
 
   if (fetchError || !doc) {
@@ -126,6 +124,7 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
       const embeddings = await embedTexts(textsToEmbed);
 
       const indexedAtIso = new Date().toISOString();
+      const chunkOrgId = doc.organization_id ?? BASQUIO_TEAM_ORG_ID;
       const chunkRows = chunks.map((content, i) => ({
         document_id: documentId,
         chunk_index: i,
@@ -134,8 +133,8 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
         embedding: JSON.stringify(embeddings[i]),
         token_count: Math.ceil(textsToEmbed[i].length / 4),
         metadata: parsed.pageCount ? { total_pages: parsed.pageCount } : {},
-        organization_id: BASQUIO_TEAM_ORG_ID,
-        is_team_beta: true,
+        organization_id: chunkOrgId,
+        is_team_beta: chunkOrgId === BASQUIO_TEAM_ORG_ID,
         indexed_at: indexedAtIso,
       }));
 
@@ -158,7 +157,9 @@ export async function processWorkspaceDocument(documentId: string): Promise<Proc
     }
 
     const extraction = await extractEntitiesFromDocument(text, doc.filename);
-    const persisted = await persistExtraction(documentId, extraction);
+    const persisted = await persistExtraction(documentId, extraction, {
+      organizationId: doc.organization_id ?? BASQUIO_TEAM_ORG_ID,
+    });
 
     // Brand-book post-ingest hook (Memory v1 Brief 3, Option C wiring).
     // Runs ONLY when the user marked this document as a brand book at upload
@@ -254,8 +255,11 @@ type PersistResult = {
 export async function persistExtraction(
   documentId: string,
   extraction: EntityExtractionResult,
+  ctx: { organizationId?: string } = {},
 ): Promise<PersistResult> {
   const db = getServiceClient();
+  const organizationId = ctx.organizationId ?? BASQUIO_TEAM_ORG_ID;
+  const isTeamBetaScope = organizationId === BASQUIO_TEAM_ORG_ID;
 
   if (extraction.entities.length === 0 && extraction.facts.length === 0) {
     return { newEntityCount: 0, factCount: 0, totalMentionCount: 0 };
@@ -310,7 +314,7 @@ export async function persistExtraction(
     const { data: existing, error: lookupError } = await db
       .from("entities")
       .select("id, aliases, metadata")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("organization_id", organizationId)
       .eq("type", entity.type)
       .eq("normalized_name", normalized)
       .maybeSingle();
@@ -340,8 +344,8 @@ export async function persistExtraction(
       const { data: inserted, error: insertError } = await db
         .from("entities")
         .insert({
-          organization_id: BASQUIO_TEAM_ORG_ID,
-          is_team_beta: true,
+          organization_id: organizationId,
+          is_team_beta: isTeamBetaScope,
           type: entity.type,
           canonical_name: entity.canonical_name,
           normalized_name: normalized,
@@ -360,7 +364,7 @@ export async function persistExtraction(
           const { data: raced } = await db
             .from("entities")
             .select("id")
-            .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+            .eq("organization_id", organizationId)
             .eq("type", entity.type)
             .eq("normalized_name", normalized)
             .maybeSingle();
@@ -387,8 +391,8 @@ export async function persistExtraction(
         const entityId = entityKeyToId.get(key);
         if (!entityId) return null;
         return {
-          organization_id: BASQUIO_TEAM_ORG_ID,
-          is_team_beta: true,
+          organization_id: organizationId,
+          is_team_beta: isTeamBetaScope,
           entity_id: entityId,
           source_type: "document",
           source_id: documentId,
@@ -429,8 +433,8 @@ export async function persistExtraction(
           : { value: fact.object_value };
 
         return {
-          organization_id: BASQUIO_TEAM_ORG_ID,
-          is_team_beta: true,
+          organization_id: organizationId,
+          is_team_beta: isTeamBetaScope,
           subject_entity: subjectId,
           predicate: fact.predicate,
           object_value: objectValue,

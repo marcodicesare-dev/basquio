@@ -1,7 +1,6 @@
 import "server-only";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 
 export type AttachedWorkspaceFile = {
   documentId: string;
@@ -25,8 +24,6 @@ export async function fetchAttachedFilesByDocumentIds(
     .from("knowledge_documents")
     .select("id, filename, file_type, storage_path, status, anthropic_file_id")
     .eq("workspace_id", workspaceId)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
     .in("id", ids);
 
   if (error) {

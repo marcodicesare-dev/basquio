@@ -40,6 +40,7 @@ import { analystCommentaryTool } from "./agent-tools-analyst-commentary";
 
 const ctx = {
   workspaceId: "workspace-1",
+  organizationId: "workspace-1",
   currentScopeId: null,
   conversationId: "11111111-1111-4111-8111-111111111111",
   userEmail: "marco@example.com",

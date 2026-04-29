@@ -5,6 +5,7 @@ import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { streamAnswer, type StreamEvent } from "@/lib/workspace/generate";
 import { consume } from "@/lib/workspace/rate-limit";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const userEmail = viewer.user.email ?? "unknown";
   const userId = viewer.user.id;
+  const workspace = await getCurrentWorkspace(viewer);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -74,6 +76,8 @@ export async function POST(request: Request) {
           scope: payload.scope,
           userEmail,
           userId,
+          workspaceId: workspace.id,
+          organizationId: workspace.organization_id,
         })) {
           send(event);
         }

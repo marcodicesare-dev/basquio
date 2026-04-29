@@ -11,7 +11,8 @@ import {
 import type { ScopeCommandAction } from "@/components/scope-command-palette";
 import { WorkspaceMemoryAside } from "@/components/workspace-memory-aside";
 import { resolveWorkspaceLocale } from "@/i18n";
-import { BASQUIO_TEAM_ORG_ID, type ScopeKind } from "@/lib/workspace/constants";
+import { getViewerState } from "@/lib/supabase/auth";
+import { type ScopeKind } from "@/lib/workspace/constants";
 import { listConversations } from "@/lib/workspace/conversations";
 import { getScopeByKindSlug, listScopesGrouped } from "@/lib/workspace/scopes";
 import { buildSuggestions } from "@/lib/workspace/suggestions";
@@ -129,13 +130,12 @@ async function countScopeFacts(workspaceId: string, scopeName: string): Promise<
   return count ?? 0;
 }
 
-async function countScrapedArticlesForScope(): Promise<number> {
+async function countScrapedArticlesForScope(organizationId: string): Promise<number> {
   const db = getDb();
   const { count } = await db
     .from("knowledge_documents")
     .select("id", { count: "exact", head: true })
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", organizationId)
     .eq("kind", "scraped_article");
   return count ?? 0;
 }
@@ -167,7 +167,8 @@ export default async function WorkspaceScopePage({
   const locale = resolveWorkspaceLocale(headersList.get("accept-language"));
   if (!ALLOWED.includes(kind as RouteKind)) notFound();
 
-  const workspace = await getCurrentWorkspace();
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
   const scope = await getScopeByKindSlug(workspace.id, kind as RouteKind, slug);
   if (!scope) notFound();
 
@@ -176,7 +177,7 @@ export default async function WorkspaceScopePage({
     listConversations({ workspaceId: workspace.id, scopeId: scope.id, limit: 5 }).catch(() => []),
     listScopeStakeholders(workspace.id, scope.id, scope.name),
     countScopeFacts(workspace.id, scope.name).catch(() => 0),
-    countScrapedArticlesForScope().catch(() => 0),
+    countScrapedArticlesForScope(workspace.organization_id).catch(() => 0),
     lastResearchLabel(workspace.id).catch(() => null),
     buildSuggestions({
       maxItems: 3,
@@ -244,7 +245,7 @@ export default async function WorkspaceScopePage({
           promptSuggestions={effectiveSuggestions}
         />
       }
-      memoryAside={<WorkspaceMemoryAside workspaceId={workspace.id} />}
+      memoryAside={<WorkspaceMemoryAside workspaceId={workspace.id} organizationId={workspace.organization_id} />}
       locale={locale}
     />
   );

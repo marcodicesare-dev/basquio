@@ -328,11 +328,13 @@ async function persistCachedExtraction(
     metadata.source_url = cached.sourceUrl;
   }
 
+  const workspaceId = ctx.workspaceId ?? BASQUIO_TEAM_WORKSPACE_ID;
+  const organizationId = ctx.organizationId ?? BASQUIO_TEAM_ORG_ID;
   const { error: insertErr } = await db.from("knowledge_documents").insert({
     id: documentId,
-    workspace_id: ctx.workspaceId ?? BASQUIO_TEAM_WORKSPACE_ID,
-    organization_id: BASQUIO_TEAM_ORG_ID,
-    is_team_beta: true,
+    workspace_id: workspaceId,
+    organization_id: organizationId,
+    is_team_beta: workspaceId === BASQUIO_TEAM_WORKSPACE_ID,
     kind,
     filename,
     file_type: fileType,

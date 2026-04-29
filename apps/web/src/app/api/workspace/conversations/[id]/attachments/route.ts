@@ -32,7 +32,7 @@ export async function GET(
   // Without this, any team-beta user could enumerate any conversation's
   // attachments by UUID. Missing-row is treated the same as "not yours" so we
   // don't leak existence.
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const conversation = await getConversation(id).catch(() => null);
   if (!conversation || conversation.workspace_id !== workspace.id) {
     return NextResponse.json({ attachments: [] }, { status: 200 });

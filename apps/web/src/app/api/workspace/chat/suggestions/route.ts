@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const workspaceId = url.searchParams.get("workspace_id");
   const scopeId = url.searchParams.get("scope_id");
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   if (workspaceId && workspaceId !== workspace.id) {
     return NextResponse.json({ error: "Workspace not found." }, { status: 404 });
   }

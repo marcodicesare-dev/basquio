@@ -1,7 +1,6 @@
 import "server-only";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 
 function getDb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,23 +16,17 @@ function getDb() {
 export async function cleanOrphansForDocument(documentId: string): Promise<void> {
   const db = getDb();
   await Promise.all([
-    db
-      .from("knowledge_chunks")
-      .delete()
-      .eq("document_id", documentId)
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID),
+    db.from("knowledge_chunks").delete().eq("document_id", documentId),
     db
       .from("entity_mentions")
       .delete()
       .eq("source_id", documentId)
-      .eq("source_type", "document")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID),
+      .eq("source_type", "document"),
     db
       .from("facts")
       .delete()
       .eq("source_id", documentId)
-      .eq("source_type", "document")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID),
+      .eq("source_type", "document"),
   ]);
 }
 
@@ -48,8 +41,7 @@ export async function markDocumentForRetry(documentId: string): Promise<void> {
       page_count: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", documentId)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+    .eq("id", documentId);
 }
 
 export async function markDocumentIndexingFailed(
@@ -64,6 +56,5 @@ export async function markDocumentIndexingFailed(
       error_message: message.slice(0, 500),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", documentId)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+    .eq("id", documentId);
 }

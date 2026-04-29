@@ -23,6 +23,7 @@ import { recencyToTbs, webSearchTool } from "./agent-tools-web-search";
 
 const ctx = {
   workspaceId: "workspace-1",
+  organizationId: "workspace-1",
   currentScopeId: null,
   conversationId: "conversation-1",
   userEmail: "marco@example.com",

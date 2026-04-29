@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID, BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 import {
   cleanOrphansForDocument,
   markDocumentForRetry,
   markDocumentIndexingFailed,
 } from "@/lib/workspace/retry";
 import { enqueueFileIngestRun } from "@/lib/workspace/ingest-queue";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
 // Retry only resets the searchable-document lane. The Railway file-ingest
@@ -40,13 +40,13 @@ export async function POST(
     return NextResponse.json({ error: "Invalid document id." }, { status: 400 });
   }
 
+  const workspace = await getCurrentWorkspace(viewer);
   const db = getDb();
   const { data: doc, error: loadError } = await db
     .from("knowledge_documents")
     .select("id, status")
     .eq("id", id)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", workspace.organization_id)
     .maybeSingle();
 
   if (loadError) {
@@ -68,7 +68,7 @@ export async function POST(
   try {
     await enqueueFileIngestRun({
       documentId: id,
-      workspaceId: BASQUIO_TEAM_WORKSPACE_ID,
+      workspaceId: workspace.id,
       metadata: { source: "retry_endpoint", requested_at: new Date().toISOString() },
     });
   } catch (error) {

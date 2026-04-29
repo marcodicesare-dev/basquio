@@ -82,6 +82,7 @@ export function queryStructuredMetricTool(ctx: AgentCallContext) {
         chunkLimit: 8,
         factLimit: 12,
         entityLimit: 12,
+        organizationId: ctx.organizationId,
       }).catch(() => null);
 
       if (!ctxResult) {
@@ -237,7 +238,7 @@ export function queryBrandRuleTool(ctx: AgentCallContext) {
  * BASQUIO_TEAM_ORG_ID), not `workspace_id`. The Brief 1 substrate audit
  * documents this bridge.
  */
-export function queryEntityFactTool(_ctx: AgentCallContext) {
+export function queryEntityFactTool(ctx: AgentCallContext) {
   return tool({
     description:
       "Look up bi-temporal facts about entities (brands, retailers, people, products) at an optional point in time. Use when the user asks 'what was true on date X' or 'who is connected to whom'.",
@@ -269,8 +270,7 @@ export function queryEntityFactTool(_ctx: AgentCallContext) {
       const { data: entRows } = await db
         .from("entities")
         .select("id, type, canonical_name, aliases")
-        .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-        .eq("is_team_beta", true)
+        .eq("organization_id", ctx.organizationId)
         .ilike("canonical_name", `%${entity}%`)
         .limit(5);
       const entityRows = (entRows ?? []) as Array<{
@@ -295,8 +295,7 @@ export function queryEntityFactTool(_ctx: AgentCallContext) {
         .select(
           "id, predicate, object_value, valid_from, valid_to, expired_at, source_id, source_type, metadata, subject_entity, object_entity",
         )
-        .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-        .eq("is_team_beta", true)
+        .eq("organization_id", ctx.organizationId)
         .in("subject_entity", entityIds)
         .is("superseded_by", null)
         .is("expired_at", null)
@@ -389,6 +388,7 @@ export function searchEvidenceTool(ctx: AgentCallContext) {
         conversationId: ctx.conversationId,
         workspaceScopeId: scopeRow?.id ?? ctx.currentScopeId ?? null,
         chunkLimit: limit,
+        organizationId: ctx.organizationId,
       });
       return {
         passages: result.chunks.slice(0, limit).map((c, i) => ({

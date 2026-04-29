@@ -1,7 +1,10 @@
 import "server-only";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
+import {
+  BASQUIO_TEAM_ORG_ID,
+  BASQUIO_TEAM_WORKSPACE_ID,
+} from "@/lib/workspace/constants";
 
 export type MemoryCommand =
   | { command: "view"; path: string; view_range?: [number, number] }
@@ -10,6 +13,11 @@ export type MemoryCommand =
   | { command: "insert"; path: string; insert_line: number; insert_text: string }
   | { command: "delete"; path: string }
   | { command: "rename"; old_path: string; new_path: string };
+
+export type MemoryContext = {
+  workspaceId?: string;
+  organizationId?: string;
+};
 
 const MEMORY_ROOT = "/memories";
 
@@ -72,12 +80,16 @@ type MemoryRow = {
   memory_type: "semantic" | "episodic" | "procedural";
 };
 
-async function fetchByPath(scope: string, path: string): Promise<MemoryRow | null> {
+async function fetchByPath(
+  scope: string,
+  path: string,
+  organizationId: string,
+): Promise<MemoryRow | null> {
   const db = getDb();
   const { data, error } = await db
     .from("memory_entries")
     .select("id, scope, path, content, memory_type")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("organization_id", organizationId)
     .eq("scope", scope)
     .eq("path", path)
     .maybeSingle();
@@ -87,13 +99,17 @@ async function fetchByPath(scope: string, path: string): Promise<MemoryRow | nul
 
 const MAX_CHILDREN_PER_VIEW = 200;
 
-async function listChildren(scope: string, prefix: string): Promise<MemoryRow[]> {
+async function listChildren(
+  scope: string,
+  prefix: string,
+  organizationId: string,
+): Promise<MemoryRow[]> {
   const db = getDb();
   const trimmedPrefix = prefix === "/" ? "/" : prefix.replace(/\/$/, "") + "/";
   const { data, error } = await db
     .from("memory_entries")
     .select("id, scope, path, content, memory_type")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("organization_id", organizationId)
     .eq("scope", scope)
     .like("path", `${trimmedPrefix}%`)
     .order("path", { ascending: true })
@@ -102,12 +118,12 @@ async function listChildren(scope: string, prefix: string): Promise<MemoryRow[]>
   return (data ?? []) as MemoryRow[];
 }
 
-async function listAllScopes(): Promise<string[]> {
+async function listAllScopes(organizationId: string): Promise<string[]> {
   const db = getDb();
   const { data, error } = await db
     .from("memory_entries")
     .select("scope")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+    .eq("organization_id", organizationId);
   if (error) throw new Error(`Memory scope list failed: ${error.message}`);
   const seen = new Set<string>();
   for (const row of data ?? []) {
@@ -116,18 +132,23 @@ async function listAllScopes(): Promise<string[]> {
   return Array.from(seen).sort();
 }
 
-export async function handleMemoryCommand(input: MemoryCommand): Promise<string> {
+export async function handleMemoryCommand(
+  input: MemoryCommand,
+  ctx: MemoryContext = {},
+): Promise<string> {
+  const workspaceId = ctx.workspaceId ?? BASQUIO_TEAM_WORKSPACE_ID;
+  const organizationId = ctx.organizationId ?? BASQUIO_TEAM_ORG_ID;
   if (input.command === "view") {
     const path = normalizePath(input.path);
     if (path === MEMORY_ROOT || path === MEMORY_ROOT + "/") {
-      const scopes = await listAllScopes();
+      const scopes = await listAllScopes(organizationId);
       if (scopes.length === 0) return "No memory yet.";
       return scopes.map((s) => `${MEMORY_ROOT}/${s}/`).join("\n");
     }
 
     const { scope, relativePath } = splitScope(path);
 
-    const exact = await fetchByPath(scope, relativePath);
+    const exact = await fetchByPath(scope, relativePath, organizationId);
     if (exact) {
       const lines = exact.content.split("\n");
       let from = 1;
@@ -140,7 +161,7 @@ export async function handleMemoryCommand(input: MemoryCommand): Promise<string>
       return slice.map((line, idx) => `${from + idx}: ${line}`).join("\n");
     }
 
-    const children = await listChildren(scope, relativePath);
+    const children = await listChildren(scope, relativePath, organizationId);
     if (children.length === 0) {
       return `No memory at ${path}.`;
     }
@@ -164,7 +185,7 @@ export async function handleMemoryCommand(input: MemoryCommand): Promise<string>
     const memoryType = inferMemoryType(relativePath);
 
     const db = getDb();
-    const existing = await fetchByPath(scope, relativePath);
+    const existing = await fetchByPath(scope, relativePath, organizationId);
     if (existing) {
       const { error } = await db
         .from("memory_entries")
@@ -173,8 +194,9 @@ export async function handleMemoryCommand(input: MemoryCommand): Promise<string>
       if (error) throw new Error(`Memory update failed: ${error.message}`);
     } else {
       const { error } = await db.from("memory_entries").insert({
-        organization_id: BASQUIO_TEAM_ORG_ID,
-        is_team_beta: true,
+        workspace_id: workspaceId,
+        organization_id: organizationId,
+        is_team_beta: workspaceId === BASQUIO_TEAM_WORKSPACE_ID,
         scope,
         memory_type: memoryType,
         path: relativePath,
@@ -188,7 +210,7 @@ export async function handleMemoryCommand(input: MemoryCommand): Promise<string>
   if (input.command === "str_replace") {
     const path = normalizePath(input.path);
     const { scope, relativePath } = splitScope(path);
-    const existing = await fetchByPath(scope, relativePath);
+    const existing = await fetchByPath(scope, relativePath, organizationId);
     if (!existing) return `File not found: ${path}`;
     if (!existing.content.includes(input.old_str)) {
       return `String not found in ${path}.`;
@@ -206,7 +228,7 @@ export async function handleMemoryCommand(input: MemoryCommand): Promise<string>
   if (input.command === "insert") {
     const path = normalizePath(input.path);
     const { scope, relativePath } = splitScope(path);
-    const existing = await fetchByPath(scope, relativePath);
+    const existing = await fetchByPath(scope, relativePath, organizationId);
     if (!existing) return `File not found: ${path}`;
     const lines = existing.content.split("\n");
     const insertAt = Math.max(0, Math.min(lines.length, Math.floor(input.insert_line)));
@@ -228,7 +250,7 @@ export async function handleMemoryCommand(input: MemoryCommand): Promise<string>
     const { error } = await db
       .from("memory_entries")
       .delete()
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("organization_id", organizationId)
       .eq("scope", scope)
       .eq("path", relativePath);
     if (error) throw new Error(`Memory delete failed: ${error.message}`);
@@ -240,7 +262,7 @@ export async function handleMemoryCommand(input: MemoryCommand): Promise<string>
     const newPath = normalizePath(input.new_path);
     const { scope: oldScope, relativePath: oldRel } = splitScope(oldPath);
     const { scope: newScope, relativePath: newRel } = splitScope(newPath);
-    const existing = await fetchByPath(oldScope, oldRel);
+    const existing = await fetchByPath(oldScope, oldRel, organizationId);
     if (!existing) return `File not found: ${oldPath}`;
     const db = getDb();
     const { error } = await db

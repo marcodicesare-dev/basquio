@@ -4,7 +4,6 @@ import { z } from "zod";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
@@ -55,7 +54,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const db = getDb();
 
   const citations = payload.citations.map((c) => ({
@@ -69,8 +68,8 @@ export async function POST(request: Request) {
   const { data, error } = await db
     .from("workspace_deliverables")
     .insert({
-      organization_id: BASQUIO_TEAM_ORG_ID,
-      is_team_beta: true,
+      organization_id: workspace.organization_id,
+      is_team_beta: workspace.kind === "team_beta",
       workspace_id: workspace.id,
       workspace_scope_id: payload.workspace_scope_id ?? null,
       conversation_id: payload.conversation_id ?? null,

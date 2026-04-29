@@ -45,7 +45,7 @@ export async function GET(
   }
 
   const db = createServiceSupabaseClient(supabaseUrl, serviceKey);
-  const doc = await resolveWorkspaceDocumentAccess({ db, documentId: id, conversationId });
+  const doc = await resolveWorkspaceDocumentAccess({ db, documentId: id, conversationId, viewer });
   if (!doc) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }

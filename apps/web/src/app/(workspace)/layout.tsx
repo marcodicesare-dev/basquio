@@ -17,6 +17,11 @@ import {
   type ScopeCounts,
   type WorkspaceScope,
 } from "@/lib/workspace/scopes";
+import {
+  ensureMembership,
+  getCurrentWorkspace,
+  listViewerWorkspaces,
+} from "@/lib/workspace/workspaces";
 
 export const metadata = {
   title: "Workspace · Basquio",
@@ -39,10 +44,14 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     notFound();
   }
 
+  await ensureMembership(viewer);
+  const workspace = await getCurrentWorkspace(viewer);
+  const memberships = await listViewerWorkspaces(viewer);
+
   const [scopeTree, countsMap, recentConversations] = await Promise.all([
-    listScopesGrouped().catch(() => ({ client: [], category: [], function: [], system: [] })),
-    countByScope().catch(() => new Map<string, ScopeCounts>()),
-    listConversations({ limit: 10 }).catch(() => []),
+    listScopesGrouped(workspace.id).catch(() => ({ client: [], category: [], function: [], system: [] })),
+    countByScope(workspace.id).catch(() => new Map<string, ScopeCounts>()),
+    listConversations({ workspaceId: workspace.id, limit: 10 }).catch(() => []),
   ]);
 
   const scopeCounts: Record<string, ScopeCounts> = {};
@@ -85,6 +94,18 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
       }))}
       commandActions={commandActions}
       locale={resolveWorkspaceLocale(headersList.get("accept-language"))}
+      currentWorkspace={{
+        id: workspace.id,
+        name: workspace.name,
+        slug: workspace.slug,
+        kind: workspace.kind,
+      }}
+      availableWorkspaces={memberships.map((m) => ({
+        id: m.id,
+        name: m.name,
+        slug: m.slug,
+        kind: m.kind,
+      }))}
     >
       {children}
     </WorkspaceShell>

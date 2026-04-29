@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
 
   // Load the conversation (if one is provided) to extract turns + citations.
   let turns: ConversationTurn[] = [];

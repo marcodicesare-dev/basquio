@@ -24,7 +24,7 @@ export async function GET() {
   if (!isTeamBetaEmail(viewer.user.email)) {
     return NextResponse.json({ error: "Workspace beta is team only." }, { status: 404 });
   }
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const scopes = await listScopes(workspace.id);
   return NextResponse.json({ workspace_id: workspace.id, scopes });
 }
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   try {
     const scope = await createScope({
       workspaceId: workspace.id,

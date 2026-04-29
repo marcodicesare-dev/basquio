@@ -10116,6 +10116,76 @@ body:has(.wbeta-chat-pane) .wbeta-workspace-layout {
   background: var(--canvas-stage);
 }
 
+.wbeta-user-workspace-current {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 6px;
+}
+
+.wbeta-user-workspace-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.wbeta-user-workspace-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wbeta-user-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.wbeta-user-item {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+  text-align: left;
+  justify-content: space-between;
+}
+
+.wbeta-user-item:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.wbeta-user-item-active {
+  background: var(--canvas-stage);
+  font-weight: 600;
+}
+
+.wbeta-user-workspace-row-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.wbeta-user-workspace-row-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--text);
+  animation: wbeta-spin 0.7s linear infinite;
+}
+
+@keyframes wbeta-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .wbeta-sidebar-nav {
   display: flex;
   flex-direction: column;

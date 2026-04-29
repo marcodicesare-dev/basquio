@@ -7,7 +7,7 @@ import { fetchRestRows } from "@/lib/supabase/admin";
 import { getTemplateFeeDraft } from "@/lib/template-fee-drafts";
 import { hasUnlimitedAccess } from "@/lib/unlimited-access";
 import { resolveViewerOrgId } from "@/lib/viewer-workspace";
-import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 import { buildEnrichedBrief } from "@/lib/workspace/brief-enrichment";
 
 export const dynamic = "force-dynamic";
@@ -465,7 +465,7 @@ export default async function NewJobPage({
   const deliverableId = typeof params.deliverable === "string" ? params.deliverable : undefined;
   const deliverablePrefill =
     deliverableId && viewer.user?.id && !recipePrefill && !fromRunPrefill && !templateFeeDraftPrefill
-      ? await getWorkspaceDeliverablePrefill(deliverableId, BASQUIO_TEAM_WORKSPACE_ID, viewer)
+      ? await getWorkspaceDeliverablePrefill(deliverableId, (await getCurrentWorkspace(viewer)).id, viewer)
       : null;
 
   const activePrefill =

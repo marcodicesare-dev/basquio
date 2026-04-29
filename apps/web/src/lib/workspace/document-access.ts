@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { createServiceSupabaseClient } from "@/lib/supabase/admin";
+import type { ViewerState } from "@/lib/supabase/auth";
 import { getCurrentWorkspace, type WorkspaceRow } from "@/lib/workspace/workspaces";
 
 type ServiceDb = ReturnType<typeof createServiceSupabaseClient>;
@@ -20,12 +21,14 @@ export async function resolveWorkspaceDocumentAccess({
   db,
   documentId,
   conversationId,
+  viewer,
 }: {
   db: ServiceDb;
   documentId: string;
   conversationId: string | null;
+  viewer?: ViewerState | null;
 }): Promise<WorkspaceDocumentAccessRow | null> {
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer ?? null);
   if (conversationId) {
     return resolveConversationDocument(db, workspace, documentId, conversationId);
   }
@@ -82,7 +85,6 @@ async function resolveRepositoryDocument(
     )
     .eq("id", documentId)
     .eq("organization_id", workspace.organization_id)
-    .eq("is_team_beta", true)
     .neq("status", "deleted")
     .maybeSingle();
 
@@ -96,6 +98,5 @@ function canAccessDocument(doc: WorkspaceDocumentAccessRow, workspace: Workspace
   if (doc.status === "deleted") return false;
   if (doc.workspace_id && doc.workspace_id !== workspace.id) return false;
   if (doc.organization_id && doc.organization_id !== workspace.organization_id) return false;
-  if (doc.is_team_beta === false) return false;
   return true;
 }

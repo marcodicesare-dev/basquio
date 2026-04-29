@@ -4,8 +4,8 @@ import { z } from "zod";
 import { isTeamBetaEmail } from "@/lib/team-beta";
 import { getViewerState } from "@/lib/supabase/auth";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { handleMemoryCommand } from "@/lib/workspace/memory-tool";
+import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 export const runtime = "nodejs";
 
@@ -48,11 +48,12 @@ export async function PATCH(
     );
   }
 
+  const workspace = await getCurrentWorkspace(viewer);
   const db = getDb();
   const { data: existing, error: loadError } = await db
     .from("workspace_deliverables")
     .select("id, body_markdown, prompt, scope, kind, metadata")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("workspace_id", workspace.id)
     .eq("id", id)
     .maybeSingle();
 
@@ -93,7 +94,10 @@ export async function PATCH(
       editedBy: viewer.user.email ?? viewer.user.id,
     });
     try {
-      await handleMemoryCommand({ command: "create", path: fullPath, file_text: memoryBody });
+      await handleMemoryCommand(
+        { command: "create", path: fullPath, file_text: memoryBody },
+        { workspaceId: workspace.id, organizationId: workspace.organization_id },
+      );
     } catch (error) {
       console.error(`[workspace] failed to record procedural memory for ${id}`, error);
     }

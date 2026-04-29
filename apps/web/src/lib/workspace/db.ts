@@ -64,15 +64,17 @@ function getServiceClient() {
   return createServiceSupabaseClient(url, key);
 }
 
-export async function listRecentWorkspaceDocuments(limit = 20): Promise<WorkspaceDocumentRow[]> {
+export async function listRecentWorkspaceDocuments(
+  limit = 20,
+  organizationId: string = BASQUIO_TEAM_ORG_ID,
+): Promise<WorkspaceDocumentRow[]> {
   const db = getServiceClient();
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
       "id, workspace_id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
     )
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -85,6 +87,7 @@ export async function listRecentWorkspaceDocuments(limit = 20): Promise<Workspac
 
 export async function listWorkspaceSourceDocuments(
   limit = 100,
+  organizationId: string = BASQUIO_TEAM_ORG_ID,
 ): Promise<WorkspaceSourceDocumentRow[]> {
   const db = getServiceClient();
   const { data, error } = await db
@@ -92,8 +95,7 @@ export async function listWorkspaceSourceDocuments(
     .select(
       "id, workspace_id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id, kind, source_catalog_id, source_url, source_published_at, source_trust_score",
     )
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", organizationId)
     .in("kind", ["uploaded_file", "chat_paste", "chat_url"])
     .neq("status", "deleted")
     .order("created_at", { ascending: false })
@@ -108,6 +110,7 @@ export async function listWorkspaceSourceDocuments(
 
 export async function listWorkspaceSourceCatalog(
   limit = 100,
+  workspaceId: string = BASQUIO_TEAM_WORKSPACE_ID,
 ): Promise<WorkspaceSourceCatalogRow[]> {
   const db = getServiceClient();
   const { data, error } = await db
@@ -115,7 +118,7 @@ export async function listWorkspaceSourceCatalog(
     .select(
       "id, url, host, tier, language, source_type, domain_tags, trust_score, status, last_verified_at, metadata",
     )
-    .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
+    .eq("workspace_id", workspaceId)
     .order("status", { ascending: true })
     .order("tier", { ascending: true })
     .order("host", { ascending: true })
@@ -128,15 +131,17 @@ export async function listWorkspaceSourceCatalog(
   return (data ?? []) as WorkspaceSourceCatalogRow[];
 }
 
-export async function findWorkspaceDocumentByHash(hash: string): Promise<WorkspaceDocumentRow | null> {
+export async function findWorkspaceDocumentByHash(
+  hash: string,
+  organizationId: string = BASQUIO_TEAM_ORG_ID,
+): Promise<WorkspaceDocumentRow | null> {
   const db = getServiceClient();
   const { data, error } = await db
     .from("knowledge_documents")
     .select(
       "id, workspace_id, filename, file_type, file_size_bytes, storage_path, uploaded_by, uploaded_by_user_id, upload_context, status, chunk_count, page_count, error_message, metadata, created_at, inline_excerpt, anthropic_file_id",
     )
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", organizationId)
     .eq("content_hash", hash)
     .limit(1)
     .maybeSingle();
@@ -163,10 +168,14 @@ export type CreateWorkspaceDocumentInput = {
   uploadedByUserId: string;
   uploadContext?: string | null;
   kind?: UploadKnowledgeDocumentKind;
+  workspaceId?: string;
+  organizationId?: string;
 };
 
 export async function createWorkspaceDocument(input: CreateWorkspaceDocumentInput): Promise<string> {
   const db = getServiceClient();
+  const workspaceId = input.workspaceId ?? BASQUIO_TEAM_WORKSPACE_ID;
+  const organizationId = input.organizationId ?? BASQUIO_TEAM_ORG_ID;
   const { data, error } = await db
     .from("knowledge_documents")
     .insert({
@@ -179,9 +188,9 @@ export async function createWorkspaceDocument(input: CreateWorkspaceDocumentInpu
       uploaded_by_user_id: input.uploadedByUserId,
       uploaded_by_discord_id: null,
       upload_context: input.uploadContext ?? null,
-      organization_id: BASQUIO_TEAM_ORG_ID,
-      workspace_id: BASQUIO_TEAM_WORKSPACE_ID,
-      is_team_beta: true,
+      organization_id: organizationId,
+      workspace_id: workspaceId,
+      is_team_beta: workspaceId === BASQUIO_TEAM_WORKSPACE_ID,
       status: "processing",
       kind: input.kind ?? "uploaded_file",
     })
@@ -227,8 +236,7 @@ export async function setDocumentInlineExcerpt(
       inline_excerpt: excerpt,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", documentId)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+    .eq("id", documentId);
   if (error) {
     throw new Error(`setDocumentInlineExcerpt failed: ${error.message}`);
   }
@@ -251,8 +259,7 @@ export async function setDocumentAnthropicFileId(
       anthropic_file_id: fileId,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", documentId)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID);
+    .eq("id", documentId);
   if (error) {
     throw new Error(`setDocumentAnthropicFileId failed: ${error.message}`);
   }
@@ -272,14 +279,15 @@ export type EntityWithCount = WorkspaceEntityRow & {
   fact_count: number;
 };
 
-export async function listWorkspaceEntitiesGrouped(): Promise<Record<string, EntityWithCount[]>> {
+export async function listWorkspaceEntitiesGrouped(
+  organizationId: string = BASQUIO_TEAM_ORG_ID,
+): Promise<Record<string, EntityWithCount[]>> {
   const db = getServiceClient();
 
   const { data: entities, error: entityError } = await db
     .from("entities")
     .select("id, type, canonical_name, aliases, metadata, created_at")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(500);
 
@@ -296,12 +304,12 @@ export async function listWorkspaceEntitiesGrouped(): Promise<Record<string, Ent
     db
       .from("entity_mentions")
       .select("entity_id")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("organization_id", organizationId)
       .in("entity_id", entityIds),
     db
       .from("facts")
       .select("subject_entity")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("organization_id", organizationId)
       .in("subject_entity", entityIds),
   ]);
 
@@ -361,13 +369,16 @@ export type EntityDetail = WorkspaceEntityRow & {
   }>;
 };
 
-export async function getWorkspaceEntityDetail(entityId: string): Promise<EntityDetail | null> {
+export async function getWorkspaceEntityDetail(
+  entityId: string,
+  organizationId: string = BASQUIO_TEAM_ORG_ID,
+): Promise<EntityDetail | null> {
   const db = getServiceClient();
 
   const { data: entity, error: entityError } = await db
     .from("entities")
     .select("id, type, canonical_name, aliases, metadata, created_at")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+    .eq("organization_id", organizationId)
     .eq("id", entityId)
     .maybeSingle();
 
@@ -380,7 +391,7 @@ export async function getWorkspaceEntityDetail(entityId: string): Promise<Entity
     db
       .from("entity_mentions")
       .select("id, source_type, source_id, excerpt, created_at")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("organization_id", organizationId)
       .eq("entity_id", entityId)
       .order("created_at", { ascending: false })
       .limit(50),
@@ -389,7 +400,7 @@ export async function getWorkspaceEntityDetail(entityId: string): Promise<Entity
       .select(
         "id, predicate, object_value, valid_from, valid_to, confidence, metadata, source_id, source_type",
       )
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("organization_id", organizationId)
       .eq("subject_entity", entityId)
       .order("ingested_at", { ascending: false })
       .limit(50),
@@ -466,15 +477,17 @@ export type WorkspaceDeliverableRow = {
   updated_at: string;
 };
 
-export async function listRecentWorkspaceDeliverables(limit = 10): Promise<WorkspaceDeliverableRow[]> {
+export async function listRecentWorkspaceDeliverables(
+  limit = 10,
+  workspaceId: string = BASQUIO_TEAM_WORKSPACE_ID,
+): Promise<WorkspaceDeliverableRow[]> {
   const db = getServiceClient();
   const { data, error } = await db
     .from("workspace_deliverables")
     .select(
       "id, kind, title, prompt, scope, status, body_markdown, citations, metadata, error_message, created_at, updated_at",
     )
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("workspace_id", workspaceId)
     .neq("status", "archived")
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -492,7 +505,10 @@ export type WorkspaceHomeActivity = {
   firstActivityAt: string | null;
 };
 
-export async function getWorkspaceHomeActivity(days = 7): Promise<WorkspaceHomeActivity> {
+export async function getWorkspaceHomeActivity(
+  days = 7,
+  workspaceId: string = BASQUIO_TEAM_WORKSPACE_ID,
+): Promise<WorkspaceHomeActivity> {
   const db = getServiceClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
@@ -509,59 +525,51 @@ export async function getWorkspaceHomeActivity(days = 7): Promise<WorkspaceHomeA
     db
       .from("knowledge_documents")
       .select("id", { count: "exact", head: true })
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .neq("status", "deleted")
       .gte("created_at", since),
     db
       .from("memory_entries")
       .select("id", { count: "exact", head: true })
-      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .gte("updated_at", since),
     db
       .from("facts")
       .select("id", { count: "exact", head: true })
-      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .is("superseded_by", null)
       .gte("ingested_at", since),
     db
       .from("workspace_deliverables")
       .select("id", { count: "exact", head: true })
-      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .neq("status", "archived")
       .gte("created_at", since),
     db
       .from("knowledge_documents")
       .select("created_at")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
     db
       .from("memory_entries")
       .select("created_at")
-      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
     db
       .from("facts")
       .select("ingested_at")
-      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .order("ingested_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
     db
       .from("workspace_deliverables")
       .select("created_at")
-      .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
@@ -601,38 +609,40 @@ export async function getWorkspaceHomeActivity(days = 7): Promise<WorkspaceHomeA
 
 export async function getWorkspaceDeliverable(
   deliverableId: string,
+  workspaceId?: string,
 ): Promise<WorkspaceDeliverableRow | null> {
   const db = getServiceClient();
-  const { data, error } = await db
+  let query = db
     .from("workspace_deliverables")
     .select(
       "id, kind, title, prompt, scope, status, body_markdown, citations, metadata, error_message, created_at, updated_at",
     )
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("id", deliverableId)
-    .maybeSingle();
+    .eq("id", deliverableId);
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+  const { data, error } = await query.maybeSingle();
   if (error) {
     throw new Error(`Failed to load deliverable: ${error.message}`);
   }
   return data ? (data as WorkspaceDeliverableRow) : null;
 }
 
-export async function listKnownScopes(limit = 12): Promise<string[]> {
+export async function listKnownScopes(
+  limit = 12,
+  workspaceId: string = BASQUIO_TEAM_WORKSPACE_ID,
+): Promise<string[]> {
   const db = getServiceClient();
   const [deliverables, memories] = await Promise.all([
     db
       .from("workspace_deliverables")
       .select("scope")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .not("scope", "is", null)
       .order("created_at", { ascending: false })
       .limit(50),
     db
       .from("memory_entries")
       .select("scope")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-      .eq("is_team_beta", true)
+      .eq("workspace_id", workspaceId)
       .order("updated_at", { ascending: false })
       .limit(50),
   ]);
@@ -647,13 +657,14 @@ export async function listKnownScopes(limit = 12): Promise<string[]> {
   return Array.from(seen).slice(0, limit);
 }
 
-export async function inferDefaultScope(): Promise<string> {
+export async function inferDefaultScope(
+  workspaceId: string = BASQUIO_TEAM_WORKSPACE_ID,
+): Promise<string> {
   const db = getServiceClient();
   const { data } = await db
     .from("workspace_deliverables")
     .select("scope")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("workspace_id", workspaceId)
     .not("scope", "is", null)
     .order("created_at", { ascending: false })
     .limit(1)

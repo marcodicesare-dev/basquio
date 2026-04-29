@@ -65,6 +65,7 @@ export async function assembleWorkspaceContext({
   chunkLimit = 10,
   entityLimit = 30,
   factLimit = 30,
+  organizationId = BASQUIO_TEAM_ORG_ID,
 }: {
   prompt: string;
   scope?: string;
@@ -73,6 +74,7 @@ export async function assembleWorkspaceContext({
   chunkLimit?: number;
   entityLimit?: number;
   factLimit?: number;
+  organizationId?: string;
 }): Promise<WorkspaceContext> {
   const db = getDb();
   const usedScope = scope ?? "workspace";
@@ -88,21 +90,21 @@ export async function assembleWorkspaceContext({
   const useChatRetrieval = Boolean(conversationId);
   const overfetch = isRerankerEnabled() ? Math.max(chunkLimit, chunkLimit * 2 + 8) : chunkLimit;
   // workspaceScopeId is accepted by the caller API for forward-compatibility
-  // but is not used to narrow Rank 2 today — see the RPC header comment. Kept
+  // but is not used to narrow Rank 2 today, see the RPC header comment. Kept
   // in the assembleWorkspaceContext input so once scope-on-chunks lands in a
   // follow-up migration, every caller threading through this function works
   // without further changes.
   void workspaceScopeId;
   const { data: chunkRows } = useChatRetrieval
     ? await db.rpc("workspace_chat_retrieval", {
-        workspace_org_id: BASQUIO_TEAM_ORG_ID,
+        workspace_org_id: organizationId,
         conversation_id_param: conversationId,
         query_text: prompt,
         query_embedding: JSON.stringify(queryEmbedding),
         match_count: overfetch,
       })
     : await db.rpc("workspace_hybrid_search", {
-        workspace_org_id: BASQUIO_TEAM_ORG_ID,
+        workspace_org_id: organizationId,
         query_text: prompt,
         query_embedding: JSON.stringify(queryEmbedding),
         match_count: overfetch,
@@ -202,8 +204,7 @@ export async function assembleWorkspaceContext({
   const { data: candidateRows } = await db
     .from("entities")
     .select("id, type, canonical_name, aliases")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", organizationId)
     .order("created_at", { ascending: false })
     .limit(candidatePool);
 
@@ -214,7 +215,7 @@ export async function assembleWorkspaceContext({
     const { data: mentionRows } = await db
       .from("entity_mentions")
       .select("entity_id")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
+      .eq("organization_id", organizationId)
       .in("entity_id", candidates.map((e) => e.id));
     const mentionCounts = new Map<string, number>();
     for (const row of (mentionRows ?? []) as Array<{ entity_id: string }>) {
@@ -231,8 +232,7 @@ export async function assembleWorkspaceContext({
     .select(
       "id, predicate, object_value, valid_from, valid_to, source_id, metadata, subject_entity",
     )
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("organization_id", organizationId)
     .is("superseded_by", null)
     .order("ingested_at", { ascending: false })
     .limit(factLimit);

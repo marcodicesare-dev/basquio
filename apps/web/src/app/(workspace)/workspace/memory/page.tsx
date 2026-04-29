@@ -14,6 +14,7 @@ import { listMemoryEntries, MEMORY_TYPE_LABELS } from "@/lib/workspace/memory";
 import { listAllRules } from "@/lib/workspace/rules";
 import type { MemoryRow, WorkspaceRule } from "@/lib/workspace/types";
 import { listScopes } from "@/lib/workspace/scopes";
+import { getViewerState } from "@/lib/supabase/auth";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
 /**
@@ -77,7 +78,8 @@ export const metadata = {
 };
 
 export default async function WorkspaceMemoryPage() {
-  const workspace = await getCurrentWorkspace();
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
   const inspectorV2 = isMemoryInspectorV2Enabled();
 
   if (inspectorV2) {

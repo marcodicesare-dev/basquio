@@ -28,6 +28,7 @@ import { wrapChatTool } from "@/lib/workspace/chat-tool-telemetry";
 
 export type AgentCallContext = {
   workspaceId: string;
+  organizationId: string;
   currentScopeId: string | null;
   /**
    * Workspace conversation id for the chat that called the tool. Used by
@@ -211,6 +212,7 @@ export function retrieveContextTool(ctx: AgentCallContext) {
         scope: legacyScope,
         conversationId: ctx.conversationId,
         workspaceScopeId: scopeRow?.id ?? ctx.currentScopeId ?? null,
+        organizationId: ctx.organizationId,
       });
       return {
         scope: scopeRow ? { id: scopeRow.id, name: scopeRow.name, kind: scopeRow.kind } : null,

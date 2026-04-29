@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const entries = await listMemoryEntries({
     workspaceId: workspace.id,
     scopeId: query.scope_id,
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const scope = await getScope(payload.workspace_scope_id);
   if (!scope || scope.workspace_id !== workspace.id) {
     return NextResponse.json({ error: "Scope not found in this workspace." }, { status: 404 });

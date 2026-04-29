@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     const rawRecord =
       typeof rawBody === "object" && rawBody ? (rawBody as Record<string, unknown>) : null;
     if (rawRecord && typeof rawRecord.deduplicatedDocumentId === "string") {
-      return handleDedupAttach(rawBody, viewer.user.id);
+      return handleDedupAttach(rawBody, viewer);
     }
 
     const payload = confirmSchema.parse(rawBody);
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
 
     // Dual-lane: resolve workspace + scope ownership up front so every
     // attachment write below is safe.
-    const workspace = await getCurrentWorkspace();
+    const workspace = await getCurrentWorkspace(viewer);
     const resolvedScopeId = await resolveScopeOwnership({
       workspaceId: workspace.id,
       scopeId: payload.scopeId ?? null,
@@ -461,7 +461,10 @@ async function recordAttachmentSafely(input: {
 
 const dedupAttachFields = dedupAttachSchema;
 
-async function handleDedupAttach(rawBody: unknown, viewerId: string) {
+async function handleDedupAttach(
+  rawBody: unknown,
+  viewer: Awaited<ReturnType<typeof getViewerState>>,
+) {
   const parsed = dedupAttachFields.safeParse(rawBody);
   if (!parsed.success) {
     return NextResponse.json(
@@ -471,12 +474,17 @@ async function handleDedupAttach(rawBody: unknown, viewerId: string) {
   }
   const body = parsed.data;
 
+  if (!viewer.user) {
+    return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
+  const viewerId = viewer.user.id;
+
   const existing = await findWorkspaceDocumentByHash(body.contentHash);
   if (!existing || existing.id !== body.deduplicatedDocumentId) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const resolvedScopeId = await resolveScopeOwnership({
     workspaceId: workspace.id,
     scopeId: body.scopeId ?? null,

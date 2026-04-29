@@ -13,7 +13,7 @@ export async function GET() {
   if (!isTeamBetaEmail(viewer.user.email))
     return NextResponse.json({ error: "Workspace beta is team only." }, { status: 404 });
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const people = await listWorkspacePeople(workspace.id);
   return NextResponse.json({ workspace_id: workspace.id, people });
 }

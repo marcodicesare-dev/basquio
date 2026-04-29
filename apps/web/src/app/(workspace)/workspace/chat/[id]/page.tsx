@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 
 import { WorkspaceChat } from "@/components/workspace-chat/Chat";
 import { resolveWorkspaceLocale } from "@/i18n";
+import { getViewerState } from "@/lib/supabase/auth";
 import { getConversation } from "@/lib/workspace/conversations";
 import { getCurrentWorkspace } from "@/lib/workspace/workspaces";
 
@@ -30,7 +31,8 @@ export default async function WorkspaceChatPage({
   const locale = resolveWorkspaceLocale(headersList.get("accept-language"));
   if (!isUuid(id)) notFound();
 
-  const workspace = await getCurrentWorkspace();
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
   const convo = await getConversation(id);
   if (!convo || convo.workspace_id !== workspace.id) notFound();
 

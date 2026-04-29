@@ -55,19 +55,19 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
 
 export default async function WorkspaceHomePage() {
   const headersList = await headers();
-  const [viewer, workspace, documents, entitiesByType, deliverables, conversations, memory, scopes, countsMap, suggestions, activity] = await Promise.all([
-    getViewerState(),
-    getCurrentWorkspace(),
-    safe(listRecentWorkspaceDocuments(50), [], "list documents"),
-    safe(listWorkspaceEntitiesGrouped(), {}, "list entities"),
-    safe(listRecentWorkspaceDeliverables(25), [], "list deliverables"),
-    safe(listConversations({ limit: 15 }), [], "list conversations"),
-    safe(listMemoryEntries({ limit: 200 }), [], "list memory"),
-    safe(listScopes(), [], "list scopes"),
-    safe(countByScope(), new Map<string, ScopeCounts>(), "count scopes"),
-    safe(buildSuggestions(3), [], "build suggestions"),
+  const viewer = await getViewerState();
+  const workspace = await getCurrentWorkspace(viewer);
+  const [documents, entitiesByType, deliverables, conversations, memory, scopes, countsMap, suggestions, activity] = await Promise.all([
+    safe(listRecentWorkspaceDocuments(50, workspace.organization_id), [], "list documents"),
+    safe(listWorkspaceEntitiesGrouped(workspace.organization_id), {}, "list entities"),
+    safe(listRecentWorkspaceDeliverables(25, workspace.id), [], "list deliverables"),
+    safe(listConversations({ workspaceId: workspace.id, limit: 15 }), [], "list conversations"),
+    safe(listMemoryEntries({ workspaceId: workspace.id, limit: 200 }), [], "list memory"),
+    safe(listScopes(workspace.id), [], "list scopes"),
+    safe(countByScope(workspace.id), new Map<string, ScopeCounts>(), "count scopes"),
+    safe(buildSuggestions(3, workspace.id), [], "build suggestions"),
     safe(
-      getWorkspaceHomeActivity(7),
+      getWorkspaceHomeActivity(7, workspace.id),
       {
         recentDocumentCount: 0,
         recentMemoryCount: 0,

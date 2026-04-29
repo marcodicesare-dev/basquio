@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   const scopeIdParam = url.searchParams.get("scope_id");
   const scopeId = scopeIdParam === null || scopeIdParam === "" ? undefined : scopeIdParam;
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   try {
     const candidates = await listPendingCandidates(workspace.id, scopeId);
     return NextResponse.json({ candidates, count: candidates.length });

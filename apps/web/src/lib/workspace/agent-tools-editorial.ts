@@ -7,7 +7,7 @@ import { z } from "zod";
 import { loadNiqServicesCatalog, NiqServicesCatalogNotFoundError } from "@basquio/research";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID, BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
+import { BASQUIO_TEAM_WORKSPACE_ID } from "@/lib/workspace/constants";
 import {
   archiveMemoryEntry,
   createMemoryEntry,
@@ -231,8 +231,7 @@ export function draftBriefTool(ctx: AgentCallContext) {
         db
           .from("knowledge_documents")
           .select("id", { count: "exact", head: true })
-          .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-          .eq("is_team_beta", true)
+          .eq("organization_id", ctx.organizationId)
           .in("status", ["indexed", "processing"])
           .then((r) => r.count ?? 0),
       ]);
@@ -353,8 +352,7 @@ export function explainBasquioTool(ctx: AgentCallContext) {
             db
               .from("knowledge_documents")
               .select("id", { count: "exact", head: true })
-              .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-              .eq("is_team_beta", true)
+              .eq("organization_id", ctx.organizationId)
               .in("kind", ["uploaded_file", "chat_paste", "chat_url"])
               .neq("status", "deleted"),
             db

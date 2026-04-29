@@ -3,7 +3,6 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
 import { confirmAnthropicFile, uploadFileToAnthropic } from "@/lib/workspace/anthropic-files";
 import { setDocumentAnthropicFileId } from "@/lib/workspace/db";
@@ -211,7 +210,6 @@ async function ensureAnthropicFileId(input: {
     .from("knowledge_documents")
     .select("anthropic_file_id")
     .eq("id", input.documentId)
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
     .maybeSingle();
 
   const existing = (data as { anthropic_file_id: string | null } | null)?.anthropic_file_id ?? null;

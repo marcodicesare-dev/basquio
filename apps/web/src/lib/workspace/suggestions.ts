@@ -18,6 +18,8 @@ export type BuildSuggestionOptions = {
   scopeId?: string | null;
   scopeName?: string | null;
   locale?: "en" | "it";
+  workspaceId?: string;
+  organizationId?: string;
 };
 
 function getDb() {
@@ -31,6 +33,7 @@ const ONE_DAY = 1000 * 60 * 60 * 24;
 
 export async function buildSuggestions(
   maxItemsOrOptions: number | BuildSuggestionOptions = 3,
+  workspaceIdParam?: string,
 ): Promise<WorkspaceSuggestion[]> {
   const options =
     typeof maxItemsOrOptions === "number"
@@ -41,6 +44,8 @@ export async function buildSuggestions(
     options.scopeId ?? null,
     options.scopeName ?? null,
     options.locale ?? "en",
+    options.workspaceId ?? workspaceIdParam ?? BASQUIO_TEAM_WORKSPACE_ID,
+    options.organizationId ?? options.workspaceId ?? workspaceIdParam ?? BASQUIO_TEAM_ORG_ID,
   );
 }
 
@@ -50,10 +55,19 @@ const cachedBuildSuggestions = unstable_cache(
     scopeId: string | null,
     scopeName: string | null,
     locale: "en" | "it",
+    workspaceId: string,
+    organizationId: string,
   ): Promise<WorkspaceSuggestion[]> => {
-    return buildSuggestionsUncached({ maxItems, scopeId, scopeName, locale });
+    return buildSuggestionsUncached({
+      maxItems,
+      scopeId,
+      scopeName,
+      locale,
+      workspaceId,
+      organizationId,
+    });
   },
-  ["workspace-suggestions-v3"],
+  ["workspace-suggestions-v4"],
   { revalidate: 300 },
 );
 
@@ -62,6 +76,8 @@ async function buildSuggestionsUncached({
   scopeId,
   scopeName,
   locale,
+  workspaceId,
+  organizationId,
 }: Required<BuildSuggestionOptions>): Promise<WorkspaceSuggestion[]> {
   const db = getDb();
   const since = new Date(Date.now() - 14 * ONE_DAY).toISOString();
@@ -69,8 +85,7 @@ async function buildSuggestionsUncached({
   const recentDeliverablesQuery = db
     .from("workspace_deliverables")
     .select("id, prompt, status, created_at, workspace_scope_id")
-    .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-    .eq("is_team_beta", true)
+    .eq("workspace_id", workspaceId)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -78,8 +93,7 @@ async function buildSuggestionsUncached({
   const recentMemoryQuery = db
     .from("memory_entries")
     .select("id, memory_type, path, content, updated_at, workspace_scope_id")
-    .eq("workspace_id", BASQUIO_TEAM_WORKSPACE_ID)
-    .eq("is_team_beta", true)
+    .eq("workspace_id", workspaceId)
     .gte("updated_at", since)
     .order("updated_at", { ascending: false })
     .limit(12);
@@ -93,8 +107,7 @@ async function buildSuggestionsUncached({
     db
       .from("knowledge_documents")
       .select("id, filename, created_at")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-      .eq("is_team_beta", true)
+      .eq("organization_id", organizationId)
       .eq("status", "indexed")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
@@ -104,8 +117,7 @@ async function buildSuggestionsUncached({
     db
       .from("entities")
       .select("id, canonical_name, type")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-      .eq("is_team_beta", true)
+      .eq("organization_id", organizationId)
       .in("type", ["brand", "category"])
       .order("created_at", { ascending: false })
       .limit(10),

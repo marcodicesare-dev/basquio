@@ -104,7 +104,7 @@ export async function POST(request: Request) {
 
   // Validate scope belongs to the current workspace before trusting it.
   // A client could only send a UUID that looks valid; we still need to own it.
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   let resolvedScopeId: string | null = null;
   if (scopeIdCandidate) {
     const scope = await getScope(scopeIdCandidate).catch(() => null);

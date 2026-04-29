@@ -37,7 +37,7 @@ export async function GET(
   const { id } = await context.params;
   if (!isUuid(id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const entry = await getMemoryEntry(id);
   if (!entry || entry.workspace_id !== workspace.id) {
     return NextResponse.json({ error: "Memory entry not found." }, { status: 404 });
@@ -67,7 +67,7 @@ export async function PATCH(
     );
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const existing = await getMemoryEntry(id);
   if (!existing || existing.workspace_id !== workspace.id) {
     return NextResponse.json({ error: "Memory entry not found." }, { status: 404 });
@@ -114,7 +114,7 @@ export async function DELETE(
   const { id } = await context.params;
   if (!isUuid(id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const existing = await getMemoryEntry(id);
   if (!existing || existing.workspace_id !== workspace.id) {
     return NextResponse.json({ error: "Memory entry not found." }, { status: 404 });

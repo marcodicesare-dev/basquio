@@ -3,7 +3,10 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
+import {
+  BASQUIO_TEAM_ORG_ID,
+  BASQUIO_TEAM_WORKSPACE_ID,
+} from "@/lib/workspace/constants";
 import {
   assembleWorkspaceContext,
   renderContextForPrompt,
@@ -85,11 +88,15 @@ export async function generateAnswer({
   scope,
   userEmail,
   userId,
+  workspaceId = BASQUIO_TEAM_WORKSPACE_ID,
+  organizationId = BASQUIO_TEAM_ORG_ID,
 }: {
   prompt: string;
   scope?: string;
   userEmail: string;
   userId: string;
+  workspaceId?: string;
+  organizationId?: string;
 }): Promise<GenerationResult> {
   const cleanedPrompt = prompt.trim();
   if (!cleanedPrompt) {
@@ -100,8 +107,9 @@ export async function generateAnswer({
   const { data: deliverable, error: insertError } = await db
     .from("workspace_deliverables")
     .insert({
-      organization_id: BASQUIO_TEAM_ORG_ID,
-      is_team_beta: true,
+      workspace_id: workspaceId,
+      organization_id: organizationId,
+      is_team_beta: workspaceId === BASQUIO_TEAM_WORKSPACE_ID,
       created_by: userId,
       kind: "answer",
       title: cleanedPrompt.slice(0, 120),
@@ -119,8 +127,8 @@ export async function generateAnswer({
   const deliverableId = deliverable.id as string;
 
   try {
-    const ctx = await assembleWorkspaceContext({ prompt: cleanedPrompt, scope });
-    const result = await runAgent(cleanedPrompt, ctx);
+    const ctx = await assembleWorkspaceContext({ prompt: cleanedPrompt, scope, organizationId });
+    const result = await runAgent(cleanedPrompt, ctx, { workspaceId, organizationId });
 
     await db
       .from("workspace_deliverables")
@@ -166,7 +174,11 @@ export async function generateAnswer({
   }
 }
 
-async function runAgent(prompt: string, ctx: WorkspaceContext): Promise<{ bodyMarkdown: string; citations: Citation[] }> {
+async function runAgent(
+  prompt: string,
+  ctx: WorkspaceContext,
+  memoryCtx: { workspaceId: string; organizationId: string },
+): Promise<{ bodyMarkdown: string; citations: Citation[] }> {
   const anthropic = getClient();
   const renderedContext = renderContextForPrompt(ctx);
   const userTurnText = `## User question\n${prompt}\n\n## Workspace context (use this for citations, do not invent)\n${renderedContext}`;
@@ -226,7 +238,7 @@ async function runAgent(prompt: string, ctx: WorkspaceContext): Promise<{ bodyMa
     for (const toolUse of toolUses) {
       let outcome = "";
       try {
-        outcome = await handleMemoryCommand(toolUse.input as MemoryCommand);
+        outcome = await handleMemoryCommand(toolUse.input as MemoryCommand, memoryCtx);
       } catch (error) {
         outcome = `Error: ${error instanceof Error ? error.message : String(error)}`;
       }
@@ -282,12 +294,17 @@ export async function* streamAnswer(input: {
   scope?: string;
   userEmail: string;
   userId: string;
+  workspaceId?: string;
+  organizationId?: string;
 }): AsyncGenerator<StreamEvent, void, void> {
   const cleanedPrompt = input.prompt.trim();
   if (!cleanedPrompt) {
     yield { type: "error", deliverableId: null, message: "Prompt is empty." };
     return;
   }
+
+  const workspaceId = input.workspaceId ?? BASQUIO_TEAM_WORKSPACE_ID;
+  const organizationId = input.organizationId ?? BASQUIO_TEAM_ORG_ID;
 
   const db = getDb();
   let deliverableId: string | null = null;
@@ -296,8 +313,9 @@ export async function* streamAnswer(input: {
     const { data: deliverable, error: insertError } = await db
       .from("workspace_deliverables")
       .insert({
-        organization_id: BASQUIO_TEAM_ORG_ID,
-        is_team_beta: true,
+        workspace_id: workspaceId,
+        organization_id: organizationId,
+        is_team_beta: workspaceId === BASQUIO_TEAM_WORKSPACE_ID,
         created_by: input.userId,
         kind: "answer",
         title: cleanedPrompt.slice(0, 120),
@@ -322,7 +340,7 @@ export async function* streamAnswer(input: {
     yield { type: "meta", deliverableId, scope: input.scope ?? "workspace" };
     yield { type: "status", message: "Reading workspace context." };
 
-    const ctx = await assembleWorkspaceContext({ prompt: cleanedPrompt, scope: input.scope });
+    const ctx = await assembleWorkspaceContext({ prompt: cleanedPrompt, scope: input.scope, organizationId });
 
     yield { type: "status", message: "Thinking." };
 
@@ -396,7 +414,10 @@ export async function* streamAnswer(input: {
       for (const toolUse of toolUses) {
         let outcome = "";
         try {
-          outcome = await handleMemoryCommand(toolUse.input as MemoryCommand);
+          outcome = await handleMemoryCommand(toolUse.input as MemoryCommand, {
+            workspaceId,
+            organizationId,
+          });
         } catch (error) {
           outcome = `Error: ${error instanceof Error ? error.message : String(error)}`;
         }

@@ -28,7 +28,7 @@ export async function GET(
 
   const { id } = await context.params;
   if (!isUuid(id)) return NextResponse.json({ error: "Invalid scope id." }, { status: 400 });
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const scope = await getScope(id);
   if (!scope || scope.workspace_id !== workspace.id) {
     return NextResponse.json({ error: "Scope not found." }, { status: 404 });
@@ -58,7 +58,7 @@ export async function PATCH(
     );
   }
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const existing = await getScope(id);
   if (!existing || existing.workspace_id !== workspace.id) {
     return NextResponse.json({ error: "Scope not found." }, { status: 404 });
@@ -90,7 +90,7 @@ export async function DELETE(
   const { id } = await context.params;
   if (!isUuid(id)) return NextResponse.json({ error: "Invalid scope id." }, { status: 400 });
 
-  const workspace = await getCurrentWorkspace();
+  const workspace = await getCurrentWorkspace(viewer);
   const existing = await getScope(id);
   if (!existing || existing.workspace_id !== workspace.id) {
     return NextResponse.json({ error: "Scope not found." }, { status: 404 });

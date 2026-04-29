@@ -2,7 +2,6 @@ import Link from "next/link";
 import { PencilSimple, Sparkle, Trash } from "@phosphor-icons/react/dist/ssr";
 
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
-import { BASQUIO_TEAM_ORG_ID } from "@/lib/workspace/constants";
 import { MEMORY_TYPE_LABELS, type MemoryType } from "@/lib/workspace/types";
 
 /**
@@ -30,7 +29,11 @@ type RecentSave = {
   detailHref: string | null;
 };
 
-async function listRecentSaves(workspaceId: string, limit = 8): Promise<RecentSave[]> {
+async function listRecentSaves(
+  workspaceId: string,
+  organizationId: string,
+  limit = 8,
+): Promise<RecentSave[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return [];
@@ -46,8 +49,7 @@ async function listRecentSaves(workspaceId: string, limit = 8): Promise<RecentSa
     db
       .from("knowledge_documents")
       .select("id, filename, kind, source_url, updated_at")
-      .eq("organization_id", BASQUIO_TEAM_ORG_ID)
-      .eq("is_team_beta", true)
+      .eq("organization_id", organizationId)
       .in("kind", ["chat_paste", "chat_url", "scraped_article"])
       .order("updated_at", { ascending: false })
       .limit(limit),
@@ -119,10 +121,12 @@ function relativeTime(iso: string): string {
 
 export async function WorkspaceMemoryAside({
   workspaceId,
+  organizationId,
 }: {
   workspaceId: string;
+  organizationId: string;
 }) {
-  const saves = await listRecentSaves(workspaceId, 8);
+  const saves = await listRecentSaves(workspaceId, organizationId, 8);
   const thisWeekCount = saves.filter(
     (s) => Date.now() - new Date(s.updatedAt).getTime() < 7 * 24 * 3600_000,
   ).length;
