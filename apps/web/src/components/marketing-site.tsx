@@ -107,46 +107,41 @@ const conversationModes = [
   {
     id: "one-output",
     label: "One output",
-    prompt: "I have a brief, two trackers, and an old deck. What do I give you?",
-    reply:
-      "Bring the brief, source files, working notes, and any approved template. Basquio estimates the output before purchase, then prepares files you can review.",
-    artifacts: ["Deck storyboard", "Narrative report", "Excel workbook"],
-    evidence: ["Brief objective", "Source files", "Template rules", "Review notes"],
+    title: "One brief. Three files.",
+    instruction: "April category update",
+    copy: "Estimate first. Prepare the pack. Keep the evidence visible.",
+    inputs: ["Brief", "Tracker", "Old deck"],
+    memory: ["Audience", "Thesis", "Format"],
+    artifacts: ["Deck", "Report", "Excel"],
+    evidence: ["Objective", "Source rows", "Template rules"],
     href: "/pay-as-you-go",
     cta: "Estimate one output",
   },
   {
     id: "workspace",
     label: "Recurring work",
-    prompt: "We repeat category updates every month. Can the context stay alive?",
-    reply:
-      "Yes. The workspace keeps briefs, data, notes, transcripts, templates, brand rules, stakeholder preferences, and past reviews available for the next ask.",
-    artifacts: ["Workspace memory", "Reusable formats", "Project history"],
-    evidence: ["Brand rules", "Stakeholder asks", "Past reviews", "Approved formats"],
+    title: "The next ask starts warm.",
+    instruction: "Same client. New month.",
+    copy: "Past reviews, rules, notes, and templates stay in the room.",
+    inputs: ["Briefs", "Notes", "Reviews"],
+    memory: ["Client", "Brand", "Category"],
+    artifacts: ["Saved context", "Reusable format", "Next output"],
+    evidence: ["Brand rules", "Stakeholder asks", "Past reviews"],
     href: "/workspace-pro",
-    cta: "See workspace",
+    cta: "See Workspace Pro",
   },
   {
     id: "team",
-    label: "Team pilot",
-    prompt: "Our research, brand, and category teams all touch the final deck.",
-    reply:
-      "Team Workspace gives everyone a shared research room. Basquio keeps the context and prepares the deck, report, Excel file, charts, and evidence package.",
-    artifacts: ["Shared workspace", "Pilot output", "Governance path"],
-    evidence: ["Team roles", "Review trail", "Source package", "Usage agreement"],
+    label: "Team workspace",
+    title: "One room for recurring output.",
+    instruction: "Board update",
+    copy: "Research, brand, category, and strategy work from the same context.",
+    inputs: ["Projects", "Sources", "Transcripts"],
+    memory: ["Roles", "Rules", "Approvals"],
+    artifacts: ["Team workspace", "Pilot output", "Evidence pack"],
+    evidence: ["Team roles", "Review trail", "Source package"],
     href: "/team-workspace",
     cta: "Open team path",
-  },
-  {
-    id: "security",
-    label: "Security",
-    prompt: "Before we upload data, what can you state today?",
-    reply:
-      "Basquio states only current controls: no customer data training, tenant isolation, encryption in transit and at rest, and a DPA path. Planned controls stay marked as planned.",
-    artifacts: ["Data handling", "DPA path", "Control notes"],
-    evidence: ["No training claim", "Tenant boundary", "Encryption", "Planned controls"],
-    href: "/security",
-    cta: "Read security",
   },
 ] as const;
 
@@ -240,47 +235,87 @@ function ConversationHome({ variant }: { variant: MarketingVariant }) {
   return (
     <main className="mv-chat-shell">
       <section className="mv-chat-stage" aria-labelledby="conversation-hero">
+        <div className="mv-chat-copy">
+          <p className="mv-kicker">{variant.eyebrow}</p>
+          <h1 id="conversation-hero">{variant.hero}</h1>
+          <p>{variant.subhead}</p>
+          <div className="mv-cta-row">
+            <Link href="/pay-as-you-go" className="mv-button mv-button-primary">
+              {variant.primaryCta}
+            </Link>
+            <Link href={variant.secondaryHref} className="mv-button mv-button-secondary">
+              {variant.secondaryCta}
+            </Link>
+          </div>
+          <div className="mv-chat-router" aria-label="Buyer paths">
+            {[
+              ["One output", "Estimate first", "/pay-as-you-go"],
+              ["Workspace Pro", "Keep context", "/workspace-pro"],
+              ["Team Workspace", "Share memory", "/team-workspace"],
+            ].map(([title, detail, href]) => (
+              <Link href={href} className="mv-chat-route" key={title}>
+                <span>{title}</span>
+                <strong>{detail}</strong>
+              </Link>
+            ))}
+          </div>
+        </div>
+
         <div className="mv-chat-room" aria-label={variant.visualTitle}>
           <div className="mv-chat-topbar">
-            <span>Basquio command room</span>
+            <span>{variant.visualTitle}</span>
             <strong>{activeMode.label}</strong>
           </div>
-          <div className="mv-chat-grid">
-            <div className="mv-chat-prompts" aria-label="Buyer prompts">
-              {conversationModes.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  aria-pressed={mode.id === activeId}
-                  className={mode.id === activeId ? "mv-chat-prompt mv-chat-prompt-active" : "mv-chat-prompt"}
-                  onClick={() => setActiveId(mode.id)}
-                >
-                  <span>{mode.label}</span>
-                </button>
-              ))}
+          <div className="mv-chat-prompts" aria-label="Buyer prompt modes">
+            {conversationModes.map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                aria-pressed={mode.id === activeId}
+                className={mode.id === activeId ? "mv-chat-prompt mv-chat-prompt-active" : "mv-chat-prompt"}
+                onClick={() => setActiveId(mode.id)}
+              >
+                <span>{mode.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="mv-command-grid">
+            <div className="mv-command-brief">
+              <span>Clear direction</span>
+              <h2>{activeMode.title}</h2>
+              <p>{activeMode.instruction}</p>
             </div>
 
-            <div className="mv-chat-thread">
-              <div className="mv-chat-message mv-chat-message-user">
-                <span>Research lead</span>
-                <p>{activeMode.prompt}</p>
+            <div className="mv-command-flow" aria-label="Basquio workflow">
+              <div className="mv-command-column">
+                <span>Inputs</span>
+                <div className="mv-command-list">
+                  {activeMode.inputs.map((item) => (
+                    <b key={item}>{item}</b>
+                  ))}
+                </div>
               </div>
-              <div className="mv-chat-message mv-chat-message-system">
-                <span>Basquio</span>
-                <p>{activeMode.reply}</p>
+              <div className="mv-command-core">
+                <span>Workspace memory</span>
+                <p>{activeMode.copy}</p>
+                <div className="mv-command-memory">
+                  {activeMode.memory.map((item) => (
+                    <b key={item}>{item}</b>
+                  ))}
+                </div>
               </div>
-              <div className="mv-chat-artifact-row">
-                {activeMode.artifacts.map((artifact) => (
-                  <div className="mv-chat-artifact" key={artifact}>
-                    <span />
-                    <strong>{artifact}</strong>
-                  </div>
-                ))}
+              <div className="mv-command-column">
+                <span>Outputs</span>
+                <div className="mv-command-list">
+                  {activeMode.artifacts.map((item) => (
+                    <b key={item}>{item}</b>
+                  ))}
+                </div>
               </div>
             </div>
 
             <aside className="mv-chat-evidence" aria-label="Evidence package">
-              <span>Evidence package</span>
+              <span>Evidence trail</span>
               <div className="mv-chat-evidence-list">
                 {activeMode.evidence.map((item, index) => (
                   <div className="mv-chat-evidence-item" key={item}>
@@ -295,25 +330,19 @@ function ConversationHome({ variant }: { variant: MarketingVariant }) {
             </aside>
           </div>
         </div>
+      </section>
 
-        <div className="mv-chat-copy">
-          <p className="mv-kicker">{variant.eyebrow}</p>
-          <h1 id="conversation-hero">{variant.hero}</h1>
-          <p>{variant.subhead}</p>
-          <div className="mv-cta-row">
-            <Link href="/pay-as-you-go" className="mv-button mv-button-primary">
-              {variant.primaryCta}
-            </Link>
-            <Link href={variant.secondaryHref} className="mv-button mv-button-secondary">
-              {variant.secondaryCta}
-            </Link>
-          </div>
-          <div className="mv-chat-signals" aria-label="Basquio workspace context">
-            {["Briefs", "Files", "Transcripts", "Templates", "Past reviews"].map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
-        </div>
+      <section className="mv-chat-answer-grid" aria-label="What Basquio does">
+        {[
+          ["For", "Market research teams."],
+          ["Input", "Brief, data, notes, template, past work."],
+          ["Output", "Deck, report, Excel file, evidence package."],
+        ].map(([title, copy]) => (
+          <article key={title}>
+            <span>{title}</span>
+            <p>{copy}</p>
+          </article>
+        ))}
       </section>
 
       <section className="mv-chat-band" aria-labelledby="conversation-bottleneck">
@@ -332,10 +361,10 @@ function ConversationHome({ variant }: { variant: MarketingVariant }) {
         </div>
         <div className="mv-chat-output-grid">
           {[
-            ["Deck", "Editable presentation with storyline, charts, recommendations, and source notes."],
-            ["Report", "Written narrative for the decision, caveats, and next action."],
-            ["Excel", "Workbook with tables, chart inputs, and reviewable analysis tabs."],
-            ["Evidence", "Source notes and context behind the claims in the final files."],
+            ["Deck", "Presentation-ready storyline and charts."],
+            ["Report", "Written narrative for the decision."],
+            ["Excel", "Workbook behind the numbers."],
+            ["Evidence", "Sources behind the claims."],
           ].map(([title, copy]) => (
             <article className="mv-chat-output-card" key={title}>
               <span>{title}</span>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { JetBrains_Mono, Manrope } from "next/font/google";
 import Script from "next/script";
@@ -20,11 +20,11 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://basquio.com"),
   title: {
-    default: "Basquio - Turn Data into Finished Analysis Decks",
+    default: "Basquio - Research Workspace for Finished Outputs",
     template: "%s | Basquio",
   },
   description:
-    "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, an editable PowerPoint, and a data workbook. The only tool that does the analysis AND builds the presentation.",
+    "Basquio keeps briefs, data, notes, templates, brand rules, stakeholder preferences, and past reviews together so research teams can prepare decks, reports, Excel files, charts, and evidence packages from the same workspace.",
   icons: {
     icon: "/brand/svg/favicon/basquio-favicon.svg",
     shortcut: "/brand/png/favicon/basquio-favicon-32.png",
@@ -34,18 +34,18 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     siteName: "Basquio",
-    title: "Basquio - Turn Data into Finished Analysis Decks",
+    title: "Basquio - Research Workspace for Finished Outputs",
     description:
-      "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
+      "Keep research context together and prepare decks, reports, Excel files, charts, and evidence packages from one workspace.",
     images: [{ url: "/brand/png/logo/basquio-logo-dark-bg-4x.png", width: 1200, height: 630, alt: "Basquio" }],
   },
   twitter: {
     card: "summary_large_image",
     site: "@basquio",
     creator: "@basquio",
-    title: "Basquio - Turn Data into Finished Analysis Decks",
+    title: "Basquio - Research Workspace for Finished Outputs",
     description:
-      "Upload CSV, Excel, or spreadsheet data and a brief. Get a finished analysis deck with real charts, a written report, and an editable PowerPoint.",
+      "Keep research context together and prepare decks, reports, Excel files, charts, and evidence packages from one workspace.",
     images: ["/brand/png/logo/basquio-logo-dark-bg-4x.png"],
   },
   alternates: {
@@ -56,6 +56,11 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true },
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 const jsonLd = {
@@ -75,7 +80,7 @@ const jsonLd = {
         "https://www.linkedin.com/company/basquio",
       ],
       description:
-        "Basquio turns raw CSV and Excel data into finished PowerPoint decks with real charts, written narrative analysis, and branded templates. Upload a spreadsheet, describe the analysis in two sentences, get a 10-15 slide presentation with methodology, findings, and recommendations.",
+        "Basquio is a vertical workspace for market research teams. It keeps briefs, data, transcripts, notes, templates, brand rules, stakeholder preferences, past reviews, and approved formats together.",
     },
     {
       "@type": "SoftwareApplication",
@@ -83,48 +88,15 @@ const jsonLd = {
       name: "Basquio",
       url: "https://basquio.com",
       applicationCategory: "BusinessApplication",
-      applicationSubCategory: "Data Analysis & Presentation Generation",
+      applicationSubCategory: "Market Research Workspace",
       operatingSystem: "Web",
-      offers: [
-        {
-          "@type": "Offer",
-          name: "Starter",
-          price: "19",
-          priceCurrency: "USD",
-          billingIncrement: "P1M",
-          description: "30 credits/month. No branding. 2 template slots.",
-        },
-        {
-          "@type": "Offer",
-          name: "Pro",
-          price: "149",
-          priceCurrency: "USD",
-          billingIncrement: "P1M",
-          description: "200 credits/month. Priority queue. 5 templates.",
-        },
-        {
-          "@type": "Offer",
-          name: "Enterprise",
-          price: "0",
-          priceCurrency: "USD",
-          billingIncrement: "P1M",
-          description: "Custom workspace, billing, and template setup.",
-        },
-      ],
       featureList: [
-        "Upload CSV, Excel, and XLSX data files",
-        "Automated data analysis with real computed metrics",
-        "Chart generation from actual data (matplotlib, PptxGenJS)",
-        "Branded PPTX presentation output",
-        "Narrative markdown report output",
-        "Data workbook with traceable source references",
-        "Brand template interpretation",
-        "Zero-prompt operation",
-        "Audience-aware narrative generation",
-        "Syndicated and market research data support",
-        "Category review deck automation",
+        "Brief, data, transcript, note, and template context",
+        "Brand rules and approved output formats",
+        "Stakeholder preferences and past review memory",
+        "Deck, report, Excel file, chart, and evidence package preparation",
+        "Source-backed research output workspace",
       ],
-      screenshot: "https://basquio.com/showcase/slide-showcase-chart.svg",
       creator: { "@id": "https://basquio.com/#organization" },
     },
     {

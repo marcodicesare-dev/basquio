@@ -33,7 +33,7 @@ export const marketingVariants: Record<MarketingVariantKey, MarketingVariant> = 
     eyebrow: "For market research teams",
     hero: "Your next research deck should not start from zero.",
     subhead:
-      "Basquio keeps the brief, data, notes, template, and past work together, then turns the next ask into a deck, report, and Excel file.",
+      "Keep the context together. Get the deck, report, and Excel file without rebuilding the work by hand.",
     primaryCta: "Start with one output",
     secondaryCta: "See the workspace",
     secondaryHref: "/workspace-pro",
@@ -154,23 +154,23 @@ export const marketingVariants: Record<MarketingVariantKey, MarketingVariant> = 
   },
   conversation: {
     key: "conversation",
-    eyebrow: "Interactive research workspace",
-    hero: "Brief the workspace. Watch the output take shape.",
+    eyebrow: "For market research teams",
+    hero: "Your next research deck should not start from zero.",
     subhead:
-      "Basquio keeps research context, files, templates, stakeholder rules, and past reviews in one working room, then prepares the deck, report, Excel file, charts, and evidence package.",
-    primaryCta: "Run one output",
-    secondaryCta: "Open team path",
-    secondaryHref: "/team-workspace",
-    visualTitle: "Research command room",
+      "Basquio keeps the brief, data, notes, template, and past work together, then turns the next ask into a deck, report, and Excel file.",
+    primaryCta: "Start with one output",
+    secondaryCta: "See the workspace",
+    secondaryHref: "/workspace-pro",
+    visualTitle: "Workspace command room",
     visualMode: "conversation",
     routerHeading: "Ask from the shape of the work.",
-    painHeading: "The hard part is not asking AI. It is keeping the research room intact.",
+    painHeading: "The work is clear. The context is scattered.",
     painCopy:
-      "Market research work depends on context, judgment, caveats, stakeholder memory, and approved formats. Basquio keeps those parts together.",
+      "Basquio keeps the brief, data, notes, templates, stakeholder preferences, and past reviews in one workspace.",
     workspaceHeading: "The workspace remembers what the next request needs.",
     workspaceCopy:
       "Briefs, transcripts, notes, source files, templates, brand rules, stakeholder preferences, and review history stay available for the next output.",
-    outputHeading: "The conversation ends in files, not loose text.",
+    outputHeading: "Finished files, with evidence.",
     outputCopy:
       "Basquio prepares decks, reports, Excel workbooks, charts, and evidence packages from the same source-backed context.",
     teamHeading: "For teams that repeat insight work every month.",
