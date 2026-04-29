@@ -21291,3 +21291,720 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   background: var(--canvas-stage);
   outline: none;
 }
+
+/* Marketing variant G */
+
+.g-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(320px, 0.78fr) minmax(620px, 1.22fr);
+  gap: clamp(32px, 4vw, 64px);
+  min-height: 650px;
+  overflow: hidden;
+  padding: clamp(36px, 4.4vw, 64px);
+  border: 1px solid var(--border-inverse);
+  border-radius: 10px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 80% 18%, rgba(240, 204, 39, 0.14), transparent 22rem),
+    radial-gradient(circle at 14% 16%, rgba(26, 106, 255, 0.17), transparent 24rem),
+    linear-gradient(180deg, #171a1d 0%, #0b0c0c 100%);
+  background-size: 38px 38px, 38px 38px, auto, auto, auto;
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-stage);
+}
+
+.landing-shell:has(.g-hero) .public-nav,
+.pricing-page-g .public-nav {
+  position: relative;
+  top: auto;
+}
+
+.landing-shell:has(.g-hero) {
+  gap: 40px;
+}
+
+.g-hero-copy {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  gap: 24px;
+  min-width: 0;
+}
+
+.g-hero-copy h1 {
+  max-width: 11.5ch;
+  margin: 0;
+  font-size: clamp(3.25rem, 5.25vw, 5.85rem);
+  line-height: 0.9;
+  letter-spacing: -0.055em;
+}
+
+.g-hero-subhead,
+.g-hero-support {
+  max-width: 34rem;
+  margin: 0;
+  color: rgba(244, 246, 248, 0.82);
+}
+
+.g-hero-subhead {
+  font-size: clamp(1rem, 1.35vw, 1.22rem);
+  line-height: 1.55;
+}
+
+.g-hero-support {
+  color: rgba(244, 246, 248, 0.62);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.g-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.g-intent-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: min(100%, 520px);
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.g-intent-button {
+  display: grid;
+  gap: 6px;
+  min-height: 96px;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(244, 246, 248, 0.64);
+  cursor: pointer;
+  text-align: left;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.g-intent-button span {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.g-intent-button small {
+  color: inherit;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.g-intent-button:hover,
+.g-intent-button.active {
+  border-color: rgba(26, 106, 255, 0.56);
+  background: rgba(26, 106, 255, 0.16);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.g-hero-artifact {
+  position: relative;
+  z-index: 1;
+  min-height: 540px;
+}
+
+.g-source-spine {
+  position: absolute;
+  top: 54px;
+  left: 0;
+  z-index: 4;
+  display: grid;
+  gap: 12px;
+  width: 156px;
+}
+
+.g-source-spine span,
+.g-output-rail span,
+.g-context-list span,
+.pricing-material-list span,
+.pricing-includes span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(244, 246, 248, 0.74);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.g-source-spine span.active {
+  border-color: rgba(240, 204, 39, 0.52);
+  background: rgba(240, 204, 39, 0.13);
+  color: #ffffff;
+}
+
+.g-flow-lines {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.g-flow-lines path {
+  fill: none;
+  stroke: rgba(26, 106, 255, 0.56);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 7 10;
+  animation: g-flow 2.6s linear infinite;
+}
+
+.g-flow-lines path.output {
+  stroke: rgba(240, 204, 39, 0.72);
+}
+
+.g-output-stage {
+  position: absolute;
+  inset: 8px 0 74px 106px;
+  z-index: 3;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(9, 11, 12, 0.82);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(20px);
+}
+
+.g-stage-chrome {
+  display: flex;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.g-stage-chrome span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.g-stage-body {
+  position: relative;
+  min-height: calc(100% - 39px);
+  padding: clamp(18px, 2.2vw, 30px);
+}
+
+.g-slide-frame {
+  position: absolute;
+  inset: 28px 44px 40px 64px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.28);
+  animation: g-artifact-lift 720ms ease both;
+}
+
+.g-slide-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.g-context-panel,
+.g-output-panel {
+  position: absolute;
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+}
+
+.g-context-panel {
+  top: 28px;
+  left: 22px;
+  width: min(230px, 38%);
+  padding: 14px;
+  background: rgba(16, 19, 22, 0.88);
+}
+
+.g-output-panel {
+  right: 20px;
+  bottom: 24px;
+  width: min(250px, 40%);
+  padding: 16px;
+  background: rgba(247, 243, 235, 0.96);
+  color: var(--text);
+}
+
+.g-output-panel strong {
+  font-size: 1.22rem;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.g-output-panel span:last-child {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.g-panel-kicker,
+.pricing-panel-label {
+  margin: 0;
+  color: rgba(244, 246, 248, 0.62);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.g-output-panel .g-panel-kicker,
+.pricing-path-card .pricing-panel-label {
+  color: var(--text-muted);
+}
+
+.g-context-list {
+  display: grid;
+  gap: 8px;
+}
+
+.g-output-rail {
+  position: absolute;
+  right: 14px;
+  bottom: 0;
+  left: 158px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.g-output-rail span {
+  justify-content: center;
+  min-height: 52px;
+  border-color: rgba(240, 204, 39, 0.24);
+  background: rgba(240, 204, 39, 0.1);
+  color: #ffffff;
+  text-align: center;
+}
+
+.g-hero-one-output .g-slide-frame,
+.g-hero-workspace .g-slide-frame,
+.g-hero-team .g-slide-frame {
+  animation: g-artifact-lift 560ms ease both;
+}
+
+.g-hero-workspace .g-output-stage {
+  box-shadow: 0 34px 90px rgba(26, 106, 255, 0.22), 0 34px 90px rgba(0, 0, 0, 0.34);
+}
+
+.g-hero-team .g-output-stage {
+  box-shadow: 0 34px 90px rgba(240, 204, 39, 0.18), 0 34px 90px rgba(0, 0, 0, 0.34);
+}
+
+.pricing-page-g {
+  gap: 24px;
+}
+
+.pricing-hero-g {
+  padding: 28px 32px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)),
+    radial-gradient(circle at 84% 18%, rgba(26, 106, 255, 0.12), transparent 22rem);
+}
+
+.pricing-hero-g h1 {
+  max-width: 17ch;
+  font-size: clamp(2.4rem, 4.2vw, 4.35rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+}
+
+.pricing-hero-g .page-copy {
+  max-width: 44rem;
+  color: var(--text-soft);
+}
+
+.pricing-model-interface {
+  display: grid;
+  gap: 22px;
+  padding: clamp(24px, 3.6vw, 44px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--shadow-stage);
+}
+
+.pricing-model-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 24px;
+}
+
+.pricing-model-head h2 {
+  max-width: 23ch;
+  margin: 0;
+  font-size: clamp(2rem, 3.2vw, 3.15rem);
+  line-height: 0.98;
+  letter-spacing: -0.048em;
+}
+
+.pricing-path-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(11, 12, 12, 0.04);
+}
+
+.pricing-path-tab {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+  white-space: nowrap;
+}
+
+.pricing-path-tab.active,
+.pricing-path-tab:hover {
+  border-color: rgba(26, 106, 255, 0.22);
+  background: #ffffff;
+  color: var(--text);
+}
+
+.pricing-buying-surface {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(260px, 1fr) minmax(320px, 0.9fr);
+  gap: 14px;
+  min-height: 386px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(11, 12, 12, 0.1);
+  border-radius: 10px;
+  background:
+    linear-gradient(rgba(11, 12, 12, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 12, 12, 0.04) 1px, transparent 1px),
+    #f8f5ef;
+  background-size: 34px 34px;
+}
+
+.pricing-material-panel,
+.pricing-flow-panel,
+.pricing-path-card {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(11, 12, 12, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-soft);
+}
+
+.pricing-material-panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 18px;
+}
+
+.pricing-material-list {
+  display: grid;
+  gap: 10px;
+}
+
+.pricing-material-list span,
+.pricing-includes span {
+  border-color: rgba(11, 12, 12, 0.1);
+  background: rgba(11, 12, 12, 0.035);
+  color: var(--text-soft);
+}
+
+.pricing-flow-panel {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  padding: 22px;
+}
+
+.pricing-flow-step {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 0 14px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.pricing-flow-step span {
+  color: var(--blue);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.pricing-path-card {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(26, 106, 255, 0.08), rgba(255, 255, 255, 0.88)),
+    rgba(255, 255, 255, 0.88);
+}
+
+.pricing-path-card p {
+  margin: 0;
+}
+
+.pricing-path-price {
+  margin: 0;
+  font-size: clamp(2.35rem, 4vw, 4rem);
+  font-weight: 900;
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+}
+
+.pricing-path-unit {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.pricing-includes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pricing-path-card .button {
+  width: 100%;
+  margin-top: auto;
+}
+
+.pricing-model-why {
+  margin: 0;
+  max-width: 54rem;
+  color: var(--text-muted);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.pricing-packs-g,
+.pricing-questions-g {
+  min-width: 0;
+}
+
+@keyframes g-flow {
+  to {
+    stroke-dashoffset: -34;
+  }
+}
+
+@keyframes g-artifact-lift {
+  from {
+    opacity: 0.72;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 1180px) {
+  .g-hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .g-hero-copy h1 {
+    max-width: 12ch;
+  }
+
+  .g-hero-artifact {
+    min-height: 540px;
+  }
+
+  .pricing-model-head,
+  .pricing-buying-surface {
+    grid-template-columns: 1fr;
+  }
+
+  .pricing-path-tabs {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .landing-shell:has(.g-hero) {
+    gap: 22px;
+  }
+
+  .g-hero {
+    gap: 22px;
+    padding: 22px 16px 18px;
+    border-radius: 8px;
+  }
+
+  .g-hero-copy {
+    gap: 16px;
+  }
+
+  .g-hero-copy h1 {
+    max-width: 10.5ch;
+    font-size: clamp(2.72rem, 12vw, 3.35rem);
+    line-height: 0.92;
+  }
+
+  .g-hero-subhead {
+    font-size: 0.94rem;
+    line-height: 1.45;
+  }
+
+  .g-hero-support {
+    display: none;
+  }
+
+  .g-intent-selector {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .g-intent-button {
+    min-height: 58px;
+    padding: 10px 8px;
+  }
+
+  .g-intent-button span {
+    font-size: 0.86rem;
+  }
+
+  .g-intent-button small {
+    display: none;
+  }
+
+  .pricing-path-tabs {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .g-hero-artifact {
+    min-height: 430px;
+  }
+
+  .g-source-spine {
+    position: relative;
+    top: auto;
+    left: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .g-output-stage {
+    inset: 114px 0 72px 0;
+  }
+
+  .g-flow-lines {
+    display: none;
+  }
+
+  .g-slide-frame {
+    inset: 24px 16px 108px 16px;
+  }
+
+  .g-context-panel {
+    top: auto;
+    bottom: 16px;
+    left: 16px;
+    width: calc(50% - 24px);
+  }
+
+  .g-output-panel {
+    right: 16px;
+    bottom: 16px;
+    width: calc(50% - 24px);
+  }
+
+  .g-context-list span {
+    min-height: 28px;
+    font-size: 0.58rem;
+  }
+
+  .g-output-panel strong {
+    font-size: 1rem;
+  }
+
+  .g-output-panel span:last-child {
+    display: none;
+  }
+
+  .g-output-rail {
+    right: 0;
+    left: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pricing-hero-g h1,
+  .pricing-model-head h2 {
+    max-width: 16ch;
+    font-size: clamp(2rem, 9vw, 2.85rem);
+  }
+
+  .pricing-hero-g {
+    padding: 22px;
+  }
+
+  .pricing-hero-g .page-copy {
+    font-size: 0.95rem;
+    line-height: 1.45;
+  }
+
+  .pricing-model-head {
+    gap: 14px;
+  }
+
+  .pricing-model-head h2 {
+    max-width: 14ch;
+    font-size: clamp(2.2rem, 10vw, 3rem);
+  }
+
+  .pricing-model-interface {
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .pricing-path-tabs {
+    display: grid;
+  }
+
+  .pricing-buying-surface {
+    min-height: 0;
+  }
+}

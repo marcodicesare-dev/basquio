@@ -2,275 +2,77 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { CreditPackShelf } from "@/components/credit-pack-shelf";
+import { PricingModelInterface } from "@/components/pricing-model-interface";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
-import { PricingPlans } from "@/components/pricing-plans";
 
 export const metadata: Metadata = {
-  title: "Pricing",
+  title: "Basquio Pricing",
   description:
-    "Start free with 30 credits. Upgrade to Starter at $19/mo or Pro at $149/mo when the workflow becomes recurring. Basquio turns spreadsheets into finished analysis decks, narratives, and workbooks.",
+    "Estimate one research output, subscribe to a single-user workspace for recurring context, or plan a team workspace with shared projects, reviews, and onboarding.",
   alternates: { canonical: "https://basquio.com/pricing" },
 };
 
-const outputTypes = [
+const pricingQuestions = [
   {
-    name: "Memo",
-    credits: "3 credits",
-    artifacts: "XLSX + MD",
-    description: "Written analysis + data workbook. Fast, no slides.",
-    time: "~2 min",
-    highlight: false,
-  },
-  {
-    name: "Deck",
-    credits: "10 slides = 13 credits",
-    artifacts: "PPTX + MD + XLSX",
-    description: "Full deck with real charts, written analysis, and data workbook.",
-    time: "~15 min",
-    highlight: true,
-  },
-  {
-    name: "Deep-Dive",
-    credits: "10 slides = 25 credits",
-    artifacts: "PPTX + MD + XLSX",
-    description: "Consulting-grade depth. The full treatment.",
-    time: "~25 min",
-    highlight: false,
-  },
-] as const;
-
-const faqs = [
-  {
-    question: "What do I get with each output type?",
+    question: "When should I use pay as you go?",
     answer:
-      "Every run includes a written analysis (2000+ words with methodology, findings, and recommendations) and a data workbook. Deck and Deep-Dive also include an editable PowerPoint with real charts. Deep-Dive runs a deeper analytical pass for more nuanced findings.",
+      "Use credits when you have one clear request and want to estimate the output before purchase. It is built for a single deck, report, or Excel package.",
   },
   {
-    question: "How do credits work?",
+    question: "Why does Workspace Pro cost $199 per month?",
     answer:
-      "Memo costs 3 credits flat. Deck uses a progressive formula: 3 base + 1 per slide for the first 10 slides, then 2 per slide after that. Deep-Dive costs 5 base + 2 per slide. Examples: Deck 10 slides = 13 credits, Deck 15 slides = 23 credits, Deep-Dive 20 slides = 45 credits.",
+      "The subscription is for recurring work. It keeps templates, notes, past reviews, and preferred formats together so the next request starts with context.",
   },
   {
-    question: "What happens to unused credits?",
+    question: "What makes Team Workspace different?",
     answer:
-      "Subscription credits roll over for 1 month. Purchased credit packs expire after 12 months. Free tier credits never expire.",
+      "Team Workspace adds shared projects, roles, review history, onboarding, and pilot support for teams that produce research outputs together.",
   },
   {
-    question: "What if a run fails?",
-    answer: "Basquio refunds credits automatically for system failures. You never lose credits when the platform fails.",
-  },
-  {
-    question: "What files can I upload?",
+    question: "Is the Workspace Pro trial free?",
     answer:
-      "CSV, XLSX, XLS, PDF, PPTX, and plain text. Excel gives the deepest analysis; PPTX and PDF also work for extraction and restyling.",
+      "Workspace Pro has a 7-day trial that requires checkout. Pay as you go remains the clean path for one output without a workspace subscription.",
   },
-  {
-    question: "Do custom templates cost extra on Free?",
-    answer:
-      "Yes. Free users pay a $5 per-run custom-template fee. Starter and Pro include template usage inside the plan.",
-  },
-] as const;
-
-const planComparisonRows = [
-  {
-    label: "Who it is for",
-    values: ["Trialing Basquio on real work", "Solo operator", "Power user", "Larger team / procurement"],
-  },
-  {
-    label: "Monthly credits",
-    values: ["30 free credits once", "30 / month", "200 / month", "Custom"],
-  },
-  {
-    label: "Branding on output",
-    values: ["Basquio branding", "No branding", "No branding", "No branding"],
-  },
-  {
-    label: "Custom templates",
-    values: ["Community only", "2 slots", "5 slots", "Custom"],
-  },
-  {
-    label: "Workspace model",
-    values: ["Single user", "Single user", "Single user", "Shared workspace"],
-  },
-  {
-    label: "How to start",
-    values: ["Try before paying", "Subscribe", "Subscribe", "Talk to sales"],
-  },
-] as const;
-
-const outputModes = [
-  {
-    name: "Memo",
-    credits: "3 credits",
-    deliverables: ["Written analysis (2000+ words)", "Data workbook (XLSX)"],
-    fit: "Fast readout when slides are unnecessary.",
-    featured: false,
-  },
-  {
-    name: "Deck",
-    credits: "10 slides = 13 credits",
-    deliverables: ["Editable PPTX with charts", "Written analysis (2000+ words)", "Data workbook (XLSX)"],
-    fit: "Default client-ready report package.",
-    featured: true,
-  },
-  {
-    name: "Deep-Dive",
-    credits: "10 slides = 25 credits",
-    deliverables: ["Full deck with deeper analysis", "Extended written analysis", "Data workbook (XLSX)"],
-    fit: "When the room needs more analysis, not more decoration.",
-    featured: false,
-  },
-] as const;
-
-const creditFormulaRows = [
-  { label: "Memo", formula: "3 flat", note: "No slides." },
-  { label: "Deck", formula: "3 + 1/slide for first 10, then 2/slide", note: "10 slides = 13. 15 slides = 23." },
-  { label: "Deep-Dive", formula: "5 + 2 per slide", note: "10 slides = 25. 20 slides = 45." },
 ] as const;
 
 export default function PricingPage() {
   return (
-    <div className="page-shell public-page pricing-page">
+    <div className="page-shell public-page pricing-page pricing-page-g">
       <PublicSiteNav />
 
-      <section className="page-hero pricing-hero">
+      <section className="page-hero pricing-hero pricing-hero-g">
         <div className="stack pricing-hero-copy">
           <p className="section-label">Pricing</p>
-          <h1>Start free. Upgrade when you need more.</h1>
+          <h1>Pricing that matches how research work happens.</h1>
           <p className="page-copy">
-            30 free credits. No credit card. Run your first deck and see what comes back.
+            Estimate one output. Subscribe when context should stay alive. Bring the team in when projects,
+            roles, and review history need to be shared.
           </p>
         </div>
       </section>
 
-      <PricingPlans />
-
-      <section className="pricing-comparison-stage">
-        <article className="technical-panel pricing-comparison-panel">
-          <div className="pricing-comparison-head">
-            <div className="stack-xs">
-              <p className="section-label light">Plan comparison</p>
-              <h2>Pick your plan. Adjust scope later.</h2>
-            </div>
-            <p className="muted">
-              Every plan uses the same analysis engine. Higher tiers unlock cheaper credits, more template slots, and cleaner output.
-            </p>
-          </div>
-
-          <div className="pricing-comparison-table-wrap">
-            <table className="pricing-comparison-table">
-              <thead>
-                <tr>
-                  <th>Decision point</th>
-                  <th>Free</th>
-                  <th>Starter</th>
-                  <th>Pro</th>
-                  <th>Enterprise</th>
-                </tr>
-              </thead>
-              <tbody>
-                {planComparisonRows.map((row) => (
-                  <tr key={row.label}>
-                    <th>{row.label}</th>
-                    {row.values.map((value) => (
-                      <td key={`${row.label}-${value}`}>{value}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-      </section>
-
-      <section className="pricing-explainer-stage">
-        <article className="panel pricing-explainer-panel">
-          <div className="stack-xs">
-            <p className="section-label">Deliverables</p>
-            <h2>Choose the output mode that matches the room.</h2>
-          </div>
-
-          <div className="pricing-mode-grid">
-            {outputModes.map((mode) => (
-              <article
-                key={mode.name}
-                className={mode.featured ? "pricing-mode-card pricing-mode-card-featured" : "pricing-mode-card"}
-              >
-                <div className="pricing-mode-top">
-                  <div>
-                    <p className="pricing-tier-name">{mode.name}</p>
-                    <p className="pricing-mode-credits">{mode.credits}</p>
-                  </div>
-                  {mode.featured ? <span className="pricing-badge">Default</span> : null}
-                </div>
-                <p className="muted">{mode.fit}</p>
-                <ul className="pricing-mode-deliverables">
-                  {mode.deliverables.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
-        </article>
-      </section>
-
-      <section className="pricing-formula-stage">
-        <article className="technical-panel pricing-formula-panel">
-          <div className="stack-xs">
-            <p className="section-label light">Credit logic</p>
-            <h2>Credits map to workload, not vague AI usage.</h2>
-          </div>
-
-          <div className="pricing-formula-body">
-            <div className="pricing-formula-list">
-              {creditFormulaRows.map((row) => (
-                <div key={row.label} className="pricing-formula-row">
-                  <div>
-                    <p className="pricing-tier-name">{row.label}</p>
-                    <p className="pricing-formula-value">{row.formula}</p>
-                  </div>
-                  <p className="muted">{row.note}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="pricing-example-card">
-              <p className="section-label light">Examples</p>
-              <div className="pricing-example-grid">
-                {outputTypes.map((type) => (
-                  <div key={type.name} className="pricing-example-pill">
-                    <strong>{type.name}</strong>
-                    <span>{type.time}</span>
-                    <span>{type.artifacts}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </article>
-      </section>
+      <PricingModelInterface />
 
       <Suspense fallback={null}>
-        <div id="packs">
+        <div id="packs" className="pricing-packs-g">
           <CreditPackShelf
             plan="free"
-            subtitle="Top up anytime. Pack pricing gets cheaper once you subscribe: Free pays $0.88/credit, Starter $0.70, Pro $0.50."
+            subtitle="Use credit packs for one-off output. Subscribe when the context should stay available for the next request."
           />
         </div>
       </Suspense>
 
-      <section className="cards">
+      <section className="pricing-questions-g">
         <article className="technical-panel stack-lg">
           <div className="stack">
-            <p className="section-label light">Common questions</p>
-            <h2>What you pay for, what you get back, and when to move up.</h2>
+            <p className="section-label light">Questions</p>
+            <h2>Choose credits, workspace, or team based on the work pattern.</h2>
           </div>
 
           <div className="faq-list">
-            {faqs.map((faq) => (
+            {pricingQuestions.map((faq) => (
               <details key={faq.question} className="faq-item">
                 <summary>{faq.question}</summary>
                 <p className="muted">{faq.answer}</p>
@@ -281,12 +83,12 @@ export default function PricingPage() {
       </section>
 
       <PublicSiteFooterCta
-        eyebrow="Ready to try it?"
-        title="Run the first report on live data."
-        copy="Upload your data. Get a finished deck in 15 minutes. 30 free credits, no credit card."
-        primaryLabel="Try it with your data"
+        eyebrow="Ready to start"
+        title="Start with the material you already have."
+        copy="Bring the brief, sources, notes, and template. Leave with files your team can review."
+        primaryLabel="Start one output"
         primaryHref="/jobs/new"
-        secondaryLabel="Get started"
+        secondaryLabel="Talk to us"
         secondaryHref="/get-started"
       />
       <PublicSiteFooter />
