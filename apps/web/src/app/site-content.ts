@@ -112,7 +112,7 @@ export const detailedComparisonRows = [
     basquio: "Yes",
   },
   {
-    label: "Free tier with no sign-up",
+    label: "Free no-sign-up deck tools",
     genericAi: "Yes",
     slideGenerators: "Yes",
     basquio: "No",
@@ -166,28 +166,24 @@ export const howItWorksChecks = [
 
 export const publicNavLinks = [
   {
-    href: "/#workflow",
-    label: "Product",
+    href: "/workspace-pro",
+    label: "Workspace",
+  },
+  {
+    href: "/jobs/new",
+    label: "One output",
   },
   {
     href: "/pricing",
     label: "Pricing",
   },
   {
-    href: "/compare",
-    label: "Compare",
+    href: "/team-workspace",
+    label: "Team",
   },
   {
-    href: "/powerpoint-tax",
-    label: "PowerPoint Tax",
-  },
-  {
-    href: "/blog",
-    label: "Blog",
-  },
-  {
-    href: "/about",
-    label: "About",
+    href: "/trust",
+    label: "Security",
   },
 ] as const;
 

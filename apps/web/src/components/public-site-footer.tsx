@@ -7,16 +7,15 @@ export function PublicSiteFooter() {
       <div className="site-footer-grid">
         <div className="site-footer-brand stack">
           <Image src="/brand/svg/logo/basquio-logo-light-bg-blue.svg" alt="Basquio" width={168} height={27} />
-          <p className="muted">Beautiful Intelligence.</p>
+          <p className="muted">Research material to finished files.</p>
         </div>
 
         <div className="site-footer-column">
           <p className="site-footer-column-title">Product</p>
-          <Link href="/#workflow">How it works</Link>
+          <Link href="/workspace-pro">Workspace</Link>
           <Link href="/pricing">Pricing</Link>
-          <Link href="/compare">Compare</Link>
-          <Link href="/powerpoint-tax">The PowerPoint Tax</Link>
-          <Link href="/jobs/new">Try free</Link>
+          <Link href="/team-workspace">Team Workspace</Link>
+          <Link href="/jobs/new">Start one output</Link>
         </div>
 
         <div className="site-footer-column">
