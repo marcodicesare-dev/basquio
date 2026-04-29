@@ -11,10 +11,10 @@ type PublicSiteFooterCtaProps = {
 };
 
 export function PublicSiteFooterCta({
-  eyebrow = "Ready to try it?",
-  title = "Your first report is free.",
-  copy = "Upload your data and see the output before you buy. No credit card required.",
-  primaryLabel = "Try free →",
+  eyebrow = "Ready to start",
+  title = "Start with the material behind the work.",
+  copy = "Basquio turns a clear research direction into files your team can review.",
+  primaryLabel = "Start one output",
   primaryHref = "/jobs/new",
   secondaryLabel = "See how it works",
   secondaryHref = "/how-it-works",

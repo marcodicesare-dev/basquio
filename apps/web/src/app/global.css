@@ -6175,7 +6175,7 @@ textarea {
 
 /* Features list pins to top of middle row, whitespace falls between
    features and the button, creating a natural staircase: Free (3 items,
-   most space below) → Starter (4) → Pro (5, least space) */
+   most space below), then Starter (4), then Pro (5, least space) */
 .pricing-plans-section .pricing-features {
   align-self: start;
 }
@@ -17940,7 +17940,7 @@ body:has(.wbeta-chat-pane) .wbeta-workspace-layout {
   display: grid;
   grid-template-columns: 1fr 1fr 26px;
   gap: 8px 13px;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .wbeta-onboard-stakeholder-row .wbeta-onboard-field-wide {
@@ -21290,4 +21290,795 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .wbeta-genstatus-close:focus-visible {
   background: var(--canvas-stage);
   outline: none;
+}
+
+/* Marketing architecture studio */
+
+.landing-shell-studio,
+.mstudio-page {
+  gap: 40px;
+}
+
+.mstudio-hero,
+.mstudio-workspace-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.62fr) minmax(620px, 1.38fr);
+  gap: 44px;
+  min-height: 720px;
+  padding: 40px;
+  overflow: hidden;
+  border: 1px solid var(--border-inverse);
+  border-radius: 10px;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, #111414 0%, #080909 100%);
+  background-size: 36px 36px, 36px 36px, auto;
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-stage);
+}
+
+.mstudio-hero-copy {
+  display: grid;
+  align-content: center;
+  gap: 22px;
+  min-width: 0;
+}
+
+.mstudio-hero h1,
+.mstudio-workspace-hero h1,
+.mstudio-page-hero h1 {
+  margin: 0;
+  max-width: 11ch;
+  font-size: 5rem;
+  line-height: 0.92;
+  letter-spacing: 0;
+}
+
+.mstudio-hero-copy p,
+.mstudio-workspace-hero p,
+.mstudio-page-hero p {
+  max-width: 38rem;
+  margin: 0;
+  color: rgba(244, 246, 248, 0.76);
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.mstudio-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.mstudio-text-link {
+  color: rgba(244, 246, 248, 0.72);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.mstudio-visual {
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.mstudio-mode-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mstudio-mode {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 246, 248, 0.62);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.mstudio-mode:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.mstudio-mode span {
+  color: rgba(244, 246, 248, 0.82);
+  font-weight: 900;
+}
+
+.mstudio-mode small {
+  font-size: 0.74rem;
+  line-height: 1.3;
+}
+
+.mstudio-mode.active {
+  border-color: rgba(240, 204, 39, 0.58);
+  background: rgba(240, 204, 39, 0.12);
+  color: #ffffff;
+}
+
+.mstudio-product {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr) 188px;
+  gap: 12px;
+  min-height: 474px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  backdrop-filter: blur(16px);
+  animation: mstudio-surface-in 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mstudio-rail,
+.mstudio-thread,
+.mstudio-memory {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(8, 9, 9, 0.72);
+}
+
+.mstudio-rail,
+.mstudio-memory {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+}
+
+.mstudio-rail p,
+.mstudio-memory p,
+.mstudio-thread-kicker,
+.mstudio-path-card span,
+.mstudio-plan-row span,
+.mstudio-compare-grid span,
+.mstudio-price-card p {
+  margin: 0;
+  color: rgba(244, 246, 248, 0.58);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mstudio-rail span,
+.mstudio-memory span,
+.mstudio-output-tray span,
+.mstudio-system-node {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 6px;
+  color: rgba(244, 246, 248, 0.78);
+  font-size: 0.83rem;
+  font-weight: 800;
+}
+
+.mstudio-rail span,
+.mstudio-memory span,
+.mstudio-output-tray span {
+  animation: mstudio-chip-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mstudio-memory strong {
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: 0.9rem;
+}
+
+.mstudio-window-bar {
+  display: flex;
+  gap: 7px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mstudio-window-bar span {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.mstudio-thread-body {
+  display: grid;
+  gap: 20px;
+  padding: 22px;
+}
+
+.mstudio-thread h2 {
+  max-width: 22rem;
+  margin: 0;
+  font-size: 1.85rem;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.mstudio-canvas {
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  gap: 14px;
+  min-height: 210px;
+}
+
+.mstudio-chart,
+.mstudio-slide {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mstudio-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 18px;
+}
+
+.mstudio-chart span {
+  flex: 1;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, var(--amber), rgba(240, 204, 39, 0.34));
+  transform-origin: bottom;
+  animation: mstudio-chart-rise 680ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mstudio-chart span:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.mstudio-chart span:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+.mstudio-chart span:nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.mstudio-slide {
+  display: grid;
+  align-content: flex-end;
+  gap: 8px;
+  padding: 18px;
+  background: #f8f5ef;
+  color: var(--text);
+  animation: mstudio-slide-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mstudio-slide strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.mstudio-slide span {
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.mstudio-output-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.mstudio-output-tray span {
+  border-color: rgba(240, 204, 39, 0.26);
+  background: rgba(240, 204, 39, 0.09);
+}
+
+.mstudio-proof-strip,
+.mstudio-plan-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mstudio-proof-strip div,
+.mstudio-plan-row article,
+.mstudio-path-card,
+.mstudio-compare-grid article {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: var(--shadow-soft);
+}
+
+.mstudio-proof-strip span,
+.mstudio-system-node small {
+  display: block;
+  color: var(--text-muted);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mstudio-proof-strip strong,
+.mstudio-plan-row strong {
+  display: block;
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.mstudio-section-head {
+  display: grid;
+  gap: 10px;
+}
+
+.mstudio-section-head h2,
+.mstudio-split h2 {
+  max-width: 15ch;
+  margin: 0;
+  font-size: 3.2rem;
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+.mstudio-router {
+  display: grid;
+  gap: 22px;
+}
+
+.mstudio-path-grid,
+.mstudio-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mstudio-path-card {
+  display: grid;
+  gap: 16px;
+}
+
+.mstudio-path-card span {
+  color: var(--blue);
+}
+
+.mstudio-path-card p,
+.mstudio-plan-row p,
+.mstudio-compare-grid p,
+.mstudio-copy-stack p,
+.mstudio-price-fit {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.mstudio-path-card strong {
+  color: var(--text);
+}
+
+.mstudio-split {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 44px;
+  align-items: start;
+  padding: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.mstudio-copy-stack {
+  display: grid;
+  gap: 18px;
+  max-width: 46rem;
+}
+
+.mstudio-system {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.mstudio-system-node {
+  justify-content: center;
+  min-height: 72px;
+  border-color: rgba(11, 12, 12, 0.1);
+  background: rgba(11, 12, 12, 0.035);
+  color: var(--text);
+  text-align: center;
+}
+
+.mstudio-system-node.active {
+  border-color: rgba(26, 106, 255, 0.34);
+  background: rgba(26, 106, 255, 0.1);
+}
+
+.mstudio-system-node.output {
+  border-color: rgba(240, 204, 39, 0.42);
+  background: rgba(240, 204, 39, 0.18);
+}
+
+.mstudio-page-hero {
+  display: grid;
+  gap: 18px;
+  padding: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.mstudio-page-hero h1 {
+  max-width: 16ch;
+  color: var(--text);
+  font-size: 4.35rem;
+}
+
+.mstudio-page-hero p {
+  color: var(--text-muted);
+}
+
+.mstudio-page-hero .button,
+.mstudio-workspace-hero .button {
+  width: fit-content;
+  min-width: 220px;
+}
+
+.mstudio-pricing-landing {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.58fr) minmax(620px, 1.42fr);
+  gap: 22px;
+  align-items: stretch;
+}
+
+.mstudio-pricing-copy {
+  display: grid;
+  align-content: flex-end;
+  gap: 18px;
+  min-height: 430px;
+  padding: 34px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.mstudio-pricing-copy h1 {
+  max-width: 9ch;
+  margin: 0;
+  color: var(--text);
+  font-size: 4.4rem;
+  line-height: 0.92;
+  letter-spacing: 0;
+}
+
+.mstudio-pricing-copy p:not(.section-label) {
+  max-width: 26rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 1.02rem;
+  line-height: 1.55;
+}
+
+.mstudio-workspace-hero {
+  grid-template-columns: minmax(280px, 0.52fr) minmax(620px, 1.48fr);
+}
+
+.mstudio-workspace-hero > div:first-child {
+  display: grid;
+  align-content: center;
+  gap: 18px;
+}
+
+.mstudio-pricing-tool {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.mstudio-pricing-tool .mstudio-section-head {
+  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr);
+  align-items: flex-end;
+}
+
+.mstudio-pricing-tool .mstudio-section-head h2 {
+  max-width: 14ch;
+  font-size: 2.15rem;
+}
+
+.mstudio-price-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mstudio-price-tabs button {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-weight: 900;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.mstudio-price-tabs button:hover {
+  transform: translateY(-1px);
+}
+
+.mstudio-price-tabs button.active {
+  border-color: rgba(26, 106, 255, 0.32);
+  background: rgba(26, 106, 255, 0.09);
+  color: var(--text);
+}
+
+.mstudio-price-surface {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 0.8fr;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background:
+    linear-gradient(rgba(11, 12, 12, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 12, 12, 0.04) 1px, transparent 1px),
+    #f8f5ef;
+  background-size: 34px 34px;
+  animation: mstudio-surface-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mstudio-price-card,
+.mstudio-price-steps,
+.mstudio-price-fit {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.mstudio-price-card {
+  display: grid;
+  gap: 14px;
+}
+
+.mstudio-price-card p {
+  color: var(--blue);
+}
+
+.mstudio-price-card h3 {
+  margin: 0;
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.mstudio-price-card span {
+  color: var(--text-muted);
+}
+
+.mstudio-price-steps {
+  display: grid;
+  gap: 10px;
+}
+
+.mstudio-price-steps span {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  font-weight: 900;
+}
+
+.mstudio-price-steps small {
+  color: var(--blue);
+  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  letter-spacing: 0.12em;
+}
+
+@keyframes mstudio-surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mstudio-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mstudio-chart-rise {
+  from {
+    transform: scaleY(0.24);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes mstudio-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.mstudio-compare-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mstudio-compare-grid article.active {
+  border-color: rgba(26, 106, 255, 0.34);
+  background: rgba(26, 106, 255, 0.08);
+}
+
+.mstudio-compare-grid strong {
+  display: block;
+  margin-top: 16px;
+}
+
+@media (max-width: 1180px) {
+  .mstudio-hero,
+  .mstudio-workspace-hero,
+  .mstudio-split,
+  .mstudio-pricing-landing,
+  .mstudio-price-surface {
+    grid-template-columns: 1fr;
+  }
+
+  .mstudio-pricing-copy {
+    min-height: 0;
+    align-content: start;
+  }
+
+  .mstudio-product {
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
+
+  .mstudio-memory {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .landing-shell-studio,
+  .mstudio-page {
+    gap: 22px;
+  }
+
+  .mstudio-hero,
+  .mstudio-workspace-hero {
+    gap: 24px;
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .mstudio-hero h1,
+  .mstudio-workspace-hero h1,
+  .mstudio-page-hero h1 {
+    font-size: 2.85rem;
+    max-width: 10ch;
+  }
+
+  .mstudio-hero-copy p,
+  .mstudio-workspace-hero p,
+  .mstudio-page-hero p {
+    font-size: 0.96rem;
+  }
+
+  .mstudio-mode-row,
+  .mstudio-proof-strip,
+  .mstudio-plan-row,
+  .mstudio-path-grid,
+  .mstudio-compare-grid,
+  .mstudio-system {
+    grid-template-columns: 1fr;
+  }
+
+  .mstudio-mode {
+    min-height: 50px;
+  }
+
+  .mstudio-mode small {
+    display: none;
+  }
+
+  .mstudio-product {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .mstudio-rail,
+  .mstudio-memory {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mstudio-rail p,
+  .mstudio-memory p {
+    grid-column: 1 / -1;
+  }
+
+  .mstudio-canvas {
+    grid-template-columns: 1fr;
+  }
+
+  .mstudio-section-head h2,
+  .mstudio-split h2 {
+    font-size: 2.4rem;
+  }
+
+  .mstudio-split,
+  .mstudio-page-hero,
+  .mstudio-pricing-copy,
+  .mstudio-pricing-tool {
+    padding: 22px;
+  }
+
+  .mstudio-pricing-copy h1 {
+    max-width: 10ch;
+    font-size: 3rem;
+  }
+
+  .mstudio-page-hero .button,
+  .mstudio-workspace-hero .button {
+    width: 100%;
+  }
+
+  .mstudio-pricing-tool .mstudio-section-head {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mstudio-product,
+  .mstudio-rail span,
+  .mstudio-memory span,
+  .mstudio-output-tray span,
+  .mstudio-chart span,
+  .mstudio-slide,
+  .mstudio-price-surface {
+    animation: none;
+  }
+
+  .mstudio-mode,
+  .mstudio-price-tabs button {
+    transition: none;
+  }
 }
