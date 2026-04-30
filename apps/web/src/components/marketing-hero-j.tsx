@@ -16,21 +16,21 @@ export function MarketingHeroJ() {
       <div className="hero-j-scrim" aria-hidden="true" />
 
       <div className="hero-j-copy">
-        <p className="hero-j-eyebrow">For market research teams</p>
+        <p className="hero-j-eyebrow">For FMCG and CPG research teams</p>
         <h1 id="hero-j-headline" className="hero-j-headline">
-          From scattered research files to a finished deck.
+          A workspace for teams that ship research outputs every month.
         </h1>
         <p className="hero-j-subhead">
-          Basquio turns the brief, data, notes, and templates into the deck, report, and Excel file
-          your stakeholder asked for.
+          Basquio remembers briefs, stakeholders, templates, and prior reviews so each new deck
+          starts with the context already in place.
         </p>
 
         <div className="hero-j-actions">
-          <Link className="hero-j-primary" href="/jobs/new">
-            Start one output
+          <Link className="hero-j-primary" href="/about">
+            Talk about a team pilot
           </Link>
-          <Link className="hero-j-secondary" href="#workspace">
-            See the workspace
+          <Link className="hero-j-secondary" href="/jobs/new">
+            Start one output
           </Link>
         </div>
 
