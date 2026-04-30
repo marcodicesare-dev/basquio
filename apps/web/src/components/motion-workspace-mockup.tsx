@@ -1,25 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, useInView, type Variants } from "motion/react";
+import { motion, type Variants } from "motion/react";
 
 /**
- * Animated workspace mockup. Three motion behaviors:
+ * Scripted demo of the Basquio workspace, in the style of Lovable / v0 / Cursor
+ * homepage hero animations.
  *
- * 1. Mouse-tracking parallax (Linear pattern). Mockup tilts subtly toward the
- *    cursor on pointer hover. CSS transform-style preserve-3d + perspective.
- * 2. Memory cells stagger reveal. The 6 facts pin in one at a time, 90ms apart,
- *    with a small fade + scale + translateY. Triggers once when the mockup
- *    enters viewport.
- * 3. Chat composer typing. The placeholder "Brief Basquio for this project..."
- *    types character-by-character at human cadence (~28ms/char) with a blinking
- *    caret. Triggers 700ms after the mockup enters viewport so the user has
- *    time to look at the mockup first.
+ * Sequence (triggers once when 15% of the mockup enters viewport):
  *
- * Honors prefers-reduced-motion: skips the typing animation and shows the
- * full text immediately, skips the parallax tilt, lets the stagger reveal
- * still happen (just opacity, no translate) for screen readers / vestibular
- * users.
+ *   t = 0      Mockup is visible, cursor is hidden, composer is empty.
+ *   t = 0.6s   Cursor fades in at center, glides to the "Compare share vs Q3"
+ *              suggestion chip (top-right of chat panel).
+ *   t = 1.5s   Cursor clicks the chip. The chip flashes ultramarine.
+ *   t = 1.8s   The clicked text "Compare share vs Q3" begins typing into the
+ *              composer at human cadence (24-36ms/char with jitter).
+ *   t = 3.4s   Cursor glides down to the "Run output" button.
+ *   t = 4.2s   Cursor clicks the button. Button compresses + shows a spinner.
+ *   t = 5.4s   Spinner replaced by green check + "Output ready". Three
+ *              artifact pills (deck.pptx, narrative_report.md, data_tables.xlsx)
+ *              fade up below the button.
+ *   t = 6.5s   Loop cooldown. After 7s of stillness, the sequence restarts.
+ *
+ * Memory cells (the 6 facts) stagger in once on viewport enter (see
+ * memory variants below). The whole shell tilts subtly toward the cursor on
+ * native mouse hover (parallax). All animations honor prefers-reduced-motion.
  */
 
 const WORKSPACE_PROJECTS = [
@@ -44,16 +49,24 @@ const WORKSPACE_PROMPTS = [
   "Compare share vs Q3",
 ] as const;
 
-const TYPING_TEXT = "Brief Basquio for this project";
+const TYPING_TEXT = WORKSPACE_PROMPTS[2]; // "Compare share vs Q3"
+const TARGET_PROMPT_IDX = 2;
+
+type Stage =
+  | "idle"
+  | "cursor-to-chip"
+  | "chip-clicked"
+  | "typing"
+  | "cursor-to-button"
+  | "button-clicked"
+  | "loading"
+  | "output-ready";
 
 const memoryGridVariants: Variants = {
   hidden: { opacity: 1 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.09,
-      delayChildren: 0.4,
-    },
+    transition: { staggerChildren: 0.08, delayChildren: 0.3 },
   },
 };
 
@@ -63,70 +76,116 @@ const memoryCellVariants: Variants = {
     opacity: 1,
     y: 0,
     scale: 1,
-    transition: {
-      duration: 0.5,
-      ease: [0.16, 1, 0.3, 1],
-    },
+    transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] },
   },
 };
 
+const ARTIFACTS = [
+  { label: "deck.pptx", tone: "blue" as const },
+  { label: "narrative_report.md", tone: "amber" as const },
+  { label: "data_tables.xlsx", tone: "green" as const },
+];
+
 export function MotionWorkspaceMockup() {
   const rootRef = useRef<HTMLElement>(null);
-  const isInView = useInView(rootRef, { once: true, amount: 0.15, margin: "0px 0px -10% 0px" });
-
-  // Typing animation state
+  const [isInView, setIsInView] = useState(false);
   const [typedText, setTypedText] = useState("");
-  const [showCaret, setShowCaret] = useState(true);
+  const [stage, setStage] = useState<Stage>("idle");
   const reducedMotion = usePrefersReducedMotion();
 
+  // Trigger the sequence as soon as the mockup is visible. We use both
+  // IntersectionObserver and a scroll-event-listener fallback because
+  // motion's useInView and pure observer-based gates have failed to fire
+  // reliably in this stack (React 19 strict mode + Next 15 + motion v12).
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    let triggered = false;
+    const fire = () => {
+      if (triggered) return;
+      triggered = true;
+      setIsInView(true);
+    };
+
+    const check = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.9 && rect.bottom > 0) {
+        fire();
+        window.removeEventListener("scroll", check, { capture: true } as never);
+        if (obs) obs.disconnect();
+      }
+    };
+
+    let obs: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      obs = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) fire();
+          }
+        },
+        { threshold: 0.1, rootMargin: "0px 0px -10% 0px" },
+      );
+      obs.observe(el);
+    }
+    window.addEventListener("scroll", check, { passive: true });
+    // Run an immediate check on mount in case the element is already in view.
+    check();
+
+    return () => {
+      window.removeEventListener("scroll", check);
+      if (obs) obs.disconnect();
+    };
+  }, []);
+
+  // Run the scripted sequence after viewport enter
   useEffect(() => {
     if (!isInView) return;
 
     if (reducedMotion) {
       setTypedText(TYPING_TEXT);
+      setStage("output-ready");
       return;
     }
 
-    // Wait 700ms after entering viewport, then start typing.
-    const startDelay = window.setTimeout(() => {
-      let i = 0;
-      const tick = () => {
-        i += 1;
-        setTypedText(TYPING_TEXT.slice(0, i));
-        if (i < TYPING_TEXT.length) {
-          // Slight cadence variation (24-36ms) to feel human, not robotic.
-          const jitter = 24 + Math.random() * 12;
-          window.setTimeout(tick, jitter);
-        }
-      };
-      tick();
-    }, 700);
+    const timers: number[] = [];
 
-    return () => window.clearTimeout(startDelay);
+    timers.push(
+      window.setTimeout(() => setStage("cursor-to-chip"), 600),
+      window.setTimeout(() => setStage("chip-clicked"), 1500),
+      window.setTimeout(() => {
+        setStage("typing");
+        let i = 0;
+        const tick = () => {
+          i += 1;
+          setTypedText(TYPING_TEXT.slice(0, i));
+          if (i < TYPING_TEXT.length) {
+            const jitter = 24 + Math.random() * 14;
+            timers.push(window.setTimeout(tick, jitter));
+          }
+        };
+        tick();
+      }, 1800),
+      window.setTimeout(() => setStage("cursor-to-button"), 3400),
+      window.setTimeout(() => setStage("button-clicked"), 4200),
+      window.setTimeout(() => setStage("loading"), 4400),
+      window.setTimeout(() => setStage("output-ready"), 5400),
+    );
+
+    return () => {
+      timers.forEach((t) => window.clearTimeout(t));
+    };
   }, [isInView, reducedMotion]);
 
-  // Caret blink loop. Pauses while actively typing (caret on solid).
-  useEffect(() => {
-    if (reducedMotion) return;
-    const isTyping = typedText.length > 0 && typedText.length < TYPING_TEXT.length;
-    if (isTyping) {
-      setShowCaret(true);
-      return;
-    }
-    const blink = window.setInterval(() => setShowCaret((v) => !v), 540);
-    return () => window.clearInterval(blink);
-  }, [typedText, reducedMotion]);
-
-  // Mouse parallax tilt
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
     if (reducedMotion) return;
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const px = (e.clientX - rect.left) / rect.width;
     const py = (e.clientY - rect.top) / rect.height;
-    // Map [0,1] -> [-3deg, +3deg]
-    const rotX = (0.5 - py) * 4;
-    const rotY = (px - 0.5) * 4;
+    const rotX = (0.5 - py) * 2.4;
+    const rotY = (px - 0.5) * 2.4;
     target.style.setProperty("--mockup-rot-x", `${rotX}deg`);
     target.style.setProperty("--mockup-rot-y", `${rotY}deg`);
   };
@@ -137,14 +196,39 @@ export function MotionWorkspaceMockup() {
     target.style.setProperty("--mockup-rot-y", "0deg");
   };
 
+  const cursorVisible = stage !== "idle" && stage !== "output-ready" && !reducedMotion;
+  const cursorTarget =
+    stage === "cursor-to-chip" || stage === "chip-clicked" || stage === "typing"
+      ? "chip"
+      : stage === "cursor-to-button" || stage === "button-clicked" || stage === "loading"
+        ? "button"
+        : "chip";
+
   return (
     <article
       ref={rootRef}
       className="workspace-mockup workspace-mockup-motion"
-      aria-label="Example Basquio workspace"
+      aria-label="Example Basquio workspace running an output"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      {/* Animated cursor sprite */}
+      {cursorVisible && (
+        <motion.span
+          className="workspace-mockup-cursor"
+          aria-hidden="true"
+          initial={{ opacity: 0, x: "55%", y: "55%" }}
+          animate={
+            cursorTarget === "chip"
+              ? { opacity: 1, x: "82%", y: "26%" }
+              : { opacity: 1, x: "78%", y: "72%" }
+          }
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <CursorIcon />
+        </motion.span>
+      )}
+
       <div className="workspace-mockup-rail">
         <div className="workspace-mockup-brand">
           <span className="workspace-mockup-brand-mark" aria-hidden="true" />
@@ -205,13 +289,43 @@ export function MotionWorkspaceMockup() {
             </motion.li>
           ))}
         </motion.ul>
+
+        {/* Output reveal beneath memory grid */}
+        <div
+          className={`workspace-mockup-output${stage === "output-ready" ? " workspace-mockup-output-visible" : ""}`}
+          aria-live="polite"
+        >
+          <p className="workspace-mockup-output-label">
+            <span className="workspace-mockup-output-dot" aria-hidden="true" />
+            Output ready · 1m 58s
+          </p>
+          <ul className="workspace-mockup-artifacts">
+            {ARTIFACTS.map((a, i) => (
+              <li
+                key={a.label}
+                className={`workspace-mockup-artifact workspace-mockup-artifact-${a.tone}`}
+                style={{ transitionDelay: `${i * 90}ms` }}
+              >
+                <span className="workspace-mockup-artifact-glyph" aria-hidden="true" />
+                {a.label}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <aside className="workspace-mockup-chat">
         <p className="workspace-mockup-chat-title">Ask Basquio</p>
         <ul className="workspace-mockup-chat-suggestions">
-          {WORKSPACE_PROMPTS.map((p) => (
-            <li key={p} className="workspace-mockup-chat-suggestion">
+          {WORKSPACE_PROMPTS.map((p, i) => (
+            <li
+              key={p}
+              className={`workspace-mockup-chat-suggestion${
+                i === TARGET_PROMPT_IDX && (stage === "chip-clicked" || stage === "typing")
+                  ? " workspace-mockup-chat-suggestion-active"
+                  : ""
+              }`}
+            >
               {p}
             </li>
           ))}
@@ -225,19 +339,55 @@ export function MotionWorkspaceMockup() {
             ) : (
               typedText
             )}
-            <span
-              className="workspace-mockup-chat-caret"
-              aria-hidden="true"
-              style={{ opacity: showCaret ? 1 : 0 }}
-            />
+            {stage === "typing" && (
+              <span className="workspace-mockup-chat-caret" aria-hidden="true" />
+            )}
           </span>
         </div>
-        <button type="button" className="workspace-mockup-chat-cta" tabIndex={-1}>
-          Run output <span aria-hidden="true">→</span>
+        <button
+          type="button"
+          className={`workspace-mockup-chat-cta${
+            stage === "button-clicked" ? " workspace-mockup-chat-cta-pressed" : ""
+          }${stage === "loading" ? " workspace-mockup-chat-cta-loading" : ""}${
+            stage === "output-ready" ? " workspace-mockup-chat-cta-done" : ""
+          }`}
+          tabIndex={-1}
+        >
+          {stage === "loading" ? (
+            <>
+              <span className="workspace-mockup-spinner" aria-hidden="true" />
+              Running
+            </>
+          ) : stage === "output-ready" ? (
+            <>
+              <span className="workspace-mockup-check" aria-hidden="true">
+                ✓
+              </span>
+              Done
+            </>
+          ) : (
+            <>
+              Run output <span aria-hidden="true">→</span>
+            </>
+          )}
         </button>
         <p className="workspace-mockup-chat-trust">No training on customer data</p>
       </aside>
     </article>
+  );
+}
+
+function CursorIcon() {
+  return (
+    <svg width="22" height="24" viewBox="0 0 22 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M2 1.5L20 11L11.5 13L8 21.5L2 1.5Z"
+        fill="#0B0C0C"
+        stroke="#FFFFFF"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
