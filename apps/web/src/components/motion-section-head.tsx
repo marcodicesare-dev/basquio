@@ -49,7 +49,7 @@ export function MotionSectionHead({ className, id, children }: Props) {
       variants={containerVariants}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, amount: 0.25 }}
+      viewport={{ once: true, amount: 0.15, margin: "0px 0px -10% 0px" }}
     >
       {Children.map(children, (child, i) => (
         <motion.div key={i} variants={itemVariants} style={{ width: "100%" }}>
