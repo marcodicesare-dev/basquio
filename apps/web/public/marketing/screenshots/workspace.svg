@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" font-family="Manrope, system-ui, sans-serif">
+  <defs>
+    <style>
+    .mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+    .ink { fill: #0B0C0C; }
+    .ink35 { fill: rgba(11, 12, 12, 0.35); }
+    .ink50 { fill: rgba(11, 12, 12, 0.55); }
+    .ink65 { fill: rgba(11, 12, 12, 0.70); }
+    .ink80 { fill: rgba(11, 12, 12, 0.82); }
+    .ultra { fill: #1A6AFF; }
+    .red { fill: #C0392B; }
+    .green { fill: #2E7D5B; }
+    .hair { stroke: rgba(11, 12, 12, 0.10); stroke-width: 1; fill: none; }
+    .hair-soft { stroke: rgba(11, 12, 12, 0.06); stroke-width: 1; fill: none; }
+    .hair-stroke { stroke: rgba(11, 12, 12, 0.10); stroke-width: 1; }
+    .hair-soft-stroke { stroke: rgba(11, 12, 12, 0.06); stroke-width: 1; }
+    .tnum { font-feature-settings: 'tnum'; }
+  </style>
+  </defs>
+
+  
+  <rect width="1600" height="900" fill="#F8F5EF"></rect>
+
+  
+  <line x1="240" y1="0" x2="240" y2="900" class="hair"></line>
+
+  
+  <g transform="translate(21, 44)">
+    <path d="M0 14 L0 4 L4 7 L8 1 L12 7 L16 4 L16 14 Z" fill="#1A6AFF"></path>
+    <text x="24" y="13" class="ink" font-size="17" font-weight="600" letter-spacing="-0.34">basquio</text>
+  </g>
+
+  
+  <text x="21" y="100" class="mono ink50" font-size="10" font-weight="500" letter-spacing="2.2" style="text-transform:uppercase">PROJECTS</text>
+
+  
+  
+  <rect x="14" y="114" width="212" height="44" rx="6" fill="rgba(240,204,39,0.18)"></rect>
+  <circle cx="29" cy="136" r="4" fill="#1A6AFF"></circle>
+  <text x="44" y="134" class="ink" font-size="14" font-weight="600" letter-spacing="-0.07">Espresso Q4 review</text>
+  <text x="44" y="150" class="mono ink50" font-size="11" letter-spacing="0.22">Northstar Coffee</text>
+
+  
+  <rect x="14" y="160" width="212" height="44" rx="6" fill="rgba(11,12,12,0.035)"></rect>
+  <circle cx="29" cy="182" r="4" fill="#1A6AFF"></circle>
+  <text x="44" y="180" class="ink" font-size="14" font-weight="500" letter-spacing="-0.07">Trade marketing FY26</text>
+  <text x="44" y="196" class="mono ink50" font-size="11" letter-spacing="0.22">Aurora Espresso</text>
+
+  
+  <circle cx="29" cy="228" r="4" fill="#1A6AFF"></circle>
+  <text x="44" y="226" class="ink" font-size="14" font-weight="500" letter-spacing="-0.07">Modern trade share</text>
+  <text x="44" y="242" class="mono ink50" font-size="11" letter-spacing="0.22">Caffè Belvedere</text>
+
+  
+  <circle cx="29" cy="274" r="4" fill="#1A6AFF"></circle>
+  <text x="44" y="272" class="ink" font-size="14" font-weight="500" letter-spacing="-0.07">Brand health tracker</text>
+  <text x="44" y="288" class="mono ink50" font-size="11" letter-spacing="0.22">Mulini Vetta</text>
+
+  
+  <rect x="14" y="828" width="212" height="40" rx="6" fill="none" stroke="rgba(11,12,12,0.16)" stroke-width="1" stroke-dasharray="4 3"></rect>
+  <text x="32" y="853" class="ink50" font-size="16">+</text>
+  <text x="50" y="853" class="ink65" font-size="13">New project</text>
+
+  
+  
+  <text x="295" y="55" class="mono ink50" font-size="11" letter-spacing="2.2" style="text-transform:uppercase">WORKSPACE / PROJECTS / </text>
+  <text x="569" y="55" class="mono ink" font-size="11" letter-spacing="2.2" style="text-transform:uppercase">ESPRESSO Q4 REVIEW</text>
+
+  
+  <text x="295" y="92" class="ink" font-size="22" font-weight="600" letter-spacing="-0.44">Espresso Q4 review</text>
+  <text x="510" y="92" class="ink65" font-size="22" font-weight="500" letter-spacing="-0.44">· Northstar Coffee</text>
+
+  
+  <text x="295" y="160" class="mono ink50" font-size="10" font-weight="500" letter-spacing="2.2" style="text-transform:uppercase">WORKSPACE MEMORY</text>
+  <text x="1255" y="160" class="mono ink35" font-size="10" font-weight="500" letter-spacing="2.2" text-anchor="end" style="text-transform:uppercase">6 FACTS · AUTO-PINNED</text>
+
+  
+  <rect x="295" y="175" width="960" height="320" fill="#FBF9F4" stroke="rgba(11,12,12,0.10)" stroke-width="1"></rect>
+  <line x1="615" y1="175" x2="615" y2="495" class="hair"></line>
+  <line x1="935" y1="175" x2="935" y2="495" class="hair"></line>
+  <line x1="295" y1="335" x2="1255" y2="335" class="hair"></line>
+
+  
+  <g transform="translate(316, 196)">
+    <g transform="translate(0,0)" stroke="#1A6AFF" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="8" cy="6" r="2.5"></circle>
+      <path d="M3 13 C3.8 10.5 6 9.5 8 9.5 S12.2 10.5 13 13"></path>
+    </g>
+    <text x="0" y="50" class="ink" font-size="13" font-weight="600" letter-spacing="-0.07">Client</text>
+    <text x="0" y="71" class="ink65" font-size="12">Northstar Coffee · Verona · 18 contacts</text>
+  </g>
+
+  
+  <g transform="translate(636, 196)">
+    <g stroke="#1A6AFF" stroke-width="1.4" fill="none">
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5"></rect>
+      <line x1="2.5" y1="8" x2="13.5" y2="8"></line>
+      <line x1="8" y1="2.5" x2="8" y2="13.5"></line>
+    </g>
+    <text x="0" y="50" class="ink" font-size="13" font-weight="600" letter-spacing="-0.07">Brand</text>
+    <text x="0" y="71" class="ink65" font-size="12">Northstar · house style 2026</text>
+  </g>
+
+  
+  <g transform="translate(956, 196)">
+    <g stroke="#1A6AFF" stroke-width="1.4" fill="none">
+      <rect x="2.5" y="2.5" width="11" height="11"></rect>
+      <line x1="2.5" y1="5.5" x2="13.5" y2="5.5"></line>
+    </g>
+    <text x="0" y="50" class="ink" font-size="13" font-weight="600" letter-spacing="-0.07">Template</text>
+    <text x="0" y="71" class="ink65" font-size="12">JBP master template v3</text>
+  </g>
+
+  
+  <g transform="translate(316, 356)">
+    <g stroke="#1A6AFF" stroke-width="1.4" fill="none" stroke-linecap="round">
+      <circle cx="8" cy="8" r="5.5"></circle>
+      <path d="M8 4.5 V8 L10.5 9.5"></path>
+    </g>
+    <text x="0" y="50" class="ink" font-size="13" font-weight="600" letter-spacing="-0.07">Last meeting</text>
+    <text x="0" y="71" class="ink65" font-size="12">Apr 18 · Anna Ricci</text>
+  </g>
+
+  
+  <g transform="translate(636, 356)">
+    <g stroke="#1A6AFF" stroke-width="1.4" fill="none">
+      <rect x="3" y="3" width="10" height="10"></rect>
+      <line x1="3" y1="6" x2="13" y2="6"></line>
+      <line x1="3" y1="9" x2="13" y2="9"></line>
+      <line x1="3" y1="12" x2="13" y2="12"></line>
+    </g>
+    <text x="0" y="50" class="ink" font-size="13" font-weight="600" letter-spacing="-0.07">Past reviews</text>
+    <text x="0" y="71" class="ink65" font-size="12">12 prior decks · 2024–2026</text>
+  </g>
+
+  
+  <g transform="translate(956, 356)">
+    <polygon points="8,2 14,5.5 14,11 8,14 2,11 2,5.5" stroke="#1A6AFF" stroke-width="1.4" fill="none" stroke-linejoin="round"></polygon>
+    <text x="0" y="50" class="ink" font-size="13" font-weight="600" letter-spacing="-0.07">Approved formats</text>
+    <text x="0" y="71" class="ink65" font-size="12">SCQA narrative · 12 slides</text>
+  </g>
+
+  
+  <text x="295" y="565" class="mono ink50" font-size="10" font-weight="500" letter-spacing="2.2" style="text-transform:uppercase">RECENT ACTIVITY</text>
+  <line x1="430" y1="561" x2="1010" y2="561" class="hair"></line>
+  <text x="1255" y="565" class="mono ink50" font-size="11" letter-spacing="0.22" text-anchor="end">retail-scan-q4.xlsx · uploaded 18m ago by marco@northstar.it</text>
+
+  
+  <line x1="1300" y1="0" x2="1300" y2="900" class="hair"></line>
+
+  
+  <text x="1321" y="55" class="ink" font-size="14" font-weight="600" letter-spacing="-0.14">Ask Basquio</text>
+  <text x="1579" y="55" class="mono ink35" font-size="10" letter-spacing="1.8" text-anchor="end" style="text-transform:uppercase">PROJECT SCOPE</text>
+
+  
+  <text x="1321" y="100" class="mono ink50" font-size="10" font-weight="500" letter-spacing="2.2" style="text-transform:uppercase">SUGGESTED</text>
+
+  
+  <g transform="translate(1321, 116)">
+    <rect x="0" y="0" width="155" height="28" rx="14" fill="#FBF9F4" stroke="rgba(11,12,12,0.16)" stroke-width="1"></rect>
+    <text x="11" y="19" class="mono ink80" font-size="12" letter-spacing="-0.12">Draft Q4 deck outline</text>
+  </g>
+  <g transform="translate(1321, 152)">
+    <rect x="0" y="0" width="171" height="28" rx="14" fill="#FBF9F4" stroke="rgba(11,12,12,0.16)" stroke-width="1"></rect>
+    <text x="11" y="19" class="mono ink80" font-size="12" letter-spacing="-0.12">Summarize last meeting</text>
+  </g>
+  <g transform="translate(1321, 188)">
+    <rect x="0" y="0" width="166" height="28" rx="14" fill="#FBF9F4" stroke="rgba(11,12,12,0.16)" stroke-width="1"></rect>
+    <text x="11" y="19" class="mono ink80" font-size="12" letter-spacing="-0.12">Compare share vs Q3</text>
+  </g>
+
+  
+  <rect x="1321" y="690" width="258" height="68" rx="8" fill="#FBF9F4" stroke="rgba(11,12,12,0.16)" stroke-width="1"></rect>
+  <line x1="1334" y1="703" x2="1334" y2="717" stroke="#1A6AFF" stroke-width="1"></line>
+  <text x="1342" y="715" class="ink35" font-size="13">Brief Basquio for this project…</text>
+  <text x="1334" y="744" class="mono ink35" font-size="10" letter-spacing="1.2">⌘ + ↵</text>
+  <text x="1567" y="744" class="mono ink35" font-size="10" text-anchor="end">0 / 4000</text>
+
+  
+  <rect x="1321" y="775" width="258" height="44" rx="8" fill="#1A6AFF"></rect>
+  <text x="1335" y="803" fill="#fff" font-size="13" font-weight="600" letter-spacing="-0.07">Run output</text>
+  <text x="1565" y="803" fill="#fff" font-size="13" text-anchor="end" opacity="0.8">→</text>
+
+  
+  <text x="1450" y="845" class="mono ink35" font-size="10" letter-spacing="1.0" text-anchor="middle">No training on customer data</text>
+</svg>
