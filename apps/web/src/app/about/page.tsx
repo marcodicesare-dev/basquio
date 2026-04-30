@@ -1,119 +1,148 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 
-import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteFooter } from "@/components/public-site-footer";
+import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
+import { ScrollReveal } from "@/components/scroll-reveal";
 
 export const metadata: Metadata = {
-  title: "About Basquio",
+  title: "About Basquio · The team behind it",
   description:
-    "Basquio was built by market research analysts and brand managers who spent years building category review decks manually. Now the workflow is automated.",
+    "Basquio was built by analysts and brand managers who spent years writing FMCG and CPG category review decks by hand. The workspace they wanted to use is the workspace they built.",
   alternates: { canonical: "https://basquio.com/about" },
 };
 
-const teamMembers = [
-  { initials: "MD", name: "Marco", role: "CTO & Engineering", background: "Full-stack engineer. Built the pipeline that turns data files into finished decks." },
-  { initials: "GC", name: "Giulia", role: "Brand Management", background: "Brand manager. The person who receives the deck and presents it in the room." },
-  { initials: "VM", name: "Veronica", role: "Strategic Buying", background: "Category buyer. Knows what decisions the deck needs to support." },
+const TEAM_MEMBERS = [
+  {
+    initials: "MD",
+    name: "Marco Di Cesare",
+    role: "Engineering",
+    background:
+      "Full-stack engineer. Built the pipeline that turns brief, data, notes and template into the deck, report and Excel file.",
+  },
+  {
+    initials: "GC",
+    name: "Giulia",
+    role: "Brand management",
+    background:
+      "Brand manager at Mondelez. The person who receives the deck and presents it to the room.",
+  },
+  {
+    initials: "VM",
+    name: "Veronica",
+    role: "Strategic buying",
+    background:
+      "Category buyer at Victorinox. Knows what decisions the deck needs to support before it gets opened.",
+  },
+  {
+    initials: "AR",
+    name: "Alessandro",
+    role: "Market research",
+    background: "NielsenIQ analyst. Lives the brief, data, template, deadline cycle every week.",
+  },
+  {
+    initials: "RB",
+    name: "Rossella",
+    role: "Market research",
+    background:
+      "NielsenIQ analyst. Owns the recurring category review work for Italian FMCG accounts.",
+  },
+  {
+    initials: "FP",
+    name: "Francesco",
+    role: "Market research",
+    background: "NielsenIQ analyst. The voice that pushes for analyst-grade outputs, not slop.",
+  },
 ] as const;
 
-const experienceStats = [
-  { number: "20+", label: "years combined in market research & CPG" },
-  { number: "500+", label: "category review decks built by hand" },
-  { number: "1", label: "engineer who said 'never again'" },
+const EXPERIENCE_STATS = [
+  { number: "20+", label: "years combined in FMCG and CPG market research" },
+  { number: "500+", label: "category review decks built by hand by this team" },
+  { number: "1", label: "engineer who said never again" },
 ] as const;
 
 export default function AboutPage() {
   return (
-    <div className="page-shell public-page">
+    <div className="landing-shell landing-j">
       <PublicSiteNav />
 
-      <section className="page-hero">
-        <div className="stack-xl">
-          <div className="stack">
-            <p className="section-label">About</p>
-            <h1>Built by the people who used to make these decks by hand.</h1>
-            <p className="page-copy" style={{ maxWidth: "540px" }}>
-              We know what a good category review looks like because we&apos;ve presented hundreds of them.
-              Basquio exists because we got tired of spending 30 hours on production when the analysis took three.
-            </p>
-          </div>
-        </div>
+      <section className="section-j section-j-page-hero" aria-labelledby="about-page-heading">
+        <ScrollReveal className="section-j-page-hero-inner">
+          <p className="section-j-eyebrow">About</p>
+          <h1 id="about-page-heading" className="section-j-page-title">
+            Built by FMCG and CPG analysts who lived this work.
+          </h1>
+          <p className="section-j-body">
+            Basquio comes from engineering, brand, category and market research work inside FMCG
+            and CPG companies. We know what a category review looks like because we have presented
+            hundreds of them.
+          </p>
+        </ScrollReveal>
       </section>
 
-      <section style={{ borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--border)", background: "var(--canvas-2)" }}>
-        <Image
-          src="/illustrations/page-about.png"
-          alt="Atmospheric illustration of a round table with six different chairs suggesting different disciplines, scattered data and reports on the surface, warm light through arched windows"
-          width={1536}
-          height={1024}
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 1200px"
-          placeholder="blur"
-          blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAACqADAAQAAAABAAAABwAAAAD/wAARCAAHAAoDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9sAQwAWFhYWFhYmFhYmNiYmJjZJNjY2NklcSUlJSUlcb1xcXFxcXG9vb29vb29vhoaGhoaGnJycnJyvr6+vr6+vr6+v/9sAQwEbHR0tKS1MKSlMt3xmfLe3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3/90ABAAB/9oADAMBAAIRAxEAPwDBglhj5YEsOnHFIzqzFsDnmqw61IKqxFz/2Q=="
-          style={{ width: "100%", height: "auto", display: "block" }}
-        />
-      </section>
+      <section className="section-j section-j-team" aria-labelledby="team-heading">
+        <ScrollReveal className="section-j-team-head">
+          <p className="section-j-eyebrow">The team</p>
+          <h2 id="team-heading" className="section-j-title">
+            Six people who used to make these decks by hand.
+          </h2>
+        </ScrollReveal>
 
-      <section>
-        <div className="stack-xl">
-          <div className="stack" style={{ textAlign: "center" }}>
-            <p className="section-label" style={{ justifyContent: "center" }}>The team</p>
-            <h2>An engineer, a brand manager, and a category buyer.</h2>
-          </div>
-
-          <div className="team-grid">
-            {teamMembers.map((member) => (
-              <article key={member.initials} className="team-card">
-                <div className="team-avatar">{member.initials}</div>
-                <h3>{member.name}</h3>
-                <p style={{ fontWeight: 600, color: "var(--blue)", fontSize: "0.78rem", letterSpacing: "0.04em", textTransform: "uppercase" as const }}>{member.role}</p>
-                <p>{member.background}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="experience-badges">
-          {experienceStats.map((stat) => (
-            <div key={stat.label} className="experience-badge">
-              <span className="experience-badge-number">{stat.number}</span>
-              <span>{stat.label}</span>
-            </div>
+        <ScrollReveal className="section-j-team-grid" delay={120}>
+          {TEAM_MEMBERS.map((member) => (
+            <article key={member.initials} className="team-card-j">
+              <div className="team-card-j-avatar" aria-hidden="true">
+                {member.initials}
+              </div>
+              <h3 className="team-card-j-name">{member.name}</h3>
+              <p className="team-card-j-role">{member.role}</p>
+              <p className="team-card-j-background">{member.background}</p>
+            </article>
           ))}
-        </div>
+        </ScrollReveal>
       </section>
 
-      <section className="panel dark-panel">
-        <div className="stack" style={{ maxWidth: "640px" }}>
-          <p className="section-label light">Why this team</p>
-          <h2>We&apos;ve been on both sides of the table.</h2>
-          <p className="muted">
-            The analysts who built the decks. The brand teams who received them. The engineer who automates
-            the bridge between data and story. We built Basquio because we lived the problem for years
-            and knew exactly what the solution needed to do.
-          </p>
-        </div>
+      <section className="section-j section-j-experience" aria-labelledby="experience-heading">
+        <ScrollReveal className="section-j-experience-inner">
+          <h2 id="experience-heading" className="section-j-experience-heading sr-only">
+            Combined experience
+          </h2>
+          <ul className="section-j-experience-row" role="list">
+            {EXPERIENCE_STATS.map((stat) => (
+              <li key={stat.label} className="section-j-experience-cell">
+                <span className="section-j-experience-number">{stat.number}</span>
+                <span className="section-j-experience-label">{stat.label}</span>
+              </li>
+            ))}
+          </ul>
+        </ScrollReveal>
       </section>
 
-      <section className="panel" style={{ textAlign: "center" }}>
-        <div className="stack">
-          <h2>The thesis</h2>
-          <p style={{ maxWidth: "600px", margin: "0 auto", fontSize: "1.08rem", lineHeight: 1.7 }}>
-            Every team that produces recurring data-driven decks follows the same seven steps.
-            Steps 1-3 are analysis. Steps 4-7 are production. Production takes 3-5x longer than analysis.
-            Basquio automates the production so your team can focus on the story.
+      <section
+        className="section-j section-j-stage section-j-stage-dark"
+        aria-labelledby="thesis-heading"
+      >
+        <ScrollReveal className="section-j-stage-inner section-j-stage-inner-narrow">
+          <p className="section-j-eyebrow section-j-eyebrow-light">The thesis</p>
+          <h2 id="thesis-heading" className="section-j-title section-j-title-light">
+            Recurring research follows the same seven steps. Production takes longer than analysis.
+          </h2>
+          <p className="section-j-body section-j-body-light">
+            Steps 1-3 are analysis. Steps 4-7 are production: pulling charts, writing slides,
+            checking numbers, branding the deck, drafting the report, building the workbook.
+            Basquio takes steps 4-7 so the team can stay in steps 1-3.
           </p>
-        </div>
+        </ScrollReveal>
       </section>
 
       <PublicSiteFooterCta
-        eyebrow="See where it fits"
-        title="Find the workflow that matches your team."
-        secondaryLabel="Who it's for"
-        secondaryHref="/for"
+        eyebrow="Ready to start"
+        title="Start with one output. Or set up the workspace."
+        copy="Upload the brief and files for one job. If the work comes back next month, keep the context in a workspace."
+        primaryLabel="Start one output"
+        primaryHref="/jobs/new"
+        secondaryLabel="See the workspace"
+        secondaryHref="/#workspace"
       />
       <PublicSiteFooter />
     </div>
