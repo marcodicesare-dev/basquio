@@ -1,9 +1,8 @@
 /**
- * Variant J · Path D
+ * Variant J · Path D + motion
  * Mixed mockup system: PNG screenshots from Claude Design for the clean
  * artefact shots (slide, workbook), CSS components with anonymous data for
- * the workspace + report + security UI shots that previously contained
- * real prospect names.
+ * the workspace, report and security UI shots.
  *
  * All real-prospect references (Pellini Caffè, Casa Vergnano, Caffè Motta,
  * Molino Andriani, Beatrice Pellini, marco@pellini.it, rossella@niq.eu,
@@ -11,20 +10,33 @@
  * data: Northstar Coffee, Aurora Espresso, Caffè Belvedere, Mulini Vetta,
  * Anna Ricci, marco@northstar.it, anna@example.it, luca@example.com.
  *
- * Numbers still reconcile across all five mockups (the 1.9 share points on
- * the slide ties to the workbook row 4 and the report section 2).
+ * Numbers reconcile across all five mockups (the 1.9 share points on the
+ * slide ties to workbook row 4 and report section 2).
+ *
+ * Motion layer (Linear / Vercel / Anthropic patterns):
+ * - PNG mockups (slide, workbook) are wrapped in MotionMockupFrame which
+ *   adds scroll-driven entrance plus mouse-tracking parallax tilt.
+ * - The workspace mockup is the live MotionWorkspaceMockup with chat-typing
+ *   animation, memory cells stagger reveal, and parallax tilt.
+ * - report and security stay flat for now (they are deeper in the page,
+ *   they get the standard ScrollReveal entrance only).
  */
 
 import { Fragment } from "react";
 import Image from "next/image";
 
+import { MotionMockupFrame } from "@/components/motion-mockup-frame";
+import { MotionWorkspaceMockup } from "@/components/motion-workspace-mockup";
+
+export { MotionWorkspaceMockup as WorkspaceHomeMockup };
+
 /* ------------------------------------------------------------------ */
-/* Product section · finished slide (Claude Design PNG)                */
+/* Product section · finished slide (Claude Design PNG + parallax)     */
 /* ------------------------------------------------------------------ */
 
 export function ProductSlideMockup() {
   return (
-    <figure className="mockup-frame mockup-frame-slide">
+    <MotionMockupFrame className="mockup-frame mockup-frame-slide">
       <Image
         className="mockup-frame-image"
         src="/marketing/screenshots/slide.png"
@@ -35,123 +47,17 @@ export function ProductSlideMockup() {
         priority
       />
       <figcaption className="mockup-frame-caption">deck.pptx · slide 04 of 12</figcaption>
-    </figure>
+    </MotionMockupFrame>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Workspace section · workspace home (CSS, anonymous)                 */
-/* ------------------------------------------------------------------ */
-
-const WORKSPACE_PROJECTS = [
-  { name: "Espresso Q4 review", client: "Northstar Coffee", active: true },
-  { name: "Trade marketing FY26", client: "Aurora Espresso", active: false },
-  { name: "Modern trade share", client: "Caffè Belvedere", active: false },
-  { name: "Brand health tracker", client: "Mulini Vetta", active: false },
-] as const;
-
-const WORKSPACE_MEMORY = [
-  { name: "Client", body: "Northstar Coffee · Verona · 18 contacts" },
-  { name: "Brand", body: "Northstar · house style 2026" },
-  { name: "Template", body: "JBP master template v3" },
-  { name: "Last meeting", body: "Apr 18 · Anna Ricci" },
-  { name: "Past reviews", body: "12 prior decks · 2024-2026" },
-  { name: "Approved formats", body: "SCQA narrative · 12 slides" },
-] as const;
-
-const WORKSPACE_PROMPTS = [
-  "Draft Q4 deck outline",
-  "Summarize last meeting",
-  "Compare share vs Q3",
-] as const;
-
-export function WorkspaceHomeMockup() {
-  return (
-    <article className="workspace-mockup" aria-label="Example Basquio workspace">
-      <div className="workspace-mockup-rail">
-        <div className="workspace-mockup-brand">
-          <span className="workspace-mockup-brand-mark" aria-hidden="true" />
-          basquio
-        </div>
-        <p className="workspace-mockup-rail-section">Projects</p>
-        <ul className="workspace-mockup-projects">
-          {WORKSPACE_PROJECTS.map((p) => (
-            <li
-              key={p.name}
-              className={
-                p.active
-                  ? "workspace-mockup-project workspace-mockup-project-active"
-                  : "workspace-mockup-project"
-              }
-            >
-              <span className="workspace-mockup-project-dot" aria-hidden="true" />
-              <span className="workspace-mockup-project-text">
-                <span className="workspace-mockup-project-name">{p.name}</span>
-                <span className="workspace-mockup-project-client">{p.client}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <button type="button" className="workspace-mockup-rail-add" tabIndex={-1}>
-          <span aria-hidden="true">+</span> New project
-        </button>
-      </div>
-
-      <div className="workspace-mockup-main">
-        <header className="workspace-mockup-main-head">
-          <p className="workspace-mockup-breadcrumb">
-            Workspace / Projects / Espresso Q4 review
-          </p>
-          <h3 className="workspace-mockup-main-title">
-            Espresso Q4 review · Northstar Coffee
-          </h3>
-        </header>
-
-        <p className="workspace-mockup-memory-label">Workspace memory · 6 facts pinned</p>
-        <ul className="workspace-mockup-memory">
-          {WORKSPACE_MEMORY.map((m) => (
-            <li key={m.name} className="workspace-mockup-memory-cell">
-              <span className="workspace-mockup-memory-glyph" aria-hidden="true" />
-              <span className="workspace-mockup-memory-copy">
-                <span className="workspace-mockup-memory-name">{m.name}</span>
-                <span className="workspace-mockup-memory-body">{m.body}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <aside className="workspace-mockup-chat">
-        <p className="workspace-mockup-chat-title">Ask Basquio</p>
-        <ul className="workspace-mockup-chat-suggestions">
-          {WORKSPACE_PROMPTS.map((p) => (
-            <li key={p} className="workspace-mockup-chat-suggestion">
-              {p}
-            </li>
-          ))}
-        </ul>
-        <div className="workspace-mockup-chat-composer">
-          <span className="workspace-mockup-chat-placeholder">
-            Brief Basquio for this project
-            <span className="workspace-mockup-chat-caret" aria-hidden="true" />
-          </span>
-        </div>
-        <button type="button" className="workspace-mockup-chat-cta" tabIndex={-1}>
-          Run output <span aria-hidden="true">→</span>
-        </button>
-        <p className="workspace-mockup-chat-trust">No training on customer data</p>
-      </aside>
-    </article>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Reconciliation section · workbook (Claude Design PNG)               */
+/* Reconciliation section · workbook (Claude Design PNG + parallax)    */
 /* ------------------------------------------------------------------ */
 
 export function WorkbookMockup() {
   return (
-    <figure className="mockup-frame mockup-frame-workbook">
+    <MotionMockupFrame className="mockup-frame mockup-frame-workbook">
       <Image
         className="mockup-frame-image"
         src="/marketing/screenshots/workbook.png"
@@ -161,7 +67,7 @@ export function WorkbookMockup() {
         sizes="(min-width: 1280px) 1100px, (min-width: 768px) 80vw, 100vw"
       />
       <figcaption className="mockup-frame-caption">data_tables.xlsx · 4 sheets · auto-reconciled</figcaption>
-    </figure>
+    </MotionMockupFrame>
   );
 }
 
