@@ -23913,21 +23913,26 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   box-shadow: 0 0 0 2px rgba(26, 106, 255, 0.12);
 }
 
-/* Unified BIG mockup width: ~96 percent of viewport, capped at 1440 so very
-   wide displays don't stretch the rasterized PNGs into total mush. The PNGs
-   are native 850/834 wide so they will upscale by ~1.5-1.7x at desktop;
-   we accept the slight softness in exchange for the dominant viewport
-   presence Marco wants. */
+/* Unified BIG mockup width. SVGs scale infinitely, so we go to viewport
+   minus 64px gutter, capped at 1440 so very wide displays don't blow the
+   mockup past comfortable reading width. */
 .mockup-frame-slide,
-.mockup-frame-workbook {
+.mockup-frame-workbook,
+.mockup-frame-security {
   max-width: min(1440px, calc(100vw - 64px));
 }
 
+/* Report is portrait (1240x1600) so it gets a narrower max-width so the
+   total height stays reasonable. */
+.mockup-frame-report {
+  max-width: min(900px, calc(100vw - 64px));
+}
+
 .mockup-frame-slide .mockup-frame-image,
-.mockup-frame-workbook .mockup-frame-image {
+.mockup-frame-workbook .mockup-frame-image,
+.mockup-frame-report .mockup-frame-image,
+.mockup-frame-security .mockup-frame-image {
   transform: rotate(0deg);
-  /* Crisper raster on upscale */
-  image-rendering: -webkit-optimize-contrast;
 }
 
 .mockup-frame:hover.mockup-frame-slide .mockup-frame-image,

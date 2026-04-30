@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1040" width="1600" height="1040" font-family="Manrope, system-ui, sans-serif">
+  <defs>
+    <style>
+    .mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+    .ink { fill: #0B0C0C; }
+    .ink35 { fill: rgba(11, 12, 12, 0.35); }
+    .ink50 { fill: rgba(11, 12, 12, 0.55); }
+    .ink65 { fill: rgba(11, 12, 12, 0.70); }
+    .ink80 { fill: rgba(11, 12, 12, 0.82); }
+    .ultra { fill: #1A6AFF; }
+    .red { fill: #C0392B; }
+    .green { fill: #2E7D5B; }
+    .hair { stroke: rgba(11, 12, 12, 0.10); stroke-width: 1; fill: none; }
+    .hair-soft { stroke: rgba(11, 12, 12, 0.06); stroke-width: 1; fill: none; }
+    .hair-stroke { stroke: rgba(11, 12, 12, 0.10); stroke-width: 1; }
+    .hair-soft-stroke { stroke: rgba(11, 12, 12, 0.06); stroke-width: 1; }
+    .tnum { font-feature-settings: 'tnum'; }
+  </style>
+  </defs>
+
+  <rect width="1600" height="1040" fill="#F8F5EF"></rect>
+
+  
+  <text x="60" y="46" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">data_tables.xlsx · 4 sheets · native</text>
+  <text x="1540" y="46" class="mono ink50" font-size="11" letter-spacing="1.1" text-anchor="end" style="text-transform:uppercase">read-share</text>
+  <text x="1540" y="66" class="mono ink35" font-size="11" letter-spacing="1.1" text-anchor="end" style="text-transform:uppercase">last edit 14:02</text>
+
+  
+  <text x="60" y="92" class="ink" font-size="14" font-weight="600" letter-spacing="-0.07">Share</text>
+  <line x1="60" y1="106" x2="100" y2="106" stroke="#1A6AFF" stroke-width="2"></line>
+  <text x="120" y="92" class="ink50" font-size="14" font-weight="500" letter-spacing="-0.07">Price</text>
+  <text x="170" y="92" class="ink50" font-size="14" font-weight="500" letter-spacing="-0.07">Promo</text>
+  <text x="232" y="92" class="ink50" font-size="14" font-weight="500" letter-spacing="-0.07">README</text>
+
+  
+  <circle cx="1390" cy="88" r="3.5" fill="#1A6AFF"></circle>
+  <text x="1402" y="92" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">auto-reconciled</text>
+
+  
+  <line x1="60" y1="120" x2="1540" y2="120" class="hair"></line>
+
+  
+  <text x="60" y="155" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">SHEET 01 · Q3 → Q4 SHARE MOVEMENT · % OF CATEGORY VALUE</text>
+
+  
+  
+  <line x1="60" y1="195" x2="1130" y2="195" class="hair"></line>
+  <text x="60" y="220" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">#</text>
+  <text x="120" y="220" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">SEGMENT</text>
+  <text x="540" y="220" class="mono ink50" font-size="11" letter-spacing="1.1" text-anchor="end" style="text-transform:uppercase">Q3 SHARE</text>
+  <text x="700" y="220" class="mono ink50" font-size="11" letter-spacing="1.1" text-anchor="end" style="text-transform:uppercase">Q4 SHARE</text>
+  <text x="860" y="220" class="mono ink50" font-size="11" letter-spacing="1.1" text-anchor="end" style="text-transform:uppercase">Δ PTS</text>
+  <text x="1000" y="220" class="mono ink50" font-size="11" letter-spacing="1.1" text-anchor="end" style="text-transform:uppercase">Δ %</text>
+  <text x="1130" y="220" class="mono ink50" font-size="11" letter-spacing="1.1" text-anchor="end" style="text-transform:uppercase">EVIDENCE</text>
+  <line x1="60" y1="237" x2="1130" y2="237" class="hair"></line>
+
+  
+  <text x="60" y="271" class="mono ink35" font-size="13" letter-spacing="0.26">2</text>
+  <text x="120" y="271" class="ink" font-size="14" font-weight="500" letter-spacing="-0.07">Branded premium</text>
+  <text x="540" y="271" class="mono ink tnum" font-size="14" text-anchor="end">22.1</text>
+  <text x="700" y="271" class="mono ink tnum" font-size="14" text-anchor="end">21.0</text>
+  <text x="860" y="271" class="mono red tnum" font-size="14" font-weight="500" text-anchor="end">−1.1</text>
+  <text x="1000" y="271" class="mono red tnum" font-size="14" font-weight="500" text-anchor="end">−5.0%</text>
+  <text x="1130" y="271" class="mono ultra" font-size="13" font-weight="500" letter-spacing="0.26" text-anchor="end">ref-04</text>
+  <line x1="60" y1="288" x2="1130" y2="288" class="hair-soft"></line>
+
+  
+  <text x="60" y="322" class="mono ink35" font-size="13" letter-spacing="0.26">3</text>
+  <text x="120" y="322" class="ink" font-size="14" font-weight="500" letter-spacing="-0.07">Branded mainstream</text>
+  <text x="540" y="322" class="mono ink tnum" font-size="14" text-anchor="end">18.9</text>
+  <text x="700" y="322" class="mono ink tnum" font-size="14" text-anchor="end">17.4</text>
+  <text x="860" y="322" class="mono red tnum" font-size="14" font-weight="500" text-anchor="end">−1.5</text>
+  <text x="1000" y="322" class="mono red tnum" font-size="14" font-weight="500" text-anchor="end">−7.9%</text>
+  <text x="1130" y="322" class="mono ultra" font-size="13" font-weight="500" letter-spacing="0.26" text-anchor="end">ref-04</text>
+  <line x1="60" y1="339" x2="1130" y2="339" class="hair-soft"></line>
+
+  
+  <rect x="60" y="356" width="1070" height="34" fill="rgba(240,204,39,0.18)"></rect>
+  <text x="60" y="378" class="mono ink35" font-size="13" letter-spacing="0.26">4</text>
+  <text x="120" y="378" class="ink" font-size="14" font-weight="600" letter-spacing="-0.07">Private label</text>
+  <text x="540" y="378" class="mono ink tnum" font-size="14" text-anchor="end">34.6</text>
+  <text x="700" y="378" class="mono ink tnum" font-size="14" font-weight="600" text-anchor="end">36.5</text>
+  <text x="860" y="378" class="mono green tnum" font-size="14" font-weight="500" text-anchor="end">+1.9</text>
+  <text x="1000" y="378" class="mono green tnum" font-size="14" font-weight="500" text-anchor="end">+5.5%</text>
+  <text x="1130" y="378" class="mono ultra" font-size="13" font-weight="500" letter-spacing="0.26" text-anchor="end">ref-04</text>
+  <line x1="60" y1="390" x2="1130" y2="390" class="hair-soft"></line>
+
+  
+  <text x="60" y="424" class="mono ink35" font-size="13" letter-spacing="0.26">5</text>
+  <text x="120" y="424" class="ink" font-size="14" font-weight="500" letter-spacing="-0.07">Discount mainstream</text>
+  <text x="540" y="424" class="mono ink tnum" font-size="14" text-anchor="end">14.4</text>
+  <text x="700" y="424" class="mono ink tnum" font-size="14" text-anchor="end">15.1</text>
+  <text x="860" y="424" class="mono green tnum" font-size="14" font-weight="500" text-anchor="end">+0.7</text>
+  <text x="1000" y="424" class="mono green tnum" font-size="14" font-weight="500" text-anchor="end">+4.9%</text>
+  <text x="1130" y="424" class="mono ultra" font-size="13" font-weight="500" letter-spacing="0.26" text-anchor="end">ref-04</text>
+  <line x1="60" y1="441" x2="1130" y2="441" class="hair-soft"></line>
+
+  
+  <text x="60" y="475" class="mono ink35" font-size="13" letter-spacing="0.26">6</text>
+  <text x="120" y="475" class="ink" font-size="14" font-weight="500" letter-spacing="-0.07">Other</text>
+  <text x="540" y="475" class="mono ink tnum" font-size="14" text-anchor="end">10.0</text>
+  <text x="700" y="475" class="mono ink tnum" font-size="14" text-anchor="end">10.0</text>
+  <text x="860" y="475" class="mono ink50 tnum" font-size="14" text-anchor="end">0.0</text>
+  <text x="1000" y="475" class="mono ink50 tnum" font-size="14" text-anchor="end">0.0%</text>
+  <text x="1130" y="475" class="mono ultra" font-size="13" font-weight="500" letter-spacing="0.26" text-anchor="end">ref-04</text>
+  <line x1="60" y1="492" x2="1130" y2="492" class="hair"></line>
+
+  
+  <text x="60" y="538" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">Σ Q3 =</text>
+  <text x="540" y="538" class="mono ink tnum" font-size="13" font-weight="500" text-anchor="end">100.0</text>
+  <text x="580" y="538" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">Σ Q4 =</text>
+  <text x="700" y="538" class="mono ink tnum" font-size="13" font-weight="500" text-anchor="end">100.0</text>
+  <text x="730" y="538" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">Σ Δ PTS =</text>
+  <text x="860" y="538" class="mono ink tnum" font-size="13" font-weight="500" text-anchor="end">0.0</text>
+  <text x="900" y="538" class="mono ink35" font-size="11" letter-spacing="1.1" font-style="italic">(closes)</text>
+
+  <text x="990" y="538" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">● reconciled to slide 04 · report §02</text>
+
+  
+  <text x="1190" y="155" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">EMBEDDED CHART</text>
+  <text x="1190" y="195" class="mono ink35" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">FIG-01 · Q4 SHARE BY SEGMENT</text>
+  <line x1="1190" y1="207" x2="1540" y2="207" class="hair"></line>
+
+  
+  
+  
+  <text x="1190" y="248" class="mono ink80" font-size="12" letter-spacing="-0.06">Branded premium</text>
+  <text x="1540" y="248" class="mono ink tnum" font-size="13" font-weight="500" text-anchor="end">21.0</text>
+  <rect x="1190" y="256" width="132" height="14" fill="rgba(11,12,12,0.18)"></rect>
+
+  
+  <text x="1190" y="305" class="mono ink80" font-size="12" letter-spacing="-0.06">Branded mainstream</text>
+  <text x="1540" y="305" class="mono ink tnum" font-size="13" font-weight="500" text-anchor="end">17.4</text>
+  <rect x="1190" y="313" width="110" height="14" fill="rgba(11,12,12,0.18)"></rect>
+
+  
+  <text x="1190" y="362" class="mono ink" font-size="12" font-weight="600" letter-spacing="-0.06">Private label</text>
+  <text x="1540" y="362" class="mono ink tnum" font-size="13" font-weight="600" text-anchor="end">36.5</text>
+  <rect x="1190" y="370" width="230" height="14" fill="rgba(240,204,39,0.55)"></rect>
+  <line x1="1418" y1="370" x2="1418" y2="384" stroke="#B8941A" stroke-width="1.5"></line>
+
+  
+  <text x="1190" y="419" class="mono ink80" font-size="12" letter-spacing="-0.06">Discount mainstream</text>
+  <text x="1540" y="419" class="mono ink tnum" font-size="13" font-weight="500" text-anchor="end">15.1</text>
+  <rect x="1190" y="427" width="95" height="14" fill="rgba(11,12,12,0.18)"></rect>
+
+  
+  <text x="1190" y="476" class="mono ink80" font-size="12" letter-spacing="-0.06">Other</text>
+  <text x="1540" y="476" class="mono ink tnum" font-size="13" font-weight="500" text-anchor="end">10.0</text>
+  <rect x="1190" y="484" width="63" height="14" fill="rgba(11,12,12,0.18)"></rect>
+
+  
+  <line x1="1190" y1="525" x2="1540" y2="525" class="hair-soft"></line>
+  <text x="1190" y="550" class="mono ink35" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">NATIVE CHART · EMBEDDED IN SHEET</text>
+  <text x="1190" y="568" class="mono ink35" font-size="11" letter-spacing="1.1" font-style="italic">resizes with column</text>
+
+  
+  <line x1="60" y1="980" x2="1540" y2="980" class="hair"></line>
+  <text x="60" y="1010" class="mono ink50" font-size="11" letter-spacing="1.1" style="text-transform:uppercase">SHEET 01 · AUTO-GENERATED · NUMBERS RECONCILE TO SLIDE 04 AND REPORT SECTION 02</text>
+</svg>
