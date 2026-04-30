@@ -6,7 +6,7 @@ import { z } from "zod";
 import { createServiceSupabaseClient } from "@/lib/supabase/admin";
 import { assembleWorkspaceContext } from "@/lib/workspace/context";
 import { createMemoryEntry, listMemoryEntries } from "@/lib/workspace/memory";
-import { getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes";
+import { createScope, getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes";
 import type { WorkspaceScope } from "@/lib/workspace/types";
 import { analyzeAttachedFile } from "@/lib/workspace/analyze-attached-file";
 import { listConversationAttachments } from "@/lib/workspace/conversation-attachments";
@@ -58,7 +58,23 @@ async function resolveScopeRef(
   }
   const trimmed = ref.trim();
   if (trimmed === "workspace" || trimmed === "analyst") {
-    return getScopeByKindSlug(workspaceId, "system", trimmed);
+    // System scopes are an invariant. See agent-tools-editorial.ts for
+    // the same self-healing pattern. Migration 20260520200000 backfills
+    // + a trigger maintains the invariant; this branch covers races and
+    // workspaces created before the trigger shipped.
+    const existing = await getScopeByKindSlug(workspaceId, "system", trimmed);
+    if (existing) return existing;
+    try {
+      return await createScope({
+        workspaceId,
+        kind: "system",
+        name: trimmed === "workspace" ? "Workspace" : "Analyst",
+        slug: trimmed,
+        metadata: { seeded: true, builtin: true, via: "agent-tools:auto-heal" },
+      });
+    } catch {
+      return getScopeByKindSlug(workspaceId, "system", trimmed);
+    }
   }
   const colon = trimmed.indexOf(":");
   if (colon > 0) {
@@ -157,7 +173,7 @@ export function teachRuleTool(ctx: AgentCallContext) {
       if (!scopeRow) {
         return {
           ok: false,
-          error: `Scope '${scope}' does not exist yet. Ask the user if they want to create it, or pick an existing scope.`,
+          error: `Cannot find a client or category called '${scope}'. List existing scopes via the workspace sidebar or pass 'workspace' for firm-wide.`,
         };
       }
       const entry = await createMemoryEntry({

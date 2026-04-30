@@ -16,7 +16,7 @@ import {
   togglePinMemoryEntry,
   updateMemoryEntry,
 } from "@/lib/workspace/memory";
-import { getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes";
+import { createScope, getScope, getScopeByKindSlug, listScopes } from "@/lib/workspace/scopes";
 import type { WorkspaceScope } from "@/lib/workspace/types";
 import { listWorkspacePeople } from "@/lib/workspace/people";
 import type { AgentCallContext } from "@/lib/workspace/agent-tools";
@@ -61,7 +61,26 @@ async function resolveScopeRef(
   }
   const trimmed = ref.trim();
   if (trimmed === "workspace" || trimmed === "analyst") {
-    return getScopeByKindSlug(workspaceId, "system", trimmed);
+    // System scopes are an invariant: every workspace must have them.
+    // Migration 20260520200000 backfills + a trigger maintains the
+    // invariant going forward, but we still self-heal here in case a
+    // workspace landed before the trigger shipped or a race deleted the
+    // row. SOTA pattern (Harvey, Legora): firm-wide scope is never
+    // surfaced to the user as a precondition failure.
+    const existing = await getScopeByKindSlug(workspaceId, "system", trimmed);
+    if (existing) return existing;
+    try {
+      return await createScope({
+        workspaceId,
+        kind: "system",
+        name: trimmed === "workspace" ? "Workspace" : "Analyst",
+        slug: trimmed,
+        metadata: { seeded: true, builtin: true, via: "agent-tools-editorial:auto-heal" },
+      });
+    } catch (err) {
+      // Race lost to another writer (23505); read it back.
+      return getScopeByKindSlug(workspaceId, "system", trimmed);
+    }
   }
   const colon = trimmed.indexOf(":");
   if (colon > 0) {
@@ -90,12 +109,12 @@ async function resolveScopeRef(
 export function editRuleTool(ctx: AgentCallContext) {
   return tool({
     description:
-      "Create, update, archive, pin, or delete a saved workspace knowledge item (instruction, knowledge, or example). Use for any of: 'create' (prefer teachRule for simple explicit saves), 'update' (patch content/memory_type/scope on an existing rule_id), 'archive' or 'unarchive', 'pin' or 'unpin', 'delete'. Destructive actions (archive, delete) always require approval.",
+      "Create, update, archive, pin, or delete a saved workspace knowledge item (instruction, knowledge, or example). Use for any of: 'create' (prefer teachRule for simple explicit saves; 'scope' accepts a single string OR an array of scope refs to save the same item under multiple clients/categories at once), 'update' (patch content/memory_type/scope on an existing rule_id), 'archive' or 'unarchive', 'pin' or 'unpin', 'delete'. Destructive actions (archive, delete) always require approval.",
     inputSchema: z
       .object({
         action: z.enum(["create", "update", "archive", "unarchive", "pin", "unpin", "delete"]),
         rule_id: z.string().uuid().optional(),
-        scope: z.string().optional(),
+        scope: z.union([z.string(), z.array(z.string()).min(1).max(20)]).optional(),
         memory_type: z.enum(["procedural", "semantic", "episodic"]).optional(),
         content: z.string().min(3).max(4000).optional(),
         reason: z.string().max(400).optional(),
@@ -112,33 +131,76 @@ export function editRuleTool(ctx: AgentCallContext) {
               error: "create requires scope, memory_type, and content",
             };
           }
-          const scopeRow = await resolveScopeRef(ctx.workspaceId, input.scope);
-          if (!scopeRow) {
-            return { ok: false, error: `Scope '${input.scope}' does not exist.` };
+          // Multi-scope save: when the user says "fai valere per Carrefour
+          // ed Esselunga" we want one row per scope. Schema (memory_entries)
+          // stores one scope per row, so we loop.
+          const scopeRefs = Array.isArray(input.scope) ? input.scope : [input.scope];
+          const resolved: Array<{ ref: string; row: WorkspaceScope | null }> = [];
+          for (const ref of scopeRefs) {
+            const row = await resolveScopeRef(ctx.workspaceId, ref);
+            resolved.push({ ref, row });
           }
-          const entry = await createMemoryEntry({
-            workspaceId: ctx.workspaceId,
-            workspaceScopeId: scopeRow.id,
-            memoryType: input.memory_type,
-            content: input.content.trim(),
-            metadata: {
-              taught_by: ctx.userEmail,
-              taught_at: new Date().toISOString(),
-              via: "chat",
-              reason: input.reason ?? null,
-            },
-            scope:
-              scopeRow.kind === "system"
-                ? scopeRow.slug
-                : `${scopeRow.kind}:${scopeRow.name}`,
-          });
+          const missing = resolved.filter((r) => !r.row).map((r) => r.ref);
+          if (missing.length > 0) {
+            return {
+              ok: false,
+              error:
+                missing.length === 1
+                  ? `Cannot find a scope called '${missing[0]}'. Pass 'workspace' for firm-wide, or pick from the existing clients/categories in the sidebar.`
+                  : `Cannot find scopes: ${missing.join(", ")}. Pick from the existing clients/categories.`,
+            };
+          }
+
+          const created: Array<{
+            entry_id: string;
+            scope: { id: string; kind: string; name: string };
+            content: string;
+            memory_type: typeof input.memory_type;
+          }> = [];
+          for (const { row } of resolved) {
+            if (!row) continue;
+            const entry = await createMemoryEntry({
+              workspaceId: ctx.workspaceId,
+              workspaceScopeId: row.id,
+              memoryType: input.memory_type,
+              content: input.content.trim(),
+              metadata: {
+                taught_by: ctx.userEmail,
+                taught_at: new Date().toISOString(),
+                via: "chat",
+                reason: input.reason ?? null,
+                multi_scope_save: scopeRefs.length > 1,
+              },
+              scope:
+                row.kind === "system"
+                  ? row.slug
+                  : `${row.kind}:${row.name}`,
+            });
+            created.push({
+              entry_id: entry.id,
+              scope: { id: row.id, kind: row.kind, name: row.name },
+              content: entry.content,
+              memory_type: entry.memory_type,
+            });
+          }
+          if (created.length === 1) {
+            const only = created[0];
+            return {
+              ok: true,
+              action: "create" as const,
+              entry_id: only.entry_id,
+              scope: only.scope,
+              memory_type: only.memory_type,
+              content: only.content,
+            };
+          }
           return {
             ok: true,
             action: "create" as const,
-            entry_id: entry.id,
-            scope: { id: scopeRow.id, kind: scopeRow.kind, name: scopeRow.name },
-            memory_type: entry.memory_type,
-            content: entry.content,
+            entries: created,
+            scopes_saved: created.map((c) => c.scope),
+            content: created[0]?.content ?? input.content.trim(),
+            memory_type: input.memory_type,
           };
         }
 
@@ -157,9 +219,13 @@ export function editRuleTool(ctx: AgentCallContext) {
           if (input.content !== undefined) patch.content = input.content.trim();
           if (input.memory_type !== undefined) patch.memoryType = input.memory_type;
           if (input.scope !== undefined) {
-            const scopeRow = await resolveScopeRef(ctx.workspaceId, input.scope);
+            // For update we still take the first scope only. To relocate
+            // a single rule to multiple scopes, the agent should issue
+            // create calls for the new scopes and archive the old.
+            const scopeRef = Array.isArray(input.scope) ? input.scope[0] : input.scope;
+            const scopeRow = await resolveScopeRef(ctx.workspaceId, scopeRef);
             if (!scopeRow) {
-              return { ok: false, error: `Scope '${input.scope}' does not exist.` };
+              return { ok: false, error: `Cannot find a scope called '${scopeRef}'.` };
             }
             patch.workspaceScopeId = scopeRow.id;
           }

@@ -170,6 +170,15 @@ export function WorkspaceDeliverableView({
       {!editing ? (
         <div className="wbeta-deliverable-actions">
           {savedAt ? <span className="wbeta-deliverable-saved">Saved.</span> : null}
+          {status === "ready" && bodyMarkdown.trim() ? (
+            <a
+              href={`/api/workspace/deliverables/${deliverableId}/export`}
+              className="wbeta-deliverable-edit-btn"
+              download
+            >
+              Download as Word
+            </a>
+          ) : null}
           <a
             href={`/jobs/new?deliverable=${deliverableId}`}
             className="wbeta-deliverable-edit-btn wbeta-deliverable-deck-btn"

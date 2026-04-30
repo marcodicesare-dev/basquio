@@ -14270,22 +14270,49 @@ body:has(.wbeta-chat-pane) .wbeta-workspace-layout {
 
 .wbeta-candidate-queue-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 13px;
 }
 
-.wbeta-candidate-queue-head h3 {
+.wbeta-candidate-queue-title {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
+.wbeta-candidate-queue-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  max-width: 60ch;
+}
+
+.wbeta-candidate-queue-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
 .wbeta-candidate-queue-count {
   font-size: 11px;
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
   color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+.wbeta-candidate-queue-hotkey {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
 }
 
 .wbeta-candidate-queue-list {
@@ -14305,45 +14332,55 @@ body:has(.wbeta-chat-pane) .wbeta-workspace-layout {
   background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  transition: border-color 80ms ease, background 80ms ease;
 }
 
-.wbeta-candidate-meta {
+.wbeta-candidate-row-focused {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.wbeta-candidate-row-head {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .wbeta-candidate-kind {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   background: var(--surface);
   border: 1px solid var(--border);
-  text-transform: uppercase;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-soft);
 }
 
 .wbeta-candidate-confidence {
   font-size: 11px;
-  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
+  font-weight: 500;
   color: var(--text-muted);
+  background: var(--canvas-stage);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
 }
 
-.wbeta-candidate-content {
+.wbeta-candidate-headline {
   margin: 0;
-  font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.45;
   color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: var(--surface);
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  max-height: 144px;
-  overflow-y: auto;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.wbeta-candidate-detail {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 .wbeta-candidate-evidence {

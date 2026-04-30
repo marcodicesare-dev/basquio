@@ -6,6 +6,7 @@ import {
   CaretRight,
   CheckCircle,
   ClipboardText,
+  DownloadSimple,
   FileArrowDown,
   Info,
   Presentation,
@@ -105,6 +106,7 @@ type ChatMessageProps = {
   onRegenerate?: () => void;
   onFeedback?: (value: "up" | "down") => void;
   onSaveAsMemo?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
+  onExportAsWord?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null>;
   onGenerateDeck?: (args: { text: string; citations: CitationInline[]; messageId: string }) => Promise<string | null> | void;
   onOpenGenerateDrawer?: (args: {
     messageId: string;
@@ -129,6 +131,7 @@ export const ChatMessage = memo(function ChatMessage({
   onRegenerate,
   onFeedback,
   onSaveAsMemo,
+  onExportAsWord,
   onGenerateDeck,
   onOpenGenerateDrawer,
   showInlineSuggestions = false,
@@ -138,7 +141,7 @@ export const ChatMessage = memo(function ChatMessage({
   const citations = gatherCitations(message);
   const [copiedAt, setCopiedAt] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
-  const [saving, setSaving] = useState<"memo" | "deck" | null>(null);
+  const [saving, setSaving] = useState<"memo" | "deck" | "word" | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const parts = (message.parts ?? []) as unknown as Part[];
   const hasAssistantText = parts.some(
@@ -185,6 +188,49 @@ export const ChatMessage = memo(function ChatMessage({
         messageId: message.id ?? "",
       });
       setSaveMsg(url ? "Saved as memo" : "Could not save");
+    } finally {
+      setSaving(null);
+      window.setTimeout(() => setSaveMsg(null), 2400);
+    }
+  }
+
+  async function handleExportWord() {
+    if (saving) return;
+    setSaving("word");
+    setSaveMsg(null);
+    try {
+      let url: string | null = null;
+      if (onExportAsWord) {
+        url = await onExportAsWord({
+          text: messageToMarkdown(message),
+          citations,
+          messageId: message.id ?? "",
+        });
+      } else if (onSaveAsMemo) {
+        // Fallback: save as memo first, then derive the export URL.
+        const memoUrl = await onSaveAsMemo({
+          text: messageToMarkdown(message),
+          citations,
+          messageId: message.id ?? "",
+        });
+        const match = memoUrl?.match(/\/workspace\/deliverable\/([0-9a-f-]{36})/i);
+        url = match ? `/api/workspace/deliverables/${match[1]}/export` : null;
+      }
+      if (url) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.rel = "noopener";
+        a.target = "_self";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setSaveMsg("Downloading Word file");
+      } else {
+        setSaveMsg("Could not export");
+      }
+    } catch (err) {
+      console.error("[chat] handleExportWord failed", err);
+      setSaveMsg("Export failed");
     } finally {
       setSaving(null);
       window.setTimeout(() => setSaveMsg(null), 2400);
@@ -483,6 +529,21 @@ export const ChatMessage = memo(function ChatMessage({
               <InlineHelp text="Saves this answer as a reusable workspace memo with its cited sources." />
             </button>
           ) : null}
+          {(onExportAsWord || onSaveAsMemo) ? (
+            <button
+              type="button"
+              className="wbeta-ai-action-btn"
+              onClick={handleExportWord}
+              disabled={saving !== null}
+              aria-busy={saving === "word"}
+              data-loading={saving === "word" ? "true" : undefined}
+              aria-label="Download as Word file"
+            >
+              <DownloadSimple size={12} weight="regular" />
+              {saving === "word" ? "Building..." : "Save as Word"}
+              <InlineHelp text="Downloads this answer as a .docx file with tables, headings, and inline citations preserved as Word footnotes." />
+            </button>
+          ) : null}
           {onGenerateDeck ? (
             <button
               type="button"
@@ -541,6 +602,7 @@ function areChatMessagePropsEqual(prev: ChatMessageProps, next: ChatMessageProps
     prev.onRegenerate === next.onRegenerate &&
     prev.onFeedback === next.onFeedback &&
     prev.onSaveAsMemo === next.onSaveAsMemo &&
+    prev.onExportAsWord === next.onExportAsWord &&
     prev.onGenerateDeck === next.onGenerateDeck &&
     prev.onOpenGenerateDrawer === next.onOpenGenerateDrawer &&
     prev.showInlineSuggestions === next.showInlineSuggestions &&

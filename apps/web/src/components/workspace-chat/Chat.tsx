@@ -710,6 +710,26 @@ export function WorkspaceChat({
     [deriveTitle, derivePrompt, scopeName, scopeId],
   );
 
+  /**
+   * Save as Word: persists the memo via the same path as `saveAsMemo`, then
+   * resolves the export URL so ChatMessage can trigger the browser download.
+   * Reuses saveAsMemo so we never have two divergent code paths.
+   */
+  const exportAsWord = useCallback(
+    async (args: {
+      text: string;
+      citations: CitationInline[];
+      messageId: string;
+    }): Promise<string | null> => {
+      const memoUrl = await saveAsMemo(args);
+      if (!memoUrl) return null;
+      const match = memoUrl.match(/\/workspace\/deliverable\/([0-9a-f-]{36})/i);
+      if (!match) return null;
+      return `/api/workspace/deliverables/${match[1]}/export`;
+    },
+    [saveAsMemo],
+  );
+
   const openGenerationDrawer = useCallback(
     async ({ messageId }: { messageId: string }): Promise<string | null> => {
       setDrawerMessageId(messageId || null);
@@ -828,6 +848,7 @@ export function WorkspaceChat({
                 isStreaming={isStreaming && isLast && message.role === "assistant"}
                 onRegenerate={isLast && message.role === "assistant" ? handleRegenerate : undefined}
                 onSaveAsMemo={message.role === "assistant" && !isStreaming ? saveAsMemo : undefined}
+                onExportAsWord={message.role === "assistant" && !isStreaming ? exportAsWord : undefined}
                 onGenerateDeck={
                   message.role === "assistant" && !isStreaming ? openGenerationDrawer : undefined
                 }
