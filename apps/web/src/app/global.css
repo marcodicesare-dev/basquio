@@ -23755,8 +23755,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(28px, 3.6vw, 56px);
-  padding: clamp(56px, 6vw, 96px) 0;
+  gap: clamp(20px, 2.4vw, 36px);
+  padding: clamp(32px, 4vw, 56px) 0 clamp(40px, 4.5vw, 64px);
+}
+
+.section-j-stack + .section-j-stack {
+  padding-top: 0;
 }
 
 .section-j-stack-head {
@@ -23809,7 +23813,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   justify-content: center;
   width: 100%;
   height: auto;
-  min-height: clamp(480px, 64vh, 720px);
+  min-height: 0;
   padding: 0;
   background: transparent;
   border: 0;
@@ -23886,20 +23890,14 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   box-shadow: 0 0 0 2px rgba(26, 106, 255, 0.12);
 }
 
-.mockup-frame-slide {
-  max-width: 1100px;
-}
-
-.mockup-frame-slide .mockup-frame-image {
-  transform: rotate(-0.6deg);
-}
-
+.mockup-frame-slide,
 .mockup-frame-workbook {
-  max-width: 1100px;
+  max-width: 1180px;
 }
 
+.mockup-frame-slide .mockup-frame-image,
 .mockup-frame-workbook .mockup-frame-image {
-  transform: rotate(-0.3deg);
+  transform: rotate(0deg);
 }
 
 .mockup-frame:hover.mockup-frame-slide .mockup-frame-image,
@@ -24209,19 +24207,19 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workspace-mockup {
   position: relative;
   width: 100%;
-  max-width: 680px;
+  max-width: 1180px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr) 200px;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
   background: #ffffff;
-  border-radius: 12px;
+  border-radius: 18px;
   border: 1px solid rgba(11, 12, 12, 0.08);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 60px 120px -50px rgba(11, 12, 12, 0.32),
-    0 24px 48px -28px rgba(11, 12, 12, 0.16);
-  transform: rotate(0.3deg);
-  transition: transform 600ms cubic-bezier(0.22, 0.84, 0.34, 1);
+    0 32px 72px -28px rgba(11, 12, 12, 0.24),
+    0 12px 28px -16px rgba(11, 12, 12, 0.14);
+  transform: rotate(0deg);
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
@@ -24506,17 +24504,17 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .report-mockup {
   position: relative;
   width: 100%;
-  max-width: 520px;
+  max-width: 760px;
   margin: 0 auto;
   background: linear-gradient(180deg, #ffffff 0%, #fcfaf6 100%);
-  border-radius: 12px;
+  border-radius: 18px;
   border: 1px solid rgba(11, 12, 12, 0.08);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 60px 120px -50px rgba(11, 12, 12, 0.32),
-    0 24px 48px -28px rgba(11, 12, 12, 0.16);
-  transform: rotate(-0.3deg);
-  transition: transform 600ms cubic-bezier(0.22, 0.84, 0.34, 1);
+    0 32px 72px -28px rgba(11, 12, 12, 0.24),
+    0 12px 28px -16px rgba(11, 12, 12, 0.14);
+  transform: rotate(0deg);
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
@@ -24624,22 +24622,18 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .audit-mockup {
   position: relative;
   width: 100%;
-  max-width: 580px;
+  max-width: 1180px;
   margin: 0 auto;
   background: #ffffff;
-  border-radius: 12px;
+  border-radius: 18px;
   border: 1px solid rgba(11, 12, 12, 0.08);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 60px 120px -50px rgba(11, 12, 12, 0.3),
-    0 24px 48px -28px rgba(11, 12, 12, 0.14);
-  transform: rotate(0.2deg);
-  transition: transform 600ms cubic-bezier(0.22, 0.84, 0.34, 1);
+    0 32px 72px -28px rgba(11, 12, 12, 0.24),
+    0 12px 28px -16px rgba(11, 12, 12, 0.14);
+  transform: rotate(0deg);
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
-}
-
-.audit-mockup:hover {
-  transform: rotate(0);
 }
 
 .audit-mockup-status {
@@ -25278,5 +25272,190 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
   .workspace-mockup-chat-caret {
     animation: none;
+  }
+}
+
+
+/* ============================================================================
+   Variant J · Scripted workspace demo (Lovable / v0 / Cursor pattern)
+   Cursor sprite, suggestion chip click flash, button states (pressed,
+   loading, done), spinner, check, output reveal, artifact pills.
+   ============================================================================ */
+
+/* --- Animated cursor sprite ---------------------------------------------- */
+
+.workspace-mockup-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  width: 22px;
+  height: 24px;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 8px rgba(11, 12, 12, 0.18));
+}
+
+/* --- Suggestion chip active (clicked) state ----------------------------- */
+
+.workspace-mockup-chat-suggestion-active {
+  background: rgba(26, 106, 255, 0.1) !important;
+  color: var(--ultramarine, #1A6AFF) !important;
+  border-color: rgba(26, 106, 255, 0.32) !important;
+  box-shadow: 0 0 0 3px rgba(26, 106, 255, 0.12);
+  transition: background 200ms ease, color 200ms ease, box-shadow 200ms ease;
+}
+
+/* --- Button state machine: idle / pressed / loading / done -------------- */
+
+.workspace-mockup-chat-cta {
+  position: relative;
+  transition:
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.workspace-mockup-chat-cta-pressed {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: 0 1px 2px rgba(11, 12, 12, 0.16) !important;
+}
+
+.workspace-mockup-chat-cta-loading {
+  background: var(--ultramarine, #1A6AFF) !important;
+  cursor: progress;
+}
+
+.workspace-mockup-chat-cta-done {
+  background: #16a34a !important;
+}
+
+.workspace-mockup-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 6px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: workspace-mockup-spinner-spin 720ms linear infinite;
+  vertical-align: -1px;
+}
+
+@keyframes workspace-mockup-spinner-spin {
+  to { transform: rotate(360deg); }
+}
+
+.workspace-mockup-check {
+  display: inline-block;
+  margin-right: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #ffffff;
+  vertical-align: 0;
+}
+
+/* --- Output reveal block ------------------------------------------------- */
+
+.workspace-mockup-output {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(22, 163, 74, 0.04) 0%, rgba(22, 163, 74, 0) 100%);
+  border: 1px solid rgba(22, 163, 74, 0.16);
+  border-radius: 10px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 480ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 480ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.workspace-mockup-output-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.workspace-mockup-output-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #15803d;
+}
+
+.workspace-mockup-output-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18);
+}
+
+.workspace-mockup-artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workspace-mockup-artifact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(11, 12, 12, 0.85);
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 380ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workspace-mockup-output-visible .workspace-mockup-artifact {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.workspace-mockup-artifact-glyph {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.workspace-mockup-artifact-blue .workspace-mockup-artifact-glyph {
+  background: var(--ultramarine, #1A6AFF);
+}
+
+.workspace-mockup-artifact-amber .workspace-mockup-artifact-glyph {
+  background: #f0cc27;
+}
+
+.workspace-mockup-artifact-green .workspace-mockup-artifact-glyph {
+  background: #16a34a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-mockup-spinner {
+    animation: none;
+  }
+  .workspace-mockup-output,
+  .workspace-mockup-artifact {
+    transition: none;
+    opacity: 1;
+    transform: none;
   }
 }

@@ -1,25 +1,21 @@
 "use client";
 
-import { Children, type ReactNode } from "react";
+import { Children, useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, type Variants } from "motion/react";
 
 /**
  * Section head with sequential reveal of children (eyebrow → title → body → link).
  * Triggers once when the head enters viewport.
  *
- * Each top-level child is wrapped in a motion.div with stagger + fade-up. The
- * containing flex column layout from .section-j-stack-head still applies because
- * flex column treats wrapping divs as direct children.
+ * Uses vanilla IntersectionObserver to flip an inView state, which then drives
+ * motion's animate prop. Motion's whileInView was unreliable in our nesting.
  */
 
 const containerVariants: Variants = {
   hidden: { opacity: 1 },
   visible: {
     opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-      delayChildren: 0.04,
-    },
+    transition: { staggerChildren: 0.08, delayChildren: 0.04 },
   },
 };
 
@@ -28,10 +24,7 @@ const itemVariants: Variants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: {
-      duration: 0.55,
-      ease: [0.16, 1, 0.3, 1],
-    },
+    transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] },
   },
 };
 
@@ -42,14 +35,34 @@ type Props = {
 };
 
 export function MotionSectionHead({ className, id, children }: Props) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isInView, setIsInView] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setIsInView(true);
+            obs.disconnect();
+          }
+        }
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -10% 0px" },
+    );
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+
   return (
     <motion.div
+      ref={ref}
       className={className}
       id={id}
       variants={containerVariants}
       initial="hidden"
-      whileInView="visible"
-      viewport={{ once: true, amount: 0.15, margin: "0px 0px -10% 0px" }}
+      animate={isInView ? "visible" : "hidden"}
     >
       {Children.map(children, (child, i) => (
         <motion.div key={i} variants={itemVariants} style={{ width: "100%" }}>
