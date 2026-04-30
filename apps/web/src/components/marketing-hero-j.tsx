@@ -18,11 +18,11 @@ export function MarketingHeroJ() {
       <div className="hero-j-copy">
         <p className="hero-j-eyebrow">For market research teams</p>
         <h1 id="hero-j-headline" className="hero-j-headline">
-          From scattered research files to a finished deck.
+          The brief changed. The deck is still due.
         </h1>
         <p className="hero-j-subhead">
-          Basquio turns the brief, data, notes, and templates into the deck, report, and Excel file
-          your stakeholder asked for.
+          Give Basquio the data, the brief, and the template. It produces the deck, the report, and
+          the Excel workbook.
         </p>
 
         <div className="hero-j-actions">
