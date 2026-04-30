@@ -16,13 +16,13 @@ export function MarketingHeroJ() {
       <div className="hero-j-scrim" aria-hidden="true" />
 
       <div className="hero-j-copy">
-        <p className="hero-j-eyebrow">Per i team di ricerca di mercato</p>
+        <p className="hero-j-eyebrow">Creato da analisti FMCG</p>
         <h1 id="hero-j-headline" className="hero-j-headline">
           Dai file sparsi a una presentazione pronta.
         </h1>
         <p className="hero-j-subhead">
-          Basquio trasforma brief, dati, appunti e template nella presentazione, nel report e nel
-          file Excel che il tuo stakeholder ti ha chiesto.
+          Basquio tiene insieme brief, dati, appunti, template e lavori passati. Quando sai cosa
+          devi dire, prepara slide, report e file Excel.
         </p>
 
         <div className="hero-j-actions">
