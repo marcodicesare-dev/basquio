@@ -18,19 +18,19 @@ export function MarketingHeroJ() {
       <div className="hero-j-copy">
         <p className="hero-j-eyebrow">For market research teams</p>
         <h1 id="hero-j-headline" className="hero-j-headline">
-          From scattered research files to a finished deck.
+          Your next deck should already know the brief.
         </h1>
         <p className="hero-j-subhead">
-          Basquio turns the brief, data, notes, and templates into the deck, report, and Excel file
-          your stakeholder asked for.
+          Basquio remembers the client, brand, template, and past reviews. The next deck starts with
+          the context already in place.
         </p>
 
         <div className="hero-j-actions">
-          <Link className="hero-j-primary" href="/jobs/new">
-            Start one output
-          </Link>
-          <Link className="hero-j-secondary" href="#workspace">
+          <Link className="hero-j-primary" href="#workspace">
             See the workspace
+          </Link>
+          <Link className="hero-j-secondary" href="/jobs/new">
+            Start one output
           </Link>
         </div>
 
