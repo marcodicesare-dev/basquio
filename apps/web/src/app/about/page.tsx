@@ -21,39 +21,18 @@ const TEAM_MEMBERS = [
       "Full-stack engineer. Costruisce la pipeline che trasforma brief, dati, appunti e template in presentazione, report e file Excel.",
   },
   {
-    initials: "GC",
-    name: "Giulia",
+    initials: "GM",
+    name: "Giulia Monica",
     role: "Brand management",
     background:
       "Brand manager in Mondelez. La persona che riceve la presentazione e la presenta in riunione.",
   },
   {
-    initials: "VM",
-    name: "Veronica",
-    role: "Strategic buying",
-    background:
-      "Category buyer in Victorinox. Sa quali decisioni la presentazione deve supportare prima ancora di aprirla.",
-  },
-  {
-    initials: "AR",
-    name: "Alessandro",
+    initials: "NIQ",
+    name: "Analisti ex-NielsenIQ",
     role: "Ricerca di mercato",
     background:
-      "Analista NielsenIQ. Vive il ciclo brief, dati, template, scadenza ogni settimana.",
-  },
-  {
-    initials: "RB",
-    name: "Rossella",
-    role: "Ricerca di mercato",
-    background:
-      "Analista NielsenIQ. Segue le category review ricorrenti per i clienti FMCG italiani.",
-  },
-  {
-    initials: "FP",
-    name: "Francesco",
-    role: "Ricerca di mercato",
-    background:
-      "Analista NielsenIQ. La voce che chiede output da analista, non output di facciata.",
+      "Tre analisti che hanno lavorato in NielsenIQ e che vivevano il ciclo brief, dati, template, scadenza ogni settimana. Disegnano l'esperienza analista dentro Basquio.",
   },
 ] as const;
 
@@ -86,7 +65,7 @@ export default function AboutPage() {
         <ScrollReveal className="section-j-team-head">
           <p className="section-j-eyebrow">Il team</p>
           <h2 id="team-heading" className="section-j-title">
-            Sei persone che facevano queste presentazioni a mano.
+            Un piccolo team che faceva queste presentazioni a mano.
           </h2>
         </ScrollReveal>
 
