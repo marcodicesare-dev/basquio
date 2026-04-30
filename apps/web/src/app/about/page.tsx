@@ -21,37 +21,18 @@ const TEAM_MEMBERS = [
       "Full-stack engineer. Built the pipeline that turns brief, data, notes and template into the deck, report and Excel file.",
   },
   {
-    initials: "GC",
-    name: "Giulia",
+    initials: "GM",
+    name: "Giulia Monica",
     role: "Brand management",
     background:
       "Brand manager at Mondelez. The person who receives the deck and presents it to the room.",
   },
   {
-    initials: "VM",
-    name: "Veronica",
-    role: "Strategic buying",
-    background:
-      "Category buyer at Victorinox. Knows what decisions the deck needs to support before it gets opened.",
-  },
-  {
-    initials: "AR",
-    name: "Alessandro",
-    role: "Market research",
-    background: "NielsenIQ analyst. Lives the brief, data, template, deadline cycle every week.",
-  },
-  {
-    initials: "RB",
-    name: "Rossella",
+    initials: "NIQ",
+    name: "Ex-NielsenIQ analysts",
     role: "Market research",
     background:
-      "NielsenIQ analyst. Owns the recurring category review work for Italian FMCG accounts.",
-  },
-  {
-    initials: "FP",
-    name: "Francesco",
-    role: "Market research",
-    background: "NielsenIQ analyst. The voice that pushes for analyst-grade outputs, not slop.",
+      "Three former NielsenIQ analysts who lived the brief, data, template and deadline cycle every week. They shape the analyst experience inside Basquio.",
   },
 ] as const;
 
@@ -84,7 +65,7 @@ export default function AboutPage() {
         <ScrollReveal className="section-j-team-head">
           <p className="section-j-eyebrow">The team</p>
           <h2 id="team-heading" className="section-j-title">
-            Six people who used to make these decks by hand.
+            A small team that used to make these decks by hand.
           </h2>
         </ScrollReveal>
 
