@@ -166,9 +166,16 @@ export function BuyingInterface({
             {active.price}
           </p>
           <p className="buying-iface-price-caption">{active.priceCaption}</p>
-          {active.trial ? (
-            <p className="buying-iface-trial">{active.trial}</p>
-          ) : null}
+          <p
+            className={
+              active.trial
+                ? "buying-iface-trial"
+                : "buying-iface-trial buying-iface-trial-empty"
+            }
+            aria-hidden={active.trial ? undefined : true}
+          >
+            {active.trial ?? "."}
+          </p>
           <Link className="buying-iface-cta" href={active.ctaHref}>
             {active.ctaLabel}
             <span aria-hidden="true">→</span>
