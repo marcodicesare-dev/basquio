@@ -22770,7 +22770,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .hero-j {
   position: relative;
   width: 100vw;
-  min-height: min(760px, calc(100vh - 96px));
+  /* Full viewport minus the 72px nav so the first scroll really has the hero
+     dominate. Earlier values capped at 760px which felt cut off on tall
+     desktops. */
+  min-height: calc(100vh - 72px);
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
   padding: 0;
@@ -23890,17 +23893,21 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   box-shadow: 0 0 0 2px rgba(26, 106, 255, 0.12);
 }
 
-.mockup-frame-slide {
-  max-width: 850px;
-}
-
+/* Unified BIG mockup width: ~96 percent of viewport, capped at 1440 so very
+   wide displays don't stretch the rasterized PNGs into total mush. The PNGs
+   are native 850/834 wide so they will upscale by ~1.5-1.7x at desktop;
+   we accept the slight softness in exchange for the dominant viewport
+   presence Marco wants. */
+.mockup-frame-slide,
 .mockup-frame-workbook {
-  max-width: 834px;
+  max-width: min(1440px, calc(100vw - 64px));
 }
 
 .mockup-frame-slide .mockup-frame-image,
 .mockup-frame-workbook .mockup-frame-image {
   transform: rotate(0deg);
+  /* Crisper raster on upscale */
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .mockup-frame:hover.mockup-frame-slide .mockup-frame-image,
@@ -24210,10 +24217,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workspace-mockup {
   position: relative;
   width: 100%;
-  max-width: 1180px;
+  max-width: min(1440px, calc(100vw - 64px));
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  grid-template-columns: 248px minmax(0, 1fr) 296px;
   background: #ffffff;
   border-radius: 18px;
   border: 1px solid rgba(11, 12, 12, 0.08);
@@ -24252,20 +24259,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-brand-mark {
   width: 18px;
-  height: 14px;
-  background: var(--blue);
-  /* 3-peak crown with base band, matches the SVG logo path */
-  clip-path: polygon(
-    0% 100%,
-    0% 61%,
-    16.7% 11%,
-    33.3% 61%,
-    50% 11%,
-    66.7% 61%,
-    83.3% 11%,
-    100% 61%,
-    100% 100%
-  );
+  height: 12px;
+  /* Canonical Basquio mark: served from /brand/svg/icon/basquio-icon-ultramarine.svg
+     so the workspace mockup uses the same logo as the rest of the product. */
+  background: url("/brand/svg/icon/basquio-icon-ultramarine.svg") no-repeat center / contain;
 }
 
 .workspace-mockup-rail-section {
@@ -24518,7 +24515,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .report-mockup {
   position: relative;
   width: 100%;
-  max-width: 760px;
+  max-width: min(1080px, calc(100vw - 64px));
   margin: 0 auto;
   background: linear-gradient(180deg, #ffffff 0%, #fcfaf6 100%);
   border-radius: 18px;
@@ -24636,7 +24633,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .audit-mockup {
   position: relative;
   width: 100%;
-  max-width: 1180px;
+  max-width: min(1440px, calc(100vw - 64px));
   margin: 0 auto;
   background: #ffffff;
   border-radius: 18px;
