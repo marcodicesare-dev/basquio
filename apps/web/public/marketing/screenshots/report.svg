@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1600" width="1240" height="1600" font-family="Manrope, system-ui, sans-serif">
+  <defs>
+    <style>
+    .mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+    .ink { fill: #0B0C0C; }
+    .ink35 { fill: rgba(11, 12, 12, 0.35); }
+    .ink50 { fill: rgba(11, 12, 12, 0.55); }
+    .ink65 { fill: rgba(11, 12, 12, 0.70); }
+    .ink80 { fill: rgba(11, 12, 12, 0.82); }
+    .ultra { fill: #1A6AFF; }
+    .red { fill: #C0392B; }
+    .green { fill: #2E7D5B; }
+    .hair { stroke: rgba(11, 12, 12, 0.10); stroke-width: 1; fill: none; }
+    .hair-soft { stroke: rgba(11, 12, 12, 0.06); stroke-width: 1; fill: none; }
+    .hair-stroke { stroke: rgba(11, 12, 12, 0.10); stroke-width: 1; }
+    .hair-soft-stroke { stroke: rgba(11, 12, 12, 0.06); stroke-width: 1; }
+    .tnum { font-feature-settings: 'tnum'; }
+  </style>
+  </defs>
+
+  <rect width="1240" height="1600" fill="#F8F5EF"></rect>
+
+  
+  <text x="120" y="120" class="mono ultra" font-size="10" font-weight="500" letter-spacing="2.2" style="text-transform:uppercase">CATEGORY REVIEW · </text>
+  <text x="266" y="120" class="mono ink35" font-size="10" font-weight="500" letter-spacing="2.2" style="text-transform:uppercase">CONFIDENTIAL</text>
+
+  
+  <text x="120" y="190" class="ink" font-size="38" font-weight="600" letter-spacing="-0.95">Espresso category</text>
+  <text x="450" y="190" class="ink65" font-size="38" font-weight="500" letter-spacing="-0.95">· Q4 performance review</text>
+  <text x="120" y="222" class="ink50" font-size="14">Prepared for Northstar Coffee · April 2026</text>
+
+  <line x1="120" y1="260" x2="1120" y2="260" class="hair"></line>
+
+  
+  <text x="120" y="312" class="mono ultra" font-size="10" font-weight="500" letter-spacing="2.2">01</text>
+  <text x="160" y="312" class="ink" font-size="22" font-weight="600" letter-spacing="-0.44">What changed</text>
+
+  <text x="120" y="362" class="ink" font-size="16" font-weight="400" letter-spacing="-0.08">
+    <tspan>Branded espresso lost </tspan><tspan font-weight="600">2.6 share points</tspan><tspan> in Q4, with private label gaining </tspan><tspan font-weight="600">1.9 points</tspan><tspan> and discount mainstream</tspan>
+  </text>
+  <text x="120" y="385" class="ink" font-size="16" letter-spacing="-0.08">brands picking up the rest. The shift held across the top three banners, with Modern Trade showing the steepest</text>
+  <text x="120" y="408" class="ink" font-size="16" letter-spacing="-0.08">compression at <tspan font-weight="600">−3.4 points</tspan>. The decline is concentrated in the 250g multipack tier; the 1kg headline SKU held within</text>
+  <text x="120" y="431" class="ink" font-size="16" letter-spacing="-0.08">30 basis points of Q3.</text>
+
+  <text x="120" y="475" class="ink" font-size="16" letter-spacing="-0.08">The price-per-100g delta between branded and private label widened by <tspan font-weight="600">11 percent</tspan> during the same window, while</text>
+  <text x="120" y="498" class="ink" font-size="16" letter-spacing="-0.08">branded distribution stayed flat at 87 percent ACV. Promotional depth on private label increased from 18 to 24 percent</text>
+  <text x="120" y="521" class="ink" font-size="16" letter-spacing="-0.08">off shelf, with no matching response from the branded tier. The pressure is on price-pack architecture, not on shelf</text>
+  <text x="120" y="544" class="ink" font-size="16" letter-spacing="-0.08">presence.</text>
+
+  
+  <line x1="120" y1="588" x2="120" y2="640" stroke="#1A6AFF" stroke-width="2"></line>
+  <text x="140" y="615" class="ink" font-size="18" font-style="italic" letter-spacing="-0.18">&#34;The price-pack architecture is the lever, not the shelf-share conversation.&#34;</text>
+
+  
+  <text x="120" y="710" class="mono ultra" font-size="10" font-weight="500" letter-spacing="2.2">02</text>
+  <text x="160" y="710" class="ink" font-size="22" font-weight="600" letter-spacing="-0.44">Why it matters</text>
+
+  <text x="120" y="760" class="ink" font-size="16" letter-spacing="-0.08">Three consecutive quarters of branded share decline have moved Northstar from a defensible posture to a structural one.</text>
+  <text x="120" y="783" class="ink" font-size="16" letter-spacing="-0.08">At the current rate of erosion, branded mainstream crosses below the 7.0-point floor by Q2 FY26, which is the threshold</text>
+  <text x="120" y="806" class="ink" font-size="16" letter-spacing="-0.08">at which two of the three banners renegotiate planogram allowances. The cost of inaction is not a soft Q1, but a binding</text>
+  <text x="120" y="829" class="ink" font-size="16" letter-spacing="-0.08">shelf-space conversation in May.</text>
+
+  <text x="120" y="873" class="ink" font-size="16" letter-spacing="-0.08">A targeted response on the 250g multipack: re-architecting the 4×250g and ×290g price ladders rather than discounting</text>
+  <text x="120" y="896" class="ink" font-size="16" letter-spacing="-0.08">the 1kg headline, recovers the lost points without conceding the premium anchor. Modeling against Q3 elasticity</text>
+  <text x="120" y="919" class="ink" font-size="16" letter-spacing="-0.08">suggests <tspan font-weight="600">+1.4 to +1.8 points</tspan> of recoverable share within two quarters, holding gross margin within 60 basis points of plan.</text>
+
+  
+  <text x="120" y="989" class="mono ultra" font-size="10" font-weight="500" letter-spacing="2.2">03</text>
+  <text x="160" y="989" class="ink" font-size="22" font-weight="600" letter-spacing="-0.44">What we recommend</text>
+
+  <text x="120" y="1039" class="ink" font-size="16" letter-spacing="-0.08">Hold the 1kg headline price. Respond on the 250g multipack architecture with a 4-pack at €9.90 and a 6-pack at €12.40,</text>
+  <text x="120" y="1062" class="ink" font-size="16" letter-spacing="-0.08">anchored against the private-label 4×290g at €7.20.</text>
+
+  
+  <text x="120" y="1110" class="mono ink35" font-size="11" letter-spacing="0.22" font-style="italic">↳ continued · sections 04, 05, 06 below</text>
+
+  
+  <line x1="120" y1="1490" x2="1120" y2="1490" class="hair"></line>
+  <text x="120" y="1518" class="mono ink50" font-size="11" letter-spacing="0.44">A syllabus reference · refreshing weekly · last update Apr 18 2026</text>
+  <text x="1120" y="1518" class="mono ink50" font-size="11" letter-spacing="0.44" text-anchor="end">1 / 7</text>
+</svg>
