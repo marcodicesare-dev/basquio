@@ -16,27 +16,27 @@ export function MarketingHeroJ() {
       <div className="hero-j-scrim" aria-hidden="true" />
 
       <div className="hero-j-copy">
-        <p className="hero-j-eyebrow">For market research teams</p>
+        <p className="hero-j-eyebrow">Per i team di ricerca di mercato</p>
         <h1 id="hero-j-headline" className="hero-j-headline">
-          From scattered research files to a finished deck.
+          Dai file sparsi a una presentazione pronta.
         </h1>
         <p className="hero-j-subhead">
-          Basquio turns the brief, data, notes, and templates into the deck, report, and Excel file
-          your stakeholder asked for.
+          Basquio trasforma brief, dati, appunti e template nella presentazione, nel report e nel
+          file Excel che il tuo stakeholder ti ha chiesto.
         </p>
 
         <div className="hero-j-actions">
           <Link className="hero-j-primary" href="/jobs/new">
-            Start one output
+            Avvia un output
           </Link>
           <Link className="hero-j-secondary" href="#workspace">
-            See the workspace
+            Vedi il workspace
           </Link>
         </div>
 
         <Link href="/security" className="hero-j-trust-link">
           <span className="hero-j-trust-dot" aria-hidden="true" />
-          Security and data handling
+          Sicurezza e gestione dei dati
         </Link>
       </div>
     </section>

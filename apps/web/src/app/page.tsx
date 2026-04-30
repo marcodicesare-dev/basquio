@@ -10,46 +10,46 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 import { ScrollReveal } from "@/components/scroll-reveal";
 
 export const metadata: Metadata = {
-  title: "Basquio · From research files to finished decks, reports, and workbooks",
+  title: "Basquio · Da file di ricerca a presentazione, report e file Excel",
   description:
-    "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for. For recurring research work, the workspace remembers the client, brand, template, last meeting, and past reviews.",
+    "Basquio trasforma brief, dati, appunti e template nella presentazione, nel report e nel file Excel che il tuo stakeholder ti ha chiesto. Per il lavoro ricorrente, il workspace ricorda cliente, brand, template e review precedenti.",
   alternates: { canonical: "https://basquio.com" },
   openGraph: {
-    title: "Basquio · From research files to finished decks, reports, and workbooks",
+    title: "Basquio · Da file di ricerca a presentazione, report e file Excel",
     description:
-      "Basquio turns the brief, data, notes, old decks, and templates into the deck, report, and Excel file your stakeholder asked for.",
+      "Basquio trasforma brief, dati, appunti e template nella presentazione, nel report e nel file Excel che il tuo stakeholder ti ha chiesto.",
   },
 };
 
 const workspaceMemory = [
   {
-    name: "Client",
-    body: "Who the work is for, the contact, and the relationship history.",
+    name: "Cliente",
+    body: "Per chi lavori, i contatti, lo storico del rapporto.",
     illustration: "/marketing/illustrations/memory-spot-client.svg",
   },
   {
     name: "Brand",
-    body: "Brand rules, tone, and what was approved last time.",
+    body: "Regole del brand, tono e cosa è stato approvato l'ultima volta.",
     illustration: "/marketing/illustrations/memory-spot-brand.svg",
   },
   {
     name: "Template",
-    body: "Approved layouts, brand-system constraints, source slides.",
+    body: "Layout approvati, vincoli del brand-system, slide di riferimento.",
     illustration: "/marketing/illustrations/memory-spot-template.svg",
   },
   {
-    name: "Last meeting",
-    body: "What was said, what was asked for, what stays open.",
+    name: "Ultima riunione",
+    body: "Cosa è stato detto, cosa è stato chiesto, cosa resta aperto.",
     illustration: "/marketing/illustrations/memory-spot-meeting.svg",
   },
   {
-    name: "Past reviews",
-    body: "Prior decisions, corrections, and stakeholder feedback over time.",
+    name: "Review precedenti",
+    body: "Decisioni passate, correzioni e feedback degli stakeholder nel tempo.",
     illustration: "/marketing/illustrations/memory-spot-reviews.svg",
   },
   {
-    name: "Approved formats",
-    body: "How the team likes recommendations framed and presented.",
+    name: "Format approvati",
+    body: "Come al team piace presentare le raccomandazioni.",
     illustration: "/marketing/illustrations/memory-spot-formats.svg",
   },
 ] as const;
@@ -77,16 +77,16 @@ export default function HomePage() {
         </ScrollReveal>
 
         <ScrollReveal className="section-j-content" delay={120}>
-          <p className="section-j-eyebrow">Product</p>
+          <p className="section-j-eyebrow">Prodotto</p>
           <h2 id="product-heading" className="section-j-title">
-            One run, three finished files.
+            Una richiesta, tre file pronti.
           </h2>
           <p className="section-j-body">
-            Basquio reads the brief and the material. One run produces the deck, the report, and
-            the Excel workbook.
+            Basquio legge il brief e il materiale. Una sola richiesta produce la presentazione, il
+            report e il file Excel.
           </p>
           <Link className="section-j-link" href="/jobs/new">
-            See what Basquio produces
+            Vedi cosa produce Basquio
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
@@ -100,13 +100,13 @@ export default function HomePage() {
         <ScrollReveal className="section-j-content">
           <p className="section-j-eyebrow">Workspace</p>
           <h2 id="workspace-heading" className="section-j-title">
-            Basquio remembers the research work.
+            Basquio ricorda il lavoro di ricerca.
           </h2>
           <p className="section-j-body">
-            Client, brand, template, last meeting, past reviews, approved formats. The next ask
-            starts closer to done.
+            Cliente, brand, template, ultima riunione, review precedenti, format approvati. La
+            prossima richiesta parte già dal punto giusto.
           </p>
-          <ul className="memory-list memory-list-illustrated" aria-label="What the workspace remembers">
+          <ul className="memory-list memory-list-illustrated" aria-label="Cosa ricorda il workspace">
             {workspaceMemory.map((module) => (
               <li key={module.name} className="memory-line memory-line-illustrated">
                 <Image
@@ -124,7 +124,7 @@ export default function HomePage() {
             ))}
           </ul>
           <Link className="section-j-link" href="/#workspace">
-            See the workspace
+            Vedi il workspace
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
@@ -147,19 +147,20 @@ export default function HomePage() {
       >
         <ScrollReveal className="section-j-stage-inner">
           <header className="section-j-head">
-            <p className="section-j-eyebrow section-j-eyebrow-light">Pricing</p>
+            <p className="section-j-eyebrow section-j-eyebrow-light">Prezzi</p>
             <h2 id="buying-heading" className="section-j-title section-j-title-light">
-              Pay for one output, or keep the work in a workspace.
+              Paga un output, o tieni il lavoro nel workspace.
             </h2>
             <p className="section-j-body section-j-body-light">
-              Credits cover one-off output. Workspace covers continuity. Pick what matches the work.
+              I crediti coprono l&apos;output singolo. Il workspace copre la continuità. Scegli quello
+              che corrisponde al lavoro.
             </p>
           </header>
 
           <BuyingInterface variant="homepage" />
 
           <p className="buying-iface-footnote buying-iface-footnote-light">
-            <Link href="/pricing">See pricing details</Link>
+            <Link href="/pricing">Vedi i dettagli del prezzo</Link>
           </p>
         </ScrollReveal>
       </section>
@@ -179,16 +180,16 @@ export default function HomePage() {
         </ScrollReveal>
 
         <ScrollReveal className="section-j-content" delay={120}>
-          <p className="section-j-eyebrow">About</p>
+          <p className="section-j-eyebrow">Chi siamo</p>
           <h2 id="about-heading" className="section-j-title">
-            Built by FMCG and CPG analysts who lived this work.
+            Costruito da analisti FMCG e CPG che hanno vissuto questo lavoro.
           </h2>
           <p className="section-j-body">
-            Basquio comes from engineering, brand, category, and market research work inside FMCG
-            and CPG companies.
+            Basquio nasce da ingegneria, brand, category e ricerca di mercato dentro aziende FMCG
+            e CPG.
           </p>
           <Link className="section-j-link" href="/about">
-            Meet the team
+            Conosci il team
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
@@ -199,16 +200,16 @@ export default function HomePage() {
         aria-labelledby="security-heading"
       >
         <ScrollReveal className="section-j-content">
-          <p className="section-j-eyebrow">Security</p>
+          <p className="section-j-eyebrow">Sicurezza</p>
           <h2 id="security-heading" className="section-j-title">
-            Clear data handling before you upload.
+            Gestione dei dati chiara prima di caricare.
           </h2>
           <p className="section-j-body">
-            No model training on customer data. Workspace-level tenant isolation. SOC 2 Type 1
-            planned, not claimed.
+            Niente training del modello sui dati cliente. Isolamento per workspace. SOC 2 Type 1 in
+            arrivo, non dichiarata.
           </p>
           <Link className="section-j-link" href="/security">
-            Read security details
+            Leggi i dettagli sulla sicurezza
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
@@ -225,12 +226,12 @@ export default function HomePage() {
       </section>
 
       <PublicSiteFooterCta
-        eyebrow="Ready to start"
-        title="Start with one output. Or set up the workspace."
-        copy="Upload the brief and files for one job. If the work comes back next month, keep the context in a workspace."
-        primaryLabel="Start one output"
+        eyebrow="Pronto a iniziare"
+        title="Inizia con un output. O imposta il workspace."
+        copy="Carica il brief e i file per un singolo lavoro. Se il lavoro torna il mese prossimo, tieni il contesto in un workspace."
+        primaryLabel="Avvia un output"
         primaryHref="/jobs/new"
-        secondaryLabel="See the workspace"
+        secondaryLabel="Vedi il workspace"
         secondaryHref="#workspace"
       />
       <PublicSiteFooter />
