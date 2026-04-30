@@ -2,7 +2,7 @@
   <defs><style>@import url('https://api.fontshare.com/v2/css?f[]=satoshi@700&amp;display=swap');</style></defs>
 
   <g transform="translate(6, 7.44) scale(0.3638)">
-    <path d="M 10,95 L 10,5 L 40,65 L 75,5 L 110,65 L 140,5 L 140,95 Z" fill="#0B0C0C"/>
+    <path d="M 0,90 L 0,55 L 25,10 L 50,55 L 75,10 L 100,55 L 125,10 L 150,55 L 150,90 Z" fill="#0B0C0C"/>
   </g>
 
   <text x="70" y="42" font-family="'Satoshi','Space Grotesk','Inter',sans-serif" font-weight="700" font-size="44px" fill="#0B0C0C" letter-spacing="-0.5px">basquio</text>

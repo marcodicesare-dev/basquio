@@ -43,7 +43,8 @@ export function ProductSlideMockup() {
         alt="Slide 04 of an Espresso Q4 review deck. Headline reads 'Private label takes 1.9 share points from branded espresso in Q4', with a quarterly share chart and a recommendation block."
         width={850}
         height={490}
-        sizes="(min-width: 1280px) 1100px, (min-width: 768px) 80vw, 100vw"
+        sizes="(min-width: 1280px) 850px, (min-width: 768px) 70vw, 100vw"
+        quality={95}
         priority
       />
       <figcaption className="mockup-frame-caption">deck.pptx · slide 04 of 12</figcaption>
@@ -64,7 +65,8 @@ export function WorkbookMockup() {
         alt="data_tables.xlsx Share sheet. Row 4 'Private label' is highlighted in amber with +1.9 points and an embedded chart on the right; the footer notes 'reconciled to slide 04 · report §02'."
         width={834}
         height={515}
-        sizes="(min-width: 1280px) 1100px, (min-width: 768px) 80vw, 100vw"
+        sizes="(min-width: 1280px) 834px, (min-width: 768px) 70vw, 100vw"
+        quality={95}
       />
       <figcaption className="mockup-frame-caption">data_tables.xlsx · 4 sheets · auto-reconciled</figcaption>
     </MotionMockupFrame>

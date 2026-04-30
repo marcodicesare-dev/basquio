@@ -23890,9 +23890,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   box-shadow: 0 0 0 2px rgba(26, 106, 255, 0.12);
 }
 
-.mockup-frame-slide,
+.mockup-frame-slide {
+  max-width: 850px;
+}
+
 .mockup-frame-workbook {
-  max-width: 1180px;
+  max-width: 834px;
 }
 
 .mockup-frame-slide .mockup-frame-image,
@@ -24248,10 +24251,21 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 .workspace-mockup-brand-mark {
-  width: 16px;
-  height: 12px;
+  width: 18px;
+  height: 14px;
   background: var(--blue);
-  clip-path: polygon(0% 100%, 22% 28%, 35% 64%, 50% 0%, 65% 64%, 78% 28%, 100% 100%);
+  /* 3-peak crown with base band, matches the SVG logo path */
+  clip-path: polygon(
+    0% 100%,
+    0% 61%,
+    16.7% 11%,
+    33.3% 61%,
+    50% 11%,
+    66.7% 61%,
+    83.3% 11%,
+    100% 61%,
+    100% 100%
+  );
 }
 
 .workspace-mockup-rail-section {
