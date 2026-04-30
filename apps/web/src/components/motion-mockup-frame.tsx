@@ -1,16 +1,18 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 
 /**
- * Wraps a mockup with two motion behaviors used by Linear, Pavlov and Vercel
- * marketing surfaces:
+ * Mockup wrapper with two motion behaviors (Linear / Pavlov / Vercel pattern):
  *
- * 1. Subtle scroll-driven entrance: scale 0.96 -> 1.0 + translateY 24 -> 0 +
- *    fade 0 -> 1 when the wrapper enters viewport. 700ms ease-out-expo.
- * 2. Mouse-tracking parallax tilt: rotateX/rotateY [0, +/-3deg] driven by the
- *    pointer position over the wrapper. Smoothed via CSS transition.
+ * 1. Scroll-driven entrance: opacity 0 + scale 0.96 + translateY 24 ->
+ *    visible. 700ms ease-out-expo.
+ * 2. Mouse-tracking parallax tilt: rotateX/rotateY [+/-3deg] driven by pointer
+ *    position over the frame. Smoothed via 320ms transition.
+ *
+ * Triggered via vanilla IntersectionObserver (motion's whileInView was
+ * unreliable here because of nesting and motion v12 quirks).
  *
  * Both behaviors are no-ops when prefers-reduced-motion is on.
  */
@@ -21,6 +23,26 @@ type Props = {
 };
 
 export function MotionMockupFrame({ className, children }: Props) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isInView, setIsInView] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setIsInView(true);
+            obs.disconnect();
+          }
+        }
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -10% 0px" },
+    );
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (typeof window === "undefined") return;
     const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -43,10 +65,10 @@ export function MotionMockupFrame({ className, children }: Props) {
 
   return (
     <motion.div
+      ref={ref}
       className={`motion-mockup-frame ${className ?? ""}`}
       initial={{ opacity: 0, y: 24, scale: 0.96 }}
-      whileInView={{ opacity: 1, y: 0, scale: 1 }}
-      viewport={{ once: true, amount: 0.15, margin: "0px 0px -10% 0px" }}
+      animate={isInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 24, scale: 0.96 }}
       transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
