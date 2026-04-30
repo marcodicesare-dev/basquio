@@ -22610,7 +22610,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .public-nav-shell-inner {
   width: min(1280px, calc(100% - 32px));
   margin: 0 auto;
-  height: 64px;
+  height: 72px;
   display: flex;
   align-items: center;
   gap: clamp(20px, 3vw, 36px);
@@ -22624,7 +22624,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .public-nav-brand img {
   display: block;
-  height: 30px;
+  height: 36px;
   width: auto;
 }
 
@@ -22640,7 +22640,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .public-nav-list .public-nav-link {
   display: inline-flex;
   align-items: center;
-  height: 64px;
+  height: 72px;
   font-size: 0.92rem;
   font-weight: 500;
   letter-spacing: -0.005em;
@@ -22680,6 +22680,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   .public-nav-shell-inner .public-nav-toggle {
     display: inline-flex;
     margin-left: auto;
+  }
+
+  .public-nav-brand img {
+    height: 28px;
   }
 
   .public-nav-list {
@@ -23904,3 +23908,360 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 
+
+
+/* ============================================================================
+   Variant J · Sub-page system (About + Compare)
+   Reuses the J typography rhythm and dark-stage primitives. Adds page-hero
+   block, team grid, experience stat row, and a comparison-table treatment.
+   ============================================================================ */
+
+.section-j-page-hero {
+  padding: clamp(56px, 7vw, 96px) 0 clamp(32px, 4vw, 56px);
+}
+
+.section-j-page-hero-inner {
+  width: min(960px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 1.4vw, 22px);
+}
+
+.section-j-page-title {
+  font-family: var(--font-display, "Manrope", system-ui, sans-serif);
+  font-size: clamp(2.5rem, 4.6vw, 3.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--text, #0B0C0C);
+  margin: 0;
+  max-width: 22ch;
+  text-wrap: balance;
+}
+
+/* --- Team grid (About) ---------------------------------------------------- */
+
+.section-j-team {
+  padding: clamp(40px, 5vw, 72px) 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(24px, 3vw, 40px);
+}
+
+.section-j-team-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+}
+
+.section-j-team-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(16px, 1.6vw, 24px);
+}
+
+.team-card-j {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: clamp(20px, 2vw, 28px);
+  background: #FFFFFF;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(11, 12, 12, 0.02);
+  transition: transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1),
+              box-shadow 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.team-card-j:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(11, 12, 12, 0.02),
+    0 16px 32px -22px rgba(11, 12, 12, 0.18);
+}
+
+.team-card-j-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: rgba(26, 106, 255, 0.08);
+  color: var(--ultramarine, #1A6AFF);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+.team-card-j-name {
+  margin: 0;
+  font-family: var(--font-display, "Manrope", system-ui, sans-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text, #0B0C0C);
+}
+
+.team-card-j-role {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ultramarine, #1A6AFF);
+}
+
+.team-card-j-background {
+  margin: 4px 0 0 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-muted, rgba(11, 12, 12, 0.65));
+}
+
+@media (max-width: 960px) {
+  .section-j-team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .section-j-team-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Experience stat row (About) ----------------------------------------- */
+
+.section-j-experience {
+  padding: clamp(20px, 2.5vw, 36px) 0 clamp(40px, 5vw, 64px);
+}
+
+.section-j-experience-inner {
+  width: 100%;
+}
+
+.section-j-experience-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 1.4vw, 20px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.section-j-experience-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: clamp(20px, 2vw, 28px);
+  background: rgba(248, 245, 239, 0.6);
+  border: 1px solid rgba(11, 12, 12, 0.06);
+  border-radius: 14px;
+}
+
+.section-j-experience-number {
+  font-family: var(--font-display, "Manrope", system-ui, sans-serif);
+  font-size: clamp(2.4rem, 3.6vw, 3rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--ultramarine, #1A6AFF);
+}
+
+.section-j-experience-label {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--text-muted, rgba(11, 12, 12, 0.65));
+}
+
+@media (max-width: 720px) {
+  .section-j-experience-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Stage variant: narrow inner block (used by About thesis) ------------ */
+
+.section-j-stage-inner-narrow {
+  max-width: 720px;
+}
+
+/* --- Comparison table (Compare) ----------------------------------------- */
+
+.section-j-comparison {
+  padding: clamp(40px, 5vw, 72px) 0;
+}
+
+.section-j-comparison-inner {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 2.4vw, 32px);
+}
+
+.section-j-comparison-head {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.comparison-legend-j {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(12px, 1.6vw, 20px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, rgba(11, 12, 12, 0.6));
+}
+
+.comparison-legend-j li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.comparison-table-wrap-j {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 14px;
+  background: #FFFFFF;
+}
+
+.comparison-table-j {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.comparison-table-j thead th {
+  padding: clamp(14px, 1.4vw, 18px) clamp(14px, 1.6vw, 20px);
+  text-align: left;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, rgba(11, 12, 12, 0.55));
+  border-bottom: 1px solid rgba(11, 12, 12, 0.08);
+  background: #fbfaf6;
+  white-space: nowrap;
+}
+
+.comparison-table-j tbody th {
+  padding: clamp(12px, 1.2vw, 16px) clamp(14px, 1.6vw, 20px);
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.92rem;
+  color: var(--text, #0B0C0C);
+  border-bottom: 1px solid rgba(11, 12, 12, 0.05);
+  vertical-align: middle;
+}
+
+.comparison-table-j tbody td {
+  padding: clamp(12px, 1.2vw, 16px) clamp(14px, 1.6vw, 20px);
+  border-bottom: 1px solid rgba(11, 12, 12, 0.05);
+  vertical-align: middle;
+}
+
+.comparison-table-j tbody tr:last-child th,
+.comparison-table-j tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.comparison-table-j .cap-yes,
+.comparison-table-j .cap-partial,
+.comparison-table-j .cap-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.comparison-table-j .cap-yes {
+  background: rgba(26, 106, 255, 0.08);
+  color: var(--ultramarine, #1A6AFF);
+}
+
+.comparison-table-j .cap-partial {
+  background: rgba(240, 204, 39, 0.18);
+  color: #8a7100;
+}
+
+.comparison-table-j .cap-no {
+  background: rgba(11, 12, 12, 0.06);
+  color: rgba(11, 12, 12, 0.45);
+}
+
+.comparison-positive-j {
+  background: rgba(26, 106, 255, 0.04);
+}
+
+.comparison-table-j thead .comparison-positive-j {
+  background: rgba(26, 106, 255, 0.06);
+  color: var(--ultramarine, #1A6AFF);
+}
+
+/* --- Anti-pattern cards (Compare dark stage) ---------------------------- */
+
+.section-j-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(16px, 2vw, 28px);
+  margin-top: clamp(20px, 2.4vw, 32px);
+}
+
+.section-j-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: clamp(22px, 2.4vw, 32px);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.section-j-card-title {
+  margin: 0;
+  font-family: var(--font-display, "Manrope", system-ui, sans-serif);
+  font-size: clamp(1.1rem, 1.6vw, 1.35rem);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.section-j-card-body {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+@media (max-width: 720px) {
+  .section-j-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
