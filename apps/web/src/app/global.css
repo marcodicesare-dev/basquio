@@ -22610,7 +22610,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .public-nav-shell-inner {
   width: min(1280px, calc(100% - 32px));
   margin: 0 auto;
-  height: 56px;
+  height: 64px;
   display: flex;
   align-items: center;
   gap: clamp(20px, 3vw, 36px);
@@ -22624,7 +22624,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .public-nav-brand img {
   display: block;
-  height: 18px;
+  height: 30px;
   width: auto;
 }
 
@@ -22640,7 +22640,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .public-nav-list .public-nav-link {
   display: inline-flex;
   align-items: center;
-  height: 56px;
+  height: 64px;
   font-size: 0.92rem;
   font-weight: 500;
   letter-spacing: -0.005em;
