@@ -13,6 +13,7 @@ import {
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
+import { MotionSectionHead } from "@/components/motion-section-head";
 import { ScrollReveal } from "@/components/scroll-reveal";
 
 export const metadata: Metadata = {
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
     "Basquio trasforma brief, dati, appunti e template nella presentazione, nel report e nel file Excel che il tuo stakeholder ti ha chiesto. Per il lavoro ricorrente, il workspace ricorda cliente, brand, template e review precedenti.",
   alternates: { canonical: "https://basquio.com" },
   openGraph: {
-    title: "Basquio · Da file di ricerca a presentazione, report e file Excel",
+    title: "Basquio · From research files to finished decks, reports, and workbooks",
     description:
       "Basquio trasforma brief, dati, appunti e template nella presentazione, nel report e nel file Excel che il tuo stakeholder ti ha chiesto.",
   },
@@ -35,7 +36,7 @@ export default function HomePage() {
       <MarketingHeroJ />
 
       <section className="section-j section-j-stack" id="product" aria-labelledby="product-heading">
-        <ScrollReveal className="section-j-stack-head">
+        <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Prodotto</p>
           <h2 id="product-heading" className="section-j-title">
             Una richiesta, tre file pronti.
@@ -48,7 +49,7 @@ export default function HomePage() {
             Vedi cosa produce Basquio
             <span aria-hidden="true">→</span>
           </Link>
-        </ScrollReveal>
+        </MotionSectionHead>
 
         <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <ProductSlideMockup />
@@ -56,7 +57,7 @@ export default function HomePage() {
       </section>
 
       <section className="section-j section-j-stack" id="workspace" aria-labelledby="workspace-heading">
-        <ScrollReveal className="section-j-stack-head">
+        <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Workspace</p>
           <h2 id="workspace-heading" className="section-j-title">
             Basquio ricorda il lavoro di ricerca.
@@ -69,7 +70,7 @@ export default function HomePage() {
             Vedi il workspace
             <span aria-hidden="true">→</span>
           </Link>
-        </ScrollReveal>
+        </MotionSectionHead>
 
         <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <WorkspaceHomeMockup />
@@ -106,7 +107,7 @@ export default function HomePage() {
         id="reconciliation"
         aria-labelledby="reconciliation-heading"
       >
-        <ScrollReveal className="section-j-stack-head">
+        <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">I numeri tornano</p>
           <h2 id="reconciliation-heading" className="section-j-title">
             I tre file dicono lo stesso numero.
@@ -119,7 +120,7 @@ export default function HomePage() {
             Vedi l&apos;output riconciliato
             <span aria-hidden="true">→</span>
           </Link>
-        </ScrollReveal>
+        </MotionSectionHead>
 
         <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <WorkbookMockup />
@@ -127,7 +128,7 @@ export default function HomePage() {
       </section>
 
       <section className="section-j section-j-stack" aria-labelledby="about-heading">
-        <ScrollReveal className="section-j-stack-head">
+        <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Chi siamo</p>
           <h2 id="about-heading" className="section-j-title">
             Costruito da analisti FMCG e CPG che hanno vissuto questo lavoro.
@@ -140,7 +141,7 @@ export default function HomePage() {
             Conosci il team
             <span aria-hidden="true">→</span>
           </Link>
-        </ScrollReveal>
+        </MotionSectionHead>
 
         <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <ReportExcerptMockup />
@@ -148,7 +149,7 @@ export default function HomePage() {
       </section>
 
       <section className="section-j section-j-stack" aria-labelledby="security-heading">
-        <ScrollReveal className="section-j-stack-head">
+        <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Sicurezza</p>
           <h2 id="security-heading" className="section-j-title">
             Gestione dei dati chiara prima di caricare.
@@ -161,7 +162,7 @@ export default function HomePage() {
             Leggi i dettagli sulla sicurezza
             <span aria-hidden="true">→</span>
           </Link>
-        </ScrollReveal>
+        </MotionSectionHead>
 
         <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <SecurityAuditMockup />
