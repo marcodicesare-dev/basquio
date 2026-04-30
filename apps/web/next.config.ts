@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   // at request time. Same pattern as sharp / @resvg/resvg-js. See Brief 3
   // PUSH 2 + memory/canonical-memory.md for the canonical recipe.
   serverExternalPackages: ["sharp", "@resvg/resvg-js", "@boundaryml/baml"],
+  images: {
+    qualities: [75, 95],
+  },
   outputFileTracingExcludes: {
     "/*": [
       ".next/cache/**/*",

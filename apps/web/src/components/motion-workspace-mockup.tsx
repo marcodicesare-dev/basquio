@@ -88,10 +88,34 @@ const ARTIFACTS = [
 
 export function MotionWorkspaceMockup() {
   const rootRef = useRef<HTMLElement>(null);
+  const chipRef = useRef<HTMLLIElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const [isInView, setIsInView] = useState(false);
   const [typedText, setTypedText] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const reducedMotion = usePrefersReducedMotion();
+
+  // Compute cursor target pixel coords from refs whenever the stage changes.
+  useEffect(() => {
+    if (!rootRef.current) return;
+    const rootRect = rootRef.current.getBoundingClientRect();
+
+    const targetEl =
+      stage === "cursor-to-chip" || stage === "chip-clicked" || stage === "typing"
+        ? chipRef.current
+        : stage === "cursor-to-button" || stage === "button-clicked" || stage === "loading"
+          ? buttonRef.current
+          : null;
+
+    if (!targetEl) return;
+    const tRect = targetEl.getBoundingClientRect();
+    // Cursor TIP is at top-left of the SVG. Aim slightly inside the target so
+    // the tip lands on the centre-ish of the element.
+    const x = tRect.left - rootRect.left + tRect.width * 0.5 - 4;
+    const y = tRect.top - rootRect.top + tRect.height * 0.5 - 4;
+    setCursorPos({ x, y });
+  }, [stage]);
 
   // Trigger the sequence as soon as the mockup is visible. We use both
   // IntersectionObserver and a scroll-event-listener fallback because
@@ -197,12 +221,6 @@ export function MotionWorkspaceMockup() {
   };
 
   const cursorVisible = stage !== "idle" && stage !== "output-ready" && !reducedMotion;
-  const cursorTarget =
-    stage === "cursor-to-chip" || stage === "chip-clicked" || stage === "typing"
-      ? "chip"
-      : stage === "cursor-to-button" || stage === "button-clicked" || stage === "loading"
-        ? "button"
-        : "chip";
 
   return (
     <article
@@ -212,18 +230,16 @@ export function MotionWorkspaceMockup() {
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Animated cursor sprite */}
+      {/* Animated cursor sprite. Position is computed in pixels from the
+          refs of the chip and the button so the cursor lands on the actual
+          element regardless of the mockup width. */}
       {cursorVisible && (
         <motion.span
           className="workspace-mockup-cursor"
           aria-hidden="true"
-          initial={{ opacity: 0, x: "55%", y: "55%" }}
-          animate={
-            cursorTarget === "chip"
-              ? { opacity: 1, x: "82%", y: "26%" }
-              : { opacity: 1, x: "78%", y: "72%" }
-          }
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, x: 0, y: 0 }}
+          animate={{ opacity: 1, x: cursorPos.x, y: cursorPos.y }}
+          transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
         >
           <CursorIcon />
         </motion.span>
@@ -320,6 +336,7 @@ export function MotionWorkspaceMockup() {
           {WORKSPACE_PROMPTS.map((p, i) => (
             <li
               key={p}
+              ref={i === TARGET_PROMPT_IDX ? chipRef : undefined}
               className={`workspace-mockup-chat-suggestion${
                 i === TARGET_PROMPT_IDX && (stage === "chip-clicked" || stage === "typing")
                   ? " workspace-mockup-chat-suggestion-active"
@@ -345,6 +362,7 @@ export function MotionWorkspaceMockup() {
           </span>
         </div>
         <button
+          ref={buttonRef}
           type="button"
           className={`workspace-mockup-chat-cta${
             stage === "button-clicked" ? " workspace-mockup-chat-cta-pressed" : ""
