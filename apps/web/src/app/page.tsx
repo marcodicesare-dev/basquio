@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 
 import { BuyingInterface } from "@/components/marketing-pricing-j";
 import { MarketingHeroJ } from "@/components/marketing-hero-j";
+import {
+  ProductSlideMockup,
+  ReportExcerptMockup,
+  SecurityAuditMockup,
+  WorkspaceHomeMockup,
+} from "@/components/marketing-mockups";
 import { PublicSiteFooter } from "@/components/public-site-footer";
 import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
@@ -21,39 +26,6 @@ export const metadata: Metadata = {
   },
 };
 
-const workspaceMemory = [
-  {
-    name: "Cliente",
-    body: "Per chi lavori, i contatti, lo storico del rapporto.",
-    illustration: "/marketing/illustrations/memory-spot-client.svg",
-  },
-  {
-    name: "Brand",
-    body: "Regole del brand, tono e cosa è stato approvato l'ultima volta.",
-    illustration: "/marketing/illustrations/memory-spot-brand.svg",
-  },
-  {
-    name: "Template",
-    body: "Layout approvati, vincoli del brand-system, slide di riferimento.",
-    illustration: "/marketing/illustrations/memory-spot-template.svg",
-  },
-  {
-    name: "Ultima riunione",
-    body: "Cosa è stato detto, cosa è stato chiesto, cosa resta aperto.",
-    illustration: "/marketing/illustrations/memory-spot-meeting.svg",
-  },
-  {
-    name: "Review precedenti",
-    body: "Decisioni passate, correzioni e feedback degli stakeholder nel tempo.",
-    illustration: "/marketing/illustrations/memory-spot-reviews.svg",
-  },
-  {
-    name: "Format approvati",
-    body: "Come al team piace presentare le raccomandazioni.",
-    illustration: "/marketing/illustrations/memory-spot-formats.svg",
-  },
-] as const;
-
 export default function HomePage() {
   return (
     <div className="landing-shell landing-j">
@@ -66,14 +38,8 @@ export default function HomePage() {
         id="product"
         aria-labelledby="product-heading"
       >
-        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure">
-          <Image
-            src="/marketing/illustrations/product-anchor.svg"
-            alt=""
-            fill
-            sizes="(max-width: 960px) 100vw, 48vw"
-            className="section-j-anchor-image"
-          />
+        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure">
+          <ProductSlideMockup />
         </ScrollReveal>
 
         <ScrollReveal className="section-j-content" delay={120}>
@@ -106,37 +72,14 @@ export default function HomePage() {
             Cliente, brand, template, ultima riunione, review precedenti, format approvati. La
             prossima richiesta parte già dal punto giusto.
           </p>
-          <ul className="memory-list memory-list-illustrated" aria-label="Cosa ricorda il workspace">
-            {workspaceMemory.map((module) => (
-              <li key={module.name} className="memory-line memory-line-illustrated">
-                <Image
-                  src={module.illustration}
-                  alt=""
-                  width={96}
-                  height={96}
-                  className="memory-spot-illustration"
-                />
-                <div className="memory-line-copy">
-                  <p className="memory-line-name">{module.name}</p>
-                  <p className="memory-line-body">{module.body}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
           <Link className="section-j-link" href="/#workspace">
             Vedi il workspace
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
 
-        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure" delay={120}>
-          <Image
-            src="/marketing/illustrations/workspace-anchor.svg"
-            alt=""
-            fill
-            sizes="(max-width: 960px) 100vw, 48vw"
-            className="section-j-anchor-image"
-          />
+        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure" delay={120}>
+          <WorkspaceHomeMockup />
         </ScrollReveal>
       </section>
 
@@ -169,14 +112,8 @@ export default function HomePage() {
         className="section-j section-j-row section-j-split section-j-split-image-left"
         aria-labelledby="about-heading"
       >
-        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure">
-          <Image
-            src="/marketing/illustrations/about-anchor.svg"
-            alt=""
-            fill
-            sizes="(max-width: 960px) 100vw, 42vw"
-            className="section-j-anchor-image"
-          />
+        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure">
+          <ReportExcerptMockup />
         </ScrollReveal>
 
         <ScrollReveal className="section-j-content" delay={120}>
@@ -214,14 +151,8 @@ export default function HomePage() {
           </Link>
         </ScrollReveal>
 
-        <ScrollReveal className="section-j-anchor section-j-anchor-illustration" as="figure" delay={120}>
-          <Image
-            src="/marketing/illustrations/security-anchor.svg"
-            alt=""
-            fill
-            sizes="(max-width: 960px) 100vw, 42vw"
-            className="section-j-anchor-image"
-          />
+        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure" delay={120}>
+          <SecurityAuditMockup />
         </ScrollReveal>
       </section>
 
