@@ -34,16 +34,8 @@ export default function HomePage() {
 
       <MarketingHeroJ />
 
-      <section
-        className="section-j section-j-product section-j-split section-j-split-image-left"
-        id="product"
-        aria-labelledby="product-heading"
-      >
-        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure">
-          <ProductSlideMockup />
-        </ScrollReveal>
-
-        <ScrollReveal className="section-j-content" delay={120}>
+      <section className="section-j section-j-stack" id="product" aria-labelledby="product-heading">
+        <ScrollReveal className="section-j-stack-head">
           <p className="section-j-eyebrow">Product</p>
           <h2 id="product-heading" className="section-j-title">
             One run, three finished files.
@@ -57,14 +49,14 @@ export default function HomePage() {
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
+
+        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
+          <ProductSlideMockup />
+        </ScrollReveal>
       </section>
 
-      <section
-        className="section-j section-j-workspace section-j-split section-j-split-image-right"
-        id="workspace"
-        aria-labelledby="workspace-heading"
-      >
-        <ScrollReveal className="section-j-content">
+      <section className="section-j section-j-stack" id="workspace" aria-labelledby="workspace-heading">
+        <ScrollReveal className="section-j-stack-head">
           <p className="section-j-eyebrow">Workspace</p>
           <h2 id="workspace-heading" className="section-j-title">
             Basquio remembers the work behind every deck.
@@ -79,7 +71,7 @@ export default function HomePage() {
           </Link>
         </ScrollReveal>
 
-        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure" delay={120}>
+        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <WorkspaceHomeMockup />
         </ScrollReveal>
       </section>
@@ -109,15 +101,11 @@ export default function HomePage() {
       </section>
 
       <section
-        className="section-j section-j-row section-j-split section-j-split-image-left"
+        className="section-j section-j-stack"
         id="reconciliation"
         aria-labelledby="reconciliation-heading"
       >
-        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure">
-          <WorkbookMockup />
-        </ScrollReveal>
-
-        <ScrollReveal className="section-j-content" delay={120}>
+        <ScrollReveal className="section-j-stack-head">
           <p className="section-j-eyebrow">Numbers reconcile</p>
           <h2 id="reconciliation-heading" className="section-j-title">
             The three files agree on the same number.
@@ -131,13 +119,14 @@ export default function HomePage() {
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
+
+        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
+          <WorkbookMockup />
+        </ScrollReveal>
       </section>
 
-      <section
-        className="section-j section-j-row section-j-split section-j-split-image-right"
-        aria-labelledby="about-heading"
-      >
-        <ScrollReveal className="section-j-content">
+      <section className="section-j section-j-stack" aria-labelledby="about-heading">
+        <ScrollReveal className="section-j-stack-head">
           <p className="section-j-eyebrow">About</p>
           <h2 id="about-heading" className="section-j-title">
             Built by FMCG and CPG analysts who lived this work.
@@ -152,20 +141,13 @@ export default function HomePage() {
           </Link>
         </ScrollReveal>
 
-        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure" delay={120}>
+        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <ReportExcerptMockup />
         </ScrollReveal>
       </section>
 
-      <section
-        className="section-j section-j-row section-j-split section-j-split-image-left"
-        aria-labelledby="security-heading"
-      >
-        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure">
-          <SecurityAuditMockup />
-        </ScrollReveal>
-
-        <ScrollReveal className="section-j-content" delay={120}>
+      <section className="section-j section-j-stack" aria-labelledby="security-heading">
+        <ScrollReveal className="section-j-stack-head">
           <p className="section-j-eyebrow">Security</p>
           <h2 id="security-heading" className="section-j-title">
             Clear data handling before you upload.
@@ -178,6 +160,10 @@ export default function HomePage() {
             Read security details
             <span aria-hidden="true">→</span>
           </Link>
+        </ScrollReveal>
+
+        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
+          <SecurityAuditMockup />
         </ScrollReveal>
       </section>
 
