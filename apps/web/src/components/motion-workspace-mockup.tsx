@@ -72,7 +72,7 @@ const memoryCellVariants: Variants = {
 
 export function MotionWorkspaceMockup() {
   const rootRef = useRef<HTMLElement>(null);
-  const isInView = useInView(rootRef, { once: true, amount: 0.35 });
+  const isInView = useInView(rootRef, { once: true, amount: 0.15, margin: "0px 0px -10% 0px" });
 
   // Typing animation state
   const [typedText, setTypedText] = useState("");
