@@ -7,6 +7,7 @@ import {
   ProductSlideMockup,
   ReportExcerptMockup,
   SecurityAuditMockup,
+  WorkbookMockup,
   WorkspaceHomeMockup,
 } from "@/components/marketing-mockups";
 import { PublicSiteFooter } from "@/components/public-site-footer";
@@ -109,13 +110,34 @@ export default function HomePage() {
 
       <section
         className="section-j section-j-row section-j-split section-j-split-image-left"
-        aria-labelledby="about-heading"
+        id="reconciliation"
+        aria-labelledby="reconciliation-heading"
       >
         <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure">
-          <ReportExcerptMockup />
+          <WorkbookMockup />
         </ScrollReveal>
 
         <ScrollReveal className="section-j-content" delay={120}>
+          <p className="section-j-eyebrow">Numbers reconcile</p>
+          <h2 id="reconciliation-heading" className="section-j-title">
+            The three files agree on the same number.
+          </h2>
+          <p className="section-j-body">
+            The 1.9 share points on slide 04 ties to row 4 of the workbook and section 2 of the
+            report. Every figure has a sheet, a row, and a source.
+          </p>
+          <Link className="section-j-link" href="/jobs/new">
+            See the reconciled output
+            <span aria-hidden="true">→</span>
+          </Link>
+        </ScrollReveal>
+      </section>
+
+      <section
+        className="section-j section-j-row section-j-split section-j-split-image-right"
+        aria-labelledby="about-heading"
+      >
+        <ScrollReveal className="section-j-content">
           <p className="section-j-eyebrow">About</p>
           <h2 id="about-heading" className="section-j-title">
             Built by FMCG and CPG analysts who lived this work.
@@ -129,13 +151,21 @@ export default function HomePage() {
             <span aria-hidden="true">→</span>
           </Link>
         </ScrollReveal>
+
+        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure" delay={120}>
+          <ReportExcerptMockup />
+        </ScrollReveal>
       </section>
 
       <section
-        className="section-j section-j-row section-j-split section-j-split-image-right"
+        className="section-j section-j-row section-j-split section-j-split-image-left"
         aria-labelledby="security-heading"
       >
-        <ScrollReveal className="section-j-content">
+        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure">
+          <SecurityAuditMockup />
+        </ScrollReveal>
+
+        <ScrollReveal className="section-j-content" delay={120}>
           <p className="section-j-eyebrow">Security</p>
           <h2 id="security-heading" className="section-j-title">
             Clear data handling before you upload.
@@ -148,10 +178,6 @@ export default function HomePage() {
             Read security details
             <span aria-hidden="true">→</span>
           </Link>
-        </ScrollReveal>
-
-        <ScrollReveal className="section-j-anchor section-j-anchor-mockup" as="figure" delay={120}>
-          <SecurityAuditMockup />
         </ScrollReveal>
       </section>
 
