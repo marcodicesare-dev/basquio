@@ -16,13 +16,13 @@ export function MarketingHeroJ() {
       <div className="hero-j-scrim" aria-hidden="true" />
 
       <div className="hero-j-copy">
-        <p className="hero-j-eyebrow">For market research teams</p>
+        <p className="hero-j-eyebrow">Created by FMCG analysts</p>
         <h1 id="hero-j-headline" className="hero-j-headline">
           From scattered research files to a finished deck.
         </h1>
         <p className="hero-j-subhead">
-          Basquio turns the brief, data, notes, and templates into the deck, report, and Excel file
-          your stakeholder asked for.
+          Basquio keeps the brief, data, notes, templates and past work together. When you know
+          what needs to be said, it builds the slides, report and Excel file.
         </p>
 
         <div className="hero-j-actions">
