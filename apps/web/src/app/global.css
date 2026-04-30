@@ -22143,15 +22143,26 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .buying-iface-mode-caption {
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.74rem;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
+  font-size: 0.96rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  margin-top: 2px;
+}
+
+.buying-iface-mode-active .buying-iface-mode-caption {
+  color: var(--blue, #1A6AFF);
 }
 
 .buying-iface-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.85fr);
   gap: 0;
+  /* Lock the height so switching modes (one / workspace / team) does not
+     shift the layout. The tallest mode is "team" at ~440px on desktop;
+     480 covers headroom for the trial reservation slot. */
+  min-height: 480px;
+  align-items: stretch;
 }
 
 .buying-iface-col {
@@ -22261,6 +22272,15 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   background: rgba(240, 204, 39, 0.12);
   border: 1px solid rgba(240, 204, 39, 0.32);
   border-radius: 6px;
+  /* Always reserve the same height so switching modes does not shift the
+     CTA below it. Two lines of body text + 20px padding ~= 60px. */
+  min-height: 60px;
+}
+
+.buying-iface-trial-empty {
+  visibility: hidden;
+  background: transparent;
+  border-color: transparent;
 }
 
 .buying-iface-cta {
