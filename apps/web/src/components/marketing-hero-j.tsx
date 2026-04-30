@@ -6,7 +6,7 @@ export function MarketingHeroJ() {
     <section className="hero-j" aria-labelledby="hero-j-headline">
       <Image
         className="hero-j-background"
-        src="/marketing/hero-candidates/basquio-memory-context-01.jpg"
+        src="/marketing/hero-candidates/basquio-memory-context-04.jpg"
         alt=""
         aria-hidden="true"
         fill
