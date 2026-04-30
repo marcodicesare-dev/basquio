@@ -6,9 +6,9 @@ import { PublicSiteNav } from "@/components/public-site-nav";
 import { ScrollReveal } from "@/components/scroll-reveal";
 
 export const metadata: Metadata = {
-  title: "About Basquio · The team behind it",
+  title: "Chi siamo · Il team di Basquio",
   description:
-    "Basquio was built by analysts and brand managers who spent years writing FMCG and CPG category review decks by hand. The workspace they wanted to use is the workspace they built.",
+    "Basquio è stato costruito da analisti e brand manager che hanno passato anni a scrivere category review FMCG e CPG a mano. Il workspace che volevamo usare è il workspace che abbiamo costruito.",
   alternates: { canonical: "https://basquio.com/about" },
 };
 
@@ -18,47 +18,49 @@ const TEAM_MEMBERS = [
     name: "Marco Di Cesare",
     role: "Engineering",
     background:
-      "Full-stack engineer. Built the pipeline that turns brief, data, notes and template into the deck, report and Excel file.",
+      "Full-stack engineer. Costruisce la pipeline che trasforma brief, dati, appunti e template in presentazione, report e file Excel.",
   },
   {
     initials: "GC",
     name: "Giulia",
     role: "Brand management",
     background:
-      "Brand manager at Mondelez. The person who receives the deck and presents it to the room.",
+      "Brand manager in Mondelez. La persona che riceve la presentazione e la presenta in riunione.",
   },
   {
     initials: "VM",
     name: "Veronica",
     role: "Strategic buying",
     background:
-      "Category buyer at Victorinox. Knows what decisions the deck needs to support before it gets opened.",
+      "Category buyer in Victorinox. Sa quali decisioni la presentazione deve supportare prima ancora di aprirla.",
   },
   {
     initials: "AR",
     name: "Alessandro",
-    role: "Market research",
-    background: "NielsenIQ analyst. Lives the brief, data, template, deadline cycle every week.",
+    role: "Ricerca di mercato",
+    background:
+      "Analista NielsenIQ. Vive il ciclo brief, dati, template, scadenza ogni settimana.",
   },
   {
     initials: "RB",
     name: "Rossella",
-    role: "Market research",
+    role: "Ricerca di mercato",
     background:
-      "NielsenIQ analyst. Owns the recurring category review work for Italian FMCG accounts.",
+      "Analista NielsenIQ. Segue le category review ricorrenti per i clienti FMCG italiani.",
   },
   {
     initials: "FP",
     name: "Francesco",
-    role: "Market research",
-    background: "NielsenIQ analyst. The voice that pushes for analyst-grade outputs, not slop.",
+    role: "Ricerca di mercato",
+    background:
+      "Analista NielsenIQ. La voce che chiede output da analista, non output di facciata.",
   },
 ] as const;
 
 const EXPERIENCE_STATS = [
-  { number: "20+", label: "years combined in FMCG and CPG market research" },
-  { number: "500+", label: "category review decks built by hand by this team" },
-  { number: "1", label: "engineer who said never again" },
+  { number: "20+", label: "anni cumulati di ricerca di mercato in FMCG e CPG" },
+  { number: "500+", label: "category review costruite a mano da questo team" },
+  { number: "1", label: "ingegnere che ha detto mai più" },
 ] as const;
 
 export default function AboutPage() {
@@ -68,23 +70,23 @@ export default function AboutPage() {
 
       <section className="section-j section-j-page-hero" aria-labelledby="about-page-heading">
         <ScrollReveal className="section-j-page-hero-inner">
-          <p className="section-j-eyebrow">About</p>
+          <p className="section-j-eyebrow">Chi siamo</p>
           <h1 id="about-page-heading" className="section-j-page-title">
-            Built by FMCG and CPG analysts who lived this work.
+            Costruito da analisti FMCG e CPG che hanno vissuto questo lavoro.
           </h1>
           <p className="section-j-body">
-            Basquio comes from engineering, brand, category and market research work inside FMCG
-            and CPG companies. We know what a category review looks like because we have presented
-            hundreds of them.
+            Basquio nasce da ingegneria, brand, category e ricerca di mercato dentro aziende
+            FMCG e CPG. Sappiamo cosa è una buona category review perché ne abbiamo presentate
+            centinaia.
           </p>
         </ScrollReveal>
       </section>
 
       <section className="section-j section-j-team" aria-labelledby="team-heading">
         <ScrollReveal className="section-j-team-head">
-          <p className="section-j-eyebrow">The team</p>
+          <p className="section-j-eyebrow">Il team</p>
           <h2 id="team-heading" className="section-j-title">
-            Six people who used to make these decks by hand.
+            Sei persone che facevano queste presentazioni a mano.
           </h2>
         </ScrollReveal>
 
@@ -105,7 +107,7 @@ export default function AboutPage() {
       <section className="section-j section-j-experience" aria-labelledby="experience-heading">
         <ScrollReveal className="section-j-experience-inner">
           <h2 id="experience-heading" className="section-j-experience-heading sr-only">
-            Combined experience
+            Esperienza cumulata
           </h2>
           <ul className="section-j-experience-row" role="list">
             {EXPERIENCE_STATS.map((stat) => (
@@ -123,25 +125,27 @@ export default function AboutPage() {
         aria-labelledby="thesis-heading"
       >
         <ScrollReveal className="section-j-stage-inner section-j-stage-inner-narrow">
-          <p className="section-j-eyebrow section-j-eyebrow-light">The thesis</p>
+          <p className="section-j-eyebrow section-j-eyebrow-light">La tesi</p>
           <h2 id="thesis-heading" className="section-j-title section-j-title-light">
-            Recurring research follows the same seven steps. Production takes longer than analysis.
+            La ricerca ricorrente segue sempre gli stessi sette passi. La produzione richiede
+            più tempo dell&apos;analisi.
           </h2>
           <p className="section-j-body section-j-body-light">
-            Steps 1-3 are analysis. Steps 4-7 are production: pulling charts, writing slides,
-            checking numbers, branding the deck, drafting the report, building the workbook.
-            Basquio takes steps 4-7 so the team can stay in steps 1-3.
+            I passi 1-3 sono analisi. I passi 4-7 sono produzione: tirare grafici, scrivere
+            slide, controllare numeri, brandizzare la presentazione, scrivere il report,
+            costruire il file Excel. Basquio prende i passi 4-7 perché il team possa restare
+            sui passi 1-3.
           </p>
         </ScrollReveal>
       </section>
 
       <PublicSiteFooterCta
-        eyebrow="Ready to start"
-        title="Start with one output. Or set up the workspace."
-        copy="Upload the brief and files for one job. If the work comes back next month, keep the context in a workspace."
-        primaryLabel="Start one output"
+        eyebrow="Pronto a iniziare"
+        title="Inizia con un output. O imposta il workspace."
+        copy="Carica il brief e i file per un singolo lavoro. Se il lavoro torna il mese prossimo, tieni il contesto in un workspace."
+        primaryLabel="Avvia un output"
         primaryHref="/jobs/new"
-        secondaryLabel="See the workspace"
+        secondaryLabel="Vedi il workspace"
         secondaryHref="/#workspace"
       />
       <PublicSiteFooter />
