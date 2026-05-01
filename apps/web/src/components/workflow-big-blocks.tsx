@@ -138,7 +138,7 @@ export function WorkflowBigBlocks() {
       <header className="workflow-big-head">
         <p className="section-j-eyebrow">How it works</p>
         <h2 id="workflow-big-heading" className="section-j-title">
-          Three steps. Same gesture every time.
+          Two weeks of analysis. Delivered in hours.
         </h2>
         <p className="section-j-body">
           Drop the inputs, drop a template, download the analysis. Basquio handles the production
