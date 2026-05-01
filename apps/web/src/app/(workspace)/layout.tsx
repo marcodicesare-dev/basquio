@@ -51,7 +51,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
   const [scopeTree, countsMap, recentConversations] = await Promise.all([
     listScopesGrouped(workspace.id).catch(() => ({ client: [], category: [], function: [], system: [] })),
     countByScope(workspace.id).catch(() => new Map<string, ScopeCounts>()),
-    listConversations({ workspaceId: workspace.id, limit: 10 }).catch(() => []),
+    listConversations({ workspaceId: workspace.id, limit: 25 }).catch(() => []),
   ]);
 
   const scopeCounts: Record<string, ScopeCounts> = {};

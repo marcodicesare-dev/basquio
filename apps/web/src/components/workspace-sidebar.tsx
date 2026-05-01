@@ -17,6 +17,7 @@ import {
 
 import type { WorkspaceScope, ScopeCounts } from "@/lib/workspace/types";
 import { SCOPE_KIND_LABELS, type ScopeKind } from "@/lib/workspace/constants";
+import { WorkspaceChatKebab } from "@/components/workspace-chat-kebab";
 
 type SidebarScopeTree = Record<ScopeKind, WorkspaceScope[]>;
 type SidebarCopy = {
@@ -211,12 +212,19 @@ export function WorkspaceSidebar({
         </header>
         {recentConversations.length > 0 ? (
           <ul className="wbeta-sidebar-list">
-            {recentConversations.slice(0, 6).map((conversation) => {
+            {recentConversations.slice(0, 12).map((conversation) => {
               const active = pathname === `/workspace/chat/${conversation.id}`;
               const scope = conversation.scope ?? workspaceScopeFallback();
               const scopeLabel = formatConversationScope(scope);
               return (
-                <li key={conversation.id}>
+                <li
+                  key={conversation.id}
+                  className={
+                    active
+                      ? "wbeta-sidebar-chat-row wbeta-sidebar-chat-row-active"
+                      : "wbeta-sidebar-chat-row"
+                  }
+                >
                   <Link
                     href={`/workspace/chat/${conversation.id}`}
                     className={
@@ -243,6 +251,10 @@ export function WorkspaceSidebar({
                       {relativeTime(conversation.lastMessageAt)}
                     </span>
                   </Link>
+                  <WorkspaceChatKebab
+                    conversationId={conversation.id}
+                    currentTitle={conversation.title}
+                  />
                 </li>
               );
             })}

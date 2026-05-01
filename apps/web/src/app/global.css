@@ -10423,6 +10423,147 @@ body:has(.wbeta-chat-pane) .wbeta-workspace-layout {
   font-family: var(--font-jetbrains-mono), "SFMono-Regular", monospace;
 }
 
+/*
+ * Sidebar conversation row + kebab actions.
+ *
+ * The row wraps the link plus a hover-revealed kebab button. The kebab is
+ * absolutely positioned over the right edge of the row so it overlaps the
+ * timestamp; on hover the timestamp slides out and the kebab fades in. This
+ * is the Claude.ai / ChatGPT pattern: clean idle state, action access on hover
+ * or keyboard focus, no permanent visual noise.
+ */
+.wbeta-sidebar-chat-row {
+  position: relative;
+  display: block;
+}
+
+.wbeta-sidebar-chat-row .wbeta-sidebar-kebab {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.wbeta-sidebar-chat-row:hover .wbeta-sidebar-kebab,
+.wbeta-sidebar-chat-row:focus-within .wbeta-sidebar-kebab,
+.wbeta-sidebar-chat-row .wbeta-sidebar-kebab:has([aria-expanded="true"]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.wbeta-sidebar-chat-row:hover .wbeta-sidebar-item-time,
+.wbeta-sidebar-chat-row:focus-within .wbeta-sidebar-item-time {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.wbeta-sidebar-kebab-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.wbeta-sidebar-kebab-trigger:hover,
+.wbeta-sidebar-kebab-trigger:focus-visible {
+  background: var(--surface-strong);
+  color: var(--text);
+  outline: none;
+}
+
+.wbeta-sidebar-kebab-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wbeta-sidebar-kebab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 100ms ease-out, color 100ms ease-out;
+}
+
+.wbeta-sidebar-kebab-item:hover:not(:disabled),
+.wbeta-sidebar-kebab-item:focus-visible:not(:disabled) {
+  background: var(--surface-strong);
+  outline: none;
+}
+
+.wbeta-sidebar-kebab-item:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.wbeta-sidebar-kebab-danger {
+  color: var(--text);
+}
+
+.wbeta-sidebar-kebab-danger:hover:not(:disabled),
+.wbeta-sidebar-kebab-danger:focus-visible:not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
+  color: rgb(185, 28, 28);
+}
+
+.wbeta-sidebar-kebab-error {
+  margin: 4px 6px 2px;
+  padding: 0;
+  font-size: 11px;
+  color: rgb(185, 28, 28);
+  line-height: 1.35;
+}
+
+.wbeta-sidebar-rename {
+  flex: 1;
+  padding: 0 6px;
+}
+
+.wbeta-sidebar-rename-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+}
+
+.wbeta-sidebar-rename-input:focus {
+  box-shadow: 0 0 0 3px rgba(26, 106, 255, 0.15);
+}
+
 .wbeta-sidebar-new {
   display: flex;
   align-items: center;

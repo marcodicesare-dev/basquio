@@ -117,6 +117,49 @@ export async function archiveConversation(id: string): Promise<void> {
 }
 
 /**
+ * Lift the archived flag. Used by the sidebar context menu "Restore"
+ * action and by the /workspace/chats archived tab.
+ */
+export async function unarchiveConversation(id: string): Promise<void> {
+  const db = getDb();
+  const { error } = await db
+    .from("workspace_conversations")
+    .update({ archived_at: null })
+    .eq("id", id);
+  if (error) throw new Error(`unarchiveConversation failed: ${error.message}`);
+}
+
+/**
+ * Update the human-readable title shown in the sidebar and chat header.
+ * Trims, clamps to 200 chars, treats empty string as "no title set" so
+ * we fall back to the auto-title.
+ */
+export async function renameConversation(id: string, title: string | null): Promise<void> {
+  const next = title?.trim() || null;
+  if (next && next.length > 200) {
+    throw new Error("renameConversation: title too long (max 200 chars).");
+  }
+  const db = getDb();
+  const { error } = await db
+    .from("workspace_conversations")
+    .update({ title: next, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(`renameConversation failed: ${error.message}`);
+}
+
+/**
+ * Permanent delete. Used by the sidebar Trash action. Cascade FKs on
+ * conversation_attachments + conversation_memory_facts handle the joins.
+ * Prefer archiveConversation for the default action; this is the explicit
+ * destructive path the user must confirm.
+ */
+export async function deleteConversation(id: string): Promise<void> {
+  const db = getDb();
+  const { error } = await db.from("workspace_conversations").delete().eq("id", id);
+  if (error) throw new Error(`deleteConversation failed: ${error.message}`);
+}
+
+/**
  * Ensure a workspace_conversations row exists for the given id. Used by upload
  * and similar pre-chat hooks that want to reference the conversation (via FK)
  * before the first assistant turn fires saveConversation.
