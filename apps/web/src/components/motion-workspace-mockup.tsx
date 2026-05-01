@@ -289,6 +289,12 @@ export function MotionWorkspaceMockup() {
                 onClick={() => {
                   setActiveProjectIdx(i);
                   setUserInteracted(true);
+                  // Jump to the completed-output state so clicking the
+                  // project always reveals the workspace memory + finished
+                  // output. Otherwise the auto-sequence may halt mid-flow,
+                  // leaving the panel collapsed and shifting layout.
+                  setStage("output-ready");
+                  setTypedText(TYPING_TEXT);
                 }}
                 aria-pressed={i === activeProjectIdx}
               >
@@ -382,6 +388,7 @@ export function MotionWorkspaceMockup() {
                     setActivePromptIdx(i);
                     setUserInteracted(true);
                     setTypedText(p);
+                    setStage("output-ready");
                   }}
                   aria-pressed={active}
                 >
