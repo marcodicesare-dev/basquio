@@ -22362,6 +22362,305 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   border-bottom-color: var(--text);
 }
 
+/* --- New buying interface: three persistent vertical columns ------------- */
+/* Replaces the radio-toggle pattern flagged in the May 2026 review. Three
+   self-contained tier cards (Output / Workspace / Team) sit side by side so
+   the visitor compares all three at once. Each card carries its own price,
+   "for X" subhead, what you provide, what you get, and CTA. The middle
+   "Workspace" card is the recommended path: it floats above the others. */
+
+.buying-iface-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+  align-items: stretch;
+}
+
+.buying-iface-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto auto auto 1fr;
+  gap: 16px;
+  padding: 32px 28px 32px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.1);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 24px 48px -32px rgba(11, 12, 12, 0.18);
+  transition:
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.buying-iface-grid > .buying-iface-card:nth-child(1) {
+  border-radius: 14px 0 0 14px;
+  border-right-color: rgba(11, 12, 12, 0.06);
+}
+
+.buying-iface-grid > .buying-iface-card:nth-child(3) {
+  border-radius: 0 14px 14px 0;
+  border-left-color: rgba(11, 12, 12, 0.06);
+}
+
+.buying-iface-card-highlighted {
+  z-index: 2;
+  margin: -10px -1px;
+  border-color: var(--blue);
+  border-width: 2px;
+  border-radius: 16px !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 32px 72px -28px rgba(26, 106, 255, 0.32),
+    0 12px 28px -16px rgba(11, 12, 12, 0.16);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfaf6 100%);
+}
+
+.buying-iface-card-flag {
+  position: absolute;
+  top: -14px;
+  left: 28px;
+  margin: 0;
+  padding: 4px 12px;
+  background: var(--blue);
+  color: #ffffff;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  box-shadow: 0 6px 14px -6px rgba(26, 106, 255, 0.5);
+}
+
+.buying-iface-card-head {
+  display: grid;
+  gap: 6px;
+}
+
+.buying-iface-card-label {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  color: var(--text);
+}
+
+.buying-iface-card-for {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.buying-iface-card-price-block {
+  display: grid;
+  gap: 6px;
+  padding: 18px 0 4px;
+  border-top: 1px solid rgba(11, 12, 12, 0.06);
+}
+
+.buying-iface-card-price {
+  margin: 0;
+  font-size: clamp(2.4rem, 3.2vw, 3rem);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  color: var(--text);
+}
+
+.buying-iface-card-highlighted .buying-iface-card-price {
+  color: var(--blue);
+}
+
+.buying-iface-card-price-caption {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.buying-iface-card-example {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: rgba(11, 12, 12, 0.035);
+  border-radius: 6px;
+}
+
+.buying-iface-card-highlighted .buying-iface-card-example {
+  background: rgba(26, 106, 255, 0.07);
+  color: var(--text);
+}
+
+.buying-iface-card-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 22px;
+  border-radius: 8px;
+  background: rgba(11, 12, 12, 0.06);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  border: 1px solid rgba(11, 12, 12, 0.1);
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.buying-iface-card-cta:hover {
+  background: rgba(11, 12, 12, 0.1);
+  transform: translateY(-1px);
+}
+
+.buying-iface-card-cta span {
+  transition: transform 160ms ease;
+}
+
+.buying-iface-card-cta:hover span {
+  transform: translateX(2px);
+}
+
+.buying-iface-card-highlighted .buying-iface-card-cta {
+  background: var(--blue);
+  color: #ffffff;
+  border-color: var(--blue);
+  box-shadow: 0 14px 32px -16px rgba(26, 106, 255, 0.6);
+}
+
+.buying-iface-card-highlighted .buying-iface-card-cta:hover {
+  background: #155cdb;
+  box-shadow: 0 20px 40px -18px rgba(26, 106, 255, 0.7);
+}
+
+.buying-iface-card-trial {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text);
+  background: rgba(240, 204, 39, 0.12);
+  border: 1px solid rgba(240, 204, 39, 0.32);
+  border-radius: 6px;
+  min-height: 56px;
+}
+
+.buying-iface-card-trial-empty {
+  visibility: hidden;
+  background: transparent;
+  border-color: transparent;
+}
+
+.buying-iface-card-lists {
+  display: grid;
+  gap: 18px;
+  padding: 18px 0 0;
+  border-top: 1px solid rgba(11, 12, 12, 0.06);
+}
+
+.buying-iface-card-section-head {
+  margin: 0 0 10px;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.buying-iface-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.buying-iface-card-list li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  font-size: 0.94rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.buying-iface-card-tick {
+  margin-top: 5px;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  background: rgba(26, 106, 255, 0.12);
+  border: 1px solid rgba(26, 106, 255, 0.32);
+  position: relative;
+}
+
+.buying-iface-card-tick::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 4px;
+  height: 7px;
+  border-right: 2px solid var(--blue);
+  border-bottom: 2px solid var(--blue);
+  transform: rotate(45deg) translate(-1px, -2px);
+}
+
+.buying-iface-card-tick-amber {
+  background: rgba(240, 204, 39, 0.16);
+  border-color: rgba(240, 204, 39, 0.44);
+}
+
+.buying-iface-card-tick-amber::after {
+  border-right-color: #b45309;
+  border-bottom-color: #b45309;
+}
+
+@media (max-width: 1080px) {
+  .buying-iface-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .buying-iface-grid > .buying-iface-card,
+  .buying-iface-grid > .buying-iface-card:nth-child(1),
+  .buying-iface-grid > .buying-iface-card:nth-child(3) {
+    border-radius: 14px;
+    border: 1px solid rgba(11, 12, 12, 0.1);
+  }
+
+  .buying-iface-card-highlighted {
+    margin: 0;
+    border: 2px solid var(--blue);
+  }
+}
+
+/* Light variant for the homepage dark stage section. */
+
+.section-j-stage-dark .buying-iface-card {
+  background: #f7f3e7;
+  border-color: rgba(11, 12, 12, 0.08);
+}
+
+.section-j-stage-dark .buying-iface-card-highlighted {
+  background: linear-gradient(180deg, #ffffff 0%, #f7f3e7 100%);
+}
+
 /* --- Bottom strips (security, team) -------------------------------------- */
 
 .section-j-strip {
@@ -22913,13 +23212,27 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 .hero-j-headline {
-  max-width: 24ch;
-  font-size: 3.75rem;
-  line-height: 1.05;
-  letter-spacing: -0.012em;
+  max-width: 22ch;
+  font-size: clamp(2.6rem, 4.6vw, 4rem);
+  line-height: 1.04;
+  letter-spacing: -0.018em;
   color: #ffffff;
   text-shadow: 0 28px 72px rgba(0, 0, 0, 0.32);
   text-wrap: balance;
+}
+
+.hero-j-image-only .hero-j-headline,
+.hero-j-with-demo .hero-j-headline {
+  /* Lead with the metaphor: "Your right arm for market research analysis."
+     We let it wrap to two lines max via the chars-cap, but bias toward a
+     single line on wide viewports by widening the cap when the viewport
+     allows. */
+  max-width: clamp(28ch, 90vw, 48ch);
+}
+
+.hero-j-image-only .hero-j-copy {
+  padding: clamp(96px, 14vw, 160px) 0 clamp(96px, 14vw, 132px);
+  gap: 26px;
 }
 
 .hero-j-subhead {
@@ -24323,10 +24636,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workspace-mockup {
   position: relative;
   width: 100%;
-  max-width: min(1440px, calc(100vw - 64px));
+  max-width: min(1280px, calc(100vw - 64px));
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr) 296px;
+  grid-template-columns: 268px minmax(0, 1fr) 340px;
   background: #ffffff;
   border-radius: 18px;
   border: 1px solid rgba(11, 12, 12, 0.08);
@@ -24345,9 +24658,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-rail {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 12px;
-  padding: 14px 10px 12px;
+  grid-template-rows: auto auto auto auto;
+  align-content: start;
+  gap: 14px;
+  padding: 18px 14px 16px;
   background: #fbfaf6;
   border-right: 1px solid rgba(11, 12, 12, 0.06);
 }
@@ -24355,27 +24669,27 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workspace-mockup-brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 4px;
-  font-size: 0.78rem;
+  gap: 10px;
+  padding: 0 6px;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text);
 }
 
 .workspace-mockup-brand-mark {
-  width: 18px;
-  height: 12px;
+  width: 22px;
+  height: 16px;
   /* Canonical Basquio mark: served from /brand/svg/icon/basquio-icon-ultramarine.svg
      so the workspace mockup uses the same logo as the rest of the product. */
   background: url("/brand/svg/icon/basquio-icon-ultramarine.svg") no-repeat center / contain;
 }
 
 .workspace-mockup-rail-section {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   padding: 0 8px;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.56rem;
+  font-size: 0.7rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -24396,11 +24710,11 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-project {
   display: grid;
-  grid-template-columns: 14px 1fr;
+  grid-template-columns: 16px 1fr;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-radius: 5px;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 6px;
   cursor: default;
 }
 
@@ -24426,7 +24740,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 .workspace-mockup-project-name {
-  font-size: 0.7rem;
+  font-size: 0.86rem;
   font-weight: 600;
   letter-spacing: -0.005em;
   color: var(--text);
@@ -24438,7 +24752,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-project-client {
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.56rem;
+  font-size: 0.7rem;
   letter-spacing: 0.02em;
   color: var(--text-muted);
 }
@@ -24447,12 +24761,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   margin: 0 4px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 9px;
+  gap: 6px;
+  padding: 8px 12px;
   background: transparent;
   border: 1px dashed rgba(11, 12, 12, 0.18);
-  border-radius: 5px;
-  font-size: 0.66rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
   color: var(--text-muted);
   cursor: default;
   width: fit-content;
@@ -24460,21 +24774,22 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-main {
   display: grid;
-  grid-template-rows: auto auto 1fr;
-  gap: 12px;
-  padding: 16px 18px 14px;
+  grid-template-rows: auto auto auto auto;
+  align-content: start;
+  gap: 14px;
+  padding: 20px 24px 22px;
   background: #ffffff;
 }
 
 .workspace-mockup-main-head {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .workspace-mockup-breadcrumb {
   margin: 0;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.54rem;
+  font-size: 0.7rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -24482,16 +24797,16 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-main-title {
   margin: 0;
-  font-size: 0.94rem;
+  font-size: 1.18rem;
   font-weight: 700;
   letter-spacing: -0.018em;
   color: var(--text);
 }
 
 .workspace-mockup-memory-label {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.56rem;
+  font-size: 0.7rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -24506,23 +24821,25 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   gap: 0;
   border-top: 1px solid rgba(11, 12, 12, 0.06);
   border-left: 1px solid rgba(11, 12, 12, 0.06);
+  border-radius: 6px;
+  overflow: hidden;
   align-self: start;
 }
 
 .workspace-mockup-memory-cell {
   display: grid;
-  grid-template-columns: 12px 1fr;
+  grid-template-columns: 14px 1fr;
   align-items: start;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: 10px;
+  padding: 12px 14px;
   border-right: 1px solid rgba(11, 12, 12, 0.06);
   border-bottom: 1px solid rgba(11, 12, 12, 0.06);
 }
 
 .workspace-mockup-memory-glyph {
-  margin-top: 4px;
-  width: 6px;
-  height: 6px;
+  margin-top: 5px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--blue);
   opacity: 0.55;
@@ -24530,11 +24847,11 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-memory-copy {
   display: grid;
-  gap: 1px;
+  gap: 2px;
 }
 
 .workspace-mockup-memory-name {
-  font-size: 0.66rem;
+  font-size: 0.86rem;
   font-weight: 700;
   letter-spacing: -0.005em;
   color: var(--text);
@@ -24542,27 +24859,27 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-memory-body {
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.56rem;
+  font-size: 0.72rem;
   letter-spacing: 0.02em;
   color: var(--text-muted);
-  line-height: 1.42;
+  line-height: 1.45;
 }
 
 .workspace-mockup-chat {
   display: grid;
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto;
   align-content: start;
-  gap: 10px;
-  padding: 16px 12px 14px;
+  gap: 12px;
+  padding: 20px 18px 20px;
   background: #fbfaf6;
   border-left: 1px solid rgba(11, 12, 12, 0.06);
 }
 
 .workspace-mockup-chat-title {
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.94rem;
   font-weight: 700;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;
   color: var(--text);
 }
 
@@ -24572,32 +24889,32 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .workspace-mockup-chat-suggestion {
-  padding: 3px 8px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid rgba(11, 12, 12, 0.1);
   background: #ffffff;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.55rem;
+  font-size: 0.72rem;
   letter-spacing: 0.02em;
   color: var(--text);
 }
 
 .workspace-mockup-chat-composer {
-  padding: 9px 11px;
+  padding: 14px 14px;
   border: 1px solid rgba(11, 12, 12, 0.1);
-  border-radius: 6px;
+  border-radius: 8px;
   background: #ffffff;
-  min-height: 64px;
+  min-height: 88px;
   display: flex;
   align-items: flex-start;
 }
 
 .workspace-mockup-chat-placeholder {
-  font-size: 0.66rem;
+  font-size: 0.84rem;
   color: var(--text-muted);
   letter-spacing: -0.005em;
 }
@@ -24606,15 +24923,15 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 7px 11px;
+  gap: 8px;
+  padding: 11px 18px;
   border: 0;
   background: var(--blue);
   color: #ffffff;
-  font-size: 0.7rem;
+  font-size: 0.94rem;
   font-weight: 700;
   letter-spacing: -0.005em;
-  border-radius: 5px;
+  border-radius: 7px;
   cursor: default;
   width: fit-content;
 }
@@ -24934,11 +25251,11 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workspace-mockup-chat-trust {
   margin: 8px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(11, 12, 12, 0.45);
+  color: rgba(11, 12, 12, 0.5);
   text-align: center;
 }
 
@@ -25361,8 +25678,8 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   align-items: baseline;
   flex-wrap: wrap;
   gap: 0;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.45;
   font-family: var(--font-display, "Manrope", system-ui, sans-serif);
   font-weight: 500;
   color: rgba(11, 12, 12, 0.9);
@@ -25377,13 +25694,19 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-chat-caret {
   display: inline-block;
-  width: 1.5px;
-  height: 12px;
-  margin-left: 1px;
+  width: 2px;
+  height: 16px;
+  margin-left: 2px;
   background: var(--ultramarine, #1A6AFF);
   vertical-align: text-bottom;
   transition: opacity 120ms ease;
   align-self: center;
+  animation: workspace-mockup-caret-blink 1100ms ease-in-out infinite;
+}
+
+@keyframes workspace-mockup-caret-blink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -25479,10 +25802,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 /* --- Output reveal block ------------------------------------------------- */
 
 .workspace-mockup-output {
-  margin-top: 14px;
-  padding: 14px 16px;
-  background: linear-gradient(180deg, rgba(22, 163, 74, 0.04) 0%, rgba(22, 163, 74, 0) 100%);
-  border: 1px solid rgba(22, 163, 74, 0.16);
+  margin-top: 6px;
+  padding: 18px 20px 20px;
+  background: linear-gradient(180deg, rgba(22, 163, 74, 0.06) 0%, rgba(22, 163, 74, 0) 100%);
+  border: 1px solid rgba(22, 163, 74, 0.18);
   border-radius: 10px;
   opacity: 0;
   transform: translateY(8px);
@@ -25500,12 +25823,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workspace-mockup-output-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 10px;
+  gap: 10px;
+  margin: 0 0 12px;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #15803d;
 }
@@ -25530,13 +25853,13 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workspace-mockup-artifact {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 8px 14px;
   background: #ffffff;
   border: 1px solid rgba(11, 12, 12, 0.08);
   border-radius: 8px;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   color: rgba(11, 12, 12, 0.85);
   opacity: 0;
@@ -25553,8 +25876,8 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .workspace-mockup-artifact-glyph {
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 
@@ -25582,6 +25905,638 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   }
 }
 
+
+/* ============================================================================
+   Variant J · Workflow big blocks
+   Three large animated blocks placed after the hero. Each block fills most
+   of the viewport: large copy on the left, an animated illustration of the
+   action on the right. May 2026 review feedback: "they're rectangles, but
+   they're almost the whole page. To animate an action is better than to
+   animate a writing."
+   ============================================================================ */
+
+.workflow-big {
+  display: grid;
+  gap: clamp(48px, 5vw, 72px);
+  padding: clamp(48px, 6vw, 96px) clamp(28px, 4vw, 56px);
+}
+
+.workflow-big-head {
+  display: grid;
+  gap: 18px;
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+  justify-items: center;
+}
+
+.workflow-big-head .section-j-eyebrow {
+  justify-self: center;
+}
+
+.workflow-big-list {
+  display: grid;
+  gap: clamp(24px, 4vw, 48px);
+}
+
+.workflow-big-block {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: clamp(28px, 4vw, 56px);
+  align-items: stretch;
+  min-height: clamp(420px, 56vh, 560px);
+  padding: clamp(36px, 4vw, 56px);
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 32px 72px -28px rgba(11, 12, 12, 0.18),
+    0 12px 28px -16px rgba(11, 12, 12, 0.1);
+  transition: box-shadow 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workflow-big-block-active {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 40px 96px -32px rgba(11, 12, 12, 0.24),
+    0 14px 32px -18px rgba(11, 12, 12, 0.12);
+}
+
+/* Alternate the layout per block so the eye doesn't fall asleep. */
+.workflow-big-block:nth-child(even) {
+  grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
+}
+
+.workflow-big-block:nth-child(even) .workflow-big-block-stage {
+  order: -1;
+}
+
+.workflow-big-block-text {
+  align-self: center;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.workflow-big-block-number {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--blue);
+}
+
+.workflow-big-block-eyebrow {
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.workflow-big-block-title {
+  margin: 0;
+  font-size: clamp(1.8rem, 3.2vw, 2.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.022em;
+  font-weight: 600;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.workflow-big-block-body {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+.workflow-big-block-caption {
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: rgba(11, 12, 12, 0.035);
+  border-left: 2px solid var(--blue);
+  border-radius: 0 6px 6px 0;
+}
+
+.workflow-big-block-stage {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  background: linear-gradient(160deg, #fbfaf6 0%, #f3ecdb 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(11, 12, 12, 0.06);
+  overflow: hidden;
+}
+
+@media (max-width: 960px) {
+  .workflow-big-block {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding: 28px;
+  }
+
+  .workflow-big-block:nth-child(even) {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-big-block:nth-child(even) .workflow-big-block-stage {
+    order: 0;
+  }
+}
+
+/* --- Stage 1: Drop files ------------------------------------------------- */
+
+.drop-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+}
+
+.drop-stage-tray {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  padding: 22px 22px 30px;
+  background: #ffffff;
+  border: 2px dashed rgba(26, 106, 255, 0.32);
+  border-radius: 14px;
+  transition: border-color 320ms ease, background 320ms ease;
+}
+
+.drop-stage-active .drop-stage-tray {
+  border-color: var(--blue);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(26, 106, 255, 0.05) 100%);
+}
+
+.drop-stage-tray-label {
+  margin: 0 0 14px;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.drop-stage-tray-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.drop-stage-pill {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 8px 18px -10px rgba(11, 12, 12, 0.16);
+  opacity: 0;
+  transform: translate3d(60px, -16px, 0) rotate(2deg);
+}
+
+.drop-stage-active .drop-stage-pill {
+  animation: drop-stage-pill-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes drop-stage-pill-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(60px, -16px, 0) rotate(2deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translate3d(0, 4px, 0) rotate(-1deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+}
+
+.drop-stage-pill-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border-radius: 4px;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.drop-stage-pill-xlsx .drop-stage-pill-glyph { background: #16a34a; }
+.drop-stage-pill-csv  .drop-stage-pill-glyph { background: #0ea5e9; }
+.drop-stage-pill-md   .drop-stage-pill-glyph { background: #6b7280; }
+.drop-stage-pill-pptx .drop-stage-pill-glyph { background: #d97706; }
+
+.drop-stage-pill-name {
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.84rem;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drop-stage-cursor {
+  position: absolute;
+  top: 12%;
+  right: -28px;
+  width: 24px;
+  height: 26px;
+  filter: drop-shadow(0 4px 8px rgba(11, 12, 12, 0.22));
+  opacity: 0;
+}
+
+.drop-stage-active .drop-stage-cursor {
+  animation: drop-stage-cursor-glide 4200ms cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@keyframes drop-stage-cursor-glide {
+  0% { opacity: 0; transform: translate3d(60px, -40px, 0); }
+  10%, 30% { opacity: 1; transform: translate3d(0, 0, 0); }
+  35% { opacity: 1; transform: translate3d(-2px, 4px, 0); }
+  85%, 100% { opacity: 0; transform: translate3d(60px, -40px, 0); }
+}
+
+/* --- Stage 2: Pick template --------------------------------------------- */
+
+.template-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 28px;
+}
+
+.template-stage-frame {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 24px 48px -28px rgba(11, 12, 12, 0.24);
+  opacity: 0;
+  transform: scale(0.94) translateY(24px) rotate(-1.4deg);
+}
+
+.template-stage-active .template-stage-frame {
+  animation: template-stage-snap 720ms cubic-bezier(0.16, 1, 0.3, 1) 200ms forwards;
+}
+
+@keyframes template-stage-snap {
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0) rotate(0);
+  }
+}
+
+.template-stage-frame-meta {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fbfaf6;
+  border-bottom: 1px solid rgba(11, 12, 12, 0.06);
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+
+.template-stage-frame-mark {
+  width: 14px;
+  height: 11px;
+  background: var(--blue);
+  clip-path: polygon(0% 100%, 22% 28%, 35% 64%, 50% 0%, 65% 64%, 78% 28%, 100% 100%);
+}
+
+.template-stage-frame-name { color: var(--text); }
+.template-stage-frame-page { color: var(--text-muted); }
+
+.template-stage-frame-body {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 22px 22px 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fdfcf8 100%);
+  min-height: 220px;
+}
+
+.template-stage-frame-title {
+  display: grid;
+  gap: 6px;
+}
+
+.template-stage-frame-title-bar {
+  height: 11px;
+  width: 78%;
+  border-radius: 3px;
+  background: rgba(11, 12, 12, 0.16);
+}
+
+.template-stage-frame-title-bar-short {
+  width: 52%;
+  background: rgba(26, 106, 255, 0.42);
+}
+
+.template-stage-frame-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 30px;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.template-stage-frame-block {
+  background: rgba(11, 12, 12, 0.06);
+  border-radius: 4px;
+}
+
+.template-stage-frame-block-tall {
+  grid-row: span 2;
+  background: rgba(240, 204, 39, 0.32);
+}
+
+.template-stage-frame-foot {
+  position: absolute;
+  bottom: 8px;
+  right: 14px;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.template-stage-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 480px;
+}
+
+.template-stage-tags li {
+  padding: 6px 12px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 999px;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.template-stage-active .template-stage-tags li {
+  animation: template-stage-tag-enter 480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.template-stage-active .template-stage-tags li:nth-child(1) { animation-delay: 800ms; }
+.template-stage-active .template-stage-tags li:nth-child(2) { animation-delay: 920ms; }
+.template-stage-active .template-stage-tags li:nth-child(3) { animation-delay: 1040ms; }
+.template-stage-active .template-stage-tags li:nth-child(4) { animation-delay: 1160ms; }
+
+@keyframes template-stage-tag-enter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Stage 3: Download lights up ---------------------------------------- */
+
+.download-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 28px;
+}
+
+.download-stage-tile {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  display: grid;
+  gap: 6px;
+  padding: 22px 24px;
+  background: rgba(11, 12, 12, 0.04);
+  border: 2px dashed rgba(11, 12, 12, 0.18);
+  border-radius: 14px;
+  text-align: center;
+  transition:
+    background 480ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 480ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 480ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 480ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.download-stage-active .download-stage-tile {
+  background: var(--blue);
+  border-color: var(--blue);
+  border-style: solid;
+  color: #ffffff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 24px 56px -22px rgba(26, 106, 255, 0.7);
+  animation: download-stage-pulse 2400ms ease-in-out infinite;
+  animation-delay: 1400ms;
+}
+
+@keyframes download-stage-pulse {
+  0%, 100% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 24px 56px -22px rgba(26, 106, 255, 0.7); }
+  50% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 28px 64px -22px rgba(26, 106, 255, 0.85); }
+}
+
+.download-stage-tile-spinner-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 4px;
+}
+
+.download-stage-tile-spinner {
+  position: absolute;
+  inset: 0;
+  width: 32px;
+  height: 32px;
+  border: 2.5px solid rgba(11, 12, 12, 0.18);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: download-stage-spin 800ms linear infinite;
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+
+.download-stage-active .download-stage-tile-spinner {
+  animation-duration: 600ms;
+}
+
+.download-stage-active .download-stage-tile-spinner {
+  border-color: rgba(255, 255, 255, 0.32);
+  border-top-color: #ffffff;
+}
+
+.download-stage-tile-check {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+  opacity: 0;
+}
+
+.download-stage-active .download-stage-tile-check {
+  animation: download-stage-check 480ms cubic-bezier(0.16, 1, 0.3, 1) 1300ms forwards;
+}
+
+.download-stage-active .download-stage-tile-spinner {
+  animation: download-stage-spin 600ms linear infinite, download-stage-spinner-fade 360ms ease-out 1200ms forwards;
+}
+
+@keyframes download-stage-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes download-stage-spinner-fade {
+  to { opacity: 0; }
+}
+
+@keyframes download-stage-check {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.download-stage-tile-label {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+}
+
+.download-stage-tile-sub {
+  margin: 0;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+
+.download-stage-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.download-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 999px;
+  font-family: var(--font-jetbrains-mono), monospace;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.download-stage-active .download-stage-pill {
+  animation: download-stage-pill-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.download-stage-active .download-stage-pill:nth-child(1) { animation-delay: 1500ms; }
+.download-stage-active .download-stage-pill:nth-child(2) { animation-delay: 1620ms; }
+.download-stage-active .download-stage-pill:nth-child(3) { animation-delay: 1740ms; }
+
+@keyframes download-stage-pill-enter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.download-stage-pill-glyph {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.download-stage-pill-blue  .download-stage-pill-glyph { background: var(--blue); }
+.download-stage-pill-amber .download-stage-pill-glyph { background: #f0cc27; }
+.download-stage-pill-green .download-stage-pill-glyph { background: #16a34a; }
+
+@media (prefers-reduced-motion: reduce) {
+  .drop-stage-pill,
+  .template-stage-frame,
+  .template-stage-tags li,
+  .download-stage-pill,
+  .download-stage-tile-spinner,
+  .download-stage-tile-check,
+  .drop-stage-cursor {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+
+  .download-stage-active .download-stage-tile {
+    animation: none;
+  }
+}
 
 /* ============================================================================
    Variant J · Hero demo flow (3-box self-explanatory animation)
