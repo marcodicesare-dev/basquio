@@ -1,9 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 
+import { HeroDemoFlow } from "@/components/hero-demo-flow";
+
 export function MarketingHeroJ() {
   return (
-    <section className="hero-j" aria-labelledby="hero-j-headline">
+    <section className="hero-j hero-j-with-demo" aria-labelledby="hero-j-headline">
       <Image
         className="hero-j-background"
         src="/marketing/hero-candidates/basquio-memory-context-08.jpg"
@@ -39,6 +41,10 @@ export function MarketingHeroJ() {
           <span className="hero-j-trust-dot" aria-hidden="true" />
           Security and data handling
         </Link>
+      </div>
+
+      <div className="hero-j-demo-stage">
+        <HeroDemoFlow />
       </div>
     </section>
   );
