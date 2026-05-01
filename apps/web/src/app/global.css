@@ -10564,6 +10564,124 @@ body:has(.wbeta-chat-pane) .wbeta-workspace-layout {
   box-shadow: 0 0 0 3px rgba(26, 106, 255, 0.15);
 }
 
+/*
+ * Quick-slide card.
+ *
+ * Three states share the same shell so the layout does not jump as the
+ * status flips:
+ *   running -> soft surface, pulsing icon, phase line in muted text
+ *   ready   -> same surface, full-color icon, large download button
+ *   error   -> red-tinted surface, warning icon, plain-language message
+ *
+ * Sub-50ms perceived response: the icon pulse uses a CSS animation that
+ * starts immediately on render. The chip never goes blank between
+ * states; it just swaps the right column.
+ */
+.wbeta-quick-slide-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  margin: 6px 0;
+  min-height: 56px;
+}
+
+.wbeta-quick-slide-card-ready {
+  border-color: rgba(26, 106, 255, 0.3);
+  background: linear-gradient(0deg, rgba(26, 106, 255, 0.04), rgba(26, 106, 255, 0.04)), var(--surface);
+}
+
+.wbeta-quick-slide-card-error {
+  border-color: rgba(220, 38, 38, 0.3);
+  background: linear-gradient(0deg, rgba(220, 38, 38, 0.04), rgba(220, 38, 38, 0.04)), var(--surface);
+}
+
+.wbeta-quick-slide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: var(--surface-strong);
+  flex-shrink: 0;
+}
+
+.wbeta-quick-slide-card-ready .wbeta-quick-slide-icon {
+  color: var(--blue);
+  background: rgba(26, 106, 255, 0.10);
+}
+
+.wbeta-quick-slide-card-error .wbeta-quick-slide-icon {
+  color: rgb(185, 28, 28);
+  background: rgba(220, 38, 38, 0.10);
+}
+
+@keyframes wbeta-quick-slide-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.wbeta-quick-slide-icon-pulse {
+  animation: wbeta-quick-slide-pulse 1.4s ease-in-out infinite;
+}
+
+.wbeta-quick-slide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wbeta-quick-slide-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-quick-slide-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbeta-quick-slide-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--blue);
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: filter 120ms ease-out, transform 120ms ease-out;
+  flex-shrink: 0;
+}
+
+.wbeta-quick-slide-download:hover,
+.wbeta-quick-slide-download:focus-visible {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.wbeta-quick-slide-download:active {
+  transform: translateY(0);
+}
+
 .wbeta-sidebar-new {
   display: flex;
   align-items: center;

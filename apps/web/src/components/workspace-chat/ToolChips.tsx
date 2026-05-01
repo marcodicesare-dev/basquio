@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Brain,
   CaretDown,
@@ -12,6 +12,7 @@ import {
   Lightbulb,
   MagnifyingGlass,
   PencilSimpleLine,
+  PresentationChart,
   PushPinSimple,
   Sparkle,
   UserPlus,
@@ -1252,6 +1253,272 @@ export function ServiceSuggestionCard({
       ) : null}
     </div>
   );
+}
+
+/**
+ * QuickSlideCard: rendered when the agent calls the `quickSlide` tool.
+ *
+ * Lifecycle states (polled every 1.5-5s from /api/workspace/quick-slide/[id]):
+ *   queued  -> "Drafting your slide..." with the brief title.
+ *   running -> same chip plus a phase line (Reading the workbook /
+ *              Generating chart / Saving the file). No progress bar
+ *              because the model's pace is non-deterministic; we trick
+ *              the eye with phase changes instead.
+ *   ready   -> chip flips to a horizontal preview row: file icon on the
+ *              left, brief title on the right, large download button.
+ *   error   -> soft red, plain-language message. Retry button POSTs the
+ *              same brief to /api/workspace/quick-slide.
+ *
+ * Polling stops after 90s. If we still have not seen `ready` or `error`
+ * by then the chip surfaces "Still working, refresh to check" so the
+ * user is never stuck.
+ */
+export type QuickSlideCardOutput = {
+  ok: boolean;
+  run_id?: string;
+  status?: "queued" | "running" | "ready" | "error";
+  brief?: {
+    topic: string;
+    audience?: string;
+    data_focus?: string;
+    language?: "it" | "en";
+  };
+  scope?: { id: string; kind: string; name: string } | null;
+  evidence_count?: number;
+  error?: string;
+  message?: string;
+};
+
+type QuickSlideStatusResponse = {
+  id: string;
+  status: "queued" | "running" | "ready" | "error";
+  brief?: {
+    topic: string;
+    audience?: string;
+    data_focus?: string;
+    language?: "it" | "en";
+  };
+  last_event_phase: string | null;
+  last_event_message: string | null;
+  cost_usd: number | null;
+  duration_ms: number | null;
+  error_message: string | null;
+  ready: boolean;
+  download_url: string | null;
+};
+
+const QUICK_SLIDE_POLL_FAST_MS = 1500;
+const QUICK_SLIDE_POLL_SLOW_MS = 5000;
+const QUICK_SLIDE_POLL_FAST_FOR_MS = 30_000;
+const QUICK_SLIDE_POLL_GIVE_UP_MS = 90_000;
+
+export function QuickSlideCard({
+  state,
+  output,
+  errorText,
+}: {
+  state: ToolState;
+  output?: QuickSlideCardOutput;
+  errorText?: string;
+}) {
+  const isError = state === "output-error" || (output && output.ok === false);
+  const isInputStreaming = state === "input-streaming" || state === "input-available";
+
+  const runId = output?.ok ? output.run_id : undefined;
+  const initialBrief = output?.brief;
+
+  const [status, setStatus] = useState<QuickSlideStatusResponse | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadFetching, setDownloadFetching] = useState(false);
+  const startedAtRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    if (!runId) return;
+    if (status?.status === "ready" || status?.status === "error") return;
+
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/workspace/quick-slide/${runId}`, {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `Status fetch failed: ${res.status}`);
+        }
+        const next = (await res.json()) as QuickSlideStatusResponse;
+        if (cancelled) return;
+        setStatus(next);
+        setPollError(null);
+        if (next.status === "ready" || next.status === "error") return;
+      } catch (err) {
+        if (cancelled) return;
+        setPollError(err instanceof Error ? err.message : "Status fetch failed.");
+      }
+
+      const elapsed = Date.now() - startedAtRef.current;
+      if (elapsed >= QUICK_SLIDE_POLL_GIVE_UP_MS) return;
+      const interval =
+        elapsed < QUICK_SLIDE_POLL_FAST_FOR_MS
+          ? QUICK_SLIDE_POLL_FAST_MS
+          : QUICK_SLIDE_POLL_SLOW_MS;
+      timer = window.setTimeout(tick, interval);
+    };
+
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [runId, status?.status]);
+
+  // When status flips to ready, fetch a signed download URL eagerly so the
+  // download button works on the first click rather than asking for a
+  // second round-trip.
+  useEffect(() => {
+    if (status?.status !== "ready" || !runId || downloadUrl || downloadFetching) return;
+    setDownloadFetching(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/workspace/quick-slide/${runId}/download`, {
+          cache: "no-store",
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          signed_url?: string;
+          error?: string;
+        };
+        if (res.ok && body.signed_url) {
+          setDownloadUrl(body.signed_url);
+        } else if (body.error) {
+          setPollError(body.error);
+        }
+      } catch (err) {
+        setPollError(err instanceof Error ? err.message : "Download URL fetch failed.");
+      } finally {
+        setDownloadFetching(false);
+      }
+    })();
+  }, [status?.status, runId, downloadUrl, downloadFetching]);
+
+  const briefTopic =
+    status?.brief?.topic ?? initialBrief?.topic ?? "Quick slide";
+  const phase = status?.last_event_phase ?? null;
+  const phaseMessage = status?.last_event_message ?? null;
+  const elapsedMs = Date.now() - startedAtRef.current;
+  const stalled = elapsedMs >= QUICK_SLIDE_POLL_GIVE_UP_MS && status?.status !== "ready" && status?.status !== "error";
+
+  if (isError) {
+    return (
+      <div className="wbeta-ai-tool-chip wbeta-ai-tool-chip-error">
+        <span className="wbeta-ai-tool-icon" aria-hidden>
+          <WarningCircle size={14} weight="bold" />
+        </span>
+        <span className="wbeta-ai-tool-text">
+          {output?.message ?? errorText ?? "I could not start the quick slide."}
+        </span>
+      </div>
+    );
+  }
+
+  // No run id yet: tool is still streaming its input.
+  if (isInputStreaming || !runId) {
+    return (
+      <div className="wbeta-ai-tool-chip">
+        <span className="wbeta-ai-tool-icon" aria-hidden>
+          <PresentationChart size={14} weight="regular" />
+        </span>
+        <span className="wbeta-ai-tool-text">Drafting your slide</span>
+      </div>
+    );
+  }
+
+  // Pipeline error.
+  if (status?.status === "error") {
+    return (
+      <div className="wbeta-quick-slide-card wbeta-quick-slide-card-error" role="status">
+        <span className="wbeta-quick-slide-icon" aria-hidden>
+          <WarningCircle size={18} weight="fill" />
+        </span>
+        <div className="wbeta-quick-slide-body">
+          <span className="wbeta-quick-slide-title">Slide failed</span>
+          <span className="wbeta-quick-slide-meta">
+            {status.error_message ?? "The pipeline could not produce a slide. Try again with a simpler brief."}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Ready: show download.
+  if (status?.status === "ready") {
+    const filename = `quick-slide-${runId.slice(0, 8)}.pptx`;
+    return (
+      <div className="wbeta-quick-slide-card wbeta-quick-slide-card-ready" role="status">
+        <span className="wbeta-quick-slide-icon" aria-hidden>
+          <PresentationChart size={20} weight="fill" />
+        </span>
+        <div className="wbeta-quick-slide-body">
+          <span className="wbeta-quick-slide-title">{briefTopic}</span>
+          <span className="wbeta-quick-slide-meta">
+            Slide ready
+            {typeof status.duration_ms === "number"
+              ? `, ${Math.round(status.duration_ms / 1000)}s`
+              : ""}
+            {typeof status.cost_usd === "number"
+              ? `, $${status.cost_usd.toFixed(2)}`
+              : ""}
+          </span>
+        </div>
+        <a
+          className="wbeta-quick-slide-download"
+          href={downloadUrl ?? `/api/workspace/quick-slide/${runId}/download?redirect=true`}
+          download={filename}
+        >
+          <FileArrowDown size={14} weight="bold" aria-hidden />
+          <span>Download .pptx</span>
+        </a>
+      </div>
+    );
+  }
+
+  // queued or running.
+  return (
+    <div className="wbeta-quick-slide-card wbeta-quick-slide-card-running" role="status" aria-live="polite">
+      <span className="wbeta-quick-slide-icon wbeta-quick-slide-icon-pulse" aria-hidden>
+        <PresentationChart size={18} weight="regular" />
+      </span>
+      <div className="wbeta-quick-slide-body">
+        <span className="wbeta-quick-slide-title">{briefTopic}</span>
+        <span className="wbeta-quick-slide-meta">
+          {stalled
+            ? "Still working. Refresh to check."
+            : status?.status === "running"
+              ? phaseMessage ?? quickSlidePhaseLabel(phase)
+              : "Queued"}
+          {pollError ? ` (${pollError.slice(0, 80)})` : ""}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function quickSlidePhaseLabel(phase: string | null): string {
+  switch (phase) {
+    case "briefing":
+      return "Loading workspace context";
+    case "ingesting":
+      return "Reading the evidence";
+    case "generating":
+      return "Drafting the slide";
+    case "rendering":
+      return "Saving the file";
+    default:
+      return "Working on it";
+  }
 }
 
 function CardInlineHelp({ text }: { text: string }) {

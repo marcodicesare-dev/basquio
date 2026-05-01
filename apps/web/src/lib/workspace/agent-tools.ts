@@ -24,6 +24,7 @@ import {
 } from "@/lib/workspace/agent-tools-editorial";
 import { analystCommentaryTool } from "@/lib/workspace/agent-tools-analyst-commentary";
 import { webSearchTool } from "@/lib/workspace/agent-tools-web-search";
+import { quickSlideTool } from "@/lib/workspace/agent-tools-quick-slide";
 import { wrapChatTool } from "@/lib/workspace/chat-tool-telemetry";
 
 export type AgentCallContext = {
@@ -630,6 +631,7 @@ export function getAllTools(ctx: AgentCallContext) {
     scrapeUrl: scrapeUrlTool(ctx),
     webSearch: webSearchTool(ctx),
     draftBrief: draftBriefTool(ctx),
+    quickSlide: quickSlideTool(ctx),
     explainBasquio: explainBasquioTool(ctx),
     suggestServices: suggestServicesTool(ctx),
   } as const;

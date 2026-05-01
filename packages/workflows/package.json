@@ -10,6 +10,8 @@
     "./generate-deck": "./src/generate-deck.ts",
     "./failure-classifier": "./src/failure-classifier.ts",
     "./notify-completion": "./src/notify-completion.ts",
+    "./quick-slide/generate": "./src/quick-slide/generate.ts",
+    "./supabase": "./src/supabase.ts",
     "./workspace/constants": "./src/workspace/constants.ts",
     "./workspace/embeddings": "./src/workspace/embeddings.ts",
     "./workspace/extraction": "./src/workspace/extraction.ts",

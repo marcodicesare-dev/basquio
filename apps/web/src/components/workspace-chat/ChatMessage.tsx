@@ -24,6 +24,7 @@ import {
   ExtractionApprovalCard,
   MemoryReadChip,
   MetricCard,
+  QuickSlideCard,
   RetrieveContextChip,
   RuleEditApprovalCard,
   ServiceSuggestionCard,
@@ -32,6 +33,7 @@ import {
   StakeholderEditApprovalCard,
   TeachRuleCard,
   type BriefDraftCardOutput,
+  type QuickSlideCardOutput,
 } from "@/components/workspace-chat/ToolChips";
 import type { CitationInline } from "@/components/workspace-chat/CitationChip";
 import type { WorkspaceSuggestion } from "@/lib/workspace/suggestions";
@@ -448,6 +450,17 @@ export const ChatMessage = memo(function ChatMessage({
                   />
                 </>,
               );
+            case "quickSlide":
+              return frame(
+                <>
+                  {callChip}
+                  <QuickSlideCard
+                    state={state}
+                    output={toolPart.output as QuickSlideCardOutput}
+                    errorText={toolPart.errorText}
+                  />
+                </>,
+              );
             case "explainBasquio":
               return frame(
                 <>
@@ -660,6 +673,8 @@ function toolFrameLabel(toolName: string) {
       return "More saved knowledge";
     case "draftBrief":
       return "More brief detail";
+    case "quickSlide":
+      return "Quick-slide details";
     case "suggestServices":
       return "More service ideas";
     default:
@@ -864,6 +879,12 @@ function toolCopy(toolName: string): { using: string; used: string; failed: stri
         using: "Drafting your brief",
         used: "Drafted your brief",
         failed: "I could not draft the brief",
+      };
+    case "quickSlide":
+      return {
+        using: "Drafting your slide",
+        used: "Slide ready",
+        failed: "I could not produce the slide",
       };
     case "suggestServices":
       return {
