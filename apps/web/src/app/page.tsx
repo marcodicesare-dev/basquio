@@ -15,6 +15,7 @@ import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
 import { MotionSectionHead } from "@/components/motion-section-head";
 import { ScrollReveal } from "@/components/scroll-reveal";
+import { WorkflowBigBlocks } from "@/components/workflow-big-blocks";
 
 export const metadata: Metadata = {
   title: "Basquio · Da file di ricerca a presentazione, report e file Excel",
@@ -35,9 +36,13 @@ export default function HomePage() {
 
       <MarketingHeroJ />
 
+      <div id="how-it-works">
+        <WorkflowBigBlocks />
+      </div>
+
       <section className="section-j section-j-stack" id="product" aria-labelledby="product-heading">
         <MotionSectionHead className="section-j-stack-head">
-          <p className="section-j-eyebrow">Prodotto</p>
+          <p className="section-j-eyebrow">Esempio di output</p>
           <h2 id="product-heading" className="section-j-title">
             Una richiesta, tre file pronti.
           </h2>
@@ -86,38 +91,33 @@ export default function HomePage() {
           <header className="section-j-head">
             <p className="section-j-eyebrow section-j-eyebrow-light">Prezzi</p>
             <h2 id="buying-heading" className="section-j-title section-j-title-light">
-              Paga un output, o tieni il lavoro nel workspace.
+              Paga un output. O tieni il lavoro nel workspace.
             </h2>
             <p className="section-j-body section-j-body-light">
-              I crediti coprono l&apos;output singolo. Il workspace copre la continuità. Scegli quello
-              che corrisponde al lavoro.
+              Tre modi per usare Basquio. Scegli quello che corrisponde al tuo lavoro.
             </p>
           </header>
 
           <BuyingInterface variant="homepage" />
-
-          <p className="buying-iface-footnote buying-iface-footnote-light">
-            <Link href="/pricing">Vedi i dettagli del prezzo</Link>
-          </p>
         </ScrollReveal>
       </section>
 
       <section
         className="section-j section-j-stack"
-        id="reconciliation"
+        id="numbers-reconcile"
         aria-labelledby="reconciliation-heading"
       >
         <MotionSectionHead className="section-j-stack-head">
-          <p className="section-j-eyebrow">I numeri tornano</p>
+          <p className="section-j-eyebrow">Workbook</p>
           <h2 id="reconciliation-heading" className="section-j-title">
-            I tre file dicono lo stesso numero.
+            Ogni grafico ha una riga nel workbook. Ogni affermazione ha una fonte.
           </h2>
           <p className="section-j-body">
             I 1,9 punti di share di slide 04 corrispondono alla riga 4 del file Excel e alla
-            sezione 2 del report. Ogni numero ha una scheda, una riga e una fonte.
+            sezione 2 del report. Quando lo stakeholder ti contraddice, la risposta è a un clic.
           </p>
           <Link className="section-j-link" href="/jobs/new">
-            Vedi l&apos;output riconciliato
+            Vedi il workbook nell&apos;output
             <span aria-hidden="true">→</span>
           </Link>
         </MotionSectionHead>

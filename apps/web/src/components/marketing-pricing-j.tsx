@@ -1,187 +1,209 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 
-type BuyingMode = "one" | "workspace" | "team";
+/**
+ * BuyingInterface · three persistent vertical columns.
+ *
+ * Replaces the prior radio-toggle pattern that the team flagged in the May
+ * 2026 review: "the radio buttons overlap the columns. It seems like 'what
+ * you get' is in the previous thing." The new layout shows Output, Workspace,
+ * and Team side by side. Each column is self-contained with its own price,
+ * "for X" subhead, what you provide, what you get, and CTA.
+ *
+ * Workspace is highlighted as the recommended path. Output gets a worked
+ * cost example so visitors do not have to guess whether one analysis costs
+ * one dollar or a thousand.
+ */
 
-type ModeContent = {
+type Tier = {
+  id: "one" | "workspace" | "team";
   label: string;
-  caption: string;
-  provide: string[];
-  receive: string[];
+  forWho: string;
   price: string;
   priceCaption: string;
+  example?: string;
+  provide: string[];
+  receive: string[];
   ctaLabel: string;
   ctaHref: string;
   trial: string | null;
+  highlighted?: boolean;
 };
 
-const buyingModes: Record<BuyingMode, ModeContent> = {
-  one: {
-    label: "One output",
-    caption: "Pay as you go",
+const TIERS: Tier[] = [
+  {
+    id: "one",
+    label: "Un output",
+    forWho: "Per una singola analisi senza un flusso ricorrente",
+    price: "Da $19",
+    priceCaption: "Paghi per output, nessun abbonamento",
+    example: "Analisi completa, 10 slide, da $19. Per deck più grandi il prezzo si calcola al caricamento.",
     provide: [
-      "Brief in plain language",
-      "Data files (CSV or Excel)",
-      "Optional notes and old deck",
-      "Optional brand template",
+      "Brief in linguaggio semplice",
+      "File dati (CSV, Excel)",
+      "Appunti o vecchio deck (opzionali)",
+      "Template di brand (opzionale)",
     ],
     receive: [
-      "Estimated cost before you pay",
-      "Credit pack sized to the work",
-      "One run produces deck, report, and Excel",
-      "Download the files when the run completes",
+      "Stima del costo prima di pagare",
+      "Presentazione, report e file Excel",
+      "I numeri tornano fra i tre file",
+      "Scarichi quando la generazione finisce",
     ],
-    price: "Estimated after upload",
-    priceCaption: "No subscription. No free credits.",
-    ctaLabel: "Estimate one output",
+    ctaLabel: "Stima un output",
     ctaHref: "/jobs/new",
     trial: null,
   },
-  workspace: {
+  {
+    id: "workspace",
     label: "Workspace",
-    caption: "199 / month",
+    forWho: "Per chi fa ricerca ricorrente in autonomia",
+    price: "$199",
+    priceCaption: "al mese, un utente",
+    example: "Include l'uso mensile. La prossima richiesta parte già più vicino al risultato.",
     provide: [
-      "Recurring clients, brands, and projects",
-      "Briefs, notes, transcripts, past reviews",
-      "Brand rules and approved templates",
-      "Stakeholder preferences over time",
+      "Clienti, brand e progetti ricorrenti",
+      "Brief, appunti, trascrizioni, review passate",
+      "Regole di brand e template approvati",
+      "Preferenze degli stakeholder nel tempo",
     ],
     receive: [
-      "Private workspace memory across runs",
-      "Included monthly output usage",
-      "Charts, decks, reports, and workbooks",
-      "The next ask starts closer to done",
+      "Memoria privata fra le generazioni",
+      "Uso mensile di output incluso",
+      "Grafici, presentazioni, report, file Excel",
+      "La prossima richiesta parte già pronta",
     ],
-    price: "199",
-    priceCaption: "per month, one user",
-    ctaLabel: "Start the trial",
+    ctaLabel: "Avvia la prova di 7 giorni",
     ctaHref: "/get-started",
-    trial: "Card required. Charged on day 7. Cancel anytime before then.",
+    trial: "Serve la carta. Addebito al giorno 7. Cancelli quando vuoi prima.",
+    highlighted: true,
   },
-  team: {
+  {
+    id: "team",
     label: "Team",
-    caption: "From 500 / month",
+    forWho: "Per aziende con più utenti e contesto condiviso",
+    price: "Custom",
+    priceCaption: "due o più utenti",
+    example: "Onboarding concierge: mappa stakeholder, dizionario KPI, review precedenti.",
     provide: [
-      "Team projects and roles",
-      "Shared brand rules and templates",
-      "Stakeholder map across functions",
-      "Recurring deliverable rhythm",
+      "Progetti e ruoli del team",
+      "Regole di brand e template condivisi",
+      "Mappa stakeholder per funzione",
+      "Ritmo ricorrente delle consegne",
     ],
     receive: [
-      "Shared workspace and projects",
-      "Memory across brands and stakeholders",
-      "Concierge onboarding (stakeholder map, KPI dictionary, last reviews)",
-      "Normal team usage included",
+      "Workspace e progetti condivisi",
+      "Memoria fra brand e stakeholder",
+      "Onboarding concierge",
+      "Uso del team incluso",
     ],
-    price: "From 500",
-    priceCaption: "per month, two or more users",
-    ctaLabel: "Talk about a team pilot",
+    ctaLabel: "Parlaci di un pilota team",
     ctaHref: "/about",
     trial: null,
   },
-};
-
-const modeOrder: BuyingMode[] = ["one", "workspace", "team"];
+];
 
 export function BuyingInterface({
   variant = "homepage",
-  defaultMode,
 }: {
   variant?: "homepage" | "pricing";
-  defaultMode?: BuyingMode;
 }) {
-  const initialMode: BuyingMode =
-    defaultMode ?? (variant === "pricing" ? "one" : "workspace");
-  const [mode, setMode] = useState<BuyingMode>(initialMode);
-  const active = buyingModes[mode];
-
   return (
-    <div className={`buying-iface buying-iface-${variant}`}>
-      <div
-        role="radiogroup"
-        aria-label="Choose how you want to use Basquio"
-        className="buying-iface-modes"
-      >
-        {modeOrder.map((m) => {
-          const content = buyingModes[m];
-          const selected = mode === m;
-          return (
-            <button
-              key={m}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              tabIndex={selected ? 0 : -1}
-              className={
-                selected ? "buying-iface-mode buying-iface-mode-active" : "buying-iface-mode"
-              }
-              onClick={() => setMode(m)}
-            >
-              <span className="buying-iface-mode-radio" aria-hidden="true">
-                <span className="buying-iface-mode-radio-dot" />
-              </span>
-              <span className="buying-iface-mode-text">
-                <span className="buying-iface-mode-label">{content.label}</span>
-                <span className="buying-iface-mode-caption">{content.caption}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+    <div className={`buying-iface buying-iface-${variant} buying-iface-grid`}>
+      {TIERS.map((tier) => (
+        <article
+          key={tier.id}
+          className={
+            tier.highlighted
+              ? "buying-iface-card buying-iface-card-highlighted"
+              : "buying-iface-card"
+          }
+          aria-labelledby={`buying-card-${tier.id}-label`}
+        >
+          {tier.highlighted && (
+            <p className="buying-iface-card-flag" aria-hidden="true">
+              Consigliato
+            </p>
+          )}
 
-      <div className="buying-iface-body">
-        <section className="buying-iface-col" aria-labelledby={`buying-provide-${mode}`}>
-          <h3 id={`buying-provide-${mode}`} className="buying-iface-col-head">
-            You provide
-          </h3>
-          <ul className="buying-iface-list">
-            {active.provide.map((line) => (
-              <li key={line}>
-                <span className="buying-iface-tick" aria-hidden="true" />
-                {line}
-              </li>
-            ))}
-          </ul>
-        </section>
+          <header className="buying-iface-card-head">
+            <p id={`buying-card-${tier.id}-label`} className="buying-iface-card-label">
+              {tier.label}
+            </p>
+            <p className="buying-iface-card-for">{tier.forWho}</p>
+          </header>
 
-        <section className="buying-iface-col" aria-labelledby={`buying-receive-${mode}`}>
-          <h3 id={`buying-receive-${mode}`} className="buying-iface-col-head">
-            What you get
-          </h3>
-          <ul className="buying-iface-list">
-            {active.receive.map((line) => (
-              <li key={line}>
-                <span className="buying-iface-tick buying-iface-tick-amber" aria-hidden="true" />
-                {line}
-              </li>
-            ))}
-          </ul>
-        </section>
+          <div className="buying-iface-card-price-block">
+            <p className="buying-iface-card-price">{tier.price}</p>
+            <p className="buying-iface-card-price-caption">{tier.priceCaption}</p>
+            {tier.example && (
+              <p className="buying-iface-card-example">{tier.example}</p>
+            )}
+          </div>
 
-        <aside className="buying-iface-checkout" aria-labelledby={`buying-price-${mode}`}>
-          <p className="buying-iface-price-eyebrow">Price</p>
-          <p id={`buying-price-${mode}`} className="buying-iface-price">
-            {active.price}
-          </p>
-          <p className="buying-iface-price-caption">{active.priceCaption}</p>
-          <p
-            className={
-              active.trial
-                ? "buying-iface-trial"
-                : "buying-iface-trial buying-iface-trial-empty"
-            }
-            aria-hidden={active.trial ? undefined : true}
-          >
-            {active.trial ?? "."}
-          </p>
-          <Link className="buying-iface-cta" href={active.ctaHref}>
-            {active.ctaLabel}
+          <Link className="buying-iface-card-cta" href={tier.ctaHref}>
+            {tier.ctaLabel}
             <span aria-hidden="true">→</span>
           </Link>
-        </aside>
-      </div>
+
+          <p
+            className={
+              tier.trial
+                ? "buying-iface-card-trial"
+                : "buying-iface-card-trial buying-iface-card-trial-empty"
+            }
+            aria-hidden={tier.trial ? undefined : true}
+          >
+            {tier.trial ?? "."}
+          </p>
+
+          <div className="buying-iface-card-lists">
+            <section
+              className="buying-iface-card-section"
+              aria-labelledby={`buying-card-${tier.id}-provide`}
+            >
+              <h3
+                id={`buying-card-${tier.id}-provide`}
+                className="buying-iface-card-section-head"
+              >
+                Cosa fornisci
+              </h3>
+              <ul className="buying-iface-card-list">
+                {tier.provide.map((line) => (
+                  <li key={line}>
+                    <span className="buying-iface-card-tick" aria-hidden="true" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section
+              className="buying-iface-card-section"
+              aria-labelledby={`buying-card-${tier.id}-receive`}
+            >
+              <h3
+                id={`buying-card-${tier.id}-receive`}
+                className="buying-iface-card-section-head"
+              >
+                Cosa ricevi
+              </h3>
+              <ul className="buying-iface-card-list">
+                {tier.receive.map((line) => (
+                  <li key={line}>
+                    <span
+                      className="buying-iface-card-tick buying-iface-card-tick-amber"
+                      aria-hidden="true"
+                    />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </article>
+      ))}
     </div>
   );
 }

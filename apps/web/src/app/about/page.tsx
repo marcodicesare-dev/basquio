@@ -16,23 +16,23 @@ const TEAM_MEMBERS = [
   {
     initials: "MD",
     name: "Marco Di Cesare",
-    role: "Engineering",
+    role: "ex-NielsenIQ · research, insight, marketing, trade",
     background:
-      "Full-stack engineer. Costruisce la pipeline che trasforma brief, dati, appunti e template in presentazione, report e file Excel.",
+      "Anni dentro la ricerca di mercato FMCG e CPG prima di costruire la pipeline che trasforma brief, dati, appunti e template in presentazione, report e file Excel.",
   },
   {
-    initials: "GM",
-    name: "Giulia Monica",
-    role: "Brand management",
+    initials: "FP",
+    name: "Francesco Procaccio",
+    role: "Senior Consultant, NielsenIQ",
     background:
-      "Brand manager in Mondelez. La persona che riceve la presentazione e la presenta in riunione.",
+      "Senior consultant in NielsenIQ. L'analista che vive il ciclo brief, dati, template e scadenza ogni settimana. Disegna l'esperienza analista dentro Basquio.",
   },
   {
     initials: "NIQ",
-    name: "Analisti ex-NielsenIQ",
-    role: "Ricerca di mercato",
+    name: "Il team",
+    role: "ex-analisti FMCG e CPG",
     background:
-      "Tre analisti che hanno lavorato in NielsenIQ e che vivevano il ciclo brief, dati, template, scadenza ogni settimana. Disegnano l'esperienza analista dentro Basquio.",
+      "Un piccolo team di analisti e contributori brand che costruivano category review a mano. Rivedono ogni output, ogni regola di brand e ogni template profile che entra in Basquio.",
   },
 ] as const;
 
