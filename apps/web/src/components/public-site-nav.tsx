@@ -52,10 +52,17 @@ export function PublicSiteNav() {
         <div className="public-nav-auth">
           <Link
             href="/sign-in?next=%2Fdashboard"
-            className="public-nav-signin"
+            className="public-nav-signin-link"
             onClick={() => setOpen(false)}
           >
             Sign in
+          </Link>
+          <Link
+            href="/jobs/new"
+            className="public-nav-cta"
+            onClick={() => setOpen(false)}
+          >
+            Try with your data
           </Link>
         </div>
       </div>
