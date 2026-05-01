@@ -4,7 +4,6 @@ import Link from "next/link";
 import { BuyingInterface } from "@/components/marketing-pricing-j";
 import { MarketingHeroJ } from "@/components/marketing-hero-j";
 import {
-  ProductSlideMockup,
   ReportExcerptMockup,
   SecurityAuditMockup,
   WorkbookMockup,
@@ -40,27 +39,6 @@ export default function HomePage() {
         <WorkflowBigBlocks />
       </div>
 
-      <section className="section-j section-j-stack" id="product" aria-labelledby="product-heading">
-        <MotionSectionHead className="section-j-stack-head">
-          <p className="section-j-eyebrow">Example output</p>
-          <h2 id="product-heading" className="section-j-title">
-            One run, three finished files.
-          </h2>
-          <p className="section-j-body">
-            Basquio reads the brief and the material. One run produces the deck, the report, and
-            the Excel workbook your stakeholder asked for.
-          </p>
-          <Link className="section-j-link" href="/jobs/new">
-            See what Basquio produces
-            <span aria-hidden="true">→</span>
-          </Link>
-        </MotionSectionHead>
-
-        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
-          <ProductSlideMockup />
-        </ScrollReveal>
-      </section>
-
       <section className="section-j section-j-stack" id="workspace" aria-labelledby="workspace-heading">
         <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Workspace</p>
@@ -68,9 +46,8 @@ export default function HomePage() {
             A workspace that learns the brand, the brief, and the analyst.
           </h2>
           <p className="section-j-body">
-            Basquio holds the client, the template, the past reviews, and the stakeholder you
-            present to. So the next deck starts with the context already in place, and you spend
-            your time on analysis instead of rebuilding it from scratch.
+            Client, template, past reviews, stakeholder. Held in one place. The next deck starts
+            closer to done.
           </p>
           <Link className="section-j-link" href="/#workspace">
             See the workspace
