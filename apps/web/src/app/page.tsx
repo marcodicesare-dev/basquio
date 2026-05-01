@@ -65,11 +65,12 @@ export default function HomePage() {
         <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Workspace</p>
           <h2 id="workspace-heading" className="section-j-title">
-            Basquio ricorda il lavoro di ricerca.
+            Un workspace che impara il brand, il brief e l&apos;analista.
           </h2>
           <p className="section-j-body">
-            Cliente, brand, template, ultima riunione, review precedenti, format approvati. La
-            prossima richiesta parte già dal punto giusto.
+            Basquio tiene il cliente, il template, le review passate e lo stakeholder a cui
+            presenti. Così la prossima presentazione parte già con il contesto al suo posto, e tu
+            usi il tempo per l&apos;analisi invece di ricostruirla da zero.
           </p>
           <Link className="section-j-link" href="/#workspace">
             Vedi il workspace

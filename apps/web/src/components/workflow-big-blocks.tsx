@@ -132,7 +132,7 @@ export function WorkflowBigBlocks() {
       <header className="workflow-big-head">
         <p className="section-j-eyebrow">Come funziona</p>
         <h2 id="workflow-big-heading" className="section-j-title">
-          Tre passi. Lo stesso gesto ogni volta.
+          Due settimane di analisi. Consegnate in poche ore.
         </h2>
         <p className="section-j-body">
           Carica gli input, carica un template, scarica l&apos;analisi. Basquio si occupa della
