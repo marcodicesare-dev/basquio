@@ -4,7 +4,6 @@ import Link from "next/link";
 import { BuyingInterface } from "@/components/marketing-pricing-j";
 import { MarketingHeroJ } from "@/components/marketing-hero-j";
 import {
-  ReportExcerptMockup,
   SecurityAuditMockup,
   WorkbookMockup,
   WorkspaceHomeMockup,
@@ -102,27 +101,6 @@ export default function HomePage() {
 
         <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
           <WorkbookMockup />
-        </ScrollReveal>
-      </section>
-
-      <section className="section-j section-j-stack" aria-labelledby="about-heading">
-        <MotionSectionHead className="section-j-stack-head">
-          <p className="section-j-eyebrow">About</p>
-          <h2 id="about-heading" className="section-j-title">
-            Built by FMCG and CPG analysts who lived this work.
-          </h2>
-          <p className="section-j-body">
-            Basquio comes from engineering, brand, category, and market research work inside FMCG
-            and CPG companies.
-          </p>
-          <Link className="section-j-link" href="/about">
-            Meet the team
-            <span aria-hidden="true">→</span>
-          </Link>
-        </MotionSectionHead>
-
-        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
-          <ReportExcerptMockup />
         </ScrollReveal>
       </section>
 
