@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { JetBrains_Mono, Manrope } from "next/font/google";
+import { Caveat, JetBrains_Mono, Manrope } from "next/font/google";
 import Script from "next/script";
 
 import { IntercomProvider } from "@/components/intercom/intercom-provider";
@@ -15,6 +15,12 @@ const manrope = Manrope({
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains-mono",
+});
+
+const caveat = Caveat({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-caveat",
 });
 
 export const metadata: Metadata = {
@@ -147,7 +153,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className={`${manrope.variable} ${jetbrainsMono.variable}`}>
+      <body className={`${manrope.variable} ${jetbrainsMono.variable} ${caveat.variable}`}>
         <IntercomProvider>
           <div className="site-wrap">{children}</div>
         </IntercomProvider>
