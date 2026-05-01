@@ -25907,24 +25907,25 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 
 /* ============================================================================
-   Variant J · Workflow big blocks
-   Three large animated blocks placed after the hero. Each block fills most
-   of the viewport: large copy on the left, an animated illustration of the
-   action on the right. May 2026 review feedback: "they're rectangles, but
-   they're almost the whole page. To animate an action is better than to
-   animate a writing."
+   Variant J · Workflow big blocks (horizontal three column section)
+   Three columns sitting side by side after the hero. A cursor glides left
+   to right (files, template, download) running the same sequential action
+   demo we used inside the hero, but at full section width with much
+   larger pieces. May 2026 review feedback: animate the action, not the
+   text, and let the boxes feel "almost the whole page" wide so the demo
+   reads on its own without supporting copy.
    ============================================================================ */
 
 .workflow-big {
   display: grid;
-  gap: clamp(48px, 5vw, 72px);
-  padding: clamp(48px, 6vw, 96px) clamp(28px, 4vw, 56px);
+  gap: clamp(40px, 4.6vw, 64px);
+  padding: clamp(56px, 6vw, 96px) clamp(28px, 4vw, 64px);
 }
 
 .workflow-big-head {
   display: grid;
-  gap: 18px;
-  max-width: 720px;
+  gap: 16px;
+  max-width: 760px;
   margin: 0 auto;
   text-align: center;
   justify-items: center;
@@ -25934,167 +25935,251 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   justify-self: center;
 }
 
-.workflow-big-list {
-  display: grid;
-  gap: clamp(24px, 4vw, 48px);
-}
+/* Stage carrying the three step cards + the floating cursor sprite. */
 
-.workflow-big-block {
+.workflow-big-stage {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
-  gap: clamp(28px, 4vw, 56px);
+  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) 32px minmax(0, 1fr);
   align-items: stretch;
-  min-height: clamp(420px, 56vh, 560px);
-  padding: clamp(36px, 4vw, 56px);
-  background: #ffffff;
-  border: 1px solid rgba(11, 12, 12, 0.08);
-  border-radius: 18px;
-  overflow: hidden;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 32px 72px -28px rgba(11, 12, 12, 0.18),
-    0 12px 28px -16px rgba(11, 12, 12, 0.1);
-  transition: box-shadow 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 0;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
-.workflow-big-block-active {
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 40px 96px -32px rgba(11, 12, 12, 0.24),
-    0 14px 32px -18px rgba(11, 12, 12, 0.12);
+.workflow-big-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  width: 22px;
+  height: 24px;
+  pointer-events: none;
+  transition: transform 720ms cubic-bezier(0.16, 1, 0.3, 1);
+  filter: drop-shadow(0 6px 14px rgba(11, 12, 12, 0.32));
 }
 
-/* Alternate the layout per block so the eye doesn't fall asleep. */
-.workflow-big-block:nth-child(even) {
-  grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
-}
+/* Single step card (file drop, template drop, download tile). */
 
-.workflow-big-block:nth-child(even) .workflow-big-block-stage {
-  order: -1;
-}
-
-.workflow-big-block-text {
-  align-self: center;
+.workflow-big-step {
+  position: relative;
   display: grid;
-  align-content: start;
-  gap: 14px;
+  grid-template-rows: auto 1fr auto;
+  gap: 22px;
+  padding: clamp(24px, 2.4vw, 36px);
+  background: rgba(248, 245, 239, 0.75);
+  border: 1px dashed rgba(11, 12, 12, 0.22);
+  border-radius: 18px;
+  min-height: clamp(440px, 48vw, 560px);
+  transition:
+    background 360ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 360ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 360ms cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
-.workflow-big-block-number {
-  font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.86rem;
+.workflow-big-step-pale {
+  /* base / idle state */
+}
+
+.workflow-big-step-filled {
+  background: rgba(26, 106, 255, 0.06);
+  border-style: solid;
+  border-color: rgba(26, 106, 255, 0.32);
+}
+
+.workflow-big-step-loading {
+  background: rgba(26, 106, 255, 0.10);
+  border-style: solid;
+  border-color: rgba(26, 106, 255, 0.44);
+}
+
+.workflow-big-step-ready,
+.workflow-big-step-pressed {
+  background: var(--blue, #1A6AFF);
+  border-style: solid;
+  border-color: var(--blue, #1A6AFF);
+  color: #ffffff;
+  box-shadow: 0 32px 72px -28px rgba(26, 106, 255, 0.7);
+}
+
+.workflow-big-step-pressed {
+  transform: translateY(1px) scale(0.995);
+  box-shadow: 0 12px 28px -10px rgba(26, 106, 255, 0.6);
+}
+
+.workflow-big-step-accent.workflow-big-step-pale {
+  background: rgba(26, 106, 255, 0.04);
+  border-color: rgba(26, 106, 255, 0.22);
+}
+
+.workflow-big-step-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: rgba(11, 12, 12, 0.55);
+}
+
+.workflow-big-step-ready .workflow-big-step-head,
+.workflow-big-step-pressed .workflow-big-step-head {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.workflow-big-step-number {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.18em;
   color: var(--blue);
 }
 
-.workflow-big-block-eyebrow {
-  margin: 0;
-  font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+.workflow-big-step-ready .workflow-big-step-number,
+.workflow-big-step-pressed .workflow-big-step-number {
+  color: #ffffff;
 }
 
-.workflow-big-block-title {
+.workflow-big-step-eyebrow {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.workflow-big-step-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  padding: 8px 0 4px;
+}
+
+.workflow-big-step-text {
+  display: grid;
+  gap: 8px;
+}
+
+.workflow-big-step-title {
   margin: 0;
-  font-size: clamp(1.8rem, 3.2vw, 2.6rem);
-  line-height: 1.08;
-  letter-spacing: -0.022em;
+  font-size: clamp(1.18rem, 1.4vw, 1.4rem);
+  line-height: 1.18;
+  letter-spacing: -0.018em;
   font-weight: 600;
   color: var(--text);
-  text-wrap: balance;
 }
 
-.workflow-big-block-body {
+.workflow-big-step-ready .workflow-big-step-title,
+.workflow-big-step-pressed .workflow-big-step-title {
+  color: #ffffff;
+}
+
+.workflow-big-step-body {
   margin: 0;
-  font-size: 1.08rem;
-  line-height: 1.55;
+  font-size: 0.96rem;
+  line-height: 1.5;
   color: var(--text-soft);
 }
 
-.workflow-big-block-caption {
-  margin: 8px 0 0;
-  padding: 12px 14px;
-  font-size: 0.86rem;
-  line-height: 1.5;
-  color: var(--text);
-  background: rgba(11, 12, 12, 0.035);
-  border-left: 2px solid var(--blue);
-  border-radius: 0 6px 6px 0;
+.workflow-big-step-ready .workflow-big-step-body,
+.workflow-big-step-pressed .workflow-big-step-body {
+  color: rgba(255, 255, 255, 0.82);
 }
 
-.workflow-big-block-stage {
+/* Connector arrow between step cards. */
+
+.workflow-big-connector {
   position: relative;
-  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 320px;
-  background: linear-gradient(160deg, #fbfaf6 0%, #f3ecdb 100%);
-  border-radius: 14px;
-  border: 1px solid rgba(11, 12, 12, 0.06);
-  overflow: hidden;
+  width: 32px;
+  align-self: center;
+  height: 32px;
+  color: rgba(11, 12, 12, 0.32);
+  transition: color 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workflow-big-connector-line {
+  position: absolute;
+  inset: auto 0 50% 0;
+  height: 1px;
+  background: currentColor;
+  transform: translateY(50%);
+}
+
+.workflow-big-connector-arrow {
+  position: relative;
+  z-index: 1;
+  font-size: 18px;
+  font-weight: 600;
+  color: currentColor;
+  background: var(--canvas, #f6f1e2);
+  padding: 0 2px;
+}
+
+.workflow-big-connector-active {
+  color: var(--blue, #1A6AFF);
+}
+
+@keyframes workflow-big-connector-shimmer {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.workflow-big-connector-processing {
+  color: var(--blue, #1A6AFF);
+  animation: workflow-big-connector-shimmer 1200ms ease-in-out infinite;
 }
 
 @media (max-width: 960px) {
-  .workflow-big-block {
+  .workflow-big-stage {
     grid-template-columns: 1fr;
-    min-height: auto;
-    padding: 28px;
+    gap: 16px;
   }
 
-  .workflow-big-block:nth-child(even) {
-    grid-template-columns: 1fr;
+  .workflow-big-connector {
+    transform: rotate(90deg);
+    height: 28px;
+    width: 100%;
+    align-self: stretch;
   }
 
-  .workflow-big-block:nth-child(even) .workflow-big-block-stage {
-    order: 0;
+  .workflow-big-step {
+    min-height: 0;
+  }
+
+  .workflow-big-cursor {
+    display: none;
   }
 }
 
-/* --- Stage 1: Drop files ------------------------------------------------- */
+/* --- Files tray (step 01) ----------------------------------------------- */
 
-.drop-stage {
-  position: relative;
+.workflow-big-files {
   width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 28px;
-}
-
-.drop-stage-tray {
-  position: relative;
-  width: 100%;
-  max-width: 420px;
-  padding: 22px 22px 30px;
+  display: grid;
+  gap: 12px;
+  padding: 16px 16px 18px;
   background: #ffffff;
-  border: 2px dashed rgba(26, 106, 255, 0.32);
-  border-radius: 14px;
-  transition: border-color 320ms ease, background 320ms ease;
+  border: 1px solid rgba(11, 12, 12, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -28px rgba(11, 12, 12, 0.18);
 }
 
-.drop-stage-active .drop-stage-tray {
-  border-color: var(--blue);
-  background: linear-gradient(180deg, #ffffff 0%, rgba(26, 106, 255, 0.05) 100%);
-}
-
-.drop-stage-tray-label {
-  margin: 0 0 14px;
+.workflow-big-files-label {
+  margin: 0;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
-.drop-stage-tray-list {
+.workflow-big-files-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -26102,7 +26187,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   gap: 8px;
 }
 
-.drop-stage-pill {
+.workflow-big-file {
   display: grid;
   grid-template-columns: 38px 1fr;
   align-items: center;
@@ -26111,19 +26196,19 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   background: #ffffff;
   border: 1px solid rgba(11, 12, 12, 0.08);
   border-radius: 8px;
-  box-shadow: 0 8px 18px -10px rgba(11, 12, 12, 0.16);
+  box-shadow: 0 8px 18px -10px rgba(11, 12, 12, 0.12);
   opacity: 0;
-  transform: translate3d(60px, -16px, 0) rotate(2deg);
+  transform: translate3d(40px, -16px, 0) rotate(2deg);
 }
 
-.drop-stage-active .drop-stage-pill {
-  animation: drop-stage-pill-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.workflow-big-files-active .workflow-big-file {
+  animation: workflow-big-file-enter 580ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes drop-stage-pill-enter {
+@keyframes workflow-big-file-enter {
   from {
     opacity: 0;
-    transform: translate3d(60px, -16px, 0) rotate(2deg);
+    transform: translate3d(40px, -16px, 0) rotate(2deg);
   }
   60% {
     opacity: 1;
@@ -26135,12 +26220,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   }
 }
 
-.drop-stage-pill-glyph {
+.workflow-big-file-glyph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 26px;
-  border-radius: 4px;
+  height: 28px;
+  border-radius: 5px;
   font-family: var(--font-jetbrains-mono), monospace;
   font-size: 0.62rem;
   font-weight: 700;
@@ -26149,12 +26234,12 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   color: #ffffff;
 }
 
-.drop-stage-pill-xlsx .drop-stage-pill-glyph { background: #16a34a; }
-.drop-stage-pill-csv  .drop-stage-pill-glyph { background: #0ea5e9; }
-.drop-stage-pill-md   .drop-stage-pill-glyph { background: #6b7280; }
-.drop-stage-pill-pptx .drop-stage-pill-glyph { background: #d97706; }
+.workflow-big-file-xlsx .workflow-big-file-glyph { background: #16a34a; }
+.workflow-big-file-csv  .workflow-big-file-glyph { background: #0ea5e9; }
+.workflow-big-file-md   .workflow-big-file-glyph { background: #6b7280; }
+.workflow-big-file-pptx .workflow-big-file-glyph { background: #d97706; }
 
-.drop-stage-pill-name {
+.workflow-big-file-name {
   font-family: var(--font-jetbrains-mono), monospace;
   font-size: 0.84rem;
   letter-spacing: -0.005em;
@@ -26164,72 +26249,43 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   text-overflow: ellipsis;
 }
 
-.drop-stage-cursor {
-  position: absolute;
-  top: 12%;
-  right: -28px;
-  width: 24px;
-  height: 26px;
-  filter: drop-shadow(0 4px 8px rgba(11, 12, 12, 0.22));
-  opacity: 0;
-}
+/* --- Template frame (step 02) ------------------------------------------- */
 
-.drop-stage-active .drop-stage-cursor {
-  animation: drop-stage-cursor-glide 4200ms cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}
-
-@keyframes drop-stage-cursor-glide {
-  0% { opacity: 0; transform: translate3d(60px, -40px, 0); }
-  10%, 30% { opacity: 1; transform: translate3d(0, 0, 0); }
-  35% { opacity: 1; transform: translate3d(-2px, 4px, 0); }
-  85%, 100% { opacity: 0; transform: translate3d(60px, -40px, 0); }
-}
-
-/* --- Stage 2: Pick template --------------------------------------------- */
-
-.template-stage {
-  position: relative;
+.workflow-big-template {
   width: 100%;
-  height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
-  padding: 28px;
 }
 
-.template-stage-frame {
+.workflow-big-template-frame {
   width: 100%;
-  max-width: 480px;
   background: #ffffff;
   border: 1px solid rgba(11, 12, 12, 0.08);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 24px 48px -28px rgba(11, 12, 12, 0.24);
+  box-shadow: 0 24px 48px -28px rgba(11, 12, 12, 0.24);
   opacity: 0;
-  transform: scale(0.94) translateY(24px) rotate(-1.4deg);
+  transform: scale(0.92) translateY(28px) rotate(-1.4deg);
 }
 
-.template-stage-active .template-stage-frame {
-  animation: template-stage-snap 720ms cubic-bezier(0.16, 1, 0.3, 1) 200ms forwards;
+.workflow-big-template-active .workflow-big-template-frame {
+  animation: workflow-big-template-snap 720ms cubic-bezier(0.16, 1, 0.3, 1) 200ms forwards;
 }
 
-@keyframes template-stage-snap {
+@keyframes workflow-big-template-snap {
   to {
     opacity: 1;
     transform: scale(1) translateY(0) rotate(0);
   }
 }
 
-.template-stage-frame-meta {
+.workflow-big-template-frame-meta {
   display: grid;
-  grid-template-columns: 14px 1fr auto;
+  grid-template-columns: 14px 1fr;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 9px 12px;
   background: #fbfaf6;
   border-bottom: 1px solid rgba(11, 12, 12, 0.06);
   font-family: var(--font-jetbrains-mono), monospace;
@@ -26237,306 +26293,195 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   letter-spacing: 0.04em;
 }
 
-.template-stage-frame-mark {
+.workflow-big-template-mark {
   width: 14px;
   height: 11px;
   background: var(--blue);
   clip-path: polygon(0% 100%, 22% 28%, 35% 64%, 50% 0%, 65% 64%, 78% 28%, 100% 100%);
 }
 
-.template-stage-frame-name { color: var(--text); }
-.template-stage-frame-page { color: var(--text-muted); }
+.workflow-big-template-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-.template-stage-frame-body {
-  position: relative;
+.workflow-big-template-frame-body {
   display: grid;
-  gap: 12px;
-  padding: 22px 22px 18px;
+  gap: 10px;
+  padding: 18px 18px 22px;
   background: linear-gradient(180deg, #ffffff 0%, #fdfcf8 100%);
-  min-height: 220px;
+  min-height: 180px;
 }
 
-.template-stage-frame-title {
-  display: grid;
-  gap: 6px;
-}
-
-.template-stage-frame-title-bar {
+.workflow-big-template-bar {
   height: 11px;
   width: 78%;
   border-radius: 3px;
   background: rgba(11, 12, 12, 0.16);
 }
 
-.template-stage-frame-title-bar-short {
-  width: 52%;
+.workflow-big-template-bar-short {
+  width: 50%;
   background: rgba(26, 106, 255, 0.42);
 }
 
-.template-stage-frame-grid {
+.workflow-big-template-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 30px;
+  grid-auto-rows: 26px;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
-.template-stage-frame-block {
+.workflow-big-template-grid > span {
   background: rgba(11, 12, 12, 0.06);
   border-radius: 4px;
 }
 
-.template-stage-frame-block-tall {
+.workflow-big-template-grid-tall {
   grid-row: span 2;
-  background: rgba(240, 204, 39, 0.32);
+  background: rgba(240, 204, 39, 0.32) !important;
 }
 
-.template-stage-frame-foot {
-  position: absolute;
-  bottom: 8px;
-  right: 14px;
-  font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
+/* --- Download tile (step 03) -------------------------------------------- */
 
-.template-stage-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-width: 480px;
-}
-
-.template-stage-tags li {
-  padding: 6px 12px;
-  background: #ffffff;
-  border: 1px solid rgba(11, 12, 12, 0.08);
-  border-radius: 999px;
-  font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.74rem;
-  letter-spacing: 0.02em;
-  color: var(--text);
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-.template-stage-active .template-stage-tags li {
-  animation: template-stage-tag-enter 480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.template-stage-active .template-stage-tags li:nth-child(1) { animation-delay: 800ms; }
-.template-stage-active .template-stage-tags li:nth-child(2) { animation-delay: 920ms; }
-.template-stage-active .template-stage-tags li:nth-child(3) { animation-delay: 1040ms; }
-.template-stage-active .template-stage-tags li:nth-child(4) { animation-delay: 1160ms; }
-
-@keyframes template-stage-tag-enter {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* --- Stage 3: Download lights up ---------------------------------------- */
-
-.download-stage {
-  position: relative;
+.workflow-big-download {
   width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 22px;
-  padding: 28px;
+  display: grid;
+  gap: 14px;
 }
 
-.download-stage-tile {
-  position: relative;
-  width: 100%;
-  max-width: 360px;
+.workflow-big-download-tile {
   display: grid;
   gap: 6px;
-  padding: 22px 24px;
-  background: rgba(11, 12, 12, 0.04);
-  border: 2px dashed rgba(11, 12, 12, 0.18);
-  border-radius: 14px;
+  padding: 22px 22px;
+  background: rgba(255, 255, 255, 0.0);
+  border: 1px dashed rgba(255, 255, 255, 0.0);
+  border-radius: 12px;
   text-align: center;
   transition:
     background 480ms cubic-bezier(0.16, 1, 0.3, 1),
     border-color 480ms cubic-bezier(0.16, 1, 0.3, 1),
-    color 480ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 480ms cubic-bezier(0.16, 1, 0.3, 1);
+    color 480ms cubic-bezier(0.16, 1, 0.3, 1);
+  color: rgba(11, 12, 12, 0.7);
 }
 
-.download-stage-active .download-stage-tile {
-  background: var(--blue);
-  border-color: var(--blue);
+.workflow-big-download-pale .workflow-big-download-tile,
+.workflow-big-download-filled .workflow-big-download-tile {
+  background: rgba(11, 12, 12, 0.04);
+  border-color: rgba(11, 12, 12, 0.16);
+  color: rgba(11, 12, 12, 0.7);
+}
+
+.workflow-big-download-loading .workflow-big-download-tile {
+  background: rgba(26, 106, 255, 0.08);
+  border-color: rgba(26, 106, 255, 0.32);
+  color: var(--blue);
+}
+
+.workflow-big-download-ready .workflow-big-download-tile,
+.workflow-big-download-pressed .workflow-big-download-tile {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.36);
   border-style: solid;
   color: #ffffff;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.18) inset,
-    0 24px 56px -22px rgba(26, 106, 255, 0.7);
-  animation: download-stage-pulse 2400ms ease-in-out infinite;
-  animation-delay: 1400ms;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset;
 }
 
-@keyframes download-stage-pulse {
-  0%, 100% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 24px 56px -22px rgba(26, 106, 255, 0.7); }
-  50% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 28px 64px -22px rgba(26, 106, 255, 0.85); }
-}
-
-.download-stage-tile-spinner-wrap {
-  position: relative;
-  width: 32px;
-  height: 32px;
-  margin: 0 auto 4px;
-}
-
-.download-stage-tile-spinner {
-  position: absolute;
-  inset: 0;
-  width: 32px;
-  height: 32px;
-  border: 2.5px solid rgba(11, 12, 12, 0.18);
-  border-top-color: var(--blue);
-  border-radius: 50%;
-  animation: download-stage-spin 800ms linear infinite;
-  opacity: 1;
-  transition: opacity 240ms ease;
-}
-
-.download-stage-active .download-stage-tile-spinner {
-  animation-duration: 600ms;
-}
-
-.download-stage-active .download-stage-tile-spinner {
-  border-color: rgba(255, 255, 255, 0.32);
-  border-top-color: #ffffff;
-}
-
-.download-stage-tile-check {
-  position: absolute;
-  inset: 0;
-  display: flex;
+.workflow-big-download-icon,
+.workflow-big-download-spinner,
+.workflow-big-download-check {
+  margin: 0 auto 6px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  font-weight: 700;
-  color: #ffffff;
-  opacity: 0;
 }
 
-.download-stage-active .download-stage-tile-check {
-  animation: download-stage-check 480ms cubic-bezier(0.16, 1, 0.3, 1) 1300ms forwards;
+.workflow-big-download-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2.5px solid rgba(26, 106, 255, 0.24);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: workflow-big-download-spin 720ms linear infinite;
 }
 
-.download-stage-active .download-stage-tile-spinner {
-  animation: download-stage-spin 600ms linear infinite, download-stage-spinner-fade 360ms ease-out 1200ms forwards;
-}
-
-@keyframes download-stage-spin {
+@keyframes workflow-big-download-spin {
   to { transform: rotate(360deg); }
 }
 
-@keyframes download-stage-spinner-fade {
-  to { opacity: 0; }
+.workflow-big-download-check {
+  font-size: 22px;
+  font-weight: 700;
 }
 
-@keyframes download-stage-check {
-  from { opacity: 0; transform: scale(0.6); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.download-stage-tile-label {
+.workflow-big-download-label {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.012em;
 }
 
-.download-stage-tile-sub {
-  margin: 0;
-  font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.74rem;
-  letter-spacing: 0.02em;
-  opacity: 0.78;
-}
-
-.download-stage-pills {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+.workflow-big-download-pills {
+  display: grid;
   gap: 8px;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.download-stage-pill {
-  display: inline-flex;
+.workflow-big-download-pill {
+  display: grid;
+  grid-template-columns: 12px 1fr;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: #ffffff;
+  gap: 10px;
+  padding: 9px 14px;
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(11, 12, 12, 0.08);
-  border-radius: 999px;
+  border-radius: 8px;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.84rem;
+  font-size: 0.86rem;
   font-weight: 500;
   color: var(--text);
   opacity: 0;
   transform: translateY(8px);
+  transition:
+    opacity 380ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.download-stage-active .download-stage-pill {
-  animation: download-stage-pill-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.workflow-big-download-pill-ready {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-.download-stage-active .download-stage-pill:nth-child(1) { animation-delay: 1500ms; }
-.download-stage-active .download-stage-pill:nth-child(2) { animation-delay: 1620ms; }
-.download-stage-active .download-stage-pill:nth-child(3) { animation-delay: 1740ms; }
-
-@keyframes download-stage-pill-enter {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.download-stage-pill-glyph {
+.workflow-big-download-pill-glyph {
   display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
 }
 
-.download-stage-pill-blue  .download-stage-pill-glyph { background: var(--blue); }
-.download-stage-pill-amber .download-stage-pill-glyph { background: #f0cc27; }
-.download-stage-pill-green .download-stage-pill-glyph { background: #16a34a; }
+.workflow-big-download-pill-blue  .workflow-big-download-pill-glyph { background: var(--blue); }
+.workflow-big-download-pill-amber .workflow-big-download-pill-glyph { background: #f0cc27; }
+.workflow-big-download-pill-green .workflow-big-download-pill-glyph { background: #16a34a; }
 
 @media (prefers-reduced-motion: reduce) {
-  .drop-stage-pill,
-  .template-stage-frame,
-  .template-stage-tags li,
-  .download-stage-pill,
-  .download-stage-tile-spinner,
-  .download-stage-tile-check,
-  .drop-stage-cursor {
+  .workflow-big-cursor,
+  .workflow-big-file,
+  .workflow-big-template-frame,
+  .workflow-big-download-pill,
+  .workflow-big-download-spinner,
+  .workflow-big-connector-processing {
     animation: none !important;
+    transition: none !important;
     opacity: 1;
     transform: none;
   }
-
-  .download-stage-active .download-stage-tile {
-    animation: none;
-  }
 }
+
 
 /* ============================================================================
    Variant J · Hero demo flow (3-box self-explanatory animation)
