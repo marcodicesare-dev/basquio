@@ -121,6 +121,33 @@ export async function POST(request: Request) {
   const modelMessages = await convertToModelMessages(uiMessages);
   const turnStartedAt = new Date();
 
+  // Eager persistence (SOTA pattern from Claude.ai, ChatGPT, Cursor): write
+  // the conversation row + user messages BEFORE we start the LLM stream.
+  // This means the sidebar shows the in-flight chat from second 0, and if
+  // the user closes the tab mid-stream the conversation is already there
+  // when they come back. The onFinish callbacks below upsert the full
+  // transcript with the assistant reply on top of the same row.
+  // Best-effort: a failed eager save must not block the stream. The
+  // onFinish save is the durable fallback.
+  void saveConversation({
+    id: conversationId,
+    workspaceId: workspace.id,
+    scopeId: scope?.id ?? null,
+    createdBy: viewer.user.id,
+    title,
+    messages: uiMessages,
+    metadata: {
+      user_email: viewer.user.email ?? null,
+      scope_name: scope?.name ?? null,
+      scope_kind: scope?.kind ?? null,
+      chat_mode_last: chatMode,
+      streaming_started_at: turnStartedAt.toISOString(),
+      streaming_in_progress: true,
+    },
+  }).catch((error) => {
+    console.error("[workspace/chat] eager saveConversation failed", error);
+  });
+
   // ──────────────────────────────────────────────────────────
   // Pre-Brief-2 path (CHAT_ROUTER_V2_ENABLED=false, default in production).
   // The tool catalogue here is byte-identical to the pre-Brief-2 release;

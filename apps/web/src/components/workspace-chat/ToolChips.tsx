@@ -110,11 +110,14 @@ export function RetrieveContextChip({
     chunk_count?: number;
     entity_count?: number;
     fact_count?: number;
+    auto_attached_count?: number;
+    auto_attached_document_ids?: string[];
     chunks?: Array<{
       label: string;
       source_type?: string;
       filename?: string | null;
       content?: string;
+      auto_attached?: boolean;
     }>;
   };
   errorText?: string;
@@ -124,6 +127,7 @@ export function RetrieveContextChip({
   const isError = state === "output-error";
   const chunks = output?.chunk_count ?? 0;
   const facts = output?.fact_count ?? 0;
+  const autoAttached = output?.auto_attached_count ?? 0;
 
   return (
     <div className={`wbeta-ai-tool-chip ${isError ? "wbeta-ai-tool-chip-error" : ""}`}>
@@ -142,7 +146,9 @@ export function RetrieveContextChip({
             : isDone
               ? chunks === 0 && facts === 0
                 ? "I checked your files. Nothing relevant yet."
-                : `Read ${chunks} ${chunks === 1 ? "excerpt" : "excerpts"} from your files${facts > 0 ? ` and ${facts} ${facts === 1 ? "fact" : "facts"}` : ""}`
+                : autoAttached > 0
+                  ? `Read ${chunks} ${chunks === 1 ? "excerpt" : "excerpts"} and pulled ${autoAttached} ${autoAttached === 1 ? "file" : "files"} into this chat`
+                  : `Read ${chunks} ${chunks === 1 ? "excerpt" : "excerpts"} from your files${facts > 0 ? ` and ${facts} ${facts === 1 ? "fact" : "facts"}` : ""}`
               : "Reading your files"}
         </span>
         <span className="wbeta-ai-tool-caret" aria-hidden>

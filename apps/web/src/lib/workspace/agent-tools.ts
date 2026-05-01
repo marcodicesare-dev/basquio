@@ -203,11 +203,21 @@ export function teachRuleTool(ctx: AgentCallContext) {
 /**
  * retrieveContext: pulls chunks + entities + facts relevant to the user's prompt.
  * Rendered as a subtle system chip "Searching workspace" during streaming.
+ *
+ * SOTA recall pattern (April 2026): when retrieval surfaces chunks from a
+ * workspace `knowledge_documents` row that is NOT yet attached to this
+ * conversation, the tool transparently creates the conversation_attachment
+ * behind the scenes. The user never sees "the file isn't attached" because
+ * by the time the agent's next turn fires analyzeAttachedFile, the file is.
+ *
+ * This kills the failure mode where the agent finds a workspace file via
+ * search but then refuses to read it because "no scope linked". This was
+ * Francesco's Apr 30 demo blocker. The recall is implicit, deterministic, idempotent.
  */
 export function retrieveContextTool(ctx: AgentCallContext) {
   return tool({
     description:
-      "Search the workspace knowledge base for chunks, entities, and facts relevant to a prompt. Use at the start of any analytical question.",
+      "Search the workspace knowledge base for chunks, entities, and facts relevant to a prompt. Use at the start of any analytical question. When this tool surfaces a workspace document that the user might want analyzed (CSV, XLSX, PDF, PPTX), the document is automatically attached to this conversation; you can immediately call analyzeAttachedFile or analystCommentary on the returned source_ids in the same turn without calling recallWorkspaceFile first.",
     inputSchema: z.object({
       query: z.string().min(3).max(500).describe("The user's question or a concise rephrasing."),
       scope: z.string().optional().describe("Optional scope hint. Defaults to the current scope."),
@@ -230,11 +240,54 @@ export function retrieveContextTool(ctx: AgentCallContext) {
         workspaceScopeId: scopeRow?.id ?? ctx.currentScopeId ?? null,
         organizationId: ctx.organizationId,
       });
+
+      // Auto-attach surfaced workspace documents to the conversation so the
+      // next analyzeAttachedFile call sees them without an explicit recall.
+      // Idempotent on conversation_attachments (conversation_id, document_id).
+      const autoAttachedDocIds = new Set<string>();
+      if (ctx.conversationId) {
+        const existingAttachments = await listConversationAttachments(ctx.conversationId).catch(
+          () => [],
+        );
+        const alreadyAttached = new Set(existingAttachments.map((a) => a.document_id));
+        const docIdsFromRetrieval = Array.from(
+          new Set(
+            context.chunks
+              .filter((c) => c.sourceType === "document" && !alreadyAttached.has(c.sourceId))
+              .map((c) => c.sourceId),
+          ),
+        ).slice(0, 6); // hard cap so a noisy match storm cannot attach 50 files
+
+        for (const docId of docIdsFromRetrieval) {
+          try {
+            const attached = await recordConversationAttachment({
+              conversationId: ctx.conversationId,
+              documentId: docId,
+              workspaceId: ctx.workspaceId,
+              workspaceScopeId: scopeRow?.id ?? ctx.currentScopeId ?? null,
+              uploadedBy: ctx.userEmail,
+              origin: "referenced-from-workspace",
+              metadata: {
+                auto_attached: true,
+                attached_via: "retrieveContext",
+                query: query.slice(0, 200),
+                attached_at: new Date().toISOString(),
+              },
+            });
+            if (attached) autoAttachedDocIds.add(docId);
+          } catch (err) {
+            console.error("[retrieveContext] auto-attach failed", { docId, err });
+          }
+        }
+      }
+
       return {
         scope: scopeRow ? { id: scopeRow.id, name: scopeRow.name, kind: scopeRow.kind } : null,
         chunk_count: context.chunks.length,
         entity_count: context.entities.length,
         fact_count: context.facts.length,
+        auto_attached_count: autoAttachedDocIds.size,
+        auto_attached_document_ids: Array.from(autoAttachedDocIds),
         chunks: context.chunks.slice(0, 8).map((c, i) => ({
           label: `s${i + 1}`,
           source_type: c.sourceType,
@@ -243,6 +296,7 @@ export function retrieveContextTool(ctx: AgentCallContext) {
           content: c.content.slice(0, 600),
           score: c.score,
           rank_source: c.rankSource,
+          auto_attached: c.sourceType === "document" && autoAttachedDocIds.has(c.sourceId),
         })),
         facts: context.facts.slice(0, 12).map((f) => ({
           id: f.id,

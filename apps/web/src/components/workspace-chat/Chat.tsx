@@ -560,9 +560,26 @@ export function WorkspaceChat({
       setActiveTurnStartedAt(startedAt);
       setPendingTurn({ text: trimmed, startedAt });
       setDraft("");
+      const wasFirstTurn = messages.length === 0;
       dispatchCurrentMessage(trimmed);
+      // SOTA pattern (Claude.ai, ChatGPT, Cursor): the conversation must
+      // appear in the sidebar from second 0, not when streaming finishes.
+      // The /api/workspace/chat route eager-saves the conversation row and
+      // first user message; here we trigger a sidebar refresh after a beat
+      // so the parent layout's listConversations() re-runs and renders
+      // the new entry. 600ms balances "feels instant" vs "DB write landed".
+      if (wasFirstTurn) {
+        window.setTimeout(() => {
+          try {
+            router.refresh();
+          } catch {
+            // Refresh is best-effort. If it fails the sidebar will catch
+            // up on the next navigation.
+          }
+        }, 600);
+      }
     },
-    [dispatchCurrentMessage, draft, hasUploadingAttachments, isBusy],
+    [dispatchCurrentMessage, draft, hasUploadingAttachments, isBusy, messages.length, router],
   );
 
   const handleSendFollowUp = useCallback(
