@@ -24337,11 +24337,6 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   transform: rotate(0deg);
   transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
-  /* Lock the mockup height so transitioning between sequence stages
-     (memory grid only / memory grid + output panel / clicked-project)
-     does not change the overall height. The natural tallest state is
-     ~868px on desktop. Hard-locked so click always stays at 868. */
-  height: 868px;
 }
 
 .workspace-mockup:hover {
@@ -25937,9 +25932,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 
 /* ============================================================================
-   Variant J · Interactive workspace mockup
-   Hand-drawn "interactive" callout + clickable rail projects + clickable
-   suggestion chips. Pattern from Excalidraw and Stripe "Try it" annotations.
+   Variant J · Interactive label (kept for future use, currently unused)
    ============================================================================ */
 
 .workspace-mockup-interactive-label {
@@ -25948,6 +25941,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   right: 18px;
   z-index: 8;
   pointer-events: none;
+  display: none;
 }
 
 .interactive-label {

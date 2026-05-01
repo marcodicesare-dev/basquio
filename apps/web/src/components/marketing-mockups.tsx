@@ -40,8 +40,7 @@ function SvgMockup({ src, alt, caption, className, priority = false }: SvgMockup
         src={src}
         alt={alt}
         loading={priority ? "eager" : "lazy"}
-        // @ts-expect-error fetchpriority is HTML5 valid but TS lib lags
-        fetchpriority={priority ? "high" : undefined}
+        fetchPriority={priority ? "high" : undefined}
       />
       <figcaption className="mockup-frame-caption">{caption}</figcaption>
     </MotionMockupFrame>
