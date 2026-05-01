@@ -25590,9 +25590,14 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: clamp(28px, 3.5vw, 56px);
-  padding-top: clamp(40px, 5vw, 72px);
-  padding-bottom: clamp(40px, 5vw, 72px);
+  gap: clamp(18px, 2.2vw, 32px);
+  padding-top: clamp(12px, 1.8vw, 24px);
+  padding-bottom: clamp(20px, 2.5vw, 36px);
+}
+
+.hero-j-with-demo .hero-j-copy {
+  padding: clamp(18px, 2.4vw, 36px) 0 clamp(6px, 1vw, 12px);
+  gap: clamp(12px, 1.4vw, 18px);
 }
 
 .hero-j-demo-stage {
@@ -25606,11 +25611,11 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 28px clamp(20px, 2.4vw, 36px);
+  gap: 14px;
+  padding: 20px clamp(18px, 2vw, 28px);
   background: rgba(248, 245, 239, 0.96);
   border: 1px solid rgba(11, 12, 12, 0.08);
-  border-radius: 18px;
+  border-radius: 16px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.6) inset,
     0 32px 72px -28px rgba(11, 12, 12, 0.42),
@@ -25642,8 +25647,8 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 22px;
+  gap: 10px;
+  padding: 16px 18px;
   background: rgba(11, 12, 12, 0.025);
   border: 1px dashed rgba(11, 12, 12, 0.18);
   border-radius: 14px;
@@ -25652,7 +25657,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
     border-color 320ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 320ms cubic-bezier(0.16, 1, 0.3, 1);
-  min-height: 188px;
+  min-height: 124px;
 }
 
 .hero-demo-box-pale {
