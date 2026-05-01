@@ -1,11 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
 
-import { HeroDemoFlow } from "@/components/hero-demo-flow";
-
 export function MarketingHeroJ() {
   return (
-    <section className="hero-j hero-j-with-demo" aria-labelledby="hero-j-headline">
+    <section className="hero-j hero-j-image-only" aria-labelledby="hero-j-headline">
       <Image
         className="hero-j-background"
         src="/marketing/hero-candidates/basquio-memory-context-04.jpg"
@@ -19,7 +17,7 @@ export function MarketingHeroJ() {
       <div className="hero-j-scrim" aria-hidden="true" />
 
       <div className="hero-j-copy">
-        <p className="hero-j-eyebrow">For market research teams</p>
+        <p className="hero-j-eyebrow">AI for market research professionals</p>
         <h1 id="hero-j-headline" className="hero-j-headline">
           Your next deck should already know the brief.
         </h1>
@@ -41,10 +39,6 @@ export function MarketingHeroJ() {
           <span className="hero-j-trust-dot" aria-hidden="true" />
           Security and data handling
         </Link>
-      </div>
-
-      <div className="hero-j-demo-stage">
-        <HeroDemoFlow />
       </div>
     </section>
   );

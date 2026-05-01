@@ -51,6 +51,7 @@ const WORKSPACE_PROMPTS = [
 
 const TYPING_TEXT = WORKSPACE_PROMPTS[2]; // "Compare share vs Q3"
 const TARGET_PROMPT_IDX = 2;
+const LOOP_COOLDOWN_MS = 4200;
 
 type Stage =
   | "idle"
@@ -93,6 +94,7 @@ export function MotionWorkspaceMockup() {
   const [isInView, setIsInView] = useState(false);
   const [typedText, setTypedText] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
+  const [loopTick, setLoopTick] = useState(0);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const reducedMotion = usePrefersReducedMotion();
 
@@ -163,7 +165,10 @@ export function MotionWorkspaceMockup() {
     };
   }, []);
 
-  // Run the scripted sequence after viewport enter.
+  // Run the scripted sequence after viewport enter, then loop. The chat
+  // composer empties between loops so the typed-text reveal restarts from
+  // scratch every time, the way Marco's voice note describes ("la chat che
+  // scrive in loop come l'animazione iniziale").
   useEffect(() => {
     if (!isInView) return;
 
@@ -172,6 +177,9 @@ export function MotionWorkspaceMockup() {
       setStage("output-ready");
       return;
     }
+
+    setStage("idle");
+    setTypedText("");
 
     const timers: number[] = [];
 
@@ -195,12 +203,13 @@ export function MotionWorkspaceMockup() {
       window.setTimeout(() => setStage("button-clicked"), 4200),
       window.setTimeout(() => setStage("loading"), 4400),
       window.setTimeout(() => setStage("output-ready"), 5400),
+      window.setTimeout(() => setLoopTick((t) => t + 1), 5400 + LOOP_COOLDOWN_MS),
     );
 
     return () => {
       timers.forEach((t) => window.clearTimeout(t));
     };
-  }, [isInView, reducedMotion]);
+  }, [isInView, reducedMotion, loopTick]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
     if (reducedMotion) return;
