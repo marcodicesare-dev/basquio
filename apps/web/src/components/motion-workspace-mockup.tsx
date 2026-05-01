@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, type Variants } from "motion/react";
 
+import { InteractiveLabel } from "@/components/interactive-label";
+
 /**
  * Scripted demo of the Basquio workspace, in the style of Lovable / v0 / Cursor
  * homepage hero animations.
@@ -88,13 +90,21 @@ const ARTIFACTS = [
 
 export function MotionWorkspaceMockup() {
   const rootRef = useRef<HTMLElement>(null);
-  const chipRef = useRef<HTMLLIElement>(null);
+  const chipRef = useRef<HTMLButtonElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [isInView, setIsInView] = useState(false);
   const [typedText, setTypedText] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Interactive state: which project the user is currently viewing.
+  // Defaults to the first (active) project. Once the user clicks a different
+  // project, we lock in their choice and stop the auto-cursor highlighting
+  // the original chip (interactive mode takes precedence over the demo).
+  const [activeProjectIdx, setActiveProjectIdx] = useState(0);
+  const [activePromptIdx, setActivePromptIdx] = useState<number | null>(null);
+  const [userInteracted, setUserInteracted] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
+  const activeProject = WORKSPACE_PROJECTS[activeProjectIdx];
 
   // Compute cursor target pixel coords from refs whenever the stage changes.
   useEffect(() => {
@@ -163,9 +173,12 @@ export function MotionWorkspaceMockup() {
     };
   }, []);
 
-  // Run the scripted sequence after viewport enter
+  // Run the scripted sequence after viewport enter.
+  // If the user has clicked anything inside the mockup, halt the demo
+  // and yield control to interactive mode (no more cursor, no auto-typing).
   useEffect(() => {
     if (!isInView) return;
+    if (userInteracted) return;
 
     if (reducedMotion) {
       setTypedText(TYPING_TEXT);
@@ -220,16 +233,25 @@ export function MotionWorkspaceMockup() {
     target.style.setProperty("--mockup-rot-y", "0deg");
   };
 
-  const cursorVisible = stage !== "idle" && stage !== "output-ready" && !reducedMotion;
+  const cursorVisible =
+    stage !== "idle" && stage !== "output-ready" && !reducedMotion && !userInteracted;
 
   return (
     <article
       ref={rootRef}
       className="workspace-mockup workspace-mockup-motion"
-      aria-label="Example Basquio workspace running an output"
+      aria-label="Example Basquio workspace · click projects or suggestions to interact"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      {!userInteracted && (
+        <InteractiveLabel
+          text="interactive"
+          variant="down-right"
+          className="workspace-mockup-interactive-label"
+        />
+      )}
+
       {/* Animated cursor sprite. Position is computed in pixels from the
           refs of the chip and the button so the cursor lands on the actual
           element regardless of the mockup width. */}
@@ -252,20 +274,30 @@ export function MotionWorkspaceMockup() {
         </div>
         <p className="workspace-mockup-rail-section">Projects</p>
         <ul className="workspace-mockup-projects">
-          {WORKSPACE_PROJECTS.map((p) => (
+          {WORKSPACE_PROJECTS.map((p, i) => (
             <li
               key={p.name}
               className={
-                p.active
-                  ? "workspace-mockup-project workspace-mockup-project-active"
-                  : "workspace-mockup-project"
+                i === activeProjectIdx
+                  ? "workspace-mockup-project workspace-mockup-project-active workspace-mockup-project-interactive"
+                  : "workspace-mockup-project workspace-mockup-project-interactive"
               }
             >
-              <span className="workspace-mockup-project-dot" aria-hidden="true" />
-              <span className="workspace-mockup-project-text">
-                <span className="workspace-mockup-project-name">{p.name}</span>
-                <span className="workspace-mockup-project-client">{p.client}</span>
-              </span>
+              <button
+                type="button"
+                className="workspace-mockup-project-button"
+                onClick={() => {
+                  setActiveProjectIdx(i);
+                  setUserInteracted(true);
+                }}
+                aria-pressed={i === activeProjectIdx}
+              >
+                <span className="workspace-mockup-project-dot" aria-hidden="true" />
+                <span className="workspace-mockup-project-text">
+                  <span className="workspace-mockup-project-name">{p.name}</span>
+                  <span className="workspace-mockup-project-client">{p.client}</span>
+                </span>
+              </button>
             </li>
           ))}
         </ul>
@@ -277,10 +309,10 @@ export function MotionWorkspaceMockup() {
       <div className="workspace-mockup-main">
         <header className="workspace-mockup-main-head">
           <p className="workspace-mockup-breadcrumb">
-            Workspace / Projects / Espresso Q4 review
+            Workspace / Projects / {activeProject.name}
           </p>
           <h3 className="workspace-mockup-main-title">
-            Espresso Q4 review · Northstar Coffee
+            {activeProject.name} · {activeProject.client}
           </h3>
         </header>
 
@@ -333,19 +365,31 @@ export function MotionWorkspaceMockup() {
       <aside className="workspace-mockup-chat">
         <p className="workspace-mockup-chat-title">Ask Basquio</p>
         <ul className="workspace-mockup-chat-suggestions">
-          {WORKSPACE_PROMPTS.map((p, i) => (
-            <li
-              key={p}
-              ref={i === TARGET_PROMPT_IDX ? chipRef : undefined}
-              className={`workspace-mockup-chat-suggestion${
-                i === TARGET_PROMPT_IDX && (stage === "chip-clicked" || stage === "typing")
-                  ? " workspace-mockup-chat-suggestion-active"
-                  : ""
-              }`}
-            >
-              {p}
-            </li>
-          ))}
+          {WORKSPACE_PROMPTS.map((p, i) => {
+            const animatedActive =
+              i === TARGET_PROMPT_IDX && (stage === "chip-clicked" || stage === "typing");
+            const userActive = activePromptIdx === i;
+            const active = animatedActive || userActive;
+            return (
+              <li key={p}>
+                <button
+                  type="button"
+                  ref={i === TARGET_PROMPT_IDX ? chipRef : undefined}
+                  className={`workspace-mockup-chat-suggestion workspace-mockup-chat-suggestion-interactive${
+                    active ? " workspace-mockup-chat-suggestion-active" : ""
+                  }`}
+                  onClick={() => {
+                    setActivePromptIdx(i);
+                    setUserInteracted(true);
+                    setTypedText(p);
+                  }}
+                  aria-pressed={active}
+                >
+                  {p}
+                </button>
+              </li>
+            );
+          })}
         </ul>
         <div className="workspace-mockup-chat-composer">
           <span className="workspace-mockup-chat-typed">
@@ -356,7 +400,7 @@ export function MotionWorkspaceMockup() {
             ) : (
               typedText
             )}
-            {stage === "typing" && (
+            {(stage === "typing" || (userInteracted && typedText.length > 0)) && (
               <span className="workspace-mockup-chat-caret" aria-hidden="true" />
             )}
           </span>

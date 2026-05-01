@@ -25924,3 +25924,135 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
     transform: rotate(90deg);
   }
 }
+
+
+/* ============================================================================
+   Variant J · Interactive workspace mockup
+   Hand-drawn "interactive" callout + clickable rail projects + clickable
+   suggestion chips. Pattern from Excalidraw and Stripe "Try it" annotations.
+   ============================================================================ */
+
+.workspace-mockup-interactive-label {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.interactive-label {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.interactive-label-text {
+  font-family: var(--font-caveat), "Caveat", "Patrick Hand", "Kalam", cursive;
+  font-size: 24px;
+  font-weight: 600;
+  color: #0B0C0C;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  transform: rotate(-4deg);
+  transform-origin: right center;
+}
+
+.interactive-label-arrow {
+  margin-top: -4px;
+  margin-right: 12px;
+  opacity: 0.86;
+}
+
+.interactive-label-down-left .interactive-label,
+.interactive-label-left .interactive-label {
+  align-items: flex-start;
+}
+
+.interactive-label-down-left .interactive-label-text,
+.interactive-label-left .interactive-label-text {
+  transform: rotate(4deg);
+  transform-origin: left center;
+}
+
+.interactive-label-down-left .interactive-label-arrow,
+.interactive-label-left .interactive-label-arrow {
+  margin-right: 0;
+  margin-left: 12px;
+}
+
+/* Make the interactive label fade with a subtle nudge to draw the eye */
+@keyframes interactive-label-nudge {
+  0%, 88%, 100% { transform: translateY(0); }
+  92% { transform: translateY(-3px); }
+  96% { transform: translateY(0); }
+}
+
+.workspace-mockup-interactive-label .interactive-label-arrow {
+  animation: interactive-label-nudge 4.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-mockup-interactive-label .interactive-label-arrow {
+    animation: none;
+  }
+}
+
+/* --- Clickable rail projects -------------------------------------------- */
+
+.workspace-mockup-project-interactive .workspace-mockup-project-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 160ms ease;
+  font: inherit;
+  color: inherit;
+}
+
+.workspace-mockup-project-interactive .workspace-mockup-project-button:hover {
+  background: rgba(11, 12, 12, 0.04);
+}
+
+.workspace-mockup-project-active .workspace-mockup-project-button {
+  background: rgba(26, 106, 255, 0.06);
+}
+
+.workspace-mockup-project-active .workspace-mockup-project-button:hover {
+  background: rgba(26, 106, 255, 0.10);
+}
+
+.workspace-mockup-project-button:focus-visible {
+  outline: 2px solid var(--blue, #1A6AFF);
+  outline-offset: 2px;
+}
+
+/* --- Clickable suggestion chips ----------------------------------------- */
+
+.workspace-mockup-chat-suggestion-interactive {
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background 160ms ease, border-color 160ms ease, transform 120ms ease;
+}
+
+.workspace-mockup-chat-suggestion-interactive:hover {
+  background: rgba(26, 106, 255, 0.06);
+  border-color: rgba(26, 106, 255, 0.24);
+}
+
+.workspace-mockup-chat-suggestion-interactive:active {
+  transform: translateY(1px);
+}
+
+.workspace-mockup-chat-suggestion-interactive:focus-visible {
+  outline: 2px solid var(--blue, #1A6AFF);
+  outline-offset: 2px;
+}
