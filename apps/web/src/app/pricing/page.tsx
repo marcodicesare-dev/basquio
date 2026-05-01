@@ -71,8 +71,8 @@ export default function PricingPage() {
       <section className="pricing-j-faq-stage" aria-labelledby="pricing-faq-heading">
         <header className="section-j-head pricing-j-faq-head">
           <p className="section-j-eyebrow">Common questions</p>
-          <h2 id="pricing-faq-heading" className="section-j-title">
-            What you pay for, what you get back, and when each plan stops fitting.
+          <h2 id="pricing-faq-heading" className="section-j-title pricing-j-faq-title">
+            What you pay for, what you get back.
           </h2>
         </header>
 
