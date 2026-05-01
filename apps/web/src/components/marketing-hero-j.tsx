@@ -11,6 +11,7 @@ export function MarketingHeroJ() {
         aria-hidden="true"
         fill
         priority
+        quality={95}
         sizes="100vw"
       />
       <div className="hero-j-scrim" aria-hidden="true" />

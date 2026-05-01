@@ -22059,7 +22059,10 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 
 .buying-iface-modes {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Match the body grid below so the column dividers and the active-mode
+     underline land exactly aligned with the You-provide / What-you-get /
+     Price columns. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.85fr);
   border-bottom: 1px solid rgba(11, 12, 12, 0.08);
   background: #fbfaf6;
 }
@@ -22166,16 +22169,16 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 .buying-iface-col {
-  padding: 32px 28px;
+  padding: 28px 28px 36px;
   border-right: 1px solid rgba(11, 12, 12, 0.06);
 }
 
 .buying-iface-col-head {
-  margin: 0 0 16px;
+  margin: 0 0 18px;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -22185,15 +22188,15 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .buying-iface-list li {
   display: grid;
   grid-template-columns: 18px 1fr;
-  gap: 10px;
-  font-size: 0.94rem;
-  line-height: 1.5;
+  gap: 12px;
+  font-size: 1rem;
+  line-height: 1.55;
   color: var(--text);
 }
 
@@ -22232,8 +22235,8 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .buying-iface-checkout {
   display: grid;
   align-content: start;
-  gap: 8px;
-  padding: 32px 28px;
+  gap: 10px;
+  padding: 28px 28px 36px;
   background: linear-gradient(180deg, #fbfaf6 0%, #f5efe1 100%);
   border-left: 1px solid rgba(11, 12, 12, 0.06);
 }
@@ -22241,25 +22244,26 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .buying-iface-price-eyebrow {
   margin: 0;
   font-family: var(--font-jetbrains-mono), monospace;
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
 .buying-iface-price {
   margin: 0;
-  font-size: clamp(1.7rem, 2.4vw, 2.2rem);
-  line-height: 1.04;
+  font-size: clamp(2rem, 3.2vw, 2.8rem);
+  line-height: 1.02;
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--text);
 }
 
 .buying-iface-price-caption {
-  margin: -2px 0 8px;
-  font-size: 0.84rem;
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  line-height: 1.4;
   color: var(--text-muted);
 }
 
@@ -22441,7 +22445,13 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 }
 
 .pricing-j-faq-head {
-  max-width: 640px;
+  max-width: 880px;
+}
+
+.pricing-j-faq-title {
+  font-size: clamp(2rem, 3.2vw, 2.8rem);
+  line-height: 1.08;
+  text-wrap: balance;
 }
 
 .pricing-j-faq-list {
@@ -22682,14 +22692,20 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .public-nav-signin {
   display: inline-flex;
   align-items: center;
-  height: 36px;
-  padding: 0 12px;
+  height: 38px;
+  padding: 0 16px;
   font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: -0.005em;
-  color: var(--text);
-  border-radius: 4px;
-  transition: background 160ms ease;
+  color: #ffffff;
+  background: var(--blue, #1A6AFF);
+  border-radius: 8px;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.public-nav-signin:hover {
+  background: #155cdb;
+  transform: translateY(-1px);
 }
 
 .public-nav-signin:hover {
