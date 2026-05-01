@@ -65,11 +65,12 @@ export default function HomePage() {
         <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Workspace</p>
           <h2 id="workspace-heading" className="section-j-title">
-            Basquio remembers the work behind every deck.
+            A workspace that learns the brand, the brief, and the analyst.
           </h2>
           <p className="section-j-body">
-            Client, brand, template, last meeting, past reviews, approved formats. The next ask
-            starts closer to done.
+            Basquio holds the client, the template, the past reviews, and the stakeholder you
+            present to. So the next deck starts with the context already in place, and you spend
+            your time on analysis instead of rebuilding it from scratch.
           </p>
           <Link className="section-j-link" href="/#workspace">
             See the workspace
