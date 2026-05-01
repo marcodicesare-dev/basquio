@@ -15,6 +15,7 @@ import { PublicSiteFooterCta } from "@/components/public-site-footer-cta";
 import { PublicSiteNav } from "@/components/public-site-nav";
 import { MotionSectionHead } from "@/components/motion-section-head";
 import { ScrollReveal } from "@/components/scroll-reveal";
+import { WorkflowBigBlocks } from "@/components/workflow-big-blocks";
 
 export const metadata: Metadata = {
   title: "Basquio · From research files to finished decks, reports, and workbooks",
@@ -35,9 +36,13 @@ export default function HomePage() {
 
       <MarketingHeroJ />
 
+      <div id="how-it-works">
+        <WorkflowBigBlocks />
+      </div>
+
       <section className="section-j section-j-stack" id="product" aria-labelledby="product-heading">
         <MotionSectionHead className="section-j-stack-head">
-          <p className="section-j-eyebrow">Product</p>
+          <p className="section-j-eyebrow">Example output</p>
           <h2 id="product-heading" className="section-j-title">
             One run, three finished files.
           </h2>
@@ -86,37 +91,33 @@ export default function HomePage() {
           <header className="section-j-head">
             <p className="section-j-eyebrow section-j-eyebrow-light">Pricing</p>
             <h2 id="buying-heading" className="section-j-title section-j-title-light">
-              Pay for one output, or keep the work in a workspace.
+              Pay for one output. Or keep the work in a workspace.
             </h2>
             <p className="section-j-body section-j-body-light">
-              Credits cover one-off output. Workspace covers continuity. Pick what matches the work.
+              Three ways to use Basquio. Pick the one that matches your work.
             </p>
           </header>
 
           <BuyingInterface variant="homepage" />
-
-          <p className="buying-iface-footnote buying-iface-footnote-light">
-            <Link href="/pricing">See pricing details</Link>
-          </p>
         </ScrollReveal>
       </section>
 
       <section
         className="section-j section-j-stack"
-        id="reconciliation"
+        id="numbers-reconcile"
         aria-labelledby="reconciliation-heading"
       >
         <MotionSectionHead className="section-j-stack-head">
-          <p className="section-j-eyebrow">Numbers reconcile</p>
+          <p className="section-j-eyebrow">Workbook</p>
           <h2 id="reconciliation-heading" className="section-j-title">
-            The three files agree on the same number.
+            Every chart has a row in the workbook. Every claim has a source.
           </h2>
           <p className="section-j-body">
             The 1.9 share points on slide 04 ties to row 4 of the workbook and section 2 of the
-            report. Every figure has a sheet, a row, and a source.
+            report. So when your stakeholder pushes back, the answer is one click away.
           </p>
           <Link className="section-j-link" href="/jobs/new">
-            See the reconciled output
+            See the workbook in the deliverable
             <span aria-hidden="true">→</span>
           </Link>
         </MotionSectionHead>
