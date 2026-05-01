@@ -147,17 +147,6 @@ export function BuyingInterface({
             <span aria-hidden="true">→</span>
           </Link>
 
-          <p
-            className={
-              tier.trial
-                ? "buying-iface-card-trial"
-                : "buying-iface-card-trial buying-iface-card-trial-empty"
-            }
-            aria-hidden={tier.trial ? undefined : true}
-          >
-            {tier.trial ?? "."}
-          </p>
-
           <div className="buying-iface-card-lists">
             <section
               className="buying-iface-card-section"
