@@ -4,7 +4,6 @@ import Link from "next/link";
 import { BuyingInterface } from "@/components/marketing-pricing-j";
 import { MarketingHeroJ } from "@/components/marketing-hero-j";
 import {
-  ProductSlideMockup,
   ReportExcerptMockup,
   SecurityAuditMockup,
   WorkbookMockup,
@@ -40,27 +39,6 @@ export default function HomePage() {
         <WorkflowBigBlocks />
       </div>
 
-      <section className="section-j section-j-stack" id="product" aria-labelledby="product-heading">
-        <MotionSectionHead className="section-j-stack-head">
-          <p className="section-j-eyebrow">Esempio di output</p>
-          <h2 id="product-heading" className="section-j-title">
-            Una richiesta, tre file pronti.
-          </h2>
-          <p className="section-j-body">
-            Basquio legge il brief e il materiale. Una sola richiesta produce la presentazione, il
-            report e il file Excel.
-          </p>
-          <Link className="section-j-link" href="/jobs/new">
-            Vedi cosa produce Basquio
-            <span aria-hidden="true">→</span>
-          </Link>
-        </MotionSectionHead>
-
-        <ScrollReveal className="section-j-stack-anchor" as="figure" delay={120}>
-          <ProductSlideMockup />
-        </ScrollReveal>
-      </section>
-
       <section className="section-j section-j-stack" id="workspace" aria-labelledby="workspace-heading">
         <MotionSectionHead className="section-j-stack-head">
           <p className="section-j-eyebrow">Workspace</p>
@@ -68,9 +46,8 @@ export default function HomePage() {
             Un workspace che impara il brand, il brief e l&apos;analista.
           </h2>
           <p className="section-j-body">
-            Basquio tiene il cliente, il template, le review passate e lo stakeholder a cui
-            presenti. Così la prossima presentazione parte già con il contesto al suo posto, e tu
-            usi il tempo per l&apos;analisi invece di ricostruirla da zero.
+            Cliente, template, review passate, stakeholder. Tutto in un posto. La prossima
+            presentazione parte già più vicina al risultato.
           </p>
           <Link className="section-j-link" href="/#workspace">
             Vedi il workspace
