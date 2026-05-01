@@ -25940,7 +25940,7 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
 .workflow-big-stage {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) 32px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr) 56px minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
   width: 100%;
@@ -26088,50 +26088,95 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
   color: rgba(255, 255, 255, 0.82);
 }
 
-/* Connector arrow between step cards. */
+/* Connector between step cards. A dashed track spans the full gap with a
+   chevron tucked at the right end. Active state draws a solid blue flow
+   line over the track. Processing state runs marching ants instead. */
 
 .workflow-big-connector {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
+  justify-content: stretch;
   align-self: center;
-  height: 32px;
-  color: rgba(11, 12, 12, 0.32);
+  width: 100%;
+  height: 14px;
+  color: rgba(11, 12, 12, 0.22);
   transition: color 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: visible;
+  margin-inline: -8px;
 }
 
-.workflow-big-connector-line {
+.workflow-big-connector-svg {
   position: absolute;
-  inset: auto 0 50% 0;
-  height: 1px;
-  background: currentColor;
-  transform: translateY(50%);
+  inset: 50% 18px auto 0;
+  width: calc(100% - 18px);
+  height: 12px;
+  transform: translateY(-50%);
+  overflow: visible;
 }
 
-.workflow-big-connector-arrow {
-  position: relative;
-  z-index: 1;
-  font-size: 18px;
-  font-weight: 600;
+.workflow-big-connector-track {
+  stroke: currentColor;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
+.workflow-big-connector-flow {
+  stroke: var(--blue, #1A6AFF);
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  opacity: 0;
+  transition:
+    stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 220ms ease;
+}
+
+.workflow-big-connector-head {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(2px, -50%);
   color: currentColor;
-  background: var(--canvas, #f6f1e2);
-  padding: 0 2px;
+  transition:
+    color 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .workflow-big-connector-active {
   color: var(--blue, #1A6AFF);
 }
 
-@keyframes workflow-big-connector-shimmer {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+.workflow-big-connector-active .workflow-big-connector-track {
+  opacity: 0.4;
+}
+
+.workflow-big-connector-active .workflow-big-connector-flow {
+  stroke-dashoffset: 0;
+  opacity: 1;
+}
+
+.workflow-big-connector-active .workflow-big-connector-head {
+  transform: translate(4px, -50%);
 }
 
 .workflow-big-connector-processing {
   color: var(--blue, #1A6AFF);
-  animation: workflow-big-connector-shimmer 1200ms ease-in-out infinite;
+}
+
+.workflow-big-connector-processing .workflow-big-connector-track {
+  stroke: var(--blue, #1A6AFF);
+  opacity: 0.55;
+  animation: workflow-big-connector-march 900ms linear infinite;
+}
+
+.workflow-big-connector-processing .workflow-big-connector-flow {
+  opacity: 0;
+}
+
+@keyframes workflow-big-connector-march {
+  to { stroke-dashoffset: -16; }
 }
 
 @media (max-width: 960px) {

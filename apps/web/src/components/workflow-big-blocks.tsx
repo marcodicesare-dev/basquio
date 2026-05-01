@@ -255,8 +255,47 @@ function Connector({ active, processing = false }: { active: boolean; processing
       }`}
       aria-hidden="true"
     >
-      <span className="workflow-big-connector-line" />
-      <span className="workflow-big-connector-arrow">→</span>
+      <svg
+        className="workflow-big-connector-svg"
+        viewBox="0 0 80 12"
+        preserveAspectRatio="none"
+        fill="none"
+      >
+        <line
+          className="workflow-big-connector-track"
+          x1="0"
+          y1="6"
+          x2="80"
+          y2="6"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <line
+          className="workflow-big-connector-flow"
+          x1="0"
+          y1="6"
+          x2="80"
+          y2="6"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+      <svg
+        className="workflow-big-connector-head"
+        viewBox="0 0 14 14"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M3 3l5 4-5 4"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </span>
   );
 }
