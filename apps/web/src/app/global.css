@@ -24284,28 +24284,9 @@ body:has(.wbeta-gen-drawer) iframe[name="intercom-messenger-frame"] {
     0 16px 32px -16px rgba(11, 12, 12, 0.16);
 }
 
-.mockup-frame-caption {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  padding-left: 4px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted, rgba(11, 12, 12, 0.55));
-}
-
-.mockup-frame-caption::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ultramarine, #1A6AFF);
-  box-shadow: 0 0 0 2px rgba(26, 106, 255, 0.12);
-}
+/* .mockup-frame-caption removed in Path V — figcaptions read as AI slop
+   underneath the SVG mockups. The on-image label inside the SVG itself is
+   sufficient; the duplicate "deck.pptx · slide 04 of 12" text was deleted. */
 
 /* Unified BIG mockup width. SVGs scale infinitely, so we go to viewport
    minus 64px gutter, capped at 1440 so very wide displays don't blow the

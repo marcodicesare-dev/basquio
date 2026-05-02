@@ -28,7 +28,7 @@ export function MarketingHeroJ() {
 
         <div className="hero-j-actions">
           <Link className="hero-j-primary" href="/jobs/new">
-            Start one output
+            Start one analysis
           </Link>
           <Link className="hero-j-secondary" href="#how-it-works">
             See how it works

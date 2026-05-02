@@ -68,7 +68,7 @@ export default function HomePage() {
           <header className="section-j-head">
             <p className="section-j-eyebrow section-j-eyebrow-light">Pricing</p>
             <h2 id="buying-heading" className="section-j-title section-j-title-light">
-              Pay for one output. Or keep the work in a workspace.
+              Pay for one analysis. Or keep the work in a workspace.
             </h2>
             <p className="section-j-body section-j-body-light">
               Three ways to use Basquio. Pick the one that matches your work.
@@ -127,9 +127,9 @@ export default function HomePage() {
 
       <PublicSiteFooterCta
         eyebrow="Ready to start"
-        title="Start with one output. Or set up the workspace."
+        title="Start with one analysis. Or set up the workspace."
         copy="Upload the brief and files for one job. If the work comes back next month, keep the context in a workspace."
-        primaryLabel="Start one output"
+        primaryLabel="Start one analysis"
         primaryHref="/jobs/new"
         secondaryLabel="See the workspace"
         secondaryHref="#workspace"
