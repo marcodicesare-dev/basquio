@@ -16,12 +16,12 @@ export function PublicSiteFooter() {
           <Link href="/#paths">Pay as you go</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/compare">Compare</Link>
-          <Link href="/jobs/new">Start one output</Link>
+          <Link href="/jobs/new">Start one analysis</Link>
         </div>
 
         <div className="site-footer-column">
           <p className="site-footer-column-title">Resources</p>
-          <Link href="/library">Output library</Link>
+          <Link href="/library">Analysis library</Link>
           <Link href="/how-it-works">How it works</Link>
           <Link href="/blog">Blog</Link>
           <Link href="/powerpoint-tax">PowerPoint Tax</Link>
